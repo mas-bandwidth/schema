@@ -52,10 +52,11 @@ func (g *gen) emitUnionMaxBits(d *ir.Union) {
 }
 
 // emitUnionWire is the message dispatch pair scaled down to a field type
-// (SPEC §4.8): the write validates the tag BEFORE it rides — an out-of-set
-// tag writes nothing, it never desyncs the stream — and the read rejects a
-// tag above the count inside read_int, then constructs the selected arm
-// with its defaults before decoding it.
+// (SPEC §4.8): the write ASSERTS the tag before it rides — an out-of-set tag
+// is caller error like every other write-side value, caught in debug and the
+// caller's responsibility in release (SPEC §5) — and the read rejects a tag
+// above the count inside read_int, in every build, then constructs the
+// selected arm with its defaults before decoding it.
 func (g *gen) emitUnionWire(d *ir.Union) {
 	g.needsSerialize = true
 	tag := d.Name + "Type"
@@ -63,11 +64,16 @@ func (g *gen) emitUnionWire(d *ir.Union) {
 	g.pf("SCHEMA_WRITE_INLINE bool Write%s( serialize::WriteStream & stream, const %s & value )\n{\n", d.Name, d.Name)
 	if d.Max == 0 {
 		g.pf("    (void) stream;\n")
-		g.pf("    // an empty union holds only None and its degenerate tag range [0, 0]\n")
-		g.pf("    // costs zero bits (SPEC §4.8)\n")
-		g.pf("    return value.type == %s::None;\n}\n\n", tag)
+		g.pf("    (void) value; // an empty union holds only None and its degenerate tag range\n")
+		g.pf("    // [0, 0] costs zero bits (SPEC §4.8); any other tag is caller error, asserted\n")
+		g.pf("    // in debug and the caller's responsibility in release (SPEC §5)\n")
+		g.pf("    serialize_assert( value.type == %s::None );\n", tag)
+		g.pf("    return true;\n}\n\n")
 	} else {
 		bits := bitsRequired(big.NewInt(0), big.NewInt(d.Max))
+		// the tag is a write-side contract like every other value the caller
+		// supplies: asserted before it rides, gone under NDEBUG (SPEC §5)
+		g.pf("    serialize_assert( value.type <= %s::Max ); // an out-of-set tag is caller error (SPEC §4.8, §5)\n", tag)
 		g.pf("    switch ( value.type )\n    {\n")
 		g.pf("        case %s::None:\n", tag)
 		g.pf("            write_bits( stream, 0u, %d );\n", bits)
@@ -84,7 +90,7 @@ func (g *gen) emitUnionWire(d *ir.Union) {
 		g.pf("        default:\n")
 		g.pf("            break;\n")
 		g.pf("    }\n")
-		g.pf("    return false; // not a %s value; nothing was written (SPEC §4.8)\n}\n\n", tag)
+		g.pf("    return true; // an out-of-set tag selected no arm, so no bits rode: the assert above is the contract (SPEC §5)\n}\n\n")
 	}
 
 	g.pf("SCHEMA_READ_INLINE bool Read%s( serialize::ReadStream & stream, %s & value )\n{\n", d.Name, d.Name)
@@ -358,18 +364,16 @@ func (g *gen) emitWriteRangedFold32(expr, lo, hi string, bits int64, loZero bool
 	}
 }
 
-// emitWriteCount writes a counted array's count. A scalar's range is a §5
-// writer contract held by an assert. A count outside [lo, hi] is REFUSED in
-// every build instead, because the count guards the element loop and the pack
-// subtracts the low bound, so a count below lo wraps and an unchecked write
-// reports success on bytes no reader accepts (SPEC §4.6).
+// emitWriteCount writes a counted array's count. The count is a §5 writer
+// contract like any other scalar range, held by an assert and compiled out
+// under NDEBUG: what is written is the caller's responsibility in release, and
+// it is the assert's duty to catch a bad count in debug (SPEC §4.6, §5).
 //
 // bits is always at least 1 here. §4.6 refuses [Min..N]T with Min at or above
 // N, so a count range is never degenerate and the zero-bit path a scalar range
 // needs has no case to serve.
 func (g *gen) emitWriteCount(expr, lo, hi string, bits int64, loZero bool, ind string) {
-	g.pf("%sif ( int32_t( %s ) < int32_t( %s ) || int32_t( %s ) > int32_t( %s ) )\n%s{\n", ind, expr, lo, expr, hi, ind)
-	g.pf("%s    return false; // a count outside its wire range is refused in every build (SPEC §4.6)\n%s}\n", ind, ind)
+	g.pf("%sserialize_assert( int32_t( %s ) >= int32_t( %s ) && int32_t( %s ) <= int32_t( %s ) );\n", ind, expr, lo, expr, hi)
 	if loZero {
 		g.pf("%swrite_bits( stream, uint32_t( %s ), %d );\n", ind, expr, bits)
 	} else {

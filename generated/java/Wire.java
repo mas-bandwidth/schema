@@ -658,6 +658,8 @@ public final class Wire {
             assert (value.weapon & 0xffL) >= 0;
             assert (value.weapon & 0xffL) <= 15;
         }
+        assert value.samplesCount >= 1;
+        assert value.samplesCount <= 8;
         return true;
     }
 
@@ -765,9 +767,6 @@ public final class Wire {
                 scratchBits -= 64;
                 scratch = v >>> (32 - scratchBits);
             }
-        }
-        if (value.samplesCount < 1 || value.samplesCount > 8) {
-            return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
         }
         v = (value.samplesCount - 1) & 0x7L;
         scratch |= v << scratchBits;
@@ -1512,6 +1511,8 @@ public final class Wire {
                 assert (value.backup.slab.width & 0xffL) <= 100;
                 break;
         }
+        assert value.extrasCount >= 0;
+        assert value.extrasCount <= 2;
         for (int i0 = 0; i0 < value.extrasCount; i0++) {
             final ProbeShape e0 = value.extras[i0];
             assert (e0.type & 0xffL) >= 0;
@@ -1627,9 +1628,6 @@ public final class Wire {
                     scratch = v >>> (8 - scratchBits);
                 }
                 break;
-        }
-        if (value.extrasCount < 0 || value.extrasCount > 2) {
-            return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
         }
         v = (value.extrasCount) & 0x3L;
         scratch |= v << scratchBits;
@@ -2156,6 +2154,8 @@ public final class Wire {
                 assert (e0.weapon & 0xffL) >= 0;
                 assert (e0.weapon & 0xffL) <= 15;
             }
+            assert e0.samplesCount >= 1;
+            assert e0.samplesCount <= 8;
         }
         assert (value.config.preferred & 0xffL) >= 0;
         assert (value.config.preferred & 0xffL) <= 15;
@@ -2268,9 +2268,6 @@ public final class Wire {
                     scratchBits -= 64;
                     scratch = v >>> (32 - scratchBits);
                 }
-            }
-            if (e0.samplesCount < 1 || e0.samplesCount > 8) {
-                return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
             }
             v = (e0.samplesCount - 1) & 0x7L;
             scratch |= v << scratchBits;
@@ -3558,6 +3555,8 @@ public final class Wire {
         assert value.b <= 100;
         assert value.c >= -100;
         assert value.c <= 150;
+        assert value.itemsCount >= 0;
+        assert value.itemsCount <= 16;
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
             assert value.items[i0] >= 0;
             assert value.items[i0] <= 255;
@@ -3641,9 +3640,6 @@ public final class Wire {
             wordIndex++;
             scratchBits -= 64;
             scratch = v >>> (1 - scratchBits);
-        }
-        if (value.itemsCount < 0 || value.itemsCount > 16) {
-            return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
         }
         v = (value.itemsCount) & 0x1fL;
         scratch |= v << scratchBits;

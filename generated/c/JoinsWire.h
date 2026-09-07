@@ -25,9 +25,10 @@ extern "C" {
 
 /* Every write_x/read_x returns 1 on success, 0 on failure — the stream
    latches the error, so a caller may check once at the end of a message.
-   Reads REFUSE out-of-range values, never clamp. A tag is validated BEFORE
-   it rides, and every read reconstructs the selected arm with its declared
-   initial values before decoding it (SPEC §4.8, §5). */
+   Reads REFUSE out-of-range values, never clamp, in every build. A tag on
+   WRITE is asserted before it rides — caller error, gone under NDEBUG — and
+   every read reconstructs the selected arm with its declared initial values
+   before decoding it (SPEC §4.8, §5). */
 
 #ifndef SCHEMA_C_SPINE_INLINE_DEFINED
 #define SCHEMA_C_SPINE_INLINE_DEFINED
@@ -523,6 +524,13 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_arm_align( serialize_write_
     }
     if ( value->flag )
     {
+        {
+            int32_t i;
+            for ( i = 0; i < value->s_length; i++ )
+            {
+                serialize_assert( value->s[i] != 0 ); /* interior null on write (SPEC §4.7) */
+            }
+        }
         if ( !serialize_write_int( stream, value->s_length, 0, 4 ) )
         {
             return 0;
@@ -619,10 +627,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_arm_array( serialize_write_
     }
     if ( value->flag )
     {
-        if ( value->items_count < 0 || value->items_count > 3 )
-        {
-            return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
-        }
+        serialize_assert( value->items_count >= 0 && value->items_count <= 3 );
         if ( !serialize_write_int( stream, value->items_count, 0, 3 ) )
         {
             return 0;
@@ -783,10 +788,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_wide( serialize_read_stream_t
 /* Writes Uneven. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_uneven( serialize_write_stream_t * stream, const Uneven * value )
 {
-    if ( value->type > UNEVEN_TYPE_MAX )
-    {
-        return 0; /* not a UnevenType value; nothing was written */
-    }
+    serialize_assert( value->type <= UNEVEN_TYPE_MAX ); /* an out-of-set tag is caller error (SPEC §4.8, §5) */
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->type, 2 ) )
     {
         return 0;
@@ -881,10 +883,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_arr_uneven( serialize_write
     {
         return 0;
     }
-    if ( value->items_count < 0 || value->items_count > 3 )
-    {
-        return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
-    }
+    serialize_assert( value->items_count >= 0 && value->items_count <= 3 );
     if ( !serialize_write_int( stream, value->items_count, 0, 3 ) )
     {
         return 0;
@@ -949,10 +948,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_regain_after_align( seriali
     {
         return 0;
     }
-    if ( value->items_count < 0 || value->items_count > 3 )
-    {
-        return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
-    }
+    serialize_assert( value->items_count >= 0 && value->items_count <= 3 );
     if ( !serialize_write_int( stream, value->items_count, 0, 3 ) )
     {
         return 0;
@@ -966,6 +962,13 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_regain_after_align( seriali
             {
                 return 0;
             }
+        }
+    }
+    {
+        int32_t i;
+        for ( i = 0; i < value->s_length; i++ )
+        {
+            serialize_assert( value->s[i] != 0 ); /* interior null on write (SPEC §4.7) */
         }
     }
     if ( !serialize_write_int( stream, value->s_length, 0, 4 ) )

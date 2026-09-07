@@ -42,8 +42,7 @@ void initDefaultArm(DefaultArm value) {
 
 // writeDefaultArm packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// defaultArmMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// defaultArmMaxBytes. Returns the bytes written.
 int writeDefaultArm(DefaultArm value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= defaultArmMaxBytes);
@@ -51,9 +50,8 @@ int writeDefaultArm(DefaultArm value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  if (value.entriesCount < 0 || value.entriesCount > 2) {
-    return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
-  }
+  assert(value.entriesCount >= 0);
+  assert(value.entriesCount <= 2);
   v = ((value.entriesCount) & 0x3);
   scratch |= v << scratchBits;
   scratchBits += 2;
@@ -219,8 +217,7 @@ void zeroDefaultChoice(DefaultChoice value) {
 
 // writeDefaultChoice packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// defaultChoiceMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// defaultChoiceMaxBytes. Returns the bytes written.
 int writeDefaultChoice(DefaultChoice value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= defaultChoiceMaxBytes);
@@ -241,9 +238,8 @@ int writeDefaultChoice(DefaultChoice value, ByteData view) {
   }
   switch (value.type) {
     case 1:
-      if (value.first.entriesCount < 0 || value.first.entriesCount > 2) {
-        return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
-      }
+      assert(value.first.entriesCount >= 0);
+      assert(value.first.entriesCount <= 2);
       v = ((value.first.entriesCount) & 0x3);
       scratch |= v << scratchBits;
       scratchBits += 2;
@@ -279,9 +275,8 @@ int writeDefaultChoice(DefaultChoice value, ByteData view) {
         scratch = v >>> (3 - scratchBits);
       }
     case 2:
-      if (value.second.entriesCount < 0 || value.second.entriesCount > 2) {
-        return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
-      }
+      assert(value.second.entriesCount >= 0);
+      assert(value.second.entriesCount <= 2);
       v = ((value.second.entriesCount) & 0x3);
       scratch |= v << scratchBits;
       scratchBits += 2;
@@ -511,8 +506,7 @@ void initDefaultChoicePacket(DefaultChoicePacket value) {
 
 // writeDefaultChoicePacket packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// defaultChoicePacketMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// defaultChoicePacketMaxBytes. Returns the bytes written.
 int writeDefaultChoicePacket(DefaultChoicePacket value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= defaultChoicePacketMaxBytes);
@@ -533,10 +527,8 @@ int writeDefaultChoicePacket(DefaultChoicePacket value, ByteData view) {
   }
   switch (value.choice.type) {
     case 1:
-      if (value.choice.first.entriesCount < 0 ||
-          value.choice.first.entriesCount > 2) {
-        return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
-      }
+      assert(value.choice.first.entriesCount >= 0);
+      assert(value.choice.first.entriesCount <= 2);
       v = ((value.choice.first.entriesCount) & 0x3);
       scratch |= v << scratchBits;
       scratchBits += 2;
@@ -572,10 +564,8 @@ int writeDefaultChoicePacket(DefaultChoicePacket value, ByteData view) {
         scratch = v >>> (3 - scratchBits);
       }
     case 2:
-      if (value.choice.second.entriesCount < 0 ||
-          value.choice.second.entriesCount > 2) {
-        return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
-      }
+      assert(value.choice.second.entriesCount >= 0);
+      assert(value.choice.second.entriesCount <= 2);
       v = ((value.choice.second.entriesCount) & 0x3);
       scratch |= v << scratchBits;
       scratchBits += 2;
@@ -816,8 +806,7 @@ void initDefaultBulkArm(DefaultBulkArm value) {
 
 // writeDefaultBulkArm packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// defaultBulkArmMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// defaultBulkArmMaxBytes. Returns the bytes written.
 int writeDefaultBulkArm(DefaultBulkArm value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= defaultBulkArmMaxBytes);
@@ -825,9 +814,8 @@ int writeDefaultBulkArm(DefaultBulkArm value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  if (value.payload.entriesCount < 0 || value.payload.entriesCount > 2) {
-    return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
-  }
+  assert(value.payload.entriesCount >= 0);
+  assert(value.payload.entriesCount <= 2);
   v = ((value.payload.entriesCount) & 0x3);
   scratch |= v << scratchBits;
   scratchBits += 2;
@@ -1069,8 +1057,7 @@ void zeroDefaultBulkChoice(DefaultBulkChoice value) {
 
 // writeDefaultBulkChoice packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// defaultBulkChoiceMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// defaultBulkChoiceMaxBytes. Returns the bytes written.
 int writeDefaultBulkChoice(DefaultBulkChoice value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= defaultBulkChoiceMaxBytes);
@@ -1091,10 +1078,8 @@ int writeDefaultBulkChoice(DefaultBulkChoice value, ByteData view) {
   }
   switch (value.type) {
     case 1:
-      if (value.first.payload.entriesCount < 0 ||
-          value.first.payload.entriesCount > 2) {
-        return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
-      }
+      assert(value.first.payload.entriesCount >= 0);
+      assert(value.first.payload.entriesCount <= 2);
       v = ((value.first.payload.entriesCount) & 0x3);
       scratch |= v << scratchBits;
       scratchBits += 2;
@@ -1175,10 +1160,8 @@ int writeDefaultBulkChoice(DefaultBulkChoice value, ByteData view) {
         }
       }
     case 2:
-      if (value.second.payload.entriesCount < 0 ||
-          value.second.payload.entriesCount > 2) {
-        return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
-      }
+      assert(value.second.payload.entriesCount >= 0);
+      assert(value.second.payload.entriesCount <= 2);
       v = ((value.second.payload.entriesCount) & 0x3);
       scratch |= v << scratchBits;
       scratchBits += 2;

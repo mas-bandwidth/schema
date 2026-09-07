@@ -166,10 +166,7 @@ SCHEMA_READ_INLINE bool schema_interior_null( const uint8_t * bytes, int32_t len
 
 SCHEMA_WRITE_INLINE bool WriteW13( serialize::WriteStream & stream, const W13 & value )
 {
-    if ( int32_t( value.items_count ) < int32_t( 0 ) || int32_t( value.items_count ) > int32_t( 12 ) )
-    {
-        return false; // a count outside its wire range is refused in every build (SPEC §4.6)
-    }
+    serialize_assert( int32_t( value.items_count ) >= int32_t( 0 ) && int32_t( value.items_count ) <= int32_t( 12 ) );
     write_bits( stream, uint32_t( value.items_count ), 4 );
     for ( int32_t i = 0; i < value.items_count; i++ )
     {
@@ -195,10 +192,7 @@ SCHEMA_READ_INLINE bool ReadW13( serialize::ReadStream & stream, W13 & value )
 
 SCHEMA_WRITE_INLINE bool WriteW17( serialize::WriteStream & stream, const W17 & value )
 {
-    if ( int32_t( value.items_count ) < int32_t( 0 ) || int32_t( value.items_count ) > int32_t( 9 ) )
-    {
-        return false; // a count outside its wire range is refused in every build (SPEC §4.6)
-    }
+    serialize_assert( int32_t( value.items_count ) >= int32_t( 0 ) && int32_t( value.items_count ) <= int32_t( 9 ) );
     write_bits( stream, uint32_t( value.items_count ), 4 );
     for ( int32_t i = 0; i < value.items_count; i++ )
     {
@@ -220,10 +214,7 @@ SCHEMA_READ_INLINE bool ReadW17( serialize::ReadStream & stream, W17 & value )
 
 SCHEMA_WRITE_INLINE bool WriteW26( serialize::WriteStream & stream, const W26 & value )
 {
-    if ( int32_t( value.items_count ) < int32_t( 0 ) || int32_t( value.items_count ) > int32_t( 6 ) )
-    {
-        return false; // a count outside its wire range is refused in every build (SPEC §4.6)
-    }
+    serialize_assert( int32_t( value.items_count ) >= int32_t( 0 ) && int32_t( value.items_count ) <= int32_t( 6 ) );
     write_bits( stream, uint32_t( value.items_count ), 3 );
     for ( int32_t i = 0; i < value.items_count; i++ )
     {
@@ -245,10 +236,7 @@ SCHEMA_READ_INLINE bool ReadW26( serialize::ReadStream & stream, W26 & value )
 
 SCHEMA_WRITE_INLINE bool WriteW1( serialize::WriteStream & stream, const W1 & value )
 {
-    if ( int32_t( value.items_count ) < int32_t( 0 ) || int32_t( value.items_count ) > int32_t( 20 ) )
-    {
-        return false; // a count outside its wire range is refused in every build (SPEC §4.6)
-    }
+    serialize_assert( int32_t( value.items_count ) >= int32_t( 0 ) && int32_t( value.items_count ) <= int32_t( 20 ) );
     write_bits( stream, uint32_t( value.items_count ), 5 );
     for ( int32_t i = 0; i < value.items_count; i++ )
     {
@@ -274,10 +262,7 @@ SCHEMA_READ_INLINE bool ReadW1( serialize::ReadStream & stream, W1 & value )
 
 SCHEMA_WRITE_INLINE bool WriteW52( serialize::WriteStream & stream, const W52 & value )
 {
-    if ( int32_t( value.items_count ) < int32_t( 0 ) || int32_t( value.items_count ) > int32_t( 3 ) )
-    {
-        return false; // a count outside its wire range is refused in every build (SPEC §4.6)
-    }
+    serialize_assert( int32_t( value.items_count ) >= int32_t( 0 ) && int32_t( value.items_count ) <= int32_t( 3 ) );
     write_bits( stream, uint32_t( value.items_count ), 2 );
     for ( int32_t i = 0; i < value.items_count; i++ )
     {
@@ -299,10 +284,7 @@ SCHEMA_READ_INLINE bool ReadW52( serialize::ReadStream & stream, W52 & value )
 
 SCHEMA_WRITE_INLINE bool WriteW50( serialize::WriteStream & stream, const W50 & value )
 {
-    if ( int32_t( value.items_count ) < int32_t( 0 ) || int32_t( value.items_count ) > int32_t( 3 ) )
-    {
-        return false; // a count outside its wire range is refused in every build (SPEC §4.6)
-    }
+    serialize_assert( int32_t( value.items_count ) >= int32_t( 0 ) && int32_t( value.items_count ) <= int32_t( 3 ) );
     write_bits( stream, uint32_t( value.items_count ), 2 );
     for ( int32_t i = 0; i < value.items_count; i++ )
     {
@@ -361,10 +343,7 @@ SCHEMA_READ_INLINE bool ReadTri3( serialize::ReadStream & stream, Tri3 & value )
 
 SCHEMA_WRITE_INLINE bool WriteArrTri3( serialize::WriteStream & stream, const ArrTri3 & value )
 {
-    if ( int32_t( value.items_count ) < int32_t( 0 ) || int32_t( value.items_count ) > int32_t( 10 ) )
-    {
-        return false; // a count outside its wire range is refused in every build (SPEC §4.6)
-    }
+    serialize_assert( int32_t( value.items_count ) >= int32_t( 0 ) && int32_t( value.items_count ) <= int32_t( 10 ) );
     write_bits( stream, uint32_t( value.items_count ), 4 );
     for ( int32_t i = 0; i < value.items_count; i++ )
     {
@@ -457,6 +436,7 @@ SCHEMA_READ_INLINE bool ReadEmptyB( serialize::ReadStream & stream, EmptyB & val
 
 SCHEMA_WRITE_INLINE bool WriteEmptyUnion( serialize::WriteStream & stream, const EmptyUnion & value )
 {
+    serialize_assert( value.type <= EmptyUnionType::Max ); // an out-of-set tag is caller error (SPEC §4.8, §5)
     switch ( value.type )
     {
         case EmptyUnionType::None:
@@ -471,7 +451,7 @@ SCHEMA_WRITE_INLINE bool WriteEmptyUnion( serialize::WriteStream & stream, const
         default:
             break;
     }
-    return false; // not a EmptyUnionType value; nothing was written (SPEC §4.8)
+    return true; // an out-of-set tag selected no arm, so no bits rode: the assert above is the contract (SPEC §5)
 }
 
 SCHEMA_READ_INLINE bool ReadEmptyUnion( serialize::ReadStream & stream, EmptyUnion & value )
@@ -555,10 +535,7 @@ SCHEMA_READ_INLINE bool ReadStrs( serialize::ReadStream & stream, Strs & value )
 SCHEMA_WRITE_INLINE bool WriteArrNested( serialize::WriteStream & stream, const ArrNested & value )
 {
     write_bits( stream, value.lead, 5 );
-    if ( int32_t( value.items_count ) < int32_t( 0 ) || int32_t( value.items_count ) > int32_t( 4 ) )
-    {
-        return false; // a count outside its wire range is refused in every build (SPEC §4.6)
-    }
+    serialize_assert( int32_t( value.items_count ) >= int32_t( 0 ) && int32_t( value.items_count ) <= int32_t( 4 ) );
     write_bits( stream, uint32_t( value.items_count ), 3 );
     for ( int32_t i = 0; i < value.items_count; i++ )
     {

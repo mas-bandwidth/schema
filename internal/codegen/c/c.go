@@ -604,9 +604,10 @@ func (g *gen) emitWireHeader() {
 		// comments below it stay one line each
 		g.pf("/* Every write_x/read_x returns 1 on success, 0 on failure — the stream\n")
 		g.pf("   latches the error, so a caller may check once at the end of a message.\n")
-		g.pf("   Reads REFUSE out-of-range values, never clamp. A tag is validated BEFORE\n")
-		g.pf("   it rides, and every read reconstructs the selected arm with its declared\n")
-		g.pf("   initial values before decoding it (SPEC §4.8, §5). */\n\n")
+		g.pf("   Reads REFUSE out-of-range values, never clamp, in every build. A tag on\n")
+		g.pf("   WRITE is asserted before it rides — caller error, gone under NDEBUG — and\n")
+		g.pf("   every read reconstructs the selected arm with its declared initial values\n")
+		g.pf("   before decoding it (SPEC §4.8, §5). */\n\n")
 		g.emitSpineInlineMacros()
 	}
 	if fileHasStrings(g.file) {
@@ -627,10 +628,12 @@ func (g *gen) emitWireHeader() {
 }
 
 // emitUnionWire emits the union's write/read pair (SPEC §4.8): the write
-// validates the tag BEFORE it rides (the message dispatch rule — an
-// out-of-set tag writes nothing), the read rejects a tag above the count and
-// reconstructs exactly the selected arm with its declared initial values before
-// decoding it, including when the tag is unchanged (§5).
+// ASSERTS the tag before it rides — an out-of-set tag is caller error like
+// every other write-side value, caught in debug and the caller's
+// responsibility in release (SPEC §5) — the read rejects a tag above the
+// count in every build and reconstructs exactly the selected arm with its
+// declared initial values before decoding it, including when the tag is
+// unchanged (§5).
 func (g *gen) emitUnionWire(d *ir.Union) {
 	tag := d.Name + "Type"
 	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(d.Max))
@@ -639,9 +642,14 @@ func (g *gen) emitUnionWire(d *ir.Union) {
 	g.pf("static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_%s( serialize_write_stream_t * stream, const %s * value )\n{\n", snake(d.Name), d.Name)
 	if d.Max == 0 {
 		g.pf("    (void) stream; /* only None exists; the degenerate tag range [0, 0] costs zero bits */\n")
-		g.pf("    return value->type == %s_NONE;\n}\n\n", screaming(tag))
+		g.pf("    (void) value; /* any other tag is caller error: asserted in debug, the caller's\n")
+		g.pf("                     responsibility in release (SPEC §5) */\n")
+		g.pf("    serialize_assert( value->type == %s_NONE );\n", screaming(tag))
+		g.pf("    return 1;\n}\n\n")
 	} else {
-		g.pf("    if ( value->type > %s_MAX )\n    {\n        return 0; /* not a %s value; nothing was written */\n    }\n", screaming(tag), tag)
+		// the tag is a write-side contract like every other value the caller
+		// supplies: asserted before it rides, gone under NDEBUG (SPEC §5)
+		g.pf("    serialize_assert( value->type <= %s_MAX ); /* an out-of-set tag is caller error (SPEC §4.8, §5) */\n", screaming(tag))
 		g.call("    ", fmt.Sprintf("serialize_write_bits( stream, (serialize_uint32_t) value->type, %d )", bits))
 		g.pf("    switch ( value->type )\n    {\n")
 		for i, v := range d.Variants {

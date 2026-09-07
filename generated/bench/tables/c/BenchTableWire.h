@@ -25,9 +25,10 @@ extern "C" {
 
 /* Every write_x/read_x returns 1 on success, 0 on failure — the stream
    latches the error, so a caller may check once at the end of a message.
-   Reads REFUSE out-of-range values, never clamp. A tag is validated BEFORE
-   it rides, and every read reconstructs the selected arm with its declared
-   initial values before decoding it (SPEC §4.8, §5). */
+   Reads REFUSE out-of-range values, never clamp, in every build. A tag on
+   WRITE is asserted before it rides — caller error, gone under NDEBUG — and
+   every read reconstructs the selected arm with its declared initial values
+   before decoding it (SPEC §4.8, §5). */
 
 #ifndef SCHEMA_C_SPINE_INLINE_DEFINED
 #define SCHEMA_C_SPINE_INLINE_DEFINED
@@ -210,10 +211,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_table_pickup_event( serialize
 /* Writes TableEvent. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_table_event( serialize_write_stream_t * stream, const TableEvent * value )
 {
-    if ( value->type > TABLE_EVENT_TYPE_MAX )
-    {
-        return 0; /* not a TableEventType value; nothing was written */
-    }
+    serialize_assert( value->type <= TABLE_EVENT_TYPE_MAX ); /* an out-of-set tag is caller error (SPEC §4.8, §5) */
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->type, 2 ) )
     {
         return 0;

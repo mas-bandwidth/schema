@@ -108,8 +108,7 @@ void initFixedProbe(FixedProbe value) {
 
 // writeFixedProbe packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// fixedProbeMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// fixedProbeMaxBytes. Returns the bytes written.
 int writeFixedProbe(FixedProbe value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= fixedProbeMaxBytes);
@@ -308,8 +307,7 @@ void initUnsignedProbe(UnsignedProbe value) {
 
 // writeUnsignedProbe packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// unsignedProbeMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// unsignedProbeMaxBytes. Returns the bytes written.
 int writeUnsignedProbe(UnsignedProbe value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= unsignedProbeMaxBytes);
@@ -528,8 +526,7 @@ void initWideProbe(WideProbe value) {
 
 // writeWideProbe packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// wideProbeMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// wideProbeMaxBytes. Returns the bytes written.
 int writeWideProbe(WideProbe value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= wideProbeMaxBytes);
@@ -840,8 +837,7 @@ void initLudicrousState(LudicrousState value) {
 
 // writeLudicrousState packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// ludicrousStateMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// ludicrousStateMaxBytes. Returns the bytes written.
 int writeLudicrousState(LudicrousState value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= ludicrousStateMaxBytes);
@@ -991,9 +987,8 @@ int writeLudicrousState(LudicrousState value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  if (value.keysCount < 0 || value.keysCount > 4) {
-    return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
-  }
+  assert(value.keysCount >= 0);
+  assert(value.keysCount <= 4);
   v = (value.wide.seed.hi);
   scratch |= v << scratchBits;
   scratchBits += 64;
@@ -1427,8 +1422,7 @@ void initDegenerateProbe(DegenerateProbe value) {
 
 // writeDegenerateProbe packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// degenerateProbeMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// degenerateProbeMaxBytes. Returns the bytes written.
 int writeDegenerateProbe(DegenerateProbe value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= degenerateProbeMaxBytes);
@@ -1535,8 +1529,7 @@ void initFixedVec(FixedVec value) {
 
 // writeFixedVec packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// fixedVecMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// fixedVecMaxBytes. Returns the bytes written.
 int writeFixedVec(FixedVec value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= fixedVecMaxBytes);
@@ -1684,8 +1677,7 @@ void initFixedQuat(FixedQuat value) {
 
 // writeFixedQuat packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// fixedQuatMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// fixedQuatMaxBytes. Returns the bytes written.
 int writeFixedQuat(FixedQuat value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= fixedQuatMaxBytes);

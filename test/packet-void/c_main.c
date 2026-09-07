@@ -78,9 +78,10 @@ int main(int argc, char **argv)
         serialize_write_stream_init(&w, buffer, sizeof(buffer_words));
         CHECK(write_empty(&w, &empty) && serialize_write_bits_processed(&w) == 0, "empty union writes nothing");
 
-        value.type = 3;
-        serialize_write_stream_init(&w, buffer, sizeof(buffer_words));
-        CHECK(!write_mixed(&w, &value) && serialize_write_bits_processed(&w) == 0, "invalid tag writes nothing");
+        /* NO out-of-set tag case on the WRITE: the tag is a caller-error
+           contract like every other write-side value, a serialize_assert that
+           would abort this (assert-live) binary and that is gone under NDEBUG
+           (SPEC §4.8, §5). The read side below refuses one in every build. */
     }
 
     if (!write_only)

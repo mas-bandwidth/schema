@@ -26,20 +26,27 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 		// Composed from primitives, NOT serialize_write_string: schema frames
 		// the length over [0, N] where the runtime's string call frames it over
 		// [0, N-1]. One bit of difference, and every following field shifts.
+		//
+		// An interior null among the used bytes is writer misuse, not content:
+		// a debug assert that compiles out under NDEBUG, the same guard the
+		// C++ backend folds in. The READ side refuses it in every build, as
+		// validation of untrusted bytes (SPEC §4.7, §5).
+		g.pf("%s{\n%s    int32_t i;\n%s    for ( i = 0; i < value->%s_length; i++ )\n%s    {\n", ind, ind, ind, f.Name, ind)
+		g.pf("%s        serialize_assert( value->%s[i] != 0 ); /* interior null on write (SPEC §4.7) */\n", ind, f.Name)
+		g.pf("%s    }\n%s}\n", ind, ind)
 		g.call(ind, fmt.Sprintf("serialize_write_int( stream, value->%s_length, 0, %s )", f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size))))
 		g.call(ind, fmt.Sprintf("serialize_write_bytes( stream, (const serialize_uint8_t *) value->%s, (int) value->%s_length )", f.Name, f.Name))
 	case f.Type.Kind == ir.TBytes:
 		g.call(ind, fmt.Sprintf("serialize_write_int( stream, value->%s_length, 0, %s )", f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size))))
 		g.call(ind, fmt.Sprintf("serialize_write_bytes( stream, value->%s, (int) value->%s_length )", f.Name, f.Name))
 	case f.Array == ir.ArrayCounted:
-		// a count outside its wire range is refused in every build, ahead of
-		// the runtime call whose own range check is an assert. The count
-		// guards the element loop and the pack subtracts the low bound, so a
-		// count below the minimum wraps and an unchecked write reports
-		// success on bytes no reader accepts (SPEC §4.6)
+		// the count is a writer contract like any other range: a debug assert
+		// that compiles out under NDEBUG, ahead of the runtime call whose own
+		// range check is an assert too. What is written is the caller's
+		// responsibility in release; catching a bad count in debug is ours
+		// (SPEC §4.6, §5)
 		bound := g.renderInt(f.ArrayExpr, big.NewInt(f.ArrayBound))
-		g.pf("%sif ( value->%s_count < %d || value->%s_count > %s )\n%s{\n", ind, f.Name, f.ArrayMin, f.Name, bound, ind)
-		g.pf("%s    return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */\n%s}\n", ind, ind)
+		g.pf("%sserialize_assert( value->%s_count >= %d && value->%s_count <= %s );\n", ind, f.Name, f.ArrayMin, f.Name, bound)
 		g.call(ind, fmt.Sprintf("serialize_write_int( stream, value->%s_count, %d, %s )", f.Name, f.ArrayMin, bound))
 		g.pf("%s{\n%s    int32_t i;\n%s    for ( i = 0; i < value->%s_count; i++ )\n%s    {\n", ind, ind, ind, f.Name, ind)
 		g.emitWriteScalar(f, fmt.Sprintf("value->%s[i]", f.Name), ind+"        ")
@@ -106,6 +113,12 @@ func (g *gen) emitWriteScalar(f *ir.Field, expr, ind string) {
 			// bits == 0: a degenerate range costs nothing — the value is
 			// recovered from the range alone on read
 		case *ir.Flags:
+			if ref.WireBits < 64 {
+				// storage is wider than the wire: a mask bit above the wire
+				// width is writer misuse, not silent truncation — a debug
+				// assert, the same guard the C++ backend folds in (SPEC §5)
+				g.pf("%sserialize_assert( %s < ( 1ULL << %d ) );\n", ind, expr, ref.WireBits)
+			}
 			if ref.WireBits > 32 {
 				wide := *f
 				wide.Type.Width = ref.WireBits

@@ -82,9 +82,10 @@ int main(int argc, char **argv)
         serialize::WriteStream we(buffer, sizeof(buffer));
         CHECK(WriteEmpty(we, empty) && we.GetBitsProcessed() == 0, "empty union writes nothing");
 
-        value.type = MixedType(3);
-        serialize::WriteStream wi(buffer, sizeof(buffer));
-        CHECK(!WriteMixed(wi, value) && wi.GetBitsProcessed() == 0, "invalid tag writes nothing");
+        // NO out-of-set tag case on the WRITE: the tag is a caller-error
+        // contract like every other write-side value, a serialize_assert that
+        // would abort this (assert-live) binary and that is gone under NDEBUG
+        // (SPEC §4.8, §5). The read side below refuses one in every build.
     }
 
     if (!write_only)

@@ -348,8 +348,7 @@ func (g *gen) emitWriteFunction(name, low string, items []ir.Item) {
 
 	g.bpf("// write%s packs value into view — the trusted writer (contracts asserted,\n", name)
 	g.bpf("// compiled out without --enable-asserts). The buffer behind view must hold\n")
-	g.bpf("// %sMaxBytes. Returns the bytes written, or -1 when a count is outside its\n", low)
-	g.bpf("// wire range, which is refused in every build (SPEC §4.6).\n")
+	g.bpf("// %sMaxBytes. Returns the bytes written.\n", low)
 	g.emitSignature("int", "write"+name, []string{name + " value", "ByteData view"})
 	g.bpf("  assert(view.lengthInBytes %% 8 == 0);\n")
 	g.bpf("  assert(view.lengthInBytes >= %sMaxBytes);\n", low)
@@ -528,16 +527,10 @@ func (g *gen) emitWriteField(f *ir.Field, path, ind string) {
 		g.loopDepth--
 	case ir.ArrayCounted:
 		count := name + "Count"
-		// the count guards the loop, and a count outside its wire range is
-		// refused in EVERY build rather than asserted: a wrapped count is
-		// bytes no reader accepts (SPEC §4.6)
-		guard := fmt.Sprintf("%sif (%s < %d || %s > %d) {", ind, count, f.ArrayMin, count, f.ArrayBound)
-		if len(guard) <= 80 {
-			g.pf("%s\n", guard)
-		} else {
-			g.pf("%sif (%s < %d ||\n%s    %s > %d) {\n", ind, count, f.ArrayMin, ind, count, f.ArrayBound)
-		}
-		g.pf("%s  return -1; // a count outside its wire range is refused in every build (SPEC §4.6)\n%s}\n", ind, ind)
+		// the count guards the loop; its range is a writer contract like any
+		// other, asserted and gone without --enable-asserts (SPEC §4.6, §5)
+		g.pf("%sassert(%s >= %d);\n", ind, count, f.ArrayMin)
+		g.pf("%sassert(%s <= %d);\n", ind, count, f.ArrayBound)
 		g.emitWriteOffset(count, big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound), ind)
 		iv := fmt.Sprintf("i%d", g.loopDepth)
 		g.loopDepth++

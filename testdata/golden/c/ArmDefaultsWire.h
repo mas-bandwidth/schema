@@ -25,9 +25,10 @@ extern "C" {
 
 /* Every write_x/read_x returns 1 on success, 0 on failure — the stream
    latches the error, so a caller may check once at the end of a message.
-   Reads REFUSE out-of-range values, never clamp. A tag is validated BEFORE
-   it rides, and every read reconstructs the selected arm with its declared
-   initial values before decoding it (SPEC §4.8, §5). */
+   Reads REFUSE out-of-range values, never clamp, in every build. A tag on
+   WRITE is asserted before it rides — caller error, gone under NDEBUG — and
+   every read reconstructs the selected arm with its declared initial values
+   before decoding it (SPEC §4.8, §5). */
 
 #ifndef SCHEMA_C_SPINE_INLINE_DEFINED
 #define SCHEMA_C_SPINE_INLINE_DEFINED
@@ -54,10 +55,7 @@ extern "C" {
 /* Writes DefaultArm. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_default_arm( serialize_write_stream_t * stream, const DefaultArm * value )
 {
-    if ( value->entries_count < 0 || value->entries_count > 2 )
-    {
-        return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
-    }
+    serialize_assert( value->entries_count >= 0 && value->entries_count <= 2 );
     if ( !serialize_write_int( stream, value->entries_count, 0, 2 ) )
     {
         return 0;
@@ -117,10 +115,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_default_arm( serialize_read_s
 /* Writes DefaultChoice. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_default_choice( serialize_write_stream_t * stream, const DefaultChoice * value )
 {
-    if ( value->type > DEFAULT_CHOICE_TYPE_MAX )
-    {
-        return 0; /* not a DefaultChoiceType value; nothing was written */
-    }
+    serialize_assert( value->type <= DEFAULT_CHOICE_TYPE_MAX ); /* an out-of-set tag is caller error (SPEC §4.8, §5) */
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->type, 2 ) )
     {
         return 0;
@@ -223,10 +218,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_default_bulk_arm( serialize_r
 /* Writes DefaultBulkChoice. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_default_bulk_choice( serialize_write_stream_t * stream, const DefaultBulkChoice * value )
 {
-    if ( value->type > DEFAULT_BULK_CHOICE_TYPE_MAX )
-    {
-        return 0; /* not a DefaultBulkChoiceType value; nothing was written */
-    }
+    serialize_assert( value->type <= DEFAULT_BULK_CHOICE_TYPE_MAX ); /* an out-of-set tag is caller error (SPEC §4.8, §5) */
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->type, 2 ) )
     {
         return 0;

@@ -24,9 +24,10 @@ extern "C" {
 
 /* Every write_x/read_x returns 1 on success, 0 on failure — the stream
    latches the error, so a caller may check once at the end of a message.
-   Reads REFUSE out-of-range values, never clamp. A tag is validated BEFORE
-   it rides, and every read reconstructs the selected arm with its declared
-   initial values before decoding it (SPEC §4.8, §5). */
+   Reads REFUSE out-of-range values, never clamp, in every build. A tag on
+   WRITE is asserted before it rides — caller error, gone under NDEBUG — and
+   every read reconstructs the selected arm with its declared initial values
+   before decoding it (SPEC §4.8, §5). */
 
 #ifndef SCHEMA_C_SPINE_INLINE_DEFINED
 #define SCHEMA_C_SPINE_INLINE_DEFINED
@@ -270,6 +271,13 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_wide_four( serialize_read_str
 /* Writes NarrowFifteen. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_narrow_fifteen( serialize_write_stream_t * stream, const NarrowFifteen * value )
 {
+    {
+        int32_t i;
+        for ( i = 0; i < value->text_length; i++ )
+        {
+            serialize_assert( value->text[i] != 0 ); /* interior null on write (SPEC §4.7) */
+        }
+    }
     if ( !serialize_write_int( stream, value->text_length, 0, 15 ) )
     {
         return 0;

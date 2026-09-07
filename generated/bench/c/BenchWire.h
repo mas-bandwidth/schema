@@ -25,9 +25,10 @@ extern "C" {
 
 /* Every write_x/read_x returns 1 on success, 0 on failure — the stream
    latches the error, so a caller may check once at the end of a message.
-   Reads REFUSE out-of-range values, never clamp. A tag is validated BEFORE
-   it rides, and every read reconstructs the selected arm with its declared
-   initial values before decoding it (SPEC §4.8, §5). */
+   Reads REFUSE out-of-range values, never clamp, in every build. A tag on
+   WRITE is asserted before it rides — caller error, gone under NDEBUG — and
+   every read reconstructs the selected arm with its declared initial values
+   before decoding it (SPEC §4.8, §5). */
 
 #ifndef SCHEMA_C_SPINE_INLINE_DEFINED
 #define SCHEMA_C_SPINE_INLINE_DEFINED
@@ -704,6 +705,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_mixed_entity( serialize_wri
     {
         return 0;
     }
+    serialize_assert( value->damage < ( 1ULL << 8 ) );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->damage, 8 ) )
     {
         return 0;
@@ -1077,10 +1079,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_pickup_event( serialize
 /* Writes MixedEvent. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_mixed_event( serialize_write_stream_t * stream, const MixedEvent * value )
 {
-    if ( value->type > MIXED_EVENT_TYPE_MAX )
-    {
-        return 0; /* not a MixedEventType value; nothing was written */
-    }
+    serialize_assert( value->type <= MIXED_EVENT_TYPE_MAX ); /* an out-of-set tag is caller error (SPEC §4.8, §5) */
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->type, 2 ) )
     {
         return 0;
@@ -1198,10 +1197,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_mixed( serialize_writ
             return 0;
         }
     }
-    if ( value->entities_count < 1 || value->entities_count > 8 )
-    {
-        return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
-    }
+    serialize_assert( value->entities_count >= 1 && value->entities_count <= 8 );
     if ( !serialize_write_int( stream, value->entities_count, 1, 8 ) )
     {
         return 0;
@@ -1216,10 +1212,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_mixed( serialize_writ
             }
         }
     }
-    if ( value->stats_count < 0 || value->stats_count > 80 )
-    {
-        return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
-    }
+    serialize_assert( value->stats_count >= 0 && value->stats_count <= 80 );
     if ( !serialize_write_int( stream, value->stats_count, 0, 80 ) )
     {
         return 0;
@@ -1246,6 +1239,13 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_mixed( serialize_writ
             {
                 return 0;
             }
+        }
+    }
+    {
+        int32_t i;
+        for ( i = 0; i < value->player_name_length; i++ )
+        {
+            serialize_assert( value->player_name[i] != 0 ); /* interior null on write (SPEC §4.7) */
         }
     }
     if ( !serialize_write_int( stream, value->player_name_length, 0, 15 ) )

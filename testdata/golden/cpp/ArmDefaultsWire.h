@@ -56,10 +56,7 @@ namespace example {
 
 SCHEMA_WRITE_INLINE bool WriteDefaultArm( serialize::WriteStream & stream, const DefaultArm & value )
 {
-    if ( int32_t( value.entries_count ) < int32_t( 0 ) || int32_t( value.entries_count ) > int32_t( 2 ) )
-    {
-        return false; // a count outside its wire range is refused in every build (SPEC §4.6)
-    }
+    serialize_assert( int32_t( value.entries_count ) >= int32_t( 0 ) && int32_t( value.entries_count ) <= int32_t( 2 ) );
     write_bits( stream, uint32_t( value.entries_count ), 2 );
     for ( int32_t i = 0; i < value.entries_count; i++ )
     {
@@ -93,6 +90,7 @@ SCHEMA_READ_INLINE bool ReadDefaultArm( serialize::ReadStream & stream, DefaultA
 
 SCHEMA_WRITE_INLINE bool WriteDefaultChoice( serialize::WriteStream & stream, const DefaultChoice & value )
 {
+    serialize_assert( value.type <= DefaultChoiceType::Max ); // an out-of-set tag is caller error (SPEC §4.8, §5)
     switch ( value.type )
     {
         case DefaultChoiceType::None:
@@ -107,7 +105,7 @@ SCHEMA_WRITE_INLINE bool WriteDefaultChoice( serialize::WriteStream & stream, co
         default:
             break;
     }
-    return false; // not a DefaultChoiceType value; nothing was written (SPEC §4.8)
+    return true; // an out-of-set tag selected no arm, so no bits rode: the assert above is the contract (SPEC §5)
 }
 
 SCHEMA_READ_INLINE bool ReadDefaultChoice( serialize::ReadStream & stream, DefaultChoice & value )
@@ -172,6 +170,7 @@ SCHEMA_READ_INLINE bool ReadDefaultBulkArm( serialize::ReadStream & stream, Defa
 
 SCHEMA_WRITE_INLINE bool WriteDefaultBulkChoice( serialize::WriteStream & stream, const DefaultBulkChoice & value )
 {
+    serialize_assert( value.type <= DefaultBulkChoiceType::Max ); // an out-of-set tag is caller error (SPEC §4.8, §5)
     switch ( value.type )
     {
         case DefaultBulkChoiceType::None:
@@ -186,7 +185,7 @@ SCHEMA_WRITE_INLINE bool WriteDefaultBulkChoice( serialize::WriteStream & stream
         default:
             break;
     }
-    return false; // not a DefaultBulkChoiceType value; nothing was written (SPEC §4.8)
+    return true; // an out-of-set tag selected no arm, so no bits rode: the assert above is the contract (SPEC §5)
 }
 
 SCHEMA_READ_INLINE bool ReadDefaultBulkChoice( serialize::ReadStream & stream, DefaultBulkChoice & value )

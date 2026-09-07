@@ -247,10 +247,7 @@ SCHEMA_WRITE_INLINE bool WriteProbeSample( serialize::WriteStream & stream, cons
     {
         write_bits( stream, value.idle_ticks, 32 );
     }
-    if ( int32_t( value.samples_count ) < int32_t( 1 ) || int32_t( value.samples_count ) > int32_t( 8 ) )
-    {
-        return false; // a count outside its wire range is refused in every build (SPEC §4.6)
-    }
+    serialize_assert( int32_t( value.samples_count ) >= int32_t( 1 ) && int32_t( value.samples_count ) <= int32_t( 8 ) );
     write_bits( stream, uint32_t( value.samples_count ) - uint32_t( 1 ), 3 );
     for ( int32_t i = 0; i < value.samples_count; i++ )
     {
@@ -355,6 +352,7 @@ SCHEMA_READ_INLINE bool ReadProbeSlab( serialize::ReadStream & stream, ProbeSlab
 
 SCHEMA_WRITE_INLINE bool WriteProbeShape( serialize::WriteStream & stream, const ProbeShape & value )
 {
+    serialize_assert( value.type <= ProbeShapeType::Max ); // an out-of-set tag is caller error (SPEC §4.8, §5)
     switch ( value.type )
     {
         case ProbeShapeType::None:
@@ -369,7 +367,7 @@ SCHEMA_WRITE_INLINE bool WriteProbeShape( serialize::WriteStream & stream, const
         default:
             break;
     }
-    return false; // not a ProbeShapeType value; nothing was written (SPEC §4.8)
+    return true; // an out-of-set tag selected no arm, so no bits rode: the assert above is the contract (SPEC §5)
 }
 
 SCHEMA_READ_INLINE bool ReadProbeShape( serialize::ReadStream & stream, ProbeShape & value )
@@ -402,10 +400,7 @@ SCHEMA_WRITE_INLINE bool WriteProbeCollider( serialize::WriteStream & stream, co
     {
         return false;
     }
-    if ( int32_t( value.extras_count ) < int32_t( 0 ) || int32_t( value.extras_count ) > int32_t( 2 ) )
-    {
-        return false; // a count outside its wire range is refused in every build (SPEC §4.6)
-    }
+    serialize_assert( int32_t( value.extras_count ) >= int32_t( 0 ) && int32_t( value.extras_count ) <= int32_t( 2 ) );
     write_bits( stream, uint32_t( value.extras_count ), 2 );
     for ( int32_t i = 0; i < value.extras_count; i++ )
     {
@@ -633,10 +628,7 @@ SCHEMA_WRITE_INLINE bool WriteTestData( serialize::WriteStream & stream, const T
     write_bits( stream, value.e, 8 );
     write_bits( stream, value.f, 8 );
     write_bool( stream, value.g );
-    if ( int32_t( value.items_count ) < int32_t( 0 ) || int32_t( value.items_count ) > int32_t( 16 ) )
-    {
-        return false; // a count outside its wire range is refused in every build (SPEC §4.6)
-    }
+    serialize_assert( int32_t( value.items_count ) >= int32_t( 0 ) && int32_t( value.items_count ) <= int32_t( 16 ) );
     write_bits( stream, uint32_t( value.items_count ), 5 );
     for ( int32_t i = 0; i < value.items_count; i++ )
     {

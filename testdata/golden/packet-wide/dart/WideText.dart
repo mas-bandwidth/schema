@@ -91,8 +91,7 @@ void initWideSeven(WideSeven value) {
 
 // writeWideSeven packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// wideSevenMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// wideSevenMaxBytes. Returns the bytes written.
 int writeWideSeven(WideSeven value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= wideSevenMaxBytes);
@@ -238,8 +237,7 @@ void initWideFour(WideFour value) {
 
 // writeWideFour packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// wideFourMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// wideFourMaxBytes. Returns the bytes written.
 int writeWideFour(WideFour value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= wideFourMaxBytes);
@@ -386,8 +384,7 @@ void initNarrowFifteen(NarrowFifteen value) {
 
 // writeNarrowFifteen packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// narrowFifteenMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// narrowFifteenMaxBytes. Returns the bytes written.
 int writeNarrowFifteen(NarrowFifteen value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= narrowFifteenMaxBytes);
@@ -555,8 +552,7 @@ void initWideInterop(WideInterop value) {
 
 // writeWideInterop packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// wideInteropMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// wideInteropMaxBytes. Returns the bytes written.
 int writeWideInterop(WideInterop value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= wideInteropMaxBytes);

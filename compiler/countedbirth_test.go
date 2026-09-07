@@ -8,18 +8,20 @@
 // the one wire-legal count a fresh value can carry and an array takes no
 // specified default to name another.
 //
-// The write refuses a count outside the bound in every build. The count guards
-// the element loop and the pack subtracts the low bound, so a count below A
-// wraps and an unchecked write would report success on bytes no reader
-// accepts. It is the one write-side contract that is never a debug-only
-// assert.
+// What the write does with a count outside the bound is a §5 tier question,
+// settled 2026-09-07: "No runtime should ever promise to keep checks in
+// writing packets (asserts) in release build. Removing them is the whole
+// point. ... checks are *DEBUG ONLY*". The count is a writer contract like any
+// other scalar range — it is caught by an assert in debug and gone in release,
+// in every target whose language HAS that idiom. Go and Elixir have none, so
+// they keep the every-build refusal their languages make native.
 //
 // Two claims are pinned here, one per test, so a regression in either is named
 // on its own:
 //
 //  1. the constructed form is born at the declared minimum, in all nine
-//  2. the write path refuses a count outside the bound in EVERY build mode, in
-//     all nine, never through an assert the build can remove
+//  2. the write path holds the count in its target's own debug-only idiom
+//     where the language has one, and refuses in every build where it does not
 package compiler
 
 import (
@@ -67,36 +69,49 @@ var bornAtMinimum = map[string]string{
 	"rust":   "value.window_count = 2;",
 }
 
-// refusesEveryBuild is the write path's unconditional range refusal in each
-// target's own spelling. Every target refuses through its own convention, an
-// error-returning runtime in Go, Rust and C#, an always-on raise in Elixir,
-// and a plain failure return in C, C++, Dart, Java and JavaScript.
+// refusesEveryBuild is the write path's UNCONDITIONAL range refusal, for the
+// targets that still hold the count that way. Go and Elixir are here by the
+// ruling — "For each language, do not force this in. If the language simply
+// doesn't have this concept (Golang) then it is not something we can do" — an
+// error-returning runtime in Go, an always-on raise in Elixir. Rust and C# are
+// here only until their own emitter changes land; they move to
+// assertsInDebug then, alongside every other write check in those backends.
 var refusesEveryBuild = map[string][]string{
-	"c": {"if ( value->window_count < 2 || value->window_count > 8 )", "return 0;"},
-	"cpp": {
-		"if ( int32_t( value.window_count ) < int32_t( 2 ) || int32_t( value.window_count ) > int32_t( 8 ) )",
-		"return false;",
-	},
 	"cs":     {"if (value.WindowCount < 2 || value.WindowCount > 8)"},
-	"dart":   {"if (value.windowCount < 2 || value.windowCount > 8) {", "return -1;"},
 	"elixir": {"if n < 2 do", "if n > 8 do", "raise ArgumentError"},
 	"go":     {"if value.WindowCount < 2 || value.WindowCount > 8 {", "return serialize.ErrValueOutOfRange"},
-	"java":   {"if (value.windowCount < 2 || value.windowCount > 8) {", "return -1;"},
-	"js":     {"if (value.WindowCount < 2 || value.WindowCount > 8) {", "return -1;"},
 	"rust":   {"if value.window_count < 2 || value.window_count > 8 {", "return Err("},
 }
 
+// assertsInDebug is the count's DEBUG-ONLY form in each target that has one:
+// the exact text the writer emits, in that target's own assert idiom.
+var assertsInDebug = map[string][]string{
+	"c":    {"serialize_assert( value->window_count >= 2 && value->window_count <= 8 );"},
+	"cpp":  {"serialize_assert( int32_t( value.window_count ) >= int32_t( 2 ) && int32_t( value.window_count ) <= int32_t( 8 ) );"},
+	"dart": {"assert(value.windowCount >= 2);", "assert(value.windowCount <= 8);"},
+	"java": {"assert value.windowCount >= 2;", "assert value.windowCount <= 8;"},
+	// js is not here: its debug-only idiom is not an assert statement but the
+	// PRODUCTION/checked fork of the flat writer, checked separately below.
+}
+
+// goneFromRelease is the every-build refusal each assert target used to carry.
+// None of it may survive: an assert BESIDE a live refusal removes nothing.
+var goneFromRelease = map[string][]string{
+	"c": {"if ( value->window_count < 2 || value->window_count > 8 )"},
+	"cpp": {
+		"if ( int32_t( value.window_count ) < int32_t( 2 ) || int32_t( value.window_count ) > int32_t( 8 ) )",
+	},
+	"dart": {"if (value.windowCount < 2 || value.windowCount > 8) {"},
+	"java": {"if (value.windowCount < 2 || value.windowCount > 8) {"},
+}
+
 // assertToken is the build-removable predicate each target spells its writer
-// contracts with. None of them may reach the count.
+// contracts with. For a refusesEveryBuild target, none of them may reach the
+// count.
 var assertToken = map[string][]string{
-	"c":      {"serialize_assert"},
-	"cpp":    {"serialize_assert"},
 	"cs":     {"Debug.Assert"},
-	"dart":   {"assert("},
 	"elixir": nil, // the BEAM has no compile-out assert, so the raise is always on
 	"go":     nil, // the runtime returns an error, in every build
-	"java":   {"assert "},
-	"js":     {"assert("},
 	"rust":   {"debug_assert", "assert!"},
 }
 
@@ -116,6 +131,23 @@ func generatedText(t *testing.T, src, target string) string {
 	return all.String()
 }
 
+// jsFlatWriter slices one named function out of the JavaScript flat codec.
+// JavaScript's debug-only idiom is the emitted fork, not a statement: the
+// checked writer holds the contract and the production writer holds none, and
+// `PRODUCTION ? production : checked` picks between them at import time.
+func jsFlatWriter(t *testing.T, text, fn string) string {
+	t.Helper()
+	i := strings.Index(text, "function "+fn+"(")
+	if i < 0 {
+		t.Fatalf("js: %s is not emitted; the flat writer fork is gone", fn)
+	}
+	rest := text[i+1:]
+	if before, _, ok := strings.Cut(rest, "\nfunction "); ok {
+		return before
+	}
+	return rest
+}
+
 // CLAIM 1. A [A..B] count is born at A in every target: the one wire-legal
 // count a fresh value can carry, since an array takes no specified default to
 // name another one.
@@ -132,18 +164,46 @@ func TestCountedArrayIsBornAtItsDeclaredMinimum(t *testing.T) {
 	}
 }
 
-// CLAIM 2. The write path refuses a count outside its bound in every build
-// mode. The count guards the element loop and the pack subtracts the low
-// bound, so a count below the minimum wraps, and a build that drops the check
-// would write bytes no reader accepts and report success.
-func TestCountOutsideItsWireRangeIsRefusedInEveryBuild(t *testing.T) {
+// CLAIM 2. The count is a write-side contract and nothing more. Where the
+// language has a debug-only idiom the writer holds it there and release
+// carries nothing; where the language has none the writer refuses in every
+// build, because forcing an idiom the language lacks would not be native.
+func TestCountOnWriteIsDebugOnlyWhereTheLanguageHasThatIdiom(t *testing.T) {
 	for _, target := range New().Targets() {
-		wants, known := refusesEveryBuild[target]
-		if !known {
-			t.Errorf("target %q has no refusal claim here. A new backend landed and this gate was not told", target)
+		text := generatedText(t, countedAboveZero, target)
+
+		if target == "js" {
+			// the fork, not a statement: the contract lives in the checked
+			// writer and the production writer is free of it
+			const want = "value.WindowCount < 2 || value.WindowCount > 8"
+			if got := jsFlatWriter(t, text, "writeTFlatChecked"); !strings.Contains(got, want) {
+				t.Errorf("js: the checked flat writer does not hold the count, %q absent", want)
+			}
+			if got := jsFlatWriter(t, text, "writeTFlatProduction"); strings.Contains(got, want) {
+				t.Errorf("js: the PRODUCTION flat writer still holds the count: %q survives release", want)
+			}
 			continue
 		}
-		text := generatedText(t, countedAboveZero, target)
+
+		if wants, ok := assertsInDebug[target]; ok {
+			for _, want := range wants {
+				if !strings.Contains(text, want) {
+					t.Errorf("%s: the count is not held by a debug assert, %q not emitted", target, want)
+				}
+			}
+			for _, gone := range goneFromRelease[target] {
+				if strings.Contains(text, gone) {
+					t.Errorf("%s: the count still carries an every-build refusal that release cannot drop: %s", target, gone)
+				}
+			}
+			continue
+		}
+
+		wants, known := refusesEveryBuild[target]
+		if !known {
+			t.Errorf("target %q has no count claim here. A new backend landed and this gate was not told", target)
+			continue
+		}
 		for _, want := range wants {
 			if !strings.Contains(text, want) {
 				t.Errorf("%s: the count's range refusal is absent, %q not emitted", target, want)

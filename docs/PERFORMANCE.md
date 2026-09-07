@@ -149,14 +149,20 @@ construction. The Rust `-O2` leg is a named harness gap.
 it.** C++ compiles its debug asserts and bounds checks out; **so does C, from 2026-09-07** —
 the ruling was "Every language, by design, compiles out asserts/checks in release build. This
 is the whole point!", and the C backend's per-field write-side range and bounds refusals
-became `serialize_assert`s that vanish under `NDEBUG`, the tier C++'s are in (C still asserts
-less than C++ in two places, a flags value wider than its wire width and interior nulls in a
-`string(N)` on write; those are the next change). Two write-side checks stay in every build in
-both, because the spec mandates them in all nine targets: a counted array's count outside
-`[A, B]` (SPEC §4.6) and a union tag outside its variant set (§4.8); every read-side check
-stays in every build everywhere, by the other half of the same ruling. Rust, C# and Go carry bounds,
-range and sticky-error checks in every build by contract. A ratio between two of those columns
-includes the price of a different promise.
+became `serialize_assert`s that vanish under `NDEBUG`, the tier C++'s are in. The same day the
+last exception went with them: a counted array's count outside `[A, B]` (SPEC §4.6) had been
+refused in every build in all nine targets, and is now a debug assert wherever the language
+has that idiom — "checks are *DEBUG ONLY*" — so a C or C++ release build now holds NO
+write-side range check at all. C's two remaining gaps closed in the same change, a flags value
+wider than its wire width and interior nulls in a `string(N)` on write, so the C and C++
+write-side check sets are identical. NO write-side check stays in every build in either: the
+union tag outside its variant set (§4.8) was the last structural holdout — it had been argued
+to be dispatch rather than a guard — and it too is a `serialize_assert` now, so a C or C++
+release build performs no write-side validation whatsoever. Every
+read-side check stays in every build everywhere, by the other half of the same ruling: "Of
+course, on read side we MUST always do the checks!" Rust, C# and Go carry bounds, range and
+sticky-error checks in every build by contract, Rust's and C#'s pending their own change. A
+ratio between two of those columns includes the price of a different promise.
 
 **Measured the same day, the C change bought nothing the instrument can see.** A twins pass on
 the C and C++ legs with the asserts in place

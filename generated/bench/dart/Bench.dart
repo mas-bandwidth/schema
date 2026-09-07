@@ -196,8 +196,7 @@ void initBenchPacket(BenchPacket value) {
 
 // writeBenchPacket packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// benchPacketMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// benchPacketMaxBytes. Returns the bytes written.
 int writeBenchPacket(BenchPacket value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= benchPacketMaxBytes);
@@ -510,8 +509,7 @@ void initBenchInts(BenchInts value) {
 
 // writeBenchInts packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// benchIntsMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// benchIntsMaxBytes. Returns the bytes written.
 int writeBenchInts(BenchInts value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= benchIntsMaxBytes);
@@ -712,8 +710,7 @@ void initBenchBits(BenchBits value) {
 
 // writeBenchBits packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// benchBitsMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// benchBitsMaxBytes. Returns the bytes written.
 int writeBenchBits(BenchBits value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= benchBitsMaxBytes);
@@ -1047,8 +1044,7 @@ void initMixedEntity(MixedEntity value) {
 
 // writeMixedEntity packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// mixedEntityMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// mixedEntityMaxBytes. Returns the bytes written.
 int writeMixedEntity(MixedEntity value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= mixedEntityMaxBytes);
@@ -1248,8 +1244,7 @@ void initMixedStat(MixedStat value) {
 
 // writeMixedStat packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// mixedStatMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// mixedStatMaxBytes. Returns the bytes written.
 int writeMixedStat(MixedStat value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= mixedStatMaxBytes);
@@ -1351,8 +1346,7 @@ void initMixedHitEvent(MixedHitEvent value) {
 
 // writeMixedHitEvent packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// mixedHitEventMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// mixedHitEventMaxBytes. Returns the bytes written.
 int writeMixedHitEvent(MixedHitEvent value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= mixedHitEventMaxBytes);
@@ -1459,8 +1453,7 @@ void initMixedChatEvent(MixedChatEvent value) {
 
 // writeMixedChatEvent packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// mixedChatEventMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// mixedChatEventMaxBytes. Returns the bytes written.
 int writeMixedChatEvent(MixedChatEvent value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= mixedChatEventMaxBytes);
@@ -1555,8 +1548,7 @@ void initMixedPickupEvent(MixedPickupEvent value) {
 
 // writeMixedPickupEvent packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// mixedPickupEventMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// mixedPickupEventMaxBytes. Returns the bytes written.
 int writeMixedPickupEvent(MixedPickupEvent value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= mixedPickupEventMaxBytes);
@@ -1676,8 +1668,7 @@ void zeroMixedEvent(MixedEvent value) {
 
 // writeMixedEvent packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// mixedEventMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// mixedEventMaxBytes. Returns the bytes written.
 int writeMixedEvent(MixedEvent value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= mixedEventMaxBytes);
@@ -2005,8 +1996,7 @@ void initBenchMixed(BenchMixed value) {
 
 // writeBenchMixed packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// benchMixedMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// benchMixedMaxBytes. Returns the bytes written.
 int writeBenchMixed(BenchMixed value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= benchMixedMaxBytes);
@@ -2086,9 +2076,8 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (48 - scratchBits);
   }
-  if (value.entitiesCount < 1 || value.entitiesCount > 8) {
-    return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
-  }
+  assert(value.entitiesCount >= 1);
+  assert(value.entitiesCount <= 8);
   v =
       ((value.serverTime) & 0xffffff) |
       (((value.entitiesCount - 1) & 0x7) << 24);
@@ -2161,9 +2150,8 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
       scratch = v >>> (14 - scratchBits);
     }
   }
-  if (value.statsCount < 0 || value.statsCount > 80) {
-    return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
-  }
+  assert(value.statsCount >= 0);
+  assert(value.statsCount <= 80);
   v = ((value.statsCount) & 0x7f);
   scratch |= v << scratchBits;
   scratchBits += 7;

@@ -758,12 +758,11 @@ int main()
             check( !ReadProbeCollider( crs, bad ) );
         }
 
-        // the write side validates the tag BEFORE it rides (SPEC §4.8):
-        // an out-of-set tag writes nothing
-        ProbeShape rogue;
-        rogue.type = ProbeShapeType( 3 );
-        serialize::WriteStream bs( buffer, sizeof( buffer ) );
-        check( !WriteProbeShape( bs, rogue ) );
+        // NO write-side case for an out-of-set tag: the tag on WRITE is a
+        // caller-error contract like every other write-side value, a
+        // serialize_assert that would abort this (debug) suite and that is
+        // gone under NDEBUG (SPEC §4.8, §5). The read half above is the
+        // every-build one, and it is the one a test can hold.
     }
     {
         ProbeArray in; // defaults are the constructed state, transitively

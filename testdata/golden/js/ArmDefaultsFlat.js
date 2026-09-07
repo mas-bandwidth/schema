@@ -41,9 +41,6 @@ export const FLAT_READ_SLACK = 8;
 function writeDefaultArmFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  if (value.EntriesCount < 0 || value.EntriesCount > 2) { // the count guards the loop; a count outside its wire range is refused in every build (SPEC §4.6)
-    return -1;
-  }
   v = (((value.EntriesCount) & 0x3)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 2;
@@ -92,7 +89,7 @@ function writeDefaultArmFlatProduction(value, view) {
 function writeDefaultArmFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.EntriesCount) || value.EntriesCount < 0 || value.EntriesCount > 2) { // the count guards the loop; a count outside its wire range is refused in every build (SPEC §4.6)
+  if (!Number.isInteger(value.EntriesCount) || value.EntriesCount < 0 || value.EntriesCount > 2) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
   v = (((value.EntriesCount) & 0x3)) >>> 0;
@@ -146,9 +143,9 @@ function writeDefaultArmFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteDefaultArmFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
-// count outside its wire range in every build (SPEC §4.6), and any other
-// contract in the checked build. The buffer behind view must hold DefaultArmMaxBytes.
+// WriteDefaultArmFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// writer contract in the checked build — the production writer holds none
+// of them (SPEC §5). The buffer behind view must hold DefaultArmMaxBytes.
 export const WriteDefaultArmFlat = PRODUCTION ? writeDefaultArmFlatProduction : writeDefaultArmFlatChecked;
 
 // ReadDefaultArmFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -221,9 +218,6 @@ function writeDefaultChoicePacketFlatProduction(value, view) {
   }
   switch (value.Choice.Type) {
     case 1: {
-      if (value.Choice.First.EntriesCount < 0 || value.Choice.First.EntriesCount > 2) { // the count guards the loop; a count outside its wire range is refused in every build (SPEC §4.6)
-        return -1;
-      }
       v = (((value.Choice.First.EntriesCount) & 0x3)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 2;
@@ -266,9 +260,6 @@ function writeDefaultChoicePacketFlatProduction(value, view) {
       break;
     }
     case 2: {
-      if (value.Choice.Second.EntriesCount < 0 || value.Choice.Second.EntriesCount > 2) { // the count guards the loop; a count outside its wire range is refused in every build (SPEC §4.6)
-        return -1;
-      }
       v = (((value.Choice.Second.EntriesCount) & 0x3)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 2;
@@ -334,7 +325,7 @@ function writeDefaultChoicePacketFlatChecked(value, view) {
   }
   switch (value.Choice.Type) {
     case 1: {
-      if (!Number.isInteger(value.Choice.First.EntriesCount) || value.Choice.First.EntriesCount < 0 || value.Choice.First.EntriesCount > 2) { // the count guards the loop; a count outside its wire range is refused in every build (SPEC §4.6)
+      if (!Number.isInteger(value.Choice.First.EntriesCount) || value.Choice.First.EntriesCount < 0 || value.Choice.First.EntriesCount > 2) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
         return -1;
       }
       v = (((value.Choice.First.EntriesCount) & 0x3)) >>> 0;
@@ -385,7 +376,7 @@ function writeDefaultChoicePacketFlatChecked(value, view) {
       break;
     }
     case 2: {
-      if (!Number.isInteger(value.Choice.Second.EntriesCount) || value.Choice.Second.EntriesCount < 0 || value.Choice.Second.EntriesCount > 2) { // the count guards the loop; a count outside its wire range is refused in every build (SPEC §4.6)
+      if (!Number.isInteger(value.Choice.Second.EntriesCount) || value.Choice.Second.EntriesCount < 0 || value.Choice.Second.EntriesCount > 2) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
         return -1;
       }
       v = (((value.Choice.Second.EntriesCount) & 0x3)) >>> 0;
@@ -442,9 +433,9 @@ function writeDefaultChoicePacketFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteDefaultChoicePacketFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
-// count outside its wire range in every build (SPEC §4.6), and any other
-// contract in the checked build. The buffer behind view must hold DefaultChoicePacketMaxBytes.
+// WriteDefaultChoicePacketFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// writer contract in the checked build — the production writer holds none
+// of them (SPEC §5). The buffer behind view must hold DefaultChoicePacketMaxBytes.
 export const WriteDefaultChoicePacketFlat = PRODUCTION ? writeDefaultChoicePacketFlatProduction : writeDefaultChoicePacketFlatChecked;
 
 // ReadDefaultChoicePacketFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -590,9 +581,6 @@ export function ReadDefaultChoicePacketFlat(value, view, numBits) {
 function writeDefaultBulkArmFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  if (value.Payload.EntriesCount < 0 || value.Payload.EntriesCount > 2) { // the count guards the loop; a count outside its wire range is refused in every build (SPEC §4.6)
-    return -1;
-  }
   v = (((value.Payload.EntriesCount) & 0x3)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 2;
@@ -673,7 +661,7 @@ function writeDefaultBulkArmFlatProduction(value, view) {
 function writeDefaultBulkArmFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.Payload.EntriesCount) || value.Payload.EntriesCount < 0 || value.Payload.EntriesCount > 2) { // the count guards the loop; a count outside its wire range is refused in every build (SPEC §4.6)
+  if (!Number.isInteger(value.Payload.EntriesCount) || value.Payload.EntriesCount < 0 || value.Payload.EntriesCount > 2) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
   v = (((value.Payload.EntriesCount) & 0x3)) >>> 0;
@@ -762,9 +750,9 @@ function writeDefaultBulkArmFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteDefaultBulkArmFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
-// count outside its wire range in every build (SPEC §4.6), and any other
-// contract in the checked build. The buffer behind view must hold DefaultBulkArmMaxBytes.
+// WriteDefaultBulkArmFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// writer contract in the checked build — the production writer holds none
+// of them (SPEC §5). The buffer behind view must hold DefaultBulkArmMaxBytes.
 export const WriteDefaultBulkArmFlat = PRODUCTION ? writeDefaultBulkArmFlatProduction : writeDefaultBulkArmFlatChecked;
 
 // ReadDefaultBulkArmFlat(value, view, numBits) -> bool. The buffer behind view must

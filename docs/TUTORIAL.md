@@ -1118,10 +1118,7 @@ struct T {
 ```cpp
 SCHEMA_WRITE_INLINE bool WriteT( serialize::WriteStream & stream, const T & value )
 {
-    if ( int32_t( value.window_count ) < int32_t( 2 ) || int32_t( value.window_count ) > int32_t( 8 ) )
-    {
-        return false; // a count outside its wire range is refused in every build (SPEC §4.6)
-    }
+    serialize_assert( int32_t( value.window_count ) >= int32_t( 2 ) && int32_t( value.window_count ) <= int32_t( 8 ) );
     write_bits( stream, uint32_t( value.window_count ) - uint32_t( 2 ), 3 );
 ```
 
@@ -1134,14 +1131,22 @@ name a birth value another way. The bound names it instead. This is the one
 place in the language where storage starts at something other than zero without
 a declaration saying so, and `[..8]` is born at 0 like everything else.
 
-The write refuses an out-of-range count in **every build**, release included.
-It is not an assert and there is no build flag that removes it. The reason is
-the line under it: the pack subtracts the low bound, so `window_count = 0`
-would wrap `0 - 2` to a large unsigned value, and the loop below writes
-`window_count` elements. An unchecked write would report success on bytes no
-reader takes. Every one of the nine targets refuses it, each in its own
-convention, among them `false` here, `0` in C, `-1` in Dart and Java,
-`ErrValueOutOfRange` in Go, an `ArgumentError` in Elixir.
+The write **asserts** the count in debug and carries nothing in release, the
+same tier every other writer contract rides (SPEC.md §5). Look at the line
+under it for why the assert is worth having: the pack subtracts the low
+bound, so `window_count = 0` wraps `0 - 2` to a large unsigned value, and the
+loop below reads that many elements past the caller's array and writes them
+into the stream: defined, unspecified, and the caller's bug. Writing correctly is the caller's job, and
+the assert is there to catch you in debug before you ship it. Seven targets
+assert (`serialize_assert` in C++ and C, `debug_assert!` in Rust,
+`Debug.Assert` in C#, `assert` in Java and Dart, the checked writer in
+JavaScript); Go returns `ErrValueOutOfRange` and Elixir raises an
+`ArgumentError` in every build, because neither language has a debug-only
+idiom worth faking. (Implementation note, 2026-09-07: Rust and C# reach that
+form in the two changes landing the same day, schema#696 and schema#697;
+until they merge, their emitters still refuse on the write in every build.)
+And the READ refuses a bad count in every build, in all nine — that side is
+never trusted.
 
 Reach for `[A..B]` with A above zero wherever the count genuinely has a floor.
 The tool holds both ends of it for you.
