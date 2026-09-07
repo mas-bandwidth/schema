@@ -86,16 +86,16 @@ func keyName(k key) string {
 	return fmt.Sprintf("%s/%s/%s/%s", k.lang, k.bench, k.path, k.codec)
 }
 
-func twingateCmd(paths []string) {
-	if len(paths) != 2 {
+func twingateCmd(files []string) {
+	if len(files) != 2 {
 		usage()
 	}
-	a, _, err := load(paths[0])
+	a, _, err := load(files[0])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
 	}
-	b, _, err := load(paths[1])
+	b, _, err := load(files[1])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
@@ -159,11 +159,11 @@ func sameConfig(a, b row) bool {
 		a.linkage == b.linkage && a.checks == b.checks && a.opt == b.opt
 }
 
-func bandsCmd(paths []string) {
-	if len(paths) < 2 {
+func bandsCmd(files []string) {
+	if len(files) < 2 {
 		usage()
 	}
-	cur, _, err := load(paths[0])
+	cur, _, err := load(files[0])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
@@ -173,7 +173,7 @@ func bandsCmd(paths []string) {
 		n      int
 	}
 	bands := map[key]*band{}
-	for _, p := range paths[1:] {
+	for _, p := range files[1:] {
 		rows, meta, err := load(p)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)

@@ -52,8 +52,17 @@ func parseRound(meta []string) string {
 	return ""
 }
 
-func aggregateCmd(paths []string) {
-	if len(paths) < 1 {
+// files is the round CSVs; it is deliberately not named `paths`, which is
+// the package-level list of path-column values that the output loop and the
+// straggler refusal below walk. A parameter of that name shadowed the list
+// from the day the list entered (6e1002b7, 2026-08-31, the F4 fix) to
+// 2026-09-07: the output loop walked the input FILE names, printed no row,
+// and the refusal fired on every key of every pass. No command in this
+// package names a parameter or local after a package-level list; the old
+// name still resolves after a rename, so the compiler cannot refuse one
+// left behind, and the tests in aggregate_test.go are what hold it.
+func aggregateCmd(files []string) {
+	if len(files) < 1 {
 		usage()
 	}
 	acc := map[key]*aggRow{}
@@ -62,7 +71,7 @@ func aggregateCmd(paths []string) {
 	seenPath := map[string]string{}
 	var passID identity
 	passIDSet := false
-	for _, p := range paths {
+	for _, p := range files {
 		// the same round file twice yields runs=N+1 spread=0.00 — fake
 		// stability manufactured from one measurement. Refuse by path.
 		clean := filepath.Clean(p)
@@ -176,7 +185,7 @@ func aggregateCmd(paths []string) {
 		}
 	}
 	if printed != len(acc) {
-		fmt.Fprintf(os.Stderr, "aggregate: REFUSING: %d row key(s) accumulated but not printed — the order list does not know every bench the rounds measured:\n", len(acc)-printed)
+		fmt.Fprintf(os.Stderr, "aggregate: REFUSING: %d row key(s) accumulated but not printed — the bench or path lists do not know every row the rounds measured (bench: %s; path: %s):\n", len(acc)-printed, strings.Join(order, ", "), strings.Join(paths, ", "))
 		for _, k := range keys {
 			if !slices.Contains(order, k.bench) || !slices.Contains(paths, k.path) {
 				fmt.Fprintf(os.Stderr, "    %s/%s/%s\n", k.lang, k.bench, k.path)
@@ -186,11 +195,11 @@ func aggregateCmd(paths []string) {
 	}
 }
 
-func controlMedianCmd(paths []string) {
-	if len(paths) != 1 {
+func controlMedianCmd(files []string) {
+	if len(files) != 1 {
 		usage()
 	}
-	rows, _, err := load(paths[0])
+	rows, _, err := load(files[0])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
@@ -205,7 +214,7 @@ func controlMedianCmd(paths []string) {
 		}
 	}
 	if len(rates) == 0 {
-		fmt.Fprintf(os.Stderr, "controlmedian: no cpp family-gen rows in %s\n", paths[0])
+		fmt.Fprintf(os.Stderr, "controlmedian: no cpp family-gen rows in %s\n", files[0])
 		os.Exit(2)
 	}
 	fmt.Printf("%.0f\n", median(rates))

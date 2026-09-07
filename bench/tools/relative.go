@@ -494,9 +494,9 @@ func guardRatio(ds *dataset, ka, kb key, a, b row) []string {
 	return d
 }
 
-func merge(paths []string) *dataset {
+func merge(files []string) *dataset {
 	ds := &dataset{rows: map[key]row{}}
-	for _, p := range paths {
+	for _, p := range files {
 		r, meta, err := load(p)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
