@@ -386,6 +386,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_ints( serialize_write
 /* Reads BenchInts. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_ints( serialize_read_stream_t * stream, BenchInts * value )
 {
+    /* fixed 110-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 110 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         serialize_uint64_t offset_value = 0;
         serialize_uint32_t raw = 0;
@@ -577,6 +583,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_bits( serialize_write
 /* Reads BenchBits. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_bits( serialize_read_stream_t * stream, BenchBits * value )
 {
+    /* fixed 156-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 156 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         serialize_uint32_t raw = 0;
         if ( !serialize_read_bits( stream, &raw, 7 ) )
@@ -722,6 +734,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_mixed_entity( serialize_wri
 /* Reads MixedEntity. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_entity( serialize_read_stream_t * stream, MixedEntity * value )
 {
+    /* fixed 135-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 135 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         serialize_uint32_t raw = 0;
         if ( !serialize_read_bits( stream, &raw, 12 ) )
@@ -893,6 +911,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_mixed_stat( serialize_write
 /* Reads MixedStat. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_stat( serialize_read_stream_t * stream, MixedStat * value )
 {
+    /* fixed 18-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 18 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         serialize_uint32_t raw = 0;
         if ( !serialize_read_bits( stream, &raw, 8 ) )
@@ -945,6 +969,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_mixed_hit_event( serialize_
 /* Reads MixedHitEvent. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_hit_event( serialize_read_stream_t * stream, MixedHitEvent * value )
 {
+    /* fixed 28-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 28 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         serialize_uint32_t raw = 0;
         if ( !serialize_read_bits( stream, &raw, 12 ) )
@@ -1006,6 +1036,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_mixed_chat_event( serialize
 /* Reads MixedChatEvent. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_chat_event( serialize_read_stream_t * stream, MixedChatEvent * value )
 {
+    /* fixed 14-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 14 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         serialize_uint64_t offset_value = 0;
         serialize_uint32_t raw = 0;
@@ -1049,6 +1085,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_mixed_pickup_event( seriali
 /* Reads MixedPickupEvent. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_pickup_event( serialize_read_stream_t * stream, MixedPickupEvent * value )
 {
+    /* fixed 18-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 18 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         serialize_uint32_t raw = 0;
         if ( !serialize_read_bits( stream, &raw, 10 ) )

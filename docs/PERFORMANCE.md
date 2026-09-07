@@ -177,7 +177,16 @@ against 4,279,494 on the pass before it, 93.1% of C++ against 94.3%, both moves 
 spread — the fix bought the raw-read row and left the packet path alone. So the remaining
 distance is no longer the raw reader, at 99.2%, but the generated packet read, where the round
 trip's seven points now live; at this pass's precision (combined spread 5.8 points against 8.3
-before) that is outside the §2.8 band and no longer a tie, a finding under investigation.
+before) that is outside the §2.8 band and no longer a tie, a finding under investigation. That
+investigation closed the same day: the generated C read was executing ~193 more loads and ~200
+more spill reloads per message than C++'s for identical work, because clang spilled
+`stream->num_bits` and reloaded it for every field's past-end test, and the C backend now emits
+one `serialize_read_bits_remaining` guard at the top of a read function whose struct has a FIXED
+wire width — every per-field test folds into it, the refusal is unchanged because every field is
+always read — taking the round trip from 93.1% to 101.9% of C++ best, 4,226,614 to 4,669,166
+messages a second, which is inside the §2.8 band (6.5 points) and so a tie again
+([CSV](../bench/results/2026-09-07-arm64-studio-c-read-guard-pass.csv), seven interleaved rounds,
+window OK, control delta 0.5%, twin gate OK).
 
 **The two dated `<!-- CAPTION -->` lines above this section are the provenance the
 2026-08-15 passes recorded, and they predate both halves of C's move**: the runtime's own

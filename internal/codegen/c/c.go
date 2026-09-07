@@ -725,6 +725,30 @@ func (g *gen) emitReadFunc(st *ir.Struct) {
 		g.pf("    (void) stream;\n    (void) value;\n    return 1;\n}\n\n")
 		return
 	}
+	// A struct whose wire width is FIXED reads the same bits on every path,
+	// so ir.FixedWireBits is exact rather than an upper bound: one guard at
+	// the top proves every field's past-end test and the compiler folds all
+	// of them away. serialize.h documents exactly this contract on
+	// serialize_read_bits — the test there is against num_bits, which nothing
+	// on the read path writes, so it is the SAME question a caller's group
+	// guard already answered.
+	//
+	// The refusal and the stream's terminal state are IDENTICAL (what the
+	// output struct holds after a refused read is not promised either way,
+	// and the guard writes none of it where a field-level refusal wrote the
+	// fields before it). Every field is always
+	// read (that is what fixed means), so a stream holding fewer than MaxBits
+	// bits fails at some field today and at the guard now, and
+	// serialize_read_fail leaves the same terminal state either way: error
+	// latched, cursor at num_bits + 1. Nothing that decoded before stops
+	// decoding, because a stream that held enough bits still holds enough.
+	//
+	// Nothing here touches the wire or the write side. A zero-bit struct gets
+	// no guard: it reads nothing, so there is nothing to prove.
+	if bits, fixed := ir.FixedWireBits(st); fixed && bits > 0 {
+		g.pf("    /* fixed %d-bit wire: one guard, and every per-field past-end test below folds into it */\n", bits)
+		g.pf("    if ( serialize_read_bits_remaining( stream ) < %d )\n    {\n        return serialize_read_fail( stream );\n    }\n\n", bits)
+	}
 	if len(st.Fields) == 0 {
 		g.pf("    (void) value; /* items only — reserved/const/align carry no storage */\n")
 	}

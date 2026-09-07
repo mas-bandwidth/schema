@@ -250,6 +250,18 @@ the row means, and the receipt is that the C++ leg's emitted loop is
 identical in shape before and after (the same 135 instructions and 2 branches;
 register allocation differs).
 
+**And the packet round trip closed the same day.** With the raw reader at
+99.2% the remaining C-to-C++ distance sat in the GENERATED packet read, where
+clang was spilling `stream->num_bits` and reloading it for every field's
+past-end test; the C backend now emits one `serialize_read_bits_remaining`
+guard at the top of a read function whose struct has a FIXED wire width, the
+per-field tests fold into it (the entity read loop goes 157 to 111 instructions counting blocks by their loop header, 161 to 115 counting the contiguous region
+; spill reloads per message 307 to 120), and the round trip went
+from 93.1% to 101.9% of C++ best — 4,226,614 to 4,669,166 messages a second,
+inside the §2.8 tie band and so reported as a tie
+(`bench/results/2026-09-07-arm64-studio-c-read-guard-pass.csv`, seven
+interleaved rounds, window OK, control delta 0.5%, twin gate OK).
+
 Two further rows — `bench_string` and `bench_wstring` — are DEFINED in
 BENCH-STANDARD §1.8 (measure-first, issue #64) and not yet implemented in
 these runners; the definitions land ahead of any further string/wstring

@@ -188,6 +188,80 @@ func MaxBitsStruct(st *Struct) int64 {
 	return walk(st.Items)
 }
 
+// FixedWireBits reports whether EVERY legal encoding of st occupies exactly
+// the same number of wire bits, and returns that width. It is the condition
+// under which [MaxBitsStruct] is EXACT rather than an upper bound.
+//
+// Not fixed: a branch (the two sides need not agree), an align (0..7 bits of
+// pad), a counted array (the element count varies), a string/bytes/wstring (a
+// declared length is a bound, not a width), a union (arms differ and
+// [MaxBitsUnion] takes the largest), and a pointer (the reference is fixed but
+// nothing here is entitled to speak for the referent). Everything else has one
+// width and only one: ranged and bare ints, bits, bool, fixed-point, float32
+// compressed or bare, float64, enums, flags, fixed arrays of those, and
+// by-value nestings of structs that are themselves fixed.
+//
+// The walk descends BY-VALUE EDGES ONLY and stops at pointers, exactly as
+// [MaxBitsStruct] does, so it terminates on every legal declaration.
+//
+// This is what lets a reader hoist its per-field past-end tests: a reader that
+// has proved it holds MaxBitsStruct(st) bits cannot fail on any field of st,
+// because every field is always read and the total is exact.
+func FixedWireBits(st *Struct) (int64, bool) {
+	if !fixedItems(st.Items) {
+		return 0, false
+	}
+	return MaxBitsStruct(st), true
+}
+
+func fixedItems(items []Item) bool {
+	for _, item := range items {
+		switch item := item.(type) {
+		case *FieldItem:
+			if !fixedField(item.F) {
+				return false
+			}
+		case *ConstItem, *ReservedItem:
+			// a literal bit count, the same on every path
+		default:
+			// *Branch, *AlignItem, and any item kind this analysis has not
+			// been taught. Unknown is NOT fixed: a wrong "not fixed" costs a
+			// hoisted guard, a wrong "fixed" would change what a read refuses.
+			_ = item
+			return false
+		}
+	}
+	return true
+}
+
+func fixedField(f *Field) bool {
+	if f.Type.Pointer || f.Array == ArrayCounted {
+		return false
+	}
+	switch f.Type.Kind {
+	case TInt, TBits, TBool, TFloat32, TFloat64, TFixed:
+		return true
+	case TString, TBytes, TWString:
+		return false
+	case TNamed:
+		switch ref := f.Type.Ref.(type) {
+		case *Enum:
+			return true
+		case *Flags:
+			return true
+		case *Struct:
+			_, ok := FixedWireBits(ref)
+			return ok
+		case *Union:
+			return false
+		default:
+			_ = ref
+			return false
+		}
+	}
+	return false
+}
+
 // ---- static byte-alignment analysis ----
 //
 // wirePos tracks the wire bit position modulo 8 through a struct's items.

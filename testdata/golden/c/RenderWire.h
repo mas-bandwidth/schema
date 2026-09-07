@@ -81,6 +81,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_render_sprite( serialize_wr
 /* Reads RenderSprite. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_render_sprite( serialize_read_stream_t * stream, RenderSprite * value )
 {
+    /* fixed 138-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 138 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         serialize_uint64_t raw = 0;
         if ( !serialize_read_uint64( stream, &raw ) )

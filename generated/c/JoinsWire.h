@@ -733,6 +733,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_narrow( serialize_write_str
 /* Reads Narrow. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_narrow( serialize_read_stream_t * stream, Narrow * value )
 {
+    /* fixed 3-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 3 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         serialize_uint32_t raw = 0;
         if ( !serialize_read_bits( stream, &raw, 3 ) )
@@ -764,6 +770,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_wide( serialize_write_strea
 /* Reads Wide. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_wide( serialize_read_stream_t * stream, Wide * value )
 {
+    /* fixed 37-bit wire: one guard, and every per-field past-end test below folds into it */
+    if ( serialize_read_bits_remaining( stream ) < 37 )
+    {
+        return serialize_read_fail( stream );
+    }
+
     {
         serialize_uint32_t lo = 0;
         serialize_uint32_t hi = 0;
