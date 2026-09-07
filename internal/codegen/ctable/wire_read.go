@@ -19,12 +19,21 @@ func (g *tableGen) wireEnumRead(e *ir.Enum, dst, rdr, ind, onBad string) {
 }
 
 func (g *tableGen) wireScalarRead(f *ir.Field, dst, rdr, wireKind, ind, onBad string) {
+	if f.Type.Pointer {
+		g.pf("%s{ uint64_t index; if(!table_reader_leb(&%s,&index)) { %s }\n", ind, rdr, onBad)
+		target := ir.TableWireId(ir.PointeeWireName(f))
+		if f.Type.Blob() {
+			target = ir.BlobWireTypeId(f)
+		}
+		g.pf("%s  table_node_resolve(%s.nodes,&%s,index,UINT64_C(0x%016x),r->report); }\n", ind, rdr, dst, target)
+		return
+	}
 	if e := enumRef(f); e != nil {
 		g.wireEnumRead(e, dst, rdr, ind, onBad)
 		return
 	}
 	kind := ir.TableWireScalarKind(f)
-	if f.Type.Kind == ir.TBytes {
+	if f.Type.Kind == ir.TBytes && !f.Type.Blob() {
 		kind = tkU8
 	}
 	// The caller has already accepted this kind or a precise widening. Keep
@@ -96,16 +105,16 @@ func (g *tableGen) emitWireRead(st *ir.Struct) {
 	for _, f := range st.Fields {
 		kind := ir.TableWireScalarKind(f)
 		wireKind := kind
-		if f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes {
+		if f.Array != ir.ArrayNone || (f.Type.Kind == ir.TBytes && !f.Type.Blob()) {
 			wireKind = tkArray
 		}
 		if f.KeyEnum != "" {
 			wireKind = tkKeyed
 		}
-		if f.Type.Kind == ir.TBytes {
+		if f.Type.Kind == ir.TBytes && !f.Type.Blob() {
 			kind = tkU8
 		}
-		plain := f.Array == ir.ArrayNone && f.Type.Kind != ir.TBytes && tableKindWidth(kind) > 0
+		plain := !f.Type.Pointer && f.Array == ir.ArrayNone && f.KeyEnum == "" && (kind == tkI16 || kind == tkI32 || kind == tkI64 || kind == 18 || kind == tkU16 || kind == tkU32 || kind == tkU64 || kind == 19 || kind == tkF64)
 		g.pf("            case 0x%016xull: /* %s */\n            {\n", ir.TableFieldWireId(f), f.Name)
 		g.pf("                if ( kind != %d )\n                {\n", wireKind)
 		if plain {
@@ -124,7 +133,13 @@ func (g *tableGen) emitWireRead(st *ir.Struct) {
 		}
 		g.pf("                break;\n            }\n")
 	}
+	if g.anyVariable {
+		g.pf("            case UINT64_MAX:\n                if(r->nodes==NULL) { r->report->unknown++; }\n                if(!table_reader_skip(r,kind)) { r->report->malformed=1; return 0; }\n                break;\n")
+	}
 	g.pf("            default:\n                r->report->unknown++;\n                if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }\n                break;\n        }\n    }\n}\n\n")
+	if g.isVar(st.Name) {
+		return
+	}
 	g.pf("static SCHEMA_UNUSED int %s( %s * value, const uint8_t * buffer, int64_t bytes, TableReport * report )\n{\n", g.api(st.Name, "load"), st.Name)
 	g.pf("    TableReport ignored; TableReader r;\n    memset( &ignored, 0, sizeof( ignored ) );\n    if ( report == NULL ) { report = &ignored; }\n")
 	g.pf("    %s( value );\n    if ( !table_wire_open( &r, buffer, bytes, report ) ) { return 0; }\n", g.api(st.Name, "reset"))
@@ -137,13 +152,15 @@ func (g *tableGen) wireReadFieldAt(f *ir.Field, kind int, dst string) {
 func (g *tableGen) wireReadFieldPayload(f *ir.Field, kind int, dst, bounded string) {
 	ind := "                "
 	switch {
+	case f.Type.Pointer && f.Array == ir.ArrayNone:
+		g.wireScalarRead(f, dst, "(*r)", "kind", ind, "r->report->malformed=1; return 0;")
 	case f.Type.Kind == ir.TWString:
 		g.pf("%sTableReader sub; int64_t keep, i;\n", ind)
 		g.pf("%sif ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }\n", ind)
 		g.pf("%sif ( sub.size %% 2 != 0 || !table_wire_utf16( sub.buffer, sub.size/2 ) ) { r->report->malformed = 1; %s[0] = 0; %s_length = 0; break; }\n", ind, dst, dst)
 		g.pf("%skeep = table_wire_utf16_clamp( sub.buffer, sub.size/2, %d ); if ( keep != sub.size/2 ) { r->report->clamped++; }\n", ind, f.Type.Size)
 		g.pf("%sfor ( i = 0; i < keep; i++ ) { %s[i] = table_wire_utf16_unit( sub.buffer, i ); } %s[keep] = 0; %s_length = (int32_t)keep;\n", ind, dst, dst, dst)
-	case f.Type.Kind == ir.TString:
+	case (f.Type.Kind == ir.TString && !f.Type.Blob()):
 		g.pf("%sTableReader sub; uint64_t keep;\n", ind)
 		g.pf("%sif ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }\n", ind)
 		g.pf("%sif ( !table_wire_utf8( sub.buffer, (uint64_t) sub.size ) )\n%s{\n", ind, ind)
@@ -155,13 +172,13 @@ func (g *tableGen) wireReadFieldPayload(f *ir.Field, kind int, dst, bounded stri
 		g.pf("%smemcpy( %s, sub.buffer, (size_t) keep ); %s[keep] = 0; %s_length = (int32_t) keep;\n", ind, dst, dst, dst)
 	case f.KeyEnum != "":
 		g.wireReadKeyed(f, kind, ind)
-	case f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes:
+	case f.Array != ir.ArrayNone || (f.Type.Kind == ir.TBytes && !f.Type.Blob()):
 		bound := f.ArrayBound
 		count := ""
 		if f.Array == ir.ArrayCounted {
 			count = dst + "_count"
 		}
-		if f.Type.Kind == ir.TBytes {
+		if f.Type.Kind == ir.TBytes && !f.Type.Blob() {
 			bound = f.Type.Size
 			count = dst + "_length"
 		}

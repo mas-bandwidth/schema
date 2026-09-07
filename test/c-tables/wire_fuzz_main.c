@@ -26,7 +26,7 @@ typedef const ConformanceCodec * (*Unit)( int * count );
 static const ConformanceCodec * find_codec( const char * unit, const char * root )
 {
     const Unit units[] = { conformance_codecs_vocab9demo, conformance_codecs_vocabdemo, conformance_codecs_backenddemo, conformance_codecs_tblr2, conformance_codecs_tblr1, conformance_codecs_tblk2, conformance_codecs_tblk1, conformance_codecs_tbla2, conformance_codecs_tbla1, conformance_codecs_tblm2, conformance_codecs_tblm1, conformance_codecs_messagedemo, conformance_codecs_tabledemo, conformance_codecs_tblv1,
-        conformance_codecs_tblv2, conformance_codecs_tblp1, conformance_codecs_tblp3, conformance_codecs_widedemo, conformance_codecs_scalars, conformance_codecs_tblscalars2 };
+        conformance_codecs_tblv2, conformance_codecs_tblp1, conformance_codecs_tblp3, conformance_codecs_widedemo, conformance_codecs_scalars, conformance_codecs_graphdemo, conformance_codecs_blobdemo, conformance_codecs_tblg1, conformance_codecs_tblp2, conformance_codecs_streamdemo, conformance_codecs_tblscalars2 };
     size_t u;
     for ( u = 0; u < sizeof( units ) / sizeof( units[0] ); u++ ) {
         int i, count; const ConformanceCodec * codecs = units[u]( &count );
@@ -57,13 +57,14 @@ int main( void )
     fflush( stdout );
     while ( read_number( &index, 4 ) ) {
         const ConformanceCodec * codec;
-        uint8_t * wire, * saved = NULL; void * value; int loaded; int64_t length;
+        uint8_t * wire, * saved = NULL; void * value; int loaded; int64_t length, region_bytes;
         ConformanceReport report;
         if ( index >= count || roster[index] == NULL || !read_number( &size, 4 ) ) { return 1; }
         codec = roster[index];
         wire = (uint8_t *) malloc( (size_t) (size ? size : 1) );
         if ( wire == NULL || fread( wire, 1, (size_t) size, stdin ) != size ) { return 1; }
         memset( &report, 0, sizeof( report ) ); value = codec->storage();
+        region_bytes=codec->load_measure ? codec->load_measure(wire,(int64_t)size) : -1;
         loaded = codec->load( value, wire, (int64_t) size, &report ); free( wire );
         length = codec->measure( value );
         if ( length >= 0 ) {
@@ -73,11 +74,11 @@ int main( void )
         }
         /* Fixed storage always exists; load's bool is the body verdict. */
         if ( !loaded && !report.refused ) { report.malformed = 1; }
-        write_number( 1, 1 );
+        write_number( codec->load_measure ? (uint64_t)loaded : 1, 1 );
         write_number( (uint64_t) report.unknown, 4 ); write_number( (uint64_t) report.kind_mismatch, 4 );
         write_number( (uint64_t) report.widened, 4 ); write_number( (uint64_t) report.clamped, 4 );
         write_number( (uint64_t) report.duplicate, 4 ); write_number( (uint64_t) report.malformed, 1 );
-        write_number( (uint64_t) report.refused, 1 ); write_number( UINT64_MAX, 8 );
+        write_number( (uint64_t) report.refused, 1 ); write_number( (uint64_t)region_bytes, 8 );
         write_number( 0, 4 ); write_number( 0, 4 ); write_number( (uint64_t) length, 8 );
         if ( length > 0 && fwrite( saved, 1, (size_t) length, stdout ) != (size_t) length ) { return 1; }
         free( saved ); if ( fflush( stdout ) != 0 ) { return 1; }

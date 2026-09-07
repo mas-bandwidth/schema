@@ -395,3 +395,8 @@ int conformance_cook_open( const char * root_name, const uint8_t * data, size_t 
     conformance_buffer_destroy( &buffer );
     return opened;
 }
+
+SCHEMA_CONFORMANCE_GRAPH_CODEC(Scene,scene)
+static const ConformanceCodec graph_codecs[] = { SCHEMA_CONFORMANCE_GRAPH_ROW(graphdemo,Scene) };
+const ConformanceCodec * conformance_codecs_graphdemo(int * count)
+{ *count=(int)(sizeof(graph_codecs)/sizeof(graph_codecs[0])); return graph_codecs; }

@@ -1,7 +1,7 @@
 package ctable
 
-// The fixed-class file wire, SPEC-TABLES §3. The variable class retains its
-// separate codec until the flat node-table migration.
+// The file wire, SPEC-TABLES section 3: full identities, first-use references
+// and flat node records for the variable class.
 import (
 	"fmt"
 	"strconv"
@@ -10,13 +10,20 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-func (g *tableGen) fileWire() bool { return !g.anyVariable }
+func (g *tableGen) fileWire() bool { return true }
 
 func (g *tableGen) wirePrimitives() string {
 	runtime := ""
 	if g.fileWire() {
 		runtime = strings.ReplaceAll(fileWireRuntime, "@CAPACITY@", strconv.Itoa(len(ir.TableWireIds(g.unit))+1))
 		runtime = strings.ReplaceAll(runtime, "@INLINE@", tableInlineMacro(g.unit.Package))
+		writeNodes, readNodes := "", ""
+		if g.anyVariable {
+			writeNodes = "    const struct TableNumbering * nodes;"
+			readNodes = "    const struct TableNodeMap * nodes;"
+		}
+		runtime = strings.ReplaceAll(runtime, "@WRITE_NODES@", writeNodes)
+		runtime = strings.ReplaceAll(runtime, "@READ_NODES@", readNodes)
 	}
 	return tablePrimitives(g.unit.Package, g.anyVariable, g.anyKeyed, runtime) + tableTextRuntime
 }
@@ -30,6 +37,7 @@ typedef struct TableWriter
     int64_t capacity, offset;
     int overflow, id_count, check_default;
     uint64_t ids[@CAPACITY@];
+@WRITE_NODES@
 } TableWriter;
 
 static SCHEMA_UNUSED TableWriter table_writer_make( uint8_t * buffer, int64_t capacity )
@@ -88,6 +96,7 @@ typedef struct TableReader
     int64_t size, offset;
     TableReport * report;
     const uint8_t * ids;
+@READ_NODES@
     uint64_t id_count;
     int nested;
 } TableReader;
@@ -282,6 +291,11 @@ func (g *tableGen) wireFrame(call, ind string) {
 }
 
 func (g *tableGen) wirePayload(f *ir.Field, expr, ind string) {
+	if f.Type.Pointer {
+		g.pf("%s{ const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&%s); uint64_t index=table_number_find(w->nodes,node);\n", ind, expr)
+		g.pf("%s  if(node!=NULL && index==0) { return 0; } table_writer_leb(w,index); }\n", ind)
+		return
+	}
 	kind := ir.TableWireScalarKind(f)
 	switch kind {
 	case tkTable:
@@ -301,7 +315,7 @@ func (g *tableGen) emitWireFieldHelper(st *ir.Struct, f *ir.Field) {
 	expr := "value->" + f.Name
 	kind := ir.TableWireScalarKind(f)
 	g.pf("static SCHEMA_UNUSED int %s( TableWriter * w, const %s * value )\n{\n", g.wireFieldHelper(st, f), st.Name)
-	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes {
+	if (f.Type.Kind == ir.TString && !f.Type.Blob()) || f.Type.Kind == ir.TWString || (f.Type.Kind == ir.TBytes && !f.Type.Blob()) {
 		g.pf("    if ( %s_length < 0 || %s_length > %d ) { return 0; }\n", expr, expr, f.Type.Size)
 	} else if f.Array == ir.ArrayCounted {
 		g.pf("    if ( %s_count < 0 || %s_count > %d ) { return 0; }\n", expr, expr, f.ArrayBound)
@@ -309,9 +323,9 @@ func (g *tableGen) emitWireFieldHelper(st *ir.Struct, f *ir.Field) {
 	switch {
 	case f.Type.Kind == ir.TWString:
 		g.pf("    int32_t i; for ( i = 0; i < %s_length; i++ ) { table_writer_put16( w, %s[i] ); }\n", expr, expr)
-	case f.Type.Kind == ir.TString:
+	case (f.Type.Kind == ir.TString && !f.Type.Blob()):
 		g.pf("    table_writer_raw( w, %s, %s_length );\n", expr, expr)
-	case f.Type.Kind == ir.TBytes:
+	case (f.Type.Kind == ir.TBytes && !f.Type.Blob()):
 		g.pf("    table_writer_put8( w, %d ); table_writer_leb( w, (uint64_t) %s_length );\n", tkU8, expr)
 		g.pf("    table_writer_raw( w, %s, %s_length );\n", expr, expr)
 	case f.KeyEnum != "":
@@ -360,7 +374,7 @@ func (g *tableGen) wireKeyedRides(f *ir.Field, ind string) {
 
 func (g *tableGen) emitWireWrite(st *ir.Struct) {
 	for _, f := range st.Fields {
-		if f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes || (f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString) {
+		if f.Array != ir.ArrayNone || (f.Type.Kind == ir.TBytes && !f.Type.Blob()) || ((f.Type.Kind == ir.TString && !f.Type.Blob()) || f.Type.Kind == ir.TWString) {
 			g.emitWireFieldHelper(st, f)
 		}
 	}
@@ -371,8 +385,8 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 		expr := "value->" + f.Name
 		kind := ir.TableWireScalarKind(f)
 		wireKind := kind
-		framed := f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes || (f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString)
-		if f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes {
+		framed := f.Array != ir.ArrayNone || (f.Type.Kind == ir.TBytes && !f.Type.Blob()) || ((f.Type.Kind == ir.TString && !f.Type.Blob()) || f.Type.Kind == ir.TWString)
+		if f.Array != ir.ArrayNone || (f.Type.Kind == ir.TBytes && !f.Type.Blob()) {
 			wireKind = tkArray
 		}
 		if f.KeyEnum != "" {
@@ -386,7 +400,7 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 		switch {
 		case f.Type.Optional:
 			condition = expr + "_present"
-		case f.Type.Kind == ir.TBytes || (f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString):
+		case (f.Type.Kind == ir.TBytes && !f.Type.Blob()) || ((f.Type.Kind == ir.TString && !f.Type.Blob()) || f.Type.Kind == ir.TWString):
 			g.pf("        if ( %s_length < 0 || %s_length > %d ) { return 0; }\n", expr, expr, f.Type.Size)
 			condition = g.wireBytesDiffer(f, expr)
 		case f.Array == ir.ArrayCounted:
@@ -430,6 +444,9 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 		g.pf("    }\n")
 	}
 	g.pf("    table_writer_leb( w, 0 );\n    return !w->overflow;\n}\n\n")
+	if g.isVar(st.Name) {
+		return
+	}
 	for _, measure := range []bool{true, false} {
 		verb, args, buffer, cap := "save", ", uint8_t * buffer, int64_t capacity", "buffer", "capacity"
 		if measure {

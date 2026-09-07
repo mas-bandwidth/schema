@@ -49,6 +49,7 @@ typedef struct ConformanceCodec
     int ( *from_json )( void * value, const char * text, int64_t bytes, ConformanceReport * report );
     int64_t ( *to_json )( const void * value, char * buffer, int64_t capacity );
     void * ( *storage )( void ); /* one static instance per root, reset by load */
+    int64_t (*load_measure)(const uint8_t * wire, int64_t bytes);
 } ConformanceCodec;
 
 /* A GROWING TEXT, for the two dumps. The harness compares bytes, so nothing
@@ -81,6 +82,10 @@ SCHEMA_CONFORMANCE_UNUSED static void conformance_text_add( ConformanceText * ou
 }
 
 /* the per-unit entry points, each defined in that unit's own translation unit */
+const ConformanceCodec * conformance_codecs_streamdemo(int * count);
+const ConformanceCodec * conformance_codecs_tblp2(int * count);
+const ConformanceCodec * conformance_codecs_tblg1(int * count);
+const ConformanceCodec * conformance_codecs_blobdemo( int * count );
 const ConformanceCodec * conformance_codecs_messagedemo( int * count );
 const ConformanceCodec * conformance_codecs_tblm1( int * count );
 const ConformanceCodec * conformance_codecs_tblm2( int * count );
@@ -94,6 +99,7 @@ const ConformanceCodec * conformance_codecs_backenddemo( int * count );
 const ConformanceCodec * conformance_codecs_vocabdemo( int * count );
 const ConformanceCodec * conformance_codecs_vocab9demo( int * count );
 const ConformanceCodec * conformance_codecs_tabledemo( int * count );
+const ConformanceCodec * conformance_codecs_graphdemo( int * count );
 const ConformanceCodec * conformance_codecs_tblv1( int * count );
 const ConformanceCodec * conformance_codecs_tblv2( int * count );
 const ConformanceCodec * conformance_codecs_tblp1( int * count );

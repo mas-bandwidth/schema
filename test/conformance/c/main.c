@@ -168,7 +168,7 @@ static const UnitFn units[] = {
     conformance_codecs_tblp3,
     conformance_codecs_widedemo,
     conformance_codecs_scalars,
-    conformance_codecs_tblscalars2
+    conformance_codecs_graphdemo, conformance_codecs_blobdemo, conformance_codecs_tblg1, conformance_codecs_tblp2, conformance_codecs_streamdemo, conformance_codecs_tblscalars2
 };
 
 static const ConformanceCodec * find_codec( const char * unit, const char * root )
@@ -288,7 +288,7 @@ static int surface_json_read( const char * out )
         if ( strcmp( f->field[0], "instance" ) != 0 || no_text( f ) ) { continue; }
         codec = find_codec( f->field[2], f->field[3] );
         /* the C port carries no text form for a pointered unit (16.7), and says so per case */
-        if ( codec == NULL ) { if ( !spill_absent( out, f->field[1] ) ) { return 1; } continue; }
+        if ( codec == NULL || codec->from_json == NULL ) { if ( !spill_absent( out, f->field[1] ) ) { return 1; } continue; }
         snprintf( path, sizeof( path ), "testdata/conformance/tables/json/%s.json", f->field[1] );
         text = slurp( path, &bytes );
         if ( text == NULL ) { fprintf( stderr, "driver: cannot read %s\n", path ); return 1; }
@@ -319,7 +319,7 @@ static int surface_json_write( const char * out )
         if ( strcmp( f->field[0], "instance" ) != 0 || no_text( f ) ) { continue; }
         codec = find_codec( f->field[2], f->field[3] );
         snprintf( name, sizeof( name ), "%s.json", f->field[1] );
-        if ( codec == NULL ) { if ( !spill_absent( out, name ) ) { return 1; } continue; }
+        if ( codec == NULL || codec->to_json == NULL ) { if ( !spill_absent( out, name ) ) { return 1; } continue; }
         wire = slurp( f->field[4], &bytes );
         if ( wire == NULL ) { fprintf( stderr, "driver: cannot read %s\n", f->field[4] ); return 1; }
         value = codec->storage();
@@ -357,7 +357,7 @@ static int surface_json_hostile( const char * out )
         int n, ok;
         if ( strcmp( f->field[0], "json-hostile" ) != 0 ) { continue; }
         codec = find_codec( f->field[2], f->field[3] );
-        if ( codec == NULL ) { if ( !spill_absent( out, f->field[1] ) ) { return 1; } continue; }
+        if ( codec == NULL || codec->from_json == NULL ) { if ( !spill_absent( out, f->field[1] ) ) { return 1; } continue; }
         /* the tree is what `schema pack` reads, so the text is <tree>/<root>.json (§17) */
         snprintf( path, sizeof( path ), "%s/%s.json", f->field[4], f->field[3] );
         text = slurp( path, &bytes );

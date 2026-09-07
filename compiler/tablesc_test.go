@@ -35,7 +35,7 @@ func TestCTableRuntimeNamesAreClaimed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Both carriers contribute runtime names until the variable wire is ported.
+	// Include a fixed unit to check the allocation-free runtime as well.
 	fixed, err := New().Generate(unitFromSource(t, runtimeSrc), "c", Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -43,7 +43,7 @@ func TestCTableRuntimeNamesAreClaimed(t *testing.T) {
 	for name, data := range fixed {
 		files["fixed-"+name] = data
 	}
-	ident := regexp.MustCompile(`\b(?:Table|kTable|table_|BuildVersion)[A-Za-z0-9_]*\b`)
+	ident := regexp.MustCompile(`\b(?:Table|kTable|table_|BuildVersion|schema_allocate|schema_release)[A-Za-z0-9_]*\b`)
 	// the unit's own type names start with Table for a schema that declares one;
 	// the corpus here declares none, and the file base does, so the two file
 	// spellings the include lines carry are excluded by name rather than by a
@@ -159,6 +159,7 @@ func TestCExternalsCarryThePackage(t *testing.T) {
 // must not become a collision the day a table gains a pointer (§11) — so the
 // scan needs a corpus where every name is actually emitted.
 const cRuntimeSrc = runtimeSrc + `
+table ScalarLeaf { value uint32 }
 table Node
 {
     value int32
@@ -166,7 +167,8 @@ table Node
 }
 `
 
-// TestCForceInlineStopsAtTheVariableClass is the C twin of the reference's
+// TestCForceInlineStopsAtTheVariableClass also leaves composite bodies plain
+// to keep deep by-value closures from expanding during compilation. It is the C twin of the reference's
 // recursion guard (schema#343). The force-inline qualifier carries the fixed
 // class's bodies and stops there, because that is the class whose save/load
 // call graph cannot hold a cycle: a fixed table nests by value, and a by-value
@@ -187,8 +189,8 @@ func TestCForceInlineStopsAtTheVariableClass(t *testing.T) {
 		t.Fatal("no ProbeTable.h")
 	}
 	for _, want := range []string{
-		"static SCHEMA_UNUSED SCHEMA_PROBE_TABLE_INLINE int config_save_body( TableWriter * w, const Config * value )",
-		"static SCHEMA_UNUSED SCHEMA_PROBE_TABLE_INLINE int config_load_body( TableReader * r, Config * value )",
+		"static SCHEMA_UNUSED SCHEMA_PROBE_TABLE_INLINE int scalar_leaf_save_body( TableWriter * w, const ScalarLeaf * value )",
+		"static SCHEMA_UNUSED SCHEMA_PROBE_TABLE_INLINE int scalar_leaf_load_body( TableReader * r, ScalarLeaf * value )",
 		"static SCHEMA_UNUSED SCHEMA_PROBE_TABLE_INLINE void table_writer_put32( TableWriter * w, uint32_t v )",
 		"static SCHEMA_UNUSED SCHEMA_PROBE_TABLE_INLINE uint32_t table_reader_get32( TableReader * r )",
 	} {

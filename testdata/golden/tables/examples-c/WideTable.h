@@ -3,9 +3,9 @@
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
    package tabledemo — protocol id 0xba7b344f28584d33 (packets only: tables version by field id, not by protocol id)
-   The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize
-   dependency — includable from any TU. Compile the .c beside this header
-   to use the reflection descriptors or the text form. */
+   The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md). Compile the .c
+   beside this header to use descriptors or JSON. 128-bit storage uses
+   the lane types from serialize.h. */
 
 #ifndef SCHEMA_TABLEDEMO_WIDETABLE_H
 #define SCHEMA_TABLEDEMO_WIDETABLE_H
@@ -252,6 +252,7 @@ typedef struct TableWriter
     int64_t capacity, offset;
     int overflow, id_count, check_default;
     uint64_t ids[156];
+
 } TableWriter;
 
 static SCHEMA_UNUSED TableWriter table_writer_make( uint8_t * buffer, int64_t capacity )
@@ -310,6 +311,7 @@ typedef struct TableReader
     int64_t size, offset;
     TableReport * report;
     const uint8_t * ids;
+
     uint64_t id_count;
     int nested;
 } TableReader;

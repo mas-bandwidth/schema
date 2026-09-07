@@ -196,10 +196,11 @@ typedef struct TableArena
 {
     TableAtomicPtr segments[ kTableMaxSegments ];
     TableAtomicU32 cursor; /* (segment << kTableSegmentBits) | bytes handed out */
+    TableAllocator allocator;
     int locked;            /* MONOTONIC: Lock is one-way, there is no unlock */
 } TableArena;
 
-static SCHEMA_UNUSED void table_arena_init( TableArena * arena )
+static SCHEMA_UNUSED void table_arena_init_with_allocator( TableArena * arena, TableAllocator allocator )
 {
     uint32_t i;
     for ( i = 0; i < kTableMaxSegments; i++ )
@@ -207,8 +208,11 @@ static SCHEMA_UNUSED void table_arena_init( TableArena * arena )
         table_atomic_store_ptr( &arena->segments[i], (uint8_t *) NULL );
     }
     table_atomic_store32( &arena->cursor, 0 );
-    arena->locked = 0;
+    arena->locked = 0; arena->allocator=allocator;
 }
+
+static SCHEMA_UNUSED void table_arena_init(TableArena * arena)
+{ table_arena_init_with_allocator(arena,table_default_allocator()); }
 
 static SCHEMA_UNUSED void table_arena_shutdown( TableArena * arena )
 {
@@ -219,7 +223,7 @@ static SCHEMA_UNUSED void table_arena_shutdown( TableArena * arena )
         if ( segment != NULL )
         {
             uint8_t * expected = segment;
-            if ( table_arena_cas_ptr( &arena->segments[i], &expected, (uint8_t *) NULL ) ) { free( segment ); }
+            if ( table_arena_cas_ptr( &arena->segments[i], &expected, (uint8_t *) NULL ) ) { table_release(arena->allocator,segment); }
         }
     }
     table_atomic_store32( &arena->cursor, 0 );
@@ -254,12 +258,12 @@ static SCHEMA_UNUSED uint32_t table_arena_grab_slab( TableArena * arena )
                    region. It costs nothing measurable: a fresh segment is
                    untouched pages either way, and calloc has the kernel hand
                    them over zeroed. */
-                uint8_t * memory = (uint8_t *) calloc( 1, kTableSegmentSize );
+                uint8_t * memory = (uint8_t *) table_allocate(arena->allocator,kTableSegmentSize);
                 uint8_t * expected = NULL;
                 if ( memory == NULL ) { return kTableAllocFailed; }
                 if ( !table_arena_cas_ptr( &arena->segments[segment], &expected, memory ) )
                 {
-                    free( memory ); /* another worker published this segment first */
+                    table_release(arena->allocator,memory); /* another worker published this segment first */
                 }
             }
             if ( table_arena_cas32( &arena->cursor, &cursor, cursor + kTableSlabBytes ) )
@@ -305,24 +309,44 @@ static SCHEMA_UNUSED TableWorker table_worker_make( TableArena * arena )
    arena offset, or kTableAllocFailed. It is the untyped half of every
    generated <name>_emplace: the type's own size and its reset stay in the
    generated code, where they can be spelled. */
-static SCHEMA_UNUSED uint32_t table_worker_bump( TableWorker * worker, uint32_t bytes )
+static SCHEMA_UNUSED uint32_t table_arena_grab_span( TableArena * arena, int64_t bytes )
+{
+    uint32_t spanned;
+    if(bytes<=0 || bytes>((int64_t)kTableMaxSegments-2)*kTableSegmentSize) { return kTableAllocFailed; }
+    spanned=(uint32_t)((bytes+kTableSegmentSize-1)>>kTableSegmentBits);
+    for(;;)
+    {
+        uint32_t cursor=table_atomic_load32(&arena->cursor);
+        uint32_t start=(cursor>>kTableSegmentBits)+1;
+        uint32_t next;
+        uint8_t * memory;
+        if(start+spanned>=kTableMaxSegments) { return kTableAllocFailed; }
+        next=(start+spanned)<<kTableSegmentBits;
+        if(!table_arena_cas32(&arena->cursor,&cursor,next)) { continue; }
+        memory=(uint8_t *)table_allocate(arena->allocator,bytes);
+        if(memory==NULL) { return kTableAllocFailed; }
+        table_atomic_store_ptr(&arena->segments[start],memory);
+        return start<<kTableSegmentBits;
+    }
+}
+static SCHEMA_UNUSED uint32_t table_worker_alloc( TableWorker * worker, int64_t bytes )
 {
     uint32_t at;
-    if ( worker->arena == NULL || worker->arena->locked ) { return kTableAllocFailed; }
-    bytes = table_align_up( bytes );
-    if ( bytes > kTableSlabBytes ) { return kTableAllocFailed; } /* a node larger than a slab: refused, never split */
-    if ( worker->end == 0 || worker->next + bytes > worker->end )
+    if(worker->arena==NULL || worker->arena->locked || bytes<=0 || bytes>INT64_MAX-kTableAlign) { return kTableAllocFailed; }
+    bytes=table_align_up64(bytes);
+    if(bytes>kTableSlabBytes) { return table_arena_grab_span(worker->arena,bytes); }
+    if(worker->end==0 || (uint64_t)worker->next+(uint64_t)bytes>worker->end || (worker->next==0 && bytes+kTableAlign>kTableSlabBytes))
     {
-        uint32_t offset = table_arena_grab_slab( worker->arena );
-        if ( offset == kTableAllocFailed ) { return kTableAllocFailed; }
-        worker->next = offset;
-        worker->end = offset + kTableSlabBytes;
-        if ( worker->next == 0 ) { worker->next = kTableAlign; } /* offset 0 is null: the arena's head stays reserved */
+        uint32_t offset=table_arena_grab_slab(worker->arena);
+        if(offset==kTableAllocFailed) { return kTableAllocFailed; }
+        worker->next=offset; worker->end=offset+kTableSlabBytes;
+        if(worker->next==0) { worker->next=kTableAlign; }
+        if((uint64_t)worker->next+(uint64_t)bytes>worker->end) { return table_arena_grab_span(worker->arena,bytes); }
     }
-    at = worker->next;
-    worker->next += bytes;
-    return at;
+    at=worker->next; worker->next+=(uint32_t)bytes; return at;
 }
+static SCHEMA_UNUSED uint32_t table_worker_bump( TableWorker * worker, uint32_t bytes )
+{ return table_worker_alloc(worker,bytes); }
 
 /* ---- the resolution context: which encoding a walk is reading ----
 

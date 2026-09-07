@@ -70,6 +70,9 @@ func byteLiterals(b []byte) string {
 }
 
 func (g *tableGen) wireDefaultEquals(f *ir.Field, expr string) string {
+	if f.Type.Pointer {
+		return expr + ".value == 0"
+	}
 	if un, ok := f.Type.Ref.(*ir.Union); ok {
 		return expr + ".type == " + enumNoneConst(un.Name+"Type")
 	}

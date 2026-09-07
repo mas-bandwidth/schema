@@ -132,6 +132,9 @@ func refuseUnionArrays(u *ir.Unit, target string) error {
 // a named follow-on — refused loudly here rather than emitted as a pointer
 // naming a table the unit never declares.
 func refuseBlobs(u *ir.Unit, target string) error {
+	if slices.Contains(blobTargets, target) {
+		return nil
+	}
 	names := ir.BlobFields(u)
 	if len(names) == 0 {
 		return nil

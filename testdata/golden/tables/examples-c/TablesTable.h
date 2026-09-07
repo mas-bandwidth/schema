@@ -3,9 +3,9 @@
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
    package tabledemo — protocol id 0xba7b344f28584d33 (packets only: tables version by field id, not by protocol id)
-   The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize
-   dependency — includable from any TU. Compile the .c beside this header
-   to use the reflection descriptors or the text form. */
+   The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md). Compile the .c
+   beside this header to use descriptors or JSON. 128-bit storage uses
+   the lane types from serialize.h. */
 
 #ifndef SCHEMA_TABLEDEMO_TABLESTABLE_H
 #define SCHEMA_TABLEDEMO_TABLESTABLE_H
@@ -252,6 +252,7 @@ typedef struct TableWriter
     int64_t capacity, offset;
     int overflow, id_count, check_default;
     uint64_t ids[156];
+
 } TableWriter;
 
 static SCHEMA_UNUSED TableWriter table_writer_make( uint8_t * buffer, int64_t capacity )
@@ -310,6 +311,7 @@ typedef struct TableReader
     int64_t size, offset;
     TableReport * report;
     const uint8_t * ids;
+
     uint64_t id_count;
     int nested;
 } TableReader;
@@ -1076,21 +1078,6 @@ static SCHEMA_UNUSED int weapon_config_load_body( TableReader * r, WeaponConfig 
             {
                 if ( kind != 10 )
                 {
-                    if ( table_kind_widens( kind, 10 ) )
-                    {
-                        switch ( kind )
-                        {
-                            case 10:
-                            {
-                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                                value->damage = table_bits_to_float( table_reader_get32( &(*r) ) );
-                                break;
-                            }
-                            default: r->report->malformed = 1; return 0;
-                        }
-                        r->report->widened++;
-                        break;
-                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
@@ -1111,21 +1098,6 @@ static SCHEMA_UNUSED int weapon_config_load_body( TableReader * r, WeaponConfig 
             {
                 if ( kind != 10 )
                 {
-                    if ( table_kind_widens( kind, 10 ) )
-                    {
-                        switch ( kind )
-                        {
-                            case 10:
-                            {
-                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                                value->speed = table_bits_to_float( table_reader_get32( &(*r) ) );
-                                break;
-                            }
-                            default: r->report->malformed = 1; return 0;
-                        }
-                        r->report->widened++;
-                        break;
-                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
@@ -1227,25 +1199,6 @@ static SCHEMA_UNUSED int weapon_config_load_body( TableReader * r, WeaponConfig 
             {
                 if ( kind != 6 )
                 {
-                    if ( table_kind_widens( kind, 6 ) )
-                    {
-                        switch ( kind )
-                        {
-                            case 6:
-                            {
-                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                                {
-                                    uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
-                                    if ( decoded_v > 63ull ) { decoded_v = 63ull; r->report->clamped++; } /* bits(6) width clamp */
-                                    value->channel = decoded_v;
-                                }
-                                break;
-                            }
-                            default: r->report->malformed = 1; return 0;
-                        }
-                        r->report->widened++;
-                        break;
-                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
@@ -1270,21 +1223,6 @@ static SCHEMA_UNUSED int weapon_config_load_body( TableReader * r, WeaponConfig 
             {
                 if ( kind != 1 )
                 {
-                    if ( table_kind_widens( kind, 1 ) )
-                    {
-                        switch ( kind )
-                        {
-                            case 1:
-                            {
-                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                                value->homing = table_reader_get8( &(*r) ) != 0;
-                                break;
-                            }
-                            default: r->report->malformed = 1; return 0;
-                        }
-                        r->report->widened++;
-                        break;
-                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
@@ -2245,24 +2183,6 @@ static SCHEMA_UNUSED int profile_config_load_body( TableReader * r, ProfileConfi
             {
                 if ( kind != 2 )
                 {
-                    if ( table_kind_widens( kind, 2 ) )
-                    {
-                        switch ( kind )
-                        {
-                            case 2:
-                            {
-                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                                {
-                                    int8_t decoded_v = (int8_t) table_reader_get8( &(*r) );
-                                    value->tilt = decoded_v;
-                                }
-                                break;
-                            }
-                            default: r->report->malformed = 1; return 0;
-                        }
-                        r->report->widened++;
-                        break;
-                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
@@ -2424,24 +2344,6 @@ static SCHEMA_UNUSED int profile_config_load_body( TableReader * r, ProfileConfi
             {
                 if ( kind != 6 )
                 {
-                    if ( table_kind_widens( kind, 6 ) )
-                    {
-                        switch ( kind )
-                        {
-                            case 6:
-                            {
-                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                                {
-                                    uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
-                                    value->badge = decoded_v;
-                                }
-                                break;
-                            }
-                            default: r->report->malformed = 1; return 0;
-                        }
-                        r->report->widened++;
-                        break;
-                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
@@ -2692,21 +2594,6 @@ static SCHEMA_UNUSED int profile_config_load_body( TableReader * r, ProfileConfi
             {
                 if ( kind != 1 )
                 {
-                    if ( table_kind_widens( kind, 1 ) )
-                    {
-                        switch ( kind )
-                        {
-                            case 1:
-                            {
-                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                                value->has_loadout = table_reader_get8( &(*r) ) != 0;
-                                break;
-                            }
-                            default: r->report->malformed = 1; return 0;
-                        }
-                        r->report->widened++;
-                        break;
-                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
@@ -3159,21 +3046,6 @@ static SCHEMA_UNUSED int attachment_load_body( TableReader * r, Attachment * val
             {
                 if ( kind != 10 )
                 {
-                    if ( table_kind_widens( kind, 10 ) )
-                    {
-                        switch ( kind )
-                        {
-                            case 10:
-                            {
-                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                                value->power = table_bits_to_float( table_reader_get32( &(*r) ) );
-                                break;
-                            }
-                            default: r->report->malformed = 1; return 0;
-                        }
-                        r->report->widened++;
-                        break;
-                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
@@ -3259,21 +3131,6 @@ static SCHEMA_UNUSED int buff_load_body( TableReader * r, Buff * value )
             {
                 if ( kind != 10 )
                 {
-                    if ( table_kind_widens( kind, 10 ) )
-                    {
-                        switch ( kind )
-                        {
-                            case 10:
-                            {
-                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                                value->multiplier = table_bits_to_float( table_reader_get32( &(*r) ) );
-                                break;
-                            }
-                            default: r->report->malformed = 1; return 0;
-                        }
-                        r->report->widened++;
-                        break;
-                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;

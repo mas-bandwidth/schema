@@ -285,3 +285,198 @@ int main(void) {
 }
 `, member.String(), member.String()))
 }
+
+func TestCTableWireGraphIdentity(t *testing.T) {
+	u := unitFromSource(t, `package probe
+table Node {
+ value uint32
+ next *Node
+}
+table Root {
+ first *Node
+ slots [..3]*Node
+ peers [2]*Node
+}
+`)
+	model := tabletext.NewModel(u)
+	root := model.New(u.Tables["Root"])
+	first, second := model.New(u.Tables["Node"]), model.New(u.Tables["Node"])
+	first.Fields[0].Cell.U = 7
+	second.Fields[0].Cell.U = 9
+	first.Fields[1].Cell.Node = second
+	root.Fields[0].Cell.Node = first
+	root.Fields[1].Count = 3
+	root.Fields[1].Elems[0].Node = second
+	root.Fields[1].Elems[2].Node = first
+	root.Fields[2].Elems[0].Node = second
+	expected, err := tablewire.Encode(model, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var octets strings.Builder
+	for _, b := range expected {
+		fmt.Fprintf(&octets, "0x%02x,", b)
+	}
+	runCTableWireProbe(t, u, fmt.Sprintf(`#include "ProbeTable.h"
+#include <stdio.h>
+#define CHECK(x) do { if(!(x)) { fprintf(stderr,"line %%d: %%s\n",__LINE__,#x); return 1; } } while(0)
+static const uint8_t expected[]={%s};
+int main(void) {
+ RootBuilder builder,copy; Root * root; Node * first; Node * second;
+ const Root * locked; const Root * loaded; TableSink sink; TableCtx ctx;
+ char text[4096]; int64_t text_bytes;
+ uint8_t saved[sizeof(expected)],*region; int64_t extent,attribution; int reason; TableReport report;
+ CHECK(root_builder_init(&builder)); root=root_builder_root(&builder);
+ ctx.arena=&builder.arena; sink.region=NULL; sink.worker=&builder.main;
+ first=node_emplace(&sink,&root->first); CHECK(first!=NULL);first->value=7;
+ second=node_emplace(&sink,&first->next); CHECK(second!=NULL);second->value=9;
+ root->slots_count=3;root->slots[0]=first->next;root->slots[2]=root->first;root->peers[0]=first->next;
+ CHECK(root_measure(&ctx,root)==(int64_t)sizeof(expected));
+ CHECK(root_save(&ctx,root,saved,sizeof(saved))==(int64_t)sizeof(expected));
+ CHECK(!memcmp(saved,expected,sizeof(saved)));
+ second->next=root->first;
+ CHECK(root_measure(&ctx,root)==-1 && !root_builder_lock(&builder));
+ second->next.value=0;
+ CHECK(root_builder_lock(&builder));locked=(const Root *)(const void *)builder.region;
+ CHECK(node_at(NULL,&locked->slots[2])==node_at(NULL,&locked->first));
+ CHECK(node_at(NULL,&locked->slots[0])==node_at(NULL,&locked->peers[0]));
+ CHECK(root_save(NULL,locked,saved,sizeof(saved))==(int64_t)sizeof(expected));
+ CHECK(!memcmp(saved,expected,sizeof(saved)));
+ extent=root_load_measure_ex(expected,sizeof(expected),&attribution,&reason);
+ CHECK(extent>0 && attribution==3*(int64_t)sizeof(TableNodeDirEntry) && reason==0);
+ region=(uint8_t *)malloc((size_t)extent);CHECK(region!=NULL);memset(&report,0,sizeof(report));
+ loaded=root_load(region,extent,expected,sizeof(expected),&report);
+ CHECK(loaded!=NULL && !report.malformed && !report.unknown && !report.kind_mismatch);
+ CHECK(node_at(NULL,&loaded->slots[2])==node_at(NULL,&loaded->first));
+ CHECK(loaded->slots[1].value==0 && loaded->slots_count==3);
+ CHECK(root_builder_init(&copy));CHECK(root_load_builder(&copy,expected,sizeof(expected),&report));
+ CHECK(root_builder_lock(&copy));
+ CHECK(root_save(NULL,(const Root *)(const void *)copy.region,saved,sizeof(saved))==(int64_t)sizeof(expected));
+ CHECK(!memcmp(saved,expected,sizeof(saved)));
+ root_builder_shutdown(&copy);
+ text_bytes=root_to_json_measure(loaded);CHECK(text_bytes>0 && text_bytes<4096);
+ CHECK(root_to_json(loaded,text,sizeof(text))==text_bytes);
+ CHECK(root_builder_init(&copy));memset(&report,0,sizeof(report));
+ CHECK(root_from_json(&copy,text,text_bytes,&report));CHECK(!report.malformed && !report.kind_mismatch && !report.unknown);
+ CHECK(root_builder_lock(&copy));
+ CHECK(root_save(NULL,(const Root *)(const void *)copy.region,saved,sizeof(saved))==(int64_t)sizeof(expected));
+ CHECK(!memcmp(saved,expected,sizeof(saved)));
+ root_builder_shutdown(&copy);root_builder_shutdown(&builder);free(region);return 0;
+}
+`, octets.String()))
+}
+
+func TestCTableWireBlobIdentity(t *testing.T) {
+	u := unitFromSource(t, `package probe
+table Root {
+ data *bytes
+ alias *bytes
+ text *string
+ empty *bytes
+}`)
+	model := tabletext.NewModel(u)
+	value := model.New(u.Tables["Root"])
+	blob := &tabletext.Blob{Data: []byte{0, 255, 42}}
+	value.Fields[0].Cell.Blob = blob
+	value.Fields[1].Cell.Blob = blob
+	value.Fields[2].Cell.Blob = &tabletext.Blob{Data: []byte("hello")}
+	value.Fields[3].Cell.Blob = &tabletext.Blob{}
+	expected, err := tablewire.Encode(model, value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var octets strings.Builder
+	for _, b := range expected {
+		fmt.Fprintf(&octets, "0x%02x,", b)
+	}
+	runCTableWireProbe(t, u, fmt.Sprintf(`#include "ProbeTable.h"
+#include <stdio.h>
+#define CHECK(x) do { if(!(x)) { fprintf(stderr,"line %%d: %%s\n",__LINE__,#x); return 1; } } while(0)
+static const uint8_t expected[]={%s};
+int main(void) {
+ RootBuilder builder,copy; Root * root; const Root * locked; TableCtx ctx;
+ uint8_t saved[sizeof(expected)],*data,*region; int64_t extent; TableReport report={0};
+ CHECK(root_builder_init(&builder));root=root_builder_root(&builder);ctx.arena=&builder.arena;
+ data=table_bytes_emplace(&builder.main,&root->data,3);CHECK(data!=NULL);data[0]=0;data[1]=255;data[2]=42;
+ root->alias=root->data;
+ CHECK(table_string_emplace(&builder.main,&root->text,"hello",5)!=NULL);
+ CHECK(table_bytes_emplace(&builder.main,&root->empty,0)!=NULL);
+ CHECK(root_measure(&ctx,root)==(int64_t)sizeof(expected));
+ CHECK(root_save(&ctx,root,saved,sizeof(saved))==(int64_t)sizeof(expected));CHECK(!memcmp(saved,expected,sizeof(saved)));
+ CHECK(root_builder_lock(&builder));locked=(const Root *)(const void *)builder.region;
+ CHECK(table_bytes_at(NULL,&locked->data).data==table_bytes_at(NULL,&locked->alias).data);
+ CHECK(table_bytes_at(NULL,&locked->empty).data!=NULL && table_bytes_at(NULL,&locked->empty).length==0);
+ CHECK(!strcmp(table_string_at(NULL,&locked->text).data,"hello"));
+ CHECK(root_to_json_measure(locked)==-1);
+ extent=root_load_measure(expected,sizeof(expected));CHECK(extent>0);region=(uint8_t *)malloc((size_t)extent);CHECK(region!=NULL);
+ locked=root_load(region,extent,expected,sizeof(expected),&report);CHECK(locked!=NULL && !report.malformed && !report.unknown);
+ CHECK(table_bytes_at(NULL,&locked->data).data==table_bytes_at(NULL,&locked->alias).data);
+ CHECK(!strcmp(table_string_at(NULL,&locked->text).data,"hello"));
+ CHECK(root_builder_init(&copy));CHECK(root_load_builder(&copy,expected,sizeof(expected),&report));
+ CHECK(root_builder_lock(&copy));CHECK(root_save(NULL,(const Root *)(const void *)copy.region,saved,sizeof(saved))==(int64_t)sizeof(expected));
+ CHECK(!memcmp(saved,expected,sizeof(saved)));root_builder_shutdown(&copy);root_builder_shutdown(&builder);free(region);
+ CHECK(root_builder_init(&builder));root=root_builder_root(&builder);
+ data=table_bytes_emplace(&builder.main,&root->data,(int64_t)kTableSegmentSize+17);CHECK(data!=NULL);
+ data[0]=31;data[kTableSegmentSize+16]=73;
+ CHECK(root_builder_lock(&builder));locked=(const Root *)(const void *)builder.region;
+ CHECK(table_bytes_at(NULL,&locked->data).length==(int64_t)kTableSegmentSize+17);
+ CHECK(table_bytes_at(NULL,&locked->data).data[0]==31 && table_bytes_at(NULL,&locked->data).data[kTableSegmentSize+16]==73);
+ root_builder_shutdown(&builder);return 0;
+}
+`, octets.String()))
+}
+
+// Fail each allocation in a complete authoring round trip. Every path must
+// return to its caller and release through the same pair that allocated it.
+func TestCTableWireAllocatorFailures(t *testing.T) {
+	u := unitFromSource(t, `package probe
+table Node { value uint32 }
+table Root {
+ first *Node
+ second *Node
+}`)
+	runCTableWireProbe(t, u, `#include "ProbeTable.h"
+#include <stdio.h>
+typedef struct Counts { int calls,fail,live; } Counts;
+static void * allocate(void * context,int64_t bytes) {
+ Counts * c=(Counts *)context; void * p;
+ if(c->calls++==c->fail) return NULL;
+ p=calloc(1,(size_t)bytes);if(p!=NULL)c->live++;return p;
+}
+static void release(void * context,void * p) {
+ Counts * c=(Counts *)context;if(p!=NULL)c->live--;free(p);
+}
+static int exercise(Counts * counts) {
+ const char * source="{\"first\":{\"&node\":1,\"value\":9},\"second\":{\"&node\":1}}";
+ TableAllocator a={allocate,release,counts}; RootBuilder b,copy; TableReport report={0};
+ TableCtx ctx; uint8_t wire[2048]; char text[1024]; int64_t n,m; int ok=0,have_copy=0;
+ if(!root_builder_init_with_allocator(&b,a))goto done;
+ if(!root_from_json(&b,source,(int64_t)strlen(source),&report))goto done;
+ ctx.arena=&b.arena;
+ n=root_measure(&ctx,root_builder_root(&b));if(n<=0 || n>2048)goto done;
+ if(root_save(&ctx,root_builder_root(&b),wire,n)!=n)goto done;
+ if(!root_builder_lock(&b))goto done;
+ if(root_measure_with_allocator(NULL,(const Root *)(const void *)b.region,a)!=n)goto done;
+ if(root_save_with_allocator(NULL,(const Root *)(const void *)b.region,wire,n,a)!=n)goto done;
+ m=root_to_json_measure_with_allocator((const Root *)(const void *)b.region,a);if(m<=0 || m>1024)goto done;
+ if(root_to_json_with_allocator((const Root *)(const void *)b.region,text,m,a)!=m)goto done;
+ have_copy=1;if(!root_builder_init_with_allocator(&copy,a))goto done;
+ if(!root_load_builder(&copy,wire,n,&report) || !root_builder_lock(&copy))goto done;
+ if(node_at(NULL,&((const Root *)(const void *)copy.region)->first)!=node_at(NULL,&((const Root *)(const void *)copy.region)->second))goto done;
+ ok=1;
+ done:
+ if(have_copy)root_builder_shutdown(&copy);
+ root_builder_shutdown(&b);return ok;
+}
+int main(void) {
+ int fail,complete=0;
+ for(fail=0;fail<128;fail++) {
+  Counts counts={0,fail,0}; int ok=exercise(&counts);
+  if(counts.live!=0) { fprintf(stderr,"allocation %d leaked %d allocations\n",fail,counts.live);return 1; }
+  if(counts.calls<=fail) { if(!ok)return 2;complete=1;break; }
+  if(ok) { fprintf(stderr,"allocation %d was ignored\n",fail);return 3; }
+ }
+ return complete?0:4;
+}
+`)
+}

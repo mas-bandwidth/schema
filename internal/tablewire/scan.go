@@ -42,3 +42,35 @@ func nodeRecordTypes(body []byte, ids []uint64) (types []uint64, whole bool) {
 	}
 	return types, true
 }
+
+// NodeRecord describes the framing of one file-form node. A blob's length
+// contributes storage even though its reserved type has no table descriptor.
+type NodeRecord struct {
+	TypeId uint64
+	Length int64
+}
+
+// NodeRecords exposes the same authoritative scan as NodeRecordTypes, with
+// lengths for consumers that measure blob storage without decoding values.
+func NodeRecords(data []byte) (out []NodeRecord, whole bool) {
+	body, ids, ok := trailer(data)
+	if len(data) < 1 || data[0] != ir.TableWireForm || !ok {
+		return nil, false
+	}
+	var ignored tabletext.Report
+	payload, present, framed := nodeTableBytes(body, ids, &ignored)
+	if !present {
+		return nil, true
+	}
+	if !framed {
+		return nil, false
+	}
+	records, scanned := scanNodeRecords(payload, ids)
+	if !scanned {
+		return nil, false
+	}
+	for _, record := range records {
+		out = append(out, NodeRecord{TypeId: record.TypeId, Length: int64(len(record.Body))})
+	}
+	return out, true
+}

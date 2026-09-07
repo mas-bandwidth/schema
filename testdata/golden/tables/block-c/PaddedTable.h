@@ -3,9 +3,9 @@
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
    package blockdemo — protocol id 0x802d031e1b4cdb0c (packets only: tables version by field id, not by protocol id)
-   The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize
-   dependency — includable from any TU. Compile the .c beside this header
-   to use the reflection descriptors or the text form. */
+   The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md). Compile the .c
+   beside this header to use descriptors or JSON. 128-bit storage uses
+   the lane types from serialize.h. */
 
 #ifndef SCHEMA_BLOCKDEMO_PADDEDTABLE_H
 #define SCHEMA_BLOCKDEMO_PADDEDTABLE_H
@@ -253,6 +253,7 @@ typedef struct TableWriter
     int64_t capacity, offset;
     int overflow, id_count, check_default;
     uint64_t ids[89];
+
 } TableWriter;
 
 static SCHEMA_UNUSED TableWriter table_writer_make( uint8_t * buffer, int64_t capacity )
@@ -311,6 +312,7 @@ typedef struct TableReader
     int64_t size, offset;
     TableReport * report;
     const uint8_t * ids;
+
     uint64_t id_count;
     int nested;
 } TableReader;
@@ -976,24 +978,6 @@ static SCHEMA_UNUSED int padded_row_load_body( TableReader * r, PaddedRow * valu
             {
                 if ( kind != 6 )
                 {
-                    if ( table_kind_widens( kind, 6 ) )
-                    {
-                        switch ( kind )
-                        {
-                            case 6:
-                            {
-                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                                {
-                                    uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
-                                    value->tag = decoded_v;
-                                }
-                                break;
-                            }
-                            default: r->report->malformed = 1; return 0;
-                        }
-                        r->report->widened++;
-                        break;
-                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
@@ -1066,21 +1050,6 @@ static SCHEMA_UNUSED int padded_row_load_body( TableReader * r, PaddedRow * valu
             {
                 if ( kind != 1 )
                 {
-                    if ( table_kind_widens( kind, 1 ) )
-                    {
-                        switch ( kind )
-                        {
-                            case 1:
-                            {
-                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                                value->flag = table_reader_get8( &(*r) ) != 0;
-                                break;
-                            }
-                            default: r->report->malformed = 1; return 0;
-                        }
-                        r->report->widened++;
-                        break;
-                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
@@ -1504,24 +1473,6 @@ static SCHEMA_UNUSED int padded_frame_load_body( TableReader * r, PaddedFrame * 
             {
                 if ( kind != 6 )
                 {
-                    if ( table_kind_widens( kind, 6 ) )
-                    {
-                        switch ( kind )
-                        {
-                            case 6:
-                            {
-                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                                {
-                                    uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
-                                    value->marker = decoded_v;
-                                }
-                                break;
-                            }
-                            default: r->report->malformed = 1; return 0;
-                        }
-                        r->report->widened++;
-                        break;
-                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;

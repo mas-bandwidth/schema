@@ -54,7 +54,7 @@ func (cTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 
 func init() {
 	registerWideTextCarrier("c")
-	registerBuiltin(cTarget{}, true, true, true, false)
+	registerBuiltin(cTarget{}, true, true, true, true)
 	registerOptionalArrayCarrier("c")
 	registerPacketValueDefaultCarrier("c")
 }

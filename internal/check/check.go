@@ -3845,7 +3845,8 @@ var tableGeneratedVerbs = []string{
 	// members, so each is a free function under its owner's name, and the
 	// comment above this list is the rule they are added under: a port that
 	// spells the surface otherwise adds its spellings here.
-	"BuilderInit", "BuilderShutdown", "BuilderLock", "BuilderRoot",
+	"BuilderInit", "BuilderInitWithAllocator", "BuilderShutdown", "BuilderLock", "BuilderRoot",
+	"LoadMeasureEx", "MeasureWithAllocator", "SaveWithAllocator", "ToJsonWithAllocator", "ToJsonMeasureWithAllocator",
 	"BlockStorageCreate", "BlockStorageDestroy", "BlockType",
 	// the C# BLITTABLE records take claimed suffixes in the package namespace
 	// rather than a nested namespace of their own: a generated namespace named

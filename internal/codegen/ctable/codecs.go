@@ -210,7 +210,14 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 		// builder is mutable, a self-relative delta once packed. That is what
 		// keeps a pointer-bearing table relocatable in both forms.
 		g.noteRef(f.Type.Name)
-		g.pf("    TableRef %s; /* *%s — null until assigned */\n", f.Name, f.Type.Name)
+		if f.Array == ir.ArrayNone {
+			g.pf("    TableRef %s; /* *%s — null until assigned */\n", f.Name, f.Type.Name)
+		} else {
+			g.pf("    TableRef %s[%d];\n", f.Name, f.ArrayBound)
+			if f.Array == ir.ArrayCounted {
+				g.pf("    int32_t %s_count;\n", f.Name)
+			}
+		}
 		return
 	}
 	typ := g.cFieldType(f.Type)
@@ -283,7 +290,14 @@ func (g *tableGen) emitTableReset(st *ir.Struct) {
 
 func (g *tableGen) emitTableResetField(f *ir.Field) {
 	if f.Type.Pointer {
-		g.pf("    value->%s.value = 0; /* *%s — null */\n", f.Name, f.Type.Name)
+		if f.Array == ir.ArrayNone {
+			g.pf("    value->%s.value = 0; /* *%s — null */\n", f.Name, f.Type.Name)
+		} else {
+			g.pf("    memset(value->%s,0,sizeof(value->%s));\n", f.Name, f.Name)
+			if f.Array == ir.ArrayCounted {
+				g.pf("    value->%s_count=0;\n", f.Name)
+			}
+		}
 		return
 	}
 	typ := g.cFieldType(f.Type)
@@ -1458,11 +1472,11 @@ func (g *tableGen) emitFieldDescriptorAt(st *ir.Struct, f *ir.Field, guard, memb
 	if g.fileWire() {
 		kind = ir.TableWireScalarKind(f)
 	}
-	if f.Type.Kind == ir.TBytes {
+	if f.Type.Kind == ir.TBytes && !f.Type.Blob() {
 		kind = tkU8
 	}
-	isArray := f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes
-	if f.Type.Pointer {
+	isArray := f.Array != ir.ArrayNone || (f.Type.Kind == ir.TBytes && !f.Type.Blob())
+	if f.Type.Pointer && !g.fileWire() {
 		kind = tkTable
 	}
 	counted := f.Array == ir.ArrayCounted || f.Type.Kind == ir.TBytes || (f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString)
@@ -1497,7 +1511,7 @@ func (g *tableGen) emitFieldDescriptorAt(st *ir.Struct, f *ir.Field, guard, memb
 		countOffset = fmt.Sprintf("(uint32_t) offsetof( %s, %s )", st.Name, companion)
 	}
 
-	if f.Type.Pointer {
+	if f.Type.Pointer && f.Array == ir.ArrayNone {
 		// a pointer's storage IS the reference slot: offset names it,
 		// elem_size is the slot's width, and there is no companion
 		elemSize = "(uint32_t) sizeof( TableRef )"

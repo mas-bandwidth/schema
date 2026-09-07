@@ -84,9 +84,10 @@ type wireRoot struct {
 	retain bool
 	// the C ABI storage each node type commands (docs/SPEC-TABLES.md §6.5,
 	// §20.3), by wire type id, eight-aligned as a reader's LoadMeasure rounds it
-	storage     map[uint64]int64
-	rootStorage int64
-	maxStorage  int64
+	storage               map[uint64]int64
+	rootStorage           int64
+	maxStorage            int64
+	bytesBlob, stringBlob bool
 }
 
 // nodeDirEntryBytes is one attribution entry (§6.3): a u64 offset and a u64
@@ -95,7 +96,7 @@ const nodeDirEntryBytes = int64(16)
 
 // nodeRecordHeaderBytes is the least a record costs on the wire (§3.1): its
 // type id and its length. It bounds how many records a wire can carry.
-const nodeRecordHeaderBytes = int64(12)
+const nodeRecordHeaderBytes = int64(2)
 
 func alignUp8(n int64) int64 { return (n + 7) &^ 7 }
 
@@ -141,6 +142,7 @@ func newWireRoot(u *units, unitKey, rootName string, message, retain bool) (*wir
 		}
 	}
 	r.rootStorage = alignUp8(ir.RecordLayout(unit, def).Size)
+	r.bytesBlob, r.stringBlob = ir.PointerReachableBlobs(def)
 	// THE STORAGE A RECORD COMMANDS is its type's, and only for a type THIS
 	// ROOT can place: a table no pointer below the root targets is a node the
 	// reader cannot name, so it commands none (docs/SPEC-TABLES.md §3.1,
@@ -274,16 +276,19 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 			r.sizeBatch(&ans, data)
 			return ans, nil
 		}
-		types, whole := tablewire.NodeRecordTypes(data)
+		records, whole := tablewire.NodeRecords(data)
 		if whole {
 			ans.exact = true
-			ans.bytes = r.rootStorage + (int64(len(types))+1)*nodeDirEntryBytes
-			for _, t := range types {
-				ans.bytes += r.storage[t] // a type id this build cannot name commands none
+			ans.bytes = r.rootStorage + (int64(len(records))+1)*nodeDirEntryBytes
+			for _, rec := range records {
+				ans.bytes += r.recordStorage(rec.TypeId, rec.Length) // a type id this build cannot name commands none
 			}
 		} else {
 			records := int64(len(data))/nodeRecordHeaderBytes + 1
 			ans.bytes = r.rootStorage + records*(r.maxStorage+nodeDirEntryBytes)
+			if r.bytesBlob || r.stringBlob {
+				ans.bytes += int64(len(data)) + records*16
+			}
 		}
 	}
 	return ans, nil
@@ -880,4 +885,14 @@ func (r *wireRoot) sizeBatch(ans *oracleAnswer, data []byte) {
 			ans.bytes += r.storage[rec.TypeId] // a type id this build cannot name commands none
 		}
 	}
+}
+
+func (r *wireRoot) recordStorage(id uint64, length int64) int64 {
+	if id == ir.BytesWireTypeId && r.bytesBlob {
+		return alignUp8(8 + length)
+	}
+	if id == ir.StringWireTypeId && r.stringBlob {
+		return alignUp8(9 + length)
+	}
+	return r.storage[id]
 }

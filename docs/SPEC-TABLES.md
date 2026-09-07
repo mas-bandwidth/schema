@@ -166,15 +166,21 @@ language schema generates for carries the table wire, and what a fixed-class
 port refuses is a pointer in the closure, by name, with this document cited
 (§11) — never the `table` declaration itself.
 
-**WIRE FORM STATUS.** §3's id-table form is carried by the C++ reference,
-the compiler engine (`internal/tablewire`), and C's existing fixed surface in
-units without variable storage. The C file codec uses full identities,
-canonical LEB128, first-use references, arm-kind framing and verdict-bearing
-reports; `tables-c-wire-fuzz` checks it against the independent engine. C units
-with variable storage still use their earlier codec. Flat nodes, message form,
-retention and the additional kinds refused by the C compiler remain separate
-port work. C#, Dart, Go, Rust, Java, JavaScript and Elixir still write the earlier
-form in this tree. ROADMAP.md distinguishes these boundaries.
+**WIRE FORM STATUS.** Section 3's id-table form is carried by the C++
+reference, the compiler engine (`internal/tablewire`), and C. The C codec uses
+full identities, canonical LEB128, first-use references, arm-kind framing,
+flat node records and verdict-bearing reports. Graph JSON, pointer arrays,
+byte/string blobs, wide scalars, fixed-point values, defaults and aliases ride
+on that form. `tables-c-wire-fuzz` compares C with the independent engine.
+Dynamic maps/lists, message form, retention, runtime cook writing and UnitView
+remain C port work. C#, Dart, Go, Rust, Java, JavaScript and Elixir still write
+the earlier form in this tree. [ROADMAP.md](../ROADMAP.md) records coverage by
+construct and form.
+
+The C report has added `widened`, `refused` and `reason` members after
+`malformed`. Recompile callers with their generated headers and initialize a
+fresh report with `{0}` or designated members; positional initializers must
+account for the complete current structure.
 
 **ELIXIR IS THE READING TIER, and the tier is a property of the LANGUAGE rather
 than of the port.** A BEAM term has no layout a producer could write, so this
@@ -10281,7 +10287,7 @@ in build version (§20.5).
   Counts  Row  BlockProjection
   ```
 
-  **THE C BACKEND CLAIMS SEVEN MORE**, and the checker claims them on the same
+  **THE C BACKEND CLAIMS THIRTEEN MORE**, and the checker claims them on the same
   terms. C++ and C# put these on a class — a builder's `Lock`, a storage's
   `Create`, a block type's `Type` — and a member function claims nothing; C has
   no members, so each is a free function under its owner's name (§6.1's C
@@ -10289,6 +10295,9 @@ in build version (§20.5).
 
   ```
   BuilderInit  BuilderShutdown  BuilderLock  BuilderRoot
+  BuilderInitWithAllocator
+  LoadMeasureEx  MeasureWithAllocator  SaveWithAllocator
+  ToJsonWithAllocator  ToJsonMeasureWithAllocator
   BlockStorageCreate  BlockStorageDestroy  BlockType
   ```
 
