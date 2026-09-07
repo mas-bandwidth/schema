@@ -1,0 +1,22 @@
+package ebarmfolded
+
+// `[N]T` UNDER A CONSTANT THAT FOLDS THROUGH ANOTHER CONSTANT, IN A UNION ARM
+// (docs/SPEC-TABLES.md §2.4, §11): the deepest spelling in the widest scope.
+// Constant arithmetic runs to any depth (SPEC.md §4.2), so the walk that finds
+// the enum under one constant finds it under two and an operator.
+
+enum ShipType { Fighter, Bomber, Scout }
+
+const Base      = ShipType.Count
+const SlotCount = Base * 3 - Base * 2
+
+union Payload
+{
+    ships [SlotCount]int32
+    plain int32
+}
+
+table Fleet
+{
+    payload Payload
+}

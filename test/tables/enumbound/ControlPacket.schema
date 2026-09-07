@@ -1,0 +1,23 @@
+package ebcontrolpacket
+
+// THE POSITIVE CONTROL, THE PACKET WIRE (docs/SPEC-TABLES.md §2.4): a unit no
+// table reaches spells every one of the five bounds and compiles. The packet
+// wire is positional by construction and the connect gate covers a variant
+// insert, because the protocol id moves with the extent, so the refusal must
+// not reach here. A control that goes red says the refusal took a spelling
+// from the packet wire on its way to the table wire.
+
+enum ShipType { Fighter, Bomber, Scout }
+
+const SlotCount  = ShipType.Max
+const CountSlots = ShipType.Count
+const Folded     = SlotCount * 2 - SlotCount
+
+type Loadout
+{
+    direct   [ShipType.Max]int32
+    counted  [ShipType.Count]int32
+    named    [SlotCount]int32
+    named2   [CountSlots]int32
+    folded   [Folded]int32
+}
