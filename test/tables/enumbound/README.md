@@ -1,4 +1,4 @@
-# `test/tables/enumbound` — the enum-bound refusal's corpus
+# `test/tables/enumbound`: the enum-bound refusal's corpus
 
 One unit a SHAPE, for the rule docs/SPEC-TABLES.md §2.4 and §11 state on the
 bound's PROVENANCE: a positional array whose bound folds from an enum is
