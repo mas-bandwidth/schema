@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/hex"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -24,5 +26,30 @@ func TestFileFuzzMeasureIncludesBlobLengths(t *testing.T) {
 	}
 	if !answer.exact || answer.bytes != 400 || answer.report != (Counts{Unknown: 1}) {
 		t.Fatalf("file framing: %+v", answer)
+	}
+}
+
+func TestFileFuzzCountCapIsFramingRefusal(t *testing.T) {
+	_, _, units := corpus(t)
+	root, err := newWireRoot(units, "listdemo", "Save", false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire, err := os.ReadFile(filepath.Join("testdata", "wire", "tables", "fuzz-vectors", "list_count_cap.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	answer, err := root.oracle(wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !answer.measureRefused || answer.bytes != -1 || answer.report.Malformed {
+		t.Fatalf("count cap: %+v", answer)
+	}
+	if verdict := wireVerdict(root, legReply{measure: -1}, answer); verdict != "" {
+		t.Fatal(verdict)
+	}
+	if verdict := wireVerdict(root, legReply{loaded: true, measure: 1024}, answer); verdict == "" {
+		t.Fatal("accepted loaded count above the cap")
 	}
 }

@@ -79,6 +79,19 @@
 // the BYTE BUFFER unit (docs/SPEC-TABLES.md §2.5): a blob at its used size,
 // pointed at — a variable root like any pointered one
 #include "AssetsTable.h"
+#include "CellsTable.h"
+#include "ChunksTable.h"
+#include "CrewsTable.h"
+#include "DepthTable.h"
+#include "DocsTable.h"
+#include "FleetTable.h"
+#include "PairsTable.h"
+#include "RowsTable.h"
+#include "RunsTable.h"
+#include "SlotsTable.h"
+#include "SpansTable.h"
+#include "TextTable.h"
+#include "TrailsTable.h"
 #include "SaveTable.h"
 #include "HoldersTable.h"
 #include "SharedTable.h"
@@ -369,6 +382,21 @@ struct VarCodec
     }
 
 static const VarCodec var_codecs[] = {
+    VARCODEC( "mapdemo", mapdemo, Cells ),
+    VARCODEC( "mapdemo", mapdemo, Chunks ),
+    VARCODEC( "mapdemo", mapdemo, Crews ),
+    VARCODEC( "mapdemo", mapdemo, Depth ),
+    VARCODEC( "mapdemo", mapdemo, Docs ),
+    VARCODEC( "mapdemo", mapdemo, Fleet ),
+    VARCODEC( "mapdemo", mapdemo, Pairs ),
+    VARCODEC( "mapdemo", mapdemo, Slots ),
+    VARCODEC( "mapdemo", mapdemo, Spans ),
+    VARCODEC( "mapdemo", mapdemo, Text ),
+    VARCODEC( "mapdemo", mapdemo, Trails ),
+    VARCODEC( "mapdemo", mapdemo, Runs ),
+    VARCODEC( "mapdemo", mapdemo, Row ),
+    VARCODEC( "mapdemo", mapdemo, WideRow ),
+    VARCODEC( "mapdemo", mapdemo, EdgeRow ),
     VARCODEC( "listdemo", listdemo, Save ),
     VARCODEC( "listdemo", listdemo, Mixed ),
     VARCODEC( "listdemo", listdemo, Album ),

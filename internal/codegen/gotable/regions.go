@@ -81,10 +81,10 @@ func (g *tableGen) emitRegionRuntime(blocks *ir.BlockUnit) {
 	}
 	g.pf("const tableRegionAlign int64 = %d\n", ir.RegionAlignOf(aligns...))
 	g.pf("const tableBytesTypeId uint64=0x%016x\nconst tableStringTypeId uint64=0x%016x\n", ir.TableWireId("bytes"), ir.TableWireId("string"))
-	source := tableRegionSource + tableRegionJsonSource + tableRegionBlobSource
+	source := tableRegionSource + tableRegionJsonSource + tableRegionBlobSource + tableBuilderLoadSource
 	if unitHasContainers(g.unit) {
 		source = containerRegionSource(source)
-		source += tableContainerSource
+		source += tableContainerSource + tableMapSource
 	}
 	g.pf("%s", source)
 }
@@ -93,7 +93,7 @@ func (g *tableGen) emitRegionMember(st *ir.Struct) {
 	if ir.PointerTargets(g.unit)[n] {
 		g.pf("func %sEmplace(worker *TableWorker,slot *TableRef) *%s { p,ref:=worker.Alloc(int64(unsafe.Sizeof(%s{}))); *slot=ref;if p==nil{return nil};value:=(*%s)(p);%sReset(value);return value }\n", n, typ, typ, typ, n)
 	}
-	if !ir.VariableTables(g.unit)[n] {
+	if st.IsMapEntry() || !ir.VariableTables(g.unit)[n] {
 		return
 	}
 	bytes, str := ir.PointerReachableBlobs(st)
@@ -108,8 +108,9 @@ func (g *tableGen) emitRegionMember(st *ir.Struct) {
 	g.pf("func %sLoad(region,wire []byte,report *TableReport) *%s { return (*%s)(tableRegionLoad(region,wire,%sTableType(),%sTableType().NodeType,%d,report)) }\n", n, typ, typ, n, n, blobmask)
 	g.pf("func %sMeasure(value *%s,arena ...*TableArena) int64 { return tableRegionSave(unsafe.Pointer(value),%sTableType(),nil,true,tableOptionalArena(arena)) }\n", n, typ, n)
 	g.pf("func %sSave(value *%s,buffer []byte,arena ...*TableArena) int64 { return tableRegionSave(unsafe.Pointer(value),%sTableType(),buffer,false,tableOptionalArena(arena)) }\n", n, typ, n)
+	g.pf("func %sLoadBuilder(b *%sBuilder,wire []byte,report *TableReport) bool {return tableBuilderLoad(unsafe.Pointer(b.GetRoot()),b.root,&b.Main,wire,%sTableType(),%sTableType().NodeType,%d,report)}\n", n, n, n, n, blobmask)
 	g.pf("type %sBuilder struct { Arena TableArena; Main TableWorker; root TableRef; region []byte }\n", n)
-	g.pf("func (b *%sBuilder) Init(allocator ...TableAllocator) bool { b.Arena.Init(allocator...);b.Main.Arena=&b.Arena;p,ref:=b.Main.Alloc(int64(unsafe.Sizeof(%s{})));b.root=ref;if p==nil{return false};%sReset((*%s)(p));return true }\n", n, typ, n, typ)
+	g.pf("func (b *%sBuilder) Init(allocator ...TableAllocator) bool { b.Arena.Init(allocator...);b.Main=TableWorker{Arena:&b.Arena};p,ref:=b.Main.Alloc(int64(unsafe.Sizeof(%s{})));b.root=ref;if p==nil{return false};%sReset((*%s)(p));return true }\n", n, typ, n, typ)
 	g.pf("func (b *%sBuilder) GetRoot() *%s { if b.Arena.Locked {return nil};return (*%s)(b.Arena.At(b.root)) }\n", n, typ, typ)
 	g.pf("func (b *%sBuilder) AsConst() *%s { if len(b.region)==0{return nil};return (*%s)(unsafe.Pointer(&b.region[0])) }\n", n, typ, typ)
 	g.pf("func (b *%sBuilder) Region() []byte { return b.region }\n", n)
@@ -153,7 +154,7 @@ func (a *TableArena) grab(bytes int64) (int64,int64) {
  if a.segments[first].Load()==nil { a.mutex.Lock();if a.segments[first].Load()==nil { n:=(last-first+1)*tableArenaSegmentBytes;data:=a.Allocator.alloc(n);if data==nil {a.mutex.Unlock();return 0,0};clear(data);for i:=first;i<=last;i++ {a.segments[i].Store(&tableArenaSegment{data:data[(i-first)*tableArenaSegmentBytes:],owned:i==first})} };a.mutex.Unlock() }
  return int64(at),int64(end)
 }
-type TableWorker struct { Arena *TableArena; front,end int64 }
+type TableWorker struct { Arena *TableArena; front,end int64; refused bool }
 func (w *TableWorker) Alloc(n int64) (unsafe.Pointer,TableRef) { if w==nil || w.Arena==nil || w.Arena.Locked || n<=0 {return nil,0};n=tableRegionRound(n);if n>tableArenaSlabBytes {at,_:=w.Arena.grab(n);return w.Arena.At(at),at};if w.front+n>w.end {w.front,w.end=w.Arena.grab(n);if w.front==0{return nil,0}};at:=w.front;w.front+=n;return w.Arena.At(at),at }
 func tableOptionalArena(a []*TableArena) *TableArena { if len(a)>0 {return a[0]};return nil }
 func tableRefAt(slot *TableRef,a *TableArena) unsafe.Pointer { if slot==nil || *slot==0 {return nil};if a!=nil{return a.At(*slot)};return unsafe.Add(unsafe.Pointer(slot),*slot) }
@@ -242,4 +243,20 @@ func (w *TableWorker) AllocBytes(length int64)([]byte,TableRef){return w.allocBl
 func (w *TableWorker) AllocString(length int64)([]byte,TableRef){return w.allocBlob(length,true)}
 func TableBytesEmplace(worker *TableWorker,slot *TableRef,length int64) []byte {data,ref:=worker.AllocBytes(length);*slot=ref;return data}
 func TableStringEmplace(worker *TableWorker,slot *TableRef,text []byte) []byte {data,ref:=worker.AllocString(int64(len(text)));*slot=ref;copy(data,text);return data}
+`
+
+// Builder loading resolves the complete flat directory before decoding any
+// body, preserving forward references and sharing. Temporary metadata uses
+// the builder's allocator and never becomes part of the packed region.
+const tableBuilderLoadSource = `
+func tableBuilderLoad(p unsafe.Pointer,ref TableRef,worker *TableWorker,wire []byte,root *TableTypeInfo,nodeType func(uint64)*TableTypeInfo,blobs int,report *TableReport) bool {
+ if report==nil {var ignored TableReport;report=&ignored};r,verdict:=tableOpen(wire,report);report.Verdict=verdict;if verdict!=TableOpenOk {if verdict==TableOpenDamaged {report.Malformed=true}else{report.Reason="unsupported wire form"};return false};if p==nil||worker==nil||worker.Arena==nil||worker.Arena.Locked {report.Malformed=true;return false};worker.refused=false
+ scan:=tableNodeScanBegin(r);for {_,_,ok:=scan.next();if !ok{break}};count:=int64(scan.records+1);memory:=worker.Arena.Allocator.alloc(count*16);if memory==nil {report.Malformed=true;return false};defer worker.Arena.Allocator.free(memory);clear(memory);directory:=unsafe.Slice((*TableNodeDirEntry)(unsafe.Pointer(&memory[0])),int(count));directory[0]=TableNodeDirEntry{uint64(ref),root.Id};nodes:=TableNodeMap{Entries:directory,Arena:true}
+ scan=tableNodeScanBegin(r);k:=1;unknown:=int32(0)
+ for {id,body,ok:=scan.next();if !ok{break};directory[k]=TableNodeDirEntry{^uint64(0),id};t:=nodeType(id);isblob:=id==tableBytesTypeId&&blobs&1!=0||id==tableStringTypeId&&blobs&2!=0
+ if t==nil&&!isblob {unknown++;k++;continue};if id==tableStringTypeId&&!tableUtf8Valid(body.Buffer) {report.Malformed=true;k++;continue};size:=int64(0);if t!=nil {size=int64(t.Size)}else{if uint64(len(body.Buffer))>math.MaxUint32{return false};size=8+int64(len(body.Buffer));if id==tableStringTypeId{size++}};node,at:=worker.Alloc(size);if node==nil {report.Malformed=true;return false};directory[k].Offset=uint64(at);if t!=nil{t.Reset(node)}else{*(*uint64)(node)=uint64(len(body.Buffer));copy(unsafe.Slice((*byte)(unsafe.Add(node,8)),len(body.Buffer)),body.Buffer)};k++ }
+ nodes.Good=scan.whole();if nodes.Good{report.Unknown+=unknown}else{report.Malformed=true}
+ if nodes.Good {scan=tableNodeScanBegin(r);k=1;for {id,body,ok:=scan.next();if !ok{break};if directory[k].Offset!=^uint64(0) {if t:=nodeType(id);t!=nil {body.Nodes=nodes;t.LoadBody(body,worker.Arena.At(int64(directory[k].Offset)));if worker.refused{return false}}};k++}}
+ r.Nodes=nodes;r.Nested=false;ok:=root.LoadBody(r,p);return ok&&!worker.refused
+}
 `

@@ -125,6 +125,9 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 	sort.Strings(names)
 	for _, name := range names {
 		st := u.Tables[name]
+		if st.IsMapEntry() {
+			continue
+		}
 		if why := cookableClosure(u, st); why != "" {
 			c.skipped[name] = why
 			continue
@@ -168,6 +171,10 @@ func cookWalk(u *ir.Unit, name string, visit func(string, *ir.MemberLayout)) {
 		seen[n] = true
 		visit(n, ir.RecordLayout(u, st))
 		for _, f := range st.Fields {
+			if f.IsMap() {
+				walk(f.MapEntry.Name)
+				continue
+			}
 			if f.Type.Kind != ir.TNamed {
 				continue
 			}
@@ -399,6 +406,9 @@ func (g *cookGen) emitBlittableField(f *ir.Field, w *cookWriter) {
 	name := ir.GoExportName(f.Name)
 	next := w.next
 	switch {
+	case f.IsMap():
+		next()
+		g.sf("\t%s TableMap[%s]\n", name, containerElementType(g.unit, f))
 	case f.IsList():
 		next()
 		g.sf("\t%s TableList[%s]\n", name, containerElementType(g.unit, f))

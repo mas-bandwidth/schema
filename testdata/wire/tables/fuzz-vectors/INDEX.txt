@@ -141,3 +141,15 @@ message_blob_zero_byte blobdemo Catalog testdata/wire/tables/fuzz-vectors/messag
 # Before schema#713, C++ LoadMeasure omitted this extent, then Load reported
 # a valid widening as malformed. The shared report row also checks counters.
 list_scalar_widen listdemo Save testdata/wire/tables/fuzz-vectors/list_scalar_widen.bin
+
+# placements count 2147483648: both storage paths refuse without a malformed event.
+list_count_cap listdemo Save testdata/wire/tables/fuzz-vectors/list_count_cap.bin
+
+# One key changes width; its map, rather than both map and entry, counts the event (#716).
+map_key_widen mapdemo Chunks testdata/wire/tables/fuzz-vectors/map_key_widen.bin
+
+# A scalar's truncated widened payload never lands, so it contributes no Widened event.
+list_map_truncated_widen listdemo Army testdata/wire/tables/fuzz-vectors/list_map_truncated_widen.bin
+
+# A skipped incompatible map repeat preserves the earlier decoded occurrence.
+map_repeat_mismatch mapdemo Crews testdata/wire/tables/fuzz-vectors/map_repeat_mismatch.bin

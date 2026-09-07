@@ -978,3 +978,20 @@ instance list_nested listdemo Sheet testdata/wire/tables/list_nested.bin
 instance list_of_maps listdemo Army testdata/wire/tables/list_of_maps.bin
 instance list_migrates listdemo Unbounded testdata/wire/tables/list_migrates.bin
 report list_scalar_widen listdemo Save testdata/wire/tables/fuzz-vectors/list_scalar_widen.bin
+
+# Map storage and ordering pins shared by the reference and every port.
+unit mapdemo tables/maps
+instance map_cells mapdemo Cells testdata/wire/tables/map_cells.bin
+instance map_chunks mapdemo Chunks testdata/wire/tables/map_chunks.bin
+instance map_crews mapdemo Crews testdata/wire/tables/map_crews.bin
+instance map_depth mapdemo Depth testdata/wire/tables/map_depth.bin
+instance map_docs mapdemo Docs testdata/wire/tables/map_docs.bin
+instance map_empty mapdemo Fleet testdata/wire/tables/map_empty.bin
+instance map_full mapdemo Fleet testdata/wire/tables/map_full.bin
+instance map_pairs mapdemo Pairs testdata/wire/tables/map_pairs.bin
+instance map_slots mapdemo Slots testdata/wire/tables/map_slots.bin
+instance map_spans mapdemo Spans testdata/wire/tables/map_spans.bin
+instance map_text mapdemo Text testdata/wire/tables/map_text.bin
+instance map_trails mapdemo Trails testdata/wire/tables/map_trails.bin
+instance map_runs mapdemo Runs testdata/wire/tables/map_runs.bin
+report map_key_widen mapdemo Chunks testdata/wire/tables/fuzz-vectors/map_key_widen.bin

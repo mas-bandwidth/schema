@@ -9,14 +9,14 @@ import (
 func (g *tableGen) emitTableMeasure(st *ir.Struct) {
 	n := st.Name
 	g.pf("func %sMeasureBody(value *%s, ids *TableIds) int64 {\n w := TableWriter{Measuring:true, Ids:ids}\n if !%sSaveBody(&w,value) { return -1 }; return w.Offset\n}\n\n", n, g.storageName(n), n)
-	if g.regional && ir.VariableTables(g.unit)[st.Name] {
+	if st.IsMapEntry() || g.regional && ir.VariableTables(g.unit)[st.Name] {
 		return
 	}
 	g.pf("func %sMeasure(value *%s) int64 {\n var ids TableIds\n w := TableWriter{Measuring:true, Ids:&ids}\n w.Put8(1)\n if !%sSaveBody(&w,value) { return -1 }; w.Trailer()\n if w.Overflow || ids.Overflow { return -1 }; return w.Offset\n}\n\n", n, g.storageName(n), n)
 }
 
 func (g *tableGen) emitTableSave(st *ir.Struct) {
-	if g.regional && ir.VariableTables(g.unit)[st.Name] {
+	if st.IsMapEntry() || g.regional && ir.VariableTables(g.unit)[st.Name] {
 		return
 	}
 	g.pf("func %sSave(value *%s, buffer []byte) int64 {\n var ids TableIds\n w := TableWriter{Buffer:buffer, Ids:&ids}\n w.Put8(1)\n if !%sSaveBody(&w,value) { return -1 }; w.Trailer()\n if w.Overflow || ids.Overflow { return -1 }; return w.Offset\n}\n\n", st.Name, g.storageName(st.Name), st.Name)
@@ -90,7 +90,7 @@ func (g *tableGen) emitWireField(f *ir.Field, expr, ind string) {
 }
 
 func (g *tableGen) emitStorageCheck(f *ir.Field, expr, ind string) {
-	if f.IsList() {
+	if f.IsList() || f.IsMap() {
 		g.pf("%sif %s.Count<0 {return false}\n", ind, expr)
 		return
 	}
@@ -108,7 +108,7 @@ func (g *tableGen) emitStorageCheck(f *ir.Field, expr, ind string) {
 }
 
 func (g *tableGen) emitFieldRides(f *ir.Field, expr, ind string) string {
-	if f.IsList() {
+	if f.IsList() || f.IsMap() {
 		return expr + ".Count>0"
 	}
 	if f.Type.Pointer && f.Array == ir.ArrayNone {
@@ -146,6 +146,8 @@ func (g *tableGen) emitFieldRides(f *ir.Field, expr, ind string) string {
 func (g *tableGen) emitWireValue(f *ir.Field, expr, writer, ind string, framed bool) {
 	g.emitStorageCheck(f, expr, ind)
 	switch {
+	case f.IsMap():
+		g.emitMapWrite(f, expr, writer, ind, framed)
 	case f.IsList():
 		g.emitListWrite(f, expr, writer, ind, framed)
 	case f.KeyEnum != "" || f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes && !f.Type.Pointer:

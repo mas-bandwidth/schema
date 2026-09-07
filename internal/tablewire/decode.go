@@ -397,7 +397,9 @@ func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
 				if !r.scalarAt(&fv.Cell, fv.Def, int(kind)) {
 					return false
 				}
-				r.report.Widened++
+				if !inst.Def.IsMapEntry() || fv.Def.Name != ir.MapKeyFieldName {
+					r.report.Widened++
+				}
 				if fv.Def.Type.Optional {
 					fv.Present = true
 				}
@@ -607,10 +609,6 @@ func (r *wireReader) mapField(fv *tabletext.Field) bool {
 	}
 	bodyLen := int(n)
 	end := r.off + bodyLen
-	for i := range fv.Entries {
-		r.rt.forget(fv.Entries[i].Tab)
-	}
-	fv.Entries = nil
 	if bodyLen >= 2 {
 		elemKind := r.u8()
 		count, good := r.leb()
@@ -626,6 +624,13 @@ func (r *wireReader) mapField(fv *tabletext.Field) bool {
 			r.off = end
 			return true
 		}
+		// Commit a replacement only after its array header is readable and
+		// compatible. A skipped repeat preserves the earlier occurrence, as
+		// for every other skipped field (§4 and the C++ map reader).
+		for i := range fv.Entries {
+			r.rt.forget(fv.Entries[i].Tab)
+		}
+		fv.Entries = nil
 		sub := r.subTo(end)
 		var last tabletext.MapKey
 		landed := false

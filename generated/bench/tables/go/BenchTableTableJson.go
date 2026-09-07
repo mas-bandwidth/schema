@@ -174,6 +174,8 @@ func tableJsonShape(f *TableFieldInfo) byte {
 		return 's'
 	case tableJsonIsBytes(f): // base64
 		return 's'
+	case f.Map:
+		return 'o'
 	case tableJsonIsKeyed(f): // an object keyed by variant NAME
 		return 'o'
 	case f.IsArray:
@@ -622,6 +624,9 @@ func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFie
 
 func tableJsonWriteField(out *tableJsonOut, base unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
 	storage := unsafe.Add(base, uintptr(f.Offset))
+	if f.Map {
+		return tableJsonWriteMap(out, storage, f, depth)
+	}
 	if f.List {
 		return tableJsonWriteList(out, storage, f, depth)
 	}
@@ -1539,6 +1544,9 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 
 func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
 	storage := unsafe.Add(base, uintptr(f.Offset))
+	if f.Map {
+		return tableJsonReadMap(in, storage, f, depth)
+	}
 	if f.List {
 		return tableJsonReadList(in, storage, f, depth)
 	}
@@ -2286,11 +2294,12 @@ type tableJsonLabel struct {
 	open   bool
 }
 type tableJsonGraph struct {
-	alloc   func(int64) (unsafe.Pointer, int64)
-	listAdd func(unsafe.Pointer, int64) unsafe.Pointer
-	nodes   map[unsafe.Pointer]*tableJsonGraphNode
-	labels  map[uint64]tableJsonLabel
-	next    uint64
+	alloc    func(int64) (unsafe.Pointer, int64)
+	listAdd  func(unsafe.Pointer, int64) unsafe.Pointer
+	mapPlace func(unsafe.Pointer, *TableFieldInfo, tableMapKey) (unsafe.Pointer, bool)
+	nodes    map[unsafe.Pointer]*tableJsonGraphNode
+	labels   map[uint64]tableJsonLabel
+	next     uint64
 }
 
 func tableJsonPointerAt(slot *int64) unsafe.Pointer {
@@ -2614,6 +2623,323 @@ func tableJsonReadList(in *tableJsonIn, holder unsafe.Pointer, f *TableFieldInfo
 		in.bad = true
 		return false
 	}
+}
+
+type tableMapKey struct {
+	text []byte
+	raw  uint64
+}
+
+func tableMapKeyValid(k tableMapKey, f *TableFieldInfo) bool {
+	return f.Kind != 12 || k.raw == 0 && len(k.text) <= int(f.ArrayBound)
+}
+func tableMapStoredKey(p unsafe.Pointer, f *TableFieldInfo) tableMapKey {
+	key := tableMapKey{}
+	if f.Kind == 12 {
+		n := *(*int32)(unsafe.Add(p, f.CountOffset))
+		if n < 0 || n > f.ArrayBound {
+			return tableMapKey{text: nil, raw: 1}
+		}
+		key.text = unsafe.Slice((*byte)(unsafe.Add(p, f.Offset)), int(n))
+	} else {
+		key.raw = tableJsonGetRaw(unsafe.Add(p, f.Offset), f.ElemSize)
+		if f.Kind >= 2 && f.Kind <= 5 {
+			key.raw = uint64(tableJsonGetSigned(unsafe.Add(p, f.Offset), f.ElemSize))
+		}
+	}
+	return key
+}
+func tableMapStoreKey(p unsafe.Pointer, f *TableFieldInfo, k tableMapKey) {
+	if f.Kind == 12 {
+		clear(unsafe.Slice((*byte)(unsafe.Add(p, f.Offset)), int(f.ArrayBound)+1))
+		copy(unsafe.Slice((*byte)(unsafe.Add(p, f.Offset)), len(k.text)), k.text)
+		*(*int32)(unsafe.Add(p, f.CountOffset)) = int32(len(k.text))
+	} else {
+		tableJsonSetRaw(unsafe.Add(p, f.Offset), f.ElemSize, k.raw)
+	}
+}
+func tableMapKeyOrder(a, b tableMapKey, f *TableFieldInfo) int {
+	if f.Kind == 12 {
+		for i := 0; i < len(a.text) && i < len(b.text); i++ {
+			if a.text[i] < b.text[i] {
+				return -1
+			}
+			if a.text[i] > b.text[i] {
+				return 1
+			}
+		}
+		if len(a.text) < len(b.text) {
+			return -1
+		}
+		if len(a.text) > len(b.text) {
+			return 1
+		}
+		return 0
+	}
+	if f.Kind >= 2 && f.Kind <= 5 {
+		if int64(a.raw) < int64(b.raw) {
+			return -1
+		}
+		if int64(a.raw) > int64(b.raw) {
+			return 1
+		}
+		return 0
+	}
+	if a.raw < b.raw {
+		return -1
+	}
+	if a.raw > b.raw {
+		return 1
+	}
+	return 0
+}
+func tableJsonWriteMap(out *tableJsonOut, p unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
+	if depth > tableJsonMaxDepth {
+		return false
+	}
+	count := *(*int32)(unsafe.Add(p, 8))
+	if count < 0 {
+		return false
+	}
+	out.put('{')
+	if count > 0 {
+		ref := *(*int64)(p)
+		if ref == 0 {
+			return false
+		}
+		base := unsafe.Add(p, ref)
+		entry := f.Table()
+		key, value := &entry.Fields[0], &entry.Fields[1]
+		for i := int32(0); i < count; i++ {
+			if i > 0 {
+				out.put(',')
+			}
+			out.line(depth + 1)
+			at := unsafe.Add(base, int64(i)*int64(f.ElemSize))
+			k := tableMapStoredKey(at, key)
+			if key.Kind == 12 {
+				tableJsonWriteString(out, k.text)
+			} else {
+				out.put('"')
+				if key.Kind >= 2 && key.Kind <= 5 {
+					tableJsonWriteSigned(out, int64(k.raw))
+				} else {
+					tableJsonWriteUnsigned(out, k.raw)
+				}
+				out.put('"')
+			}
+			out.text(": ")
+			if value.Optional && !*(*bool)(unsafe.Add(at, value.PresentOffset)) {
+				out.text("null")
+			} else if !tableJsonWriteField(out, at, value, depth+1) {
+				return false
+			}
+		}
+		out.line(depth)
+	}
+	out.put('}')
+	return true
+}
+func tableJsonReadMap(in *tableJsonIn, p unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
+	if depth > tableJsonMaxDepth || in.peek() != '{' || in.graph == nil || in.graph.mapPlace == nil {
+		in.bad = true
+		return false
+	}
+	clear(unsafe.Slice((*byte)(p), 16))
+	in.pos++
+	entry := f.Table()
+	key, value := &entry.Fields[0], &entry.Fields[1]
+	for {
+		if in.peek() == '}' {
+			in.pos++
+			return true
+		}
+		probe := *in
+		n, ok := probe.scanString(nil)
+		if !ok {
+			in.bad = true
+			return false
+		}
+		good := true
+		var k tableMapKey
+		if key.Kind == 12 {
+			if n > key.ArrayBound {
+				in.report.Clamped++
+				in.pos = probe.pos
+				good = false
+			} else {
+				memory, _ := in.graph.alloc(int64(n) + 1)
+				if memory == nil {
+					in.bad = true
+					return false
+				}
+				k.text = unsafe.Slice((*byte)(memory), int(n))
+				_, ok = in.scanString(k.text)
+			}
+		} else {
+			var text [tableJsonMaxNumber]byte
+			if n > tableJsonMaxNumber {
+				in.pos = probe.pos
+				good = false
+			} else {
+				_, ok = in.scanString(text[:n])
+				k.raw, good = tableJsonMapInteger(text[:n], key)
+			}
+			if !good {
+				in.report.KindMismatch++
+			}
+		}
+		if !ok || in.peek() != ':' {
+			in.bad = true
+			return false
+		}
+		in.pos++
+		if !good {
+			tableJsonDropLabel(in)
+			if !in.skipValue(depth + 1) {
+				return false
+			}
+		} else {
+			slot, duplicate := in.graph.mapPlace(p, f, k)
+			if slot == nil {
+				in.bad = true
+				return false
+			}
+			if duplicate {
+				in.report.Duplicate++
+			}
+			entry.Reset(slot)
+			tableMapStoreKey(slot, key, k)
+			shape := in.valueShape()
+			if value.Optional && shape == 'z' {
+				if !in.literal("null") {
+					return false
+				}
+			} else if shape != tableJsonShape(value) && !(value.Pointer && shape == 'z') {
+				in.report.KindMismatch++
+				tableJsonDropLabel(in)
+				if !in.skipValue(depth + 1) {
+					return false
+				}
+			} else {
+				if !tableJsonReadField(in, slot, value, depth+1) {
+					return false
+				}
+				if value.Optional {
+					*(*bool)(unsafe.Add(slot, value.PresentOffset)) = true
+				}
+			}
+		}
+		c := in.peek()
+		if c == ',' {
+			in.pos++
+			continue
+		}
+		if c == '}' {
+			in.pos++
+			return true
+		}
+		in.bad = true
+		return false
+	}
+}
+func tableJsonMapInteger(text []byte, f *TableFieldInfo) (uint64, bool) {
+	var report TableReport
+	in := tableJsonIn{text: text, report: &report}
+	integral, ok := in.walkNumber()
+	if !ok || in.pos != len(text) {
+		return 0, false
+	}
+	_ = integral
+	v, ok := tableJsonDecimalKey(text, f.Kind >= 2 && f.Kind <= 5, int(f.ElemSize)*8)
+	return v, ok
+}
+
+// Decimal normalization preserves every uint64 bit and accepts integral
+// exponent/fraction spellings without a binary floating-point conversion.
+func tableJsonDecimalKey(text []byte, signed bool, width int) (uint64, bool) {
+	i := 0
+	negative := false
+	if len(text) > 0 && text[0] == '-' {
+		negative = true
+		i++
+	}
+	var digits [tableJsonMaxNumber]byte
+	n, fraction := 0, 0
+	point := false
+	for i < len(text) && text[i] != 'e' && text[i] != 'E' {
+		c := text[i]
+		i++
+		if c == '.' {
+			point = true
+			continue
+		}
+		if n == len(digits) {
+			return 0, false
+		}
+		digits[n] = c - '0'
+		n++
+		if point {
+			fraction++
+		}
+	}
+	exponent := 0
+	if i < len(text) {
+		i++
+		minus := false
+		if i < len(text) && (text[i] == '+' || text[i] == '-') {
+			minus = text[i] == '-'
+			i++
+		}
+		for i < len(text) {
+			if exponent < 100000 {
+				exponent = exponent*10 + int(text[i]-'0')
+			}
+			i++
+		}
+		if minus {
+			exponent = -exponent
+		}
+	}
+	first := 0
+	for first < n && digits[first] == 0 {
+		first++
+	}
+	if first == n {
+		return 0, true
+	}
+	scale := exponent - fraction
+	for scale < 0 && n > first && digits[n-1] == 0 {
+		n--
+		scale++
+	}
+	if scale < 0 || n-first+scale > 20 || negative && !signed {
+		return 0, false
+	}
+	limit := ^uint64(0)
+	if signed {
+		limit = uint64(1) << uint(width-1)
+		if !negative {
+			limit--
+		}
+	} else if width < 64 {
+		limit = uint64(1)<<uint(width) - 1
+	}
+	value := uint64(0)
+	for j := first; j < n+scale; j++ {
+		d := uint64(0)
+		if j < n {
+			d = uint64(digits[j])
+		}
+		if value > (limit-d)/10 {
+			return 0, false
+		}
+		value = value*10 + d
+	}
+	if negative {
+		value = -value
+	}
+	return value, true
 }
 
 // ---- json walk: end ----

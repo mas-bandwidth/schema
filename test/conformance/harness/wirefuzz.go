@@ -274,6 +274,18 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 		}
 		return ans, nil
 	}
+	var capRefusal *tablewire.CountRefusal
+	if errors.As(derr, &capRefusal) && r.variable && !r.message {
+		_, _, refused := tablewire.FileRegionMeasure(r.model.Unit, r.def, data)
+		if !refused {
+			return ans, fmt.Errorf("builder count refusal without a matching framing refusal: %w", derr)
+		}
+		ans.measureRefused = true
+		ans.bytes = -1
+		ans.encFail = true
+		ans.report = Counts{Unknown: rep.Unknown, KindMismatch: rep.KindMismatch, Widened: rep.Widened, Clamped: rep.Clamped, Duplicate: rep.Duplicate, Malformed: rep.Malformed}
+		return ans, nil
+	}
 	if derr != nil {
 		return ans, fmt.Errorf("the oracle refused the root itself: %w", derr)
 	}
@@ -479,6 +491,9 @@ func wireVerdict(root *wireRoot, reply legReply, ans oracleAnswer) string {
 			return ""
 		}
 		return "the leg returned no root — its LoadMeasure sized a region its Load then refused"
+	}
+	if ans.measureRefused {
+		return "the leg loaded a wire whose container framing requires refusal"
 	}
 	if reply.report != ans.report {
 		return fmt.Sprintf("the report differs: the leg says %s, the oracle says %s", reply.report, ans.report)

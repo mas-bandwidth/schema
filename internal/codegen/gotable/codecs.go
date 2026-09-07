@@ -354,6 +354,8 @@ func (g *tableGen) emitTableReset(st *ir.Struct) {
 func (g *tableGen) emitTableResetField(f *ir.Field) {
 	name := member(f)
 	switch {
+	case f.IsMap():
+		g.pf("value.%s=TableMap[%s]{}\n", name, containerElementType(g.unit, f))
 	case f.IsList():
 		g.pf("value.%s=TableList[%s]{}\n", name, containerElementType(g.unit, f))
 	case f.Type.Pointer:
@@ -548,7 +550,7 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	if f.Type.Kind == ir.TBytes && !f.Type.Pointer {
 		kind = tkU8
 	}
-	isArray := f.Array != ir.ArrayNone || (f.Type.Kind == ir.TBytes && !f.Type.Pointer) || f.KeyEnum != ""
+	isArray := f.IsMap() || f.Array != ir.ArrayNone || (f.Type.Kind == ir.TBytes && !f.Type.Pointer) || f.KeyEnum != ""
 	counted := f.Array == ir.ArrayCounted || !f.Type.Pointer && (f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString)
 
 	// the count column, spelled the way the storage spells its own extent: a
@@ -565,7 +567,7 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	}
 
 	elemSize := fmt.Sprintf("uint32(unsafe.Sizeof(%s{}.%s))", g.storageName(st.Name), name)
-	if isArray && !f.IsList() {
+	if isArray && !f.IsList() && !f.IsMap() {
 		elemSize = fmt.Sprintf("uint32(unsafe.Sizeof(%s{}.%s[0]))", g.storageName(st.Name), name)
 	}
 
@@ -600,15 +602,20 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 			presentOffset = fmt.Sprint(pieces[len(pieces)-1].Offset)
 		}
 	}
-	if f.IsList() {
+	if f.IsList() || f.IsMap() {
 		elemSize = fmt.Sprintf("uint32(unsafe.Sizeof(*new(%s)))", containerElementType(g.unit, f))
 		counted = true
 		bound = "2147483647"
 		countOffset = "(" + offset + ")+8"
 	}
+	if f.IsMap() {
+		kind = tkTable
+	}
 	table := "nil"
 	if isStructRef(f.Type) {
 		table = fmt.Sprintf("%sTableType", f.Type.Name)
+	} else if f.IsMap() {
+		table = f.MapEntry.Name + "TableType"
 	}
 
 	hasRange := "false"
@@ -682,6 +689,8 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	if f.IsList() {
 		_, align := ir.ListElementLayout(g.unit, f)
 		g.pf("List:true,ElemAlign:%d,\n", align)
+	} else if f.IsMap() {
+		g.pf("Map:true,ElemAlign:%d,\n", ir.RecordLayout(g.unit, f.MapEntry).Align)
 	}
 	g.pf("\t\tFracBits:%d, Pointer:%v, TargetId:0x%016x,\n", f.Type.FracBits, f.Type.Pointer, pointerTargetId(f))
 	if ir.TableKindWide(kind) {

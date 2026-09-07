@@ -3,6 +3,7 @@ module schemaconformance
 go 1.23
 
 require (
+ mapdemo v0.0.0
 	blockdemo v0.0.0
 	graphdemo v0.0.0
 	tabledemo v0.0.0
@@ -67,3 +68,5 @@ replace blobdemo => ../../../build/tables-generated-go/blobs
 
 require listdemo v0.0.0
 replace listdemo => ../../../build/tables-generated-go/lists
+
+replace mapdemo => ../../../build/tables-generated-go/maps

@@ -49,13 +49,16 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 	fmt.Fprintf(&b, "package %s\n\n", u.Package)
 	b.WriteString("import (\n\t\"math\"\n\t\"strconv\"\n\t\"unsafe\"\n\t\"unicode/utf8\"\n)\n\n")
 	b.WriteString(strings.Replace(tableJsonWalkSource, "// ---- json walk: end ----",
-		tableJsonWideSource+tableJsonWStringSource+tableJsonGraphSource+tableJsonListSource+"// ---- json walk: end ----", 1))
+		tableJsonWideSource+tableJsonWStringSource+tableJsonGraphSource+tableJsonListSource+tableJsonMapSource+tableJsonMapDecimalSource+"// ---- json walk: end ----", 1))
 
 	// the per-member surface, in the order the closure declares it, so the
 	// generated text is deterministic
 	for _, f := range u.Files {
 		for _, st := range fileMembers(f, closure) {
 			n := st.Name
+			if st.IsMapEntry() {
+				continue
+			}
 			if ir.VariableTables(u)[n] {
 				fmt.Fprintf(&b, "func %sFromJson(builder *%sBuilder,text []byte,report *TableReport) bool { if builder.Arena.Locked {return false};return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()),%sTableType(),&builder.Main,text,report) }\n", n, n, n)
 				fmt.Fprintf(&b, "func %sToJsonMeasure(value *%s) int64 {return tableRegionToJson(unsafe.Pointer(value),%sTableType(),nil)}\n", n, storageName(u, n), n)
@@ -232,6 +235,7 @@ func tableJsonShape(f *TableFieldInfo) byte {
 		return 's'
 	case tableJsonIsBytes(f): // base64
 		return 's'
+	case f.Map:return 'o'
 	case tableJsonIsKeyed(f): // an object keyed by variant NAME
 		return 'o'
 	case f.IsArray:
@@ -662,6 +666,7 @@ func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFie
 
 func tableJsonWriteField(out *tableJsonOut, base unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
 	storage := unsafe.Add(base, uintptr(f.Offset))
+ if f.Map {return tableJsonWriteMap(out,storage,f,depth)}
  if f.List {return tableJsonWriteList(out,storage,f,depth)}
  if f.Kind==33 {tableJsonWriteWString(out,unsafe.Slice((*uint16)(storage),tableJsonCount(base,f)));return true}
 	if f.Kind == 12 {
@@ -1528,6 +1533,7 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 
 func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
 	storage := unsafe.Add(base, uintptr(f.Offset))
+ if f.Map {return tableJsonReadMap(in,storage,f,depth)}
  if f.List {return tableJsonReadList(in,storage,f,depth)}
  if f.Kind==33 {units:=unsafe.Slice((*uint16)(storage),f.ArrayBound);clear(units);n,ok:=in.scanText(nil,units);if !ok{return false};tableJsonSetCount(base,f,n);return true}
 	if f.Kind == 12 {

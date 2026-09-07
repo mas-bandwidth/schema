@@ -1603,7 +1603,9 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 				g.pf("                        // WIDENED (§4): a kind that grew since the writer decodes\n")
 				g.pf("                        // exactly at its own width, the value lands, one widened counts\n")
 				g.emitWidenedScalar(f, wireKind, "kind", "value."+f.Name, "                        ", "r", "r.report->malformed = true; return false;")
-				g.pf("                        r.report->widened++;\n")
+				if !st.IsMapEntry() || f.Name != ir.MapKeyFieldName {
+					g.pf("                        r.report->widened++;\n")
+				} // a generated entry key was counted once by the map key scan
 				if f.Type.Optional {
 					g.pf("                        value.%s_present = true;\n", f.Name)
 				}

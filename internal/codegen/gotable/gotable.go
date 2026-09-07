@@ -205,6 +205,8 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 				for _, f := range st.Fields {
 					if f.IsList() {
 						g.emitListSurface(st, f)
+					} else if f.IsMap() {
+						g.emitMapSurface(st, f)
 					}
 				}
 			}
@@ -273,6 +275,9 @@ func (g *tableGen) assemble() ([]byte, error) {
 	}
 	if g.home && g.regional {
 		std = append(std, `"sync"`, `"sync/atomic"`)
+		if unitHasContainers(g.unit) {
+			std = append(std, `"slices"`)
+		}
 	}
 	if g.needsMath {
 		std = append(std, `"math"`)
@@ -457,7 +462,7 @@ const TableDocNone = ""
 
 // TableFieldInfo is one field's descriptor.
 type TableFieldInfo struct {
- List bool // unbounded by-value container
+ List, Map bool // unbounded by-value containers
  ElemAlign uint32
 	Name     string // schema field name, e.g. "health"
 	Json     string // the TEXT form's key: the json = "key" attribute, else Name (§16.3)

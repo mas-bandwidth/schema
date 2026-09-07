@@ -499,6 +499,14 @@
       "targets": [
         "tables-message-form-negative-control"
       ]
+    },
+    {
+      "name": "go-containers",
+      "when": "pull-request",
+      "why": "Go generated container runtime controls: sorting, ascending recovery, duplicate replacement, exact key domains, erased list elements and count-cap refusal.",
+      "targets": [
+        "tables-go-containers-negative-controls"
+      ]
     }
   ],
   "excluded": [

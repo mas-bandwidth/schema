@@ -149,7 +149,7 @@ type TableEntityRow struct {
 	Health   int32
 	Weapon   TableWeapon
 	_        [7]byte // generated padding
-	Damage   uint64
+	Damage   TableDamage
 	Moving   bool
 	Firing   bool
 	_        [6]byte // generated padding
