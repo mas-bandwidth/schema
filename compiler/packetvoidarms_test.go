@@ -2,8 +2,7 @@
 // what the pages say about it, held to each other.
 //
 // The arm carries no payload, so it rides the packet wire as its tag alone and
-// a `type` body takes it. Seven backends carry it; C and C++ refuse the unit
-// by name at generate time, and that refusal is the whole of the restriction.
+// a `type` body takes it. All nine packet backends carry it.
 // The pages once grouped the arm with the TABLE-CLOSURE constructs — a `table`
 // arm, a pointer arm, a scalar arm — which are refused at the FRONT END, by
 // `check`, in every target. The two halves below pin the tool's behavior and
@@ -65,10 +64,9 @@ func TestVoidArmInTypeBodyIsCheckedAndCarried(t *testing.T) {
 
 	c := New()
 	carried := map[string]bool{
-		"cs": true, "dart": true, "elixir": true, "go": true,
+		"c": true, "cpp": true, "cs": true, "dart": true, "elixir": true, "go": true,
 		"java": true, "js": true, "rust": true,
 	}
-	refusing := map[string]bool{"c": true, "cpp": true}
 	for _, target := range c.Targets() {
 		_, err := c.Generate(u, target, Options{})
 		switch {
@@ -76,18 +74,8 @@ func TestVoidArmInTypeBodyIsCheckedAndCarried(t *testing.T) {
 			if err != nil {
 				t.Errorf("%s carries the payload-free arm and refused the unit: %v", target, err)
 			}
-		case refusing[target]:
-			if err == nil {
-				t.Fatalf("%s generated a payload-free arm it has no storage for", target)
-			}
-			// the refusal NAMES the union, the carriers and the follow-on
-			for _, want := range []string{"WeaponFire", "payload-free arm", "named follow-on"} {
-				if !strings.Contains(err.Error(), want) {
-					t.Errorf("%s refusal does not name %q: %v", target, want, err)
-				}
-			}
 		default:
-			t.Errorf("target %q is in neither list — a new backend picked a side and this test was not told", target)
+			t.Errorf("target %q has no packet payload-free arm expectation", target)
 		}
 	}
 }
@@ -108,9 +96,21 @@ func TestScalarArmInTypeBodyIsRefusedByCheck(t *testing.T) {
 	}
 }
 
+func TestPacketVoidArmSupportPreservesCTableRefusal(t *testing.T) {
+	u := unitFromSource(t, strings.Replace(voidArmInTypeBody, "type FireCommand", "table FireCommand", 1))
+	c := New()
+	_, err := c.Generate(u, "c", Options{})
+	if err == nil || !strings.Contains(err.Error(), "payload-free arm in a table closure") || !strings.Contains(err.Error(), "WeaponFire") {
+		t.Fatalf("C must retain its named table-closure refusal, got %v", err)
+	}
+	if _, err := c.Generate(u, "cpp", Options{}); err != nil {
+		t.Fatalf("C++ must retain its existing table payload-free support: %v", err)
+	}
+}
+
 // THE PAGES. Each sentence below is what a reader takes away about where the
 // payload-free arm lives; a page that puts it back among the table-closure
-// constructs, or that drops the per-target refusal, turns this red.
+// constructs, or that retains the former C/C++ refusal, turns this red.
 func TestPagesPlaceTheVoidArmOutsideTheTableClosureClass(t *testing.T) {
 	for _, page := range []string{"../docs/SPEC.md", "../docs/SPEC-TABLES.md", "../docs/USAGE.md"} {
 		body, err := os.ReadFile(page)
@@ -140,7 +140,7 @@ func TestPagesPlaceTheVoidArmOutsideTheTableClosureClass(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(usage), "refuse the unit by name at generate time") {
-		t.Error("docs/USAGE.md no longer tells a reader that C and C++ refuse the payload-free arm at generate time")
+	if strings.Contains(string(usage), "refuse the unit by name at generate time") {
+		t.Error("docs/USAGE.md still says C and C++ refuse the payload-free arm at generate time")
 	}
 }

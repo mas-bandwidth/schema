@@ -58,5 +58,4 @@ func (elixirTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 
 func init() {
 	registerBuiltin(elixirTarget{}, true, false, false, false)
-	registerPacketVoidArmCarrier("elixir")
 }
