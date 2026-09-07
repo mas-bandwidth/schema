@@ -74,17 +74,19 @@ Cost to serialize a representative game packet, relative to generated C++ at
 
 | Language | % |
 |---|---:|
-| C | 100% |
 | C++ | 100% |
-| Rust | 154% |
-| Java | 162% |
-| Go | 210% |
-| C# | 225% |
-| Dart | 227% |
-| JavaScript | 264% |
-| Elixir | 1283% |
+| C | 107% |
+| Java | 169% |
+| Rust | 172% |
+| Go | 230% |
+| C# | 253% |
+| Dart | 256% |
+| JavaScript | 387% |
+| Elixir | 1427% |
 
-Measured by [the benchmark](bench/). One 438-byte packet exercising every construct. 
+Measured by [the benchmark](bench/) on an Apple M3 Ultra, 2026-09-07;
+[PERFORMANCE.md](docs/PERFORMANCE.md) has the toolchains, the earlier Apple M2 table and what
+moved between them. One 438-byte packet exercising every construct.
 
 ## Install and build
 
