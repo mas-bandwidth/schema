@@ -84,12 +84,19 @@
     {
       "name": "base-maps",
       "when": "pull-request",
-      "why": "half the map gate's controls. The family is 17 controls at about 4 s each and does not fit one job, so it runs as two, and the umbrella target that names all 17 leaves the leg rather than re-running the other half. Measured 36 s over 8 controls.",
+      "why": "the map gate's builder and shape controls. The family is 17 controls and ran as two jobs at 80 s and 74 s of control time on run 34115675206, which is inside the rule and too close to it, so it runs as four. Measured 18 s over 4 controls.",
       "targets": [
         "tables-maps-ascending-negative-control",
         "tables-maps-cap-negative-control",
         "tables-maps-clamp-negative-control",
-        "tables-maps-dead-entry-negative-control",
+        "tables-maps-dead-entry-negative-control"
+      ]
+    },
+    {
+      "name": "base-maps-depth",
+      "when": "pull-request",
+      "why": "the map gate's depth, duplicate, entry-node and fit controls. Measured 19 s over 4 controls.",
+      "targets": [
         "tables-maps-depth-negative-control",
         "tables-maps-duplicate-negative-control",
         "tables-maps-entry-node-negative-control",
@@ -99,12 +106,19 @@
     {
       "name": "base-maps-keys",
       "when": "pull-request",
-      "why": "the other half of the map gate: the key controls, the placement and ordering controls, and the reset. Measured 37 s over 9 controls.",
+      "why": "the map gate's four key controls: the domain, the identity, the kind and the length. Measured 19 s over 4 controls.",
       "targets": [
         "tables-maps-key-domain-negative-control",
         "tables-maps-key-identity-negative-control",
         "tables-maps-key-kind-negative-control",
-        "tables-maps-key-length-negative-control",
+        "tables-maps-key-length-negative-control"
+      ]
+    },
+    {
+      "name": "base-maps-order",
+      "when": "pull-request",
+      "why": "the map gate's placement, ordering and reset controls. Measured 19 s over 5 controls.",
+      "targets": [
         "tables-maps-place-failure-negative-control",
         "tables-maps-sort-negative-control",
         "tables-maps-text-order-negative-control",
@@ -135,7 +149,7 @@
     {
       "name": "base-arms",
       "when": "pull-request",
-      "why": "the union-arm traversal gate, whole, with its umbrella target, and the shared-node and Go fuzz controls that read the same walk. Measured 34 s over 11 controls.",
+      "why": "the union-arm traversal gate, whole, with the umbrella target that names every leaf: make builds each of them once in one invocation, so the umbrella costs this group nothing and stays on the leg. Measured 16 s over 8 controls.",
       "targets": [
         "tables-arms-array-framing-negative-control",
         "tables-arms-cook-arm-negative-control",
@@ -144,7 +158,14 @@
         "tables-arms-negative-controls",
         "tables-arms-nested-union-negative-control",
         "tables-arms-reachable-negative-control",
-        "tables-arms-slot-index-negative-control",
+        "tables-arms-slot-index-negative-control"
+      ]
+    },
+    {
+      "name": "base-shared-node",
+      "when": "pull-request",
+      "why": "the shared-node control and the two Go fuzz controls, which read the same walk the arm gate does and were 82 s of control time beside it on run 34115675206. Measured 17 s over 3 controls.",
+      "targets": [
         "tables-go-fuzz-extent-negative-control",
         "tables-go-fuzz-maximum-negative-control",
         "tables-shared-node-negative-control"
@@ -171,12 +192,19 @@
     {
       "name": "base-keyed",
       "when": "pull-request",
-      "why": "the keyed-collection controls and the flat-wire one, on the same toolchain as base and split out of it on cost: the iteration and shift controls are 23 s of the 28. Measured 28 s over 5 controls.",
+      "why": "the keyed-collection controls. The iteration control is the long one. Measured 17 s over 3 controls.",
       "targets": [
-        "tables-flat-wire-negative-control",
         "tables-keyed-iteration-negative-control",
         "tables-keyed-max-refusal-negative-control",
-        "tables-keyed-none-refusal-negative-control",
+        "tables-keyed-none-refusal-negative-control"
+      ]
+    },
+    {
+      "name": "base-keyed-shift",
+      "when": "pull-request",
+      "why": "the keyed shift control and the flat-wire one, which were 76 s of control time beside the group above on run 34115675206. Measured 12 s over 2 controls.",
+      "targets": [
+        "tables-flat-wire-negative-control",
         "tables-keyed-shift-negative-control"
       ]
     },
@@ -194,12 +222,19 @@
     {
       "name": "wire-fuzz",
       "when": "pull-request",
-      "why": "the tolerant-wire oracles: the four that read a pinned vector rather than rebuilding the compiler, and so are the only controls of this family that share a job. Measured 14 s over 5 controls.",
+      "why": "the tolerant-wire oracle and node-type controls, which read a pinned vector rather than rebuilding the compiler. The five oracles ran as one job at 82 s of control time on run 34115675206, most of it the fuzz driver they all build, so they run as two. Measured 11 s over 2 controls.",
+      "targets": [
+        "tables-wire-fuzz-node-type-negative-control",
+        "tables-wire-fuzz-oracle-negative-control"
+      ]
+    },
+    {
+      "name": "wire-fuzz-message-oracle",
+      "when": "pull-request",
+      "why": "the tolerant-wire oracles for the message form's text and blob records, and the retain one. Measured 3 s over 3 controls.",
       "targets": [
         "tables-wire-fuzz-message-blob-oracle-negative-control",
         "tables-wire-fuzz-message-text-oracle-negative-control",
-        "tables-wire-fuzz-node-type-negative-control",
-        "tables-wire-fuzz-oracle-negative-control",
         "tables-wire-fuzz-retain-oracle-negative-control"
       ]
     },
@@ -265,14 +300,6 @@
       "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 22 s on the author's machine.",
       "targets": [
         "tables-wire-fuzz-message-blob-leg-negative-control"
-      ]
-    },
-    {
-      "name": "wire-fuzz-retain",
-      "when": "pull-request",
-      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 30 s on the author's machine.",
-      "targets": [
-        "tables-wire-fuzz-retain-negative-control"
       ]
     },
     {
@@ -447,9 +474,10 @@
     {
       "name": "nightly",
       "when": "nightly",
-      "why": "the one control that does not fit the owner's rule for CI that runs per commit, on its own, at any group size: it drives 49 sabotage rows, one submake each, and takes 124 s on the runner where the rule is 120. Its four blades run on the pull request in the message-form group, so what moves nightly is the row-by-row pass and nothing else. certify.yml runs this tier on the schedule it already carries.",
+      "why": "the two controls that do not fit the owner's rule for CI that runs per commit, on their own, at any group size. tables-message-form-negative-control drives 49 sabotage rows one submake each, 124 s on the runner where the rule is 120; tables-wire-fuzz-retain-negative-control rebuilds the compiler under the retain overlay and fuzzes the whole tolerant-wire corpus through it, 140 s on run 34115675206, the one control of that family that is over. The message form's four blades and the retain family's other two controls run on the pull request, so what moves nightly is these two passes and nothing else. certify.yml runs this tier on the schedule it already carries.",
       "targets": [
-        "tables-message-form-negative-control"
+        "tables-message-form-negative-control",
+        "tables-wire-fuzz-retain-negative-control"
       ]
     }
   ],

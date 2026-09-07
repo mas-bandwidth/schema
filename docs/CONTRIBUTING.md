@@ -132,13 +132,16 @@ than toolchains.
 
 A control that does not fit the rule **on its own** is not made to fit by
 grouping, so it runs nightly instead, in the `nightly` tier that `certify.yml`
-runs on the schedule it already carries. Today that is one control,
+runs on the schedule it already carries. Today that is two controls:
 `tables-message-form-negative-control`, which drives 49 sabotage rows one
-submake each and takes 124 seconds; its four blades stay on the pull request in
-the `message-form` group. Each group in `make/negative-controls.json` names its
-tier in a `when` field and says why in a `why` field, and
-`tools/negativecontrols` refuses a group that names neither tier, so a control
-cannot leave the pull request without landing on the nightly.
+submake each and takes 124 seconds, and
+`tables-wire-fuzz-retain-negative-control`, which fuzzes the whole tolerant-wire
+corpus through the retain overlay and takes 140 seconds. The message form's
+four blades and the retain family's other two controls stay on the pull
+request. Each group in `make/negative-controls.json` names its tier in a `when`
+field and says why in a `why` field, and `tools/negativecontrols` refuses a
+group that names neither tier, so a control cannot leave the pull request
+without landing on the nightly.
 
 **The target list is enumerated, not typed.** `tools/negativecontrols` reads
 the Makefile and every file the Makefile includes, collects each explicit

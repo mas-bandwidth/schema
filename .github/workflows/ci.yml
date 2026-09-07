@@ -775,25 +775,33 @@ jobs:
   # and first build already spent.
   #
   # MEASURED, 2026-09-07 on the author's machine (arm64 macOS, one target per
-  # make invocation, off one warm build) and on the runner (the per-job wall
-  # times below, from this branch's own pull-request run). 196 controls. The
-  # base toolchain carries 130 of them and needed ten jobs rather than one: the
-  # map gate alone is 17 controls at 4 s each on the author's machine and 1.6x
-  # that on the runner, and the conformance driver's two sabotage rebuilds are
-  # 45 s and 47 s of runner time on their own. The tolerant-wire family is one
-  # control per job for the same reason: each rebuilds the compiler under a
-  # source overlay and then fuzzes the sabotaged wire, 55 s to 75 s each, so no
-  # two of them fit together. The per-group numbers live in
+  # make invocation, off one warm build) and then on the runner, on this
+  # branch's own pull-request runs. 196 controls, 38 groups.
+  #
+  # The base toolchain carries 130 of them and takes twelve jobs rather than
+  # one: the map gate alone is 17 controls at 4 s each on the author's machine
+  # and about 2x that on the runner, and the conformance driver's two sabotage
+  # rebuilds are 45 s and 47 s of runner time on their own. The tolerant-wire
+  # family is one control per job: each rebuilds the compiler under a source
+  # overlay and then fuzzes the sabotaged wire, 55 s to 80 s each, so no two of
+  # them fit together.
+  #
+  # THE FIRST CUT WAS MEASURED AND CUT AGAIN. On run 34115675206 every group
+  # was inside the rule but eight of them sat between 100 s and 111 s, which is
+  # a rule met by luck rather than by design, so those eight are the twelve
+  # groups they are now. The per-group numbers live in
   # make/negative-controls.json's `why` lines, next to the targets they are
   # about.
   #
-  # ONE CONTROL DOES NOT FIT THE RULE AT ANY GROUP SIZE, and it runs nightly
+  # TWO CONTROLS DO NOT FIT THE RULE AT ANY GROUP SIZE, and they run nightly
   # instead: tables-message-form-negative-control drives 49 sabotage rows one
-  # submake each, 124 s on the runner against a 120 s rule. It is the `nightly`
-  # group in the plan, certify.yml runs that tier on the schedule it carries,
-  # and `tools/negativecontrols` refuses a group that is in neither tier, so a
-  # control cannot leave this file without landing on that one. Its four blades
-  # stay here in the `message-form` group.
+  # submake each at 124 s, and tables-wire-fuzz-retain-negative-control fuzzes
+  # the whole tolerant-wire corpus through the retain overlay at 140 s, both
+  # against a 120 s rule. They are the `nightly` group in the plan, certify.yml
+  # runs that tier on the schedule it carries, and `tools/negativecontrols`
+  # refuses a group that is in neither tier, so a control cannot leave this
+  # file without landing on that one. The message form's four blades and the
+  # retain family's other two controls stay here.
   negative-controls-matrix:
     runs-on: ubuntu-latest
     timeout-minutes: 5
