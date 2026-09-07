@@ -17,7 +17,7 @@ If this work helps you, **[please support it.](https://www.patreon.com/MasBandwi
 
 Schema is designed to support the following use-cases in game development:
 
-* Packets sent between a client and a server.
+* Packets sent between a client and server.
 * Messages sent between your server and backend.
 * Save game files that must load in a future game build.
 * Game assets cooked to an efficient runtime binary format.
