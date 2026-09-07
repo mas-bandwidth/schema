@@ -112,7 +112,7 @@ func (g *gen) descriptorRow(st *ir.Struct, f *ir.Field, guard string) string {
 	// string or a `bytes` it is the ELEMENT's: `bytes` rides as an array of u8
 	// and its element kind is what tells the text form it is base64 rather
 	// than a positional array of numbers.
-	kind := ir.TableScalarKind(f)
+	kind := ir.TableWireScalarKind(f)
 	if f.Type.Kind == ir.TBytes {
 		kind = ir.TableElemKind(f)
 	}
@@ -154,8 +154,7 @@ func (g *gen) descriptorRow(st *ir.Struct, f *ir.Field, guard string) string {
 
 	// the declared [min, max], and a bits(N) field's IMPLIED one: N bits hold
 	// [0, 2^N - 1] whether or not the declaration spells it, and the text
-	// form's walk is what needs it — the wire codec masks by the storage
-	// width, and a text carries a number with no width at all
+	// form's walk needs the same bounds as the wire codec
 	hasRange := "false"
 	rangeMin, rangeMax := "0.0", "0.0"
 	switch {
@@ -163,6 +162,10 @@ func (g *gen) descriptorRow(st *ir.Struct, f *ir.Field, guard string) string {
 		hasRange = "true"
 		rangeMin = formatFloat(bigFloat(f.IntMin), false)
 		rangeMax = formatFloat(bigFloat(f.IntMax), false)
+	case f.HasFloatRange:
+		hasRange = "true"
+		rangeMin = formatFloat(f.FMin, false)
+		rangeMax = formatFloat(f.FMax, false)
 	case f.Type.Kind == ir.TBits:
 		hasRange = "true"
 		rangeMin = "0.0"
@@ -207,7 +210,7 @@ func (g *gen) descriptorRow(st *ir.Struct, f *ir.Field, guard string) string {
 	fmt.Fprintf(&b, "            name: %q,\n", f.Name)
 	fmt.Fprintf(&b, "            json: %q,\n", ir.TableFieldJsonKey(f))
 	fmt.Fprintf(&b, "            type_name: %q,\n", tableFieldTypeName(f))
-	fmt.Fprintf(&b, "            id: 0x%04x,\n", ir.TableFieldId(f))
+	fmt.Fprintf(&b, "            id: 0x%016x,\n", ir.TableFieldWireId(f))
 	fmt.Fprintf(&b, "            kind: %d,\n", kind)
 	fmt.Fprintf(&b, "            is_array: %s,\n", isArray)
 	fmt.Fprintf(&b, "            counted: %s,\n", counted)
@@ -269,7 +272,7 @@ func unionIdFn(un *ir.Union) string {
 	var b strings.Builder
 	b.WriteString("|v| match v {\n")
 	for i, v := range un.Variants {
-		fmt.Fprintf(&b, "                %d => 0x%04x,\n", i+1, ir.VariantId(v.Name))
+		fmt.Fprintf(&b, "                %d => 0x%016x,\n", i+1, ir.TableWireId(v.WireName()))
 	}
 	b.WriteString("                _ => 0,\n            }")
 	return b.String()

@@ -10,10 +10,9 @@
 // misdecode), out-of-range values clamp, framing damage stops the decode with
 // a partial result — and every event lands in the TableReport. Plain byte
 // code with no serialize dependency, so a table module compiles into any
-// crate; the encode surface is a measure/save split, so a caller can measure
-// nested tables in parallel, prefix-sum offsets, and scatter-write disjoint
-// ranges from N workers. Generated codecs allocate nothing: the caller owns
-// every buffer.
+// crate. Measure and save walk the same emitter with one file-wide vocabulary,
+// and nested lengths are measured at their exact first-use position. Generated
+// codecs allocate nothing: the caller owns every buffer.
 //
 // TWO DEVIATIONS FROM THE C++ REFERENCE, both forced by the language and both
 // named here rather than discovered in the source:

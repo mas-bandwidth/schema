@@ -409,6 +409,15 @@
       "rust": "stable"
     },
     {
+      "name": "rust-wire",
+      "when": "pull-request",
+      "why": "the Rust form-1 wire fuzzer's canonical-LEB128 control, in an isolated generated tree against the compiler oracle.",
+      "targets": [
+        "tables-rust-wire-fuzz-negative-control"
+      ],
+      "rust": "stable"
+    },
+    {
       "name": "rust-alloc",
       "when": "pull-request",
       "why": "the Rust allocation audit's control, alone, because its prerequisite is a conformance run. That prerequisite is `conformance-rust`, the rust leg and the derived manifest the control reads, so this row installs one SDK where the bare `conformance` target's nine legs want all seven. Measured 5 s on a host carrying no such SDK.",

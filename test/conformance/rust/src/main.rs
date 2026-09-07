@@ -133,6 +133,8 @@ fn spill(dir: &str, name: &str, data: &[u8]) {
 struct Report {
     unknown: i32,
     kind_mismatch: i32,
+    widened: i32,
+    refused: bool,
     clamped: i32,
     duplicate: i32,
     malformed: bool,
@@ -144,6 +146,7 @@ struct Codec {
     // Load the wire bytes, then measure and save: the bytes a round trip
     // produces, or None when the load refused.
     wire: fn(&[u8], &mut Report) -> Option<Vec<u8>>,
+    probe: fn(&[u8], &mut Report) -> (bool, Option<Vec<u8>>),
     // FromJson the text, then measure and save.
     json_read: fn(&[u8], &mut Report) -> Option<Vec<u8>>,
     // Load the wire bytes, then ToJson.
@@ -168,6 +171,17 @@ macro_rules! codec {
         Codec {
             unit: $unit,
             root: $root,
+            probe: |bytes, out| {
+                let mut value: Box<$ty> = Box::default();
+                let mut report = $krate::TableReport::default();
+                let _ = $load(&mut value, bytes, &mut report);
+                copy_report!(report, out);
+                out.refused = report.verdict == $krate::TableOpenVerdict::Refused;
+                (
+                    true,
+                    write_measured(|| $measure(&value), |b| $save(&value, b)),
+                )
+            },
             wire: |bytes, out| {
                 // boxed: a table's storage is bounded but not small — the wide
                 // corpus's root is a quarter of a megabyte, and a driver that
@@ -176,6 +190,7 @@ macro_rules! codec {
                 let mut report = $krate::TableReport::default();
                 let ok = $load(&mut value, bytes, &mut report);
                 copy_report!(report, out);
+                out.refused = report.verdict == $krate::TableOpenVerdict::Refused;
                 if !ok {
                     return None;
                 }
@@ -186,6 +201,7 @@ macro_rules! codec {
                 let mut report = $krate::TableReport::default();
                 let ok = $from_json(&mut value, text, &mut report);
                 copy_report!(report, out);
+                out.refused = report.verdict == $krate::TableOpenVerdict::Refused;
                 if !ok {
                     return None;
                 }
@@ -196,6 +212,7 @@ macro_rules! codec {
                 let mut report = $krate::TableReport::default();
                 let ok = $load(&mut value, bytes, &mut report);
                 copy_report!(report, out);
+                out.refused = report.verdict == $krate::TableOpenVerdict::Refused;
                 if !ok {
                     return None;
                 }
@@ -240,6 +257,7 @@ macro_rules! copy_report {
     ($from:expr, $to:expr) => {
         $to.unknown = $from.unknown;
         $to.kind_mismatch = $from.kind_mismatch;
+        $to.widened = $from.widened;
         $to.clamped = $from.clamped;
         $to.duplicate = $from.duplicate;
         $to.malformed = $from.malformed;
@@ -263,59 +281,160 @@ fn write_measured(measure: impl Fn() -> i64, write: impl Fn(&mut [u8]) -> i64) -
 fn codecs() -> Vec<Codec> {
     vec![
         codec!(
-            "tabledemo", "RootConfig", tabledemo, tabledemo::RootConfig,
-            tabledemo::root_config_measure, tabledemo::root_config_save, tabledemo::root_config_load,
-            tabledemo::root_config_from_json, tabledemo::root_config_to_json_measure, tabledemo::root_config_to_json
+            "tblk1",
+            "Root",
+            tblk1,
+            tblk1::Root,
+            tblk1::root_measure,
+            tblk1::root_save,
+            tblk1::root_load,
+            tblk1::root_from_json,
+            tblk1::root_to_json_measure,
+            tblk1::root_to_json
         ),
         codec!(
-            "tabledemo", "ProfileConfig", tabledemo, tabledemo::ProfileConfig,
-            tabledemo::profile_config_measure, tabledemo::profile_config_save, tabledemo::profile_config_load,
-            tabledemo::profile_config_from_json, tabledemo::profile_config_to_json_measure, tabledemo::profile_config_to_json
+            "tblk2",
+            "Root",
+            tblk2,
+            tblk2::Root,
+            tblk2::root_measure,
+            tblk2::root_save,
+            tblk2::root_load,
+            tblk2::root_from_json,
+            tblk2::root_to_json_measure,
+            tblk2::root_to_json
         ),
         codec!(
-            "tabledemo", "LoadoutConfig", tabledemo, tabledemo::LoadoutConfig,
-            tabledemo::loadout_config_measure, tabledemo::loadout_config_save, tabledemo::loadout_config_load,
-            tabledemo::loadout_config_from_json, tabledemo::loadout_config_to_json_measure, tabledemo::loadout_config_to_json
+            "tabledemo",
+            "RootConfig",
+            tabledemo,
+            tabledemo::RootConfig,
+            tabledemo::root_config_measure,
+            tabledemo::root_config_save,
+            tabledemo::root_config_load,
+            tabledemo::root_config_from_json,
+            tabledemo::root_config_to_json_measure,
+            tabledemo::root_config_to_json
         ),
         codec!(
-            "tabledemo", "WideBlob", tabledemo, tabledemo::WideBlob,
-            tabledemo::wide_blob_measure, tabledemo::wide_blob_save, tabledemo::wide_blob_load,
-            tabledemo::wide_blob_from_json, tabledemo::wide_blob_to_json_measure, tabledemo::wide_blob_to_json
+            "tabledemo",
+            "ProfileConfig",
+            tabledemo,
+            tabledemo::ProfileConfig,
+            tabledemo::profile_config_measure,
+            tabledemo::profile_config_save,
+            tabledemo::profile_config_load,
+            tabledemo::profile_config_from_json,
+            tabledemo::profile_config_to_json_measure,
+            tabledemo::profile_config_to_json
         ),
         codec!(
-            "tabledemo", "ArchiveConfig", tabledemo, tabledemo::ArchiveConfig,
-            tabledemo::archive_config_measure, tabledemo::archive_config_save, tabledemo::archive_config_load,
-            tabledemo::archive_config_from_json, tabledemo::archive_config_to_json_measure, tabledemo::archive_config_to_json
+            "tabledemo",
+            "LoadoutConfig",
+            tabledemo,
+            tabledemo::LoadoutConfig,
+            tabledemo::loadout_config_measure,
+            tabledemo::loadout_config_save,
+            tabledemo::loadout_config_load,
+            tabledemo::loadout_config_from_json,
+            tabledemo::loadout_config_to_json_measure,
+            tabledemo::loadout_config_to_json
         ),
         codec!(
-            "tabledemo", "KeyedConfig", tabledemo, tabledemo::KeyedConfig,
-            tabledemo::keyed_config_measure, tabledemo::keyed_config_save, tabledemo::keyed_config_load,
-            tabledemo::keyed_config_from_json, tabledemo::keyed_config_to_json_measure, tabledemo::keyed_config_to_json
+            "tabledemo",
+            "WideBlob",
+            tabledemo,
+            tabledemo::WideBlob,
+            tabledemo::wide_blob_measure,
+            tabledemo::wide_blob_save,
+            tabledemo::wide_blob_load,
+            tabledemo::wide_blob_from_json,
+            tabledemo::wide_blob_to_json_measure,
+            tabledemo::wide_blob_to_json
         ),
         codec!(
-            "tabledemo", "PackConfig", tabledemo, tabledemo::PackConfig,
-            tabledemo::pack_config_measure, tabledemo::pack_config_save, tabledemo::pack_config_load,
-            tabledemo::pack_config_from_json, tabledemo::pack_config_to_json_measure, tabledemo::pack_config_to_json
+            "tabledemo",
+            "ArchiveConfig",
+            tabledemo,
+            tabledemo::ArchiveConfig,
+            tabledemo::archive_config_measure,
+            tabledemo::archive_config_save,
+            tabledemo::archive_config_load,
+            tabledemo::archive_config_from_json,
+            tabledemo::archive_config_to_json_measure,
+            tabledemo::archive_config_to_json
         ),
         codec!(
-            "tblv1", "Cfg", tblv1, tblv1::Cfg,
-            tblv1::cfg_measure, tblv1::cfg_save, tblv1::cfg_load,
-            tblv1::cfg_from_json, tblv1::cfg_to_json_measure, tblv1::cfg_to_json
+            "tabledemo",
+            "KeyedConfig",
+            tabledemo,
+            tabledemo::KeyedConfig,
+            tabledemo::keyed_config_measure,
+            tabledemo::keyed_config_save,
+            tabledemo::keyed_config_load,
+            tabledemo::keyed_config_from_json,
+            tabledemo::keyed_config_to_json_measure,
+            tabledemo::keyed_config_to_json
         ),
         codec!(
-            "tblv2", "Cfg", tblv2, tblv2::Cfg,
-            tblv2::cfg_measure, tblv2::cfg_save, tblv2::cfg_load,
-            tblv2::cfg_from_json, tblv2::cfg_to_json_measure, tblv2::cfg_to_json
+            "tabledemo",
+            "PackConfig",
+            tabledemo,
+            tabledemo::PackConfig,
+            tabledemo::pack_config_measure,
+            tabledemo::pack_config_save,
+            tabledemo::pack_config_load,
+            tabledemo::pack_config_from_json,
+            tabledemo::pack_config_to_json_measure,
+            tabledemo::pack_config_to_json
         ),
         codec!(
-            "tblp1", "Chain", tblp1, tblp1::Chain,
-            tblp1::chain_measure, tblp1::chain_save, tblp1::chain_load,
-            tblp1::chain_from_json, tblp1::chain_to_json_measure, tblp1::chain_to_json
+            "tblv1",
+            "Cfg",
+            tblv1,
+            tblv1::Cfg,
+            tblv1::cfg_measure,
+            tblv1::cfg_save,
+            tblv1::cfg_load,
+            tblv1::cfg_from_json,
+            tblv1::cfg_to_json_measure,
+            tblv1::cfg_to_json
         ),
         codec!(
-            "tblp3", "Chain", tblp3, tblp3::Chain,
-            tblp3::chain_measure, tblp3::chain_save, tblp3::chain_load,
-            tblp3::chain_from_json, tblp3::chain_to_json_measure, tblp3::chain_to_json
+            "tblv2",
+            "Cfg",
+            tblv2,
+            tblv2::Cfg,
+            tblv2::cfg_measure,
+            tblv2::cfg_save,
+            tblv2::cfg_load,
+            tblv2::cfg_from_json,
+            tblv2::cfg_to_json_measure,
+            tblv2::cfg_to_json
+        ),
+        codec!(
+            "tblp1",
+            "Chain",
+            tblp1,
+            tblp1::Chain,
+            tblp1::chain_measure,
+            tblp1::chain_save,
+            tblp1::chain_load,
+            tblp1::chain_from_json,
+            tblp1::chain_to_json_measure,
+            tblp1::chain_to_json
+        ),
+        codec!(
+            "tblp3",
+            "Chain",
+            tblp3,
+            tblp3::Chain,
+            tblp3::chain_measure,
+            tblp3::chain_save,
+            tblp3::chain_load,
+            tblp3::chain_from_json,
+            tblp3::chain_to_json_measure,
+            tblp3::chain_to_json
         ),
     ]
 }
@@ -366,7 +485,11 @@ impl Aligned {
         // A CLAIM SHORTER THAN THE IMAGE IS A TRUNCATION and is the caller's
         // own answer: `placed` copies what fits and zeroes the rest, so the
         // allocation stays the claim in that direction too.
-        let bytes = if extent < 0 { data.len() as i64 } else { extent };
+        let bytes = if extent < 0 {
+            data.len() as i64
+        } else {
+            extent
+        };
         Aligned::placed(data, bytes, 0)
     }
 
@@ -456,7 +579,12 @@ unsafe fn dump_scalar_block(at: *const u8, kind: u8, width: u32) -> String {
 
 // One record's leaves, at two spaces, in descriptor order. Out-of-line arrays
 // are the caller's business: they are a section of their own, not a leaf.
-unsafe fn dump_block_record(out: &mut String, storage: *const u8, info: &'static TableBlockInfo, path: &str) {
+unsafe fn dump_block_record(
+    out: &mut String,
+    storage: *const u8,
+    info: &'static TableBlockInfo,
+    path: &str,
+) {
     unsafe {
         for f in info.fields.iter() {
             if f.out_of_line {
@@ -472,7 +600,10 @@ unsafe fn dump_block_record(out: &mut String, storage: *const u8, info: &'static
                         info.name, f.name, f.array_bound
                     ));
                 }
-                out.push_str(&format!("  {name} = {}\n", dump_text(storage.add(f.offset as usize), used)));
+                out.push_str(&format!(
+                    "  {name} = {}\n",
+                    dump_text(storage.add(f.offset as usize), used)
+                ));
             } else {
                 let slots = if f.is_array { f.array_bound as i64 } else { 1 };
                 for slot in 0..slots {
@@ -481,7 +612,8 @@ unsafe fn dump_block_record(out: &mut String, storage: *const u8, info: &'static
                     } else {
                         name.clone()
                     };
-                    let value = storage.add(f.offset as usize + (slot * f.elem_size as i64) as usize);
+                    let value =
+                        storage.add(f.offset as usize + (slot * f.elem_size as i64) as usize);
                     match f.element {
                         Some(element) => dump_block_record(out, value, element(), &at),
                         None => out.push_str(&format!(
@@ -602,14 +734,16 @@ fn surface_report(manifest: &Manifest, out: &str) {
         };
         let wire = slurp(&f[4]);
         let mut report = Report::default();
-        let ok = (codec.wire)(&wire, &mut report).is_some();
+        (codec.wire)(&wire, &mut report);
         let text = format!(
-            "{},{},{},{},{}\n",
+            "{},{},{},{},{},{},{}\n",
             report.unknown,
             report.kind_mismatch,
+            report.widened,
             report.clamped,
             report.duplicate,
-            if report.malformed || !ok { "true" } else { "false" }
+            if report.malformed { "true" } else { "false" },
+            if report.refused { "refused" } else { "read" }
         );
         spill(out, &f[1], text.as_bytes());
     }
@@ -680,8 +814,12 @@ fn surface_json_hostile(manifest: &Manifest, out: &str) {
             "refused\n".to_string()
         } else {
             format!(
-                "{},{},{},{},false\n",
-                report.unknown, report.kind_mismatch, report.clamped, report.duplicate
+                "{},{},{},{},{},false,read\n",
+                report.unknown,
+                report.kind_mismatch,
+                report.widened,
+                report.clamped,
+                report.duplicate
             )
         };
         spill(out, &f[1], verdict.as_bytes());
@@ -731,8 +869,7 @@ fn surface_cook_foreign(manifest: &Manifest, out: &str) {
     for f in manifest.of_kind("cook") {
         let data = foreign(&slurp(&f[4]));
         let storage = Aligned::new(&data, -1);
-        let opened =
-            unsafe { open_cook_at(&f[3], storage.base, storage.bytes as u64).is_some() };
+        let opened = unsafe { open_cook_at(&f[3], storage.base, storage.bytes as u64).is_some() };
         let verdict = if opened { "open\n" } else { "refuse\n" };
         spill(out, &f[1], verdict.as_bytes());
     }
@@ -771,9 +908,17 @@ fn surface_cook_forgery(manifest: &Manifest, out: &str) {
         }
         let data = slurp(&f[4]);
         let extent: i64 = parse_int(&f[5]);
-        let claim = if extent < 0 { data.len() as i64 } else { extent };
+        let claim = if extent < 0 {
+            data.len() as i64
+        } else {
+            extent
+        };
         let null_buffer = f[6] == "null";
-        let lead = if null_buffer { 0 } else { parse_int(&f[6]) as usize };
+        let lead = if null_buffer {
+            0
+        } else {
+            parse_int(&f[6]) as usize
+        };
         let storage = Aligned::placed(&data, claim, lead);
         let opened = unsafe {
             if null_buffer {
@@ -831,7 +976,9 @@ struct Walk {
 impl Walk {
     fn node(&mut self, offset: u64, info: &'static TableCookInfo, depth: i32) {
         if depth > 4096 {
-            fail("the walk nested past any depth a region can hold — a cycle the deref did not close");
+            fail(
+                "the walk nested past any depth a region can hold — a cycle the deref did not close",
+            );
         }
         if let Some((_, name)) = self.reached.iter().find(|(at, _)| *at == offset) {
             if *name != info.name {
@@ -856,7 +1003,13 @@ impl Walk {
         self.storage(storage, info, depth, "");
     }
 
-    fn storage(&mut self, storage: *const u8, info: &'static TableCookInfo, depth: i32, path: &str) {
+    fn storage(
+        &mut self,
+        storage: *const u8,
+        info: &'static TableCookInfo,
+        depth: i32,
+        path: &str,
+    ) {
         for f in info.fields.iter() {
             let name = join(path, f.name);
 
@@ -1016,9 +1169,9 @@ unsafe fn dump_text(at: *const u8, used: i32) -> String {
 unsafe fn dump_scalar(at: *const u8, storage: TableCookStorage, width: u32) -> String {
     unsafe {
         match storage {
-            TableCookStorage::Float => {
-                fail("the dump met a float, whose canonical cross-language spelling this gate does not fix")
-            }
+            TableCookStorage::Float => fail(
+                "the dump met a float, whose canonical cross-language spelling this gate does not fix",
+            ),
             TableCookStorage::Bool => {
                 if *at != 0 {
                     "true".to_string()
@@ -1053,7 +1206,8 @@ unsafe fn dump_scalar(at: *const u8, storage: TableCookStorage, width: u32) -> S
 fn dump_cook(root: &str, path: &str) -> String {
     let data = slurp(path);
     let storage = Aligned::new(&data, -1);
-    let (region, data_length, info) = unsafe { open_cook(root, storage.base, storage.bytes as u64) };
+    let (region, data_length, info) =
+        unsafe { open_cook(root, storage.base, storage.bytes as u64) };
     let mut walk = Walk {
         region,
         data_length,
@@ -1084,7 +1238,11 @@ unsafe fn open_cook_at(root: &str, base: *const u8, length: u64) -> Option<(*con
     }
 }
 
-unsafe fn open_cook(root: &str, base: *mut u8, length: u64) -> (*const u8, u64, &'static TableCookInfo) {
+unsafe fn open_cook(
+    root: &str,
+    base: *mut u8,
+    length: u64,
+) -> (*const u8, u64, &'static TableCookInfo) {
     unsafe {
         macro_rules! try_root {
             ($name:literal, $cook:ty, $info:path) => {
@@ -1103,8 +1261,16 @@ unsafe fn open_cook(root: &str, base: *mut u8, length: u64) -> (*const u8, u64, 
         try_root!("Scene", graphdemo::SceneCook, graphdemo::scene_cook_info);
         try_root!("Depot", graphdemo::DepotCook, graphdemo::depot_cook_info);
         try_root!("Album", graphdemo::AlbumCook, graphdemo::album_cook_info);
-        try_root!("TreeNode", graphdemo::TreeNodeCook, graphdemo::tree_node_cook_info);
-        try_root!("ListNode", graphdemo::ListNodeCook, graphdemo::list_node_cook_info);
+        try_root!(
+            "TreeNode",
+            graphdemo::TreeNodeCook,
+            graphdemo::tree_node_cook_info
+        );
+        try_root!(
+            "ListNode",
+            graphdemo::ListNodeCook,
+            graphdemo::list_node_cook_info
+        );
         fail(&format!("no cook root named {root}"))
     }
 }
@@ -1221,7 +1387,10 @@ fn surface_soak(manifest: &Manifest, seconds: u64) {
             match (case.codec.json_read)(&case.text, &mut report) {
                 Some(bytes) => {
                     if bytes != case.wire {
-                        fail(&format!("{}: the text read no longer packs to its wire golden", case.name));
+                        fail(&format!(
+                            "{}: the text read no longer packs to its wire golden",
+                            case.name
+                        ));
                     }
                 }
                 None => fail(&format!("{}: the text read refused", case.name)),
@@ -1316,6 +1485,10 @@ fn surface_alloc_audit(manifest: &Manifest) {
 }
 
 fn main() {
+    if std::env::args().nth(1).as_deref() == Some("wire-fuzz") {
+        wire_fuzz();
+        return;
+    }
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 3 {
         eprintln!(
@@ -1328,10 +1501,7 @@ fn main() {
     let surface = args[2].as_str();
     if surface == "list" {
         println!(
-            // the five WIRE-CARRYING surfaces are ABSENT: this port writes the wire's
-            // PREVIOUS form and the corpus is pinned in the id-table form
-            // (docs/SPEC-TABLES.md §3). schema#518 is the port's row.
-            "cook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery"
+            "wire\nreport\njson-read\njson-write\njson-hostile\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery"
         );
         return;
     }
@@ -1363,5 +1533,76 @@ fn main() {
         "block" => surface_block(&manifest, out),
         "forgery" => surface_forgery(&manifest, out),
         _ => exit(2),
+    }
+}
+
+// The same streaming protocol as test/tables/wire_fuzz_main.cpp. The compiler
+// harness owns the mutants and verdicts; this leg only loads and saves.
+fn wire_fuzz() {
+    use std::io::{BufReader, BufWriter, Read};
+    let mut input = BufReader::new(std::io::stdin().lock());
+    let mut output = BufWriter::new(std::io::stdout().lock());
+    fn number<const N: usize>(input: &mut impl Read) -> [u8; N] {
+        let mut bytes = [0; N];
+        input.read_exact(&mut bytes).unwrap();
+        bytes
+    }
+    fn name(input: &mut impl Read) -> String {
+        let n = u16::from_le_bytes(number(input)) as usize;
+        let mut bytes = vec![0; n];
+        input.read_exact(&mut bytes).unwrap();
+        String::from_utf8(bytes).unwrap()
+    }
+    let rows = codecs();
+    let count = u32::from_le_bytes(number(&mut input));
+    let mut roster = Vec::new();
+    for _ in 0..count {
+        let unit = name(&mut input);
+        let root = name(&mut input);
+        let [form, retain] = number(&mut input);
+        let row = if form == 1 && retain == 0 {
+            codec_for(&rows, &unit, &root)
+        } else {
+            None
+        };
+        output.write_all(&[u8::from(row.is_some())]).unwrap();
+        roster.push(row);
+    }
+    output.flush().unwrap();
+    loop {
+        let mut index = [0; 4];
+        match input.read_exact(&mut index) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
+            Err(e) => panic!("{e}"),
+        }
+        let size = u32::from_le_bytes(number(&mut input)) as usize;
+        let mut bytes = vec![0; size];
+        input.read_exact(&mut bytes).unwrap();
+        let codec = roster[u32::from_le_bytes(index) as usize].unwrap();
+        let mut report = Report::default();
+        let (loaded, saved) = (codec.probe)(&bytes, &mut report);
+        output.write_all(&[u8::from(loaded)]).unwrap();
+        for value in [
+            report.unknown,
+            report.kind_mismatch,
+            report.widened,
+            report.clamped,
+            report.duplicate,
+        ] {
+            output.write_all(&value.to_le_bytes()).unwrap();
+        }
+        output
+            .write_all(&[u8::from(report.malformed), u8::from(report.refused)])
+            .unwrap();
+        output.write_all(&(-1i64).to_le_bytes()).unwrap();
+        output.write_all(&[0; 8]).unwrap(); // retained, retain_lost
+        output
+            .write_all(&saved.as_ref().map_or(-1, |v| v.len() as i64).to_le_bytes())
+            .unwrap();
+        if let Some(saved) = saved {
+            output.write_all(&saved).unwrap();
+        }
+        output.flush().unwrap();
     }
 }

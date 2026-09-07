@@ -74,29 +74,32 @@ const runtimeSource = `// ---- the read report (docs/SPEC-TABLES.md §4) ----
 pub struct TableReport {
     pub unknown: i32,      // unknown field ids skipped (newer data)
     pub kind_mismatch: i32, // known id, changed type — skipped, never misdecoded
+    pub widened: i32,       // accepted a narrower kind on the same numeric ladder
     pub clamped: i32,      // out-of-range values clamped to declared bounds
     // duplicate is the TEXT FORM's counter and the WIRE NEVER RAISES IT
     // (docs/SPEC-TABLES.md §4, §16.2): a body carrying an id twice is legal input
     // whose last occurrence wins, silently.
     pub duplicate: i32,
+    pub verdict: TableOpenVerdict,
     pub malformed: bool, // framing damage; decode stopped, partial result kept
 }
 
 // ---- an enum's TABLE-wire identity (docs/SPEC-TABLES.md §5) ----
 
-// A value rides as the u16 hash of its VARIANT NAME, so a variant may be
-// added anywhere, removed, or reordered and old data still reads. None is the
-// one reserved id, 0, which no declared name can fold to.
+// A value rides as a reference to the 64-bit hash of its VARIANT NAME, so a
+// variant may be added, removed or reordered and old data still reads. None
+// takes reference 0; a zero hash is an ordinary, distinct identity.
 //
 // C++ and C# spell this as an overload set; Rust has no overloading, so it is
 // a trait the generated code implements once per enum. One unit-level name
 // (§11) rather than one per declaration.
 pub trait TableEnum: Copy + Sized {
-    // this value's wire id, or None when no variant names it — a value with
-    // no wire identity, which measure and save both refuse.
-    fn table_id(self) -> Option<u16>;
+    // A named value's wire hash; the None ordinal returns Some(0) as a
+    // convenience only. Writers test the ordinal before interning a hash.
+    // An unnamed nonzero value returns None, which measure and save refuse.
+    fn table_id(self) -> Option<u64>;
     // the value a wire id names, or None when this build cannot name it.
-    fn table_value(id: u16) -> Option<Self>;
+    fn table_value(id: u64) -> Option<Self>;
 }
 
 // ---- the enum-keyed array's storage (docs/SPEC-TABLES.md §2.4) ----
@@ -198,240 +201,7 @@ pub fn table_double_to_bits(value: f64) -> u64 {
     value.to_bits()
 }
 
-// ---- the wire writer and reader ----
-
-// TableWriter writes the wire IN PLACE, into the caller's slice. Nothing
-// here allocates.
-//
-// EVERY PRIMITIVE IS FORCE-INLINED, and so is every fixed-class body that
-// calls one (#343): out of line, a writer's cursor round-trips through memory
-// at every put, and the two halves do not add up but multiply — only a body
-// with no call boundary in it lets the cursor stay in registers and lets
-// adjacent constant framing bytes merge into one store. The C++ reference
-// carries the same rule, spelled as a per-package macro because it has three
-// compilers to name; Rust has one attribute.
-pub struct TableWriter<'a> {
-    pub buffer: &'a mut [u8],
-    pub offset: usize,
-    pub overflow: bool,
-}
-
-impl<'a> TableWriter<'a> {
-    #[inline(always)]
-    pub fn new(buffer: &'a mut [u8]) -> TableWriter<'a> {
-        TableWriter {
-            buffer,
-            offset: 0,
-            overflow: false,
-        }
-    }
-
-    #[inline(always)]
-    pub fn raw(&mut self, data: &[u8]) {
-        if self.offset + data.len() > self.buffer.len() {
-            self.overflow = true;
-            return;
-        }
-        self.buffer[self.offset..self.offset + data.len()].copy_from_slice(data);
-        self.offset += data.len();
-    }
-
-    #[inline(always)]
-    pub fn put8(&mut self, v: u8) {
-        if self.offset + 1 > self.buffer.len() {
-            self.overflow = true;
-            return;
-        }
-        self.buffer[self.offset] = v;
-        self.offset += 1;
-    }
-
-    #[inline(always)]
-    pub fn put16(&mut self, v: u16) {
-        if self.offset + 2 > self.buffer.len() {
-            self.overflow = true;
-            return;
-        }
-        self.buffer[self.offset..self.offset + 2].copy_from_slice(&v.to_le_bytes());
-        self.offset += 2;
-    }
-
-    #[inline(always)]
-    pub fn put32(&mut self, v: u32) {
-        if self.offset + 4 > self.buffer.len() {
-            self.overflow = true;
-            return;
-        }
-        self.buffer[self.offset..self.offset + 4].copy_from_slice(&v.to_le_bytes());
-        self.offset += 4;
-    }
-
-    #[inline(always)]
-    pub fn put64(&mut self, v: u64) {
-        if self.offset + 8 > self.buffer.len() {
-            self.overflow = true;
-            return;
-        }
-        self.buffer[self.offset..self.offset + 8].copy_from_slice(&v.to_le_bytes());
-        self.offset += 8;
-    }
-
-    // patch a length word already written: the nested-body framing writes a
-    // placeholder, fills the body, then comes back for the count.
-    #[inline(always)]
-    pub fn patch32(&mut self, at: usize, v: u32) {
-        if at + 4 > self.buffer.len() {
-            self.overflow = true;
-            return;
-        }
-        self.buffer[at..at + 4].copy_from_slice(&v.to_le_bytes());
-    }
-}
-
-// TableReader reads the wire out of the caller's slice. A nested body is
-// read through a SUB-READER sliced out of this one, so an inner decode can
-// never reach past its own framing.
-//
-// THE REPORT IS NOT IN HERE, and the deviation from the C++ reference is
-// deliberate: a reader holding a mutable borrow of the report could not hand
-// out a sub-reader over its own buffer while that borrow stood. The report
-// is the codecs' own parameter, threaded down beside the reader — one
-// report, one caller, the same five counters.
-#[derive(Clone, Copy)]
-pub struct TableReader<'a> {
-    pub buffer: &'a [u8],
-    pub offset: usize,
-}
-
-impl<'a> TableReader<'a> {
-    #[inline(always)]
-    pub fn new(buffer: &'a [u8]) -> TableReader<'a> {
-        TableReader { buffer, offset: 0 }
-    }
-
-    #[inline(always)]
-    pub fn has(&self, bytes: u64) -> bool {
-        self.offset as u64 + bytes <= self.buffer.len() as u64
-    }
-
-    #[inline(always)]
-    pub fn get8(&mut self) -> u8 {
-        let v = self.buffer[self.offset];
-        self.offset += 1;
-        v
-    }
-
-    // The multi-byte reads take ONE range check and one load, not one check
-    // per byte: first_chunk is the safe spelling of "the next N bytes as an
-    // array", and a checked index per byte is what the generated codec's
-    // has() has already answered. The fallback is unreachable in generated
-    // code — every get is preceded by its has — and it is a zero rather than
-    // a panic because a reader that met framing damage should stop on the
-    // report, not on an abort.
-    #[inline(always)]
-    pub fn get16(&mut self) -> u16 {
-        let v = match self.buffer[self.offset..].first_chunk::<2>() {
-            Some(bytes) => u16::from_le_bytes(*bytes),
-            None => 0,
-        };
-        self.offset += 2;
-        v
-    }
-
-    #[inline(always)]
-    pub fn get32(&mut self) -> u32 {
-        let v = match self.buffer[self.offset..].first_chunk::<4>() {
-            Some(bytes) => u32::from_le_bytes(*bytes),
-            None => 0,
-        };
-        self.offset += 4;
-        v
-    }
-
-    #[inline(always)]
-    pub fn get64(&mut self) -> u64 {
-        let v = match self.buffer[self.offset..].first_chunk::<8>() {
-            Some(bytes) => u64::from_le_bytes(*bytes),
-            None => 0,
-        };
-        self.offset += 8;
-        v
-    }
-
-    // the rest of this body, as its own reader: the sub-reader a nested
-    // decode runs in.
-    #[inline(always)]
-    pub fn sub(&self, bytes: usize) -> TableReader<'a> {
-        TableReader::new(&self.buffer[self.offset..self.offset + bytes])
-    }
-
-    // skip one payload by kind; false = framing damage
-    pub fn skip(&mut self, kind: u8) -> bool {
-        match kind {
-            1 | 2 | 6 => {
-                if !self.has(1) {
-                    return false;
-                }
-                self.offset += 1;
-                true
-            }
-            3 | 7 => {
-                if !self.has(2) {
-                    return false;
-                }
-                self.offset += 2;
-                true
-            }
-            // 17 is a NODE INDEX (docs/SPEC-TABLES.md §3.1): four bytes, so it costs
-            // one row here and a reader without the kind still skips a pointer field
-            4 | 8 | 10 | 17 => {
-                if !self.has(4) {
-                    return false;
-                }
-                self.offset += 4;
-                true
-            }
-            5 | 9 | 11 => {
-                if !self.has(8) {
-                    return false;
-                }
-                self.offset += 8;
-                true
-            }
-            12 | 13 | 14 | 16 => {
-                if !self.has(4) {
-                    return false;
-                }
-                let n = self.get32() as u64;
-                if !self.has(n) {
-                    return false;
-                }
-                self.offset += n as usize;
-                true
-            }
-            // union: u16 arm id, then the arm length-prefixed (id 0 = empty, no body)
-            15 => {
-                if !self.has(2) {
-                    return false;
-                }
-                if self.get16() == 0 {
-                    return true;
-                }
-                if !self.has(4) {
-                    return false;
-                }
-                let n = self.get32() as u64;
-                if !self.has(n) {
-                    return false;
-                }
-                self.offset += n as usize;
-                true
-            }
-            _ => false,
-        }
-    }
-}
-
+` + wireRuntime + `
 // ---- reflection (tables only, docs/SPEC-TABLES.md §8) ----
 //
 // Static field descriptors for every type in the table closure: name, wire
@@ -477,7 +247,7 @@ pub struct TableFieldInfo {
     pub name: &'static str,      // schema field name, e.g. "health"
     pub json: &'static str,      // the TEXT form's key: json = "key", else name (§16.3)
     pub type_name: &'static str, // schema type name, e.g. "float32", "Grade"
-    pub id: u16,                 // table-wire field id (the was alias's hash after a rename)
+    pub id: u64,                 // table-wire field id (the was alias's hash after a rename)
     pub kind: u8,                // table-wire kind; for arrays/strings/bytes, the ELEMENT kind
     pub is_array: bool,          // fixed or counted array (bytes included)
     pub counted: bool,           // a _count/_length i32 companion exists
@@ -503,13 +273,14 @@ pub struct TableFieldInfo {
     pub flag_name: Option<fn(u32) -> &'static str>,
     // the TABLE-WIRE id of one variant (docs/SPEC-TABLES.md §5): for an enum, the
     // hash of the variant's name; for a union, the hash of the arm's name.
-    // 0 is the reserved id. None for every other kind.
-    pub variant_id: Option<fn(u64) -> u16>,
+    // None for every other kind. An absent ordinal returns 0, but a hash
+    // of 0 alone cannot establish whether the ordinal names a variant.
+    pub variant_id: Option<fn(u64) -> u64>,
     // an ENUM-KEYED array (§2.4): one slot per variant of key_type_name.
     // Walk [0, array_bound) to print slots by name.
     pub key_type_name: Option<&'static str>,
     pub key_name: Option<fn(u64) -> &'static str>,
-    pub key_id: Option<fn(u64) -> u16>,
+    pub key_id: Option<fn(u64) -> u64>,
     // union fields: the tag and its arms, behind a function so the whole
     // descriptor stays a constant.
     pub arms: Option<fn() -> &'static TableUnionInfo>,
@@ -691,12 +462,12 @@ fn table_json_keyed_slot_key(slot: i64) -> u64 {
 
 // A slot whose key names a variant of the keying enum. Every slot in
 // [0, array_bound) does, unless the enum carries max-headroom variants
-// outside a table closure, where a reserved value names nothing and its key
-// id is 0 — the reserved id no declared name can fold to (§5).
+// outside a table closure, where a reserved value names nothing. Validate
+// the name, since a zero hash is a legal identity (§5).
 #[inline]
 fn table_json_keyed_slot_valid(f: &TableFieldInfo, slot: i64) -> bool {
-    match f.key_id {
-        Some(key_id) => key_id(table_json_keyed_slot_key(slot)) != 0,
+    match f.key_name {
+        Some(key_name) => table_json_named(key_name(table_json_keyed_slot_key(slot))),
         None => false,
     }
 }
@@ -1219,10 +990,6 @@ unsafe fn table_json_write_scalar(
             if value as i64 > f.enum_max {
                 return false;
             }
-            let variant_id = f.variant_id.unwrap();
-            if value != 0 && variant_id(value) == 0 {
-                return false;
-            }
             let name = f.enum_name.unwrap()(value);
             if !table_json_named(name) {
                 return false;
@@ -1437,10 +1204,23 @@ impl TableJsonIn<'_> {
                 self.pos += 1;
                 continue;
             }
-            // comments are not JSON, and a walk that guessed at one would be
-            // reading a dialect nobody wrote down
-            if c == b'/' {
-                self.bad = true;
+            // The text form accepts line and block comments between tokens (§16.3).
+            if c == b'/' && self.pos + 1 < self.text.len() {
+                match self.text[self.pos + 1] {
+                    b'/' => {
+                        self.pos += 2;
+                        while self.pos < self.text.len() && self.text[self.pos] != b'\n' { self.pos += 1; }
+                        continue;
+                    },
+                    b'*' => {
+                        self.pos += 2;
+                        while self.pos + 1 < self.text.len() && &self.text[self.pos..self.pos+2] != b"*/" { self.pos += 1; }
+                        if self.pos + 1 == self.text.len() || self.pos == self.text.len() { self.bad = true; return; }
+                        self.pos += 2;
+                        continue;
+                    },
+                    _ => {},
+                }
             }
             return;
         }
@@ -1667,7 +1447,8 @@ fn table_json_scan_string(
                 got += 1;
                 input.pos += 1;
             }
-            unit_length = got;
+            unit_length = if core::str::from_utf8(&unit[..got]).is_ok() { got }
+                else { table_json_encode_utf8(0xfffd, &mut unit) };
         }
         if let TableJsonSink::Storage(out, capacity) = sink {
             if placed as usize + unit_length <= capacity {

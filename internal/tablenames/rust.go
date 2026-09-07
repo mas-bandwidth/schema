@@ -5,6 +5,7 @@ const Rust Backend = 1 << 2
 
 func init() {
 	define(Rust,
+		Name{Name: "TableOpenVerdict", What: "the file-form open and body-read verdict"},
 		Name{Name: "TableReport", What: "the read report — the permissive contract's ledger"},
 		Name{Name: "TableWriter", What: "the wire writer over the caller's buffer"},
 		Name{Name: "TableReader", What: "the wire reader over the caller's buffer"},

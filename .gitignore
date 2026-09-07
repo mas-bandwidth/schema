@@ -79,3 +79,6 @@ erl_crash.dump
 # binary here rather than in build/ — the Makefile always names `-o` and never
 # wants this file. It reached main once already (#345).
 /harness
+
+/test/rust-wire/target/
+/test/rust-wire/Cargo.lock

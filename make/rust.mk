@@ -216,7 +216,7 @@ tables-rust-alloc-audit: conformance
 # rather than one job carrying seven.
 .PHONY: conformance-rust
 conformance-rust: build/conformance-harness build/conformance-rust
-	$(CONFORMANCE_ENV) ./build/conformance-harness run --only rust
+	./build/conformance-harness run --only rust
 
 # ITS NEGATIVE CONTROL, and the soak's. A gate that has never fired proves
 # nothing, and the LIVE-BYTE gate could not fire on this class at all: live
@@ -314,13 +314,13 @@ generated/bench/rust/.stamp: bin/schema $(SCHEMAS_BENCH)
 # way it is a C++ namespace — its own package, its own protocol id, its own
 # table runtime. The crates carry a generated Cargo.toml each; nothing here is
 # checked in.
-RUST_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
+RUST_TABLE_UNITS := tblk1:test/tables/K1.schema tblk2:test/tables/K2.schema tabledemo:tables/examples graphdemo:tables/pointers \
 	blockdemo:tables/block blockhome:tables/blockhome \
 	tblv1:test/tables/V1.schema tblv2:test/tables/V2.schema \
 	tblp1:test/tables/P1.schema tblp2:test/tables/P2.schema \
 	tblp3:test/tables/P3.schema jsonkeys:test/tables/JsonKeys.schema
 
-build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema
+build/tables-generated-rust/.stamp: make/rust.mk test/tables/K1.schema test/tables/K2.schema bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema
 	@mkdir -p build/tables-generated-rust
 	@for unit in $(RUST_TABLE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \
@@ -454,3 +454,53 @@ packet-wide-rust-negative-control: packet-wide-rust
 	@echo 'packet wide Rust negative control: removed pairing fails bit-flip agreement'
 
 test-rust: packet-wide-rust packet-wide-rust-negative-control
+
+# Form-1 reader agreement with the compiler engine, on the C++ leg's stream.
+.PHONY: tables-rust-wire-fuzz
+tables-rust-wire-fuzz: build/conformance-harness build/conformance-rust
+	./build/conformance-harness wire-fuzz --driver './build/conformance-rust wire-fuzz' --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-rust.bin
+
+test-rust: tables-rust-wire-fuzz
+
+# The first-use vocabulary crosses 127 inside a nested payload. C++ owns the
+# expected bytes; Rust checks them and malformed framing in debug and release.
+build/rust-wire/.stamp: bin/schema test/rust-wire/Boundary.schema make/rust.mk
+	./bin/schema generate --lang rust --out build/rust-wire/rust/src test/rust-wire/Boundary.schema
+	./bin/schema generate --lang cpp --out build/rust-wire/cpp test/rust-wire/Boundary.schema
+	@printf '[package]\nname = "rustwire"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = []\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../$(SERIALIZE_RS)" }\n' > build/rust-wire/rust/Cargo.toml
+	@touch $@
+
+build/rust-wire/reference: build/rust-wire/.stamp test/rust-wire/reference.cpp
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/rust-wire/cpp test/rust-wire/reference.cpp build/rust-wire/cpp/*Table.cpp -o $@
+
+.PHONY: tables-rust-wire-boundaries
+tables-rust-wire-boundaries: build/rust-wire/reference
+	./build/rust-wire/reference build/rust-wire/cpp.bin
+	PATH="$(RUSTUP_BIN):$$PATH" cargo test --quiet --manifest-path test/rust-wire/Cargo.toml
+	PATH="$(RUSTUP_BIN):$$PATH" cargo test --quiet --release --manifest-path test/rust-wire/Cargo.toml
+
+test-rust: tables-rust-wire-boundaries
+
+# Remove canonical-spelling enforcement in a COPY. The ordinary driver and
+# generated crates remain untouched; a distinct Cargo tree builds the mutant.
+.PHONY: tables-rust-wire-fuzz-negative-control
+tables-rust-wire-fuzz-negative-control: build/conformance-harness
+	@mkdir -p build/rust-wire-negative/driver/src
+	go run ./tools/sabotage -name rust-wire-nonminimal -out build/rust-wire-negative/wire_runtime.gotext internal/codegen/rusttable/wire_runtime.go
+	@printf '{"Replace":{"%s/internal/codegen/rusttable/wire_runtime.go":"%s/build/rust-wire-negative/wire_runtime.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/rust-wire-negative/overlay.json
+	go build -overlay=build/rust-wire-negative/overlay.json -o build/rust-wire-negative/schema ./cmd/schema
+	@for unit in $(RUST_TABLE_UNITS); do \
+		name=$${unit%%:*}; path=$${unit#*:}; \
+		./build/rust-wire-negative/schema generate --lang rust --out build/rust-wire-negative/generated/$$name/src $$path || exit 1; \
+		printf '[package]\nname = "%s"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../../$(SERIALIZE_RS)" }\n' $$name > build/rust-wire-negative/generated/$$name/Cargo.toml; \
+	done
+	cp test/conformance/rust/src/main.rs build/rust-wire-negative/driver/src/main.rs
+	sed 's|../../../build/tables-generated-rust/|../generated/|g' test/conformance/rust/Cargo.toml > build/rust-wire-negative/driver/Cargo.toml
+	PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --manifest-path build/rust-wire-negative/driver/Cargo.toml
+	@if ./build/conformance-harness wire-fuzz --driver './build/rust-wire-negative/driver/target/debug/conformance-rust wire-fuzz' --n 0 --failed build/rust-wire-negative/failed.bin > build/rust-wire-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: nonminimal Rust LEB128 passed'; exit 1; \
+	fi
+	@grep -Fq 'the report differs' build/rust-wire-negative/log || { cat build/rust-wire-negative/log; exit 1; }
+	@echo 'Rust wire negative control: nonminimal LEB128 changes the report against the oracle'
+
+test-rust: tables-rust-wire-fuzz-negative-control
