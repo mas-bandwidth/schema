@@ -1188,6 +1188,19 @@ tables, and it carries the same members (docs/SPEC-TABLES.md §2.6).
 - **Length prefixes** (`string(N)`, `wstring(N)`, `bytes(N)`, `[..N]T`,
   `[Min..N]T`) are ranged integers over their declared count range, per the
   rows below.
+- **A BARE FLOAT RIDES AS ITS IEEE-754 BIT PATTERN, WITH NO
+  CANONICALISATION.** A `float32` is the 32 bits it holds and a `float64` the
+  64, whatever they spell: a negative zero, an infinity, a quiet NaN, a
+  SIGNALLING NaN, a NaN with any payload. No writer normalizes one and no
+  reader repairs one, so the pattern that goes in is the pattern that comes
+  out, in every target. **A backend that holds a `float32` in a WIDER cell
+  carries the pattern BIT FOR BIT and never through a float conversion**: the
+  hardware conversion between the two widths sets the quiet bit on a
+  signalling NaN and drops a payload the narrower cell would have kept, and
+  byte identity across the targets fails on exactly those values. The
+  technique is a row in docs/PORTING.md, and the corpus pins the patterns a
+  conversion would move. A *quantized* `float32` is a different field: its
+  wire is the step index and not the pattern, per its row below.
 
 The wire encodings are exactly classic serialize's — each row names its
 classic twin, which is the wire oracle for the stated model.
@@ -1202,8 +1215,8 @@ classic twin, which is the wire oracle for the stated model.
 | `f fixed(I, F) | min = A, max = B` (range required; **signed**) | Q I.F, the sign bit counting toward I; storage is a signed integer of exactly I+F bits (I+F ∈ 8/16/32/64/128, I ≥ 1, F ≥ 0); bounds are compile-time WHOLE UNITS fitting the Q format and int64; wire = raw − (A << F) in bitlen(B − A) + F bits, 32-bit groups from the bottom — **except A == B, which costs ZERO bits (not F): the reader materializes raw = A << F from the range alone (§4.6)**; read rejects above the raw range; round trip is EXACT (no quantization step), and with F = 0 the operation IS a ranged integer | `serialize_fixed` |
 | `f ufixed(I, F) | min = A, max = B` (range required; **unsigned**) | UQ I.F: no sign bit, whole-unit domain [0, 2^I); storage is an UNSIGNED integer of exactly I+F bits (I+F ∈ 8/16/32/64/128, I ≥ 1, F ≥ 0); bounds are compile-time WHOLE UNITS fitting the unsigned domain and int64 (so I ≥ 63 clamps to int64's ceiling); the wire law is fixed's own — raw − (A << F) in bitlen(B − A) + F bits, A == B costs ZERO bits, read rejects above the raw range, round trip EXACT. The raw values of wide formats legitimately fill uint64's HIGH HALF (above 2^63): every route through a signed-typed runtime API is a bit-exact cast or zero-extension, never sign extension, and the corpus pins that byte-for-byte | `serialize_fixed` (unsigned storage — the codec is storage-generic) |
 | `f bool` | 1 bit | `serialize_bool` |
-| `f float32` | 32 raw IEEE-754 bits | `serialize_float` |
-| `f float64` | 64 raw bits (low dword first) | `serialize_double` |
+| `f float32` | 32 raw IEEE-754 bits — the pattern, with no canonicalisation: a signalling NaN and a NaN payload ride through unchanged, and a backend holding the field in a wider cell moves the pattern by bit surgery | `serialize_float` |
+| `f float64` | 64 raw bits (low dword first) — the pattern, with no canonicalisation, exactly as `float32`'s row | `serialize_double` |
 | `f float32 | min = A, max = B, resolution = R` | quantized to ceil((B−A)/R) steps — the actual step is (B−A)/ceil((B−A)/R), ≤ R; read rejects values above the step count | `serialize_compressed_float` (exact formulas incl. the ceil, +0.5f rounding and clamp); storage stays `float32` — the attributes describe the wire |
 | `f Weapon` (an enum) | minimal bits for [0, max]; read rejects above max | `serialize_int` over [0, max] |
 | `f Damage` (a `flags` declaration, §4.2) | W raw bits, W = variant count (or the widened max); every pattern legal; storage `uint64` in every target | `serialize_bits` |
