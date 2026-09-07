@@ -39,22 +39,16 @@ func refuseLists(u *ir.Unit, target string) error {
 		englishList(fields), englishList(carry), target, englishList(flags))
 }
 
-// refuseToolLists is the TOOL's COOK refusal (docs/SPEC-TABLES.md §2.9, §15),
-// the map's own, one construct over: a unit whose table closure declares a
-// `[]T` is refused by name at the tool's COOK and UNCOOK surfaces, because
-// internal/tablecook does not lay out the element arrays yet. `cook-check`
-// is not among them: its scan carries §7.4's element-array clause, and a cook
-// the C++ reference wrote is checked there.
+// THE TOOL'S COOK AND UNCOOK HALVES CARRY THE UNBOUNDED ARRAY (schema#380,
+// docs/SPEC-TABLES.md §2.9, §7.6). There is no `refuseToolLists` any more:
+// `internal/tablecook` lays the element arrays out in the holder's node
+// extent, PRE-ORDER, exactly as the C++ reference does — the same
+// `ir.ListElementLayout` numbers, the same alignment floor on the record, the
+// same "the extent written is the extent measured" check before a header is
+// written — and reads them back through the deltas it wrote. `cook-check`
+// carries §7.4's element-array clause beside them.
 //
-// It is here, at the surface, rather than in the engine, and it is NAMED
-// rather than left to the layout. Without it the engine lays out a region
-// short of the element arrays and a reader meets a slot pointing past its
-// holder's extent, which is a corrupt file with nothing saying who wrote it.
-func refuseToolLists(u *ir.Unit) error {
-	fields := ir.ListFields(u)
-	if len(fields) == 0 {
-		return nil
-	}
-	return fmt.Errorf("unit declares an unbounded array in a table closure (%s): the tool's WIRE and TEXT halves carry the construct and `cook-check` reads one, and its COOK half does not, so this command would lay out a region short of the element arrays rather than refusing. The C++ reference carries the cook (--lang cpp) (docs/SPEC-TABLES.md §2.9, §15)",
-		englishList(fields))
-}
+// The MAP's tool cook half is still owed and still refused by name
+// ([refuseToolMaps]): the two constructs share the extent but a map adds the
+// sort, the entry array's key order and the two reader events, and none of
+// that is what a list needed.

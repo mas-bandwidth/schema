@@ -111,8 +111,8 @@ var messageSabotages = map[string][]edit{
 	// AN OVER-LONG ARRAY CLAMPS BY WALKING THE SURPLUS: stop at the bound
 	// instead and the next field lands on the wrong bit.
 	"message-clamp-drops-surplus": {{
-		old: "\tfor i := uint64(0); i < walk; i++ {\n\t\tvar sink tabletext.Cell\n\t\tcell := &sink\n\t\tif f.Array == ir.ArrayList {\n",
-		new: "\tfor i := uint64(0); i < kept; i++ { // SABOTAGED: the surplus is not walked\n\t\tvar sink tabletext.Cell\n\t\tcell := &sink\n\t\tif f.Array == ir.ArrayList {\n",
+		old: "\tfor i := uint64(0); i < walk; i++ {\n\t\tvar sink tabletext.Cell\n\t\tcell := &sink\n\t\tmine := true\n",
+		new: "\tfor i := uint64(0); i < kept; i++ { // SABOTAGED: the surplus is not walked\n\t\tvar sink tabletext.Cell\n\t\tcell := &sink\n\t\tmine := true\n",
 	}},
 
 	// A SKIPPED STRING ALIGNS BEFORE ITS BYTES exactly as a read one does.
@@ -273,8 +273,8 @@ var messageRoundTwoSabotages = map[string][]edit{
 	// A DISCARDED SURPLUS ELEMENT NEVER ACQUIRES A LIVE DESTINATION (M1): land
 	// it on element zero instead.
 	"message-surplus-lands-on-zero": {{
-		old: "\t\tvar sink tabletext.Cell\n\t\tcell := &sink\n\t\tif f.Array == ir.ArrayList {\n",
-		new: "\t\tcell := &fv.Elems[0] // SABOTAGED: a surplus element overwrites element zero\n\t\tif f.Array == ir.ArrayList {\n",
+		old: "\t\tvar sink tabletext.Cell\n\t\tcell := &sink\n\t\tmine := true\n\t\tswitch {\n\t\tcase f.Array == ir.ArrayList:\n",
+		new: "\t\tcell := &fv.Elems[0] // SABOTAGED: a surplus element overwrites element zero\n\t\tmine := true\n\t\tswitch {\n\t\tcase f.Array == ir.ArrayList:\n",
 	}},
 
 	// A RANGED 128-BIT VALUE READS AT ITS ANNOUNCED WIDTH (M2): read the raw
@@ -426,3 +426,18 @@ var messageTextSabotages = map[string][]edit{
 		new: "\t\tg.pf(\"            // SABOTAGED: the blob content rule is gone\\n\")\n",
 	}},
 }
+
+// THE MESSAGE FORM'S RETENTION (docs/SPEC-TABLES.md §3.3, §6.6). The unknown
+// arm of a retaining message body SKIPS the entry and then re-reads the bits
+// it delimited, which is the whole of the form-2 capture. Take the second half
+// away and the skip is all that is left: the read is unchanged to the byte,
+// every counter but the two retention ones stands, and nothing about the batch
+// says a field was lost. What goes red is the pinned batch's own row.
+var messageRetainSabotages = map[string][]edit{
+	"message-retain-no-capture": {{
+		old: "\t\tg.pf(\"                TableMessageRetainCapture( retain, r, vocabulary, index_bits, entry, path, report, unknown_at );\\n\")\n",
+		new: "\t\tg.pf(\"                (void) unknown_at; // SABOTAGED: the message path never enters the resolving walk\\n\")\n",
+	}},
+}
+
+func init() { maps.Copy(sabotages, messageRetainSabotages) }

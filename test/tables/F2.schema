@@ -1,0 +1,18 @@
+// F2.schema — F1's root one generation on, every float32 respelled float64
+// (docs/SPEC-TABLES.md §4, schema#480). `f32` into `f64` is the float rung of
+// the WIDENED ladder and the only one, and it is the place a port that models
+// a float32 in a wider cell would quiet a signalling NaN: the widening is done
+// on the BITS, the 23 payload bits riding in the top of the double's 52, and
+// the pin at testdata/wire/tables/floats_nan.bin is what says so.
+package tblf2
+
+table Floats
+{
+    signalling float64
+    payload    float64
+    negative   float64
+    quiet      float64
+    wide       float64
+    samples    [3]float32
+    after      int32
+}

@@ -146,6 +146,12 @@ type tableGen struct {
 	// unionField is the union FIELD whose arms are being emitted, which is
 	// what an arm's own descent takes its ordinal from.
 	unionField *ir.Field
+	// retainGate is the condition under which a nested MESSAGE read captures
+	// into the caller's store at all, and empty where it always does. A bit
+	// stream has to be walked past, so an element this build is dropping is
+	// decoded into a scratch where a file's reader steps over it by its
+	// length, and nothing in that body is a field of this region (§6.6, §3.3).
+	retainGate string
 }
 
 // step renders one path step at a child-body descent: the field's ordinal in

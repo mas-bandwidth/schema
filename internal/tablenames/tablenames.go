@@ -2,12 +2,22 @@
 // TABLE-wire runtimes define (docs/SPEC-TABLES.md §11).
 //
 // It exists because the same list is needed in two places that must never
-// disagree: the CHECKER claims these names when a unit declares a table, so no
-// legal schema can reach a generated source that does not compile; and the
-// EMITTERS define them. A name defined by one and unclaimed by the other is
-// precisely the defect §11 promises cannot happen — a legal schema whose
-// generated code a compiler rejects — so the two read one list instead of
-// keeping two.
+// disagree: the CHECKER claims these names, so no legal schema can reach a
+// generated source that does not compile; and the EMITTERS define them. A name
+// defined by one and unclaimed by the other is precisely the defect §11
+// promises cannot happen — a legal schema whose generated code a compiler
+// rejects — so the two read one list instead of keeping two.
+//
+// WHERE THE CHECKER CLAIMS EACH NAME, which is the one thing this list is read
+// for: the entries the generated VIEW FILE spells (View, below) are claimed in
+// EVERY unit, because a table-free unit's view defines them (§8.2) and a name
+// free today would be a collision the day that view is emitted; every other
+// entry is claimed in a unit that DECLARES A TABLE and nowhere else, because
+// the generated table sources are the only place it is written. §11 states the
+// split, docs/SPEC.md §4.6 points a packet-only author at it, and
+// ClaimedInEveryUnit and ClaimedWithATable are the two halves the checker
+// reads. A packet-only unit keeps `type Announce`, `const ok` and every other
+// spelling of the announcement and refusal vocabulary.
 //
 // The list is FRONT-END LAW, not one target's inventory: every backend's
 // spelling is claimed for ALL of them. A unit legal under one target and
@@ -53,6 +63,28 @@ type Name struct {
 	// for every name it finds rather than a filter nobody can see.
 	Scoped bool
 
+	// View marks a spelling the generated VIEW FILE itself carries, which is
+	// the whole of what makes a runtime name claimable in a unit that
+	// declares no table.
+	//
+	// docs/SPEC-TABLES.md:560 gives ONE reason for an every-unit claim: a
+	// table-free unit's view file DEFINES the name (§8.2), so a name free
+	// today is a collision the day that view is emitted. That reason reaches
+	// the DESCRIPTOR SURFACE the view spells and stops there. Everything else
+	// in this registry, meaning the announcement vocabulary (§3.3), the
+	// refusal vocabulary (§6.5, §7, §19.2), the accelerators' runtimes and
+	// the cooked form's names, is written into the generated TABLE sources
+	// and into no view file, so it is claimed where those sources are
+	// written: in a unit that declares a table (§11).
+	//
+	// The set is MEASURED, not asserted: compiler's
+	// TestViewFileNamesAreClaimedInEveryUnit scans the emitted view files for
+	// every registered spelling and requires the set it finds to be exactly
+	// this one. A view file that grows a name nobody marked fails there, and
+	// so does a mark no view file needs. That is the same instrument, in the
+	// same direction, that holds the registry itself honest.
+	View bool
+
 	// RustConst marks a name the Rust backend spells as a CRATE-SCOPE
 	// CONSTANT, whose emitted identifier is therefore ir.RustConstName of the
 	// name rather than the name itself.
@@ -81,6 +113,10 @@ func All() []Name {
 // Claimed is every UNIT-LEVEL registered name, sorted — what the checker
 // claims when a unit declares a table, whatever target it is generating for.
 // Scoped spellings are not claimed: they cannot collide with a declaration.
+//
+// The claim is made in TWO scopes and this is their union:
+// ClaimedInEveryUnit is claimed with or without a table, ClaimedWithATable
+// only beside one, and every unit-level name is in exactly one of the two.
 func Claimed() []string {
 	var names []string
 	for _, n := range registry {
@@ -90,6 +126,46 @@ func Claimed() []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+// ClaimedInEveryUnit is every unit-level registered name the generated VIEW
+// FILE spells, sorted: the names claimed whether or not a unit declares a
+// table, because a table-free unit's view defines them (docs/SPEC-TABLES.md
+// §8.2, §11).
+func ClaimedInEveryUnit() []string {
+	var names []string
+	for _, n := range registry {
+		if !n.Scoped && n.View {
+			names = append(names, n.Name)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+// ClaimedWithATable is every unit-level registered name no view file spells,
+// sorted: the names the generated TABLE sources define, claimed in a unit
+// that declares a table and in no other (docs/SPEC-TABLES.md §11).
+func ClaimedWithATable() []string {
+	var names []string
+	for _, n := range registry {
+		if !n.Scoped && !n.View {
+			names = append(names, n.Name)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+// InEveryUnit reports whether the view file spells name, which is what
+// decides the scope of its claim. False for a name nothing registers.
+func InEveryUnit(name string) bool {
+	for _, n := range registry {
+		if n.Name == name {
+			return n.View
+		}
+	}
+	return false
 }
 
 // DefinedBy is every name one backend's emitted text carries, scoped ones
@@ -162,7 +238,7 @@ var claimed Backend
 // What stays the lowest bit's, so init order decides nothing; Scoped holds
 // only if EVERY definer scopes it, because the claim is the union over the
 // backends and one unit-level spelling claims the name for all of them;
-// RustConst is kept whichever definer set it.
+// RustConst and View are kept whichever definer set them.
 func define(b Backend, names ...Name) {
 	if b == 0 || b&(b-1) != 0 {
 		panic(fmt.Sprintf("tablenames: %b is not one backend bit", b))
@@ -191,5 +267,6 @@ func define(b Backend, names ...Name) {
 		have.By |= b
 		have.Scoped = have.Scoped && n.Scoped
 		have.RustConst = have.RustConst || n.RustConst
+		have.View = have.View || n.View
 	}
 }

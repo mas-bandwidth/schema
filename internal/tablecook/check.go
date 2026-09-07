@@ -202,14 +202,7 @@ func (s *scan) field(at int64, f *ir.Field) error {
 	value := pieces[0]
 	switch {
 	case f.IsMap():
-		// §7.4's MAP-SLOT clause (docs/SPEC-TABLES.md §2.8, §7.4) is
-		// schema#380's next PR, beside the tool's cook half, so a cook that
-		// holds a map slot is refused HERE, by name, at the node that holds
-		// it, rather than walked past: a slot the scan cannot bound is a slot
-		// a forgery could steer through. The C++ reference reads it (--lang
-		// cpp). A cook of a unit that declares a map SOMEWHERE ELSE checks as
-		// any other does, because the scan meets no such slot.
-		return fmt.Errorf("a map slot, and `cook-check` carries no map-slot clause yet (docs/SPEC-TABLES.md §7.4): the C++ reference reads the cook (--lang cpp), and the tool's clause is schema#380's next PR")
+		return s.mapSlot(value.Offset, f)
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		return s.ref(value.Offset, f)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString, f.Type.Kind == ir.TBytes:
@@ -239,36 +232,178 @@ func (s *scan) field(at int64, f *ir.Field) error {
 // facts and not the offset the layout rule computes, so the layout rule stays
 // independent of the check exactly as the pack order does.
 func (s *scan) list(at int64, f *ir.Field) error {
+	size, align := ir.ListElementLayout(s.m.Unit, f)
+	start, count, err := s.placedArray(at, size, align, "element", "list")
+	if err != nil || count == 0 {
+		return err
+	}
+	return s.slots(start, f, count)
+}
+
+// placedArray is THE FOUR CLAUSES a list's slot and a map's slot share
+// (docs/SPEC-TABLES.md §2.8, §2.9, §7.4), because the two slots are one shape:
+// a sixteen-byte slot holding an int64 SELF-RELATIVE delta and an int32 count,
+// and an array of `count × size` at `align` that must sit INSIDE THE HOLDER'S
+// OWN EXTENT — CONTAINMENT, ALIGNMENT, FIT, and NO OVERLAP with any other
+// array already placed in that node, a list's and a map's alike, because
+// lists and maps are ONE POPULATION in a node's extent.
+//
+// It reads those four facts and NOT the offset the layout rule computes, so
+// the layout rule stays independent of the check exactly as the pack order
+// does. It answers where the array starts and how many elements it holds; a
+// count of zero is an empty container and the caller walks nothing.
+func (s *scan) placedArray(at, size, align int64, what, container string) (start, count int64, err error) {
 	delta := int64(s.ord.Uint64(s.buf[at:]))
-	count := int64(int32(s.ord.Uint32(s.buf[at+8:])))
+	count = int64(int32(s.ord.Uint32(s.buf[at+8:])))
 	if count < 0 {
-		return fmt.Errorf("the count is %d, and an extent is never negative", count)
+		return 0, 0, fmt.Errorf("the count is %d, and an extent is never negative", count)
 	}
 	if delta == RefNull {
 		if count != 0 {
-			return fmt.Errorf("the reference is null and the count is %d: an empty list is the only list a null names", count)
+			return 0, 0, fmt.Errorf("the reference is null and the count is %d: an empty %s is the only %s a null names", count, container, container)
 		}
-		return nil
+		return 0, 0, nil
 	}
 	if count == 0 {
-		return fmt.Errorf("the count is 0 and the reference is not null: an empty list's reference is null in every encoding")
+		return 0, 0, fmt.Errorf("the count is 0 and the reference is not null: an empty %s's reference is null in every encoding", container)
 	}
-	size, align := ir.ListElementLayout(s.m.Unit, f)
-	start := at + delta
+	start = at + delta
 	end := start + count*size
 	if start < s.base || end > s.extent {
-		return fmt.Errorf("the element array runs [%d, %d) and its holder's extent is [%d, %d): the array leaves the node", start, end, s.base, s.extent)
+		return 0, 0, fmt.Errorf("the %s array runs [%d, %d) and its holder's extent is [%d, %d): the array leaves the node", what, start, end, s.base, s.extent)
 	}
 	if start%align != 0 {
-		return fmt.Errorf("the element array starts at %d, which is not aligned to %d", start, align)
+		return 0, 0, fmt.Errorf("the %s array starts at %d, which is not aligned to %d", what, start, align)
 	}
 	for _, other := range s.arrays {
 		if start < other.end && other.start < end {
-			return fmt.Errorf("the element array [%d, %d) overlaps another array [%d, %d) in the same node", start, end, other.start, other.end)
+			return 0, 0, fmt.Errorf("the %s array [%d, %d) overlaps another array [%d, %d) in the same node", what, start, end, other.start, other.end)
 		}
 	}
 	s.arrays = append(s.arrays, arrayRange{start, end})
-	return s.slots(start, f, count)
+	return start, count, nil
+}
+
+// mapSlot is §7.4's MAP-SLOT clause (docs/SPEC-TABLES.md §2.8, §7.4). The four
+// clauses above, against `alignof( Entry )` and `count × sizeof( Entry )`, then
+// the entries' own slots, companions and tags walked as a bounded array's
+// elements are — which is where an entry's VALUE holding a list or a nested map
+// takes the same clauses one depth down, in the same node's extent.
+//
+// THE FIFTH CLAUSE IS THE KEYS, and it is the one a list has no analogue for:
+// they are read ASCENDING WITH NO REPEAT, because a cook's `Find` is a BINARY
+// SEARCH IN PLACE over these bytes and a cook whose keys a search cannot find
+// is a forgery. It is the only place this scan reads a key, and it reads it for
+// the reason it reads a union's tag: not as a payload, but as the fact that
+// decides what a reader will do with the bytes around it.
+func (s *scan) mapSlot(at int64, f *ir.Field) error {
+	entry := f.MapEntry
+	el := ir.RecordLayout(s.m.Unit, entry)
+	start, count, err := s.placedArray(at, el.Size, el.Align, "entry", "map")
+	if err != nil || count == 0 {
+		return err
+	}
+	for i := range count {
+		if err := s.record(start+i*el.Size, entry); err != nil {
+			return err
+		}
+	}
+	return s.keysAscend(start, f, el, count)
+}
+
+// keysAscend reads the entry array's keys in order and holds them strictly
+// ascending: a DESCENDING pair and a REPEAT are both refused, and the refusal
+// names the two positions so a person diffing a cook knows where to look.
+func (s *scan) keysAscend(start int64, f *ir.Field, el *ir.MemberLayout, count int64) error {
+	key := ir.MapKeyField(f)
+	var keyOffset int64 = -1
+	for i := range el.Fields {
+		if el.Fields[i].Field == key {
+			keyOffset = el.Fields[i].Offset
+		}
+	}
+	if keyOffset < 0 {
+		return fmt.Errorf("internal: the generated entry %s carries no key field", f.MapEntry.Name)
+	}
+	for i := int64(1); i < count; i++ {
+		order := s.keyOrder(key, start+(i-1)*el.Size+keyOffset, start+i*el.Size+keyOffset)
+		if order > 0 {
+			return fmt.Errorf("entry %d's key sorts before entry %d's: the entries descend, and a cook's Find is a binary search over them", i, i-1)
+		}
+		if order == 0 {
+			return fmt.Errorf("entries %d and %d carry the SAME key: a map holds a key once, and a search over a repeat answers whichever half it landed in", i-1, i)
+		}
+	}
+	return nil
+}
+
+// keyOrder compares two stored keys, -1, 0 or 1. A bounded string key is its
+// USED BYTES against its used length, compared bytewise with the shorter
+// prefix first — the C++ reference's TableKeyOrder, which is what the binary
+// search this clause exists to protect uses. An integer key is compared at its
+// own signedness, because a negative key is not the number its bits spell.
+func (s *scan) keyOrder(key *ir.Field, a, b int64) int {
+	if key.Type.Kind == ir.TString {
+		return compareBytes(s.usedBytes(key, a), s.usedBytes(key, b))
+	}
+	width := int64(key.Type.Width) / 8
+	var x, y tabletext.Cell
+	readWidth(&x, s.ord, s.buf, a, width)
+	readWidth(&y, s.ord, s.buf, b, width)
+	if key.Type.Signed {
+		sx, sy := signExtend(x.U, width), signExtend(y.U, width)
+		switch {
+		case sx < sy:
+			return -1
+		case sx > sy:
+			return 1
+		}
+		return 0
+	}
+	switch {
+	case x.U < y.U:
+		return -1
+	case x.U > y.U:
+		return 1
+	}
+	return 0
+}
+
+// usedBytes is a bounded string key's stored bytes: the buffer piece cut to
+// the used length its companion carries, clamped to the buffer so a forged
+// length reads nothing outside the entry it belongs to (the companion itself
+// is bounded where every companion is, in `record`'s walk of the entry).
+func (s *scan) usedBytes(key *ir.Field, at int64) []byte {
+	pieces := ir.FieldPieces(s.m.Unit, key, at)
+	n := min(max(int64(int32(s.ord.Uint32(s.buf[pieces[1].Offset:]))), 0), pieces[0].Size)
+	return s.buf[pieces[0].Offset : pieces[0].Offset+n]
+}
+
+func compareBytes(a, b []byte) int {
+	common := min(len(a), len(b))
+	for i := range common {
+		if a[i] != b[i] {
+			if a[i] < b[i] {
+				return -1
+			}
+			return 1
+		}
+	}
+	switch {
+	case len(a) < len(b):
+		return -1
+	case len(a) > len(b):
+		return 1
+	}
+	return 0
+}
+
+func signExtend(raw uint64, width int64) int64 {
+	if width >= 8 {
+		return int64(raw)
+	}
+	shift := uint(64 - width*8)
+	return int64(raw<<shift) >> shift
 }
 
 // companion checks one count companion against its DECLARED bound. A negative

@@ -166,15 +166,32 @@ func (g *tableGen) emitVariableMessageSurface(st *ir.Struct) {
 	g.pf("    if ( attribution_bytes != NULL ) { *attribution_bytes = attribution; }\n")
 	g.pf("    return data + attribution;\n}\n\n")
 
+	g.emitVariableMessageLoadSurface(st)
+}
+
+// emitVariableMessageLoadSurface emits the batch's READ half over a pointered
+// root: one body into the region, and the batch's own verb over it. It is
+// emitted TWICE, once plain and once under RETENTION (docs/SPEC-TABLES.md §3.3,
+// §6.6), and the retaining half is the same walk with the caller's stores
+// threaded and the unknown arm capturing.
+func (g *tableGen) emitVariableMessageLoadSurface(st *ir.Struct) {
+	n := st.Name
 	// ONE BODY into the region: the directory, the records, the root
-	g.pf("// %sLoadMessageBodyInto: one body of a batch into the region at `used`. Its\n", n)
+	g.pf("// %s%s: one body of a batch into the region at `used`. Its\n", n, g.verb("", "LoadMessageBodyInto"))
 	g.pf("// chunk is the node DIRECTORY, then the records in wire order, then the root\n")
 	g.pf("// and the extent its maps take, so every offset a pass needs is known when\n")
 	g.pf("// the pass reaches it. PASS ONE fills the numbering from the framing and\n")
 	g.pf("// places every node; PASS TWO decodes each record's body into the storage it\n")
 	g.pf("// owns; the ROOT's own body decodes last, so every index it carries resolves\n")
 	g.pf("// against a numbering already known whole.\n")
-	g.pf("inline bool %sLoadMessageBodyInto( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * out, uint8_t * region, int64_t region_bytes, int64_t & used, const %s * & root_out )\n{\n", n, n)
+	if g.retain {
+		g.pf("// UNDER RETENTION the body's own retention buffer is reset here and belongs\n")
+		g.pf("// to it from here on: a batch takes ONE REGION and ONE BUFFER A BODY, because\n")
+		g.pf("// each body carries its own node directory inside that one region and a\n")
+		g.pf("// record's first step is an index into it (docs/SPEC-TABLES.md §3.3, §6.6).\n")
+	}
+	g.pf("inline bool %s( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * out, uint8_t * region, int64_t region_bytes, int64_t & used, const %s * & root_out%s )\n{\n",
+		g.verb(n, "LoadMessageBodyInto"), n, g.retainIntoParam())
 	g.pf("    // the node table opens the body, or the body has none\n")
 	g.pf("    int64_t count = 0;\n")
 	g.pf("    if ( !TableMessageNodeTableOpen( r, vocabulary, count ) ) { out->malformed = true; return false; }\n")
@@ -232,7 +249,19 @@ func (g *tableGen) emitVariableMessageSurface(st *ir.Struct) {
 	}
 	g.pf("    used += root_bytes;\n")
 	g.pf("    nodes.good = true;\n")
-	g.pf("    out->unknown += unknown_records;\n\n")
+	if g.retain {
+		g.pf("    // A NODE RECORD whose type id this reader cannot name is one of the SIX\n")
+		g.pf("    // EXCLUDED CLASSES (§6.6): it is a whole node, and putting one back means\n")
+		g.pf("    // renumbering a graph the writer numbers from its own edges.\n")
+		g.pf("    out->unknown += unknown_records;\n")
+		g.pf("    out->retain_lost += unknown_records;\n")
+		g.pf("    // THE BUFFER BELONGS TO THIS BODY from here on: it resets both stores and\n")
+		g.pf("    // writes into neither id list, because a retained record carries its\n")
+		g.pf("    // field's identity in the record itself (§6.6).\n")
+		g.pf("    TableRetainReset( retain, nodes, region );\n\n")
+	} else {
+		g.pf("    out->unknown += unknown_records;\n\n")
+	}
 	g.pf("    // PASS TWO: each record's body into its own storage, in wire order\n")
 	g.pf("    r.offset = records_start;\n")
 	g.pf("    for ( int64_t k = 0; k < count; k++ )\n    {\n")
@@ -259,23 +288,40 @@ func (g *tableGen) emitVariableMessageSurface(st *ir.Struct) {
 	g.pf("        if ( directory[k + 1].offset == kTableNodeAbsent )\n        {\n")
 	g.pf("            if ( !TableMessageSkipBody( r, vocabulary, index_bits ) ) { out->malformed = true; return false; }\n")
 	g.pf("            continue;\n        }\n")
-	g.pf("        if ( !%sNodeMessageBody( type_id, r, vocabulary, out, nodes, index_bits, region + directory[k + 1].offset ) ) { return false; }\n", n)
+	if g.retain {
+		g.pf("        if ( !%sNodeMessageBodyRetain( type_id, r, vocabulary, out, nodes, index_bits, region + directory[k + 1].offset, retain, (uint32_t) ( k + 2 ) ) ) { return false; }\n", n)
+	} else {
+		g.pf("        if ( !%sNodeMessageBody( type_id, r, vocabulary, out, nodes, index_bits, region + directory[k + 1].offset ) ) { return false; }\n", n)
+	}
 	g.pf("    }\n")
 	g.pf("    if ( r.offset != fields_start ) { out->malformed = true; return false; } // the two passes disagree about the table's extent\n\n")
 	g.pf("    // and the ROOT's own body last\n")
 	if g.anyExtent {
 		g.pf("    nodes.carve = &root_carve; // the ROOT's extent is its own, like every node's\n")
 	}
-	g.pf("    return %sLoadMessageBody( r, vocabulary, out, nodes, index_bits, *root );\n}\n\n", n)
+	if g.retain {
+		g.pf("    return %sLoadMessageBodyRetain( r, vocabulary, out, nodes, index_bits, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );\n}\n\n", n)
+	} else {
+		g.pf("    return %sLoadMessageBody( r, vocabulary, out, nodes, index_bits, *root );\n}\n\n", n)
+	}
 	// LoadMessages: the batch into ONE region
-	g.pf("// %sLoadMessages: decode a BATCH into the caller's exact-sized region and\n", n)
+	g.pf("// %s%s: decode a BATCH into the caller's exact-sized region and\n", n, g.messageBatchVerb())
 	g.pf("// write each body's root into `roots`. `count` is IN and OUT: the storage the\n")
 	g.pf("// caller has room for, then what it got. M above the capacity is a refusal\n")
 	g.pf("// by name with count holding the wire's M; damage inside body k delivers\n")
 	g.pf("// bodies 1 to k - 1 and count says k - 1 (§3.3). LOAD IS A SCAN: it follows\n")
 	g.pf("// no reference, so there is no depth cap and no visited set. NULL roots\n")
 	g.pf("// beyond count are not bodies.\n")
-	g.pf("inline bool %sLoadMessages( const %s ** roots, int64_t * count, uint8_t * region, int64_t region_bytes, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )\n{\n", n, n)
+	if g.retain {
+		g.pf("// A BATCH TAKES ONE REGION AND ONE RETENTION BUFFER A BODY (§3.3, §6.6):\n")
+		g.pf("// `retains` is an array parallel to `roots`, each entry reset by this call\n")
+		g.pf("// and each holding the records of the body it belongs to, which is what keeps\n")
+		g.pf("// a record's first step an index into that body's own node directory. A\n")
+		g.pf("// SaveRetain from `roots[k]` takes `retains[k]` and is the file form's own\n")
+		g.pf("// pair unchanged: retention writing FORM 2 refuses by name (§3.3).\n")
+	}
+	g.pf("inline bool %s( const %s ** roots, int64_t * count, uint8_t * region, int64_t region_bytes, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes,%s TableReport * report )\n{\n",
+		g.messageBatchVerbOf(n), n, g.retainBatchParam())
 	g.pf("    TableReport ignored;\n")
 	g.pf("    TableReport * out = report != NULL ? report : &ignored;\n")
 	g.pf("    if ( roots == NULL || count == NULL ) { out->malformed = true; return false; }\n")
@@ -290,11 +336,50 @@ func (g *tableGen) emitVariableMessageSurface(st *ir.Struct) {
 	g.pf("    int64_t used = 0;\n")
 	g.pf("    for ( int64_t b = 0; b < bodies; b++ )\n    {\n")
 	g.pf("        roots[b] = NULL;\n")
-	g.pf("        if ( !%sLoadMessageBodyInto( br.r, vocabulary, out, region, region_bytes, used, roots[b] ) ) { *count = b; return false; }\n", n)
+	if g.retain {
+		g.pf("        if ( !%s( br.r, vocabulary, out, region, region_bytes, used, roots[b], retains != NULL ? &retains[b] : NULL ) ) { *count = b; return false; }\n",
+			g.verb(n, "LoadMessageBodyInto"))
+	} else {
+		g.pf("        if ( !%sLoadMessageBodyInto( br.r, vocabulary, out, region, region_bytes, used, roots[b] ) ) { *count = b; return false; }\n", n)
+	}
 	g.pf("        br.remaining--;\n    }\n")
 	g.pf("    *count = bodies;\n")
 	g.pf("    return TableMessageBatchClose( br );\n}\n\n")
 
+}
+
+// messageBatchVerb is the batch's own READ verb under the family being
+// emitted. The page spells no name for the form-2 retaining read: §6.6 and §3.3
+// name it "the message form's LoadRetain" and §11's claimed set carries
+// `SaveRetainMessages`, the write refusal, and no read spelling beside it. The
+// reduce-cases name is the one this claims, `<T>LoadRetainMessages` beside
+// `<T>LoadMessages`, and it is claimed in `tableGeneratedVerbs` and §11 on that
+// list's own rule, because it is EMITTED.
+func (g *tableGen) messageBatchVerb() string {
+	if g.retain {
+		return "LoadRetainMessages"
+	}
+	return "LoadMessages"
+}
+
+func (g *tableGen) messageBatchVerbOf(name string) string { return name + g.messageBatchVerb() }
+
+// retainIntoParam is the one argument a retaining body-into takes: THIS BODY's
+// own retention buffer (docs/SPEC-TABLES.md §3.3, §6.6).
+func (g *tableGen) retainIntoParam() string {
+	if g.retain {
+		return ", TableRetain * retain"
+	}
+	return ""
+}
+
+// retainBatchParam is the array of them the batch takes, parallel to the
+// caller's array of roots.
+func (g *tableGen) retainBatchParam() string {
+	if g.retain {
+		return " TableRetain * retains,"
+	}
+	return ""
 }
 
 // emitRootNodeMessageDispatch emits the three answers a MESSAGE load needs
@@ -306,6 +391,13 @@ func (g *tableGen) emitRootNodeMessageDispatch(st *ir.Struct) {
 	reachable := ir.PointerReachable(st)
 	blobs := reachableBlobs(st)
 
+	if g.retain {
+		// THE STORAGE AND THE EXTENT ARE THE PLAIN FAMILY'S, unchanged: they
+		// read the framing and no body, so retention has nothing to say about
+		// either and the retain pass emits the BODY dispatch alone.
+		g.emitRootNodeMessageBodyDispatch(st, reachable)
+		return
+	}
 	g.pf("// %sNodeMessageStorage: the region bytes one record commands on the message\n", n)
 	g.pf("// wire, or -1 for a type id this build cannot name. A table's is its own\n")
 	g.pf("// storage plus the extent its maps take; a byte buffer's is its header and\n")
@@ -351,9 +443,23 @@ func (g *tableGen) emitRootNodeMessageDispatch(st *ir.Struct) {
 	}
 	g.pf("    return TableMessageSkipBody( r, vocabulary, index_bits );\n}\n\n")
 
-	g.pf("// %sNodeMessageBody: PASS TWO's half, which decodes one record's body into\n", n)
+	g.emitRootNodeMessageBodyDispatch(st, reachable)
+}
+
+// emitRootNodeMessageBodyDispatch is PASS TWO's half of the dispatch, emitted
+// once per family: the plain one and, under retention, the same switch with the
+// caller's store and this node's own path root threaded through it.
+func (g *tableGen) emitRootNodeMessageBodyDispatch(st *ir.Struct, reachable []*ir.Struct) {
+	n := st.Name
+	g.pf("// %s%s: PASS TWO's half, which decodes one record's body into\n", n, g.verb("", "NodeMessageBody"))
 	g.pf("// storage it already owns, its map entries carved from its own extent.\n")
-	g.pf("inline bool %sNodeMessageBody( uint64_t type_id, TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, uint8_t * at )\n{\n", n)
+	if g.retain {
+		g.pf("// EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the\n")
+		g.pf("// index is this body's own directory position, which the batch's load fills\n")
+		g.pf("// from the framing and nothing afterwards renumbers.\n")
+	}
+	g.pf("inline bool %s( uint64_t type_id, TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, uint8_t * at%s )\n{\n",
+		g.verb(n, "NodeMessageBody"), g.retainNodeBodyParams())
 	// A LIST CARVES FROM THE NODE'S EXTENT EXACTLY AS A MAP DOES
 	// (docs/SPEC-TABLES.md §2.8, §2.9), so the cursor rides wherever the unit
 	// has an extent at all and not only where it has a map.
@@ -383,10 +489,22 @@ func (g *tableGen) emitRootNodeMessageDispatch(st *ir.Struct) {
 	if !anyVar {
 		g.pf("    (void) nodes; (void) index_bits; // every node this root can name is a FIXED table\n")
 	}
+	if g.retain && len(reachable) == 0 {
+		// a root whose numbering can name no TABLE record: a blob's bytes carry
+		// no body, so there is nothing under this node for a path to reach
+		g.pf("    (void) retain; (void) node;\n")
+	}
 	g.pf("    bool ok = false;\n")
 	g.pf("    switch ( type_id )\n    {\n")
 	for _, t := range reachable {
-		g.pf("        case 0x%016xull: ok = %s; break; // %s\n", ir.TableWireId(t.Name), g.msgLoadCall(t.Name, "r", fmt.Sprintf("*(%s *) at", t.Name)), t.Name)
+		call := g.msgLoadCall(nil, t.Name, "r", fmt.Sprintf("*(%s *) at", t.Name))
+		if g.retain {
+			call = fmt.Sprintf("%sLoadMessageBodyRetain( r, vocabulary, report, nodes, index_bits, *(%s *) at, retain, TableRetainPathRoot( (const void *) at, node ) )", t.Name, t.Name)
+			if !g.isVar(t.Name) {
+				call = fmt.Sprintf("%sLoadMessageBodyRetain( r, vocabulary, report, index_bits, *(%s *) at, retain, TableRetainPathRoot( (const void *) at, node ) )", t.Name, t.Name)
+			}
+		}
+		g.pf("        case 0x%016xull: ok = %s; break; // %s\n", ir.TableWireId(t.Name), call, t.Name)
 	}
 	g.pf("        // a record this dispatch cannot name never reaches here: pass one left it absent\n")
 	g.pf("        default: report->malformed = true; break;\n    }\n")

@@ -1097,7 +1097,10 @@ The rules:
   references there keep the basis name. The native header includes that
   header to derive from the basis; a mapped reference would be circular.
   Sibling types declared in the same schema file therefore store the basis
-  type, which is the correct default for pure wire compounds.
+  type, which is the correct default for pure wire compounds. A unit of ONE
+  FILE has nowhere left for the mapping to ride, so a `cpp_native` there is a
+  compile error naming the file: an attribute that does nothing anywhere in
+  the unit is a silent no-op rather than a default.
 - **Language bindings never move the protocol id.** `cpp_*` attributes rename
   what one target CALLS the storage; they cannot change a wire bit, and the
   projection (§3.1) excludes them.
@@ -1188,6 +1191,19 @@ tables, and it carries the same members (docs/SPEC-TABLES.md §2.6).
 - **Length prefixes** (`string(N)`, `wstring(N)`, `bytes(N)`, `[..N]T`,
   `[Min..N]T`) are ranged integers over their declared count range, per the
   rows below.
+- **A BARE FLOAT RIDES AS ITS IEEE-754 BIT PATTERN, WITH NO
+  CANONICALISATION.** A `float32` is the 32 bits it holds and a `float64` the
+  64, whatever they spell: a negative zero, an infinity, a quiet NaN, a
+  SIGNALLING NaN, a NaN with any payload. No writer normalizes one and no
+  reader repairs one, so the pattern that goes in is the pattern that comes
+  out, in every target. **A backend that holds a `float32` in a WIDER cell
+  carries the pattern BIT FOR BIT and never through a float conversion**: the
+  hardware conversion between the two widths sets the quiet bit on a
+  signalling NaN and drops a payload the narrower cell would have kept, and
+  byte identity across the targets fails on exactly those values. The
+  technique is a row in docs/PORTING.md, and the corpus pins the patterns a
+  conversion would move. A *quantized* `float32` is a different field: its
+  wire is the step index and not the pattern, per its row below.
 
 The wire encodings are exactly classic serialize's — each row names its
 classic twin, which is the wire oracle for the stated model.
@@ -1202,8 +1218,8 @@ classic twin, which is the wire oracle for the stated model.
 | `f fixed(I, F) | min = A, max = B` (range required; **signed**) | Q I.F, the sign bit counting toward I; storage is a signed integer of exactly I+F bits (I+F ∈ 8/16/32/64/128, I ≥ 1, F ≥ 0); bounds are compile-time WHOLE UNITS fitting the Q format and int64; wire = raw − (A << F) in bitlen(B − A) + F bits, 32-bit groups from the bottom — **except A == B, which costs ZERO bits (not F): the reader materializes raw = A << F from the range alone (§4.6)**; read rejects above the raw range; round trip is EXACT (no quantization step), and with F = 0 the operation IS a ranged integer | `serialize_fixed` |
 | `f ufixed(I, F) | min = A, max = B` (range required; **unsigned**) | UQ I.F: no sign bit, whole-unit domain [0, 2^I); storage is an UNSIGNED integer of exactly I+F bits (I+F ∈ 8/16/32/64/128, I ≥ 1, F ≥ 0); bounds are compile-time WHOLE UNITS fitting the unsigned domain and int64 (so I ≥ 63 clamps to int64's ceiling); the wire law is fixed's own — raw − (A << F) in bitlen(B − A) + F bits, A == B costs ZERO bits, read rejects above the raw range, round trip EXACT. The raw values of wide formats legitimately fill uint64's HIGH HALF (above 2^63): every route through a signed-typed runtime API is a bit-exact cast or zero-extension, never sign extension, and the corpus pins that byte-for-byte | `serialize_fixed` (unsigned storage — the codec is storage-generic) |
 | `f bool` | 1 bit | `serialize_bool` |
-| `f float32` | 32 raw IEEE-754 bits | `serialize_float` |
-| `f float64` | 64 raw bits (low dword first) | `serialize_double` |
+| `f float32` | 32 raw IEEE-754 bits — the pattern, with no canonicalisation: a signalling NaN and a NaN payload ride through unchanged, and a backend holding the field in a wider cell moves the pattern by bit surgery | `serialize_float` |
+| `f float64` | 64 raw bits (low dword first) — the pattern, with no canonicalisation, exactly as `float32`'s row | `serialize_double` |
 | `f float32 | min = A, max = B, resolution = R` | quantized to ceil((B−A)/R) steps — the actual step is (B−A)/ceil((B−A)/R), ≤ R; read rejects values above the step count | `serialize_compressed_float` (exact formulas incl. the ceil, +0.5f rounding and clamp); storage stays `float32` — the attributes describe the wire |
 | `f Weapon` (an enum) | minimal bits for [0, max]; read rejects above max | `serialize_int` over [0, max] |
 | `f Damage` (a `flags` declaration, §4.2) | W raw bits, W = variant count (or the widened max); every pattern legal; storage `uint64` in every target | `serialize_bits` |
@@ -1292,6 +1308,13 @@ Forward references, references into a sibling branch side, and references to
 array element fields are compile errors naming the offending reference and
 the rule. The rule is stated over `if` sides; it extends unchanged to `case`
 bodies when `switch` lands.
+
+**Nested guards conjoin, so a branch that contradicts an enclosing guard on
+the same field is a compile error naming both guards.** `if on { if !on
+{ ... } }` fixes `on` both ways down one path: no field under the inner guard
+is ever written or read, in any target. An `else` side counts as the guard it
+is, so `if on { } else { if on { ... } }` is refused on the same rule, while a
+branch that agrees with an enclosing guard stays legal.
 
 ### 4.6 Shape checks
 
@@ -1391,7 +1414,11 @@ All compile errors with positions:
   (`Write*`/`Read*`/`New*`, `*MaxBits`/`*MaxBytes`, companion length/count
   names, an enum's `Max` and `Count`, a flags declaration's `Count`, a
   union's generated tag surface). Diagnostics name the generated
-  artifact that claims the name.
+  artifact that claims the name. A short list of unit-scope names is claimed
+  on the table layer's behalf as well, most of it only in a unit that declares
+  a `table` and a handful of reflection spellings in every unit;
+  SPEC-TABLES.md §11 states which is which and why, and a schema that declares
+  no `table` is refused none of the rest.
 - Enum `| max = K` below the variant count.
 - **Duplicate field names anywhere in one type — including across branch
   sides.** One name, one field, declared once. (schema owns the type, and
@@ -1418,6 +1445,15 @@ All compile errors with positions:
   case-sensitive match (C++ namespaces are case-sensitive), so `exits`,
   `exit2` and `Exit` stay legal. (3) The name `main`, which makes the
   generated Go a program package that cannot be imported.
+- **File-name safety:** a schema file's basename names its generated header
+  (`Math.schema` emits `Math.h` in C++ and in C), so a basename spelling a C
+  standard header is a compile error naming the file, matched
+  case-insensitively against the standard's own closed list: with the
+  generated directory on the include path, `Math.h` answers
+  `#include <math.h>` and the whole libm surface disappears with nothing in
+  the build naming the schema. The C++ headers' bare spellings are out of
+  scope, because every generated name carries an extension and `<cmath>` has
+  none.
 
 ### 4.7 Strings and byte blocks — byte strings, one shape
 

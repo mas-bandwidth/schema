@@ -891,6 +891,204 @@ static void walk_is_linear()
     }
 }
 
+// ---- THE MESSAGE FORM'S LoadRetain (docs/SPEC-TABLES.md §3.3, §6.6) ----
+//
+// RETENTION CROSSES THE FORMS IN ONE DIRECTION. `LoadRetain` reads a form-2
+// body as it reads a file's, the resolving walk replacing every reference with
+// the id it names against the CONNECTION'S VOCABULARY instead of a trailer,
+// and `SaveRetain` writing form 2 refuses by name. So the round trip a caller
+// has is form 2 in and form 1 out: the file carries its own table and takes
+// §6.6 unchanged.
+//
+// The batch below is RT2's, over the same values the file rows read, and it
+// carries every class this form can put on the unknown arm: the fields at
+// three depths that are retained, the whole `parcel` table the resolving walk
+// reads, a field of kind 17, an array whose element kind is 17, a table whose
+// payload meets a 17 three bodies down, an unknown enum variant reference, an
+// unknown union arm id and an unknown keyed-array slot.
+
+// fill_rt2_message fills one RT2 root for the batch. `full` is the body that
+// carries every class; the other is the batch's second body, which carries one
+// unknown field and nothing else, so that a record of the first body can never
+// be placed in the second.
+static void fill_rt2_message( tblrt2::NodeBuilder & builder, bool full )
+{
+    tblrt2::Node * root = builder.GetRoot();
+    memcpy( root->name, full ? "world" : "again", 6 );
+    root->name_length = 5;
+    root->extra = full ? 11 : 12;
+    root->inner.hits = 3;
+    root->inner.future = 21;
+    memcpy( root->inner.tag, "in", 3 );
+    root->inner.tag_length = 2;
+    if ( !full ) { return; }
+
+    root->tier = tblrt2::Slot::Extra; // an unknown enum VARIANT reference
+
+    root->items_count = 2;
+    root->items[0].hits = 1; root->items[0].future = 31;
+    root->items[1].hits = 2; root->items[1].future = 32;
+
+    root->banks.slots[0].hits = 4; root->banks.slots[0].future = 41;
+    root->banks.slots[2].hits = 6; root->banks.slots[2].future = 43; // an unknown keyed SLOT
+
+    root->pick.type = tblrt2::PickType::Gamma; // an unknown union ARM id
+    root->pick.gamma = 55;
+
+    tblrt2::TableSlot<tblrt2::Leaf> leaf = builder.Alloc<tblrt2::Leaf>();
+    leaf->value = 77;
+    root->head = leaf;
+
+    // THE NODE-INDEX CLASSES, each on a field RT1 cannot name: kind 17 itself,
+    // an array whose element kind is 17, and a table whose payload meets a 17
+    // three bodies down
+    tblrt2::TableSlot<tblrt2::Leaf> ghost = builder.Alloc<tblrt2::Leaf>();
+    ghost->value = 78;
+    root->ghost = ghost;
+    root->ghosts_count = 1;
+    root->ghosts[0] = ghost;
+    root->outer.plain = 79;
+    root->outer.mid.deeper.link = ghost;
+
+    tblrt2::Inner * one = tblrt2::NodeEntriesInsert( builder.main, root->entries, "k1" );
+    if ( one != NULL ) { one->hits = 7; one->future = 61; }
+
+    tblrt2::Inner * item = tblrt2::NodeListAdd( builder.main, root->list );
+    if ( item != NULL ) { item->hits = 8; item->future = 71; }
+
+    root->parcel.grade = tblrt2::Grade::Silver;        // kind 30, a variant reference
+    root->parcel.fit.type = tblrt2::FittingType::Bolt; // kind 15, a table arm
+    tblrt2::BoltReset( root->parcel.fit.bolt );
+    root->parcel.fit.bolt.weight = 101;
+    root->parcel.bins.slots[0].weight = 102;           // kind 16, keyed by Grade
+    root->parcel.bins.slots[1].weight = 103;
+    root->parcel.core.weight = 104;                    // kind 13, a nested body
+    root->parcel.stack_count = 2;                      // kind 14, table elements
+    root->parcel.stack[0].weight = 105;
+    root->parcel.stack[1].weight = 106;
+}
+
+static void message_form()
+{
+    tblrt2::NodeBuilder first;
+    tblrt2::NodeBuilder second;
+    fill_rt2_message( first, true );
+    fill_rt2_message( second, false );
+    CHECK( first.Lock() );
+    CHECK( second.Lock() );
+    const tblrt2::Node * roots[2] = { first.AsConst(), second.AsConst() };
+
+    tblrt2::TableReport wrote;
+    uint8_t batch[ 8192 ];
+    const int64_t n = tblrt2::NodeSaveMessages( roots, 2, batch, sizeof( batch ), &wrote );
+    CHECK( n > 0 );
+    // THE INPUT IS A PINNED VECTOR, so the oracle reads the same bytes this row
+    // reads (docs/SPEC-TABLES.md §4.2). It is a MESSAGE and not a file: its
+    // references resolve against RT2's announced vocabulary.
+    pin_golden( "retain_message", batch, n );
+
+    // THE CONNECTION'S VOCABULARY, which is what the resolving walk resolves
+    // against here where a file has a trailer (§3.3). RT1 declares room for
+    // RT2's entries, because a receiver meeting a LARGER unit declares more
+    // than its own count.
+    uint8_t announcement[ 8192 ];
+    const int64_t a = tblrt2::Announce( announcement, sizeof( announcement ) );
+    CHECK( a > 0 );
+    // THE CONNECTION IS A PINNED VECTOR TOO, because the conformance manifest
+    // names it: an announcement is an ordinary form-1 file, and the retain rows
+    // that read a batch resolve against this one (testdata/conformance/tables).
+    pin_golden( "retain_conn", announcement, a );
+    printf( "retain: RT2's build version is 0x%016llx\n", (unsigned long long) tblrt2::BuildVersion );
+    static tblrt1::TableMessageEntry entries[ 128 ];
+    tblrt1::TableVocabulary vocabulary( entries, 128 );
+    tblrt1::TableReport announced;
+    CHECK( tblrt1::AnnounceRead( vocabulary, announcement, a, &announced ) );
+
+    // A BATCH TAKES ONE REGION AND ONE RETENTION BUFFER A BODY (§3.3, §6.6):
+    // each body carries its OWN node directory inside that one region, so a
+    // record's first step is an index into the directory of the body it came
+    // from, and the buffer that holds it is that body's own.
+    Region region;
+    region.size( tblrt1::NodeLoadMeasure( vocabulary, batch, n ) );
+    uint8_t storage[ 2 ][ 8192 ];
+    tblrt1::TableRetain::Id ids[ 2 ][ 1024 ];
+    tblrt1::TableRetain retains[ 2 ];
+    for ( int i = 0; i < 2; i++ )
+    {
+        retains[i].bytes = storage[i];
+        retains[i].capacity = (int64_t) sizeof( storage[i] );
+        retains[i].ids = ids[i];
+        retains[i].id_capacity = 1024;
+    }
+
+    const tblrt1::Node * read[ 2 ] = { NULL, NULL };
+    int64_t count = 2;
+    tblrt1::TableReport report;
+    const long long before = allocations;
+    CHECK( tblrt1::NodeLoadRetainMessages( read, &count, region.base, region.bytes,
+                                           vocabulary, batch, n, retains, &report ) );
+    CHECK( count == 2 );
+    CHECK( read[0] != NULL && read[1] != NULL );
+    CHECK( !report.malformed );
+    CHECK( allocations == before ); // RETENTION ALLOCATES NOTHING (§6.6)
+
+    // THE FIRST BODY carries eight retained fields, `extra`, `future` at four
+    // more depths, the map entry's, the list element's, and `parcel`, the whole
+    // table the resolving walk reads, and six unknowns of the excluded
+    // classes: the enum variant `tier` names, the union arm `pick` names, the
+    // keyed slot RT2's third variant writes, a field of kind 17, an array whose
+    // element kind is 17, and a table whose payload meets a 17 three bodies
+    // down. THE SECOND BODY carries two retained fields and nothing excluded.
+    CHECK( report.retained == 10 );
+    CHECK( report.retain_lost == 6 );
+    CHECK( report.unknown == 17 );
+    // and the READ'S OWN COUNTERS ARE UNMOVED: retention can lose a field and
+    // can never turn a good read into a bad one (§6.6)
+    CHECK( report.kind_mismatch == 0 && report.clamped == 0 && report.widened == 0 );
+
+    // AND THE SAVE IS THE FILE FORM'S, because form 2 refuses to write a
+    // retained record by name (§3.3): the file carries its own table and takes
+    // §6.6 unchanged.
+    for ( int i = 0; i < 2; i++ )
+    {
+        tblrt1::TableReport save_report;
+        const int64_t m = tblrt1::NodeMeasureRetain( read[i], &retains[i] );
+        CHECK( m > 0 );
+        uint8_t out[ 8192 ];
+        const int64_t w = tblrt1::NodeSaveRetain( read[i], &retains[i], out, m, &save_report );
+        CHECK( w == m ); // MEASURE AND SAVE DROP THE SAME RECORDS UNDER THE SAME WALK
+        CHECK( save_report.retain_lost == 0 );
+        pin_golden( i == 0 ? "retain_message_save_0" : "retain_message_save_1", out, w );
+
+        // AND RT2 READS ITS OWN FIELDS BACK out of the file RT1 wrote, which is
+        // the resolution half read back: every reference the walk resolved is
+        // re-interned into a trailer whose order is this file's own.
+        Region back;
+        back.size( tblrt2::NodeLoadMeasure( out, w ) );
+        tblrt2::TableReport read_report;
+        const tblrt2::Node * again = tblrt2::NodeLoad( back.base, back.bytes, out, w, &read_report );
+        CHECK( again != NULL && !read_report.malformed );
+        CHECK( again->extra == ( i == 0 ? 11 : 12 ) );
+        CHECK( again->inner.future == 21 );
+        if ( i == 0 )
+        {
+            CHECK( again->parcel.core.weight == 104 );
+            CHECK( again->parcel.grade == tblrt2::Grade::Silver );
+            CHECK( again->parcel.fit.type == tblrt2::FittingType::Bolt );
+            CHECK( again->parcel.fit.bolt.weight == 101 );
+            CHECK( again->parcel.bins.slots[1].weight == 103 );
+            CHECK( again->parcel.stack_count == 2 && again->parcel.stack[1].weight == 106 );
+            CHECK( again->items[1].future == 32 );
+            CHECK( again->banks.slots[0].future == 41 );
+            // AND THE EXCLUDED CLASSES ARE GONE, each having counted one
+            // retain_lost above: nothing put a node index back
+            CHECK( again->ghost.null() );
+            CHECK( again->ghosts_count == 0 );
+            CHECK( again->outer.plain == 0 );
+        }
+    }
+}
+
 // ---- THE TRAILER IS PERMUTED, AND EVERY REFERENCE MOVES WITH IT ----
 //
 // Moving a field changes the order ids are first used in, and the id table is
@@ -936,6 +1134,7 @@ int main( int argc, char ** argv )
     disjoint_occurrences();
     walk_is_linear();
     trailer_is_permuted();
+    message_form();
     if ( failures != 0 )
     {
         printf( "retain: %d failure(s)\n", failures );

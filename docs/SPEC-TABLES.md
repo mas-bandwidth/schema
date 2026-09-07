@@ -557,12 +557,18 @@ because nothing in a schema requests it and no flag selects it (§8.4). C++
 and C# take it together, because the gate it exists for is one listing both
 backends reproduce, and the remaining backends are a named follow-on (§15).
 
-**One front-end change comes BEFORE any emitter.** The generated table
-runtime's names are claimed in every unit rather than only in a unit that
-declares a table (§11), because the view file defines them in units that
-declare none. It does not wait for a view file to exist: a name a unit may
-legally declare today must not become a collision the day its view is
-emitted.
+**One front-end change comes BEFORE any emitter.** The VIEW FILE's descriptor
+surface (`TableTypeInfo`, `TableFieldInfo`, `TableUnionInfo`,
+`TableUnionArmInfo` and `TableDocNone`) is claimed in every unit rather than
+only in a unit that declares a table (§11), because the view file defines
+those names in units that declare none. It does not wait for a view file to
+exist: a name a unit may legally declare today must not become a collision the
+day its view is emitted. **The claim reaches those names and stops there.**
+The rest of the table runtime, meaning the announcement vocabulary, the
+refusal vocabulary, the accelerators' runtimes and the cooked form's names, is
+written into the generated TABLE sources and into no view file, so it is
+claimed where those sources are, in a unit that declares a table; a
+packet-only unit keeps `type Announce` and `const ok` (§11).
 
 ## 1. Purpose
 
@@ -3011,7 +3017,7 @@ one document rather than two.
   | `1` bool | 1 byte, `0` or `1` |
   | `2`–`5` i8/i16/i32/i64 | 1/2/4/8 bytes, two's complement |
   | `6`–`9` u8/u16/u32/u64 | 1/2/4/8 bytes |
-  | `10` f32, `11` f64 | 4/8 bytes, the IEEE-754 bit pattern |
+  | `10` f32, `11` f64 | 4/8 bytes, the IEEE-754 bit pattern, with NO CANONICALISATION (below) |
   | `12` string | `L`, then `L` bytes, WELL-FORMED UTF-8 with no zero byte among them. No terminator. Ill-formed content is `malformed` (below) |
   | `13` table | `L`, then `L` bytes of table body (fields, then the zero reference) |
   | `14` array | `L`, then the array body: `element kind (u8)`, `N`, then the elements |
@@ -3025,6 +3031,25 @@ one document rather than two.
   | `31` escape | `L`, then `L` bytes, opaque |
   | `32` no payload | `L`, then `L` bytes, and this form writes `L = 0` |
   | `33` wstring | `L`, then `L` bytes, which are `L / 2` UTF-16 code units, each two bytes little-endian, SURROGATES PAIRED and no zero unit among them. An ODD `L` is malformed, and so is ill-formed content (below). No terminator |
+
+  **A FLOAT RIDES AS ITS IEEE-754 BIT PATTERN, WITH NO CANONICALISATION**
+  (SPEC.md §4.3). Kind `10` is the four bytes the field holds and kind `11`
+  the eight, whatever they spell: a negative zero, an infinity, a quiet NaN, a
+  SIGNALLING NaN, a NaN with any payload. No writer normalizes one and no
+  reader repairs one, so the pattern that goes in is the pattern that comes
+  out. **A BACKEND THAT HOLDS A `float32` IN A WIDER CELL CARRIES THE PATTERN
+  BIT FOR BIT AND NEVER THROUGH A FLOAT CONVERSION** — the hardware conversion
+  between the two widths sets the quiet bit on a signalling NaN and drops a
+  payload the narrower cell would have kept, and the byte identity nine
+  languages hold over one corpus fails on exactly those values. It is a
+  cross-port contract and not one engine's quirk: JavaScript holds every
+  number as a float64, Elixir's floats are doubles, and the Go oracle and the
+  tool's cook both model a float32 in a float64 cell. The technique is a row
+  in docs/PORTING.md; `testdata/wire/tables/floats_nan.bin` pins the patterns
+  a conversion would move, at both widths and as array elements, and
+  `make tables-float-nan-negative-control` puts the conversion back and
+  watches the pin go red. The rule crosses §4's FLOAT RUNG, `10` into `11`,
+  where the 23 payload bits ride in the top of the double's 52.
 
   **The scalars the type wire brought ride as their STORAGE and nothing
   else.** A `fixed(I, F)` value is the integer its storage holds, units ×
@@ -4857,12 +4882,21 @@ damage (§3). A wire that had shipped would have taken `3` on that same rule.
 #### Retention, and what does not move
 
 **RETENTION (§6.6) ON A MESSAGE BODY: the load side is unchanged and the save
-side REFUSES.** The C++ reference carries the WRITE half of this
-paragraph, which is the refusal, and the form 2 `LoadRetain` is not built (§6.6).
+side REFUSES.** The C++ reference and the compiler's own engine carry both
+halves of this paragraph.
 
 `LoadRetain` reads a form-`2` body as it reads a file's, the resolving walk
 replacing every reference with the id it names, against the connection's
-vocabulary instead of a trailer. **`SaveRetain` writing form `2` REFUSES BY NAME
+vocabulary instead of a trailer. **THE RECORD IS THE FILE FORM'S OWN**, because
+a retained record carries the field's bytes with every reference resolved so
+that re-emitting it into any id table is correct, and the table it is re-emitted
+into is a FILE's: a bitpacked value is read at the width its announced shape
+states and written at the width the file form spells, which is this form's
+third difference (above) taken in the one direction retention has. **A BATCH
+TAKES ONE REGION AND ONE RETENTION BUFFER A BODY**, because each body carries
+its own node directory inside that one region (above), so a record's first step
+stays an index into the directory of the body it came from and `SaveRetain`'s
+accounting is the file form's unchanged. **`SaveRetain` writing form `2` REFUSES BY NAME
 and returns `-1`.** A form-`2` writer names entries through slots of a
 vocabulary the compiler settled, and a retained id is by definition one this
 build's closure does not contain, so it has no slot AND no announced shape, which
@@ -4976,6 +5010,11 @@ precedent.
   single message is the batch of one, and no singular verb is carried beside
   them: a surface with both would let a caller write one message a call and
   never learn that the batch is where the bandwidth is.
+- **`LoadRetainMessages` beside them**, the form-`2` read with retention on
+  (§6.6), PLURAL for the same reason and claimed on §11's own rule because it
+  is emitted. It takes one retention buffer a BODY, parallel to the caller's
+  array of roots, and there is no measure and no save beside it: retention
+  writing form `2` is `SaveRetainMessages`, which refuses by name (above).
 - **The refusal reason values `no_vocabulary`, `second_announcement`,
   `vocabulary_too_large`, `batch_too_large` and `message_form_as_file`** beside
   the form byte's own `newer_form`. `vocabulary_too_large` covers both bounds,
@@ -7419,9 +7458,15 @@ instance, and the discipline is to retain, edit values, and save, or to reload
 after a shape edit. The safety check is still read after `Save`, and it
 catches the drop.
 
-**HELD BY TEST, when it lands.** The rows the conformance manifest owes, each
-red for one reason, and **every row on a POINTERED unit** (the variable class,
-above), the fixed class's own row excepted:
+**HELD BY TEST.** The rows below, each red for one reason, and **every row on a
+POINTERED unit** (the variable class, above), the fixed class's own row
+excepted. **NINE OF THEM ARE THE CONFORMANCE MANIFEST'S OWN DATA**, on its
+`retain` and `retain-message` lines: the round trip at depth, the truncated
+record, the id list one short, the five excluded classes a wire can carry to the
+unknown arm, and the message form's tail. The rest are the two engines' own
+gates, because each asks something a shared row cannot: a record's BYTE cost is
+the port's own, an allocation audit is a language's own instrument, and a
+refusal by name is a compile error rather than an answer a driver writes.
 
 - a wire whose unknown fields sit at three depths, retained and re-emitted,
   the save pinned as a byte string of its own. Red if a field is lost,
@@ -7511,11 +7556,10 @@ negative controls, one per engine, stand beside the fuzzer's (§4.2).
 
 **Backend status: the C++ REFERENCE and the ORACLE carry it, and no port
 does.** The reference emits `TableRetain`, the three verbs on every
-variable-class root, the refusal on every fixed-class one, and a second family
-of body functions beside the three the wire already had, so `Load`, `Measure`
-and `Save` are unchanged. What is still owed is the eight ports and the MESSAGE
-form's `LoadRetain` (§3.3): the form 2 write refuses by name and the form 2
-read is not built.
+variable-class root, the refusal on every fixed-class one, the MESSAGE form's
+own `LoadRetainMessages` beside them (§3.3), and a second family of body
+functions beside the three the wire already had, so `Load`, `Measure` and
+`Save` are unchanged. What is still owed is the eight ports.
 
 ## 7. The cooked form
 
@@ -8431,16 +8475,14 @@ no reference:
    no declaration describes.
 4. **Every MAP SLOT** (§2.8). Its delta must land inside the HOLDER's own
    extent, at `alignof( Entry )`, with `count × sizeof( Entry )` fitting
-   before the extent's end and overlapping no other map's array in that node.
-   The check reads CONTAINMENT, ALIGNMENT, FIT and NO OVERLAP, and not the
-   offset the layout rule computes, so the layout rule stays independent of
-   the check exactly as the pack order does. The entries' own slots,
-   companions and tags are then walked as a bounded array's elements are. The
-   KEYS are read too, ascending with no repeat, because a cook `Find` cannot
-   search is a forgery. Until schema#380 lands this clause in the tool, `schema
-   cook-check` refuses a map slot by name where its scan meets one, so a
-   cook that holds one is refused rather than walked past, and the C++
-   reference reads it.
+   before the extent's end and overlapping no other array in that node, a
+   list's and a map's alike, because lists and maps are ONE POPULATION in a
+   node's extent. The check reads CONTAINMENT, ALIGNMENT, FIT and NO OVERLAP,
+   and not the offset the layout rule computes, so the layout rule stays
+   independent of the check exactly as the pack order does. The entries' own
+   slots, companions and tags are then walked as a bounded array's elements
+   are. The KEYS are read too, ascending with no repeat, because a cook a
+   `Find` cannot search is a forgery.
 5. **Every UNBOUNDED-ARRAY SLOT** (§2.9). The same four clauses as a map's:
    CONTAINMENT, ALIGNMENT, FIT and NO OVERLAP, against the holder's own extent
    and against every other element or entry array in that node, and then the
@@ -10122,9 +10164,9 @@ in build version (§20.5).
   types share one symbol table (§13.1), which is what makes the generated
   surface unprefixed and collision-free — so every name a closure member
   claims is refused to everything else. A member `X` claims `X` followed by
-  each of these **52 suffixes**, and a declaration spelling one of them is
+  each of these **53 suffixes**, and a declaration spelling one of them is
   refused naming the collision — the block form's nine and the C backend's
-  seven follow below, for **68 in all**:
+  seven follow below, for **69 in all**:
 
   ```
   Measure  MeasureBody  Save  SaveBody  SaveBodyFields  Load  LoadBody
@@ -10136,7 +10178,7 @@ in build version (§20.5).
   Open  TableFields  TableInfo
   FromJson  ToJson  ToJsonMeasure  Table
   MeasureMessages  SaveMessages  LoadMessages
-  LoadRetain  MeasureRetain  SaveRetain  SaveRetainMessages
+  LoadRetain  MeasureRetain  SaveRetain  LoadRetainMessages  SaveRetainMessages
   LoadBodyRetain  MeasureBodyRetain  SaveBodyRetain  SaveBodyFieldsRetain
   MeasureWireRetain  SaveWireRetain  NodeBodyRetain
   ```
@@ -10144,19 +10186,21 @@ in build version (§20.5).
   The set is claimed for EVERY closure member, not only pointer-bearing
   ones: a table gains or loses pointers as an edit, and a name that was
   free yesterday must not become a collision tomorrow. That list is the
-  checker's own, and this section is held to it: the three lists here, 52, then
+  checker's own, and this section is held to it: the three lists here, 53, then
   the block form's nine, then the C backend's seven, are `tableGeneratedVerbs`
-  entire, spelling for spelling and 68 in all, because a claim the page states
+  entire, spelling for spelling and 69 in all, because a claim the page states
   and the checker does not make is a name a user may take.
 
-  **RETAIN-UNKNOWN'S ELEVEN ARE THREE AND EIGHT** (§6.6). `LoadRetain`,
+  **RETAIN-UNKNOWN'S TWELVE ARE THREE AND NINE** (§6.6). `LoadRetain`,
   `MeasureRetain` and `SaveRetain` are the SURFACE the feature owes this
-  section. The other eight are what carries them, and they are claimed on
+  section. The other nine are what carries them, and they are claimed on
   this list's own rule because they are EMITTED: the second family of body
   functions, the wire pair a pointered root takes, the node dispatch that
-  reaches each record's own body, and `SaveRetainMessages`, which is REFUSED
-  BY NAME on a form 2 write (§3.3) and is a definition rather than only a
-  claim for exactly that reason.
+  reaches each record's own body, and the MESSAGE form's two.
+  `LoadRetainMessages` is the form 2 READ, which resolves against the
+  connection's vocabulary where the file form resolves against a trailer, and
+  `SaveRetainMessages` is the form 2 WRITE, REFUSED BY NAME (§3.3) and a
+  definition rather than only a claim for exactly that reason.
 
   **`Open` AND `Cook` ARE BOTH EMITTED NOW — in different languages, and that is
   what the C# rule below is for. `OpenWalk` was RETIRED.** The C++ table backend
@@ -10249,21 +10293,55 @@ in build version (§20.5).
   list. A language whose accessors are members spells the same two names on
   the block type and claims nothing at file scope for them.
 
-  **THE DESCRIPTOR SURFACE'S CLAIMS ARE TO BE UNCONDITIONAL — every
-  declaration, every unit, tables or not — AND ARE IN FORCE ONLY WHERE A VIEW
-  FILE IS EMITTED.** Every unit is to emit a view file and that file defines
-  the descriptor surface (§8.2), so a name a table-free unit may declare today
-  would collide with its own generated code the day its view is emitted — a
-  legal schema whose generated code does not compile, which is the one defect
-  this whole list exists to prevent. **What ships today claims these names
-  only in a unit that declares a table**, which is exactly the set of units
-  the view is emitted for: a table-free unit still accepts `type TableReport`
-  and `const TABLE_COOK_MAGIC`, and it must stop doing so BEFORE its own view
-  file is emitted, not after — which is the follow-on §15 carries beside the
-  emitter that would emit it. This paragraph is the obligation, and the gap
-  between it and the checker is stated here rather than left for a port to
-  find. Two sets follow, and both are FRONT-END LAW rather than one target's
-  inventory:
+  **THE DESCRIPTOR SURFACE'S CLAIMS ARE UNCONDITIONAL — every declaration,
+  every unit, tables or not.** Every unit is to emit a view file and that file
+  defines the descriptor surface (§8.2), so a name a table-free unit may
+  declare today would collide with its own generated code the day its view is
+  emitted — a legal schema whose generated code does not compile, which is the
+  one defect this whole list exists to prevent. The claim therefore does not
+  wait for the emitter. Two sets follow, and both are FRONT-END LAW rather
+  than one target's inventory:
+
+  **THE TWO SETS ARE CLAIMED IN DIFFERENT SCOPES, AND THE LINE BETWEEN THEM IS
+  THE VIEW FILE.** A name is claimed in EVERY unit exactly when a table-free
+  unit's own view file would define it, because that is the whole of the
+  reason an every-unit claim has; every other name in this list is written
+  into the generated TABLE sources and into no view file, so it is claimed in
+  a unit that DECLARES A TABLE and nowhere else. The split is measured rather
+  than asserted. A view file over declarations no table closure reaches, which
+  is what a table-free unit's view is made of, spells `TableTypeInfo`,
+  `TableFieldInfo`, `TableUnionInfo`, `TableUnionArmInfo` and `TableDocNone`,
+  and no other name in this section.
+
+  **CLAIMED IN EVERY UNIT:** the five above, and the view's own unit-scope
+  spellings (§8.3). The three per-declaration spellings below are owed the
+  same scope for the same reason and do not have it yet, which that bullet
+  states as the gap it is.
+
+  **CLAIMED ONLY WHERE A TABLE RIDES:** everything else. That is the
+  announcement vocabulary (§3.3), the refusal vocabulary (§6.5, §7, §19.2)
+  with `ok`, `truncated`, `bad_layout` and the rest of its values, the wire's
+  writer and reader, the identity pair, the storage types, the
+  variable-length runtime, the accelerators' runtimes and `BuildVersion`, the
+  cooked form's read and write names, and the Rust CONSTANT space that mirrors
+  them. A PACKET-ONLY unit keeps every one of those names: `type Announce`,
+  `const ok`, `type TableReport` and `const TABLE_COOK_MAGIC` are legal in a
+  unit that declares no table, and each becomes a collision the day that unit
+  grows its first table. Those are the same terms every conditional claim in
+  this list already takes, since a name free today must not become a collision
+  the day a table gains a pointer, a map or a keyed array. **The identity pair
+  is on this side by measurement rather than by category**: a declaration no
+  table closure reaches has ids nothing ever checked, so its rows carry
+  `id = 0` and its `variant_id` column answers `0` as a literal (§8.2), and a
+  table-free unit's view spells `TableEnumId` nowhere. `TableRef` and
+  `TableWorker` are on this side for the same kind of reason: they reach a
+  view file only through a POINTER field's `resolve` and `emplace` (§8.1), and
+  a pointer is refused outside a table body (§2.1).
+
+  **The reader who meets this is a PACKET-ONLY author**, so SPEC.md §4.6
+  points here, and the refusal a table-free unit draws names the VIEW FILE
+  rather than the table runtime. A unit with no table has no table runtime to
+  be told about.
 
   - **The three per-declaration spellings the descriptors emit** —
     `<Name>TableFields`, `<Name>TableInfo` and `<Name>TableType` — claimed
@@ -10272,12 +10350,15 @@ in build version (§20.5).
     for every declaration in a unit that DECLARES A TABLE, which is where the
     view file is emitted; a table-free unit still accepts them, and must stop
     on the day its own view is emitted.
-  - **The unit-level TABLE-RUNTIME names**, claimed in every unit rather
-    than only in a unit that declares a table: the descriptor primitives
-    `TableTypeInfo` and `TableFieldInfo` at their head, with
+  - **The unit-level TABLE-RUNTIME names.** The descriptor primitives
+    `TableTypeInfo` and `TableFieldInfo` stand at their head, with
     `TableUnionInfo` and `TableUnionArmInfo` beside them — a union field's
     column has to NAME a type, in both backends, and a walk holds a
-    descriptor by value so neither can hide inside another — and beside them
+    descriptor by value so neither can hide inside another — and
+    `TableDocNone` with them, since every descriptor row a view file writes
+    names it (§8.1). **Those five are the every-unit half**, on the scope
+    stated above; everything that follows in this bullet is claimed in a unit
+    that declares a table and in no other. Beside them is
     the rest of the one registry the checker and the emitters share —
     `TableKeyed` (an enum-keyed array's storage, and a keyed array occurs in
     a `type` body: this document's own `ScoreBoard` declares one),
@@ -10303,8 +10384,10 @@ in build version (§20.5).
     `TableCookHeaderBytes` and `TableCookRead64` riding as members of `Schema`
     and so claiming nothing at file scope), `BuildVersion` (§20, which both
     accelerators carry) and the rest of that list. §8.2 has a table-free unit's
-    view file DEFINING those primitives, so a unit that declares no table
-    can no longer be allowed to declare their names.
+    view file DEFINING the five primitives, which is why those are claimed
+    with no table in sight; the names in this paragraph are the generated
+    TABLE sources' own, so a unit that declares no table keeps them and loses
+    them the day it declares its first table.
 
     **JAVA WIDENS TWO MORE AND ADDS ONE, on exactly the rule Go's widening
     states: a port's spelling decides the claim, and the claim is the UNION.**
@@ -11562,9 +11645,12 @@ inspects everything in the schema built:
   C++ reference and the tool are first: the builder surface (insert, erase,
   find, iterate), the sort in the four walks, the region load's ascending check
   with its `duplicate` and `malformed` events, the const `Find`, the text
-  form's object and `schema cook-check`'s map-slot clause with its order
-  check, which is the one piece still owed: the tool refuses a map slot by
-  name until it lands (§7.4). What a port needs is the entry as an ordinary array-of-tables element in its
+  form's object and `schema cook-check`'s map-slot clause with its order check
+  (§7.4). The tool's COOK and UNCOOK halves are the one piece still owed for
+  this construct: a map-bearing unit is refused by name at those two surfaces,
+  because a map adds the sort, the entry array's key order and the two reader
+  events to the node extent the list's own halves already
+  carry. What a port needs is the entry as an ordinary array-of-tables element in its
   measure, save and load, the writer's sort, the reader's one compare with its
   two events, the const `Find` as a binary search that allocates nothing,
   ascending iteration, and the text form's keyed object; each holds the same
@@ -11579,8 +11665,11 @@ inspects everything in the schema built:
   refuses a unit that declares one, by name (§11), until its codec lands. The
   C++ reference carries it: the builder's segments and `Add`, the four walks
   in index order, the region load, the const `TableList` surface, the text
-  form's array, and `schema cook-check`'s element-array clause in the tool;
-  the tool's COOK and UNCOOK halves are owed beside the map's. What a port
+  form's array, and `schema cook-check`'s element-array clause in the tool.
+  The TOOL carries the construct whole: its cook lays the element arrays in
+  the holder's node extent in the same PRE-ORDER the reference lays them and
+  lands on the reference's bytes exactly, in both byte orders, and its uncook
+  reads them back to the wire it came from. What a port
   needs is SMALLER than what a map needed, and by exactly the key: the element
   is an ordinary array element its measure, save and load already carry, there
   is no sort, no key compare and neither of the map's two reader events, and

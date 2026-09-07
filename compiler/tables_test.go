@@ -678,8 +678,11 @@ func TestTableRuntimeNamesAreClaimed(t *testing.T) {
 		}
 	}
 
-	// and the claim itself: every registered name is refused when a unit
-	// declares a table, and kept when it does not
+	// and the claim itself: every registered name is refused in a unit that
+	// declares a table, which is where the generated table sources are
+	// written. Whether it is ALSO refused with no table in sight follows the
+	// view file and nothing else (docs/SPEC-TABLES.md §11), which
+	// TestViewFileNamesAreClaimedInEveryUnit measures.
 	for _, name := range tablenames.Claimed() {
 		t.Run(name, func(t *testing.T) {
 			refused := "package probe\n\nenum " + name + " { A, B }\n\ntable Holder\n{\n    g " + name + "\n}\n"
@@ -691,21 +694,163 @@ func TestTableRuntimeNamesAreClaimed(t *testing.T) {
 			}
 			named := false
 			for _, e := range errs {
-				if strings.Contains(e.Error(), "TABLE-wire runtime") {
+				if strings.Contains(e.Error(), "TABLE-wire runtime") || strings.Contains(e.Error(), "view file") {
 					named = true
 				}
 			}
 			if !named {
 				t.Fatalf("%s is refused, but not as a runtime-name collision: %v", name, errs)
 			}
-			// scoped to units that declare a table: a table-free unit keeps
-			// its whole namespace
+			// and in a TABLE-FREE unit exactly when the VIEW FILE spells it
+			// (docs/SPEC-TABLES.md §8.2, §11): that unit has no table
+			// sources, so the view is the only thing that could define the
+			// name, and every other registered name stays the author's.
 			free := "package probe\n\nenum " + name + " { A, B }\n\ntype Holder\n{\n    g " + name + "\n}\n"
-			if errs := checkErrors(t, free); len(errs) > 0 {
-				t.Errorf("a TABLE-FREE unit must keep the name %s: %v", name, errs)
+			freeErrs := checkErrors(t, free)
+			claimed := false
+			for _, e := range freeErrs {
+				if strings.Contains(e.Error(), "TABLE-wire runtime") || strings.Contains(e.Error(), "view file") {
+					claimed = true
+				}
+			}
+			switch {
+			case tablenames.InEveryUnit(name) && !claimed:
+				t.Errorf("a TABLE-FREE unit declaring %s was accepted: the view file defines it, so the "+
+					"claim holds with no table in sight (docs/SPEC-TABLES.md §8.2)", name)
+			case !tablenames.InEveryUnit(name) && claimed:
+				t.Errorf("a TABLE-FREE unit declaring %s was refused: no view file spells it, so the only "+
+					"thing that defines it is the generated table sources that unit does not get "+
+					"(docs/SPEC-TABLES.md §11): %v", name, freeErrs)
 			}
 		})
 	}
+}
+
+// TestViewFileNamesAreClaimedInEveryUnit is the MEASUREMENT the two-scope
+// claim rests on, in the same shape and the same both-directions form as the
+// registry scans above: it generates a VIEW FILE over declarations NO TABLE
+// REACHES, which is the whole of what a table-free unit's view will be
+// (docs/SPEC-TABLES.md §8.2), scans the emitted text for every registered
+// spelling, and requires the set it finds to be exactly
+// tablenames.ClaimedInEveryUnit().
+//
+// It exists because docs/SPEC-TABLES.md:560 gives ONE reason for claiming a
+// runtime name in a unit that declares no table, that the view file defines
+// it, and a reason that reaches further than the file it names is how a packet-only
+// schema loses `type Announce` and `const ok` for nothing (schema#672). A view
+// file that grows a name nobody marked View fails here; so does a View mark no
+// view file needs, which would take a name from every schema for free.
+//
+// The unit carries ONE trivial table, because that is what makes the C++
+// backend emit a view at all today (§8.3's port status); every declaration the
+// scan is about sits outside its closure.
+func TestViewFileNamesAreClaimedInEveryUnit(t *testing.T) {
+	c := New()
+	found := map[string]bool{}
+	files, err := c.Generate(unitFromSource(t, viewSurfaceSrc), "cpp", Options{})
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	for name, body := range files {
+		if !strings.HasSuffix(name, "View.h") && !strings.HasSuffix(name, "View.cpp") {
+			continue
+		}
+		for _, ident := range identsIn(string(body)) {
+			if tablenames.Registered(ident) {
+				found[ident] = true
+			}
+		}
+	}
+	if len(found) == 0 {
+		t.Fatal("the scan found no registered spelling in any emitted view file at all: the scan, not the registry, is what broke")
+	}
+	names := make([]string, 0, len(found))
+	for name := range found {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	claimed := tablenames.ClaimedInEveryUnit()
+	for _, name := range names {
+		if !tablenames.InEveryUnit(name) {
+			t.Errorf("a generated view file spells %s and internal/tablenames does not mark it View: "+
+				"a table-free unit's view defines the descriptor surface (docs/SPEC-TABLES.md §8.2), so "+
+				"that name has to be claimed in every unit", name)
+		}
+	}
+	for _, name := range claimed {
+		if !found[name] {
+			t.Errorf("internal/tablenames marks %s View, but no emitted view file spells it, so drop the "+
+				"mark; a name claimed in every unit for a reason that does not hold takes it from every "+
+				"packet-only schema for free", name)
+		}
+	}
+}
+
+// viewSurfaceSrc is a table-free unit's declarations beside the one table that
+// makes the view file exist: an enum, a flags, a union of types, a nested type,
+// arrays, a string, bytes and a fixed-point field, all OUTSIDE the table's
+// closure. Every descriptor column §8.1 defines is written at least once over
+// declarations no table reaches, which is what makes the scan's second
+// direction, a View mark no view file needs, mean anything.
+const viewSurfaceSrc = `package probe
+
+enum Kind { Alpha, Beta }
+
+flags Marks { One, Two }
+
+type Leaf
+{
+    v uint32
+}
+
+union Origin
+{
+    leaf Leaf
+}
+
+type Free
+{
+    kind   Kind
+    marks  Marks
+    origin Origin
+    items  [..4]uint16
+    label  string(8)
+    blob   bytes(4)
+    slot   fixed(6, 10) | min = 0, max = 30
+}
+
+table Only
+{
+    n int32
+}
+`
+
+// identsIn is every identifier in a source text, in order of first appearance:
+// the same crude scan the registry's other honesty gates use, because what it
+// is looking for is a spelling and not a declaration.
+func identsIn(src string) []string {
+	var out []string
+	seen := map[string]bool{}
+	start := -1
+	isIdent := func(c byte, first bool) bool {
+		return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || !first && c >= '0' && c <= '9'
+	}
+	for i := 0; i <= len(src); i++ {
+		if i < len(src) && isIdent(src[i], start < 0) {
+			if start < 0 {
+				start = i
+			}
+			continue
+		}
+		if start >= 0 {
+			if word := src[start:i]; !seen[word] {
+				seen[word] = true
+				out = append(out, word)
+			}
+			start = -1
+		}
+	}
+	return out
 }
 
 // checkErrors runs the front end over one source and returns its diagnostics.
