@@ -110,7 +110,7 @@ func (g *tableGen) wireColumns(f *ir.Field) string {
 }
 
 const tableWireSource = `// ---- form-1 table wire: begin ----
-public static class TableWire
+public static partial class TableWire
 {
     public enum Verdict { Ok, Refused, Damaged, BodyStopped }
 

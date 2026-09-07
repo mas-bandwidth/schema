@@ -16,7 +16,7 @@ using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
 
-static class Program
+static partial class Program
 {
     // ---- the manifest, exactly as testdata/conformance/tables/FORMAT.md states it
 
@@ -2467,6 +2467,7 @@ static class Program
     static int Main(string[] args)
     {
         RegisterMessages();
+        if(args.Length==1 && args[0]=="wire-fuzz-region") { RegisterRegions(); return WireFuzz(); }
         if (args.Length == 1 && args[0] == "wire-fuzz") { return WireFuzz(); }
         if (args.Length < 2)
         {

@@ -232,6 +232,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		out[home+"Table.cs"] = g.assemble()
 	}
 	out[capitalize(u.Package)+"View.cs"] = generateView(u, closure)
+	out[capitalize(u.Package)+"Region.cs"] = generateRegion(u)
 	common := &tableGen{unit: u}
 	common.tf("public enum TableRefuseReason { ok, not_a_cook, foreign_order, wrong_build_version, reserved_not_zero, bad_alignment, truncated, unaligned_base, bad_layout, unknown_form, count_over_length, count_over_extent_cap, blob_over_size_cap, data_cycle }\n")
 	out[capitalize(u.Package)+"Refuse.cs"] = common.assemble()
@@ -679,6 +680,8 @@ public sealed class TableFieldInfo
     // Typed callbacks retain exact integer bounds and defaults without boxing.
     public ulong DefaultRaw;
     public Func<object, bool> WireGuard;
+    public int[] NativeGuardOffsets;
+    public bool[] NativeGuardValues;
     public Func<ulong, TableReport, ulong> ClampRaw;
     public UInt128 DefaultWide;
     public int FracBits;

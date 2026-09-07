@@ -2,6 +2,7 @@ package cstable
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -32,7 +33,22 @@ func (g *tableGen) nativeColumns(f *ir.Field) string {
 	} else if f.Array != ir.ArrayNone && f.ArrayBound > 0 {
 		element /= f.ArrayBound
 	}
-	return fmt.Sprintf(", NativeOffset = %d, NativeElementSize = %d, NativeCountOffset = %d, NativePresentOffset = %d", at, element, count, present)
+	columns := fmt.Sprintf(", NativeOffset = %d, NativeElementSize = %d, NativeCountOffset = %d, NativePresentOffset = %d", at, element, count, present)
+	if !g.arm {
+		guard := tableGuardStrings(g.owner)[f.Name]
+		if guard != "" {
+			var offsets, values []string
+			for term := range strings.SplitSeq(guard, " && ") {
+				truth := !strings.HasPrefix(term, "!")
+				name := strings.TrimPrefix(term, "!")
+				field := ir.RecordLayout(g.unit, g.owner).FieldByName(name)
+				offsets = append(offsets, fmt.Sprint(field.Offset))
+				values = append(values, fmt.Sprint(truth))
+			}
+			columns += ", NativeGuardOffsets = new int[] {" + strings.Join(offsets, ",") + "}, NativeGuardValues = new bool[] {" + strings.Join(values, ",") + "}"
+		}
+	}
+	return columns
 }
 
 func (g *tableGen) emitNativeSurface(st *ir.Struct) {

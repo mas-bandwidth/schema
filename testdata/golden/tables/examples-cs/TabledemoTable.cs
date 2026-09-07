@@ -223,6 +223,8 @@ namespace Tabledemo
         // Typed callbacks retain exact integer bounds and defaults without boxing.
         public ulong DefaultRaw;
         public Func<object, bool> WireGuard;
+        public int[] NativeGuardOffsets;
+        public bool[] NativeGuardValues;
         public Func<ulong, TableReport, ulong> ClampRaw;
         public UInt128 DefaultWide;
         public int FracBits;
@@ -2541,7 +2543,7 @@ namespace Tabledemo
         }
         // ---- json walk: end ----
         // ---- form-1 table wire: begin ----
-        public static class TableWire
+        public static partial class TableWire
         {
             public enum Verdict { Ok, Refused, Damaged, BodyStopped }
 

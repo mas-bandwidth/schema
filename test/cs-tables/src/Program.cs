@@ -1703,6 +1703,7 @@ static partial class Program
         TestUnionContracts();
         TestCollections();
         TestSurfaces();
+        TestRegions();
         TestCollectionMessages();
         TestGoldenWireWrite();
         TestGoldenWireRead();

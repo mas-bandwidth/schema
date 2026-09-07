@@ -48,7 +48,7 @@
          first time somebody opens a block. Compiling is half of it — a
          projected array where an inline one belongs does not compile the same
          — and src/LayoutGate.cs runs each unit's Verify() for the other half. -->
-    <Compile Include="../../build/tables-generated-cs/examples/*.cs" Exclude="../../build/tables-generated-cs/examples/*Table.cs;../../build/tables-generated-cs/examples/*View.cs" />
+    <Compile Include="../../build/tables-generated-cs/examples/*.cs" Exclude="../../build/tables-generated-cs/examples/*Table.cs;../../build/tables-generated-cs/examples/*View.cs;../../build/tables-generated-cs/examples/*Region.cs" />
     <Compile Include="../../../serialize.cs/src/Serialize.cs" />
     <Compile Include="../../../serialize.cs/src/Int128Pair.cs" />
   </ItemGroup>

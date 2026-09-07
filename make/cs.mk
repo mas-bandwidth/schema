@@ -371,13 +371,16 @@ update-goldens-cs: build/tables-generated-cs/.stamp
 # from its wire golden, re-saved and byte-compared, and every §16 text read and
 # written beside it. It is the C# twin of tables-js-leg.
 #
-.PHONY: tables-cs-leg tables-cs-wire-fuzz
+.PHONY: tables-cs-leg tables-cs-wire-fuzz tables-cs-region-fuzz
 tables-cs-leg: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run
 	cd test/cs-tables && $(DOTNET) run -c Release
 
 tables-cs-wire-fuzz: build-conformance-cs build/conformance-harness
 	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(N)
+
+tables-cs-region-fuzz: build-conformance-cs build/conformance-harness
+	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz-region" --seed $(SEED) --n $(N)
 
 # THE C# LEG of `make test`: the table gates and the C# conformance negative
 # control, the cook-open gates on the C# side, the bench units' compile gates
@@ -390,6 +393,7 @@ test-cs: toolchain-cs build/tables-generated-cs/.stamp generated/bench/tables/cs
 	$(MAKE) tables-cs-variable-surface
 	$(MAKE) tables-cs-leg
 	$(MAKE) tables-cs-wire-fuzz
+	$(MAKE) tables-cs-region-fuzz
 	$(MAKE) conformance-negative-control-cs
 	$(MAKE) tables-cook-open-cs
 	$(MAKE) tables-cook-open-cs-lengths-negative-control
