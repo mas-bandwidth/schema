@@ -511,6 +511,9 @@ func (g *gen) emitInitializeField(f *ir.Field, ind string, defaults bool) {
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.needsSystem = true
 		g.sf("%sArray.Clear(%s, 0, %s);\n%svalue.%s = 0;\n", ind, name, g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "int", false), ind, g.m(base+"Length"))
+		if defaults && f.HasDefault {
+			g.emitByteDefault(f, name, "value."+g.m(base+"Length"), ind, g.sf)
+		}
 	case f.Array != ir.ArrayNone:
 		if f.Type.Kind == ir.TNamed && isClassRef(f.Type.Ref) {
 			// clearing a class array would null the pre-allocated elements —

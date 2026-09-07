@@ -6,6 +6,35 @@
 # test/cs/schematest.csproj and its ludicrous twin carry the same relative path
 SERIALIZE_CS ?= ../serialize.cs
 
+# Packet defaults consume the shared C++ oracle in both build modes.
+build/packet-defaults/cs/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema make/cs.mk
+	./bin/schema generate --lang cs --out build/packet-defaults/cs/defaults test/packet-defaults/Defaults.schema
+	./bin/schema generate --lang cs --out build/packet-defaults/cs/plain test/packet-defaults/Plain.schema
+	@touch $@
+
+.PHONY: packet-defaults-cs packet-defaults-cs-negative-control
+packet-defaults-cs: build/packet-defaults/cs/.stamp packet-defaults-cpp
+	dotnet run --project test/packet-defaults/cs/packet-defaults.csproj -- testdata/wire/packet-defaults
+	dotnet run --configuration Release --project test/packet-defaults/cs/packet-defaults.csproj -- testdata/wire/packet-defaults
+
+packet-defaults-cs-negative-control: packet-defaults-cs
+	@mkdir -p build/packet-defaults/cs-negative
+	go run ./tools/sabotage -name packet-defaults-cs-constructor-bytes \
+		-out build/packet-defaults/cs-negative/csharp.gotext internal/codegen/csharp/csharp.go
+	@printf '{"Replace":{"%s/internal/codegen/csharp/csharp.go":"%s/build/packet-defaults/cs-negative/csharp.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/packet-defaults/cs-negative/overlay.json
+	go build -overlay=build/packet-defaults/cs-negative/overlay.json -o build/packet-defaults/cs-negative/schema ./cmd/schema
+	./build/packet-defaults/cs-negative/schema generate --lang cs --out build/packet-defaults/cs-negative/generated test/packet-defaults/Defaults.schema
+	dotnet build test/packet-defaults/cs/packet-defaults.csproj \
+		-p:DefaultsDir="$(CURDIR)/build/packet-defaults/cs-negative/generated" -o build/packet-defaults/cs-negative/checker
+	@if dotnet build/packet-defaults/cs-negative/checker/packet-defaults.dll testdata/wire/packet-defaults > build/packet-defaults/cs-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: missing constructor bytes passed in C#'; exit 1; fi
+	@grep -Fq 'FAILED: packet-default constructor bytes' build/packet-defaults/cs-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: C# failed for another reason'; cat build/packet-defaults/cs-negative/log; exit 1; }
+	@echo 'packet defaults C# negative control: missing constructor bytes fail the runtime check'
+
+test-cs: packet-defaults-cs packet-defaults-cs-negative-control
+
 generated/cs-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 	./bin/schema generate --lang cs --out generated/cs-ludicrous examples128
 	@touch $@
