@@ -187,14 +187,15 @@ func (g *tableGen) wireReadFieldPayload(f *ir.Field, kind int, dst, bounded stri
 		}
 		g.pf("%s        for ( i = 0; i < keep; i++ )\n%s        {\n", ind, ind)
 		bad := "r->report->malformed = 1; goto end_" + f.Name + ";"
-		if kind == tkTable {
+		switch kind {
+		case tkTable:
 			g.pf("%s            TableReader elem;\n%s            if ( !table_reader_span( &sub, &elem ) ) { %s }\n", ind, ind, bad)
 			g.pf("%s            %s( &elem, &%s[i] );\n", ind, g.api(f.Type.Name, "load_body"), dst)
 			// Array elements retain the decoded prefix, matching the reference
 			// rather than applying a nested field's exact-extent reset.
-		} else if kind == tkUnion {
+		case tkUnion:
 			g.pf("%s            if ( !%s( &sub, &%s[i], 1 ) ) { %s }\n", ind, g.unionWireName(f.Type.Ref.(*ir.Union), "load"), dst, bad)
-		} else {
+		default:
 			g.wireScalarRead(f, dst+"[i]", "sub", "elem_kind", ind+"            ", bad)
 		}
 		if count != "" {
