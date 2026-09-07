@@ -133,7 +133,7 @@ func (g *tableGen) emitCodecDeclarations(members []*ir.Struct) {
 			g.pf("static SCHEMA_UNUSED int %s( TableReader * r, TableSink * sink, %s * value, int32_t depth );\n", g.api(st.Name, "load_body"), st.Name)
 			continue
 		}
-		if !g.isVar(st.Name) {
+		if !g.isVar(st.Name) && !st.IsMapEntry() {
 			g.pf("static SCHEMA_UNUSED int64_t %s( const %s * value );\n", g.api(st.Name, "measure"), st.Name)
 		}
 		inline := tableInlineMacro(g.unit.Package)
@@ -451,6 +451,9 @@ func (g *tableGen) emitLoadMeasureBody(st *ir.Struct) {
 // ---- the builder and the public surface ----
 
 func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
+	if st.IsMapEntry() {
+		return
+	}
 	n := st.Name
 	g.pf("/* ---- %s: the variable-length life (docs/SPEC-TABLES.md §2, §6, §9) ----\n", n)
 	g.pf("\n")

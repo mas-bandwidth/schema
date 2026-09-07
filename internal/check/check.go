@@ -3741,6 +3741,7 @@ func (c *checker) checkClaimedNames() {
 					for _, verb := range ir.MapFieldVerbs {
 						add(base+verb, whyMap, d.DeclPos())
 					}
+					add(base+"FindMut", whyMap, d.DeclPos())
 				}
 				// AND AN UNBOUNDED ARRAY claims three names on the table
 				// that declares it: <Table><Field> followed by Add, Each and
@@ -3757,6 +3758,7 @@ func (c *checker) checkClaimedNames() {
 					for _, verb := range ir.ListFieldVerbs {
 						add(base+verb, whyList, d.DeclPos())
 					}
+					add(base+"At", whyList, d.DeclPos())
 				}
 			}
 		}

@@ -333,6 +333,7 @@ static SCHEMA_UNUSED char table_json_shape( const TableFieldInfo * f )
     if ( f->kind == 12 || f->kind == 33 ) { return 's'; }           /* string */
     if ( table_json_is_bytes( f ) ) { return 's'; }   /* bytes: base64 */
     if ( table_json_is_keyed( f ) ) { return 'o'; }   /* an object keyed by variant NAME */
+    if ( f->sequence==2 ) { return 'o'; }
     if ( f->is_array ) { return 'a'; }
     if ( f->arms != NULL ) { return 'o'; }         /* union: an object with ONE key */
     if ( f->kind == 17 ) { return f->table == NULL ? 's' : 'o'; }
@@ -730,6 +731,12 @@ static SCHEMA_UNUSED int table_json_write_value( TableJsonOut * out, const void 
 /* one scalar, at one storage address: a nested object, a union, a
    vocabulary, or a number */
 static SCHEMA_UNUSED int table_json_write_field( TableJsonOut * out, const void * base, const TableFieldInfo * f, int32_t depth );
+#ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
+static SCHEMA_UNUSED int table_json_write_list(TableJsonOut * out,const void * storage,const TableFieldInfo * f,int32_t depth);
+#ifdef SCHEMA_TABLE_MAP_RUNTIME
+static SCHEMA_UNUSED int table_json_write_map(TableJsonOut * out,const void * storage,const TableFieldInfo * f,int32_t depth);
+#endif
+#endif
 #ifdef SCHEMA_TABLE_GRAPH_RUNTIME
 static SCHEMA_UNUSED int table_json_write_pointer( TableJsonOut * out, const void * slot, const TableFieldInfo * f, int32_t depth );
 #else
@@ -851,6 +858,12 @@ static SCHEMA_UNUSED int table_json_write_scalar( TableJsonOut * out, const void
 static SCHEMA_UNUSED int table_json_write_field( TableJsonOut * out, const void * base, const TableFieldInfo * f, int32_t depth )
 {
     const uint8_t * storage = (const uint8_t *) base + f->offset;
+#ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
+    if(f->sequence==1) { return table_json_write_list(out,storage,f,depth); }
+#ifdef SCHEMA_TABLE_MAP_RUNTIME
+    if(f->sequence==2) { return table_json_write_map(out,storage,f,depth); }
+#endif
+#endif
     if ( f->kind == 33 ) {
         table_json_write_w_string( out, (const uint16_t *)(const void *)storage, table_json_count( base, f ) ); return 1;
     }
@@ -1723,6 +1736,12 @@ static SCHEMA_UNUSED int table_json_read_wide( TableJsonIn * in, const char * to
 
 /* place one scalar at one storage address */
 static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, const TableFieldInfo * f, int32_t depth );
+#ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
+static SCHEMA_UNUSED int table_json_read_list(TableJsonIn * in,void * storage,const TableFieldInfo * f,int32_t depth);
+#ifdef SCHEMA_TABLE_MAP_RUNTIME
+static SCHEMA_UNUSED int table_json_read_map(TableJsonIn * in,void * storage,const TableFieldInfo * f,int32_t depth);
+#endif
+#endif
 static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storage, const TableFieldInfo * f, int32_t depth )
 {
     char token[kTableJsonMaxNumber];
@@ -1942,6 +1961,12 @@ static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storag
 static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, const TableFieldInfo * f, int32_t depth )
 {
     uint8_t * storage = (uint8_t *) base + f->offset;
+#ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
+    if(f->sequence==1) { return table_json_read_list(in,storage,f,depth); }
+#ifdef SCHEMA_TABLE_MAP_RUNTIME
+    if(f->sequence==2) { return table_json_read_map(in,storage,f,depth); }
+#endif
+#endif
     if ( f->kind == 33 ) {
         int32_t length = 0;
         if ( !table_json_scan_w_string( in, (uint16_t *)(void *) storage, f->array_bound, &length ) ) { return 0; }
@@ -2305,12 +2330,12 @@ static SCHEMA_UNUSED int64_t table_json_write( const void * value, const TableTy
 /* ---- json walk: end ---- */
 
 static const TableFieldInfo schema_tabledemo_patrol_fields_[] = {
-    { "active", "active", "bool", 0x6580790b036f0c6full, 1, 0, 0, 0, 0, (uint32_t) offsetof( Patrol, active ), (uint32_t) sizeof( ( (Patrol *) 0 )->active ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "speed", "speed", "float32", 0x2281498aa0200e40ull, 10, 0, 0, 0, 0, (uint32_t) offsetof( Patrol, speed ), (uint32_t) sizeof( ( (Patrol *) 0 )->speed ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "active", TableDocNone, 0, NULL },
-    { "has_target", "has_target", "bool", 0x247f0e7f55aacfbdull, 1, 0, 0, 0, 0, (uint32_t) offsetof( Patrol, has_target ), (uint32_t) sizeof( ( (Patrol *) 0 )->has_target ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "active", TableDocNone, 0, NULL },
-    { "target_id", "target_id", "int32", 0xb7bc9ac015a25050ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( Patrol, target_id ), (uint32_t) sizeof( ( (Patrol *) 0 )->target_id ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1000.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "active && has_target", TableDocNone, 0, NULL },
-    { "wander", "wander", "float32", 0xb8c758d8bd1845d4ull, 10, 0, 0, 0, 0, (uint32_t) offsetof( Patrol, wander ), (uint32_t) sizeof( ( (Patrol *) 0 )->wander ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "active && !has_target", TableDocNone, 0, NULL },
-    { "note", "note", "string", 0x3bf8fbbad1587cddull, 12, 0, 1, 0, 8, (uint32_t) offsetof( Patrol, note ), (uint32_t) sizeof( ( (Patrol *) 0 )->note ), (uint32_t) offsetof( Patrol, note_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "!active", TableDocNone, 0, NULL },
+    { "active", "active", "bool", 0x6580790b036f0c6full, 1, 0, 0, 0, 0, (uint32_t) offsetof( Patrol, active ), (uint32_t) sizeof( ( (Patrol *) 0 )->active ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "speed", "speed", "float32", 0x2281498aa0200e40ull, 10, 0, 0, 0, 0, (uint32_t) offsetof( Patrol, speed ), (uint32_t) sizeof( ( (Patrol *) 0 )->speed ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "active", TableDocNone, 0, NULL, 0, NULL },
+    { "has_target", "has_target", "bool", 0x247f0e7f55aacfbdull, 1, 0, 0, 0, 0, (uint32_t) offsetof( Patrol, has_target ), (uint32_t) sizeof( ( (Patrol *) 0 )->has_target ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "active", TableDocNone, 0, NULL, 0, NULL },
+    { "target_id", "target_id", "int32", 0xb7bc9ac015a25050ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( Patrol, target_id ), (uint32_t) sizeof( ( (Patrol *) 0 )->target_id ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1000.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "active && has_target", TableDocNone, 0, NULL, 0, NULL },
+    { "wander", "wander", "float32", 0xb8c758d8bd1845d4ull, 10, 0, 0, 0, 0, (uint32_t) offsetof( Patrol, wander ), (uint32_t) sizeof( ( (Patrol *) 0 )->wander ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "active && !has_target", TableDocNone, 0, NULL, 0, NULL },
+    { "note", "note", "string", 0x3bf8fbbad1587cddull, 12, 0, 1, 0, 8, (uint32_t) offsetof( Patrol, note ), (uint32_t) sizeof( ( (Patrol *) 0 )->note ), (uint32_t) offsetof( Patrol, note_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "!active", TableDocNone, 0, NULL, 0, NULL },
 };
 
 const TableTypeInfo schema_tabledemo_patrol_info_ = { "Patrol", (uint32_t) sizeof( Patrol ), 6, schema_tabledemo_patrol_fields_, schema_tabledemo_patrol_reset_raw_, TableDocNone, 0, NULL };

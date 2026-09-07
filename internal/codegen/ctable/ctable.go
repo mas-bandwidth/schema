@@ -108,6 +108,9 @@ type tableGen struct {
 	unit             *ir.Unit
 	file             *ir.File
 	anyVariable      bool // the unit declares at least one variable-length table
+	anySequence      bool
+	anyList          bool
+	anyMap           bool
 	anyKeyed         bool // the unit declares at least one enum-keyed array
 	// blocks is the unit's BLOCK FORM surface (docs/SPEC-TABLES.md §19), nil when
 	// no table is marked `| block`. Nil is what makes the zero-cost gate
@@ -136,8 +139,18 @@ func (g *tableGen) pf(format string, args ...any) {
 	g.body.WriteString(s)
 }
 
+func (g *tableGen) declBase(name string) string {
+	if base := g.unit.DeclFile[name]; base != "" {
+		return base
+	}
+	if st := g.unit.Tables[name]; st != nil && st.MapEntryOf != "" {
+		owner, _, _ := strings.Cut(st.MapEntryOf, ".")
+		return g.declBase(owner)
+	}
+	return ""
+}
 func (g *tableGen) noteRef(name string) {
-	if base, ok := g.unit.DeclFile[name]; ok && base != g.file.Base {
+	if base := g.declBase(name); base != "" && base != g.file.Base {
 		g.includes[base] = true
 	}
 }
@@ -200,11 +213,11 @@ const tableKeyedAccessor = `
    build. The storage shifts left and holds no slot for None, so a build that
    skipped this compare would index one element BEFORE the array — undefined
    behaviour in the configuration a game ships. */
-static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key, size_t count )
+static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key )
 {
-    if ( key <= 0 || (uint64_t) key > (uint64_t) count )
+    if ( key <= 0 )
     {
-        assert( 0 && "key is outside the enum-keyed array" );
+        assert( 0 && "None is the null key of an enum-keyed array: it keys no slot" );
         abort();
     }
     return key - 1;
@@ -213,7 +226,7 @@ static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key, size_t count )
 /* keyed[key] — the slot a variant owns, as an LVALUE. The key is evaluated
    once. ITERATION is the surface a consumer of the whole array wants: walk
    1..E_MAX and index with the key, so a call site writes no shift. */
-#define SCHEMA_TABLE_KEYED_AT( array, key ) ( (array)[ table_keyed_slot( (int32_t) ( key ), sizeof( array ) / sizeof( (array)[0] ) ) ] )
+#define SCHEMA_TABLE_KEYED_AT( array, key ) ( (array)[ table_keyed_slot( (int32_t) ( key ) ) ] )
 
 `
 
@@ -435,6 +448,8 @@ typedef struct TableFieldInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    int sequence; /* 0 inline field, 1 unbounded list, 2 map */
+    void * (*place)(void * worker,void * slot,const char * key,int32_t length,int64_t number);
 } TableFieldInfo;
 
 typedef struct TableTypeInfo
@@ -625,6 +640,20 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	targets := ir.PointerTargets(u)
 	anyVariable := len(variable) > 0
 	anyKeyed := unitHasKeyedArray(u, closure)
+	anyList, anyMap := false, false
+	for name := range closure {
+		st := u.Tables[name]
+		if st == nil {
+			st = u.Structs[name]
+		}
+		if st == nil {
+			continue
+		}
+		for _, field := range st.Fields {
+			anyList = anyList || field.IsList()
+			anyMap = anyMap || field.IsMap()
+		}
+	}
 	blocks := ir.Blocks(u)
 
 	// The BLOCK FORM (docs/SPEC-TABLES.md §19) is emitted ON THE SIDE, into
@@ -633,7 +662,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// the form. The Table header below carries not one symbol of it.
 	out := generateBlockFiles(u, blocks, variable, targets)
 	for _, f := range u.Files {
-		g := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyKeyed: anyKeyed, blocks: blocks, variable: variable, targets: targets,
+		g := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyKeyed: anyKeyed, anySequence: anyList || anyMap, anyList: anyList, anyMap: anyMap, blocks: blocks, variable: variable, targets: targets,
 			includes: map[string]bool{}}
 		var members []*ir.Struct
 		members = append(members, orderTables(f.Tables)...)
@@ -642,7 +671,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 				members = append(members, st)
 			}
 		}
-		cg := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyKeyed: anyKeyed, blocks: blocks, variable: variable, targets: targets,
+		cg := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyKeyed: anyKeyed, anySequence: anyList || anyMap, anyList: anyList, anyMap: anyMap, blocks: blocks, variable: variable, targets: targets,
 			includes: map[string]bool{}}
 		g.emitTableShapes(members)
 		if len(members) > 0 {
@@ -650,9 +679,19 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			for _, st := range members {
 				g.emitTableReset(st)
 			}
+			if g.anyMap {
+				for _, st := range members {
+					for _, field := range st.Fields {
+						if field.IsMap() {
+							g.emitMapHelpers(st, field)
+						}
+					}
+				}
+			}
 			g.emitCodecDeclarations(members)
 			if g.anyVariable && g.fileWire() {
 				g.emitGraphDeclarations(members)
+				g.emitExtentDeclarations(members)
 			}
 			unions := g.fileWireUnions()
 			if g.fileWire() {
@@ -671,6 +710,15 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 					g.emitTableWrite(st)
 					g.emitTableSave(st)
 					g.emitTableRead(st)
+				}
+			}
+			if g.anySequence {
+				for _, st := range members {
+					for _, field := range st.Fields {
+						if field.IsList() {
+							g.emitListSurface(st, field)
+						}
+					}
 				}
 			}
 			g.emitVariableSurface(members)
@@ -769,6 +817,15 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 		h.WriteString(tableArenaRuntime(u.Package))
 		if g.fileWire() {
 			h.WriteString(tableBlobRuntime())
+			if g.anySequence {
+				h.WriteString(tableSequenceRuntime)
+			}
+			if g.anyList {
+				h.WriteString("#ifndef SCHEMA_TABLE_LIST_RUNTIME\n#define SCHEMA_TABLE_LIST_RUNTIME\ntypedef TableSequence TableList;\n#endif\n")
+			}
+			if g.anyMap {
+				h.WriteString(tableMapRuntime)
+			}
 			h.WriteString(strings.Replace(tableGraphRuntime, "@BLOB_GRAPH@", tableBlobGraphRuntime, 1))
 		}
 	}

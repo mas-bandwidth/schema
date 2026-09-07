@@ -61,6 +61,7 @@ table Root {
 #include <stdio.h>
 #define CHECK(x) do { if (!(x)) { fprintf(stderr, "line %%d: %%s\n", __LINE__, #x); return 1; } } while (0)
 static const uint8_t expected[] = { %s };
+static void set_keyed(Leaf * slots,int32_t key) { SCHEMA_TABLE_KEYED_AT(slots,key).choice=CHOICE_SECOND; }
 int main(void)
 {
     Root value, decoded;
@@ -69,6 +70,7 @@ int main(void)
     int64_t n;
     root_reset(&value);
 %s
+    set_keyed(value.slots,CHOICE_CURRENT);
     n = root_measure(&value);
     CHECK(n == (int64_t)sizeof(expected));
     CHECK(root_save(&value, saved, n) == n);
@@ -292,6 +294,7 @@ table Node {
  value uint32
  next *Node
 }
+
 table Root {
  first *Node
  slots [..3]*Node
@@ -431,9 +434,12 @@ int main(void) {
 func TestCTableWireAllocatorFailures(t *testing.T) {
 	u := unitFromSource(t, `package probe
 table Node { value uint32 }
+table Payload { entries map[int32]*Node }
 table Root {
  first *Node
  second *Node
+ children []Payload
+ rows map[string(8)]Node
 }`)
 	runCTableWireProbe(t, u, `#include "ProbeTable.h"
 #include <stdio.h>
@@ -447,7 +453,7 @@ static void release(void * context,void * p) {
  Counts * c=(Counts *)context;if(p!=NULL)c->live--;free(p);
 }
 static int exercise(Counts * counts) {
- const char * source="{\"first\":{\"&node\":1,\"value\":9},\"second\":{\"&node\":1}}";
+ const char * source="{\"first\":{\"&node\":1,\"value\":9},\"second\":{\"&node\":1},\"children\":[{\"entries\":{\"-2\":{\"&node\":1},\"9\":{\"value\":17}}}],\"rows\":{\"z\":{\"value\":3},\"a\":{\"value\":4}}}";
  TableAllocator a={allocate,release,counts}; RootBuilder b,copy; TableReport report={0};
  TableCtx ctx; uint8_t wire[2048]; char text[1024]; int64_t n,m; int ok=0,have_copy=0;
  if(!root_builder_init_with_allocator(&b,a))goto done;
@@ -479,4 +485,172 @@ int main(void) {
  return complete?0:4;
 }
 `)
+}
+
+func TestCTableWireNestedLists(t *testing.T) {
+	u := unitFromSource(t, `package probe
+table Row { numbers []int32 }
+table Root {
+ rows []Row
+ nodes []*Row
+ tail *Row
+}
+`)
+	input := `{"rows":[{"numbers":[1,-2,3]},{"numbers":[]}],"nodes":[{"&node":1,"numbers":[7,8]},null,{"&node":1}],"tail":{"&node":1}}`
+	model := tabletext.NewModel(u)
+	root := model.New(u.Tables["Root"])
+	report := tabletext.Report{}
+	if !model.Read(root, []byte(input), &report) || !report.Silent() {
+		t.Fatalf("oracle JSON: %+v", report)
+	}
+	expected, err := tablewire.Encode(model, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var octets strings.Builder
+	for _, b := range expected {
+		fmt.Fprintf(&octets, "0x%02x,", b)
+	}
+	runCTableWireProbe(t, u, fmt.Sprintf(`#include "ProbeTable.h"
+#include <stdio.h>
+#define CHECK(x) do { if(!(x)) { fprintf(stderr,"line %%d: %%s\n",__LINE__,#x); return 1; } } while(0)
+static const uint8_t expected[]={%s};
+int main(void) {
+ RootBuilder b,copy; Root * root; Row * row; int32_t * number; const Root * locked; const Root * loaded;
+ TableCtx ctx; TableSink sink; TableReport report={0}; int64_t bytes; uint8_t wire[sizeof(expected)],*region;
+ char text[4096]; int64_t text_bytes;
+ CHECK(root_builder_init(&b)); root=root_builder_root(&b); ctx.arena=&b.arena; sink.region=NULL;sink.worker=&b.main;
+ row=root_rows_add(&b.main,&root->rows); CHECK(row!=NULL);
+ number=row_numbers_add(&b.main,&row->numbers); CHECK(number!=NULL);*number=1;
+ number=row_numbers_add(&b.main,&row->numbers); CHECK(number!=NULL);*number=99;
+ CHECK(row_numbers_erase(&b.arena,&row->numbers,number)); CHECK(!row_numbers_erase(&b.arena,&row->numbers,number));
+ number=row_numbers_add(&b.main,&row->numbers); CHECK(number!=NULL);*number=-2;
+ number=row_numbers_add(&b.main,&row->numbers); CHECK(number!=NULL);*number=3;
+ CHECK(root_rows_add(&b.main,&root->rows)!=NULL);
+ row=row_emplace(&sink,&root->tail); CHECK(row!=NULL);
+ number=row_numbers_add(&b.main,&row->numbers); CHECK(number!=NULL);*number=7;
+ number=row_numbers_add(&b.main,&row->numbers); CHECK(number!=NULL);*number=8;
+ *root_nodes_add(&b.main,&root->nodes)=root->tail;
+ CHECK(root_nodes_add(&b.main,&root->nodes)!=NULL);
+ *root_nodes_add(&b.main,&root->nodes)=root->tail;
+ CHECK(root_save(&ctx,root,wire,sizeof(wire))==(int64_t)sizeof(expected));CHECK(!memcmp(wire,expected,sizeof(expected)));
+ CHECK(root_builder_lock(&b));locked=(const Root *)(const void *)b.region;
+ CHECK(root_nodes_at(&locked->nodes,0)==row_at(NULL,&locked->tail));
+ CHECK(root_nodes_at(&locked->nodes,1)==NULL);
+ CHECK(*row_numbers_at(&root_rows_at(&locked->rows,0)->numbers,1)==-2);
+ CHECK(root_save(NULL,locked,wire,sizeof(wire))==(int64_t)sizeof(expected));CHECK(!memcmp(wire,expected,sizeof(expected)));
+ bytes=root_load_measure(expected,sizeof(expected));CHECK(bytes==168);
+ region=(uint8_t *)malloc((size_t)bytes);CHECK(region!=NULL);
+ loaded=root_load(region,bytes,expected,sizeof(expected),&report);CHECK(loaded!=NULL && !report.malformed);
+ CHECK(root_nodes_at(&loaded->nodes,0)==row_at(NULL,&loaded->tail));
+ CHECK(*row_numbers_at(&root_rows_at(&loaded->rows,0)->numbers,2)==3);
+ CHECK(root_save(NULL,loaded,wire,sizeof(wire))==(int64_t)sizeof(expected));CHECK(!memcmp(wire,expected,sizeof(expected)));
+ CHECK(root_builder_init(&copy));CHECK(root_load_builder(&copy,expected,sizeof(expected),&report));CHECK(root_builder_lock(&copy));
+ CHECK(root_save(NULL,(const Root *)(const void *)copy.region,wire,sizeof(wire))==(int64_t)sizeof(expected));CHECK(!memcmp(wire,expected,sizeof(expected)));
+ root_builder_shutdown(&copy);
+ text_bytes=root_to_json(loaded,text,sizeof(text));CHECK(text_bytes>0);
+ CHECK(root_builder_init(&copy));CHECK(root_from_json(&copy,text,text_bytes,&report));CHECK(!report.malformed && !report.kind_mismatch);CHECK(root_builder_lock(&copy));
+ CHECK(root_save(NULL,(const Root *)(const void *)copy.region,wire,sizeof(wire))==(int64_t)sizeof(expected));CHECK(!memcmp(wire,expected,sizeof(expected)));
+ root_builder_shutdown(&copy);root_builder_shutdown(&b);free(region);return 0;
+}
+`, octets.String()))
+}
+
+func TestCTableWireMaps(t *testing.T) {
+	u := unitFromSource(t, `package probe
+ table Row { numbers []int32 }
+ table Root {
+  numbers map[int32]int32
+  rows map[string(16)]Row
+  links map[uint64]*Row
+ }
+ `)
+	input := `{"numbers":{"-1":8,"2":5},"rows":{"a":{"numbers":[]},"z":{"numbers":[7]}},"links":{"1":{"&node":1,"numbers":[9]},"18446744073709551615":{"&node":1}}}`
+	model := tabletext.NewModel(u)
+	root := model.New(u.Tables["Root"])
+	report := tabletext.Report{}
+	if !model.Read(root, []byte(input), &report) || !report.Silent() {
+		t.Fatalf("oracle JSON: %+v", report)
+	}
+	expected, err := tablewire.Encode(model, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var octets strings.Builder
+	for _, b := range expected {
+		fmt.Fprintf(&octets, "0x%02x,", b)
+	}
+	runCTableWireProbe(t, u, fmt.Sprintf(`#include "ProbeTable.h"
+#include <stdio.h>
+#define CHECK(x) do { if(!(x)) { fprintf(stderr,"line %%d: %%s\n",__LINE__,#x); return 1; } } while(0)
+static const uint8_t expected[]={%s};
+int main(void) {
+ RootBuilder b,copy; Root * root; Row * row; TableRef * ref; TableRef shared;
+ int32_t * value,*same; const Root * locked,*loaded; TableCtx ctx; TableSink sink; TableReport report={0};
+ uint8_t wire[sizeof(expected)],*region; int64_t bytes; int32_t index_storage[16]; TableMapIndex index; char text[4096]; int64_t text_bytes;
+ CHECK(root_builder_init(&b));root=root_builder_root(&b);ctx.arena=&b.arena;sink.region=NULL;sink.worker=&b.main;
+ value=root_numbers_insert(&b.main,&root->numbers,2);CHECK(value!=NULL);*value=999;
+ same=root_numbers_insert(&b.main,&root->numbers,2);CHECK(same==value && *same==0);*same=5;
+ value=root_numbers_insert(&b.main,&root->numbers,-1);CHECK(value!=NULL);*value=8;
+ value=root_numbers_insert(&b.main,&root->numbers,3);CHECK(value!=NULL);*value=42;
+ CHECK(root_numbers_erase(&b.arena,&root->numbers,3));CHECK(!root_numbers_erase(&b.arena,&root->numbers,3));
+ CHECK(*root_numbers_find_mut(&b.arena,&root->numbers,-1)==8);
+ row=root_rows_insert(&b.main,&root->rows,"z");CHECK(row!=NULL);value=row_numbers_add(&b.main,&row->numbers);CHECK(value!=NULL);*value=7;
+ CHECK(root_rows_insert(&b.main,&root->rows,"a")!=NULL);
+ ref=root_links_insert(&b.main,&root->links,UINT64_MAX);CHECK(ref!=NULL);row=row_emplace(&sink,ref);CHECK(row!=NULL);shared=*ref;
+ value=row_numbers_add(&b.main,&row->numbers);CHECK(value!=NULL);*value=9;
+ ref=root_links_insert(&b.main,&root->links,1);CHECK(ref!=NULL);*ref=shared;
+ CHECK(root_save(&ctx,root,wire,sizeof(wire))==(int64_t)sizeof(expected));CHECK(!memcmp(wire,expected,sizeof(expected)));
+ CHECK(root_builder_lock(&b));locked=(const Root *)(const void *)b.region;
+ CHECK(*root_numbers_find(&locked->numbers,-1)==8 && root_numbers_find(&locked->numbers,3)==NULL);
+ CHECK(root_links_find(&locked->links,1)==root_links_find(&locked->links,UINT64_MAX));
+ CHECK(*row_numbers_at(&root_rows_find(&locked->rows,"z")->numbers,0)==7);
+ index=root_numbers_index(&locked->numbers,index_storage,sizeof(index_storage));CHECK(index.good);
+ CHECK(root_numbers_index_find(&index,&locked->numbers,2)==root_numbers_find(&locked->numbers,2));
+ CHECK(root_numbers_index_find(&index,&locked->numbers,3)==NULL);
+ CHECK(root_save(NULL,locked,wire,sizeof(wire))==(int64_t)sizeof(expected));CHECK(!memcmp(wire,expected,sizeof(expected)));
+ bytes=root_load_measure(expected,sizeof(expected));CHECK(bytes>0);region=(uint8_t *)malloc((size_t)bytes);CHECK(region!=NULL);
+ loaded=root_load(region,bytes,expected,sizeof(expected),&report);CHECK(loaded!=NULL && !report.malformed && !report.kind_mismatch);
+ CHECK(root_links_find(&loaded->links,1)==root_links_find(&loaded->links,UINT64_MAX));
+ CHECK(root_save(NULL,loaded,wire,sizeof(wire))==(int64_t)sizeof(expected));CHECK(!memcmp(wire,expected,sizeof(expected)));
+ CHECK(root_builder_init(&copy));CHECK(root_load_builder(&copy,expected,sizeof(expected),&report));CHECK(root_builder_lock(&copy));
+ CHECK(root_save(NULL,(const Root *)(const void *)copy.region,wire,sizeof(wire))==(int64_t)sizeof(expected));CHECK(!memcmp(wire,expected,sizeof(expected)));
+ root_builder_shutdown(&copy);
+ text_bytes=root_to_json(loaded,text,sizeof(text));CHECK(text_bytes>0);
+ CHECK(root_builder_init(&copy));CHECK(root_from_json(&copy,text,text_bytes,&report));CHECK(!report.malformed && !report.kind_mismatch);CHECK(root_builder_lock(&copy));
+ CHECK(root_save(NULL,(const Root *)(const void *)copy.region,wire,sizeof(wire))==(int64_t)sizeof(expected));CHECK(!memcmp(wire,expected,sizeof(expected)));
+ root_builder_shutdown(&copy);root_builder_shutdown(&b);free(region);return 0;
+}
+`, octets.String()))
+}
+
+// A generated map entry is storage reached through its owning map, never a root.
+func TestCTableMapEntryNotRoot(t *testing.T) {
+	files, err := New().Generate(unitFromSource(t, mapSrc), "c", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var headers strings.Builder
+	for name, data := range files {
+		if strings.HasSuffix(name, "Table.h") {
+			headers.Write(data)
+		}
+	}
+	text := headers.String()
+	for _, entry := range []struct{ typ, api string }{
+		{"FleetShipsEntry", "fleet_ships_entry"}, {"FleetByIdEntry", "fleet_by_id_entry"},
+		{"FleetLoadoutsEntry", "fleet_loadouts_entry"}, {"FleetLoadoutsEntryValueEntry", "fleet_loadouts_entry_value_entry"},
+	} {
+		if !strings.Contains(text, "struct "+entry.typ) {
+			t.Errorf("entry storage %s missing", entry.typ)
+		}
+		if strings.Contains(text, "struct "+entry.typ+"Builder") {
+			t.Errorf("map entry %s has a builder", entry.typ)
+		}
+		for _, verb := range []string{"open", "cook", "save", "load", "measure", "from_json", "to_json"} {
+			if strings.Contains(text, entry.api+"_"+verb+"(") || strings.Contains(text, entry.api+"_"+verb+" (") {
+				t.Errorf("map entry %s has root API %s", entry.typ, verb)
+			}
+		}
+	}
 }

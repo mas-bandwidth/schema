@@ -289,4 +289,163 @@ static SCHEMA_UNUSED int64_t table_json_write_graph( const void * root, const Ta
     table_json_put(&out,'\n'); return out.overflow ? -1 : out.offset;
 }
 /* ---- json graph walk: end ---- */
+
+#ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
+static SCHEMA_UNUSED int table_json_write_list(TableJsonOut * out,const void * storage,const TableFieldInfo * f,int32_t depth)
+{
+    const TableSequence * list=(const TableSequence *)storage;
+    TableSequenceCursor cursor=table_sequence_cursor(NULL,list,f->elem_size); int32_t i;
+    if(!cursor.ok) { return 0; }
+    table_json_put(out,'[');
+    for(i=0;i<list->count;i++) {
+        const void * element=table_sequence_next(&cursor); if(element==NULL) { return 0; }
+        if(i) { table_json_put(out,','); } table_json_line(out,depth+1);
+        if(!table_json_write_scalar(out,element,f,depth+1)) { return 0; }
+    }
+    if(list->count) { table_json_line(out,depth); } table_json_put(out,']'); return 1;
+}
+static SCHEMA_UNUSED int table_json_read_list(TableJsonIn * in,void * storage,const TableFieldInfo * f,int32_t depth)
+{
+    TableJsonGraphIn * graph=(TableJsonGraphIn *)in->graph;
+    TableSequence * list=(TableSequence *)storage; char shape=table_json_element_shape(f);
+    if(graph==NULL || table_json_peek(in)!='[') { in->bad=1; return 0; }
+    memset(list,0,sizeof(*list)); in->pos++;
+    for(;;) {
+        char c=table_json_peek(in); void * element;
+        if(c==']') { in->pos++; return 1; }
+        if(c==0) { in->bad=1; return 0; }
+        element=table_sequence_add(graph->worker,list,f->elem_size);
+        if(element==NULL) { in->bad=1; return 0; }
+        if(f->kind==13) { f->table->reset(element); }
+        if(table_json_value_shape(in)!=shape && !(f->kind==17 && table_json_value_shape(in)=='z')) {
+            in->report->kind_mismatch++; if(!table_json_skip_value(in,depth+1)) { return 0; }
+        } else if(!table_json_read_scalar(in,element,f,depth+1)) { return 0; }
+        c=table_json_peek(in);
+        if(c==',') { in->pos++; continue; }
+        if(c==']') { in->pos++; return 1; }
+        in->bad=1; return 0;
+    }
+}
+#endif
+
+#ifdef SCHEMA_TABLE_MAP_RUNTIME
+static SCHEMA_UNUSED TableJsonInteger table_json_interpret_exact( const char * token, int32_t length )
+{
+    TableJsonInteger out;
+    out.magnitude = 0;
+    out.negative = 0;
+    out.fractional = 0;
+    out.saturated = 0;
+    out.finite = 1;
+    int32_t i = 0;
+    if ( i < length && token[i] == '-' ) { out.negative = 1; i++; } // WalkNumber refuses a leading plus
+    const char * int_digits = token + i;
+    int32_t int_len = 0;
+    while ( i < length && token[i] >= '0' && token[i] <= '9' ) { int_len++; i++; }
+    const char * frac_digits = token + i;
+    int32_t frac_len = 0;
+    if ( i < length && token[i] == '.' )
+    {
+        i++;
+        frac_digits = token + i;
+        while ( i < length && token[i] >= '0' && token[i] <= '9' ) { frac_len++; i++; }
+    }
+    int64_t exp = 0;
+    if ( i < length && ( token[i] == 'e' || token[i] == 'E' ) )
+    {
+        i++;
+        int exp_negative = 0;
+        if ( i < length && ( token[i] == '-' || token[i] == '+' ) ) { exp_negative = token[i] == '-'; i++; }
+        while ( i < length && token[i] >= '0' && token[i] <= '9' )
+        {
+            if ( exp < 100000 ) { exp = exp * 10 + ( token[i] - '0' ); }
+            i++;
+        }
+        if ( exp_negative ) { exp = -exp; }
+    }
+    // leading and trailing zeros stripped, so the last digit kept is significant
+    int32_t start = 0, end = int_len + frac_len;
+    int64_t point = (int64_t) int_len + exp;
+    while ( start < end && ( start < int_len ? int_digits[start] : frac_digits[start - int_len] ) == '0' ) { start++; point--; }
+    while ( end > start && ( end - 1 < int_len ? int_digits[end - 1] : frac_digits[end - 1 - int_len] ) == '0' ) { end--; }
+    const int64_t digits = end - start;
+    if ( digits == 0 ) { out.negative = 0; return out; } // the value is zero, and -0 IS zero
+    if ( point < digits ) { out.fractional = 1; return out; } // a significant digit below the point
+    if ( point > 20 ) { out.magnitude = UINT64_MAX; out.saturated = 1; return out; }
+    for ( int32_t k = start; k < end; k++ )
+    {
+        const uint64_t digit = (uint64_t) ( ( k < int_len ? int_digits[k] : frac_digits[k - int_len] ) - '0' );
+        if ( out.magnitude > ( UINT64_MAX - digit ) / 10 ) { out.magnitude = UINT64_MAX; out.saturated = 1; return out; }
+        out.magnitude = out.magnitude * 10 + digit;
+    }
+    for ( int64_t k = digits; k < point; k++ ) // the point's own zeros, which no digit spells
+    {
+        if ( out.magnitude > UINT64_MAX / 10 ) { out.magnitude = UINT64_MAX; out.saturated = 1; return out; }
+        out.magnitude *= 10;
+    }
+    return out;
+}
+
+static SCHEMA_UNUSED int table_json_write_map(TableJsonOut * out,const void * storage,const TableFieldInfo * f,int32_t depth)
+{
+    const TableSequence * map=(const TableSequence *)storage;
+    TableSequenceCursor cursor=table_sequence_cursor(NULL,map,f->elem_size); int32_t i;
+    const TableFieldInfo * key=&f->table->fields[0]; const TableFieldInfo * value=&f->table->fields[1];
+    if(!cursor.ok) { return 0; } table_json_put(out,'{');
+    for(i=0;i<map->count;i++) {
+        const uint8_t * entry=(const uint8_t *)table_sequence_next(&cursor); if(entry==NULL) { return 0; }
+        if(i) { table_json_put(out,','); } table_json_line(out,depth+1);
+        if(key->kind==12) { table_json_write_string(out,(const char *)entry+key->offset,table_json_count(entry,key)); }
+        else {
+            table_json_put(out,'"');
+            if(key->kind>=2 && key->kind<=5) { table_json_write_signed(out,table_json_get_signed(entry+key->offset,key->elem_size)); }
+            else { table_json_write_unsigned(out,table_json_get_raw(entry+key->offset,key->elem_size)); }
+            table_json_put(out,'"');
+        }
+        table_json_raw(out,": ",2); if(!table_json_write_field(out,entry,value,depth+1)) { return 0; }
+    }
+    if(map->count) { table_json_line(out,depth); } table_json_put(out,'}'); return 1;
+}
+static SCHEMA_UNUSED int table_json_map_key_value(const char * token,int32_t length,const TableFieldInfo * key,int64_t * value,int * fits)
+{
+    TableReport scratch={0}; TableJsonIn probe; TableJsonInteger number; int integral=0,moved=0;
+    memset(&probe,0,sizeof(probe)); probe.text=token; probe.size=length; probe.report=&scratch; *fits=0;
+    table_json_space(&probe); if(probe.pos!=0 || !table_json_walk_number(&probe,&integral) || probe.pos!=length) { return 0; }
+    number=table_json_interpret_exact(token,length); if(number.fractional || number.saturated) { return 1; }
+    *value=table_json_integer_in_domain(number,key->kind>=2 && key->kind<=5,(int32_t)key->elem_size,&moved); *fits=!moved; return 1;
+}
+static SCHEMA_UNUSED int table_json_read_map(TableJsonIn * in,void * storage,const TableFieldInfo * f,int32_t depth)
+{
+    TableJsonGraphIn * graph=(TableJsonGraphIn *)in->graph; TableSequence * map=(TableSequence *)storage;
+    const TableFieldInfo * key=&f->table->fields[0]; const TableFieldInfo * value=&f->table->fields[1]; char shape=table_json_shape(value);
+    if(graph==NULL || table_json_peek(in)!='{' || depth+1>kTableJsonMaxDepth) { in->bad=1; return 0; }
+    memset(map,0,sizeof(*map)); in->pos++;
+    for(;;) {
+        char c=table_json_peek(in),token[kTableJsonMaxKey]; int32_t length=0,before; int64_t number=0; int place=1; void * entry;
+        TableReport scratch={0}; TableJsonIn scan=*in; scan.report=&scratch;
+        if(c=='}') { in->pos++; return 1; } if(c==0) { in->bad=1; return 0; }
+        if(!table_json_scan_string(&scan,token,kTableJsonMaxKey-1,&length)) { in->pos=scan.pos; in->bad=1; return 0; }
+        in->pos=scan.pos; token[length]=0;
+        if(table_json_peek(in)!=':') { in->bad=1; return 0; } in->pos++;
+        if(key->kind==12) {
+            if(scratch.clamped || length>key->array_bound) { in->report->clamped++; place=0; }
+        } else {
+            int fits=0;
+            if(scratch.clamped) { in->report->kind_mismatch++; place=0; }
+            else if(!table_json_map_key_value(token,length,key,&number,&fits)) { in->bad=1; return 0; }
+            else if(!fits) { in->report->kind_mismatch++; place=0; }
+        }
+        before=map->count; entry=place ? f->place(graph->worker,map,token,length,number) : NULL;
+        if(place && entry==NULL) { in->bad=1; return 0; }
+        if(entry!=NULL && map->count==before) { in->report->duplicate++; }
+        c=table_json_value_shape(in);
+        if(entry==NULL) { if(!table_json_skip_value(in,depth+1)) { return 0; } }
+        else if(c!=shape && !(value->kind==17 && !value->is_array && c=='z')) {
+            in->report->kind_mismatch++; if(!table_json_skip_value(in,depth+1)) { return 0; }
+        } else if(!table_json_read_field(in,entry,value,depth+1)) { return 0; }
+        c=table_json_peek(in); if(c==',') { in->pos++; continue; } if(c=='}') { in->pos++; return 1; }
+        in->bad=1; return 0;
+    }
+}
+#endif
 `

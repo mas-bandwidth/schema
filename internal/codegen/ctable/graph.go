@@ -20,6 +20,8 @@ typedef struct TableNodeType
     int (*save)( TableWriter * w, const void * value );
     int (*edges)( TableNumbering * numbering, const void * value );
     int blob; /* 0 table, 1 bytes, 2 terminated UTF-8 */
+    int (*extent)(TableNumbering *,const void *,uint8_t *,int64_t *);
+    int64_t (*wire_storage)(const TableReader *);
 } TableNodeType;
 
 typedef struct TableNodeEntry
@@ -42,6 +44,10 @@ typedef struct TableNodeWork
 struct TableNumbering
 {
     const TableCtx * ctx;
+    uint8_t * pack_base;
+#ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
+    TableSequenceOrder * orders;
+#endif
     TableAllocator allocator;
     TableNodeEntry * entries;
     uint64_t count, capacity;
@@ -51,13 +57,15 @@ struct TableNumbering
     uint64_t work_count, work_capacity;
 };
 
-static SCHEMA_UNUSED int64_t table_node_storage( const TableNodeType * type, const void * value )
+static SCHEMA_UNUSED int64_t table_node_storage( TableNumbering * n, const TableNodeType * type, const void * value )
 {
-    return type->blob ? table_blob_storage(((const TableBlob *)value)->length,type->blob==2) : table_align_up64(type->size);
+    int64_t at=type->size;
+    if(type->blob) { return table_blob_storage(((const TableBlob *)value)->length,type->blob==2); }
+    if(!type->extent(n,value,NULL,&at) || at>INT64_MAX-kTableAlign) { return -1; } return table_align_up64(at);
 }
 static SCHEMA_UNUSED int64_t table_node_wire_storage( const TableNodeType * type, const TableReader * body )
 {
-    return type->blob ? table_blob_storage(body->size,type->blob==2) : table_align_up64(type->size);
+    return type->blob ? table_blob_storage(body->size,type->blob==2) : type->wire_storage(body);
 }
 @BLOB_GRAPH@
 
@@ -127,6 +135,9 @@ static SCHEMA_UNUSED int table_number_edge( TableNumbering * n, const void * val
 
 static SCHEMA_UNUSED void table_number_dispose( TableNumbering * n )
 {
+#ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
+    table_sequence_orders_release(n->allocator,n->orders);
+#endif
     table_release(n->allocator,n->entries); table_release(n->allocator,n->slots); table_release(n->allocator,n->work);
     memset(n,0,sizeof(*n));
 }
@@ -220,7 +231,7 @@ static SCHEMA_UNUSED int table_graph_records( TableWriter * w )
         {
             TableWriter probe=table_writer_probe(w);
             if ( !entry->type->save(&probe,entry->value) ) { return 0; }
-            table_writer_leb(w,(uint64_t)probe.offset);
+            table_writer_rewind(&probe); table_writer_leb(w,(uint64_t)probe.offset);
             if ( !entry->type->save(w,entry->value) ) { return 0; }
         }
     }
@@ -231,7 +242,8 @@ static SCHEMA_UNUSED int64_t table_graph_save( const TableCtx * ctx, const void 
     const TableNodeType * type, uint8_t * buffer, int64_t capacity, TableAllocator allocator )
 {
     TableNumbering numbering;
-    TableWriter w=table_writer_make(buffer,capacity);
+    TableWriteIds vocabulary;
+    TableWriter w=table_writer_make(buffer,capacity,&vocabulary);
     int64_t result=-1;
     if ( !table_number_build(&numbering,ctx,root,type,allocator) ) { table_number_dispose(&numbering); return -1; }
     w.nodes=&numbering;
@@ -251,7 +263,7 @@ static SCHEMA_UNUSED int64_t table_graph_save( const TableCtx * ctx, const void 
         {
             TableWriter probe=table_writer_probe(&w);
             if ( !table_graph_records(&probe) ) { goto done; }
-            table_writer_leb(&w,(uint64_t)probe.offset);
+            table_writer_rewind(&probe); table_writer_leb(&w,(uint64_t)probe.offset);
             if ( !table_graph_records(&w) ) { goto done; }
         }
     }
@@ -265,14 +277,14 @@ static SCHEMA_UNUSED uint8_t * table_graph_pack( const TableCtx * ctx, const voi
     const TableNodeType * type, int64_t * bytes )
 {
     TableNumbering n;
-    uint64_t i, k;
+    uint64_t i;
     int64_t total=0;
     uint8_t * packed=NULL;
     *bytes=0;
     if ( !table_number_build(&n,ctx,root,type,ctx!=NULL && ctx->arena!=NULL ? ctx->arena->allocator : table_default_allocator()) ) { table_number_dispose(&n); return NULL; }
     for ( i=0; i<n.count; i++ )
     {
-        int64_t size=table_node_storage(n.entries[i].type,n.entries[i].value);
+        int64_t size=table_node_storage(&n,n.entries[i].type,n.entries[i].value);
         if ( size<0 || size>INT64_MAX-total ) { goto done; }
         n.entries[i].packed_offset=(uint64_t)total; total+=size;
     }
@@ -285,18 +297,10 @@ static SCHEMA_UNUSED uint8_t * table_graph_pack( const TableCtx * ctx, const voi
         const TableNodeEntry * entry=&n.entries[i];
         uint8_t * target=packed+entry->packed_offset;
         memcpy(target,entry->value,(size_t)(entry->type->blob ? 8+(int64_t)((const TableBlob *)entry->value)->length : entry->type->size));
-        n.work_count=0;
-        if ( !entry->type->edges(&n,entry->value) ) { table_release(n.allocator,packed); packed=NULL; goto done; }
-        for ( k=0; k<n.work_count; k++ )
-        {
-            const TableNodeWork * edge=&n.work[k];
-            uint64_t index=table_number_find(&n,edge->value);
-            int64_t at=(const uint8_t *)(const void *)edge->slot-(const uint8_t *)entry->value;
-            TableRef * slot;
-            if ( index==0 || at<0 || at>entry->type->size-(int64_t)sizeof(TableRef) )
-            { table_release(n.allocator,packed); packed=NULL; goto done; }
-            slot=(TableRef *)(void *)(target+at);
-            slot->value=(int64_t)((packed+n.entries[index-1].packed_offset)-(uint8_t *)(void *)slot);
+        if(!entry->type->blob) {
+            int64_t at=(int64_t)entry->packed_offset+entry->type->size;
+            n.pack_base=packed;
+            if(!entry->type->extent(&n,entry->value,target,&at)) { table_release(n.allocator,packed); packed=NULL; goto done; }
         }
     }
     *bytes=total;
@@ -310,6 +314,7 @@ typedef struct TableNodeMap
     const TableNodeDirEntry * entries;
     uint64_t count;
     int good, arena;
+    TableSink * sink;
 } TableNodeMap;
 
 static SCHEMA_UNUSED void table_node_resolve( const TableNodeMap * nodes, TableRef * slot,
@@ -394,6 +399,7 @@ func (g *tableGen) emitGraphDeclarations(members []*ir.Struct) {
 }
 
 func (g *tableGen) emitGraphBodies(members []*ir.Struct) {
+	g.emitExtentBodies(members)
 	for _, st := range g.varMembers(members) {
 		g.pf("static SCHEMA_UNUSED int %s( TableWriter * w, const void * storage )\n{ return %s(w,(const %s *)storage); }\n", g.sym(st.Name, "node_save"), g.api(st.Name, "save_body"), st.Name)
 		g.pf("static SCHEMA_UNUSED int %s( TableNumbering * numbering, const void * storage )\n{\n", g.sym(st.Name, "graph_edges"))
@@ -410,7 +416,7 @@ func (g *tableGen) emitGraphBodies(members []*ir.Struct) {
 			}
 		}
 		g.pf("    return 1;\n}\n")
-		g.pf("static const TableNodeType %s = { UINT64_C(0x%016x), sizeof(%s), %s, %s, 0 };\n\n", g.graphType(st.Name), ir.TableWireId(st.WireName()), st.Name, g.sym(st.Name, "node_save"), g.sym(st.Name, "graph_edges"))
+		g.pf("static const TableNodeType %s = { UINT64_C(0x%016x), sizeof(%s), %s, %s, 0, %s, %s };\n\n", g.graphType(st.Name), ir.TableWireId(st.WireName()), st.Name, g.sym(st.Name, "node_save"), g.sym(st.Name, "graph_edges"), g.sym(st.Name, "extent"), g.sym(st.Name, "wire_storage"))
 	}
 }
 
@@ -420,6 +426,15 @@ func (g *tableGen) emitGraphEdge(f *ir.Field, value, ind string, step *int) {
 		ind += "    "
 	}
 	switch {
+	case f.IsList() || f.IsMap():
+		*step++
+		label := fmt.Sprintf("edges%d", *step)
+		typ := g.sequenceType(f)
+		g.pf("%s{ TableSequenceCursor %s=%s; int32_t %s_i;\n", ind, label, g.sequenceCursor(f, "numbering", value), label)
+		g.pf("%s  if(!%s.ok) { return 0; } for(%s_i=0;%s_i<%s.count;%s_i++) {\n", ind, label, label, label, value, label)
+		g.pf("%s    const %s * %s_value=(const %s *)table_sequence_next(&%s); if(%s_value==NULL) { return 0; }\n", ind, typ, label, typ, label, label)
+		g.emitGraphEdge(sequenceElement(f), "(*"+label+"_value)", ind+"    ", step)
+		g.pf("%s  }\n%s}\n", ind, ind)
 	case f.Array != ir.ArrayNone:
 		*step++
 		index := fmt.Sprintf("edge_i%d", *step)
@@ -504,7 +519,7 @@ func (g *tableGen) emitGraphPublic(st *ir.Struct) {
 
 	}
 	g.pf("static SCHEMA_UNUSED int64_t %s(const TableReader * reader, int64_t * data_out, int64_t * records_out)\n{\n", g.sym(n, "load_layout"))
-	g.pf("    TableNodeScan scan=table_node_scan_begin(reader); TableReader body; uint64_t id;\n    int64_t data=table_align_up64(sizeof(%s)), records=0;\n", n)
+	g.pf("    TableNodeScan scan=table_node_scan_begin(reader); TableReader body; uint64_t id;\n    int64_t data=%s(reader), records=0;\n    if(data<0) { return -1; }\n", g.sym(n, "wire_storage"))
 	g.pf("    while (table_node_scan_next(&scan,&id,&body)) {\n        const TableNodeType * type=%s(id);\n", g.sym(n, "node_lookup"))
 	g.pf("        if (type!=NULL) { int64_t size=table_node_wire_storage(type,&body); if (size<0 || size>INT64_MAX-data) { return -1; } data+=size; }\n        records++;\n    }\n")
 	g.pf("    if (records>=INT64_MAX/(int64_t)sizeof(TableNodeDirEntry)-1 || (records+1)*(int64_t)sizeof(TableNodeDirEntry)>INT64_MAX-data) { return -1; }\n")
@@ -512,7 +527,7 @@ func (g *tableGen) emitGraphPublic(st *ir.Struct) {
 	g.pf("static SCHEMA_UNUSED int64_t %s(const uint8_t * wire, int64_t bytes, int64_t * attribution, int * reason)\n{\n", g.api(n, "load_measure_ex"))
 	g.pf("    TableReport report; TableReader reader; int64_t data,records,total; memset(&report,0,sizeof(report));\n    if (attribution!=NULL) { *attribution=0; } if (reason!=NULL) { *reason=0; }\n")
 	g.pf("    if (!table_wire_open(&reader,wire,bytes,&report)) { if(reason!=NULL) { *reason=report.reason; } return -1; }\n")
-	g.pf("    total=%s(&reader,&data,&records);\n    if(total>=0 && attribution!=NULL) { *attribution=(records+1)*(int64_t)sizeof(TableNodeDirEntry); } return total;\n}\n", g.sym(n, "load_layout"))
+	g.pf("    total=%s(&reader,&data,&records);\n    if(total<0 && reason!=NULL) { *reason=report.reason; }\n    if(total>=0 && attribution!=NULL) { *attribution=(records+1)*(int64_t)sizeof(TableNodeDirEntry); } return total;\n}\n", g.sym(n, "load_layout"))
 	g.pf("static SCHEMA_UNUSED int64_t %s(const uint8_t * wire, int64_t bytes)\n{ return %s(wire,bytes,NULL,NULL); }\n", g.api(n, "load_measure"), g.api(n, "load_measure_ex"))
 	g.emitGraphLoad(st)
 }
@@ -525,7 +540,7 @@ func (g *tableGen) emitGraphLoad(st *ir.Struct) {
 	g.pf("    TableNodeScan scan=table_node_scan_begin(reader); TableReader body; uint64_t id,k=0; int32_t unknown=0;\n    %s(root);\n", g.api(n, "reset"))
 	g.pf("    while (table_node_scan_next(&scan,&id,&body)) {\n        const TableNodeType * type=%s(id);\n        directory[k+1].type_id=id; directory[k+1].offset=UINT64_MAX;\n", g.sym(n, "node_lookup"))
 	g.pf("        if (type!=NULL && type->blob==2 && !table_wire_utf8(body.buffer,body.size)) { reader->report->malformed=1; k++; continue; }\n        if (type==NULL) { unknown++; }\n        else if (sink->region!=NULL) {\n            int64_t at=sink->region->used, size=table_node_wire_storage(type,&body);\n            if(size<0 || size>sink->region->capacity-at) { reader->report->malformed=1; return 0; }\n            directory[k+1].offset=(uint64_t)at; sink->region->used+=size;\n        } else {\n            uint32_t at=table_worker_alloc(sink->worker,table_node_wire_storage(type,&body));\n            if(at==kTableAllocFailed) { reader->report->malformed=1; return 0; }\n            directory[k+1].offset=at;\n        }\n        k++;\n    }\n")
-	g.pf("    nodes->good=table_node_scan_whole(&scan);\n    if(nodes->good) { reader->report->unknown+=unknown; } else { reader->report->malformed=1; }\n    if(nodes->good) {\n        scan=table_node_scan_begin(reader); k=0;\n        while(table_node_scan_next(&scan,&id,&body)) {\n            if(directory[k+1].offset!=UINT64_MAX) {\n                void * value=nodes->arena ? table_arena_at(sink->worker->arena,(uint32_t)directory[k+1].offset) : nodes->base+directory[k+1].offset;\n                body.nodes=nodes;\n                switch(id) {\n")
+	g.pf("    nodes->good=table_node_scan_whole(&scan);\n    if(nodes->good) { reader->report->unknown+=unknown; } else { reader->report->malformed=1; }\n    if(nodes->good) {\n        scan=table_node_scan_begin(reader); k=0;\n        while(table_node_scan_next(&scan,&id,&body)) {\n            if(directory[k+1].offset!=UINT64_MAX) {\n                void * value=nodes->arena ? table_arena_at(sink->worker->arena,(uint32_t)directory[k+1].offset) : nodes->base+directory[k+1].offset;\n                TableRegionSink extent; TableSink carve; const TableNodeType * type=%s(id);\n                carve.worker=sink->worker; carve.region=NULL;\n                if(!nodes->arena) { extent.base=(uint8_t *)value; extent.used=type->size; extent.capacity=table_node_wire_storage(type,&body); carve.region=&extent; }\n                nodes->sink=&carve; body.nodes=nodes;\n                switch(id) {\n", g.sym(n, "node_lookup"))
 	bytesBlob, stringBlob := ir.PointerReachableBlobs(st)
 	for _, blob := range []struct {
 		enabled bool
@@ -538,13 +553,13 @@ func (g *tableGen) emitGraphLoad(st *ir.Struct) {
 	for _, t := range ir.PointerReachable(st) {
 		g.pf("                    case UINT64_C(0x%016x): %s(&body,(%s *)value); break;\n", ir.TableWireId(t.WireName()), g.api(t.Name, "load_body"), t.Name)
 	}
-	g.pf("                    default: break;\n                }\n            }\n            k++;\n        }\n    }\n    reader->nodes=nodes; reader->nested=0;\n    %s(reader,root); return 1;\n}\n", g.api(n, "load_body"))
+	g.pf("                    default: break;\n                }\n            }\n            k++;\n        }\n    }\n    reader->nodes=nodes; reader->nested=0;\n    { TableRegionSink extent; TableSink carve; carve.worker=sink->worker; carve.region=NULL;\n      if(!nodes->arena) { extent.base=(uint8_t *)(void *)root; extent.used=sizeof(*root); extent.capacity=%s(reader); carve.region=&extent; }\n      nodes->sink=&carve; %s(reader,root); nodes->sink=NULL; } return 1;\n}\n", g.sym(n, "wire_storage"), g.api(n, "load_body"))
 	g.pf("static SCHEMA_UNUSED const %s * %s(uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, TableReport * report)\n{\n", n, g.api(n, "load"))
 	g.pf("    TableReport ignored; TableReader reader; TableNodeMap nodes; TableNodeDirEntry * directory; TableRegionSink place; TableSink sink; int64_t data,records,total;\n    memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; }\n    if(!table_wire_open(&reader,wire,wire_bytes,report)) { return NULL; }\n")
 	g.pf("    total=%s(&reader,&data,&records);\n", g.sym(n, "load_layout"))
 	g.pf("    if(total<0 || region==NULL || region_bytes<total || ((uintptr_t)region & (kTableAlign-1))!=0) { report->malformed=1; return NULL; }\n    memset(region,0,(size_t)total); directory=(TableNodeDirEntry *)(void *)(region+data);\n")
 	g.pf("    directory[0].offset=0; directory[0].type_id=UINT64_C(0x%016x);\n", ir.TableWireId(st.WireName()))
-	g.pf("    nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0;\n    place.base=region; place.capacity=data; place.used=table_align_up64(sizeof(%s)); sink.region=&place; sink.worker=NULL;\n", n)
+	g.pf("    nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0;\n    place.base=region; place.capacity=data; place.used=%s(&reader); sink.region=&place; sink.worker=NULL;\n", g.sym(n, "wire_storage"))
 	g.pf("    if(!%s(&reader,(%s *)(void *)region,&nodes,directory,&sink)) { return NULL; }\n    return (const %s *)(const void *)region;\n}\n", g.sym(n, "load_graph"), n, n)
 	g.pf("static SCHEMA_UNUSED int %s(%sBuilder * builder, const uint8_t * wire, int64_t wire_bytes, TableReport * report)\n{\n", g.api(n, "load_builder"), n)
 	g.pf("    TableReport ignored; TableReader reader; TableNodeMap nodes; TableNodeDirEntry * directory; TableSink sink; int64_t data,records,total; %s * root; int ok;\n    memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; }\n    if(!table_wire_open(&reader,wire,wire_bytes,report)) { return 0; }\n", n)

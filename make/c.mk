@@ -699,3 +699,53 @@ tables-c-wire-fuzz-negative-control: build/conformance-harness build/tables-gene
 	@echo 'C wire negative control: accepting noncanonical LEB128 changes the read report'
 
 test-c: tables-c-wire-fuzz-negative-control
+
+# Maps and lists use the C++ reference's pinned file bytes and exact region
+# sizes. Both allocator-backed construction and caller-owned loads are checked
+# through lock, save, and JSON under native execution and ASan/UBSan.
+build/tables-generated-c/collections.stamp: bin/schema make/c.mk $(wildcard tables/maps/*.schema) $(wildcard tables/lists/*.schema)
+	./bin/schema generate --lang c --out build/tables-generated-c/maps tables/maps
+	./bin/schema generate --lang c --out build/tables-generated-c/lists tables/lists
+	@touch $@
+
+build/c-collections-maps: build/tables-generated-c/collections.stamp test/c-tables/collections_maps.c test/c-tables/collections.h
+	$(CC) $(TABLES_CFLAGS) -Ibuild/tables-generated-c/maps test/c-tables/collections_maps.c build/tables-generated-c/maps/*Table.c -o $@ -lm
+
+build/c-collections-lists: build/tables-generated-c/collections.stamp test/c-tables/collections_lists.c test/c-tables/collections.h
+	$(CC) $(TABLES_CFLAGS) -Ibuild/tables-generated-c/lists test/c-tables/collections_lists.c build/tables-generated-c/lists/*Table.c -o $@ -lm
+
+build/c-collections-maps-asan: build/tables-generated-c/collections.stamp test/c-tables/collections_maps.c test/c-tables/collections.h
+	$(CC) $(TABLES_CFLAGS_CONTROL) $(C_SANITIZE) -Ibuild/tables-generated-c/maps test/c-tables/collections_maps.c build/tables-generated-c/maps/*Table.c -o $@ -lm
+
+build/c-collections-lists-asan: build/tables-generated-c/collections.stamp test/c-tables/collections_lists.c test/c-tables/collections.h
+	$(CC) $(TABLES_CFLAGS_CONTROL) $(C_SANITIZE) -Ibuild/tables-generated-c/lists test/c-tables/collections_lists.c build/tables-generated-c/lists/*Table.c -o $@ -lm
+
+.PHONY: tables-c-collections
+tables-c-collections: build/c-collections-maps build/c-collections-lists build/c-collections-maps-asan build/c-collections-lists-asan
+	./build/c-collections-maps
+	./build/c-collections-lists
+	./build/c-collections-maps-asan
+	./build/c-collections-lists-asan
+
+test-c tables-c: tables-c-collections
+
+build/collections-cpp/.stamp: bin/schema make/c.mk $(wildcard tables/maps/*.schema) $(wildcard tables/lists/*.schema)
+	./bin/schema generate --lang cpp --out build/collections-cpp/maps tables/maps
+	./bin/schema generate --lang cpp --out build/collections-cpp/lists tables/lists
+	@touch $@
+
+build/c-collections-fuzz: build/tables-generated-c/collections.stamp test/c-tables/collections_fuzz_maps.c test/c-tables/collections_fuzz_lists.c test/c-tables/wire_fuzz_main.c $(wildcard test/conformance/c/*.h)
+	$(CC) $(TABLES_CFLAGS) -DSCHEMA_C_COLLECTIONS_FUZZ -Itest/conformance/c -Ibuild/tables-generated-c test/c-tables/wire_fuzz_main.c test/c-tables/collections_fuzz_maps.c test/c-tables/collections_fuzz_lists.c build/tables-generated-c/maps/*Table.c build/tables-generated-c/lists/*Table.c -o $@ -lm
+
+build/c-collections-fuzz-asan: build/tables-generated-c/collections.stamp test/c-tables/collections_fuzz_maps.c test/c-tables/collections_fuzz_lists.c test/c-tables/wire_fuzz_main.c $(wildcard test/conformance/c/*.h)
+	$(CC) $(TABLES_CFLAGS_CONTROL) $(C_SANITIZE) -DSCHEMA_C_COLLECTIONS_FUZZ -Itest/conformance/c -Ibuild/tables-generated-c test/c-tables/wire_fuzz_main.c test/c-tables/collections_fuzz_maps.c test/c-tables/collections_fuzz_lists.c build/tables-generated-c/maps/*Table.c build/tables-generated-c/lists/*Table.c -o $@ -lm
+
+build/cpp-collections-fuzz: build/collections-cpp/.stamp test/c-tables/collections_fuzz.cpp test/c-tables/wire_fuzz_main.c test/conformance/c/driver.h
+	$(CXX) -std=c++17 -Wall -Wextra -Werror -O2 -Itest/conformance/c -Ibuild/collections-cpp test/c-tables/collections_fuzz.cpp -o $@
+
+.PHONY: tables-c-collections-fuzz
+tables-c-collections-fuzz: build/c-collections-fuzz build/c-collections-fuzz-asan build/cpp-collections-fuzz
+	SCHEMA_C_COLLECTIONS_DRIVER=./build/c-collections-fuzz SCHEMA_CPP_COLLECTIONS_DRIVER=./build/cpp-collections-fuzz go test ./test/conformance/harness -run '^TestCCollectionDifferential$$' -count=1 -v
+	SCHEMA_C_COLLECTIONS_DRIVER=./build/c-collections-fuzz-asan SCHEMA_CPP_COLLECTIONS_DRIVER=./build/cpp-collections-fuzz go test ./test/conformance/harness -run '^TestCCollectionDifferential$$' -count=1 -v
+
+test-c tables-c: tables-c-collections-fuzz

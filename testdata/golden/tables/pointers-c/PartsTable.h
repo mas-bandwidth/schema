@@ -223,6 +223,8 @@ typedef struct TableFieldInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    int sequence; /* 0 inline field, 1 unbounded list, 2 map */
+    void * (*place)(void * worker,void * slot,const char * key,int32_t length,int64_t number);
 } TableFieldInfo;
 
 typedef struct TableTypeInfo
@@ -250,22 +252,31 @@ typedef struct TableTypeInfo
 } TableTypeInfo;
 
 
-/* The vocabulary is bounded by the unit's complete set of wire identities.
-   Each save owns its scratch; no globals, allocator, or caller-sized VLA. */
+/* Each save owns one bounded identity table. Probes share it and rewind their
+   additions, so nesting copies only the writer cursor. Reverse-order removal
+   preserves every earlier open-addressing chain and first-use wire reference. */
+typedef struct TableWriteIds
+{
+    uint64_t ids[48];
+    uint32_t slots[128], positions[48];
+    int count;
+} TableWriteIds;
+
 typedef struct TableWriter
 {
     uint8_t * buffer;
     int64_t capacity, offset;
-    int overflow, id_count, check_default;
-    uint64_t ids[48];
-    const struct TableNumbering * nodes;
+    int overflow, id_checkpoint, check_default;
+    TableWriteIds * vocabulary;
+    struct TableNumbering * nodes;
 } TableWriter;
 
-static SCHEMA_UNUSED TableWriter table_writer_make( uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED TableWriter table_writer_make( uint8_t * buffer, int64_t capacity, TableWriteIds * vocabulary )
 {
     TableWriter w;
     memset( &w, 0, sizeof( w ) );
-    w.buffer = buffer; w.capacity = capacity;
+    w.buffer = buffer; w.capacity = capacity; w.vocabulary=vocabulary;
+    memset(vocabulary,0,sizeof(*vocabulary));
     return w;
 }
 static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void table_writer_raw( TableWriter * w, const void * data, int64_t bytes )
@@ -293,22 +304,35 @@ static SCHEMA_UNUSED void table_writer_leb( TableWriter * w, uint64_t v )
 }
 static SCHEMA_UNUSED void table_writer_id( TableWriter * w, uint64_t id )
 {
-    int i;
-    for ( i = 0; i < w->id_count; i++ ) { if ( w->ids[i] == id ) { table_writer_leb( w, (uint64_t) i + 1 ); return; } }
-    if ( w->id_count == 48 ) { w->overflow = 1; return; }
-    w->ids[w->id_count++] = id;
-    table_writer_leb( w, (uint64_t) w->id_count );
+    TableWriteIds * v=w->vocabulary;
+    uint64_t hash=id;
+    uint32_t slot,index;
+    hash ^= hash>>33; hash *= UINT64_C(0xff51afd7ed558ccd); hash ^= hash>>33;
+    slot=(uint32_t)hash & (128-1);
+    while((index=v->slots[slot])!=0) {
+        if(v->ids[index-1]==id) { table_writer_leb(w,index); return; }
+        slot=(slot+1)&(128-1);
+    }
+    if(v->count==48) { w->overflow=1; return; }
+    v->ids[v->count]=id; v->positions[v->count]=slot; v->count++;
+    v->slots[slot]=(uint32_t)v->count; table_writer_leb(w,(uint64_t)v->count);
 }
 static SCHEMA_UNUSED TableWriter table_writer_probe( const TableWriter * w )
 {
     TableWriter probe = *w;
     probe.buffer = NULL; probe.capacity = INT64_MAX; probe.offset = 0; probe.overflow = 0;
+    probe.id_checkpoint=w->vocabulary->count;
     return probe;
+}
+static SCHEMA_UNUSED void table_writer_rewind( const TableWriter * probe )
+{
+    TableWriteIds * v=probe->vocabulary;
+    while(v->count>probe->id_checkpoint) { v->count--; v->slots[v->positions[v->count]]=0; }
 }
 static SCHEMA_UNUSED void table_writer_finish( TableWriter * w )
 {
-    int i; for ( i = 0; i < w->id_count; i++ ) { table_writer_put64( w, w->ids[i] ); }
-    table_writer_put64( w, (uint64_t) w->id_count );
+    int i; for ( i = 0; i < w->vocabulary->count; i++ ) { table_writer_put64( w, w->vocabulary->ids[i] ); }
+    table_writer_put64( w, (uint64_t) w->vocabulary->count );
 }
 
 typedef struct TableReader
@@ -479,11 +503,11 @@ static SCHEMA_UNUSED uint64_t table_wire_utf8_clamp( const uint8_t * p, uint64_t
    build. The storage shifts left and holds no slot for None, so a build that
    skipped this compare would index one element BEFORE the array — undefined
    behaviour in the configuration a game ships. */
-static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key, size_t count )
+static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key )
 {
-    if ( key <= 0 || (uint64_t) key > (uint64_t) count )
+    if ( key <= 0 )
     {
-        assert( 0 && "key is outside the enum-keyed array" );
+        assert( 0 && "None is the null key of an enum-keyed array: it keys no slot" );
         abort();
     }
     return key - 1;
@@ -492,7 +516,7 @@ static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key, size_t count )
 /* keyed[key] — the slot a variant owns, as an LVALUE. The key is evaluated
    once. ITERATION is the surface a consumer of the whole array wants: walk
    1..E_MAX and index with the key, so a call site writes no shift. */
-#define SCHEMA_TABLE_KEYED_AT( array, key ) ( (array)[ table_keyed_slot( (int32_t) ( key ), sizeof( array ) / sizeof( (array)[0] ) ) ] )
+#define SCHEMA_TABLE_KEYED_AT( array, key ) ( (array)[ table_keyed_slot( (int32_t) ( key ) ) ] )
 
 
 static SCHEMA_UNUSED float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
@@ -988,6 +1012,8 @@ typedef struct TableNodeType
     int (*save)( TableWriter * w, const void * value );
     int (*edges)( TableNumbering * numbering, const void * value );
     int blob; /* 0 table, 1 bytes, 2 terminated UTF-8 */
+    int (*extent)(TableNumbering *,const void *,uint8_t *,int64_t *);
+    int64_t (*wire_storage)(const TableReader *);
 } TableNodeType;
 
 typedef struct TableNodeEntry
@@ -1010,6 +1036,10 @@ typedef struct TableNodeWork
 struct TableNumbering
 {
     const TableCtx * ctx;
+    uint8_t * pack_base;
+#ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
+    TableSequenceOrder * orders;
+#endif
     TableAllocator allocator;
     TableNodeEntry * entries;
     uint64_t count, capacity;
@@ -1019,13 +1049,15 @@ struct TableNumbering
     uint64_t work_count, work_capacity;
 };
 
-static SCHEMA_UNUSED int64_t table_node_storage( const TableNodeType * type, const void * value )
+static SCHEMA_UNUSED int64_t table_node_storage( TableNumbering * n, const TableNodeType * type, const void * value )
 {
-    return type->blob ? table_blob_storage(((const TableBlob *)value)->length,type->blob==2) : table_align_up64(type->size);
+    int64_t at=type->size;
+    if(type->blob) { return table_blob_storage(((const TableBlob *)value)->length,type->blob==2); }
+    if(!type->extent(n,value,NULL,&at) || at>INT64_MAX-kTableAlign) { return -1; } return table_align_up64(at);
 }
 static SCHEMA_UNUSED int64_t table_node_wire_storage( const TableNodeType * type, const TableReader * body )
 {
-    return type->blob ? table_blob_storage(body->size,type->blob==2) : table_align_up64(type->size);
+    return type->blob ? table_blob_storage(body->size,type->blob==2) : type->wire_storage(body);
 }
 
 static SCHEMA_UNUSED int table_blob_save( TableWriter * w, const void * value )
@@ -1035,8 +1067,8 @@ static SCHEMA_UNUSED int table_blob_save( TableWriter * w, const void * value )
 }
 static SCHEMA_UNUSED int table_blob_edges( TableNumbering * n, const void * value )
 { (void)n; (void)value; return 1; }
-static const TableNodeType table_bytes_node_type = { kTableBytesTypeId, 0, table_blob_save, table_blob_edges, 1 };
-static const TableNodeType table_string_node_type = { kTableStringTypeId, 0, table_blob_save, table_blob_edges, 2 };
+static const TableNodeType table_bytes_node_type = { kTableBytesTypeId, 0, table_blob_save, table_blob_edges, 1, NULL, NULL };
+static const TableNodeType table_string_node_type = { kTableStringTypeId, 0, table_blob_save, table_blob_edges, 2, NULL, NULL };
 
 
 static SCHEMA_UNUSED uint64_t table_number_hash( const void * value )
@@ -1105,6 +1137,9 @@ static SCHEMA_UNUSED int table_number_edge( TableNumbering * n, const void * val
 
 static SCHEMA_UNUSED void table_number_dispose( TableNumbering * n )
 {
+#ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
+    table_sequence_orders_release(n->allocator,n->orders);
+#endif
     table_release(n->allocator,n->entries); table_release(n->allocator,n->slots); table_release(n->allocator,n->work);
     memset(n,0,sizeof(*n));
 }
@@ -1198,7 +1233,7 @@ static SCHEMA_UNUSED int table_graph_records( TableWriter * w )
         {
             TableWriter probe=table_writer_probe(w);
             if ( !entry->type->save(&probe,entry->value) ) { return 0; }
-            table_writer_leb(w,(uint64_t)probe.offset);
+            table_writer_rewind(&probe); table_writer_leb(w,(uint64_t)probe.offset);
             if ( !entry->type->save(w,entry->value) ) { return 0; }
         }
     }
@@ -1209,7 +1244,8 @@ static SCHEMA_UNUSED int64_t table_graph_save( const TableCtx * ctx, const void 
     const TableNodeType * type, uint8_t * buffer, int64_t capacity, TableAllocator allocator )
 {
     TableNumbering numbering;
-    TableWriter w=table_writer_make(buffer,capacity);
+    TableWriteIds vocabulary;
+    TableWriter w=table_writer_make(buffer,capacity,&vocabulary);
     int64_t result=-1;
     if ( !table_number_build(&numbering,ctx,root,type,allocator) ) { table_number_dispose(&numbering); return -1; }
     w.nodes=&numbering;
@@ -1229,7 +1265,7 @@ static SCHEMA_UNUSED int64_t table_graph_save( const TableCtx * ctx, const void 
         {
             TableWriter probe=table_writer_probe(&w);
             if ( !table_graph_records(&probe) ) { goto done; }
-            table_writer_leb(&w,(uint64_t)probe.offset);
+            table_writer_rewind(&probe); table_writer_leb(&w,(uint64_t)probe.offset);
             if ( !table_graph_records(&w) ) { goto done; }
         }
     }
@@ -1243,14 +1279,14 @@ static SCHEMA_UNUSED uint8_t * table_graph_pack( const TableCtx * ctx, const voi
     const TableNodeType * type, int64_t * bytes )
 {
     TableNumbering n;
-    uint64_t i, k;
+    uint64_t i;
     int64_t total=0;
     uint8_t * packed=NULL;
     *bytes=0;
     if ( !table_number_build(&n,ctx,root,type,ctx!=NULL && ctx->arena!=NULL ? ctx->arena->allocator : table_default_allocator()) ) { table_number_dispose(&n); return NULL; }
     for ( i=0; i<n.count; i++ )
     {
-        int64_t size=table_node_storage(n.entries[i].type,n.entries[i].value);
+        int64_t size=table_node_storage(&n,n.entries[i].type,n.entries[i].value);
         if ( size<0 || size>INT64_MAX-total ) { goto done; }
         n.entries[i].packed_offset=(uint64_t)total; total+=size;
     }
@@ -1263,18 +1299,10 @@ static SCHEMA_UNUSED uint8_t * table_graph_pack( const TableCtx * ctx, const voi
         const TableNodeEntry * entry=&n.entries[i];
         uint8_t * target=packed+entry->packed_offset;
         memcpy(target,entry->value,(size_t)(entry->type->blob ? 8+(int64_t)((const TableBlob *)entry->value)->length : entry->type->size));
-        n.work_count=0;
-        if ( !entry->type->edges(&n,entry->value) ) { table_release(n.allocator,packed); packed=NULL; goto done; }
-        for ( k=0; k<n.work_count; k++ )
-        {
-            const TableNodeWork * edge=&n.work[k];
-            uint64_t index=table_number_find(&n,edge->value);
-            int64_t at=(const uint8_t *)(const void *)edge->slot-(const uint8_t *)entry->value;
-            TableRef * slot;
-            if ( index==0 || at<0 || at>entry->type->size-(int64_t)sizeof(TableRef) )
-            { table_release(n.allocator,packed); packed=NULL; goto done; }
-            slot=(TableRef *)(void *)(target+at);
-            slot->value=(int64_t)((packed+n.entries[index-1].packed_offset)-(uint8_t *)(void *)slot);
+        if(!entry->type->blob) {
+            int64_t at=(int64_t)entry->packed_offset+entry->type->size;
+            n.pack_base=packed;
+            if(!entry->type->extent(&n,entry->value,target,&at)) { table_release(n.allocator,packed); packed=NULL; goto done; }
         }
     }
     *bytes=total;
@@ -1288,6 +1316,7 @@ typedef struct TableNodeMap
     const TableNodeDirEntry * entries;
     uint64_t count;
     int good, arena;
+    TableSink * sink;
 } TableNodeMap;
 
 static SCHEMA_UNUSED void table_node_resolve( const TableNodeMap * nodes, TableRef * slot,
@@ -1602,7 +1631,7 @@ static SCHEMA_UNUSED int stamp_save_body( TableWriter * w, const Stamp * value )
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !schema_graphdemo_stamp_wire_tag_( &probe, value ) ) { return 0; }
-                table_writer_leb( w, (uint64_t) probe.offset );
+                table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
                 if ( !schema_graphdemo_stamp_wire_tag_( w, value ) ) { return 0; }
             }
         }
@@ -1621,7 +1650,7 @@ static SCHEMA_UNUSED int stamp_save_body( TableWriter * w, const Stamp * value )
 
 static SCHEMA_UNUSED int64_t stamp_measure( const Stamp * value )
 {
-    TableWriter w = table_writer_make( NULL, INT64_MAX );
+    TableWriteIds vocabulary; TableWriter w = table_writer_make( NULL, INT64_MAX, &vocabulary );
     table_writer_put8( &w, 1 );
     if ( !stamp_save_body( &w, value ) ) { return -1; }
     table_writer_finish( &w );
@@ -1631,7 +1660,7 @@ static SCHEMA_UNUSED int64_t stamp_measure( const Stamp * value )
 static SCHEMA_UNUSED int64_t stamp_save( const Stamp * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
-    TableWriter w = table_writer_make( buffer, capacity );
+    TableWriteIds vocabulary; TableWriter w = table_writer_make( buffer, capacity, &vocabulary );
     table_writer_put8( &w, 1 );
     if ( !stamp_save_body( &w, value ) ) { return -1; }
     table_writer_finish( &w );
@@ -1806,7 +1835,7 @@ static SCHEMA_UNUSED int colour_save_body( TableWriter * w, const Colour * value
 
 static SCHEMA_UNUSED int64_t colour_measure( const Colour * value )
 {
-    TableWriter w = table_writer_make( NULL, INT64_MAX );
+    TableWriteIds vocabulary; TableWriter w = table_writer_make( NULL, INT64_MAX, &vocabulary );
     table_writer_put8( &w, 1 );
     if ( !colour_save_body( &w, value ) ) { return -1; }
     table_writer_finish( &w );
@@ -1816,7 +1845,7 @@ static SCHEMA_UNUSED int64_t colour_measure( const Colour * value )
 static SCHEMA_UNUSED int64_t colour_save( const Colour * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
-    TableWriter w = table_writer_make( buffer, capacity );
+    TableWriteIds vocabulary; TableWriter w = table_writer_make( buffer, capacity, &vocabulary );
     table_writer_put8( &w, 1 );
     if ( !colour_save_body( &w, value ) ) { return -1; }
     table_writer_finish( &w );

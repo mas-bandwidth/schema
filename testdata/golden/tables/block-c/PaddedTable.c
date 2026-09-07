@@ -333,6 +333,7 @@ static SCHEMA_UNUSED char table_json_shape( const TableFieldInfo * f )
     if ( f->kind == 12 || f->kind == 33 ) { return 's'; }           /* string */
     if ( table_json_is_bytes( f ) ) { return 's'; }   /* bytes: base64 */
     if ( table_json_is_keyed( f ) ) { return 'o'; }   /* an object keyed by variant NAME */
+    if ( f->sequence==2 ) { return 'o'; }
     if ( f->is_array ) { return 'a'; }
     if ( f->arms != NULL ) { return 'o'; }         /* union: an object with ONE key */
     if ( f->kind == 17 ) { return f->table == NULL ? 's' : 'o'; }
@@ -730,6 +731,12 @@ static SCHEMA_UNUSED int table_json_write_value( TableJsonOut * out, const void 
 /* one scalar, at one storage address: a nested object, a union, a
    vocabulary, or a number */
 static SCHEMA_UNUSED int table_json_write_field( TableJsonOut * out, const void * base, const TableFieldInfo * f, int32_t depth );
+#ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
+static SCHEMA_UNUSED int table_json_write_list(TableJsonOut * out,const void * storage,const TableFieldInfo * f,int32_t depth);
+#ifdef SCHEMA_TABLE_MAP_RUNTIME
+static SCHEMA_UNUSED int table_json_write_map(TableJsonOut * out,const void * storage,const TableFieldInfo * f,int32_t depth);
+#endif
+#endif
 #ifdef SCHEMA_TABLE_GRAPH_RUNTIME
 static SCHEMA_UNUSED int table_json_write_pointer( TableJsonOut * out, const void * slot, const TableFieldInfo * f, int32_t depth );
 #else
@@ -851,6 +858,12 @@ static SCHEMA_UNUSED int table_json_write_scalar( TableJsonOut * out, const void
 static SCHEMA_UNUSED int table_json_write_field( TableJsonOut * out, const void * base, const TableFieldInfo * f, int32_t depth )
 {
     const uint8_t * storage = (const uint8_t *) base + f->offset;
+#ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
+    if(f->sequence==1) { return table_json_write_list(out,storage,f,depth); }
+#ifdef SCHEMA_TABLE_MAP_RUNTIME
+    if(f->sequence==2) { return table_json_write_map(out,storage,f,depth); }
+#endif
+#endif
     if ( f->kind == 33 ) {
         table_json_write_w_string( out, (const uint16_t *)(const void *)storage, table_json_count( base, f ) ); return 1;
     }
@@ -1723,6 +1736,12 @@ static SCHEMA_UNUSED int table_json_read_wide( TableJsonIn * in, const char * to
 
 /* place one scalar at one storage address */
 static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, const TableFieldInfo * f, int32_t depth );
+#ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
+static SCHEMA_UNUSED int table_json_read_list(TableJsonIn * in,void * storage,const TableFieldInfo * f,int32_t depth);
+#ifdef SCHEMA_TABLE_MAP_RUNTIME
+static SCHEMA_UNUSED int table_json_read_map(TableJsonIn * in,void * storage,const TableFieldInfo * f,int32_t depth);
+#endif
+#endif
 static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storage, const TableFieldInfo * f, int32_t depth )
 {
     char token[kTableJsonMaxNumber];
@@ -1942,6 +1961,12 @@ static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storag
 static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, const TableFieldInfo * f, int32_t depth )
 {
     uint8_t * storage = (uint8_t *) base + f->offset;
+#ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
+    if(f->sequence==1) { return table_json_read_list(in,storage,f,depth); }
+#ifdef SCHEMA_TABLE_MAP_RUNTIME
+    if(f->sequence==2) { return table_json_read_map(in,storage,f,depth); }
+#endif
+#endif
     if ( f->kind == 33 ) {
         int32_t length = 0;
         if ( !table_json_scan_w_string( in, (uint16_t *)(void *) storage, f->array_bound, &length ) ) { return 0; }
@@ -2312,23 +2337,23 @@ static const TableVariantInfo schema_blockdemo_padded_row_teams_keys_[] = {
     { "Gold", 0xc416c97e0d3218b3ull },
 };
 static const TableFieldInfo schema_blockdemo_padded_row_fields_[] = {
-    { "tag", "tag", "uint8", 0x56d7ab194448a4f3ull, 6, 0, 0, 0, 0, (uint32_t) offsetof( PaddedRow, tag ), (uint32_t) sizeof( ( (PaddedRow *) 0 )->tag ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "value", "value", "float64", 0x7ce4fd9430e80ceaull, 11, 0, 0, 0, 0, (uint32_t) offsetof( PaddedRow, value ), (uint32_t) sizeof( ( (PaddedRow *) 0 )->value ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "flag", "flag", "bool", 0xd5f2d079088c0b17ull, 1, 0, 0, 0, 0, (uint32_t) offsetof( PaddedRow, flag ), (uint32_t) sizeof( ( (PaddedRow *) 0 )->flag ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "id", "id", "uint32", 0x08b72e07b55c3ac0ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( PaddedRow, id ), (uint32_t) sizeof( ( (PaddedRow *) 0 )->id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, 0, 1, 0, 15, (uint32_t) offsetof( PaddedRow, label ), (uint32_t) sizeof( ( (PaddedRow *) 0 )->label ), (uint32_t) offsetof( PaddedRow, label_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "slots", "slots", "uint16", 0xe68c2e6bb1ee5646ull, 7, 1, 0, 0, 4, (uint32_t) offsetof( PaddedRow, slots ), (uint32_t) sizeof( ( (PaddedRow *) 0 )->slots[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "teams", "teams", "uint8", 0xbaaeb048a5a8fa6dull, 6, 1, 0, 0, (int32_t) TEAM_MAX, (uint32_t) offsetof( PaddedRow, teams ), (uint32_t) sizeof( ( (PaddedRow *) 0 )->teams[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, "Team", schema_blockdemo_padded_row_teams_keys_, 4, NULL, "", TableDocNone, 0, NULL },
-    { "counter", "counter", "int32", 0x77976c7416517c63ull, 4, 0, 0, 1, 0, (uint32_t) offsetof( PaddedRow, counter ), (uint32_t) sizeof( ( (PaddedRow *) 0 )->counter ), 0xffffffffu, (uint32_t) offsetof( PaddedRow, counter_present ), NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "tag", "tag", "uint8", 0x56d7ab194448a4f3ull, 6, 0, 0, 0, 0, (uint32_t) offsetof( PaddedRow, tag ), (uint32_t) sizeof( ( (PaddedRow *) 0 )->tag ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "value", "value", "float64", 0x7ce4fd9430e80ceaull, 11, 0, 0, 0, 0, (uint32_t) offsetof( PaddedRow, value ), (uint32_t) sizeof( ( (PaddedRow *) 0 )->value ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "flag", "flag", "bool", 0xd5f2d079088c0b17ull, 1, 0, 0, 0, 0, (uint32_t) offsetof( PaddedRow, flag ), (uint32_t) sizeof( ( (PaddedRow *) 0 )->flag ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "id", "id", "uint32", 0x08b72e07b55c3ac0ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( PaddedRow, id ), (uint32_t) sizeof( ( (PaddedRow *) 0 )->id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, 0, 1, 0, 15, (uint32_t) offsetof( PaddedRow, label ), (uint32_t) sizeof( ( (PaddedRow *) 0 )->label ), (uint32_t) offsetof( PaddedRow, label_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "slots", "slots", "uint16", 0xe68c2e6bb1ee5646ull, 7, 1, 0, 0, 4, (uint32_t) offsetof( PaddedRow, slots ), (uint32_t) sizeof( ( (PaddedRow *) 0 )->slots[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "teams", "teams", "uint8", 0xbaaeb048a5a8fa6dull, 6, 1, 0, 0, (int32_t) TEAM_MAX, (uint32_t) offsetof( PaddedRow, teams ), (uint32_t) sizeof( ( (PaddedRow *) 0 )->teams[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, "Team", schema_blockdemo_padded_row_teams_keys_, 4, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "counter", "counter", "int32", 0x77976c7416517c63ull, 4, 0, 0, 1, 0, (uint32_t) offsetof( PaddedRow, counter ), (uint32_t) sizeof( ( (PaddedRow *) 0 )->counter ), 0xffffffffu, (uint32_t) offsetof( PaddedRow, counter_present ), NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
 };
 
 const TableTypeInfo schema_blockdemo_padded_row_info_ = { "PaddedRow", (uint32_t) sizeof( PaddedRow ), 8, schema_blockdemo_padded_row_fields_, schema_blockdemo_padded_row_reset_raw_, TableDocNone, 0, NULL };
 
 static const TableFieldInfo schema_blockdemo_padded_frame_fields_[] = {
-    { "marker", "marker", "uint8", 0xeddcb72b15486e77ull, 6, 0, 0, 0, 0, (uint32_t) offsetof( PaddedFrame, marker ), (uint32_t) sizeof( ( (PaddedFrame *) 0 )->marker ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "stamp", "stamp", "uint64", 0xee7ba9ad45c64144ull, 9, 0, 0, 0, 0, (uint32_t) offsetof( PaddedFrame, stamp ), (uint32_t) sizeof( ( (PaddedFrame *) 0 )->stamp ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "rows", "rows", "PaddedRow", 0xa3a7061ff10a8138ull, 13, 1, 1, 0, 64, (uint32_t) offsetof( PaddedFrame, rows ), (uint32_t) sizeof( ( (PaddedFrame *) 0 )->rows[0] ), (uint32_t) offsetof( PaddedFrame, rows_count ), 0xffffffffu, &schema_blockdemo_padded_row_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "blob", "blob", "bytes", 0xc573b39bc29148caull, 6, 1, 1, 0, 12, (uint32_t) offsetof( PaddedFrame, blob ), (uint32_t) sizeof( ( (PaddedFrame *) 0 )->blob[0] ), (uint32_t) offsetof( PaddedFrame, blob_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "marker", "marker", "uint8", 0xeddcb72b15486e77ull, 6, 0, 0, 0, 0, (uint32_t) offsetof( PaddedFrame, marker ), (uint32_t) sizeof( ( (PaddedFrame *) 0 )->marker ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "stamp", "stamp", "uint64", 0xee7ba9ad45c64144ull, 9, 0, 0, 0, 0, (uint32_t) offsetof( PaddedFrame, stamp ), (uint32_t) sizeof( ( (PaddedFrame *) 0 )->stamp ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "rows", "rows", "PaddedRow", 0xa3a7061ff10a8138ull, 13, 1, 1, 0, 64, (uint32_t) offsetof( PaddedFrame, rows ), (uint32_t) sizeof( ( (PaddedFrame *) 0 )->rows[0] ), (uint32_t) offsetof( PaddedFrame, rows_count ), 0xffffffffu, &schema_blockdemo_padded_row_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "blob", "blob", "bytes", 0xc573b39bc29148caull, 6, 1, 1, 0, 12, (uint32_t) offsetof( PaddedFrame, blob ), (uint32_t) sizeof( ( (PaddedFrame *) 0 )->blob[0] ), (uint32_t) offsetof( PaddedFrame, blob_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
 };
 
 const TableTypeInfo schema_blockdemo_padded_frame_info_ = { "PaddedFrame", (uint32_t) sizeof( PaddedFrame ), 4, schema_blockdemo_padded_frame_fields_, schema_blockdemo_padded_frame_reset_raw_, TableDocNone, 0, NULL };

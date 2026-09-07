@@ -333,6 +333,7 @@ static SCHEMA_UNUSED char table_json_shape( const TableFieldInfo * f )
     if ( f->kind == 12 || f->kind == 33 ) { return 's'; }           /* string */
     if ( table_json_is_bytes( f ) ) { return 's'; }   /* bytes: base64 */
     if ( table_json_is_keyed( f ) ) { return 'o'; }   /* an object keyed by variant NAME */
+    if ( f->sequence==2 ) { return 'o'; }
     if ( f->is_array ) { return 'a'; }
     if ( f->arms != NULL ) { return 'o'; }         /* union: an object with ONE key */
     if ( f->kind == 17 ) { return f->table == NULL ? 's' : 'o'; }
@@ -730,6 +731,12 @@ static SCHEMA_UNUSED int table_json_write_value( TableJsonOut * out, const void 
 /* one scalar, at one storage address: a nested object, a union, a
    vocabulary, or a number */
 static SCHEMA_UNUSED int table_json_write_field( TableJsonOut * out, const void * base, const TableFieldInfo * f, int32_t depth );
+#ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
+static SCHEMA_UNUSED int table_json_write_list(TableJsonOut * out,const void * storage,const TableFieldInfo * f,int32_t depth);
+#ifdef SCHEMA_TABLE_MAP_RUNTIME
+static SCHEMA_UNUSED int table_json_write_map(TableJsonOut * out,const void * storage,const TableFieldInfo * f,int32_t depth);
+#endif
+#endif
 #ifdef SCHEMA_TABLE_GRAPH_RUNTIME
 static SCHEMA_UNUSED int table_json_write_pointer( TableJsonOut * out, const void * slot, const TableFieldInfo * f, int32_t depth );
 #else
@@ -851,6 +858,12 @@ static SCHEMA_UNUSED int table_json_write_scalar( TableJsonOut * out, const void
 static SCHEMA_UNUSED int table_json_write_field( TableJsonOut * out, const void * base, const TableFieldInfo * f, int32_t depth )
 {
     const uint8_t * storage = (const uint8_t *) base + f->offset;
+#ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
+    if(f->sequence==1) { return table_json_write_list(out,storage,f,depth); }
+#ifdef SCHEMA_TABLE_MAP_RUNTIME
+    if(f->sequence==2) { return table_json_write_map(out,storage,f,depth); }
+#endif
+#endif
     if ( f->kind == 33 ) {
         table_json_write_w_string( out, (const uint16_t *)(const void *)storage, table_json_count( base, f ) ); return 1;
     }
@@ -1723,6 +1736,12 @@ static SCHEMA_UNUSED int table_json_read_wide( TableJsonIn * in, const char * to
 
 /* place one scalar at one storage address */
 static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, const TableFieldInfo * f, int32_t depth );
+#ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
+static SCHEMA_UNUSED int table_json_read_list(TableJsonIn * in,void * storage,const TableFieldInfo * f,int32_t depth);
+#ifdef SCHEMA_TABLE_MAP_RUNTIME
+static SCHEMA_UNUSED int table_json_read_map(TableJsonIn * in,void * storage,const TableFieldInfo * f,int32_t depth);
+#endif
+#endif
 static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storage, const TableFieldInfo * f, int32_t depth )
 {
     char token[kTableJsonMaxNumber];
@@ -1942,6 +1961,12 @@ static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storag
 static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, const TableFieldInfo * f, int32_t depth )
 {
     uint8_t * storage = (uint8_t *) base + f->offset;
+#ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
+    if(f->sequence==1) { return table_json_read_list(in,storage,f,depth); }
+#ifdef SCHEMA_TABLE_MAP_RUNTIME
+    if(f->sequence==2) { return table_json_read_map(in,storage,f,depth); }
+#endif
+#endif
     if ( f->kind == 33 ) {
         int32_t length = 0;
         if ( !table_json_scan_w_string( in, (uint16_t *)(void *) storage, f->array_bound, &length ) ) { return 0; }
@@ -2305,56 +2330,56 @@ static SCHEMA_UNUSED int64_t table_json_write( const void * value, const TableTy
 /* ---- json walk: end ---- */
 
 static const TableFieldInfo schema_tabledemo_ranged_signed_fields_[] = {
-    { "i8_span", "i8_span", "int8", 0x48121511bf702eb5ull, 2, 0, 0, 0, 0, (uint32_t) offsetof( RangedSigned, i8_span ), (uint32_t) sizeof( ( (RangedSigned *) 0 )->i8_span ), 0xffffffffu, 0xffffffffu, NULL, 1, -128.0, 127.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "i8_low", "i8_low", "int8", 0x942bfe3168090f7dull, 2, 0, 0, 0, 0, (uint32_t) offsetof( RangedSigned, i8_low ), (uint32_t) sizeof( ( (RangedSigned *) 0 )->i8_low ), 0xffffffffu, 0xffffffffu, NULL, 1, -128.0, 126.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "i8_high", "i8_high", "int8", 0xd182acd105b55dd1ull, 2, 0, 0, 0, 0, (uint32_t) offsetof( RangedSigned, i8_high ), (uint32_t) sizeof( ( (RangedSigned *) 0 )->i8_high ), 0xffffffffu, 0xffffffffu, NULL, 1, -127.0, 127.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "i8_inside", "i8_inside", "int8", 0xef9ded23c8912a81ull, 2, 0, 0, 0, 0, (uint32_t) offsetof( RangedSigned, i8_inside ), (uint32_t) sizeof( ( (RangedSigned *) 0 )->i8_inside ), 0xffffffffu, 0xffffffffu, NULL, 1, -127.0, 126.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "i16_span", "i16_span", "int16", 0xb655574ea23760b4ull, 3, 0, 0, 0, 0, (uint32_t) offsetof( RangedSigned, i16_span ), (uint32_t) sizeof( ( (RangedSigned *) 0 )->i16_span ), 0xffffffffu, 0xffffffffu, NULL, 1, -32768.0, 32767.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "i16_low", "i16_low", "int16", 0xd217b3af8d7a2bdeull, 3, 0, 0, 0, 0, (uint32_t) offsetof( RangedSigned, i16_low ), (uint32_t) sizeof( ( (RangedSigned *) 0 )->i16_low ), 0xffffffffu, 0xffffffffu, NULL, 1, -32768.0, 32766.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "i16_high", "i16_high", "int16", 0x90652f70c9127900ull, 3, 0, 0, 0, 0, (uint32_t) offsetof( RangedSigned, i16_high ), (uint32_t) sizeof( ( (RangedSigned *) 0 )->i16_high ), 0xffffffffu, 0xffffffffu, NULL, 1, -32767.0, 32767.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "i16_inside", "i16_inside", "int16", 0x6a659d7c354db158ull, 3, 0, 0, 0, 0, (uint32_t) offsetof( RangedSigned, i16_inside ), (uint32_t) sizeof( ( (RangedSigned *) 0 )->i16_inside ), 0xffffffffu, 0xffffffffu, NULL, 1, -32767.0, 32766.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "i32_span", "i32_span", "int32", 0xe693bd88532c91d6ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( RangedSigned, i32_span ), (uint32_t) sizeof( ( (RangedSigned *) 0 )->i32_span ), 0xffffffffu, 0xffffffffu, NULL, 1, -2.147483648e+09, 2.147483647e+09, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "i32_low", "i32_low", "int32", 0x065ee827cf99fbb4ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( RangedSigned, i32_low ), (uint32_t) sizeof( ( (RangedSigned *) 0 )->i32_low ), 0xffffffffu, 0xffffffffu, NULL, 1, -2.147483648e+09, 2.147483646e+09, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "i32_high", "i32_high", "int32", 0xc9b121c4c2a186eeull, 4, 0, 0, 0, 0, (uint32_t) offsetof( RangedSigned, i32_high ), (uint32_t) sizeof( ( (RangedSigned *) 0 )->i32_high ), 0xffffffffu, 0xffffffffu, NULL, 1, -2.147483647e+09, 2.147483647e+09, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "i32_inside", "i32_inside", "int32", 0xd363dfa465acf27aull, 4, 0, 0, 0, 0, (uint32_t) offsetof( RangedSigned, i32_inside ), (uint32_t) sizeof( ( (RangedSigned *) 0 )->i32_inside ), 0xffffffffu, 0xffffffffu, NULL, 1, -2.147483647e+09, 2.147483646e+09, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "i64_span", "i64_span", "int64", 0x7549c70700c49d6full, 5, 0, 0, 0, 0, (uint32_t) offsetof( RangedSigned, i64_span ), (uint32_t) sizeof( ( (RangedSigned *) 0 )->i64_span ), 0xffffffffu, 0xffffffffu, NULL, 1, -9.223372036854776e+18, 9.223372036854776e+18, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "i64_low", "i64_low", "int64", 0x1cce6617419771dbull, 5, 0, 0, 0, 0, (uint32_t) offsetof( RangedSigned, i64_low ), (uint32_t) sizeof( ( (RangedSigned *) 0 )->i64_low ), 0xffffffffu, 0xffffffffu, NULL, 1, -9.223372036854776e+18, 9.223372036854776e+18, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "i64_high", "i64_high", "int64", 0x3b54fa60620b5597ull, 5, 0, 0, 0, 0, (uint32_t) offsetof( RangedSigned, i64_high ), (uint32_t) sizeof( ( (RangedSigned *) 0 )->i64_high ), 0xffffffffu, 0xffffffffu, NULL, 1, -9.223372036854776e+18, 9.223372036854776e+18, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "i64_inside", "i64_inside", "int64", 0xd308fcb98ece5d23ull, 5, 0, 0, 0, 0, (uint32_t) offsetof( RangedSigned, i64_inside ), (uint32_t) sizeof( ( (RangedSigned *) 0 )->i64_inside ), 0xffffffffu, 0xffffffffu, NULL, 1, -9.223372036854776e+18, 9.223372036854776e+18, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "edges", "edges", "int16", 0xc70cde6b85b6197dull, 3, 1, 1, 0, 4, (uint32_t) offsetof( RangedSigned, edges ), (uint32_t) sizeof( ( (RangedSigned *) 0 )->edges[0] ), (uint32_t) offsetof( RangedSigned, edges_count ), 0xffffffffu, NULL, 1, -32768.0, 32767.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "i8_span", "i8_span", "int8", 0x48121511bf702eb5ull, 2, 0, 0, 0, 0, (uint32_t) offsetof( RangedSigned, i8_span ), (uint32_t) sizeof( ( (RangedSigned *) 0 )->i8_span ), 0xffffffffu, 0xffffffffu, NULL, 1, -128.0, 127.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "i8_low", "i8_low", "int8", 0x942bfe3168090f7dull, 2, 0, 0, 0, 0, (uint32_t) offsetof( RangedSigned, i8_low ), (uint32_t) sizeof( ( (RangedSigned *) 0 )->i8_low ), 0xffffffffu, 0xffffffffu, NULL, 1, -128.0, 126.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "i8_high", "i8_high", "int8", 0xd182acd105b55dd1ull, 2, 0, 0, 0, 0, (uint32_t) offsetof( RangedSigned, i8_high ), (uint32_t) sizeof( ( (RangedSigned *) 0 )->i8_high ), 0xffffffffu, 0xffffffffu, NULL, 1, -127.0, 127.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "i8_inside", "i8_inside", "int8", 0xef9ded23c8912a81ull, 2, 0, 0, 0, 0, (uint32_t) offsetof( RangedSigned, i8_inside ), (uint32_t) sizeof( ( (RangedSigned *) 0 )->i8_inside ), 0xffffffffu, 0xffffffffu, NULL, 1, -127.0, 126.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "i16_span", "i16_span", "int16", 0xb655574ea23760b4ull, 3, 0, 0, 0, 0, (uint32_t) offsetof( RangedSigned, i16_span ), (uint32_t) sizeof( ( (RangedSigned *) 0 )->i16_span ), 0xffffffffu, 0xffffffffu, NULL, 1, -32768.0, 32767.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "i16_low", "i16_low", "int16", 0xd217b3af8d7a2bdeull, 3, 0, 0, 0, 0, (uint32_t) offsetof( RangedSigned, i16_low ), (uint32_t) sizeof( ( (RangedSigned *) 0 )->i16_low ), 0xffffffffu, 0xffffffffu, NULL, 1, -32768.0, 32766.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "i16_high", "i16_high", "int16", 0x90652f70c9127900ull, 3, 0, 0, 0, 0, (uint32_t) offsetof( RangedSigned, i16_high ), (uint32_t) sizeof( ( (RangedSigned *) 0 )->i16_high ), 0xffffffffu, 0xffffffffu, NULL, 1, -32767.0, 32767.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "i16_inside", "i16_inside", "int16", 0x6a659d7c354db158ull, 3, 0, 0, 0, 0, (uint32_t) offsetof( RangedSigned, i16_inside ), (uint32_t) sizeof( ( (RangedSigned *) 0 )->i16_inside ), 0xffffffffu, 0xffffffffu, NULL, 1, -32767.0, 32766.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "i32_span", "i32_span", "int32", 0xe693bd88532c91d6ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( RangedSigned, i32_span ), (uint32_t) sizeof( ( (RangedSigned *) 0 )->i32_span ), 0xffffffffu, 0xffffffffu, NULL, 1, -2.147483648e+09, 2.147483647e+09, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "i32_low", "i32_low", "int32", 0x065ee827cf99fbb4ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( RangedSigned, i32_low ), (uint32_t) sizeof( ( (RangedSigned *) 0 )->i32_low ), 0xffffffffu, 0xffffffffu, NULL, 1, -2.147483648e+09, 2.147483646e+09, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "i32_high", "i32_high", "int32", 0xc9b121c4c2a186eeull, 4, 0, 0, 0, 0, (uint32_t) offsetof( RangedSigned, i32_high ), (uint32_t) sizeof( ( (RangedSigned *) 0 )->i32_high ), 0xffffffffu, 0xffffffffu, NULL, 1, -2.147483647e+09, 2.147483647e+09, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "i32_inside", "i32_inside", "int32", 0xd363dfa465acf27aull, 4, 0, 0, 0, 0, (uint32_t) offsetof( RangedSigned, i32_inside ), (uint32_t) sizeof( ( (RangedSigned *) 0 )->i32_inside ), 0xffffffffu, 0xffffffffu, NULL, 1, -2.147483647e+09, 2.147483646e+09, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "i64_span", "i64_span", "int64", 0x7549c70700c49d6full, 5, 0, 0, 0, 0, (uint32_t) offsetof( RangedSigned, i64_span ), (uint32_t) sizeof( ( (RangedSigned *) 0 )->i64_span ), 0xffffffffu, 0xffffffffu, NULL, 1, -9.223372036854776e+18, 9.223372036854776e+18, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "i64_low", "i64_low", "int64", 0x1cce6617419771dbull, 5, 0, 0, 0, 0, (uint32_t) offsetof( RangedSigned, i64_low ), (uint32_t) sizeof( ( (RangedSigned *) 0 )->i64_low ), 0xffffffffu, 0xffffffffu, NULL, 1, -9.223372036854776e+18, 9.223372036854776e+18, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "i64_high", "i64_high", "int64", 0x3b54fa60620b5597ull, 5, 0, 0, 0, 0, (uint32_t) offsetof( RangedSigned, i64_high ), (uint32_t) sizeof( ( (RangedSigned *) 0 )->i64_high ), 0xffffffffu, 0xffffffffu, NULL, 1, -9.223372036854776e+18, 9.223372036854776e+18, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "i64_inside", "i64_inside", "int64", 0xd308fcb98ece5d23ull, 5, 0, 0, 0, 0, (uint32_t) offsetof( RangedSigned, i64_inside ), (uint32_t) sizeof( ( (RangedSigned *) 0 )->i64_inside ), 0xffffffffu, 0xffffffffu, NULL, 1, -9.223372036854776e+18, 9.223372036854776e+18, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "edges", "edges", "int16", 0xc70cde6b85b6197dull, 3, 1, 1, 0, 4, (uint32_t) offsetof( RangedSigned, edges ), (uint32_t) sizeof( ( (RangedSigned *) 0 )->edges[0] ), (uint32_t) offsetof( RangedSigned, edges_count ), 0xffffffffu, NULL, 1, -32768.0, 32767.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
 };
 
 const TableTypeInfo schema_tabledemo_ranged_signed_info_ = { "RangedSigned", (uint32_t) sizeof( RangedSigned ), 17, schema_tabledemo_ranged_signed_fields_, schema_tabledemo_ranged_signed_reset_raw_, TableDocNone, 0, NULL };
 
 static const TableFieldInfo schema_tabledemo_ranged_unsigned_fields_[] = {
-    { "u8_span", "u8_span", "uint8", 0x0f8897557f37c021ull, 6, 0, 0, 0, 0, (uint32_t) offsetof( RangedUnsigned, u8_span ), (uint32_t) sizeof( ( (RangedUnsigned *) 0 )->u8_span ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 255.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "u8_low", "u8_low", "uint8", 0x2e17553f8200a2a1ull, 6, 0, 0, 0, 0, (uint32_t) offsetof( RangedUnsigned, u8_low ), (uint32_t) sizeof( ( (RangedUnsigned *) 0 )->u8_low ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 254.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "u8_high", "u8_high", "uint8", 0xa0e5c60df9301b7dull, 6, 0, 0, 0, 0, (uint32_t) offsetof( RangedUnsigned, u8_high ), (uint32_t) sizeof( ( (RangedUnsigned *) 0 )->u8_high ), 0xffffffffu, 0xffffffffu, NULL, 1, 1.0, 255.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "u8_inside", "u8_inside", "uint8", 0x1cb2c073a6f5844dull, 6, 0, 0, 0, 0, (uint32_t) offsetof( RangedUnsigned, u8_inside ), (uint32_t) sizeof( ( (RangedUnsigned *) 0 )->u8_inside ), 0xffffffffu, 0xffffffffu, NULL, 1, 1.0, 254.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "u16_span", "u16_span", "uint16", 0x4ca0c150b1790960ull, 7, 0, 0, 0, 0, (uint32_t) offsetof( RangedUnsigned, u16_span ), (uint32_t) sizeof( ( (RangedUnsigned *) 0 )->u16_span ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 65535.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "u16_low", "u16_low", "uint16", 0xf252136836b04cb2ull, 7, 0, 0, 0, 0, (uint32_t) offsetof( RangedUnsigned, u16_low ), (uint32_t) sizeof( ( (RangedUnsigned *) 0 )->u16_low ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 65534.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "u16_high", "u16_high", "uint16", 0x4f37e1f216e7610cull, 7, 0, 0, 0, 0, (uint32_t) offsetof( RangedUnsigned, u16_high ), (uint32_t) sizeof( ( (RangedUnsigned *) 0 )->u16_high ), 0xffffffffu, 0xffffffffu, NULL, 1, 1.0, 65535.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "u16_inside", "u16_inside", "uint16", 0xd176b605978f3304ull, 7, 0, 0, 0, 0, (uint32_t) offsetof( RangedUnsigned, u16_inside ), (uint32_t) sizeof( ( (RangedUnsigned *) 0 )->u16_inside ), 0xffffffffu, 0xffffffffu, NULL, 1, 1.0, 65534.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "u32_span", "u32_span", "uint32", 0x200b924de7479cdaull, 8, 0, 0, 0, 0, (uint32_t) offsetof( RangedUnsigned, u32_span ), (uint32_t) sizeof( ( (RangedUnsigned *) 0 )->u32_span ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4.294967295e+09, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "u32_low", "u32_low", "uint32", 0xa53d2f2a31b5acb0ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( RangedUnsigned, u32_low ), (uint32_t) sizeof( ( (RangedUnsigned *) 0 )->u32_low ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4.294967294e+09, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "u32_high", "u32_high", "uint32", 0x9759be8ea1a4e3d2ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( RangedUnsigned, u32_high ), (uint32_t) sizeof( ( (RangedUnsigned *) 0 )->u32_high ), 0xffffffffu, 0xffffffffu, NULL, 1, 1.0, 4.294967295e+09, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "u32_inside", "u32_inside", "uint32", 0x8dc515fc082e3c0eull, 8, 0, 0, 0, 0, (uint32_t) offsetof( RangedUnsigned, u32_inside ), (uint32_t) sizeof( ( (RangedUnsigned *) 0 )->u32_inside ), 0xffffffffu, 0xffffffffu, NULL, 1, 1.0, 4.294967294e+09, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "u64_span", "u64_span", "uint64", 0xbeecef11dbdf8973ull, 9, 0, 0, 0, 0, (uint32_t) offsetof( RangedUnsigned, u64_span ), (uint32_t) sizeof( ( (RangedUnsigned *) 0 )->u64_span ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1.8446744073709552e+19, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "u64_low", "u64_low", "uint64", 0x0117ad66e0fff227ull, 9, 0, 0, 0, 0, (uint32_t) offsetof( RangedUnsigned, u64_low ), (uint32_t) sizeof( ( (RangedUnsigned *) 0 )->u64_low ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1.8446744073709552e+19, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "u64_high", "u64_high", "uint64", 0xf2b45af3b50689dbull, 9, 0, 0, 0, 0, (uint32_t) offsetof( RangedUnsigned, u64_high ), (uint32_t) sizeof( ( (RangedUnsigned *) 0 )->u64_high ), 0xffffffffu, 0xffffffffu, NULL, 1, 1.0, 1.8446744073709552e+19, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "u64_inside", "u64_inside", "uint64", 0x713e12017eebcaf7ull, 9, 0, 0, 0, 0, (uint32_t) offsetof( RangedUnsigned, u64_inside ), (uint32_t) sizeof( ( (RangedUnsigned *) 0 )->u64_inside ), 0xffffffffu, 0xffffffffu, NULL, 1, 1.0, 1.8446744073709552e+19, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "counts", "counts", "uint64", 0xc341febe5aae51e5ull, 9, 1, 1, 0, 4, (uint32_t) offsetof( RangedUnsigned, counts ), (uint32_t) sizeof( ( (RangedUnsigned *) 0 )->counts[0] ), (uint32_t) offsetof( RangedUnsigned, counts_count ), 0xffffffffu, NULL, 1, 0.0, 1.8446744073709552e+19, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "u8_span", "u8_span", "uint8", 0x0f8897557f37c021ull, 6, 0, 0, 0, 0, (uint32_t) offsetof( RangedUnsigned, u8_span ), (uint32_t) sizeof( ( (RangedUnsigned *) 0 )->u8_span ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 255.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "u8_low", "u8_low", "uint8", 0x2e17553f8200a2a1ull, 6, 0, 0, 0, 0, (uint32_t) offsetof( RangedUnsigned, u8_low ), (uint32_t) sizeof( ( (RangedUnsigned *) 0 )->u8_low ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 254.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "u8_high", "u8_high", "uint8", 0xa0e5c60df9301b7dull, 6, 0, 0, 0, 0, (uint32_t) offsetof( RangedUnsigned, u8_high ), (uint32_t) sizeof( ( (RangedUnsigned *) 0 )->u8_high ), 0xffffffffu, 0xffffffffu, NULL, 1, 1.0, 255.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "u8_inside", "u8_inside", "uint8", 0x1cb2c073a6f5844dull, 6, 0, 0, 0, 0, (uint32_t) offsetof( RangedUnsigned, u8_inside ), (uint32_t) sizeof( ( (RangedUnsigned *) 0 )->u8_inside ), 0xffffffffu, 0xffffffffu, NULL, 1, 1.0, 254.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "u16_span", "u16_span", "uint16", 0x4ca0c150b1790960ull, 7, 0, 0, 0, 0, (uint32_t) offsetof( RangedUnsigned, u16_span ), (uint32_t) sizeof( ( (RangedUnsigned *) 0 )->u16_span ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 65535.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "u16_low", "u16_low", "uint16", 0xf252136836b04cb2ull, 7, 0, 0, 0, 0, (uint32_t) offsetof( RangedUnsigned, u16_low ), (uint32_t) sizeof( ( (RangedUnsigned *) 0 )->u16_low ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 65534.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "u16_high", "u16_high", "uint16", 0x4f37e1f216e7610cull, 7, 0, 0, 0, 0, (uint32_t) offsetof( RangedUnsigned, u16_high ), (uint32_t) sizeof( ( (RangedUnsigned *) 0 )->u16_high ), 0xffffffffu, 0xffffffffu, NULL, 1, 1.0, 65535.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "u16_inside", "u16_inside", "uint16", 0xd176b605978f3304ull, 7, 0, 0, 0, 0, (uint32_t) offsetof( RangedUnsigned, u16_inside ), (uint32_t) sizeof( ( (RangedUnsigned *) 0 )->u16_inside ), 0xffffffffu, 0xffffffffu, NULL, 1, 1.0, 65534.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "u32_span", "u32_span", "uint32", 0x200b924de7479cdaull, 8, 0, 0, 0, 0, (uint32_t) offsetof( RangedUnsigned, u32_span ), (uint32_t) sizeof( ( (RangedUnsigned *) 0 )->u32_span ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4.294967295e+09, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "u32_low", "u32_low", "uint32", 0xa53d2f2a31b5acb0ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( RangedUnsigned, u32_low ), (uint32_t) sizeof( ( (RangedUnsigned *) 0 )->u32_low ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4.294967294e+09, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "u32_high", "u32_high", "uint32", 0x9759be8ea1a4e3d2ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( RangedUnsigned, u32_high ), (uint32_t) sizeof( ( (RangedUnsigned *) 0 )->u32_high ), 0xffffffffu, 0xffffffffu, NULL, 1, 1.0, 4.294967295e+09, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "u32_inside", "u32_inside", "uint32", 0x8dc515fc082e3c0eull, 8, 0, 0, 0, 0, (uint32_t) offsetof( RangedUnsigned, u32_inside ), (uint32_t) sizeof( ( (RangedUnsigned *) 0 )->u32_inside ), 0xffffffffu, 0xffffffffu, NULL, 1, 1.0, 4.294967294e+09, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "u64_span", "u64_span", "uint64", 0xbeecef11dbdf8973ull, 9, 0, 0, 0, 0, (uint32_t) offsetof( RangedUnsigned, u64_span ), (uint32_t) sizeof( ( (RangedUnsigned *) 0 )->u64_span ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1.8446744073709552e+19, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "u64_low", "u64_low", "uint64", 0x0117ad66e0fff227ull, 9, 0, 0, 0, 0, (uint32_t) offsetof( RangedUnsigned, u64_low ), (uint32_t) sizeof( ( (RangedUnsigned *) 0 )->u64_low ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1.8446744073709552e+19, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "u64_high", "u64_high", "uint64", 0xf2b45af3b50689dbull, 9, 0, 0, 0, 0, (uint32_t) offsetof( RangedUnsigned, u64_high ), (uint32_t) sizeof( ( (RangedUnsigned *) 0 )->u64_high ), 0xffffffffu, 0xffffffffu, NULL, 1, 1.0, 1.8446744073709552e+19, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "u64_inside", "u64_inside", "uint64", 0x713e12017eebcaf7ull, 9, 0, 0, 0, 0, (uint32_t) offsetof( RangedUnsigned, u64_inside ), (uint32_t) sizeof( ( (RangedUnsigned *) 0 )->u64_inside ), 0xffffffffu, 0xffffffffu, NULL, 1, 1.0, 1.8446744073709552e+19, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "counts", "counts", "uint64", 0xc341febe5aae51e5ull, 9, 1, 1, 0, 4, (uint32_t) offsetof( RangedUnsigned, counts ), (uint32_t) sizeof( ( (RangedUnsigned *) 0 )->counts[0] ), (uint32_t) offsetof( RangedUnsigned, counts_count ), 0xffffffffu, NULL, 1, 0.0, 1.8446744073709552e+19, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
 };
 
 const TableTypeInfo schema_tabledemo_ranged_unsigned_info_ = { "RangedUnsigned", (uint32_t) sizeof( RangedUnsigned ), 17, schema_tabledemo_ranged_unsigned_fields_, schema_tabledemo_ranged_unsigned_reset_raw_, TableDocNone, 0, NULL };
 
 static const TableFieldInfo schema_tabledemo_ranged_widths_fields_[] = {
-    { "b8", "b8", "bits(8)", 0x08a60c07b54d8dc7ull, 6, 0, 0, 0, 0, (uint32_t) offsetof( RangedWidths, b8 ), (uint32_t) sizeof( ( (RangedWidths *) 0 )->b8 ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 255.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "b16", "b16", "bits(16)", 0xff95701912ad97beull, 7, 0, 0, 0, 0, (uint32_t) offsetof( RangedWidths, b16 ), (uint32_t) sizeof( ( (RangedWidths *) 0 )->b16 ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 65535.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "b32", "b32", "bits(32)", 0xff9c5c1912b39470ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( RangedWidths, b32 ), (uint32_t) sizeof( ( (RangedWidths *) 0 )->b32 ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4.294967295e+09, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "b64", "b64", "bits(64)", 0xff92701912ab61e7ull, 9, 0, 0, 0, 0, (uint32_t) offsetof( RangedWidths, b64 ), (uint32_t) sizeof( ( (RangedWidths *) 0 )->b64 ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1.8446744073709552e+19, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "b12", "b12", "bits(12)", 0xff95741912ad9e8aull, 7, 0, 0, 0, 0, (uint32_t) offsetof( RangedWidths, b12 ), (uint32_t) sizeof( ( (RangedWidths *) 0 )->b12 ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4095.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "b48", "b48", "bits(48)", 0xff8b681912a535a1ull, 9, 0, 0, 0, 0, (uint32_t) offsetof( RangedWidths, b48 ), (uint32_t) sizeof( ( (RangedWidths *) 0 )->b48 ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 2.81474976710655e+14, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "b8", "b8", "bits(8)", 0x08a60c07b54d8dc7ull, 6, 0, 0, 0, 0, (uint32_t) offsetof( RangedWidths, b8 ), (uint32_t) sizeof( ( (RangedWidths *) 0 )->b8 ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 255.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "b16", "b16", "bits(16)", 0xff95701912ad97beull, 7, 0, 0, 0, 0, (uint32_t) offsetof( RangedWidths, b16 ), (uint32_t) sizeof( ( (RangedWidths *) 0 )->b16 ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 65535.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "b32", "b32", "bits(32)", 0xff9c5c1912b39470ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( RangedWidths, b32 ), (uint32_t) sizeof( ( (RangedWidths *) 0 )->b32 ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4.294967295e+09, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "b64", "b64", "bits(64)", 0xff92701912ab61e7ull, 9, 0, 0, 0, 0, (uint32_t) offsetof( RangedWidths, b64 ), (uint32_t) sizeof( ( (RangedWidths *) 0 )->b64 ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1.8446744073709552e+19, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "b12", "b12", "bits(12)", 0xff95741912ad9e8aull, 7, 0, 0, 0, 0, (uint32_t) offsetof( RangedWidths, b12 ), (uint32_t) sizeof( ( (RangedWidths *) 0 )->b12 ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4095.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "b48", "b48", "bits(48)", 0xff8b681912a535a1ull, 9, 0, 0, 0, 0, (uint32_t) offsetof( RangedWidths, b48 ), (uint32_t) sizeof( ( (RangedWidths *) 0 )->b48 ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 2.81474976710655e+14, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
 };
 
 const TableTypeInfo schema_tabledemo_ranged_widths_info_ = { "RangedWidths", (uint32_t) sizeof( RangedWidths ), 6, schema_tabledemo_ranged_widths_fields_, schema_tabledemo_ranged_widths_reset_raw_, TableDocNone, 0, NULL };

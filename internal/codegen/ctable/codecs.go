@@ -205,6 +205,14 @@ func (g *tableGen) emitTableStruct(st *ir.Struct) {
 }
 
 func (g *tableGen) emitTableStorageField(f *ir.Field) {
+	if f.IsList() {
+		g.pf("    TableList %s;\n", f.Name)
+		return
+	}
+	if f.IsMap() {
+		g.pf("    TableMap %s;\n", f.Name)
+		return
+	}
 	if f.Type.Pointer {
 		// a pointer is EIGHT BYTES and no address: an arena offset while the
 		// builder is mutable, a self-relative delta once packed. That is what
@@ -289,6 +297,10 @@ func (g *tableGen) emitTableReset(st *ir.Struct) {
 }
 
 func (g *tableGen) emitTableResetField(f *ir.Field) {
+	if f.IsList() || f.IsMap() {
+		g.pf("    memset(&value->%s,0,sizeof(value->%s));\n", f.Name, f.Name)
+		return
+	}
 	if f.Type.Pointer {
 		if f.Array == ir.ArrayNone {
 			g.pf("    value->%s.value = 0; /* *%s — null */\n", f.Name, f.Type.Name)
@@ -1232,6 +1244,9 @@ func (g *tableGen) emitTableReadScalarFrom(f *ir.Field, kind int, lvalue, ind, r
 // tableFieldTypeName renders a field's schema-facing type name for the
 // descriptor ("float32", "bits(9)", "Grade", "GunnerSettings").
 func tableFieldTypeName(f *ir.Field) string {
+	if f.IsMap() {
+		return "map"
+	}
 	switch f.Type.Kind {
 	case ir.TBool:
 		return "bool"
@@ -1519,12 +1534,28 @@ func (g *tableGen) emitFieldDescriptorAt(st *ir.Struct, f *ir.Field, guard, memb
 		bound = "0"
 		countOffset = "0xffffffffu"
 	}
+	sequence := 0
+	if f.IsList() || f.IsMap() {
+		sequence = 1
+		if f.IsMap() {
+			sequence = 2
+		}
+		isArray = true
+		counted = true
+		bound = "INT32_MAX"
+		elemSize = fmt.Sprintf("(uint32_t) sizeof(%s)", g.sequenceType(f))
+		countOffset = fmt.Sprintf("(uint32_t) offsetof(%s,%s.count)", st.Name, member)
+	}
 	table := "NULL"
 	if _, isStruct := f.Type.Ref.(*ir.Struct); f.Type.Kind == ir.TNamed && isStruct {
 		table = "&" + g.sym(f.Type.Name, "info")
 		g.noteRef(f.Type.Name)
 	}
 
+	if f.IsMap() {
+		table = "&" + g.sym(f.MapEntry.Name, "info")
+		kind = tkTable
+	}
 	hasRange := "0"
 	rangeMin, rangeMax := "0.0", "0.0"
 	if f.Type.Kind == ir.TBits && !f.HasIntRange {
@@ -1590,17 +1621,21 @@ func (g *tableGen) emitFieldDescriptorAt(st *ir.Struct, f *ir.Field, guard, memb
 	if f.Type.Kind == ir.TFixed {
 		frac = f.Type.FracBits
 	}
+	place := "NULL"
+	if f.IsMap() {
+		place = g.sym(f.MapEntry.Name, "json_place")
+	}
 	pointerColumn := ""
 	if g.anyVariable {
 		pointerColumn = fmt.Sprintf("%s, ", boolC(f.Type.Pointer))
 	}
-	g.pf("    { \"%s\", \"%s\", \"%s\", 0x%016xull, %d, %s, %s%s, %s, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, \"%s\", %s },\n",
+	g.pf("    { \"%s\", \"%s\", \"%s\", 0x%016xull, %d, %s, %s%s, %s, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, \"%s\", %s, %d, %s },\n",
 		f.Name, ir.TableFieldJsonKey(f), tableFieldTypeName(f), id, kind, boolC(isArray), pointerColumn,
 		boolC(counted), boolC(f.Type.Optional), bound,
 		st.Name, member, elemSize, countOffset, presentOffset, table,
 		hasRange, rangeMin, fmt.Sprintf("%s, %s, %d", rangeMax, wide, frac), enumMax, variants, hasIds,
 		keyTypeName, keys, keyMax, arms, guard,
-		annotationColumns(f.Doc, f.Tags, g.vocabularySymbol(st.Name, f.Name, "tags")))
+		annotationColumns(f.Doc, f.Tags, g.vocabularySymbol(st.Name, f.Name, "tags")), sequence, place)
 }
 
 func boolC(v bool) string {

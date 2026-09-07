@@ -172,7 +172,9 @@ full identities, canonical LEB128, first-use references, arm-kind framing,
 flat node records and verdict-bearing reports. Graph JSON, pointer arrays,
 byte/string blobs, wide scalars, fixed-point values, defaults and aliases ride
 on that form. `tables-c-wire-fuzz` compares C with the independent engine.
-Dynamic maps/lists, message form, retention, runtime cook writing and UnitView
+Dynamic maps and lists use the same file form and graph JSON;
+`tables-c-collections-fuzz` compares their recovery and native C region sizes
+with C++ directly. Message form, retention, runtime cook writing and UnitView
 remain C port work. C#, Dart, Go, Rust, Java, JavaScript and Elixir still write
 the earlier form in this tree. [ROADMAP.md](../ROADMAP.md) records coverage by
 construct and form.
@@ -1318,8 +1320,9 @@ is the buffer's own size argument one level up: a node pays for the
 sub-document it actually holds, and pays nothing to walk past one it never
 reads.
 
-**Backend status: the C++ REFERENCE and the TOOL carry it; every other backend
-refuses a unit that declares one, by name** (§11), and the ports are a named
+**Backend status: the C++ REFERENCE and the TOOL carry it, and C carries its
+file wire, region and text forms; the other backends refuse a unit that declares
+one, by name** (§11), and the ports are a named
 follow-on (§15). The corpus holds the construct in `tables/blobs`: a small
 blob beside a caption, a blob past 64 KiB, a shared blob, and a present blob
 and string of length zero beside null slots, each crossing the wire and the
@@ -3567,9 +3570,8 @@ moves not one byte of a value-only table: a fixed-size table has no
 pointer, therefore no node table, therefore exactly the bytes §3 already
 describes.
 
-**Backend status for this section: the TOOL and the C++ REFERENCE write it;
-the C port still writes the NESTED form, and every other backend refuses a
-pointered unit's wire by name (§11).**
+**Backend status for this section: the TOOL, C++ REFERENCE and C write it;
+the other backends refuse a pointered unit's wire by name (§11).**
 `schema pack`'s engine — the compiler-side encoder and decoder this repo runs
 as tooling (§17.1) — and the generated C++ codecs are two implementations of
 this section, written from it rather than from each other, and each reads what
@@ -3591,16 +3593,9 @@ unit's wire answers ABSENT for them, per case, so its FIXED-class pass is
 untouched and the gap is a number in the matrix rather than a paragraph
 somewhere. That is the row schema#349 fills, one language at a time.
 
-**The C port is the one backend that carries a pointered unit and does not
-carry this form yet**, because it was mirrored from the C++ backend while that
-backend still wrote the earlier NESTED one: a pointee inline as a body under
-kind `13`, no node table, and the three consequences that are the reasons this
-form is the law — a node two parents name written once per parent, a pointer
-chain that IS a nesting depth, and a cap on that depth. Its wire is part of
-schema#349 with the seven that have no variable class at all. What every
-backend DOES carry already is kind `17`'s row in the fixed-width skip rule,
-because a fixed-class reader meeting a pointered writer's field has to step
-over it whether or not it can write one.
+The C port uses the same flat node table and preserves shared identity through
+save, load, builder load and lock. Every fixed-class reader also carries kind
+`17` in its skip rule, so it can pass a pointer field it cannot interpret.
 
 **What that edit MOVED, stated once.** A pointer field's kind changed from `13`
 to `17` and a pointered save gained the node table, so every pointered unit's
@@ -10056,7 +10051,8 @@ in build version (§20.5).
   whose lookup surface is members spells the same eight on the storage type
   and claims nothing at file scope for them. And the generated ENTRY is a
   closure member like every other, so it claims the suffix set below in its
-  own right.
+  own right. C additionally claims `<Table><Field>FindMut` for lookup in a
+  mutable arena.
 - **Unbounded arrays** (§2.9): a `[]T` in a `type` body, which is what keeps
   the type wire's "no unbounded collections" true (SPEC.md §1) and what
   refuses one on a packet; **a `[]T` or `[]*T` as a UNION ARM** (§2.6), the
@@ -10137,9 +10133,9 @@ in build version (§20.5).
   makes it one. **A payload-free arm is outside the class**: it has no
   payload, so it rides the packet wire as its tag alone and a `type` body
   takes it in all nine backends (SPEC §4.8). **A payload-free arm reached by
-  a table closure is C++ only**, and the other eight targets refuse it
+  a table closure is carried by C and C++**, and the other seven targets refuse it
   naming the union and the target. And **a TABLE-CLOSURE union under every
-  backend but C++** is refused naming the union and the target: the ports are
+  backend but C and C++** is refused naming the union and the target: the ports are
   a named follow-on (§15), and a port that emitted the union would name a
   table it never declares, or overlay storage its fixed-class codecs never met.
 - **On an ARM** (§2.6, which states each reason): a specified default; `?`;
@@ -11666,12 +11662,13 @@ inspects everything in the schema built:
   the construct — the parser's `map[K]V`, the checker's refusals, the generated
   entry table with its record and its two constant ids — and every backend
   refuses a unit that declares one, by name (§11), until its codec lands. The
-  C++ reference is first and carries the whole construct: the builder surface
+  C++ reference carries the whole construct: the builder surface
   (insert, erase,
   find, iterate), the sort in the four walks, the region load's ascending check
   with its `duplicate` and `malformed` events, the const `Find`, the text
   form's object and `schema cook-check`'s map-slot clause with its order check
-  (§7.4). The tool's COOK and UNCOOK halves are the one piece still owed for
+  (§7.4). C carries the file wire, region and text forms, including the optional
+  runtime index. The tool's COOK and UNCOOK halves are the one piece still owed for
   this construct: a map-bearing unit is refused by name at those two surfaces,
   because a map adds the sort, the entry array's key order and the two reader
   events to the node extent the list's own halves already
@@ -11688,9 +11685,10 @@ inspects everything in the schema built:
   construct, which is the parser's `[]T`, the checker's refusals and its three
   claimed names, and the record's reference-and-count slot, and every port
   refuses a unit that declares one, by name (§11), until its codec lands. The
-  C++ reference carries it: the builder's segments and `Add`, the four walks
-  in index order, the region load, the const `TableList` surface, the text
-  form's array, and `schema cook-check`'s element-array clause in the tool.
+  C++ reference carries it; C carries the file wire, region and text forms,
+  including the builder's segments and `Add`, the walks in index order, the
+  region load, the const `TableList` surface and the text form's array. The tool
+  also carries `schema cook-check`'s element-array clause.
   The TOOL carries the construct whole: its cook lays the element arrays in
   the holder's node extent in the same PRE-ORDER the reference lays them and
   lands on the reference's bytes exactly, in both byte orders, and its uncook
@@ -11709,7 +11707,7 @@ inspects everything in the schema built:
   and not about the bound.
 - Keyed lookup conveniences over loaded collections (library-side, never
   stored semantics).
-- **AN ARRAY OF UNIONS in every ported backend** (§2.6): C++ and the tool
+- **AN ARRAY OF UNIONS in the remaining ported backends** (§2.6): C, C++ and the tool
   carry `[..N]Body` and `[N]Body`, and every other backend refuses a table
   closure holding one, by name (§11). What a port needs is the union element
   in its fixed-class walks — measure, save, load, the descriptors' arms column
@@ -11948,15 +11946,12 @@ SceneFromJson( builder, text, text_bytes, &report );
 ```
 
 **Backend status for this section: the FIXED class in all nine — C++, C, C#,
-Dart, Elixir, Go, Java, JavaScript and Rust — and the VARIABLE class in C++
-(§16.7).** A pointered
-unit's text form is the C++ reference's, through the builder, and carrying it
-to the other backends is schema#349's row beside the wire. In C#, Dart,
+Dart, Elixir, Go, Java, JavaScript and Rust — and the VARIABLE class in C and
+C++ (§16.7).** A pointered unit's text form reads through the builder. In C#, Dart,
 Elixir, Go, Java, JavaScript and Rust the absence is already made one level
 up: a
 pointered unit gets no table source at all (§11), so it has no text form for
-the same reason it has no wire codec; the C port has the wire's earlier form
-(§3.1) and its text form follows it.
+the same reason it has no wire codec.
 
 **The FLOAT SPELLING is C's `%.*g`, byte for byte, in every port**, and each
 says how it gets there rather than reaching for its runtime's default. C++

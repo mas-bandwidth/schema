@@ -17,9 +17,14 @@ func (g *tableGen) wirePrimitives() string {
 	if g.fileWire() {
 		runtime = strings.ReplaceAll(fileWireRuntime, "@CAPACITY@", strconv.Itoa(len(ir.TableWireIds(g.unit))+1))
 		runtime = strings.ReplaceAll(runtime, "@INLINE@", tableInlineMacro(g.unit.Package))
+		slots := 2
+		for slots < 2*(len(ir.TableWireIds(g.unit))+1) {
+			slots *= 2
+		}
+		runtime = strings.ReplaceAll(runtime, "@ID_SLOTS@", strconv.Itoa(slots))
 		writeNodes, readNodes := "", ""
 		if g.anyVariable {
-			writeNodes = "    const struct TableNumbering * nodes;"
+			writeNodes = "    struct TableNumbering * nodes;"
 			readNodes = "    const struct TableNodeMap * nodes;"
 		}
 		runtime = strings.ReplaceAll(runtime, "@WRITE_NODES@", writeNodes)
@@ -29,22 +34,31 @@ func (g *tableGen) wirePrimitives() string {
 }
 
 const fileWireRuntime = `
-/* The vocabulary is bounded by the unit's complete set of wire identities.
-   Each save owns its scratch; no globals, allocator, or caller-sized VLA. */
+/* Each save owns one bounded identity table. Probes share it and rewind their
+   additions, so nesting copies only the writer cursor. Reverse-order removal
+   preserves every earlier open-addressing chain and first-use wire reference. */
+typedef struct TableWriteIds
+{
+    uint64_t ids[@CAPACITY@];
+    uint32_t slots[@ID_SLOTS@], positions[@CAPACITY@];
+    int count;
+} TableWriteIds;
+
 typedef struct TableWriter
 {
     uint8_t * buffer;
     int64_t capacity, offset;
-    int overflow, id_count, check_default;
-    uint64_t ids[@CAPACITY@];
+    int overflow, id_checkpoint, check_default;
+    TableWriteIds * vocabulary;
 @WRITE_NODES@
 } TableWriter;
 
-static SCHEMA_UNUSED TableWriter table_writer_make( uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED TableWriter table_writer_make( uint8_t * buffer, int64_t capacity, TableWriteIds * vocabulary )
 {
     TableWriter w;
     memset( &w, 0, sizeof( w ) );
-    w.buffer = buffer; w.capacity = capacity;
+    w.buffer = buffer; w.capacity = capacity; w.vocabulary=vocabulary;
+    memset(vocabulary,0,sizeof(*vocabulary));
     return w;
 }
 static SCHEMA_UNUSED @INLINE@ void table_writer_raw( TableWriter * w, const void * data, int64_t bytes )
@@ -72,22 +86,35 @@ static SCHEMA_UNUSED void table_writer_leb( TableWriter * w, uint64_t v )
 }
 static SCHEMA_UNUSED void table_writer_id( TableWriter * w, uint64_t id )
 {
-    int i;
-    for ( i = 0; i < w->id_count; i++ ) { if ( w->ids[i] == id ) { table_writer_leb( w, (uint64_t) i + 1 ); return; } }
-    if ( w->id_count == @CAPACITY@ ) { w->overflow = 1; return; }
-    w->ids[w->id_count++] = id;
-    table_writer_leb( w, (uint64_t) w->id_count );
+    TableWriteIds * v=w->vocabulary;
+    uint64_t hash=id;
+    uint32_t slot,index;
+    hash ^= hash>>33; hash *= UINT64_C(0xff51afd7ed558ccd); hash ^= hash>>33;
+    slot=(uint32_t)hash & (@ID_SLOTS@-1);
+    while((index=v->slots[slot])!=0) {
+        if(v->ids[index-1]==id) { table_writer_leb(w,index); return; }
+        slot=(slot+1)&(@ID_SLOTS@-1);
+    }
+    if(v->count==@CAPACITY@) { w->overflow=1; return; }
+    v->ids[v->count]=id; v->positions[v->count]=slot; v->count++;
+    v->slots[slot]=(uint32_t)v->count; table_writer_leb(w,(uint64_t)v->count);
 }
 static SCHEMA_UNUSED TableWriter table_writer_probe( const TableWriter * w )
 {
     TableWriter probe = *w;
     probe.buffer = NULL; probe.capacity = INT64_MAX; probe.offset = 0; probe.overflow = 0;
+    probe.id_checkpoint=w->vocabulary->count;
     return probe;
+}
+static SCHEMA_UNUSED void table_writer_rewind( const TableWriter * probe )
+{
+    TableWriteIds * v=probe->vocabulary;
+    while(v->count>probe->id_checkpoint) { v->count--; v->slots[v->positions[v->count]]=0; }
 }
 static SCHEMA_UNUSED void table_writer_finish( TableWriter * w )
 {
-    int i; for ( i = 0; i < w->id_count; i++ ) { table_writer_put64( w, w->ids[i] ); }
-    table_writer_put64( w, (uint64_t) w->id_count );
+    int i; for ( i = 0; i < w->vocabulary->count; i++ ) { table_writer_put64( w, w->vocabulary->ids[i] ); }
+    table_writer_put64( w, (uint64_t) w->vocabulary->count );
 }
 
 typedef struct TableReader
@@ -286,7 +313,7 @@ func (g *tableGen) wireFrame(call, ind string) {
 	g.pf("%s    table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );\n%s}\n%selse\n%s{\n", ind, ind, ind, ind)
 	g.pf("%s    TableWriter probe = table_writer_probe( w );\n", ind)
 	g.pf("%s    if ( !%s ) { return 0; }\n", ind, strings.ReplaceAll(call, "( w,", "( &probe,"))
-	g.pf("%s    table_writer_leb( w, (uint64_t) probe.offset );\n", ind)
+	g.pf("%s    table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );\n", ind)
 	g.pf("%s    if ( !%s ) { return 0; }\n%s}\n", ind, call, ind)
 }
 
@@ -321,6 +348,8 @@ func (g *tableGen) emitWireFieldHelper(st *ir.Struct, f *ir.Field) {
 		g.pf("    if ( %s_count < 0 || %s_count > %d ) { return 0; }\n", expr, expr, f.ArrayBound)
 	}
 	switch {
+	case f.IsList() || f.IsMap():
+		g.emitSequenceWrite(f, expr)
 	case f.Type.Kind == ir.TWString:
 		g.pf("    int32_t i; for ( i = 0; i < %s_length; i++ ) { table_writer_put16( w, %s[i] ); }\n", expr, expr)
 	case (f.Type.Kind == ir.TString && !f.Type.Blob()):
@@ -341,7 +370,7 @@ func (g *tableGen) emitWireFieldHelper(st *ir.Struct, f *ir.Field) {
 		} else {
 			g.pf("        {\n            TableWriter probe = table_writer_probe( w );\n            TableWriter * outer = w;\n            w = &probe;\n")
 			g.wireScalarWrite(f, expr+"[i]", "            ")
-			g.pf("            w = outer; table_writer_leb( w, (uint64_t) probe.offset );\n")
+			g.pf("            w = outer; table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );\n")
 			g.wireScalarWrite(f, expr+"[i]", "            ")
 			g.pf("        }\n")
 		}
@@ -366,7 +395,7 @@ func (g *tableGen) wireKeyedRides(f *ir.Field, ind string) {
 	if ir.TableWireScalarKind(f) == tkTable {
 		g.pf("%sTableWriter slot_probe = table_writer_probe( w ); slot_probe.check_default = 1;\n", ind)
 		g.pf("%sif ( !%s( &slot_probe, &%s ) ) { return 0; }\n", ind, g.api(f.Type.Name, "save_body"), expr)
-		g.pf("%sif ( slot_probe.offset == 1 ) { continue; }\n", ind)
+		g.pf("%stable_writer_rewind(&slot_probe);\n%sif ( slot_probe.offset == 1 ) { continue; }\n", ind, ind)
 	} else {
 		g.pf("%sif ( %s ) { continue; }\n", ind, g.wireDefaultEquals(f, expr))
 	}
@@ -374,7 +403,7 @@ func (g *tableGen) wireKeyedRides(f *ir.Field, ind string) {
 
 func (g *tableGen) emitWireWrite(st *ir.Struct) {
 	for _, f := range st.Fields {
-		if f.Array != ir.ArrayNone || (f.Type.Kind == ir.TBytes && !f.Type.Blob()) || ((f.Type.Kind == ir.TString && !f.Type.Blob()) || f.Type.Kind == ir.TWString) {
+		if f.IsMap() || f.Array != ir.ArrayNone || (f.Type.Kind == ir.TBytes && !f.Type.Blob()) || ((f.Type.Kind == ir.TString && !f.Type.Blob()) || f.Type.Kind == ir.TWString) {
 			g.emitWireFieldHelper(st, f)
 		}
 	}
@@ -385,8 +414,8 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 		expr := "value->" + f.Name
 		kind := ir.TableWireScalarKind(f)
 		wireKind := kind
-		framed := f.Array != ir.ArrayNone || (f.Type.Kind == ir.TBytes && !f.Type.Blob()) || ((f.Type.Kind == ir.TString && !f.Type.Blob()) || f.Type.Kind == ir.TWString)
-		if f.Array != ir.ArrayNone || (f.Type.Kind == ir.TBytes && !f.Type.Blob()) {
+		framed := f.IsMap() || f.Array != ir.ArrayNone || (f.Type.Kind == ir.TBytes && !f.Type.Blob()) || ((f.Type.Kind == ir.TString && !f.Type.Blob()) || f.Type.Kind == ir.TWString)
+		if f.IsMap() || f.Array != ir.ArrayNone || (f.Type.Kind == ir.TBytes && !f.Type.Blob()) {
 			wireKind = tkArray
 		}
 		if f.KeyEnum != "" {
@@ -398,6 +427,9 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 		}
 		condition := "!( " + g.wireDefaultEquals(f, expr) + " )"
 		switch {
+		case f.IsList() || f.IsMap():
+			g.pf("        if(%s.count<0) { return 0; }\n", expr)
+			condition = expr + ".count > 0"
 		case f.Type.Optional:
 			condition = expr + "_present"
 		case (f.Type.Kind == ir.TBytes && !f.Type.Blob()) || ((f.Type.Kind == ir.TString && !f.Type.Blob()) || f.Type.Kind == ir.TWString):
@@ -420,6 +452,7 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 			}
 		case kind == tkTable:
 			g.pf("        TableWriter default_probe = table_writer_probe( w ); default_probe.check_default = 1;\n        if ( !%s( &default_probe, &%s ) ) { return 0; }\n", g.api(f.Type.Name, "save_body"), expr)
+			g.pf("        table_writer_rewind(&default_probe);\n")
 			condition = "default_probe.offset > 1"
 		case kind == tkUnion:
 			condition = expr + ".type != " + enumConst(f.Type.Name+"Type", "None")
@@ -444,7 +477,7 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 		g.pf("    }\n")
 	}
 	g.pf("    table_writer_leb( w, 0 );\n    return !w->overflow;\n}\n\n")
-	if g.isVar(st.Name) {
+	if g.isVar(st.Name) || st.IsMapEntry() {
 		return
 	}
 	for _, measure := range []bool{true, false} {
@@ -456,7 +489,7 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 		if !measure {
 			g.pf("    if ( buffer == NULL || capacity < 0 ) { return -1; }\n")
 		}
-		g.pf("    TableWriter w = table_writer_make( %s, %s );\n    table_writer_put8( &w, 1 );\n", buffer, cap)
+		g.pf("    TableWriteIds vocabulary; TableWriter w = table_writer_make( %s, %s, &vocabulary );\n    table_writer_put8( &w, 1 );\n", buffer, cap)
 		g.pf("    if ( !%s( &w, value ) ) { return -1; }\n    table_writer_finish( &w );\n    return w.overflow ? -1 : w.offset;\n}\n\n", g.api(st.Name, "save_body"))
 	}
 }

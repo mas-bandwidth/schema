@@ -77,8 +77,8 @@ static SCHEMA_UNUSED int table_blob_save( TableWriter * w, const void * value )
 }
 static SCHEMA_UNUSED int table_blob_edges( TableNumbering * n, const void * value )
 { (void)n; (void)value; return 1; }
-static const TableNodeType table_bytes_node_type = { kTableBytesTypeId, 0, table_blob_save, table_blob_edges, 1 };
-static const TableNodeType table_string_node_type = { kTableStringTypeId, 0, table_blob_save, table_blob_edges, 2 };
+static const TableNodeType table_bytes_node_type = { kTableBytesTypeId, 0, table_blob_save, table_blob_edges, 1, NULL, NULL };
+static const TableNodeType table_string_node_type = { kTableStringTypeId, 0, table_blob_save, table_blob_edges, 2, NULL, NULL };
 `
 
 func (g *tableGen) graphFieldType(f *ir.Field) string {

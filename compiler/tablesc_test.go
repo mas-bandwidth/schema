@@ -165,6 +165,10 @@ table Node
     value int32
     next  *Node
 }
+table Collections { items []Node
+ rows map[string(8)]Node
+}
+
 `
 
 // TestCForceInlineStopsAtTheVariableClass also leaves composite bodies plain

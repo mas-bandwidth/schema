@@ -82,6 +82,8 @@ SCHEMA_CONFORMANCE_UNUSED static void conformance_text_add( ConformanceText * ou
 }
 
 /* the per-unit entry points, each defined in that unit's own translation unit */
+const ConformanceCodec * conformance_codecs_mapdemo(int * count);
+const ConformanceCodec * conformance_codecs_listdemo(int * count);
 const ConformanceCodec * conformance_codecs_streamdemo(int * count);
 const ConformanceCodec * conformance_codecs_tblp2(int * count);
 const ConformanceCodec * conformance_codecs_tblg1(int * count);

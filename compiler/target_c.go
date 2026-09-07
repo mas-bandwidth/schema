@@ -56,5 +56,7 @@ func init() {
 	registerWideTextCarrier("c")
 	registerBuiltin(cTarget{}, true, true, true, true)
 	registerOptionalArrayCarrier("c")
+	registerListCarrier("c")
+	registerMapCarrier("c")
 	registerPacketValueDefaultCarrier("c")
 }

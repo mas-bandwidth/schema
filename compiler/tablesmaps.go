@@ -7,6 +7,7 @@ package compiler
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -19,16 +20,12 @@ var mapTargets []string
 // beside its registerBuiltin call.
 func registerMapCarrier(name string) { mapTargets = append(mapTargets, name) }
 
-// refuseMaps is the named refusal every PORT gives a unit whose table closure
-// declares a MAP (docs/SPEC-TABLES.md §2.8, §11, §15).
-//
-// A map is a VARIABLE-CLASS construct, and the variable class is the C++
-// reference's alone — the arena, the region, the node extent and the walks a
-// map's entries ride in are all the reference's. So the reference carries the
-// codec, registers through [registerMapCarrier] from its own init and never
-// reaches here, and every port refuses loudly rather than emitting a codec
-// that never met the entry, its sort or its ascending check.
+// refuseMaps gives targets without this codec a named refusal.
+// Registered carriers accept the construct.
 func refuseMaps(u *ir.Unit, target string) error {
+	if slices.Contains(mapTargets, target) {
+		return nil
+	}
 	fields := ir.MapFields(u)
 	if len(fields) == 0 {
 		return nil

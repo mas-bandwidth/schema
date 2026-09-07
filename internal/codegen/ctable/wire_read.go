@@ -6,6 +6,14 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
+// Named element types keep their declared wire kind, including flags.
+func wireElementWidenTest(f *ir.Field, kind int, expr string) string {
+	if f.Type.Pointer || f.Type.Ref != nil {
+		return "0"
+	}
+	return fmt.Sprintf("table_kind_widens(%s,%d)", expr, kind)
+}
+
 func (g *tableGen) wireEnumRead(e *ir.Enum, dst, rdr, ind, onBad string) {
 	g.pf("%s{\n%s    uint64_t variant_ref;\n", ind, ind)
 	g.pf("%s    if ( !table_reader_leb( &%s, &variant_ref ) || variant_ref > %s.id_count ) { %s }\n", ind, rdr, rdr, onBad)
@@ -105,7 +113,7 @@ func (g *tableGen) emitWireRead(st *ir.Struct) {
 	for _, f := range st.Fields {
 		kind := ir.TableWireScalarKind(f)
 		wireKind := kind
-		if f.Array != ir.ArrayNone || (f.Type.Kind == ir.TBytes && !f.Type.Blob()) {
+		if f.IsMap() || f.Array != ir.ArrayNone || (f.Type.Kind == ir.TBytes && !f.Type.Blob()) {
 			wireKind = tkArray
 		}
 		if f.KeyEnum != "" {
@@ -137,7 +145,7 @@ func (g *tableGen) emitWireRead(st *ir.Struct) {
 		g.pf("            case UINT64_MAX:\n                if(r->nodes==NULL) { r->report->unknown++; }\n                if(!table_reader_skip(r,kind)) { r->report->malformed=1; return 0; }\n                break;\n")
 	}
 	g.pf("            default:\n                r->report->unknown++;\n                if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }\n                break;\n        }\n    }\n}\n\n")
-	if g.isVar(st.Name) {
+	if g.isVar(st.Name) || st.IsMapEntry() {
 		return
 	}
 	g.pf("static SCHEMA_UNUSED int %s( %s * value, const uint8_t * buffer, int64_t bytes, TableReport * report )\n{\n", g.api(st.Name, "load"), st.Name)
@@ -152,6 +160,10 @@ func (g *tableGen) wireReadFieldAt(f *ir.Field, kind int, dst string) {
 func (g *tableGen) wireReadFieldPayload(f *ir.Field, kind int, dst, bounded string) {
 	ind := "                "
 	switch {
+	case f.IsMap():
+		g.emitMapRead(f, dst, bounded)
+	case f.IsList():
+		g.emitListRead(f, dst, bounded)
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		g.wireScalarRead(f, dst, "(*r)", "kind", ind, "r->report->malformed=1; return 0;")
 	case f.Type.Kind == ir.TWString:
@@ -197,7 +209,7 @@ func (g *tableGen) wireReadFieldPayload(f *ir.Field, kind int, dst, bounded stri
 			g.pf("%s    if ( !table_reader_leb( &sub, &count ) ) { r->report->malformed = 1; break; }\n%s    {\n", ind, ind)
 		}
 		g.pf("%s        if ( elem_kind != %d )\n%s        {\n", ind, kind, ind)
-		g.pf("%s            if ( !table_kind_widens( elem_kind, %d ) ) { r->report->kind_mismatch++; break; }\n%s            r->report->widened++;\n%s        }\n", ind, kind, ind, ind)
+		g.pf("%s            if ( !(%s) ) { r->report->kind_mismatch++; break; }\n%s            r->report->widened++;\n%s        }\n", ind, wireElementWidenTest(f, kind, "elem_kind"), ind, ind)
 		g.pf("%s        keep = count; if ( keep > %d ) { keep = %d; r->report->clamped++; }\n", ind, bound, bound)
 		if count != "" {
 			g.pf("%s        %s = 0;\n", ind, count)
@@ -236,7 +248,7 @@ func (g *tableGen) wireReadKeyed(f *ir.Field, kind int, ind string) {
 	g.pf("%sif ( sub.size >= 2 )\n%s{\n", ind, ind)
 	g.pf("%s    uint8_t elem_kind; uint64_t count, i;\n", ind)
 	g.pf("%s    if ( !table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->malformed = 1; break; }\n", ind)
-	g.pf("%s    if ( elem_kind != %d ) { if ( !table_kind_widens( elem_kind, %d ) ) { r->report->kind_mismatch++; break; } r->report->widened++; }\n", ind, kind, kind)
+	g.pf("%s    if ( elem_kind != %d ) { if ( !(%s) ) { r->report->kind_mismatch++; break; } r->report->widened++; }\n", ind, kind, wireElementWidenTest(f, kind, "elem_kind"))
 	g.pf("%s    for ( i = 0; i < count; i++ )\n%s    {\n", ind, ind)
 	g.pf("%s        uint64_t key_ref, key; int32_t slot = -1; TableReader elem;\n", ind)
 	g.pf("%s        if ( !table_reader_leb( &sub, &key_ref ) || key_ref == 0 || key_ref > sub.id_count || !table_reader_span( &sub, &elem ) ) { r->report->malformed = 1; break; }\n", ind)
