@@ -251,12 +251,18 @@ func TestJavaRuntimeNamesAreRefusedByTheChecker(t *testing.T) {
 		if len(errs) == 0 {
 			t.Errorf("a declaration named %s was accepted in a unit with a table", name)
 		}
-		// and in a TABLE-FREE unit too (schema#363): the claim is on the name
-		// alone, because the view file defines it in a unit that declares no
-		// table (docs/SPEC-TABLES.md:560, §11)
+		// and a TABLE-FREE unit keeps all three (schema#672): none of them is
+		// view surface, and the package-level classes that define them are
+		// written into table sources a table-free unit never gets
+		// (docs/SPEC-TABLES.md §11)
+		if tablenames.InEveryUnit(name) {
+			t.Errorf("%s is marked view surface: this repro is about the Java runtime's package-level "+
+				"classes, which a table-free unit does not get", name)
+			continue
+		}
 		free := "package probe\n\nenum " + name + " { A, B }\n\ntype Holder\n{\n    g " + name + "\n}\n"
-		if errs := checkErrors(t, free); len(errs) == 0 {
-			t.Errorf("a TABLE-FREE unit declaring %s was accepted: the claim is on the name alone", name)
+		if errs := checkErrors(t, free); len(errs) > 0 {
+			t.Errorf("a TABLE-FREE unit declaring %s was refused: %v", name, errs)
 		}
 	}
 }

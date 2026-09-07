@@ -21,8 +21,10 @@ func init() {
 		// THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1, §8.7): every field row
 		// and every declaration row with no `///` block names this ONE
 		// definition, so absence costs a unit no string data and a printer
-		// concatenates doc columns with no null test. Claimed wherever a unit
-		// declares a table.
+		// concatenates doc columns with no null test. Every descriptor row a
+		// VIEW FILE writes names it too, so it is claimed in EVERY unit
+		// beside the descriptor primitives above (docs/SPEC-TABLES.md §8.2,
+		// §11) rather than only where a table rides.
 		Name{Name: "TableDocNone", What: "the one shared empty doc every unannotated descriptor row names"},
 		Name{Name: "TableUnionInfo", What: "a union field's tag and its arms"},
 		Name{Name: "TableKeyed", What: "an enum-keyed array's slot storage"},

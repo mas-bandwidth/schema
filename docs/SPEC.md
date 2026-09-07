@@ -1401,7 +1401,11 @@ All compile errors with positions:
   (`Write*`/`Read*`/`New*`, `*MaxBits`/`*MaxBytes`, companion length/count
   names, an enum's `Max` and `Count`, a flags declaration's `Count`, a
   union's generated tag surface). Diagnostics name the generated
-  artifact that claims the name.
+  artifact that claims the name. A short list of unit-scope names is claimed
+  on the table layer's behalf as well, most of it only in a unit that declares
+  a `table` and a handful of reflection spellings in every unit;
+  SPEC-TABLES.md §11 states which is which and why, and a schema that declares
+  no `table` is refused none of the rest.
 - Enum `| max = K` below the variant count.
 - **Duplicate field names anywhere in one type — including across branch
   sides.** One name, one field, declared once. (schema owns the type, and

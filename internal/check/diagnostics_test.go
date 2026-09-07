@@ -591,24 +591,42 @@ func TestDiagnostics(t *testing.T) {
 		{name: "a table spelling the Go cook's descriptor graph",
 			src:  "package probe\n\ntable tableCookRecords\n{\n    n int32\n}\n",
 			want: "tableCookRecords"},
-		// ---- and the same claim in a TABLE-FREE unit (schema#363) ----
-		// docs/SPEC-TABLES.md:560 states the claim over every unit rather
-		// than over a unit that declares a table, because the view file
-		// defines the runtime's names in units that declare none. A name a
-		// unit may legally declare today must not become a collision the day
-		// its view is emitted, so the gate fires on the name alone.
-		{name: "a const spelling the cooked header's magic, in a table-free unit",
-			src:  "package probe\n\nconst TABLE_COOK_MAGIC = 7\n",
+		// ---- the ANNOUNCEMENT and REFUSAL vocabulary, beside a table ----
+		// These are the table wire's own names, and they are claimed where the
+		// generated table sources define them: in a unit that declares a table
+		// (docs/SPEC-TABLES.md §11's second set). A packet-only unit keeps
+		// them, which the good corners below hold.
+		{name: "a type spelling the unit's announcement, beside a table",
+			src:  "package probe\n\ntype Announce { n int32 }\n\ntable Thing\n{\n    n int32\n}\n",
+			want: "Announce"},
+		{name: "a const spelling the refusal vocabulary's ok, beside a table",
+			src:  "package probe\n\nconst ok = 1\n\ntable Thing\n{\n    n int32\n}\n",
+			want: "ok"},
+		{name: "a const spelling the cooked header's magic, beside a table",
+			src:  "package probe\n\nconst TABLE_COOK_MAGIC = 7\n\ntable Thing\n{\n    n int32\n}\n",
 			want: "TABLE_COOK_MAGIC"},
-		{name: "a type spelling the read report, in a table-free unit",
-			src:  "package probe\n\ntype TableReport { n int32 }\n",
+		{name: "a type spelling the read report, beside a table",
+			src:  "package probe\n\ntype TableReport { n int32 }\n\ntable Thing\n{\n    n int32\n}\n",
 			want: "TableReport"},
-		{name: "the Go text walk's depth cap in a table-free unit",
-			src:  "package probe\n\nconst tableJsonMaxDepth = 5\n",
-			want: "unexported names at package scope"},
-		{name: "the C runtime's snake_case in a table-free unit",
-			src:  "package probe\n\ntype tableCookRecords { n int32 }\n",
-			want: "tableCookRecords"},
+		// ---- and the VIEW FILE's descriptor surface, in a TABLE-FREE unit ----
+		// docs/SPEC-TABLES.md:560 gives one reason for the every-unit claim:
+		// the VIEW FILE defines the name in a unit that declares none. That
+		// reason reaches exactly the names the view file spells, so those and
+		// only those are refused with no table in sight, and the diagnostic
+		// says the view file, because a table-free unit's author has no table
+		// runtime to be told about.
+		{name: "a type spelling the field descriptor, in a table-free unit",
+			src:  "package probe\n\ntype TableFieldInfo { n int32 }\n",
+			want: "view file"},
+		{name: "a type spelling the type descriptor, in a table-free unit",
+			src:  "package probe\n\ntype TableTypeInfo { n int32 }\n",
+			want: "view file"},
+		{name: "a const spelling the shared empty doc, in a table-free unit",
+			src:  "package probe\n\nconst TableDocNone = 1\n",
+			want: "view file"},
+		{name: "a type spelling a union field's descriptor, in a table-free unit",
+			src:  "package probe\n\ntype TableUnionInfo { n int32 }\n",
+			want: "view file"},
 
 		// ---- the C target's PREPROCESSOR namespace (SPEC §6.1's C column) ----
 		//
@@ -682,6 +700,21 @@ func TestGoodCornersStillCompile(t *testing.T) {
 		// untouched (docs/SPEC-TABLES.md §11).
 		{name: "near-miss spellings of the table runtime's names",
 			src: "package t\nconst tableJsonMaxDepths = 5\ntype tableJsonInput { n int32 }\ntype TableReports { n int32 }\n"},
+		// THE PACKET-ONLY UNIT KEEPS THE TABLE RUNTIME'S OWN NAMES
+		// (docs/SPEC-TABLES.md §11). The every-unit claim rests on one
+		// reason, that the view file defines the name, and the announcement
+		// vocabulary (§3.3), the refusal vocabulary (§6.5, §7, §19.2) and
+		// the accelerators' runtimes are not names the view file defines.
+		// A packet-only author reads SPEC §4.6 and declares from the whole
+		// namespace that page leaves open.
+		{name: "the announcement and refusal vocabulary in a packet-only unit",
+			src: "package t\ntype Announce { n int32 }\nconst ok = 1\n"},
+		{name: "the cooked and read-report names in a packet-only unit",
+			src: "package t\nconst TABLE_COOK_MAGIC = 7\ntype TableReport { n int32 }\n"},
+		{name: "the Go and C lowercase runtime families in a packet-only unit",
+			src: "package t\nconst tableJsonMaxDepth = 5\ntype tableJsonIn { n int32 }\ntype tableCookRecords { n int32 }\n"},
+		{name: "the accelerators' shared runtimes and the build version in a packet-only unit",
+			src: "package t\ntype BlockRuntime { n int32 }\ntype CookRuntime { n int32 }\nconst BuildVersion = 1\n"},
 		// THE MAPPING THE PAGE BLESSES (schema#451, docs/USAGE.md): a sibling
 		// declared beside the mapped type keeps the basis type, and that is
 		// not an error as long as the unit has a file the mapping can ride

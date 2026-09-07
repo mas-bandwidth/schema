@@ -3372,6 +3372,56 @@ func (c *checker) checkTargetNames() {
 
 // ---- claimed names (SPEC §4.6) ----
 
+// tableRuntimeClaim says WHAT claims a registered runtime name, in the words
+// its own reader needs.
+//
+// The registry is claimed in two scopes (docs/SPEC-TABLES.md §11) and the
+// wording follows the scope, because the two have different readers. A
+// VIEW-SURFACE name is refused in a unit with no table in it at all, and its
+// author is owed the reason that refusal exists: the unit's generated VIEW
+// FILE defines the name. Telling that author about "the generated TABLE-wire
+// runtime" names a thing their unit does not have and cannot get.
+// Everything else is refused only beside a table, where the table runtime is
+// exactly what the reader is looking at.
+func tableRuntimeClaim(gen string) string {
+	if tablenames.InEveryUnit(gen) {
+		return "the descriptor surface the unit's generated view file defines, in a unit that declares a table and in one that declares none (docs/SPEC-TABLES.md §8.2, §11)"
+	}
+	if gen[0] >= 'a' && gen[0] <= 'z' {
+		// UNEXPORTED IS NOT PRIVATE, AND NEITHER IS snake_case. A
+		// lowercase runtime name is still a unit-scope name a
+		// declaration collides with exactly as a PascalCase one does —
+		// `const tableJsonMaxDepth = 5` beside a table is a Go
+		// redeclaration, and `int table_json_count;` beside one is a C
+		// redeclaration. The diagnostic says WHICH BACKEND, because a
+		// reader meeting it will otherwise wonder why a lowercase name
+		// was reserved (§11) — and the answer differs by language, so
+		// it is read from the registry rather than guessed from the
+		// spelling.
+		by := tablenames.By(gen)
+		switch {
+		case by&tablenames.Go != 0 && by&tablenames.C == 0:
+			return "the generated TABLE-wire runtime's Go half, which puts unexported names at package scope where a Go package is one namespace (docs/SPEC-TABLES.md §11)"
+		case by&tablenames.C != 0 && by&tablenames.Go == 0:
+			return "the generated TABLE-wire runtime's C half, which spells its functions snake_case — the packet emitter's convention in that language — with no namespace to put them in (docs/SPEC-TABLES.md §11)"
+		default:
+			return "the generated TABLE-wire runtime's Go and C halves, which both put lowercase names at unit scope (docs/SPEC-TABLES.md §11)"
+		}
+	}
+	return "the generated TABLE-wire runtime (docs/SPEC-TABLES.md)"
+}
+
+// rustConstantClaim names the Rust crate-scope constant a declaration lowers
+// onto, in the scope that constant is claimed in.
+func rustConstantClaim(gen string) string {
+	if tablenames.InEveryUnit(gen) {
+		return fmt.Sprintf("the descriptor surface's %s (Rust constant form of %s, which the unit's generated view file defines: docs/SPEC-TABLES.md §8.2, §11)",
+			ir.RustConstName(gen), gen)
+	}
+	return fmt.Sprintf("the generated TABLE-wire runtime's %s (Rust constant form of %s, docs/SPEC-TABLES.md §11)",
+		ir.RustConstName(gen), gen)
+}
+
 // checkClaimedNames builds the FULL top-level symbol table generation will
 // produce — every declaration plus every derived name any target emits (the
 // split functions, constructors, size constants, tag/variant constants, the
@@ -3419,63 +3469,65 @@ func (c *checker) checkClaimedNames() {
 	add("PROTOCOL_ID", "the unit's generated PROTOCOL_ID (Rust form)", unitPos)
 	add("Error", "the unit's generated Error type (Rust form)", unitPos)
 	add("Result", "the unit's generated Result alias (Rust form)", unitPos)
-	// The TABLE-wire runtime the generated table sources define once per
-	// package (docs/SPEC-TABLES.md), claimed in EVERY unit rather than
-	// only in a unit that declares a table (docs/SPEC-TABLES.md:560,
-	// §11). The claim is on the NAME alone: the view file defines these
-	// names in units that declare no table (§8.3), and a name a unit may
-	// legally declare today must not become a collision the day its view
-	// is emitted or the day it grows its first table. It is the rule the
-	// six view spellings above already take, owed to the runtime beside
-	// them for the same reason.
+	// THE VIEW FILE'S DESCRIPTOR SURFACE, claimed in EVERY unit
+	// (docs/SPEC-TABLES.md:560, §8.2, §11). Every unit is to emit a view
+	// file, and a table-free unit's view carries the descriptor primitives
+	// itself, behind the same include guard the table headers use, so a
+	// name a unit may legally declare today would be a collision the day
+	// its view is emitted. It is the rule the six view spellings above
+	// already take, owed to the descriptors beside them for their reason.
 	//
 	// The list is not written here: internal/tablenames is the ONE
 	// registry, read by this claim and held honest against what the
 	// emitters actually emit. A second copy of it in this file is exactly
 	// how the C# runtime's names came to be unclaimed in the first place.
-	for _, gen := range tablenames.Claimed() {
-		what := "the generated TABLE-wire runtime (docs/SPEC-TABLES.md)"
-		if gen[0] >= 'a' && gen[0] <= 'z' {
-			// UNEXPORTED IS NOT PRIVATE, AND NEITHER IS snake_case. A
-			// lowercase runtime name is still a unit-scope name a
-			// declaration collides with exactly as a PascalCase one does —
-			// `const tableJsonMaxDepth = 5` beside a table is a Go
-			// redeclaration, and `int table_json_count;` beside one is a C
-			// redeclaration. The diagnostic says WHICH BACKEND, because a
-			// reader meeting it will otherwise wonder why a lowercase name
-			// was reserved (§11) — and the answer differs by language, so
-			// it is read from the registry rather than guessed from the
-			// spelling.
-			by := tablenames.By(gen)
-			switch {
-			case by&tablenames.Go != 0 && by&tablenames.C == 0:
-				what = "the generated TABLE-wire runtime's Go half, which puts unexported names at package scope where a Go package is one namespace (docs/SPEC-TABLES.md §11)"
-			case by&tablenames.C != 0 && by&tablenames.Go == 0:
-				what = "the generated TABLE-wire runtime's C half, which spells its functions snake_case — the packet emitter's convention in that language — with no namespace to put them in (docs/SPEC-TABLES.md §11)"
-			default:
-				what = "the generated TABLE-wire runtime's Go and C halves, which both put lowercase names at unit scope (docs/SPEC-TABLES.md §11)"
-			}
-		}
-		add(gen, what, unitPos)
+	for _, gen := range tablenames.ClaimedInEveryUnit() {
+		add(gen, tableRuntimeClaim(gen), unitPos)
 	}
-	// AND THE SAME NAMES IN THE RUST CONSTANT SPACE. Rust spells a
-	// constant SCREAMING_SNAKE, and that spelling is MANY-TO-ONE:
-	// TableCookMagic, TABLE_COOK_MAGIC and table_cook_magic all lower to
-	// one crate-scope TABLE_COOK_MAGIC, so claiming the registered
-	// spelling alone leaves the other two legal. What they generate is a
-	// pair of ambiguous glob re-exports — the crate builds with a warning,
-	// the user's own constant is silently shadowed at the crate root, and
-	// a CONSUMER that names the symbol fails to compile under
-	// ambiguous_glob_imports, which is deny-by-default and
-	// future-incompatible.
-	//
-	// This is the claim two USER declarations already get from each other
-	// ("const max_health … collides with const MaxHealth … both generate
-	// the symbol MAX_HEALTH"), owed to the runtime for the same reason.
+	// and the RUST CONSTANT SPACE of any view-surface name a port spells as a
+	// crate-scope constant, on the same scope as the spelling it lowers from.
+	// Rust's constant form is MANY-TO-ONE (below), so leaving the mapped
+	// spelling free in a table-free unit would leave the every-unit claim
+	// reachable through two other spellings of the one symbol.
 	for _, gen := range tablenames.RustConstants() {
-		add(ir.RustConstName(gen),
-			fmt.Sprintf("the generated TABLE-wire runtime's %s (Rust constant form of %s, docs/SPEC-TABLES.md §11)",
-				ir.RustConstName(gen), gen), unitPos)
+		if !tablenames.InEveryUnit(gen) {
+			continue
+		}
+		add(ir.RustConstName(gen), rustConstantClaim(gen), unitPos)
+	}
+	// AND THE REST OF THE REGISTRY WHERE THE TABLE SOURCES ARE WRITTEN.
+	// The announcement vocabulary (§3.3), the refusal vocabulary (§6.5,
+	// §7, §19.2), the accelerators' runtimes and the cooked form's names
+	// are defined by the generated TABLE sources and by no view file, so
+	// the every-unit claim's one reason does not reach them: a packet-only
+	// unit keeps `type Announce` and `const ok`, which SPEC §4.6 is the
+	// page that says so.
+	if len(c.tables) > 0 {
+		for _, gen := range tablenames.ClaimedWithATable() {
+			add(gen, tableRuntimeClaim(gen), unitPos)
+		}
+		// AND THE SAME NAMES IN THE RUST CONSTANT SPACE. Rust spells a
+		// constant SCREAMING_SNAKE, and that spelling is MANY-TO-ONE:
+		// TableCookMagic, TABLE_COOK_MAGIC and table_cook_magic all lower to
+		// one crate-scope TABLE_COOK_MAGIC, so claiming the registered
+		// spelling alone leaves the other two legal. What they generate is a
+		// pair of ambiguous glob re-exports — the crate builds with a warning,
+		// the user's own constant is silently shadowed at the crate root, and
+		// a CONSUMER that names the symbol fails to compile under
+		// ambiguous_glob_imports, which is deny-by-default and
+		// future-incompatible.
+		//
+		// This is the claim two USER declarations already get from each other
+		// ("const max_health … collides with const MaxHealth … both generate
+		// the symbol MAX_HEALTH"), owed to the runtime for the same reason.
+		// The view-surface members of this space are claimed above, in every
+		// unit; what is left rides with the table sources that define it.
+		for _, gen := range tablenames.RustConstants() {
+			if tablenames.InEveryUnit(gen) {
+				continue
+			}
+			add(ir.RustConstName(gen), rustConstantClaim(gen), unitPos)
+		}
 	}
 
 	declNames := make([]string, 0, len(c.astDecls))
