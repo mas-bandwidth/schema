@@ -15,7 +15,7 @@ If this work helps you, **[please support it.](https://www.patreon.com/MasBandwi
 
 ## Design
 
-Schema is designed to support the following use-cases common in game development:
+Schema is designed to support the following use-cases in game development:
 
 * Packets sent between a client and a server.
 * Messages sent between your server and backend.
