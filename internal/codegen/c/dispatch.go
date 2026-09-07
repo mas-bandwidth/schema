@@ -99,6 +99,17 @@ func (g *gen) emitDefaultInit(f *ir.Field) {
 		return
 	}
 	switch {
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+		// The constructor's zero fill supplies the backing tail and string
+		// terminator. Numeric bytes preserve UTF-8 and literal backslashes.
+		if len(f.DefBytes) > 0 {
+			g.pf("    {\n        static const uint8_t bytes[] = {")
+			for _, b := range f.DefBytes {
+				g.pf(" 0x%02x,", b)
+			}
+			g.pf(" };\n        memcpy( value.%s, bytes, sizeof( bytes ) );\n    }\n", f.Name)
+		}
+		g.pf("    value.%s_length = %d;\n", f.Name, len(f.DefBytes))
 	case f.Type.Kind == ir.TBool:
 		if f.DefBool {
 			g.pf("    value.%s = 1;\n", f.Name)
