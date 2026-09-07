@@ -282,13 +282,11 @@ no dormant assert at all, so Elixir raises `ArgumentError` in every build.
 Those two are the only every-build write side of the nine. The other seven
 are debug-only: C# through `Debug.Assert`, Rust through `debug_assert!`,
 Dart and Java through the language's own `assert`, and JavaScript through
-the checked/production fork its flat writers take at load. (Implementation
-note, 2026-09-07: Rust and C# reach that form in the two changes landing the
-same day, schema#696 and schema#697; until they merge, their emitters still
-refuse on the write in every build.) A language should verify correctness
-the way that language verifies correctness — which means the write side is
-not uniform across targets, and you should not build on it. Keep values inside
-their declared bounds when you write them — your code already knows they are,
+the checked/production fork its flat writers take at load. A language should
+verify correctness the way that language verifies correctness — which means
+the write side is not uniform across targets, and you should not build on it.
+Keep values inside their declared bounds when you write them — your code
+already knows they are,
 and in a game shipping at 60 Hz re-checking every field on the write path is a
 cost with no buyer. See
 [USAGE.md](USAGE.md#writes-are-the-callers-responsibility).

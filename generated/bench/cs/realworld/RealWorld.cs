@@ -4,12 +4,21 @@
 // AGPL-3.0, its output is not.
 // package realworld — protocol id 0x1922430092518648
 //
-// Wire functions return bool — the C++-style early-out. A schema validation
-// failure (a wrong wire constant, nonzero reserved bits, an interior null)
-// returns false WITHOUT latching; stream failures latch on stream.Error —
-// the runtime's own sticky latch. Callers get bool always; Error tells the
-// two apart.
+// Wire functions return bool — the C++-style early-out. A READ-side schema
+// validation failure (a wrong wire constant, nonzero reserved bits, an
+// interior null) returns false WITHOUT latching; stream failures latch on
+// stream.Error — the runtime's own sticky latch. Callers get bool always;
+// Error tells the two apart.
+//
+// WRITE-side contracts — a value outside its declared range, a count or a
+// length outside its bound, a mask bit above the wire width, an interior
+// null in a wide string — are CALLER ERROR and ride on Debug.Assert, so
+// they compile out of a release build along with the call, exactly as
+// serialize.cs's own WriteStream does. In a shipping release build it is
+// the caller's responsibility to be correct on the write side; every check
+// the reader needs is on the read side and runs in every build.
 
+using System.Diagnostics;
 using Serialize;
 
 namespace Realworld
@@ -448,10 +457,7 @@ namespace Realworld
 
         public static bool WriteRealPacket(WriteStream stream, RealPacket value)
         {
-            if (value.F001Int < -805495 || value.F001Int > 805495)
-            {
-                return false;
-            }
+            Debug.Assert(value.F001Int >= -805495 && value.F001Int <= 805495, "value.F001Int out of range [-805495, 805495]");
             {
                 uint offsetValue = (uint)(value.F001Int) - unchecked((uint)(-805495));
                 if (!stream.SerializeBits(ref offsetValue, 21))
@@ -463,10 +469,7 @@ namespace Realworld
             {
                 return false;
             }
-            if (value.F003Int < -835897 || value.F003Int > 835897)
-            {
-                return false;
-            }
+            Debug.Assert(value.F003Int >= -835897 && value.F003Int <= 835897, "value.F003Int out of range [-835897, 835897]");
             {
                 uint offsetValue = (uint)(value.F003Int) - unchecked((uint)(-835897));
                 if (!stream.SerializeBits(ref offsetValue, 21))
@@ -483,14 +486,8 @@ namespace Realworld
             }
             {
                 // flat run: 25 bits in 1 chunk(s) — the field placement is folded
-                if (value.F005Uint > 7316)
-                {
-                    return false;
-                }
-                if (value.F006Int < -1513 || value.F006Int > 1513)
-                {
-                    return false;
-                }
+                Debug.Assert(value.F005Uint <= 7316, "value.F005Uint out of range [0, 7316]");
+                Debug.Assert(value.F006Int >= -1513 && value.F006Int <= 1513, "value.F006Int out of range [-1513, 1513]");
                 ulong f0 = ((ulong)((uint)(value.F005Uint))) & 0x1fffUL;
                 ulong f1 = ((ulong)((uint)(value.F006Int) - unchecked((uint)(-1513)))) & 0xfffUL;
                 uint w0 = (uint)(f0 | (f1 << 13));
@@ -507,10 +504,7 @@ namespace Realworld
             {
                 return false;
             }
-            if (value.F009Int < -22 || value.F009Int > 22)
-            {
-                return false;
-            }
+            Debug.Assert(value.F009Int >= -22 && value.F009Int <= 22, "value.F009Int out of range [-22, 22]");
             {
                 uint offsetValue = (uint)(value.F009Int) - unchecked((uint)(-22));
                 if (!stream.SerializeBits(ref offsetValue, 6))
@@ -540,14 +534,8 @@ namespace Realworld
                 }
                 {
                     // flat run: 16 bits in 1 chunk(s) — the field placement is folded
-                    if (value.F014Uint > 775)
-                    {
-                        return false;
-                    }
-                    if (value.F015Int < -21 || value.F015Int > 21)
-                    {
-                        return false;
-                    }
+                    Debug.Assert(value.F014Uint <= 775, "value.F014Uint out of range [0, 775]");
+                    Debug.Assert(value.F015Int >= -21 && value.F015Int <= 21, "value.F015Int out of range [-21, 21]");
                     ulong f0 = ((ulong)((uint)(value.F014Uint))) & 0x3ffUL;
                     ulong f1 = ((ulong)((uint)(value.F015Int) - unchecked((uint)(-21)))) & 0x3fUL;
                     uint w0 = (uint)(f0 | (f1 << 10));
@@ -560,10 +548,7 @@ namespace Realworld
                 {
                     return false;
                 }
-                if (value.F017Uint > 4606)
-                {
-                    return false;
-                }
+                Debug.Assert(value.F017Uint <= 4606, "value.F017Uint out of range [0, 4606]");
                 {
                     uint offsetValue = (uint)(value.F017Uint);
                     if (!stream.SerializeBits(ref offsetValue, 13))
@@ -572,10 +557,7 @@ namespace Realworld
                     }
                 }
             }
-            if (value.F018Int < -834 || value.F018Int > 834)
-            {
-                return false;
-            }
+            Debug.Assert(value.F018Int >= -834 && value.F018Int <= 834, "value.F018Int out of range [-834, 834]");
             {
                 uint offsetValue = (uint)(value.F018Int) - unchecked((uint)(-834));
                 if (!stream.SerializeBits(ref offsetValue, 11))
@@ -639,22 +621,10 @@ namespace Realworld
             }
             {
                 // flat run: 69 bits in 2 chunk(s) — the field placement is folded
-                if (value.F032Int < -3 || value.F032Int > 3)
-                {
-                    return false;
-                }
-                if (value.F033Uint > 142780)
-                {
-                    return false;
-                }
-                if (value.F034Uint > 14149)
-                {
-                    return false;
-                }
-                if ((uint)value.F036Enum > 5) // headroom above the wire range cannot ride
-                {
-                    return false;
-                }
+                Debug.Assert(value.F032Int >= -3 && value.F032Int <= 3, "value.F032Int out of range [-3, 3]");
+                Debug.Assert(value.F033Uint <= 142780, "value.F033Uint out of range [0, 142780]");
+                Debug.Assert(value.F034Uint <= 14149, "value.F034Uint out of range [0, 14149]");
+                Debug.Assert((uint)value.F036Enum <= 5, "value.F036Enum above the enum wire range [0, 5]"); // headroom above the wire range cannot ride
                 ulong f0 = ((ulong)value.F031Bits) & 0x1UL;
                 ulong f1 = ((ulong)((uint)(value.F032Int) - unchecked((uint)(-3)))) & 0x7UL;
                 ulong f2 = ((ulong)((uint)(value.F033Uint))) & 0x3ffffUL;
@@ -681,10 +651,7 @@ namespace Realworld
             }
             {
                 // flat run: 38 bits in 1 chunk(s) — the field placement is folded
-                if (value.F041Int < -55 || value.F041Int > 55)
-                {
-                    return false;
-                }
+                Debug.Assert(value.F041Int >= -55 && value.F041Int <= 55, "value.F041Int out of range [-55, 55]");
                 ulong f0 = ((ulong)((uint)(value.F041Int) - unchecked((uint)(-55)))) & 0x7fUL;
                 ulong f1 = ((ulong)value.F042Bits) & 0x3fffffffUL;
                 ulong f2 = value.F043Bool ? 1UL : 0UL;
@@ -702,14 +669,8 @@ namespace Realworld
                 }
                 {
                     // flat run: 49 bits in 1 chunk(s) — the field placement is folded
-                    if (value.F046Uint > 76063)
-                    {
-                        return false;
-                    }
-                    if (value.F047Int < -430976 || value.F047Int > 430976)
-                    {
-                        return false;
-                    }
+                    Debug.Assert(value.F046Uint <= 76063, "value.F046Uint out of range [0, 76063]");
+                    Debug.Assert(value.F047Int >= -430976 && value.F047Int <= 430976, "value.F047Int out of range [-430976, 430976]");
                     ulong f0 = ((ulong)value.F045Bits) & 0xfffUL;
                     ulong f1 = ((ulong)((uint)(value.F046Uint))) & 0x1ffffUL;
                     ulong f2 = ((ulong)((uint)(value.F047Int) - unchecked((uint)(-430976)))) & 0xfffffUL;
@@ -736,10 +697,7 @@ namespace Realworld
             {
                 {
                     // flat run: 8 bits in 1 chunk(s) — the field placement is folded
-                    if (value.F052Int < -57 || value.F052Int > 57)
-                    {
-                        return false;
-                    }
+                    Debug.Assert(value.F052Int >= -57 && value.F052Int <= 57, "value.F052Int out of range [-57, 57]");
                     ulong f0 = value.F051Bool ? 1UL : 0UL;
                     ulong f1 = ((ulong)((uint)(value.F052Int) - unchecked((uint)(-57)))) & 0x7fUL;
                     uint w0 = (uint)(f0 | (f1 << 1));
@@ -752,10 +710,7 @@ namespace Realworld
                 {
                     return false;
                 }
-                if (value.F054Int < -35 || value.F054Int > 35)
-                {
-                    return false;
-                }
+                Debug.Assert(value.F054Int >= -35 && value.F054Int <= 35, "value.F054Int out of range [-35, 35]");
                 {
                     uint offsetValue = (uint)(value.F054Int) - unchecked((uint)(-35));
                     if (!stream.SerializeBits(ref offsetValue, 7))
@@ -766,14 +721,8 @@ namespace Realworld
             }
             {
                 // flat run: 11 bits in 1 chunk(s) — the field placement is folded
-                if (value.F056Int < -13 || value.F056Int > 13)
-                {
-                    return false;
-                }
-                if (value.F057Int < -15 || value.F057Int > 15)
-                {
-                    return false;
-                }
+                Debug.Assert(value.F056Int >= -13 && value.F056Int <= 13, "value.F056Int out of range [-13, 13]");
+                Debug.Assert(value.F057Int >= -15 && value.F057Int <= 15, "value.F057Int out of range [-15, 15]");
                 ulong f0 = value.F055Bool ? 1UL : 0UL;
                 ulong f1 = ((ulong)((uint)(value.F056Int) - unchecked((uint)(-13)))) & 0x1fUL;
                 ulong f2 = ((ulong)((uint)(value.F057Int) - unchecked((uint)(-15)))) & 0x1fUL;
@@ -804,14 +753,8 @@ namespace Realworld
             }
             {
                 // flat run: 82 bits in 2 chunk(s) — the field placement is folded
-                if (value.F062Uint > 503)
-                {
-                    return false;
-                }
-                if (value.F064Uint > 299)
-                {
-                    return false;
-                }
+                Debug.Assert(value.F062Uint <= 503, "value.F062Uint out of range [0, 503]");
+                Debug.Assert(value.F064Uint <= 299, "value.F064Uint out of range [0, 299]");
                 ulong f0 = ((ulong)((uint)(value.F062Uint))) & 0x1ffUL;
                 ulong f1 = (ulong)value.F063I64;
                 ulong f2 = ((ulong)((uint)(value.F064Uint))) & 0x1ffUL;
@@ -853,10 +796,7 @@ namespace Realworld
             }
             {
                 // flat run: 13 bits in 1 chunk(s) — the field placement is folded
-                if (value.F070Uint > 2)
-                {
-                    return false;
-                }
+                Debug.Assert(value.F070Uint <= 2, "value.F070Uint out of range [0, 2]");
                 ulong f0 = ((ulong)value.F069Bits) & 0x7ffUL;
                 ulong f1 = ((ulong)((uint)(value.F070Uint))) & 0x3UL;
                 uint w0 = (uint)(f0 | (f1 << 11));
@@ -881,10 +821,7 @@ namespace Realworld
             }
             {
                 // flat run: 5 bits in 1 chunk(s) — the field placement is folded
-                if (value.F073Int < -4 || value.F073Int > 4)
-                {
-                    return false;
-                }
+                Debug.Assert(value.F073Int >= -4 && value.F073Int <= 4, "value.F073Int out of range [-4, 4]");
                 ulong f0 = ((ulong)((uint)(value.F073Int) - unchecked((uint)(-4)))) & 0xfUL;
                 ulong f1 = value.F074Bool ? 1UL : 0UL;
                 uint w0 = (uint)(f0 | (f1 << 4));
@@ -897,18 +834,9 @@ namespace Realworld
             {
                 {
                     // flat run: 100 bits in 2 chunk(s) — the field placement is folded
-                    if (value.F076Int < -26218 || value.F076Int > 26218)
-                    {
-                        return false;
-                    }
-                    if (value.F077Int < -17 || value.F077Int > 17)
-                    {
-                        return false;
-                    }
-                    if (value.F079Uint > 17)
-                    {
-                        return false;
-                    }
+                    Debug.Assert(value.F076Int >= -26218 && value.F076Int <= 26218, "value.F076Int out of range [-26218, 26218]");
+                    Debug.Assert(value.F077Int >= -17 && value.F077Int <= 17, "value.F077Int out of range [-17, 17]");
+                    Debug.Assert(value.F079Uint <= 17, "value.F079Uint out of range [0, 17]");
                     ulong f0 = (ulong)value.F075U64;
                     ulong f1 = ((ulong)((uint)(value.F076Int) - unchecked((uint)(-26218)))) & 0xffffUL;
                     ulong f2 = ((ulong)((uint)(value.F077Int) - unchecked((uint)(-17)))) & 0x3fUL;
@@ -928,10 +856,7 @@ namespace Realworld
             }
             {
                 // flat run: 58 bits in 1 chunk(s) — the field placement is folded
-                if ((uint)value.F083Enum > 5) // headroom above the wire range cannot ride
-                {
-                    return false;
-                }
+                Debug.Assert((uint)value.F083Enum <= 5, "value.F083Enum above the enum wire range [0, 5]"); // headroom above the wire range cannot ride
                 ulong f0 = value.F080Bool ? 1UL : 0UL;
                 ulong f1 = ((ulong)value.F081Bits) & 0x1fffffffUL;
                 ulong f2 = ((ulong)value.F082Bits) & 0x1ffffffUL;
@@ -951,10 +876,7 @@ namespace Realworld
             }
             {
                 // flat run: 30 bits in 1 chunk(s) — the field placement is folded
-                if (value.F086Uint > 399)
-                {
-                    return false;
-                }
+                Debug.Assert(value.F086Uint <= 399, "value.F086Uint out of range [0, 399]");
                 ulong f0 = ((ulong)value.F085Bits) & 0x1fffffUL;
                 ulong f1 = ((ulong)((uint)(value.F086Uint))) & 0x1ffUL;
                 uint w0 = (uint)(f0 | (f1 << 21));
@@ -969,18 +891,9 @@ namespace Realworld
             }
             {
                 // flat run: 138 bits in 3 chunk(s) — the field placement is folded
-                if (value.F088Int < -694 || value.F088Int > 694)
-                {
-                    return false;
-                }
-                if (value.F090Uint > 214)
-                {
-                    return false;
-                }
-                if (value.F091Flags >= 1ul << 5) // a mask bit above the wire width cannot ride
-                {
-                    return false;
-                }
+                Debug.Assert(value.F088Int >= -694 && value.F088Int <= 694, "value.F088Int out of range [-694, 694]");
+                Debug.Assert(value.F090Uint <= 214, "value.F090Uint out of range [0, 214]");
+                Debug.Assert(value.F091Flags < 1ul << 5, "value.F091Flags has a mask bit above the 5-bit wire width"); // a mask bit above the wire width cannot ride
                 ulong f0 = ((ulong)((uint)(value.F088Int) - unchecked((uint)(-694)))) & 0x7ffUL;
                 ulong f1 = ((ulong)value.F089Bits) & 0xffffffffffffUL;
                 ulong f2 = ((ulong)((uint)(value.F090Uint))) & 0xffUL;

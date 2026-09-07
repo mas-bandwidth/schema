@@ -4,6 +4,7 @@
 // AGPL-3.0, its output is not.
 // package example — protocol id 0x8656ae68c06b97a7
 
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Serialize;
 
@@ -85,10 +86,7 @@ namespace Example
         {
             {
                 // flat run: 138 bits in 3 chunk(s) — the field placement is folded
-                if ((uint)value.Team > 2) // headroom above the wire range cannot ride
-                {
-                    return false;
-                }
+                Debug.Assert((uint)value.Team <= 2, "value.Team above the enum wire range [0, 2]"); // headroom above the wire range cannot ride
                 ulong f0 = (ulong)value.SortKey;
                 ulong f1 = ((ulong)(value.MeshId)) & 0xffffffffUL;
                 ulong f2 = ((ulong)(value.MaterialId)) & 0xffffffffUL;
@@ -211,10 +209,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.SpritesCount < 0 || value.SpritesCount > (int)RenderBlockMaxSprites) // the count guards the loop (§6.3); out-of-contract writes are refused
-            {
-                return false;
-            }
+            Debug.Assert(value.SpritesCount >= 0 && value.SpritesCount <= (int)RenderBlockMaxSprites, "value.SpritesCount out of range [0, (int)RenderBlockMaxSprites]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
                 uint offsetValue = (uint)(value.SpritesCount);
                 if (!batch.SerializeBits(ref offsetValue, 7))

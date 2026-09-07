@@ -30,7 +30,12 @@ static class Program
     static void Contracts()
     {
         WideSeven v = new WideSeven();
-        foreach(int n in new[]{-1,8,1}) { v.TextLength=n; Check(!Schema.WriteWideSeven(new WriteStream(new byte[256]),v),"writer bounds/null"); }
+        // SPEC §4.12's two WRITE-side rules — the used length in [0, N], and no
+        // zero code unit among the used units — are the caller's contract and
+        // ride on Debug.Assert (SPEC §5), so they are gone from the release
+        // build this file is also compiled into. There is nothing to probe in
+        // either configuration; the READ-side rules below run in both.
+        v.TextLength=1;
         v.Text[0]=(char)0xd800;
         var (wire,_) = Encode(v, Schema.WriteWideSeven);
         Check(!Schema.ReadWideSeven(new ReadStream(wire),v),"unpaired high");

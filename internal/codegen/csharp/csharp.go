@@ -83,6 +83,7 @@ type gen struct {
 	needsSerialize bool            // the file emits wire functions -> using Serialize;
 	needsSystem    bool            // the file references System (Array, Math, AsSpan)
 	needsCompiler  bool            // the file emits [MethodImpl] -> using System.Runtime.CompilerServices;
+	needsDiag      bool            // the file emits Debug.Assert -> using System.Diagnostics;
 }
 
 // rv is the serialize receiver of the function being emitted: the stream, or
@@ -129,15 +130,26 @@ func (g *gen) assemble() []byte {
 		// the unit-level target notes ride the home file only — said once
 		// per unit, not once per file
 		h.WriteString("//\n")
-		h.WriteString("// Wire functions return bool — the C++-style early-out. A schema validation\n")
-		h.WriteString("// failure (a wrong wire constant, nonzero reserved bits, an interior null)\n")
-		h.WriteString("// returns false WITHOUT latching; stream failures latch on stream.Error —\n")
-		h.WriteString("// the runtime's own sticky latch. Callers get bool always; Error tells the\n")
-		h.WriteString("// two apart.\n")
+		h.WriteString("// Wire functions return bool — the C++-style early-out. A READ-side schema\n")
+		h.WriteString("// validation failure (a wrong wire constant, nonzero reserved bits, an\n")
+		h.WriteString("// interior null) returns false WITHOUT latching; stream failures latch on\n")
+		h.WriteString("// stream.Error — the runtime's own sticky latch. Callers get bool always;\n")
+		h.WriteString("// Error tells the two apart.\n")
+		h.WriteString("//\n")
+		h.WriteString("// WRITE-side contracts — a value outside its declared range, a count or a\n")
+		h.WriteString("// length outside its bound, a mask bit above the wire width, an interior\n")
+		h.WriteString("// null in a wide string — are CALLER ERROR and ride on Debug.Assert, so\n")
+		h.WriteString("// they compile out of a release build along with the call, exactly as\n")
+		h.WriteString("// serialize.cs's own WriteStream does. In a shipping release build it is\n")
+		h.WriteString("// the caller's responsibility to be correct on the write side; every check\n")
+		h.WriteString("// the reader needs is on the read side and runs in every build.\n")
 	}
 	h.WriteString("\n")
 	if g.needsSystem {
 		h.WriteString("using System;\n")
+	}
+	if g.needsDiag {
+		h.WriteString("using System.Diagnostics;\n")
 	}
 	if g.needsCompiler {
 		h.WriteString("using System.Runtime.CompilerServices;\n")
@@ -145,7 +157,7 @@ func (g *gen) assemble() []byte {
 	if g.needsSerialize {
 		h.WriteString("using Serialize;\n")
 	}
-	if g.needsSystem || g.needsCompiler || g.needsSerialize {
+	if g.needsSystem || g.needsDiag || g.needsCompiler || g.needsSerialize {
 		h.WriteString("\n")
 	}
 	// block namespace, not file-scoped: Unity's compiler is C# 9 and

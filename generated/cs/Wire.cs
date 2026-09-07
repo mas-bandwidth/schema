@@ -5,6 +5,7 @@
 // package example — protocol id 0x8656ae68c06b97a7
 
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Serialize;
 
@@ -577,10 +578,7 @@ namespace Example
             {
                 {
                     // flat run: 5 bits in 1 chunk(s) — the field placement is folded
-                    if ((uint)value.Weapon > 15) // headroom above the wire range cannot ride
-                    {
-                        return false;
-                    }
+                    Debug.Assert((uint)value.Weapon <= 15, "value.Weapon above the enum wire range [0, 15]"); // headroom above the wire range cannot ride
                     ulong f0 = ((ulong)(uint)value.Weapon) & 0xfUL;
                     ulong f1 = value.HasTarget ? 1UL : 0UL;
                     uint w0 = (uint)(f0 | (f1 << 4));
@@ -607,10 +605,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.SamplesCount < 1 || value.SamplesCount > 8) // the count guards the loop (§6.3); out-of-contract writes are refused
-            {
-                return false;
-            }
+            Debug.Assert(value.SamplesCount >= 1 && value.SamplesCount <= 8, "value.SamplesCount out of range [1, 8]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
                 uint offsetValue = (uint)(value.SamplesCount) - (uint)(1);
                 if (!batch.SerializeBits(ref offsetValue, 3))
@@ -834,10 +829,7 @@ namespace Example
         {
             {
                 // flat run: 15 bits in 1 chunk(s) — the field placement is folded
-                if (value.Width > 100)
-                {
-                    return false;
-                }
+                Debug.Assert(value.Width <= 100, "value.Width out of range [0, 100]");
                 ulong f0 = ((ulong)((uint)(value.Width))) & 0x7fUL;
                 ulong f1 = ((ulong)(value.Height)) & 0xffUL;
                 uint w0 = (uint)(f0 | (f1 << 7));
@@ -925,10 +917,7 @@ namespace Example
         private static bool WriteProbeShapeBatch(ref WriteBatch batch, ProbeShape value)
         {
             uint tagValue = (uint)value.Type;
-            if (tagValue > 2) // the tag validates BEFORE it rides (SPEC §4.8)
-            {
-                return false;
-            }
+            Debug.Assert(tagValue <= 2, "the union tag is outside the variant set [0, 2]"); // the tag contract holds BEFORE it rides (SPEC §4.8)
             if (!batch.SerializeBits(ref tagValue, 2))
             {
                 return false;
@@ -1033,10 +1022,7 @@ namespace Example
             {
                 return false;
             }
-            if (value.ExtrasCount < 0 || value.ExtrasCount > 2) // the count guards the loop (§6.3); out-of-contract writes are refused
-            {
-                return false;
-            }
+            Debug.Assert(value.ExtrasCount >= 0 && value.ExtrasCount <= 2, "value.ExtrasCount out of range [0, 2]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
                 uint offsetValue = (uint)(value.ExtrasCount);
                 if (!batch.SerializeBits(ref offsetValue, 2))
@@ -1131,10 +1117,7 @@ namespace Example
         {
             {
                 // flat run: 36 bits in 1 chunk(s) — the field placement is folded
-                if ((uint)value.Preferred > 15) // headroom above the wire range cannot ride
-                {
-                    return false;
-                }
+                Debug.Assert((uint)value.Preferred <= 15, "value.Preferred above the enum wire range [0, 15]"); // headroom above the wire range cannot ride
                 ulong f0 = ((ulong)((uint)value.Retries)) & 0xffffffffUL;
                 ulong f1 = ((ulong)(uint)value.Preferred) & 0xfUL;
                 ulong w0 = f0 | (f1 << 32);
@@ -1321,18 +1304,9 @@ namespace Example
         {
             {
                 // flat run: 46 bits in 1 chunk(s) — the field placement is folded
-                if (value.TestB < 0 || value.TestB > 1000)
-                {
-                    return false;
-                }
-                if (value.TestC < 0 || value.TestC > 1000)
-                {
-                    return false;
-                }
-                if (value.TestD < 0 || value.TestD > 1000)
-                {
-                    return false;
-                }
+                Debug.Assert(value.TestB >= 0 && value.TestB <= 1000, "value.TestB out of range [0, 1000]");
+                Debug.Assert(value.TestC >= 0 && value.TestC <= 1000, "value.TestC out of range [0, 1000]");
+                Debug.Assert(value.TestD >= 0 && value.TestD <= 1000, "value.TestD out of range [0, 1000]");
                 ulong f0 = ((ulong)(value.TestA)) & 0xffffUL;
                 ulong f1 = ((ulong)((uint)(value.TestB))) & 0x3ffUL;
                 ulong f2 = ((ulong)((uint)(value.TestC))) & 0x3ffUL;
@@ -1414,10 +1388,7 @@ namespace Example
 
         public static bool WriteBlock(WriteStream stream, Block value)
         {
-            if (value.DataLength < 0 || value.DataLength > (int)MaxBlockSize) // the length guards the slice (§6.3); out-of-contract writes are refused
-            {
-                return false;
-            }
+            Debug.Assert(value.DataLength >= 0 && value.DataLength <= (int)MaxBlockSize, "value.DataLength out of range [0, (int)MaxBlockSize]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
             {
                 uint offsetValue = (uint)(value.DataLength);
                 if (!stream.SerializeBits(ref offsetValue, 11))
@@ -1466,10 +1437,7 @@ namespace Example
 
         public static bool WriteChat(WriteStream stream, Chat value)
         {
-            if (value.TextLength < 0 || value.TextLength > (int)MaxChatLength) // the length guards the slice (§6.3); out-of-contract writes are refused
-            {
-                return false;
-            }
+            Debug.Assert(value.TextLength >= 0 && value.TextLength <= (int)MaxChatLength, "value.TextLength out of range [0, (int)MaxChatLength]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
             {
                 uint offsetValue = (uint)(value.TextLength);
                 if (!stream.SerializeBits(ref offsetValue, 9))
@@ -1563,10 +1531,7 @@ namespace Example
             {
                 return false;
             }
-            if (value.Flags >= 1ul << 8) // a mask bit above the wire width cannot ride
-            {
-                return false;
-            }
+            Debug.Assert(value.Flags < 1ul << 8, "value.Flags has a mask bit above the 8-bit wire width"); // a mask bit above the wire width cannot ride
             {
                 uint flagsValue = (uint)value.Flags;
                 if (!batch.SerializeBits(ref flagsValue, 8))
@@ -1677,18 +1642,9 @@ namespace Example
         {
             {
                 // flat run: 49 bits in 1 chunk(s) — the field placement is folded
-                if (value.A < -100 || value.A > 100)
-                {
-                    return false;
-                }
-                if (value.B < -100 || value.B > 100)
-                {
-                    return false;
-                }
-                if (value.C < -100 || value.C > 150)
-                {
-                    return false;
-                }
+                Debug.Assert(value.A >= -100 && value.A <= 100, "value.A out of range [-100, 100]");
+                Debug.Assert(value.B >= -100 && value.B <= 100, "value.B out of range [-100, 100]");
+                Debug.Assert(value.C >= -100 && value.C <= 150, "value.C out of range [-100, 150]");
                 ulong f0 = ((ulong)((uint)(value.A) - unchecked((uint)(-100)))) & 0xffUL;
                 ulong f1 = ((ulong)((uint)(value.B) - unchecked((uint)(-100)))) & 0xffUL;
                 ulong f2 = ((ulong)((uint)(value.C) - unchecked((uint)(-100)))) & 0xffUL;
@@ -1702,10 +1658,7 @@ namespace Example
                     return false;
                 }
             }
-            if (value.ItemsCount < 0 || value.ItemsCount > 16) // the count guards the loop (§6.3); out-of-contract writes are refused
-            {
-                return false;
-            }
+            Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 16, "value.ItemsCount out of range [0, 16]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
                 uint offsetValue = (uint)(value.ItemsCount);
                 if (!stream.SerializeBits(ref offsetValue, 5))
@@ -1715,10 +1668,7 @@ namespace Example
             }
             for (int i = 0; i < value.ItemsCount; i++)
             {
-                if (value.Items[i] < 0 || value.Items[i] > 255)
-                {
-                    return false;
-                }
+                Debug.Assert(value.Items[i] >= 0 && value.Items[i] <= 255, "value.Items[i] out of range [0, 255]");
                 {
                     uint offsetValue = (uint)(value.Items[i]);
                     if (!stream.SerializeBits(ref offsetValue, 8))
@@ -1744,10 +1694,7 @@ namespace Example
             }
             {
                 // flat run: 249 bits in 4 chunk(s) — the field placement is folded
-                if (value.Int64Range < -1000000000000 || value.Int64Range > 1000000000000)
-                {
-                    return false;
-                }
+                Debug.Assert(value.Int64Range >= -1000000000000 && value.Int64Range <= 1000000000000, "value.Int64Range out of range [-1000000000000, 1000000000000]");
                 ulong f0 = ((ulong)((byte)value.Int8Value)) & 0xffUL;
                 ulong f1 = ((ulong)((ushort)value.Int16Value)) & 0xffffUL;
                 ulong f2 = ((ulong)(value.Uint8Value)) & 0xffUL;
@@ -1785,10 +1732,7 @@ namespace Example
             {
                 return false;
             }
-            if (value.TextLength < 0 || value.TextLength > 255) // the length guards the slice (§6.3); out-of-contract writes are refused
-            {
-                return false;
-            }
+            Debug.Assert(value.TextLength >= 0 && value.TextLength <= 255, "value.TextLength out of range [0, 255]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
             {
                 uint offsetValue = (uint)(value.TextLength);
                 if (!stream.SerializeBits(ref offsetValue, 8))

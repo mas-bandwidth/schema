@@ -4,13 +4,22 @@
 // AGPL-3.0, its output is not.
 // package wide — protocol id 0x53835dbf9f05e4d9
 //
-// Wire functions return bool — the C++-style early-out. A schema validation
-// failure (a wrong wire constant, nonzero reserved bits, an interior null)
-// returns false WITHOUT latching; stream failures latch on stream.Error —
-// the runtime's own sticky latch. Callers get bool always; Error tells the
-// two apart.
+// Wire functions return bool — the C++-style early-out. A READ-side schema
+// validation failure (a wrong wire constant, nonzero reserved bits, an
+// interior null) returns false WITHOUT latching; stream failures latch on
+// stream.Error — the runtime's own sticky latch. Callers get bool always;
+// Error tells the two apart.
+//
+// WRITE-side contracts — a value outside its declared range, a count or a
+// length outside its bound, a mask bit above the wire width, an interior
+// null in a wide string — are CALLER ERROR and ride on Debug.Assert, so
+// they compile out of a release build along with the call, exactly as
+// serialize.cs's own WriteStream does. In a shipping release build it is
+// the caller's responsibility to be correct on the write side; every check
+// the reader needs is on the read side and runs in every build.
 
 using System;
+using System.Diagnostics;
 using Serialize;
 
 namespace Wide
@@ -74,10 +83,7 @@ namespace Wide
 
         public static bool WriteWideSeven(WriteStream stream, WideSeven value)
         {
-            if (value.TextLength < 0 || value.TextLength > 7)
-            {
-                return false;
-            }
+            Debug.Assert(value.TextLength >= 0 && value.TextLength <= 7, "value.TextLength out of range [0, 7]");
             {
                 uint offsetValue = (uint)(value.TextLength);
                 if (!stream.SerializeBits(ref offsetValue, 3))
@@ -88,7 +94,7 @@ namespace Wide
             for (int wideIndex = 0; wideIndex < value.TextLength; wideIndex++)
             {
                 uint wideGroup = value.Text[wideIndex];
-                if (wideGroup == 0) return false;
+                Debug.Assert(wideGroup != 0, "a wide string's used units carry an interior null");
                 if (!stream.SerializeBits(ref wideGroup, 32))
                 {
                     return false;
@@ -145,10 +151,7 @@ namespace Wide
 
         public static bool WriteWideFour(WriteStream stream, WideFour value)
         {
-            if (value.TextLength < 0 || value.TextLength > 4)
-            {
-                return false;
-            }
+            Debug.Assert(value.TextLength >= 0 && value.TextLength <= 4, "value.TextLength out of range [0, 4]");
             {
                 uint offsetValue = (uint)(value.TextLength);
                 if (!stream.SerializeBits(ref offsetValue, 3))
@@ -159,7 +162,7 @@ namespace Wide
             for (int wideIndex = 0; wideIndex < value.TextLength; wideIndex++)
             {
                 uint wideGroup = value.Text[wideIndex];
-                if (wideGroup == 0) return false;
+                Debug.Assert(wideGroup != 0, "a wide string's used units carry an interior null");
                 if (!stream.SerializeBits(ref wideGroup, 32))
                 {
                     return false;
@@ -216,10 +219,7 @@ namespace Wide
 
         public static bool WriteNarrowFifteen(WriteStream stream, NarrowFifteen value)
         {
-            if (value.TextLength < 0 || value.TextLength > 15) // the length guards the slice (§6.3); out-of-contract writes are refused
-            {
-                return false;
-            }
+            Debug.Assert(value.TextLength >= 0 && value.TextLength <= 15, "value.TextLength out of range [0, 15]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
             {
                 uint offsetValue = (uint)(value.TextLength);
                 if (!stream.SerializeBits(ref offsetValue, 4))
@@ -295,10 +295,7 @@ namespace Wide
 
         public static bool WriteWideInterop(WriteStream stream, WideInterop value)
         {
-            if (value.CaptionLength < 0 || value.CaptionLength > 7)
-            {
-                return false;
-            }
+            Debug.Assert(value.CaptionLength >= 0 && value.CaptionLength <= 7, "value.CaptionLength out of range [0, 7]");
             {
                 uint offsetValue = (uint)(value.CaptionLength);
                 if (!stream.SerializeBits(ref offsetValue, 3))
@@ -309,7 +306,7 @@ namespace Wide
             for (int wideIndex = 0; wideIndex < value.CaptionLength; wideIndex++)
             {
                 uint wideGroup = value.Caption[wideIndex];
-                if (wideGroup == 0) return false;
+                Debug.Assert(wideGroup != 0, "a wide string's used units carry an interior null");
                 if (!stream.SerializeBits(ref wideGroup, 32))
                 {
                     return false;

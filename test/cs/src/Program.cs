@@ -661,11 +661,10 @@ static class Program
             Check(!ReadProbeCollider(new ReadStream(corrupt), bad),
                   "a corrupt union arm payload is refused (SPEC §4.8)");
 
-            // the write side validates the tag BEFORE it rides
-            ProbeShape rogue = new ProbeShape();
-            rogue.Type = (ProbeShapeType) 3;
-            WriteStream ws2 = NewWriteStream();
-            Check(!WriteProbeShape(ws2, rogue), "an out-of-set union tag writes nothing (SPEC §4.8)");
+            // the write side's tag contract is a Debug.Assert (SPEC §5): a tag
+            // outside the variant set is caller error, and the check is gone
+            // from a release build. The READ side above still refuses one in
+            // every build, which is the check that faces untrusted bytes.
         }
 
         // ---- TestData and InputPacket against their C++ pins ----
@@ -783,13 +782,20 @@ static class Program
             Check(ReadProbeReport(rs, output), "read ProbeReport");
             Check(EqProbeReport(output, input), "ProbeReport round-trips — a named type as an ordinary field");
 
-            // a mask bit above the widened 8-bit wire is refused, not truncated —
-            // this refusal is a GENERATED guard (the runtime's raw bit calls mask
-            // silently), so bool is the whole verdict: nothing latches
+            // a mask bit above the widened 8-bit wire breaks the WRITER's
+            // contract. That contract is a Debug.Assert in the generated code —
+            // write-side checks are caller error and DEBUG ONLY (SPEC §5), the
+            // idiom serialize.cs's own WriteStream uses — so it is gone from a
+            // release build along with the call. This leg runs Debug (`dotnet
+            // run`, no -c), where the assertion would FailFast the process, so
+            // the violation is only exercised in a release build.
             input.Flags = 1ul << 9;
+#if !DEBUG
             WriteStream ws2 = NewWriteStream();
-            Check(!WriteProbeReport(ws2, input), "a mask bit above the flags wire width is refused");
-            Check(ws2.Error == SerializeError.None, "the generated guard refuses via bool alone — nothing latches");
+            Check(WriteProbeReport(ws2, input), "release: the flags contract is compiled out — the write is not refused");
+            Check(ws2.Error == SerializeError.None, "release: nothing latches on the write side");
+#endif
+            input.Flags = ProbeFlagsArmed; // back inside the contract for anything after
         }
 
         // ---- Block: the bytes(N) framing ----

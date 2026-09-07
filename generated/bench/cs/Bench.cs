@@ -4,13 +4,22 @@
 // AGPL-3.0, its output is not.
 // package bench — protocol id 0x8d12c3149393f40f
 //
-// Wire functions return bool — the C++-style early-out. A schema validation
-// failure (a wrong wire constant, nonzero reserved bits, an interior null)
-// returns false WITHOUT latching; stream failures latch on stream.Error —
-// the runtime's own sticky latch. Callers get bool always; Error tells the
-// two apart.
+// Wire functions return bool — the C++-style early-out. A READ-side schema
+// validation failure (a wrong wire constant, nonzero reserved bits, an
+// interior null) returns false WITHOUT latching; stream failures latch on
+// stream.Error — the runtime's own sticky latch. Callers get bool always;
+// Error tells the two apart.
+//
+// WRITE-side contracts — a value outside its declared range, a count or a
+// length outside its bound, a mask bit above the wire width, an interior
+// null in a wide string — are CALLER ERROR and ride on Debug.Assert, so
+// they compile out of a release build along with the call, exactly as
+// serialize.cs's own WriteStream does. In a shipping release build it is
+// the caller's responsibility to be correct on the write side; every check
+// the reader needs is on the read side and runs in every build.
 
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Serialize;
 
@@ -265,18 +274,9 @@ namespace Bench
         {
             {
                 // flat run: 89 bits in 2 chunk(s) — the field placement is folded
-                if (value.A < -100 || value.A > 100)
-                {
-                    return false;
-                }
-                if (value.B < 0 || value.B > 65535)
-                {
-                    return false;
-                }
-                if (value.C < -1000000 || value.C > 1000000)
-                {
-                    return false;
-                }
+                Debug.Assert(value.A >= -100 && value.A <= 100, "value.A out of range [-100, 100]");
+                Debug.Assert(value.B >= 0 && value.B <= 65535, "value.B out of range [0, 65535]");
+                Debug.Assert(value.C >= -1000000 && value.C <= 1000000, "value.C out of range [-1000000, 1000000]");
                 ulong f0 = ((ulong)((uint)(value.A) - unchecked((uint)(-100)))) & 0xffUL;
                 ulong f1 = ((ulong)((uint)(value.B))) & 0xffffUL;
                 ulong f2 = ((ulong)((uint)(value.C) - unchecked((uint)(-1000000)))) & 0x1fffffUL;
@@ -432,46 +432,16 @@ namespace Bench
         {
             {
                 // flat run: 110 bits in 2 chunk(s) — the field placement is folded
-                if (value.F0 < -100 || value.F0 > 100)
-                {
-                    return false;
-                }
-                if (value.F1 < 0 || value.F1 > 65535)
-                {
-                    return false;
-                }
-                if (value.F2 < -1000000 || value.F2 > 1000000)
-                {
-                    return false;
-                }
-                if (value.F3 < 0 || value.F3 > 3)
-                {
-                    return false;
-                }
-                if (value.F4 < -15 || value.F4 > 15)
-                {
-                    return false;
-                }
-                if (value.F5 < 0 || value.F5 > 1000)
-                {
-                    return false;
-                }
-                if (value.F6 < -2048 || value.F6 > 2047)
-                {
-                    return false;
-                }
-                if (value.F7 < 0 || value.F7 > 255)
-                {
-                    return false;
-                }
-                if (value.F8 < -600000 || value.F8 > 600000)
-                {
-                    return false;
-                }
-                if (value.F9 < 0 || value.F9 > 100)
-                {
-                    return false;
-                }
+                Debug.Assert(value.F0 >= -100 && value.F0 <= 100, "value.F0 out of range [-100, 100]");
+                Debug.Assert(value.F1 >= 0 && value.F1 <= 65535, "value.F1 out of range [0, 65535]");
+                Debug.Assert(value.F2 >= -1000000 && value.F2 <= 1000000, "value.F2 out of range [-1000000, 1000000]");
+                Debug.Assert(value.F3 >= 0 && value.F3 <= 3, "value.F3 out of range [0, 3]");
+                Debug.Assert(value.F4 >= -15 && value.F4 <= 15, "value.F4 out of range [-15, 15]");
+                Debug.Assert(value.F5 >= 0 && value.F5 <= 1000, "value.F5 out of range [0, 1000]");
+                Debug.Assert(value.F6 >= -2048 && value.F6 <= 2047, "value.F6 out of range [-2048, 2047]");
+                Debug.Assert(value.F7 >= 0 && value.F7 <= 255, "value.F7 out of range [0, 255]");
+                Debug.Assert(value.F8 >= -600000 && value.F8 <= 600000, "value.F8 out of range [-600000, 600000]");
+                Debug.Assert(value.F9 >= 0 && value.F9 <= 100, "value.F9 out of range [0, 100]");
                 ulong f0 = ((ulong)((uint)(value.F0) - unchecked((uint)(-100)))) & 0xffUL;
                 ulong f1 = ((ulong)((uint)(value.F1))) & 0xffffUL;
                 ulong f2 = ((ulong)((uint)(value.F2) - unchecked((uint)(-1000000)))) & 0x1fffffUL;
@@ -853,42 +823,15 @@ namespace Bench
         {
             {
                 // flat run: 135 bits in 3 chunk(s) — the field placement is folded
-                if (value.PosX < -16383 || value.PosX > 16383)
-                {
-                    return false;
-                }
-                if (value.PosY < -16383 || value.PosY > 16383)
-                {
-                    return false;
-                }
-                if (value.PosZ < -16383 || value.PosZ > 16383)
-                {
-                    return false;
-                }
-                if (value.VelX < -2048 || value.VelX > 2047)
-                {
-                    return false;
-                }
-                if (value.VelY < -2048 || value.VelY > 2047)
-                {
-                    return false;
-                }
-                if (value.VelZ < -2048 || value.VelZ > 2047)
-                {
-                    return false;
-                }
-                if (value.Health < 0 || value.Health > 1000)
-                {
-                    return false;
-                }
-                if ((uint)value.Weapon > 15) // headroom above the wire range cannot ride
-                {
-                    return false;
-                }
-                if (value.Damage >= 1ul << 8) // a mask bit above the wire width cannot ride
-                {
-                    return false;
-                }
+                Debug.Assert(value.PosX >= -16383 && value.PosX <= 16383, "value.PosX out of range [-16383, 16383]");
+                Debug.Assert(value.PosY >= -16383 && value.PosY <= 16383, "value.PosY out of range [-16383, 16383]");
+                Debug.Assert(value.PosZ >= -16383 && value.PosZ <= 16383, "value.PosZ out of range [-16383, 16383]");
+                Debug.Assert(value.VelX >= -2048 && value.VelX <= 2047, "value.VelX out of range [-2048, 2047]");
+                Debug.Assert(value.VelY >= -2048 && value.VelY <= 2047, "value.VelY out of range [-2048, 2047]");
+                Debug.Assert(value.VelZ >= -2048 && value.VelZ <= 2047, "value.VelZ out of range [-2048, 2047]");
+                Debug.Assert(value.Health >= 0 && value.Health <= 1000, "value.Health out of range [0, 1000]");
+                Debug.Assert((uint)value.Weapon <= 15, "value.Weapon above the enum wire range [0, 15]"); // headroom above the wire range cannot ride
+                Debug.Assert(value.Damage < 1ul << 8, "value.Damage has a mask bit above the 8-bit wire width"); // a mask bit above the wire width cannot ride
                 ulong f0 = ((ulong)value.EntityId) & 0xfffUL;
                 ulong f1 = ((ulong)((uint)(value.PosX) - unchecked((uint)(-16383)))) & 0x7fffUL;
                 ulong f2 = ((ulong)((uint)(value.PosY) - unchecked((uint)(-16383)))) & 0x7fffUL;
@@ -1030,10 +973,7 @@ namespace Bench
         {
             {
                 // flat run: 18 bits in 1 chunk(s) — the field placement is folded
-                if (value.Delta < -512 || value.Delta > 511)
-                {
-                    return false;
-                }
+                Debug.Assert(value.Delta >= -512 && value.Delta <= 511, "value.Delta out of range [-512, 511]");
                 ulong f0 = ((ulong)value.StatId) & 0xffUL;
                 ulong f1 = ((ulong)((uint)(value.Delta) - unchecked((uint)(-512)))) & 0x3ffUL;
                 uint w0 = (uint)(f0 | (f1 << 8));
@@ -1113,14 +1053,8 @@ namespace Bench
         {
             {
                 // flat run: 28 bits in 1 chunk(s) — the field placement is folded
-                if (value.Damage < 0 || value.Damage > 4095)
-                {
-                    return false;
-                }
-                if (value.HitKind < 0 || value.HitKind > 7)
-                {
-                    return false;
-                }
+                Debug.Assert(value.Damage >= 0 && value.Damage <= 4095, "value.Damage out of range [0, 4095]");
+                Debug.Assert(value.HitKind >= 0 && value.HitKind <= 7, "value.HitKind out of range [0, 7]");
                 ulong f0 = ((ulong)value.TargetId) & 0xfffUL;
                 ulong f1 = ((ulong)((uint)(value.Damage))) & 0xfffUL;
                 ulong f2 = ((ulong)((uint)(value.HitKind))) & 0x7UL;
@@ -1202,10 +1136,7 @@ namespace Bench
         {
             {
                 // flat run: 14 bits in 1 chunk(s) — the field placement is folded
-                if (value.Channel < 0 || value.Channel > 3)
-                {
-                    return false;
-                }
+                Debug.Assert(value.Channel >= 0 && value.Channel <= 3, "value.Channel out of range [0, 3]");
                 ulong f0 = ((ulong)((uint)(value.Channel))) & 0x3UL;
                 ulong f1 = ((ulong)value.Speaker) & 0xfffUL;
                 uint w0 = (uint)(f0 | (f1 << 2));
@@ -1281,10 +1212,7 @@ namespace Bench
         {
             {
                 // flat run: 18 bits in 1 chunk(s) — the field placement is folded
-                if (value.Amount < 0 || value.Amount > 255)
-                {
-                    return false;
-                }
+                Debug.Assert(value.Amount >= 0 && value.Amount <= 255, "value.Amount out of range [0, 255]");
                 ulong f0 = ((ulong)value.ItemId) & 0x3ffUL;
                 ulong f1 = ((ulong)((uint)(value.Amount))) & 0xffUL;
                 uint w0 = (uint)(f0 | (f1 << 10));
@@ -1372,10 +1300,7 @@ namespace Bench
         private static bool WriteMixedEventBatch(ref WriteBatch batch, MixedEvent value)
         {
             uint tagValue = (uint)value.Type;
-            if (tagValue > 3) // the tag validates BEFORE it rides (SPEC §4.8)
-            {
-                return false;
-            }
+            Debug.Assert(tagValue <= 3, "the union tag is outside the variant set [0, 3]"); // the tag contract holds BEFORE it rides (SPEC §4.8)
             if (!batch.SerializeBits(ref tagValue, 2))
             {
                 return false;
@@ -1518,14 +1443,8 @@ namespace Bench
         {
             {
                 // flat run: 329 bits in 6 chunk(s) — the field placement is folded
-                if (value.AckSequence < 0 || value.AckSequence > 65535)
-                {
-                    return false;
-                }
-                if (value.WorldTime < -1000000000000 || value.WorldTime > 1000000000000)
-                {
-                    return false;
-                }
+                Debug.Assert(value.AckSequence >= 0 && value.AckSequence <= 65535, "value.AckSequence out of range [0, 65535]");
+                Debug.Assert(value.WorldTime >= -1000000000000 && value.WorldTime <= 1000000000000, "value.WorldTime out of range [-1000000000000, 1000000000000]");
                 ulong f0 = (49374UL) & 0xffffUL;
                 ulong f1 = ((ulong)value.Sequence) & 0xffffUL;
                 ulong f2 = ((ulong)((uint)(value.AckSequence))) & 0xffffUL;
@@ -1570,10 +1489,7 @@ namespace Bench
             {
                 return false;
             }
-            if (value.EntitiesCount < 1 || value.EntitiesCount > 8) // the count guards the loop (§6.3); out-of-contract writes are refused
-            {
-                return false;
-            }
+            Debug.Assert(value.EntitiesCount >= 1 && value.EntitiesCount <= 8, "value.EntitiesCount out of range [1, 8]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
                 uint offsetValue = (uint)(value.EntitiesCount) - (uint)(1);
                 if (!stream.SerializeBits(ref offsetValue, 3))
@@ -1599,10 +1515,7 @@ namespace Bench
                     return false;
                 }
             }
-            if (value.StatsCount < 0 || value.StatsCount > 80) // the count guards the loop (§6.3); out-of-contract writes are refused
-            {
-                return false;
-            }
+            Debug.Assert(value.StatsCount >= 0 && value.StatsCount <= 80, "value.StatsCount out of range [0, 80]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
                 uint offsetValue = (uint)(value.StatsCount);
                 if (!stream.SerializeBits(ref offsetValue, 7))
@@ -1648,10 +1561,7 @@ namespace Bench
                     }
                 }
             }
-            if (value.PlayerNameLength < 0 || value.PlayerNameLength > 15) // the length guards the slice (§6.3); out-of-contract writes are refused
-            {
-                return false;
-            }
+            Debug.Assert(value.PlayerNameLength >= 0 && value.PlayerNameLength <= 15, "value.PlayerNameLength out of range [0, 15]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
             {
                 uint offsetValue = (uint)(value.PlayerNameLength);
                 if (!stream.SerializeBits(ref offsetValue, 4))
@@ -1663,10 +1573,7 @@ namespace Bench
             {
                 return false;
             }
-            if (value.PayloadLength < 0 || value.PayloadLength > 16) // the length guards the slice (§6.3); out-of-contract writes are refused
-            {
-                return false;
-            }
+            Debug.Assert(value.PayloadLength >= 0 && value.PayloadLength <= 16, "value.PayloadLength out of range [0, 16]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
             {
                 uint offsetValue = (uint)(value.PayloadLength);
                 if (!stream.SerializeBits(ref offsetValue, 5))
@@ -1742,10 +1649,7 @@ namespace Bench
             }
             if (value.HasExtra)
             {
-                if (value.Extra < 0 || value.Extra > 255)
-                {
-                    return false;
-                }
+                Debug.Assert(value.Extra >= 0 && value.Extra <= 255, "value.Extra out of range [0, 255]");
                 {
                     uint offsetValue = (uint)(value.Extra);
                     if (!stream.SerializeBits(ref offsetValue, 8))
@@ -1756,10 +1660,7 @@ namespace Bench
             }
             else
             {
-                if (value.IdleTicks < 0 || value.IdleTicks > 15)
-                {
-                    return false;
-                }
+                Debug.Assert(value.IdleTicks >= 0 && value.IdleTicks <= 15, "value.IdleTicks out of range [0, 15]");
                 {
                     uint offsetValue = (uint)(value.IdleTicks);
                     if (!stream.SerializeBits(ref offsetValue, 4))

@@ -4,13 +4,22 @@
 // AGPL-3.0, its output is not.
 // package ludicrous — protocol id 0xf4a226f4166d919b
 //
-// Wire functions return bool — the C++-style early-out. A schema validation
-// failure (a wrong wire constant, nonzero reserved bits, an interior null)
-// returns false WITHOUT latching; stream failures latch on stream.Error —
-// the runtime's own sticky latch. Callers get bool always; Error tells the
-// two apart.
+// Wire functions return bool — the C++-style early-out. A READ-side schema
+// validation failure (a wrong wire constant, nonzero reserved bits, an
+// interior null) returns false WITHOUT latching; stream failures latch on
+// stream.Error — the runtime's own sticky latch. Callers get bool always;
+// Error tells the two apart.
+//
+// WRITE-side contracts — a value outside its declared range, a count or a
+// length outside its bound, a mask bit above the wire width, an interior
+// null in a wide string — are CALLER ERROR and ride on Debug.Assert, so
+// they compile out of a release build along with the call, exactly as
+// serialize.cs's own WriteStream does. In a shipping release build it is
+// the caller's responsibility to be correct on the write side; every check
+// the reader needs is on the read side and runs in every build.
 
 using System;
+using System.Diagnostics;
 using Serialize;
 
 namespace Ludicrous
@@ -267,10 +276,7 @@ namespace Ludicrous
                     return false;
                 }
             }
-            if ((ulong)value.Locked != 196608UL)
-            {
-                return false;
-            }
+            Debug.Assert((ulong)value.Locked == 196608UL, "value.Locked is not 196608, the one legal raw of a degenerate fixed range");
             {
                 uint rawValue = value.Tail;
                 if (!stream.SerializeBits(ref rawValue, 8))
@@ -426,10 +432,7 @@ namespace Ludicrous
         {
             {
                 uint enumValue = (uint)value.Mode;
-                if (enumValue > 3) // headroom above the wire range cannot ride
-                {
-                    return false;
-                }
+                Debug.Assert(enumValue <= 3, "value.Mode above the enum wire range [0, 3]"); // headroom above the wire range cannot ride
                 if (!stream.SerializeBits(ref enumValue, 2))
                 {
                     return false;
@@ -443,10 +446,7 @@ namespace Ludicrous
             {
                 return false;
             }
-            if (value.KeysCount < 0 || value.KeysCount > 4) // the count guards the loop (§6.3); out-of-contract writes are refused
-            {
-                return false;
-            }
+            Debug.Assert(value.KeysCount >= 0 && value.KeysCount <= 4, "value.KeysCount out of range [0, 4]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
                 uint offsetValue = (uint)(value.KeysCount);
                 if (!stream.SerializeBits(ref offsetValue, 3))
@@ -547,18 +547,9 @@ namespace Ludicrous
 
         public static bool WriteDegenerateProbe(WriteStream stream, DegenerateProbe value)
         {
-            if ((long)value.LockedFixed != -196608L)
-            {
-                return false;
-            }
-            if (value.LockedInt < 7 || value.LockedInt > 7)
-            {
-                return false;
-            }
-            if (value.LockedWide != (Int128Value)(-12345678901234L))
-            {
-                return false;
-            }
+            Debug.Assert((long)value.LockedFixed == -196608L, "value.LockedFixed is not -196608, the one legal raw of a degenerate fixed range");
+            Debug.Assert(value.LockedInt >= 7 && value.LockedInt <= 7, "value.LockedInt out of range [7, 7]");
+            Debug.Assert(value.LockedWide == (Int128Value)(-12345678901234L), "value.LockedWide is not the one legal value of a degenerate int128 range");
             {
                 uint rawValue = value.Tail;
                 if (!stream.SerializeBits(ref rawValue, 8))

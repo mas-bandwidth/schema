@@ -5,6 +5,7 @@
 // package example — protocol id 0x8656ae68c06b97a7
 
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Serialize;
 
@@ -213,10 +214,7 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteW13Batch(ref WriteBatch batch, W13 value)
         {
-            if (value.ItemsCount < 0 || value.ItemsCount > 12) // the count guards the loop (§6.3); out-of-contract writes are refused
-            {
-                return false;
-            }
+            Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 12, "value.ItemsCount out of range [0, 12]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
                 uint offsetValue = (uint)(value.ItemsCount);
                 if (!batch.SerializeBits(ref offsetValue, 4))
@@ -226,10 +224,7 @@ namespace Example
             }
             for (int i = 0; i < value.ItemsCount; i++)
             {
-                if (value.Items[i] > 8191)
-                {
-                    return false;
-                }
+                Debug.Assert(value.Items[i] <= 8191, "value.Items[i] out of range [0, 8191]");
                 {
                     uint offsetValue = (uint)(value.Items[i]);
                     if (!batch.SerializeBits(ref offsetValue, 13))
@@ -304,10 +299,7 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteW17Batch(ref WriteBatch batch, W17 value)
         {
-            if (value.ItemsCount < 0 || value.ItemsCount > 9) // the count guards the loop (§6.3); out-of-contract writes are refused
-            {
-                return false;
-            }
+            Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 9, "value.ItemsCount out of range [0, 9]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
                 uint offsetValue = (uint)(value.ItemsCount);
                 if (!batch.SerializeBits(ref offsetValue, 4))
@@ -317,10 +309,7 @@ namespace Example
             }
             for (int i = 0; i < value.ItemsCount; i++)
             {
-                if (value.Items[i] > 131071)
-                {
-                    return false;
-                }
+                Debug.Assert(value.Items[i] <= 131071, "value.Items[i] out of range [0, 131071]");
                 {
                     uint offsetValue = (uint)(value.Items[i]);
                     if (!batch.SerializeBits(ref offsetValue, 17))
@@ -395,10 +384,7 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteW26Batch(ref WriteBatch batch, W26 value)
         {
-            if (value.ItemsCount < 0 || value.ItemsCount > 6) // the count guards the loop (§6.3); out-of-contract writes are refused
-            {
-                return false;
-            }
+            Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 6, "value.ItemsCount out of range [0, 6]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
                 uint offsetValue = (uint)(value.ItemsCount);
                 if (!batch.SerializeBits(ref offsetValue, 3))
@@ -408,10 +394,7 @@ namespace Example
             }
             for (int i = 0; i < value.ItemsCount; i++)
             {
-                if (value.Items[i] > 67108863)
-                {
-                    return false;
-                }
+                Debug.Assert(value.Items[i] <= 67108863, "value.Items[i] out of range [0, 67108863]");
                 {
                     uint offsetValue = (uint)(value.Items[i]);
                     if (!batch.SerializeBits(ref offsetValue, 26))
@@ -486,10 +469,7 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteW1Batch(ref WriteBatch batch, W1 value)
         {
-            if (value.ItemsCount < 0 || value.ItemsCount > 20) // the count guards the loop (§6.3); out-of-contract writes are refused
-            {
-                return false;
-            }
+            Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 20, "value.ItemsCount out of range [0, 20]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
                 uint offsetValue = (uint)(value.ItemsCount);
                 if (!batch.SerializeBits(ref offsetValue, 5))
@@ -499,10 +479,7 @@ namespace Example
             }
             for (int i = 0; i < value.ItemsCount; i++)
             {
-                if (value.Items[i] > 1)
-                {
-                    return false;
-                }
+                Debug.Assert(value.Items[i] <= 1, "value.Items[i] out of range [0, 1]");
                 {
                     uint offsetValue = (uint)(value.Items[i]);
                     if (!batch.SerializeBits(ref offsetValue, 1))
@@ -577,10 +554,7 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteW52Batch(ref WriteBatch batch, W52 value)
         {
-            if (value.ItemsCount < 0 || value.ItemsCount > 3) // the count guards the loop (§6.3); out-of-contract writes are refused
-            {
-                return false;
-            }
+            Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 3, "value.ItemsCount out of range [0, 3]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
                 uint offsetValue = (uint)(value.ItemsCount);
                 if (!batch.SerializeBits(ref offsetValue, 2))
@@ -590,10 +564,7 @@ namespace Example
             }
             for (int i = 0; i < value.ItemsCount; i++)
             {
-                if (value.Items[i] > 4503599627370495)
-                {
-                    return false;
-                }
+                Debug.Assert(value.Items[i] <= 4503599627370495, "value.Items[i] out of range [0, 4503599627370495]");
                 {
                     ulong offsetValue = (ulong)(value.Items[i]);
                     if (!batch.SerializeBits64(ref offsetValue, 52))
@@ -668,10 +639,7 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteW50Batch(ref WriteBatch batch, W50 value)
         {
-            if (value.ItemsCount < 0 || value.ItemsCount > 3) // the count guards the loop (§6.3); out-of-contract writes are refused
-            {
-                return false;
-            }
+            Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 3, "value.ItemsCount out of range [0, 3]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
                 uint offsetValue = (uint)(value.ItemsCount);
                 if (!batch.SerializeBits(ref offsetValue, 2))
@@ -681,10 +649,7 @@ namespace Example
             }
             for (int i = 0; i < value.ItemsCount; i++)
             {
-                if (value.Items[i] > 1125899906842623)
-                {
-                    return false;
-                }
+                Debug.Assert(value.Items[i] <= 1125899906842623, "value.Items[i] out of range [0, 1125899906842623]");
                 {
                     ulong offsetValue = (ulong)(value.Items[i]);
                     if (!batch.SerializeBits64(ref offsetValue, 50))
@@ -759,10 +724,7 @@ namespace Example
         {
             for (int i = 0; i < 7; i++)
             {
-                if (value.Items[i] > 8191)
-                {
-                    return false;
-                }
+                Debug.Assert(value.Items[i] <= 8191, "value.Items[i] out of range [0, 8191]");
                 {
                     uint offsetValue = (uint)(value.Items[i]);
                     if (!batch.SerializeBits(ref offsetValue, 13))
@@ -914,10 +876,7 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteArrTri3Batch(ref WriteBatch batch, ArrTri3 value)
         {
-            if (value.ItemsCount < 0 || value.ItemsCount > 10) // the count guards the loop (§6.3); out-of-contract writes are refused
-            {
-                return false;
-            }
+            Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 10, "value.ItemsCount out of range [0, 10]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
                 uint offsetValue = (uint)(value.ItemsCount);
                 if (!batch.SerializeBits(ref offsetValue, 4))
@@ -1224,10 +1183,7 @@ namespace Example
         public static bool WriteEmptyUnion(WriteStream stream, EmptyUnion value)
         {
             uint tagValue = (uint)value.Type;
-            if (tagValue > 2) // the tag validates BEFORE it rides (SPEC §4.8)
-            {
-                return false;
-            }
+            Debug.Assert(tagValue <= 2, "the union tag is outside the variant set [0, 2]"); // the tag contract holds BEFORE it rides (SPEC §4.8)
             if (!stream.SerializeBits(ref tagValue, 2))
             {
                 return false;
@@ -1247,10 +1203,7 @@ namespace Example
         private static bool WriteEmptyUnionBatch(ref WriteBatch batch, EmptyUnion value)
         {
             uint tagValue = (uint)value.Type;
-            if (tagValue > 2) // the tag validates BEFORE it rides (SPEC §4.8)
-            {
-                return false;
-            }
+            Debug.Assert(tagValue <= 2, "the union tag is outside the variant set [0, 2]"); // the tag contract holds BEFORE it rides (SPEC §4.8)
             if (!batch.SerializeBits(ref tagValue, 2))
             {
                 return false;
@@ -1417,10 +1370,7 @@ namespace Example
             {
                 return false;
             }
-            if (value.SLength < 0 || value.SLength > 8) // the length guards the slice (§6.3); out-of-contract writes are refused
-            {
-                return false;
-            }
+            Debug.Assert(value.SLength >= 0 && value.SLength <= 8, "value.SLength out of range [0, 8]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
             {
                 uint offsetValue = (uint)(value.SLength);
                 if (!stream.SerializeBits(ref offsetValue, 4))
@@ -1432,10 +1382,7 @@ namespace Example
             {
                 return false;
             }
-            if (value.BLength < 0 || value.BLength > 8) // the length guards the slice (§6.3); out-of-contract writes are refused
-            {
-                return false;
-            }
+            Debug.Assert(value.BLength >= 0 && value.BLength <= 8, "value.BLength out of range [0, 8]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
             {
                 uint offsetValue = (uint)(value.BLength);
                 if (!stream.SerializeBits(ref offsetValue, 4))
@@ -1557,10 +1504,7 @@ namespace Example
             {
                 return false;
             }
-            if (value.ItemsCount < 0 || value.ItemsCount > 4) // the count guards the loop (§6.3); out-of-contract writes are refused
-            {
-                return false;
-            }
+            Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 4, "value.ItemsCount out of range [0, 4]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
                 uint offsetValue = (uint)(value.ItemsCount);
                 if (!batch.SerializeBits(ref offsetValue, 3))

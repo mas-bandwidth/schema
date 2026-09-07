@@ -386,6 +386,7 @@ test-cs: toolchain-cs build/tables-generated-cs/.stamp generated/bench/tables/cs
 	$(DOTNET) build bench/tables/cs -c Release --nologo -v quiet
 	cd bench/cs && $(DOTNET) build -c Release --nologo -v quiet
 	cd test/cs && $(DOTNET) run
+	cd test/cs && $(DOTNET) run -c Release
 	cd test/cs-ludicrous && $(DOTNET) run
 
 TEST_LEGS         += test-cs

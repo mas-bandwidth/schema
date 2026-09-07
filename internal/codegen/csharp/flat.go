@@ -285,8 +285,9 @@ func (g *gen) flatWriteFieldPiece(item *ir.FieldItem) (flatPiece, bool) {
 			}
 			return flatPiece{item: item, bits: w,
 				guard: func(ind string) {
-					g.sf("%sif (%s >= 1ul << %d) // a mask bit above the wire width cannot ride\n", ind, name, w)
-					g.sf("%s{\n%s    return false;\n%s}\n", ind, ind, ind)
+					g.writeAssert(ind, fmt.Sprintf("%s < 1ul << %d", name, w),
+						fmt.Sprintf("%s has a mask bit above the %d-bit wire width", name, w),
+						" // a mask bit above the wire width cannot ride")
 				},
 				expr: flatMasked(name, w)}, true
 		}
@@ -313,9 +314,8 @@ func (g *gen) flatWriteBarePiece(item *ir.FieldItem, name string) (flatPiece, bo
 }
 
 // flatWriteRangedPiece is a ranged integer: the offset from min in a
-// generation-time bit count, with the same refusal emitWriteFoldedRange
-// emits — the same guard, the same vacuous halves elided, the same
-// non-latching false.
+// generation-time bit count, with the same contract emitWriteFoldedRange
+// emits — the same debug assertion, the same vacuous halves elided.
 func (g *gen) flatWriteRangedPiece(item *ir.FieldItem, name string) (flatPiece, bool) {
 	f := item.F
 	bits := ir.BitsRequired(f.IntMin, f.IntMax)
@@ -345,14 +345,15 @@ func (g *gen) flatWriteRangedPiece(item *ir.FieldItem, name string) (flatPiece, 
 		}
 		lo, hi = g.rangeArgs(f, typ)
 	}
+	msg := fmt.Sprintf("%s out of range [%s, %s]", name, lo, hi)
 	guard := func(ind string) {
 		switch {
 		case guardLo && guardHi:
-			g.sf("%sif (%s < %s || %s > %s)\n%s{\n%s    return false;\n%s}\n", ind, name, lo, name, hi, ind, ind, ind)
+			g.writeAssert(ind, fmt.Sprintf("%s >= %s && %s <= %s", name, lo, name, hi), msg, "")
 		case guardLo:
-			g.sf("%sif (%s < %s)\n%s{\n%s    return false;\n%s}\n", ind, name, lo, ind, ind, ind)
+			g.writeAssert(ind, fmt.Sprintf("%s >= %s", name, lo), msg, "")
 		case guardHi:
-			g.sf("%sif (%s > %s)\n%s{\n%s    return false;\n%s}\n", ind, name, hi, ind, ind, ind)
+			g.writeAssert(ind, fmt.Sprintf("%s <= %s", name, hi), msg, "")
 		}
 	}
 	if bits == 0 {
@@ -372,7 +373,8 @@ func (g *gen) flatWriteRangedPiece(item *ir.FieldItem, name string) (flatPiece, 
 }
 
 // flatWriteEnumPiece is an enum in [0, Max] with a generation-time bit count,
-// carrying the headroom guard the per-field form carries.
+// carrying the headroom contract the per-field form carries, in the same
+// debug-only form.
 func (g *gen) flatWriteEnumPiece(item *ir.FieldItem, ref *ir.Enum, name string) (flatPiece, bool) {
 	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(ref.Max))
 	if bits > 64 {
@@ -385,8 +387,9 @@ func (g *gen) flatWriteEnumPiece(item *ir.FieldItem, ref *ir.Enum, name string) 
 	var guard func(ind string)
 	if big.NewInt(ref.Max).Cmp(new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(ref.StorageBits)), big.NewInt(1))) < 0 {
 		guard = func(ind string) {
-			g.sf("%sif ((%s)%s > %d) // headroom above the wire range cannot ride\n", ind, typ, name, ref.Max)
-			g.sf("%s{\n%s    return false;\n%s}\n", ind, ind, ind)
+			g.writeAssert(ind, fmt.Sprintf("(%s)%s <= %d", typ, name, ref.Max),
+				fmt.Sprintf("%s above the enum wire range [0, %d]", name, ref.Max),
+				" // headroom above the wire range cannot ride")
 		}
 	}
 	if bits == 0 {

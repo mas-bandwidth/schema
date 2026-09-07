@@ -160,9 +160,17 @@ union tag outside its variant set (§4.8) was the last structural holdout — it
 to be dispatch rather than a guard — and it too is a `serialize_assert` now, so a C or C++
 release build performs no write-side validation whatsoever. Every
 read-side check stays in every build everywhere, by the other half of the same ruling: "Of
-course, on read side we MUST always do the checks!" Rust, C# and Go carry bounds, range and
-sticky-error checks in every build by contract, Rust's and C#'s pending their own change. A
-ratio between two of those columns includes the price of a different promise.
+course, on read side we MUST always do the checks!" **Rust moved the same day**, every
+write-side check becoming a `debug_assert!` that a release profile drops, and its bench runner
+records `checks=removed` from 2026-09-07; safe Rust's own slice bounds checks survive release
+and are a language residual that column does not price. **C# moved the same day too**: every
+write-side caller-error check the C# backend emits is a `Debug.Assert`, gone from a release
+build along with the call, beside a serialize.cs runtime whose write path was already
+`Debug.Assert` only, and the C# bench runner records `checks=removed` from 2026-09-07 (it
+recorded `always` before, on a justification that was never true of the write path). Go alone
+carries bounds, range and sticky-error checks in every build by contract, because it has no
+debug-only idiom to compile out. A ratio between two of those columns includes the price of a
+different promise.
 
 **Measured the same day, the C change bought nothing the instrument can see.** A twins pass on
 the C and C++ legs with the asserts in place
