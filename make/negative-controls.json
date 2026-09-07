@@ -214,10 +214,17 @@
     {
       "name": "base-pack",
       "when": "pull-request",
-      "why": "the pack golden's framing control and the JSON number grammar's hostile-value control: one pack corpus, one JSON engine, and a `go build -overlay` each. Measured 20 s over 2 controls in one invocation, off one warm build, most of it the sanitized build of the hostile-value driver.",
+      "why": "the pack golden's framing control: elide a present `?T` in the Go encoder and the byte comparison against the C++ Save has to go red. Measured 7 s off one warm build.",
       "targets": [
-        "tables-hostile-negative-control",
         "tables-pack-negative-control"
+      ]
+    },
+    {
+      "name": "base-hostile",
+      "when": "pull-request",
+      "why": "the JSON number grammar's hostile-value control, alone. Its floor is the SANITIZED build of the hostile-value driver, which no other control shares, and the two pack controls in one job were 81 s of control time in a 113 s job on run 34120798793, the tightest job in the leg. Measured 14 s off one warm build.",
+      "targets": [
+        "tables-hostile-negative-control"
       ]
     },
     {

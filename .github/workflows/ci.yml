@@ -780,11 +780,11 @@ jobs:
   #
   # MEASURED, 2026-09-07 on the author's machine (arm64 macOS, one target per
   # make invocation, off one warm build) and then on the runner, on this
-  # branch's own pull-request runs. 203 controls, 39 pull-request groups and
+  # branch's own pull-request runs. 203 controls, 40 pull-request groups and
   # one nightly group. `go run ./tools/negativecontrols check` prints the
   # count, so it is one command rather than a number to keep in step by hand.
   #
-  # The base toolchain carries 134 of them and takes twenty-seven jobs rather
+  # The base toolchain carries 134 of them and takes twenty-eight jobs rather
   # than one: the map gate alone is 17 controls at 4 s each on the author's
   # machine and about 2x that on the runner, and the conformance driver's two
   # sabotage rebuilds are 45 s and 47 s of runner time on their own. The

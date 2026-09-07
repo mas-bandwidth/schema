@@ -126,7 +126,7 @@ groups each add the one SDK their controls need, and `block-fuzz` needs two.
 runs per commit: one minute, two at the most.** It is a rule about a job, and
 a matrix row is a job, so each group is cut to fit two minutes on the runner
 rather than the leg as a whole being cut to fit. That is why the map gate runs
-as two groups, why the tolerant-wire family runs one control per job (each of
+as four groups, why the tolerant-wire family runs one control per job (each of
 those rebuilds the compiler under a source overlay and then fuzzes the
 sabotaged wire, which costs 55 to 75 seconds), and why there are more groups
 than toolchains.
