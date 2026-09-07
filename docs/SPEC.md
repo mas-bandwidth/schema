@@ -1595,7 +1595,7 @@ union Value
   carries. **All nine backends carry payload-free arms on the packet wire.**
   C and C++ emit no member for such an arm; selecting it sets the tag alone.
   If no arm has a payload, their generated struct holds only its tag, with no
-  empty storage union. The table side remains C++ only (SPEC-TABLES.md §11, §15).
+  empty storage union. The table side is C++ only (SPEC-TABLES.md §11, §15).
 - **The implicit None row.** Entry 0 of every union is **None — no
   payload** — mirroring the enum sentinel-zero convention: optionality
   rides in-band as the natural stream terminator, a zero-initialized
@@ -1665,7 +1665,8 @@ union Value
   the two are told apart by the tag's value and by nothing else.
   Tag 0 = None costs the tag bits and nothing else. The read path
   **rejects a tag above the count** — refusal, never clamping, the ranged-
-  integer rule. MaxBits = tag bits + the largest payload's MaxBits.
+  integer rule. MaxBits = tag bits + the largest payload's MaxBits; a union
+  no arm of which carries a payload has MaxBits equal to its tag bits.
   `Write<Union>` validates the tag BEFORE it rides — an out-of-set tag
   value in storage writes nothing and fails, it never desyncs the stream.
 - **Selection uses ordinary construction (§4.2).** Selecting an arm with a
