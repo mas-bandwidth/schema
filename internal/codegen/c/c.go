@@ -488,6 +488,9 @@ func (g *gen) emitField(f *ir.Field) {
 	case f.Type.Kind == ir.TBytes:
 		g.pf("    uint8_t %s[%s];\n", name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)))
 		g.pf("    int32_t %s_length;\n", name)
+	case f.Type.Kind == ir.TWString:
+		g.pf("    uint16_t %s[%s + 1]; /* UTF-16 code units, plus the read terminator (SPEC §4.12) */\n", name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)))
+		g.pf("    int32_t %s_length;\n", name)
 	case f.Array == ir.ArrayFixed:
 		g.pf("    %s %s[%s];\n", g.storageType(f), name, g.renderInt(f.ArrayExpr, big.NewInt(f.ArrayBound)))
 	case f.Array == ir.ArrayCounted:
@@ -815,7 +818,7 @@ func (g *gen) emitZeroItems(items []ir.Item, ind string) {
 
 func (g *gen) emitZeroField(f *ir.Field, ind string) {
 	switch {
-	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TWString:
 		g.pf("%smemset( value->%s, 0, sizeof( value->%s ) );\n", ind, f.Name, f.Name)
 		g.pf("%svalue->%s_length = 0;\n", ind, f.Name)
 	case f.Array != ir.ArrayNone:

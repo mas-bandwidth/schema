@@ -1883,16 +1883,13 @@ prefix's bits and it sizes the storage. A `wstring` field takes no
 attributes and no `= default` (§4.2), and `wstring(N)` with N below 2 is a
 compile error, the same floor `string(N)` carries (§4.6).
 
-**Backend status: ONE TARGET CARRIES WIDE TEXT TODAY.** This section is
-written for all nine and one of them has landed it, on the terms §3.1
-and §4.2 take. The C++ emitter carries the storage, the wire and
-every read refusal below, on BOTH wires: the packet wire's groups here and
-kind `33` on the id-table wire (SPEC-TABLES.md §3). The other eight REFUSE a
-unit declaring a `wstring(N)` field by name at generate time, whichever wire
-declares it, rather than emit a member
-they never laid out and a wire that skips it, so the storage and
-boundary table below states what each target owes rather than what it
-runs. `*wstring`, the unbounded twin, is specified ahead of its
+**Backend status.** C++ carries wide text on both wires. C also carries the
+packet storage, groups and read refusals below; the other seven ports refuse
+packet wide text by name until their codecs land. All eight ports refuse
+wide text reachable from a table, whose kind `33` remains C++ only
+(SPEC-TABLES.md §3). The storage and boundary table below states the common
+contract, including what the remaining ports owe. `*wstring`, the unbounded
+twin, is specified ahead of its
 implementation and no backend emits the blob record (SPEC-TABLES.md §2.5).
 Owed as schema#188, narrowed by each target that lands the codec, and this
 line is deleted by the last of them.
@@ -2100,16 +2097,13 @@ holding serialize.js's interop cases: empty, three basic-plane code
 units, `0xE000`, `0xFFFF`, an astral pair between two basic-plane units,
 and seven code units, the most the bound carries. **That field and the
 golden source and golden-id pins for a wstring-bearing unit (gates 1, 2
-and 7) live in `examples-wide/`, a corpus unit of its own beside the
-proving ground rather than a declaration inside it.** §7.3's `examples/`
-pins gate 1 for all nine targets and eight of them refuse wide text by
-name, so a `wstring` field declared there would stop the other eight
-pins from generating at all. `examples-wide/` rides `make check` and the
-same gates 1, 2 and 7, its C++ pin is the one target that carries the
-construct, and a companion gate holds the other eight to refusing the
-unit BY NAME so that a backend cannot go green by quietly dropping the
-field. The unit folds back into `examples/` when the ninth target lands
-the codec and the split stops paying for itself.
+and 7) live in `examples-wide/WideText.schema`.** The packet test stages that
+unchanged file separately from the directory's table declaration and baseline.
+C++ and each packet port pin the same packet source and protocol id, replay
+the shared text corpus, and compare generated writes and reads. Unported
+packet targets still refuse that file by name; all eight ports refuse the
+directory's table-wide unit. The packet declaration joins `examples/` when
+the ninth target lands, while the table proving ground stays separate.
 
 ## 5. Trust model — inherited
 

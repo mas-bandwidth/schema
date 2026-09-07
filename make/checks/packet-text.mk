@@ -8,3 +8,16 @@ build/packet-text/cpp/driver: build/packet-text/cpp/.stamp test/packet-text/driv
 build/packet-text/harness: test/packet-text/harness/main.go
 	@mkdir -p build/packet-text
 	go build -o $@ ./test/packet-text/harness
+
+# Stage only the packet file: examples-wide also carries table kind 33 and
+# its baseline, whose support is a separate row from this packet sweep.
+build/packet-wide/source/WideText.schema: examples-wide/WideText.schema
+	@mkdir -p build/packet-wide/source
+	cp $< $@
+
+build/packet-wide/cpp/.stamp: bin/schema build/packet-wide/source/WideText.schema
+	./bin/schema generate --lang cpp --out build/packet-wide/cpp build/packet-wide/source/WideText.schema
+	@touch $@
+
+build/packet-wide/cpp/driver: build/packet-wide/cpp/.stamp test/packet-wide/driver.c
+	$(CXX) $(CXXFLAGS) -x c++ -Ibuild/packet-wide/cpp test/packet-wide/driver.c -o $@
