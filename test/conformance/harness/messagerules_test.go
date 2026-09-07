@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/binary"
 	"math"
 	"math/big"
@@ -1425,5 +1426,89 @@ table Row
 	}
 	if got := fieldOf(t, back, "tally"); len(got.Entries) != 1 || fieldOf(t, got.Entries[0].Tab, "value").Cell.I != 99 {
 		t.Errorf("the map with a widened key loads WHOLE (§2.8): %d entries", len(got.Entries))
+	}
+}
+
+// TestTheMessageFormsTextContentRuleAndClamp: §3's ONE CONTENT RULE over a
+// form-`2` body (docs/SPEC-TABLES.md §3.3). A kind `12` payload that is not
+// well-formed UTF-8, or that carries a zero byte among its `L` bytes, is
+// DAMAGE and not data, and here the damage is TERMINAL for the batch because a
+// bit stream has no place to resume. A CLAMP IS NOT DAMAGE: a payload longer
+// than this reader's bound keeps what fits, CUTTING AT A CODE POINT BOUNDARY,
+// and counts one `clamped`. Red if the message path accepts text the file path
+// refuses, or clamps a byte off the boundary.
+//
+// The instrument is `backenddemo`'s `StorePurchase.sku`, a `string(32)` whose
+// length rides at bits_required( 0, 32 ) = 6 bits, so a payload of 34 bytes is
+// spellable and a clamp is reachable.
+func TestTheMessageFormsTextContentRuleAndClamp(t *testing.T) {
+	_, model, v := backend(t)
+	sku := slotOf(t, v, ir.TableWireId("sku"), ir.TableKindString)
+	lengthBits := ir.TableMessageBitsRequired(0, 32)
+	body := func(text []byte) []byte {
+		w := &bitw{}
+		w.put(sku, v.RefBits())
+		w.put(uint64(len(text)), lengthBits)
+		w.align()
+		w.bytes(text)
+		w.put(0, v.RefBits())
+		return batchOf(w)
+	}
+
+	// ILL-FORMED TEXT IS DAMAGE HERE TOO, AND IT IS TERMINAL: a truncated
+	// sequence, a zero byte and an overlong encoding are each a payload that is
+	// not text at whatever length this reader would have kept
+	damaged := []struct {
+		name string
+		text []byte
+	}{
+		{"a truncated sequence", []byte{'p', 'a', 'c', 'k', 0xC3}},
+		{"a zero byte among the bytes", []byte{'p', 'a', 0x00, 'c', 'k'}},
+		{"an overlong encoding", []byte{'p', 0xC0, 0x80, 'k'}},
+	}
+	for _, row := range damaged {
+		_, ok, report, err := decodeOne(t, model, "StorePurchase", v, body(row.text))
+		if err != nil {
+			t.Fatalf("%s: the decode errored: %v", row.name, err)
+		}
+		if ok || !report.Malformed || report.Refused {
+			t.Errorf("%s on a message body is damage, terminal for the batch (§3.3): ok=%v report=%+v", row.name, ok, report)
+		}
+	}
+
+	// A CLAMP CUTS AT A CODE POINT BOUNDARY: thirty ASCII bytes and one
+	// four-byte code point are thirty-four, so the bound of thirty-two falls
+	// INSIDE the last code point and the clamp keeps thirty
+	split := append(bytes.Repeat([]byte{'a'}, 30), 0xF0, 0x9F, 0x98, 0x80)
+	inst, ok, report, err := decodeOne(t, model, "StorePurchase", v, body(split))
+	if err != nil || !ok || report.Malformed {
+		t.Fatalf("a clamp is not damage (§3.3): ok=%v err=%v report=%+v", ok, err, report)
+	}
+	if report.Clamped != 1 {
+		t.Errorf("an over-long payload counts ONE clamped: clamped=%d", report.Clamped)
+	}
+	if got := instStr(t, inst, "sku"); !bytes.Equal(got, split[:30]) {
+		t.Errorf("the clamp cuts at the code point boundary before the bound (§3.3): kept %d bytes, %q", len(got), got)
+	}
+
+	// AND THE CLAMP IS STILL THE BOUND where the bound already sits on a
+	// boundary, so the rule takes no byte it was not owed
+	whole := bytes.Repeat([]byte{'b'}, 34)
+	inst, ok, report, err = decodeOne(t, model, "StorePurchase", v, body(whole))
+	if err != nil || !ok || report.Malformed || report.Clamped != 1 {
+		t.Fatalf("an ASCII payload over the bound clamps and counts once: ok=%v err=%v report=%+v", ok, err, report)
+	}
+	if got := instStr(t, inst, "sku"); len(got) != 32 {
+		t.Errorf("a clamp on a boundary keeps the whole bound: kept %d bytes", len(got))
+	}
+
+	// AND A PAYLOAD AT THE BOUND DOES NOT CLAMP, code point or not
+	exact := append(bytes.Repeat([]byte{'c'}, 28), 0xF0, 0x9F, 0x98, 0x80)
+	inst, ok, report, err = decodeOne(t, model, "StorePurchase", v, body(exact))
+	if err != nil || !ok || report.Malformed || report.Clamped != 0 {
+		t.Fatalf("a payload at the bound lands whole and counts nothing: ok=%v err=%v report=%+v", ok, err, report)
+	}
+	if got := instStr(t, inst, "sku"); !bytes.Equal(got, exact) {
+		t.Errorf("a payload at the bound lands whole: kept %d bytes, %q", len(got), got)
 	}
 }
