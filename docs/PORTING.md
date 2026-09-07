@@ -729,8 +729,12 @@ the reader at `emitMapReadField`. The walk's map edge is
 compiler's own engine sorts, writes and reads a map at three depths — a map of
 maps with a keyed array and a union arm holding one included — and agrees with
 the reference byte for byte on all three pinned wires and on the text round
-trip. The tool's COOK half is what remains, and its surfaces refuse a
-map-bearing unit by name until it lands.
+trip, and `schema cook-check`'s MAP-SLOT clause (#380): the four clauses a
+list's slot takes, against `alignof( Entry )` and `count × sizeof( Entry )`,
+plus the fifth a list has no analogue for — the KEYS read ascending with no
+repeat, because a cook a `Find` cannot search is a forgery. The tool's COOK
+and UNCOOK halves are what remains, and those two surfaces refuse a map-bearing
+unit by name until they land.
 
 **Measured effect.** Zero bytes past the entries themselves in a region and a
 cook, `Open` still O(1), `Find` in place at `floor( log2 n ) + 1` key compares
@@ -745,13 +749,17 @@ rule dropped, the key-kind rule decoding anyway, the reader clamping a key
 instead of dropping its entry, the `N`-against-`L` fit check dropped,
 `LoadMeasure` summing the extent at one depth only, `ToJson` writing the
 entries in any order but ascending, and `Lock` writing an UNREACHED non-empty
-map slot instead of refusing it.
+map slot instead of refusing it. And the tool's map-slot clause has two of its
+own (`tables-maps-cook-check-negative-control`): the SHARED containment test
+dropped, which must turn the map's test red beside the list's, and the KEYS'
+ascending test dropped, which is the map's alone and would go untested under a
+shared control.
 
-**Targets:** maps, json-map-walk, maps-sort-negative-control, maps-dead-entry-negative-control, maps-ascending-negative-control, maps-duplicate-negative-control, maps-key-kind-negative-control, maps-clamp-negative-control, maps-fit-negative-control, maps-depth-negative-control, maps-text-order-negative-control, maps-unreached-negative-control
+**Targets:** maps, json-map-walk, maps-sort-negative-control, maps-dead-entry-negative-control, maps-ascending-negative-control, maps-duplicate-negative-control, maps-key-kind-negative-control, maps-clamp-negative-control, maps-fit-negative-control, maps-depth-negative-control, maps-text-order-negative-control, maps-unreached-negative-control, maps-cook-check-negative-control
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-maps` `tables-json-map-walk` `tables-maps-negative-controls`, and the TOOL's wire and text halves (`TestTheToolWritesTheReferencesMapBytes`) | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 |
+| ✅ `tables-maps` `tables-json-map-walk` `tables-maps-negative-controls` `tables-maps-cook-check-negative-control`, and the TOOL's wire and text halves and its cook-check clause (`TestTheToolWritesTheReferencesMapBytes`, `TestCookCheckMapSlot`) | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 |
 
 ### M20 — The id-table wire
 

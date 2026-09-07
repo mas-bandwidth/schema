@@ -147,8 +147,55 @@ func (r *regionReader) field(at int64, f *ir.Field, fv *tabletext.Field) error {
 		}
 		fv.Count = int(n)
 		return nil
+	case f.Array == ir.ArrayList:
+		return r.list(value.Offset, f, fv)
 	}
 	return r.element(value.Offset, f, &fv.Cell)
+}
+
+// list reads back ONE unbounded array (docs/SPEC-TABLES.md §2.9): the slot's
+// int64 SELF-RELATIVE delta and int32 count, then the elements at the array
+// the delta names, in index order. A NESTED list's slot is read by the
+// element's own walk, which resolves its delta the same way, so this needs no
+// pre-order bookkeeping of its own: the write side owed an ORDER and the read
+// side owes only the deltas it is handed.
+//
+// The four clauses `schema cook-check` puts on the slot are the CHECK's
+// (§7.4), and this is not that check — but a delta or a count outside the
+// region is refused HERE too, because an uncook of an untrusted file must not
+// index outside the buffer it was given.
+func (r *regionReader) list(at int64, f *ir.Field, fv *tabletext.Field) error {
+	delta := int64(r.ord.Uint64(r.buf[at:]))
+	count := int64(int32(r.ord.Uint32(r.buf[at+8:])))
+	if count < 0 {
+		return fmt.Errorf("field %s: the count is %d, and an extent is never negative", f.Name, count)
+	}
+	if delta == RefNull {
+		if count != 0 {
+			return fmt.Errorf("field %s: the reference is null and the count is %d: an empty list is the only list a null names", f.Name, count)
+		}
+		fv.Elems, fv.Count = fv.Elems[:0], 0
+		return nil
+	}
+	if count == 0 {
+		return fmt.Errorf("field %s: the count is 0 and the reference is not null: an empty list's reference is null in every encoding", f.Name)
+	}
+	size, _ := ir.ListElementLayout(r.m.Unit, f)
+	start := at + delta
+	if start < 0 || start+count*size > int64(len(r.buf)) {
+		return fmt.Errorf("field %s: the element array runs [%d, %d) and the data part is %d bytes: the array leaves the region", f.Name, start, start+count*size, len(r.buf))
+	}
+	fv.Elems = fv.Elems[:0]
+	for range count {
+		fv.Elems = append(fv.Elems, r.m.ElementZero(f))
+	}
+	fv.Count = int(count)
+	for i := range count {
+		if err := r.element(start+i*size, f, &fv.Elems[i]); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *regionReader) slots(at int64, f *ir.Field, elems []tabletext.Cell, n int) error {

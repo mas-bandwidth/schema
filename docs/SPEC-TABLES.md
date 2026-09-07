@@ -8421,16 +8421,14 @@ no reference:
    no declaration describes.
 4. **Every MAP SLOT** (§2.8). Its delta must land inside the HOLDER's own
    extent, at `alignof( Entry )`, with `count × sizeof( Entry )` fitting
-   before the extent's end and overlapping no other map's array in that node.
-   The check reads CONTAINMENT, ALIGNMENT, FIT and NO OVERLAP, and not the
-   offset the layout rule computes, so the layout rule stays independent of
-   the check exactly as the pack order does. The entries' own slots,
-   companions and tags are then walked as a bounded array's elements are. The
-   KEYS are read too, ascending with no repeat, because a cook `Find` cannot
-   search is a forgery. Until schema#380 lands this clause in the tool, `schema
-   cook-check` refuses a map slot by name where its scan meets one, so a
-   cook that holds one is refused rather than walked past, and the C++
-   reference reads it.
+   before the extent's end and overlapping no other array in that node, a
+   list's and a map's alike, because lists and maps are ONE POPULATION in a
+   node's extent. The check reads CONTAINMENT, ALIGNMENT, FIT and NO OVERLAP,
+   and not the offset the layout rule computes, so the layout rule stays
+   independent of the check exactly as the pack order does. The entries' own
+   slots, companions and tags are then walked as a bounded array's elements
+   are. The KEYS are read too, ascending with no repeat, because a cook a
+   `Find` cannot search is a forgery.
 5. **Every UNBOUNDED-ARRAY SLOT** (§2.9). The same four clauses as a map's:
    CONTAINMENT, ALIGNMENT, FIT and NO OVERLAP, against the holder's own extent
    and against every other element or entry array in that node, and then the
@@ -11552,9 +11550,12 @@ inspects everything in the schema built:
   C++ reference and the tool are first: the builder surface (insert, erase,
   find, iterate), the sort in the four walks, the region load's ascending check
   with its `duplicate` and `malformed` events, the const `Find`, the text
-  form's object and `schema cook-check`'s map-slot clause with its order
-  check, which is the one piece still owed: the tool refuses a map slot by
-  name until it lands (§7.4). What a port needs is the entry as an ordinary array-of-tables element in its
+  form's object and `schema cook-check`'s map-slot clause with its order check
+  (§7.4). The tool's COOK and UNCOOK halves are the one piece still owed for
+  this construct: a map-bearing unit is refused by name at those two surfaces,
+  because a map adds the sort, the entry array's key order and the two reader
+  events to the node extent the list's own halves already
+  carry. What a port needs is the entry as an ordinary array-of-tables element in its
   measure, save and load, the writer's sort, the reader's one compare with its
   two events, the const `Find` as a binary search that allocates nothing,
   ascending iteration, and the text form's keyed object; each holds the same
@@ -11569,8 +11570,11 @@ inspects everything in the schema built:
   refuses a unit that declares one, by name (§11), until its codec lands. The
   C++ reference carries it: the builder's segments and `Add`, the four walks
   in index order, the region load, the const `TableList` surface, the text
-  form's array, and `schema cook-check`'s element-array clause in the tool;
-  the tool's COOK and UNCOOK halves are owed beside the map's. What a port
+  form's array, and `schema cook-check`'s element-array clause in the tool.
+  The TOOL carries the construct whole: its cook lays the element arrays in
+  the holder's node extent in the same PRE-ORDER the reference lays them and
+  lands on the reference's bytes exactly, in both byte orders, and its uncook
+  reads them back to the wire it came from. What a port
   needs is SMALLER than what a map needed, and by exactly the key: the element
   is an ordinary array element its measure, save and load already carry, there
   is no sort, no key compare and neither of the map's two reader events, and

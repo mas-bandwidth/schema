@@ -50,6 +50,14 @@ type Node struct {
 	Layout *ir.MemberLayout
 	Blob   *tabletext.Blob
 	String bool
+
+	// Record is the node's record half — its `sizeof`, rounded to the region's
+	// alignment floor when the record can hold an extent — and Extent is the
+	// bytes its UNBOUNDED ARRAYS take behind it (docs/SPEC-TABLES.md §2.9,
+	// §7.2). A NODE'S SIZE DEPENDS ON ITS VALUE where a list rides in its
+	// extent, which is the one thing the fixed classes never made true.
+	Record int64
+	Extent int64
 }
 
 // BlobHeader is the blob node's header (docs/SPEC-TABLES.md §6.3): `length
@@ -69,7 +77,7 @@ func (n *Node) Size() int64 {
 		}
 		return size
 	}
-	return n.Layout.Size
+	return n.Record + n.Extent
 }
 
 // TypeId is the node's directory type id (§3.1, §6.3).
@@ -121,9 +129,19 @@ func Layout(m *tabletext.Model, g *tablewire.NodeGraph) (*Region, error) {
 		if ml.Align > r.Align {
 			r.Align = ml.Align
 		}
+		// A NODE'S SIZE DEPENDS ON ITS VALUE where a list rides in its extent
+		// (§2.9, §7.2): the record's storage at the region's alignment floor,
+		// then the bytes the same walk the writer takes will carve there. The
+		// layout reads the instance the numbering walked for that reason.
+		extent, err := extentOf(m, inst.Def, inst)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", inst.Def.Name, err)
+		}
 		offset = alignUp(offset, ml.Align)
-		r.Nodes = append(r.Nodes, Node{Offset: offset, Def: inst.Def, Inst: inst, Layout: ml})
-		offset += ml.Size
+		n := Node{Offset: offset, Def: inst.Def, Inst: inst, Layout: ml,
+			Record: recordBytes(m.Unit, inst.Def), Extent: extent}
+		r.Nodes = append(r.Nodes, n)
+		offset += n.Size()
 	}
 	// the data part's LENGTH is rounded to the region's alignment, which is what
 	// puts the attribution part that follows it on an eight-byte boundary and
@@ -165,6 +183,22 @@ func (r *Region) Write(m *tabletext.Model, ord order) ([]byte, error) {
 		}
 		if err := w.record(n.Offset, n.Def, n.Inst); err != nil {
 			return nil, err
+		}
+		// THE NODE'S EXTENT, after its record: the same pre-order walk the
+		// layout measured, now copying each list's elements into the extent
+		// and pointing the record's slot at them (§2.9, §7.6). THE EXTENT
+		// WRITTEN IS THE EXTENT MEASURED, held here before any header is
+		// written, so a walk that laid one array short refuses rather than
+		// reporting a cook.
+		if n.Extent == 0 && !recordHasExtent(m.Unit, n.Def) {
+			continue
+		}
+		c := &carver{m: m, w: w, extentAt: n.Offset + n.Record}
+		if err := c.record(n.Offset, n.Def, n.Inst); err != nil {
+			return nil, err
+		}
+		if c.at != n.Extent {
+			return nil, fmt.Errorf("internal: %s carved %d extent bytes and the layout reserved %d", n.Def.Name, c.at, n.Extent)
 		}
 	}
 	return w.buf, nil
@@ -224,6 +258,15 @@ func (w *regionWriter) field(at int64, f *ir.Field, fv *tabletext.Field) error {
 		w.putBool(p.Offset, fv.Present)
 	}
 	switch {
+	case f.Array == ir.ArrayList:
+		// THE SLOT IS THE EXTENT WRITER'S (docs/SPEC-TABLES.md §2.9): the
+		// reference is a delta to an array this record's own extent holds, and
+		// only the carve knows where that landed. The sixteen bytes are left
+		// EMPTY here — the buffer is zeroed, and an empty list's encoding IS
+		// the null reference and the zero count — which is what a node the
+		// walk never reaches keeps, and is why an unreached non-empty list is
+		// refused rather than written.
+		return nil
 	case f.Type.Blob():
 		// a byte buffer's slot is the same delta, to its blob node (§2.5)
 		if fv.Cell.Blob == nil {
