@@ -3,6 +3,11 @@
 #
 #   bench/tools/verify-runtime-paths.sh [lang ...]     (default: all six)
 #
+# The six defaulted are the languages that HAVE a runtime checkout. The
+# codegen-only legs (java, dart, elixir) may be named too — verify_runtime
+# answers "nothing to verify" for them rather than refusing, which is what
+# lets pass-driver.sh hand this gate its whole --langs list.
+#
 # For each language, asks the toolchain what runtime path its build will
 # actually resolve (bench/tools/runtime-paths.sh: cargo pkgid, go list -m,
 # msbuild -getItem:Compile; cpp/c share one variable between -I and the
@@ -24,7 +29,7 @@ for lang in $LANGS; do
     resolved="$(verify_runtime "$lang")" || rc=$?
     case $rc in
         0) echo "$lang: VERIFIED $resolved" ;;
-        2) echo "$lang: leg cannot run this invocation (see above) — nothing to verify" ;;
+        2) echo "$lang: nothing to verify (reason above)" ;;
         *) echo "$lang: MISMATCH — the build would not use the recorded runtime path (§3.5)"; FAIL=1 ;;
     esac
 done

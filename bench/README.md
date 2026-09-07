@@ -50,7 +50,11 @@ backends' GENERATED codecs over the same shape under the same contract
 
 **A publishable pass is a driver pass**, not a bare run.sh invocation:
 
-    bench/tools/pass-driver.sh [--rounds 7] [--langs cpp,c,go,rust,cs,js] [--inline]
+    bench/tools/pass-driver.sh [--rounds 7] [--langs cpp,c,go,rust,cs,js,java,dart,elixir] [--inline]
+
+`--langs` defaults to all nine — the languages the published table carries —
+and a leg whose toolchain is absent is skipped and recorded (`# skipped:`)
+rather than failing the pass.
 
 The driver runs the §2 methodology: a C++ control leg, N interleaved rounds
 (every language once per round via `--round K`, so every leg sees the same

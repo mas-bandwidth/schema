@@ -944,6 +944,17 @@ js)
     exit 1
     ;;
 
+java|dart|elixir)
+    # The codegen-only legs. §4.1 states a verdict mechanism for the five AOT
+    # legs (go, clang/gcc, rust, C#) and this tool implements those; none is
+    # written for java, dart or elixir, so their rows stay inline=unknown and
+    # §4.2 refuses their ratios. This arm exists because the driver now runs
+    # these legs by default: "unknown language" would have been a false
+    # reason for a leg the pass measures.
+    echo "inline-verdict: no verdict pass is implemented for $LANG_ARG (a codegen-only leg); $LANG_ARG rows stay inline=unknown" >&2
+    exit 1
+    ;;
+
 *)
     echo "unknown language: $LANG_ARG (c|cpp|go|rust|cs)" >&2
     exit 1

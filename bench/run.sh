@@ -366,14 +366,14 @@ prov_note() {
         js)   PROV_JS="$resolved" ;;
     esac
 }
-# java/dart/elixir never appear here: their legs build from the repo's own
-# generated sources with no runtime checkout, so there is nothing for the
-# §3.5 guard to verify or misrecord.
+# java/dart/elixir set no PROV_ line here: their legs build from the repo's
+# own generated sources with no runtime checkout, so there is nothing for the
+# §3.5 guard to verify or misrecord. The exemption itself lives in
+# verify_runtime (bench/tools/runtime-paths.sh), which answers "nothing to
+# verify" for them — so this guard and the standalone gate pass-driver.sh
+# runs before its first leg cannot drift apart, and neither repeats the list.
 if [ -n "$ONLY" ]; then
-    case "$ONLY" in
-        java|dart|elixir) ;;
-        *) prov_verify "$ONLY" ;;
-    esac
+    prov_verify "$ONLY"
     for _lang in cpp c go rust cs js; do
         [ "$_lang" != "$ONLY" ] && prov_note "$_lang"
     done

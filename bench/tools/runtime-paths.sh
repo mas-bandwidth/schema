@@ -190,9 +190,11 @@ EOF
     fi
 }
 
-# verify_runtime <cpp|c|go|rust|cs|js> — the §3.5 fail-closed check.
+# verify_runtime <cpp|c|go|rust|cs|js|java|dart|elixir> — the §3.5
+# fail-closed check.
 #   stdout: the toolchain-resolved absolute runtime path (verified)
-#   return: 0 verified; 2 leg cannot run this invocation (reason on stderr);
+#   return: 0 verified; 2 nothing to verify in this invocation — the leg
+#             cannot run, or it has no runtime checkout (reason on stderr);
 #           1 MISMATCH or unprovable — the caller must refuse to emit rows.
 verify_runtime() {
     local want got id items
@@ -322,6 +324,19 @@ EOF
             return 1
         fi
         echo "$got"
+        ;;
+
+    java|dart|elixir)
+        # The codegen-only legs. schema's backends for these languages emit
+        # self-contained code with no runtime library, so the legs build from
+        # the repo's own generated sources with no runtime checkout — there
+        # is nothing for the §3.5 guard to verify or misrecord, and no
+        # SERIALIZE* variable names them. This arm is the ONE place that
+        # exemption lives: run.sh's own preamble guard and the standalone
+        # gate (which pass-driver.sh calls before its first leg) both reach
+        # it through here, so the two callers cannot drift apart.
+        echo "$1: generated codecs, no runtime checkout — nothing for the §3.5 guard to verify" >&2
+        return 2
         ;;
 
     *)

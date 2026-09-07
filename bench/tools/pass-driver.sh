@@ -27,9 +27,10 @@
 #                                   [--compiler CXX] [--inline] [--twins]
 #   --out FILE      final pass CSV (default bench/results/<date>-<arch>-<host>-pass.csv)
 #   --rounds N      measured rounds (default 7, §2.1/§2.4)
-#   --langs a,b,c   subset of cpp,c,go,rust,cs,js (default: all; unavailable
-#                   toolchains are skipped and recorded, a skipped leg is a
-#                   fact not a failure)
+#   --langs a,b,c   subset of cpp,c,go,rust,cs,js,java,dart,elixir (default:
+#                   all nine, the languages the published table carries;
+#                   unavailable toolchains are skipped and recorded, a
+#                   skipped leg is a fact not a failure)
 #   --compiler CXX  C++ compiler for the cpp legs and control legs
 #   --inline        run the §4.1 inline verdict pass per language afterwards
 #                   and backfill the inline column (bench/tools/inline-verdict.sh)
@@ -47,7 +48,9 @@
 #
 # environment: SERIALIZE / SERIALIZE_C / SERIALIZE_GO / SERIALIZE_RS /
 # SERIALIZE_CS / SERIALIZE_JS, BENCH_CPU, BENCH_NOISE, BENCH_OPT_LEVEL — all
-# as bench/run.sh.
+# as bench/run.sh. The codegen-only legs (java, dart, elixir) name no
+# runtime checkout at all; their toolchains are the repo-pinned dist/
+# installs, JAVA/JAVAC/DART/BEAM_PATH overriding, again as bench/run.sh.
 # The SERIALIZE* paths are §3.5-verified against each toolchain's own
 # resolution before the first leg runs, and the pass refuses on mismatch.
 set -u
@@ -56,7 +59,11 @@ cd "$(dirname "$0")/../.."      # repo root
 
 OUT=""
 ROUNDS=7
-LANGS="cpp,c,go,rust,cs,js"
+# The default is the nine languages the published table carries: this driver
+# is the certification instrument, and a language it does not run by default
+# is a language no pass certifies. A leg whose toolchain is absent is skipped
+# and recorded (# skipped:), which is a fact, not a failure.
+LANGS="cpp,c,go,rust,cs,js,java,dart,elixir"
 COMPILER="${CXX:-c++}"
 INLINE=0
 TWINS=0
@@ -91,7 +98,10 @@ fi
 # Verify only the languages this pass will RUN (--langs): the gate refusing a
 # pass over a language it was told to skip inverted its own contract — a
 # skipped leg is a fact, not a failure (measured on the EPYC box: go 1.22.2
-# present, serialize.go absent, cpp/c pass refused). ----
+# present, serialize.go absent, cpp/c pass refused). The whole --langs list
+# goes in, java/dart/elixir included: verify_runtime answers "nothing to
+# verify" for the codegen-only legs — the same answer it gives run.sh, which
+# is why the driver does not carry an exemption list of its own. ----
 if ! bench/tools/verify-runtime-paths.sh $(echo "$LANGS" | tr ',' ' ') >&2; then
     echo "REFUSED (§3.5): a leg's build would not use the runtime path the preamble records — no pass, no rows" >&2
     exit 1
