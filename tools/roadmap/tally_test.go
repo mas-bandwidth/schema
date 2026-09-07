@@ -3,23 +3,20 @@ package roadmap
 import (
 	"os"
 	"regexp"
-	"strconv"
 	"strings"
 	"testing"
 )
 
-// TestTheTallyFollowsTheTables recomputes the roadmap's tally from its two
-// tables and holds the sentence to it. A row is a table line whose first cell
-// is a feature; the header row and the separator row are not rows. Every row
-// carries one cell per language column, and a cell is done when it is ✅.
-func TestTheTallyFollowsTheTables(t *testing.T) {
+// TestTheTablesAreWellFormed holds every row of the two tables to the header's
+// language columns and every cell to ✅ or ❌, so a cell that is half edited or
+// a row that gained a column without the header is red on the pull request.
+func TestTheTablesAreWellFormed(t *testing.T) {
 	raw, err := os.ReadFile("../../ROADMAP.md")
 	if err != nil {
 		t.Fatal(err)
 	}
-	page := string(raw)
-	var columns, rows, done int
-	for line := range strings.SplitSeq(page, "\n") {
+	columns, rows := 0, 0
+	for line := range strings.SplitSeq(string(raw), "\n") {
 		if !strings.HasPrefix(line, "|") {
 			continue
 		}
@@ -41,36 +38,26 @@ func TestTheTallyFollowsTheTables(t *testing.T) {
 		rows++
 		for _, cell := range cells[1:] {
 			switch strings.TrimSpace(cell) {
-			case "✅":
-				done++
-			case "❌":
+			case "✅", "❌":
 			default:
 				t.Fatalf("row %q carries a cell %q that is neither ✅ nor ❌", strings.TrimSpace(cells[0]), strings.TrimSpace(cell))
 			}
 		}
 	}
-	total := rows * columns
-	sentence := regexp.MustCompile(`(?m)^(\d+) of (\d+) cells are done\.`)
-	m := sentence.FindStringSubmatch(page)
-	if m == nil {
-		t.Fatal("ROADMAP.md carries no sentence of the form \"N of M cells are done.\"")
-	}
-	said, _ := strconv.Atoi(m[1])
-	saidTotal, _ := strconv.Atoi(m[2])
-	if said != done || saidTotal != total {
-		t.Fatalf("the sentence says %d of %d cells are done and the tables say %d of %d: edit the sentence beside the cell", said, saidTotal, done, total)
+	if rows == 0 || columns == 0 {
+		t.Fatal("ROADMAP.md carries no feature table")
 	}
 }
 
 // TestNoLanguageIsCountedInProse refuses a sentence such as "C++ at 30 of 31"
-// outside the tables: a per-language count written by hand is the kind of
-// line that goes stale, and the tables already carry the count.
+// or "340 of 1180 cells" outside the tables: the tables carry the count, and a
+// count written by hand is stale the day a cell moves.
 func TestNoLanguageIsCountedInProse(t *testing.T) {
 	raw, err := os.ReadFile("../../ROADMAP.md")
 	if err != nil {
 		t.Fatal(err)
 	}
-	counted := regexp.MustCompile(`\b[A-Za-z+#]+ at \d+ of \d+\b`)
+	counted := regexp.MustCompile(`\b\d+ of \d+\b`)
 	n := 0
 	for line := range strings.SplitSeq(string(raw), "\n") {
 		n++
@@ -78,7 +65,7 @@ func TestNoLanguageIsCountedInProse(t *testing.T) {
 			continue
 		}
 		if counted.MatchString(line) {
-			t.Fatalf("ROADMAP.md:%d counts a language by hand: %q", n, line)
+			t.Fatalf("ROADMAP.md:%d counts by hand: %q", n, line)
 		}
 	}
 }

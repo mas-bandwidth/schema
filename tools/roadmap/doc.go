@@ -1,4 +1,5 @@
-// Package roadmap holds the test that keeps ROADMAP.md's tally in step with
-// its tables: the sentence "N of M cells are done" is recomputed from the
-// cells on every run, so a cell that moves without the sentence is red.
+// Package roadmap holds the test that keeps ROADMAP.md honest about its
+// tables: every row carries one cell per language, every cell is ✅ or ❌,
+// and no sentence outside the tables counts a language by hand, since a
+// count written in prose is the line that goes stale when a cell moves.
 package roadmap

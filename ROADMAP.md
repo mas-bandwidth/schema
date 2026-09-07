@@ -69,30 +69,7 @@
 | the unit registry, UnitView | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | widening on read, and the refusal reasons | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
-340 of 1180 cells are done. That is a count of features, not of effort, since the
-cells are not equal in size. The table will be printed as it stands with every
-release from here.
-
-Each language is in one of three states on each wire. The state is read off
-the table above and the README's performance table, never written here, so it
-cannot go stale.
-
-- **Performant and production ready.** Every cell in the column is ✅, the test
-  corpus is bit-identical on every push, and the speed is measured against C++
-  on the benchmark standard and published in the
-  [README's performance table](README.md#performance).
-- **Done, but not yet mature.** Every cell in the column is ✅ and the tests are
-  green. The speed measurement is still owed.
-- **Coming.** The column has a ❌.
-
 ## How the work is done
-
-Numbers you can check, and code you own. Nothing lands without
-[tests that run on every push](.github/workflows/ci.yml). No speed is claimed
-that the benchmark did not measure, and no size the specification does not
-work out to the bit. The compiler is
-AGPL-3.0. The code it generates is yours, under any terms, and the
-[LICENSE](LICENSE) says so in writing.
 
 Schema is built by Glenn Fiedler, who has written about how multiplayer games
 work and given the code away for twenty years, together with an AI
