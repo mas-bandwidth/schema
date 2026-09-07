@@ -149,6 +149,143 @@ rules; there is no `--force`. `--label-checks` / `--cross-linkage` print a
 ratio across a contract/packaging difference with the caption that names
 it. Human-readable tables live beside the CSVs in `bench/results/`.
 
+## Locking C and C++ together
+
+*(Added 2026-09-07, on the owner's word: "So we should now be able to lock C
+and C++ together now in perf and make sure we don't regress.")*
+
+The C and C++ legs compile the same word-codec shape with the same clang
+backend at the same flags, and BENCH-STANDARD §2.8 reports them as one figure
+when they sit inside the pair's own spread. Two legs reported as one number
+have to be held together, or the tie becomes a place a regression can hide:
+either leg could slide while the headline still printed 100%.
+
+**The lock lives in the committed record and in CI's ledger check** — not in a
+CI benchmark. `go run ./bench/tools ledger --check` walks every CSV under
+`bench/results/` and applies two gates:
+
+- **The time axis.** For each *locked leg* — `cpp` and `c`, one list in
+  `bench/tools/ledger.go`, not two code paths — the newest `bench_mixed`
+  `round_trip` point on a `(machine, corpus_id)` axis must not sit above **the
+  best (lowest ns/msg) of the previous three points** on that axis by more
+  than the noise gate: `max(2 × the two sittings' summed spread, 5%)`. Beyond
+  it, `LEDGER RED` and exit 1. **The machine leads the key because absolute
+  rates do not compare across machines (§2)** — a Studio point is never gated
+  against a laptop point, so the pass that renews the lock has to run on the
+  same box as the point before it.
+- **The pair axis.** On each `(machine, corpus_id)` axis, **the newest
+  certified pass** carrying *both* legs' `bench_mixed` `round_trip` rows has
+  C's percentage of C++ computed on the best rate and held to §2.8's tie band
+  — the two within-sitting `spread_pct` values summed, floored at 3.0 points —
+  computed exactly as `bench/render.awk` computes it for the headline table.
+  Outside the band, the check names the CSV, the percentage, the band, both
+  spreads and the axis. That pass is named in the output even when it is
+  green (`pair lock: … inside`), because the gate has to say which pass it is
+  holding. A leg whose spread is over §2.3's 40% INVALID line yields **no
+  verdict at all**: `render.awk` prints `—` for such a row and refuses a
+  number, so no ratio is defined from it and the gate prints a skip line
+  instead of a ruling — and, publishing no figure, such a pass is not the one
+  the lock holds either; the newest pass that does publish one keeps the axis
+  locked. A test runs the committed `render.awk` and the gate over the same
+  fixture and requires their verdicts to match, because the 3.0-point floor is
+  written out once in each language.
+
+**The lock holds the newest certified pass on the axis, and only that one.**
+Older passes on the axis print as history — one line each, `pair history:
+<file> <pct> against <band>: inside|outside` — and gate nothing. The lock is a
+claim about where the pair stands *now* (the owner's word was "land parity
+between C and C++ and then lock"), and the record is a record: it keeps the
+passes that FOUND things, not only the clean ones.
+`bench/results/2026-09-07-arm64-studio-serialize-c-1-10-0-pass.csv` is exactly
+that — a `window: OK` pass measuring C at 107.4% of C++ against a 5.8-point
+band, and that measurement *is* the finding, a 7% read-path gap, which the
+next pass, `2026-09-07-arm64-studio-c-read-guard-pass.csv`, closed at 98.2%
+inside 6.5. Holding every historical pass forever would leave CI red on a
+finding that is already fixed, and **a gate that reds on something already
+fixed teaches people to ignore the gate**. Holding the newest certified pass
+keeps both teeth: the separation that was found stays readable in the record
+and in the check's own output, and a regression away from parity goes red the
+moment the pass that shows it is committed — because that pass is then the
+newest one on its axis.
+
+**Why the best of the previous three, and what that still does not stop.**
+Comparing the newest point against its immediate neighbour was defeated by a
+single commit: land two CSVs that are each ~50% slower, and the newest is
+measured against the *other regressed file*, so the step between them is ~0%,
+the check exits 0, and the axis has quietly reset at the worse level. Measured
+against the best of the previous three, a regression has to beat the recent
+best, which two files landing together cannot arrange. Plainly, though: **a
+commit that lands four or more points on one axis can still reset the
+baseline**, because the fourth point pushes the last pre-commit point out of
+the window. Three is a depth, not a proof. The answer to a suspicious series
+is to read it, and plain `ledger` (no `--check`) prints the whole series.
+
+**The time axis is built from both-leg files only.** A point enters a locked
+leg's series only from a CSV that carries *both* legs' `bench_mixed` `gen`
+`round_trip` rows. The lock is a claim about the pair, so a single-leg
+experiment file is by construction not a like measurement of it — and the
+record already showed what that costs: the Studio `c` axis was interleaved
+with four single-leg C experiments (`packet-void-c-studio`,
+`c-defaults-c-studio`, `c-utf8-c-studio`, `c-wide-c-studio`, 228–242 ns/msg)
+among passes at 224–233, and the `c-defaults` → `c-utf8` step alone is +5.35%
+against a 5.00% gate, so the next single-leg C experiment committed last would
+have red CI for something that is not a regression of the locked pair at all.
+This **also narrows the pre-existing `cpp` gate** to both-leg files: one rule,
+both legs, no special case. After the narrowing, each Studio axis gates eleven
+points (the eight twins/pair passes and the three nine-language sittings) and
+each macbook axis twelve; the `x86_64 spacegame` axes are down to one point
+each and gate nothing, and the laptop axis disappears entirely — both its
+files carried one leg.
+
+**What the lock covers, exactly.** `bench_mixed`, family `gen`, path
+`round_trip`, best rate. That is the headline statistic §2.8 rules on, and it
+is the whole of the lock. **The `bitpacker` rows and the `write` path are
+outside it**, and knowing that matters: in
+`bench/results/2026-09-07-arm64-studio-bitpacker-checked-read-pass.csv` — a
+`window: OK` pass this lock calls green at 106.1% — `bitpacker`/`read` has C
+at 161.4% of C++. Locking that row would be a ruling about a different
+statistic against a different band, and it is **not** invented here; it would
+need its own §2.8-style paragraph in `BENCH-STANDARD.md` first.
+
+**A pass reds; a sitting warns.** A pass runs control legs at both ends and
+the driver stamps `# window: OK` (§2.6), which is precisely the certificate
+that says a ratio may be published from it — so a separation in the axis's
+newest such pass is a real separation and exits 1. A sitting has no control
+legs and no window verdict; it cannot tell a separation from a drifting box,
+so it prints `LEDGER WARN` and exits 0 — every sitting, not just the newest
+one, since they are informational and there is nothing to single out. That is
+not leniency, it is what the record already says: measured on the tree of
+2026-09-07, five committed sittings sit outside the band (three Studio
+nine-language sittings at 106.6–109.2%, the x86_64 spacegame sitting at
+111.3%, one macbook quick sitting at 112.6%) while every
+twins pass of the same era holds inside it — 99.1–106.7% against bands of
+4.0–27.2 points, the C-asserts twins pass landing at 105.2% inside 8.6. A pass
+whose window is stamped `INVALID` locks nothing either: §2.6 already refuses
+to publish ratios from it.
+
+Either way the message ends with the same line, because it is the ruling's own
+exit clause: **a separation beyond the combined spread is a finding to
+investigate, not a number to publish.** The response to a red is to find out
+what moved, not to widen the band.
+
+**Renewing the lock — `make bench-lock`.** On the Studio:
+
+    make bench-lock
+
+which is a `cpp,c` A/A twins pass, seven rounds, into
+`bench/results/<date>-<arch>-<host>-lock-pass.csv`, followed by
+`ledger --check`. `--twins` is not optional: the lock is a claim about two
+binaries measured in one window, and §2.6.1's A/A legs are what rules out
+state-selective interference dressing up as a separation. Run it on the same
+machine as the previous point — the Studio — commit the CSV, and CI's ledger
+step reads it from then on. The intent is a scheduled pass on the Studio,
+committed by whoever runs it.
+
+There is deliberately **no GitHub-hosted-runner benchmark**: a shared hosted
+runner cannot hold a window the standard would accept (§2.6, §7), and a gate
+built on windows the standard refuses would red on the weather. CI reads the
+record; the maintainer makes it.
+
 ## The benchmark set
 
 One shape, plus the raw bitpacker. Family `gen` is oracle-gated per §1.5;

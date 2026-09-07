@@ -809,6 +809,65 @@ figure. Display rule only — the CSV always carries the raw rates — and the
 ruling carries its own exit: a sitting that separates the pair beyond the
 combined spread prints the real figure, and that separation is a finding.
 
+**The pair is LOCKED by the record (owner, 2026-09-07: "So we should now be
+able to lock C and C++ together now in perf and make sure we don't
+regress").** Reporting two legs as one figure is only honest while something
+holds them together, so from this date `go run ./bench/tools ledger --check`
+— the gate CI runs on every pull request — carries both teeth:
+
+- **the pair axis is this section's band, on the newest certified pass.** On
+  each `(machine, corpus_id)` axis, the NEWEST committed pass with both legs'
+  `bench_mixed` `round_trip` rows has c's percentage of cpp computed on the
+  best rate and held to the tie band above (the two `spread_pct` values
+  summed, floored at 3.0 points), computed exactly as `bench/render.awk`
+  computes it — the table and the gate must agree about a sitting, or the
+  record would say two things at once. §2.3 rules first: a leg over the 40%
+  INVALID line yields NO verdict, because `render.awk` prints `—` for that row
+  and a row that does not publish as a number cannot be one side of a ratio.
+  **THAT PASS outside the band is RED**: it ran control legs and carries
+  `window: OK` (§2.6), which is the certificate that a ratio may be published
+  from it, so its separation is real and it is where the pair stands now.
+  **Older passes on the axis are HISTORY**, printed one line each and gating
+  nothing: the lock is a claim about the pair's CURRENT state, so a pass that
+  recorded a separation which a later certified pass closed stays in the
+  record without redding the tree forever — a gate that reds on a fixed
+  finding is a gate people learn to ignore — while a regression away from
+  parity reds the moment the pass that shows it is committed, being then the
+  newest on its axis. **A SITTING outside the band WARNS and exits 0**, every
+  one of them: with no control legs and no window verdict it cannot
+  distinguish a separation from a drifting box, and §2.6 does not let a ratio
+  publish from it in the first place. A pass stamped `window: INVALID` locks
+  nothing, for the same reason.
+- **the time axis is the ledger's gate.** `c` joins `cpp` as a LOCKED LEG: on
+  every `(machine, corpus_id)` axis the newest `round_trip` point of each
+  locked leg must not sit above **the best (lowest ns/msg) of the previous
+  three points** by more than
+  `max(2 × the two sittings' summed spread, 5%)`. One gate definition, one
+  list of locked legs — the check is generic over the list, never forked per
+  language. Absolute rates do not compare across machines (§2), so the pass
+  that renews the lock runs on the same box as the point before it. A point
+  enters the axis only from a CSV carrying BOTH legs' rows — the lock is a
+  claim about the pair, so a single-leg experiment file is not a like
+  measurement of it. Against the best of a window rather than the neighbour, a
+  regression cannot be laundered by landing two regressed files together;
+  plainly, a commit landing four or more points on one axis can still reset
+  the baseline, which is why plain `ledger` prints the whole series to read.
+
+**What the lock covers, and what it does not.** Exactly `bench_mixed`, family
+`gen`, path `round_trip`, best rate: the headline statistic this section rules
+on. The `bitpacker` rows and the `write` path are OUTSIDE the lock. On the
+committed record of 2026-09-07,
+`bench/results/2026-09-07-arm64-studio-bitpacker-checked-read-pass.csv` is a
+`window: OK` pass the pair lock calls green at 106.1% while its
+`bitpacker`/`read` rows have c at 161.4% of cpp — so the scope is a real
+boundary, not a formality. A band over the bitpacker rows would be a ruling
+about a different statistic and IS NOT MADE HERE; it would need its own
+paragraph in this section, with its own derivation and its own exit.
+
+Neither tooth changes what publishes: the exit clause above stands, and a
+separation beyond the combined spread is a finding to investigate, not a
+number to publish or a band to widen.
+
 `run.sh --quick` is the ITERATION instrument, never the certification
 instrument, and every leg's stderr says so. It exists so a nine-language
 comparison costs minutes, not an evening; nothing it prints publishes.
