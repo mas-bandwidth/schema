@@ -5435,6 +5435,15 @@ entries announces about 5 KB once.
   lands whole and counts nothing. Red if a leg stores text the file form
   refuses, cuts a clamp inside a code point, keeps fewer bytes than the bound
   admits, or counts `clamped` on a payload that fits.
+- **The same content rule met at a NODE.** A `*string` blob record on a
+  form-`2` body carrying a truncated sequence, one carrying a zero byte, one
+  carrying an overlong encoding and one carrying a lead byte UTF-8 never
+  spells, each damage and terminal for the batch on §3.1's own terms. Beside
+  them a well-formed blob, which loads with a silent report, and the same
+  ill-formed bytes under the reserved `bytes` id, which loads with a silent
+  report too, because a `*bytes` blob is bytes and never text. Red if a leg
+  places a record the file form refuses, refuses a record the file form places,
+  or reads a `*bytes` blob as text.
 - **The pad, and what follows it.** A batch whose trailing bits to the byte
   boundary are not zero, and a buffer carrying a whole batch and then a byte
   more. Red if a leg reads either clean.

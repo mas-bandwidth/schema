@@ -1512,3 +1512,81 @@ func TestTheMessageFormsTextContentRuleAndClamp(t *testing.T) {
 		t.Errorf("a payload at the bound lands whole: kept %d bytes, %q", len(got), got)
 	}
 }
+
+// TestAStringBlobRecordOnAMessageBodyCarriesTheContentRule: kinds `12` and
+// `33`'s content rule MET AT A NODE (docs/SPEC-TABLES.md §3.1) over a form-`2`
+// body (§3.3). §3.1 refuses a text blob's CONTENT on the file form's own
+// terms, and §3.3 says a form-`2` body's content rules are §3's, unchanged in
+// what they reject: a `*string` blob whose bytes are not well-formed UTF-8, or
+// which carries a zero byte, is DAMAGE and not data. What differs is only the
+// recovery, which a bit stream does not have, so the damage is TERMINAL for
+// the batch. Red if the message path places a blob the file path refuses.
+//
+// The instrument is `blobdemo`'s `Catalog`, whose numbering reaches a
+// `*string` blob through `note` and a `*bytes` blob through `thumb`. A blob
+// record is its own framing wherever it appears: the type reference, a length
+// at thirty-two raw bits, the ALIGN, then the bytes verbatim. A record is
+// numbered and placed whether or not a slot names it, so the rule is reached
+// by the record alone.
+func TestAStringBlobRecordOnAMessageBodyCarriesTheContentRule(t *testing.T) {
+	_, _, u := corpus(t)
+	unit, err := u.get("blobdemo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := tabletext.NewModel(unit)
+	v := vocabularyOf(t, unit)
+	// THE RESERVED IDS RIDE IN THE ANNOUNCEMENT'S TAIL whether or not a root
+	// names them (§3.1, §3.3), each a kind-0 entry that frames nothing
+	node := slotOf(t, v, ir.TableNodeWireId, 0)
+	stringType := slotOf(t, v, ir.StringWireTypeId, 0)
+	bytesType := slotOf(t, v, ir.BytesWireTypeId, 0)
+	body := func(typeSlot uint64, data []byte) []byte {
+		w := &bitw{}
+		w.put(node, v.RefBits())
+		w.put(1, 32)
+		w.put(typeSlot, v.RefBits())
+		w.put(uint64(len(data)), 32)
+		w.align()
+		w.bytes(data)
+		w.put(0, v.RefBits())
+		return batchOf(w)
+	}
+
+	// A WELL-FORMED BLOB IS ORDINARY, and the row is here first so a gate that
+	// went red by refusing everything is not one that holds the rule
+	_, ok, report, err := decodeOne(t, model, "Catalog", v, body(stringType, []byte("abcdefgh")))
+	if err != nil || !ok || !report.Silent() {
+		t.Fatalf("a well-formed *string blob on a message body loads silently: ok=%v err=%v report=%+v", ok, err, report)
+	}
+
+	// ILL-FORMED CONTENT IS DAMAGE AND IT IS TERMINAL: a truncated sequence, a
+	// zero byte, an overlong encoding and a lead byte UTF-8 never spells are
+	// each a payload that is not text at whatever length it arrived at
+	damaged := []struct {
+		name string
+		data []byte
+	}{
+		{"a truncated sequence", []byte{'p', 'a', 'c', 'k', 0xC3}},
+		{"a zero byte among the bytes", []byte{'p', 'a', 0x00, 'c', 'k'}},
+		{"an overlong encoding", []byte{'p', 0xC0, 0x80, 'k'}},
+		{"a lead byte UTF-8 never spells", []byte{'a', 'b', 'c', 0xFF, 'e', 'f', 'g', 'h'}},
+	}
+	for _, dr := range damaged {
+		_, loaded, rep, derr := decodeOne(t, model, "Catalog", v, body(stringType, dr.data))
+		if derr != nil {
+			t.Fatalf("%s: the decode errored: %v", dr.name, derr)
+		}
+		if loaded || !rep.Malformed || rep.Refused {
+			t.Errorf("%s in a *string blob record is damage, terminal for the batch (§3.1, §3.3): ok=%v report=%+v", dr.name, loaded, rep)
+		}
+	}
+
+	// AND A *bytes BLOB HAS NO SUCH RULE, because it is bytes and never text
+	// (§3.1): the same bytes under the reserved `bytes` id load clean, which
+	// holds the content rule to the `string` id alone
+	_, ok, report, err = decodeOne(t, model, "Catalog", v, body(bytesType, []byte{'p', 'a', 0x00, 'c', 0xFF}))
+	if err != nil || !ok || !report.Silent() {
+		t.Errorf("the same bytes under the reserved bytes id load silently (§3.1): ok=%v err=%v report=%+v", ok, err, report)
+	}
+}
