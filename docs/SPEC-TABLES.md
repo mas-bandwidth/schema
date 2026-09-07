@@ -10093,9 +10093,9 @@ in build version (§20.5).
   types share one symbol table (§13.1), which is what makes the generated
   surface unprefixed and collision-free — so every name a closure member
   claims is refused to everything else. A member `X` claims `X` followed by
-  each of these **52 suffixes**, and a declaration spelling one of them is
+  each of these **53 suffixes**, and a declaration spelling one of them is
   refused naming the collision — the block form's nine and the C backend's
-  seven follow below, for **68 in all**:
+  seven follow below, for **69 in all**:
 
   ```
   Measure  MeasureBody  Save  SaveBody  SaveBodyFields  Load  LoadBody
@@ -10107,7 +10107,7 @@ in build version (§20.5).
   Open  TableFields  TableInfo
   FromJson  ToJson  ToJsonMeasure  Table
   MeasureMessages  SaveMessages  LoadMessages
-  LoadRetain  MeasureRetain  SaveRetain  SaveRetainMessages
+  LoadRetain  MeasureRetain  SaveRetain  LoadRetainMessages  SaveRetainMessages
   LoadBodyRetain  MeasureBodyRetain  SaveBodyRetain  SaveBodyFieldsRetain
   MeasureWireRetain  SaveWireRetain  NodeBodyRetain
   ```
@@ -10115,19 +10115,21 @@ in build version (§20.5).
   The set is claimed for EVERY closure member, not only pointer-bearing
   ones: a table gains or loses pointers as an edit, and a name that was
   free yesterday must not become a collision tomorrow. That list is the
-  checker's own, and this section is held to it: the three lists here, 52, then
+  checker's own, and this section is held to it: the three lists here, 53, then
   the block form's nine, then the C backend's seven, are `tableGeneratedVerbs`
-  entire, spelling for spelling and 68 in all, because a claim the page states
+  entire, spelling for spelling and 69 in all, because a claim the page states
   and the checker does not make is a name a user may take.
 
-  **RETAIN-UNKNOWN'S ELEVEN ARE THREE AND EIGHT** (§6.6). `LoadRetain`,
+  **RETAIN-UNKNOWN'S TWELVE ARE THREE AND NINE** (§6.6). `LoadRetain`,
   `MeasureRetain` and `SaveRetain` are the SURFACE the feature owes this
-  section. The other eight are what carries them, and they are claimed on
+  section. The other nine are what carries them, and they are claimed on
   this list's own rule because they are EMITTED: the second family of body
   functions, the wire pair a pointered root takes, the node dispatch that
-  reaches each record's own body, and `SaveRetainMessages`, which is REFUSED
-  BY NAME on a form 2 write (§3.3) and is a definition rather than only a
-  claim for exactly that reason.
+  reaches each record's own body, and the MESSAGE form's two.
+  `LoadRetainMessages` is the form 2 READ, which resolves against the
+  connection's vocabulary where the file form resolves against a trailer, and
+  `SaveRetainMessages` is the form 2 WRITE, REFUSED BY NAME (§3.3) and a
+  definition rather than only a claim for exactly that reason.
 
   **`Open` AND `Cook` ARE BOTH EMITTED NOW — in different languages, and that is
   what the C# rule below is for. `OpenWalk` was RETIRED.** The C++ table backend

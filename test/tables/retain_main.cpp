@@ -1036,7 +1036,7 @@ static void message_form()
     // down. THE SECOND BODY carries two retained fields and nothing excluded.
     CHECK( report.retained == 10 );
     CHECK( report.retain_lost == 6 );
-    CHECK( report.unknown == 16 );
+    CHECK( report.unknown == 17 );
     // and the READ'S OWN COUNTERS ARE UNMOVED: retention can lose a field and
     // can never turn a good read into a bad one (§6.6)
     CHECK( report.kind_mismatch == 0 && report.clamped == 0 && report.widened == 0 );

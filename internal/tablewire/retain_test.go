@@ -729,12 +729,32 @@ func TestRetainMessageForm(t *testing.T) {
 	// array whose element kind is 17, and a table whose payload meets a 17
 	// three bodies down. THE SECOND carries two retained fields and nothing
 	// excluded.
-	if report.Retained != 10 || report.RetainLost != 6 || report.Unknown != 16 {
-		t.Fatalf("retained=%d retain_lost=%d unknown=%d, want 10 / 6 / 16",
+	//
+	// `unknown` IS SEVENTEEN AND NOT SIXTEEN, and the seventeenth is the plain
+	// read's own: a bit stream has to be walked past, so the DISCARDED SLOT's
+	// element body is decoded into a sink where a file's reader steps over it
+	// by its length, and the field inside it that this build cannot name counts
+	// there. Retention keeps nothing under it — the slot is what was excluded
+	// and everything below it went with that one `retain_lost` — so the two
+	// retention counters are the numbers the file form gives.
+	if report.Retained != 10 || report.RetainLost != 6 || report.Unknown != 17 {
+		t.Fatalf("retained=%d retain_lost=%d unknown=%d, want 10 / 6 / 17",
 			report.Retained, report.RetainLost, report.Unknown)
 	}
 	if report.KindMismatch != 0 || report.Clamped != 0 || report.Widened != 0 {
 		t.Fatalf("retention moved a read counter: %+v", report)
+	}
+	// AND THE PLAIN READ OF THE SAME BATCH SAYS THE SAME SEVENTEEN, which is
+	// what makes that line the READ's and not retention's: the three names are
+	// ADDITIVE and retention moves no existing counter (§6.6).
+	var plain tabletext.Report
+	if _, _, err := tablewire.DecodeMessages(m, []*tabletext.Instance{
+		m.New(m.Lookup("Node")), m.New(m.Lookup("Node")),
+	}, batch, v, &plain); err != nil {
+		t.Fatal(err)
+	}
+	if plain.Unknown != report.Unknown || plain.Retained != 0 || plain.RetainLost != 0 {
+		t.Fatalf("the plain read says %+v beside the retaining read's %+v", plain, report)
 	}
 
 	// AND THE SAVE IS THE FILE FORM'S, byte for byte the reference's own pin

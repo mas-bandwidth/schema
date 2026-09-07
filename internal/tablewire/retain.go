@@ -160,6 +160,15 @@ func (rt *retainState) forget(inst *tabletext.Instance) {
 	}
 }
 
+// forgetCellRecords is forgetCell with the nil-state check the exported
+// entry points carry, for a caller that discards one cell rather than a body.
+func (rt *retainState) forgetCellRecords(cell *tabletext.Cell) {
+	if rt == nil {
+		return
+	}
+	rt.forgetCell(cell)
+}
+
 func (rt *retainState) forgetCell(cell *tabletext.Cell) {
 	if cell.Tab != nil {
 		rt.forget(cell.Tab)
@@ -561,11 +570,20 @@ func (rt *retainState) capture(inst *tabletext.Instance, id uint64, kind uint8, 
 		rt.lost(report)
 		return
 	}
-	// THE EXPANSION IS BOUNDED, AND THIS ENGINE STATES THE CONSTANT: a record
-	// costs the id it rides under, its kind byte and the resolved payload,
-	// which is the wire's bytes plus seven for each reference widened to eight
-	// and this engine's own fixed-width inner lengths (§6.6).
-	cost := 9 + len(rs.out)
+	rt.keep(inst, id, kind, rs.out, report)
+}
+
+// keep is the CAPACITY and the counter, which every capture answers the same
+// way whatever form it read from: the file's resolving walk above and the
+// message form's transcoding one (retainmessage.go) both land here, so the
+// accounting is stated once.
+//
+// THE EXPANSION IS BOUNDED, AND THIS ENGINE STATES THE CONSTANT: a record costs
+// the id it rides under, its kind byte and the resolved payload, which is the
+// wire's bytes plus seven for each reference widened to eight and this engine's
+// own fixed-width inner lengths (§6.6).
+func (rt *retainState) keep(inst *tabletext.Instance, id uint64, kind uint8, payload []byte, report *tabletext.Report) {
+	cost := 9 + len(payload)
 	if !rt.store.fits(cost) {
 		// REFUSAL IS PER RECORD AND NEVER PARTIAL: the record is not written
 		// at all, the read continues, and the buffer never holds a truncated
@@ -574,7 +592,7 @@ func (rt *retainState) capture(inst *tabletext.Instance, id uint64, kind uint8, 
 		rt.lost(report)
 		return
 	}
-	rt.store.records[inst] = append(rt.store.records[inst], retainedField{id: id, kind: kind, payload: rs.out, cost: cost})
+	rt.store.records[inst] = append(rt.store.records[inst], retainedField{id: id, kind: kind, payload: payload, cost: cost})
 	report.Retained++
 }
 
