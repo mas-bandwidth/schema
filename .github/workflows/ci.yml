@@ -526,7 +526,13 @@ jobs:
         run: go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@v0.23.0 ./...
       - name: bench scripts parse
         run: bash -n bench/run.sh
-      - name: absolute ledger — the cpp curve holds or goes red
+      # Both locked legs (cpp and c) hold their curve on their own machine,
+      # and on every (machine, corpus_id) axis the NEWEST certified pass that
+      # publishes a figure keeps c inside §2.8's tie band of cpp. Older
+      # certified passes on the axis are history: they print, one line each,
+      # and gate nothing.
+      # stdout is the series; the verdicts are on stderr and stay visible.
+      - name: absolute ledger — the cpp and c curves hold, and the pair stays locked
         run: go run ./bench/tools ledger --check > /dev/null
       - name: render smoke — the headline table renders from a committed CSV
         run: |
