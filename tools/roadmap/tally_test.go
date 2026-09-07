@@ -19,7 +19,7 @@ func TestTheTallyFollowsTheTables(t *testing.T) {
 	}
 	page := string(raw)
 	var columns, rows, done int
-	for _, line := range strings.Split(page, "\n") {
+	for line := range strings.SplitSeq(page, "\n") {
 		if !strings.HasPrefix(line, "|") {
 			continue
 		}
@@ -71,12 +71,14 @@ func TestNoLanguageIsCountedInProse(t *testing.T) {
 		t.Fatal(err)
 	}
 	counted := regexp.MustCompile(`\b[A-Za-z+#]+ at \d+ of \d+\b`)
-	for i, line := range strings.Split(string(raw), "\n") {
+	n := 0
+	for line := range strings.SplitSeq(string(raw), "\n") {
+		n++
 		if strings.HasPrefix(line, "|") {
 			continue
 		}
 		if counted.MatchString(line) {
-			t.Fatalf("ROADMAP.md:%d counts a language by hand: %q", i+1, line)
+			t.Fatalf("ROADMAP.md:%d counts a language by hand: %q", n, line)
 		}
 	}
 }
