@@ -42,3 +42,9 @@ mutation comparison. Both targets ride `test-cs`.
 storage, exact bit limits and composition contracts. The flat codec's measure
 counts 32 bits per used code unit without alignment. Its compiled pairing
 control must fail mutation agreement. Both targets ride `test-java`.
+
+`make packet-wide-js` checks runtime and flat codecs in development/production.
+Both retain Uint16Array storage and share the generated surrogate validator.
+Composition and exact flat bit-bound contracts run before the corpus. Each
+compiled pairing-removal tier must fail mutation agreement. Both targets ride
+`test-js`.

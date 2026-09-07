@@ -506,3 +506,33 @@ packet-utf8-js-negative-control: packet-utf8-js
 	@echo 'packet UTF-8 JS negative control: removed read validation fails both tiers in bit-flip agreement'
 
 test-js: packet-utf8-js packet-utf8-js-negative-control
+
+
+build/packet-wide/js/.stamp: bin/schema build/packet-wide/source/WideText.schema test/packet-wide/Shapes.schema
+	./bin/schema generate --lang js --out build/packet-wide/js build/packet-wide/source/WideText.schema
+	./bin/schema generate --lang js --out build/packet-wide/js/shapes test/packet-wide/Shapes.schema
+	@printf '{"type":"module"}\n' > build/packet-wide/js/package.json
+	@touch $@
+
+.PHONY: packet-wide-js packet-wide-js-negative-control
+packet-wide-js: build/packet-wide/js/.stamp build/packet-wide/cpp/driver build/packet-text/harness
+	@for mode in development production; do for tier in runtime flat; do \
+		NODE_ENV=$$mode $(NODE) test/packet-wide/js/main.mjs $$tier --contracts || exit 1; \
+		NODE_ENV=$$mode ./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver $(NODE) test/packet-wide/js/main.mjs $$tier || exit 1; \
+	done; done
+
+packet-wide-js-negative-control: packet-wide-js
+	@mkdir -p build/packet-wide/js-negative
+	go run ./tools/sabotage -name packet-wide-js-pairing -out build/packet-wide/js-negative/wstring.gotext internal/codegen/js/wstring.go
+	@printf '{"Replace":{"%s/internal/codegen/js/wstring.go":"%s/build/packet-wide/js-negative/wstring.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-wide/js-negative/overlay.json
+	go run -overlay=build/packet-wide/js-negative/overlay.json ./cmd/schema generate --lang js --out build/packet-wide/js-negative build/packet-wide/source/WideText.schema
+	cp build/packet-wide/js/package.json build/packet-wide/js-negative/package.json
+	$(NODE) --check build/packet-wide/js-negative/WideText.js
+	$(NODE) --check build/packet-wide/js-negative/WideTextFlat.js
+	@for tier in runtime flat; do \
+		if NODE_ENV=production ./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver -mutations-only $(NODE) test/packet-wide/js/main.mjs $$tier "$(CURDIR)/build/packet-wide/js-negative" > build/packet-wide/js-negative/$$tier.log 2>&1; then echo 'NEGATIVE CONTROL FAILED: JS wide pairing removal passed'; exit 1; fi; \
+		grep -Fq 'FAILED: packet-text verdict on ' build/packet-wide/js-negative/$$tier.log || { cat build/packet-wide/js-negative/$$tier.log; exit 1; }; \
+	done
+	@echo 'packet wide JS negative control: removed pairing fails both tiers in bit-flip agreement'
+
+test-js: packet-wide-js packet-wide-js-negative-control

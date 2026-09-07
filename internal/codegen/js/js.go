@@ -413,6 +413,8 @@ func (g *gen) emitClassFields(fields []*ir.Field) {
 func (g *gen) emitStorageField(f *ir.Field) {
 	name := ir.GoExportName(f.Name)
 	switch {
+	case f.Type.Kind == ir.TWString:
+		g.pf("    this.%s = new Uint16Array(%s);\n    this.%sLength = 0;\n", name, g.renderNum(f.Type.SizeExpr, big.NewInt(f.Type.Size)), name)
 	case f.Type.Kind == ir.TString:
 		g.pf("    this.%s = new Uint8Array(%s); // string(%s): max length, used length beside it (SPEC §4.7)\n",
 			name, g.renderNum(f.Type.SizeExpr, big.NewInt(f.Type.Size)), ir.RenderExpr(f.Type.SizeExpr))

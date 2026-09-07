@@ -453,7 +453,7 @@ func (g *fgen) staticBitsField(f *ir.Field) (int64, bool) {
 
 func (g *fgen) staticBitsScalar(f *ir.Field) (int64, bool) {
 	switch f.Type.Kind {
-	case ir.TString, ir.TBytes:
+	case ir.TString, ir.TBytes, ir.TWString:
 		return 0, false
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
@@ -825,6 +825,8 @@ func (g *fgen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.mergeW(32, ind)
 		g.pf("%sv = SC.getUint32(4, true);\n", ind)
 		g.mergeW(32, ind)
+	case ir.TWString:
+		g.emitWriteWString(f, name, ind)
 	case ir.TString, ir.TBytes:
 		g.emitWriteBytesField(f, name, ind)
 	case ir.TNamed:
@@ -1257,6 +1259,8 @@ func (g *fgen) emitReadElem(f *ir.Field, name, iv, ind string, bounded bool) {
 func (g *fgen) emitReadDynamicField(f *ir.Field, path, ind string) {
 	name := path + "." + ir.GoExportName(f.Name)
 	switch {
+	case f.Type.Kind == ir.TWString:
+		g.emitReadWString(f, name, ind)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.emitReadBytesField(f, name, ind)
 	case f.Array == ir.ArrayCounted:
@@ -1385,6 +1389,8 @@ func (g *fgen) emitReadWide(bits int64, ind string) {
 
 func (g *fgen) emitReadScalar(f *ir.Field, name, ind string, bounded bool) {
 	switch f.Type.Kind {
+	case ir.TWString:
+		g.emitReadWString(f, name, ind)
 	case ir.TString, ir.TBytes:
 		// only reachable as an array element (never inside a fused run —
 		// staticBitsScalar calls it dynamic)
@@ -1827,7 +1833,7 @@ func (g *fgen) emitZeroItems(items []ir.Item, path, ind string) {
 func (g *fgen) emitZeroFieldFlat(f *ir.Field, path, ind string) {
 	name := path + "." + ir.GoExportName(f.Name)
 	switch {
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
 		g.pf("%s%s.fill(0);\n%s%sLength = 0;\n", ind, name, ind, name)
 	case f.Array != ir.ArrayNone:
 		if st, ok := f.Type.Ref.(*ir.Struct); ok && f.Type.Kind == ir.TNamed {
