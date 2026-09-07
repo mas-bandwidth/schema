@@ -479,3 +479,30 @@ test-js: generated/js/.stamp generated/js-ludicrous/.stamp generated/bench/js/.s
 TEST_LEGS         += test-js
 CONFORMANCE_LEGS  += build/tables-generated-js/.stamp
 BENCH_TABLES_LEGS += generated/bench/tables/js/.stamp
+# Both JavaScript packet tiers share the UTF-8 rule and mutation corpus.
+build/packet-text/js/.stamp: bin/schema test/packet-text/Narrow.schema
+	./bin/schema generate --lang js --out build/packet-text/js test/packet-text/Narrow.schema
+	@printf '{"type":"module"}\n' > build/packet-text/js/package.json
+	@touch $@
+
+.PHONY: packet-utf8-js packet-utf8-js-negative-control
+packet-utf8-js: build/packet-text/js/.stamp build/packet-text/cpp/driver build/packet-text/harness
+	@for mode in development production; do for tier in runtime flat; do \
+		NODE_ENV=$$mode ./build/packet-text/harness $(NODE) test/packet-text/js/main.mjs $$tier || exit 1; \
+	done; done
+
+packet-utf8-js-negative-control: packet-utf8-js
+	@mkdir -p build/packet-text/js-negative
+	go run ./tools/sabotage -name packet-utf8-js-read -out build/packet-text/js-negative/utf8.gotext internal/codegen/js/utf8.go
+	@printf '{"Replace":{"%s/internal/codegen/js/utf8.go":"%s/build/packet-text/js-negative/utf8.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-text/js-negative/overlay.json
+	go run -overlay=build/packet-text/js-negative/overlay.json ./cmd/schema generate --lang js --out build/packet-text/js-negative test/packet-text/Narrow.schema
+	cp build/packet-text/js/package.json build/packet-text/js-negative/package.json
+	$(NODE) --check build/packet-text/js-negative/Narrow.js
+	$(NODE) --check build/packet-text/js-negative/NarrowFlat.js
+	@for tier in runtime flat; do \
+		if NODE_ENV=production ./build/packet-text/harness -mutations-only $(NODE) test/packet-text/js/main.mjs $$tier "$(CURDIR)/build/packet-text/js-negative" > build/packet-text/js-negative/$$tier.log 2>&1; then echo 'NEGATIVE CONTROL FAILED: JS UTF-8 removal passed'; exit 1; fi; \
+		grep -Fq 'FAILED: packet-text verdict on ' build/packet-text/js-negative/$$tier.log || { cat build/packet-text/js-negative/$$tier.log; exit 1; }; \
+	done
+	@echo 'packet UTF-8 JS negative control: removed read validation fails both tiers in bit-flip agreement'
+
+test-js: packet-utf8-js packet-utf8-js-negative-control
