@@ -375,21 +375,12 @@ func (s *scan) keyOrder(key *ir.Field, a, b int64) int {
 // is bounded where every companion is, in `record`'s walk of the entry).
 func (s *scan) usedBytes(key *ir.Field, at int64) []byte {
 	pieces := ir.FieldPieces(s.m.Unit, key, at)
-	n := int64(int32(s.ord.Uint32(s.buf[pieces[1].Offset:])))
-	if n < 0 {
-		n = 0
-	}
-	if n > pieces[0].Size {
-		n = pieces[0].Size
-	}
+	n := min(max(int64(int32(s.ord.Uint32(s.buf[pieces[1].Offset:]))), 0), pieces[0].Size)
 	return s.buf[pieces[0].Offset : pieces[0].Offset+n]
 }
 
 func compareBytes(a, b []byte) int {
-	common := len(a)
-	if len(b) < common {
-		common = len(b)
-	}
+	common := min(len(a), len(b))
 	for i := range common {
 		if a[i] != b[i] {
 			if a[i] < b[i] {
