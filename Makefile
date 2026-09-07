@@ -1583,8 +1583,16 @@ endif
 # The sabotaged compiler reaches the build through `go build -overlay`, so no
 # tracked file is ever written to — the same mechanism the big-endian negative
 # control uses, and for the same reason.
+#
+# THE C# STAMP IS A PREREQUISITE, as it is on the padding and pitch controls
+# beside it. The C# half below overrides BlockGeneratedDir alone, so the
+# project's BlockHomeGeneratedDir keeps its default and the blockhome sources
+# have to be on disk; without them the build fails on an undefined namespace
+# and the control refuses, correctly, that C# went red but not on the layout
+# check. Inside `make test` an earlier leg had already generated them, which is
+# why the omission stayed invisible until every control ran on its own.
 .PHONY: tables-block-layout-model-negative-control
-tables-block-layout-model-negative-control: bin/schema
+tables-block-layout-model-negative-control: bin/schema build/tables-generated-cs/.stamp
 	@mkdir -p build
 	@sed 's|ml.Fields = append(ml.Fields, FieldLayout{Field: f, Offset: start, Size: offset - start, Align: fieldAlign})|ml.Fields = append(ml.Fields, FieldLayout{Field: f, Offset: start + 8, Size: offset - start, Align: fieldAlign}) // SABOTAGED: one field, moved|' \
 		ir/blocklayout.go > build/blocklayout-moved.gotext
@@ -1840,8 +1848,14 @@ tables-json-clamp-prefix-negative-control: bin/schema test/tables/json_clamp_pre
 # It sabotages the C++ driver into claiming absence for every instance whose
 # unit is pointered, which is exactly what a port legitimately does, and
 # requires the harness to go RED on the reference leg.
+# The Go leg is a PREREQUISITE, not an assumption: the second half below runs
+# the harness over a substituted registry naming the Go driver, and that driver
+# execs build/conformance-go. Within `make test` the Go leg is already built by
+# the time this runs, which is why the omission stayed invisible; run this
+# target on its own and it fails on a missing binary rather than on its own
+# question.
 .PHONY: conformance-negative-control-absent
-conformance-negative-control-absent: build/conformance-harness build/tables-generated/.stamp
+conformance-negative-control-absent: build/conformance-harness build/tables-generated/.stamp build/conformance-go
 	@mkdir -p build
 	@sed -e 's|if ( variable != NULL )$$|if ( variable != NULL \&\& !spill( out, f[1] + ".absent", "", 0 ) ) { return 1; } /* SABOTAGED */\n        if ( variable != NULL ) { continue; }\n        if ( false )|' \
 		test/conformance/cpp/main.cpp > build/conformance-cpp-absent.cpp
@@ -2790,8 +2804,8 @@ tables-cook-endian: bin/schema
 # tracked file is ever written to: an interrupt cannot leave a sabotaged
 # working tree, and a parallel `make -j` cannot compile the sabotage into
 # something else.
-.PHONY: tables-big-endian-negative
-tables-big-endian-negative: tables-big-endian
+.PHONY: tables-big-endian-negative-control
+tables-big-endian-negative-control: tables-big-endian
 	@mkdir -p build
 	@sed 's|void put16( uint16_t v ) { uint8_t b\[2\] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }|void put16( uint16_t v ) { raw( \&v, 2 ); } // SABOTAGED: host order|' \
 		internal/codegen/cpptable/cpptable.go > build/cpptable-host-order.gotext
@@ -2914,8 +2928,8 @@ tables-hostile-values: build/schema_test_hostile build/schema_test_hostile_asan 
 # `+`, which RFC 8259 does not — and the gate must go red, because a tree the
 # manifest says is REFUSED starts packing. Same overlay mechanism as the wire
 # negative control: no tracked file is ever written to.
-.PHONY: tables-hostile-negative
-tables-hostile-negative: tables-hostile-values
+.PHONY: tables-hostile-negative-control
+tables-hostile-negative-control: tables-hostile-values
 	@mkdir -p build
 	@sed "s/in.text\[in.pos\] == '-' {/in.text[in.pos] == '-' || in.text[in.pos] == '+' { \/\/ SABOTAGED/" \
 		internal/tabletext/read.go > build/read-sabotaged.gotext
@@ -2944,8 +2958,8 @@ tables-hostile-negative: tables-hostile-values
 # `go build -overlay`, so no tracked file is ever written to: an interrupt in
 # the middle of this target cannot leave a sabotaged working tree, and a
 # parallel `make -j` cannot compile the sabotage into something else.
-.PHONY: tables-pack-negative
-tables-pack-negative: tables-pack
+.PHONY: tables-pack-negative-control
+tables-pack-negative-control: tables-pack
 	@mkdir -p build
 	@sed 's/if !fv\.Present {/if true { \/\/ SABOTAGED: a present ?T elides/' \
 		internal/tablewire/encode.go > build/encode-sabotaged.gotext
@@ -3167,9 +3181,9 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	$(MAKE) tables-runtime-home-negative-control
 	$(MAKE) tables-block-inline-array-negative-control
 	$(MAKE) tables-pack
-	$(MAKE) tables-pack-negative
+	$(MAKE) tables-pack-negative-control
 	$(MAKE) tables-hostile-values
-	$(MAKE) tables-hostile-negative
+	$(MAKE) tables-hostile-negative-control
 	./build/schema_test_random
 	./build/schema_test_ludicrous
 	./build/schema_test_bench

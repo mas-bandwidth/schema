@@ -9,19 +9,36 @@ name: CI
 # 1:49, msvc 1:27, windows 0:49, conformance 0:21 to 0:41 per leg, go-test
 # 0:37, lint 0:37, vuln 0:30, shape-gate 0:22, generated 0:16, cpp-lock 0:06.
 #
+# THE RULE IS PER JOB, AND EVERY JOB IN THIS FILE IS HELD TO IT. The
+# negative-control leg below is a matrix, and a matrix row is a job, so each
+# row is cut to fit the same two minutes rather than the leg as a whole being
+# cut to fit it. A control that cannot fit the rule ON ITS OWN is not made to
+# fit by grouping, so it does not run here at all: it runs on the nightly tier
+# in certify.yml, and make/negative-controls.json records which tier every
+# group is in and why. `tools/negativecontrols` refuses a group that is in
+# neither, so nothing can fall between the two files.
+#
 # `big-endian` IS THE BINDING CONSTRAINT, and it is worth naming rather than
-# rounding away: 87 s of its 109 is `make tables-big-endian-negative`, which
-# cross-compiles the tables battery for s390x, runs it under qemu, and then
-# compiles it a SECOND time for the negative control. Building its six
+# rounding away: 87 s of its 109 is `make tables-big-endian-negative-control`,
+# which cross-compiles the tables battery for s390x, runs it under qemu, and
+# then compiles it a SECOND time for the negative control. Building its six
 # binaries in parallel bought 14 s of that; the rest is the control's own two
 # compiles, which are serial by construction. The next job that wants a place
 # on this gate takes the budget from somewhere, and that is where to look.
+# NOTE, 2026-09-07: that job measures 4:15 to 4:26 on main (runs 34111624059,
+# 34111228369, 34110320928), which is over the rule and is not this leg's
+# doing. It wants the same treatment the negative controls have here, and
+# issue #684 owns giving it that. Its control is the reason
+# tables-big-endian-negative-control sits in the plan's exclusion list rather
+# than in a group: this job runs it on every pull request already.
 #
 # CERTIFICATION IS certify.yml: the inline gates, the full `make test` chain on
-# both OSes, every `tables-<lang>-release` target. It runs on every push to
-# main, nightly, and on demand. Nothing is checked less than before — the split
-# moves WHEN a certification instrument runs, not whether. A regression only
-# certification can see fails loudly on main minutes after the merge.
+# both OSes, every `tables-<lang>-release` target. It runs nightly and on
+# demand, and never per push (#669): a thirty-minute suite is not per-commit
+# CI. Nothing is checked less than before, because the split moves WHEN a
+# certification instrument runs, not whether. A regression only certification
+# can see fails loudly at the next nightly, or the same hour when somebody
+# dispatches that file on main after a landing near the hot paths.
 #
 # The line between the two files is the question a job answers. An ITERATION
 # gate answers "is this diff right" — it can go red on a commit, so a PR is
@@ -383,7 +400,7 @@ jobs:
       # bin/schema and the generated tree, which make builds once. The runner
       # has four cores and the leg was spending them one at a time.
       - name: the big-endian leg, and its negative control
-        run: make -j"$(nproc)" tables-big-endian-negative BE_CXX=s390x-linux-gnu-g++-13 BE_CC=s390x-linux-gnu-gcc-13
+        run: make -j"$(nproc)" tables-big-endian-negative-control BE_CXX=s390x-linux-gnu-g++-13 BE_CC=s390x-linux-gnu-gcc-13
 
       # And the GO table leg on the same target. Go cross-compiles, so the
       # conformance driver is one env var away from a big-endian binary, and
@@ -729,3 +746,204 @@ jobs:
             exit 1
           fi
           echo "no locked paths touched — clean"
+
+  # EVERY NEGATIVE CONTROL, ON THE PULL REQUEST (issue #563).
+  #
+  # A negative control proves a gate is watching: it breaks what the gate
+  # watches and requires the gate to go red. Each one already refuses when its
+  # sabotage patches nothing, so a control whose sed pattern has drifted off its
+  # target line says so out loud. That refusal only helps somebody who reads it,
+  # and until this leg the only reader was `make test`, which lives in
+  # certify.yml and runs AFTER a merge. Twice on 2026-09-05 main went red on a
+  # merge whose pull-request run was 20 of 20 green, and one of the two was
+  # exactly this: #562 rewrote the line the maps fit control's pattern aimed at,
+  # the sabotage patched nothing, and the control refused on main.
+  #
+  # THE TARGET LIST IS ENUMERATED, NOT TYPED. `tools/negativecontrols` reads the
+  # Makefile and every file the Makefile includes, and holds what it finds
+  # against make/negative-controls.json. A control this tree defines is in a
+  # group here or in that file's exclusion list with a reason, and the tool's
+  # test, which `go-test` runs as part of `go test ./...` and which the matrix
+  # job below runs again on its own, goes red on any other outcome. So a
+  # control added tomorrow cannot be left out of this leg by forgetting a line
+  # in a workflow.
+  #
+  # GROUPED BY TOOLCHAIN FIRST AND BY COST SECOND, one job per group. Most
+  # controls need Go, a host C and C++ compiler and the C/C++ serialize siblings
+  # and nothing else; the rest are per-port and need the port's runtime,
+  # installed here the same way the conformance jobs above install it, keyed on
+  # the row's field rather than on a language name. Inside a toolchain the
+  # groups are families that share a compile, cut where the owner's rule cuts
+  # them: a group runs in one `make -k` invocation and that invocation has to
+  # fit inside two minutes with the job's own 25 s of checkout, sibling clones
+  # and first build already spent.
+  #
+  # MEASURED, 2026-09-07 on the author's machine (arm64 macOS, one target per
+  # make invocation, off one warm build) and then on the runner, on this
+  # branch's own pull-request runs. 203 controls, 40 pull-request groups and
+  # one nightly group. `go run ./tools/negativecontrols check` prints the
+  # count, so it is one command rather than a number to keep in step by hand.
+  #
+  # The base toolchain carries 134 of them and takes twenty-eight jobs rather
+  # than one: the map gate alone is 17 controls at 4 s each on the author's
+  # machine and about 2x that on the runner, and the conformance driver's two
+  # sabotage rebuilds are 45 s and 47 s of runner time on their own. The
+  # tolerant-wire family is one control per job: each rebuilds the compiler
+  # under a source overlay and then fuzzes the sabotaged wire, 55 s to 80 s
+  # each, so no two of them fit together.
+  #
+  # THE FIRST CUT WAS MEASURED AND CUT AGAIN. On run 34115675206 every group
+  # was inside the rule but eight of them sat between 100 s and 111 s, which is
+  # a rule met by luck rather than by design, so those eight are the twelve
+  # groups they are now. The per-group numbers live in
+  # make/negative-controls.json's `why` lines, next to the targets they are
+  # about.
+  #
+  # ONE CONTROL DOES NOT FIT THE RULE AT ANY GROUP SIZE, and it runs nightly
+  # instead: tables-message-form-negative-control drives 49 sabotage rows one
+  # submake each at 124 s, against a 120 s rule. It is the `nightly` group in
+  # the plan, certify.yml runs that tier on the schedule it carries, and
+  # `tools/negativecontrols` refuses a group that is in neither tier, so a
+  # control cannot leave this file without landing on that one. The message
+  # form's other blades stay here. The group keeps its name at one target,
+  # because it is where the next control that outgrows the rule lands.
+  #
+  # AN UMBRELLA TARGET IS NOT A CONTROL. tables-wire-fuzz-retain-negative-control
+  # carries no recipe: it names the retain oracle and the retain class leaves,
+  # which the wire-fuzz-message-oracle and wire-fuzz-retain-class rows run
+  # between them, so it sits in the plan's exclusion list beside the other
+  # umbrellas rather than in a job that would run one of those leaves twice.
+  negative-controls-matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+
+      # The enumeration gate, first and on its own, so a control that nothing
+      # runs is named here rather than discovered by its absence from a log.
+      - name: every negative control the makefiles define is in the plan
+        run: go run ./tools/negativecontrols check
+
+      - id: plan
+        name: the plan, as a matrix
+        run: |
+          matrix=$(go run ./tools/negativecontrols matrix)
+          echo "$matrix"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  negative-controls:
+    name: negative controls (${{ matrix.name }})
+    needs: negative-controls-matrix
+    runs-on: ubuntu-latest
+    # THE RULE, ENFORCING ITSELF. Every row here is cut to 120 s of control
+    # time and pays about 25 s of checkout, sibling clones and first build on
+    # top, so five minutes is generous and a row that reaches it is a row that
+    # left the rule. A ceiling wide enough to hide that is not a timeout.
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.negative-controls-matrix.outputs.matrix) }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # All six siblings in every group. A control reaches for a runtime through
+      # the generated code it sabotages, and which one that is belongs to the
+      # control rather than to the group; six shallow clones cost seconds and
+      # remove the whole class of "the group forgot a sibling".
+      - name: Check out the serialize runtimes (pinned releases)
+        run: |
+          cd ..
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"    https://github.com/mas-bandwidth/serialize.git    serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG"  https://github.com/mas-bandwidth/serialize.c.git  serialize.c
+          git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
+          git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+
+      # One step per toolchain, each keyed on the row's field for it, exactly as
+      # the conformance matrix above does. A base row names none of them and
+      # installs none of them.
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head; the SHA freezes the action, not the compiler, and rustup resolves stable at run time
+        if: matrix.rust != ''
+
+      - name: read the .NET SDK pin
+        if: matrix.dotnet != ''
+        run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        if: matrix.dotnet != ''
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_PIN }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: matrix.node != ''
+        with:
+          node-version: ${{ matrix.node }}
+
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        if: matrix.dart != ''
+        with:
+          sdk: ${{ matrix.dart }}
+
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        if: matrix.java != ''
+        with:
+          distribution: 'temurin'
+          java-version: ${{ matrix.java }}
+
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        if: matrix.otp != ''
+        with:
+          otp-version: ${{ matrix.otp }}
+          elixir-version: ${{ matrix.elixir }}
+
+      # The compiler and the generated tree ONCE, in parallel, before any
+      # control runs. Every control in the group hangs off these two, and
+      # building them here keeps the build cost out of the first control's
+      # timing and out of its log.
+      - name: build bin/schema and the generated tree once
+        run: make -j"$(nproc)" bin/schema build/tables-generated/.stamp
+
+      # ONE make invocation for the whole group, with -k so a control that
+      # refuses does not hide the ones behind it: every control in the group
+      # runs, and every failure is in one log. `-k` still exits nonzero.
+      #
+      # The exit status is the first gate. The log scan is the second, and it is
+      # not redundant: a control's own refusal lines are the sentence a reader
+      # needs (a sabotage that patched nothing, a gate that stayed green), and
+      # this pulls them out of a log that is thousands of compiler lines long
+      # and puts them in the run's annotations.
+      #
+      # The overrides are certify.yml's: RUSTUP_BIN defaults to a homebrew keg
+      # on the author's machine, and DART, JAVA/JAVAC, ELIXIR/MIX and NODE
+      # default to the repo-local dist/ toolchains, while on CI the setup steps
+      # above put the pinned versions on PATH. They are harmless in a group that
+      # runs no control needing them.
+      - name: every negative control in the ${{ matrix.name }} group
+        run: |
+          set -o pipefail
+          targets=$(go run ./tools/negativecontrols targets "${{ matrix.name }}")
+          echo "$targets" | tr ' ' '\n'
+          status=0
+          # shellcheck disable=SC2086
+          make -k $targets \
+            RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node \
+            2>&1 | tee controls.log || status=1
+          if grep -qE '^NEGATIVE CONTROL( FAILED)?:' controls.log; then
+            echo "::error::a negative control refused. Either its sabotage no longer patches the line it aims at, or the gate it watches stayed green under the sabotage. Both are stop-the-line: the control is watching nothing until it is repaired."
+            grep -nE '^NEGATIVE CONTROL( FAILED)?:' controls.log
+            status=1
+          fi
+          exit $status
