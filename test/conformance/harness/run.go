@@ -346,7 +346,7 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 // leg kept comparing against nothing.
 func skipSet(list string) (map[string]bool, error) {
 	out := map[string]bool{}
-	for _, s := range strings.Split(list, ",") {
+	for s := range strings.SplitSeq(list, ",") {
 		if s = strings.TrimSpace(s); s != "" {
 			out[s] = true
 		}
