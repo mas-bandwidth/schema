@@ -254,6 +254,7 @@ type gen struct {
 	needF64Conv  bool // _float64BitsFromDouble / _doubleFromFloat64Bits
 	needULess    bool // _unsignedLessThan
 	needHex      bool // _hex64 (flagNames high-bit rendering)
+	needUTF8     bool // _schemaUtf8Valid
 	needScratch  bool // the overlaid conversion scratch views
 	usesTypeData bool // dart:typed_data is imported
 }
@@ -372,6 +373,9 @@ func (g *gen) writeImport(h *strings.Builder, base string, syms []string) {
 
 // emitHelpers writes the per-file private helpers the emitted bodies used.
 func (g *gen) emitHelpers(h *strings.Builder) {
+	if g.needUTF8 {
+		h.WriteString(utf8Helper)
+	}
 	if g.needScratch {
 		// One view per conversion actually emitted: `dart analyze` refuses an
 		// unreferenced private declaration, so a file that converts only

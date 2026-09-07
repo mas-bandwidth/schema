@@ -410,3 +410,28 @@ test-dart: generated/dart/.stamp generated/dart-ludicrous/.stamp generated/bench
 TEST_LEGS         += test-dart
 CONFORMANCE_LEGS  += build/conformance-dart
 BENCH_TABLES_LEGS += generated/bench/tables/dart/.stamp
+# Packet UTF-8 content validation, including a compiled mutation control.
+build/packet-text/dart/.stamp: bin/schema test/packet-text/Narrow.schema
+	./bin/schema generate --lang dart --out build/packet-text/dart test/packet-text/Narrow.schema
+	@touch $@
+
+.PHONY: packet-utf8-dart packet-utf8-dart-negative-control
+packet-utf8-dart: build/packet-text/dart/.stamp build/packet-text/cpp/driver build/packet-text/harness
+	$(DART) analyze build/packet-text/dart test/packet-text/dart
+	$(DART) format --set-exit-if-changed --output=none build/packet-text/dart test/packet-text/dart
+	./build/packet-text/harness $(DART) --enable-asserts test/packet-text/dart/main.dart
+	$(DART) compile exe -o build/packet-text/dart/driver test/packet-text/dart/main.dart
+	./build/packet-text/harness ./build/packet-text/dart/driver
+
+packet-utf8-dart-negative-control: packet-utf8-dart
+	@mkdir -p build/packet-text/dart-negative
+	go run ./tools/sabotage -name packet-utf8-dart-read -out build/packet-text/dart-negative/utf8.gotext internal/codegen/dart/utf8.go
+	@printf '{"Replace":{"%s/internal/codegen/dart/utf8.go":"%s/build/packet-text/dart-negative/utf8.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-text/dart-negative/overlay.json
+	go run -overlay=build/packet-text/dart-negative/overlay.json ./cmd/schema generate --lang dart --out build/packet-text/dart-negative test/packet-text/Narrow.schema
+	@sed 's|../../../build/packet-text/dart|$(CURDIR)/build/packet-text/dart-negative|' test/packet-text/dart/main.dart > build/packet-text/dart-negative/main.dart
+	$(DART) compile exe -o build/packet-text/dart-negative/driver build/packet-text/dart-negative/main.dart
+	@if ./build/packet-text/harness -mutations-only ./build/packet-text/dart-negative/driver > build/packet-text/dart-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: Dart UTF-8 removal passed'; exit 1; fi
+	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-text/dart-negative/log || { cat build/packet-text/dart-negative/log; exit 1; }
+	@echo 'packet UTF-8 Dart negative control: removed read validation fails bit-flip agreement'
+
+test-dart: packet-utf8-dart packet-utf8-dart-negative-control

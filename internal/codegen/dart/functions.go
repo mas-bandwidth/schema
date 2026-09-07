@@ -1287,6 +1287,14 @@ func (g *gen) emitReadBytesField(f *ir.Field, name, ind string) {
 	g.pf("%sbitsRead += %s * 8;\n", ind, length)
 	g.invalidateWindow() // bitsRead moved by a dynamic amount
 	if f.Type.Kind == ir.TString {
+		g.needUTF8 = true
+		guard := fmt.Sprintf("%sif (!_schemaUtf8Valid(%s, %s)) {", ind, name, length)
+		if len(guard) <= 80 {
+			g.pf("%s\n", guard)
+		} else {
+			g.pf("%sif (!_schemaUtf8Valid(\n%s  %s,\n%s  %s,\n%s)) {\n", ind, ind, name, ind, length, ind)
+		}
+		g.pf("%s  return false;\n%s}\n", ind, ind)
 		g.emitByteReadLoop(ind, iv, length)
 		g.pf("%s  if (%s[%s] == 0) {\n", ind, name, iv)
 		g.pf("%s    return false; // an interior null is content the read refuses (SPEC §4.7)\n", ind)
