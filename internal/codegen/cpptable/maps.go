@@ -86,6 +86,23 @@ func mapKeyOrderType(f *ir.Field) string {
 // const form's Find answers the resolved `const T *` (docs/SPEC-TABLES.md §2.8).
 func mapValueIsPointer(f *ir.Field) bool { return ir.MapValueField(f).Type.Pointer }
 
+// mapValueIsText reports a `string(N)`, `wstring(N)` or `bytes(N)` value. Each
+// is an ordinary field of the generated entry (docs/SPEC-TABLES.md §2.8), and
+// each spells its storage as a PAIR: the buffer and the `int32` used length
+// beside it (§7.2). Two members are not one addressable slot, so the handle
+// every map surface hands back is the ENTRY, which reaches both.
+func mapValueIsText(f *ir.Field) bool {
+	value := ir.MapValueField(f)
+	if value.Type.Pointer {
+		return false
+	}
+	switch value.Type.Kind {
+	case ir.TString, ir.TWString, ir.TBytes:
+		return true
+	}
+	return false
+}
+
 // ---- the runtime (docs/SPEC-TABLES.md §2.8) ----
 
 // tableMapRuntime is the map half of the variable-length runtime: the storage
@@ -833,13 +850,25 @@ func (g *tableGen) emitMapEntrySurface(owner *ir.Struct, f *ir.Field) {
 		g.pf("inline void TableEntrySetKey( %s & entry, %s key ) { entry.key = key; }\n", n, typ)
 	}
 	// what a Find answers, and what an iteration yields beside the key
-	if mapValueIsPointer(f) {
+	switch {
+	case mapValueIsPointer(f):
 		t := value.Type.Name
 		g.pf("// a map[K]*T: the const Find answers the RESOLVED pointer, one add on the\n")
 		g.pf("// self-relative delta, exactly as <T>At answers it (§6.2, §6.3)\n")
 		g.pf("inline const %s * TableEntryFound( const %s * entry ) { return entry != NULL ? %sAt( entry->value ) : NULL; }\n", t, n, t)
 		g.pf("inline TableRef * TableEntryValue( %s * entry ) { return &entry->value; } // the builder hands back the SLOT\n", n)
-	} else {
+	case mapValueIsText(f):
+		// a map[K]string(N), map[K]wstring(N) or map[K]bytes(N): the value's
+		// storage is the buffer and the int32 used length beside it (§2.8,
+		// §7.2), two members, so the ENTRY is the handle that reaches both.
+		// A caller fills `entry->value` and `entry->value_length`, and leaves
+		// `entry->key` to the map, which owns the sort the key carries.
+		g.pf("// A TEXT VALUE'S STORAGE IS A PAIR (§2.8, §7.2): `value` beside\n")
+		g.pf("// `value_length`, so the handle is the ENTRY and not one member of it.\n")
+		g.pf("// Fill `value` and `value_length`; `key` belongs to the map's own order.\n")
+		g.pf("inline const %s * TableEntryFound( const %s * entry ) { return entry; }\n", n, n)
+		g.pf("inline %s * TableEntryValue( %s * entry ) { return entry; }\n", n, n)
+	default:
 		typ := g.mapValueStorageType(f)
 		g.pf("inline const %s * TableEntryFound( const %s * entry ) { return entry != NULL ? &entry->value : NULL; }\n", typ, n)
 		g.pf("inline %s * TableEntryValue( %s * entry ) { return &entry->value; }\n", typ, n)
@@ -869,6 +898,10 @@ func (g *tableGen) mapValueStorageType(f *ir.Field) string {
 	value := ir.MapValueField(f)
 	if value.IsMap() {
 		return fmt.Sprintf("TableMap<%s>", value.MapEntry.Name)
+	}
+	if mapValueIsText(f) {
+		// a PAIR is two members, so the entry is the handle (§2.8, §7.2)
+		return mapEntryOf(f).Name
 	}
 	typ, _ := g.cppFieldType(value.Type)
 	return typ
