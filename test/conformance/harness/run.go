@@ -339,8 +339,30 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 	return out, nil
 }
 
-func run(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPath, work, only string) (bool, error) {
+// skipSet reads --skip: the legs this run does not exercise, comma separated,
+// which the Makefile fills from SCHEMA_SKIP_LEGS (issue #599). A skipped leg is
+// PRINTED and left out, never passed over in silence, and the reference leg
+// cannot be one: the corpus would lose its own expectation while every other
+// leg kept comparing against nothing.
+func skipSet(list string) (map[string]bool, error) {
+	out := map[string]bool{}
+	for _, s := range strings.Split(list, ",") {
+		if s = strings.TrimSpace(s); s != "" {
+			out[s] = true
+		}
+	}
+	if out[referenceLang] {
+		return nil, fmt.Errorf("--skip names the reference leg %s, which every other leg compares against", referenceLang)
+	}
+	return out, nil
+}
+
+func run(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPath, work, only, skip string) (bool, error) {
 	drivers, discovered, err := loadDrivers(driversPath)
+	if err != nil {
+		return false, err
+	}
+	skipped, err := skipSet(skip)
 	if err != nil {
 		return false, err
 	}
@@ -380,6 +402,10 @@ func run(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPa
 		// than the matrix, so the rule does not reach it.
 		reference := i == 0 && discovered
 		if only != "" && d.lang != only {
+			continue
+		}
+		if skipped[d.lang] {
+			fmt.Fprintf(w, "conformance SKIPS the %s leg: --skip names it (SCHEMA_SKIP_LEGS)\n", d.lang)
 			continue
 		}
 		langs = append(langs, d.lang)

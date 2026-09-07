@@ -683,7 +683,14 @@ tables-block: build/schema_test_block build/schema_test_block_asan build/schema_
 	./build/schema_test_block
 	./build/schema_test_block_asan
 	./build/schema_test_block_tsan
+# THE C# HALF of this two-language gate runs unless the cs leg is named in
+# SCHEMA_SKIP_LEGS (issue #599). A skip that reaches the leg loop and not here
+# is a skip that stops the chain anyway, on the same missing dotnet.
+ifeq ($(filter cs,$(SKIPPED_LEGS)),)
 	cd test/cs-block && $(DOTNET) run
+else
+	@echo "tables-block: the C# half is SKIPPED, SCHEMA_SKIP_LEGS names the cs leg"
+endif
 
 # ---------------------------------------------------------------------------
 # THE FORGERY FUZZER (docs/SPEC-TABLES.md §19.2, §19.5). The hand-written battery in
@@ -749,7 +756,12 @@ build/block-fuzz/.stamp: build/schema_test_block_fuzz
 tables-block-fuzz: build/schema_test_block_fuzz build/schema_test_block_fuzz_asan build/block-fuzz/.stamp build/tables-generated-cs/.stamp
 	SEED=$(SEED) N=$(N) ./build/schema_test_block_fuzz
 	SEED=$(SEED) N=$(N) ./build/schema_test_block_fuzz_asan
+# the C# half, on the same rule as tables-block above (issue #599)
+ifeq ($(filter cs,$(SKIPPED_LEGS)),)
 	cd test/cs-block && SEED=$(SEED) N=$(N) $(DOTNET) run -- --fuzz
+else
+	@echo "tables-block-fuzz: the C# half is SKIPPED, SCHEMA_SKIP_LEGS names the cs leg"
+endif
 
 # THE COOK FIXTURES the Rust fuzzer's cook half forges, written by test/cookgen
 # with the same chains the conformance harness uses — the fixture generator's
@@ -819,15 +831,19 @@ define block_fuzz_sabotage
 	fi
 	@grep -q "^FAILED: an opened block" build/block-fuzz-$(1)/cpp.log || \
 		{ echo "NEGATIVE CONTROL FAILED: the C++ leg went red, but not on the oracle"; cat build/block-fuzz-$(1)/cpp.log; exit 1; }
-	@if ( cd test/cs-block && SEED=$(SEED) N=$(N) $(DOTNET) run \
-			-p:BlockGeneratedDir=../../build/block-fuzz-$(1)/generated/block-cs \
-			-p:BlockHomeGeneratedDir=../../build/block-fuzz-$(1)/generated/blockhome-cs -- --fuzz ) \
-			> build/block-fuzz-$(1)/cs.log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the C# fuzzer stayed green with the $(1) check removed from the emitter"; \
-		exit 1; \
+	@if [ -n '$(filter cs,$(SKIPPED_LEGS))' ]; then \
+		echo "  the C# half of this control is SKIPPED, SCHEMA_SKIP_LEGS names the cs leg"; \
+	else \
+		if ( cd test/cs-block && SEED=$(SEED) N=$(N) $(DOTNET) run \
+				-p:BlockGeneratedDir=../../build/block-fuzz-$(1)/generated/block-cs \
+				-p:BlockHomeGeneratedDir=../../build/block-fuzz-$(1)/generated/blockhome-cs -- --fuzz ) \
+				> build/block-fuzz-$(1)/cs.log 2>&1; then \
+			echo "NEGATIVE CONTROL FAILED: the C# fuzzer stayed green with the $(1) check removed from the emitter"; \
+			exit 1; \
+		fi; \
+		grep -q "^FAILED: an opened block" build/block-fuzz-$(1)/cs.log || \
+			{ echo "NEGATIVE CONTROL FAILED: the C# leg went red, but not on the oracle"; cat build/block-fuzz-$(1)/cs.log; exit 1; }; \
 	fi
-	@grep -q "^FAILED: an opened block" build/block-fuzz-$(1)/cs.log || \
-		{ echo "NEGATIVE CONTROL FAILED: the C# leg went red, but not on the oracle"; cat build/block-fuzz-$(1)/cs.log; exit 1; }
 	@rm -f build/tables-generated-rust/.stamp
 	./build/block-fuzz-$(1)/schema generate --lang rust --out build/tables-generated-rust/blockdemo/src tables/block
 	./build/block-fuzz-$(1)/schema generate --lang rust --out build/tables-generated-rust/blockhome/src tables/blockhome
@@ -1456,6 +1472,9 @@ tables-block-fill-refuser-negative-control: build/tables-generated/.stamp
 # at the wrong offset, which is exactly what §19.3 says Size alone cannot pin.
 .PHONY: tables-block-padding-negative-control
 tables-block-padding-negative-control: build/tables-generated-cs/.stamp
+ifneq ($(filter cs,$(SKIPPED_LEGS)),)
+	@echo "tables-block-padding-negative-control: SKIPPED, it is a C# control and SCHEMA_SKIP_LEGS names the cs leg"
+else
 	@rm -rf build/block-padding-sabotage && cp -R build/tables-generated-cs/block build/block-padding-sabotage
 	@sed -i.bak '/private byte _pad/d' build/block-padding-sabotage/PaddedBlock.cs
 	@grep -q "private byte _pad" build/block-padding-sabotage/PaddedBlock.cs && \
@@ -1469,6 +1488,7 @@ tables-block-padding-negative-control: build/tables-generated-cs/.stamp
 	@grep -q "schema block layout" build/block-padding-sabotage.log || \
 		{ echo "NEGATIVE CONTROL FAILED: the failure was not the layout check"; cat build/block-padding-sabotage.log; exit 1; }
 	@echo "block padding negative control: deleting the generated padding fields turns the layout check red"
+endif
 
 # §19.5's FIRST named negative control: "perturb one row type's pitch constant
 # on one side only and the two-language test goes red". The constant is the C#
@@ -1478,6 +1498,9 @@ tables-block-padding-negative-control: build/tables-generated-cs/.stamp
 # not inert.
 .PHONY: tables-block-pitch-negative-control
 tables-block-pitch-negative-control: build/tables-generated-cs/.stamp
+ifneq ($(filter cs,$(SKIPPED_LEGS)),)
+	@echo "tables-block-pitch-negative-control: SKIPPED, it is a C# control and SCHEMA_SKIP_LEGS names the cs leg"
+else
 	@rm -rf build/block-pitch-sabotage && cp -R build/tables-generated-cs/block build/block-pitch-sabotage
 	@sed -i.bak 's|public const long ShipsStride = 88;|public const long ShipsStride = 96; // SABOTAGED|' \
 		build/block-pitch-sabotage/RenderBlock.cs
@@ -1492,6 +1515,7 @@ tables-block-pitch-negative-control: build/tables-generated-cs/.stamp
 	@grep -q "ShipsStride" build/block-pitch-sabotage.log || \
 		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on the pitch constant"; cat build/block-pitch-sabotage.log; exit 1; }
 	@echo "block pitch negative control: a pitch constant perturbed on ONE side turns the C# layout check red"
+endif
 
 # §19.5's SECOND named negative control: "perturb one field's offset in the
 # compiler's layout model and the generated asserts go red on both backends".
@@ -1522,6 +1546,9 @@ tables-block-layout-model-negative-control: bin/schema
 	@grep -q "static_assert" build/block-model-cpp.log || \
 		{ echo "NEGATIVE CONTROL FAILED: C++ went red, but not on a layout static_assert"; cat build/block-model-cpp.log; exit 1; }
 	@echo "block layout-model negative control (C++): a moved offset in the compiler's model turns the static_asserts red"
+ifneq ($(filter cs,$(SKIPPED_LEGS)),)
+	@echo "block layout-model negative control (C#): SKIPPED, SCHEMA_SKIP_LEGS names the cs leg"
+else
 	@if ( cd test/cs-block && $(DOTNET) run -p:BlockGeneratedDir=../../build/block-model-sabotage/cs ) \
 		> build/block-model-cs.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: C# accepted a moved offset from the compiler's model"; \
@@ -1530,6 +1557,7 @@ tables-block-layout-model-negative-control: bin/schema
 	@grep -q "schema block layout" build/block-model-cs.log || \
 		{ echo "NEGATIVE CONTROL FAILED: C# went red, but not on the layout check"; cat build/block-model-cs.log; exit 1; }
 	@echo "block layout-model negative control (C#): the same moved offset turns the once-run layout check red"
+endif
 
 # THE BLOCK HOME's NEGATIVE CONTROL (docs/SPEC-TABLES.md §19.2's C# surface). The
 # dogfood found two defects with one root cause — a C# backend that emitted per
@@ -1549,6 +1577,9 @@ tables-block-layout-model-negative-control: bin/schema
 # have nowhere to land. The compile must FAIL.
 .PHONY: tables-block-home-negative-control
 tables-block-home-negative-control: bin/schema
+ifneq ($(filter cs,$(SKIPPED_LEGS)),)
+	@echo "tables-block-home-negative-control: SKIPPED, it is a C# control and SCHEMA_SKIP_LEGS names the cs leg"
+else
 	@mkdir -p build
 	@sed -e 's|if home != "" \&\& !runtimeWritten {|if false \&\& !runtimeWritten { // SABOTAGED: no home is emitted for the unit|' \
 		internal/codegen/cstable/block.go > build/csblock-declaring-file.gotext
@@ -1567,6 +1598,7 @@ tables-block-home-negative-control: bin/schema
 	@grep -qE "CS0103|CS0234|CS0246" build/blockhome-sabotage.log || \
 		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on an undefined name"; tail -20 build/blockhome-sabotage.log; exit 1; }
 	@echo "block home negative control: a unit with no home for its block runtime does not compile"
+endif
 
 # THE RUNTIME HOME IS THE PACKAGE (docs/SPEC-TABLES.md §19.2). A unit's shared C#
 # runtime — the table runtime and the text form's walk in <Package>Table.cs, the
@@ -1632,6 +1664,9 @@ tables-runtime-home-negative-control: bin/schema tables-runtime-home
 # and offsets). The control reports which one fired.
 .PHONY: tables-block-inline-array-negative-control
 tables-block-inline-array-negative-control: bin/schema
+ifneq ($(filter cs,$(SKIPPED_LEGS)),)
+	@echo "tables-block-inline-array-negative-control: SKIPPED, it is a C# control and SCHEMA_SKIP_LEGS names the cs leg"
+else
 	@mkdir -p build
 	@sed -e 's|if projection \&\& ir.BlockOutOfLine(f) {|if ir.BlockOutOfLine(f) { // SABOTAGED: project at every depth|' \
 	     -e 's|inline := !projection \|\| !ir.BlockOutOfLine(f)|inline := !ir.BlockOutOfLine(f)|' \
@@ -1655,6 +1690,7 @@ tables-block-inline-array-negative-control: bin/schema
 	else \
 		echo "NEGATIVE CONTROL FAILED: it went red, but not on either half of the gate"; tail -20 build/blockhome-depth.log; exit 1; \
 	fi
+endif
 
 # GATE 2 (docs/SPEC-TABLES.md §12.1): the MEASURED gate, two numbers, and it is not
 # part of `make test` on purpose — a correctness suite whose verdict depends on

@@ -132,7 +132,7 @@ func (c fakeCorpus) runHarness(t *testing.T, drivers string) (string, bool) {
 	t.Helper()
 	var out bytes.Buffer
 	ok, err := run(&out, c.m, c.manifest, c.jsonDir, c.reports, drivers,
-		filepath.Join(t.TempDir(), "work"), "")
+		filepath.Join(t.TempDir(), "work"), "", "")
 	if err != nil {
 		t.Fatalf("harness run: %v\n%s", err, out.String())
 	}
