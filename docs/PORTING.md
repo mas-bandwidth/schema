@@ -852,16 +852,20 @@ narrowing takes them back, and a payload that would round away is forced to
 the quiet bit rather than to an INFINITY. Ordinary values take the ordinary
 conversion, exact in both directions. The rule reaches three places in a port:
 the read of kind `10`, §4's FLOAT RUNG where `10` widens into `11`, and any
-storage between them that is wider than the field — a cook's region slot, a
-text cell.
+storage between them that is wider than the field, such as a cook's region
+slot. The text form is not one of them: JSON spells no NaN, the text writer
+refuses a non-finite float and the reader counts a NaN token as a kind
+mismatch (§16.2), so a NaN payload never rides through a text cell.
 
 **Reference.** `internal/codegen/cpptable/widen.go` (`TableWidenF32`, emitted
 into every unit's header) and its use at
 `internal/codegen/cpptable/messageload.go`. The compiler's own engines carry
 the same pair, EXPORTED so nothing mints a second copy:
 `internal/tablewire/encode.go`'s `WidenF32` and `NarrowF32`, read by
-`internal/tablewire/decode.go`'s kind-`10` arm and by
-`internal/tablecook/region.go` and `internal/tablecook/uncook.go`.
+`internal/tablecook/region.go` and `internal/tablecook/uncook.go`; the wire
+decoders' kind-`10` arms (`decode.go`, `messagedecode.go`) test the NaN
+predicate inline and share the same widening helper, so the surgery itself
+lives in one place.
 
 **Proven in.** C++ (#480), and the TOOL: the Go oracle and the tool's cook both
 model a float32 in a float64 cell, and both read and write the pinned patterns
