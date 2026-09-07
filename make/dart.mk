@@ -435,3 +435,32 @@ packet-utf8-dart-negative-control: packet-utf8-dart
 	@echo 'packet UTF-8 Dart negative control: removed read validation fails bit-flip agreement'
 
 test-dart: packet-utf8-dart packet-utf8-dart-negative-control
+
+
+build/packet-wide/dart/.stamp: bin/schema build/packet-wide/source/WideText.schema test/packet-wide/Shapes.schema
+	./bin/schema generate --lang dart --out build/packet-wide/dart build/packet-wide/source/WideText.schema
+	./bin/schema generate --lang dart --out build/packet-wide/dart/shapes test/packet-wide/Shapes.schema
+	@touch $@
+
+.PHONY: packet-wide-dart packet-wide-dart-negative-control
+packet-wide-dart: build/packet-wide/dart/.stamp build/packet-wide/cpp/driver build/packet-text/harness
+	$(DART) analyze build/packet-wide/dart test/packet-wide/dart
+	$(DART) format --set-exit-if-changed --output=none build/packet-wide/dart test/packet-wide/dart
+	$(DART) --enable-asserts test/packet-wide/dart/main.dart --contracts
+	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver $(DART) --enable-asserts test/packet-wide/dart/main.dart
+	$(DART) compile exe -o build/packet-wide/dart/driver test/packet-wide/dart/main.dart
+	./build/packet-wide/dart/driver --contracts
+	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver ./build/packet-wide/dart/driver
+
+packet-wide-dart-negative-control: packet-wide-dart
+	@mkdir -p build/packet-wide/dart-negative
+	go run ./tools/sabotage -name packet-wide-dart-pairing -out build/packet-wide/dart-negative/wstring.gotext internal/codegen/dart/wstring.go
+	@printf '{"Replace":{"%s/internal/codegen/dart/wstring.go":"%s/build/packet-wide/dart-negative/wstring.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-wide/dart-negative/overlay.json
+	go run -overlay=build/packet-wide/dart-negative/overlay.json ./cmd/schema generate --lang dart --out build/packet-wide/dart-negative build/packet-wide/source/WideText.schema
+	@sed -e 's|../../../build/packet-wide/dart/WideText.dart|$(CURDIR)/build/packet-wide/dart-negative/WideText.dart|' -e 's|../../../build/packet-wide/dart/shapes/Shapes.dart|$(CURDIR)/build/packet-wide/dart/shapes/Shapes.dart|' test/packet-wide/dart/main.dart > build/packet-wide/dart-negative/main.dart
+	$(DART) compile exe -o build/packet-wide/dart-negative/driver build/packet-wide/dart-negative/main.dart
+	@if ./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver -mutations-only ./build/packet-wide/dart-negative/driver > build/packet-wide/dart-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: Dart wide pairing removal passed'; exit 1; fi
+	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-wide/dart-negative/log || { cat build/packet-wide/dart-negative/log; exit 1; }
+	@echo 'packet wide Dart negative control: removed pairing fails bit-flip agreement'
+
+test-dart: packet-wide-dart packet-wide-dart-negative-control

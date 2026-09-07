@@ -675,6 +675,9 @@ func (g *gen) emitByteDefault(f *ir.Field, name, ind string, emit func(string, .
 func (g *gen) emitStorageField(f *ir.Field) {
 	name := dartName(f.Name)
 	switch {
+	case f.Type.Kind == ir.TWString:
+		g.usesTypeData = true
+		g.bpf("  final Uint16List %s = Uint16List(%s);\n  int %sLength = 0;\n", name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)), name)
 	case f.Type.Kind == ir.TString:
 		g.usesTypeData = true
 		g.bpf("  // string(%s): max length, used length beside it (SPEC §4.7)\n", ir.RenderExpr(f.Type.SizeExpr))

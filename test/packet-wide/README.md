@@ -48,3 +48,8 @@ Both retain Uint16Array storage and share the generated surrogate validator.
 Composition and exact flat bit-bound contracts run before the corpus. Each
 compiled pairing-removal tier must fail mutation agreement. Both targets ride
 `test-js`.
+
+`make packet-wide-dart` covers the assertion-enabled JIT and compiled AOT
+reader, Uint16List storage, exact bit limits and composition contracts. The
+analyzer and formatter refuse drift. Its compiled pairing-removal control
+must fail mutation agreement. Both targets ride `test-dart`.
