@@ -623,6 +623,16 @@ inline int64_t TableRetainInContent( TableRetainIn & s, uint8_t kind, int64_t le
             }
             break;
         }
+        case 15: case 30:
+            // A UNION ARM AND AN ENUM'S VARIANT REFERENCE RESOLVE AS A FRAMED
+            // CONTENT TOO (§6.6): a kind 15 arm whose own payload is a union,
+            // and a kind 16 slot whose element kind is 15 or 30, both arrive
+            // here, and both carry a reference. Copying them as bytes would
+            // re-emit a reference into a permuted trailer, where it names
+            // another id, and would let a kind 17 UNDER A KIND 15 ARM through
+            // a walk whose whole job is to catch it.
+            if ( TableRetainInPayload( s, kind, depth ) < 0 ) { return -1; }
+            break;
         case 17: return -1; // A NODE INDEX ANYWHERE DROPS THE WHOLE RECORD (§6.6)
         default:
             // every other content is bytes: a string, wide text, an escape, a
@@ -999,6 +1009,11 @@ inline bool TableRetainOutContent( TableRetainOut & s, uint8_t kind, int64_t len
             }
             break;
         }
+        case 15: case 30:
+            // the emit side of the capture's own rule (§6.6): an arm and a
+            // variant reference resolve as a framed content too
+            if ( !TableRetainOutPayload( s, kind, depth ) ) { return false; }
+            break;
         default:
             TableRetainOutRaw( s, s.in + s.at, length );
             s.at += length;
