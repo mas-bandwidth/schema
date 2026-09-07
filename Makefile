@@ -3904,8 +3904,9 @@ tables-lists-cook-check-negative-control:
 # turn the MAP's test red too; the ascending clause is the map's alone, and it
 # gets its own sabotage, because a shared control that never fired on the
 # fifth clause would leave it untested.
+# The prerequisite creates the shared overlay even when CI runs maps alone.
 .PHONY: tables-maps-cook-check-negative-control
-tables-maps-cook-check-negative-control:
+tables-maps-cook-check-negative-control: tables-lists-cook-check-negative-control
 	@rm -rf build/map-cook-check-control && mkdir -p build/map-cook-check-control
 	@if go test -count=1 -overlay=build/list-cook-check-control/overlay.json \
 			-run 'TestCookCheckMapSlot' ./internal/tablecook/ > build/map-cook-check-control/shared.log 2>&1; then \
