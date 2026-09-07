@@ -24,7 +24,7 @@ import (
 // tables-float-nan-negative-control), because the reference is what a port
 // mirrors; this row is the oracle agreeing with it.
 
-// the patterns test/tables/floatnan.h pins, in the order F1 declares them
+// the patterns test/tables/floatnan.h pins, in the order F1 declares them.
 const (
 	nanSignalling = uint32(0x7F800001) // the quiet bit CLEAR, the smallest payload
 	nanPayload    = uint32(0x7FC0DEAD) // quiet, and a mantissa past the quiet bit
@@ -48,7 +48,7 @@ func cellBits(t *testing.T, inst *tabletext.Instance, name string) uint32 {
 	t.Helper()
 	for i := range inst.Fields {
 		if inst.Fields[i].Def.Name == name {
-			return uint32(widened32(math.Float64bits(inst.Fields[i].Cell.F)))
+			return widened32(math.Float64bits(inst.Fields[i].Cell.F))
 		}
 	}
 	t.Fatalf("F1's Floats declares no field %q", name)
