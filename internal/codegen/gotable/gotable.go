@@ -237,8 +237,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		g := &tableGen{unit: u, file: f, home: f.Base == home, anyKeyed: anyKeyed, unionArmSlot: armSlots}
 		members := fileMembers(f, closure)
 		if g.home {
+			g.needsMath = true
 			g.needsUnsafe() // the descriptor surface's reset column takes an unsafe.Pointer
-			g.pf("%s", tableRuntime())
+			g.pf("%s", tableRuntime()+tableWireRuntime(u))
 			if anyKeyed {
 				g.pf("%s", tableKeyedAccessor)
 			}
@@ -327,6 +328,9 @@ func (g *tableGen) assemble() ([]byte, error) {
 	h.WriteString("\n")
 	fmt.Fprintf(&h, "package %s\n\n", g.unit.Package)
 	var std []string
+	if g.home {
+		std = append(std, `"encoding/binary"`, `"unicode/utf8"`)
+	}
 	if g.needsMath {
 		std = append(std, `"math"`)
 	}
@@ -492,6 +496,8 @@ func tableRuntime() string {
 // ledger. Silence (all zero) means the data matched this reader's schema
 // exactly.
 type TableReport struct {
+	Verdict      TableOpenVerdict // unsupported form is distinct from damage
+	Widened      int32 // a compatible wider kind preserved the value
 	Unknown      int32 // unknown field ids skipped (newer data)
 	KindMismatch int32 // known id, changed type — skipped, never misdecoded
 	Clamped      int32 // out-of-range values clamped to declared bounds
@@ -531,7 +537,7 @@ type TableFieldInfo struct {
 	Name     string // schema field name, e.g. "health"
 	Json     string // the TEXT form's key: the json = "key" attribute, else Name (§16.3)
 	TypeName string // schema type name, e.g. "float32", "Grade"
-	Id       uint16 // table-wire field id (name hash; the was alias's hash after a rename)
+	Id       uint64 // table-wire field id (name hash; the was alias's hash after a rename)
 	Kind     uint8  // table-wire kind; for arrays/strings/bytes, the ELEMENT kind
 	IsArray  bool   // fixed or counted array (bytes included)
 	Counted  bool   // a <Name>Count/<Name>Length int32 companion exists
@@ -560,7 +566,7 @@ type TableFieldInfo struct {
 	// arm's name. 0 is the reserved id — an enum's None, a union's empty. nil
 	// for every other kind — a FLAGS field's variants have no per-variant wire
 	// id (§4), so a nil here beside a non-nil EnumName is what says "flags".
-	VariantId func(value uint64) uint16
+	VariantId func(value uint64) uint64
 
 	// an ENUM-KEYED array (docs/SPEC-TABLES.md §2.4, §8): the array has one slot
 	// per variant of KeyTypeName, indexed by the variant's value, and its
@@ -569,7 +575,7 @@ type TableFieldInfo struct {
 	// All three are nil/"" on every other field.
 	KeyTypeName string
 	KeyName     func(value uint64) string
-	KeyId       func(value uint64) uint16
+	KeyId       func(value uint64) uint64
 
 	// Arms is a union field's shape: the tag and the arms indexed by it, behind
 	// a function so a descriptor graph needs no initialization order. nil for
@@ -630,179 +636,6 @@ type TableTypeInfo struct {
 	Tags    []string
 }
 
-// TableWriter writes the wire into the caller's slice. Nothing here allocates.
-type TableWriter struct {
-	Buffer   []byte
-	Offset   int64
-	Overflow bool
-}
-
-// Raw copies bytes in place.
-func (w *TableWriter) Raw(data []byte) {
-	if w.Offset+int64(len(data)) > int64(len(w.Buffer)) {
-		w.Overflow = true
-		return
-	}
-	copy(w.Buffer[w.Offset:], data)
-	w.Offset += int64(len(data))
-}
-
-// Put8 writes one byte.
-func (w *TableWriter) Put8(v uint8) {
-	if w.Offset+1 > int64(len(w.Buffer)) {
-		w.Overflow = true
-		return
-	}
-	w.Buffer[w.Offset] = v
-	w.Offset++
-}
-
-// Put16 writes a little-endian u16.
-func (w *TableWriter) Put16(v uint16) {
-	if w.Offset+2 > int64(len(w.Buffer)) {
-		w.Overflow = true
-		return
-	}
-	w.Buffer[w.Offset] = uint8(v)
-	w.Buffer[w.Offset+1] = uint8(v >> 8)
-	w.Offset += 2
-}
-
-// Put32 writes a little-endian u32.
-func (w *TableWriter) Put32(v uint32) {
-	if w.Offset+4 > int64(len(w.Buffer)) {
-		w.Overflow = true
-		return
-	}
-	w.Buffer[w.Offset] = uint8(v)
-	w.Buffer[w.Offset+1] = uint8(v >> 8)
-	w.Buffer[w.Offset+2] = uint8(v >> 16)
-	w.Buffer[w.Offset+3] = uint8(v >> 24)
-	w.Offset += 4
-}
-
-// Put64 writes a little-endian u64.
-func (w *TableWriter) Put64(v uint64) {
-	w.Put32(uint32(v))
-	w.Put32(uint32(v >> 32))
-}
-
-// Patch32 rewrites a length prefix already reserved.
-func (w *TableWriter) Patch32(at int64, v uint32) {
-	if at+4 > int64(len(w.Buffer)) {
-		w.Overflow = true
-		return
-	}
-	w.Buffer[at] = uint8(v)
-	w.Buffer[at+1] = uint8(v >> 8)
-	w.Buffer[at+2] = uint8(v >> 16)
-	w.Buffer[at+3] = uint8(v >> 24)
-}
-
-// TableReader reads the wire out of the caller's slice. A nested body is read
-// through a sub-reader sliced out of this one, so an inner decode can never
-// reach past its own framing.
-type TableReader struct {
-	Buffer []byte
-	Offset int64
-	Report *TableReport
-}
-
-// Has reports whether the reader still holds that many bytes.
-func (r *TableReader) Has(bytes int64) bool { return r.Offset+bytes <= int64(len(r.Buffer)) }
-
-// Get8 reads one byte.
-func (r *TableReader) Get8() uint8 {
-	v := r.Buffer[r.Offset]
-	r.Offset++
-	return v
-}
-
-// Get16 reads a little-endian u16.
-func (r *TableReader) Get16() uint16 {
-	v := uint16(r.Buffer[r.Offset]) | uint16(r.Buffer[r.Offset+1])<<8
-	r.Offset += 2
-	return v
-}
-
-// Get32 reads a little-endian u32.
-func (r *TableReader) Get32() uint32 {
-	v := uint32(r.Buffer[r.Offset]) | uint32(r.Buffer[r.Offset+1])<<8 |
-		uint32(r.Buffer[r.Offset+2])<<16 | uint32(r.Buffer[r.Offset+3])<<24
-	r.Offset += 4
-	return v
-}
-
-// Get64 reads a little-endian u64.
-func (r *TableReader) Get64() uint64 {
-	lo := uint64(r.Get32())
-	hi := uint64(r.Get32())
-	return lo | hi<<32
-}
-
-// Sub slices a nested body out of this reader, sharing the report.
-func (r *TableReader) Sub(bytes int64) TableReader {
-	return TableReader{Buffer: r.Buffer[r.Offset : r.Offset+bytes], Report: r.Report}
-}
-
-// Skip steps over one payload by kind; false = framing damage.
-func (r *TableReader) Skip(kind uint8) bool {
-	switch kind {
-	case 1, 2, 6:
-		if !r.Has(1) {
-			return false
-		}
-		r.Offset++
-		return true
-	case 3, 7:
-		if !r.Has(2) {
-			return false
-		}
-		r.Offset += 2
-		return true
-	// 17 is a NODE INDEX (docs/SPEC-TABLES.md §3.1): four bytes, so it costs one
-	// row here and a reader without the kind still skips a pointer field
-	case 4, 8, 10, 17:
-		if !r.Has(4) {
-			return false
-		}
-		r.Offset += 4
-		return true
-	case 5, 9, 11:
-		if !r.Has(8) {
-			return false
-		}
-		r.Offset += 8
-		return true
-	case 12, 13, 14, 16:
-		if !r.Has(4) {
-			return false
-		}
-		n := int64(r.Get32())
-		if !r.Has(n) {
-			return false
-		}
-		r.Offset += n
-		return true
-	case 15: // union: u16 arm id, then the arm length-prefixed (id 0 = empty, no body)
-		if !r.Has(2) {
-			return false
-		}
-		if r.Get16() == 0 {
-			return true
-		}
-		if !r.Has(4) {
-			return false
-		}
-		n := int64(r.Get32())
-		if !r.Has(n) {
-			return false
-		}
-		r.Offset += n
-		return true
-	}
-	return false
-}
 
 `
 }

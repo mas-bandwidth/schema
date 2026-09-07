@@ -62,8 +62,8 @@ func readManifest(path string) ([]line, error) {
 // shape of its own and each row copies into it.
 
 type report struct {
-	unknown, kindMismatch, clamped, duplicate int32
-	malformed                                 bool
+	unknown, kindMismatch, widened, clamped, duplicate int32
+	malformed, refused                                 bool
 }
 
 type codec struct {
@@ -220,10 +220,14 @@ func surfaceReport(lines []line, out string) error {
 		var rep report
 		ok := c.load(value, wire, &rep)
 		malformed := "false"
-		if rep.malformed || !ok {
+		if rep.malformed || !ok && !rep.refused {
 			malformed = "true"
 		}
-		text := fmt.Sprintf("%d,%d,%d,%d,%s\n", rep.unknown, rep.kindMismatch, rep.clamped, rep.duplicate, malformed)
+		verdict := "read"
+		if rep.refused {
+			verdict = "refused"
+		}
+		text := fmt.Sprintf("%d,%d,%d,%d,%d,%s,%s\n", rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate, malformed, verdict)
 		if err := spill(out, f[1], []byte(text)); err != nil {
 			return err
 		}
@@ -415,7 +419,7 @@ func surfaceJsonHostile(lines []line, out string) error {
 		ok := c.fromJson(value, text, &rep)
 		verdict := "refused\n"
 		if ok && !rep.malformed {
-			verdict = fmt.Sprintf("%d,%d,%d,%d,false\n", rep.unknown, rep.kindMismatch, rep.clamped, rep.duplicate)
+			verdict = fmt.Sprintf("%d,%d,%d,%d,%d,false,read\n", rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate)
 		}
 		if err := spill(out, f[1], []byte(verdict)); err != nil {
 			return err
@@ -425,6 +429,7 @@ func surfaceJsonHostile(lines []line, out string) error {
 }
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "wire-fuzz" { if err := wireFuzz(); err != nil { fmt.Fprintln(os.Stderr, err); os.Exit(1) }; return }
 	if len(os.Args) < 3 {
 		fmt.Fprintf(os.Stderr, "usage: %s <manifest> list\n       %s <manifest> <surface> <outdir>\n", os.Args[0], os.Args[0])
 		os.Exit(2)

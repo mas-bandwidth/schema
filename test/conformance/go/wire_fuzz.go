@@ -1,0 +1,57 @@
+package main
+
+import (
+	"bufio"
+	"encoding/binary"
+	"fmt"
+	"io"
+	"os"
+)
+
+// The harness owns the mutations and oracle. This process only binds a
+// roster entry to its generated codec and returns the report and saved value.
+func wireFuzz() error {
+	in, out := bufio.NewReader(os.Stdin), bufio.NewWriter(os.Stdout)
+	read := func(v any) error { return binary.Read(in, binary.LittleEndian, v) }
+	write := func(v any) error { return binary.Write(out, binary.LittleEndian, v) }
+	text := func() (string, error) {
+		var n uint16
+		if err := read(&n); err != nil { return "", err }
+		b := make([]byte, n)
+		_, err := io.ReadFull(in, b)
+		return string(b), err
+	}
+	var count uint32
+	if err := read(&count); err != nil { return err }
+	roster := make([]*codec, count)
+	for i := range roster {
+		unit, err := text(); if err != nil { return err }
+		root, err := text(); if err != nil { return err }
+		form, err := in.ReadByte(); if err != nil { return err }
+		retain, err := in.ReadByte(); if err != nil { return err }
+		if form == 1 && retain == 0 { roster[i] = findCodec(unit, root) }
+		available := byte(0); if roster[i] != nil { available = 1 }
+		if err := out.WriteByte(available); err != nil { return err }
+	}
+	if err := out.Flush(); err != nil { return err }
+	for {
+		var index, size uint32
+		if err := read(&index); err != nil { if err == io.EOF { return nil }; return err }
+		if err := read(&size); err != nil { return err }
+		if uint64(index) >= uint64(len(roster)) || roster[index] == nil { return fmt.Errorf("unsupported roster index %d", index) }
+		wire := make([]byte, size)
+		if _, err := io.ReadFull(in, wire); err != nil { return err }
+		c := roster[index]
+		value := c.fresh()
+		var rep report
+		c.load(value, wire, &rep)
+		saved := c.measure(value)
+		var buffer []byte
+		if saved >= 0 { buffer = make([]byte, saved); saved = c.save(value, buffer) }
+		for _, v := range []any{uint8(1), rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate, rep.malformed, rep.refused, int64(-1), int32(0), int32(0), saved} {
+			if err := write(v); err != nil { return err }
+		}
+		if saved > 0 { if _, err := out.Write(buffer[:saved]); err != nil { return err } }
+		if err := out.Flush(); err != nil { return err }
+	}
+}

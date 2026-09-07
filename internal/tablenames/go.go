@@ -5,6 +5,22 @@ const Go Backend = 1 << 3
 
 func init() {
 	define(Go,
+		Name{Name: "tableIdCapacity", What: "the form-1 wire runtime"},
+		Name{Name: "tableIdBuckets", What: "the form-1 wire runtime"},
+		Name{Name: "TableIds", What: "the form-1 wire runtime"},
+		Name{Name: "tableLebBytes", What: "the form-1 wire runtime"},
+		Name{Name: "TableOpenVerdict", What: "the form-1 wire runtime"},
+		Name{Name: "TableOpenOk", What: "the form-1 wire runtime"},
+		Name{Name: "TableOpenRefused", What: "the form-1 wire runtime"},
+		Name{Name: "TableOpenDamaged", What: "the form-1 wire runtime"},
+		Name{Name: "TableOpenBodyStopped", What: "the form-1 wire runtime"},
+		Name{Name: "tableKindBytes", What: "the form-1 wire runtime"},
+		Name{Name: "tableOpen", What: "the form-1 wire runtime"},
+		Name{Name: "tableKindWidens", What: "the form-1 wire runtime"},
+		Name{Name: "tableUtf8Valid", What: "the form-1 wire runtime"},
+		Name{Name: "tableUtf8Clamp", What: "the form-1 wire runtime"},
+		Name{Name: "tableWidenFloat", What: "the form-1 wire runtime"},
+
 		Name{Name: "TableReport", What: "the read report — the permissive contract's ledger"},
 		Name{Name: "TableWriter", What: "the wire writer over the caller's buffer"},
 		Name{Name: "TableReader", What: "the wire reader over the caller's buffer"},

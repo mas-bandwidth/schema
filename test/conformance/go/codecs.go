@@ -16,23 +16,23 @@ import (
 // lines. A row that stopped copying a counter would be caught by the first
 // case that counts it.
 func snapDemo(r *tabledemo.TableReport) report {
-	return report{r.Unknown, r.KindMismatch, r.Clamped, r.Duplicate, r.Malformed}
+	return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tabledemo.TableOpenRefused}
 }
 
 func snapV1(r *tblv1.TableReport) report {
-	return report{r.Unknown, r.KindMismatch, r.Clamped, r.Duplicate, r.Malformed}
+	return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblv1.TableOpenRefused}
 }
 
 func snapV2(r *tblv2.TableReport) report {
-	return report{r.Unknown, r.KindMismatch, r.Clamped, r.Duplicate, r.Malformed}
+	return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblv2.TableOpenRefused}
 }
 
 func snapP1(r *tblp1.TableReport) report {
-	return report{r.Unknown, r.KindMismatch, r.Clamped, r.Duplicate, r.Malformed}
+	return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblp1.TableOpenRefused}
 }
 
 func snapP3(r *tblp3.TableReport) report {
-	return report{r.Unknown, r.KindMismatch, r.Clamped, r.Duplicate, r.Malformed}
+	return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblp3.TableOpenRefused}
 }
 
 var codecTable = []codec{
@@ -70,10 +70,5 @@ var codecTable = []codec{
 // surfaces is what this backend implements. A surface not listed prints as
 // ABSENT in the matrix, which is a missing FEATURE and not a failing test.
 func surfaces() []string {
-	// THE FIVE WIRE-CARRYING SURFACES ARE ABSENT (test/conformance/README.md):
-	// this port writes the wire's PREVIOUS form and the corpus is pinned in the
-	// id-table form (docs/SPEC-TABLES.md §3), so `wire`, `report`, `json-read`,
-	// `json-write` and `json-hostile` — every surface whose expectation is wire
-	// bytes — say so rather than failing. schema#511 is the port's row.
-	return []string{"cook", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery"}
+	return []string{"wire", "report", "json-read", "json-write", "json-hostile", "cook", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery"}
 }

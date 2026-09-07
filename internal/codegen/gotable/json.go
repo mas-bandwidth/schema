@@ -47,7 +47,7 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 	b.WriteString("// never coerced. The canonical text ends with exactly ONE newline, which the\n")
 	b.WriteString("// writer emits and the reader accepts with or without (§16.1).\n\n")
 	fmt.Fprintf(&b, "package %s\n\n", u.Package)
-	b.WriteString("import (\n\t\"math\"\n\t\"strconv\"\n\t\"strings\"\n\t\"unsafe\"\n)\n\n")
+	b.WriteString("import (\n\t\"math\"\n\t\"strconv\"\n\t\"strings\"\n\t\"unsafe\"\n\t\"unicode/utf8\"\n)\n\n")
 	b.WriteString(tableJsonWalkSource)
 
 	// the per-member surface, in the order the closure declares it, so the
@@ -747,11 +747,20 @@ func (in *tableJsonIn) space() {
 			in.pos++
 			continue
 		}
-		// comments are not JSON, and a walk that guessed at one would be
-		// reading a dialect nobody wrote down
-		if c == '/' {
-			in.bad = true
-		}
+        if c == '/' && in.pos+1 < len(in.text) {
+            switch in.text[in.pos+1] {
+            case '/':
+                in.pos += 2
+                for in.pos < len(in.text) && in.text[in.pos] != '\n' { in.pos++ }
+                continue
+            case '*':
+                in.pos += 2
+                for in.pos+1 < len(in.text) && !(in.text[in.pos] == '*' && in.text[in.pos+1] == '/') { in.pos++ }
+                if in.pos+1 >= len(in.text) { in.bad = true; return }
+                in.pos += 2
+                continue
+            }
+        }
 		return
 	}
 }
@@ -925,31 +934,17 @@ func (in *tableJsonIn) scanString(out []byte) (int32, bool) {
 			in.bad = true // a raw control character is not a JSON string body
 			return 0, false
 		default:
-			// a UTF-8 sequence read WHOLE, so the clamp below can only land
-			// between code points. Only bytes that ACTUALLY look like
-			// continuations are taken: the wire imposes no encoding (§3), so a
-			// string may legitimately hold a stray lead byte, and one at the
-			// end of a text must not swallow the closing quote.
-			want := int32(1)
-			switch {
-			case c&0xe0 == 0xc0:
-				want = 2
-			case c&0xf0 == 0xe0:
-				want = 3
-			case c&0xf8 == 0xf0:
-				want = 4
-			}
-			unit[0] = c
-			in.pos++
-			unitLength = 1
-			for unitLength < want && in.pos < len(in.text) && in.text[in.pos]&0xc0 == 0x80 {
-				unit[unitLength] = in.text[in.pos]
-				unitLength++
-				in.pos++
-			}
+            code, n := utf8.DecodeRune(in.text[in.pos:])
+            if code == utf8.RuneError && n == 1 {
+                unitLength = tableJsonEncodeUtf8(0xfffd, unit[:])
+            } else {
+                unitLength = int32(n)
+                copy(unit[:], in.text[in.pos:in.pos+n])
+            }
+            in.pos += n
 		}
 		if out != nil {
-			if placed+unitLength <= int32(len(out)) {
+			if !clamped && placed+unitLength <= int32(len(out)) {
 				copy(out[placed:], unit[:unitLength])
 				placed += unitLength
 			} else {
