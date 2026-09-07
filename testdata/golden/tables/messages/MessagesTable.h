@@ -2876,15 +2876,13 @@ inline bool UserLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                 {
                     uint64_t n = 0;
                     if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() || !r.has( (int64_t) n * 8 ) ) { report->malformed = true; return false; }
-                    int32_t kept = 0;
-                    if ( n > (uint64_t) 16 ) { kept = 16; report->clamped++; } else { kept = (int32_t) n; }
-                    for ( uint64_t i = 0; i < n; i++ )
-                    {
-                        uint64_t by = 0;
-                        if ( !r.get( by, 8 ) ) { report->malformed = true; return false; }
-                        if ( (int32_t) i < kept ) { value.name[i] = (char) by; }
-                    }
+                    const uint8_t * text = r.buffer + ( r.offset >> 3 );
+                    if ( !TableUtf8Valid( text, n ) ) { report->malformed = true; return false; }
+                    const int32_t kept = (int32_t) TableUtf8Clamp( text, n, 16 );
+                    if ( (uint64_t) kept < n ) { report->clamped++; }
+                    memcpy( value.name, text, (size_t) kept );
                     value.name[kept] = 0;
+                    r.offset += (int64_t) n * 8;
                     value.name_length = kept;
                 }
                 break;
@@ -3232,15 +3230,13 @@ inline bool ScriptLoadMessageBody( TableBitReader & r, const TableVocabulary & v
                 {
                     uint64_t n = 0;
                     if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() || !r.has( (int64_t) n * 8 ) ) { report->malformed = true; return false; }
-                    int32_t kept = 0;
-                    if ( n > (uint64_t) 64 ) { kept = 64; report->clamped++; } else { kept = (int32_t) n; }
-                    for ( uint64_t i = 0; i < n; i++ )
-                    {
-                        uint64_t by = 0;
-                        if ( !r.get( by, 8 ) ) { report->malformed = true; return false; }
-                        if ( (int32_t) i < kept ) { value.path[i] = (char) by; }
-                    }
+                    const uint8_t * text = r.buffer + ( r.offset >> 3 );
+                    if ( !TableUtf8Valid( text, n ) ) { report->malformed = true; return false; }
+                    const int32_t kept = (int32_t) TableUtf8Clamp( text, n, 64 );
+                    if ( (uint64_t) kept < n ) { report->clamped++; }
+                    memcpy( value.path, text, (size_t) kept );
                     value.path[kept] = 0;
+                    r.offset += (int64_t) n * 8;
                     value.path_length = kept;
                 }
                 break;
@@ -4897,15 +4893,13 @@ inline bool InsertTextLoadMessageBody( TableBitReader & r, const TableVocabulary
                 {
                     uint64_t n = 0;
                     if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() || !r.has( (int64_t) n * 8 ) ) { report->malformed = true; return false; }
-                    int32_t kept = 0;
-                    if ( n > (uint64_t) 32 ) { kept = 32; report->clamped++; } else { kept = (int32_t) n; }
-                    for ( uint64_t i = 0; i < n; i++ )
-                    {
-                        uint64_t by = 0;
-                        if ( !r.get( by, 8 ) ) { report->malformed = true; return false; }
-                        if ( (int32_t) i < kept ) { value.text[i] = (char) by; }
-                    }
+                    const uint8_t * text = r.buffer + ( r.offset >> 3 );
+                    if ( !TableUtf8Valid( text, n ) ) { report->malformed = true; return false; }
+                    const int32_t kept = (int32_t) TableUtf8Clamp( text, n, 32 );
+                    if ( (uint64_t) kept < n ) { report->clamped++; }
+                    memcpy( value.text, text, (size_t) kept );
                     value.text[kept] = 0;
+                    r.offset += (int64_t) n * 8;
                     value.text_length = kept;
                 }
                 break;
@@ -5005,15 +4999,13 @@ inline bool InsertTextLoadMessageBody( TableBitReader & r, const TableVocabulary
                                 {
                                     uint64_t n_2 = 0;
                                     if ( !r.get( n_2, TableBitsRequired( 0, arm.max ) ) || !r.align() || !r.has( (int64_t) n_2 * 8 ) ) { report->malformed = true; return false; }
-                                    int32_t kept_2 = 0;
-                                    if ( n_2 > (uint64_t) 24 ) { kept_2 = 24; report->clamped++; } else { kept_2 = (int32_t) n_2; }
-                                    for ( uint64_t i_2 = 0; i_2 < n_2; i_2++ )
-                                    {
-                                        uint64_t by_2 = 0;
-                                        if ( !r.get( by_2, 8 ) ) { report->malformed = true; return false; }
-                                        if ( (int32_t) i_2 < kept_2 ) { value.origin.note.value[i_2] = (char) by_2; }
-                                    }
+                                    const uint8_t * text_2 = r.buffer + ( r.offset >> 3 );
+                                    if ( !TableUtf8Valid( text_2, n_2 ) ) { report->malformed = true; return false; }
+                                    const int32_t kept_2 = (int32_t) TableUtf8Clamp( text_2, n_2, 24 );
+                                    if ( (uint64_t) kept_2 < n_2 ) { report->clamped++; }
+                                    memcpy( value.origin.note.value, text_2, (size_t) kept_2 );
                                     value.origin.note.value[kept_2] = 0;
+                                    r.offset += (int64_t) n_2 * 8;
                                     value.origin.note.value_length = kept_2;
                                 }
                                 break;
@@ -5139,15 +5131,13 @@ inline bool InsertTextLoadMessageBody( TableBitReader & r, const TableVocabulary
                                         {
                                             uint64_t n_3 = 0;
                                             if ( !r.get( n_3, TableBitsRequired( 0, arm_2.max ) ) || !r.align() || !r.has( (int64_t) n_3 * 8 ) ) { report->malformed = true; return false; }
-                                            int32_t kept_3 = 0;
-                                            if ( n_3 > (uint64_t) 24 ) { kept_3 = 24; report->clamped++; } else { kept_3 = (int32_t) n_3; }
-                                            for ( uint64_t i_3 = 0; i_3 < n_3; i_3++ )
-                                            {
-                                                uint64_t by_3 = 0;
-                                                if ( !r.get( by_3, 8 ) ) { report->malformed = true; return false; }
-                                                if ( (int32_t) i_3 < kept_3 ) { ( in_bounds ? value.origins[i] : scratch ).note.value[i_3] = (char) by_3; }
-                                            }
+                                            const uint8_t * text_3 = r.buffer + ( r.offset >> 3 );
+                                            if ( !TableUtf8Valid( text_3, n_3 ) ) { report->malformed = true; return false; }
+                                            const int32_t kept_3 = (int32_t) TableUtf8Clamp( text_3, n_3, 24 );
+                                            if ( (uint64_t) kept_3 < n_3 ) { report->clamped++; }
+                                            memcpy( ( in_bounds ? value.origins[i] : scratch ).note.value, text_3, (size_t) kept_3 );
                                             ( in_bounds ? value.origins[i] : scratch ).note.value[kept_3] = 0;
+                                            r.offset += (int64_t) n_3 * 8;
                                             ( in_bounds ? value.origins[i] : scratch ).note.value_length = kept_3;
                                         }
                                         break;
@@ -6931,15 +6921,13 @@ inline bool OpenDocumentLoadMessageBody( TableBitReader & r, const TableVocabula
                 {
                     uint64_t n = 0;
                     if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() || !r.has( (int64_t) n * 8 ) ) { report->malformed = true; return false; }
-                    int32_t kept = 0;
-                    if ( n > (uint64_t) 64 ) { kept = 64; report->clamped++; } else { kept = (int32_t) n; }
-                    for ( uint64_t i = 0; i < n; i++ )
-                    {
-                        uint64_t by = 0;
-                        if ( !r.get( by, 8 ) ) { report->malformed = true; return false; }
-                        if ( (int32_t) i < kept ) { value.path[i] = (char) by; }
-                    }
+                    const uint8_t * text = r.buffer + ( r.offset >> 3 );
+                    if ( !TableUtf8Valid( text, n ) ) { report->malformed = true; return false; }
+                    const int32_t kept = (int32_t) TableUtf8Clamp( text, n, 64 );
+                    if ( (uint64_t) kept < n ) { report->clamped++; }
+                    memcpy( value.path, text, (size_t) kept );
                     value.path[kept] = 0;
+                    r.offset += (int64_t) n * 8;
                     value.path_length = kept;
                 }
                 break;
@@ -7310,15 +7298,13 @@ inline bool SaveDocumentLoadMessageBody( TableBitReader & r, const TableVocabula
                 {
                     uint64_t n = 0;
                     if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() || !r.has( (int64_t) n * 8 ) ) { report->malformed = true; return false; }
-                    int32_t kept = 0;
-                    if ( n > (uint64_t) 64 ) { kept = 64; report->clamped++; } else { kept = (int32_t) n; }
-                    for ( uint64_t i = 0; i < n; i++ )
-                    {
-                        uint64_t by = 0;
-                        if ( !r.get( by, 8 ) ) { report->malformed = true; return false; }
-                        if ( (int32_t) i < kept ) { value.path[i] = (char) by; }
-                    }
+                    const uint8_t * text = r.buffer + ( r.offset >> 3 );
+                    if ( !TableUtf8Valid( text, n ) ) { report->malformed = true; return false; }
+                    const int32_t kept = (int32_t) TableUtf8Clamp( text, n, 64 );
+                    if ( (uint64_t) kept < n ) { report->clamped++; }
+                    memcpy( value.path, text, (size_t) kept );
                     value.path[kept] = 0;
+                    r.offset += (int64_t) n * 8;
                     value.path_length = kept;
                 }
                 break;
@@ -8569,15 +8555,13 @@ inline bool TransactionLoadMessageBody( TableBitReader & r, const TableVocabular
                 {
                     uint64_t n = 0;
                     if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() || !r.has( (int64_t) n * 8 ) ) { report->malformed = true; return false; }
-                    int32_t kept = 0;
-                    if ( n > (uint64_t) 16 ) { kept = 16; report->clamped++; } else { kept = (int32_t) n; }
-                    for ( uint64_t i = 0; i < n; i++ )
-                    {
-                        uint64_t by = 0;
-                        if ( !r.get( by, 8 ) ) { report->malformed = true; return false; }
-                        if ( (int32_t) i < kept ) { value.reason[i] = (char) by; }
-                    }
+                    const uint8_t * text = r.buffer + ( r.offset >> 3 );
+                    if ( !TableUtf8Valid( text, n ) ) { report->malformed = true; return false; }
+                    const int32_t kept = (int32_t) TableUtf8Clamp( text, n, 16 );
+                    if ( (uint64_t) kept < n ) { report->clamped++; }
+                    memcpy( value.reason, text, (size_t) kept );
                     value.reason[kept] = 0;
+                    r.offset += (int64_t) n * 8;
                     value.reason_length = kept;
                 }
                 break;
@@ -11628,15 +11612,13 @@ inline bool ToolMessageLoadMessageBody( TableBitReader & r, const TableVocabular
                                                 {
                                                     uint64_t n_3 = 0;
                                                     if ( !r.get( n_3, TableBitsRequired( 0, arm_2.max ) ) || !r.align() || !r.has( (int64_t) n_3 * 8 ) ) { report->malformed = true; return false; }
-                                                    int32_t kept_3 = 0;
-                                                    if ( n_3 > (uint64_t) 24 ) { kept_3 = 24; report->clamped++; } else { kept_3 = (int32_t) n_3; }
-                                                    for ( uint64_t i_3 = 0; i_3 < n_3; i_3++ )
-                                                    {
-                                                        uint64_t by_3 = 0;
-                                                        if ( !r.get( by_3, 8 ) ) { report->malformed = true; return false; }
-                                                        if ( (int32_t) i_3 < kept_3 ) { value.body.origin.note.value[i_3] = (char) by_3; }
-                                                    }
+                                                    const uint8_t * text_3 = r.buffer + ( r.offset >> 3 );
+                                                    if ( !TableUtf8Valid( text_3, n_3 ) ) { report->malformed = true; return false; }
+                                                    const int32_t kept_3 = (int32_t) TableUtf8Clamp( text_3, n_3, 24 );
+                                                    if ( (uint64_t) kept_3 < n_3 ) { report->clamped++; }
+                                                    memcpy( value.body.origin.note.value, text_3, (size_t) kept_3 );
                                                     value.body.origin.note.value[kept_3] = 0;
+                                                    r.offset += (int64_t) n_3 * 8;
                                                     value.body.origin.note.value_length = kept_3;
                                                 }
                                                 break;
@@ -11935,15 +11917,13 @@ inline bool ToolMessageLoadMessageBody( TableBitReader & r, const TableVocabular
                                                         {
                                                             uint64_t n_4 = 0;
                                                             if ( !r.get( n_4, TableBitsRequired( 0, arm_3.max ) ) || !r.align() || !r.has( (int64_t) n_4 * 8 ) ) { report->malformed = true; return false; }
-                                                            int32_t kept_4 = 0;
-                                                            if ( n_4 > (uint64_t) 24 ) { kept_4 = 24; report->clamped++; } else { kept_4 = (int32_t) n_4; }
-                                                            for ( uint64_t i_4 = 0; i_4 < n_4; i_4++ )
-                                                            {
-                                                                uint64_t by_4 = 0;
-                                                                if ( !r.get( by_4, 8 ) ) { report->malformed = true; return false; }
-                                                                if ( (int32_t) i_4 < kept_4 ) { ( in_bounds ? value.history[i] : scratch ).origin.note.value[i_4] = (char) by_4; }
-                                                            }
+                                                            const uint8_t * text_4 = r.buffer + ( r.offset >> 3 );
+                                                            if ( !TableUtf8Valid( text_4, n_4 ) ) { report->malformed = true; return false; }
+                                                            const int32_t kept_4 = (int32_t) TableUtf8Clamp( text_4, n_4, 24 );
+                                                            if ( (uint64_t) kept_4 < n_4 ) { report->clamped++; }
+                                                            memcpy( ( in_bounds ? value.history[i] : scratch ).origin.note.value, text_4, (size_t) kept_4 );
                                                             ( in_bounds ? value.history[i] : scratch ).origin.note.value[kept_4] = 0;
+                                                            r.offset += (int64_t) n_4 * 8;
                                                             ( in_bounds ? value.history[i] : scratch ).origin.note.value_length = kept_4;
                                                         }
                                                         break;

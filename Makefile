@@ -3882,7 +3882,7 @@ tables-cpp-release:
 	$(MAKE) tables-wire-fuzz SEED=2 N=500000
 
 .PHONY: tables-wire-fuzz-negative-control tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-node-type-negative-control tables-wire-fuzz-blob-node-negative-control
-tables-wire-fuzz-negative-control: tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-node-type-negative-control tables-wire-fuzz-blob-node-negative-control tables-wire-fuzz-wide-text-negative-control
+tables-wire-fuzz-negative-control: tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-node-type-negative-control tables-wire-fuzz-blob-node-negative-control tables-wire-fuzz-wide-text-negative-control tables-wire-fuzz-message-text-oracle-negative-control tables-wire-fuzz-message-text-leg-negative-control
 
 # THE CONTENT RULE ON KIND 33 (docs/SPEC-TABLES.md §3, §4): an unpaired
 # surrogate is DAMAGE, not data. The fuzzer's wide-text pass plants one at
@@ -4064,10 +4064,12 @@ MESSAGE_FORM_CONTROLS := \
 	message-strict-check-refuses:internal/tablewire/message.go:TestTheAnnouncementsTwoStrictChecksAndItsTolerance \
 	message-duplicate-entry-accepted:internal/tablewire/message.go:TestAHostileShape \
 	message-array-of-text-accepted:ir/tablemessage.go:TestAHostileShape \
-	message-skipped-variant-unresolved:internal/tablewire/messagedecode.go:TestAReferenceOfTheWrongSort
+	message-skipped-variant-unresolved:internal/tablewire/messagedecode.go:TestAReferenceOfTheWrongSort \
+	message-text-accepts-ill-formed:internal/tablewire/messagedecode.go:TestTheMessageFormsTextContentRuleAndClamp \
+	message-text-clamp-off-boundary:internal/tablewire/messagedecode.go:TestTheMessageFormsTextContentRuleAndClamp
 
 .PHONY: tables-message-form-negative-control
-tables-message-form-negative-control: tables-message-form-emitter-negative-control tables-message-form-count-negative-control
+tables-message-form-negative-control: tables-message-form-emitter-negative-control tables-message-form-count-negative-control tables-message-form-text-negative-control
 	@for row in $(MESSAGE_FORM_CONTROLS); do \
 		name=$${row%%:*}; rest=$${row#*:}; file=$${rest%%:*}; test=$${rest#*:}; \
 		$(MAKE) --no-print-directory tables-message-form-one-negative-control \
@@ -4145,6 +4147,44 @@ tables-message-form-count-negative-control: bin/schema test/tables/message_count
 		-o build/message-nc/count-true
 	./build/message-nc/count-true
 	$(call message_form_count_control,message-emitter-narrow-count-before-clamp,internal/codegen/cpptable/messageload.go)
+
+# AND THE ONE CONTENT RULE ON A MESSAGE BODY (docs/SPEC-TABLES.md §3.3,
+# schema#620): a kind 12 payload that is not well-formed UTF-8, or that carries
+# a zero byte, is damage and terminal for the batch, and a clamp cuts at a code
+# point boundary. Neither is reachable from a corpus value, because a writer
+# produces neither, so the instrument is a batch forged over backenddemo's
+# `sku` and a program that reads the report and the stored bytes back. The
+# emitter's own copy of each rule is what the two sabotages remove; the ORACLE's
+# two ride in MESSAGE_FORM_CONTROLS above. $(1) the sabotage, $(2) the emitter file.
+define message_form_text_control
+	@mkdir -p build/message-nc
+	@go run ./tools/sabotage -name $(1) -out build/message-nc/$(1).gotext $(2)
+	@printf '{"Replace":{"%s/$(2)":"%s/build/message-nc/$(1).gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/message-nc/$(1)-overlay.json
+	go build -overlay build/message-nc/$(1)-overlay.json -o build/message-nc/$(1)-schema ./cmd/schema
+	@rm -rf build/message-nc/$(1)-backend && mkdir -p build/message-nc/$(1)-backend
+	./build/message-nc/$(1)-schema generate --lang cpp --out build/message-nc/$(1)-backend tables/backend
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/message-nc/$(1)-backend -Itest/tables -I$(SERIALIZE) \
+		test/tables/message_text_main.cpp build/message-nc/$(1)-backend/BackendTable.cpp \
+		-o build/message-nc/$(1)-control
+	@if ./build/message-nc/$(1)-control > build/message-nc/$(1).log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the $(1) sabotage landed and the message text rows stayed green"; \
+		cat build/message-nc/$(1).log; exit 1; \
+	fi
+	@cat build/message-nc/$(1).log
+	@echo "negative control ($(1)): the message form's text rows go red"
+endef
+
+.PHONY: tables-message-form-text-negative-control
+tables-message-form-text-negative-control: bin/schema test/tables/message_text_main.cpp build/tables-generated/.stamp
+	@mkdir -p build/message-nc
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/backend -Itest/tables -I$(SERIALIZE) \
+		test/tables/message_text_main.cpp build/tables-generated/backend/BackendTable.cpp \
+		-o build/message-nc/text-true
+	./build/message-nc/text-true
+	$(call message_form_text_control,message-emitter-text-accepts-ill-formed,internal/codegen/cpptable/messageload.go)
+	$(call message_form_text_control,message-emitter-text-clamp-off-boundary,internal/codegen/cpptable/messageload.go)
+
 # THE NODE TYPE A ROOT CANNOT PLACE (docs/SPEC-TABLES.md §3.1, §6.5, §3.3), and
 # the vector message_node_type_unpointed is the red it closed. A node record is
 # a pointer's pointee, so a table no pointer below the root targets is a node
@@ -4221,6 +4261,67 @@ tables-wire-fuzz-blob-node-negative-control: build/conformance-harness build/wir
 		  cat $(BLOB_NODE_NC)/log; exit 1; }
 	@grep -m1 "FAILED" $(BLOB_NODE_NC)/log
 	@echo "negative control: framing a blob record by reachability turns the pinned vector RED"
+
+# ILL-FORMED TEXT ON A MESSAGE BODY (docs/SPEC-TABLES.md §3, §3.3; schema#620),
+# and the vector message_ill_formed_text is what holds the two engines to one
+# answer on it. The four blades in tables-message-form-negative-control hold
+# each engine to the PAGE; these two hold the engines to EACH OTHER, which is a
+# different question and the one a differential fuzzer exists to ask: before the
+# repair both readers accepted the vector, agreeing and agreeing wrongly, so
+# nothing here could have gone red. Each control repairs one engine and takes
+# the rule back out of the other, and the run must go red ON THE VECTOR.
+#
+# THE ASSERTION IS THE VECTOR REPLAYED ALONE, not a corpus pass, for the reason
+# the node-type control names: an enumerated mutant reaches the same check and
+# would name itself instead of the property.
+MESSAGE_TEXT_VECTOR := testdata/wire/tables/fuzz-vectors/message_ill_formed_text.bin
+
+MESSAGE_TEXT_ORACLE_NC := build/wire-fuzz-nc-message-text-oracle
+.PHONY: tables-wire-fuzz-message-text-oracle-negative-control
+tables-wire-fuzz-message-text-oracle-negative-control: build/conformance-harness build/wire-fuzz-cpp
+	@rm -rf $(MESSAGE_TEXT_ORACLE_NC) && mkdir -p $(MESSAGE_TEXT_ORACLE_NC)
+	@go run ./tools/sabotage -name message-text-accepts-ill-formed \
+		-out $(MESSAGE_TEXT_ORACLE_NC)/messagedecode.go.txt internal/tablewire/messagedecode.go
+	@printf '{"Replace":{"%s/internal/tablewire/messagedecode.go":"%s/$(MESSAGE_TEXT_ORACLE_NC)/messagedecode.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(MESSAGE_TEXT_ORACLE_NC)/overlay.json
+	go build -overlay $(MESSAGE_TEXT_ORACLE_NC)/overlay.json -o $(MESSAGE_TEXT_ORACLE_NC)/harness ./test/conformance/harness
+	@if $(MESSAGE_TEXT_ORACLE_NC)/harness wire-fuzz --driver ./build/wire-fuzz-cpp \
+			--replay $(MESSAGE_TEXT_VECTOR) --unit backenddemo --root StorePurchase --message \
+			--failed $(MESSAGE_TEXT_ORACLE_NC)/failed.bin > $(MESSAGE_TEXT_ORACLE_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the oracle accepts ill-formed message text again and the pinned vector stayed green"; \
+		cat $(MESSAGE_TEXT_ORACLE_NC)/log; exit 1; \
+	fi
+	@grep -q "message_ill_formed_text" $(MESSAGE_TEXT_ORACLE_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the wire fuzzer went red, but not on the pinned vector"; \
+		  cat $(MESSAGE_TEXT_ORACLE_NC)/log; exit 1; }
+	@grep -m1 "FAILED" $(MESSAGE_TEXT_ORACLE_NC)/log
+	@echo "negative control: an oracle that accepts ill-formed message text turns the pinned vector RED"
+
+MESSAGE_TEXT_LEG_NC := build/wire-fuzz-nc-message-text-leg
+.PHONY: tables-wire-fuzz-message-text-leg-negative-control
+tables-wire-fuzz-message-text-leg-negative-control: build/conformance-harness
+	@rm -rf $(MESSAGE_TEXT_LEG_NC) && mkdir -p $(MESSAGE_TEXT_LEG_NC)
+	@go run ./tools/sabotage -name message-emitter-text-accepts-ill-formed \
+		-out $(MESSAGE_TEXT_LEG_NC)/messageload.go.txt internal/codegen/cpptable/messageload.go
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/messageload.go":"%s/$(MESSAGE_TEXT_LEG_NC)/messageload.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(MESSAGE_TEXT_LEG_NC)/overlay.json
+	go build -overlay $(MESSAGE_TEXT_LEG_NC)/overlay.json -o $(MESSAGE_TEXT_LEG_NC)/schema ./cmd/schema
+	$(call tables_generate,./$(MESSAGE_TEXT_LEG_NC)/schema,$(MESSAGE_TEXT_LEG_NC)/generated)
+	$(CXX) $(TABLES_CXXFLAGS) -O1 $(call tables_includes,$(MESSAGE_TEXT_LEG_NC)/generated) \
+		test/tables/wire_fuzz_main.cpp \
+		$(subst build/tables-generated/,$(MESSAGE_TEXT_LEG_NC)/generated/,$(CONFORMANCE_SOURCES)) \
+		-o $(MESSAGE_TEXT_LEG_NC)/leg
+	@if ./build/conformance-harness wire-fuzz --driver $(MESSAGE_TEXT_LEG_NC)/leg \
+			--replay $(MESSAGE_TEXT_VECTOR) --unit backenddemo --root StorePurchase --message \
+			--failed $(MESSAGE_TEXT_LEG_NC)/failed.bin > $(MESSAGE_TEXT_LEG_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the emitted reader accepts ill-formed message text again and the pinned vector stayed green"; \
+		cat $(MESSAGE_TEXT_LEG_NC)/log; exit 1; \
+	fi
+	@grep -q "message_ill_formed_text" $(MESSAGE_TEXT_LEG_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the wire fuzzer went red, but not on the pinned vector"; \
+		  cat $(MESSAGE_TEXT_LEG_NC)/log; exit 1; }
+	@grep -m1 "FAILED" $(MESSAGE_TEXT_LEG_NC)/log
+	@echo "negative control: an emitted reader that accepts ill-formed message text turns the pinned vector RED"
 
 # The GENERATED half of the data: the JSON text of every instance and the read
 # report of every evolution case, both from the compiler's own engine.

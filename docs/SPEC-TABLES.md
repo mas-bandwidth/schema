@@ -5362,6 +5362,16 @@ entries announces about 5 KB once.
   SECOND, and the same damage planted inside a NESTED body of the second. Red if
   a leg reads the third body, counts more than one `malformed`, or discards the
   first body.
+- **The one content rule, and its clamp, on a message body.** A `string(N)`
+  payload carrying a truncated sequence, one carrying a zero byte and one
+  carrying an overlong encoding, each damage and terminal for the batch. Beside
+  them a payload longer than the reader's bound whose last code point straddles
+  it, which keeps the last whole code point that fits and counts one `clamped`;
+  one over the bound whose cut already falls on a boundary, which keeps the
+  whole bound; and one at the bound ending in a multi-byte code point, which
+  lands whole and counts nothing. Red if a leg stores text the file form
+  refuses, cuts a clamp inside a code point, keeps fewer bytes than the bound
+  admits, or counts `clamped` on a payload that fits.
 - **The pad, and what follows it.** A batch whose trailing bits to the byte
   boundary are not zero, and a buffer carrying a whole batch and then a byte
   more. Red if a leg reads either clean.
