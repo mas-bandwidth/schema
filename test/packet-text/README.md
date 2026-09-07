@@ -65,3 +65,10 @@ accepted reads must fit the exact measured bit bound and refuse one bit
 less. The AOT negative control skips only its scan and must fail mutation
 agreement. Both targets ride `test-dart`; the nested defaults fixture also
 passes its formatter and wire checks with the new read guard.
+
+`make packet-utf8-elixir` validates the received binary with `String.valid?`
+before the interior-NUL scan and returns `:error` on malformed content. It
+uses the same corpus, mutations and exact-bit/one-bit-short checks. The
+unchanged schema is staged as `Text.schema` to keep codec and struct module
+names distinct. Its negative control compiles with warnings as errors before
+mutation agreement fails the exact marker. Both targets ride `test-elixir`.

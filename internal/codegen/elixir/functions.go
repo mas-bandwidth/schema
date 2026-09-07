@@ -2315,6 +2315,7 @@ func (g *gen) emitReadBytesField(f *ir.Field, lv, ind string) {
 	g.pf("%sbits_read = bits_read + len * 8\n", ind)
 	g.rdBreak()
 	if f.Type.Kind == ir.TString {
+		g.throwIf(fmt.Sprintf("not String.valid?(%s)", lv), "malformed UTF-8 is content the read refuses (SPEC §4.7)", ind)
 		g.throwIf(fmt.Sprintf(":binary.match(%s, <<0>>) != :nomatch", lv),
 			"an interior null is content the read refuses (SPEC §4.7)", ind)
 	}
