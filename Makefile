@@ -687,6 +687,8 @@ tables-block: build/schema_test_block build/schema_test_block_asan build/schema_
 	./build/schema_test_block
 	./build/schema_test_block_asan
 	./build/schema_test_block_tsan
+	$(MAKE) tables-block-const
+	$(MAKE) tables-block-const-negative-control
 # THE C# HALF of this two-language gate runs unless the cs leg is named in
 # SCHEMA_SKIP_LEGS (issue #599). A skip that reaches the leg loop and not here
 # is a skip that stops the chain anyway, on the same missing dotnet.
@@ -695,6 +697,49 @@ ifeq ($(filter cs,$(SKIPPED_LEGS)),)
 else
 	@echo "tables-block: the C# half is SKIPPED, SCHEMA_SKIP_LEGS names the cs leg"
 endif
+
+# THE CONST READ PATH (docs/SPEC-TABLES.md §19.2, schema#455). A block is
+# memory another build wrote, so the consumer half of the form reads bytes it
+# does not own: a pinned image is loaded, held as a `const uint8_t *` from that
+# moment, and opened WITH NO CAST through the const overload. The rows come
+# back read-only, and the same bytes opened writable read the same values, so
+# the producer's path is proved unchanged rather than assumed.
+#
+# It runs SANITIZED beside the plain build on #277's rule: the const view
+# points into a buffer sized to the image, so a row read past the extent lands
+# in a redzone.
+build/schema_test_block_const: build/tables-generated/.stamp test/tables/block_const_main.cpp
+	@mkdir -p build
+	$(CXX) $(BLOCK_CXXFLAGS) $(BLOCK_INCLUDES) test/tables/block_const_main.cpp $(BLOCK_SOURCES) -o $@
+
+build/schema_test_block_const_asan: build/tables-generated/.stamp test/tables/block_const_main.cpp
+	@mkdir -p build
+	$(CXX) $(BLOCK_CXXFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all \
+		-fno-omit-frame-pointer -g $(BLOCK_INCLUDES) test/tables/block_const_main.cpp $(BLOCK_SOURCES) -o $@
+
+.PHONY: tables-block-const
+tables-block-const: build/schema_test_block_const build/schema_test_block_const_asan
+	./build/schema_test_block_const
+	./build/schema_test_block_const_asan
+
+# ITS NEGATIVE COMPILE CONTROL, and it is the half a run cannot hold: a view
+# handing back a reference a consumer can WRITE through is a read-only view in
+# name only, and no green run of the gate above would ever say so. The same
+# program, one assignment through the const view added by -DBLOCK_CONST_WRITE,
+# and the COMPILE must go red, on the const qualification and not on some
+# other error, which is what the second grep is for.
+.PHONY: tables-block-const-negative-control
+tables-block-const-negative-control: build/tables-generated/.stamp test/tables/block_const_main.cpp
+	@mkdir -p build
+	@if $(CXX) $(BLOCK_CXXFLAGS) $(BLOCK_INCLUDES) -DBLOCK_CONST_WRITE -fsyntax-only \
+			test/tables/block_const_main.cpp > build/block-const-write.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a write through the const row view COMPILED"; exit 1; \
+	fi
+	@grep -qE "read-only|not assignable|const-qualified|assignment of member" build/block-const-write.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the compile went red, but not on the const view"; \
+		  cat build/block-const-write.log; exit 1; }
+	@grep -m1 -E "read-only|not assignable|const-qualified|assignment of member" build/block-const-write.log
+	@echo "negative control: one write through the const row view turns the COMPILE red"
 
 # ---------------------------------------------------------------------------
 # THE FORGERY FUZZER (docs/SPEC-TABLES.md §19.2, §19.5). The hand-written battery in
