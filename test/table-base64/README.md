@@ -28,17 +28,6 @@ also discards consumed accumulator bits (avoiding a growing bignum) and uses
 `Base.encode64/1` for canonical output. Decoder padding/partial-group behavior
 is intentionally retained.
 
-Reproducible public-API benchmarks (generate the fixture first):
-
-```sh
-cd test/table-base64/go
-go test -run '^$' -bench Base64 -count 5
-# From the repository root:
-elixir test/table-base64/elixir/bench.exs build/table-base64/elixir
-```
-
-The Elixir benchmark accepts a generated directory from either compiler
-revision. Both benchmarks use 64 equal-length byte patterns. The numbers cover
-one JSON bytes field, including descriptor walking, and are not estimates of
-binary packet or whole-application speed. Run paired revisions on an idle
-machine for performance reporting; these checks impose no wall-clock gate.
+Performance measurements belong to the repository's data-driven benchmark
+harness (`bench/README.md`). This suite imposes no wall-clock gate and makes no
+binary packet or whole-application performance claim.

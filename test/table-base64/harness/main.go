@@ -105,7 +105,8 @@ func main() {
 	scanner.Buffer(make([]byte, 65536), 1024*1024)
 	for _, v := range cases {
 		if !scanner.Scan() {
-			must(fmt.Errorf("%s: missing result: %v", v.name, scanner.Err()))
+			must(scanner.Err())
+			must(fmt.Errorf("%s: missing result", v.name))
 		}
 		fields := strings.Fields(scanner.Text())
 		if len(fields) != 5 {
