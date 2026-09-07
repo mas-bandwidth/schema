@@ -544,10 +544,16 @@ static const int64_t kRetainBatchCap = 256;
             if ( !ns::AnnounceRead( vocabulary, a, an, &open ) ) return false;                   \
             int64_t need = ns::type##LoadMeasure( vocabulary, wire, n );                        \
             if ( need < 0 ) return false;                                                       \
-            std::vector<const ns::type *> roots( (size_t) kRetainBatchCap, NULL );               \
-            std::vector<std::vector<uint8_t> > stores( (size_t) kRetainBatchCap );               \
-            std::vector<std::vector<ns::TableRetain::Id> > lists( (size_t) kRetainBatchCap );    \
-            std::vector<ns::TableRetain> retains( (size_t) kRetainBatchCap );                    \
+            /* THE BATCH'S OWN COUNT sizes the caller's storage: one root, one   */              \
+            /* retention buffer and one id list a BODY (docs/SPEC-TABLES.md §3.3) */             \
+            ns::TableMessageBatchReader br;                                                      \
+            ns::TableReport counting;                                                            \
+            const int64_t bodies = ns::TableMessageBatchOpen( br, vocabulary, wire, n, &counting ); \
+            if ( bodies < 0 || bodies > kRetainBatchCap ) return false;                          \
+            std::vector<const ns::type *> roots( (size_t) bodies, NULL );                        \
+            std::vector<std::vector<uint8_t> > stores( (size_t) bodies );                        \
+            std::vector<std::vector<ns::TableRetain::Id> > lists( (size_t) bodies );             \
+            std::vector<ns::TableRetain> retains( (size_t) bodies );                             \
             for ( size_t i = 0; i < retains.size(); i++ )                                        \
             {                                                                                    \
                 stores[i].assign( (size_t) kRetainRoomy, 0 );                                    \
