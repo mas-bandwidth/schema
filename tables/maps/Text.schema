@@ -1,0 +1,15 @@
+package mapdemo
+
+// A map whose VALUE is TEXT (docs/SPEC-TABLES.md §2.8): "A VALUE is anything a
+// table field can hold ... string(N), wstring(N), bytes(N)". Each rides as a
+// field of that kind inside the generated entry, so the entry carries the
+// value beside its length companion and the codec is that field's own. The
+// three sit under three key kinds, and a field past them makes a stop visible.
+
+table Text
+{
+    names map[string(8)]string(16) // kind 12 under a string key
+    wide  map[uint16]wstring(6) // kind 33, the value kind that is never a key
+    blobs map[int32]bytes(10) // a byte buffer by value, under a signed key
+    after int32
+}
