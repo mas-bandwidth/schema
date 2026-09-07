@@ -6644,7 +6644,7 @@ inline DocsPagesEntryKeyRead DocsPagesEntryReadKey( const uint8_t * body, int64_
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { out.malformed = true; return out; }
-        if ( field_ref == 0 ) { return out; } // the terminator: no key field is the key's DEFAULT
+        if ( field_ref == 0 ) { out.malformed = r.offset != r.size; return out; } // the terminator consumes the entry's L
         if ( ids == NULL || field_ref > (uint64_t) ids->count ) { out.malformed = true; return out; }
         const uint64_t field_id = ids->at( field_ref );
         if ( !r.has( 1 ) ) { out.malformed = true; return out; }
@@ -6742,6 +6742,7 @@ inline bool DocsPagesEntrySaveBody( const Ctx & ctx, const TableNumbering & numb
 
 inline bool DocsPagesEntryLoadBody( TableReader & r, const TableNodeMap & nodes, DocsPagesEntry & value )
 {
+    if ( nodes.refused ) { return false; }
     DocsPagesEntryReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -6779,7 +6780,13 @@ inline bool DocsPagesEntryLoadBody( TableReader & r, const TableNodeMap & nodes,
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.key[0] = 0; value.key_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
+                {
+                    r.report->malformed = true;
+    memset( value.key, 0, sizeof( value.key ) );
+    value.key_length = 0;
+                    r.offset += (int64_t) len; break;
+                }
                 uint64_t keep = len;
                 if ( keep > 8 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 8 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.key, r.buffer + r.offset, (size_t) keep );
@@ -7028,6 +7035,7 @@ inline bool DocsSaveBody( const Ctx & ctx, const TableNumbering & numbering, Tab
 
 inline bool DocsLoadBody( TableReader & r, const TableNodeMap & nodes, Docs & value )
 {
+    if ( nodes.refused ) { return false; }
     DocsReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -7129,6 +7137,7 @@ inline bool DocsLoadBody( TableReader & r, const TableNodeMap & nodes, Docs & va
                         {
                             TableReader elem( elem_body, (int64_t) elem_len, r.report, r.ids );
                             DocsPagesEntryLoadBody( elem, nodes, *slot );
+                            if ( nodes.refused ) { return false; }
                         }
                         last_key = read.key; last_length = read.length; // the WIRE keys of the entries that LAND
                         landed = true;
@@ -8720,6 +8729,7 @@ inline bool DocsLoadBuilder( DocsBuilder & builder, const uint8_t * wire_file, i
             {
                 TableReader sub( body, length, out, &ids_table );
                 DocsNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                if ( nodes.refused ) { break; }
             }
             k++;
         }
@@ -8795,6 +8805,7 @@ inline bool DocsPagesEntrySaveBodyRetain( const Ctx & ctx, const TableNumbering 
 
 inline bool DocsPagesEntryLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, DocsPagesEntry & value, TableRetain * retain, const TableRetainPath & path )
 {
+    if ( nodes.refused ) { return false; }
     DocsPagesEntryReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
@@ -8837,7 +8848,13 @@ inline bool DocsPagesEntryLoadBodyRetain( TableReader & r, const TableNodeMap & 
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.key[0] = 0; value.key_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
+                {
+                    r.report->malformed = true;
+    memset( value.key, 0, sizeof( value.key ) );
+    value.key_length = 0;
+                    r.offset += (int64_t) len; break;
+                }
                 uint64_t keep = len;
                 if ( keep > 8 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 8 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.key, r.buffer + r.offset, (size_t) keep );
@@ -9041,6 +9058,7 @@ inline bool DocsSaveBodyRetain( const Ctx & ctx, const TableNumbering & numberin
 
 inline bool DocsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Docs & value, TableRetain * retain, const TableRetainPath & path )
 {
+    if ( nodes.refused ) { return false; }
     DocsReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
@@ -9150,6 +9168,7 @@ inline bool DocsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Doc
                         {
                             TableReader elem( elem_body, (int64_t) elem_len, r.report, r.ids );
                             DocsPagesEntryLoadBodyRetain( elem, nodes, *slot, retain, TableRetainStepInto( path, 0, (uint32_t) ( fill.map->count - 1 ) ) );
+                            if ( nodes.refused ) { return false; }
                         }
                         last_key = read.key; last_length = read.length; // the WIRE keys of the entries that LAND
                         landed = true;

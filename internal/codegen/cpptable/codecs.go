@@ -1535,6 +1535,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	// bomb on worker threads — while a whole-object value-init costs cl
 	// O(bytes) to COMPILE (#320). Reset applies the same declared defaults in
 	// place, with neither cost.
+	g.emitLoadRefusal(st.Name, "    ")
 	g.pf("    %sReset( value ); // prefill declared defaults in place, then overlay\n", st.Name)
 	if g.retain {
 		g.pf("    // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT\n")
@@ -1822,7 +1823,10 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%suint64_t len = 0;\n", ind)
 		g.pf("%sif ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }\n", ind)
 		g.pf("%s// ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared\n%s// default, one malformed counts, and the parent reads on past L\n", ind, ind)
-		g.pf("%sif ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.%s[0] = 0; value.%s_length = 0; r.offset += (int64_t) len; break; }\n", ind, f.Name, f.Name)
+		g.pf("%sif ( !TableUtf8Valid( r.buffer + r.offset, len ) )\n%s{\n", ind, ind)
+		g.pf("%s    r.report->malformed = true;\n", ind)
+		g.emitTableResetField(f)
+		g.pf("%s    r.offset += (int64_t) len; break;\n%s}\n", ind, ind)
 		g.pf("%suint64_t keep = len;\n", ind)
 		g.pf("%sif ( keep > %d ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, %d ); r.report->clamped++; } // at a code point boundary (§3)\n", ind, f.Type.Size, f.Type.Size)
 		g.pf("%smemcpy( value.%s, r.buffer + r.offset, (size_t) keep );\n", ind, f.Name)
@@ -1955,6 +1959,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%sif ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }\n", ind)
 		g.pf("%s{\n%s    TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );\n", ind, ind)
 		g.pf("%s    %s;\n", ind, g.loadCall(f, f.Type.Name, "sub", "value."+f.Name))
+		g.emitLoadRefusal(f.Type.Name, ind+"    ")
 		// A BODY'S TERMINATOR IS THE END OF ITS PAYLOAD (§3): a body whose
 		// terminator is not the last byte of its `L` is framing damage —
 		// the payload stops, the field reads its declared defaults, and the
@@ -2035,6 +2040,8 @@ func (g *tableGen) emitTableReadElementInto(f *ir.Field, kind int, dst, ind, rdr
 		g.pf("%sif ( !%s.getleb( elem_len%s ) || !%s.room( elem_len%s ) ) { r.report->malformed = true; break; }\n", ind, rdr, sfx, rdr, sfx)
 		g.pf("%s{\n%s    TableReader elem%s( %s.buffer + %s.offset, (int64_t) elem_len%s, r.report, r.ids );\n", ind, ind, sfx, rdr, rdr, sfx)
 		g.pf("%s    %s;\n", ind, g.loadCall(f, f.Type.Name, "elem"+sfx, dst))
+		g.emitLoadRefusal(f.Type.Name, ind+"    ")
+		g.pf("%s    if ( elem%s.offset != elem%s.size ) { r.report->malformed = true; %sReset( %s ); }\n", ind, sfx, sfx, f.Type.Name, dst)
 		g.pf("%s}\n", ind)
 		g.pf("%s%s.offset += (int64_t) elem_len%s;\n", ind, rdr, sfx)
 	case tkEnum:

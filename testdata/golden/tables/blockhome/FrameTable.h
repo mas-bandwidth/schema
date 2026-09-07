@@ -2926,6 +2926,7 @@ BLOCKHOME_TABLE_INLINE bool PartFrameLoadBody( TableReader & r, PartFrame & valu
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             PartRowLoadBody( elem, value.parts[(int32_t) i] );
+                            if ( elem.offset != elem.size ) { r.report->malformed = true; PartRowReset( value.parts[(int32_t) i] ); }
                         }
                         sub.offset += (int64_t) elem_len;
                         decoded = i + 1;

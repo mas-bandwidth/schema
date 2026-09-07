@@ -1396,7 +1396,13 @@ All compile errors with positions:
   constant arithmetic is overflow-guarded, division by zero is refused — and
   an integer constant too large for float64 is an error in ANY float position
   rather than a silent infinity; the checker still carries the NaN arm as
-  defense in depth.
+  defense in depth. The derived float32 subtraction and division must also
+  remain positive and at most `4294967040`, the runtime's upper clamp; a
+  triple that overflows or requires that clamp is refused. Fractional counts
+  below one legitimately encode one step. Codec widths use
+  `ir.CompressedFloatParams`' float32 arithmetic. The projection's `steps`
+  token retains its historical float64 formula, alongside all three original
+  parameters, to preserve existing protocol IDs; it is not the codec width.
 - **Degenerate ranges: min == max is legal and costs zero bits.** A ranged
   integer, `int128`, `fixed` or `ufixed` field with equal bounds carries
   nothing on the wire; the reader recovers the value from the range alone

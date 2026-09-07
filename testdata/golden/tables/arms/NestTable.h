@@ -5865,6 +5865,7 @@ inline bool TwigSaveBody( const Ctx & ctx, const TableNumbering & numbering, Tab
 
 inline bool TwigLoadBody( TableReader & r, const TableNodeMap & nodes, Twig & value )
 {
+    if ( nodes.refused ) { return false; }
     TwigReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -5923,6 +5924,7 @@ inline bool TwigLoadBody( TableReader & r, const TableNodeMap & nodes, Twig & va
                             }
                             value.inner.type = InnerType::Leaf;
                             LeafLoadBody( sub, nodes, value.inner.leaf );
+                            if ( nodes.refused ) { return false; }
                             if ( sub.offset != sub.size ) { value.inner.type = InnerType::None; r.report->malformed = true; break; }
                             break;
                         }
@@ -6398,6 +6400,7 @@ inline bool NestSaveBody( const Ctx & ctx, const TableNumbering & numbering, Tab
 
 inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & value )
 {
+    if ( nodes.refused ) { return false; }
     NestReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -6478,6 +6481,7 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                                             }
                                             value.outer.inner.type = InnerType::Leaf;
                                             LeafLoadBody( arm_inner, nodes, value.outer.inner.leaf );
+                                            if ( nodes.refused ) { return false; }
                                             if ( arm_inner.offset != arm_inner.size ) { value.outer.inner.type = InnerType::None; r.report->malformed = true; break; }
                                             break;
                                         }
@@ -8431,6 +8435,7 @@ inline bool TwigLoadBuilder( TwigBuilder & builder, const uint8_t * wire_file, i
             {
                 TableReader sub( body, length, out, &ids_table );
                 TwigNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                if ( nodes.refused ) { break; }
             }
             k++;
         }
@@ -9329,6 +9334,7 @@ inline bool NestLoadBuilder( NestBuilder & builder, const uint8_t * wire_file, i
             {
                 TableReader sub( body, length, out, &ids_table );
                 NestNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                if ( nodes.refused ) { break; }
             }
             k++;
         }
@@ -9431,6 +9437,7 @@ inline bool TwigSaveBodyRetain( const Ctx & ctx, const TableNumbering & numberin
 
 inline bool TwigLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Twig & value, TableRetain * retain, const TableRetainPath & path )
 {
+    if ( nodes.refused ) { return false; }
     TwigReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
@@ -9495,6 +9502,7 @@ inline bool TwigLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Twi
                             }
                             value.inner.type = InnerType::Leaf;
                             LeafLoadBodyRetain( sub, nodes, value.inner.leaf, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) );
+                            if ( nodes.refused ) { return false; }
                             if ( sub.offset != sub.size ) { value.inner.type = InnerType::None; r.report->malformed = true; break; }
                             break;
                         }
@@ -9885,6 +9893,7 @@ inline bool NestSaveBodyRetain( const Ctx & ctx, const TableNumbering & numberin
 
 inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nest & value, TableRetain * retain, const TableRetainPath & path )
 {
+    if ( nodes.refused ) { return false; }
     NestReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
@@ -9971,6 +9980,7 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                                             }
                                             value.outer.inner.type = InnerType::Leaf;
                                             LeafLoadBodyRetain( arm_inner, nodes, value.outer.inner.leaf, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) );
+                                            if ( nodes.refused ) { return false; }
                                             if ( arm_inner.offset != arm_inner.size ) { value.outer.inner.type = InnerType::None; r.report->malformed = true; break; }
                                             break;
                                         }

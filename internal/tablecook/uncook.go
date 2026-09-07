@@ -181,9 +181,9 @@ func (r *regionReader) list(at int64, f *ir.Field, fv *tabletext.Field) error {
 		return fmt.Errorf("field %s: the count is 0 and the reference is not null: an empty list's reference is null in every encoding", f.Name)
 	}
 	size, _ := ir.ListElementLayout(r.m.Unit, f)
-	start := at + delta
-	if start < 0 || start+count*size > int64(len(r.buf)) {
-		return fmt.Errorf("field %s: the element array runs [%d, %d) and the data part is %d bytes: the array leaves the region", f.Name, start, start+count*size, len(r.buf))
+	start, _, fits := arrayExtent(at, delta, count, size, 0, int64(len(r.buf)))
+	if !fits {
+		return fmt.Errorf("field %s: the element array at %d with delta %d, count %d and size %d leaves the region of %d bytes", f.Name, at, delta, count, size, len(r.buf))
 	}
 	fv.Elems = fv.Elems[:0]
 	for range count {

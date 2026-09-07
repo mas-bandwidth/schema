@@ -393,7 +393,12 @@ func decodeVocabulary(in []byte) ([]ir.TableVocabularyEntry, bool) {
 // produce an answer: nothing was decoded, no counter moved, and no damage is
 // reported (docs/SPEC-TABLES.md §3, §3.3). The refusal is the answer, so a
 // caller reports it and carries on rather than propagating an error.
+// A CountRefusal instead keeps earlier events and requires discarding the
+// partial builder value; meeting the count cap adds no event (§2.9).
 func Refused(err error) bool {
+	if _, count := errors.AsType[*CountRefusal](err); count {
+		return true
+	}
 	if _, form := errors.AsType[*FormRefusal](err); form {
 		return true
 	}

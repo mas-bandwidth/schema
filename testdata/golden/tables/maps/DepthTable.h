@@ -6767,7 +6767,7 @@ inline SquadRosterEntryKeyRead SquadRosterEntryReadKey( const uint8_t * body, in
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { out.malformed = true; return out; }
-        if ( field_ref == 0 ) { return out; } // the terminator: no key field is the key's DEFAULT
+        if ( field_ref == 0 ) { out.malformed = r.offset != r.size; return out; } // the terminator consumes the entry's L
         if ( ids == NULL || field_ref > (uint64_t) ids->count ) { out.malformed = true; return out; }
         const uint64_t field_id = ids->at( field_ref );
         if ( !r.has( 1 ) ) { out.malformed = true; return out; }
@@ -7103,6 +7103,7 @@ inline bool SquadSaveBody( const Ctx & ctx, const TableNumbering & numbering, Ta
 inline bool SquadLoadBody( TableReader & r, const TableNodeMap & nodes, Squad & value )
 {
     (void) nodes;
+    if ( nodes.refused ) { return false; }
     SquadReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -7610,6 +7611,7 @@ inline bool DepthSaveBody( const Ctx & ctx, const TableNumbering & numbering, Ta
 
 inline bool DepthLoadBody( TableReader & r, const TableNodeMap & nodes, Depth & value )
 {
+    if ( nodes.refused ) { return false; }
     DepthReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -7648,6 +7650,7 @@ inline bool DepthLoadBody( TableReader & r, const TableNodeMap & nodes, Depth & 
                 {
                     TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
                     SquadLoadBody( sub, nodes, value.one );
+                    if ( nodes.refused ) { return false; }
                     if ( sub.offset != sub.size )
                     {
                         r.report->malformed = true;
@@ -7700,6 +7703,8 @@ inline bool DepthLoadBody( TableReader & r, const TableNodeMap & nodes, Depth & 
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             SquadLoadBody( elem, nodes, value.many[(int32_t) i] );
+                            if ( nodes.refused ) { return false; }
+                            if ( elem.offset != elem.size ) { r.report->malformed = true; SquadReset( value.many[(int32_t) i] ); }
                         }
                         sub.offset += (int64_t) elem_len;
                         decoded = i + 1;
@@ -7756,6 +7761,7 @@ inline bool DepthLoadBody( TableReader & r, const TableNodeMap & nodes, Depth & 
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             SquadLoadBody( elem, nodes, value.keyed.slots[int32_t( slot ) - 1] );
+                            if ( nodes.refused ) { return false; }
                         }
                         sub.offset += (int64_t) elem_len;
                     }
@@ -7798,6 +7804,7 @@ inline bool DepthLoadBody( TableReader & r, const TableNodeMap & nodes, Depth & 
                             }
                             value.arm.type = ForceType::Squad;
                             SquadLoadBody( sub, nodes, value.arm.squad );
+                            if ( nodes.refused ) { return false; }
                             if ( sub.offset != sub.size ) { value.arm.type = ForceType::None; r.report->malformed = true; break; }
                             break;
                         }
@@ -9766,6 +9773,7 @@ inline bool SquadLoadBuilder( SquadBuilder & builder, const uint8_t * wire_file,
             {
                 TableReader sub( body, length, out, &ids_table );
                 SquadNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                if ( nodes.refused ) { break; }
             }
             k++;
         }
@@ -10664,6 +10672,7 @@ inline bool DepthLoadBuilder( DepthBuilder & builder, const uint8_t * wire_file,
             {
                 TableReader sub( body, length, out, &ids_table );
                 DepthNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                if ( nodes.refused ) { break; }
             }
             k++;
         }
@@ -10953,6 +10962,7 @@ inline bool SquadSaveBodyRetain( const Ctx & ctx, const TableNumbering & numberi
 inline bool SquadLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Squad & value, TableRetain * retain, const TableRetainPath & path )
 {
     (void) nodes;
+    if ( nodes.refused ) { return false; }
     SquadReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
@@ -11403,6 +11413,7 @@ inline bool DepthSaveBodyRetain( const Ctx & ctx, const TableNumbering & numberi
 
 inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Depth & value, TableRetain * retain, const TableRetainPath & path )
 {
+    if ( nodes.refused ) { return false; }
     DepthReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
@@ -11447,6 +11458,7 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
                 {
                     TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
                     SquadLoadBodyRetain( sub, nodes, value.one, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) );
+                    if ( nodes.refused ) { return false; }
                     if ( sub.offset != sub.size )
                     {
                         r.report->malformed = true;
@@ -11502,6 +11514,8 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             SquadLoadBodyRetain( elem, nodes, value.many[(int32_t) i], retain, TableRetainStepInto( path, 1, (uint32_t) ( i ) ) );
+                            if ( nodes.refused ) { return false; }
+                            if ( elem.offset != elem.size ) { r.report->malformed = true; SquadReset( value.many[(int32_t) i] ); }
                         }
                         sub.offset += (int64_t) elem_len;
                         decoded = i + 1;
@@ -11558,6 +11572,7 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             SquadLoadBodyRetain( elem, nodes, value.keyed.slots[int32_t( slot ) - 1], retain, TableRetainStepInto( path, 2, (uint32_t) ( int32_t( slot ) - 1 ) ) );
+                            if ( nodes.refused ) { return false; }
                         }
                         sub.offset += (int64_t) elem_len;
                     }
@@ -11601,6 +11616,7 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
                             }
                             value.arm.type = ForceType::Squad;
                             SquadLoadBodyRetain( sub, nodes, value.arm.squad, retain, TableRetainStepInto( path, 3, (uint32_t) ( 0 ) ) );
+                            if ( nodes.refused ) { return false; }
                             if ( sub.offset != sub.size ) { value.arm.type = ForceType::None; r.report->malformed = true; break; }
                             break;
                         }

@@ -32,8 +32,7 @@ func MaxBytes(bits int64) int64 {
 // implementation, so the widths the backends advertise and the bytes the data
 // compiler packs cannot drift apart.
 func CompressedFloatParams(fmin, fmax, res float64) (maxIntegerValue uint64, wireBits int64) {
-	delta := float32(fmax) - float32(fmin)
-	values := delta / float32(res)
+	values := compressedFloatValues(fmin, fmax, res)
 	if !(values >= 1.0) { // the runtime's own form — it also catches NaN
 		values = 1.0
 	}
@@ -42,6 +41,19 @@ func CompressedFloatParams(fmin, fmax, res float64) (maxIntegerValue uint64, wir
 	}
 	maxIntegerValue = uint64(math.Ceil(float64(values)))
 	return maxIntegerValue, int64(bits.Len64(maxIntegerValue))
+}
+
+// ValidCompressedFloatParams rejects a triple whose runtime derivation loses
+// its range to overflow or to the upper clamp. A fractional count below one
+// legitimately uses one step. The same float32 operations feed the codec.
+func ValidCompressedFloatParams(fmin, fmax, res float64) bool {
+	values := compressedFloatValues(fmin, fmax, res)
+	return values > 0 && values <= 4294967040.0
+}
+
+func compressedFloatValues(fmin, fmax, res float64) float32 {
+	delta := float32(fmax) - float32(fmin)
+	return delta / float32(res)
 }
 
 // CompressedFloatBits is the wire width alone.

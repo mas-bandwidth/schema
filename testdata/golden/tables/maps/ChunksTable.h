@@ -6634,7 +6634,7 @@ inline ChunksBlobsEntryKeyRead ChunksBlobsEntryReadKey( const uint8_t * body, in
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { out.malformed = true; return out; }
-        if ( field_ref == 0 ) { return out; } // the terminator: no key field is the key's DEFAULT
+        if ( field_ref == 0 ) { out.malformed = r.offset != r.size; return out; } // the terminator consumes the entry's L
         if ( ids == NULL || field_ref > (uint64_t) ids->count ) { out.malformed = true; return out; }
         const uint64_t field_id = ids->at( field_ref );
         if ( !r.has( 1 ) ) { out.malformed = true; return out; }
@@ -6732,6 +6732,7 @@ inline bool ChunksBlobsEntrySaveBody( const Ctx & ctx, const TableNumbering & nu
 
 inline bool ChunksBlobsEntryLoadBody( TableReader & r, const TableNodeMap & nodes, ChunksBlobsEntry & value )
 {
+    if ( nodes.refused ) { return false; }
     ChunksBlobsEntryReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -7040,6 +7041,7 @@ inline bool ChunksSaveBody( const Ctx & ctx, const TableNumbering & numbering, T
 
 inline bool ChunksLoadBody( TableReader & r, const TableNodeMap & nodes, Chunks & value )
 {
+    if ( nodes.refused ) { return false; }
     ChunksReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -7141,6 +7143,7 @@ inline bool ChunksLoadBody( TableReader & r, const TableNodeMap & nodes, Chunks 
                         {
                             TableReader elem( elem_body, (int64_t) elem_len, r.report, r.ids );
                             ChunksBlobsEntryLoadBody( elem, nodes, *slot );
+                            if ( nodes.refused ) { return false; }
                         }
                         last_key = read.key; // the WIRE keys of the entries that LAND
                         landed = true;
@@ -8712,6 +8715,7 @@ inline bool ChunksLoadBuilder( ChunksBuilder & builder, const uint8_t * wire_fil
             {
                 TableReader sub( body, length, out, &ids_table );
                 ChunksNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                if ( nodes.refused ) { break; }
             }
             k++;
         }
@@ -8784,6 +8788,7 @@ inline bool ChunksBlobsEntrySaveBodyRetain( const Ctx & ctx, const TableNumberin
 
 inline bool ChunksBlobsEntryLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, ChunksBlobsEntry & value, TableRetain * retain, const TableRetainPath & path )
 {
+    if ( nodes.refused ) { return false; }
     ChunksBlobsEntryReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
@@ -9058,6 +9063,7 @@ inline bool ChunksSaveBodyRetain( const Ctx & ctx, const TableNumbering & number
 
 inline bool ChunksLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Chunks & value, TableRetain * retain, const TableRetainPath & path )
 {
+    if ( nodes.refused ) { return false; }
     ChunksReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
@@ -9167,6 +9173,7 @@ inline bool ChunksLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, C
                         {
                             TableReader elem( elem_body, (int64_t) elem_len, r.report, r.ids );
                             ChunksBlobsEntryLoadBodyRetain( elem, nodes, *slot, retain, TableRetainStepInto( path, 0, (uint32_t) ( fill.map->count - 1 ) ) );
+                            if ( nodes.refused ) { return false; }
                         }
                         last_key = read.key; // the WIRE keys of the entries that LAND
                         landed = true;

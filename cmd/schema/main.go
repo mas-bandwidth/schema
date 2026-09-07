@@ -196,19 +196,8 @@ func main() {
 		if err := os.MkdirAll(*out, 0o755); err != nil {
 			fatalf("%v", err)
 		}
-		names := make([]string, 0, len(files))
-		for n := range files {
-			names = append(names, n)
-		}
-		sort.Strings(names)
-		for _, n := range names {
-			path := filepath.Join(*out, n)
-			if err := os.WriteFile(path, files[n], 0o644); err != nil {
-				fatalf("%v", err)
-			}
-			if verbose {
-				fmt.Printf("wrote %s\n", path)
-			}
+		if err := writeGenerated(*out, files, verbose); err != nil {
+			fail(err)
 		}
 	case "pack":
 		// docs/SPEC-TABLES.md §17: the tree IS the table, the text in it is §16's,
@@ -668,5 +657,32 @@ func (t *messageTrees) Set(value string) error {
 		return fmt.Errorf("--batch takes Table=tree-dir, and %q is not one", value)
 	}
 	*t = append(*t, compiler.MessageTree{Root: root, Dir: dir})
+	return nil
+}
+
+// writeGenerated confines even third-party generator output and existing
+// symlinks to the requested output tree.
+func writeGenerated(dir string, files map[string][]byte, verbose bool) error {
+	names := make([]string, 0, len(files))
+	for name := range files {
+		if !filepath.IsLocal(name) || strings.Contains(name, "\\") {
+			return fmt.Errorf("generator output %q is not a local path", name)
+		}
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	out, err := os.OpenRoot(dir)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	for _, name := range names {
+		if err := out.WriteFile(name, files[name], 0o644); err != nil {
+			return err
+		}
+		if verbose {
+			fmt.Printf("wrote %s\n", filepath.Join(dir, name))
+		}
+	}
 	return nil
 }

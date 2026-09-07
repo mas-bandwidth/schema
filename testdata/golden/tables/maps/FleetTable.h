@@ -7061,7 +7061,7 @@ inline FleetLoadoutsEntryValueEntryKeyRead FleetLoadoutsEntryValueEntryReadKey( 
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { out.malformed = true; return out; }
-        if ( field_ref == 0 ) { return out; } // the terminator: no key field is the key's DEFAULT
+        if ( field_ref == 0 ) { out.malformed = r.offset != r.size; return out; } // the terminator consumes the entry's L
         if ( ids == NULL || field_ref > (uint64_t) ids->count ) { out.malformed = true; return out; }
         const uint64_t field_id = ids->at( field_ref );
         if ( !r.has( 1 ) ) { out.malformed = true; return out; }
@@ -7143,7 +7143,7 @@ inline FleetShipsEntryKeyRead FleetShipsEntryReadKey( const uint8_t * body, int6
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { out.malformed = true; return out; }
-        if ( field_ref == 0 ) { return out; } // the terminator: no key field is the key's DEFAULT
+        if ( field_ref == 0 ) { out.malformed = r.offset != r.size; return out; } // the terminator consumes the entry's L
         if ( ids == NULL || field_ref > (uint64_t) ids->count ) { out.malformed = true; return out; }
         const uint64_t field_id = ids->at( field_ref );
         if ( !r.has( 1 ) ) { out.malformed = true; return out; }
@@ -7219,7 +7219,7 @@ inline FleetByIdEntryKeyRead FleetByIdEntryReadKey( const uint8_t * body, int64_
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { out.malformed = true; return out; }
-        if ( field_ref == 0 ) { return out; } // the terminator: no key field is the key's DEFAULT
+        if ( field_ref == 0 ) { out.malformed = r.offset != r.size; return out; } // the terminator consumes the entry's L
         if ( ids == NULL || field_ref > (uint64_t) ids->count ) { out.malformed = true; return out; }
         const uint64_t field_id = ids->at( field_ref );
         if ( !r.has( 1 ) ) { out.malformed = true; return out; }
@@ -7312,7 +7312,7 @@ inline FleetLoadoutsEntryKeyRead FleetLoadoutsEntryReadKey( const uint8_t * body
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { out.malformed = true; return out; }
-        if ( field_ref == 0 ) { return out; } // the terminator: no key field is the key's DEFAULT
+        if ( field_ref == 0 ) { out.malformed = r.offset != r.size; return out; } // the terminator consumes the entry's L
         if ( ids == NULL || field_ref > (uint64_t) ids->count ) { out.malformed = true; return out; }
         const uint64_t field_id = ids->at( field_ref );
         if ( !r.has( 1 ) ) { out.malformed = true; return out; }
@@ -7386,7 +7386,7 @@ inline FleetTiersEntryKeyRead FleetTiersEntryReadKey( const uint8_t * body, int6
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { out.malformed = true; return out; }
-        if ( field_ref == 0 ) { return out; } // the terminator: no key field is the key's DEFAULT
+        if ( field_ref == 0 ) { out.malformed = r.offset != r.size; return out; } // the terminator consumes the entry's L
         if ( ids == NULL || field_ref > (uint64_t) ids->count ) { out.malformed = true; return out; }
         const uint64_t field_id = ids->at( field_ref );
         if ( !r.has( 1 ) ) { out.malformed = true; return out; }
@@ -7542,7 +7542,13 @@ MAPDEMO_TABLE_INLINE bool ShipConfigLoadBody( TableReader & r, ShipConfig & valu
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.name[0] = 0; value.name_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
+                {
+                    r.report->malformed = true;
+    memset( value.name, 0, sizeof( value.name ) );
+    value.name_length = 0;
+                    r.offset += (int64_t) len; break;
+                }
                 uint64_t keep = len;
                 if ( keep > 64 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 64 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.name, r.buffer + r.offset, (size_t) keep );
@@ -8272,7 +8278,13 @@ MAPDEMO_TABLE_INLINE bool FleetShipsEntryLoadBody( TableReader & r, FleetShipsEn
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.key[0] = 0; value.key_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
+                {
+                    r.report->malformed = true;
+    memset( value.key, 0, sizeof( value.key ) );
+    value.key_length = 0;
+                    r.offset += (int64_t) len; break;
+                }
                 uint64_t keep = len;
                 if ( keep > 32 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 32 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.key, r.buffer + r.offset, (size_t) keep );
@@ -8490,6 +8502,7 @@ inline bool FleetByIdEntrySaveBody( const Ctx & ctx, const TableNumbering & numb
 
 inline bool FleetByIdEntryLoadBody( TableReader & r, const TableNodeMap & nodes, FleetByIdEntry & value )
 {
+    if ( nodes.refused ) { return false; }
     FleetByIdEntryReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -9018,6 +9031,7 @@ inline bool FleetLoadoutsEntrySaveBody( const Ctx & ctx, const TableNumbering & 
 inline bool FleetLoadoutsEntryLoadBody( TableReader & r, const TableNodeMap & nodes, FleetLoadoutsEntry & value )
 {
     (void) nodes;
+    if ( nodes.refused ) { return false; }
     FleetLoadoutsEntryReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -9055,7 +9069,13 @@ inline bool FleetLoadoutsEntryLoadBody( TableReader & r, const TableNodeMap & no
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.key[0] = 0; value.key_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
+                {
+                    r.report->malformed = true;
+    memset( value.key, 0, sizeof( value.key ) );
+    value.key_length = 0;
+                    r.offset += (int64_t) len; break;
+                }
                 uint64_t keep = len;
                 if ( keep > 16 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 16 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.key, r.buffer + r.offset, (size_t) keep );
@@ -9865,6 +9885,7 @@ inline bool FleetSaveBody( const Ctx & ctx, const TableNumbering & numbering, Ta
 
 inline bool FleetLoadBody( TableReader & r, const TableNodeMap & nodes, Fleet & value )
 {
+    if ( nodes.refused ) { return false; }
     FleetReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -10053,6 +10074,7 @@ inline bool FleetLoadBody( TableReader & r, const TableNodeMap & nodes, Fleet & 
                         {
                             TableReader elem( elem_body, (int64_t) elem_len, r.report, r.ids );
                             FleetByIdEntryLoadBody( elem, nodes, *slot );
+                            if ( nodes.refused ) { return false; }
                         }
                         last_key = read.key; // the WIRE keys of the entries that LAND
                         landed = true;
@@ -10160,6 +10182,7 @@ inline bool FleetLoadBody( TableReader & r, const TableNodeMap & nodes, Fleet & 
                         {
                             TableReader elem( elem_body, (int64_t) elem_len, r.report, r.ids );
                             FleetLoadoutsEntryLoadBody( elem, nodes, *slot );
+                            if ( nodes.refused ) { return false; }
                         }
                         last_key = read.key; last_length = read.length; // the WIRE keys of the entries that LAND
                         landed = true;
@@ -12965,6 +12988,7 @@ inline bool FleetLoadBuilder( FleetBuilder & builder, const uint8_t * wire_file,
             {
                 TableReader sub( body, length, out, &ids_table );
                 FleetNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                if ( nodes.refused ) { break; }
             }
             k++;
         }
@@ -13056,7 +13080,13 @@ MAPDEMO_TABLE_INLINE bool ShipConfigLoadBodyRetain( TableReader & r, ShipConfig 
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.name[0] = 0; value.name_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
+                {
+                    r.report->malformed = true;
+    memset( value.name, 0, sizeof( value.name ) );
+    value.name_length = 0;
+                    r.offset += (int64_t) len; break;
+                }
                 uint64_t keep = len;
                 if ( keep > 64 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 64 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.name, r.buffer + r.offset, (size_t) keep );
@@ -13483,7 +13513,13 @@ MAPDEMO_TABLE_INLINE bool FleetShipsEntryLoadBodyRetain( TableReader & r, FleetS
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.key[0] = 0; value.key_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
+                {
+                    r.report->malformed = true;
+    memset( value.key, 0, sizeof( value.key ) );
+    value.key_length = 0;
+                    r.offset += (int64_t) len; break;
+                }
                 uint64_t keep = len;
                 if ( keep > 32 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 32 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.key, r.buffer + r.offset, (size_t) keep );
@@ -13664,6 +13700,7 @@ inline bool FleetByIdEntrySaveBodyRetain( const Ctx & ctx, const TableNumbering 
 
 inline bool FleetByIdEntryLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, FleetByIdEntry & value, TableRetain * retain, const TableRetainPath & path )
 {
+    if ( nodes.refused ) { return false; }
     FleetByIdEntryReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
@@ -14132,6 +14169,7 @@ inline bool FleetLoadoutsEntrySaveBodyRetain( const Ctx & ctx, const TableNumber
 inline bool FleetLoadoutsEntryLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, FleetLoadoutsEntry & value, TableRetain * retain, const TableRetainPath & path )
 {
     (void) nodes;
+    if ( nodes.refused ) { return false; }
     FleetLoadoutsEntryReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
@@ -14174,7 +14212,13 @@ inline bool FleetLoadoutsEntryLoadBodyRetain( TableReader & r, const TableNodeMa
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.key[0] = 0; value.key_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
+                {
+                    r.report->malformed = true;
+    memset( value.key, 0, sizeof( value.key ) );
+    value.key_length = 0;
+                    r.offset += (int64_t) len; break;
+                }
                 uint64_t keep = len;
                 if ( keep > 16 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 16 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.key, r.buffer + r.offset, (size_t) keep );
@@ -14880,6 +14924,7 @@ inline bool FleetSaveBodyRetain( const Ctx & ctx, const TableNumbering & numberi
 
 inline bool FleetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fleet & value, TableRetain * retain, const TableRetainPath & path )
 {
+    if ( nodes.refused ) { return false; }
     FleetReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
@@ -15079,6 +15124,7 @@ inline bool FleetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fl
                         {
                             TableReader elem( elem_body, (int64_t) elem_len, r.report, r.ids );
                             FleetByIdEntryLoadBodyRetain( elem, nodes, *slot, retain, TableRetainStepInto( path, 1, (uint32_t) ( fill.map->count - 1 ) ) );
+                            if ( nodes.refused ) { return false; }
                         }
                         last_key = read.key; // the WIRE keys of the entries that LAND
                         landed = true;
@@ -15189,6 +15235,7 @@ inline bool FleetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fl
                         {
                             TableReader elem( elem_body, (int64_t) elem_len, r.report, r.ids );
                             FleetLoadoutsEntryLoadBodyRetain( elem, nodes, *slot, retain, TableRetainStepInto( path, 3, (uint32_t) ( fill.map->count - 1 ) ) );
+                            if ( nodes.refused ) { return false; }
                         }
                         last_key = read.key; last_length = read.length; // the WIRE keys of the entries that LAND
                         landed = true;
