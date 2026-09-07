@@ -716,23 +716,6 @@ func (g *tableGen) tableStorageColumns(f *ir.Field) string {
 	return b.String()
 }
 
-// unionArmsValue renders a union field's Arms column: the tag's accessor pair
-// and one entry per arm, index 0 being the EMPTY arm, which carries neither
-// payload nor descriptor. Built with the descriptor and cached with it, so a
-// walk over a union allocates nothing.
-func unionArmsValue(un *ir.Union) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "new TableUnionInfo { GetTag = delegate(object o) { return (ulong)((%s)o).Type; }", un.Name)
-	fmt.Fprintf(&b, ", SetTag = delegate(object o, ulong t) { ((%s)o).Type = unchecked((%sType)t); }", un.Name, un.Name)
-	b.WriteString(", Arms = new TableUnionArmInfo[] { new TableUnionArmInfo()")
-	for _, v := range un.Variants {
-		fmt.Fprintf(&b, ", new TableUnionArmInfo { TableRef = delegate { return %sTableType(); }, Payload = delegate(object o) { return ((%s)o).%s; } }",
-			v.Type, un.Name, ir.GoExportName(v.Name))
-	}
-	b.WriteString(" } }")
-	return b.String()
-}
-
 func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 	id := ir.TableFieldWireId(f)
 	kind := tableScalarKind(f)
@@ -816,7 +799,7 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 			enumName = fmt.Sprintf("delegate(ulong v) { return FlagName%s((int)v); }", f.Type.Name)
 		}
 	case *ir.Union:
-		if f.Type.Kind == ir.TNamed && f.Array == ir.ArrayNone {
+		if f.Type.Kind == ir.TNamed {
 			enumMax = fmt.Sprintf("%d", len(ref.Variants))
 			enumName = unionArmLambda(ref, func(v ir.UnionVariant) string {
 				return fmt.Sprintf("%q", v.Name)
@@ -824,7 +807,7 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 			variantId = unionArmLambda(ref, func(v ir.UnionVariant) string {
 				return fmt.Sprintf("(ulong)0x%016x", ir.TableWireId(v.WireName()))
 			}, "(ulong)0", "(ulong)0")
-			arms = unionArmsValue(ref)
+			arms = g.unionArmsValue(ref)
 		}
 	}
 
@@ -832,6 +815,9 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 	// block and its tags, the shared empty doc and a null list where it
 	// carries none.
 	doc, numTags, tags := annotationColumns(f.Doc, f.Tags, tagsSymbol(g.owner.Name, f.Name))
+	if g.arm && len(f.Tags) > 0 {
+		tags = armTags(f.Tags)
+	}
 
 	g.pf("        new TableFieldInfo { Name = \"%s\", Json = \"%s\", TypeName = \"%s\", Id = 0x%016x, Kind = %d, IsArray = %v, Counted = %v, Optional = %v, ArrayBound = %s, ElemWidth = %d, HasRange = %s, RangeMin = %s, RangeMax = %s, EnumMax = %s, EnumName = %s, VariantId = %s, KeyTypeName = %s, KeyName = %s, KeyId = %s, Guard = \"%s\", TableRef = %s, Arms = %s, Doc = %s, NumTags = %s, Tags = %s%s },\n",
 		f.Name, ir.TableFieldJsonKey(f), tableFieldTypeName(f), id, kind, isArray, counted, f.Type.Optional, bound,

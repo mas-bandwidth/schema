@@ -188,7 +188,7 @@ public static class TableJson
     // the ELEMENT shape of an array field — the same classifier one level down
     static char ElementShape(TableFieldInfo f)
     {
-        if (f.Kind == 13) { return 'o'; }
+        if (f.Kind == 13 || f.Kind == 15) { return 'o'; }
         if (IsEnum(f)) { return 's'; }
         if (IsFlags(f)) { return 'a'; }
         if (f.Kind == 1) { return 'b'; }
@@ -615,10 +615,9 @@ public static class TableJson
             o.Line(depth + 1);
             WriteName(ref o, arm);
             o.Text(": ");
-            if (!WriteValue(ref o, f.Arms.Arms[(int)tag].Payload(union), f.Arms.Arms[(int)tag].Table, depth + 1))
-            {
-                return false;
-            }
+            TableFieldInfo payload = f.Arms.Arms[(int)tag].Field;
+            if (payload == null) { o.Text("null"); }
+            else if (!WriteField(ref o, union, payload, depth + 1)) { return false; }
             o.Line(depth);
             o.Put((byte)'}');
             return true;
@@ -1251,11 +1250,33 @@ public static class TableJson
             }
             else
             {
-                object payload = f.Arms.Arms[tag].Payload(union);
-                TableTypeInfo arm = f.Arms.Arms[tag].Table;
-                arm.Reset(payload);
-                if (!ReadTable(text, ref input, payload, arm, depth + 1)) { return false; }
-                f.Arms.SetTag(union, (ulong)tag);
+                TableUnionArmInfo arm = f.Arms.Arms[tag];
+                TableFieldInfo payload = arm.Field;
+                char wanted = payload == null ? 'z' : Shape(payload);
+                if (ValueShape(text, ref input) != wanted)
+                {
+                    input.Report.KindMismatch++;
+                    if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                }
+                else
+                {
+                    if (payload == null)
+                    {
+                        if (!Literal(text, ref input, "null")) { return false; }
+                    }
+                    else if (arm.Table != null)
+                    {
+                        object body = arm.Payload(union);
+                        arm.Table.Reset(body);
+                        if (!ReadTable(text, ref input, body, arm.Table, depth + 1)) { return false; }
+                    }
+                    else
+                    {
+                        TableWire.ResetArm(union, payload);
+                        if (!ReadField(text, ref input, union, payload, depth + 1)) { return false; }
+                    }
+                    f.Arms.SetTag(union, (ulong)tag);
+                }
             }
             byte c = Peek(text, ref input);
             if (c == ',') { input.Pos++; c = Peek(text, ref input); }
@@ -1459,13 +1480,13 @@ public static class TableJson
     // put one array field's every slot back at its declared defaults. A table
     // element's defaults are its own (the reset hook); every other element
     // kind's storage default is zero, which is what the generated array
-    // declares. There is no union arm here because an ARRAY OF UNIONS is
-    // refused by name (docs/SPEC-TABLES.md §11).
+    // declares. A union element resets to None.
     static void ResetSlots(object value, TableFieldInfo f)
     {
         for (int i = 0; i < f.ArrayBound; i++)
         {
             if (f.Kind == 13) { f.Table.Reset(f.GetChild(value, i)); }
+            else if (f.Kind == 15) { f.Arms.SetTag(f.GetChild(value, i), 0); }
             else { f.SetRaw(value, i, 0); }
         }
     }
@@ -1706,8 +1727,7 @@ public static class TableJson
                     // absent, and back at its defaults: a repeated key whose
                     // last occurrence is null must not leave an earlier value
                     // standing
-                    if (f.Table != null) { f.Table.Reset(f.GetChild(value, 0)); }
-                    else { f.SetRaw(value, 0, 0); }
+                    f.ResetField(value);
                     f.SetPresent(value, false);
                 }
                 else

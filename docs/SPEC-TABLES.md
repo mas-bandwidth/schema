@@ -172,6 +172,11 @@ unknown escape-kind skipping. `tables-cs-leg`, `tables-cs-wire-fuzz` and
 `conformance-negative-control-cs` hold that slice against the pinned corpus
 and the independent engine. Its message form, variable class and the still
 refused constructs remain follow-ons; this is not a complete C# column.
+The supported fixed class includes table and general union arms, bounded
+union arrays, optional arrays, and `was` identities on variants, arms and
+type fields. Scalar, enum, flags, string, bytes, bounded-array, nested-union
+and payload-free arms use the same typed descriptors as fields. Pointer/blob
+arms, wide table kinds, and cooked union storage remain follow-ons.
 C, Dart, Go, Rust, Java, JavaScript and Elixir still carry the previous wire
 form at this checkpoint. The reference remains C++ and the compiler's engine
 (`internal/tablewire`); schema#511 to schema#518 track each port's carry, and

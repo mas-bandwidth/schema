@@ -92,7 +92,7 @@ tables-cs-json-walk: build/tables-generated-cs/.stamp
 	done
 	@echo "tables C# generic-walk gate: one walker per unit, byte-identical across $$(ls build/json-walk-cs | wc -l | tr -d ' ') units"
 
-build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/K1.schema test/tables/K2.schema test/tables/CsIds.schema
+build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/K1.schema test/tables/K2.schema test/tables/CsIds.schema test/tables/CsUnions.schema $(SCHEMAS_TABLES_MESSAGES) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema
 	@mkdir -p build/tables-generated-cs
 	./bin/schema generate --lang cs --out build/tables-generated-cs/examples tables/examples
 	# the POINTERED unit: its C# WIRE surface is refused by name (§11) and its
@@ -108,6 +108,12 @@ build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_
 	./bin/schema generate --lang cs --out build/tables-generated-cs/k1 test/tables/K1.schema
 	./bin/schema generate --lang cs --out build/tables-generated-cs/k2 test/tables/K2.schema
 	./bin/schema generate --lang cs --out build/tables-generated-cs/csids test/tables/CsIds.schema
+	./bin/schema generate --lang cs --out build/tables-generated-cs/csunions test/tables/CsUnions.schema
+	./bin/schema generate --lang cs --out build/tables-generated-cs/messages tables/messages
+	./bin/schema generate --lang cs --out build/tables-generated-cs/m1 test/tables/M1.schema
+	./bin/schema generate --lang cs --out build/tables-generated-cs/m2 test/tables/M2.schema
+	./bin/schema generate --lang cs --out build/tables-generated-cs/a1 test/tables/A1.schema
+	./bin/schema generate --lang cs --out build/tables-generated-cs/a2 test/tables/A2.schema
 	@touch $@
 
 # The C# twin of the C++ "no serialize include path" build: a generated

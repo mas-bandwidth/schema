@@ -20,10 +20,10 @@ func (csTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	if err := refuseWideText(u, "cs"); err != nil {
 		return nil, err
 	}
-	if err := refuseUnported(u, "cs"); err != nil {
+	if err := refuseValueDefaults(u, "cs"); err != nil {
 		return nil, err
 	}
-	if err := refuseOptionalArrays(u, "cs"); err != nil {
+	if err := refuseBlobs(u, "cs"); err != nil {
 		return nil, err
 	}
 	if err := refuseMaps(u, "cs"); err != nil {
@@ -55,5 +55,6 @@ func (csTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 func init() {
 	registerPacketValueDefaultCarrier("cs")
 	registerWideTextCarrier("cs")
-	registerBuiltin(csTarget{}, true, false, false, false)
+	registerBuiltin(csTarget{}, true, true, true, false)
+	registerOptionalArrayCarrier("cs")
 }

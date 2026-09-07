@@ -1700,6 +1700,7 @@ static partial class Program
         goldenDir = FindGoldenDir();
 
         TestWireContracts();
+        TestUnionContracts();
         TestGoldenWireWrite();
         TestGoldenWireRead();
         TestGoldenSeamsWrite();

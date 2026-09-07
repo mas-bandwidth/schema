@@ -691,6 +691,14 @@ payload's last byte, decodes a body that ends inside its own length.
 |---|---|---|---|---|---|---|---|---|
 | ✅ `internal/codegen/cpptable/arms.go` `tables-wire-fuzz-arm-width-negative-control` `tables-wire-fuzz-arm-terminator-negative-control` | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 |
 
+C# carries the fixed-class wire and text arm shapes through
+`internal/codegen/cstable/unions.go` and the shared descriptor walkers.
+`tables-cs-leg` pins selected empty arms, nested union arrays, renamed enum
+identities, malformed lengths and allocation-free warmed loads/saves;
+`tables-cs-wire-fuzz` compares the Messages and arm-retype corpora with the
+independent engine. Pointer/blob arms, wide kinds and cooked union storage
+remain open, so this full-method cell stays open.
+
 ### M19 — A map is a sorted entry array in the holder's node extent
 
 **Method.** A map (docs/SPEC-TABLES.md §2.8) is a LOOKUP the runtime provides

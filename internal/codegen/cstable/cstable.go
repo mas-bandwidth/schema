@@ -200,6 +200,7 @@ func generatedFrom(f *ir.File, u *ir.Unit) string {
 type tableGen struct {
 	unit     *ir.Unit
 	file     *ir.File   // nil in the emitted-for-the-unit runtime file
+	arm      bool       // descriptor rows inside a union
 	home     bool       // this file carries the unit's shared table runtime
 	anyKeyed bool       // the unit declares at least one enum-keyed array
 	owner    *ir.Struct // the closure member whose codec is being emitted
@@ -290,6 +291,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		if g.home {
 			g.emitRuntime()
 			runtimeWritten = true
+		}
+		for _, un := range f.TableUnions {
+			g.emitTableUnion(un)
 		}
 		for _, st := range members {
 			if st.IsTable {
@@ -396,30 +400,35 @@ func englishList(names []string) string {
 // closureEnums is every enum whose values ride in the unit's table closure.
 func closureEnums(u *ir.Unit, closure map[string]bool) map[string]*ir.Enum {
 	used := map[string]*ir.Enum{}
-	names := make([]string, 0, len(closure))
-	for name := range closure {
-		names = append(names, name)
+	seen := map[*ir.Union]bool{}
+	var field func(*ir.Field)
+	field = func(f *ir.Field) {
+		if f.KeyEnumRef != nil {
+			used[f.KeyEnumRef.Name] = f.KeyEnumRef
+		}
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Enum:
+			used[ref.Name] = ref
+		case *ir.Union:
+			if seen[ref] {
+				return
+			}
+			seen[ref] = true
+			for _, arm := range ref.Variants {
+				if !arm.Void() {
+					field(arm.F)
+				}
+			}
+		}
 	}
-	sort.Strings(names)
-	for _, name := range names {
+	for name := range closure {
 		st := u.Tables[name]
 		if st == nil {
 			st = u.Structs[name]
 		}
-		if st == nil {
-			continue
-		}
-		for _, f := range st.Fields {
-			// an enum-keyed array's KEY rides as a variant hash too, so its
-			// enum needs the identity pair even when no field has that type
-			if f.KeyEnumRef != nil {
-				used[f.KeyEnumRef.Name] = f.KeyEnumRef
-			}
-			if f.Type.Kind != ir.TNamed {
-				continue
-			}
-			if e, isEnum := f.Type.Ref.(*ir.Enum); isEnum {
-				used[e.Name] = e
+		if st != nil {
+			for _, f := range st.Fields {
+				field(f)
 			}
 		}
 	}
@@ -867,6 +876,7 @@ public sealed class TableFieldInfo
 // 0 is the EMPTY arm and carries neither payload nor descriptor.
 public sealed class TableUnionArmInfo
 {
+    public TableFieldInfo Field; // null for a payload-free arm; accessors take the union
     public Func<TableTypeInfo> TableRef;
     public TableTypeInfo Table
     {

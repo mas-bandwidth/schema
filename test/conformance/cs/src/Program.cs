@@ -113,8 +113,100 @@ static class Program
     {
         return new Report { Unknown = r.Unknown, KindMismatch = r.KindMismatch, Widened = r.Widened, Refused = r.Refused, Clamped = r.Clamped, Duplicate = r.Duplicate, Malformed = r.Malformed };
     }
+    static Report Copy(Messagedemo.TableReport r)
+    {
+        return new Report { Unknown = r.Unknown, KindMismatch = r.KindMismatch, Widened = r.Widened, Refused = r.Refused, Clamped = r.Clamped, Duplicate = r.Duplicate, Malformed = r.Malformed };
+    }
+    static Report Copy(Tblm1.TableReport r)
+    {
+        return new Report { Unknown = r.Unknown, KindMismatch = r.KindMismatch, Widened = r.Widened, Refused = r.Refused, Clamped = r.Clamped, Duplicate = r.Duplicate, Malformed = r.Malformed };
+    }
+    static Report Copy(Tblm2.TableReport r)
+    {
+        return new Report { Unknown = r.Unknown, KindMismatch = r.KindMismatch, Widened = r.Widened, Refused = r.Refused, Clamped = r.Clamped, Duplicate = r.Duplicate, Malformed = r.Malformed };
+    }
+    static Report Copy(Tbla1.TableReport r)
+    {
+        return new Report { Unknown = r.Unknown, KindMismatch = r.KindMismatch, Widened = r.Widened, Refused = r.Refused, Clamped = r.Clamped, Duplicate = r.Duplicate, Malformed = r.Malformed };
+    }
+    static Report Copy(Tbla2.TableReport r)
+    {
+        return new Report { Unknown = r.Unknown, KindMismatch = r.KindMismatch, Widened = r.Widened, Refused = r.Refused, Clamped = r.Clamped, Duplicate = r.Duplicate, Malformed = r.Malformed };
+    }
     static readonly List<Codec> codecs = new List<Codec>
     {
+        Row<Messagedemo.User, Messagedemo.TableReport>("messagedemo", "User", () => new Messagedemo.TableReport(), Copy,
+            Messagedemo.Schema.UserLoad, Messagedemo.Schema.UserMeasure, Messagedemo.Schema.UserSave,
+            Messagedemo.Schema.UserFromJson, Messagedemo.Schema.UserToJsonMeasure, Messagedemo.Schema.UserToJson),
+        Row<Messagedemo.Script, Messagedemo.TableReport>("messagedemo", "Script", () => new Messagedemo.TableReport(), Copy,
+            Messagedemo.Schema.ScriptLoad, Messagedemo.Schema.ScriptMeasure, Messagedemo.Schema.ScriptSave,
+            Messagedemo.Schema.ScriptFromJson, Messagedemo.Schema.ScriptToJsonMeasure, Messagedemo.Schema.ScriptToJson),
+        Row<Messagedemo.Selection, Messagedemo.TableReport>("messagedemo", "Selection", () => new Messagedemo.TableReport(), Copy,
+            Messagedemo.Schema.SelectionLoad, Messagedemo.Schema.SelectionMeasure, Messagedemo.Schema.SelectionSave,
+            Messagedemo.Schema.SelectionFromJson, Messagedemo.Schema.SelectionToJsonMeasure, Messagedemo.Schema.SelectionToJson),
+        Row<Messagedemo.InsertText, Messagedemo.TableReport>("messagedemo", "InsertText", () => new Messagedemo.TableReport(), Copy,
+            Messagedemo.Schema.InsertTextLoad, Messagedemo.Schema.InsertTextMeasure, Messagedemo.Schema.InsertTextSave,
+            Messagedemo.Schema.InsertTextFromJson, Messagedemo.Schema.InsertTextToJsonMeasure, Messagedemo.Schema.InsertTextToJson),
+        Row<Messagedemo.RemoveText, Messagedemo.TableReport>("messagedemo", "RemoveText", () => new Messagedemo.TableReport(), Copy,
+            Messagedemo.Schema.RemoveTextLoad, Messagedemo.Schema.RemoveTextMeasure, Messagedemo.Schema.RemoveTextSave,
+            Messagedemo.Schema.RemoveTextFromJson, Messagedemo.Schema.RemoveTextToJsonMeasure, Messagedemo.Schema.RemoveTextToJson),
+        Row<Messagedemo.Edit, Messagedemo.TableReport>("messagedemo", "Edit", () => new Messagedemo.TableReport(), Copy,
+            Messagedemo.Schema.EditLoad, Messagedemo.Schema.EditMeasure, Messagedemo.Schema.EditSave,
+            Messagedemo.Schema.EditFromJson, Messagedemo.Schema.EditToJsonMeasure, Messagedemo.Schema.EditToJson),
+        Row<Messagedemo.OpenDocument, Messagedemo.TableReport>("messagedemo", "OpenDocument", () => new Messagedemo.TableReport(), Copy,
+            Messagedemo.Schema.OpenDocumentLoad, Messagedemo.Schema.OpenDocumentMeasure, Messagedemo.Schema.OpenDocumentSave,
+            Messagedemo.Schema.OpenDocumentFromJson, Messagedemo.Schema.OpenDocumentToJsonMeasure, Messagedemo.Schema.OpenDocumentToJson),
+        Row<Messagedemo.SaveDocument, Messagedemo.TableReport>("messagedemo", "SaveDocument", () => new Messagedemo.TableReport(), Copy,
+            Messagedemo.Schema.SaveDocumentLoad, Messagedemo.Schema.SaveDocumentMeasure, Messagedemo.Schema.SaveDocumentSave,
+            Messagedemo.Schema.SaveDocumentFromJson, Messagedemo.Schema.SaveDocumentToJsonMeasure, Messagedemo.Schema.SaveDocumentToJson),
+        Row<Messagedemo.Transaction, Messagedemo.TableReport>("messagedemo", "Transaction", () => new Messagedemo.TableReport(), Copy,
+            Messagedemo.Schema.TransactionLoad, Messagedemo.Schema.TransactionMeasure, Messagedemo.Schema.TransactionSave,
+            Messagedemo.Schema.TransactionFromJson, Messagedemo.Schema.TransactionToJsonMeasure, Messagedemo.Schema.TransactionToJson),
+        Row<Messagedemo.ToolMessage, Messagedemo.TableReport>("messagedemo", "ToolMessage", () => new Messagedemo.TableReport(), Copy,
+            Messagedemo.Schema.ToolMessageLoad, Messagedemo.Schema.ToolMessageMeasure, Messagedemo.Schema.ToolMessageSave,
+            Messagedemo.Schema.ToolMessageFromJson, Messagedemo.Schema.ToolMessageToJsonMeasure, Messagedemo.Schema.ToolMessageToJson),
+        Row<Messagedemo.Cursor, Messagedemo.TableReport>("messagedemo", "Cursor", () => new Messagedemo.TableReport(), Copy,
+            Messagedemo.Schema.CursorLoad, Messagedemo.Schema.CursorMeasure, Messagedemo.Schema.CursorSave,
+            Messagedemo.Schema.CursorFromJson, Messagedemo.Schema.CursorToJsonMeasure, Messagedemo.Schema.CursorToJson),
+        Row<Messagedemo.Ping, Messagedemo.TableReport>("messagedemo", "Ping", () => new Messagedemo.TableReport(), Copy,
+            Messagedemo.Schema.PingLoad, Messagedemo.Schema.PingMeasure, Messagedemo.Schema.PingSave,
+            Messagedemo.Schema.PingFromJson, Messagedemo.Schema.PingToJsonMeasure, Messagedemo.Schema.PingToJson),
+        Row<Tblm1.Open, Tblm1.TableReport>("tblm1", "Open", () => new Tblm1.TableReport(), Copy,
+            Tblm1.Schema.OpenLoad, Tblm1.Schema.OpenMeasure, Tblm1.Schema.OpenSave,
+            Tblm1.Schema.OpenFromJson, Tblm1.Schema.OpenToJsonMeasure, Tblm1.Schema.OpenToJson),
+        Row<Tblm1.Save, Tblm1.TableReport>("tblm1", "Save", () => new Tblm1.TableReport(), Copy,
+            Tblm1.Schema.SaveLoad, Tblm1.Schema.SaveMeasure, Tblm1.Schema.SaveSave,
+            Tblm1.Schema.SaveFromJson, Tblm1.Schema.SaveToJsonMeasure, Tblm1.Schema.SaveToJson),
+        Row<Tblm1.Quit, Tblm1.TableReport>("tblm1", "Quit", () => new Tblm1.TableReport(), Copy,
+            Tblm1.Schema.QuitLoad, Tblm1.Schema.QuitMeasure, Tblm1.Schema.QuitSave,
+            Tblm1.Schema.QuitFromJson, Tblm1.Schema.QuitToJsonMeasure, Tblm1.Schema.QuitToJson),
+        Row<Tblm1.Msg, Tblm1.TableReport>("tblm1", "Msg", () => new Tblm1.TableReport(), Copy,
+            Tblm1.Schema.MsgLoad, Tblm1.Schema.MsgMeasure, Tblm1.Schema.MsgSave,
+            Tblm1.Schema.MsgFromJson, Tblm1.Schema.MsgToJsonMeasure, Tblm1.Schema.MsgToJson),
+        Row<Tblm2.Open, Tblm2.TableReport>("tblm2", "Open", () => new Tblm2.TableReport(), Copy,
+            Tblm2.Schema.OpenLoad, Tblm2.Schema.OpenMeasure, Tblm2.Schema.OpenSave,
+            Tblm2.Schema.OpenFromJson, Tblm2.Schema.OpenToJsonMeasure, Tblm2.Schema.OpenToJson),
+        Row<Tblm2.Close, Tblm2.TableReport>("tblm2", "Close", () => new Tblm2.TableReport(), Copy,
+            Tblm2.Schema.CloseLoad, Tblm2.Schema.CloseMeasure, Tblm2.Schema.CloseSave,
+            Tblm2.Schema.CloseFromJson, Tblm2.Schema.CloseToJsonMeasure, Tblm2.Schema.CloseToJson),
+        Row<Tblm2.Quit, Tblm2.TableReport>("tblm2", "Quit", () => new Tblm2.TableReport(), Copy,
+            Tblm2.Schema.QuitLoad, Tblm2.Schema.QuitMeasure, Tblm2.Schema.QuitSave,
+            Tblm2.Schema.QuitFromJson, Tblm2.Schema.QuitToJsonMeasure, Tblm2.Schema.QuitToJson),
+        Row<Tblm2.Msg, Tblm2.TableReport>("tblm2", "Msg", () => new Tblm2.TableReport(), Copy,
+            Tblm2.Schema.MsgLoad, Tblm2.Schema.MsgMeasure, Tblm2.Schema.MsgSave,
+            Tblm2.Schema.MsgFromJson, Tblm2.Schema.MsgToJsonMeasure, Tblm2.Schema.MsgToJson),
+        Row<Tbla1.Body, Tbla1.TableReport>("tbla1", "Body", () => new Tbla1.TableReport(), Copy,
+            Tbla1.Schema.BodyLoad, Tbla1.Schema.BodyMeasure, Tbla1.Schema.BodySave,
+            Tbla1.Schema.BodyFromJson, Tbla1.Schema.BodyToJsonMeasure, Tbla1.Schema.BodyToJson),
+        Row<Tbla1.Root, Tbla1.TableReport>("tbla1", "Root", () => new Tbla1.TableReport(), Copy,
+            Tbla1.Schema.RootLoad, Tbla1.Schema.RootMeasure, Tbla1.Schema.RootSave,
+            Tbla1.Schema.RootFromJson, Tbla1.Schema.RootToJsonMeasure, Tbla1.Schema.RootToJson),
+        Row<Tbla2.Body, Tbla2.TableReport>("tbla2", "Body", () => new Tbla2.TableReport(), Copy,
+            Tbla2.Schema.BodyLoad, Tbla2.Schema.BodyMeasure, Tbla2.Schema.BodySave,
+            Tbla2.Schema.BodyFromJson, Tbla2.Schema.BodyToJsonMeasure, Tbla2.Schema.BodyToJson),
+        Row<Tbla2.Root, Tbla2.TableReport>("tbla2", "Root", () => new Tbla2.TableReport(), Copy,
+            Tbla2.Schema.RootLoad, Tbla2.Schema.RootMeasure, Tbla2.Schema.RootSave,
+            Tbla2.Schema.RootFromJson, Tbla2.Schema.RootToJsonMeasure, Tbla2.Schema.RootToJson),
         Row<Tblk1.Root, Tblk1.TableReport>("tblk1", "Root", () => new Tblk1.TableReport(), Copy,
             Tblk1.Schema.RootLoad, Tblk1.Schema.RootMeasure, Tblk1.Schema.RootSave,
             Tblk1.Schema.RootFromJson, Tblk1.Schema.RootToJsonMeasure, Tblk1.Schema.RootToJson),

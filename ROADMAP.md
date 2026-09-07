@@ -69,6 +69,13 @@
 | the unit registry, UnitView | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | widening on read, and the refusal reasons | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
+The C# form-1 file slice also carries fixed table/general union arms, bounded
+union arrays, optional arrays and renaming variants, arms and type fields.
+Its shared wire/text corpus and differential fuzzer cover these shapes.
+The broad rows above still include variable storage, wide kinds, cooked
+unions, or message/retention forms that remain follow-ons; see
+[the porting register](docs/PORTING.md#m18--a-union-arm-is-a-field-line) for the arm slice and its gates.
+
 ## How the work is done
 
 Schema is built by Glenn Fiedler, together with AI collaborators that do much of 

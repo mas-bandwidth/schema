@@ -41,6 +41,12 @@
          pair without the other leaves those records undefined. Both, or
          neither. -->
     <Compile Include="src/*.cs" />
+    <Compile Include="../../build/tables-generated-cs/csunions/*.cs" Exclude="../../build/tables-generated-cs/csunions/*Block.cs;../../build/tables-generated-cs/csunions/*Cook.cs" />
+    <Compile Include="../../build/tables-generated-cs/messages/*.cs" Exclude="../../build/tables-generated-cs/messages/*Block.cs;../../build/tables-generated-cs/messages/*Cook.cs" />
+    <Compile Include="../../build/tables-generated-cs/m1/*.cs" Exclude="../../build/tables-generated-cs/m1/*Block.cs;../../build/tables-generated-cs/m1/*Cook.cs" />
+    <Compile Include="../../build/tables-generated-cs/m2/*.cs" Exclude="../../build/tables-generated-cs/m2/*Block.cs;../../build/tables-generated-cs/m2/*Cook.cs" />
+    <Compile Include="../../build/tables-generated-cs/a1/*.cs" Exclude="../../build/tables-generated-cs/a1/*Block.cs;../../build/tables-generated-cs/a1/*Cook.cs" />
+    <Compile Include="../../build/tables-generated-cs/a2/*.cs" Exclude="../../build/tables-generated-cs/a2/*Block.cs;../../build/tables-generated-cs/a2/*Cook.cs" />
     <Compile Include="../../build/tables-generated-cs/csids/*.cs" Exclude="../../build/tables-generated-cs/csids/*Block.cs;../../build/tables-generated-cs/csids/*Cook.cs" />
     <Compile Include="../../build/tables-generated-cs/examples/*.cs" Exclude="../../build/tables-generated-cs/examples/*Block.cs;../../build/tables-generated-cs/examples/*Cook.cs" />
     <Compile Include="../../build/tables-generated-cs/v1/*.cs" Exclude="../../build/tables-generated-cs/v1/*Block.cs;../../build/tables-generated-cs/v1/*Cook.cs" />

@@ -133,6 +133,11 @@ the duplicate-id check in an emitter overlay and requires the fuzzer to fail,
 then shifts the text reader's field lookup and requires read failures while
 wire, report and JSON-write still pass.
 
+The C# fixed roots include `tables/messages`, the M1/M2 arm-evolution pair,
+and the A1/A2 arm-retype pair. These exercise table/general arms, union arrays
+and optional arrays at several depths. This is the Messages corpus carried
+in a form-1 file; form-2 message framing remains absent.
+
 The remaining seven ports still write the previous form. The harness prints
 `N seeds absent (roots the leg has no codec for)`, applying the same
 "absent is not failure" rule one grain up. The port work is schema#511 (go),

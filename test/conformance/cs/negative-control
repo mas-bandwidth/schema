@@ -13,12 +13,14 @@ for mode in wire json; do
     go run ./tools/sabotage -name "$sabotage" -out "$dir/source.gotext" "$source"
     printf '{"Replace":{"%s/%s":"%s/%s/source.gotext"}}\n' "$PWD" "$source" "$PWD" "$dir" > "$dir/overlay.json"
     go build -overlay="$dir/overlay.json" -o "$dir/schema" ./cmd/schema
-    for unit in examples block v1 v2 p1 p3 k1 k2; do
+    for unit in examples block v1 v2 p1 p3 k1 k2 messages m1 m2 a1 a2; do
         case "$unit" in
-            examples|block) input=tables/$unit ;;
+            examples|block|messages) input=tables/$unit ;;
             v1) input=test/tables/V1.schema ;; v2) input=test/tables/V2.schema ;;
             p1) input=test/tables/P1.schema ;; p3) input=test/tables/P3.schema ;;
             k1) input=test/tables/K1.schema ;; k2) input=test/tables/K2.schema ;;
+            m1) input=test/tables/M1.schema ;; m2) input=test/tables/M2.schema ;;
+            a1) input=test/tables/A1.schema ;; a2) input=test/tables/A2.schema ;;
         esac
         "$dir/schema" generate --lang cs --out "$dir/generated/$unit" "$input"
     done

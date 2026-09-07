@@ -1,0 +1,37 @@
+// Fixed general arms: selected empty values, aliases, and plain-type tails.
+package csunions
+
+type Cell { x int32 = 9 }
+
+enum Grade
+{
+    First
+    Second | was = "Two"
+}
+
+union Leaf
+{
+    number int32
+    empty
+}
+
+// The shared checker requires each general union to be named by a table.
+table LeafHolder { leaf Leaf }
+
+union Choice
+{
+    cells [3]Cell
+    many [..3]Cell
+    nested Leaf
+    grade Grade
+    signal
+}
+
+table Root
+{
+    item Choice
+    history [..3]Choice
+    pending [2]Choice
+    optional ?[..2]Cell
+    tail uint32
+}

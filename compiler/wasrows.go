@@ -1,10 +1,9 @@
 // The `was` ROWS' cross-target refusal (docs/SPEC-TABLES.md §5): a `was` on an
 // enum variant, on a union arm, or on a field of a `type` a table reaches is
-// carried by the C++ reference and the tool, and every other target names the
-// follow-on rather than hashing the declared name where the wire carries the
-// alias. [refuseUnported] reaches it for every port. A `was` on a TABLE's own
-// field is every port's already, and a `was` on a table declaration names a
-// node type id the ports' fixed class never writes.
+// carried by C++, C# and the tool. Targets without the form name the follow-on
+// rather than hashing the declared name where the wire carries the alias.
+// A `was` on a TABLE's own field is every port's already, and a `was` on a
+// table declaration names a node type id the ports' fixed class never writes.
 package compiler
 
 import (
@@ -15,7 +14,7 @@ import (
 
 // wasRowTargets is the canonical name of every built-in target whose backends
 // carry the three; refuseWasRows names them.
-var wasRowTargets = []string{"cpp"}
+var wasRowTargets = []string{"cpp", "cs"}
 
 // refuseWasRows is the named refusal every target without the form gives a
 // unit whose table closure carries a variant, arm or type-field `was`.

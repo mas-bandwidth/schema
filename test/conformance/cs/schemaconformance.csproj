@@ -33,6 +33,11 @@
 
   <ItemGroup>
     <Compile Include="src/*.cs" />
+    <Compile Include="$(TablesGeneratedDir)/messages/*.cs" Exclude="$(TablesGeneratedDir)/messages/*Block.cs;$(TablesGeneratedDir)/messages/*Cook.cs" />
+    <Compile Include="$(TablesGeneratedDir)/m1/*.cs" Exclude="$(TablesGeneratedDir)/m1/*Block.cs;$(TablesGeneratedDir)/m1/*Cook.cs" />
+    <Compile Include="$(TablesGeneratedDir)/m2/*.cs" Exclude="$(TablesGeneratedDir)/m2/*Block.cs;$(TablesGeneratedDir)/m2/*Cook.cs" />
+    <Compile Include="$(TablesGeneratedDir)/a1/*.cs" Exclude="$(TablesGeneratedDir)/a1/*Block.cs;$(TablesGeneratedDir)/a1/*Cook.cs" />
+    <Compile Include="$(TablesGeneratedDir)/a2/*.cs" Exclude="$(TablesGeneratedDir)/a2/*Block.cs;$(TablesGeneratedDir)/a2/*Cook.cs" />
     <Compile Include="$(TablesGeneratedDir)/k1/*.cs" Exclude="$(TablesGeneratedDir)/k1/*Block.cs;$(TablesGeneratedDir)/k1/*Cook.cs" />
     <Compile Include="$(TablesGeneratedDir)/k2/*.cs" Exclude="$(TablesGeneratedDir)/k2/*Block.cs;$(TablesGeneratedDir)/k2/*Cook.cs" />
     <Compile Include="$(TablesGeneratedDir)/examples/*.cs" Exclude="$(TablesGeneratedDir)/examples/*Block.cs;$(TablesGeneratedDir)/examples/*Cook.cs" />
