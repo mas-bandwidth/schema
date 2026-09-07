@@ -95,7 +95,7 @@ message_blob_node_unpointed graphdemo Scene testdata/wire/tables/fuzz-vectors/me
 # the batch here because a bit stream has no place to resume. NEITHER ENGINE
 # CARRIED IT. The C++ reference's emitted message reader copied the bytes a
 # byte at a time with no check, and the oracle's `text` clamped at the raw
-# bound, so a body no reader should accept loaded silently into both — agreeing,
+# bound, so a body no reader should accept loaded silently into both, agreeing,
 # and agreeing wrongly, which is the one shape a differential fuzzer cannot see
 # on its own. It became a red the moment one engine was repaired, and this
 # vector is what holds the two together from here.
