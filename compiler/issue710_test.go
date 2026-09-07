@@ -333,3 +333,31 @@ func TestIssue710ListRefusal(t *testing.T) {
 	cpp.WriteString("return 0;}\n")
 	issue710CompileRun(t, dir, "c++", ".cpp", cpp.String())
 }
+
+func TestIssue710CTableBounds(t *testing.T) {
+	u := unitFromSource(t, "package p\ntable Root { value int32 }\n")
+	files, err := New().Generate(u, "c", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	source := `#include "ProbeTable.h"
+int main(void) {
+    TableReader r=table_reader_make(NULL,INT64_MAX,NULL);
+    r.offset=INT64_MAX-3;
+    if(table_reader_has(&r,8) || table_reader_has(&r,-1)) return 1;
+    if(!table_reader_has(&r,3)) return 2;
+    r.offset=INT64_MAX;
+    if(!table_reader_has(&r,0) || table_reader_has(&r,1)) return 3;
+    r.offset=-1;
+    if(table_reader_has(&r,1)) return 4;
+    return 0;
+}
+`
+	issue710CompileRun(t, dir, "cc", ".c", source)
+}
