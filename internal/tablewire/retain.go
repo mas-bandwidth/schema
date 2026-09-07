@@ -171,6 +171,36 @@ func (rt *retainState) forgetCell(cell *tabletext.Cell) {
 	}
 }
 
+// discardsWhole reports whether a SECOND occurrence of this field replaces
+// everything the first one held, which is the only shape a discard taken AT
+// THE FIELD can be right for (docs/SPEC-TABLES.md §6.6). A nested table's body
+// is reset before it is read, and a union's tag is written whatever the arm,
+// so both replace whole.
+//
+// THE COLLECTIONS DO NOT. A map, a list and a bounded array replace only where
+// their own read COMMITS to replace, which is past a header that can turn the
+// occurrence inert or foreign, and each takes its discard there. An enum-keyed
+// array never replaces whole at all: a second occurrence overwrites the slots
+// it carries and leaves the rest standing, so a discard at the field would
+// kill records under slots the writer never touched.
+func discardsWhole(f *ir.Field) bool {
+	if f.Type.Pointer || f.IsMap() || f.IsList() || f.KeyEnum != "" || f.Array != ir.ArrayNone {
+		return false
+	}
+	return tabletext.StructOf(f) != nil || tabletext.UnionOf(f) != nil
+}
+
+// forgetField discards every record under a field the wire is reading AGAIN,
+// BEFORE any of the new occurrence's framing is read: an occurrence whose own
+// framing turns out to be damaged still replaces what the earlier one held,
+// because the reader committed to it at the field id (§6.6).
+func (rt *retainState) forgetField(fv *tabletext.Field) {
+	if rt == nil {
+		return
+	}
+	rt.forgetArm(&fv.Cell)
+}
+
 // builtArm remembers the body this occurrence of a union cell built.
 func (rt *retainState) builtArm(cell *tabletext.Cell, payload *tabletext.Instance) {
 	if rt == nil {
@@ -328,6 +358,12 @@ func (rs *resolver) walkPayload(c *cursor, kind uint8, depth int) {
 		ref, ok := c.leb()
 		if !ok {
 			rs.bad = true
+			return
+		}
+		if ref == 0 {
+			// A VARIANT REFERENCE OF ZERO IS THE ENUM'S None (§3), and it names
+			// no id: it is a value, not a reference, and it rides back as one
+			rs.u64(0)
 			return
 		}
 		rs.u64(rs.id(ref))
@@ -634,7 +670,14 @@ func (em *emitter) payload(w *buf, c *cursor, kind uint8) {
 	}
 	switch kind {
 	case ir.TableKindEnum:
-		em.ref(w, em.resolved(c))
+		id := em.resolved(c)
+		if id == 0 {
+			// THE ENUM'S None (§3): a value, not a reference, and it takes no
+			// entry in either store
+			w.leb(0)
+			return
+		}
+		em.ref(w, id)
 	case ir.TableKindUnion:
 		arm := em.resolved(c)
 		if arm == 0 {

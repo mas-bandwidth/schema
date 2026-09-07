@@ -406,6 +406,11 @@ func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
 			}
 			continue
 		}
+		if r.rt != nil && discardsWhole(fv.Def) {
+			// THE FIELD IS BEING READ AGAIN (docs/SPEC-TABLES.md §6.6): every
+			// record under it goes before the winning occurrence is read.
+			r.rt.forgetField(fv)
+		}
 		if !r.field(fv) {
 			return false
 		}
@@ -513,12 +518,10 @@ func (r *wireReader) field(fv *tabletext.Field) bool {
 			return false
 		}
 		sub := r.sub(int(n))
-		// A LATER LEGAL OCCURRENCE OF THIS BODY WINS WHOLE (§3, §4), so the
-		// records the earlier one carried go with the values it held (§6.6).
-		// THE BODY ITSELF IS THE SAME STORAGE either way: it is a member of its
-		// parent in every generated target, so it is RESET rather than replaced
-		// and an address names one body for the life of a load.
-		r.rt.forget(fv.Cell.Tab)
+		// THE BODY IS THE SAME STORAGE across occurrences: it is a member of
+		// its parent in every generated target, so it is RESET rather than
+		// replaced and an address names one body for the life of a load. The
+		// records the earlier occurrence held went at the field id above.
 		if fv.Cell.Tab == nil {
 			fv.Cell.Tab = r.m.New(tabletext.StructOf(f))
 		} else {
@@ -834,6 +837,15 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 			// however many elements it holds
 			r.report.Widened++
 		}
+		// THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
+		// records under this field go with the value it is about to lose. An
+		// occurrence that turned back above — inert, damaged, or of another
+		// element kind — left the field standing, and its records stand with
+		// it. A COLLECTION takes its discard here rather than at the field for
+		// exactly that reason.
+		for i := range fv.Elems {
+			r.rt.forget(fv.Elems[i].Tab)
+		}
 		keep := int(count)
 		switch {
 		case f.Array == ir.ArrayList:
@@ -914,7 +926,7 @@ func (r *wireReader) element(fv *tabletext.Field, i int, ek int) bool {
 			r.report.Malformed = true
 			return false
 		}
-		r.rt.forget(fv.Elems[i].Tab)
+		r.rt.forgetArm(&fv.Elems[i])
 		fv.Elems[i].U = 0
 		fv.Elems[i].Tab = nil
 		return r.unionCell(&fv.Elems[i], f)
