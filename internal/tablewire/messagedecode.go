@@ -760,12 +760,13 @@ func (d *bitDecoder) array(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 		var sink tabletext.Cell
 		cell := &sink
 		mine := true
-		if f.Array == ir.ArrayList {
+		switch {
+		case f.Array == ir.ArrayList:
 			fv.Elems = append(fv.Elems, d.m.ElementZero(f))
 			cell = &fv.Elems[i]
-		} else if i < kept {
+		case i < kept:
 			cell = &fv.Elems[i]
-		} else {
+		default:
 			mine = false // an element past this build's bound: read into a sink and dropped
 		}
 		element := func() bool { return d.element(cell, f, shape) }

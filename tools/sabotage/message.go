@@ -273,8 +273,8 @@ var messageRoundTwoSabotages = map[string][]edit{
 	// A DISCARDED SURPLUS ELEMENT NEVER ACQUIRES A LIVE DESTINATION (M1): land
 	// it on element zero instead.
 	"message-surplus-lands-on-zero": {{
-		old: "\t\tvar sink tabletext.Cell\n\t\tcell := &sink\n\t\tmine := true\n\t\tif f.Array == ir.ArrayList {\n",
-		new: "\t\tcell := &fv.Elems[0] // SABOTAGED: a surplus element overwrites element zero\n\t\tmine := true\n\t\tif f.Array == ir.ArrayList {\n",
+		old: "\t\tvar sink tabletext.Cell\n\t\tcell := &sink\n\t\tmine := true\n\t\tswitch {\n\t\tcase f.Array == ir.ArrayList:\n",
+		new: "\t\tcell := &fv.Elems[0] // SABOTAGED: a surplus element overwrites element zero\n\t\tmine := true\n\t\tswitch {\n\t\tcase f.Array == ir.ArrayList:\n",
 	}},
 
 	// A RANGED 128-BIT VALUE READS AT ITS ANNOUNCED WIDTH (M2): read the raw
