@@ -38,6 +38,20 @@ type Report struct {
 	// a FORM BYTE this reader does not carry. It moves no counter and reports
 	// no damage, so without it a refusal and a clean read are the same answer.
 	Refused bool
+	// Retained and RetainLost are RETENTION's two counters (docs/SPEC-TABLES.md
+	// §6.6). Retained counts the fields whose bytes were kept; RetainLost
+	// counts every unknown a load or a save could not keep — a record the
+	// remaining capacity had no room for, of either store, an unknown of one
+	// of the six excluded classes, a record the resolving walk found damaged,
+	// and, at save, a retained record whose path no longer names a body. Both
+	// are monotonic, both are zero in every read that did not opt in, and they
+	// ride the same report struct for the reason Duplicate does, which is that
+	// a caller has one report type and not two (§4). A record discarded
+	// because a known ancestor was reset or replaced by a later legal
+	// occurrence moves neither: the writer superseded it, and the load could
+	// not have kept it.
+	Retained   int
+	RetainLost int
 }
 
 // Add folds another report into this one, which is how a pack over a tree of
@@ -49,9 +63,14 @@ func (r *Report) Add(o Report) {
 	r.Clamped += o.Clamped
 	r.Duplicate += o.Duplicate
 	r.Malformed = r.Malformed || o.Malformed
+	r.Retained += o.Retained
+	r.RetainLost += o.RetainLost
 }
 
-// Silent reports whether nothing at all was counted.
+// Silent reports whether nothing at all was counted. RETENTION'S TWO COUNTERS
+// ARE NOT IN IT: `retained` names no loss at all, and `retain_lost` is read
+// beside the other four in the safety check §6.6 states rather than folded
+// into the read's own silence.
 func (r Report) Silent() bool {
 	return r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && r.Duplicate == 0 && !r.Malformed
 }

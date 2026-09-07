@@ -32,6 +32,14 @@ func (e *FormRefusal) Error() string {
 // false with a nil error is framing damage past the point the walk could
 // continue, and the instance keeps what it decoded.
 func Decode(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *tabletext.Report) (bool, error) {
+	return decodeWith(m, inst, data, report, nil)
+}
+
+// decodeWith is Decode with RETENTION's state threaded through it
+// (docs/SPEC-TABLES.md §6.6). `rt` is nil for every plain read, and the three
+// names are ADDITIVE: nothing below reads a byte differently, counts an event
+// differently or places a value differently because retention is on.
+func decodeWith(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *tabletext.Report, rt *retainState) (bool, error) {
 	// THE FORM BYTE IS READ FIRST, before the trailer and before any body, so
 	// a file that is both a newer form and damaged is a refusal and never
 	// damage (§3).
@@ -69,10 +77,10 @@ func Decode(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *t
 	if !ir.VariableTables(m.Unit)[inst.Def.Name] {
 		// a value-only table has no pointer, therefore no node table, therefore
 		// exactly the bytes §3 already describes
-		r := &wireReader{buf: body, report: report, m: m, ids: ids}
+		r := &wireReader{buf: body, report: report, m: m, ids: ids, rt: rt}
 		return r.body(inst), nil
 	}
-	return decodeVariable(m, inst, body, ids, report)
+	return decodeVariable(m, inst, body, ids, report, rt)
 }
 
 // trailer locates the ID TABLE from the END of the wire (docs/SPEC-TABLES.md
@@ -148,6 +156,11 @@ type wireReader struct {
 	m      *tabletext.Model
 	ids    []uint64     // the file's id table, resolved once at open (§3)
 	st     *decodeState // the save's numbering, shared by every sub-reader
+	// rt is RETENTION's state when the caller opted in (docs/SPEC-TABLES.md
+	// §6.6), and nil otherwise. It is shared by every sub-reader exactly as
+	// the numbering is, and nil is the whole of the plain read: every branch
+	// that tests it is a branch a plain read does not take.
+	rt *retainState
 }
 
 func (r *wireReader) has(n int) bool { return n >= 0 && r.off+n <= len(r.buf) }
@@ -194,7 +207,7 @@ func (r *wireReader) id(ref uint64) (uint64, bool) {
 }
 
 func (r *wireReader) sub(n int) *wireReader {
-	return &wireReader{buf: r.buf[r.off : r.off+n], report: r.report, m: r.m, ids: r.ids, st: r.st}
+	return &wireReader{buf: r.buf[r.off : r.off+n], report: r.report, m: r.m, ids: r.ids, st: r.st, rt: r.rt}
 }
 
 // subTo spans from the cursor to `end`, the last byte of the body the cursor
@@ -351,9 +364,20 @@ func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
 		i, known := index[id]
 		if !known {
 			r.report.Unknown++
+			// WHAT IS RETAINED: A FIELD WHOSE ID THIS READER CANNOT NAME
+			// (docs/SPEC-TABLES.md §6.6), at any depth, in the root body and
+			// in every node record, except the six excluded classes. The skip
+			// below is the plain read's own work and it delimits the field, so
+			// the ADDED cost of retention is ONE PASS over the bytes it just
+			// framed. A retained field still counts `unknown` above, because
+			// `unknown` says what a READER could not name and that stays true.
+			from := r.off
 			if !r.skip(kind) {
 				r.report.Malformed = true
 				return false
+			}
+			if r.rt != nil {
+				r.rt.capture(inst, id, kind, r.buf[from:r.off], r.ids, r.report)
 			}
 			continue
 		}
@@ -528,6 +552,13 @@ func (r *wireReader) enumCell(cell *tabletext.Cell, f *ir.Field) bool {
 	if v < 0 {
 		cell.U = 0
 		r.report.Unknown++
+		if r.rt != nil {
+			// AN UNKNOWN ENUM VARIANT REFERENCE IS AN EXCLUDED CLASS
+			// (docs/SPEC-TABLES.md §6.6): the FIELD is the reader's, and the
+			// reader writes its own value under that id, so a retained copy
+			// would be a second occurrence of an id the reader already wrote.
+			r.rt.lost(r.report)
+		}
 		return true
 	}
 	cell.U = uint64(v)
@@ -968,6 +999,13 @@ func (r *wireReader) keyed(fv *tabletext.Field) bool {
 		slot := tabletext.KeyedValueSlot(f, enumValueForId(f.KeyEnumRef, keyID))
 		if slot < 0 {
 			r.report.Unknown++ // a slot this reader cannot name
+			if r.rt != nil {
+				// AN UNKNOWN KEYED-ARRAY SLOT IS AN EXCLUDED CLASS
+				// (docs/SPEC-TABLES.md §6.6): a slot is not a field, the
+				// reader rewrites the array body whole, and a slot has
+				// nowhere to append to.
+				r.rt.lost(r.report)
+			}
 			sub.off += int(elemLen)
 			continue
 		}
@@ -1039,6 +1077,13 @@ func (r *wireReader) unionCell(cell *tabletext.Cell, f *ir.Field) bool {
 		cell.Tab = nil
 		cell.Arm = nil
 		r.report.Unknown++
+		if r.rt != nil {
+			// AN UNKNOWN UNION ARM ID IS AN EXCLUDED CLASS
+			// (docs/SPEC-TABLES.md §6.6): the same as an unknown enum
+			// variant, one level in, because the union FIELD is the
+			// reader's.
+			r.rt.lost(r.report)
+		}
 	case int(kind) != armWireKind(un.Variants[tag-1]):
 		cell.U = 0
 		cell.Tab = nil

@@ -24,14 +24,24 @@ import (
 // that order. No magic, no content hash, no protocol id, no length prefix
 // around the whole.
 func Encode(m *tabletext.Model, inst *tabletext.Instance) ([]byte, error) {
+	out, _, err := encodeWith(m, inst, nil)
+	return out, err
+}
+
+// encodeWith is Encode with RETENTION's state threaded through it
+// (docs/SPEC-TABLES.md §6.6). `rt` is nil for every plain save, and a plain
+// save of a region loaded WITH retention drops the retained fields and reports
+// nothing at all, because it has no retention buffer to read. The second
+// answer is what the save could not place.
+func encodeWith(m *tabletext.Model, inst *tabletext.Instance, rt *retainState) ([]byte, int, error) {
 	g, err := Number(m, inst)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	e := &encoder{m: m, g: g, ids: newIdTable()}
+	e := &encoder{m: m, g: g, ids: newIdTable(), rt: rt}
 	fields, err := encodeBodyFields(e, inst)
 	if err != nil {
-		return nil, err
+		return nil, e.retainLost, err
 	}
 	if len(g.Records()) > 0 {
 		// a root that reaches no nodes writes none of them, like every other
@@ -39,7 +49,7 @@ func Encode(m *tabletext.Model, inst *tabletext.Instance) ([]byte, error) {
 		// of this (§3.1)
 		fields, err = e.appendNodeTable(fields, g)
 		if err != nil {
-			return nil, err
+			return nil, e.retainLost, err
 		}
 	}
 	out := make([]byte, 0, 1+len(fields)+1+8*len(e.ids.ids)+8)
@@ -52,7 +62,7 @@ func Encode(m *tabletext.Model, inst *tabletext.Instance) ([]byte, error) {
 	for _, id := range e.ids.ids {
 		out = binary.LittleEndian.AppendUint64(out, id)
 	}
-	return binary.LittleEndian.AppendUint64(out, uint64(len(e.ids.ids))), nil
+	return binary.LittleEndian.AppendUint64(out, uint64(len(e.ids.ids))), e.retainLost, nil
 }
 
 // encoder is one save's context: the closure the walks run over, the
@@ -64,6 +74,11 @@ type encoder struct {
 	m   *tabletext.Model
 	g   *NodeGraph
 	ids *idTable
+	// rt is RETENTION's state when the caller opted in (docs/SPEC-TABLES.md
+	// §6.6), and nil otherwise. retainLost is what the SAVE could not place:
+	// a retained id the caller's list had no room for.
+	rt         *retainState
+	retainLost int
 }
 
 // There is no Measure here on purpose. §9's measure/save split exists so a
@@ -127,6 +142,12 @@ func encodeBodyFields(e *encoder, inst *tabletext.Instance) ([]byte, error) {
 			return nil, err
 		}
 	}
+	// WHERE THEY GO BACK: AT THE END OF THEIR OWN BODY, IN THE ORDER RETAINED
+	// (docs/SPEC-TABLES.md §6.6). In the ROOT body the tail is pinned BEFORE
+	// the node-table field, which Encode appends after this returns, so the
+	// order is the root's declared fields, then the retained tail, then the
+	// node table.
+	e.tail(w, inst)
 	return w.b, nil
 }
 

@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
@@ -199,11 +200,29 @@ func TestRetainTrailerIsMergedInFirstUseOrder(t *testing.T) {
 	if !(at(nodes) > at(parcel)) {
 		t.Fatalf("the node table's id is at %d and parcel at %d", at(nodes), at(parcel))
 	}
-	// and the RETAINED IDS the save interned are exactly the two the root's
-	// tail and the inner tails carry
+	// THE SPLIT IS THE WRITER'S STORAGE RATHER THAN THE WIRE'S (§6.6): every
+	// id the save interned into the CALLER'S LIST is one this build cannot
+	// spell, and every one of them is in the file's own single trailer. The
+	// generated table holds none of them and grew no entry.
+	build := map[uint64]bool{}
+	for _, id := range ir.TableWireIds(m.Unit) {
+		build[id] = true
+	}
 	interned := retain.Ids()
-	if len(interned) != 3 {
-		t.Fatalf("the save interned %d retained ids, want 3", len(interned))
+	if len(interned) == 0 {
+		t.Fatal("the save interned no retained id, and nine records name several")
+	}
+	for _, id := range interned {
+		if build[id] {
+			t.Fatalf("id %#x took an entry from the caller's list, and this build can name it", id)
+		}
+		if at(id) < 0 {
+			t.Fatalf("id %#x is in the caller's list and not in the file's trailer", id)
+		}
+	}
+	// and the two the ROOT's own tail names are among them
+	if !slices.Contains(interned, extra) || !slices.Contains(interned, parcel) {
+		t.Fatalf("the root's tail names extra and parcel, and the list holds %d ids without them", len(interned))
 	}
 }
 

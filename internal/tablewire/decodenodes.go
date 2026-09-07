@@ -86,7 +86,7 @@ func (r *wireReader) resolveCell(cell *tabletext.Cell, f *ir.Field, index uint64
 // decodeVariable reads a pointered root: the node table first, because a reader
 // has already read `head = 2` before it learns whether the table can be read at
 // all, then the records, then every body.
-func decodeVariable(m *tabletext.Model, inst *tabletext.Instance, data []byte, ids []uint64, report *tabletext.Report) (bool, error) {
+func decodeVariable(m *tabletext.Model, inst *tabletext.Instance, data []byte, ids []uint64, report *tabletext.Report, rt *retainState) (bool, error) {
 	st := &decodeState{root: inst}
 
 	payload, present, framed := nodeTableBytes(data, ids, report)
@@ -163,6 +163,13 @@ func decodeVariable(m *tabletext.Model, inst *tabletext.Instance, data []byte, i
 		sd := byTypeId[rec.TypeId]
 		if sd == nil {
 			report.Unknown++ // skipped by its length, and it keeps its index
+			if rt != nil {
+				// A NODE RECORD WHOSE TYPE ID THIS READER CANNOT NAME IS AN
+				// EXCLUDED CLASS (docs/SPEC-TABLES.md §6.6): it is a whole
+				// node, and putting one back means renumbering a graph the
+				// writer numbers from its own edges (§3.1).
+				rt.lost(report)
+			}
 			continue
 		}
 		st.nodes[i] = Node{Inst: m.New(sd)}
@@ -173,11 +180,11 @@ func decodeVariable(m *tabletext.Model, inst *tabletext.Instance, data []byte, i
 		if st.nodes[i].Inst == nil {
 			continue
 		}
-		sub := &wireReader{buf: rec.Body, report: report, m: m, ids: ids, st: st}
+		sub := &wireReader{buf: rec.Body, report: report, m: m, ids: ids, st: st, rt: rt}
 		sub.bodyAt(st.nodes[i].Inst, true)
 	}
 
-	r := &wireReader{buf: data, report: report, m: m, ids: ids, st: st}
+	r := &wireReader{buf: data, report: report, m: m, ids: ids, st: st, rt: rt}
 	ok := r.body(inst)
 	return ok, nil
 }
