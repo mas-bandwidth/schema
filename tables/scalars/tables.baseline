@@ -1,0 +1,38 @@
+schema-tables-baseline 7
+package scalardemo
+
+table Pose
+    field x id=0xaf63f54c86021707 kind=23 frac=16 min=-30000 max=30000 default=32768
+    field y id=0xaf63f44c86021554 kind=23 frac=16 min=-30000 max=30000
+    field heading id=0xb128829190ca0f75 kind=27 frac=16 min=0 max=360
+
+table SimState
+    field tilt id=0x1e5088ef2e9bafc6 kind=20 frac=4 min=-8 max=7
+    field angle id=0x401ab8cd06158638 kind=22 frac=16 min=-180 max=180
+    field position id=0x4cbf3a26fca1d74a kind=23 frac=16 min=-30000 max=30000
+    field reach id=0x891da1f305deb858 kind=24 frac=16 min=-1000000 max=1000000
+    field ticks id=0x7fd9266c6a3e25b5 kind=22 frac=0 min=0 max=1000000
+    field ratio id=0xfbc924118177ade4 kind=25 frac=4 min=0 max=15
+    field speed id=0x2281498aa0200e40 kind=27 frac=16 min=0 max=1000
+    field span id=0x8b7dc019093cd0e1 kind=28 frac=16 min=0 max=281474976710655
+    field mass id=0x1f3757a2ce7b0ab1 kind=29 frac=16 min=0 max=2000000
+    field frames id=0x23e5906728b4e66f kind=27 frac=0 min=0 max=4294967295
+    field flux id=0xd61bdd7908af2642 kind=18 min=-1267650600228229401496703205376 max=1267650600228229401496703205376
+    field energy id=0xf2fd4f9140ef2f15 kind=18 min=-5000000000 max=5000000000 default=-250
+    field entity_id id=0x23fcfd6678e36712 kind=19
+    field scale id=0x6aacb9fbb71a1d91 kind=22 frac=16 min=-8 max=8 default=65536
+    field samples id=0xe3b1ca6a3b48dddc kind=14 elem=22 array=fixed bound=3 frac=16 min=-8 max=8
+    field weights id=0xb1494b6ef08a411e kind=14 elem=26 array=bounded bound=4 frac=8 min=0 max=100
+    field axes id=0x32969e840d9c67b8 kind=16 elem=23 array=keyed bound=3 key=Axis frac=32 min=-100 max=100
+    field seeds id=0x5af1ac301b4ae16d kind=14 elem=19 array=bounded bound=2
+    field pose id=0x8c2fd80da8957064 kind=13 type=Pose
+    field spawn id=0x4328f78ab20e1f98 kind=13 type=Pose optional=true
+
+enum Axis
+    variant X id=0xaf64154c86024d67
+    variant Y id=0xaf64144c86024bb4
+    variant Z id=0xaf64174c860250cd
+
+## history
+### 2026-09-07 (UTC) — first baseline
+- baseline created over 2 tables — data written BEFORE this point is not covered by it
