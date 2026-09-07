@@ -157,7 +157,7 @@ its iteration count is fixed and identical across all nine languages.
 | bench        | family | pinned to golden | shape                                              |
 |--------------|--------|------------------|----------------------------------------------------|
 | bench_mixed  | gen    | bench_mixed      | **THE canonical benchmark** (#184): every construct the schema language expresses, in one representative game message, integers carrying 91.87% of the wire bits (438 B) |
-| bitpacker    | bits   | — (read-back verified in setup) | 16-width table over a 64 KiB buffer, 24576 passes/run (§1.4) |
+| bitpacker    | bits   | — (read-back verified in setup) | 16-width table over a 64 KiB buffer, 24576 passes/run (§1.4). **write:** the language's bit writer, unchecked under NDEBUG in every language (capacity and range are debug asserts). **read:** the language's CHECKED bit read — one past-end test per read, refusal terminal |
 
 **bench_mixed is THE Bench-corpus shape** (owner's ruling, issue #184: *"I'd
 rather we just have ONE good benchmark we can apply to all serialize and
@@ -194,6 +194,57 @@ The `bits` timed loops live in noinline symbols (`bitpacker_*_loop`) so the
 §4.1 inline verdict counts the emitted body of the timed loop directly, and
 every benched op has exactly two call sites (§3.2): its untimed
 oracle/setup helper and its timed loop.
+
+**Which layer the bitpacker rows call, and why (2026-09-07).** Until today the
+C and C++ read legs did not measure the same work. The C leg called
+`serialize_read_bits`, serialize.c's only bit-read entry point, whose past-end
+test is a real branch in every build and whose refusal is terminal through a
+poisoned limit. The C++ leg called `BitReader::ReadBits`, whose past-end test
+is a `serialize_assert` and therefore absent under `-DNDEBUG`; C++'s read-side
+check lives one layer up, in `ReadStream` (`WouldReadPastEnd`, then `Fail()`),
+which that leg never touched. Measured at `-O3 -DNDEBUG` on arm64 clang, per
+16-read group (instructions in the emitted noinline body, conditional
+branches): C++ 135 / 2, C 270 / 33, and C with its check forced off 135 / 2 — in emitted code, the published C-vs-C++ read gap
+was the check. The row was comparing a checked reader with an unchecked one.
+
+The C++ read leg now goes through `ReadStream::SerializeBits` — same width
+asserts, one past-end test per read, refusal terminal — in both its call
+sites, the untimed verify gate and the timed loop. That is
+`serialize_read_bits`' exact counterpart, and it is the ONLY layer the two
+languages share: serialize.c ships no unchecked raw reader to meet C++'s
+`BitReader` at. The maintainer's posture decides which way the row resolves:
+*"on read side we MUST always do the checks!"* (2026-09-07).
+
+The **write** legs were already fair and are untouched: `serialize_write_bits`'
+capacity and range guards are `serialize_assert` (issue #52's ruling, *"C
+should match C++ and have no checks on write at all (except assert)"*), so C's
+stream writer and C++'s `BitWriter` are the same unchecked work under NDEBUG.
+The receipt is mechanical — `bitpacker_write_loop` compiles to **317
+instructions and 36 conditional branches in both languages**, unchanged by
+this commit.
+
+What the read row means now, precisely: **both legs ask their runtime for a
+checked bit read.** The emitted code still differs, and the reason is a
+runtime property rather than a harness one. C++'s failure latch poisons
+`m_bitsRead`, the same counter the group's entry condition tests, so clang
+proves all sixteen past-end tests dead and emits 135 / 2. C's latch poisons
+`bits_limit`, a *second* field, while the entry condition reads `num_bits`, so
+the proof does not go through and clang emits 270 / 33. Two probes pin that down. Give the C++ leg
+a buffer length the compiler cannot fold and the same source emits 261 / 33 —
+C's shape — so the C++ check is genuinely
+compiled in, not absent. Point C's past-end test at `num_bits` instead of
+`bits_limit` (a scratch probe against a copied header; the runtime is NOT
+changed) and the C leg emits 135 / 2 — C++'s shape exactly. That pins the residual
+C-vs-C++ bitpacker/read gap to one field indirection in serialize.c's failure
+latch, in emitted code; the probe's rate was not measured, and the probe
+breaks the sticky-failure contract, so it is a diagnosis and not a fix.
+
+So the read row now reports how well each runtime's CHECKED read optimizes,
+which is a real difference between the runtimes — not a difference in what the
+harness asked them to do. No number in this pass moved: the change is to what
+the row means, and the receipt is that the C++ leg's emitted loop is
+identical in shape before and after (the same 135 instructions and 2 branches;
+register allocation differs).
 
 Two further rows — `bench_string` and `bench_wstring` — are DEFINED in
 BENCH-STANDARD §1.8 (measure-first, issue #64) and not yet implemented in
