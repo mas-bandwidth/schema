@@ -696,6 +696,54 @@ func TestRejectedRepeatKeepsTheFirstValue(t *testing.T) {
 	}
 }
 
+// A FIELD READS ITS TOKEN THROUGH THE FLOAT64 AND A MAP KEY READS IT EXACTLY,
+// and this row is the field half. The exact reader lives on the key path alone
+// (§16.2's map row, and the key rows in test/conformance/harness/maps_test.go),
+// because a key is an identity that two spellings must not share, while a
+// field's value is a quantity read the same way by every port that reads these
+// texts. So the field path keeps the interpretation the C, Go and Rust readers
+// have: a magnitude past what a float64 holds is kind_mismatch and nothing is
+// stored, and a token at 2^53 lands the value the mantissa carries.
+//
+// The two verdicts below are the ones the ports produce, and moving either of
+// them is a change to all four readers at once.
+func TestAnIntegerFieldReadsItsTokenThroughTheFloat(t *testing.T) {
+	_, inst, r := read(t, "ProfileConfig", `{ "badge": 1e309 }`)
+	if r.KindMismatch != 1 || r.Clamped != 0 || r.Malformed {
+		t.Fatalf("a magnitude no float64 holds is kind_mismatch for an integer field: %+v", r)
+	}
+	if got := field(t, inst, "badge").Cell.U; got != 0 {
+		t.Fatalf("nothing is stored on a mismatch: got %d, want 0", got)
+	}
+	// the same spelling in a FLOAT field, which has always answered this way
+	_, inst, r = read(t, "ProfileConfig", `{ "precision": 1e400 }`)
+	if r.KindMismatch != 1 || r.Clamped != 0 {
+		t.Fatalf("a float64 that cannot hold the value mismatches: %+v", r)
+	}
+	if got := field(t, inst, "precision").Cell.F; got != 0 {
+		t.Fatalf("nothing is stored on a mismatch: got %v", got)
+	}
+	// and at 2^53 the field lands what the mantissa carries, where the KEY path
+	// lands the digits the token spells
+	_, inst, r = read(t, "ProfileConfig", `{ "epoch": 9007199254740993.0 }`)
+	if r.KindMismatch != 0 || r.Clamped != 0 {
+		t.Fatalf("an integral value is placed: %+v", r)
+	}
+	if got := field(t, inst, "epoch").Cell.U; got != 9007199254740992 {
+		t.Fatalf("the field path rounds at the mantissa: got %d, want 9007199254740992", got)
+	}
+	// and the decimal spelling of UINT64_MAX rounds UP through the float64, so
+	// the field saturates and COUNTS the clamp, where the key path reads the
+	// digits and counts nothing
+	_, inst, r = read(t, "ProfileConfig", `{ "epoch": 18446744073709551615.0 }`)
+	if r.KindMismatch != 0 || r.Clamped != 1 {
+		t.Fatalf("a magnitude at the top of the domain saturates and counts: %+v", r)
+	}
+	if got := field(t, inst, "epoch").Cell.U; got != math.MaxUint64 {
+		t.Fatalf("the field holds the edge: got %d, want %d", got, uint64(math.MaxUint64))
+	}
+}
+
 // KeyedSlot resolves a variant name to its slot for a keyed field.
 func KeyedSlot(t *testing.T, fv *tabletext.Field, name string) int {
 	t.Helper()
