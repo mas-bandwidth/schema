@@ -93,38 +93,28 @@ pub const FIXED_PROBE_MAX_BYTES: usize = 24;
 
 #[inline(always)]
 pub fn write_fixed_probe(stream: &mut WriteStream<'_>, value: &FixedProbe) -> Result {
-    if value.angle < -11796480 || value.angle > 11796480 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.angle >= -11796480 && value.angle <= 11796480, "angle raw value out of range [-11796480, 11796480]");
     {
         let mut fixed_value = value.angle;
         stream.serialize_fixed(&mut fixed_value, 16, 16, -180, 180)?;
     }
-    if value.position < -1966080000 || value.position > 1966080000 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.position >= -1966080000 && value.position <= 1966080000, "position raw value out of range [-1966080000, 1966080000]");
     {
         let mut fixed_value = value.position;
         stream.serialize_fixed(&mut fixed_value, 48, 16, -MAX_WORLD_UNITS, MAX_WORLD_UNITS)?;
     }
-    if value.reach < -65536000000 || value.reach > 65536000000 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.reach >= -65536000000 && value.reach <= 65536000000, "reach raw value out of range [-65536000000, 65536000000]");
     {
         let mut fixed_value = value.reach;
         stream.serialize_fixed(&mut fixed_value, 112, 16, -1000000, 1000000)?;
     }
-    if value.ticks < 0 || value.ticks > 1000000 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.ticks >= 0 && value.ticks <= 1000000, "ticks raw value out of range [0, 1000000]");
     {
         let mut fixed_value = value.ticks;
         stream.serialize_fixed(&mut fixed_value, 32, 0, 0, 1000000)?;
     }
     for i in 0..2 {
-        if value.samples[i] < -524288 || value.samples[i] > 524288 {
-            return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-        }
+        debug_assert!(value.samples[i] >= -524288 && value.samples[i] <= 524288, "samples[i] raw value out of range [-524288, 524288]");
         {
             let mut fixed_value = value.samples[i];
             stream.serialize_fixed(&mut fixed_value, 16, 16, -8, 8)?;
@@ -191,46 +181,34 @@ pub const UNSIGNED_PROBE_MAX_BYTES: usize = 32;
 
 #[inline(always)]
 pub fn write_unsigned_probe(stream: &mut WriteStream<'_>, value: &UnsignedProbe) -> Result {
-    if value.angle > 23592960 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.angle <= 23592960, "angle raw value out of range [0, 23592960]");
     {
         let mut fixed_value = value.angle;
         stream.serialize_fixed(&mut fixed_value, 16, 16, 0, 360)?;
     }
-    if value.span > 18446744073709486080 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.span <= 18446744073709486080, "span raw value out of range [0, 18446744073709486080]");
     {
         let mut fixed_value = value.span;
         stream.serialize_fixed(&mut fixed_value, 48, 16, 0, 281474976710655)?;
     }
-    if value.reach > 131072000000 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.reach <= 131072000000, "reach raw value out of range [0, 131072000000]");
     {
         let mut fixed_value = value.reach;
         stream.serialize_fixed(&mut fixed_value, 112, 16, 0, 2000000)?;
     }
-    if value.ticks > 1000000 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.ticks <= 1000000, "ticks raw value out of range [0, 1000000]");
     {
         let mut fixed_value = value.ticks;
         stream.serialize_fixed(&mut fixed_value, 32, 0, 0, 1000000)?;
     }
     for i in 0..2 {
-        if value.samples[i] > 1048576 {
-            return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-        }
+        debug_assert!(value.samples[i] <= 1048576, "samples[i] raw value out of range [0, 1048576]");
         {
             let mut fixed_value = value.samples[i];
             stream.serialize_fixed(&mut fixed_value, 16, 16, 0, 16)?;
         }
     }
-    if value.locked < 196608 || value.locked > 196608 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.locked >= 196608 && value.locked <= 196608, "locked raw value out of range [196608, 196608]");
     {
         let mut raw_value = value.tail as u32;
         stream.serialize_bits(&mut raw_value, 8)?;
@@ -303,23 +281,17 @@ pub fn write_wide_probe(stream: &mut WriteStream<'_>, value: &WideProbe) -> Resu
         let mut raw_value = value.entity_id;
         stream.serialize_u128(&mut raw_value)?;
     }
-    if value.energy < -5000000000 || value.energy > 5000000000 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.energy >= -5000000000 && value.energy <= 5000000000, "energy out of range [-5000000000, 5000000000]");
     {
         let mut range_value = value.energy;
         stream.serialize_int128(&mut range_value, -5000000000, 5000000000)?;
     }
-    if value.flux < -1267650600228229401496703205376 || value.flux > 1267650600228229401496703205376 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.flux >= -1267650600228229401496703205376 && value.flux <= 1267650600228229401496703205376, "flux out of range [-1267650600228229401496703205376, 1267650600228229401496703205376]");
     {
         let mut range_value = value.flux;
         stream.serialize_int128(&mut range_value, -1267650600228229401496703205376, 1267650600228229401496703205376)?;
     }
-    if value.bias < -1000 || value.bias > 1000 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.bias >= -1000 && value.bias <= 1000, "bias out of range [-1000, 1000]");
     {
         let mut range_value = value.bias;
         stream.serialize_int128(&mut range_value, -1000, 1000)?;
@@ -390,18 +362,14 @@ pub const LUDICROUS_STATE_MAX_BYTES: usize = 152;
 
 #[inline(always)]
 pub fn write_ludicrous_state(stream: &mut WriteStream<'_>, value: &LudicrousState) -> Result {
-    if value.mode.0 > 3 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.mode.0 <= 3, "mode above the DriveMode wire range [0, 3]");
     {
         let mut offset_value = value.mode.0 as u32;
         stream.serialize_bits(&mut offset_value, 2)?;
     }
     write_fixed_probe(stream, &value.probe)?;
     write_wide_probe(stream, &value.wide)?;
-    if value.keys_count < 0 || value.keys_count > 4 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.keys_count >= 0 && value.keys_count <= 4, "keys_count out of range [0, 4]");
     {
         let mut offset_value = value.keys_count as u32;
         stream.serialize_bits(&mut offset_value, 3)?; // the count guards the loop (§6.3)
@@ -489,15 +457,9 @@ pub const DEGENERATE_PROBE_MAX_BYTES: usize = 8;
 
 #[inline(always)]
 pub fn write_degenerate_probe(stream: &mut WriteStream<'_>, value: &DegenerateProbe) -> Result {
-    if value.locked_fixed < -196608 || value.locked_fixed > -196608 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.locked_int < 7 || value.locked_int > 7 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.locked_wide < -12345678901234 || value.locked_wide > -12345678901234 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.locked_fixed >= -196608 && value.locked_fixed <= -196608, "locked_fixed raw value out of range [-196608, -196608]");
+    debug_assert!(value.locked_int >= 7 && value.locked_int <= 7, "locked_int out of range [7, 7]");
+    debug_assert!(value.locked_wide >= -12345678901234 && value.locked_wide <= -12345678901234, "locked_wide out of range [-12345678901234, -12345678901234]");
     {
         let mut raw_value = value.tail as u32;
         stream.serialize_bits(&mut raw_value, 8)?;
@@ -545,23 +507,17 @@ pub const FIXED_VEC_MAX_BYTES: usize = 16;
 
 #[inline(always)]
 pub fn write_fixed_vec(stream: &mut WriteStream<'_>, value: &FixedVec) -> Result {
-    if value.x < -6553600000 || value.x > 6553600000 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.x >= -6553600000 && value.x <= 6553600000, "x raw value out of range [-6553600000, 6553600000]");
     {
         let mut fixed_value = value.x;
         stream.serialize_fixed(&mut fixed_value, 48, 16, -100000, 100000)?;
     }
-    if value.y < -6553600000 || value.y > 6553600000 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.y >= -6553600000 && value.y <= 6553600000, "y raw value out of range [-6553600000, 6553600000]");
     {
         let mut fixed_value = value.y;
         stream.serialize_fixed(&mut fixed_value, 48, 16, -100000, 100000)?;
     }
-    if value.z < -6553600000 || value.z > 6553600000 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.z >= -6553600000 && value.z <= 6553600000, "z raw value out of range [-6553600000, 6553600000]");
     {
         let mut fixed_value = value.z;
         stream.serialize_fixed(&mut fixed_value, 48, 16, -100000, 100000)?;
@@ -617,30 +573,22 @@ pub const FIXED_QUAT_MAX_BYTES: usize = 16;
 
 #[inline(always)]
 pub fn write_fixed_quat(stream: &mut WriteStream<'_>, value: &FixedQuat) -> Result {
-    if value.x < -1073741824 || value.x > 1073741824 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.x >= -1073741824 && value.x <= 1073741824, "x raw value out of range [-1073741824, 1073741824]");
     {
         let mut fixed_value = value.x;
         stream.serialize_fixed(&mut fixed_value, 2, 30, -1, 1)?;
     }
-    if value.y < -1073741824 || value.y > 1073741824 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.y >= -1073741824 && value.y <= 1073741824, "y raw value out of range [-1073741824, 1073741824]");
     {
         let mut fixed_value = value.y;
         stream.serialize_fixed(&mut fixed_value, 2, 30, -1, 1)?;
     }
-    if value.z < -1073741824 || value.z > 1073741824 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.z >= -1073741824 && value.z <= 1073741824, "z raw value out of range [-1073741824, 1073741824]");
     {
         let mut fixed_value = value.z;
         stream.serialize_fixed(&mut fixed_value, 2, 30, -1, 1)?;
     }
-    if value.w < -1073741824 || value.w > 1073741824 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.w >= -1073741824 && value.w <= 1073741824, "w raw value out of range [-1073741824, 1073741824]");
     {
         let mut fixed_value = value.w;
         stream.serialize_fixed(&mut fixed_value, 2, 30, -1, 1)?;

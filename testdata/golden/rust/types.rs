@@ -183,9 +183,7 @@ pub const HANDLE_MAX_BYTES: usize = 8;
 
 #[inline(always)]
 pub fn write_handle(stream: &mut WriteStream<'_>, value: &Handle) -> Result {
-    if value.object_id < 0 || value.object_id > 9999 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.object_id >= 0 && value.object_id <= 9999, "object_id out of range [0, 9999]");
     let f0: u64 = u64::from(value.object_id as u32);
     let f1: u64 = u64::from(value.object_sequence);
     let mut w0 = (f0 | (f1 << 14)) as u32;
@@ -235,15 +233,9 @@ pub const QUANTIZED_POSITION_MAX_BYTES: usize = 16;
 
 #[inline(always)]
 pub fn write_quantized_position(stream: &mut WriteStream<'_>, value: &QuantizedPosition) -> Result {
-    if value.x < -8388608 || value.x > 8388608 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.y < -8388608 || value.y > 8388608 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.z < -8388608 || value.z > 8388608 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.x >= -8388608 && value.x <= 8388608, "x out of range [-8388608, 8388608]");
+    debug_assert!(value.y >= -8388608 && value.y <= 8388608, "y out of range [-8388608, 8388608]");
+    debug_assert!(value.z >= -8388608 && value.z <= 8388608, "z out of range [-8388608, 8388608]");
     let f0: u64 = u64::from((value.x as u32).wrapping_sub(((-MAX_POSITION_UNITS) as i32) as u32));
     let f1: u64 = u64::from((value.y as u32).wrapping_sub(((-MAX_POSITION_UNITS) as i32) as u32));
     let f2: u64 = u64::from((value.z as u32).wrapping_sub(((-MAX_POSITION_UNITS) as i32) as u32));
@@ -310,15 +302,9 @@ pub const QUANTIZED_VELOCITY_MAX_BYTES: usize = 16;
 
 #[inline(always)]
 pub fn write_quantized_velocity(stream: &mut WriteStream<'_>, value: &QuantizedVelocity) -> Result {
-    if value.x < -2097152 || value.x > 2097152 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.y < -2097152 || value.y > 2097152 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.z < -2097152 || value.z > 2097152 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.x >= -2097152 && value.x <= 2097152, "x out of range [-2097152, 2097152]");
+    debug_assert!(value.y >= -2097152 && value.y <= 2097152, "y out of range [-2097152, 2097152]");
+    debug_assert!(value.z >= -2097152 && value.z <= 2097152, "z out of range [-2097152, 2097152]");
     let f0: u64 = u64::from((value.x as u32).wrapping_sub(((-MAX_VELOCITY_UNITS) as i32) as u32));
     let f1: u64 = u64::from((value.y as u32).wrapping_sub(((-MAX_VELOCITY_UNITS) as i32) as u32));
     let f2: u64 = u64::from((value.z as u32).wrapping_sub(((-MAX_VELOCITY_UNITS) as i32) as u32));
@@ -387,18 +373,10 @@ pub const QUANTIZED_ROTATION_MAX_BYTES: usize = 8;
 
 #[inline(always)]
 pub fn write_quantized_rotation(stream: &mut WriteStream<'_>, value: &QuantizedRotation) -> Result {
-    if value.x < -1024 || value.x > 1024 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.y < -1024 || value.y > 1024 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.z < -1024 || value.z > 1024 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.w < -1024 || value.w > 1024 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.x >= -1024 && value.x <= 1024, "x out of range [-1024, 1024]");
+    debug_assert!(value.y >= -1024 && value.y <= 1024, "y out of range [-1024, 1024]");
+    debug_assert!(value.z >= -1024 && value.z <= 1024, "z out of range [-1024, 1024]");
+    debug_assert!(value.w >= -1024 && value.w <= 1024, "w out of range [-1024, 1024]");
     let f0: u64 = u64::from((value.x as u32).wrapping_sub(((-ROTATION_UNITS) as i32) as u32));
     let f1: u64 = u64::from((value.y as u32).wrapping_sub(((-ROTATION_UNITS) as i32) as u32));
     let f2: u64 = u64::from((value.z as u32).wrapping_sub(((-ROTATION_UNITS) as i32) as u32));
@@ -665,9 +643,7 @@ pub fn write_input_packet(stream: &mut WriteStream<'_>, value: &InputPacket) -> 
     stream.serialize_bits(&mut w3, 32)?;
     let mut w4 = (f2 >> 48) as u32;
     stream.serialize_bits(&mut w4, 16)?;
-    if value.inputs_count < 0 || value.inputs_count > 16 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.inputs_count >= 0 && value.inputs_count <= 16, "inputs_count out of range [0, 16]");
     {
         let mut offset_value = value.inputs_count as u32;
         stream.serialize_bits(&mut offset_value, 5)?; // the count guards the loop (§6.3)
@@ -749,9 +725,7 @@ pub const SHIP_CREATE_MAX_BYTES: usize = 32;
 
 #[inline(always)]
 pub fn write_ship_create(stream: &mut WriteStream<'_>, value: &ShipCreate) -> Result {
-    if value.ship_type.0 > 5 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.ship_type.0 <= 5, "ship_type above the ShipType wire range [0, 5]");
     {
         let mut offset_value = value.ship_type.0 as u32;
         stream.serialize_bits(&mut offset_value, 3)?;
@@ -764,27 +738,16 @@ pub fn write_ship_create(stream: &mut WriteStream<'_>, value: &ShipCreate) -> Re
         stream.serialize_bool(&mut bool_value)?;
     }
     if value.has_flags {
-        if value.flags >= 1 << 4 {
-            // a mask bit above the wire width cannot ride
-            return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-        }
+        debug_assert!(value.flags < 1 << 4, "flags has a mask bit above the 4-bit wire width");
         {
             let mut flags_value = value.flags as u32;
             stream.serialize_bits(&mut flags_value, 4)?;
         }
     }
-    if value.team.0 > 2 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.health < 0 || value.health > 1000 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.thrust < 0 || value.thrust > 100 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.pending.0 > 0 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.team.0 <= 2, "team above the Team wire range [0, 2]");
+    debug_assert!(value.health >= 0 && value.health <= 1000, "health out of range [0, 1000]");
+    debug_assert!(value.thrust >= 0 && value.thrust <= 100, "thrust out of range [0, 100]");
+    debug_assert!(value.pending.0 <= 0, "pending above the Pending wire range [0, 0]");
     let f0: u64 = u64::from(value.team.0);
     let f1: u64 = u64::from(value.health as u32);
     let f2: u64 = u64::from(value.thrust as u32);
@@ -871,12 +834,8 @@ pub const EXPRESSION_PROBE_MAX_BYTES: usize = 8;
 
 #[inline(always)]
 pub fn write_expression_probe(stream: &mut WriteStream<'_>, value: &ExpressionProbe) -> Result {
-    if value.hardpoint_index < 0 || value.hardpoint_index > 31 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.spin_rate < 1024 || value.spin_rate > 2048 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.hardpoint_index >= 0 && value.hardpoint_index <= 31, "hardpoint_index out of range [0, 31]");
+    debug_assert!(value.spin_rate >= 1024 && value.spin_rate <= 2048, "spin_rate out of range [1024, 2048]");
     let f0: u64 = u64::from(value.hardpoint_index as u32);
     let f1: u64 = u64::from((value.spin_rate as u32).wrapping_sub(((-(-ROTATION_UNITS)) as i32) as u32));
     let mut w0 = (f0 | (f1 << 5)) as u32;
@@ -947,15 +906,9 @@ pub const EXTREME_PROBE_MAX_BYTES: usize = 40;
 
 #[inline(always)]
 pub fn write_extreme_probe(stream: &mut WriteStream<'_>, value: &ExtremeProbe) -> Result {
-    if value.floor_bound > 100 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.doubled_floor > 100 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.ceiling_range < 1 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.floor_bound <= 100, "floor_bound out of range [-9223372036854775808, 100]");
+    debug_assert!(value.doubled_floor <= 100, "doubled_floor out of range [-9223372036854775808, 100]");
+    debug_assert!(value.ceiling_range >= 1, "ceiling_range out of range [1, 18446744073709551615]");
     let f0: u64 = (value.floor_bound as u64).wrapping_sub((-9223372036854775808_i64) as u64);
     let f1: u64 = (value.doubled_floor as u64).wrapping_sub((-9223372036854775808_i64) as u64);
     let f2: u64 = value.ceiling_range - 1;
@@ -1066,12 +1019,8 @@ pub const EXTREME_ROW_MAX_BYTES: usize = 32;
 
 #[inline(always)]
 pub fn write_extreme_row(stream: &mut WriteStream<'_>, value: &ExtremeRow) -> Result {
-    if value.clamped_floor > 100 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.clamped_ceiling < 1 || value.clamped_ceiling > 18446744073709551614 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.clamped_floor <= 100, "clamped_floor out of range [-9223372036854775808, 100]");
+    debug_assert!(value.clamped_ceiling >= 1 && value.clamped_ceiling <= 18446744073709551614, "clamped_ceiling out of range [1, 18446744073709551614]");
     let f0: u64 = (value.clamped_floor as u64).wrapping_sub((-9223372036854775808_i64) as u64);
     let f1: u64 = value.clamped_ceiling - 1;
     let f2: u64 = value.floor_def as u64;

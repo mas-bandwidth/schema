@@ -815,8 +815,13 @@ and it holds in every language.
 backend uses `serialize_assert` — and so does the C backend, which has the
 same `assert` and the same `NDEBUG` (2026-09-07: "Every language, by design,
 compiles out asserts/checks in release build. This is the whole point!").
+Rust has `debug_assert!`, compiled out of release, and serialize.rs itself
+holds its API-misuse contracts with it (`src/stream.rs`, `misuse_check!`), so
+the Rust backend `debug_assert!`s (2026-09-07: "No runtime should ever promise
+to keep checks in writing packets (asserts) in release build. Removing them is
+the whole point... checks are *DEBUG ONLY*").
 Go has no assert idiom, so it returns
-`ErrValueOutOfRange`; C#, Rust and JavaScript likewise return failure
+`ErrValueOutOfRange`; C# and JavaScript likewise return failure
 rather than invent an assert. Dart has `assert` — active under
 `--enable-asserts`, compiled out of release and AOT builds — so the Dart
 writer asserts, exactly like C++; Java's `assert` is active under `-ea` and
@@ -828,9 +833,12 @@ correctness the way that language verifies correctness — not that every
 target behaves identically here.
 
 So writing `health = 2000` into a field declared `| min = 0, max = 1000`
-asserts in a C++, C, checked-Dart or `-ea` Java build, raises in Elixir,
-silently writes the truncated low bits in a C++ or C release (`NDEBUG`), Dart
-AOT or default-JVM build, and returns failure in the others.
+asserts in a C++, C, debug-Rust, checked-Dart or `-ea` Java build, raises in
+Elixir, silently writes the truncated low bits in a C++ or C release
+(`NDEBUG`), a Rust release (`debug-assertions = false`; a length or count
+past its array's end panics there on the slice instead, the language's own
+bounds check, which no profile removes), Dart AOT or default-JVM build, and
+returns failure in the others.
 
 Do not build on any of it. **Keep your values inside their declared bounds on
 the write side** — your simulation already knows they are, and that is the only

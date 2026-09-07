@@ -312,12 +312,11 @@ func (g *gen) flatFieldPiece(item ir.Item, f *ir.Field) (flatPiece, bool) {
 		w := int64(f.Type.Width)
 		guard := noGuard
 		if f.Type.Width != 32 && f.Type.Width != 64 {
-			// storage is the wider unsigned type: bits above the wire width
-			// are refused, not wrapped (the runtime's write side only
-			// debug_asserts)
+			// storage is the wider unsigned type: a bit above the wire width
+			// is caller error, asserted in debug and trusted in release
 			guard = func(ind string) {
-				g.pf("%sif %s >= 1 << %d {\n", ind, name, f.Type.Width)
-				g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
+				g.writeAssert(ind, fmt.Sprintf("%s < 1 << %d", name, f.Type.Width),
+					fmt.Sprintf("%s above the bits(%d) wire width", assertLabel(name), f.Type.Width))
 			}
 		}
 		storage := g.rustFieldType(f.Type)
@@ -364,11 +363,11 @@ func (g *gen) flatFieldPiece(item ir.Item, f *ir.Field) (flatPiece, bool) {
 			bits := ir.BitsRequired(big.NewInt(0), big.NewInt(ref.Max))
 			guard := noGuard
 			if ref.Max < (int64(1)<<uint(ref.StorageBits))-1 {
-				// headroom storage can exceed the wire range: refused, not
-				// wrapped (the runtime's write side only debug_asserts)
+				// headroom storage can exceed the wire range: caller error,
+				// asserted in debug and trusted in release
 				guard = func(ind string) {
-					g.pf("%sif %s.0 > %d {\n", ind, name, ref.Max)
-					g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
+					g.writeAssert(ind, fmt.Sprintf("%s.0 <= %d", name, ref.Max),
+						fmt.Sprintf("%s above the %s wire range [0, %d]", assertLabel(name), f.Type.Name, ref.Max))
 				}
 			}
 			storage := rustUint(ref.StorageBits)
@@ -394,9 +393,8 @@ func (g *gen) flatFieldPiece(item ir.Item, f *ir.Field) (flatPiece, bool) {
 			guard := noGuard
 			if ref.WireBits < 64 {
 				guard = func(ind string) {
-					g.pf("%sif %s >= 1 << %d {\n", ind, name, ref.WireBits)
-					g.pf("%s    // a mask bit above the wire width cannot ride\n", ind)
-					g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
+					g.writeAssert(ind, fmt.Sprintf("%s < 1 << %d", name, ref.WireBits),
+						fmt.Sprintf("%s has a mask bit above the %d-bit wire width", assertLabel(name), ref.WireBits))
 				}
 			}
 			return flatPiece{
@@ -564,20 +562,17 @@ func (g *gen) flatIntPiece(item ir.Item, f *ir.Field) (flatPiece, bool) {
 	return flatPiece{
 		item: item, bits: bits,
 		guard: func(ind string) {
-			// Like every bounded write path in this target, the range refusal
-			// is generated: serialize.rs's write side only debug_asserts, so a
-			// misuse value must be refused here or it wraps into valid-looking
-			// wire; vacuous halves are elided.
+			// Like every bounded write path in this target, the range is the
+			// caller's contract: asserted in debug, trusted in release;
+			// vacuous halves are elided.
+			msg := fmt.Sprintf("%s out of range [%s, %s]", assertLabel(name), f.IntMin.String(), f.IntMax.String())
 			switch {
 			case !loVacuous && !hiVacuous:
-				g.pf("%sif %s < %s || %s > %s {\n", ind, name, lo, name, f.IntMax.String())
-				g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
+				g.writeAssert(ind, fmt.Sprintf("%s >= %s && %s <= %s", name, lo, name, f.IntMax.String()), msg)
 			case !loVacuous:
-				g.pf("%sif %s < %s {\n", ind, name, lo)
-				g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
+				g.writeAssert(ind, fmt.Sprintf("%s >= %s", name, lo), msg)
 			case !hiVacuous:
-				g.pf("%sif %s > %s {\n", ind, name, f.IntMax.String())
-				g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
+				g.writeAssert(ind, fmt.Sprintf("%s <= %s", name, f.IntMax.String()), msg)
 			}
 		},
 		value: value,

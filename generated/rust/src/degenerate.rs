@@ -396,15 +396,9 @@ pub const TRIO_MAX_BYTES: usize = 8;
 
 #[inline(always)]
 pub fn write_trio(stream: &mut WriteStream<'_>, value: &Trio) -> Result {
-    if value.a >= 1 << 20 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.b >= 1 << 20 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.c >= 1 << 24 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.a < 1 << 20, "a above the bits(20) wire width");
+    debug_assert!(value.b < 1 << 20, "b above the bits(20) wire width");
+    debug_assert!(value.c < 1 << 24, "c above the bits(24) wire width");
     let f0: u64 = u64::from(value.a);
     let f1: u64 = u64::from(value.b);
     let f2: u64 = u64::from(value.c);
@@ -490,9 +484,7 @@ pub const TRIO_FIRST_MAX_BYTES: usize = 16;
 #[inline(always)]
 pub fn write_trio_first(stream: &mut WriteStream<'_>, value: &TrioFirst) -> Result {
     write_trio(stream, &value.inner)?;
-    if value.trailer >= 1 << 16 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.trailer < 1 << 16, "trailer above the bits(16) wire width");
     {
         let mut raw_value = value.trailer;
         stream.serialize_bits(&mut raw_value, 16)?;
@@ -562,9 +554,7 @@ pub fn write_trio_straddle(stream: &mut WriteStream<'_>, value: &TrioStraddle) -
     stream.serialize_bits(&mut w6, 32)?;
     let mut w7 = (f3 >> 32) as u32;
     stream.serialize_bits(&mut w7, 32)?;
-    if value.pad5 >= 1 << 24 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.pad5 < 1 << 24, "pad5 above the bits(24) wire width");
     let f0: u64 = value.pad4;
     let f1: u64 = u64::from(value.pad5);
     let mut w0 = f0 as u32;

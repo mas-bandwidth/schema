@@ -47,9 +47,7 @@ pub const DEFAULT_ARM_MAX_BYTES: usize = 16;
 
 #[inline(always)]
 pub fn write_default_arm(stream: &mut WriteStream<'_>, value: &DefaultArm) -> Result {
-    if value.entries_count < 0 || value.entries_count > 2 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.entries_count >= 0 && value.entries_count <= 2, "entries_count out of range [0, 2]");
     {
         let mut offset_value = value.entries_count as u32;
         stream.serialize_bits(&mut offset_value, 2)?; // the count guards the loop (§6.3)
@@ -57,9 +55,7 @@ pub fn write_default_arm(stream: &mut WriteStream<'_>, value: &DefaultArm) -> Re
     for i in 0..value.entries_count as usize {
         write_probe_config(stream, &value.entries[i])?;
     }
-    if value.marker > 7 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.marker <= 7, "marker out of range [0, 7]");
     {
         let mut offset_value = value.marker as u32;
         stream.serialize_bits(&mut offset_value, 3)?;
@@ -231,9 +227,7 @@ pub const DEFAULT_BULK_ARM_MAX_BYTES: usize = 16;
 #[inline(always)]
 pub fn write_default_bulk_arm(stream: &mut WriteStream<'_>, value: &DefaultBulkArm) -> Result {
     write_default_arm(stream, &value.payload)?;
-    if value.data_length < 0 || value.data_length > 2 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.data_length >= 0 && value.data_length <= 2, "data_length out of range [0, 2]");
     {
         let mut offset_value = value.data_length as u32;
         stream.serialize_bits(&mut offset_value, 2)?; // the length guards the slice (§6.3)

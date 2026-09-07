@@ -36,6 +36,29 @@ fn check_err(result: example::Result, what: &str) {
     }
 }
 
+// asserts on = the debug build (the checked twin); off = the release shape.
+// The generated writer holds its caller contracts with `debug_assert!`, the
+// idiom serialize.rs itself uses (src/stream.rs, `misuse_check!`), so a
+// violation PANICS in debug and is compiled out of release — where the caller
+// has taken responsibility for correctness (SPEC §5). This mirrors the Java
+// and Dart tests' `assertsEnabled`.
+const ASSERTS_ENABLED: bool = cfg!(debug_assertions);
+
+// expect_assert runs a writer-contract violation and demands the assertion
+// fires (checked twin only — the release writer trusts by design). The panic
+// hook is silenced for the duration: the panic IS the pass, and its backtrace
+// noise would read like a failure in the log.
+fn expect_assert<F: FnOnce()>(f: F, what: &str) {
+    if !ASSERTS_ENABLED {
+        return;
+    }
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+    std::panic::set_hook(previous);
+    check(outcome.is_err(), what);
+}
+
 // golden_wire byte-compares written wire against the C++-pinned golden.
 fn golden_wire(name: &str, data: &[u8]) {
     match std::fs::read(format!("../../testdata/wire/{name}.bin")) {
@@ -582,33 +605,41 @@ fn main() {
         check_err(read_probe_report(&mut rs, &mut out), "read ProbeReport");
         check(out == input, "ProbeReport round-trips — a named type as an ordinary field");
 
-        // a mask bit above the widened 8-bit wire is refused, not truncated
+        // a mask bit above the widened 8-bit wire violates the writer's
+        // contract: the debug build asserts, release trusts the caller
         input.flags = 1 << 9;
-        let mut buffer2 = [0u8; 2048];
-        let mut ws2 = WriteStream::new(&mut buffer2);
-        check(
-            write_probe_report(&mut ws2, &input).is_err(),
-            "a mask bit above the flags wire width is refused",
+        expect_assert(
+            || {
+                let mut buffer2 = [0u8; 2048];
+                let mut ws2 = WriteStream::new(&mut buffer2);
+                let _ = write_probe_report(&mut ws2, &input);
+            },
+            "a mask bit above the flags wire width asserts",
         );
     }
 
-    // ---- write-side refusals: serialize.rs only debug_asserts on write, so
-    // the GENERATED guards are what stand between an out-of-contract caller
-    // value and silently corrupt wire in release builds (the Go target gets
-    // these refusals from its runtime; here they are emitted) ----
+    // ---- write-side contracts: the generated writer holds every caller
+    // contract with `debug_assert!` — the Rust idiom, and what serialize.rs
+    // does for its own API misuse (src/stream.rs, `misuse_check!`). The
+    // maintainer's ruling, 2026-09-07: "No runtime should ever promise to keep
+    // checks in writing packets (asserts) in release build. Removing them is
+    // the whole point... checks are *DEBUG ONLY*". So each violation below
+    // PANICS in this debug build and is compiled out of release, and every one
+    // of these cases is skipped there rather than weakened. The READ side is
+    // untouched: it validates in every build, and its tests are elsewhere in
+    // this file. ----
     {
         // enum headroom: Weapon(200) against wire [0, 15]
-        let mut sample = ProbeSample::new();
-        sample.samples_count = 1;
-        sample.weapon = Weapon(200);
-        let mut buffer = [0u8; 2048];
-        let mut ws = WriteStream::new(&mut buffer);
-        check(
-            matches!(
-                write_probe_sample(&mut ws, &sample),
-                Err(Error::Stream(serialize::Error::ValueOutOfRange))
-            ),
-            "an out-of-set enum value is refused on write",
+        expect_assert(
+            || {
+                let mut sample = ProbeSample::new();
+                sample.samples_count = 1;
+                sample.weapon = Weapon(200);
+                let mut buffer = [0u8; 2048];
+                let mut ws = WriteStream::new(&mut buffer);
+                let _ = write_probe_sample(&mut ws, &sample);
+            },
+            "an out-of-set enum value asserts on write",
         );
 
         // a freshly constructed ProbeSample is WIRE-LEGAL: samples_count is
@@ -626,58 +657,54 @@ fn main() {
             "a freshly constructed value writes cleanly",
         );
 
-        // and a count set below that minimum is still refused loudly, exactly
-        // as Go does, never a corrupt packet with Ok
-        let mut below = ProbeSample::new();
-        below.samples_count = 0;
-        let mut buffer_below = [0u8; 2048];
-        let mut ws_below = WriteStream::new(&mut buffer_below);
-        check(
-            matches!(
-                write_probe_sample(&mut ws_below, &below),
-                Err(Error::Stream(serialize::Error::ValueOutOfRange))
-            ),
-            "a below-minimum array count is refused on write",
+        // and a count set below that minimum asserts: the count is a caller
+        // contract like every other bound, ruled "debug only" with the rest
+        expect_assert(
+            || {
+                let mut below = ProbeSample::new();
+                below.samples_count = 0;
+                let mut buffer_below = [0u8; 2048];
+                let mut ws_below = WriteStream::new(&mut buffer_below);
+                let _ = write_probe_sample(&mut ws_below, &below);
+            },
+            "a below-minimum array count asserts on write",
         );
 
         // ranged int: Test.test_b = 2000 against wire [0, 1000]
-        let mut test = Test::default();
-        test.test_b = 2000;
-        let mut buffer3 = [0u8; 2048];
-        let mut ws3 = WriteStream::new(&mut buffer3);
-        check(
-            matches!(
-                write_test(&mut ws3, &test),
-                Err(Error::Stream(serialize::Error::ValueOutOfRange))
-            ),
-            "an out-of-range int value is refused on write",
+        expect_assert(
+            || {
+                let mut test = Test::default();
+                test.test_b = 2000;
+                let mut buffer3 = [0u8; 2048];
+                let mut ws3 = WriteStream::new(&mut buffer3);
+                let _ = write_test(&mut ws3, &test);
+            },
+            "an out-of-range int value asserts on write",
         );
 
         // bits(9): a tenth bit set
-        let mut bits = ProbeBits::default();
-        bits.small = 512;
-        bits.nonce = 0; // in range
-        let mut buffer4 = [0u8; 2048];
-        let mut ws4 = WriteStream::new(&mut buffer4);
-        check(
-            matches!(
-                write_probe_bits(&mut ws4, &bits),
-                Err(Error::Stream(serialize::Error::ValueOutOfRange))
-            ),
-            "a bit above a bits(N) wire width is refused on write",
+        expect_assert(
+            || {
+                let mut bits = ProbeBits::default();
+                bits.small = 512;
+                bits.nonce = 0; // in range
+                let mut buffer4 = [0u8; 2048];
+                let mut ws4 = WriteStream::new(&mut buffer4);
+                let _ = write_probe_bits(&mut ws4, &bits);
+            },
+            "a bit above a bits(N) wire width asserts on write",
         );
 
-        // string length beyond the buffer bound: refused, never a slice panic
-        let mut chat = Chat::default();
-        chat.text_length = 300;
-        let mut buffer5 = [0u8; 2048];
-        let mut ws5 = WriteStream::new(&mut buffer5);
-        check(
-            matches!(
-                write_chat(&mut ws5, &chat),
-                Err(Error::Stream(serialize::Error::ValueOutOfRange))
-            ),
-            "an over-length string is refused on write, not panicked",
+        // string length beyond the buffer bound
+        expect_assert(
+            || {
+                let mut chat = Chat::default();
+                chat.text_length = 300;
+                let mut buffer5 = [0u8; 2048];
+                let mut ws5 = WriteStream::new(&mut buffer5);
+                let _ = write_chat(&mut ws5, &chat);
+            },
+            "an over-length string asserts on write",
         );
     }
 

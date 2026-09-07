@@ -1043,9 +1043,9 @@ That is as far as matching goes, and the standard says so out loud:
 >
 > | value | meaning |
 > |---|---|
-> | `removed` | the build compiles its debug asserts AND its bounds/range checks away (C++ with `NDEBUG`/`SERIALIZE_RELEASE`) |
-> | `always` | the library keeps bounds checks, range validation and the sticky error check in **every** build by contract (Go by design; Rust because `serialize.rs` is `unsafe_code = "forbid"`; C# by its runtime's nature) |
-> | `contract` | the library's debug asserts compile out like `removed`, **but** validation that is part of the wire/API contract stays in every build — serialize.c: caller-error asserts vanish under `NDEBUG`, while the write-capacity check that doubles as the sticky-error flag is unconditional (`serialize.h`, `serialize_write_bits`: "kept as a real check where the C++ BitWriter only asserts") |
+> | `removed` | the build compiles its debug asserts AND its bounds/range checks away (C++ with `NDEBUG`/`SERIALIZE_RELEASE`; C with `-DNDEBUG` since serialize.c ruling #20; Rust with `debug-assertions = false` since the 2026-09-07 ruling made the generated write side `debug_assert!` — safe Rust's own slice bounds checks remain, a LANGUAGE residual this column does not price) |
+> | `always` | the library keeps bounds checks, range validation and the sticky error check in **every** build by contract (Go by design; C# by its runtime's nature) |
+> | `contract` | the library's debug asserts compile out like `removed`, **but** validation that is part of the wire/API contract stays in every build. Its exemplar was serialize.c's write path until ruling #20 (2026-08-17) moved C to `removed`; no leg records it today, and the value stays defined for a runtime that makes that promise. |
 >
 > `contract` was added 2026-08-15 because the two-value column could not
 > express serialize.c at all, and the hybrid it could not express was the
@@ -1058,10 +1058,11 @@ That is as far as matching goes, and the standard says so out loud:
 > values as a language comparison** — `removed` vs `always`, `removed` vs
 > `contract`, `contract` vs `always`, all of them. It may print the ratio
 > under `--label-checks`, and the caption MUST name **both sides' semantics**,
-> not just the values: *"C `checks=contract` (asserts compile out; the write
-> capacity + sticky-error check stays in every build) vs C++ `checks=removed`
-> (asserts and checks compile out) — this ratio includes the cost of a
-> different safety contract."*
+> not just the values: *"Go `checks=always` (bounds, range and sticky-error
+> checks in every build, by design) vs C++ `checks=removed` (asserts and
+> checks compile out) — this ratio includes the cost of a different safety
+> contract."* (The 2026-08-15 captions read C `checks=contract` against C++;
+> they stand as the record of that night.)
 
 Most of the published 6x Go read gap is this. It is a real difference and it should be
 measurable — but it is a *contract* difference, not a *language* difference, and the

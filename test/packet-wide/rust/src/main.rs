@@ -80,13 +80,38 @@ mod contracts {
         padded[..bytes.len()].copy_from_slice(bytes);
         decode(&mut ReadStream::new(&padded, bytes.len()), value).expect("read");
     }
+    // The writer's wstring contracts — a used length outside [0, N] and an
+    // interior null among the used units (SPEC §4.12) — are `debug_assert!`,
+    // the Rust idiom serialize.rs itself uses (src/stream.rs, `misuse_check!`).
+    // They panic in a debug build and are compiled out of release, so this
+    // helper skips the cases entirely there rather than weakening them. The
+    // READ side's rejections below run in every build.
+    fn expect_assert(f: impl FnOnce(), what: &str) {
+        if !cfg!(debug_assertions) {
+            return;
+        }
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {})); // the panic IS the pass
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+        std::panic::set_hook(previous);
+        assert!(outcome.is_err(), "{what}");
+    }
+
     #[test]
     fn bounds_null_pairing_and_reused_tail() {
         let mut value = wide::WideSeven::default();
         for length in [-1, 8, 1] {
             value.text_length = length;
-            assert!(
-                wide::write_wide_seven(&mut WriteStream::new(&mut [0u8; 256]), &value).is_err()
+            expect_assert(
+                || {
+                    let mut probe = wide::WideSeven::default();
+                    probe.text_length = length;
+                    let _ = wide::write_wide_seven(
+                        &mut WriteStream::new(&mut [0u8; 256]),
+                        &probe,
+                    );
+                },
+                "an out-of-contract wstring write asserts",
             );
         }
         value.text[0] = 0xd800;

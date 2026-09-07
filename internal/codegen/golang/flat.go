@@ -32,7 +32,9 @@
 //
 //  2. EVERY PIECE IS MASKED TO ITS WIDTH. serialize.go's write path MASKS a
 //     too-wide value to the field width; the Rust runtime only debug_asserts,
-//     so PR #183 had to REFUSE such values to stay faithful. Masking here is
+//     so PR #183 had the Rust backend REFUSE such values to stay faithful —
+//     the 2026-09-07 ruling reversed that and the Rust backend now
+//     debug_asserts them like its runtime. Masking here is
 //     what keeps the Go form observably identical to the per-field form it
 //     replaces, and it doubles as the guarantee that no piece can corrupt its
 //     neighbours in the chunk.
