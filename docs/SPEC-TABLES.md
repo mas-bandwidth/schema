@@ -1494,8 +1494,8 @@ emitter writes it, so it is worth saying what it writes: `<Union>Type` carries
 declared variant count, `None` excluded) and `Max` (the exported extent), and
 beside the enum the DEBUG-NAME function that takes any value, out-of-set
 included, and returns the variant's spelling or the fixed unknown marker
-(SPEC §4.2, §4.8). It is the same construct to a reader — one logging which
-body arrived writes `EnumName( edit.body.type )` whichever union it holds — so
+(SPEC §4.2, §4.8). It is the same construct to a reader: one logging which
+body arrived writes `EnumName( edit.body.type )` whichever union it holds, so
 it presents the same surface. Nothing on the read or write path calls the
 function and no generated code does. The table layer is the C++ reference's
 (§11, §15), so this shape has ONE emitter where the packet shape has nine.
