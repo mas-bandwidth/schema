@@ -5156,8 +5156,21 @@ enum class SlotType : uint8_t {
     None = 0,
     Node = 1,
     Plain = 2,
+    Count = 2, // the declared variant count (SPEC §4.2)
     Max = 2, // the exported extent (SPEC §4.2)
 };
+
+// EnumName: debug/log name for any SlotType value, out-of-set included
+inline const char * EnumName( SlotType value )
+{
+    switch ( value )
+    {
+        case SlotType::None: return "None";
+        case SlotType::Node: return "Node";
+        case SlotType::Plain: return "Plain";
+        default: return "???";
+    }
+}
 
 // union Slot — at most one of the arms; the tag says which. AN ARM IS A FIELD
 // LINE (docs/SPEC-TABLES.md §2.6), so an arm's storage is the field's storage
@@ -5193,8 +5206,21 @@ enum class SlotsType : uint8_t {
     None = 0,
     Many = 1,
     Plain = 2,
+    Count = 2, // the declared variant count (SPEC §4.2)
     Max = 2, // the exported extent (SPEC §4.2)
 };
+
+// EnumName: debug/log name for any SlotsType value, out-of-set included
+inline const char * EnumName( SlotsType value )
+{
+    switch ( value )
+    {
+        case SlotsType::None: return "None";
+        case SlotsType::Many: return "Many";
+        case SlotsType::Plain: return "Plain";
+        default: return "???";
+    }
+}
 
 // union Slots — at most one of the arms; the tag says which. AN ARM IS A FIELD
 // LINE (docs/SPEC-TABLES.md §2.6), so an arm's storage is the field's storage

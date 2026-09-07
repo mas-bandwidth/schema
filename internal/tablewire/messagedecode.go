@@ -857,7 +857,10 @@ func (d *bitDecoder) unionCell(cell *tabletext.Cell, f *ir.Field) bool {
 	}
 	tag := 0
 	for i, v := range un.Variants {
-		if ir.TableWireId(v.Name) == entry.Id {
+		// the announcement's own entry, which reads the `was` alias
+		// (docs/SPEC-TABLES.md §5): every id derivation does, so the
+		// dispatch names what the writer wrote
+		if ir.TableArmEntry(v).Id == entry.Id {
 			tag = i + 1
 			break
 		}

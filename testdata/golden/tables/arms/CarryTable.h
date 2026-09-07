@@ -5156,8 +5156,21 @@ enum class CarryType : uint8_t {
     None = 0,
     Leaf = 1,
     Plain = 2,
+    Count = 2, // the declared variant count (SPEC §4.2)
     Max = 2, // the exported extent (SPEC §4.2)
 };
+
+// EnumName: debug/log name for any CarryType value, out-of-set included
+inline const char * EnumName( CarryType value )
+{
+    switch ( value )
+    {
+        case CarryType::None: return "None";
+        case CarryType::Leaf: return "Leaf";
+        case CarryType::Plain: return "Plain";
+        default: return "???";
+    }
+}
 
 // union Carry — at most one of the arms; the tag says which. AN ARM IS A FIELD
 // LINE (docs/SPEC-TABLES.md §2.6), so an arm's storage is the field's storage

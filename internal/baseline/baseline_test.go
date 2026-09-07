@@ -96,7 +96,7 @@ union Effect
 union Shape
 {
     body   Buff
-    count  int32
+    tally  int32
     marks  [..8]float32
     chunk  Chunk
     ack
@@ -354,8 +354,8 @@ func TestRefusals(t *testing.T) {
 		// goes red for one reason, the token beside it.
 		{
 			name:    "a scalar arm's kind widened",
-			edited:  replace(t, "    count  int32\n", "    count  int64\n"),
-			where:   "union Shape.count",
+			edited:  replace(t, "    tally  int32\n", "    tally  int64\n"),
+			where:   "union Shape.tally",
 			what:    "wire kind 4 -> 5",
 			token:   "kind",
 			control: replace(t, "    ack\n", "    ack\n    extra  int32\n"), // an arm ADDED: an id no reader names

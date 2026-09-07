@@ -5157,8 +5157,22 @@ enum class ReachType : uint8_t {
     Only = 1,
     Text = 2,
     Plain = 3,
+    Count = 3, // the declared variant count (SPEC §4.2)
     Max = 3, // the exported extent (SPEC §4.2)
 };
+
+// EnumName: debug/log name for any ReachType value, out-of-set included
+inline const char * EnumName( ReachType value )
+{
+    switch ( value )
+    {
+        case ReachType::None: return "None";
+        case ReachType::Only: return "Only";
+        case ReachType::Text: return "Text";
+        case ReachType::Plain: return "Plain";
+        default: return "???";
+    }
+}
 
 // union Reach — at most one of the arms; the tag says which. AN ARM IS A FIELD
 // LINE (docs/SPEC-TABLES.md §2.6), so an arm's storage is the field's storage

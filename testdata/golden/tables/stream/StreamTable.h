@@ -4487,8 +4487,23 @@ enum class FrameType : uint8_t {
     Chunk = 2,
     Link = 3,
     Tag = 4,
+    Count = 4, // the declared variant count (SPEC §4.2)
     Max = 4, // the exported extent (SPEC §4.2)
 };
+
+// EnumName: debug/log name for any FrameType value, out-of-set included
+inline const char * EnumName( FrameType value )
+{
+    switch ( value )
+    {
+        case FrameType::None: return "None";
+        case FrameType::Header: return "Header";
+        case FrameType::Chunk: return "Chunk";
+        case FrameType::Link: return "Link";
+        case FrameType::Tag: return "Tag";
+        default: return "???";
+    }
+}
 
 // union Frame — at most one of the arms; the tag says which. AN ARM IS A FIELD
 // LINE (docs/SPEC-TABLES.md §2.6), so an arm's storage is the field's storage

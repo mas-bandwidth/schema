@@ -313,6 +313,13 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\nunion U {\n    u Box\n}\ntype Box { x uint8 }\n"},
 		{name: "union variants colliding after export mapping", want: "both become BoxA",
 			src: "package t\nunion U {\n    box_a Box\n    boxA Box\n}\ntype Box { x uint8 }\n"},
+		// COUNT IS RESERVED ON EVERY UNION, packet and table closure alike:
+		// both tag enums carry the member, so the arm would define it twice
+		// (SPEC §4.8, §4.11, docs/SPEC-TABLES.md §2.6)
+		{name: "union variant named count on a packet union (exported spelling)", want: "carries its declared variant count as the member Count",
+			src: "package t\nunion U {\n    count Box\n}\ntype Box { x uint8 }\ntype T { u U }\n"},
+		{name: "union variant named count on a table-closure union (exported spelling)", want: "carries its declared variant count as the member Count",
+			src: "package t\ntable Box { x uint8 }\nunion U {\n    thing Box\n    count int32 | min = 0, max = 100\n}\ntable Root { u U }\n"},
 		// AN ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6): an enum, a
 		// scalar, a string, an array, a pointer and a union are arms, and
 		// what refuses them OUTSIDE a table closure is the closure rule —
@@ -322,18 +329,18 @@ func TestDiagnostics(t *testing.T) {
 		{name: "a union arm outside a table closure", want: "no table reaches U",
 			src: "package t\nunion U {\n    v V\n}\nunion V { }\n"},
 		{name: "a scalar arm outside a table closure", want: "no table reaches U",
-			src: "package t\nunion U {\n    count int32\n}\n"},
+			src: "package t\nunion U {\n    tally int32\n}\n"},
 		{name: "a table-closure union held in a type body", want: "a union in a `type` body takes `type` payloads only",
-			src: "package t\nunion U {\n    count int32\n}\ntype Holder { u U }\ntable Root { h Holder }\n"},
+			src: "package t\nunion U {\n    tally int32\n}\ntype Holder { u U }\ntable Root { h Holder }\n"},
 		// what an ARM may not carry, each refused at the arm (§2.6, §11)
 		{name: "a default on an arm", want: "ZERO-ESTABLISHES at selection",
-			src: "package t\nunion U {\n    count int32 = 3\n}\ntable Root { u U }\n"},
+			src: "package t\nunion U {\n    tally int32 = 3\n}\ntable Root { u U }\n"},
 		{name: "an optional arm", want: "SELECTION IS THE ARM'S PRESENCE",
-			src: "package t\nunion U {\n    count ?int32\n}\ntable Root { u U }\n"},
+			src: "package t\nunion U {\n    tally ?int32\n}\ntable Root { u U }\n"},
 		{name: "was on an arm of a union no table reaches", want: "no table reaches",
 			src: "package t\ntype A { x int32 }\nunion U {\n    a A | was = \"z\"\n}\ntype Root { u U }\n"},
 		{name: "json on an arm", want: "json on an arm is a named follow-on",
-			src: "package t\nunion U {\n    count int32 | json = \"n\"\n}\ntable Root { u U }\n"},
+			src: "package t\nunion U {\n    tally int32 | json = \"n\"\n}\ntable Root { u U }\n"},
 		{name: "an enum-keyed array arm", want: "an enum-keyed array is not an arm",
 			src: "package t\nenum E { A, B }\nunion U {\n    slots [E]int32\n}\ntable Root { u U }\n"},
 
@@ -349,7 +356,7 @@ func TestDiagnostics(t *testing.T) {
 		{name: "[E.Max]T in a table body, of a declared type", want: "spell it [E]Cfg",
 			src: "package t\nenum E { A, B }\ntype Cfg { hp uint16 }\ntable Root { slots [E.Max]Cfg }\n"},
 		{name: "an arm whose range excludes zero", want: "the value it establishes at selection is outside it",
-			src: "package t\nunion U {\n    count int32 | min = 1, max = 10\n}\ntable Root { u U }\n"},
+			src: "package t\nunion U {\n    tally int32 | min = 1, max = 10\n}\ntable Root { u U }\n"},
 		{name: "union payload undefined", want: "undefined type",
 			src: "package t\nunion U {\n    b Box\n}\n"},
 		{name: "union composition cycle", want: "type composition cycle",
