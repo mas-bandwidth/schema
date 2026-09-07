@@ -3882,7 +3882,7 @@ tables-cpp-release:
 	$(MAKE) tables-wire-fuzz SEED=2 N=500000
 
 .PHONY: tables-wire-fuzz-negative-control tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-node-type-negative-control tables-wire-fuzz-blob-node-negative-control
-tables-wire-fuzz-negative-control: tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-node-type-negative-control tables-wire-fuzz-blob-node-negative-control tables-wire-fuzz-wide-text-negative-control
+tables-wire-fuzz-negative-control: tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-node-type-negative-control tables-wire-fuzz-blob-node-negative-control tables-wire-fuzz-wide-text-negative-control tables-wire-fuzz-message-text-oracle-negative-control tables-wire-fuzz-message-text-leg-negative-control
 
 # THE CONTENT RULE ON KIND 33 (docs/SPEC-TABLES.md §3, §4): an unpaired
 # surrogate is DAMAGE, not data. The fuzzer's wide-text pass plants one at
@@ -4261,6 +4261,67 @@ tables-wire-fuzz-blob-node-negative-control: build/conformance-harness build/wir
 		  cat $(BLOB_NODE_NC)/log; exit 1; }
 	@grep -m1 "FAILED" $(BLOB_NODE_NC)/log
 	@echo "negative control: framing a blob record by reachability turns the pinned vector RED"
+
+# ILL-FORMED TEXT ON A MESSAGE BODY (docs/SPEC-TABLES.md §3, §3.3; schema#620),
+# and the vector message_ill_formed_text is what holds the two engines to one
+# answer on it. The four blades in tables-message-form-negative-control hold
+# each engine to the PAGE; these two hold the engines to EACH OTHER, which is a
+# different question and the one a differential fuzzer exists to ask: before the
+# repair both readers accepted the vector, agreeing and agreeing wrongly, so
+# nothing here could have gone red. Each control repairs one engine and takes
+# the rule back out of the other, and the run must go red ON THE VECTOR.
+#
+# THE ASSERTION IS THE VECTOR REPLAYED ALONE, not a corpus pass, for the reason
+# the node-type control names: an enumerated mutant reaches the same check and
+# would name itself instead of the property.
+MESSAGE_TEXT_VECTOR := testdata/wire/tables/fuzz-vectors/message_ill_formed_text.bin
+
+MESSAGE_TEXT_ORACLE_NC := build/wire-fuzz-nc-message-text-oracle
+.PHONY: tables-wire-fuzz-message-text-oracle-negative-control
+tables-wire-fuzz-message-text-oracle-negative-control: build/conformance-harness build/wire-fuzz-cpp
+	@rm -rf $(MESSAGE_TEXT_ORACLE_NC) && mkdir -p $(MESSAGE_TEXT_ORACLE_NC)
+	@go run ./tools/sabotage -name message-text-accepts-ill-formed \
+		-out $(MESSAGE_TEXT_ORACLE_NC)/messagedecode.go.txt internal/tablewire/messagedecode.go
+	@printf '{"Replace":{"%s/internal/tablewire/messagedecode.go":"%s/$(MESSAGE_TEXT_ORACLE_NC)/messagedecode.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(MESSAGE_TEXT_ORACLE_NC)/overlay.json
+	go build -overlay $(MESSAGE_TEXT_ORACLE_NC)/overlay.json -o $(MESSAGE_TEXT_ORACLE_NC)/harness ./test/conformance/harness
+	@if $(MESSAGE_TEXT_ORACLE_NC)/harness wire-fuzz --driver ./build/wire-fuzz-cpp \
+			--replay $(MESSAGE_TEXT_VECTOR) --unit backenddemo --root StorePurchase --message \
+			--failed $(MESSAGE_TEXT_ORACLE_NC)/failed.bin > $(MESSAGE_TEXT_ORACLE_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the oracle accepts ill-formed message text again and the pinned vector stayed green"; \
+		cat $(MESSAGE_TEXT_ORACLE_NC)/log; exit 1; \
+	fi
+	@grep -q "message_ill_formed_text" $(MESSAGE_TEXT_ORACLE_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the wire fuzzer went red, but not on the pinned vector"; \
+		  cat $(MESSAGE_TEXT_ORACLE_NC)/log; exit 1; }
+	@grep -m1 "FAILED" $(MESSAGE_TEXT_ORACLE_NC)/log
+	@echo "negative control: an oracle that accepts ill-formed message text turns the pinned vector RED"
+
+MESSAGE_TEXT_LEG_NC := build/wire-fuzz-nc-message-text-leg
+.PHONY: tables-wire-fuzz-message-text-leg-negative-control
+tables-wire-fuzz-message-text-leg-negative-control: build/conformance-harness
+	@rm -rf $(MESSAGE_TEXT_LEG_NC) && mkdir -p $(MESSAGE_TEXT_LEG_NC)
+	@go run ./tools/sabotage -name message-emitter-text-accepts-ill-formed \
+		-out $(MESSAGE_TEXT_LEG_NC)/messageload.go.txt internal/codegen/cpptable/messageload.go
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/messageload.go":"%s/$(MESSAGE_TEXT_LEG_NC)/messageload.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(MESSAGE_TEXT_LEG_NC)/overlay.json
+	go build -overlay $(MESSAGE_TEXT_LEG_NC)/overlay.json -o $(MESSAGE_TEXT_LEG_NC)/schema ./cmd/schema
+	$(call tables_generate,./$(MESSAGE_TEXT_LEG_NC)/schema,$(MESSAGE_TEXT_LEG_NC)/generated)
+	$(CXX) $(TABLES_CXXFLAGS) -O1 $(call tables_includes,$(MESSAGE_TEXT_LEG_NC)/generated) \
+		test/tables/wire_fuzz_main.cpp \
+		$(subst build/tables-generated/,$(MESSAGE_TEXT_LEG_NC)/generated/,$(CONFORMANCE_SOURCES)) \
+		-o $(MESSAGE_TEXT_LEG_NC)/leg
+	@if ./build/conformance-harness wire-fuzz --driver $(MESSAGE_TEXT_LEG_NC)/leg \
+			--replay $(MESSAGE_TEXT_VECTOR) --unit backenddemo --root StorePurchase --message \
+			--failed $(MESSAGE_TEXT_LEG_NC)/failed.bin > $(MESSAGE_TEXT_LEG_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the emitted reader accepts ill-formed message text again and the pinned vector stayed green"; \
+		cat $(MESSAGE_TEXT_LEG_NC)/log; exit 1; \
+	fi
+	@grep -q "message_ill_formed_text" $(MESSAGE_TEXT_LEG_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the wire fuzzer went red, but not on the pinned vector"; \
+		  cat $(MESSAGE_TEXT_LEG_NC)/log; exit 1; }
+	@grep -m1 "FAILED" $(MESSAGE_TEXT_LEG_NC)/log
+	@echo "negative control: an emitted reader that accepts ill-formed message text turns the pinned vector RED"
 
 # The GENERATED half of the data: the JSON text of every instance and the read
 # report of every evolution case, both from the compiler's own engine.

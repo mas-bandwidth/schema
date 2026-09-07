@@ -88,3 +88,22 @@ message_node_type_unpointed graphdemo Scene testdata/wire/tables/fuzz-vectors/me
 # graph_tree_message. It is the input
 # tables-wire-fuzz-blob-node-negative-control replays.
 message_blob_node_unpointed graphdemo Scene testdata/wire/tables/fuzz-vectors/message_blob_node_unpointed.bin message
+
+# ILL-FORMED TEXT ON A MESSAGE BODY (§3, §3.3; schema#620). §3's one content
+# rule holds over a form-`2` body unchanged in what it rejects, and §3.3 says
+# so: a kind `12` payload that is not well-formed UTF-8 is DAMAGE, terminal for
+# the batch here because a bit stream has no place to resume. NEITHER ENGINE
+# CARRIED IT. The C++ reference's emitted message reader copied the bytes a
+# byte at a time with no check, and the oracle's `text` clamped at the raw
+# bound, so a body no reader should accept loaded silently into both — agreeing,
+# and agreeing wrongly, which is the one shape a differential fuzzer cannot see
+# on its own. It became a red the moment one engine was repaired, and this
+# vector is what holds the two together from here.
+#
+# The bytes are `store_full_message` with one byte of `sku`'s payload replaced
+# by 0xFF, which is a lead byte UTF-8 never spells. Nothing else moves: the
+# length, the align and every field after it are the golden's own, so what the
+# two readers answer differently is the content rule and nothing else. Its
+# controls are the four in `make tables-message-form-negative-control`, two per
+# engine, each of which parts the leg from the oracle on this vector's name.
+message_ill_formed_text backenddemo StorePurchase testdata/wire/tables/fuzz-vectors/message_ill_formed_text.bin message
