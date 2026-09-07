@@ -30,29 +30,32 @@ use core::ptr;
 pub struct TableReport {
     pub unknown: i32,      // unknown field ids skipped (newer data)
     pub kind_mismatch: i32, // known id, changed type — skipped, never misdecoded
+    pub widened: i32,       // accepted a narrower kind on the same numeric ladder
     pub clamped: i32,      // out-of-range values clamped to declared bounds
     // duplicate is the TEXT FORM's counter and the WIRE NEVER RAISES IT
     // (docs/SPEC-TABLES.md §4, §16.2): a body carrying an id twice is legal input
     // whose last occurrence wins, silently.
     pub duplicate: i32,
+    pub verdict: TableOpenVerdict,
     pub malformed: bool, // framing damage; decode stopped, partial result kept
 }
 
 // ---- an enum's TABLE-wire identity (docs/SPEC-TABLES.md §5) ----
 
-// A value rides as the u16 hash of its VARIANT NAME, so a variant may be
-// added anywhere, removed, or reordered and old data still reads. None is the
-// one reserved id, 0, which no declared name can fold to.
+// A value rides as a reference to the 64-bit hash of its VARIANT NAME, so a
+// variant may be added, removed or reordered and old data still reads. None
+// takes reference 0; a zero hash is an ordinary, distinct identity.
 //
 // C++ and C# spell this as an overload set; Rust has no overloading, so it is
 // a trait the generated code implements once per enum. One unit-level name
 // (§11) rather than one per declaration.
 pub trait TableEnum: Copy + Sized {
-    // this value's wire id, or None when no variant names it — a value with
-    // no wire identity, which measure and save both refuse.
-    fn table_id(self) -> Option<u16>;
+    // A named value's wire hash; the None ordinal returns Some(0) as a
+    // convenience only. Writers test the ordinal before interning a hash.
+    // An unnamed nonzero value returns None, which measure and save refuse.
+    fn table_id(self) -> Option<u64>;
     // the value a wire id names, or None when this build cannot name it.
-    fn table_value(id: u16) -> Option<Self>;
+    fn table_value(id: u64) -> Option<Self>;
 }
 
 // ---- the enum-keyed array's storage (docs/SPEC-TABLES.md §2.4) ----
@@ -154,237 +157,236 @@ pub fn table_double_to_bits(value: f64) -> u64 {
     value.to_bits()
 }
 
-// ---- the wire writer and reader ----
 
-// TableWriter writes the wire IN PLACE, into the caller's slice. Nothing
-// here allocates.
-//
-// EVERY PRIMITIVE IS FORCE-INLINED, and so is every fixed-class body that
-// calls one (#343): out of line, a writer's cursor round-trips through memory
-// at every put, and the two halves do not add up but multiply — only a body
-// with no call boundary in it lets the cursor stay in registers and lets
-// adjacent constant framing bytes merge into one store. The C++ reference
-// carries the same rule, spelled as a per-package macro because it has three
-// compilers to name; Rust has one attribute.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum TableOpenVerdict {
+    #[default]
+    Ok,
+    Refused,
+    Damaged,
+    BodyStopped,
+}
+
 pub struct TableWriter<'a> {
-    pub buffer: &'a mut [u8],
+    buffer: Option<&'a mut [u8]>,
+    ids: &'a mut [u64],
+    count: usize,
     pub offset: usize,
     pub overflow: bool,
 }
 
 impl<'a> TableWriter<'a> {
     #[inline(always)]
-    pub fn new(buffer: &'a mut [u8]) -> TableWriter<'a> {
-        TableWriter {
-            buffer,
-            offset: 0,
-            overflow: false,
-        }
+    pub fn new(buffer: Option<&'a mut [u8]>, ids: &'a mut [u64]) -> Self {
+        Self { buffer, ids, count: 0, offset: 0, overflow: false }
     }
 
     #[inline(always)]
-    pub fn raw(&mut self, data: &[u8]) {
-        if self.offset + data.len() > self.buffer.len() {
-            self.overflow = true;
-            return;
+    pub fn raw(&mut self, bytes: &[u8]) {
+        let Some(end) = self.offset.checked_add(bytes.len()) else { self.overflow = true; return; };
+        if let Some(buffer) = self.buffer.as_deref_mut() {
+            if end > buffer.len() { self.overflow = true; return; }
+            buffer[self.offset..end].copy_from_slice(bytes);
         }
-        self.buffer[self.offset..self.offset + data.len()].copy_from_slice(data);
-        self.offset += data.len();
+        self.offset = end;
     }
-
     #[inline(always)]
-    pub fn put8(&mut self, v: u8) {
-        if self.offset + 1 > self.buffer.len() {
-            self.overflow = true;
-            return;
-        }
-        self.buffer[self.offset] = v;
-        self.offset += 1;
+    pub fn put8(&mut self, v: u8) { self.raw(&[v]); }
+    #[inline(always)]
+    pub fn put16(&mut self, v: u16) { self.raw(&v.to_le_bytes()); }
+    #[inline(always)]
+    pub fn put32(&mut self, v: u32) { self.raw(&v.to_le_bytes()); }
+    #[inline(always)]
+    pub fn put64(&mut self, v: u64) { self.raw(&v.to_le_bytes()); }
+    #[inline(always)]
+    pub fn putleb(&mut self, mut v: u64) {
+        while v >= 128 { self.put8((v as u8 & 127) | 128); v >>= 7; }
+        self.put8(v as u8);
     }
-
     #[inline(always)]
-    pub fn put16(&mut self, v: u16) {
-        if self.offset + 2 > self.buffer.len() {
-            self.overflow = true;
-            return;
-        }
-        self.buffer[self.offset..self.offset + 2].copy_from_slice(&v.to_le_bytes());
-        self.offset += 2;
+    pub fn putid(&mut self, id: u64) {
+        // A zero HASH is an ordinary identity. Only a zero REFERENCE is None.
+        let index = match self.ids[..self.count].iter().position(|v| *v == id) {
+            Some(i) => i,
+            None => {
+                if self.count == self.ids.len() { self.overflow = true; return; }
+                let i = self.count;
+                self.ids[i] = id;
+                self.count += 1;
+                i
+            }
+        };
+        self.putleb(index as u64 + 1);
     }
-
-    #[inline(always)]
-    pub fn put32(&mut self, v: u32) {
-        if self.offset + 4 > self.buffer.len() {
-            self.overflow = true;
-            return;
-        }
-        self.buffer[self.offset..self.offset + 4].copy_from_slice(&v.to_le_bytes());
-        self.offset += 4;
+    pub fn framed(&mut self, body: impl Fn(&mut TableWriter) -> bool) -> bool {
+        // Measure in the vocabulary at this exact position. The speculative
+        // suffix is overwritten on replay, so the real walk owns first use.
+        let mut probe = TableWriter::new(None, self.ids);
+        probe.count = self.count;
+        if !body(&mut probe) || probe.overflow { return false; }
+        let size = probe.offset;
+        self.putleb(size as u64);
+        body(self) && !self.overflow
     }
-
-    #[inline(always)]
-    pub fn put64(&mut self, v: u64) {
-        if self.offset + 8 > self.buffer.len() {
-            self.overflow = true;
-            return;
-        }
-        self.buffer[self.offset..self.offset + 8].copy_from_slice(&v.to_le_bytes());
-        self.offset += 8;
-    }
-
-    // patch a length word already written: the nested-body framing writes a
-    // placeholder, fills the body, then comes back for the count.
-    #[inline(always)]
-    pub fn patch32(&mut self, at: usize, v: u32) {
-        if at + 4 > self.buffer.len() {
-            self.overflow = true;
-            return;
-        }
-        self.buffer[at..at + 4].copy_from_slice(&v.to_le_bytes());
+    pub fn finish(&mut self) -> i64 {
+        for i in 0..self.count { self.put64(self.ids[i]); }
+        self.put64(self.count as u64);
+        if self.overflow { -1 } else { i64::try_from(self.offset).unwrap_or(-1) }
     }
 }
 
-// TableReader reads the wire out of the caller's slice. A nested body is
-// read through a SUB-READER sliced out of this one, so an inner decode can
-// never reach past its own framing.
-//
-// THE REPORT IS NOT IN HERE, and the deviation from the C++ reference is
-// deliberate: a reader holding a mutable borrow of the report could not hand
-// out a sub-reader over its own buffer while that borrow stood. The report
-// is the codecs' own parameter, threaded down beside the reader — one
-// report, one caller, the same five counters.
 #[derive(Clone, Copy)]
 pub struct TableReader<'a> {
     pub buffer: &'a [u8],
     pub offset: usize,
+    ids: &'a [u8],
+    nested: bool,
 }
 
 impl<'a> TableReader<'a> {
     #[inline(always)]
-    pub fn new(buffer: &'a [u8]) -> TableReader<'a> {
-        TableReader { buffer, offset: 0 }
+    pub fn new(buffer: &'a [u8]) -> Self {
+        Self { buffer, offset: 0, ids: &[], nested: true }
     }
-
-    #[inline(always)]
-    pub fn has(&self, bytes: u64) -> bool {
-        self.offset as u64 + bytes <= self.buffer.len() as u64
-    }
-
-    #[inline(always)]
-    pub fn get8(&mut self) -> u8 {
-        let v = self.buffer[self.offset];
-        self.offset += 1;
-        v
-    }
-
-    // The multi-byte reads take ONE range check and one load, not one check
-    // per byte: first_chunk is the safe spelling of "the next N bytes as an
-    // array", and a checked index per byte is what the generated codec's
-    // has() has already answered. The fallback is unreachable in generated
-    // code — every get is preceded by its has — and it is a zero rather than
-    // a panic because a reader that met framing damage should stop on the
-    // report, not on an abort.
-    #[inline(always)]
-    pub fn get16(&mut self) -> u16 {
-        let v = match self.buffer[self.offset..].first_chunk::<2>() {
-            Some(bytes) => u16::from_le_bytes(*bytes),
-            None => 0,
-        };
-        self.offset += 2;
-        v
-    }
-
-    #[inline(always)]
-    pub fn get32(&mut self) -> u32 {
-        let v = match self.buffer[self.offset..].first_chunk::<4>() {
-            Some(bytes) => u32::from_le_bytes(*bytes),
-            None => 0,
-        };
-        self.offset += 4;
-        v
-    }
-
-    #[inline(always)]
-    pub fn get64(&mut self) -> u64 {
-        let v = match self.buffer[self.offset..].first_chunk::<8>() {
-            Some(bytes) => u64::from_le_bytes(*bytes),
-            None => 0,
-        };
-        self.offset += 8;
-        v
-    }
-
-    // the rest of this body, as its own reader: the sub-reader a nested
-    // decode runs in.
-    #[inline(always)]
-    pub fn sub(&self, bytes: usize) -> TableReader<'a> {
-        TableReader::new(&self.buffer[self.offset..self.offset + bytes])
-    }
-
-    // skip one payload by kind; false = framing damage
-    pub fn skip(&mut self, kind: u8) -> bool {
-        match kind {
-            1 | 2 | 6 => {
-                if !self.has(1) {
-                    return false;
-                }
-                self.offset += 1;
-                true
+    pub fn open(bytes: &'a [u8]) -> Result<Self, TableOpenVerdict> {
+        if bytes.is_empty() { return Err(TableOpenVerdict::Damaged); }
+        if bytes[0] != 1 { return Err(TableOpenVerdict::Refused); }
+        if bytes.len() < 9 { return Err(TableOpenVerdict::Damaged); }
+        let count = u64::from_le_bytes(bytes[bytes.len()-8..].try_into().unwrap());
+        if count > ((bytes.len()-9)/8) as u64 { return Err(TableOpenVerdict::Damaged); }
+        let at = bytes.len()-8-count as usize*8;
+        let ids = &bytes[at..bytes.len()-8];
+        for i in 0..count as usize {
+            for j in 0..i {
+                if ids[i*8..i*8+8] == ids[j*8..j*8+8] { return Err(TableOpenVerdict::Damaged); }
             }
-            3 | 7 => {
-                if !self.has(2) {
-                    return false;
-                }
-                self.offset += 2;
-                true
-            }
-            // 17 is a NODE INDEX (docs/SPEC-TABLES.md §3.1): four bytes, so it costs
-            // one row here and a reader without the kind still skips a pointer field
-            4 | 8 | 10 | 17 => {
-                if !self.has(4) {
-                    return false;
-                }
-                self.offset += 4;
-                true
-            }
-            5 | 9 | 11 => {
-                if !self.has(8) {
-                    return false;
-                }
-                self.offset += 8;
-                true
-            }
-            12 | 13 | 14 | 16 => {
-                if !self.has(4) {
-                    return false;
-                }
-                let n = self.get32() as u64;
-                if !self.has(n) {
-                    return false;
-                }
-                self.offset += n as usize;
-                true
-            }
-            // union: u16 arm id, then the arm length-prefixed (id 0 = empty, no body)
-            15 => {
-                if !self.has(2) {
-                    return false;
-                }
-                if self.get16() == 0 {
-                    return true;
-                }
-                if !self.has(4) {
-                    return false;
-                }
-                let n = self.get32() as u64;
-                if !self.has(n) {
-                    return false;
-                }
-                self.offset += n as usize;
-                true
-            }
-            _ => false,
         }
+        let r = Self { buffer: &bytes[1..at], offset: 0, ids, nested: false };
+        if r.ends_early() { return Err(TableOpenVerdict::Damaged); }
+        Ok(r)
+    }
+    #[inline(always)]
+    pub fn has(&self, bytes: u64) -> bool { bytes <= self.buffer.len().saturating_sub(self.offset) as u64 }
+    #[inline(always)]
+    pub fn get8(&mut self) -> u8 { let v = self.buffer[self.offset]; self.offset += 1; v }
+    #[inline(always)]
+    pub fn get16(&mut self) -> u16 { let v = u16::from_le_bytes(self.buffer[self.offset..self.offset+2].try_into().unwrap()); self.offset += 2; v }
+    #[inline(always)]
+    pub fn get32(&mut self) -> u32 { let v = u32::from_le_bytes(self.buffer[self.offset..self.offset+4].try_into().unwrap()); self.offset += 4; v }
+    #[inline(always)]
+    pub fn get64(&mut self) -> u64 { let v = u64::from_le_bytes(self.buffer[self.offset..self.offset+8].try_into().unwrap()); self.offset += 8; v }
+    #[inline(always)]
+    pub fn getleb(&mut self) -> Option<u64> {
+        let at = self.offset;
+        let mut value = 0;
+        for i in 0..10 {
+            if !self.has(1) { break; }
+            let b = self.get8();
+            if i == 9 && b > 1 { break; }
+            value |= ((b & 127) as u64) << (7*i);
+            if b & 128 == 0 {
+                if i > 0 && b == 0 { break; }
+                return Some(value);
+            }
+        }
+        self.offset = at;
+        None
+    }
+    // None is damage, Some(None) the zero reference, Some(Some(id)) an id.
+    #[inline(always)]
+    pub fn getid(&mut self) -> Option<Option<u64>> {
+        let reference = self.getleb()?;
+        if reference == 0 { return Some(None); }
+        if reference > (self.ids.len()/8) as u64 { return None; }
+        let at = (reference as usize-1)*8;
+        Some(Some(u64::from_le_bytes(self.ids[at..at+8].try_into().unwrap())))
+    }
+    #[inline(always)]
+    pub fn length(&mut self) -> Option<usize> {
+        let size = self.getleb()?;
+        if !self.has(size) { return None; }
+        Some(size as usize)
+    }
+    #[inline(always)]
+    pub fn sub(&self, bytes: usize) -> Self {
+        Self { buffer: &self.buffer[self.offset..self.offset+bytes], offset: 0, ids: self.ids, nested: true }
+    }
+    #[inline(always)]
+    pub fn take(&mut self) -> Option<Self> {
+        let size = self.length()?;
+        let sub = self.sub(size);
+        self.offset += size;
+        Some(sub)
+    }
+    pub fn skip(&mut self, kind: u8) -> bool {
+        let width = match kind {
+            1|2|6|20|25 => 1,
+            3|7|21|26 => 2,
+            4|8|10|22|27 => 4,
+            5|9|11|23|28 => 8,
+            18|19|24|29 => 16,
+            17|30 => return self.getleb().is_some(),
+            12|13|14|16|31|32|33 => return self.take().is_some(),
+            15 => {
+                match self.getleb() {
+                    Some(0) => return true,
+                    Some(_) => {},
+                    None => return false,
+                }
+                if !self.has(1) { return false; }
+                self.offset += 1;
+                return self.take().is_some();
+            },
+            _ => return false,
+        };
+        if !self.has(width) { return false; }
+        self.offset += width as usize;
+        true
+    }
+    pub fn ends_early(&self) -> bool {
+        let mut r = *self;
+        loop {
+            match r.getid() {
+                Some(None) => return r.offset != r.buffer.len(),
+                Some(Some(_)) => {},
+                None => return false,
+            }
+            if !r.has(1) { return false; }
+            let kind = r.get8();
+            if !r.skip(kind) { return false; }
+        }
+    }
+    pub fn widens(kind: u8, declared: u8) -> bool {
+        (kind >= 2 && kind < declared && declared <= 5) ||
+        (kind >= 6 && kind < declared && declared <= 9) ||
+        (kind == 10 && declared == 11)
+    }
+    pub fn widened(&mut self, kind: u8) -> Option<u64> {
+        let width = match kind { 2|6 => 1, 3|7 => 2, 4|8|10 => 4, _ => return None };
+        if !self.has(width) { return None; }
+        Some(match kind {
+            2 => self.get8() as i8 as i64 as u64,
+            3 => self.get16() as i16 as i64 as u64,
+            4 => self.get32() as i32 as i64 as u64,
+            6 => self.get8() as u64,
+            7 => self.get16() as u64,
+            8 => self.get32() as u64,
+            10 => {
+                let bits = self.get32();
+                if bits & 0x7f800000 == 0x7f800000 {
+                    // Preserve the sign, quiet/signalling bit and entire NaN
+                    // payload rather than passing them through FP conversion.
+                    ((bits as u64 & 0x80000000) << 32) | 0x7ff0000000000000 | ((bits as u64 & 0x7fffff) << 29)
+                } else { (f32::from_bits(bits) as f64).to_bits() }
+            },
+            _ => unreachable!(),
+        })
+    }
+    #[inline(always)]
+    pub fn reserved(&self, id: u64) -> bool {
+        // Announcement-only identities cannot appear in a file body; a node
+        // table belongs to the root alone, including on fixed-class readers.
+        id == u64::MAX-1 || id == u64::MAX-2 || (self.nested && id == u64::MAX)
     }
 }
 
@@ -433,7 +435,7 @@ pub struct TableFieldInfo {
     pub name: &'static str,      // schema field name, e.g. "health"
     pub json: &'static str,      // the TEXT form's key: json = "key", else name (§16.3)
     pub type_name: &'static str, // schema type name, e.g. "float32", "Grade"
-    pub id: u16,                 // table-wire field id (the was alias's hash after a rename)
+    pub id: u64,                 // table-wire field id (the was alias's hash after a rename)
     pub kind: u8,                // table-wire kind; for arrays/strings/bytes, the ELEMENT kind
     pub is_array: bool,          // fixed or counted array (bytes included)
     pub counted: bool,           // a _count/_length i32 companion exists
@@ -459,13 +461,14 @@ pub struct TableFieldInfo {
     pub flag_name: Option<fn(u32) -> &'static str>,
     // the TABLE-WIRE id of one variant (docs/SPEC-TABLES.md §5): for an enum, the
     // hash of the variant's name; for a union, the hash of the arm's name.
-    // 0 is the reserved id. None for every other kind.
-    pub variant_id: Option<fn(u64) -> u16>,
+    // None for every other kind. An absent ordinal returns 0, but a hash
+    // of 0 alone cannot establish whether the ordinal names a variant.
+    pub variant_id: Option<fn(u64) -> u64>,
     // an ENUM-KEYED array (§2.4): one slot per variant of key_type_name.
     // Walk [0, array_bound) to print slots by name.
     pub key_type_name: Option<&'static str>,
     pub key_name: Option<fn(u64) -> &'static str>,
-    pub key_id: Option<fn(u64) -> u16>,
+    pub key_id: Option<fn(u64) -> u64>,
     // union fields: the tag and its arms, behind a function so the whole
     // descriptor stays a constant.
     pub arms: Option<fn() -> &'static TableUnionInfo>,
@@ -647,12 +650,12 @@ fn table_json_keyed_slot_key(slot: i64) -> u64 {
 
 // A slot whose key names a variant of the keying enum. Every slot in
 // [0, array_bound) does, unless the enum carries max-headroom variants
-// outside a table closure, where a reserved value names nothing and its key
-// id is 0 — the reserved id no declared name can fold to (§5).
+// outside a table closure, where a reserved value names nothing. Validate
+// the name, since a zero hash is a legal identity (§5).
 #[inline]
 fn table_json_keyed_slot_valid(f: &TableFieldInfo, slot: i64) -> bool {
-    match f.key_id {
-        Some(key_id) => key_id(table_json_keyed_slot_key(slot)) != 0,
+    match f.key_name {
+        Some(key_name) => table_json_named(key_name(table_json_keyed_slot_key(slot))),
         None => false,
     }
 }
@@ -1175,10 +1178,6 @@ unsafe fn table_json_write_scalar(
             if value as i64 > f.enum_max {
                 return false;
             }
-            let variant_id = f.variant_id.unwrap();
-            if value != 0 && variant_id(value) == 0 {
-                return false;
-            }
             let name = f.enum_name.unwrap()(value);
             if !table_json_named(name) {
                 return false;
@@ -1393,10 +1392,23 @@ impl TableJsonIn<'_> {
                 self.pos += 1;
                 continue;
             }
-            // comments are not JSON, and a walk that guessed at one would be
-            // reading a dialect nobody wrote down
-            if c == b'/' {
-                self.bad = true;
+            // The text form accepts line and block comments between tokens (§16.3).
+            if c == b'/' && self.pos + 1 < self.text.len() {
+                match self.text[self.pos + 1] {
+                    b'/' => {
+                        self.pos += 2;
+                        while self.pos < self.text.len() && self.text[self.pos] != b'\n' { self.pos += 1; }
+                        continue;
+                    },
+                    b'*' => {
+                        self.pos += 2;
+                        while self.pos + 1 < self.text.len() && &self.text[self.pos..self.pos+2] != b"*/" { self.pos += 1; }
+                        if self.pos + 1 == self.text.len() || self.pos == self.text.len() { self.bad = true; return; }
+                        self.pos += 2;
+                        continue;
+                    },
+                    _ => {},
+                }
             }
             return;
         }
@@ -1623,7 +1635,8 @@ fn table_json_scan_string(
                 got += 1;
                 input.pos += 1;
             }
-            unit_length = got;
+            unit_length = if core::str::from_utf8(&unit[..got]).is_ok() { got }
+                else { table_json_encode_utf8(0xfffd, &mut unit) };
         }
         if let TableJsonSink::Storage(out, capacity) = sink {
             if placed as usize + unit_length <= capacity {

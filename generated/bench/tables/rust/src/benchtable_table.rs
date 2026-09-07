@@ -174,50 +174,49 @@ impl Default for TableMixed {
     }
 }
 
-// TableWeapon on the TABLE wire: a value rides as the u16 hash of its VARIANT
+// TableWeapon on the TABLE wire: a value rides as the 64-bit hash of its VARIANT
 // NAME, so a variant may be added anywhere, removed, or reordered and old
-// data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.
+// data still reads (docs/SPEC-TABLES.md §5). None takes reference 0.
 impl TableEnum for TableWeapon {
-    fn table_id(self) -> Option<u16> {
+    fn table_id(self) -> Option<u64> {
         match self.0 {
             0 => Some(0),
-            1 => Some(0x03ed),
-            2 => Some(0x54eb),
-            3 => Some(0xdf27),
-            4 => Some(0xaa64),
-            5 => Some(0x5513),
-            6 => Some(0x138b),
-            7 => Some(0x56fa),
-            8 => Some(0xf3ed),
-            9 => Some(0xa376),
-            10 => Some(0xeff8),
-            11 => Some(0xfa19),
-            12 => Some(0x61bf),
-            13 => Some(0xf720),
-            14 => Some(0xc67e),
-            15 => Some(0x86cc),
+            1 => Some(0xa790eee12766cf0c),
+            2 => Some(0x9fbfefa835da8476),
+            3 => Some(0x188bbb1783928a95),
+            4 => Some(0x2c3667b9c2f272f1),
+            5 => Some(0x0ca8b41b00d755f6),
+            6 => Some(0x985fc819fab21a4e),
+            7 => Some(0x229d0447c3086a55),
+            8 => Some(0x011c7b49a7228f9d),
+            9 => Some(0x89f7566e1123e15f),
+            10 => Some(0x8d7f25318b3b4469),
+            11 => Some(0xd9cd0dcc285b7816),
+            12 => Some(0x04dc16aea8ff5276),
+            13 => Some(0x35e53bc341129217),
+            14 => Some(0x2cc8282fb0de8831),
+            15 => Some(0x20bada21bc8cb334),
             _ => None, // no variant names this value: no wire identity
         }
     }
 
-    fn table_value(id: u16) -> Option<TableWeapon> {
+    fn table_value(id: u64) -> Option<TableWeapon> {
         match id {
-            0 => Some(TableWeapon::NONE),
-            0x03ed => Some(TableWeapon(1)),
-            0x54eb => Some(TableWeapon(2)),
-            0xdf27 => Some(TableWeapon(3)),
-            0xaa64 => Some(TableWeapon(4)),
-            0x5513 => Some(TableWeapon(5)),
-            0x138b => Some(TableWeapon(6)),
-            0x56fa => Some(TableWeapon(7)),
-            0xf3ed => Some(TableWeapon(8)),
-            0xa376 => Some(TableWeapon(9)),
-            0xeff8 => Some(TableWeapon(10)),
-            0xfa19 => Some(TableWeapon(11)),
-            0x61bf => Some(TableWeapon(12)),
-            0xf720 => Some(TableWeapon(13)),
-            0xc67e => Some(TableWeapon(14)),
-            0x86cc => Some(TableWeapon(15)),
+            0xa790eee12766cf0c => Some(TableWeapon(1)),
+            0x9fbfefa835da8476 => Some(TableWeapon(2)),
+            0x188bbb1783928a95 => Some(TableWeapon(3)),
+            0x2c3667b9c2f272f1 => Some(TableWeapon(4)),
+            0x0ca8b41b00d755f6 => Some(TableWeapon(5)),
+            0x985fc819fab21a4e => Some(TableWeapon(6)),
+            0x229d0447c3086a55 => Some(TableWeapon(7)),
+            0x011c7b49a7228f9d => Some(TableWeapon(8)),
+            0x89f7566e1123e15f => Some(TableWeapon(9)),
+            0x8d7f25318b3b4469 => Some(TableWeapon(10)),
+            0xd9cd0dcc285b7816 => Some(TableWeapon(11)),
+            0x04dc16aea8ff5276 => Some(TableWeapon(12)),
+            0x35e53bc341129217 => Some(TableWeapon(13)),
+            0x2cc8282fb0de8831 => Some(TableWeapon(14)),
+            0x20bada21bc8cb334 => Some(TableWeapon(15)),
             _ => None, // an id this build cannot name
         }
     }
@@ -313,2252 +312,1734 @@ pub fn table_pickup_event_reset(value: &mut TablePickupEvent) {
     value.amount = 0;
 }
 
-// table_entity_measure is the EXACT encoded size of a value, with no writing — the
-// parallel-generation lever. Every nested table on the wire is
-// length-prefixed, so a caller can measure subtables in parallel,
-// prefix-sum offsets and scatter-write disjoint ranges from N workers.
-// A value violating its storage invariants measures as -1, exactly as the
-// write side refuses it.
 pub fn table_entity_measure(value: &TableEntity) -> i64 {
-    let mut bytes: i64 = 2; // terminator
-    if value.entity_id != 0 {
-        bytes += 3 + 2; // entity_id
-    }
-    if value.pos_x != 0 {
-        bytes += 3 + 4; // pos_x
-    }
-    if value.pos_y != 0 {
-        bytes += 3 + 4; // pos_y
-    }
-    if value.pos_z != 0 {
-        bytes += 3 + 4; // pos_z
-    }
-    if value.yaw != 0 {
-        bytes += 3 + 2; // yaw
-    }
-    if value.pitch != 0 {
-        bytes += 3 + 2; // pitch
-    }
-    if value.vel_x != 0 {
-        bytes += 3 + 4; // vel_x
-    }
-    if value.vel_y != 0 {
-        bytes += 3 + 4; // vel_y
-    }
-    if value.vel_z != 0 {
-        bytes += 3 + 4; // vel_z
-    }
-    if value.health != 0 {
-        bytes += 3 + 4; // health
-    }
-    if value.weapon != TableWeapon::NONE {
-        if value.weapon.table_id().is_none() {
-            return -1; // no variant names this value
-        }
-        bytes += 3 + 2; // weapon: the variant's name hash
-    }
-    if value.damage != 0 {
-        bytes += 3 + 8; // damage
-    }
-    if value.moving {
-        bytes += 3 + 1; // moving
-    }
-    if value.firing {
-        bytes += 3 + 1; // firing
-    }
-    bytes
+    let mut ids = [0u64; 78];
+    let mut w = TableWriter::new(None, &mut ids);
+    w.put8(1);
+    if !table_entity_save_body(&mut w, value) { return -1; }
+    w.finish()
 }
 
 #[inline(always)]
 pub fn table_entity_save_body(w: &mut TableWriter, value: &TableEntity) -> bool {
     if value.entity_id != 0 {
-        w.put16(0x5a13);
+        w.putid(0x23fcfd6678e36712);
         w.put8(7); // entity_id
         w.put16(value.entity_id as u16);
     }
     if value.pos_x != 0 {
-        w.put16(0xaaa3);
+        w.putid(0xcb4b37357667310e);
         w.put8(4); // pos_x
         w.put32(value.pos_x as u32);
     }
     if value.pos_y != 0 {
-        w.put16(0xa5cc);
+        w.putid(0xcb4b3835766732c1);
         w.put8(4); // pos_y
         w.put32(value.pos_y as u32);
     }
     if value.pos_z != 0 {
-        w.put16(0xa985);
+        w.putid(0xcb4b353576672da8);
         w.put8(4); // pos_z
         w.put32(value.pos_z as u32);
     }
     if value.yaw != 0 {
-        w.put16(0x80c1);
+        w.putid(0xb54d8e19798e16e8);
         w.put8(7); // yaw
         w.put16(value.yaw as u16);
     }
     if value.pitch != 0 {
-        w.put16(0xf783);
+        w.putid(0x53a9f665a90cc1b1);
         w.put8(7); // pitch
         w.put16(value.pitch as u16);
     }
     if value.vel_x != 0 {
-        w.put16(0x03e2);
+        w.putid(0x6cede6b6eb60ee67);
         w.put8(4); // vel_x
         w.put32(value.vel_x as u32);
     }
     if value.vel_y != 0 {
-        w.put16(0x0151);
+        w.putid(0x6cede5b6eb60ecb4);
         w.put8(4); // vel_y
         w.put32(value.vel_y as u32);
     }
     if value.vel_z != 0 {
-        w.put16(0x0e88);
+        w.putid(0x6cede8b6eb60f1cd);
         w.put8(4); // vel_z
         w.put32(value.vel_z as u32);
     }
     if value.health != 0 {
-        w.put16(0x8617);
+        w.putid(0x7f69d4b5288ba9cf);
         w.put8(4); // health
         w.put32(value.health as u32);
     }
     if value.weapon != TableWeapon::NONE {
-        let variant_id = match value.weapon.table_id() {
-            Some(id) => id,
-            None => return false,
-        };
-        w.put16(0x4f72);
-        w.put8(7); // weapon
-        w.put16(variant_id);
+        w.putid(0xa0b610205f2c6e01);
+        w.put8(30); // weapon
+        match value.weapon.table_id() { Some(id) => {
+            if value.weapon.0 == 0 { w.putleb(0); } else { w.putid(id); }
+        }, None => return false }
     }
     if value.damage != 0 {
-        w.put16(0x15a9);
+        w.putid(0x7f6308be8ab37fc0);
         w.put8(9); // damage
         w.put64(value.damage);
     }
     if value.moving {
-        w.put16(0xa4b2);
+        w.putid(0x11a44fc1d1243da7);
         w.put8(1); // moving
         w.put8(value.moving as u8);
     }
     if value.firing {
-        w.put16(0x2302);
+        w.putid(0x7674cfd19b9031ca);
         w.put8(1); // firing
         w.put8(value.firing as u8);
     }
-    w.put16(0); // terminator
+    w.putleb(0);
     !w.overflow
 }
 
-// table_entity_save writes exactly table_entity_measure(value) bytes into the caller's slice.
 pub fn table_entity_save(value: &TableEntity, buffer: &mut [u8]) -> i64 {
-    let mut w = TableWriter::new(buffer);
-    if !table_entity_save_body(&mut w, value) {
-        return -1;
-    }
-    w.offset as i64 // == table_entity_measure(value)
+    let mut ids = [0u64; 78];
+    let mut w = TableWriter::new(Some(buffer), &mut ids);
+    w.put8(1);
+    if !table_entity_save_body(&mut w, value) { return -1; }
+    w.finish()
 }
 
 #[inline(always)]
 pub fn table_entity_load_body(r: &mut TableReader, report: &mut TableReport, value: &mut TableEntity) -> bool {
-    table_entity_reset(value); // restore declared defaults in place, then overlay
+    table_entity_reset(value);
     loop {
-        if !r.has(2) {
-            report.malformed = true;
-            return false;
-        }
-        let field_id = r.get16();
-        if field_id == 0 {
-            return true;
-        }
-        if !r.has(1) {
-            report.malformed = true;
-            return false;
-        }
+        let field_id = match r.getid() {
+            Some(None) => return true,
+            Some(Some(id)) => id,
+            None => { report.malformed = true; return false; }
+        };
+        if r.reserved(field_id) || !r.has(1) { report.malformed = true; return false; }
         let kind = r.get8();
         match field_id {
-            0x5a13 => {
-                // entity_id
+            0x23fcfd6678e36712 => { // entity_id
                 if kind != 7 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(2) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        let decoded = r.get16() as u32;
-                        value.entity_id = decoded;
-                    }
+if TableReader::widens(kind, 7) {
+let bits = match r.widened(kind) { Some(bits) => bits, None => { report.malformed = true; return false; } };
+let decoded = bits as u32;
+value.entity_id = decoded;
+report.widened += 1;
+} else {
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+}
+} else {
+if !r.has(2) { report.malformed = true; return false; }
+let mut decoded = r.get16() as u32;
+if decoded > 4095 { decoded = 4095; report.clamped += 1; }
+value.entity_id = decoded;
                 }
             }
-            0xaaa3 => {
-                // pos_x
+            0xcb4b37357667310e => { // pos_x
                 if kind != 4 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(4) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        let mut decoded = r.get32() as i32;
-                        if decoded < -16383 {
-                            decoded = -16383;
-                            report.clamped += 1;
-                        } else if decoded > 16383 {
-                            decoded = 16383;
-                            report.clamped += 1;
-                        }
-                        value.pos_x = decoded;
-                    }
+if TableReader::widens(kind, 4) {
+let bits = match r.widened(kind) { Some(bits) => bits, None => { report.malformed = true; return false; } };
+let mut decoded = bits as i32;
+if decoded < -16383 { decoded = -16383; report.clamped += 1; }
+if decoded > 16383 { decoded = 16383; report.clamped += 1; }
+value.pos_x = decoded;
+report.widened += 1;
+} else {
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+}
+} else {
+if !r.has(4) { report.malformed = true; return false; }
+let mut decoded = r.get32() as i32;
+if decoded < -16383 {
+    decoded = -16383;
+    report.clamped += 1;
+} else if decoded > 16383 {
+    decoded = 16383;
+    report.clamped += 1;
+}
+value.pos_x = decoded;
                 }
             }
-            0xa5cc => {
-                // pos_y
+            0xcb4b3835766732c1 => { // pos_y
                 if kind != 4 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(4) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        let mut decoded = r.get32() as i32;
-                        if decoded < -16383 {
-                            decoded = -16383;
-                            report.clamped += 1;
-                        } else if decoded > 16383 {
-                            decoded = 16383;
-                            report.clamped += 1;
-                        }
-                        value.pos_y = decoded;
-                    }
+if TableReader::widens(kind, 4) {
+let bits = match r.widened(kind) { Some(bits) => bits, None => { report.malformed = true; return false; } };
+let mut decoded = bits as i32;
+if decoded < -16383 { decoded = -16383; report.clamped += 1; }
+if decoded > 16383 { decoded = 16383; report.clamped += 1; }
+value.pos_y = decoded;
+report.widened += 1;
+} else {
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+}
+} else {
+if !r.has(4) { report.malformed = true; return false; }
+let mut decoded = r.get32() as i32;
+if decoded < -16383 {
+    decoded = -16383;
+    report.clamped += 1;
+} else if decoded > 16383 {
+    decoded = 16383;
+    report.clamped += 1;
+}
+value.pos_y = decoded;
                 }
             }
-            0xa985 => {
-                // pos_z
+            0xcb4b353576672da8 => { // pos_z
                 if kind != 4 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(4) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        let mut decoded = r.get32() as i32;
-                        if decoded < -16383 {
-                            decoded = -16383;
-                            report.clamped += 1;
-                        } else if decoded > 16383 {
-                            decoded = 16383;
-                            report.clamped += 1;
-                        }
-                        value.pos_z = decoded;
-                    }
+if TableReader::widens(kind, 4) {
+let bits = match r.widened(kind) { Some(bits) => bits, None => { report.malformed = true; return false; } };
+let mut decoded = bits as i32;
+if decoded < -16383 { decoded = -16383; report.clamped += 1; }
+if decoded > 16383 { decoded = 16383; report.clamped += 1; }
+value.pos_z = decoded;
+report.widened += 1;
+} else {
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+}
+} else {
+if !r.has(4) { report.malformed = true; return false; }
+let mut decoded = r.get32() as i32;
+if decoded < -16383 {
+    decoded = -16383;
+    report.clamped += 1;
+} else if decoded > 16383 {
+    decoded = 16383;
+    report.clamped += 1;
+}
+value.pos_z = decoded;
                 }
             }
-            0x80c1 => {
-                // yaw
+            0xb54d8e19798e16e8 => { // yaw
                 if kind != 7 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(2) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        let decoded = r.get16() as u32;
-                        value.yaw = decoded;
-                    }
+if TableReader::widens(kind, 7) {
+let bits = match r.widened(kind) { Some(bits) => bits, None => { report.malformed = true; return false; } };
+let decoded = bits as u32;
+value.yaw = decoded;
+report.widened += 1;
+} else {
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+}
+} else {
+if !r.has(2) { report.malformed = true; return false; }
+let mut decoded = r.get16() as u32;
+if decoded > 511 { decoded = 511; report.clamped += 1; }
+value.yaw = decoded;
                 }
             }
-            0xf783 => {
-                // pitch
+            0x53a9f665a90cc1b1 => { // pitch
                 if kind != 7 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(2) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        let decoded = r.get16() as u32;
-                        value.pitch = decoded;
-                    }
+if TableReader::widens(kind, 7) {
+let bits = match r.widened(kind) { Some(bits) => bits, None => { report.malformed = true; return false; } };
+let decoded = bits as u32;
+value.pitch = decoded;
+report.widened += 1;
+} else {
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+}
+} else {
+if !r.has(2) { report.malformed = true; return false; }
+let mut decoded = r.get16() as u32;
+if decoded > 511 { decoded = 511; report.clamped += 1; }
+value.pitch = decoded;
                 }
             }
-            0x03e2 => {
-                // vel_x
+            0x6cede6b6eb60ee67 => { // vel_x
                 if kind != 4 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(4) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        let mut decoded = r.get32() as i32;
-                        if decoded < -2048 {
-                            decoded = -2048;
-                            report.clamped += 1;
-                        } else if decoded > 2047 {
-                            decoded = 2047;
-                            report.clamped += 1;
-                        }
-                        value.vel_x = decoded;
-                    }
+if TableReader::widens(kind, 4) {
+let bits = match r.widened(kind) { Some(bits) => bits, None => { report.malformed = true; return false; } };
+let mut decoded = bits as i32;
+if decoded < -2048 { decoded = -2048; report.clamped += 1; }
+if decoded > 2047 { decoded = 2047; report.clamped += 1; }
+value.vel_x = decoded;
+report.widened += 1;
+} else {
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+}
+} else {
+if !r.has(4) { report.malformed = true; return false; }
+let mut decoded = r.get32() as i32;
+if decoded < -2048 {
+    decoded = -2048;
+    report.clamped += 1;
+} else if decoded > 2047 {
+    decoded = 2047;
+    report.clamped += 1;
+}
+value.vel_x = decoded;
                 }
             }
-            0x0151 => {
-                // vel_y
+            0x6cede5b6eb60ecb4 => { // vel_y
                 if kind != 4 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(4) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        let mut decoded = r.get32() as i32;
-                        if decoded < -2048 {
-                            decoded = -2048;
-                            report.clamped += 1;
-                        } else if decoded > 2047 {
-                            decoded = 2047;
-                            report.clamped += 1;
-                        }
-                        value.vel_y = decoded;
-                    }
+if TableReader::widens(kind, 4) {
+let bits = match r.widened(kind) { Some(bits) => bits, None => { report.malformed = true; return false; } };
+let mut decoded = bits as i32;
+if decoded < -2048 { decoded = -2048; report.clamped += 1; }
+if decoded > 2047 { decoded = 2047; report.clamped += 1; }
+value.vel_y = decoded;
+report.widened += 1;
+} else {
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+}
+} else {
+if !r.has(4) { report.malformed = true; return false; }
+let mut decoded = r.get32() as i32;
+if decoded < -2048 {
+    decoded = -2048;
+    report.clamped += 1;
+} else if decoded > 2047 {
+    decoded = 2047;
+    report.clamped += 1;
+}
+value.vel_y = decoded;
                 }
             }
-            0x0e88 => {
-                // vel_z
+            0x6cede8b6eb60f1cd => { // vel_z
                 if kind != 4 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(4) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        let mut decoded = r.get32() as i32;
-                        if decoded < -2048 {
-                            decoded = -2048;
-                            report.clamped += 1;
-                        } else if decoded > 2047 {
-                            decoded = 2047;
-                            report.clamped += 1;
-                        }
-                        value.vel_z = decoded;
-                    }
+if TableReader::widens(kind, 4) {
+let bits = match r.widened(kind) { Some(bits) => bits, None => { report.malformed = true; return false; } };
+let mut decoded = bits as i32;
+if decoded < -2048 { decoded = -2048; report.clamped += 1; }
+if decoded > 2047 { decoded = 2047; report.clamped += 1; }
+value.vel_z = decoded;
+report.widened += 1;
+} else {
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+}
+} else {
+if !r.has(4) { report.malformed = true; return false; }
+let mut decoded = r.get32() as i32;
+if decoded < -2048 {
+    decoded = -2048;
+    report.clamped += 1;
+} else if decoded > 2047 {
+    decoded = 2047;
+    report.clamped += 1;
+}
+value.vel_z = decoded;
                 }
             }
-            0x8617 => {
-                // health
+            0x7f69d4b5288ba9cf => { // health
                 if kind != 4 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(4) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        let mut decoded = r.get32() as i32;
-                        if decoded < 0 {
-                            decoded = 0;
-                            report.clamped += 1;
-                        } else if decoded > 1000 {
-                            decoded = 1000;
-                            report.clamped += 1;
-                        }
-                        value.health = decoded;
-                    }
+if TableReader::widens(kind, 4) {
+let bits = match r.widened(kind) { Some(bits) => bits, None => { report.malformed = true; return false; } };
+let mut decoded = bits as i32;
+if decoded < 0 { decoded = 0; report.clamped += 1; }
+if decoded > 1000 { decoded = 1000; report.clamped += 1; }
+value.health = decoded;
+report.widened += 1;
+} else {
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+}
+} else {
+if !r.has(4) { report.malformed = true; return false; }
+let mut decoded = r.get32() as i32;
+if decoded < 0 {
+    decoded = 0;
+    report.clamped += 1;
+} else if decoded > 1000 {
+    decoded = 1000;
+    report.clamped += 1;
+}
+value.health = decoded;
                 }
             }
-            0x4f72 => {
-                // weapon
-                if kind != 7 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(2) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        let variant = r.get16();
-                        value.weapon = match TableWeapon::table_value(variant) {
-                            Some(v) => v,
-                            None => {
-                                report.unknown += 1;
-                                TableWeapon::NONE
-                            }
-                        };
-                    }
+            0xa0b610205f2c6e01 => { // weapon
+                if kind != 30 {
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+} else {
+value.weapon = match r.getid() {
+    Some(None) => TableWeapon::NONE,
+    Some(Some(id)) => match TableWeapon::table_value(id) { Some(v) => v, None => { report.unknown += 1; TableWeapon::NONE } },
+    None => { report.malformed = true; return false; }
+};
                 }
             }
-            0x15a9 => {
-                // damage
+            0x7f6308be8ab37fc0 => { // damage
                 if kind != 9 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(8) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        value.damage = r.get64();
-                    }
+if TableReader::widens(kind, 9) {
+let bits = match r.widened(kind) { Some(bits) => bits, None => { report.malformed = true; return false; } };
+let decoded = bits as u64;
+value.damage = decoded;
+report.widened += 1;
+} else {
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+}
+} else {
+if !r.has(8) { report.malformed = true; return false; }
+value.damage = r.get64();
                 }
             }
-            0xa4b2 => {
-                // moving
+            0x11a44fc1d1243da7 => { // moving
                 if kind != 1 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(1) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        value.moving = r.get8() != 0;
-                    }
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+} else {
+if !r.has(1) { report.malformed = true; return false; }
+value.moving = r.get8() != 0;
                 }
             }
-            0x2302 => {
-                // firing
+            0x7674cfd19b9031ca => { // firing
                 if kind != 1 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(1) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        value.firing = r.get8() != 0;
-                    }
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+} else {
+if !r.has(1) { report.malformed = true; return false; }
+value.firing = r.get8() != 0;
                 }
             }
             _ => {
                 report.unknown += 1;
-                if !r.skip(kind) {
-                    report.malformed = true;
-                    return false;
-                }
+                if !r.skip(kind) { report.malformed = true; return false; }
             }
         }
     }
 }
 
-pub fn table_entity_load(value: &mut TableEntity, bytes: &[u8], report: &mut TableReport) -> bool {
-    let mut r = TableReader::new(bytes);
-    table_entity_load_body(&mut r, report, value)
+pub fn table_entity_load_verdict(value: &mut TableEntity, bytes: &[u8], report: &mut TableReport) -> TableOpenVerdict {
+    let mut r = match TableReader::open(bytes) {
+        Ok(r) => r,
+        Err(verdict) => {
+            table_entity_reset(value);
+            report.verdict = verdict;
+            if verdict == TableOpenVerdict::Damaged { report.malformed = true; }
+            return verdict;
+        }
+    };
+    report.verdict = if table_entity_load_body(&mut r, report, value) { TableOpenVerdict::Ok } else { TableOpenVerdict::BodyStopped };
+    report.verdict
 }
 
-// table_stat_measure is the EXACT encoded size of a value, with no writing — the
-// parallel-generation lever. Every nested table on the wire is
-// length-prefixed, so a caller can measure subtables in parallel,
-// prefix-sum offsets and scatter-write disjoint ranges from N workers.
-// A value violating its storage invariants measures as -1, exactly as the
-// write side refuses it.
+pub fn table_entity_load(value: &mut TableEntity, bytes: &[u8], report: &mut TableReport) -> bool {
+    table_entity_load_verdict(value, bytes, report) == TableOpenVerdict::Ok
+}
+
 pub fn table_stat_measure(value: &TableStat) -> i64 {
-    let mut bytes: i64 = 2; // terminator
-    if value.stat_id != 0 {
-        bytes += 3 + 1; // stat_id
-    }
-    if value.delta != 0 {
-        bytes += 3 + 4; // delta
-    }
-    bytes
+    let mut ids = [0u64; 78];
+    let mut w = TableWriter::new(None, &mut ids);
+    w.put8(1);
+    if !table_stat_save_body(&mut w, value) { return -1; }
+    w.finish()
 }
 
 #[inline(always)]
 pub fn table_stat_save_body(w: &mut TableWriter, value: &TableStat) -> bool {
     if value.stat_id != 0 {
-        w.put16(0xfb6c);
+        w.putid(0x80ab75f0866dbf65);
         w.put8(6); // stat_id
         w.put8(value.stat_id as u8);
     }
     if value.delta != 0 {
-        w.put16(0x1720);
+        w.putid(0x52076675ec13a0c1);
         w.put8(4); // delta
         w.put32(value.delta as u32);
     }
-    w.put16(0); // terminator
+    w.putleb(0);
     !w.overflow
 }
 
-// table_stat_save writes exactly table_stat_measure(value) bytes into the caller's slice.
 pub fn table_stat_save(value: &TableStat, buffer: &mut [u8]) -> i64 {
-    let mut w = TableWriter::new(buffer);
-    if !table_stat_save_body(&mut w, value) {
-        return -1;
-    }
-    w.offset as i64 // == table_stat_measure(value)
+    let mut ids = [0u64; 78];
+    let mut w = TableWriter::new(Some(buffer), &mut ids);
+    w.put8(1);
+    if !table_stat_save_body(&mut w, value) { return -1; }
+    w.finish()
 }
 
 #[inline(always)]
 pub fn table_stat_load_body(r: &mut TableReader, report: &mut TableReport, value: &mut TableStat) -> bool {
-    table_stat_reset(value); // restore declared defaults in place, then overlay
+    table_stat_reset(value);
     loop {
-        if !r.has(2) {
-            report.malformed = true;
-            return false;
-        }
-        let field_id = r.get16();
-        if field_id == 0 {
-            return true;
-        }
-        if !r.has(1) {
-            report.malformed = true;
-            return false;
-        }
+        let field_id = match r.getid() {
+            Some(None) => return true,
+            Some(Some(id)) => id,
+            None => { report.malformed = true; return false; }
+        };
+        if r.reserved(field_id) || !r.has(1) { report.malformed = true; return false; }
         let kind = r.get8();
         match field_id {
-            0xfb6c => {
-                // stat_id
+            0x80ab75f0866dbf65 => { // stat_id
                 if kind != 6 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(1) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        let decoded = r.get8() as u32;
-                        value.stat_id = decoded;
-                    }
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+} else {
+if !r.has(1) { report.malformed = true; return false; }
+let decoded = r.get8() as u32;
+value.stat_id = decoded;
                 }
             }
-            0x1720 => {
-                // delta
+            0x52076675ec13a0c1 => { // delta
                 if kind != 4 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(4) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        let mut decoded = r.get32() as i32;
-                        if decoded < -512 {
-                            decoded = -512;
-                            report.clamped += 1;
-                        } else if decoded > 511 {
-                            decoded = 511;
-                            report.clamped += 1;
-                        }
-                        value.delta = decoded;
-                    }
+if TableReader::widens(kind, 4) {
+let bits = match r.widened(kind) { Some(bits) => bits, None => { report.malformed = true; return false; } };
+let mut decoded = bits as i32;
+if decoded < -512 { decoded = -512; report.clamped += 1; }
+if decoded > 511 { decoded = 511; report.clamped += 1; }
+value.delta = decoded;
+report.widened += 1;
+} else {
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+}
+} else {
+if !r.has(4) { report.malformed = true; return false; }
+let mut decoded = r.get32() as i32;
+if decoded < -512 {
+    decoded = -512;
+    report.clamped += 1;
+} else if decoded > 511 {
+    decoded = 511;
+    report.clamped += 1;
+}
+value.delta = decoded;
                 }
             }
             _ => {
                 report.unknown += 1;
-                if !r.skip(kind) {
-                    report.malformed = true;
-                    return false;
-                }
+                if !r.skip(kind) { report.malformed = true; return false; }
             }
         }
     }
+}
+
+pub fn table_stat_load_verdict(value: &mut TableStat, bytes: &[u8], report: &mut TableReport) -> TableOpenVerdict {
+    let mut r = match TableReader::open(bytes) {
+        Ok(r) => r,
+        Err(verdict) => {
+            table_stat_reset(value);
+            report.verdict = verdict;
+            if verdict == TableOpenVerdict::Damaged { report.malformed = true; }
+            return verdict;
+        }
+    };
+    report.verdict = if table_stat_load_body(&mut r, report, value) { TableOpenVerdict::Ok } else { TableOpenVerdict::BodyStopped };
+    report.verdict
 }
 
 pub fn table_stat_load(value: &mut TableStat, bytes: &[u8], report: &mut TableReport) -> bool {
-    let mut r = TableReader::new(bytes);
-    table_stat_load_body(&mut r, report, value)
+    table_stat_load_verdict(value, bytes, report) == TableOpenVerdict::Ok
 }
 
-// table_mixed_measure is the EXACT encoded size of a value, with no writing — the
-// parallel-generation lever. Every nested table on the wire is
-// length-prefixed, so a caller can measure subtables in parallel,
-// prefix-sum offsets and scatter-write disjoint ranges from N workers.
-// A value violating its storage invariants measures as -1, exactly as the
-// write side refuses it.
 pub fn table_mixed_measure(value: &TableMixed) -> i64 {
-    let mut bytes: i64 = 2; // terminator
-    if value.protocol_magic != 0 {
-        bytes += 3 + 2; // protocol_magic
-    }
-    if value.sequence != 0 {
-        bytes += 3 + 2; // sequence
-    }
-    if value.ack_sequence != 0 {
-        bytes += 3 + 4; // ack_sequence
-    }
-    if value.ack_bits != 0 {
-        bytes += 3 + 4; // ack_bits
-    }
-    if value.session_id != 0 {
-        bytes += 3 + 8; // session_id
-    }
-    if value.client_id != 0 {
-        bytes += 3 + 4; // client_id
-    }
-    if value.nonce != 1 {
-        bytes += 3 + 8; // nonce
-    }
-    if value.world_time != 0 {
-        bytes += 3 + 8; // world_time
-    }
-    if value.frame_tick != 0 {
-        bytes += 3 + 8; // frame_tick
-    }
-    if value.server_time != 0.0 {
-        bytes += 3 + 4; // server_time
-    }
-    if value.entities_count < 0 || value.entities_count > 8 {
-        return -1; // storage invariant
-    }
-    if value.entities_count > 0 {
-        bytes += 3 + 4 + 5; // entities
-        for i in 0..value.entities_count as usize {
-            let element = table_entity_measure(&value.entities[i]);
-            if element < 0 {
-                return -1;
-            }
-            bytes += 4 + element;
-        }
-    }
-    if value.stats_count < 0 || value.stats_count > 80 {
-        return -1; // storage invariant
-    }
-    if value.stats_count > 0 {
-        bytes += 3 + 4 + 5; // stats
-        for i in 0..value.stats_count as usize {
-            let element = table_stat_measure(&value.stats[i]);
-            if element < 0 {
-                return -1;
-            }
-            bytes += 4 + element;
-        }
-    }
-    match &value.game_event {
-        TableEvent::None => {} // None elides — TLV absence is the None
-        TableEvent::Hit(arm) => {
-            let body = table_hit_event_measure(arm);
-            if body < 0 {
-                return -1;
-            }
-            // the u16 ARM ID, then the arm length-prefixed
-            bytes += 3 + 2 + 4 + body;
-        }
-        TableEvent::Chat(arm) => {
-            let body = table_chat_event_measure(arm);
-            if body < 0 {
-                return -1;
-            }
-            // the u16 ARM ID, then the arm length-prefixed
-            bytes += 3 + 2 + 4 + body;
-        }
-        TableEvent::Pickup(arm) => {
-            let body = table_pickup_event_measure(arm);
-            if body < 0 {
-                return -1;
-            }
-            // the u16 ARM ID, then the arm length-prefixed
-            bytes += 3 + 2 + 4 + body;
-        }
-    }
-    {
-        let mut all_default = true;
-        for i in 0..4 {
-            if value.loadout[i] != 0 {
-                all_default = false;
-                break;
-            }
-        }
-        if !all_default {
-            bytes += 3 + 4 + 5 + 4; // loadout
-        }
-    }
-    if value.player_name_length < 0 || value.player_name_length > 15 {
-        return -1; // storage invariant
-    }
-    if value.player_name_length > 0 {
-        bytes += 3 + 4 + value.player_name_length as i64; // player_name
-    }
-    if value.payload_length < 0 || value.payload_length > 16 {
-        return -1; // storage invariant
-    }
-    if value.payload_length > 0 {
-        bytes += 3 + 4 + 5 + value.payload_length as i64; // payload
-    }
-    if value.aim_x != 0.0 {
-        bytes += 3 + 4; // aim_x
-    }
-    if value.aim_y != 0.0 {
-        bytes += 3 + 4; // aim_y
-    }
-    if value.aim_z != 0.0 {
-        bytes += 3 + 4; // aim_z
-    }
-    if value.recoil != 0.0 {
-        bytes += 3 + 4; // recoil
-    }
-    if value.drift != 0.0 {
-        bytes += 3 + 8; // drift
-    }
-    if value.wide_key != 0 {
-        bytes += 3 + 8; // wide_key
-    }
-    if value.flux != 0 {
-        bytes += 3 + 8; // flux
-    }
-    if value.ping != 0.0 {
-        bytes += 3 + 4; // ping
-    }
-    if value.crc_hint != 0 {
-        bytes += 3 + 4; // crc_hint
-    }
-    if value.has_extra {
-        bytes += 3 + 1; // has_extra
-    }
-    if value.has_extra {
-        if value.extra != 0 {
-            bytes += 3 + 4; // extra
-        }
-    }
-    if !value.has_extra {
-        if value.idle_ticks != 0 {
-            bytes += 3 + 4; // idle_ticks
-        }
-    }
-    bytes
+    let mut ids = [0u64; 78];
+    let mut w = TableWriter::new(None, &mut ids);
+    w.put8(1);
+    if !table_mixed_save_body(&mut w, value) { return -1; }
+    w.finish()
 }
 
 #[inline(always)]
 pub fn table_mixed_save_body(w: &mut TableWriter, value: &TableMixed) -> bool {
     if value.protocol_magic != 0 {
-        w.put16(0xae30);
+        w.putid(0x6a5a70d91aa115fd);
         w.put8(7); // protocol_magic
         w.put16(value.protocol_magic as u16);
     }
     if value.sequence != 0 {
-        w.put16(0xd32b);
+        w.putid(0xaa38aca481f528a8);
         w.put8(7); // sequence
         w.put16(value.sequence as u16);
     }
     if value.ack_sequence != 0 {
-        w.put16(0x3363);
+        w.putid(0x0dbe005c56697c3e);
         w.put8(4); // ack_sequence
         w.put32(value.ack_sequence as u32);
     }
     if value.ack_bits != 0 {
-        w.put16(0xebb9);
+        w.putid(0x9bae0da8b829ee03);
         w.put8(8); // ack_bits
         w.put32(value.ack_bits as u32);
     }
     if value.session_id != 0 {
-        w.put16(0x8790);
+        w.putid(0xb7d7b5650a590b05);
         w.put8(9); // session_id
         w.put64(value.session_id as u64);
     }
     if value.client_id != 0 {
-        w.put16(0xd443);
+        w.putid(0x6d7b98e2d095967e);
         w.put8(8); // client_id
         w.put32(value.client_id as u32);
     }
     if value.nonce != 1 {
-        w.put16(0x80f0);
+        w.putid(0x73a94c71d60dc0d8);
         w.put8(9); // nonce
         w.put64(value.nonce as u64);
     }
     if value.world_time != 0 {
-        w.put16(0x77f2);
+        w.putid(0x3eee6b51be54fc85);
         w.put8(5); // world_time
         w.put64(value.world_time as u64);
     }
     if value.frame_tick != 0 {
-        w.put16(0xcbc2);
+        w.putid(0x7bbc035f7b6d0112);
         w.put8(9); // frame_tick
         w.put64(value.frame_tick as u64);
     }
     if value.server_time != 0.0 {
-        w.put16(0x27f9);
+        w.putid(0x3c460475f9be69c6);
         w.put8(10); // server_time
         w.put32(table_float_to_bits(value.server_time));
     }
-    if value.entities_count < 0 || value.entities_count > 8 {
-        return false; // storage invariant
-    }
+    if value.entities_count < 0 || value.entities_count > 8 { return false; }
     if value.entities_count > 0 {
-        w.put16(0x25e3);
+        w.putid(0x935d0fb07bb3822a);
         w.put8(14); // entities
-        let len_at = w.offset;
-        w.put32(0);
-        w.put8(13);
-        w.put32(value.entities_count as u32);
-        for i in 0..value.entities_count as usize {
-            let element_len_at = w.offset;
-            w.put32(0);
-            if !table_entity_save_body(w, &value.entities[i]) {
-                return false;
+        if !w.framed(|w| {
+            w.put8(13);
+            w.putleb((value.entities_count as usize) as u64);
+            for i in 0..value.entities_count as usize {
+        if !w.framed(|w| table_entity_save_body(w, &value.entities[i])) { return false; }
             }
-            w.patch32(element_len_at, (w.offset - element_len_at - 4) as u32);
-        }
-        w.patch32(len_at, (w.offset - len_at - 4) as u32);
+            !w.overflow
+        }) { return false; }
     }
-    if value.stats_count < 0 || value.stats_count > 80 {
-        return false; // storage invariant
-    }
+    if value.stats_count < 0 || value.stats_count > 80 { return false; }
     if value.stats_count > 0 {
-        w.put16(0x76dd);
+        w.putid(0xee639cad45b1994c);
         w.put8(14); // stats
-        let len_at = w.offset;
-        w.put32(0);
-        w.put8(13);
-        w.put32(value.stats_count as u32);
-        for i in 0..value.stats_count as usize {
-            let element_len_at = w.offset;
-            w.put32(0);
-            if !table_stat_save_body(w, &value.stats[i]) {
-                return false;
+        if !w.framed(|w| {
+            w.put8(13);
+            w.putleb((value.stats_count as usize) as u64);
+            for i in 0..value.stats_count as usize {
+        if !w.framed(|w| table_stat_save_body(w, &value.stats[i])) { return false; }
             }
-            w.patch32(element_len_at, (w.offset - element_len_at - 4) as u32);
-        }
-        w.patch32(len_at, (w.offset - len_at - 4) as u32);
+            !w.overflow
+        }) { return false; }
     }
     if value.game_event != TableEvent::None {
-        w.put16(0xa17e);
+        w.putid(0x2e35dc5321aa5790);
         w.put8(15); // game_event
-        // the ARM ID is the hash of the arm's NAME (docs/SPEC-TABLES.md §5), so
-        // arms may be added anywhere, removed and reordered
         match &value.game_event {
-            TableEvent::None => {}
-            TableEvent::Hit(_) => w.put16(0xba78),
-            TableEvent::Chat(_) => w.put16(0x5be0),
-            TableEvent::Pickup(_) => w.put16(0x99dd),
-        }
-        let len_at = w.offset;
-        w.put32(0);
-        match &value.game_event {
-            TableEvent::None => {}
+            TableEvent::None => w.putleb(0),
             TableEvent::Hit(arm) => {
-                if !table_hit_event_save_body(w, arm) {
-                    return false;
-                }
+                w.putid(0x33732819300680aa);
+                w.put8(13);
+                if !w.framed(|w| table_hit_event_save_body(w, arm)) { return false; }
             }
             TableEvent::Chat(arm) => {
-                if !table_chat_event_save_body(w, arm) {
-                    return false;
-                }
+                w.putid(0xf2a38d910b5b348b);
+                w.put8(13);
+                if !w.framed(|w| table_chat_event_save_body(w, arm)) { return false; }
             }
             TableEvent::Pickup(arm) => {
-                if !table_pickup_event_save_body(w, arm) {
-                    return false;
-                }
+                w.putid(0x9fa3a41c86ecb765);
+                w.put8(13);
+                if !w.framed(|w| table_pickup_event_save_body(w, arm)) { return false; }
             }
         }
-        w.patch32(len_at, (w.offset - len_at - 4) as u32);
     }
-    {
-        let mut all_default = true;
-        for i in 0..4 {
-            if value.loadout[i] != 0 {
-                all_default = false;
-                break;
-            }
-        }
-        if !all_default {
-            w.put16(0x9f78);
-            w.put8(14); // loadout (fixed [4])
-            let len_at = w.offset;
-            w.put32(0);
+    if value.loadout.iter().any(|v| *v != 0) {
+        w.putid(0x5759ce7586bbb5a3);
+        w.put8(14); // loadout
+        if !w.framed(|w| {
             w.put8(6);
-            w.put32(4);
+            w.putleb((4) as u64);
             for i in 0..4 {
-                w.put8(value.loadout[i] as u8);
+        w.put8(value.loadout[i] as u8);
             }
-            w.patch32(len_at, (w.offset - len_at - 4) as u32);
-        }
+            !w.overflow
+        }) { return false; }
     }
-    if value.player_name_length < 0 || value.player_name_length > 15 {
-        return false; // storage invariant
-    }
+    if value.player_name_length < 0 || value.player_name_length > 15 { return false; }
     if value.player_name_length > 0 {
-        w.put16(0x2d3e);
+        w.putid(0x13a62f542cf8e86e);
         w.put8(12); // player_name
-        w.put32(value.player_name_length as u32);
+        w.putleb(value.player_name_length as u64);
         w.raw(&value.player_name[..value.player_name_length as usize]);
     }
-    if value.payload_length < 0 || value.payload_length > 16 {
-        return false; // storage invariant
-    }
+    if value.payload_length < 0 || value.payload_length > 16 { return false; }
     if value.payload_length > 0 {
-        w.put16(0x44aa);
+        w.putid(0xcfb8a9d063b5e9e5);
         w.put8(14); // payload
-        w.put32((5 + value.payload_length) as u32);
-        w.put8(6);
-        w.put32(value.payload_length as u32);
-        w.raw(&value.payload[..value.payload_length as usize]);
+        if !w.framed(|w| {
+            w.put8(6);
+            w.putleb((value.payload_length as usize) as u64);
+            for i in 0..value.payload_length as usize {
+        w.put8(value.payload[i]);
+            }
+            !w.overflow
+        }) { return false; }
     }
     if value.aim_x != 0.0 {
-        w.put16(0x84e9);
+        w.putid(0xdbaf7be5e24296c9);
         w.put8(10); // aim_x
         w.put32(table_float_to_bits(value.aim_x));
     }
     if value.aim_y != 0.0 {
-        w.put16(0x8d96);
+        w.putid(0xdbaf7ae5e2429516);
         w.put8(10); // aim_y
         w.put32(table_float_to_bits(value.aim_y));
     }
     if value.aim_z != 0.0 {
-        w.put16(0x8e03);
+        w.putid(0xdbaf79e5e2429363);
         w.put8(10); // aim_z
         w.put32(table_float_to_bits(value.aim_z));
     }
     if value.recoil != 0.0 {
-        w.put16(0x2d04);
+        w.putid(0x9cef31fff7e2e457);
         w.put8(10); // recoil
         w.put32(table_float_to_bits(value.recoil));
     }
     if value.drift != 0.0 {
-        w.put16(0xc023);
+        w.putid(0x5ab3f9c9341f6c04);
         w.put8(11); // drift
         w.put64(table_double_to_bits(value.drift));
     }
     if value.wide_key != 0 {
-        w.put16(0x272f);
+        w.putid(0xa3348580461faf16);
         w.put8(9); // wide_key
         w.put64(value.wide_key as u64);
     }
     if value.flux != 0 {
-        w.put16(0x196a);
+        w.putid(0xd61bdd7908af2642);
         w.put8(5); // flux
         w.put64(value.flux as u64);
     }
     if value.ping != 0.0 {
-        w.put16(0xe6d4);
+        w.putid(0xbf30e00dc53307a9);
         w.put8(10); // ping
         w.put32(table_float_to_bits(value.ping));
     }
     if value.crc_hint != 0 {
-        w.put16(0xd3dc);
+        w.putid(0x560d6527ccd8515f);
         w.put8(8); // crc_hint
         w.put32(value.crc_hint as u32);
     }
     if value.has_extra {
-        w.put16(0xb023);
+        w.putid(0xc08292176cfd8672);
         w.put8(1); // has_extra
         w.put8(value.has_extra as u8);
     }
     if value.has_extra {
         if value.extra != 0 {
-            w.put16(0xb579);
+            w.putid(0xfd29ee12a979cb69);
             w.put8(4); // extra
             w.put32(value.extra as u32);
         }
     }
     if !value.has_extra {
         if value.idle_ticks != 0 {
-            w.put16(0x9555);
+            w.putid(0x78101ac0aa8cbcfe);
             w.put8(4); // idle_ticks
             w.put32(value.idle_ticks as u32);
         }
     }
-    w.put16(0); // terminator
+    w.putleb(0);
     !w.overflow
 }
 
-// table_mixed_save writes exactly table_mixed_measure(value) bytes into the caller's slice.
 pub fn table_mixed_save(value: &TableMixed, buffer: &mut [u8]) -> i64 {
-    let mut w = TableWriter::new(buffer);
-    if !table_mixed_save_body(&mut w, value) {
-        return -1;
-    }
-    w.offset as i64 // == table_mixed_measure(value)
+    let mut ids = [0u64; 78];
+    let mut w = TableWriter::new(Some(buffer), &mut ids);
+    w.put8(1);
+    if !table_mixed_save_body(&mut w, value) { return -1; }
+    w.finish()
 }
 
 #[inline(always)]
 pub fn table_mixed_load_body(r: &mut TableReader, report: &mut TableReport, value: &mut TableMixed) -> bool {
-    table_mixed_reset(value); // restore declared defaults in place, then overlay
+    table_mixed_reset(value);
     loop {
-        if !r.has(2) {
-            report.malformed = true;
-            return false;
-        }
-        let field_id = r.get16();
-        if field_id == 0 {
-            return true;
-        }
-        if !r.has(1) {
-            report.malformed = true;
-            return false;
-        }
+        let field_id = match r.getid() {
+            Some(None) => return true,
+            Some(Some(id)) => id,
+            None => { report.malformed = true; return false; }
+        };
+        if r.reserved(field_id) || !r.has(1) { report.malformed = true; return false; }
         let kind = r.get8();
         match field_id {
-            0xae30 => {
-                // protocol_magic
+            0x6a5a70d91aa115fd => { // protocol_magic
                 if kind != 7 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(2) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        let decoded = r.get16() as u16;
-                        value.protocol_magic = decoded;
-                    }
+if TableReader::widens(kind, 7) {
+let bits = match r.widened(kind) { Some(bits) => bits, None => { report.malformed = true; return false; } };
+let decoded = bits as u16;
+value.protocol_magic = decoded;
+report.widened += 1;
+} else {
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+}
+} else {
+if !r.has(2) { report.malformed = true; return false; }
+let decoded = r.get16() as u16;
+value.protocol_magic = decoded;
                 }
             }
-            0xd32b => {
-                // sequence
+            0xaa38aca481f528a8 => { // sequence
                 if kind != 7 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(2) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        let decoded = r.get16() as u32;
-                        value.sequence = decoded;
-                    }
+if TableReader::widens(kind, 7) {
+let bits = match r.widened(kind) { Some(bits) => bits, None => { report.malformed = true; return false; } };
+let decoded = bits as u32;
+value.sequence = decoded;
+report.widened += 1;
+} else {
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+}
+} else {
+if !r.has(2) { report.malformed = true; return false; }
+let decoded = r.get16() as u32;
+value.sequence = decoded;
                 }
             }
-            0x3363 => {
-                // ack_sequence
+            0x0dbe005c56697c3e => { // ack_sequence
                 if kind != 4 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(4) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        let mut decoded = r.get32() as i32;
-                        if decoded < 0 {
-                            decoded = 0;
-                            report.clamped += 1;
-                        } else if decoded > 65535 {
-                            decoded = 65535;
-                            report.clamped += 1;
-                        }
-                        value.ack_sequence = decoded;
-                    }
+if TableReader::widens(kind, 4) {
+let bits = match r.widened(kind) { Some(bits) => bits, None => { report.malformed = true; return false; } };
+let mut decoded = bits as i32;
+if decoded < 0 { decoded = 0; report.clamped += 1; }
+if decoded > 65535 { decoded = 65535; report.clamped += 1; }
+value.ack_sequence = decoded;
+report.widened += 1;
+} else {
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+}
+} else {
+if !r.has(4) { report.malformed = true; return false; }
+let mut decoded = r.get32() as i32;
+if decoded < 0 {
+    decoded = 0;
+    report.clamped += 1;
+} else if decoded > 65535 {
+    decoded = 65535;
+    report.clamped += 1;
+}
+value.ack_sequence = decoded;
                 }
             }
-            0xebb9 => {
-                // ack_bits
+            0x9bae0da8b829ee03 => { // ack_bits
                 if kind != 8 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(4) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        let decoded = r.get32() as u32;
-                        value.ack_bits = decoded;
-                    }
+if TableReader::widens(kind, 8) {
+let bits = match r.widened(kind) { Some(bits) => bits, None => { report.malformed = true; return false; } };
+let decoded = bits as u32;
+value.ack_bits = decoded;
+report.widened += 1;
+} else {
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+}
+} else {
+if !r.has(4) { report.malformed = true; return false; }
+let decoded = r.get32() as u32;
+value.ack_bits = decoded;
                 }
             }
-            0x8790 => {
-                // session_id
+            0xb7d7b5650a590b05 => { // session_id
                 if kind != 9 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(8) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        let decoded = r.get64() as u64;
-                        value.session_id = decoded;
-                    }
+if TableReader::widens(kind, 9) {
+let bits = match r.widened(kind) { Some(bits) => bits, None => { report.malformed = true; return false; } };
+let decoded = bits as u64;
+value.session_id = decoded;
+report.widened += 1;
+} else {
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+}
+} else {
+if !r.has(8) { report.malformed = true; return false; }
+let decoded = r.get64() as u64;
+value.session_id = decoded;
                 }
             }
-            0xd443 => {
-                // client_id
+            0x6d7b98e2d095967e => { // client_id
                 if kind != 8 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(4) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        let decoded = r.get32() as u32;
-                        value.client_id = decoded;
-                    }
+if TableReader::widens(kind, 8) {
+let bits = match r.widened(kind) { Some(bits) => bits, None => { report.malformed = true; return false; } };
+let decoded = bits as u32;
+value.client_id = decoded;
+report.widened += 1;
+} else {
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+}
+} else {
+if !r.has(4) { report.malformed = true; return false; }
+let decoded = r.get32() as u32;
+value.client_id = decoded;
                 }
             }
-            0x80f0 => {
-                // nonce
+            0x73a94c71d60dc0d8 => { // nonce
                 if kind != 9 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(8) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        let mut decoded = r.get64() as u64;
-                        if decoded < 1 {
-                            decoded = 1;
-                            report.clamped += 1;
-                        } else if decoded > 9223372036854775807 {
-                            decoded = 9223372036854775807;
-                            report.clamped += 1;
-                        }
-                        value.nonce = decoded;
-                    }
+if TableReader::widens(kind, 9) {
+let bits = match r.widened(kind) { Some(bits) => bits, None => { report.malformed = true; return false; } };
+let mut decoded = bits as u64;
+if decoded < 1 { decoded = 1; report.clamped += 1; }
+if decoded > 9223372036854775807 { decoded = 9223372036854775807; report.clamped += 1; }
+value.nonce = decoded;
+report.widened += 1;
+} else {
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+}
+} else {
+if !r.has(8) { report.malformed = true; return false; }
+let mut decoded = r.get64() as u64;
+if decoded < 1 {
+    decoded = 1;
+    report.clamped += 1;
+} else if decoded > 9223372036854775807 {
+    decoded = 9223372036854775807;
+    report.clamped += 1;
+}
+value.nonce = decoded;
                 }
             }
-            0x77f2 => {
-                // world_time
+            0x3eee6b51be54fc85 => { // world_time
                 if kind != 5 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(8) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        let mut decoded = r.get64() as i64;
-                        if decoded < -1000000000000 {
-                            decoded = -1000000000000;
-                            report.clamped += 1;
-                        } else if decoded > 1000000000000 {
-                            decoded = 1000000000000;
-                            report.clamped += 1;
-                        }
-                        value.world_time = decoded;
-                    }
+if TableReader::widens(kind, 5) {
+let bits = match r.widened(kind) { Some(bits) => bits, None => { report.malformed = true; return false; } };
+let mut decoded = bits as i64;
+if decoded < -1000000000000 { decoded = -1000000000000; report.clamped += 1; }
+if decoded > 1000000000000 { decoded = 1000000000000; report.clamped += 1; }
+value.world_time = decoded;
+report.widened += 1;
+} else {
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+}
+} else {
+if !r.has(8) { report.malformed = true; return false; }
+let mut decoded = r.get64() as i64;
+if decoded < -1000000000000 {
+    decoded = -1000000000000;
+    report.clamped += 1;
+} else if decoded > 1000000000000 {
+    decoded = 1000000000000;
+    report.clamped += 1;
+}
+value.world_time = decoded;
                 }
             }
-            0xcbc2 => {
-                // frame_tick
+            0x7bbc035f7b6d0112 => { // frame_tick
                 if kind != 9 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(8) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        let decoded = r.get64() as u64;
-                        value.frame_tick = decoded;
-                    }
+if TableReader::widens(kind, 9) {
+let bits = match r.widened(kind) { Some(bits) => bits, None => { report.malformed = true; return false; } };
+let decoded = bits as u64;
+value.frame_tick = decoded;
+report.widened += 1;
+} else {
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+}
+} else {
+if !r.has(8) { report.malformed = true; return false; }
+let mut decoded = r.get64() as u64;
+if decoded > 281474976710655 { decoded = 281474976710655; report.clamped += 1; }
+value.frame_tick = decoded;
                 }
             }
-            0x27f9 => {
-                // server_time
+            0x3c460475f9be69c6 => { // server_time
                 if kind != 10 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(4) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        value.server_time = table_bits_to_float(r.get32());
-                    }
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+} else {
+if !r.has(4) { report.malformed = true; return false; }
+let mut decoded = table_bits_to_float(r.get32());
+if decoded < 0.0 { decoded = 0.0; report.clamped += 1; } else if decoded > 65535.0 { decoded = 65535.0; report.clamped += 1; }
+value.server_time = decoded;
                 }
             }
-            0x25e3 => {
-                // entities
+            0x935d0fb07bb3822a => { // entities
                 if kind != 14 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(4) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    let body_len = r.get32() as usize;
-                    if !r.has(body_len as u64) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    let body_end = r.offset + body_len;
-                    if body_len >= 5 {
-                        let element_kind = r.get8();
-                        let count = r.get32();
-                        if element_kind != 13 {
-                            report.kind_mismatch += 1;
-                            r.offset = body_end;
-                        } else {
-                            let mut keep = count as usize;
-                            if keep > 8 {
-                                keep = 8;
-                                report.clamped += 1;
-                            }
-                            // elements are BOUNDED by the field body: a count the length cannot
-                            // cover keeps the decoded prefix, flags malformed, and the parent
-                            // continues at the next field — following fields' bytes are never
-                            // fabricated into elements
-                            let mut sub = r.sub(body_end - r.offset);
-                            let mut decoded = 0usize;
-                            for i in 0..keep {
-                                if !sub.has(4) {
-                                    report.malformed = true;
-                                    break;
-                                }
-                                let element_len = sub.get32() as usize;
-                                if !sub.has(element_len as u64) {
-                                    report.malformed = true;
-                                    break;
-                                }
-                                {
-                                    let mut element = sub.sub(element_len);
-                                    table_entity_load_body(&mut element, report, &mut value.entities[i]);
-                                }
-                                sub.offset += element_len;
-                                decoded = i + 1;
-                            }
-                            value.entities_count = decoded as i32;
-                        }
-                    }
-                    r.offset = body_end; // excess elements and slack skip via the length
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+} else {
+let mut array = match r.take() { Some(r) => r, None => { report.malformed = true; return false; } };
+if array.has(2) {
+let mut header = *r;
+header.offset -= array.buffer.len();
+let start = header.offset;
+let element_kind = header.get8();
+let count = header.getleb();
+array.offset = (header.offset - start).min(array.buffer.len());
+if let Some(count) = count {
+if element_kind != 13 { report.kind_mismatch += 1; } else {
+let keep = count.min(8) as usize;
+if count > 8 { report.clamped += 1; }
+let mut decoded_count = 0;
+for i in 0..keep {
+let mut element = match array.take() { Some(r) => r, None => { report.malformed = true; break; } };
+table_entity_load_body(&mut element, report, &mut value.entities[i]);
+decoded_count = i + 1;
+}
+value.entities_count = decoded_count as i32;
+}
+} else { report.malformed = true; }
+}
                 }
             }
-            0x76dd => {
-                // stats
+            0xee639cad45b1994c => { // stats
                 if kind != 14 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(4) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    let body_len = r.get32() as usize;
-                    if !r.has(body_len as u64) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    let body_end = r.offset + body_len;
-                    if body_len >= 5 {
-                        let element_kind = r.get8();
-                        let count = r.get32();
-                        if element_kind != 13 {
-                            report.kind_mismatch += 1;
-                            r.offset = body_end;
-                        } else {
-                            let mut keep = count as usize;
-                            if keep > 80 {
-                                keep = 80;
-                                report.clamped += 1;
-                            }
-                            // elements are BOUNDED by the field body: a count the length cannot
-                            // cover keeps the decoded prefix, flags malformed, and the parent
-                            // continues at the next field — following fields' bytes are never
-                            // fabricated into elements
-                            let mut sub = r.sub(body_end - r.offset);
-                            let mut decoded = 0usize;
-                            for i in 0..keep {
-                                if !sub.has(4) {
-                                    report.malformed = true;
-                                    break;
-                                }
-                                let element_len = sub.get32() as usize;
-                                if !sub.has(element_len as u64) {
-                                    report.malformed = true;
-                                    break;
-                                }
-                                {
-                                    let mut element = sub.sub(element_len);
-                                    table_stat_load_body(&mut element, report, &mut value.stats[i]);
-                                }
-                                sub.offset += element_len;
-                                decoded = i + 1;
-                            }
-                            value.stats_count = decoded as i32;
-                        }
-                    }
-                    r.offset = body_end; // excess elements and slack skip via the length
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+} else {
+let mut array = match r.take() { Some(r) => r, None => { report.malformed = true; return false; } };
+if array.has(2) {
+let mut header = *r;
+header.offset -= array.buffer.len();
+let start = header.offset;
+let element_kind = header.get8();
+let count = header.getleb();
+array.offset = (header.offset - start).min(array.buffer.len());
+if let Some(count) = count {
+if element_kind != 13 { report.kind_mismatch += 1; } else {
+let keep = count.min(80) as usize;
+if count > 80 { report.clamped += 1; }
+let mut decoded_count = 0;
+for i in 0..keep {
+let mut element = match array.take() { Some(r) => r, None => { report.malformed = true; break; } };
+table_stat_load_body(&mut element, report, &mut value.stats[i]);
+decoded_count = i + 1;
+}
+value.stats_count = decoded_count as i32;
+}
+} else { report.malformed = true; }
+}
                 }
             }
-            0xa17e => {
-                // game_event
+            0x2e35dc5321aa5790 => { // game_event
                 if kind != 15 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(2) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    let arm_id = r.get16();
-                    if arm_id == 0 {
-                        value.game_event = TableEvent::None; // empty: the id is the whole payload
-                    } else {
-                        if !r.has(4) {
-                            report.malformed = true;
-                            return false;
-                        }
-                        let body_len = r.get32() as usize;
-                        if !r.has(body_len as u64) {
-                            report.malformed = true;
-                            return false;
-                        }
-                        {
-                            let mut sub = r.sub(body_len);
-                            match arm_id {
-                                0xba78 => {
-                                    // hit
-                                    let mut arm = TableHitEvent::default();
-                                    table_hit_event_reset(&mut arm);
-                                    table_hit_event_load_body(&mut sub, report, &mut arm);
-                                    value.game_event = TableEvent::Hit(arm);
-                                }
-                                0x5be0 => {
-                                    // chat
-                                    let mut arm = TableChatEvent::default();
-                                    table_chat_event_reset(&mut arm);
-                                    table_chat_event_load_body(&mut sub, report, &mut arm);
-                                    value.game_event = TableEvent::Chat(arm);
-                                }
-                                0x99dd => {
-                                    // pickup
-                                    let mut arm = TablePickupEvent::default();
-                                    table_pickup_event_reset(&mut arm);
-                                    table_pickup_event_load_body(&mut sub, report, &mut arm);
-                                    value.game_event = TableEvent::Pickup(arm);
-                                }
-                                _ => {
-                                    // an arm this reader cannot name: the value reads EMPTY and the
-                                    // body is skipped by its length, never misdecoded. The reset is
-                                    // explicit, not the prefill's: a repeated field id must not leave
-                                    // an arm decoded by an earlier occurrence standing (§4).
-                                    value.game_event = TableEvent::None;
-                                    report.unknown += 1;
-                                }
-                            }
-                        }
-                        r.offset += body_len;
-                    }
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+} else {
+let arm_id = match r.getid() { Some(id) => id, None => { report.malformed = true; return false; } };
+if let Some(arm_id) = arm_id {
+if !r.has(1) { report.malformed = true; return false; }
+let arm_kind = r.get8();
+let mut arm_body = match r.take() { Some(r) => r, None => { report.malformed = true; return false; } };
+value.game_event = TableEvent::None;
+match arm_id {
+0x33732819300680aa => {
+    if arm_kind != 13 { report.kind_mismatch += 1; }
+    else {
+        let mut arm = TableHitEvent::default();
+        table_hit_event_load_body(&mut arm_body, report, &mut arm);
+        if arm_body.offset == arm_body.buffer.len() {
+            value.game_event = TableEvent::Hit(arm);
+        } else { report.malformed = true; }
+    }
+}
+0xf2a38d910b5b348b => {
+    if arm_kind != 13 { report.kind_mismatch += 1; }
+    else {
+        let mut arm = TableChatEvent::default();
+        table_chat_event_load_body(&mut arm_body, report, &mut arm);
+        if arm_body.offset == arm_body.buffer.len() {
+            value.game_event = TableEvent::Chat(arm);
+        } else { report.malformed = true; }
+    }
+}
+0x9fa3a41c86ecb765 => {
+    if arm_kind != 13 { report.kind_mismatch += 1; }
+    else {
+        let mut arm = TablePickupEvent::default();
+        table_pickup_event_load_body(&mut arm_body, report, &mut arm);
+        if arm_body.offset == arm_body.buffer.len() {
+            value.game_event = TableEvent::Pickup(arm);
+        } else { report.malformed = true; }
+    }
+}
+_ => { report.unknown += 1; }
+}
+} else { value.game_event = TableEvent::None; }
                 }
             }
-            0x9f78 => {
-                // loadout
+            0x5759ce7586bbb5a3 => { // loadout
                 if kind != 14 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(4) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    let body_len = r.get32() as usize;
-                    if !r.has(body_len as u64) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    let body_end = r.offset + body_len;
-                    if body_len >= 5 {
-                        let element_kind = r.get8();
-                        let count = r.get32();
-                        if element_kind != 6 {
-                            report.kind_mismatch += 1;
-                            r.offset = body_end;
-                        } else {
-                            let mut keep = count as usize;
-                            if keep > 4 {
-                                keep = 4;
-                                report.clamped += 1;
-                            }
-                            // elements are BOUNDED by the field body: a count the length cannot
-                            // cover keeps the decoded prefix, flags malformed, and the parent
-                            // continues at the next field — following fields' bytes are never
-                            // fabricated into elements
-                            let mut sub = r.sub(body_end - r.offset);
-                            let mut decoded = 0usize;
-                            for i in 0..keep {
-                                if !sub.has(1) {
-                                    report.malformed = true;
-                                    break;
-                                }
-                                {
-                                    let decoded = sub.get8() as u8;
-                                    value.loadout[i] = decoded;
-                                }
-                                decoded = i + 1;
-                            }
-                            let _ = decoded; // a fixed array keeps every slot: the prefill holds the tail
-                        }
-                    }
-                    r.offset = body_end; // excess elements and slack skip via the length
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+} else {
+let mut array = match r.take() { Some(r) => r, None => { report.malformed = true; return false; } };
+if array.has(2) {
+let mut header = *r;
+header.offset -= array.buffer.len();
+let start = header.offset;
+let element_kind = header.get8();
+let count = header.getleb();
+array.offset = (header.offset - start).min(array.buffer.len());
+if let Some(count) = count {
+if element_kind != 6 { report.kind_mismatch += 1; } else {
+let keep = count.min(4) as usize;
+if count > 4 { report.clamped += 1; }
+let mut decoded_count = 0;
+for i in 0..keep {
+if !array.has(1) { report.malformed = true; break; }
+let decoded = array.get8() as u8;
+value.loadout[i] = decoded;
+decoded_count = i + 1;
+}
+let _ = decoded_count;
+}
+} else { report.malformed = true; }
+}
                 }
             }
-            0x2d3e => {
-                // player_name
+            0x13a62f542cf8e86e => { // player_name
                 if kind != 12 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(4) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    let len = r.get32();
-                    if !r.has(len as u64) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    let mut keep = len as usize;
-                    if keep > 15 {
-                        keep = 15;
-                        report.clamped += 1;
-                    }
-                    value.player_name[..keep].copy_from_slice(&r.buffer[r.offset..r.offset + keep]);
-                    value.player_name_length = keep as i32;
-                    r.offset += len as usize;
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+} else {
+let text = match r.take() { Some(r) => r, None => { report.malformed = true; return false; } };
+if text.buffer.contains(&0) || core::str::from_utf8(text.buffer).is_err() {
+    report.malformed = true;
+    value.player_name_length = 0;
+} else {
+    let mut keep = text.buffer.len();
+    if keep > 15 {
+        keep = 15;
+        while keep > 0 && text.buffer[keep] & 0xc0 == 0x80 { keep -= 1; }
+        report.clamped += 1;
+    }
+    value.player_name[..keep].copy_from_slice(&text.buffer[..keep]);
+    value.player_name_length = keep as i32;
+}
                 }
             }
-            0x44aa => {
-                // payload
+            0xcfb8a9d063b5e9e5 => { // payload
                 if kind != 14 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(4) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    let body_len = r.get32() as usize;
-                    if !r.has(body_len as u64) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    let body_end = r.offset + body_len;
-                    if body_len >= 5 {
-                        let element_kind = r.get8();
-                        let count = r.get32();
-                        if element_kind != 6 {
-                            report.kind_mismatch += 1;
-                            r.offset = body_end;
-                        } else {
-                            let mut keep = count as usize;
-                            if keep > 16 {
-                                keep = 16;
-                                report.clamped += 1;
-                            }
-                            // elements are BOUNDED by the field body: a count the length cannot
-                            // cover keeps the decoded prefix, flags malformed, and the parent
-                            // continues at the next field — following fields' bytes are never
-                            // fabricated into elements
-                            let mut sub = r.sub(body_end - r.offset);
-                            let mut decoded = 0usize;
-                            for i in 0..keep {
-                                if !sub.has(1) {
-                                    report.malformed = true;
-                                    break;
-                                }
-                                {
-                                    let decoded = sub.get8() as u8;
-                                    value.payload[i] = decoded;
-                                }
-                                decoded = i + 1;
-                            }
-                            value.payload_length = decoded as i32;
-                        }
-                    }
-                    r.offset = body_end; // excess elements and slack skip via the length
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+} else {
+let mut array = match r.take() { Some(r) => r, None => { report.malformed = true; return false; } };
+if array.has(2) {
+let mut header = *r;
+header.offset -= array.buffer.len();
+let start = header.offset;
+let element_kind = header.get8();
+let count = header.getleb();
+array.offset = (header.offset - start).min(array.buffer.len());
+if let Some(count) = count {
+if element_kind != 6 { report.kind_mismatch += 1; } else {
+let keep = count.min(16) as usize;
+if count > 16 { report.clamped += 1; }
+let mut decoded_count = 0;
+for i in 0..keep {
+if !array.has(1) { report.malformed = true; break; }
+let decoded = array.get8() as u8;
+value.payload[i] = decoded;
+decoded_count = i + 1;
+}
+value.payload_length = decoded_count as i32;
+}
+} else { report.malformed = true; }
+}
                 }
             }
-            0x84e9 => {
-                // aim_x
+            0xdbaf7be5e24296c9 => { // aim_x
                 if kind != 10 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(4) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        value.aim_x = table_bits_to_float(r.get32());
-                    }
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+} else {
+if !r.has(4) { report.malformed = true; return false; }
+let mut decoded = table_bits_to_float(r.get32());
+if decoded < -1.0 { decoded = -1.0; report.clamped += 1; } else if decoded > 1.0 { decoded = 1.0; report.clamped += 1; }
+value.aim_x = decoded;
                 }
             }
-            0x8d96 => {
-                // aim_y
+            0xdbaf7ae5e2429516 => { // aim_y
                 if kind != 10 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(4) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        value.aim_y = table_bits_to_float(r.get32());
-                    }
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+} else {
+if !r.has(4) { report.malformed = true; return false; }
+let mut decoded = table_bits_to_float(r.get32());
+if decoded < -1.0 { decoded = -1.0; report.clamped += 1; } else if decoded > 1.0 { decoded = 1.0; report.clamped += 1; }
+value.aim_y = decoded;
                 }
             }
-            0x8e03 => {
-                // aim_z
+            0xdbaf79e5e2429363 => { // aim_z
                 if kind != 10 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(4) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        value.aim_z = table_bits_to_float(r.get32());
-                    }
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+} else {
+if !r.has(4) { report.malformed = true; return false; }
+let mut decoded = table_bits_to_float(r.get32());
+if decoded < -1.0 { decoded = -1.0; report.clamped += 1; } else if decoded > 1.0 { decoded = 1.0; report.clamped += 1; }
+value.aim_z = decoded;
                 }
             }
-            0x2d04 => {
-                // recoil
+            0x9cef31fff7e2e457 => { // recoil
                 if kind != 10 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(4) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        value.recoil = table_bits_to_float(r.get32());
-                    }
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+} else {
+if !r.has(4) { report.malformed = true; return false; }
+value.recoil = table_bits_to_float(r.get32());
                 }
             }
-            0xc023 => {
-                // drift
+            0x5ab3f9c9341f6c04 => { // drift
                 if kind != 11 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(8) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        value.drift = table_bits_to_double(r.get64());
-                    }
+if TableReader::widens(kind, 11) {
+let bits = match r.widened(kind) { Some(bits) => bits, None => { report.malformed = true; return false; } };
+let decoded = f64::from_bits(bits);
+value.drift = decoded;
+report.widened += 1;
+} else {
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+}
+} else {
+if !r.has(8) { report.malformed = true; return false; }
+value.drift = table_bits_to_double(r.get64());
                 }
             }
-            0x272f => {
-                // wide_key
+            0xa3348580461faf16 => { // wide_key
                 if kind != 9 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(8) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        let decoded = r.get64() as u64;
-                        value.wide_key = decoded;
-                    }
+if TableReader::widens(kind, 9) {
+let bits = match r.widened(kind) { Some(bits) => bits, None => { report.malformed = true; return false; } };
+let decoded = bits as u64;
+value.wide_key = decoded;
+report.widened += 1;
+} else {
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+}
+} else {
+if !r.has(8) { report.malformed = true; return false; }
+let decoded = r.get64() as u64;
+value.wide_key = decoded;
                 }
             }
-            0x196a => {
-                // flux
+            0xd61bdd7908af2642 => { // flux
                 if kind != 5 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(8) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        let mut decoded = r.get64() as i64;
-                        if decoded < -1000000000000000000 {
-                            decoded = -1000000000000000000;
-                            report.clamped += 1;
-                        } else if decoded > 1000000000000000000 {
-                            decoded = 1000000000000000000;
-                            report.clamped += 1;
-                        }
-                        value.flux = decoded;
-                    }
+if TableReader::widens(kind, 5) {
+let bits = match r.widened(kind) { Some(bits) => bits, None => { report.malformed = true; return false; } };
+let mut decoded = bits as i64;
+if decoded < -1000000000000000000 { decoded = -1000000000000000000; report.clamped += 1; }
+if decoded > 1000000000000000000 { decoded = 1000000000000000000; report.clamped += 1; }
+value.flux = decoded;
+report.widened += 1;
+} else {
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+}
+} else {
+if !r.has(8) { report.malformed = true; return false; }
+let mut decoded = r.get64() as i64;
+if decoded < -1000000000000000000 {
+    decoded = -1000000000000000000;
+    report.clamped += 1;
+} else if decoded > 1000000000000000000 {
+    decoded = 1000000000000000000;
+    report.clamped += 1;
+}
+value.flux = decoded;
                 }
             }
-            0xe6d4 => {
-                // ping
+            0xbf30e00dc53307a9 => { // ping
                 if kind != 10 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(4) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        value.ping = table_bits_to_float(r.get32());
-                    }
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+} else {
+if !r.has(4) { report.malformed = true; return false; }
+let mut decoded = table_bits_to_float(r.get32());
+if decoded < 0.0 { decoded = 0.0; report.clamped += 1; } else if decoded > 250.0 { decoded = 250.0; report.clamped += 1; }
+value.ping = decoded;
                 }
             }
-            0xd3dc => {
-                // crc_hint
+            0x560d6527ccd8515f => { // crc_hint
                 if kind != 8 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(4) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        let decoded = r.get32() as u32;
-                        value.crc_hint = decoded;
-                    }
+if TableReader::widens(kind, 8) {
+let bits = match r.widened(kind) { Some(bits) => bits, None => { report.malformed = true; return false; } };
+let decoded = bits as u32;
+value.crc_hint = decoded;
+report.widened += 1;
+} else {
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+}
+} else {
+if !r.has(4) { report.malformed = true; return false; }
+let mut decoded = r.get32() as u32;
+if decoded > 16777215 { decoded = 16777215; report.clamped += 1; }
+value.crc_hint = decoded;
                 }
             }
-            0xb023 => {
-                // has_extra
+            0xc08292176cfd8672 => { // has_extra
                 if kind != 1 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(1) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        value.has_extra = r.get8() != 0;
-                    }
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+} else {
+if !r.has(1) { report.malformed = true; return false; }
+value.has_extra = r.get8() != 0;
                 }
             }
-            0xb579 => {
-                // extra
+            0xfd29ee12a979cb69 => { // extra
                 if kind != 4 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(4) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        let mut decoded = r.get32() as i32;
-                        if decoded < 0 {
-                            decoded = 0;
-                            report.clamped += 1;
-                        } else if decoded > 255 {
-                            decoded = 255;
-                            report.clamped += 1;
-                        }
-                        value.extra = decoded;
-                    }
+if TableReader::widens(kind, 4) {
+let bits = match r.widened(kind) { Some(bits) => bits, None => { report.malformed = true; return false; } };
+let mut decoded = bits as i32;
+if decoded < 0 { decoded = 0; report.clamped += 1; }
+if decoded > 255 { decoded = 255; report.clamped += 1; }
+value.extra = decoded;
+report.widened += 1;
+} else {
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+}
+} else {
+if !r.has(4) { report.malformed = true; return false; }
+let mut decoded = r.get32() as i32;
+if decoded < 0 {
+    decoded = 0;
+    report.clamped += 1;
+} else if decoded > 255 {
+    decoded = 255;
+    report.clamped += 1;
+}
+value.extra = decoded;
                 }
             }
-            0x9555 => {
-                // idle_ticks
+            0x78101ac0aa8cbcfe => { // idle_ticks
                 if kind != 4 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(4) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        let mut decoded = r.get32() as i32;
-                        if decoded < 0 {
-                            decoded = 0;
-                            report.clamped += 1;
-                        } else if decoded > 15 {
-                            decoded = 15;
-                            report.clamped += 1;
-                        }
-                        value.idle_ticks = decoded;
-                    }
+if TableReader::widens(kind, 4) {
+let bits = match r.widened(kind) { Some(bits) => bits, None => { report.malformed = true; return false; } };
+let mut decoded = bits as i32;
+if decoded < 0 { decoded = 0; report.clamped += 1; }
+if decoded > 15 { decoded = 15; report.clamped += 1; }
+value.idle_ticks = decoded;
+report.widened += 1;
+} else {
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+}
+} else {
+if !r.has(4) { report.malformed = true; return false; }
+let mut decoded = r.get32() as i32;
+if decoded < 0 {
+    decoded = 0;
+    report.clamped += 1;
+} else if decoded > 15 {
+    decoded = 15;
+    report.clamped += 1;
+}
+value.idle_ticks = decoded;
                 }
             }
             _ => {
                 report.unknown += 1;
-                if !r.skip(kind) {
-                    report.malformed = true;
-                    return false;
-                }
+                if !r.skip(kind) { report.malformed = true; return false; }
             }
         }
     }
 }
 
-pub fn table_mixed_load(value: &mut TableMixed, bytes: &[u8], report: &mut TableReport) -> bool {
-    let mut r = TableReader::new(bytes);
-    table_mixed_load_body(&mut r, report, value)
+pub fn table_mixed_load_verdict(value: &mut TableMixed, bytes: &[u8], report: &mut TableReport) -> TableOpenVerdict {
+    let mut r = match TableReader::open(bytes) {
+        Ok(r) => r,
+        Err(verdict) => {
+            table_mixed_reset(value);
+            report.verdict = verdict;
+            if verdict == TableOpenVerdict::Damaged { report.malformed = true; }
+            return verdict;
+        }
+    };
+    report.verdict = if table_mixed_load_body(&mut r, report, value) { TableOpenVerdict::Ok } else { TableOpenVerdict::BodyStopped };
+    report.verdict
 }
 
-// table_hit_event_measure is the EXACT encoded size of a value, with no writing — the
-// parallel-generation lever. Every nested table on the wire is
-// length-prefixed, so a caller can measure subtables in parallel,
-// prefix-sum offsets and scatter-write disjoint ranges from N workers.
-// A value violating its storage invariants measures as -1, exactly as the
-// write side refuses it.
+pub fn table_mixed_load(value: &mut TableMixed, bytes: &[u8], report: &mut TableReport) -> bool {
+    table_mixed_load_verdict(value, bytes, report) == TableOpenVerdict::Ok
+}
+
 pub fn table_hit_event_measure(value: &TableHitEvent) -> i64 {
-    let mut bytes: i64 = 2; // terminator
-    if value.target_id != 0 {
-        bytes += 3 + 2; // target_id
-    }
-    if value.damage != 0 {
-        bytes += 3 + 4; // damage
-    }
-    if value.hit_kind != 0 {
-        bytes += 3 + 4; // hit_kind
-    }
-    if value.crit {
-        bytes += 3 + 1; // crit
-    }
-    bytes
+    let mut ids = [0u64; 78];
+    let mut w = TableWriter::new(None, &mut ids);
+    w.put8(1);
+    if !table_hit_event_save_body(&mut w, value) { return -1; }
+    w.finish()
 }
 
 #[inline(always)]
 pub fn table_hit_event_save_body(w: &mut TableWriter, value: &TableHitEvent) -> bool {
     if value.target_id != 0 {
-        w.put16(0xdf6a);
+        w.putid(0xb7bc9ac015a25050);
         w.put8(7); // target_id
         w.put16(value.target_id as u16);
     }
     if value.damage != 0 {
-        w.put16(0x15a9);
+        w.putid(0x7f6308be8ab37fc0);
         w.put8(4); // damage
         w.put32(value.damage as u32);
     }
     if value.hit_kind != 0 {
-        w.put16(0xaf83);
+        w.putid(0x01fbc365b059b925);
         w.put8(4); // hit_kind
         w.put32(value.hit_kind as u32);
     }
     if value.crit {
-        w.put16(0x93d9);
+        w.putid(0x126167908c9aa52d);
         w.put8(1); // crit
         w.put8(value.crit as u8);
     }
-    w.put16(0); // terminator
+    w.putleb(0);
     !w.overflow
 }
 
-// table_hit_event_save writes exactly table_hit_event_measure(value) bytes into the caller's slice.
 pub fn table_hit_event_save(value: &TableHitEvent, buffer: &mut [u8]) -> i64 {
-    let mut w = TableWriter::new(buffer);
-    if !table_hit_event_save_body(&mut w, value) {
-        return -1;
-    }
-    w.offset as i64 // == table_hit_event_measure(value)
+    let mut ids = [0u64; 78];
+    let mut w = TableWriter::new(Some(buffer), &mut ids);
+    w.put8(1);
+    if !table_hit_event_save_body(&mut w, value) { return -1; }
+    w.finish()
 }
 
 #[inline(always)]
 pub fn table_hit_event_load_body(r: &mut TableReader, report: &mut TableReport, value: &mut TableHitEvent) -> bool {
-    table_hit_event_reset(value); // restore declared defaults in place, then overlay
+    table_hit_event_reset(value);
     loop {
-        if !r.has(2) {
-            report.malformed = true;
-            return false;
-        }
-        let field_id = r.get16();
-        if field_id == 0 {
-            return true;
-        }
-        if !r.has(1) {
-            report.malformed = true;
-            return false;
-        }
+        let field_id = match r.getid() {
+            Some(None) => return true,
+            Some(Some(id)) => id,
+            None => { report.malformed = true; return false; }
+        };
+        if r.reserved(field_id) || !r.has(1) { report.malformed = true; return false; }
         let kind = r.get8();
         match field_id {
-            0xdf6a => {
-                // target_id
+            0xb7bc9ac015a25050 => { // target_id
                 if kind != 7 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(2) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        let decoded = r.get16() as u32;
-                        value.target_id = decoded;
-                    }
+if TableReader::widens(kind, 7) {
+let bits = match r.widened(kind) { Some(bits) => bits, None => { report.malformed = true; return false; } };
+let decoded = bits as u32;
+value.target_id = decoded;
+report.widened += 1;
+} else {
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+}
+} else {
+if !r.has(2) { report.malformed = true; return false; }
+let mut decoded = r.get16() as u32;
+if decoded > 4095 { decoded = 4095; report.clamped += 1; }
+value.target_id = decoded;
                 }
             }
-            0x15a9 => {
-                // damage
+            0x7f6308be8ab37fc0 => { // damage
                 if kind != 4 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(4) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        let mut decoded = r.get32() as i32;
-                        if decoded < 0 {
-                            decoded = 0;
-                            report.clamped += 1;
-                        } else if decoded > 4095 {
-                            decoded = 4095;
-                            report.clamped += 1;
-                        }
-                        value.damage = decoded;
-                    }
+if TableReader::widens(kind, 4) {
+let bits = match r.widened(kind) { Some(bits) => bits, None => { report.malformed = true; return false; } };
+let mut decoded = bits as i32;
+if decoded < 0 { decoded = 0; report.clamped += 1; }
+if decoded > 4095 { decoded = 4095; report.clamped += 1; }
+value.damage = decoded;
+report.widened += 1;
+} else {
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+}
+} else {
+if !r.has(4) { report.malformed = true; return false; }
+let mut decoded = r.get32() as i32;
+if decoded < 0 {
+    decoded = 0;
+    report.clamped += 1;
+} else if decoded > 4095 {
+    decoded = 4095;
+    report.clamped += 1;
+}
+value.damage = decoded;
                 }
             }
-            0xaf83 => {
-                // hit_kind
+            0x01fbc365b059b925 => { // hit_kind
                 if kind != 4 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(4) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        let mut decoded = r.get32() as i32;
-                        if decoded < 0 {
-                            decoded = 0;
-                            report.clamped += 1;
-                        } else if decoded > 7 {
-                            decoded = 7;
-                            report.clamped += 1;
-                        }
-                        value.hit_kind = decoded;
-                    }
+if TableReader::widens(kind, 4) {
+let bits = match r.widened(kind) { Some(bits) => bits, None => { report.malformed = true; return false; } };
+let mut decoded = bits as i32;
+if decoded < 0 { decoded = 0; report.clamped += 1; }
+if decoded > 7 { decoded = 7; report.clamped += 1; }
+value.hit_kind = decoded;
+report.widened += 1;
+} else {
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+}
+} else {
+if !r.has(4) { report.malformed = true; return false; }
+let mut decoded = r.get32() as i32;
+if decoded < 0 {
+    decoded = 0;
+    report.clamped += 1;
+} else if decoded > 7 {
+    decoded = 7;
+    report.clamped += 1;
+}
+value.hit_kind = decoded;
                 }
             }
-            0x93d9 => {
-                // crit
+            0x126167908c9aa52d => { // crit
                 if kind != 1 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(1) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        value.crit = r.get8() != 0;
-                    }
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+} else {
+if !r.has(1) { report.malformed = true; return false; }
+value.crit = r.get8() != 0;
                 }
             }
             _ => {
                 report.unknown += 1;
-                if !r.skip(kind) {
-                    report.malformed = true;
-                    return false;
-                }
+                if !r.skip(kind) { report.malformed = true; return false; }
             }
         }
     }
 }
 
-pub fn table_hit_event_load(value: &mut TableHitEvent, bytes: &[u8], report: &mut TableReport) -> bool {
-    let mut r = TableReader::new(bytes);
-    table_hit_event_load_body(&mut r, report, value)
+pub fn table_hit_event_load_verdict(value: &mut TableHitEvent, bytes: &[u8], report: &mut TableReport) -> TableOpenVerdict {
+    let mut r = match TableReader::open(bytes) {
+        Ok(r) => r,
+        Err(verdict) => {
+            table_hit_event_reset(value);
+            report.verdict = verdict;
+            if verdict == TableOpenVerdict::Damaged { report.malformed = true; }
+            return verdict;
+        }
+    };
+    report.verdict = if table_hit_event_load_body(&mut r, report, value) { TableOpenVerdict::Ok } else { TableOpenVerdict::BodyStopped };
+    report.verdict
 }
 
-// table_chat_event_measure is the EXACT encoded size of a value, with no writing — the
-// parallel-generation lever. Every nested table on the wire is
-// length-prefixed, so a caller can measure subtables in parallel,
-// prefix-sum offsets and scatter-write disjoint ranges from N workers.
-// A value violating its storage invariants measures as -1, exactly as the
-// write side refuses it.
+pub fn table_hit_event_load(value: &mut TableHitEvent, bytes: &[u8], report: &mut TableReport) -> bool {
+    table_hit_event_load_verdict(value, bytes, report) == TableOpenVerdict::Ok
+}
+
 pub fn table_chat_event_measure(value: &TableChatEvent) -> i64 {
-    let mut bytes: i64 = 2; // terminator
-    if value.channel != 0 {
-        bytes += 3 + 4; // channel
-    }
-    if value.speaker != 0 {
-        bytes += 3 + 2; // speaker
-    }
-    bytes
+    let mut ids = [0u64; 78];
+    let mut w = TableWriter::new(None, &mut ids);
+    w.put8(1);
+    if !table_chat_event_save_body(&mut w, value) { return -1; }
+    w.finish()
 }
 
 #[inline(always)]
 pub fn table_chat_event_save_body(w: &mut TableWriter, value: &TableChatEvent) -> bool {
     if value.channel != 0 {
-        w.put16(0x7366);
+        w.putid(0xa5013e9ad5caeda4);
         w.put8(4); // channel
         w.put32(value.channel as u32);
     }
     if value.speaker != 0 {
-        w.put16(0xce0b);
+        w.putid(0xfbf1ac4d96ebd022);
         w.put8(7); // speaker
         w.put16(value.speaker as u16);
     }
-    w.put16(0); // terminator
+    w.putleb(0);
     !w.overflow
 }
 
-// table_chat_event_save writes exactly table_chat_event_measure(value) bytes into the caller's slice.
 pub fn table_chat_event_save(value: &TableChatEvent, buffer: &mut [u8]) -> i64 {
-    let mut w = TableWriter::new(buffer);
-    if !table_chat_event_save_body(&mut w, value) {
-        return -1;
-    }
-    w.offset as i64 // == table_chat_event_measure(value)
+    let mut ids = [0u64; 78];
+    let mut w = TableWriter::new(Some(buffer), &mut ids);
+    w.put8(1);
+    if !table_chat_event_save_body(&mut w, value) { return -1; }
+    w.finish()
 }
 
 #[inline(always)]
 pub fn table_chat_event_load_body(r: &mut TableReader, report: &mut TableReport, value: &mut TableChatEvent) -> bool {
-    table_chat_event_reset(value); // restore declared defaults in place, then overlay
+    table_chat_event_reset(value);
     loop {
-        if !r.has(2) {
-            report.malformed = true;
-            return false;
-        }
-        let field_id = r.get16();
-        if field_id == 0 {
-            return true;
-        }
-        if !r.has(1) {
-            report.malformed = true;
-            return false;
-        }
+        let field_id = match r.getid() {
+            Some(None) => return true,
+            Some(Some(id)) => id,
+            None => { report.malformed = true; return false; }
+        };
+        if r.reserved(field_id) || !r.has(1) { report.malformed = true; return false; }
         let kind = r.get8();
         match field_id {
-            0x7366 => {
-                // channel
+            0xa5013e9ad5caeda4 => { // channel
                 if kind != 4 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(4) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        let mut decoded = r.get32() as i32;
-                        if decoded < 0 {
-                            decoded = 0;
-                            report.clamped += 1;
-                        } else if decoded > 3 {
-                            decoded = 3;
-                            report.clamped += 1;
-                        }
-                        value.channel = decoded;
-                    }
+if TableReader::widens(kind, 4) {
+let bits = match r.widened(kind) { Some(bits) => bits, None => { report.malformed = true; return false; } };
+let mut decoded = bits as i32;
+if decoded < 0 { decoded = 0; report.clamped += 1; }
+if decoded > 3 { decoded = 3; report.clamped += 1; }
+value.channel = decoded;
+report.widened += 1;
+} else {
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+}
+} else {
+if !r.has(4) { report.malformed = true; return false; }
+let mut decoded = r.get32() as i32;
+if decoded < 0 {
+    decoded = 0;
+    report.clamped += 1;
+} else if decoded > 3 {
+    decoded = 3;
+    report.clamped += 1;
+}
+value.channel = decoded;
                 }
             }
-            0xce0b => {
-                // speaker
+            0xfbf1ac4d96ebd022 => { // speaker
                 if kind != 7 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(2) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        let decoded = r.get16() as u32;
-                        value.speaker = decoded;
-                    }
+if TableReader::widens(kind, 7) {
+let bits = match r.widened(kind) { Some(bits) => bits, None => { report.malformed = true; return false; } };
+let decoded = bits as u32;
+value.speaker = decoded;
+report.widened += 1;
+} else {
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+}
+} else {
+if !r.has(2) { report.malformed = true; return false; }
+let mut decoded = r.get16() as u32;
+if decoded > 4095 { decoded = 4095; report.clamped += 1; }
+value.speaker = decoded;
                 }
             }
             _ => {
                 report.unknown += 1;
-                if !r.skip(kind) {
-                    report.malformed = true;
-                    return false;
-                }
+                if !r.skip(kind) { report.malformed = true; return false; }
             }
         }
     }
 }
 
-pub fn table_chat_event_load(value: &mut TableChatEvent, bytes: &[u8], report: &mut TableReport) -> bool {
-    let mut r = TableReader::new(bytes);
-    table_chat_event_load_body(&mut r, report, value)
+pub fn table_chat_event_load_verdict(value: &mut TableChatEvent, bytes: &[u8], report: &mut TableReport) -> TableOpenVerdict {
+    let mut r = match TableReader::open(bytes) {
+        Ok(r) => r,
+        Err(verdict) => {
+            table_chat_event_reset(value);
+            report.verdict = verdict;
+            if verdict == TableOpenVerdict::Damaged { report.malformed = true; }
+            return verdict;
+        }
+    };
+    report.verdict = if table_chat_event_load_body(&mut r, report, value) { TableOpenVerdict::Ok } else { TableOpenVerdict::BodyStopped };
+    report.verdict
 }
 
-// table_pickup_event_measure is the EXACT encoded size of a value, with no writing — the
-// parallel-generation lever. Every nested table on the wire is
-// length-prefixed, so a caller can measure subtables in parallel,
-// prefix-sum offsets and scatter-write disjoint ranges from N workers.
-// A value violating its storage invariants measures as -1, exactly as the
-// write side refuses it.
+pub fn table_chat_event_load(value: &mut TableChatEvent, bytes: &[u8], report: &mut TableReport) -> bool {
+    table_chat_event_load_verdict(value, bytes, report) == TableOpenVerdict::Ok
+}
+
 pub fn table_pickup_event_measure(value: &TablePickupEvent) -> i64 {
-    let mut bytes: i64 = 2; // terminator
-    if value.item_id != 0 {
-        bytes += 3 + 2; // item_id
-    }
-    if value.amount != 0 {
-        bytes += 3 + 4; // amount
-    }
-    bytes
+    let mut ids = [0u64; 78];
+    let mut w = TableWriter::new(None, &mut ids);
+    w.put8(1);
+    if !table_pickup_event_save_body(&mut w, value) { return -1; }
+    w.finish()
 }
 
 #[inline(always)]
 pub fn table_pickup_event_save_body(w: &mut TableWriter, value: &TablePickupEvent) -> bool {
     if value.item_id != 0 {
-        w.put16(0xec67);
+        w.putid(0x9e7fd06d864fbd56);
         w.put8(7); // item_id
         w.put16(value.item_id as u16);
     }
     if value.amount != 0 {
-        w.put16(0x39cc);
+        w.putid(0x8113fe7ea2b16969);
         w.put8(4); // amount
         w.put32(value.amount as u32);
     }
-    w.put16(0); // terminator
+    w.putleb(0);
     !w.overflow
 }
 
-// table_pickup_event_save writes exactly table_pickup_event_measure(value) bytes into the caller's slice.
 pub fn table_pickup_event_save(value: &TablePickupEvent, buffer: &mut [u8]) -> i64 {
-    let mut w = TableWriter::new(buffer);
-    if !table_pickup_event_save_body(&mut w, value) {
-        return -1;
-    }
-    w.offset as i64 // == table_pickup_event_measure(value)
+    let mut ids = [0u64; 78];
+    let mut w = TableWriter::new(Some(buffer), &mut ids);
+    w.put8(1);
+    if !table_pickup_event_save_body(&mut w, value) { return -1; }
+    w.finish()
 }
 
 #[inline(always)]
 pub fn table_pickup_event_load_body(r: &mut TableReader, report: &mut TableReport, value: &mut TablePickupEvent) -> bool {
-    table_pickup_event_reset(value); // restore declared defaults in place, then overlay
+    table_pickup_event_reset(value);
     loop {
-        if !r.has(2) {
-            report.malformed = true;
-            return false;
-        }
-        let field_id = r.get16();
-        if field_id == 0 {
-            return true;
-        }
-        if !r.has(1) {
-            report.malformed = true;
-            return false;
-        }
+        let field_id = match r.getid() {
+            Some(None) => return true,
+            Some(Some(id)) => id,
+            None => { report.malformed = true; return false; }
+        };
+        if r.reserved(field_id) || !r.has(1) { report.malformed = true; return false; }
         let kind = r.get8();
         match field_id {
-            0xec67 => {
-                // item_id
+            0x9e7fd06d864fbd56 => { // item_id
                 if kind != 7 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(2) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        let decoded = r.get16() as u32;
-                        value.item_id = decoded;
-                    }
+if TableReader::widens(kind, 7) {
+let bits = match r.widened(kind) { Some(bits) => bits, None => { report.malformed = true; return false; } };
+let decoded = bits as u32;
+value.item_id = decoded;
+report.widened += 1;
+} else {
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+}
+} else {
+if !r.has(2) { report.malformed = true; return false; }
+let mut decoded = r.get16() as u32;
+if decoded > 1023 { decoded = 1023; report.clamped += 1; }
+value.item_id = decoded;
                 }
             }
-            0x39cc => {
-                // amount
+            0x8113fe7ea2b16969 => { // amount
                 if kind != 4 {
-                    report.kind_mismatch += 1;
-                    if !r.skip(kind) {
-                        report.malformed = true;
-                        return false;
-                    }
-                } else {
-                    if !r.has(4) {
-                        report.malformed = true;
-                        return false;
-                    }
-                    {
-                        let mut decoded = r.get32() as i32;
-                        if decoded < 0 {
-                            decoded = 0;
-                            report.clamped += 1;
-                        } else if decoded > 255 {
-                            decoded = 255;
-                            report.clamped += 1;
-                        }
-                        value.amount = decoded;
-                    }
+if TableReader::widens(kind, 4) {
+let bits = match r.widened(kind) { Some(bits) => bits, None => { report.malformed = true; return false; } };
+let mut decoded = bits as i32;
+if decoded < 0 { decoded = 0; report.clamped += 1; }
+if decoded > 255 { decoded = 255; report.clamped += 1; }
+value.amount = decoded;
+report.widened += 1;
+} else {
+report.kind_mismatch += 1;
+if !r.skip(kind) { report.malformed = true; return false; }
+}
+} else {
+if !r.has(4) { report.malformed = true; return false; }
+let mut decoded = r.get32() as i32;
+if decoded < 0 {
+    decoded = 0;
+    report.clamped += 1;
+} else if decoded > 255 {
+    decoded = 255;
+    report.clamped += 1;
+}
+value.amount = decoded;
                 }
             }
             _ => {
                 report.unknown += 1;
-                if !r.skip(kind) {
-                    report.malformed = true;
-                    return false;
-                }
+                if !r.skip(kind) { report.malformed = true; return false; }
             }
         }
     }
 }
 
+pub fn table_pickup_event_load_verdict(value: &mut TablePickupEvent, bytes: &[u8], report: &mut TableReport) -> TableOpenVerdict {
+    let mut r = match TableReader::open(bytes) {
+        Ok(r) => r,
+        Err(verdict) => {
+            table_pickup_event_reset(value);
+            report.verdict = verdict;
+            if verdict == TableOpenVerdict::Damaged { report.malformed = true; }
+            return verdict;
+        }
+    };
+    report.verdict = if table_pickup_event_load_body(&mut r, report, value) { TableOpenVerdict::Ok } else { TableOpenVerdict::BodyStopped };
+    report.verdict
+}
+
 pub fn table_pickup_event_load(value: &mut TablePickupEvent, bytes: &[u8], report: &mut TableReport) -> bool {
-    let mut r = TableReader::new(bytes);
-    table_pickup_event_load_body(&mut r, report, value)
+    table_pickup_event_load_verdict(value, bytes, report) == TableOpenVerdict::Ok
 }
 
 // RELOCATABLE STORAGE, enforced (docs/SPEC-TABLES.md §9): every closure
@@ -2669,7 +2150,7 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             name: "entity_id",
             json: "entity_id",
             type_name: "bits(12)",
-            id: 0x5a13,
+            id: 0x23fcfd6678e36712,
             kind: 7,
             is_array: false,
             counted: false,
@@ -2700,7 +2181,7 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             name: "pos_x",
             json: "pos_x",
             type_name: "int32",
-            id: 0xaaa3,
+            id: 0xcb4b37357667310e,
             kind: 4,
             is_array: false,
             counted: false,
@@ -2731,7 +2212,7 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             name: "pos_y",
             json: "pos_y",
             type_name: "int32",
-            id: 0xa5cc,
+            id: 0xcb4b3835766732c1,
             kind: 4,
             is_array: false,
             counted: false,
@@ -2762,7 +2243,7 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             name: "pos_z",
             json: "pos_z",
             type_name: "int32",
-            id: 0xa985,
+            id: 0xcb4b353576672da8,
             kind: 4,
             is_array: false,
             counted: false,
@@ -2793,7 +2274,7 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             name: "yaw",
             json: "yaw",
             type_name: "bits(9)",
-            id: 0x80c1,
+            id: 0xb54d8e19798e16e8,
             kind: 7,
             is_array: false,
             counted: false,
@@ -2824,7 +2305,7 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             name: "pitch",
             json: "pitch",
             type_name: "bits(9)",
-            id: 0xf783,
+            id: 0x53a9f665a90cc1b1,
             kind: 7,
             is_array: false,
             counted: false,
@@ -2855,7 +2336,7 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             name: "vel_x",
             json: "vel_x",
             type_name: "int32",
-            id: 0x03e2,
+            id: 0x6cede6b6eb60ee67,
             kind: 4,
             is_array: false,
             counted: false,
@@ -2886,7 +2367,7 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             name: "vel_y",
             json: "vel_y",
             type_name: "int32",
-            id: 0x0151,
+            id: 0x6cede5b6eb60ecb4,
             kind: 4,
             is_array: false,
             counted: false,
@@ -2917,7 +2398,7 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             name: "vel_z",
             json: "vel_z",
             type_name: "int32",
-            id: 0x0e88,
+            id: 0x6cede8b6eb60f1cd,
             kind: 4,
             is_array: false,
             counted: false,
@@ -2948,7 +2429,7 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             name: "health",
             json: "health",
             type_name: "int32",
-            id: 0x8617,
+            id: 0x7f69d4b5288ba9cf,
             kind: 4,
             is_array: false,
             counted: false,
@@ -2979,8 +2460,8 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             name: "weapon",
             json: "weapon",
             type_name: "TableWeapon",
-            id: 0x4f72,
-            kind: 7,
+            id: 0xa0b610205f2c6e01,
+            kind: 30,
             is_array: false,
             counted: false,
             optional: false,
@@ -3010,7 +2491,7 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             name: "damage",
             json: "damage",
             type_name: "TableDamage",
-            id: 0x15a9,
+            id: 0x7f6308be8ab37fc0,
             kind: 9,
             is_array: false,
             counted: false,
@@ -3041,7 +2522,7 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             name: "moving",
             json: "moving",
             type_name: "bool",
-            id: 0xa4b2,
+            id: 0x11a44fc1d1243da7,
             kind: 1,
             is_array: false,
             counted: false,
@@ -3072,7 +2553,7 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             name: "firing",
             json: "firing",
             type_name: "bool",
-            id: 0x2302,
+            id: 0x7674cfd19b9031ca,
             kind: 1,
             is_array: false,
             counted: false,
@@ -3122,7 +2603,7 @@ pub fn table_stat_table_type() -> &'static TableTypeInfo {
             name: "stat_id",
             json: "stat_id",
             type_name: "bits(8)",
-            id: 0xfb6c,
+            id: 0x80ab75f0866dbf65,
             kind: 6,
             is_array: false,
             counted: false,
@@ -3153,7 +2634,7 @@ pub fn table_stat_table_type() -> &'static TableTypeInfo {
             name: "delta",
             json: "delta",
             type_name: "int32",
-            id: 0x1720,
+            id: 0x52076675ec13a0c1,
             kind: 4,
             is_array: false,
             counted: false,
@@ -3203,7 +2684,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             name: "protocol_magic",
             json: "protocol_magic",
             type_name: "uint16",
-            id: 0xae30,
+            id: 0x6a5a70d91aa115fd,
             kind: 7,
             is_array: false,
             counted: false,
@@ -3234,7 +2715,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             name: "sequence",
             json: "sequence",
             type_name: "bits(16)",
-            id: 0xd32b,
+            id: 0xaa38aca481f528a8,
             kind: 7,
             is_array: false,
             counted: false,
@@ -3265,7 +2746,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             name: "ack_sequence",
             json: "ack_sequence",
             type_name: "int32",
-            id: 0x3363,
+            id: 0x0dbe005c56697c3e,
             kind: 4,
             is_array: false,
             counted: false,
@@ -3296,7 +2777,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             name: "ack_bits",
             json: "ack_bits",
             type_name: "bits(32)",
-            id: 0xebb9,
+            id: 0x9bae0da8b829ee03,
             kind: 8,
             is_array: false,
             counted: false,
@@ -3327,7 +2808,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             name: "session_id",
             json: "session_id",
             type_name: "uint64",
-            id: 0x8790,
+            id: 0xb7d7b5650a590b05,
             kind: 9,
             is_array: false,
             counted: false,
@@ -3358,7 +2839,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             name: "client_id",
             json: "client_id",
             type_name: "uint32",
-            id: 0xd443,
+            id: 0x6d7b98e2d095967e,
             kind: 8,
             is_array: false,
             counted: false,
@@ -3389,7 +2870,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             name: "nonce",
             json: "nonce",
             type_name: "uint64",
-            id: 0x80f0,
+            id: 0x73a94c71d60dc0d8,
             kind: 9,
             is_array: false,
             counted: false,
@@ -3420,7 +2901,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             name: "world_time",
             json: "world_time",
             type_name: "int64",
-            id: 0x77f2,
+            id: 0x3eee6b51be54fc85,
             kind: 5,
             is_array: false,
             counted: false,
@@ -3451,7 +2932,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             name: "frame_tick",
             json: "frame_tick",
             type_name: "bits(48)",
-            id: 0xcbc2,
+            id: 0x7bbc035f7b6d0112,
             kind: 9,
             is_array: false,
             counted: false,
@@ -3482,7 +2963,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             name: "server_time",
             json: "server_time",
             type_name: "float32",
-            id: 0x27f9,
+            id: 0x3c460475f9be69c6,
             kind: 10,
             is_array: false,
             counted: false,
@@ -3493,9 +2974,9 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             count_offset: u32::MAX,
             present_offset: u32::MAX,
             table: None,
-            has_range: false,
+            has_range: true,
             range_min: 0.0,
-            range_max: 0.0,
+            range_max: 65535.0,
             enum_max: -1,
             enum_name: None,
             flag_name: None,
@@ -3513,7 +2994,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             name: "entities",
             json: "entities",
             type_name: "TableEntity",
-            id: 0x25e3,
+            id: 0x935d0fb07bb3822a,
             kind: 13,
             is_array: true,
             counted: true,
@@ -3544,7 +3025,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             name: "stats",
             json: "stats",
             type_name: "TableStat",
-            id: 0x76dd,
+            id: 0xee639cad45b1994c,
             kind: 13,
             is_array: true,
             counted: true,
@@ -3575,7 +3056,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             name: "game_event",
             json: "game_event",
             type_name: "TableEvent",
-            id: 0xa17e,
+            id: 0x2e35dc5321aa5790,
             kind: 15,
             is_array: false,
             counted: false,
@@ -3599,9 +3080,9 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             }),
             flag_name: None,
             variant_id: Some(|v| match v {
-                1 => 0xba78,
-                2 => 0x5be0,
-                3 => 0x99dd,
+                1 => 0x33732819300680aa,
+                2 => 0xf2a38d910b5b348b,
+                3 => 0x9fa3a41c86ecb765,
                 _ => 0,
             }),
             key_type_name: None,
@@ -3617,7 +3098,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             name: "loadout",
             json: "loadout",
             type_name: "uint8",
-            id: 0x9f78,
+            id: 0x5759ce7586bbb5a3,
             kind: 6,
             is_array: true,
             counted: false,
@@ -3648,7 +3129,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             name: "player_name",
             json: "player_name",
             type_name: "string",
-            id: 0x2d3e,
+            id: 0x13a62f542cf8e86e,
             kind: 12,
             is_array: false,
             counted: true,
@@ -3679,7 +3160,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             name: "payload",
             json: "payload",
             type_name: "bytes",
-            id: 0x44aa,
+            id: 0xcfb8a9d063b5e9e5,
             kind: 6,
             is_array: true,
             counted: true,
@@ -3710,7 +3191,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             name: "aim_x",
             json: "aim_x",
             type_name: "float32",
-            id: 0x84e9,
+            id: 0xdbaf7be5e24296c9,
             kind: 10,
             is_array: false,
             counted: false,
@@ -3721,9 +3202,9 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             count_offset: u32::MAX,
             present_offset: u32::MAX,
             table: None,
-            has_range: false,
-            range_min: 0.0,
-            range_max: 0.0,
+            has_range: true,
+            range_min: -1.0,
+            range_max: 1.0,
             enum_max: -1,
             enum_name: None,
             flag_name: None,
@@ -3741,7 +3222,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             name: "aim_y",
             json: "aim_y",
             type_name: "float32",
-            id: 0x8d96,
+            id: 0xdbaf7ae5e2429516,
             kind: 10,
             is_array: false,
             counted: false,
@@ -3752,9 +3233,9 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             count_offset: u32::MAX,
             present_offset: u32::MAX,
             table: None,
-            has_range: false,
-            range_min: 0.0,
-            range_max: 0.0,
+            has_range: true,
+            range_min: -1.0,
+            range_max: 1.0,
             enum_max: -1,
             enum_name: None,
             flag_name: None,
@@ -3772,7 +3253,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             name: "aim_z",
             json: "aim_z",
             type_name: "float32",
-            id: 0x8e03,
+            id: 0xdbaf79e5e2429363,
             kind: 10,
             is_array: false,
             counted: false,
@@ -3783,9 +3264,9 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             count_offset: u32::MAX,
             present_offset: u32::MAX,
             table: None,
-            has_range: false,
-            range_min: 0.0,
-            range_max: 0.0,
+            has_range: true,
+            range_min: -1.0,
+            range_max: 1.0,
             enum_max: -1,
             enum_name: None,
             flag_name: None,
@@ -3803,7 +3284,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             name: "recoil",
             json: "recoil",
             type_name: "float32",
-            id: 0x2d04,
+            id: 0x9cef31fff7e2e457,
             kind: 10,
             is_array: false,
             counted: false,
@@ -3834,7 +3315,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             name: "drift",
             json: "drift",
             type_name: "float64",
-            id: 0xc023,
+            id: 0x5ab3f9c9341f6c04,
             kind: 11,
             is_array: false,
             counted: false,
@@ -3865,7 +3346,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             name: "wide_key",
             json: "wide_key",
             type_name: "uint64",
-            id: 0x272f,
+            id: 0xa3348580461faf16,
             kind: 9,
             is_array: false,
             counted: false,
@@ -3896,7 +3377,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             name: "flux",
             json: "flux",
             type_name: "int64",
-            id: 0x196a,
+            id: 0xd61bdd7908af2642,
             kind: 5,
             is_array: false,
             counted: false,
@@ -3927,7 +3408,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             name: "ping",
             json: "ping",
             type_name: "float32",
-            id: 0xe6d4,
+            id: 0xbf30e00dc53307a9,
             kind: 10,
             is_array: false,
             counted: false,
@@ -3938,9 +3419,9 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             count_offset: u32::MAX,
             present_offset: u32::MAX,
             table: None,
-            has_range: false,
+            has_range: true,
             range_min: 0.0,
-            range_max: 0.0,
+            range_max: 250.0,
             enum_max: -1,
             enum_name: None,
             flag_name: None,
@@ -3958,7 +3439,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             name: "crc_hint",
             json: "crc_hint",
             type_name: "bits(24)",
-            id: 0xd3dc,
+            id: 0x560d6527ccd8515f,
             kind: 8,
             is_array: false,
             counted: false,
@@ -3989,7 +3470,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             name: "has_extra",
             json: "has_extra",
             type_name: "bool",
-            id: 0xb023,
+            id: 0xc08292176cfd8672,
             kind: 1,
             is_array: false,
             counted: false,
@@ -4020,7 +3501,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             name: "extra",
             json: "extra",
             type_name: "int32",
-            id: 0xb579,
+            id: 0xfd29ee12a979cb69,
             kind: 4,
             is_array: false,
             counted: false,
@@ -4051,7 +3532,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             name: "idle_ticks",
             json: "idle_ticks",
             type_name: "int32",
-            id: 0x9555,
+            id: 0x78101ac0aa8cbcfe,
             kind: 4,
             is_array: false,
             counted: false,
@@ -4101,7 +3582,7 @@ pub fn table_hit_event_table_type() -> &'static TableTypeInfo {
             name: "target_id",
             json: "target_id",
             type_name: "bits(12)",
-            id: 0xdf6a,
+            id: 0xb7bc9ac015a25050,
             kind: 7,
             is_array: false,
             counted: false,
@@ -4132,7 +3613,7 @@ pub fn table_hit_event_table_type() -> &'static TableTypeInfo {
             name: "damage",
             json: "damage",
             type_name: "int32",
-            id: 0x15a9,
+            id: 0x7f6308be8ab37fc0,
             kind: 4,
             is_array: false,
             counted: false,
@@ -4163,7 +3644,7 @@ pub fn table_hit_event_table_type() -> &'static TableTypeInfo {
             name: "hit_kind",
             json: "hit_kind",
             type_name: "int32",
-            id: 0xaf83,
+            id: 0x01fbc365b059b925,
             kind: 4,
             is_array: false,
             counted: false,
@@ -4194,7 +3675,7 @@ pub fn table_hit_event_table_type() -> &'static TableTypeInfo {
             name: "crit",
             json: "crit",
             type_name: "bool",
-            id: 0x93d9,
+            id: 0x126167908c9aa52d,
             kind: 1,
             is_array: false,
             counted: false,
@@ -4244,7 +3725,7 @@ pub fn table_chat_event_table_type() -> &'static TableTypeInfo {
             name: "channel",
             json: "channel",
             type_name: "int32",
-            id: 0x7366,
+            id: 0xa5013e9ad5caeda4,
             kind: 4,
             is_array: false,
             counted: false,
@@ -4275,7 +3756,7 @@ pub fn table_chat_event_table_type() -> &'static TableTypeInfo {
             name: "speaker",
             json: "speaker",
             type_name: "bits(12)",
-            id: 0xce0b,
+            id: 0xfbf1ac4d96ebd022,
             kind: 7,
             is_array: false,
             counted: false,
@@ -4325,7 +3806,7 @@ pub fn table_pickup_event_table_type() -> &'static TableTypeInfo {
             name: "item_id",
             json: "item_id",
             type_name: "bits(10)",
-            id: 0xec67,
+            id: 0x9e7fd06d864fbd56,
             kind: 7,
             is_array: false,
             counted: false,
@@ -4356,7 +3837,7 @@ pub fn table_pickup_event_table_type() -> &'static TableTypeInfo {
             name: "amount",
             json: "amount",
             type_name: "int32",
-            id: 0x39cc,
+            id: 0x8113fe7ea2b16969,
             kind: 4,
             is_array: false,
             counted: false,
