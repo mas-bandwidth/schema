@@ -83,6 +83,47 @@ func TestAggregatePrintsEveryRowOfACurrentCorpusPass(t *testing.T) {
 	}
 }
 
+// The codegen-only legs (java, dart, elixir) run in every pass the driver
+// drives — bench/run.sh has run them since they landed — but they were
+// missing from `langs`, which is aggregate's OUTPUT loop. Their rows would
+// have accumulated and never printed, and the straggler refusal (the #689
+// class) would have taken the whole pass down with them. This test is the
+// pass that carries all three: every row must come out aggregated.
+func TestAggregatePrintsTheCodegenOnlyLegs(t *testing.T) {
+	dir := t.TempDir()
+	r0 := writeRound(t, dir, "round-0-codegen.csv", "0",
+		"java,bench_mixed,write,4000000,100,1,5800000,5800000,5800000,553.13,0.00,6b213fbfa1a03a99,gen,class,contract,default,unknown",
+		"java,bench_mixed,round_trip,4000000,100,1,2200000,2200000,2200000,209.81,0.00,6b213fbfa1a03a99,gen,class,contract,default,unknown",
+		"dart,bench_mixed,write,4000000,100,1,2800000,2800000,2800000,267.03,0.00,6b213fbfa1a03a99,gen,aot,contract,default,unknown",
+		"dart,bench_mixed,round_trip,4000000,100,1,1580000,1580000,1580000,150.68,0.00,6b213fbfa1a03a99,gen,aot,contract,default,unknown",
+		"elixir,bench_mixed,write,4000000,100,1,450000,450000,450000,42.92,0.00,6b213fbfa1a03a99,gen,beam,contract,default,unknown",
+		"elixir,bench_mixed,round_trip,4000000,100,1,280000,280000,280000,26.70,0.00,6b213fbfa1a03a99,gen,beam,contract,default,unknown")
+	r1 := writeRound(t, dir, "round-1-codegen.csv", "1",
+		"java,bench_mixed,write,4000000,100,1,5900000,5900000,5900000,562.67,0.00,6b213fbfa1a03a99,gen,class,contract,default,unknown",
+		"java,bench_mixed,round_trip,4000000,100,1,2300000,2300000,2300000,219.35,0.00,6b213fbfa1a03a99,gen,class,contract,default,unknown",
+		"dart,bench_mixed,write,4000000,100,1,2900000,2900000,2900000,276.57,0.00,6b213fbfa1a03a99,gen,aot,contract,default,unknown",
+		"dart,bench_mixed,round_trip,4000000,100,1,1600000,1600000,1600000,152.59,0.00,6b213fbfa1a03a99,gen,aot,contract,default,unknown",
+		"elixir,bench_mixed,write,4000000,100,1,460000,460000,460000,43.87,0.00,6b213fbfa1a03a99,gen,beam,contract,default,unknown",
+		"elixir,bench_mixed,round_trip,4000000,100,1,300000,300000,300000,28.61,0.00,6b213fbfa1a03a99,gen,beam,contract,default,unknown")
+
+	out, errOut, code := runTool(t, "aggregate", r0, r1)
+	if code != 0 {
+		t.Fatalf("aggregate refused a pass carrying the codegen-only legs (exit %d):\n%s", code, errOut)
+	}
+	for _, want := range []string{
+		"java,bench_mixed,write,4000000,100,2,5850000,5800000,5900000,",
+		"java,bench_mixed,round_trip,4000000,100,2,2250000,2200000,2300000,",
+		"dart,bench_mixed,write,4000000,100,2,2850000,2800000,2900000,",
+		"dart,bench_mixed,round_trip,4000000,100,2,1590000,1580000,1600000,",
+		"elixir,bench_mixed,write,4000000,100,2,455000,450000,460000,",
+		"elixir,bench_mixed,round_trip,4000000,100,2,290000,280000,300000,",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("aggregated output lacks the row %q\n--- stdout ---\n%s--- stderr ---\n%s", want, out, errOut)
+		}
+	}
+}
+
 // The negative control: the straggler refusal must still fire on a path the
 // column list does not know, so a runner that grows a new path REFUSES the
 // aggregation rather than losing the row (BENCH-STANDARD §5.1).

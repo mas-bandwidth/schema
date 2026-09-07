@@ -69,16 +69,27 @@ var order = append(append([]string{}, benchCorpus...), bitpacker)
 // expressed against (Glenn, 2026-08-17: "make C the reference. It is the
 // 100%. C++ is measured against C." — flipped from cpp, which had been the
 // baseline since the table existed).
-// js rides in this list so aggregate PRINTS its rows (the output loop walks
-// langs, and a language missing from it would trip the straggler refusal —
-// exactly the silent-vanish class the refusal exists to catch). It never
-// enters the relative table: js rows carry inline=unknown by design (a JIT
-// has no AOT artifact for the §4.1 verdict), and §5.3 refuses any ratio
-// touching an unknown — relativeTable skips js explicitly rather than
-// letting one un-ratioable-by-construction language refuse the whole table.
+// js and the codegen-only legs (java, dart, elixir) ride in this list so
+// aggregate PRINTS their rows (the output loop walks langs, and a language
+// missing from it would trip the straggler refusal — exactly the
+// silent-vanish class the refusal exists to catch). They never enter the
+// relative table: see unratioable.
 var langs = []struct{ key, name string }{
 	{"c", "C"}, {"cpp", "C++"}, {"rust", "Rust"}, {"cs", "C#"}, {"go", "Go"},
-	{"js", "JavaScript"},
+	{"js", "JavaScript"}, {"java", "Java"}, {"dart", "Dart"}, {"elixir", "Elixir"},
+}
+
+// unratioable: languages whose rows carry inline=unknown by construction, so
+// §5.3 refuses any ratio touching them. js has no AOT artifact for the §4.1
+// verdict (a JIT decides per tier at runtime); §4.1's verdict mechanisms
+// cover the five AOT legs (go, clang/gcc, rust, C#) and bench/tools/
+// inline-verdict.sh implements no pass for java, dart or elixir, so their
+// rows stay inline=unknown exactly as every published pass records them.
+// relativeTable skips them explicitly rather than letting a language that
+// cannot be ratioed by construction refuse the whole table; they publish in
+// the absolute table, which is where the pass reports them.
+var unratioable = map[string]bool{
+	"js": true, "java": true, "dart": true, "elixir": true,
 }
 
 // reference is the table's 100% language.
@@ -624,11 +635,11 @@ func relativeTable(ds *dataset) string {
 		if l.key == reference {
 			continue
 		}
-		if l.key == "js" {
-			// DELIBERATE: js rows are inline=unknown by construction (no
-			// AOT artifact to verdict, §4.1) and §5.3 refuses ratios on
-			// unknown — attempting the ratio would refuse the whole table.
-			// js publishes in the absolute table only.
+		if unratioable[l.key] {
+			// DELIBERATE: these rows are inline=unknown by construction
+			// (§4.1 has no verdict pass for them) and §5.3 refuses ratios
+			// on unknown — attempting the ratio would refuse the whole
+			// table. They publish in the absolute table only.
 			continue
 		}
 		// write and round_trip are the gen family's two MEASURED paths
