@@ -22,7 +22,7 @@ import (
 )
 
 // surfaces, in the order the matrix prints them.
-var surfaces = []string{"wire", "message", "report", "json-read", "json-write", "json-hostile",
+var surfaces = []string{"wire", "message", "report", "retain", "retain-save", "json-read", "json-write", "json-hostile",
 	"cook", "cook-write", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery",
 	"cook-reason", "block-reason"}
 
@@ -161,6 +161,25 @@ func deriveManifest(m *Manifest, path string) error {
 	for _, msg := range m.Messages {
 		fmt.Fprintf(&b, "message %s %s %s %s %s\n", msg.Name, msg.Connection, msg.Root, msg.FileWire, msg.MessageWire)
 	}
+	for _, rc := range m.Retains {
+		// THE ANSWER IS WITHHELD, as it is everywhere else: a driver is handed
+		// the wire and the two capacities and nothing about the counters or the
+		// bytes it owes (docs/SPEC-TABLES.md §6.6). `short` and `full` travel as
+		// the RULES they are, because a record's byte cost is the port's own.
+		kind, who := "retain", rc.Unit
+		if rc.Message {
+			kind, who = "retain-message", rc.Connection+" "+rc.Unit
+		}
+		ids := "full"
+		if rc.Ids >= 0 {
+			ids = strconv.Itoa(rc.Ids)
+		}
+		capacity := "full"
+		if rc.Short {
+			capacity = "short"
+		}
+		fmt.Fprintf(&b, "%s %s %s %s %s %s %s\n", kind, rc.Name, who, rc.Root, rc.Wire, capacity, ids)
+	}
 	for _, r := range m.Reports {
 		fmt.Fprintf(&b, "report %s %s %s %s\n", r.Name, r.Unit, r.Root, r.Wire)
 	}
@@ -227,6 +246,34 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 				return nil, err
 			}
 			out = append(out, expectation{msg.Name, want})
+		}
+	case "retain":
+		// RETAIN-UNKNOWN's COUNTERS (docs/SPEC-TABLES.md §6.6): the load's two
+		// beside the `unknown` retention never moves, and the save's own
+		// `retain_lost` behind them. The bytes are the other surface's, so each
+		// of the two is one shape.
+		for _, rc := range m.Retains {
+			out = append(out, expectation{rc.Name, []byte(rc.Load.String() + " " + strconv.Itoa(rc.SaveLost) + "\n")})
+		}
+	case "retain-save":
+		// AND THE BYTES THE PAIR WRITES BACK, which a counter cannot see: a
+		// dropped record moves a field out of a body and every reference behind
+		// it. A row that does not save is not a case here. A MESSAGE row's
+		// saves are FILES, one a body, back to back in body order, because a
+		// form-2 SaveRetain refuses by name (§3.3).
+		for _, rc := range m.Retains {
+			if len(rc.Saves) == 0 {
+				continue
+			}
+			var want []byte
+			for _, path := range rc.Saves {
+				bytes, err := os.ReadFile(path)
+				if err != nil {
+					return nil, err
+				}
+				want = append(want, bytes...)
+			}
+			out = append(out, expectation{rc.Name, want})
 		}
 	case "json-write":
 		for _, i := range m.Instances {

@@ -994,6 +994,11 @@ static void message_form()
     uint8_t announcement[ 8192 ];
     const int64_t a = tblrt2::Announce( announcement, sizeof( announcement ) );
     CHECK( a > 0 );
+    // THE CONNECTION IS A PINNED VECTOR TOO, because the conformance manifest
+    // names it: an announcement is an ordinary form-1 file, and the retain rows
+    // that read a batch resolve against this one (testdata/conformance/tables).
+    pin_golden( "retain_conn", announcement, a );
+    printf( "retain: RT2's build version is 0x%016llx\n", (unsigned long long) tblrt2::BuildVersion );
     static tblrt1::TableMessageEntry entries[ 128 ];
     tblrt1::TableVocabulary vocabulary( entries, 128 );
     tblrt1::TableReport announced;

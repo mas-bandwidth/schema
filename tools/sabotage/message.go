@@ -406,3 +406,18 @@ var messageTextSabotages = map[string][]edit{
 		new: "\t\tg.pf(\"%s    const int32_t kept%s = n%s > (uint64_t) %d ? (int32_t) %d : (int32_t) n%s; // SABOTAGED: the clamp is off the boundary\\n\", ind, sfx, sfx, f.Type.Size, f.Type.Size, sfx)\n",
 	}},
 }
+
+// THE MESSAGE FORM'S RETENTION (docs/SPEC-TABLES.md §3.3, §6.6). The unknown
+// arm of a retaining message body SKIPS the entry and then re-reads the bits
+// it delimited, which is the whole of the form-2 capture. Take the second half
+// away and the skip is all that is left: the read is unchanged to the byte,
+// every counter but the two retention ones stands, and nothing about the batch
+// says a field was lost. What goes red is the pinned batch's own row.
+var messageRetainSabotages = map[string][]edit{
+	"message-retain-no-capture": {{
+		old: "\t\tg.pf(\"                TableMessageRetainCapture( retain, r, vocabulary, index_bits, entry, path, report, unknown_at );\\n\")\n",
+		new: "\t\tg.pf(\"                (void) unknown_at; // SABOTAGED: the message path never enters the resolving walk\\n\")\n",
+	}},
+}
+
+func init() { maps.Copy(sabotages, messageRetainSabotages) }

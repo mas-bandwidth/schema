@@ -265,11 +265,69 @@ type Message struct {
 	MessageWire string
 }
 
+// RetainCase is one RETAIN-UNKNOWN row (docs/SPEC-TABLES.md §6.6): a wire
+// loaded with retention, the counters that load owes, and the file the pair
+// writes back.
+//
+// THE TWO CAPACITIES ARE STATED AS RULES AND NOT AS NUMBERS where a number
+// would not travel. A record's BYTE cost is the port's own, so `Short` says ONE
+// BYTE SHORT OF THE LAST RECORD — a leg loads once at a capacity the whole load
+// fits in, reads what it used, and loads again one byte under that — and two
+// layouts then drop the same record rather than different ones. The ID LIST's
+// capacity is a COUNT and travels as one, so `Ids` is either full or the
+// entries the caller's list holds.
+//
+// A MESSAGE row is the form-2 one (§3.3): the wire is a BATCH, `Connection`
+// names the announcement its references resolve against, and the SAVES are the
+// FILE form, one a body, back to back in body order — which is the one
+// direction retention crosses the forms, because a form-2 SaveRetain refuses by
+// name.
+type RetainCase struct {
+	Name       string
+	Unit       string // the READER's unit; empty on a message row, which names a connection
+	Connection string // the announcement a message row resolves against
+	Root       string
+	Wire       string
+	Short      bool // the retention buffer is one byte short of the last record
+	Ids        int  // the caller's id-list entries; -1 is full
+	Load       RetainCounts
+	SaveLost   int      // the `retain_lost` the SAVE adds
+	Saves      []string // the pinned saves, in body order; empty is a row that does not save
+	Message    bool
+}
+
+// RetainCounts is a retaining load's own three: the two retention counters and
+// the `unknown` they ride beside, which retention never moves.
+type RetainCounts struct{ Retained, RetainLost, Unknown int }
+
+func (c RetainCounts) String() string {
+	return fmt.Sprintf("%d,%d,%d", c.Retained, c.RetainLost, c.Unknown)
+}
+
+// ParseRetainCounts reads `<retained>,<retain_lost>,<unknown>`.
+func ParseRetainCounts(text string) (RetainCounts, error) {
+	parts := strings.Split(text, ",")
+	if len(parts) != 3 {
+		return RetainCounts{}, fmt.Errorf("%q is not retained,retain_lost,unknown", text)
+	}
+	var c RetainCounts
+	into := []*int{&c.Retained, &c.RetainLost, &c.Unknown}
+	for i, p := range parts {
+		v, err := strconv.Atoi(p)
+		if err != nil {
+			return RetainCounts{}, fmt.Errorf("%q is not a count in %q", p, text)
+		}
+		*into[i] = v
+	}
+	return c, nil
+}
+
 // Manifest is the whole registry.
 type Manifest struct {
 	Units       []Unit
 	Connections []Connection
 	Messages    []Message
+	Retains     []RetainCase
 	Instances   []Instance
 	Reports     []ReportCase
 	Hostiles    []Hostile
@@ -370,6 +428,57 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 				return nil, fmt.Errorf("%s: message takes name, connection, root, file-form wire, message-form wire", where)
 			}
 			m.Messages = append(m.Messages, Message{Name: f[1], Connection: f[2], Root: f[3], FileWire: f[4], MessageWire: f[5]})
+		case "retain", "retain-message":
+			// retain         <case> <unit> <root> <wire> <capacity> <ids> <counters> <save lost> <saves>
+			// retain-message <case> <connection> <reader unit> <root> ...
+			rc := RetainCase{Name: f[1], Message: f[0] == "retain-message"}
+			want := 10
+			if rc.Message {
+				want = 11
+			}
+			if len(f) != want {
+				return nil, fmt.Errorf("%s: %s takes %d fields and this line has %d", where, f[0], want, len(f))
+			}
+			// A MESSAGE ROW NAMES BOTH PEERS: the CONNECTION whose announcement
+			// its references resolve against, which is the sender's, and the
+			// READER's own unit, which is the build that cannot name what the
+			// sender wrote (docs/SPEC-TABLES.md §3.3, §6.6).
+			if rc.Message {
+				rc.Connection, rc.Unit = f[2], f[3]
+				f = append(f[:2], f[3:]...) // the columns below line up with the file row's
+			} else {
+				rc.Unit = f[2]
+			}
+			rc.Root, rc.Wire = f[3], f[4]
+			switch f[5] {
+			case "full":
+			case "short":
+				rc.Short = true
+			default:
+				return nil, fmt.Errorf("%s: %q is not a retention capacity; it is full or short", where, f[5])
+			}
+			rc.Ids = -1
+			if f[6] != "full" {
+				n, err := strconv.Atoi(f[6])
+				if err != nil || n < 0 {
+					return nil, fmt.Errorf("%s: %q is not an id-list capacity", where, f[6])
+				}
+				rc.Ids = n
+			}
+			counts, err := ParseRetainCounts(f[7])
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", where, err)
+			}
+			rc.Load = counts
+			lost, err := strconv.Atoi(f[8])
+			if err != nil || lost < 0 {
+				return nil, fmt.Errorf("%s: %q is not the save's own retain_lost", where, f[8])
+			}
+			rc.SaveLost = lost
+			if f[9] != "-" {
+				rc.Saves = strings.Split(f[9], ",")
+			}
+			m.Retains = append(m.Retains, rc)
 		case "report":
 			if len(f) != 5 {
 				return nil, fmt.Errorf("%s: report takes case, unit, root, wire", where)

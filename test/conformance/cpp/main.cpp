@@ -49,6 +49,10 @@
 #include "BackendTable.h"
 #include "VocabTable.h"
 #include "Vocab9Table.h"
+// the RETAIN-UNKNOWN reader (docs/SPEC-TABLES.md §6.6): the older build, which
+// cannot name what RT2 and RT3 wrote. Only the READER is here — the two newer
+// builds are writers of the pinned vectors and this driver never runs one.
+#include "RT1Table.h"
 // the POINTERED unit (docs/SPEC-TABLES.md §6.2): a region and a root pointer,
 // never a value, which is why it gets its own row shape below
 #include "GraphTable.h"
@@ -442,6 +446,158 @@ static const MsgCodec msg_codecs[] = {
     MSGVARCODEC( "graphdemo", graphdemo, Scene ),
 };
 
+// ---------------------------------------------------------------------------
+// RETAIN-UNKNOWN's rows (docs/SPEC-TABLES.md §6.6)
+// ---------------------------------------------------------------------------
+//
+// A retain row is a REGION ROUND TRIP and only that: LoadRetain into a region,
+// then MeasureRetain and SaveRetain out of that same region. The row's two
+// capacities are RULES rather than numbers — `short` is one byte under what
+// this port's own full load used, because a record's byte cost is the port's
+// own — so the codec below runs the load twice where the row asks for it.
+//
+// THE MESSAGE ROW IS THE SAME PAIR WITH A FORM-2 LOAD (§3.3): the batch takes
+// one region and one retention buffer a body, the announcement carries the id
+// table, and the SAVE is the FILE form on every body, because retention writing
+// form 2 refuses by name.
+struct RetainAnswer
+{
+    int32_t retained = 0;
+    int32_t retain_lost = 0;
+    int32_t unknown = 0;
+    int32_t save_lost = 0;
+    std::vector<uint8_t> saved; // the bodies' saves, back to back in body order
+};
+
+struct RetainCodec
+{
+    const char * unit;
+    const char * root;
+    bool message;
+    bool ( *run )( const uint8_t * announcement, int64_t announcement_bytes,
+                   const uint8_t * wire, int64_t wire_bytes,
+                   bool short_buffer, int64_t id_capacity, RetainAnswer & answer );
+};
+
+// the roomy capacity a `full` row takes, the page's own C/8 bound beside it, a
+// receiver's room for a LARGER unit's vocabulary (§3.3), and the form's own
+// batch bound
+static const int64_t kRetainRoomy = 1 << 20;
+static const int64_t kRetainMessageEntries = 256;
+static const int64_t kRetainBatchCap = 256;
+
+#define RETAINCODEC( unit_key, ns, type )                                                       \
+    {                                                                                           \
+        unit_key, #type, false,                                                                 \
+        []( const uint8_t *, int64_t, const uint8_t * wire, int64_t n,                          \
+            bool short_buffer, int64_t id_capacity, RetainAnswer & answer ) {                   \
+            std::vector<uint8_t> bytes( (size_t) kRetainRoomy, 0 );                             \
+            std::vector<ns::TableRetain::Id> ids(                                               \
+                (size_t) ( id_capacity < 0 ? kRetainRoomy / 8 : id_capacity ) );                \
+            int64_t need = ns::type##LoadMeasure( wire, n );                                    \
+            if ( need < 0 ) return false;                                                       \
+            int64_t capacity = kRetainRoomy;                                                    \
+            if ( short_buffer )                                                                 \
+            {                                                                                   \
+                /* ONE BYTE SHORT OF THE LAST RECORD, which is this port's own  */              \
+                /* full load less one: a record's byte cost is the port's (§6.6) */             \
+                std::vector<uint8_t> probe_region( (size_t) need, 0 );                          \
+                ns::TableRetain probe;                                                          \
+                probe.bytes = bytes.data();                                                     \
+                probe.capacity = kRetainRoomy;                                                  \
+                probe.ids = ids.data();                                                         \
+                probe.id_capacity = (int32_t) ids.size();                                       \
+                ns::TableReport ignored;                                                        \
+                if ( ns::type##LoadRetain( probe_region.data(), need, wire, n, &probe, &ignored ) == NULL ) return false; \
+                capacity = probe.used - 1;                                                      \
+            }                                                                                   \
+            std::vector<uint8_t> region( (size_t) need, 0 );                                    \
+            ns::TableRetain retain;                                                             \
+            retain.bytes = bytes.data();                                                        \
+            retain.capacity = capacity;                                                         \
+            retain.ids = ids.data();                                                            \
+            retain.id_capacity = (int32_t) ids.size();                                          \
+            ns::TableReport load;                                                               \
+            const ns::type * root = ns::type##LoadRetain( region.data(), need, wire, n, &retain, &load ); \
+            if ( root == NULL ) return false;                                                   \
+            answer.retained = load.retained;                                                    \
+            answer.retain_lost = load.retain_lost;                                              \
+            answer.unknown = load.unknown;                                                      \
+            ns::TableReport save;                                                               \
+            int64_t size = ns::type##MeasureRetain( root, &retain );                            \
+            if ( size < 0 ) return false;                                                       \
+            answer.saved.assign( (size_t) size, 0 );                                            \
+            if ( ns::type##SaveRetain( root, &retain, answer.saved.data(), size, &save ) != size ) return false; \
+            answer.save_lost = save.retain_lost;                                                \
+            return true;                                                                        \
+        }                                                                                       \
+    }
+
+#define RETAINMSGCODEC( unit_key, ns, type )                                                    \
+    {                                                                                           \
+        unit_key, #type, true,                                                                  \
+        []( const uint8_t * a, int64_t an, const uint8_t * wire, int64_t n,                     \
+            bool short_buffer, int64_t id_capacity, RetainAnswer & answer ) {                   \
+            std::vector<ns::TableMessageEntry> entries( (size_t) kRetainMessageEntries );        \
+            ns::TableVocabulary vocabulary( entries.data(), kRetainMessageEntries );            \
+            ns::TableReport open;                                                               \
+            if ( !ns::AnnounceRead( vocabulary, a, an, &open ) ) return false;                   \
+            int64_t need = ns::type##LoadMeasure( vocabulary, wire, n );                        \
+            if ( need < 0 ) return false;                                                       \
+            std::vector<const ns::type *> roots( (size_t) kRetainBatchCap, NULL );               \
+            std::vector<std::vector<uint8_t> > stores( (size_t) kRetainBatchCap );               \
+            std::vector<std::vector<ns::TableRetain::Id> > lists( (size_t) kRetainBatchCap );    \
+            std::vector<ns::TableRetain> retains( (size_t) kRetainBatchCap );                    \
+            for ( size_t i = 0; i < retains.size(); i++ )                                        \
+            {                                                                                    \
+                stores[i].assign( (size_t) kRetainRoomy, 0 );                                    \
+                lists[i].resize( (size_t) ( id_capacity < 0 ? kRetainRoomy / 8 : id_capacity ) ); \
+                retains[i].bytes = stores[i].data();                                             \
+                retains[i].capacity = kRetainRoomy;                                              \
+                retains[i].ids = lists[i].data();                                                \
+                retains[i].id_capacity = (int32_t) lists[i].size();                              \
+            }                                                                                    \
+            (void) short_buffer; /* no message row asks for the short rule yet */                \
+            std::vector<uint8_t> region( (size_t) need + 16, 0 );                                \
+            uint8_t * base = (uint8_t *) ( ( (uintptr_t) region.data() + 15 ) & ~(uintptr_t) 15 );\
+            int64_t count = (int64_t) roots.size();                                              \
+            ns::TableReport load;                                                                \
+            if ( !ns::type##LoadRetainMessages( roots.data(), &count, base, need, vocabulary,    \
+                                                wire, n, retains.data(), &load ) ) return false; \
+            answer.retained = load.retained;                                                     \
+            answer.retain_lost = load.retain_lost;                                               \
+            answer.unknown = load.unknown;                                                       \
+            ns::TableReport save;                                                                \
+            for ( int64_t b = 0; b < count; b++ )                                                \
+            {                                                                                    \
+                int64_t size = ns::type##MeasureRetain( roots[b], &retains[b] );                 \
+                if ( size < 0 ) return false;                                                    \
+                std::vector<uint8_t> one( (size_t) size, 0 );                                    \
+                if ( ns::type##SaveRetain( roots[b], &retains[b], one.data(), size, &save ) != size ) return false; \
+                answer.saved.insert( answer.saved.end(), one.begin(), one.end() );                \
+            }                                                                                    \
+            answer.save_lost = save.retain_lost;                                                 \
+            return true;                                                                         \
+        }                                                                                       \
+    }
+
+static const RetainCodec retain_codecs[] = {
+    RETAINCODEC( "tblrt1", tblrt1, Node ),
+    RETAINMSGCODEC( "tblrt1", tblrt1, Node ),
+};
+
+static const RetainCodec * find_retain_codec( const std::string & unit, const std::string & root, bool message )
+{
+    for ( size_t i = 0; i < sizeof( retain_codecs ) / sizeof( retain_codecs[0] ); i++ )
+    {
+        if ( unit == retain_codecs[i].unit && root == retain_codecs[i].root && message == retain_codecs[i].message )
+        {
+            return &retain_codecs[i];
+        }
+    }
+    return NULL;
+}
+
 static const MsgCodec * find_msg_codec( const std::string & unit, const std::string & root )
 {
     for ( size_t i = 0; i < sizeof( msg_codecs ) / sizeof( msg_codecs[0] ); i++ )
@@ -828,6 +984,69 @@ static int surface_message( const std::string & out )
         if ( !codec->round_trip( announcement.data(), (int64_t) announcement.size(),
                                  message.data(), (int64_t) message.size(), answer, &report ) ) { return 1; }
         if ( !spill( out, f[1], answer.data(), answer.size() ) ) return 1;
+    }
+    return 0;
+}
+
+// THE RETAIN SURFACES (docs/SPEC-TABLES.md §6.6): the COUNTERS on one and the
+// BYTES on the other, so each is one shape. A row's `retain` line carries the
+// wire and the two capacities; nothing about the answer reaches the driver.
+static bool retain_row( const std::vector<std::string> & f, RetainAnswer & answer )
+{
+    // retain <case> <unit> <root> <wire> <capacity> <ids>
+    // retain-message <case> <connection> <unit> <root> <wire> <capacity> <ids>
+    const bool message = f[0] == "retain-message";
+    const size_t at = message ? 1 : 0;
+    const std::string unit = f[2 + at], root = f[3 + at], wire_path = f[4 + at];
+    const bool short_buffer = f[5 + at] == "short";
+    int64_t ids = -1;
+    if ( f[6 + at] != "full" ) { ids = (int64_t) strtoll( f[6 + at].c_str(), NULL, 10 ); }
+
+    std::vector<uint8_t> announcement;
+    if ( message )
+    {
+        std::string path;
+        for ( size_t j = 0; j < manifest_lines.size(); j++ )
+        {
+            const std::vector<std::string> & c = manifest_lines[j].field;
+            if ( c[0] == "connection" && c[1] == f[2] ) { path = c[4]; break; }
+        }
+        if ( path.empty() ) { fprintf( stderr, "driver: no connection %s\n", f[2].c_str() ); return false; }
+        if ( !slurp( path.c_str(), announcement ) ) { fprintf( stderr, "driver: cannot read %s\n", path.c_str() ); return false; }
+    }
+    std::vector<uint8_t> wire;
+    if ( !slurp( wire_path.c_str(), wire ) ) { fprintf( stderr, "driver: cannot read %s\n", wire_path.c_str() ); return false; }
+    const RetainCodec * codec = find_retain_codec( unit, root, message );
+    if ( codec == NULL ) { fprintf( stderr, "driver: no retain codec for %s.%s\n", unit.c_str(), root.c_str() ); return false; }
+    return codec->run( announcement.data(), (int64_t) announcement.size(),
+                       wire.data(), (int64_t) wire.size(), short_buffer, ids, answer );
+}
+
+static int surface_retain( const std::string & out )
+{
+    for ( size_t i = 0; i < manifest_lines.size(); i++ )
+    {
+        const std::vector<std::string> & f = manifest_lines[i].field;
+        if ( f[0] != "retain" && f[0] != "retain-message" ) continue;
+        RetainAnswer answer;
+        if ( !retain_row( f, answer ) ) return 1;
+        char text[128];
+        int n = snprintf( text, sizeof( text ), "%d,%d,%d %d\n",
+                          answer.retained, answer.retain_lost, answer.unknown, answer.save_lost );
+        if ( !spill( out, f[1], text, (size_t) n ) ) return 1;
+    }
+    return 0;
+}
+
+static int surface_retain_save( const std::string & out )
+{
+    for ( size_t i = 0; i < manifest_lines.size(); i++ )
+    {
+        const std::vector<std::string> & f = manifest_lines[i].field;
+        if ( f[0] != "retain" && f[0] != "retain-message" ) continue;
+        RetainAnswer answer;
+        if ( !retain_row( f, answer ) ) return 1;
+        if ( !spill( out, f[1], answer.saved.data(), answer.saved.size() ) ) return 1;
     }
     return 0;
 }
@@ -1296,7 +1515,7 @@ int main( int argc, char ** argv )
     const std::string surface = argv[2];
     if ( surface == "list" )
     {
-        printf( "wire\nmessage\nreport\njson-read\njson-write\njson-hostile\ncook-write\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\n" );
+        printf( "wire\nmessage\nreport\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook-write\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\n" );
         return 0;
     }
     if ( argc < 4 )
@@ -1309,6 +1528,8 @@ int main( int argc, char ** argv )
     if ( surface == "wire" ) return surface_wire( out );
     if ( surface == "message" ) return surface_message( out );
     if ( surface == "report" ) return surface_report( out );
+    if ( surface == "retain" ) return surface_retain( out );
+    if ( surface == "retain-save" ) return surface_retain_save( out );
     if ( surface == "json-read" ) return surface_json_read( out );
     if ( surface == "json-write" ) return surface_json_write( out );
     if ( surface == "json-hostile" ) return surface_json_hostile( out );

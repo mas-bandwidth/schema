@@ -170,8 +170,16 @@ func TestTheTailIsUnconditional(t *testing.T) {
 		entries := ir.TableVocabulary(unit)
 		var tables []uint64
 		for name := range ir.TableClosure(unit) {
+			// A MAP'S GENERATED ENTRY IS NOT A TABLE OF THE DECLARATION'S and
+			// its name is on no wire, so the tail never names it (§2.8, §20.2).
+			// The vocabulary skips it by `MapEntryOf`, and so does this: no
+			// connection unit carried a map until the retain rows landed one.
+			if st := unit.Tables[name]; st != nil && st.MapEntryOf != "" {
+				continue
+			}
 			if unit.Tables[name] != nil {
-				tables = append(tables, ir.TableWireId(name))
+				// the id is the table's WIRE name, so a `was` rename moves no slot
+				tables = append(tables, ir.TableWireId(unit.Tables[name].WireName()))
 			}
 		}
 		// the tail is the last 4 + one-per-table entries, in the fixed order
