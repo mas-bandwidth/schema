@@ -82,23 +82,34 @@ func mapKeyOrderType(f *ir.Field) string {
 	return "uint64_t"
 }
 
-// mapValueIsPointer reports a `map[K]*T` — the value is a pointer SLOT, so the
-// const form's Find answers the resolved `const T *` (docs/SPEC-TABLES.md §2.8).
-func mapValueIsPointer(f *ir.Field) bool { return ir.MapValueField(f).Type.Pointer }
+// mapValueIsPointer reports a `map[K]*T`, whose value is ONE pointer SLOT, so
+// the const form's Find answers the resolved `const T *` (docs/SPEC-TABLES.md
+// §2.8). AN ARRAY OF POINTERS IS NOT THIS CASE. `[N]*T`, `[..N]*T` and `[]*T`
+// store a `TableRef` PER ELEMENT (§2.1, §4.2), so each takes the arm its array
+// form takes and carries `TableRef` as the element; a predicate that read
+// `Type.Pointer` alone sent all three here and spelled `<T>At` on an array.
+// `[E]*T` is refused by name (§2.4, §15) and reaches no arm at all.
+func mapValueIsPointer(f *ir.Field) bool {
+	value := ir.MapValueField(f)
+	return value.Type.Pointer && value.Array == ir.ArrayNone && value.KeyEnum == ""
+}
 
 // mapValueIsPair reports a value whose storage is TWO MEMBERS: the buffer or
 // the element array, and the `int32` length or count beside it that says how
 // much of it is used (docs/SPEC-TABLES.md §2.8, §4.2, §7.2). That is
-// `string(N)`, `wstring(N)`, `bytes(N)` and `[..N]T`. Each is an ordinary
-// field of the generated entry, and two members are not one addressable slot,
-// so the handle every map surface hands back is the ENTRY, which reaches both.
+// `string(N)`, `wstring(N)`, `bytes(N)`, `[..N]T` and `[..N]*T`. Each is an
+// ordinary field of the generated entry, and two members are not one
+// addressable slot, so the handle every map surface hands back is the ENTRY,
+// which reaches both. A COUNTED ARRAY IS A PAIR WHATEVER ITS ELEMENT IS: a
+// pointer element changes the element's storage to a `TableRef` and changes
+// nothing about the count beside it.
 func mapValueIsPair(f *ir.Field) bool {
 	value := ir.MapValueField(f)
-	if value.Type.Pointer {
-		return false
-	}
 	if value.Array == ir.ArrayCounted {
 		return true
+	}
+	if value.Type.Pointer {
+		return false
 	}
 	switch value.Type.Kind {
 	case ir.TString, ir.TWString, ir.TBytes:
@@ -107,19 +118,33 @@ func mapValueIsPair(f *ir.Field) bool {
 	return false
 }
 
-// mapValueIsFixedArray reports a `[N]T` value. Its storage is ONE member, an
-// array of a fixed extent (docs/SPEC-TABLES.md §4.2), and a pointer to that
-// member keeps the extent. `[E]T` is not this case: it stores a
+// mapValueIsFixedArray reports a `[N]T` or `[N]*T` value. Its storage is ONE
+// member, an array of a fixed extent (docs/SPEC-TABLES.md §4.2), and a pointer
+// to that member keeps the extent. `[E]T` is not this case: it stores a
 // `TableKeyed<T, E>`, which is an ordinary one-member type spelling.
 func mapValueIsFixedArray(f *ir.Field) bool {
 	value := ir.MapValueField(f)
-	return !value.Type.Pointer && value.KeyEnum == "" && value.Array == ir.ArrayFixed
+	return value.KeyEnum == "" && value.Array == ir.ArrayFixed
 }
 
 // mapValueArrayAlias names the array type a `[N]T` value's handle points at.
 // A return type cannot spell `T (*)[N]` inline without wrapping the declarator
 // around the function name, so the alias is what makes the handle readable.
 func mapValueArrayAlias(f *ir.Field) string { return mapEntryOf(f).Name + "Value" }
+
+// mapValueElementType is the C++ type ONE ELEMENT of an array value is stored
+// as: a `TableRef` where the element is a pointer, which is the row §4.2 gives
+// an array of pointers at a field, and the element's own type otherwise
+// (docs/SPEC-TABLES.md §2.1, §4.2).
+func (g *tableGen) mapValueElementType(f *ir.Field) string {
+	value := ir.MapValueField(f)
+	if value.Type.Pointer {
+		g.noteRef(value.Type.Name)
+		return "TableRef"
+	}
+	typ, _ := g.cppFieldType(value.Type)
+	return typ
+}
 
 // ---- the runtime (docs/SPEC-TABLES.md §2.8) ----
 
@@ -886,10 +911,10 @@ func (g *tableGen) emitMapEntrySurface(owner *ir.Struct, f *ir.Field) {
 		g.pf("inline const %s * TableEntryFound( const %s * entry ) { return entry != NULL ? %sAt( entry->value ) : NULL; }\n", t, n, t)
 		g.pf("inline TableRef * TableEntryValue( %s * entry ) { return &entry->value; } // the builder hands back the SLOT\n", n)
 	case mapValueIsPair(f):
-		// a map[K]string(N), map[K]wstring(N), map[K]bytes(N) or map[K][..N]T:
-		// the value's storage is the buffer or the element array and the int32
-		// used length or count beside it (§2.8, §4.2, §7.2), two members, so
-		// the ENTRY is the handle that reaches both. A caller fills
+		// a map[K]string(N), map[K]wstring(N), map[K]bytes(N), map[K][..N]T or
+		// map[K][..N]*T: the value's storage is the buffer or the element array
+		// and the int32 used length or count beside it (§2.8, §4.2, §7.2), two
+		// members, so the ENTRY is the handle that reaches both. A caller fills
 		// `entry->value` and its companion, and leaves `entry->key` to the
 		// map, which owns the sort the key carries.
 		g.pf("// THIS VALUE'S STORAGE IS A PAIR (§2.8, §4.2, §7.2): `value` beside\n")
@@ -898,10 +923,12 @@ func (g *tableGen) emitMapEntrySurface(owner *ir.Struct, f *ir.Field) {
 		g.pf("inline const %s * TableEntryFound( const %s * entry ) { return entry; }\n", n, n)
 		g.pf("inline %s * TableEntryValue( %s * entry ) { return entry; }\n", n, n)
 	case mapValueIsFixedArray(f):
-		// a map[K][N]T: the value's storage is ONE member, an array of a fixed
-		// extent (§4.2), so the handle is a pointer to the ARRAY and keeps
-		// that extent. The alias is what lets a return type spell it.
-		elem, _ := g.cppFieldType(value.Type)
+		// a map[K][N]T or map[K][N]*T: the value's storage is ONE member, an
+		// array of a fixed extent (§4.2), so the handle is a pointer to the
+		// ARRAY and keeps that extent. A pointer element makes that element a
+		// `TableRef` (§2.1) and changes nothing else. The alias is what lets a
+		// return type spell it.
+		elem := g.mapValueElementType(f)
 		alias := mapValueArrayAlias(f)
 		g.pf("// A FIXED ARRAY VALUE IS ONE MEMBER (§2.8, §4.2): the handle points at the\n")
 		g.pf("// ARRAY and not at its first element, so the extent survives the handoff.\n")

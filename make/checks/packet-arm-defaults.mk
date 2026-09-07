@@ -106,8 +106,8 @@ packet-arm-defaults-cs-negative-control:
 	@cp test/cs/schematest.csproj $(ARM_NC_ROOT)/cs/schema/test/cs/
 	@cp test/cs/src/Program.cs $(ARM_NC_ROOT)/cs/schema/test/cs/src/
 	@ln -s "$(abspath $(SERIALIZE_CS))" $(ARM_NC_ROOT)/cs/serialize.cs
-	cd $(ARM_NC_ROOT)/cs/schema/test/cs && dotnet build --nologo -v quiet -o ../../bin/cs
-	$(call packet_arm_expect,cs,cd $(ARM_NC_ROOT)/cs/schema/test/cs && dotnet ../../bin/cs/schematest.dll,$(ARM_NC_MANAGED_FAILURE))
+	cd $(ARM_NC_ROOT)/cs/schema/test/cs && $(DOTNET) build --nologo -v quiet -o ../../bin/cs
+	$(call packet_arm_expect,cs,cd $(ARM_NC_ROOT)/cs/schema/test/cs && $(DOTNET) ../../bin/cs/schematest.dll,$(ARM_NC_MANAGED_FAILURE))
 
 packet-arm-defaults-java-negative-control:
 	$(call packet_arm_prepare,java,internal/codegen/java/functions.go,java,java)

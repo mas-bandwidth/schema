@@ -130,13 +130,23 @@ func (c fakeCorpus) substituted(t *testing.T, lang string, leg fakeLeg) string {
 // runHarness runs the gate over this corpus and hands back what it printed.
 func (c fakeCorpus) runHarness(t *testing.T, drivers string) (string, bool) {
 	t.Helper()
+	out, ok, err := c.runHarnessSkipping(t, drivers, "")
+	if err != nil {
+		t.Fatalf("harness run: %v\n%s", err, out)
+	}
+	return out, ok
+}
+
+// runHarnessSkipping is the same run with --skip filled in, which is what the
+// Makefile passes from SCHEMA_SKIP_LEGS (issue #599). It hands the error back
+// rather than failing on it, because REFUSING a skip is one of the behaviours
+// under test (skip_test.go).
+func (c fakeCorpus) runHarnessSkipping(t *testing.T, drivers, skip string) (string, bool, error) {
+	t.Helper()
 	var out bytes.Buffer
 	ok, err := run(&out, c.m, c.manifest, c.jsonDir, c.reports, drivers,
-		filepath.Join(t.TempDir(), "work"), "")
-	if err != nil {
-		t.Fatalf("harness run: %v\n%s", err, out.String())
-	}
-	return out.String(), ok
+		filepath.Join(t.TempDir(), "work"), "", skip)
+	return out.String(), ok, err
 }
 
 func needShell(t *testing.T) {
