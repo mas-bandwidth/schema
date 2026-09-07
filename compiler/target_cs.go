@@ -57,5 +57,4 @@ func (csTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 
 func init() {
 	registerBuiltin(csTarget{}, true, false, false, false)
-	registerPacketVoidArmCarrier("cs")
 }

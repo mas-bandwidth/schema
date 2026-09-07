@@ -4364,6 +4364,7 @@ tables-scalars-block-asserts: build/tables-generated/.stamp
 
 include $(wildcard make/*.mk)
 include make/checks/packet-arm-defaults.mk
+include make/checks/packet-void.mk
 include make/checks/packet-defaults.mk
 
 # THE CONFORMANCE MATRIX (test/conformance/README.md): every discovered driver
