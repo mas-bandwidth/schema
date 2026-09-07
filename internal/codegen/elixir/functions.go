@@ -438,7 +438,12 @@ func (g *gen) throwIf(cond, why, ind string) {
 	if why != "" {
 		g.pf("%s# %s\n", ind, why)
 	}
-	g.pf("%sif %s, do: throw(:invalid)\n", ind, cond)
+	one := fmt.Sprintf("%sif %s, do: throw(:invalid)", ind, cond)
+	if len(one) <= formatWidth {
+		g.pf("%s\n", one)
+	} else {
+		g.pf("%sif %s,\n%s  do: throw(:invalid)\n\n", ind, cond, ind)
+	}
 }
 
 // raiseIf emits a write-contract check: a block if raising ArgumentError —
@@ -446,7 +451,12 @@ func (g *gen) throwIf(cond, why, ind string) {
 func (g *gen) raiseIf(cond, msg, ind string) {
 	g.pf("\n")
 	g.pf("%sif %s do\n", ind, cond)
-	g.pf("%s  raise ArgumentError, \"%s\"\n", ind, msg)
+	one := fmt.Sprintf("%s  raise ArgumentError, %q", ind, msg)
+	if len(one) <= formatWidth {
+		g.pf("%s\n", one)
+	} else {
+		g.pf("%s  raise ArgumentError,\n%s        %q\n", ind, ind, msg)
+	}
 	g.pf("%send\n", ind)
 	g.pf("\n")
 }

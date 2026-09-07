@@ -22,6 +22,33 @@ ELIXIR    ?= PATH="$(BEAM_PATH):$$PATH" elixir
 MIX       ?= PATH="$(BEAM_PATH):$$PATH" mix
 ELIXIRC   ?= PATH="$(BEAM_PATH):$$PATH" elixirc
 
+build/packet-defaults/elixir/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema make/elixir.mk
+	./bin/schema generate --lang elixir --out build/packet-defaults/elixir/defaults test/packet-defaults/Defaults.schema
+	./bin/schema generate --lang elixir --out build/packet-defaults/elixir/plain test/packet-defaults/Plain.schema
+	@touch $@
+
+.PHONY: packet-defaults-elixir packet-defaults-elixir-negative-control
+packet-defaults-elixir: build/packet-defaults/elixir/.stamp packet-defaults-cpp
+	$(MIX) format --check-formatted build/packet-defaults/elixir/defaults/*.ex build/packet-defaults/elixir/plain/*.ex test/packet-defaults/elixir/*.exs
+	$(ELIXIR) test/packet-defaults/elixir/main.exs testdata/wire/packet-defaults
+
+packet-defaults-elixir-negative-control: packet-defaults-elixir
+	@mkdir -p build/packet-defaults/elixir-negative/beam
+	go run ./tools/sabotage -name packet-defaults-elixir-constructor-bytes \
+		-out build/packet-defaults/elixir-negative/elixir.gotext internal/codegen/elixir/elixir.go
+	@printf '{"Replace":{"%s/internal/codegen/elixir/elixir.go":"%s/build/packet-defaults/elixir-negative/elixir.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/packet-defaults/elixir-negative/overlay.json
+	go build -overlay=build/packet-defaults/elixir-negative/overlay.json -o build/packet-defaults/elixir-negative/schema ./cmd/schema
+	./build/packet-defaults/elixir-negative/schema generate --lang elixir --out build/packet-defaults/elixir-negative/generated test/packet-defaults/Defaults.schema
+	$(ELIXIRC) --warnings-as-errors -o build/packet-defaults/elixir-negative/beam build/packet-defaults/elixir-negative/generated/*.ex
+	@if $(ELIXIR) test/packet-defaults/elixir/main.exs testdata/wire/packet-defaults "$(CURDIR)/build/packet-defaults/elixir-negative/generated" > build/packet-defaults/elixir-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: missing constructor bytes passed in Elixir'; exit 1; fi
+	@grep -Fq 'FAILED: packet-default constructor bytes' build/packet-defaults/elixir-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: Elixir failed for another reason'; cat build/packet-defaults/elixir-negative/log; exit 1; }
+	@echo 'packet defaults Elixir negative control: missing constructor bytes fail the runtime check'
+
+test-elixir: packet-defaults-elixir packet-defaults-elixir-negative-control
+
 # the Elixir target: generated modules only, no wiring file at all —
 # generated Elixir is self-contained (the port's packing shapes are inlined
 # per issue #167), so there is no runtime checkout and no mix project; the

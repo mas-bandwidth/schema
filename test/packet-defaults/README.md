@@ -90,3 +90,12 @@ masks and repeated union selection are covered. Long nested byte paths are
 emitted in the Dart formatter's multiline form. The constructor-byte control
 compiles an AOT consumer before it fails its marker. Both checks ride
 `test-dart`, and table-closure defaults remain refused.
+
+`make packet-defaults-elixir` format-checks the generated modules and checks
+the eight C++ byte/bit pins, defaultless values, explicit empty and short
+literals, independent 33/64-bit masks, zero forms and repeated union reads.
+BEAM binaries and lists hold only used data, so no unused backing tail exists;
+the zero-count list is empty. Exact-bit reads accept and one-bit-short reads
+refuse. The constructor-byte control compiles with warnings treated as errors
+before failing its marker. Both checks ride `test-elixir`, and table-closure
+defaults remain refused.
