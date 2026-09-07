@@ -164,7 +164,7 @@
     {
       "name": "base-shared-node",
       "when": "pull-request",
-      "why": "the shared-node control and the two Go fuzz controls, which read the same walk the arm gate does and were 82 s of control time beside it on run 34115675206. Measured 17 s over 3 controls.",
+      "why": "the shared-node control and the two Go fuzz controls, which read the same walk the arm gate does and are 82 s of control time beside it on run 34115675206. Measured 17 s over 3 controls.",
       "targets": [
         "tables-go-fuzz-extent-negative-control",
         "tables-go-fuzz-maximum-negative-control",
@@ -202,10 +202,19 @@
     {
       "name": "base-keyed-shift",
       "when": "pull-request",
-      "why": "the keyed shift control and the flat-wire one, which were 76 s of control time beside the group above on run 34115675206. Measured 12 s over 2 controls.",
+      "why": "the keyed shift control and the flat-wire one, which are 76 s of control time beside the group above on run 34115675206. Measured 12 s over 2 controls.",
       "targets": [
         "tables-flat-wire-negative-control",
         "tables-keyed-shift-negative-control"
+      ]
+    },
+    {
+      "name": "base-pack",
+      "when": "pull-request",
+      "why": "the pack golden's framing control and the JSON number grammar's hostile-value control: one pack corpus, one JSON engine, and a `go build -overlay` each. Measured 19 s over 2 controls in one invocation, on a cold Go build cache with bin/schema and the generated tree already built, which is the shape this job runs them in.",
+      "targets": [
+        "tables-hostile-negative-control",
+        "tables-pack-negative-control"
       ]
     },
     {
@@ -391,7 +400,7 @@
     {
       "name": "rust-alloc",
       "when": "pull-request",
-      "why": "the Rust allocation audit's control, alone, because its prerequisite is a conformance run. It used to sit in a group that installed all seven SDKs, since its prerequisite was the bare `conformance` target that builds and runs all nine legs; the prerequisite is now `conformance-rust`, which is the rust leg and the derived manifest the control actually reads, and one SDK. Measured 5 s on a host carrying no such SDK.",
+      "why": "the Rust allocation audit's control, alone, because its prerequisite is a conformance run. That prerequisite is `conformance-rust`, the rust leg and the derived manifest the control reads, so this row installs one SDK where the bare `conformance` target's nine legs want all seven. Measured 5 s on a host carrying no such SDK.",
       "targets": [
         "tables-rust-alloc-negative-control"
       ],
@@ -474,10 +483,9 @@
     {
       "name": "nightly",
       "when": "nightly",
-      "why": "the two controls that do not fit the owner's rule for CI that runs per commit, on their own, at any group size. tables-message-form-negative-control drives 49 sabotage rows one submake each, 124 s on the runner where the rule is 120; tables-wire-fuzz-retain-negative-control rebuilds the compiler under the retain overlay and fuzzes the whole tolerant-wire corpus through it, 140 s on run 34115675206, the one control of that family that is over. The message form's four blades and the retain family's other two controls run on the pull request, so what moves nightly is these two passes and nothing else. certify.yml runs this tier on the schedule it already carries.",
+      "why": "the one control that does not fit the owner's rule for CI that runs per commit, on its own, at any group size: tables-message-form-negative-control drives 49 sabotage rows one submake each, 124 s on the runner where the rule is 120. The message form's four blades run on the pull request, so what moves nightly is this one pass and nothing else. The group stays a group even at one target, because it is the place a control lands the day it outgrows the rule. certify.yml runs this tier on the schedule it already carries.",
       "targets": [
-        "tables-message-form-negative-control",
-        "tables-wire-fuzz-retain-negative-control"
+        "tables-message-form-negative-control"
       ]
     }
   ],
@@ -497,6 +505,14 @@
     {
       "target": "tables-wire-fuzz-negative-control",
       "reason": "an umbrella over the twelve tolerant-wire leaves, which the wire-fuzz groups run between them. Each leaf rebuilds the compiler under an overlay and costs 55 s to 75 s on the runner, so they run one per job; the umbrella in any one of them would re-run all twelve and take the job to six minutes."
+    },
+    {
+      "target": "tables-wire-fuzz-retain-negative-control",
+      "reason": "an umbrella over the two retain leaves, tables-wire-fuzz-retain-oracle-negative-control and tables-wire-fuzz-retain-class-negative-control, which the wire-fuzz-message-oracle and wire-fuzz-retain-class groups run between them. It carries no recipe of its own, so the umbrella in either group re-runs the other group's leaf to prove a second time what that job proves once."
+    },
+    {
+      "target": "tables-big-endian-negative-control",
+      "reason": "the body of ci.yml's big-endian job, which runs it on every pull request already: the job cross-compiles the tables battery for s390x, runs it under qemu and then compiles it a second time for this control. Issue #684 owns moving that job, so the control is named here rather than placed in a group, and this leg does not cross-compile it a second time."
     }
   ]
 }

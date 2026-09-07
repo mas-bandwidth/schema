@@ -109,12 +109,13 @@ have signed the [Contributor Assignment Agreement](#the-contributor-assignment-a
 
 A negative control breaks what a gate watches and requires the gate to go red.
 It is how this repository proves a gate is watching something rather than
-passing over an empty set, and there are 196 of them. Every one refuses when
-its sabotage patches nothing, so a control whose `sed` pattern has drifted off
-the line it aims at says so instead of reading as a pass.
+passing over an empty set. `go run ./tools/negativecontrols check` prints how
+many there are, which is the only count that cannot go stale. Every one refuses
+when its sabotage patches nothing, so a control whose `sed` pattern has drifted
+off the line it aims at says so instead of reading as a pass.
 
 **Every negative control runs on every pull request**, in the `negative
-controls (<group>)` jobs, with the one exception named below. A group is a set
+controls (<group>)` jobs, with the exceptions named below. A group is a set
 of controls that share a toolchain and a compile and run in one `make -k`
 invocation, so one refusal does not hide the ones behind it, and the jobs run
 in parallel. The `base` groups need Go, a host C and C++ compiler and the
@@ -132,16 +133,24 @@ than toolchains.
 
 A control that does not fit the rule **on its own** is not made to fit by
 grouping, so it runs nightly instead, in the `nightly` tier that `certify.yml`
-runs on the schedule it already carries. Today that is two controls:
+runs on the schedule it already carries. Today that is one control:
 `tables-message-form-negative-control`, which drives 49 sabotage rows one
-submake each and takes 124 seconds, and
-`tables-wire-fuzz-retain-negative-control`, which fuzzes the whole tolerant-wire
-corpus through the retain overlay and takes 140 seconds. The message form's
-four blades and the retain family's other two controls stay on the pull
-request. Each group in `make/negative-controls.json` names its tier in a `when`
-field and says why in a `why` field, and `tools/negativecontrols` refuses a
-group that names neither tier, so a control cannot leave the pull request
-without landing on the nightly.
+submake each and takes 124 seconds. The message form's four blades stay on the
+pull request. Each group in `make/negative-controls.json` names its tier in a
+`when` field and says why in a `why` field, and `tools/negativecontrols`
+refuses a group that names neither tier, so a control cannot leave the pull
+request without landing on the nightly.
+
+The other exceptions are the `excluded` list, and each carries a reason the
+test requires to be non-empty. Four of them are umbrella targets with no recipe
+of their own, whose leaves already run in groups:
+`packet-arm-defaults-negative-controls`, `tables-maps-negative-controls`,
+`tables-wire-fuzz-negative-control` and `tables-wire-fuzz-retain-negative-control`.
+One is a parameterized worker with no sabotage of its own,
+`tables-message-form-one-negative-control`. The last is
+`tables-big-endian-negative-control`, which the `big-endian` job already runs
+on every pull request: it cross-compiles the tables battery for s390x, and a
+second cross-compile on this leg proves nothing the first does not.
 
 **The target list is enumerated, not typed.** `tools/negativecontrols` reads
 the Makefile and every file the Makefile includes, collects each explicit

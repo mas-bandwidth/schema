@@ -2796,8 +2796,8 @@ tables-cook-endian: bin/schema
 # tracked file is ever written to: an interrupt cannot leave a sabotaged
 # working tree, and a parallel `make -j` cannot compile the sabotage into
 # something else.
-.PHONY: tables-big-endian-negative
-tables-big-endian-negative: tables-big-endian
+.PHONY: tables-big-endian-negative-control
+tables-big-endian-negative-control: tables-big-endian
 	@mkdir -p build
 	@sed 's|void put16( uint16_t v ) { uint8_t b\[2\] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }|void put16( uint16_t v ) { raw( \&v, 2 ); } // SABOTAGED: host order|' \
 		internal/codegen/cpptable/cpptable.go > build/cpptable-host-order.gotext
@@ -2920,8 +2920,8 @@ tables-hostile-values: build/schema_test_hostile build/schema_test_hostile_asan 
 # `+`, which RFC 8259 does not — and the gate must go red, because a tree the
 # manifest says is REFUSED starts packing. Same overlay mechanism as the wire
 # negative control: no tracked file is ever written to.
-.PHONY: tables-hostile-negative
-tables-hostile-negative: tables-hostile-values
+.PHONY: tables-hostile-negative-control
+tables-hostile-negative-control: tables-hostile-values
 	@mkdir -p build
 	@sed "s/in.text\[in.pos\] == '-' {/in.text[in.pos] == '-' || in.text[in.pos] == '+' { \/\/ SABOTAGED/" \
 		internal/tabletext/read.go > build/read-sabotaged.gotext
@@ -2950,8 +2950,8 @@ tables-hostile-negative: tables-hostile-values
 # `go build -overlay`, so no tracked file is ever written to: an interrupt in
 # the middle of this target cannot leave a sabotaged working tree, and a
 # parallel `make -j` cannot compile the sabotage into something else.
-.PHONY: tables-pack-negative
-tables-pack-negative: tables-pack
+.PHONY: tables-pack-negative-control
+tables-pack-negative-control: tables-pack
 	@mkdir -p build
 	@sed 's/if !fv\.Present {/if true { \/\/ SABOTAGED: a present ?T elides/' \
 		internal/tablewire/encode.go > build/encode-sabotaged.gotext
@@ -3166,9 +3166,9 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	$(MAKE) tables-runtime-home-negative-control
 	$(MAKE) tables-block-inline-array-negative-control
 	$(MAKE) tables-pack
-	$(MAKE) tables-pack-negative
+	$(MAKE) tables-pack-negative-control
 	$(MAKE) tables-hostile-values
-	$(MAKE) tables-hostile-negative
+	$(MAKE) tables-hostile-negative-control
 	./build/schema_test_random
 	./build/schema_test_ludicrous
 	./build/schema_test_bench

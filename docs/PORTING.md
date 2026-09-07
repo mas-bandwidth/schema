@@ -460,7 +460,7 @@ and `:501-502`.
 **Measured effect.** The s390x battery (`tables-big-endian`, `conformance-big-endian`)
 is green under emulation.
 
-**Negative control.** `tables-big-endian-negative` puts one store back to
+**Negative control.** `tables-big-endian-negative-control` puts one store back to
 host order and requires red on the target while green on the host.
 
 **Targets:** none
@@ -1030,7 +1030,7 @@ refuse, under s390x emulation); `tables-java-order`;
 
 **Measured effect.** Structural.
 
-**Negative control.** `tables-big-endian-negative`;
+**Negative control.** `tables-big-endian-negative-control`;
 `conformance-negative-control-c-foreign` neuters the byte swap and requires
 both foreign rows red with `cook` and `block` green.
 

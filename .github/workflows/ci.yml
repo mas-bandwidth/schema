@@ -19,22 +19,26 @@ name: CI
 # neither, so nothing can fall between the two files.
 #
 # `big-endian` IS THE BINDING CONSTRAINT, and it is worth naming rather than
-# rounding away: 87 s of its 109 is `make tables-big-endian-negative`, which
-# cross-compiles the tables battery for s390x, runs it under qemu, and then
-# compiles it a SECOND time for the negative control. Building its six
+# rounding away: 87 s of its 109 is `make tables-big-endian-negative-control`,
+# which cross-compiles the tables battery for s390x, runs it under qemu, and
+# then compiles it a SECOND time for the negative control. Building its six
 # binaries in parallel bought 14 s of that; the rest is the control's own two
 # compiles, which are serial by construction. The next job that wants a place
 # on this gate takes the budget from somewhere, and that is where to look.
-# NOTE, 2026-09-07: that job now measures 4:15 to 4:26 on main (runs
-# 34111624059, 34111228369, 34110320928), which is over the rule and is not
-# this leg's doing. It wants the same treatment the negative controls got here
-# and has not had it yet.
+# NOTE, 2026-09-07: that job measures 4:15 to 4:26 on main (runs 34111624059,
+# 34111228369, 34110320928), which is over the rule and is not this leg's
+# doing. It wants the same treatment the negative controls have here, and
+# issue #684 owns giving it that. Its control is the reason
+# tables-big-endian-negative-control sits in the plan's exclusion list rather
+# than in a group: this job runs it on every pull request already.
 #
 # CERTIFICATION IS certify.yml: the inline gates, the full `make test` chain on
-# both OSes, every `tables-<lang>-release` target. It runs on every push to
-# main, nightly, and on demand. Nothing is checked less than before — the split
-# moves WHEN a certification instrument runs, not whether. A regression only
-# certification can see fails loudly on main minutes after the merge.
+# both OSes, every `tables-<lang>-release` target. It runs nightly and on
+# demand, and never per push (#669): a thirty-minute suite is not per-commit
+# CI. Nothing is checked less than before, because the split moves WHEN a
+# certification instrument runs, not whether. A regression only certification
+# can see fails loudly at the next nightly, or the same hour when somebody
+# dispatches that file on main after a landing near the hot paths.
 #
 # The line between the two files is the question a job answers. An ITERATION
 # gate answers "is this diff right" — it can go red on a commit, so a PR is
@@ -396,7 +400,7 @@ jobs:
       # bin/schema and the generated tree, which make builds once. The runner
       # has four cores and the leg was spending them one at a time.
       - name: the big-endian leg, and its negative control
-        run: make -j"$(nproc)" tables-big-endian-negative BE_CXX=s390x-linux-gnu-g++-13 BE_CC=s390x-linux-gnu-gcc-13
+        run: make -j"$(nproc)" tables-big-endian-negative-control BE_CXX=s390x-linux-gnu-g++-13 BE_CC=s390x-linux-gnu-gcc-13
 
       # And the GO table leg on the same target. Go cross-compiles, so the
       # conformance driver is one env var away from a big-endian binary, and
@@ -776,15 +780,17 @@ jobs:
   #
   # MEASURED, 2026-09-07 on the author's machine (arm64 macOS, one target per
   # make invocation, off one warm build) and then on the runner, on this
-  # branch's own pull-request runs. 196 controls, 38 groups.
+  # branch's own pull-request runs. 199 controls, 39 pull-request groups and
+  # one nightly group. `go run ./tools/negativecontrols check` prints the
+  # count, so it is one command rather than a number to keep in step by hand.
   #
-  # The base toolchain carries 130 of them and takes twelve jobs rather than
-  # one: the map gate alone is 17 controls at 4 s each on the author's machine
-  # and about 2x that on the runner, and the conformance driver's two sabotage
-  # rebuilds are 45 s and 47 s of runner time on their own. The tolerant-wire
-  # family is one control per job: each rebuilds the compiler under a source
-  # overlay and then fuzzes the sabotaged wire, 55 s to 80 s each, so no two of
-  # them fit together.
+  # The base toolchain carries 130 of them and takes twenty-seven jobs rather
+  # than one: the map gate alone is 17 controls at 4 s each on the author's
+  # machine and about 2x that on the runner, and the conformance driver's two
+  # sabotage rebuilds are 45 s and 47 s of runner time on their own. The
+  # tolerant-wire family is one control per job: each rebuilds the compiler
+  # under a source overlay and then fuzzes the sabotaged wire, 55 s to 80 s
+  # each, so no two of them fit together.
   #
   # THE FIRST CUT WAS MEASURED AND CUT AGAIN. On run 34115675206 every group
   # was inside the rule but eight of them sat between 100 s and 111 s, which is
@@ -793,15 +799,20 @@ jobs:
   # make/negative-controls.json's `why` lines, next to the targets they are
   # about.
   #
-  # TWO CONTROLS DO NOT FIT THE RULE AT ANY GROUP SIZE, and they run nightly
+  # ONE CONTROL DOES NOT FIT THE RULE AT ANY GROUP SIZE, and it runs nightly
   # instead: tables-message-form-negative-control drives 49 sabotage rows one
-  # submake each at 124 s, and tables-wire-fuzz-retain-negative-control fuzzes
-  # the whole tolerant-wire corpus through the retain overlay at 140 s, both
-  # against a 120 s rule. They are the `nightly` group in the plan, certify.yml
-  # runs that tier on the schedule it carries, and `tools/negativecontrols`
-  # refuses a group that is in neither tier, so a control cannot leave this
-  # file without landing on that one. The message form's four blades and the
-  # retain family's other two controls stay here.
+  # submake each at 124 s, against a 120 s rule. It is the `nightly` group in
+  # the plan, certify.yml runs that tier on the schedule it carries, and
+  # `tools/negativecontrols` refuses a group that is in neither tier, so a
+  # control cannot leave this file without landing on that one. The message
+  # form's four blades stay here. The group keeps its name at one target,
+  # because it is where the next control that outgrows the rule lands.
+  #
+  # AN UMBRELLA TARGET IS NOT A CONTROL. tables-wire-fuzz-retain-negative-control
+  # carries no recipe: it names the retain oracle and the retain class leaves,
+  # which the wire-fuzz-message-oracle and wire-fuzz-retain-class rows run
+  # between them, so it sits in the plan's exclusion list beside the other
+  # umbrellas rather than in a job that would run one of those leaves twice.
   negative-controls-matrix:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -830,7 +841,11 @@ jobs:
     name: negative controls (${{ matrix.name }})
     needs: negative-controls-matrix
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # THE RULE, ENFORCING ITSELF. Every row here is cut to 120 s of control
+    # time and pays about 25 s of checkout, sibling clones and first build on
+    # top, so five minutes is generous and a row that reaches it is a row that
+    # left the rule. A ceiling wide enough to hide that is not a timeout.
+    timeout-minutes: 5
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.negative-controls-matrix.outputs.matrix) }}
