@@ -37,3 +37,8 @@ Both targets ride `test-go`.
 with preallocated char storage, zero measured read allocations and the same
 composition contracts. Its compiled pairing-removal control must fail the
 mutation comparison. Both targets ride `test-cs`.
+
+`make packet-wide-java` covers assertions enabled/disabled with fixed char
+storage, exact bit limits and composition contracts. The flat codec's measure
+counts 32 bits per used code unit without alignment. Its compiled pairing
+control must fail mutation agreement. Both targets ride `test-java`.

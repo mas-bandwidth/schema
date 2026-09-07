@@ -1873,8 +1873,8 @@ prefix's bits and it sizes the storage. A `wstring` field takes no
 attributes and no `= default` (§4.2), and `wstring(N)` with N below 2 is a
 compile error, the same floor `string(N)` carries (§4.6).
 
-**Backend status.** C++ carries wide text on both wires. C, Rust, Go and C# also carry the
-packet storage, groups and read refusals below; the other four ports refuse
+**Backend status.** C++ carries wide text on both wires. C, Rust, Go, C# and Java also carry the
+packet storage, groups and read refusals below; the other three ports refuse
 packet wide text by name until their codecs land. All eight ports refuse
 wide text reachable from a table, whose kind `33` remains C++ only
 (SPEC-TABLES.md §3). The storage and boundary table below states the common
