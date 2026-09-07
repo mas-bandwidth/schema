@@ -1859,7 +1859,7 @@ tables-shared-node-negative-control: bin/schema
 	fi
 	@grep -q "^FAIL test/tables/main.cpp" build/tables-no-identity.log || \
 		{ echo "NEGATIVE CONTROL FAILED: the suite went red, but not on a CHECK"; cat build/tables-no-identity.log; exit 1; }
-	@echo "negative control: a pack with no identity map turns the TABLES SUITE red — $$(grep -c '^FAIL' build/tables-no-identity.log) failures"
+	@echo "negative control: a pack with no identity map turns the TABLES SUITE red on $$(grep -c '^FAIL' build/tables-no-identity.log) failures"
 
 # The NEGATIVE CONTROL for a keyed array's ITERATION RANGE (docs/SPEC-TABLES.md
 # §2.4). The iteration's whole promise is that it walks EVERY stored slot and
@@ -1894,7 +1894,7 @@ tables-keyed-iteration-negative-control: bin/schema
 	fi
 	@grep -q "^FAIL test/tables/main.cpp" build/tables-first-slot.log || \
 		{ echo "NEGATIVE CONTROL FAILED: the suite went red, but not on a CHECK"; cat build/tables-first-slot.log; exit 1; }
-	@echo "negative control: begin() past the first stored slot turns the TABLES SUITE red — $$(grep -c '^FAIL' build/tables-first-slot.log) failures"
+	@echo "negative control: begin() past the first stored slot turns the TABLES SUITE red on $$(grep -c '^FAIL' build/tables-first-slot.log) failures"
 
 # THE None REFUSAL, HELD UNDER -DNDEBUG (docs/SPEC-TABLES.md §2.4). The refusal is
 # unconditional by ruling: indexing a keyed array by None is a program error in
@@ -2095,7 +2095,7 @@ tables-clamp-limits-negative-control: bin/schema
 	@grep -q "always false" build/clamp-limits-negative.log || \
 		{ echo "NEGATIVE CONTROL FAILED: the build went red, but not on a comparison that cannot fire"; \
 		  cat build/clamp-limits-negative.log; exit 1; }
-	@echo "negative control: the storage-limit clamps back turn the build red — $$(grep -c 'always false' build/clamp-limits-negative.log) comparisons that cannot fire"
+	@echo "negative control: the storage-limit clamps back turn the build red on $$(grep -c 'always false' build/clamp-limits-negative.log) comparisons that cannot fire"
 
 # THE ZERO-RANGE GATE and its NEGATIVE CONTROL (SPEC §4.6). A field whose
 # declared range excludes zero and declares no default is born outside its own
@@ -2928,6 +2928,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-lists
 	$(MAKE) tables-list-measure-refusals
 	$(MAKE) tables-json-list-walk
+	$(MAKE) tables-json-list-walk-negative-controls
 	$(MAKE) tables-lists-negative-controls
 	$(MAKE) tables-arms
 	$(MAKE) tables-arms-negative-controls
@@ -3108,7 +3109,7 @@ define map_negative_control
 	fi
 	@grep -q "^FAIL test/tables/maps_main.cpp" build/map-$(1).log || \
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on a CHECK"; cat build/map-$(1).log; exit 1; }
-	@echo "negative control: $(1) turns the MAP GATE red — $$(grep -c '^FAIL' build/map-$(1).log) failures"
+	@echo "negative control: $(1) turns the MAP GATE red on $$(grep -c '^FAIL' build/map-$(1).log) failures"
 endef
 
 # THE WRITER EMITS INSERTION ORDER instead of sorted. The instance built OUT OF
@@ -3229,7 +3230,7 @@ tables-maps-entry-node-negative-control: bin/schema build/tables-generated/.stam
 	fi
 	@grep -q "^FAIL test/tables/maps_main.cpp" build/map-entrynode.log || \
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on a CHECK"; cat build/map-entrynode.log; exit 1; }
-	@echo "negative control: entrynode turns the MAP GATE red — $$(grep -c '^FAIL' build/map-entrynode.log) failures"
+	@echo "negative control: entrynode turns the MAP GATE red on $$(grep -c '^FAIL' build/map-entrynode.log) failures"
 
 # AN UNREACHED NON-EMPTY MAP SLOT IS REFUSED by Cook and by Lock, the same
 # refusal §7.6 gives a pointer in that position. The `Depth` instance whose
@@ -3412,29 +3413,86 @@ tables-lists: build/schema_test_lists build/schema_test_lists_asan
 tables-list-measure-refusals: build/schema_test_lists
 	./build/schema_test_lists measure-refusals
 
-# THE LIST-WALK GATE (docs/SPEC-TABLES.md §2.9, §16): the list's half of the
-# text form is emitted only in a unit that declares one, it is ONE half, the
-# same bytes in every list-bearing .cpp, and none of it reaches a list-free
+# THE LIST-WALK GATE (docs/SPEC-TABLES.md §2.9, §13.5, §16): the list's half of
+# the text form is emitted only in a unit that declares one, it is ONE half,
+# the same bytes in every list-bearing .cpp, and none of it reaches a list-free
 # unit, which is the zero-cost property (§2.2) holding for the text form.
+#
+# THE LIST-FREE SET IS DERIVED, NOT NAMED. It was three directory names in this
+# recipe until #662 gave `tables/maps` a `map[uint8][]Item`: the unit became
+# list-bearing, the emitter emitted the half correctly, and the copy of the
+# fact standing here reported that as a leak. The premise was right and the
+# instrument was wrong. `internal/listwalk` asks the COMPILER'S OWN IR instead.
+# A unit is list-free when no table in its closure carries an unbounded array,
+# and a map's generated entry is a table of that closure (§2.8), so `map[K][]T`
+# reaches the answer with no clause of its own. The corpus is the units
+# `tables_generate` emits, read from that define, so the scan is every
+# generated .cpp of the tree rather than one directory's five.
 .PHONY: tables-json-list-walk
 tables-json-list-walk: build/tables-generated/.stamp
-	@rm -rf build/json-list-walk && mkdir -p build/json-list-walk
-	@for f in build/tables-generated/lists/*Table.cpp; do \
-		out=build/json-list-walk/$$(echo $$f | tr / _); \
-		awk '/---- json list walk: begin ----/,/---- json list walk: end ----/' $$f > $$out; \
-		if [ ! -s $$out ]; then echo "LIST-WALK GATE FAILED: no list half in $$f"; exit 1; fi; \
-	done
-	@first=""; for f in build/json-list-walk/*; do \
-		if [ -z "$$first" ]; then first=$$f; else \
-			cmp -s $$first $$f || { echo "LIST-WALK GATE FAILED: the list half in $$f is not the list half in $$first"; exit 1; }; \
-		fi; \
-	done
-	@for f in build/tables-generated/examples/*Table.cpp build/tables-generated/pointers/*Table.cpp build/tables-generated/maps/*Table.cpp; do \
-		if grep -q "json list walk: begin" $$f; then \
-			echo "LIST-WALK GATE FAILED: the list half reached the list-free unit $$f"; exit 1; \
-		fi; \
-	done
-	@echo "tables list-walk gate: one list half, byte-identical in $$(ls build/json-list-walk | wc -l | tr -d ' ') list-bearing .cpp files, and none in a list-free one"
+	@mkdir -p build
+	SCHEMA_LIST_WALK_DIR=$$PWD/build/tables-generated \
+		SCHEMA_LIST_WALK_SUMMARY=$$PWD/build/list-walk.summary \
+		go test -count=1 ./internal/listwalk -run TestListWalkHalfRidesTheListBearingUnits
+	@cat build/list-walk.summary
+
+# THE NEGATIVE CONTROLS for the list-walk gate (docs/SPEC-TABLES.md §2.9,
+# §16). A gate that cannot go red proves nothing, and the three ways this one
+# can fail to hold are the three ways the half can land wrong:
+#
+#   1. PLANTED. The half is put into a list-free unit's emitted .cpp in a
+#      throwaway copy. Nothing generates it and no emitter is patched, so
+#      this control holds the SCAN alone: it must name the file.
+#   2. UNGATED. The emitter's own `if anyList` is removed, so every unit's
+#      .cpp carries the real half. This is the control the gate exists for,
+#      because it is what §13.5's ruling costs a list-free consumer the day
+#      the gating goes, and the derived set has to say which units are free.
+#   3. DROPPED. The other half of the same switch: the list half is never
+#      emitted, so a list-bearing unit's .cpp carries the stub. A gate that
+#      only refused leaks would stay green here.
+#
+# Each control narrows the run with SCHEMA_LIST_WALK_UNITS, so its red is its
+# own and not thirty-five absent trees.
+#
+# The two gating controls share a recipe. $(1) the control's short name, $(2)
+# the sed script over the JSON emitter, $(3) the corpus directory the control
+# regenerates and scans, $(4) the sentence a reader gets when the gate stayed
+# green, $(5) the clause the red has to be on.
+define list_walk_gating_control
+	@sed -e $(2) internal/codegen/cpptable/json.go > build/list-walk-$(1).gotext
+	@cmp -s build/list-walk-$(1).gotext internal/codegen/cpptable/json.go && \
+		{ echo "NEGATIVE CONTROL FAILED: the $(1) sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/json.go":"%s/build/list-walk-$(1).gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/list-walk-$(1)-overlay.json
+	@go build -overlay=build/list-walk-$(1)-overlay.json -o build/schema-list-walk-$(1) ./cmd/schema
+	@rm -rf build/list-walk-$(1)-tree && mkdir -p build/list-walk-$(1)-tree
+	@./build/schema-list-walk-$(1) generate --lang cpp --out build/list-walk-$(1)-tree/$(3) tables/$(3)
+	@if SCHEMA_LIST_WALK_DIR=$$PWD/build/list-walk-$(1)-tree SCHEMA_LIST_WALK_UNITS=$(3) \
+			go test -count=1 ./internal/listwalk -run TestListWalkHalfRidesTheListBearingUnits \
+			> build/list-walk-$(1).log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: $(4)"; exit 1; \
+	fi
+	@grep -q "$(5)" build/list-walk-$(1).log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the $(1) clause"; cat build/list-walk-$(1).log; exit 1; }
+	@echo "negative control: $(1) turns the LIST-WALK GATE red on $$(grep -c 'LIST-WALK GATE FAILED' build/list-walk-$(1).log) named file(s)"
+endef
+
+.PHONY: tables-json-list-walk-negative-controls
+tables-json-list-walk-negative-controls: bin/schema build/tables-generated/.stamp
+	@rm -rf build/list-walk-planted && mkdir -p build/list-walk-planted/examples
+	@cp build/tables-generated/examples/TablesTable.cpp build/list-walk-planted/examples/TablesTable.cpp
+	@printf '// ---- json list walk: begin ----\n// PLANTED\n// ---- json list walk: end ----\n' \
+		>> build/list-walk-planted/examples/TablesTable.cpp
+	@if SCHEMA_LIST_WALK_DIR=$$PWD/build/list-walk-planted SCHEMA_LIST_WALK_UNITS=examples \
+			go test -count=1 ./internal/listwalk -run TestListWalkHalfRidesTheListBearingUnits \
+			> build/list-walk-planted.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the list half planted in a list-free unit left the gate GREEN"; exit 1; \
+	fi
+	@grep -q "the list half reached the list-free unit.*examples/TablesTable.cpp" build/list-walk-planted.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not by naming the planted file"; cat build/list-walk-planted.log; exit 1; }
+	@echo "negative control: a planted list half turns the LIST-WALK GATE red on $$(grep -c 'LIST-WALK GATE FAILED' build/list-walk-planted.log) named file(s)"
+	$(call list_walk_gating_control,ungated,'s@listAdapters := tableJsonNoListAdapters@listAdapters := tableJsonListAdapters // SABOTAGED@',examples,the list half emitted into every unit left the gate GREEN,the list half reached the list-free unit)
+	$(call list_walk_gating_control,dropped,'s@listAdapters = tableJsonListAdapters@listAdapters = tableJsonNoListAdapters // SABOTAGED@',lists,the list half emitted into no unit at all left the gate GREEN,no list half in)
 
 # ---- the NEGATIVE CONTROLS §2.9 names ------------------------------------
 #
