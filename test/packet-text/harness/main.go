@@ -37,7 +37,7 @@ func packed(s string) string {
 func corpus(path string, wide bool) []vector {
 	f, err := os.Open(path)
 	must(err)
-	defer f.Close()
+	defer func() { must(f.Close()) }()
 	var all []vector
 	v := vector{}
 	flush := func() {
@@ -176,7 +176,7 @@ func main() {
 			}
 		}
 		if want[i] != expected {
-			must(fmt.Errorf("C++ disagrees with pinned corpus on %s: got %q, want %q", v.name, want[i], expected))
+			must(fmt.Errorf("oracle C++ disagrees with pinned corpus on %s: got %q, want %q", v.name, want[i], expected))
 		}
 	}
 	if refusals == 0 {
