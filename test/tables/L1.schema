@@ -1,0 +1,33 @@
+// L1.schema — THE TOOL'S COOK HALF FOR AN UNBOUNDED ARRAY (schema#380,
+// docs/SPEC-TABLES.md §2.9, §7.6): a list-bearing unit with NO MAP in it, so
+// the tool's cook and uncook reach their engines and can be held to the C++
+// reference's own bytes. `tables/lists` cannot serve here, because it declares
+// a map (`Squad.roster`) and the tool's cook still refuses a map-bearing unit
+// by name.
+//
+// The shapes are the ones a node extent has to get right: a list of tables
+// that hold lists (depth, and the pre-order the arrays are carved in), a list
+// of scalars, a list of POINTER elements (each names a node, not this extent),
+// a pointed-at holder whose own node carries its own extent, and a field AFTER
+// the lists so the record's storage can be seen to end where it should.
+package tbll1
+
+table Sample
+{
+    v int32
+}
+
+table Row
+{
+    items []Sample
+    label int32
+}
+
+table Save
+{
+    rows   []Row // a list of tables that hold lists: the extent at two depths
+    marks  []int32 // a list of scalars, carved after it in declaration order
+    linked []*Row // POINTER elements: each names a node of its own
+    pinned *Row // a pointed-at holder whose node extent is its list's
+    after  int32
+}

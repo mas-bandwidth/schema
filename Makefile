@@ -209,6 +209,14 @@ define tables_generate
 	$(1) generate --lang cpp --out $(2)/w2 test/tables/W2.schema
 	$(1) generate --lang cpp --out $(2)/r1 test/tables/R1.schema
 	$(1) generate --lang cpp --out $(2)/r2 test/tables/R2.schema
+	# THE FLOAT BIT-PATTERN PAIR (docs/SPEC-TABLES.md §3, §4, schema#480): the
+	# root carrying a signalling NaN and a payload NaN, and the same root one
+	# generation on with the float32 fields respelled float64 — the widened rung
+	$(1) generate --lang cpp --out $(2)/f1 test/tables/F1.schema
+	$(1) generate --lang cpp --out $(2)/f2 test/tables/F2.schema
+	# THE LIST UNIT WITH NO MAP IN IT (docs/SPEC-TABLES.md §2.9, schema#380):
+	# where the tool's cook half and the reference's are held to one artifact
+	$(1) generate --lang cpp --out $(2)/l1 test/tables/L1.schema
 	$(1) generate --lang cpp --out $(2)/scalars tables/scalars
 	$(1) generate --lang cpp --out $(2)/maps tables/maps
 	$(1) generate --lang cpp --out $(2)/lists tables/lists
@@ -229,9 +237,9 @@ endef
 
 tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome -Itest/tables \
 	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys \
-	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/w1 -I$(1)/w2 -I$(1)/r1 -I$(1)/r2 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/maps -I$(1)/lists -I$(1)/arms -I$(1)/backend -I$(1)/vocab -I$(1)/vocab9 -I$(1)/bases -I$(1)/rt1 -I$(1)/rt2 -I$(1)/rt3 -I$(1)/wide -I$(SERIALIZE)
+	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/w1 -I$(1)/w2 -I$(1)/r1 -I$(1)/r2 -I$(1)/f1 -I$(1)/f2 -I$(1)/l1 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/maps -I$(1)/lists -I$(1)/arms -I$(1)/backend -I$(1)/vocab -I$(1)/vocab9 -I$(1)/bases -I$(1)/rt1 -I$(1)/rt2 -I$(1)/rt3 -I$(1)/wide -I$(SERIALIZE)
 
-build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/Scalars2.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema
+build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema
 	@mkdir -p build/tables-generated
 	$(call tables_generate,./bin/schema,build/tables-generated)
 	@touch $@
@@ -687,6 +695,8 @@ tables-block: build/schema_test_block build/schema_test_block_asan build/schema_
 	./build/schema_test_block
 	./build/schema_test_block_asan
 	./build/schema_test_block_tsan
+	$(MAKE) tables-block-const
+	$(MAKE) tables-block-const-negative-control
 # THE C# HALF of this two-language gate runs unless the cs leg is named in
 # SCHEMA_SKIP_LEGS (issue #599). A skip that reaches the leg loop and not here
 # is a skip that stops the chain anyway, on the same missing dotnet.
@@ -695,6 +705,49 @@ ifeq ($(filter cs,$(SKIPPED_LEGS)),)
 else
 	@echo "tables-block: the C# half is SKIPPED, SCHEMA_SKIP_LEGS names the cs leg"
 endif
+
+# THE CONST READ PATH (docs/SPEC-TABLES.md §19.2, schema#455). A block is
+# memory another build wrote, so the consumer half of the form reads bytes it
+# does not own: a pinned image is loaded, held as a `const uint8_t *` from that
+# moment, and opened WITH NO CAST through the const overload. The rows come
+# back read-only, and the same bytes opened writable read the same values, so
+# the producer's path is proved unchanged rather than assumed.
+#
+# It runs SANITIZED beside the plain build on #277's rule: the const view
+# points into a buffer sized to the image, so a row read past the extent lands
+# in a redzone.
+build/schema_test_block_const: build/tables-generated/.stamp test/tables/block_const_main.cpp
+	@mkdir -p build
+	$(CXX) $(BLOCK_CXXFLAGS) $(BLOCK_INCLUDES) test/tables/block_const_main.cpp $(BLOCK_SOURCES) -o $@
+
+build/schema_test_block_const_asan: build/tables-generated/.stamp test/tables/block_const_main.cpp
+	@mkdir -p build
+	$(CXX) $(BLOCK_CXXFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all \
+		-fno-omit-frame-pointer -g $(BLOCK_INCLUDES) test/tables/block_const_main.cpp $(BLOCK_SOURCES) -o $@
+
+.PHONY: tables-block-const
+tables-block-const: build/schema_test_block_const build/schema_test_block_const_asan
+	./build/schema_test_block_const
+	./build/schema_test_block_const_asan
+
+# ITS NEGATIVE COMPILE CONTROL, and it is the half a run cannot hold: a view
+# handing back a reference a consumer can WRITE through is a read-only view in
+# name only, and no green run of the gate above would ever say so. The same
+# program, one assignment through the const view added by -DBLOCK_CONST_WRITE,
+# and the COMPILE must go red, on the const qualification and not on some
+# other error, which is what the second grep is for.
+.PHONY: tables-block-const-negative-control
+tables-block-const-negative-control: build/tables-generated/.stamp test/tables/block_const_main.cpp
+	@mkdir -p build
+	@if $(CXX) $(BLOCK_CXXFLAGS) $(BLOCK_INCLUDES) -DBLOCK_CONST_WRITE -fsyntax-only \
+			test/tables/block_const_main.cpp > build/block-const-write.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a write through the const row view COMPILED"; exit 1; \
+	fi
+	@grep -qE "read-only|not assignable|const-qualified|assignment of member" build/block-const-write.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the compile went red, but not on the const view"; \
+		  cat build/block-const-write.log; exit 1; }
+	@grep -m1 -E "read-only|not assignable|const-qualified|assignment of member" build/block-const-write.log
+	@echo "negative control: one write through the const row view turns the COMPILE red"
 
 # ---------------------------------------------------------------------------
 # THE FORGERY FUZZER (docs/SPEC-TABLES.md §19.2, §19.5). The hand-written battery in
@@ -3028,12 +3081,18 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	$(MAKE) tables-json-map-walk
 	$(MAKE) tables-maps-negative-controls
 	$(MAKE) tables-lists
+	# the tool's own cook half for a list, held to the reference byte for byte
+	# (schema#380)
+	$(MAKE) tables-lists-tool-cook
 	$(MAKE) tables-list-measure-refusals
 	$(MAKE) tables-json-list-walk
 	$(MAKE) tables-json-list-walk-negative-controls
 	$(MAKE) tables-lists-negative-controls
 	$(MAKE) tables-arms
 	$(MAKE) tables-arms-negative-controls
+	# A FLOAT RIDES AS ITS BIT PATTERN (docs/SPEC-TABLES.md §3, schema#480)
+	$(MAKE) tables-float-nan
+	$(MAKE) tables-float-nan-negative-control
 	# RETAIN-UNKNOWN (docs/SPEC-TABLES.md §6.6): the round trip, the five
 	# excluded classes a wire can carry to the unknown arm, the two
 	# capacities, and the two refusals, each of which is a compile error that
@@ -3521,6 +3580,53 @@ tables-message-form-retain-negative-control: bin/schema test/tables/retain_main.
 	@grep -m1 "FAIL" $(RETAIN_MSG_NC)/log
 	@echo "negative control: removing the message path's call into the walk turns the pinned batch RED"
 
+# ---- A FLOAT RIDES AS ITS BIT PATTERN (docs/SPEC-TABLES.md §3, §4, SPEC.md
+# ---- §4.3, schema#480) -----------------------------------------------------
+#
+# The pin is testdata/wire/tables/floats_nan.bin — a signalling NaN, a NaN with
+# a payload past the quiet bit, both signs, at both widths and as array
+# elements. main.cpp writes it and reads it back with every other golden; this
+# binary carries the CLAIM: the bits come back, and come back through §4's
+# widened rung, where a backend holding a float32 in a wider cell would quiet a
+# signalling NaN through the hardware conversion.
+FLOATNAN_SOURCES = $$(ls build/tables-generated/f1/*Table.cpp build/tables-generated/f2/*Table.cpp)
+
+build/schema_test_floatnan: build/tables-generated/.stamp test/tables/floatnan_main.cpp test/tables/floatnan.h
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/f1 -Ibuild/tables-generated/f2 -Itest/tables \
+		test/tables/floatnan_main.cpp $(FLOATNAN_SOURCES) -o $@
+
+.PHONY: tables-float-nan
+tables-float-nan: build/schema_test_floatnan
+	./build/schema_test_floatnan
+
+# ITS NEGATIVE CONTROL: the reference's widening reads the BITS, and this
+# replaces it with the hardware conversion a port would reach for first. The
+# emitter is sabotaged, ONLY the f1/f2 pair is regenerated from it, and the
+# claim above must go RED — on the payload, not on a compile error.
+.PHONY: tables-float-nan-negative-control
+tables-float-nan-negative-control: bin/schema build/tables-generated/.stamp
+	@rm -rf build/float-nan-control && mkdir -p build/float-nan-control
+	@sed -e 's@    if ( ( bits \& 0x7F800000u ) == 0x7F800000u \&\& ( bits \& 0x007FFFFFu ) != 0 )@    if ( false ) // SABOTAGED: the hardware conversion quiets a signalling NaN@' \
+		internal/codegen/cpptable/widen.go > build/float-nan-control/widen.go.txt
+	@cmp -s internal/codegen/cpptable/widen.go build/float-nan-control/widen.go.txt && \
+		{ echo "NEGATIVE CONTROL FAILED: the float-NaN sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/widen.go":"%s/build/float-nan-control/widen.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/float-nan-control/overlay.json
+	@go build -overlay=build/float-nan-control/overlay.json -o build/schema-float-nan-control ./cmd/schema
+	@./build/schema-float-nan-control generate --lang cpp --out build/float-nan-control/f1 test/tables/F1.schema
+	@./build/schema-float-nan-control generate --lang cpp --out build/float-nan-control/f2 test/tables/F2.schema
+	@$(CXX) $(TABLES_CXXFLAGS) -Ibuild/float-nan-control/f1 -Ibuild/float-nan-control/f2 -Itest/tables \
+		test/tables/floatnan_main.cpp build/float-nan-control/f1/*Table.cpp build/float-nan-control/f2/*Table.cpp \
+		-o build/schema_test_floatnan_control
+	@if ./build/schema_test_floatnan_control > build/float-nan-control/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: widening a float32 NaN through the hardware conversion left the pin GREEN"; exit 1; \
+	fi
+	@grep -q "through a conversion" build/float-nan-control/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the pin went red, but not on the payload"; \
+		  cat build/float-nan-control/log; exit 1; }
+	@echo "negative control: a canonicalising widen turns the float bit-pattern pin RED"
+
 build/schema_test_lists: build/tables-generated/.stamp test/tables/lists_main.cpp
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) $(TABLES_INCLUDES) test/tables/lists_main.cpp $(LISTS_SOURCES) -o $@
@@ -3538,20 +3644,17 @@ tables-lists: build/schema_test_lists build/schema_test_lists_asan
 	# `schema cook-check` reads what the runtime cooked (§7.4): the root's list
 	# slot, every element's own slots and companions, and a pointed-at holder's
 	# list, and refuses the forgery beside them. The cook whose element holds a
-	# MAP is refused by name at the map slot, because the tool's map-slot
-	# clause is schema#380's next PR, and the refusal must be that one and not
-	# a list clause's
+	# MAP is READ now, not refused: §7.4's map-slot clause landed in the tool
+	# with schema#380, so the entry array takes the same four clauses a list's
+	# does and the keys are read ascending on top of them.
 	./bin/schema cook-check --root Save build/lists-cooks/save.cook tables/lists
 	./bin/schema cook-check --root Sheet build/lists-cooks/sheet.cook tables/lists
-	@if ./bin/schema cook-check --root Army build/lists-cooks/army.cook tables/lists > build/lists-cooks/army.log 2>&1; then \
-		echo "LIST GATE FAILED: cook-check walked past an element's map slot, which it has no clause for"; exit 1; \
-	fi
-	@grep -q "Squad.roster.*schema#380" build/lists-cooks/army.log || { echo "LIST GATE FAILED: the map-holding cook was refused, but not by name at the map slot"; cat build/lists-cooks/army.log; exit 1; }
+	./bin/schema cook-check --root Army build/lists-cooks/army.cook tables/lists
 	@if ./bin/schema cook-check --root Sheet build/lists-cooks/sheet-forged.cook tables/lists > build/lists-cooks/forged.log 2>&1; then \
 		echo "LIST GATE FAILED: cook-check accepted a list slot pointing past its holder's extent"; exit 1; \
 	fi
 	@grep -q "leaves\|extent" build/lists-cooks/forged.log || { echo "LIST GATE FAILED: the forgery was refused, but not on the element-array clause"; cat build/lists-cooks/forged.log; exit 1; }
-	@echo "list gate: cook-check reads two cooks the runtime wrote, refuses the forged list slot, and refuses the map-holding cook by name"
+	@echo "list gate: cook-check reads three cooks the runtime wrote, the map-holding one included, and refuses the forged list slot"
 
 # THE SIX LoadMeasure REFUSALS are a unit test and not a `report` row (§2.8,
 # §2.9, §6.5): each wire is built in memory with a SYNTHETIC count, a list's
@@ -3780,6 +3883,80 @@ tables-lists-cook-check-negative-control:
 	fi
 	@echo "negative control: dropping cook-check's element-array clause turns its test RED"
 
+# AND THE MAP SLOT'S OWN TWO (schema#380, §7.4). The containment clause is
+# SHARED — a list's slot and a map's are one shape — so the sabotage above must
+# turn the MAP's test red too; the ascending clause is the map's alone, and it
+# gets its own sabotage, because a shared control that never fired on the
+# fifth clause would leave it untested.
+.PHONY: tables-maps-cook-check-negative-control
+tables-maps-cook-check-negative-control:
+	@rm -rf build/map-cook-check-control && mkdir -p build/map-cook-check-control
+	@if go test -count=1 -overlay=build/list-cook-check-control/overlay.json \
+			-run 'TestCookCheckMapSlot' ./internal/tablecook/ > build/map-cook-check-control/shared.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: dropping the shared containment clause left the map-slot test GREEN"; exit 1; \
+	fi
+	@sed -e 's@		if order > 0 {@		if order > 0 \&\& false { // SABOTAGED: the entries may descend@' \
+		-e 's@		if order == 0 {@		if order == 0 \&\& false { // SABOTAGED: a key may repeat@' \
+		internal/tablecook/check.go > build/map-cook-check-control/check.go.txt
+	@cmp -s internal/tablecook/check.go build/map-cook-check-control/check.go.txt && \
+		{ echo "NEGATIVE CONTROL FAILED: the ascending sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/tablecook/check.go":"%s/build/map-cook-check-control/check.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/map-cook-check-control/overlay.json
+	@if go test -count=1 -overlay=build/map-cook-check-control/overlay.json \
+			-run 'TestCookCheckMapSlot' ./internal/tablecook/ > build/map-cook-check-control/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: dropping the keys' ascending clause left the map-slot test GREEN"; exit 1; \
+	fi
+	@grep -q "the keys descend\|the keys repeat" build/map-cook-check-control/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the test went red, but not on the keys"; \
+		  cat build/map-cook-check-control/log; exit 1; }
+	@echo "negative control: dropping cook-check's map-slot clauses turns its test RED, containment and keys"
+
+# ---- THE TWO WRITERS OF ONE LIST COOK (schema#380, §2.9, §7.6) -------------
+#
+# The tool's COOK and UNCOOK halves carry the unbounded array now, so the
+# pairing every other class already has applies to this one: the tool cooks an
+# instance of test/tables/L1.schema — a list-bearing unit with NO MAP in it,
+# because the tool's cook still refuses a map-bearing one — and the generated
+# `SaveCook` has to land on those bytes exactly, in both byte orders.
+LISTCOOK_SOURCES = $$(ls build/tables-generated/l1/*Table.cpp)
+
+build/schema_test_listcook: build/tables-generated/.stamp test/tables/listcook_main.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/l1 -Itest/tables \
+		test/tables/listcook_main.cpp $(LISTCOOK_SOURCES) -o $@
+
+.PHONY: tables-lists-tool-cook
+tables-lists-tool-cook: build/schema_test_listcook
+	@rm -rf build/list-tool-cook && mkdir -p build/list-tool-cook
+	SCHEMA_LIST_TOOL_COOK_DIR=$(CURDIR)/build/list-tool-cook go test -count=1 \
+		-run 'TestTheToolCooksAndUncooksAList|TestAListRidesInItsHolderNodeExtent|TestTheToolWritesTheReferencesListCook' \
+		./internal/tablecook/
+	./build/schema_test_listcook build/list-tool-cook
+	# and the CLI's own round trip over the same unit, which is where a user meets it
+	./bin/schema cook-check --root Save --verbose build/list-tool-cook/l1.cook test/tables/L1.schema
+	./bin/schema uncook --root Save --in build/list-tool-cook/l1.cook --out build/list-tool-cook/back.bin test/tables/L1.schema
+	cmp build/list-tool-cook/l1.bin build/list-tool-cook/back.bin
+	./bin/schema cook --root Save --in build/list-tool-cook/l1.bin --out build/list-tool-cook/again.cook test/tables/L1.schema
+	cmp build/list-tool-cook/l1.cook build/list-tool-cook/again.cook
+
+# ITS NEGATIVE CONTROL, in the cook-check control's own shape: the tool's carve
+# is made to lay a list's array at the running offset WITHOUT aligning it, and
+# the round trip and the extent's shape both have to go red.
+.PHONY: tables-lists-tool-cook-negative-control
+tables-lists-tool-cook-negative-control:
+	@rm -rf build/list-tool-cook-control && mkdir -p build/list-tool-cook-control
+	@sed -e 's@	c.at = alignUp(c.at, align)@	c.at = c.at // SABOTAGED: the array is laid unaligned@' \
+		internal/tablecook/extent.go > build/list-tool-cook-control/extent.go.txt
+	@cmp -s internal/tablecook/extent.go build/list-tool-cook-control/extent.go.txt && \
+		{ echo "NEGATIVE CONTROL FAILED: the carve sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/tablecook/extent.go":"%s/build/list-tool-cook-control/extent.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/list-tool-cook-control/overlay.json
+	@if go test -count=1 -overlay=build/list-tool-cook-control/overlay.json \
+			-run 'TestAListRidesInItsHolderNodeExtent' ./internal/tablecook/ > build/list-tool-cook-control/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: an unaligned element array left the tool's cook GREEN"; exit 1; \
+	fi
+	@echo "negative control: an unaligned element array turns the tool's list cook RED"
+
 # AN ALLOCATION IS PLANTED IN Load: the gate's operator new counter sees it on
 # the reading path, and the allocation audit goes red.
 .PHONY: tables-lists-allocation-negative-control
@@ -3798,7 +3975,9 @@ tables-lists-negative-controls: tables-lists-allocation-negative-control \
 	tables-lists-depth-negative-control \
 	tables-lists-fit-negative-control \
 	tables-lists-unreached-negative-control \
-	tables-lists-cook-check-negative-control
+	tables-lists-cook-check-negative-control \
+	tables-maps-cook-check-negative-control \
+	tables-lists-tool-cook-negative-control
 
 # ---- THE UNION-ARM TRAVERSAL GATE (docs/SPEC-TABLES.md §2.6, §2.9, §3.1, §7.6) --
 #
@@ -4052,6 +4231,9 @@ check: bin/schema
 	./bin/schema check test/tables/P3.schema
 	./bin/schema check test/tables/M1.schema
 	./bin/schema check test/tables/M2.schema
+	./bin/schema check test/tables/F1.schema
+	./bin/schema check test/tables/F2.schema
+	./bin/schema check test/tables/L1.schema
 	./bin/schema check bench/corpus/Bench.schema
 	./bin/schema check bench/corpus/RealWorld.schema
 	./bin/schema check bench/corpus/BenchTable.schema
@@ -4082,6 +4264,9 @@ fmt: bin/schema
 	./bin/schema fmt test/tables/P3.schema
 	./bin/schema fmt test/tables/M1.schema
 	./bin/schema fmt test/tables/M2.schema
+	./bin/schema fmt test/tables/F1.schema
+	./bin/schema fmt test/tables/F2.schema
+	./bin/schema fmt test/tables/L1.schema
 	./bin/schema fmt bench/corpus/Bench.schema
 	./bin/schema fmt bench/corpus/RealWorld.schema
 	./bin/schema fmt bench/corpus/BenchTable.schema

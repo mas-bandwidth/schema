@@ -15,11 +15,19 @@ namespace wide {
 
 // ---- the block form of table Stamp: the open path and the descriptors ----
 
-bool StampBlockOpen( StampBlock & block, void * base, int64_t bytes, TableRefuseReason * reason )
+// THE CHECK ITSELF, over a base it never writes through, because a check
+// READS (docs/SPEC-TABLES.md §19.2). Both overloads of StampBlockOpen are
+// this one body, so the producer's path and the consumer's cannot drift:
+// the same clauses in the same order, and the same reason on the same
+// refusal, whether the caller handed over bytes it owns or bytes it may
+// only read. It answers the USED EXTENT beside the verdict, which is the
+// one thing each overload has to write into its own handle.
+//
+// It sits in an anonymous namespace and claims no name (§11).
+namespace {
+
+bool stamp_block_open_check( const void * base, int64_t bytes, int64_t * used_out, TableRefuseReason * reason )
 {
-    block.base = NULL;
-    block.projection = NULL;
-    block.bytes = 0;
     // a null buffer is the CALLER's defect, as an unaligned base is; a buffer
     // shorter than the prologue has no prologue to read and is truncated
     if ( base == NULL ) { return TableCookRefuse( reason, unaligned_base ) != NULL; }
@@ -49,8 +57,39 @@ bool StampBlockOpen( StampBlock & block, void * base, int64_t bytes, TableRefuse
     // the base's alignment, LAST: the only clause that reads nothing out of
     // the block, and the caller's defect rather than the file's
     if ( ( (uintptr_t) base % 64 ) != 0 ) { return TableCookRefuse( reason, unaligned_base ) != NULL; }
+    *used_out = used;
+    return true;
+}
+
+} // namespace
+
+// THE PRODUCER's overload, unchanged in what it does: the check above, and
+// then a handle over bytes the caller may write.
+bool StampBlockOpen( StampBlock & block, void * base, int64_t bytes, TableRefuseReason * reason )
+{
+    block.base = NULL;
+    block.projection = NULL;
+    block.bytes = 0;
+    int64_t used = 0;
+    if ( !stamp_block_open_check( base, bytes, &used, reason ) ) { return false; }
     block.base = (uint8_t *) base;
     block.projection = (StampBlock::Projection *) base;
+    block.bytes = used;
+    return true;
+}
+
+// THE CONSUMER's overload (schema#455): the same check, and then a handle
+// that carries const the whole way down. A read-only mapping opens through
+// it with no cast, and nothing it hands back can be written through.
+bool StampBlockOpen( StampBlock::Const & block, const void * base, int64_t bytes, TableRefuseReason * reason )
+{
+    block.base = NULL;
+    block.projection = NULL;
+    block.bytes = 0;
+    int64_t used = 0;
+    if ( !stamp_block_open_check( base, bytes, &used, reason ) ) { return false; }
+    block.base = (const uint8_t *) base;
+    block.projection = (const StampBlock::Projection *) base;
     block.bytes = used;
     return true;
 }

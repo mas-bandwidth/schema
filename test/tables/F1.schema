@@ -1,0 +1,22 @@
+// F1.schema — A FLOAT RIDES AS ITS BIT PATTERN (docs/SPEC-TABLES.md §3,
+// SPEC.md §4.3, schema#480): the corpus root that carries a SIGNALLING NaN and
+// a NaN with a nonzero payload, so the pin is a value a canonicalising port
+// cannot write. A backend holding a float32 in a wider cell quiets a
+// signalling NaN through the hardware conversion, and the byte-identity
+// promise fails on exactly these values unless the pattern crosses the two
+// widths by bit surgery.
+//
+// F2.schema is the same root one generation on, every float32 respelled
+// float64: the WIDENED rung (§4), which is where a conversion would show.
+package tblf1
+
+table Floats
+{
+    signalling float32 // 0x7F800001: the quiet bit CLEAR, the smallest payload
+    payload    float32 // 0x7FC0DEAD: quiet, and a mantissa well past the quiet bit
+    negative   float32 // 0xFFA5A5A5: the sign set, signalling, a rich payload
+    quiet      float64 // 0x7FF8000000000000: the canonical double NaN
+    wide       float64 // 0x7FF00DEFACED0001: signalling at sixty-four bits
+    samples    [3]float32
+    after      int32
+}

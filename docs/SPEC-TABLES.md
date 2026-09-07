@@ -3011,7 +3011,7 @@ one document rather than two.
   | `1` bool | 1 byte, `0` or `1` |
   | `2`–`5` i8/i16/i32/i64 | 1/2/4/8 bytes, two's complement |
   | `6`–`9` u8/u16/u32/u64 | 1/2/4/8 bytes |
-  | `10` f32, `11` f64 | 4/8 bytes, the IEEE-754 bit pattern |
+  | `10` f32, `11` f64 | 4/8 bytes, the IEEE-754 bit pattern, with NO CANONICALISATION (below) |
   | `12` string | `L`, then `L` bytes, WELL-FORMED UTF-8 with no zero byte among them. No terminator. Ill-formed content is `malformed` (below) |
   | `13` table | `L`, then `L` bytes of table body (fields, then the zero reference) |
   | `14` array | `L`, then the array body: `element kind (u8)`, `N`, then the elements |
@@ -3025,6 +3025,25 @@ one document rather than two.
   | `31` escape | `L`, then `L` bytes, opaque |
   | `32` no payload | `L`, then `L` bytes, and this form writes `L = 0` |
   | `33` wstring | `L`, then `L` bytes, which are `L / 2` UTF-16 code units, each two bytes little-endian, SURROGATES PAIRED and no zero unit among them. An ODD `L` is malformed, and so is ill-formed content (below). No terminator |
+
+  **A FLOAT RIDES AS ITS IEEE-754 BIT PATTERN, WITH NO CANONICALISATION**
+  (SPEC.md §4.3). Kind `10` is the four bytes the field holds and kind `11`
+  the eight, whatever they spell: a negative zero, an infinity, a quiet NaN, a
+  SIGNALLING NaN, a NaN with any payload. No writer normalizes one and no
+  reader repairs one, so the pattern that goes in is the pattern that comes
+  out. **A BACKEND THAT HOLDS A `float32` IN A WIDER CELL CARRIES THE PATTERN
+  BIT FOR BIT AND NEVER THROUGH A FLOAT CONVERSION** — the hardware conversion
+  between the two widths sets the quiet bit on a signalling NaN and drops a
+  payload the narrower cell would have kept, and the byte identity nine
+  languages hold over one corpus fails on exactly those values. It is a
+  cross-port contract and not one engine's quirk: JavaScript holds every
+  number as a float64, Elixir's floats are doubles, and the Go oracle and the
+  tool's cook both model a float32 in a float64 cell. The technique is a row
+  in docs/PORTING.md; `testdata/wire/tables/floats_nan.bin` pins the patterns
+  a conversion would move, at both widths and as array elements, and
+  `make tables-float-nan-negative-control` puts the conversion back and
+  watches the pin go red. The rule crosses §4's FLOAT RUNG, `10` into `11`,
+  where the 23 payload bits ride in the top of the double's 52.
 
   **The scalars the type wire brought ride as their STORAGE and nothing
   else.** A `fixed(I, F)` value is the integer its storage holds, units ×
@@ -8450,16 +8469,14 @@ no reference:
    no declaration describes.
 4. **Every MAP SLOT** (§2.8). Its delta must land inside the HOLDER's own
    extent, at `alignof( Entry )`, with `count × sizeof( Entry )` fitting
-   before the extent's end and overlapping no other map's array in that node.
-   The check reads CONTAINMENT, ALIGNMENT, FIT and NO OVERLAP, and not the
-   offset the layout rule computes, so the layout rule stays independent of
-   the check exactly as the pack order does. The entries' own slots,
-   companions and tags are then walked as a bounded array's elements are. The
-   KEYS are read too, ascending with no repeat, because a cook `Find` cannot
-   search is a forgery. Until schema#380 lands this clause in the tool, `schema
-   cook-check` refuses a map slot by name where its scan meets one, so a
-   cook that holds one is refused rather than walked past, and the C++
-   reference reads it.
+   before the extent's end and overlapping no other array in that node, a
+   list's and a map's alike, because lists and maps are ONE POPULATION in a
+   node's extent. The check reads CONTAINMENT, ALIGNMENT, FIT and NO OVERLAP,
+   and not the offset the layout rule computes, so the layout rule stays
+   independent of the check exactly as the pack order does. The entries' own
+   slots, companions and tags are then walked as a bounded array's elements
+   are. The KEYS are read too, ascending with no repeat, because a cook a
+   `Find` cannot search is a forgery.
 5. **Every UNBOUNDED-ARRAY SLOT** (§2.9). The same four clauses as a map's:
    CONTAINMENT, ALIGNMENT, FIT and NO OVERLAP, against the holder's own extent
    and against every other element or entry array in that node, and then the
@@ -11583,9 +11600,12 @@ inspects everything in the schema built:
   C++ reference and the tool are first: the builder surface (insert, erase,
   find, iterate), the sort in the four walks, the region load's ascending check
   with its `duplicate` and `malformed` events, the const `Find`, the text
-  form's object and `schema cook-check`'s map-slot clause with its order
-  check, which is the one piece still owed: the tool refuses a map slot by
-  name until it lands (§7.4). What a port needs is the entry as an ordinary array-of-tables element in its
+  form's object and `schema cook-check`'s map-slot clause with its order check
+  (§7.4). The tool's COOK and UNCOOK halves are the one piece still owed for
+  this construct: a map-bearing unit is refused by name at those two surfaces,
+  because a map adds the sort, the entry array's key order and the two reader
+  events to the node extent the list's own halves already
+  carry. What a port needs is the entry as an ordinary array-of-tables element in its
   measure, save and load, the writer's sort, the reader's one compare with its
   two events, the const `Find` as a binary search that allocates nothing,
   ascending iteration, and the text form's keyed object; each holds the same
@@ -11600,8 +11620,11 @@ inspects everything in the schema built:
   refuses a unit that declares one, by name (§11), until its codec lands. The
   C++ reference carries it: the builder's segments and `Add`, the four walks
   in index order, the region load, the const `TableList` surface, the text
-  form's array, and `schema cook-check`'s element-array clause in the tool;
-  the tool's COOK and UNCOOK halves are owed beside the map's. What a port
+  form's array, and `schema cook-check`'s element-array clause in the tool.
+  The TOOL carries the construct whole: its cook lays the element arrays in
+  the holder's node extent in the same PRE-ORDER the reference lays them and
+  lands on the reference's bytes exactly, in both byte orders, and its uncook
+  reads them back to the wire it came from. What a port
   needs is SMALLER than what a map needed, and by exactly the key: the element
   is an ordinary array element its measure, save and load already carry, there
   is no sort, no key compare and neither of the map's two reader events, and
@@ -13644,6 +13667,26 @@ schema name, as everywhere else in that backend.
   so that the base's alignment can be the last clause. A block whose bytes
   are fewer than its prologue answers `truncated`, and a null base
   `unaligned_base`, on the readings §7 gives those two.
+
+  **THE READ SIDE TAKES A CONST OVERLOAD, and the surface SPLITS the way C#'s
+  already does.** A block is memory another build wrote, so a consumer opens
+  bytes it did not produce: it reads them and writes nothing, and a read-only
+  mapping is not something a loader should have to `const_cast` to open. So
+  `bool <Name>BlockOpen( <Name>Block::Const & block, const void * base,
+  int64_t bytes, TableRefuseReason * reason = NULL )` sits beside the mutable
+  one. `<Name>Block::Const` is a MEMBER TYPE of the handle above and claims no
+  name of its own (§11); it carries the same three facts with `const` on both
+  pointers, and the row accessors overloaded on it answer the CONST VIEWS,
+  `TableBlockConstRows<Row>` and `TableBlockConstSpan<Row>`, whose iterators,
+  spans and typed base all hand back `const Row`. **THE CHECK IS ONE BODY**:
+  both overloads run the same clauses in the same order and name the same
+  reason on the same refusal, because a check reads and never writes, so the
+  two paths cannot drift. **The PRODUCER's path is unchanged** in every part:
+  `Begin`, the fill accessors and the typed base a worker indexes are what
+  they were, and a producer holds a mutable block exactly as before. The split
+  is the one C# states above with `ref readonly` and `ReadOnlySpan<Row>`, and
+  the one Rust has by returning `&[Row]`. **A write through a const view is a
+  COMPILE ERROR**, held by a negative compile control (§19.5).
 - **An array is ITERATED, not indexed by hand.** The accessor yields a
   reference to each row where it lies, at the pitch the instance gives, for
   `count` rows — a range-for in C++, an enumerator in C#, the equivalent per
@@ -13856,6 +13899,17 @@ difference between a form and a convention.
   offset in the compiler's layout model and the generated asserts go red on
   both backends. A layout test that shares its layout model with the code it
   checks proves nothing, and these two are what separate them.
+- **THE CONST READ PATH, and its NEGATIVE COMPILE CONTROL** (§19.2). A pinned
+  block image is loaded, held as a `const uint8_t *` from that moment and
+  opened with no cast through the const overload; its rows are walked through
+  `TableBlockConstRows` and `TableBlockConstSpan` and compared, value for
+  value, against the same bytes opened writable, so the two overloads agree
+  and the producer's path is proved unchanged rather than assumed. The refusal
+  clauses answer on the const overload too, a null base and a short buffer and
+  an unaligned base each naming what §19.2 gives it. The CONTROL is the half a
+  run cannot hold: the same program with one assignment through the const view
+  must FAIL TO COMPILE, on the const qualification, because a read-only view
+  whose writes compile is a view in name only.
 - **A `bool` row.** A row type carrying two `bool`s beside its scalars, whose
   C# size and offsets are asserted under the managed model (§19.3) — the case
   where the two C# layout models disagree, pinned so a port cannot pick the

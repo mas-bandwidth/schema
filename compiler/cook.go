@@ -60,9 +60,6 @@ func (c *Compiler) Cook(u *ir.Unit, root string, wire []byte, opts CookOptions) 
 	if err := refuseToolMaps(u); err != nil {
 		return nil, CookReport{}, TableReport{}, err
 	}
-	if err := refuseToolLists(u); err != nil {
-		return nil, CookReport{}, TableReport{}, err
-	}
 	var rep CookReport
 	m := tabletext.NewModel(u)
 	st := m.Lookup(root)
@@ -148,9 +145,6 @@ func CookJoinAttribution(file, attribution []byte) ([]byte, error) {
 // a runtime points at a cook where it lies.
 func (c *Compiler) Uncook(u *ir.Unit, root string, file []byte) ([]byte, error) {
 	if err := refuseToolMaps(u); err != nil {
-		return nil, err
-	}
-	if err := refuseToolLists(u); err != nil {
 		return nil, err
 	}
 	m := tabletext.NewModel(u)

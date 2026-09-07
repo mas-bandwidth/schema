@@ -169,6 +169,48 @@ struct TableBlockSpan
     T & operator[]( int32_t i ) const { return rows[i]; }
 };
 
+// THE READ SIDE's own two views, and they are the same two with const on every
+// pointer they hand out (docs/SPEC-TABLES.md §19.2). A block is memory another
+// build wrote: a consumer opening bytes it received reads them and writes
+// nothing, and a read-only mapping cannot be opened through a view that hands
+// back a mutable row at all. The producer's pair above is untouched: Begin,
+// the fill accessors and the typed base a worker indexes stay exactly what
+// they were, and this pair is what the const overload of BlockOpen fills, so
+// the split is the one C# already has (ref readonly, ReadOnlySpan).
+template <typename T>
+struct TableBlockConstRows
+{
+    const uint8_t * base = NULL;
+    int32_t count = 0;
+    int32_t stride = 0;
+
+    struct iterator
+    {
+        const uint8_t * p;
+        int32_t stride;
+        const T & operator*() const { return *(const T *) p; }
+        iterator & operator++() { p += stride; return *this; }
+        bool operator!=( const iterator & other ) const { return p != other.p; }
+    };
+
+    iterator begin() const { return iterator{ base, stride }; }
+    iterator end() const { return iterator{ base + (ptrdiff_t) count * stride, stride }; }
+    int32_t size() const { return count; }
+    operator const T *() const { return (const T *) base; }
+};
+
+template <typename T>
+struct TableBlockConstSpan
+{
+    const T * rows = NULL;
+    int32_t count = 0;
+
+    const T * begin() const { return rows; }
+    const T * end() const { return rows + count; }
+    int32_t size() const { return count; }
+    const T & operator[]( int32_t i ) const { return rows[i]; }
+};
+
 // ---- reflection over a block (docs/SPEC-TABLES.md §8, §19.2) ----
 //
 // The descriptors are the mechanism, and they are what retires a hand-kept
@@ -345,6 +387,20 @@ struct StampBlock
     Projection * projection = NULL; // the projection, at offset 0
     int64_t bytes = 0;              // the extent in use
 
+    // THE CONSUMER's handle: this same block over bytes it may not write
+    // (docs/SPEC-TABLES.md §19.2). A block is memory another build wrote,
+    // and a consumer that received it reads it: the const overload of
+    // StampBlockOpen fills this from a `const void *`, so a read-only
+    // mapping opens with no cast, and the row accessors overloaded on it
+    // hand back const rows. It is a MEMBER TYPE and claims no name of its
+    // own (§11): the producer's handle above is unchanged in every way.
+    struct Const
+    {
+        const uint8_t * base = NULL;          // the extent's base, 64-byte aligned
+        const Projection * projection = NULL; // the projection, at offset 0
+        int64_t bytes = 0;                    // the extent in use
+    };
+
     // this table's block descriptors (docs/SPEC-TABLES.md §8, §19.2): constant
     // data, defined in the .cpp beside this header.
     static const TableBlockInfo * Type();
@@ -439,6 +495,15 @@ inline int64_t StampBlockBytes( const StampBlock & block )
 // mismatch is a refusal; regenerate both sides. Data that must outlive the
 // build that wrote it takes the wire (§3), which this same table still has.
 bool StampBlockOpen( StampBlock & block, void * base, int64_t bytes, TableRefuseReason * reason = NULL );
+
+// AND ITS CONST OVERLOAD, for the consumer of foreign bytes (§19.2). A
+// block arrives from another language, another process or an mmap of a
+// read-only file, and a consumer that only reads should neither need a
+// const_cast to open it nor receive write access to it. It is the SAME
+// CHECK (one body, the same clauses in the same order, the same reason on
+// the same refusal) over a base it never writes through, and it fills the
+// const handle, whose row accessors hand back const rows.
+bool StampBlockOpen( StampBlock::Const & block, const void * base, int64_t bytes, TableRefuseReason * reason = NULL );
 
 // ---- the block form of table Stamp: end ----
 
