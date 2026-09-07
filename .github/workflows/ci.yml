@@ -805,7 +805,7 @@ jobs:
   # the plan, certify.yml runs that tier on the schedule it carries, and
   # `tools/negativecontrols` refuses a group that is in neither tier, so a
   # control cannot leave this file without landing on that one. The message
-  # form's four blades stay here. The group keeps its name at one target,
+  # form's other blades stay here. The group keeps its name at one target,
   # because it is where the next control that outgrows the rule lands.
   #
   # AN UMBRELLA TARGET IS NOT A CONTROL. tables-wire-fuzz-retain-negative-control

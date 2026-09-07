@@ -135,8 +135,8 @@ A control that does not fit the rule **on its own** is not made to fit by
 grouping, so it runs nightly instead, in the `nightly` tier that `certify.yml`
 runs on the schedule it already carries. Today that is one control:
 `tables-message-form-negative-control`, which drives 49 sabotage rows one
-submake each and takes 124 seconds. The message form's four blades stay on the
-pull request. Each group in `make/negative-controls.json` names its tier in a
+submake each and takes 124 seconds. The message form's other blades stay on
+the pull request. Each group in `make/negative-controls.json` names its tier in a
 `when` field and says why in a `why` field, and `tools/negativecontrols`
 refuses a group that names neither tier, so a control cannot leave the pull
 request without landing on the nightly.
