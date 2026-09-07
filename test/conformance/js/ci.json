@@ -1,2 +1,2 @@
 {"targets": "build/conformance-harness build/tables-generated-js/.stamp",
- "node": "20"}
+ "node": "26"}

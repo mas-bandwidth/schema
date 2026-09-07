@@ -436,7 +436,7 @@
         "tables-js-runtime-home-negative-control",
         "tables-js-slot-negative-control"
       ],
-      "node": "20"
+      "node": "26"
     },
     {
       "name": "dart",

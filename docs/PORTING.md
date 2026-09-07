@@ -168,9 +168,9 @@ to a cross-port rule at docs/SPEC-TABLES.md's JavaScript allocation paragraph.
 
 **Proven in.** C++; measured in JavaScript.
 
-**Measured effect.** On the pinned node major a float crossing a helper was
-steady at sixteen bytes a call, and invisible on a newer V8 — which is why the
-gate is pinned (I14).
+**Measured effect.** On one node major a float crossing a helper was steady at
+sixteen bytes a call, and invisible on another — which is why the gate is
+pinned to one (I14).
 
 **Negative control.** The allocation gate's wire rows: a helper put back
 reads as bytes per iteration on the pinned runtime.
@@ -1255,8 +1255,8 @@ the magnitude tie-break and requires red (19 of 60 on the pinned seed).
 
 **Method.** The gate reads the runtime's version and, on any other than the
 pinned one, sets failed and returns without measuring; an escape hatch reports
-and does not certify. A newer JIT optimizes generated bodies an older one
-leaves on its threshold, where a double store boxes, so a floor measured on
+and does not certify. One major's JIT inlines a generated body another leaves
+over its threshold, where a double store boxes, so a floor measured on
 whatever binary a PATH lookup found says nothing about the runtime the claim
 is for. A native codec's allocations are in its source and a compiler adds
 none, so the native legs state that reason here rather than a pin.
@@ -1267,7 +1267,7 @@ refusal, `SCHEMA_JS_ALLOC_ANY_NODE`).
 **Proven in.** JavaScript.
 
 **Measured effect.** The allocation the gate exists to catch is invisible on
-a newer V8 and steady at sixteen bytes a call on the pinned one.
+one V8 major and steady at sixteen bytes a call on another.
 
 **Negative control.** Running the gate on another major must refuse.
 

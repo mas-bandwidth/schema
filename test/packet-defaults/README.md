@@ -73,7 +73,7 @@ constructor-byte control builds before failing its marker, and both checks
 ride `test-java`. Table-closure defaults stay refused.
 
 `make packet-defaults-js` checks both runtime and flat codecs in development
-and production on pinned Node 20.20.2. Runtime reads check the consumed bits;
+and production on pinned Node 26.7.0. Runtime reads check the consumed bits;
 flat reads must accept the exact bit bound and refuse one bit less. A
 `ChoiceEnvelope` type places its union at bit zero so the flat API, which
 exposes type codecs, consumes the same standalone union pin. Existing eight
