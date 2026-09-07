@@ -22,6 +22,17 @@ ELIXIR    ?= PATH="$(BEAM_PATH):$$PATH" elixir
 MIX       ?= PATH="$(BEAM_PATH):$$PATH" mix
 ELIXIRC   ?= PATH="$(BEAM_PATH):$$PATH" elixirc
 
+# THE TOOLCHAIN GATE, this leg's half (issue #599; the Makefile's header and
+# docs/CONTRIBUTING.md, "Adding a language"). The three pins carry an
+# environment prefix rather than a path, so each probe resolves the launcher
+# UNDER that prefix: BEAM_PATH pointing into an empty dist/ and elixir on PATH
+# is what CI has, and it resolves, which is the state the gate has to pass.
+.PHONY: toolchain-elixir
+toolchain-elixir:
+	@$(call toolchain_probe,elixir,ELIXIR,$(ELIXIR),PATH="$(BEAM_PATH):$$PATH" command -v $(lastword $(ELIXIR)))
+	@$(call toolchain_probe,elixir,ELIXIRC,$(ELIXIRC),PATH="$(BEAM_PATH):$$PATH" command -v $(lastword $(ELIXIRC)))
+	@$(call toolchain_probe,elixir,MIX,$(MIX),PATH="$(BEAM_PATH):$$PATH" command -v $(lastword $(MIX)))
+
 # the Elixir target: generated modules only, no wiring file at all —
 # generated Elixir is self-contained (the port's packing shapes are inlined
 # per issue #167), so there is no runtime checkout and no mix project; the
@@ -338,7 +349,7 @@ conformance-negative-control-elixir:
 # lead gate; the hour is `make tables-elixir-soak` — then the format check and
 # the packet tests.
 .PHONY: test-elixir
-test-elixir: generated/bench/tables/elixir/.stamp generated/elixir/.stamp generated/elixir-ludicrous/.stamp generated/bench/elixir/.stamp
+test-elixir: toolchain-elixir generated/bench/tables/elixir/.stamp generated/elixir/.stamp generated/elixir-ludicrous/.stamp generated/bench/elixir/.stamp
 	$(MAKE) tables-elixir-walk
 	$(MAKE) conformance-negative-control-elixir
 	$(MAKE) tables-elixir-alloc-audit
@@ -349,6 +360,8 @@ test-elixir: generated/bench/tables/elixir/.stamp generated/elixir/.stamp genera
 	cd test/elixir && $(ELIXIR) main.exs
 	cd test/elixir-ludicrous && $(ELIXIR) main.exs
 
-TEST_LEGS         += test-elixir
-CONFORMANCE_LEGS  += build-conformance-elixir
+TEST_LEGS            += test-elixir
+TOOLCHAIN_LEGS       += elixir
+TOOLCHAIN_PIN_elixir := ELIXIR
+CONFORMANCE_LEGS     += $(call unless_skipped,elixir,build-conformance-elixir)
 BENCH_TABLES_LEGS += generated/bench/tables/elixir/.stamp

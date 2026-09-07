@@ -2,6 +2,28 @@
 # serialize checkouts, no language toolchains, no generation. The full
 # nine-language conformance chain is `make test`, and it needs the sibling
 # runtime checkouts and toolchains documented below.
+#
+# THE TOOLCHAIN GATE (issue #599). `make test` REFUSES BY NAME when a pinned
+# toolchain a make/<lang>.mk names does not resolve. It prints the leg it would
+# have skipped and the path the pin looked in, and it stops before the chain
+# spends an hour on the legs that do resolve. A gate that passes while its
+# toolchain is missing is a gate with no blade: that is how a red in the Dart
+# leg once rode a green run, after a merge deleted a clone's dist link.
+#
+# To run the chain without a leg, name the skip ON PURPOSE:
+#
+#   make test SCHEMA_SKIP_LEGS=js,dart
+#
+# Every named leg prints its skip in the toolchain gate, in the conformance
+# matrix, in the two-language gates and in the leg loop, and is not run.
+# Nothing under .github sets the variable: certification installs each
+# toolchain and overrides the pins (NODE=node, DART=dart, JAVA=java,
+# JAVAC=javac, ELIXIR=elixir, MIX=mix), which resolve and pass the gate.
+#
+# `make toolchain` runs the gate alone. `make toolchain-negative-control`
+# points every registered pin at a path that does not exist and requires each
+# leg to refuse by its own name, then names every leg in SCHEMA_SKIP_LEGS and
+# requires the same gate to go green with each skip printed by name.
 
 CXX      ?= c++
 CXXFLAGS ?= -std=c++17 -Wall -Wextra -Werror -ffp-contract=off
@@ -12,6 +34,39 @@ CXXFLAGS ?= -std=c++17 -Wall -Wextra -Werror -ffp-contract=off
 # language").
 SERIALIZE ?= ../serialize
 CXXFLAGS  += -I$(SERIALIZE)
+
+# THE SKIP LIST (issue #599): the legs whose toolchain is absent ON PURPOSE,
+# comma separated, empty by default and empty in every .github workflow. A leg
+# named here prints its skip and does not run; a leg NOT named here whose pin
+# does not resolve stops `make test` by name.
+SCHEMA_SKIP_LEGS ?=
+skip_comma  := ,
+skip_empty  :=
+skip_space  := $(skip_empty) $(skip_empty)
+# a literal hash, so a message held in a variable can cite an issue by number:
+# an unescaped one starts a make comment and truncates the value in silence
+skip_hash   := \#
+SKIPPED_LEGS := $(subst $(skip_comma),$(skip_space),$(SCHEMA_SKIP_LEGS))
+
+# $(call unless_skipped,<leg>,<text>) is the text, or nothing when the leg is
+# named in SCHEMA_SKIP_LEGS. A leg registers its conformance prerequisites
+# through it, so a named skip reaches the matrix and not only the leg loop.
+unless_skipped = $(if $(filter $(1),$(SKIPPED_LEGS)),,$(2))
+
+# $(call toolchain_probe,<leg>,<PIN>,<what the pin holds>[,<probe>]) is one
+# line of a leg's toolchain-<leg> recipe. It says nothing when the pin
+# resolves, and refuses by name when it does not: it names the leg, the pin,
+# the path the pin looked in, and the three ways out. The default probe
+# resolves the pin's own value; a leg whose pin carries an environment prefix
+# passes its own probe as the fourth argument.
+toolchain_probe = $(if $(4),$(4),command -v $(3)) >/dev/null 2>&1 || { \
+		echo "make test REFUSES: the $(1) leg's pinned $(2) does not resolve"; \
+		echo '  $(2) = $(3)'; \
+		echo "  test-$(1) would have been SKIPPED, and a leg that skips is a gate with no blade (issue $(skip_hash)599)"; \
+		echo "  make/$(1).mk names the pinned toolchain and where it comes from; install it,"; \
+		echo "  or override the pin ($(2)=... make test), or name the skip on purpose:"; \
+		echo "      make test SCHEMA_SKIP_LEGS=$(1)"; \
+		exit 1; }
 
 # cmd, internal, AND the public API packages: ir/ and compiler/ are compiled
 # into bin/schema like any other source, and leaving them out made an edit to
@@ -628,7 +683,7 @@ tables-block: build/schema_test_block build/schema_test_block_asan build/schema_
 	./build/schema_test_block
 	./build/schema_test_block_asan
 	./build/schema_test_block_tsan
-	cd test/cs-block && dotnet run
+	cd test/cs-block && $(DOTNET) run
 
 # ---------------------------------------------------------------------------
 # THE FORGERY FUZZER (docs/SPEC-TABLES.md §19.2, §19.5). The hand-written battery in
@@ -694,7 +749,7 @@ build/block-fuzz/.stamp: build/schema_test_block_fuzz
 tables-block-fuzz: build/schema_test_block_fuzz build/schema_test_block_fuzz_asan build/block-fuzz/.stamp build/tables-generated-cs/.stamp
 	SEED=$(SEED) N=$(N) ./build/schema_test_block_fuzz
 	SEED=$(SEED) N=$(N) ./build/schema_test_block_fuzz_asan
-	cd test/cs-block && SEED=$(SEED) N=$(N) dotnet run -- --fuzz
+	cd test/cs-block && SEED=$(SEED) N=$(N) $(DOTNET) run -- --fuzz
 
 # THE COOK FIXTURES the Rust fuzzer's cook half forges, written by test/cookgen
 # with the same chains the conformance harness uses — the fixture generator's
@@ -764,7 +819,7 @@ define block_fuzz_sabotage
 	fi
 	@grep -q "^FAILED: an opened block" build/block-fuzz-$(1)/cpp.log || \
 		{ echo "NEGATIVE CONTROL FAILED: the C++ leg went red, but not on the oracle"; cat build/block-fuzz-$(1)/cpp.log; exit 1; }
-	@if ( cd test/cs-block && SEED=$(SEED) N=$(N) dotnet run \
+	@if ( cd test/cs-block && SEED=$(SEED) N=$(N) $(DOTNET) run \
 			-p:BlockGeneratedDir=../../build/block-fuzz-$(1)/generated/block-cs \
 			-p:BlockHomeGeneratedDir=../../build/block-fuzz-$(1)/generated/blockhome-cs -- --fuzz ) \
 			> build/block-fuzz-$(1)/cs.log 2>&1; then \
@@ -1406,7 +1461,7 @@ tables-block-padding-negative-control: build/tables-generated-cs/.stamp
 	@grep -q "private byte _pad" build/block-padding-sabotage/PaddedBlock.cs && \
 		{ echo "NEGATIVE CONTROL: the sabotage did not apply"; exit 1; } || true
 	@rm -f build/block-padding-sabotage/*.bak
-	@if ( cd test/cs-block && dotnet run -p:BlockGeneratedDir=../../build/block-padding-sabotage ) \
+	@if ( cd test/cs-block && $(DOTNET) run -p:BlockGeneratedDir=../../build/block-padding-sabotage ) \
 		> build/block-padding-sabotage.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the C# layout check passed with the padding fields deleted"; \
 		cat build/block-padding-sabotage.log; exit 1; \
@@ -1429,7 +1484,7 @@ tables-block-pitch-negative-control: build/tables-generated-cs/.stamp
 	@grep -q "SABOTAGED" build/block-pitch-sabotage/RenderBlock.cs || \
 		{ echo "NEGATIVE CONTROL: the sabotage did not apply"; exit 1; }
 	@rm -f build/block-pitch-sabotage/*.bak
-	@if ( cd test/cs-block && dotnet run -p:BlockGeneratedDir=../../build/block-pitch-sabotage ) \
+	@if ( cd test/cs-block && $(DOTNET) run -p:BlockGeneratedDir=../../build/block-pitch-sabotage ) \
 		> build/block-pitch-sabotage.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the C# side accepted a pitch constant that is not its row's sizeof"; \
 		cat build/block-pitch-sabotage.log; exit 1; \
@@ -1467,7 +1522,7 @@ tables-block-layout-model-negative-control: bin/schema
 	@grep -q "static_assert" build/block-model-cpp.log || \
 		{ echo "NEGATIVE CONTROL FAILED: C++ went red, but not on a layout static_assert"; cat build/block-model-cpp.log; exit 1; }
 	@echo "block layout-model negative control (C++): a moved offset in the compiler's model turns the static_asserts red"
-	@if ( cd test/cs-block && dotnet run -p:BlockGeneratedDir=../../build/block-model-sabotage/cs ) \
+	@if ( cd test/cs-block && $(DOTNET) run -p:BlockGeneratedDir=../../build/block-model-sabotage/cs ) \
 		> build/block-model-cs.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: C# accepted a moved offset from the compiler's model"; \
 		cat build/block-model-cs.log; exit 1; \
@@ -1504,7 +1559,7 @@ tables-block-home-negative-control: bin/schema
 	@go build -overlay=build/csblock-overlay.json -o build/schema-csblock-sabotaged ./cmd/schema
 	@rm -rf build/blockhome-sabotage && mkdir -p build/blockhome-sabotage
 	@./build/schema-csblock-sabotaged generate --lang cs --out build/blockhome-sabotage tables/blockhome
-	@if ( cd test/cs-block && dotnet build -v q --nologo -p:BlockHomeGeneratedDir=../../build/blockhome-sabotage ) \
+	@if ( cd test/cs-block && $(DOTNET) build -v q --nologo -p:BlockHomeGeneratedDir=../../build/blockhome-sabotage ) \
 		> build/blockhome-sabotage.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the unit compiled with its block runtime emitted nowhere"; \
 		cat build/blockhome-sabotage.log; exit 1; \
@@ -1588,7 +1643,7 @@ tables-block-inline-array-negative-control: bin/schema
 	@go build -overlay=build/csblock-depth-overlay.json -o build/schema-depth-sabotaged ./cmd/schema
 	@rm -rf build/blockhome-depth && mkdir -p build/blockhome-depth
 	@./build/schema-depth-sabotaged generate --lang cs --out build/blockhome-depth tables/blockhome
-	@if ( cd test/cs-block && dotnet run -p:BlockHomeGeneratedDir=../../build/blockhome-depth ) \
+	@if ( cd test/cs-block && $(DOTNET) run -p:BlockHomeGeneratedDir=../../build/blockhome-depth ) \
 		> build/blockhome-depth.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a bounded array projected inside a nested record passed the layout gate"; \
 		cat build/blockhome-depth.log; exit 1; \
@@ -1617,7 +1672,7 @@ build/schema_test_block_gate2: build/tables-generated/.stamp test/tables/block_g
 .PHONY: tables-block-gate2
 tables-block-gate2: build/schema_test_block_gate2 build/tables-generated-cs/.stamp
 	./build/schema_test_block_gate2
-	cd test/cs-block && dotnet run -c Release -- --gate2
+	cd test/cs-block && $(DOTNET) run -c Release -- --gate2
 
 # THE SMOKE, which is what CI runs (certification legs only, never a PR).
 # The gate above is a MEASUREMENT and its verdict belongs on a quiet box; a
@@ -1630,7 +1685,7 @@ tables-block-gate2: build/schema_test_block_gate2 build/tables-generated-cs/.sta
 .PHONY: tables-block-gate2-smoke
 tables-block-gate2-smoke: build/schema_test_block_gate2 build/tables-generated-cs/.stamp
 	./build/schema_test_block_gate2 --smoke
-	cd test/cs-block && dotnet run -c Release -- --gate2-smoke
+	cd test/cs-block && $(DOTNET) run -c Release -- --gate2-smoke
 # The NEGATIVE CONTROL for a KEYED object's duplicate counting
 # (docs/SPEC-TABLES.md §16.2). Last-wins inside a keyed object was already true, so
 # the missing count was invisible to every round-trip test — the value was
@@ -2783,7 +2838,14 @@ build/schema_test_bench_table: generated/bench/tables/cpp/.stamp test/bench/tabl
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Igenerated/bench/tables/cpp test/bench/table_main.cpp -o $@
 
-test: build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_block build/schema_test_block_asan build/schema_test_block_fuzz build/schema_test_block_fuzz_asan build/pack-text/.stamp build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp build/schema_test_pack build/schema_test_pack_asan build/tables-pack.bin build/tables-pack-root.bin build/schema_test_tables_asan build/schema_test_random build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/conformance-harness build/schema_test_wide build/schema_test_wide_table
+# THE TOOLCHAIN GATE IS THE FIRST PREREQUISITE (issue #599): a pinned toolchain
+# that does not resolve stops the chain by name here, before an hour of C++,
+# rather than in the middle of a leg with a shell's "command not found".
+test: toolchain build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_block build/schema_test_block_asan build/schema_test_block_fuzz build/schema_test_block_fuzz_asan build/pack-text/.stamp build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp build/schema_test_pack build/schema_test_pack_asan build/tables-pack.bin build/tables-pack-root.bin build/schema_test_tables_asan build/schema_test_random build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/conformance-harness build/schema_test_wide build/schema_test_wide_table
+	# THE TOOLCHAIN GATE's own control (issue #599): the gate above is what
+	# stands between a missing toolchain and a green run, so it is held to the
+	# same rule as every other gate here. It has to go red on demand, by name.
+	$(MAKE) toolchain-negative-control
 	./build/schema_test
 	./build/schema_test_guard
 	./build/schema_test_wide
@@ -2919,8 +2981,16 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	./build/schema_test_bench_table
 	# EVERY REGISTERED LEG (make/<lang>.mk, TEST_LEGS): its generated trees, its
 	# gates and negative controls, its packet and table tests. One sub-make per
-	# leg, so a red names the leg.
-	@set -e; for leg in $(TEST_LEGS); do echo "$(MAKE) $$leg"; $(MAKE) $$leg; done
+	# leg, so a red names the leg. A leg named in SCHEMA_SKIP_LEGS is not run
+	# and says so by name (issue #599): a run that measured eight legs and a run
+	# that measured four must not read the same.
+	@set -e; for leg in $(TEST_LEGS); do \
+		case " $(SKIPPED_LEGS) " in \
+		*" $${leg#test-} "*) \
+			echo "make test SKIPS $$leg: SCHEMA_SKIP_LEGS names the $${leg#test-} leg on purpose"; \
+			continue ;; \
+		esac; \
+		echo "$(MAKE) $$leg"; $(MAKE) $$leg; done
 	go test ./...
 
 
@@ -4340,6 +4410,10 @@ conformance-negative-control-block-dump: build/conformance-harness build/conform
 #   CONFORMANCE_ENV    environment the harness run carries to the drivers
 #   BENCH_TABLES_LEGS  the generated unit a leg of `make bench-tables` needs
 #   GOLDENS_LEGS       update-goldens-<lang>: the leg's committed table goldens
+#   TOOLCHAIN_LEGS     the legs with a pinned toolchain, each of which also
+#                      defines toolchain-<lang> (one $(call toolchain_probe)
+#                      per pin) and sets TOOLCHAIN_PIN_<lang> to the pin the
+#                      negative control points at a path that does not exist
 # THE WIDE-SCALAR REFUSAL GATE (docs/SPEC-TABLES.md §3, §15): every scalar the
 # type wire carries rides in a table in the C++ reference and the tool, and a
 # port that has not landed the kinds yet must REFUSE a unit declaring them, by
@@ -4383,9 +4457,14 @@ include make/checks/packet-defaults.mk
 # THE CONFORMANCE MATRIX (test/conformance/README.md): every discovered driver
 # over every surface it lists. The reference leg is C++ and is built here; the
 # rest are what the legs registered.
+#
+# A leg named in SCHEMA_SKIP_LEGS is not built here and its driver is not run
+# (issue #599): --skip takes the same names, and the harness prints each one it
+# passes over. The reference leg cannot be skipped.
 .PHONY: conformance
 conformance: build/conformance-harness build/conformance-cpp build/schema_test_cook $(CONFORMANCE_LEGS)
-	$(CONFORMANCE_ENV) ./build/conformance-harness run
+	$(CONFORMANCE_ENV) ./build/conformance-harness run \
+		$(if $(SKIPPED_LEGS),--skip $(subst $(skip_space),$(skip_comma),$(strip $(SKIPPED_LEGS))))
 
 # THE TABLES BENCH PASS (bench/tables/README.md): every leg under
 # bench/tables/*/leg, results under bench/tables/results/. A PUBLISHABLE
@@ -4405,6 +4484,72 @@ registry:
 	@echo "conformance: $(CONFORMANCE_LEGS)"
 	@echo "bench-tables: $(BENCH_TABLES_LEGS)"
 	@echo "goldens: $(GOLDENS_LEGS)"
+	@echo "toolchain: $(TOOLCHAIN_LEGS)"
+
+# ---------------------------------------------------------------------------
+# THE TOOLCHAIN GATE (issue #599), the aggregate ----------------------------
+#
+# Every leg that registered a pinned toolchain is probed here, before the chain
+# spends its hour, and a pin that does not resolve stops `make test` by name.
+# A leg named in SCHEMA_SKIP_LEGS is not probed and prints its skip instead, so
+# the run says which legs it did not measure rather than passing over them.
+# Nothing here lists a language: a leg registers TOOLCHAIN_LEGS, its pin name
+# and its own toolchain-<lang> target in make/<lang>.mk, like every other list
+# above.
+REGISTERED_LEGS := $(patsubst test-%,%,$(TEST_LEGS))
+UNKNOWN_SKIPS   := $(filter-out $(REGISTERED_LEGS),$(SKIPPED_LEGS))
+SKIPPED_TOOLCHAIN_LEGS := $(filter $(SKIPPED_LEGS),$(TOOLCHAIN_LEGS))
+PROBED_TOOLCHAIN_LEGS  := $(filter-out $(SKIPPED_LEGS),$(TOOLCHAIN_LEGS))
+
+# A NAME THAT IS NOT A LEG IS A SKIP THAT SKIPS NOTHING, and it reads exactly
+# like one that works, so it is refused before any pin is probed.
+.PHONY: toolchain-names
+toolchain-names:
+ifneq ($(UNKNOWN_SKIPS),)
+	@echo "make test REFUSES: SCHEMA_SKIP_LEGS names $(UNKNOWN_SKIPS), which is no registered leg"
+	@echo "  the registered legs are: $(REGISTERED_LEGS) (make registry prints them)"
+	@exit 1
+endif
+
+.PHONY: toolchain
+toolchain: toolchain-names $(addprefix toolchain-,$(PROBED_TOOLCHAIN_LEGS))
+	@$(foreach leg,$(SKIPPED_TOOLCHAIN_LEGS), \
+		echo "toolchain gate: the $(leg) leg is SKIPPED on purpose, SCHEMA_SKIP_LEGS names it";)
+	@echo "toolchain gate: $(words $(PROBED_TOOLCHAIN_LEGS)) of $(words $(TOOLCHAIN_LEGS)) registered legs probed, every pinned toolchain resolves"
+
+# ITS NEGATIVE CONTROL. A gate that has never gone red is a gate with no blade,
+# and going red is this one's whole job, so the control makes it go red: every
+# registered leg's pin, one leg at a time, pointed at a path that does not
+# exist, and each must refuse BY ITS OWN NAME and its own pin. Then the
+# POSITIVE half, with every pin still pointed at that absent path and
+# SCHEMA_SKIP_LEGS naming every leg: the same gate goes green and prints one
+# named skip per leg. Nothing here lists a language either.
+.PHONY: toolchain-negative-control
+toolchain-negative-control:
+	@rm -rf build/toolchain-nc && mkdir -p build/toolchain-nc
+	@$(foreach leg,$(TOOLCHAIN_LEGS), \
+		if $(MAKE) --no-print-directory toolchain-$(leg) \
+				$(TOOLCHAIN_PIN_$(leg))=$(CURDIR)/build/toolchain-nc/absent \
+				> build/toolchain-nc/$(leg).log 2>&1; then \
+			echo "NEGATIVE CONTROL FAILED: the $(leg) leg stayed green with $(TOOLCHAIN_PIN_$(leg)) pointed at a path that does not exist"; \
+			cat build/toolchain-nc/$(leg).log; exit 1; \
+		fi; \
+		grep -q "REFUSES: the $(leg) leg's pinned $(TOOLCHAIN_PIN_$(leg)) does not resolve" build/toolchain-nc/$(leg).log || \
+			{ echo "NEGATIVE CONTROL FAILED: the $(leg) leg went red, but not by name"; \
+			  cat build/toolchain-nc/$(leg).log; exit 1; }; \
+		sed -n '1,2p' build/toolchain-nc/$(leg).log;)
+	@$(MAKE) --no-print-directory toolchain \
+		SCHEMA_SKIP_LEGS=$(subst $(skip_space),$(skip_comma),$(strip $(TOOLCHAIN_LEGS))) \
+		$(foreach leg,$(TOOLCHAIN_LEGS),$(TOOLCHAIN_PIN_$(leg))=$(CURDIR)/build/toolchain-nc/absent) \
+		> build/toolchain-nc/skipped.log 2>&1 || \
+		{ echo "POSITIVE FAILED: SCHEMA_SKIP_LEGS named every leg and the gate refused anyway"; \
+		  cat build/toolchain-nc/skipped.log; exit 1; }
+	@$(foreach leg,$(TOOLCHAIN_LEGS), \
+		grep -q "the $(leg) leg is SKIPPED on purpose" build/toolchain-nc/skipped.log || \
+			{ echo "POSITIVE FAILED: the $(leg) leg was passed over without being named"; \
+			  cat build/toolchain-nc/skipped.log; exit 1; };)
+	@cat build/toolchain-nc/skipped.log
+	@echo "negative control: every registered pin pointed at a path that does not exist turns make test RED, by leg and by pin; naming the leg in SCHEMA_SKIP_LEGS turns it GREEN with the skip printed by name"
 
 # THE `was` CONTROL (docs/SPEC-TABLES.md §5). A table renamed under `was` keeps
 # the node type id every stored record carries, so W1's fleet reads under W2's

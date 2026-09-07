@@ -6,6 +6,22 @@
 # test/cs/schematest.csproj and its ludicrous twin carry the same relative path
 SERIALIZE_CS ?= ../serialize.cs
 
+# The .NET SDK, pinned per project the way every other leg's toolchain is. The
+# SDK VERSION lives in .github/dotnet-version, which both workflows read and
+# internal/ci gates; there is no unpacked copy under dist/ because the SDK
+# installs itself into the machine, so this pin names the COMMAND and the
+# toolchain gate holds it to resolving. Point it at another SDK with
+# DOTNET=/path/to/dotnet.
+DOTNET ?= dotnet
+
+# THE TOOLCHAIN GATE, this leg's half (issue #599; the Makefile's header and
+# docs/CONTRIBUTING.md, "Adding a language"). The C# half of the block gates in
+# the Makefile reads the same pin, so a dotnet that does not resolve stops the
+# chain here rather than in the middle of a two-language control.
+.PHONY: toolchain-cs
+toolchain-cs:
+	@$(call toolchain_probe,cs,DOTNET,$(DOTNET))
+
 generated/cs-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 	./bin/schema generate --lang cs --out generated/cs-ludicrous examples128
 	@touch $@
@@ -128,11 +144,11 @@ tables-cs-refuses-pointers: bin/schema
 # million mutants each is ~23 s — inside the 60 s this gate is allowed and ten
 # times the shared N. `make ... N=<n>` still overrides it.
 COOK_CS_N ?= 1000000
-COOK_CS := cd test/cs-cook && dotnet run --no-build --
+COOK_CS := cd test/cs-cook && $(DOTNET) run --no-build --
 
 .PHONY: build-cs-cook
 build-cs-cook: build/tables-generated-cs/.stamp
-	cd test/cs-cook && dotnet build -v q --nologo
+	cd test/cs-cook && $(DOTNET) build -v q --nologo
 
 .PHONY: tables-cook-open-cs
 tables-cook-open-cs: build-cs-cook build/schema_test_cook build/cook-open/.stamp build/cook-open-fixed/.stamp
@@ -156,8 +172,8 @@ tables-cook-open-cs: build-cs-cook build/schema_test_cook build/cook-open/.stamp
 	$(COOK_CS) usage Scene ../../build/cook-open/Scene.cook
 	$(COOK_CS) forge Scene ../../build/cook-open/Scene.cook
 	$(COOK_CS) forge Depot ../../build/cook-open/Depot.cook
-	cd test/cs-cook && SEED=$(SEED) N=$(if $(filter-out 100000,$(N)),$(N),$(COOK_CS_N)) dotnet run --no-build -- fuzz Scene ../../build/cook-open/Scene.cook
-	cd test/cs-cook && SEED=$(SEED) N=$(if $(filter-out 100000,$(N)),$(N),$(COOK_CS_N)) dotnet run --no-build -- fuzz TreeNode ../../build/cook-open/TreeNode.cook
+	cd test/cs-cook && SEED=$(SEED) N=$(if $(filter-out 100000,$(N)),$(N),$(COOK_CS_N)) $(DOTNET) run --no-build -- fuzz Scene ../../build/cook-open/Scene.cook
+	cd test/cs-cook && SEED=$(SEED) N=$(if $(filter-out 100000,$(N)),$(N),$(COOK_CS_N)) $(DOTNET) run --no-build -- fuzz TreeNode ../../build/cook-open/TreeNode.cook
 	$(COOK_CS) accept Scene ../../build/cook-open/Scene.cook
 	# THE BYTE-ORDER LEG's C# half, and it is HALF: a cook written --byte-order
 	# big is refused by the MAGIC here, which is the refusal the page promises.
@@ -197,7 +213,7 @@ define cook_open_cs_sabotage
 		"$(CURDIR)" "$(CURDIR)" > build/cook-open-cs-$(1)/overlay.json
 	@go build -overlay=build/cook-open-cs-$(1)/overlay.json -o build/cook-open-cs-$(1)/schema ./cmd/schema
 	./build/cook-open-cs-$(1)/schema generate --lang cs --out build/cook-open-cs-$(1)/gen tables/pointers
-	@if ( cd test/cs-cook && dotnet build -v q --nologo \
+	@if ( cd test/cs-cook && $(DOTNET) build -v q --nologo \
 			-p:CookGeneratedDir=../../build/cook-open-cs-$(1)/gen \
 			-p:BaseOutputPath=../../build/cook-open-cs-$(1)/bin/ \
 			-p:BaseIntermediateOutputPath=../../build/cook-open-cs-$(1)/obj/ \
@@ -205,7 +221,7 @@ define cook_open_cs_sabotage
 		echo "NEGATIVE CONTROL FAILED: the sabotaged emitter's output does not compile"; \
 		cat build/cook-open-cs-$(1)/build.log; exit 1; \
 	fi
-	@if ( cd test/cs-cook && dotnet run --no-build \
+	@if ( cd test/cs-cook && $(DOTNET) run --no-build \
 			-p:CookGeneratedDir=../../build/cook-open-cs-$(1)/gen \
 			-p:BaseOutputPath=../../build/cook-open-cs-$(1)/bin/ \
 			-p:BaseIntermediateOutputPath=../../build/cook-open-cs-$(1)/obj/ \
@@ -239,7 +255,7 @@ tables-cook-open-cs-walk-negative-control: build/cook-open/.stamp
 		"$(CURDIR)" "$(CURDIR)" > build/cook-open-cs-walk/overlay.json
 	@go build -overlay=build/cook-open-cs-walk/overlay.json -o build/cook-open-cs-walk/schema ./cmd/schema
 	./build/cook-open-cs-walk/schema generate --lang cs --out build/cook-open-cs-walk/gen tables/pointers
-	@if ( cd test/cs-cook && dotnet build -v q --nologo \
+	@if ( cd test/cs-cook && $(DOTNET) build -v q --nologo \
 			-p:CookGeneratedDir=../../build/cook-open-cs-walk/gen \
 			-p:BaseOutputPath=../../build/cook-open-cs-walk/bin/ \
 			-p:BaseIntermediateOutputPath=../../build/cook-open-cs-walk/obj/ \
@@ -247,7 +263,7 @@ tables-cook-open-cs-walk-negative-control: build/cook-open/.stamp
 		echo "NEGATIVE CONTROL FAILED: the sabotaged emitter's output does not compile"; \
 		cat build/cook-open-cs-walk/build.log; exit 1; \
 	fi
-	@if ( cd test/cs-cook && ITERATIONS=10 dotnet run --no-build \
+	@if ( cd test/cs-cook && ITERATIONS=10 $(DOTNET) run --no-build \
 			-p:CookGeneratedDir=../../build/cook-open-cs-walk/gen \
 			-p:BaseOutputPath=../../build/cook-open-cs-walk/bin/ \
 			-p:BaseIntermediateOutputPath=../../build/cook-open-cs-walk/obj/ \
@@ -272,7 +288,7 @@ generated/bench/cs/.stamp: bin/schema $(SCHEMAS_BENCH)
 
 .PHONY: build-conformance-cs
 build-conformance-cs: build/tables-generated-cs/.stamp
-	cd test/conformance/cs && dotnet build -v q --nologo
+	cd test/conformance/cs && $(DOTNET) build -v q --nologo
 
 # THE NEGATIVE CONTROL FOR THE C# WALK (docs/SPEC-TABLES.md §16.5), and it is a
 # different sabotage from the C++ one above on purpose. That one flips a byte of
@@ -329,7 +345,7 @@ tables-cs-leg:
 # (a unit that generates but does not compile is issue #80's lesson), and the
 # packet tests.
 .PHONY: test-cs
-test-cs: build/tables-generated-cs/.stamp generated/bench/tables/cs/.stamp generated/cs/.stamp generated/cs-ludicrous/.stamp generated/bench/cs/.stamp
+test-cs: toolchain-cs build/tables-generated-cs/.stamp generated/bench/tables/cs/.stamp generated/cs/.stamp generated/cs-ludicrous/.stamp generated/bench/cs/.stamp
 	$(MAKE) tables-cs-json-walk
 	$(MAKE) tables-cs-standalone
 	$(MAKE) tables-cs-refuses-pointers
@@ -339,12 +355,14 @@ test-cs: build/tables-generated-cs/.stamp generated/bench/tables/cs/.stamp gener
 	$(MAKE) tables-cook-open-cs-lengths-negative-control
 	$(MAKE) tables-cook-open-cs-root-negative-control
 	$(MAKE) tables-cook-open-cs-walk-negative-control
-	dotnet build bench/tables/cs -c Release --nologo -v quiet
-	cd bench/cs && dotnet build -c Release --nologo -v quiet
-	cd test/cs && dotnet run
-	cd test/cs-ludicrous && dotnet run
+	$(DOTNET) build bench/tables/cs -c Release --nologo -v quiet
+	cd bench/cs && $(DOTNET) build -c Release --nologo -v quiet
+	cd test/cs && $(DOTNET) run
+	cd test/cs-ludicrous && $(DOTNET) run
 
 TEST_LEGS         += test-cs
-CONFORMANCE_LEGS  += build-conformance-cs build-cs-cook
+TOOLCHAIN_LEGS    += cs
+TOOLCHAIN_PIN_cs  := DOTNET
+CONFORMANCE_LEGS  += $(call unless_skipped,cs,build-conformance-cs build-cs-cook)
 BENCH_TABLES_LEGS += generated/bench/tables/cs/.stamp
 GOLDENS_LEGS      += update-goldens-cs

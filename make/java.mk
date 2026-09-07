@@ -15,6 +15,15 @@
 JAVA  ?= $(CURDIR)/dist/jdk-21.0.12.1/Contents/Home/bin/java
 JAVAC ?= $(CURDIR)/dist/jdk-21.0.12.1/Contents/Home/bin/javac
 
+# THE TOOLCHAIN GATE, this leg's half (issue #599; the Makefile's header and
+# docs/CONTRIBUTING.md, "Adding a language"). BOTH pins are probed: a JDK whose
+# java runs and whose javac does not is a leg that compiles nothing and says so
+# forty minutes in.
+.PHONY: toolchain-java
+toolchain-java:
+	@$(call toolchain_probe,java,JAVA,$(JAVA))
+	@$(call toolchain_probe,java,JAVAC,$(JAVAC))
+
 # the Java target: generated classes only, no wiring file at all — generated
 # Java is self-contained (the bitpacker is inlined per issue #156), so there
 # is no runtime checkout and no build file; the test legs compile the
@@ -502,7 +511,7 @@ conformance-negative-control-java-block: build/conformance-harness
 # are `make tables-java-release`, because `make test` has no budget for them
 # (see that target). Then the packet tests, with and without -ea.
 .PHONY: test-java
-test-java: generated/java/.stamp generated/java-ludicrous/.stamp generated/bench/java/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
+test-java: toolchain-java generated/java/.stamp generated/java-ludicrous/.stamp generated/bench/java/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
 	$(MAKE) conformance-negative-control-java
 	$(MAKE) tables-java-compile
 	$(MAKE) tables-java-json-walk
@@ -519,7 +528,9 @@ test-java: generated/java/.stamp generated/java-ludicrous/.stamp generated/bench
 	cd test/java-ludicrous && $(JAVA) -ea -cp ../../build/java-test-ludicrous Main
 	cd test/java-ludicrous && $(JAVA) -cp ../../build/java-test-ludicrous Main
 
-TEST_LEGS         += test-java
-CONFORMANCE_LEGS  += build-conformance-java
-CONFORMANCE_ENV   += JAVA=$(JAVA)
+TEST_LEGS          += test-java
+TOOLCHAIN_LEGS     += java
+TOOLCHAIN_PIN_java := JAVA
+CONFORMANCE_LEGS   += $(call unless_skipped,java,build-conformance-java)
+CONFORMANCE_ENV    += JAVA=$(JAVA)
 BENCH_TABLES_LEGS += generated/bench/tables/java/.stamp

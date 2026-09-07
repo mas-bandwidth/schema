@@ -12,6 +12,14 @@
 #   unzip into dist/ and rename dart-sdk -> dart-sdk-3.13.2
 DART ?= $(CURDIR)/dist/dart-sdk-3.13.2/bin/dart
 
+# THE TOOLCHAIN GATE, this leg's half (issue #599; the Makefile's header and
+# docs/CONTRIBUTING.md, "Adding a language"). This leg is the one the issue was
+# opened over: a merge deleted the clone's dist link, the leg was passed over
+# in silence, and the red inside it rode a green run.
+.PHONY: toolchain-dart
+toolchain-dart:
+	@$(call toolchain_probe,dart,DART,$(DART))
+
 # the Dart target: generated libraries only, no wiring file at all —
 # generated Dart is self-contained (the bitpacker is inlined per issue #155),
 # so there is no runtime checkout and no pubspec; the test legs import the
@@ -351,7 +359,7 @@ tables-dart-zero-cost: build/tables-generated-dart/.stamp
 # then the analyzer and the formatter over every generated tree, and the
 # packet tests, checked and compiled.
 .PHONY: test-dart
-test-dart: generated/dart/.stamp generated/dart-ludicrous/.stamp generated/bench/dart/.stamp generated/bench/tables/dart/.stamp
+test-dart: toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp generated/bench/dart/.stamp generated/bench/tables/dart/.stamp
 	$(MAKE) tables-dart-clean
 	$(MAKE) tables-dart-zero-cost
 	$(MAKE) tables-dart-alloc DART_ALLOC_ITERATIONS=20000
@@ -375,5 +383,7 @@ test-dart: generated/dart/.stamp generated/dart-ludicrous/.stamp generated/bench
 	cd test/dart-ludicrous && $(DART) compile exe -o ../../build/schema_test_dart_ludicrous main.dart >/dev/null && ../../build/schema_test_dart_ludicrous
 
 TEST_LEGS         += test-dart
-CONFORMANCE_LEGS  += build/conformance-dart
+TOOLCHAIN_LEGS    += dart
+TOOLCHAIN_PIN_dart := DART
+CONFORMANCE_LEGS  += $(call unless_skipped,dart,build/conformance-dart)
 BENCH_TABLES_LEGS += generated/bench/tables/dart/.stamp

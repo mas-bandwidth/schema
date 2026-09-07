@@ -26,6 +26,14 @@ NODE ?= $(CURDIR)/dist/node-v20.20.2-darwin-arm64/bin/node
 # pin from the environment and falls back to PATH
 export NODE
 
+# THE TOOLCHAIN GATE, this leg's half (issue #599; the Makefile's header and
+# docs/CONTRIBUTING.md, "Adding a language"). `make test` runs this before the
+# chain starts and refuses by name when the pin does not resolve, because a leg
+# that skips in silence is a leg whose red rides a green run.
+.PHONY: toolchain-js
+toolchain-js:
+	@$(call toolchain_probe,js,NODE,$(NODE))
+
 # the JavaScript target: generated ES modules only, no wiring file at all —
 # generated code never imports the runtime (every wire call is a method on
 # the stream parameter), so the serialize.js sibling checkout is a test-leg
@@ -428,7 +436,7 @@ conformance-negative-control-js:
 # controls, the conformance negative control, the runtime-home gate, and the
 # packet tests in both node modes.
 .PHONY: test-js
-test-js: generated/js/.stamp generated/js-ludicrous/.stamp generated/bench/js/.stamp generated/bench/tables/js/.stamp
+test-js: toolchain-js generated/js/.stamp generated/js-ludicrous/.stamp generated/bench/js/.stamp generated/bench/tables/js/.stamp
 	$(MAKE) tables-js-json-walk
 	$(MAKE) tables-js-standalone
 	$(MAKE) tables-js-refuses-pointers
@@ -449,5 +457,7 @@ test-js: generated/js/.stamp generated/js-ludicrous/.stamp generated/bench/js/.s
 	cd test/js-ludicrous && node main.mjs && NODE_ENV=production node main.mjs
 
 TEST_LEGS         += test-js
-CONFORMANCE_LEGS  += build/tables-generated-js/.stamp
+TOOLCHAIN_LEGS    += js
+TOOLCHAIN_PIN_js  := NODE
+CONFORMANCE_LEGS  += $(call unless_skipped,js,build/tables-generated-js/.stamp)
 BENCH_TABLES_LEGS += generated/bench/tables/js/.stamp
