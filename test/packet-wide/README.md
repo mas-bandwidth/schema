@@ -32,3 +32,8 @@ requires the compiled release reader to fail mutation agreement. Both ride
 composition contracts. The reused reader also measures zero allocations. Its
 pairing-removal negative control compiles and must fail mutation agreement.
 Both targets ride `test-go`.
+
+`make packet-wide-cs` covers debug/release, ordinary and batched nested codecs,
+with preallocated char storage, zero measured read allocations and the same
+composition contracts. Its compiled pairing-removal control must fail the
+mutation comparison. Both targets ride `test-cs`.

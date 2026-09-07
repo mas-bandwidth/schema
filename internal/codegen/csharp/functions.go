@@ -508,7 +508,7 @@ func (g *gen) emitInitializeField(f *ir.Field, ind string, defaults bool) {
 	base := g.fieldBase(f)
 	name := "value." + base
 	switch {
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
 		g.needsSystem = true
 		g.sf("%sArray.Clear(%s, 0, %s);\n%svalue.%s = 0;\n", ind, name, g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "int", false), ind, g.m(base+"Length"))
 		if defaults && f.HasDefault {
@@ -841,6 +841,8 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.call(ind, fmt.Sprintf("%s.SerializeFloat(ref %s)", g.rv(), name), "")
 	case ir.TFloat64:
 		g.call(ind, fmt.Sprintf("%s.SerializeDouble(ref %s)", g.rv(), name), "")
+	case ir.TWString:
+		g.emitWriteWString(f, name, ind)
 	case ir.TString, ir.TBytes:
 		// length in [0, N], align, then the used bytes — the classic
 		// serialize_string framing over a buffer of N + 1 (SPEC §4.7).
@@ -1100,6 +1102,8 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 		g.call(ind, fmt.Sprintf("%s.SerializeFloat(ref %s)", g.rv(), name), "")
 	case ir.TFloat64:
 		g.call(ind, fmt.Sprintf("%s.SerializeDouble(ref %s)", g.rv(), name), "")
+	case ir.TWString:
+		g.emitReadWString(f, name, ind)
 	case ir.TString, ir.TBytes:
 		// the bool is checked BEFORE the slice: a hostile length never
 		// reaches AsSpan (a successful ranged read guarantees [0, N])

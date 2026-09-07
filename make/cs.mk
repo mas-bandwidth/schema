@@ -400,3 +400,30 @@ packet-utf8-cs-negative-control: packet-utf8-cs
 	@echo 'packet UTF-8 C# negative control: removed read validation fails bit-flip agreement'
 
 test-cs: packet-utf8-cs packet-utf8-cs-negative-control
+
+
+build/packet-wide/cs/.stamp: bin/schema build/packet-wide/source/WideText.schema test/packet-wide/Shapes.schema
+	./bin/schema generate --lang cs --out build/packet-wide/cs/wide build/packet-wide/source/WideText.schema
+	./bin/schema generate --lang cs --out build/packet-wide/cs/shapes test/packet-wide/Shapes.schema
+	@touch $@
+
+.PHONY: packet-wide-cs packet-wide-cs-negative-control
+packet-wide-cs: build/packet-wide/cs/.stamp build/packet-wide/cpp/driver build/packet-text/harness
+	dotnet build test/packet-wide/cs/packet-wide.csproj -c Debug -o build/packet-wide/cs/debug --nologo
+	dotnet build/packet-wide/cs/debug/packet-wide.dll --contracts
+	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver dotnet build/packet-wide/cs/debug/packet-wide.dll
+	dotnet build test/packet-wide/cs/packet-wide.csproj -c Release -o build/packet-wide/cs/release --nologo
+	dotnet build/packet-wide/cs/release/packet-wide.dll --contracts
+	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver dotnet build/packet-wide/cs/release/packet-wide.dll
+
+packet-wide-cs-negative-control: packet-wide-cs
+	@mkdir -p build/packet-wide/cs-negative
+	go run ./tools/sabotage -name packet-wide-cs-pairing -out build/packet-wide/cs-negative/wstring.gotext internal/codegen/csharp/wstring.go
+	@printf '{"Replace":{"%s/internal/codegen/csharp/wstring.go":"%s/build/packet-wide/cs-negative/wstring.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-wide/cs-negative/overlay.json
+	go run -overlay=build/packet-wide/cs-negative/overlay.json ./cmd/schema generate --lang cs --out build/packet-wide/cs-negative build/packet-wide/source/WideText.schema
+	dotnet build test/packet-wide/cs/packet-wide.csproj -c Release -o build/packet-wide/cs-negative/bin -p:TextDir="$(CURDIR)/build/packet-wide/cs-negative" --nologo
+	@if ./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver -mutations-only dotnet build/packet-wide/cs-negative/bin/packet-wide.dll > build/packet-wide/cs-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: C# wide pairing removal passed'; exit 1; fi
+	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-wide/cs-negative/log || { cat build/packet-wide/cs-negative/log; exit 1; }
+	@echo 'packet wide C# negative control: removed pairing fails bit-flip agreement'
+
+test-cs: packet-wide-cs packet-wide-cs-negative-control
