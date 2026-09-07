@@ -51,7 +51,7 @@ func (goTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 }
 
 func init() {
-	registerBuiltin(goTarget{}, true, true, true, false)
+	registerBuiltin(goTarget{}, true, true, true, true)
 	registerOptionalArrayCarrier("go")
 	valueDefaultTargets = append(valueDefaultTargets, "go")
 	wasRowTargets = append(wasRowTargets, "go")

@@ -71,10 +71,11 @@ type codec struct {
 	root string
 	// reset returns the value to its declared defaults and hands back the
 	// opaque handle the rest of the row takes
-	fresh   func() any
-	load    func(value any, wire []byte, rep *report) bool
-	measure func(value any) int64
-	save    func(value any, buffer []byte) int64
+	loadMeasure func([]byte) int64
+	fresh       func() any
+	load        func(value any, wire []byte, rep *report) bool
+	measure     func(value any) int64
+	save        func(value any, buffer []byte) int64
 	// the TEXT form (docs/SPEC-TABLES.md §16); nil where a backend has none
 	fromJson      func(value any, text []byte, rep *report) bool
 	toJsonMeasure func(value any) int64

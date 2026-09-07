@@ -3,6 +3,7 @@
 package compiler
 
 import (
+	"fmt"
 	"regexp"
 	"sort"
 	"strings"
@@ -35,42 +36,22 @@ func TestGoEmitsTableSources(t *testing.T) {
 	}
 }
 
-// TestGoRefusesPointeredTables: the Go variable-class refusal is a refusal of
-// the WIRE SURFACE and of nothing else (docs/SPEC-TABLES.md §11), exactly as
-// the C# one is. The two ACCELERATORS need no codec — a block and a cook are
-// POINTED AT, not parsed — so both are emitted, the cook's <Root>Open opens
-// this unit's cooked assets in full, and every source the unit does emit opens
-// with a banner naming each refused table and the follow-on.
-func TestGoRefusesPointeredTables(t *testing.T) {
-	u := unitFromSource(t, packetSrc+`
-table Node
-{
-    value int32
-    next  *Node
-}
-`)
+// A variable Go unit carries wire codecs, canonical rows and the builder.
+func TestGoEmitsPointeredTables(t *testing.T) {
+	u := unitFromSource(t, packetSrc+"\ntable Node { value int32\nnext *Node\n}\n")
 	files, err := New().Generate(u, "go", Options{})
 	if err != nil {
-		t.Fatalf("--lang go refused a pointered unit outright: %v", err)
+		t.Fatal(err)
 	}
-	for name := range files {
-		if strings.HasSuffix(name, "Table.go") {
-			t.Errorf("--lang go emitted %s for a pointered unit — the wire surface is refused by name", name)
-		}
-	}
-	cook, ok := files["ProbeCook.go"]
-	if !ok {
-		t.Fatal("--lang go emitted no ProbeCook.go: the COOK needs no wire codec and must still be emitted")
-	}
-	if !strings.Contains(string(cook), "NodeOpen") {
-		t.Error("ProbeCook.go carries no NodeOpen — a root is any table, and a pointered unit's cooks open in full")
-	}
-	for name, data := range files {
-		if !strings.HasSuffix(name, "Block.go") && !strings.HasSuffix(name, "Cook.go") {
-			continue
-		}
-		if !strings.Contains(string(data), "REFUSED, BY NAME") || !strings.Contains(string(data), "Node") {
-			t.Errorf("%s does not carry the variable-class banner naming Node", name)
+	for file, need := range map[string][]string{
+		"ProbeTable.go":     {"type Node = NodeRow", "NodeLoadMeasure", "NodeLoad(", "NodeBuilder", "type TableArena struct"},
+		"ProbeCook.go":      {"NodeOpen", "type NodeRow struct"},
+		"ProbeTableJson.go": {"NodeFromJson", "&node"},
+	} {
+		for _, name := range need {
+			if !strings.Contains(string(files[file]), name) {
+				t.Errorf("%s missing %s", file, name)
+			}
 		}
 	}
 }
@@ -150,9 +131,15 @@ table Effected
 // does not compile. A PascalCase-only scan is blind to exactly what this port
 // adds, which is how the hole reached a reviewer.
 func TestTableRuntimeNamesAreClaimedGo(t *testing.T) {
-	files, err := New().Generate(unitFromSource(t, goRuntimeSrc), "go", Options{})
-	if err != nil {
-		t.Fatal(err)
+	files := map[string][]byte{}
+	for i, source := range []string{goRuntimeSrc, goRuntimeSrc + "\ntable Graph {head *Graph\ndata *bytes\ncaption *string\n}\n"} {
+		generated, err := New().Generate(unitFromSource(t, source), "go", Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for name, data := range generated {
+			files[fmt.Sprintf("%d/%s", i, name)] = data
+		}
 	}
 	// BuildVersion rides in the alternation because it is the one registered
 	// name that is not a table spelling, and the Go backend defines it

@@ -12,8 +12,8 @@
 // that holds it.
 //
 // The dialect: trailing commas are accepted on read (the authoring files this
-// exists for carry them) and never written; comments are not JSON and are
-// refused; unknown keys are skipped and counted; a duplicate key is last-wins
+// exists for carry them) and never written; line and block comments are accepted.
+// Unknown keys are skipped and counted; a duplicate key is last-wins
 // and counted; a key present with the wrong JSON type is skipped and counted,
 // never coerced. The canonical text ends with exactly ONE newline, which the
 // writer emits and the reader accepts with or without (§16.1).
@@ -179,6 +179,8 @@ func tableJsonShape(f *TableFieldInfo) byte {
 		return 'o'
 	case f.IsArray:
 		return 'a'
+	case f.Pointer:
+		return tableJsonElementShape(f)
 	case f.Arms != nil: // union: an object with ONE key
 		return 'o'
 	case f.Kind == 13: // nested table or type
@@ -195,6 +197,12 @@ func tableJsonShape(f *TableFieldInfo) byte {
 
 // the ELEMENT shape of an array field — the same classifier one level down
 func tableJsonElementShape(f *TableFieldInfo) byte {
+	if f.Pointer {
+		if f.Table == nil {
+			return 's'
+		}
+		return 'o'
+	}
 	switch {
 	case f.Arms != nil:
 		return 'o'
@@ -256,6 +264,7 @@ func tableJsonGuardHolds(base unsafe.Pointer, info *TableTypeInfo, guard string)
 // over one code path — so measure and write agree byte for byte, the wire's
 // invariant (§9) carried across.
 type tableJsonOut struct {
+	graph    *tableJsonGraph
 	buffer   []byte
 	measure  bool
 	offset   int64
@@ -485,6 +494,9 @@ func tableJsonWriteFloat(out *tableJsonOut, value float64, single bool) bool {
 // tableJsonWriteScalar writes one scalar at one storage address: a nested
 // object, a union, a vocabulary, or a number.
 func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
+	if f.Pointer {
+		return tableJsonWritePointer(out, (*int64)(storage), f, depth)
+	}
 	if f.Kind >= 18 && f.Kind <= 29 {
 		tableJsonWriteWide(out, storage, f)
 		return true
@@ -660,7 +672,20 @@ func tableJsonWriteField(out *tableJsonOut, base unsafe.Pointer, f *TableFieldIn
 // defaults included — a text is for people and tools, and a text that elides is
 // a text a reader has to know the schema to complete.
 func tableJsonWriteValue(out *tableJsonOut, base unsafe.Pointer, info *TableTypeInfo, depth int32) bool {
-	any := false
+	return tableJsonWriteLabeledValue(out, base, info, depth, 0)
+}
+func tableJsonWriteLabeledValue(out *tableJsonOut, base unsafe.Pointer, info *TableTypeInfo, depth int32, label uint64) bool {
+	if depth > tableJsonMaxDepth {
+		return false
+	}
+	any := label != 0
+	if any {
+		out.put('{')
+		out.line(depth + 1)
+		out.text("\"&node\": ")
+		tableJsonWriteUnsigned(out, label)
+	}
+	wrote := false
 	for i := range info.Fields {
 		f := &info.Fields[i]
 		if f.Guard != "" && !tableJsonGuardHolds(base, info, f.Guard) {
@@ -678,12 +703,16 @@ func tableJsonWriteValue(out *tableJsonOut, base unsafe.Pointer, info *TableType
 			out.put(',')
 		}
 		any = true
+		wrote = true
 		out.line(depth + 1)
 		tableJsonWriteString(out, tableJsonText(f.Json))
 		out.text(": ")
 		if !tableJsonWriteField(out, base, f, depth+1) {
 			return false
 		}
+	}
+	if label != 0 && !wrote {
+		return false
 	}
 	if !any {
 		out.text("{}")
@@ -697,6 +726,7 @@ func tableJsonWriteValue(out *tableJsonOut, base unsafe.Pointer, info *TableType
 // ---- reading ----
 
 type tableJsonIn struct {
+	graph  *tableJsonGraph
 	text   []byte
 	pos    int
 	report *TableReport
@@ -915,6 +945,10 @@ func (in *tableJsonIn) scanText(out []byte, wide []uint16) (int32, bool) {
 			}
 			in.pos += n
 		}
+		if out == nil && wide == nil {
+			placed += unitLength
+			continue
+		}
 		if wide != nil {
 			code, _ := utf8.DecodeRune(unit[:unitLength])
 			n := int32(1)
@@ -1131,6 +1165,7 @@ func (in *tableJsonIn) skipContainer(closing byte, depth int32) bool {
 }
 
 func (in *tableJsonIn) skipValue(depth int32) bool {
+	tableJsonDropLabel(in)
 	switch in.peek() {
 	case '{':
 		return in.skipContainer('}', depth)
@@ -1176,6 +1211,9 @@ func tableJsonNameIs(name string, key []byte) bool {
 
 // tableJsonReadScalar places one scalar at one storage address.
 func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
+	if f.Pointer {
+		return tableJsonReadPointer(in, (*int64)(storage), f, depth+1)
+	}
 	if f.Arms != nil {
 		// a union is an object with ONE key, the arm's name; {} is None, and
 		// two keys is a text this walk will not guess at
@@ -1218,7 +1256,7 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 			if !arm.Void {
 				want = tableJsonShape(&arm.Field)
 			}
-			if in.valueShape() != want {
+			if in.valueShape() != want && !(arm.Field.Pointer && !arm.Field.IsArray && in.valueShape() == 'z') {
 				in.report.KindMismatch++
 				if !in.skipValue(depth + 1) {
 					return false
@@ -1626,7 +1664,7 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 				if !in.skipValue(depth + 1) {
 					return false
 				}
-			case in.valueShape() != shape:
+			case in.valueShape() != shape && !(f.Pointer && in.valueShape() == 'z'):
 				in.report.KindMismatch++
 				if !in.skipValue(depth + 1) {
 					return false
@@ -1692,7 +1730,7 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 				if !in.skipValue(depth + 1) {
 					return false
 				}
-			case in.valueShape() != shape:
+			case in.valueShape() != shape && !(f.Pointer && in.valueShape() == 'z'):
 				in.report.KindMismatch++
 				if !in.skipValue(depth + 1) {
 					return false
@@ -1739,6 +1777,9 @@ func tableJsonReadTable(in *tableJsonIn, base unsafe.Pointer, info *TableTypeInf
 		return false
 	}
 	in.pos++
+	return tableJsonReadTableFields(in, base, info, depth, true)
+}
+func tableJsonReadTableFields(in *tableJsonIn, base unsafe.Pointer, info *TableTypeInfo, depth int32, emptyAllowed bool) bool {
 	// duplicate tracking, bounded and allocation-free: a table with more fields
 	// than this still reads, its repeats simply stop being counted
 	var seen [8]uint64
@@ -1809,7 +1850,7 @@ func tableJsonReadTable(in *tableJsonIn, base unsafe.Pointer, info *TableTypeInf
 				}
 				tableJsonSetRaw(unsafe.Add(base, uintptr(f.PresentOffset)), 1, 0)
 			} else {
-				if got != tableJsonShape(f) {
+				if got != tableJsonShape(f) && !(f.Pointer && !f.IsArray && got == 'z') {
 					// the wrong JSON type for the kind: skipped, never coerced
 					in.report.KindMismatch++
 					if !in.skipValue(depth + 1) {
@@ -2207,6 +2248,270 @@ func tableJsonWriteWString(out *tableJsonOut, units []uint16) {
 		tableJsonWriteStringBody(out, encoded[:n])
 	}
 	out.put('"')
+}
+
+type tableJsonGraphNode struct {
+	refs    int
+	label   uint64
+	written bool
+}
+type tableJsonLabel struct {
+	ref    int64
+	target uint64
+	open   bool
+}
+type tableJsonGraph struct {
+	alloc  func(int64) (unsafe.Pointer, int64)
+	nodes  map[unsafe.Pointer]*tableJsonGraphNode
+	labels map[uint64]tableJsonLabel
+	next   uint64
+}
+
+func tableJsonPointerAt(slot *int64) unsafe.Pointer {
+	if *slot == 0 {
+		return nil
+	}
+	return unsafe.Add(unsafe.Pointer(slot), *slot)
+}
+func tableJsonWritePointer(out *tableJsonOut, slot *int64, f *TableFieldInfo, depth int32) bool {
+	if depth > tableJsonMaxDepth {
+		return false
+	}
+	p := tableJsonPointerAt(slot)
+	if p == nil {
+		out.text("null")
+		return true
+	}
+	if out.graph == nil {
+		return false
+	}
+	entry := out.graph.nodes[p]
+	if entry == nil {
+		return false
+	}
+	if f.Table == nil {
+		if entry.refs > 1 {
+			return false
+		}
+		size := *(*uint64)(p)
+		data := unsafe.Slice((*byte)(unsafe.Add(p, 8)), int(size))
+		if f.TypeName == "bytes" {
+			tableJsonWriteBase64(out, data)
+		} else {
+			tableJsonWriteString(out, data)
+		}
+		return true
+	}
+	if entry.refs < 2 {
+		return tableJsonWriteValue(out, p, f.Table(), depth)
+	}
+	if entry.label == 0 {
+		out.graph.next++
+		entry.label = out.graph.next
+	}
+	if entry.written {
+		out.put('{')
+		out.line(depth + 1)
+		out.text("\"&node\": ")
+		tableJsonWriteUnsigned(out, entry.label)
+		out.line(depth)
+		out.put('}')
+		return true
+	}
+	entry.written = true
+	return tableJsonWriteLabeledValue(out, p, f.Table(), depth, entry.label)
+}
+func tableJsonReadLabel(in *tableJsonIn) (uint64, bool) {
+	in.space()
+	start := in.pos
+	if start >= len(in.text) || in.text[start] < '1' || in.text[start] > '9' {
+		in.bad = true
+		return 0, false
+	}
+	v := uint64(0)
+	for in.pos < len(in.text) && in.text[in.pos] >= '0' && in.text[in.pos] <= '9' {
+		d := uint64(in.text[in.pos] - '0')
+		if v > (^uint64(0)-d)/10 {
+			in.bad = true
+			return 0, false
+		}
+		v = v*10 + d
+		in.pos++
+	}
+	c := in.peek()
+	if c != ',' && c != '}' {
+		in.bad = true
+		return 0, false
+	}
+	return v, true
+}
+func tableJsonReadPointer(in *tableJsonIn, slot *int64, f *TableFieldInfo, depth int32) bool {
+	*slot = 0
+	if depth > tableJsonMaxDepth {
+		in.bad = true
+		return false
+	}
+	if in.peek() == 'n' {
+		return in.literal("null")
+	}
+	if in.graph == nil || in.graph.alloc == nil {
+		in.bad = true
+		return false
+	}
+	if f.Table == nil {
+		return tableJsonReadBlob(in, slot, f)
+	}
+	if in.peek() != '{' {
+		in.bad = true
+		return false
+	}
+	start := in.pos
+	probe := *in
+	probe.pos++
+	label := uint64(0)
+	hasLabel := false
+	if probe.peek() != '}' {
+		var key [tableJsonMaxKey]byte
+		length, ok := probe.scanString(key[:])
+		if !ok {
+			in.bad = true
+			return false
+		}
+		if length > 0 && key[0] == '&' {
+			if string(key[:length]) != "&node" || probe.peek() != ':' {
+				in.bad = true
+				return false
+			}
+			probe.pos++
+			label, ok = tableJsonReadLabel(&probe)
+			if !ok {
+				in.bad = true
+				return false
+			}
+			hasLabel = true
+		}
+	}
+	if hasLabel {
+		entry, exists := in.graph.labels[label]
+		if exists && entry.open {
+			in.bad = true
+			return false
+		}
+		if probe.peek() == '}' {
+			if !exists {
+				in.bad = true
+				return false
+			}
+			probe.pos++
+			in.pos = probe.pos
+			if entry.ref != 0 {
+				if entry.target != f.TargetId {
+					in.report.KindMismatch++
+				} else {
+					*slot = entry.ref
+				}
+			}
+			return true
+		}
+		if exists {
+			in.bad = true
+			return false
+		}
+		probe.pos++
+		if probe.peek() == '}' {
+			in.bad = true
+			return false
+		}
+	}
+	p, ref := in.graph.alloc(int64(f.Table().Size))
+	if p == nil {
+		in.bad = true
+		return false
+	}
+	*slot = ref
+	f.Table().Reset(p)
+	if hasLabel {
+		in.graph.labels[label] = tableJsonLabel{ref: ref, target: f.TargetId, open: true}
+		in.pos = probe.pos
+		ok := tableJsonReadTableFields(in, p, f.Table(), depth, false)
+		if ok {
+			entry := in.graph.labels[label]
+			entry.open = false
+			in.graph.labels[label] = entry
+		}
+		return ok
+	}
+	in.pos = start
+	return tableJsonReadTable(in, p, f.Table(), depth)
+}
+func tableJsonReadBlob(in *tableJsonIn, slot *int64, f *TableFieldInfo) bool {
+	if in.peek() != '"' {
+		in.bad = true
+		return false
+	}
+	probe := *in
+	size, ok := probe.scanString(nil)
+	if !ok {
+		in.bad = true
+		return false
+	}
+	if f.TypeName == "bytes" {
+		// Decode using the fixed byte field's exact same base64 policy.
+		capacity := int64(size)*3/4 + 3
+		p, ref := in.graph.alloc(8 + capacity)
+		if p == nil {
+			in.bad = true
+			return false
+		}
+		shape := TableFieldInfo{TypeName: "bytes", Kind: 6, IsArray: true, Counted: true, ArrayBound: int32(capacity), Offset: 8, CountOffset: 0, ElemSize: 1}
+		before := in.report.KindMismatch
+		if !tableJsonReadField(in, p, &shape, 0) {
+			return false
+		}
+		if in.report.KindMismatch != before {
+			return true
+		}
+		length := uint64(*(*int32)(p))
+		*(*uint64)(p) = length
+		*slot = ref
+		return true
+	}
+	p, ref := in.graph.alloc(8 + int64(size) + 1)
+	if p == nil {
+		in.bad = true
+		return false
+	}
+	data := unsafe.Slice((*byte)(unsafe.Add(p, 8)), int(size))
+	length, ok := in.scanString(data)
+	if !ok {
+		return false
+	}
+	*(*uint64)(p) = uint64(length)
+	*slot = ref
+	return true
+}
+
+// A skipped definition keeps its label, without imposing graph syntax on a
+// value this reader is skipping. The ordinary JSON scanner still validates it.
+func tableJsonDropLabel(in *tableJsonIn) {
+	if in.graph == nil || in.peek() != '{' {
+		return
+	}
+	probe := *in
+	probe.pos++
+	var key [16]byte
+	n, ok := probe.scanString(key[:])
+	if !ok || string(key[:n]) != "&node" || probe.peek() != ':' {
+		return
+	}
+	probe.pos++
+	label, ok := tableJsonReadLabel(&probe)
+	if !ok || probe.peek() != ',' {
+		return
+	}
+	if _, exists := in.graph.labels[label]; !exists {
+		in.graph.labels[label] = tableJsonLabel{}
+	}
 }
 
 // ---- json walk: end ----

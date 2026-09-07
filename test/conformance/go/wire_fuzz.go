@@ -80,14 +80,20 @@ func wireFuzz() error {
 		c := roster[index]
 		value := c.fresh()
 		var rep report
-		c.load(value, wire, &rep)
+		loaded := c.load(value, wire, &rep)
+		regionBytes := int64(-1)
+		if c.loadMeasure != nil {
+			regionBytes = c.loadMeasure(wire)
+		} else {
+			loaded = true
+		}
 		saved := c.measure(value)
 		var buffer []byte
 		if saved >= 0 {
 			buffer = make([]byte, saved)
 			saved = c.save(value, buffer)
 		}
-		for _, v := range []any{uint8(1), rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate, rep.malformed, rep.refused, int64(-1), int32(0), int32(0), saved} {
+		for _, v := range []any{loaded, rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate, rep.malformed, rep.refused, regionBytes, int32(0), int32(0), saved} {
 			if err := write(v); err != nil {
 				return err
 			}

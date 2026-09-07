@@ -42,3 +42,36 @@ func nodeRecordTypes(body []byte, ids []uint64) (types []uint64, whole bool) {
 	}
 	return types, true
 }
+
+// FileRecord is the framing of one node record. Length is the framed body
+// length, including for blob records whose storage is determined by it.
+type FileRecord struct {
+	TypeId uint64
+	Length int64
+}
+
+// NodeRecordFrames is NodeRecordTypes with each body's length retained. A
+// sizing oracle needs both: a blob's type identity alone cannot size its node.
+func NodeRecordFrames(data []byte) (frames []FileRecord, whole bool) {
+	body, ids, ok := trailer(data)
+	if len(data) < 1 || data[0] != ir.TableWireForm || !ok {
+		return nil, false
+	}
+	var ignored tabletext.Report
+	payload, present, framed := nodeTableBytes(body, ids, &ignored)
+	if !present {
+		return nil, true
+	}
+	if !framed {
+		return nil, false
+	}
+	records, scanned := scanNodeRecords(payload, ids)
+	if !scanned {
+		return nil, false
+	}
+	frames = make([]FileRecord, len(records))
+	for i, record := range records {
+		frames[i] = FileRecord{TypeId: record.TypeId, Length: int64(len(record.Body))}
+	}
+	return frames, true
+}

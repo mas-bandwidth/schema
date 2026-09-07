@@ -167,6 +167,9 @@ func (g *blockGen) assemble() ([]byte, error) {
 	if g.needsUnsafe {
 		imports = append(imports, `"unsafe"`)
 	}
+	if strings.Contains(g.structs.String(), "serialize.") {
+		imports = append(imports, `"github.com/mas-bandwidth/serialize.go"`)
+	}
 	h.WriteString(goImports(imports))
 	h.WriteString(g.runtime.String())
 	if g.structs.Len() > 0 {
@@ -460,7 +463,7 @@ func goBlittableType(u *ir.Unit, t ir.FieldType) string {
 		return "float64"
 	case ir.TInt, ir.TFixed:
 		if t.Width == 128 {
-			return "[2]uint64"
+			return goFieldType(t)
 		}
 		if t.Signed {
 			return fmt.Sprintf("int%d", t.Width)
@@ -477,7 +480,7 @@ func goBlittableType(u *ir.Unit, t ir.FieldType) string {
 			return t.Name
 		case *ir.Flags:
 			return "uint64"
-		case *ir.Struct:
+		case *ir.Struct, *ir.Union:
 			return t.Name + "Row"
 		}
 	}

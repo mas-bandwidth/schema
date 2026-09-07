@@ -5,8 +5,11 @@
 package main
 
 import (
+	"blobdemo"
+	"graphdemo"
 	"messagedemo"
 	"scalardemo"
+	"streamdemo"
 	tblscalars2 "tblscalars2"
 	widedemo "widedemo"
 
@@ -50,6 +53,179 @@ func snapP3(r *tblp3.TableReport) report {
 }
 
 var codecTable = []codec{
+	regionRow("streamdemo", "Feed", streamdemo.FeedLoadMeasure, streamdemo.FeedLoad, streamdemo.FeedMeasure, streamdemo.FeedSave,
+		func(text []byte, r *streamdemo.TableReport) (*streamdemo.Feed, []byte, bool) {
+			var b streamdemo.FeedBuilder
+			if !b.Init() {
+				return nil, nil, false
+			}
+			defer b.Shutdown()
+			ok := streamdemo.FeedFromJson(&b, text, r)
+			if !b.Lock() {
+				return nil, nil, false
+			}
+			return b.AsConst(), b.Region(), ok
+		},
+		streamdemo.FeedToJsonMeasure, streamdemo.FeedToJson, func(r *streamdemo.TableReport) report {
+			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == streamdemo.TableOpenRefused}
+		}),
+
+	regionRow("streamdemo", "Chunk", streamdemo.ChunkLoadMeasure, streamdemo.ChunkLoad, streamdemo.ChunkMeasure, streamdemo.ChunkSave,
+		func(text []byte, r *streamdemo.TableReport) (*streamdemo.Chunk, []byte, bool) {
+			var b streamdemo.ChunkBuilder
+			if !b.Init() {
+				return nil, nil, false
+			}
+			defer b.Shutdown()
+			ok := streamdemo.ChunkFromJson(&b, text, r)
+			if !b.Lock() {
+				return nil, nil, false
+			}
+			return b.AsConst(), b.Region(), ok
+		},
+		streamdemo.ChunkToJsonMeasure, streamdemo.ChunkToJson, func(r *streamdemo.TableReport) report {
+			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == streamdemo.TableOpenRefused}
+		}),
+
+	regionRow("blobdemo", "Catalog", blobdemo.CatalogLoadMeasure, blobdemo.CatalogLoad, blobdemo.CatalogMeasure, blobdemo.CatalogSave,
+		func(text []byte, r *blobdemo.TableReport) (*blobdemo.Catalog, []byte, bool) {
+			var b blobdemo.CatalogBuilder
+			if !b.Init() {
+				return nil, nil, false
+			}
+			defer b.Shutdown()
+			ok := blobdemo.CatalogFromJson(&b, text, r)
+			if !b.Lock() {
+				return nil, nil, false
+			}
+			return b.AsConst(), b.Region(), ok
+		},
+		blobdemo.CatalogToJsonMeasure, blobdemo.CatalogToJson, func(r *blobdemo.TableReport) report {
+			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == blobdemo.TableOpenRefused}
+		}),
+
+	regionRow("blobdemo", "Asset", blobdemo.AssetLoadMeasure, blobdemo.AssetLoad, blobdemo.AssetMeasure, blobdemo.AssetSave,
+		func(text []byte, r *blobdemo.TableReport) (*blobdemo.Asset, []byte, bool) {
+			var b blobdemo.AssetBuilder
+			if !b.Init() {
+				return nil, nil, false
+			}
+			defer b.Shutdown()
+			ok := blobdemo.AssetFromJson(&b, text, r)
+			if !b.Lock() {
+				return nil, nil, false
+			}
+			return b.AsConst(), b.Region(), ok
+		},
+		blobdemo.AssetToJsonMeasure, blobdemo.AssetToJson, func(r *blobdemo.TableReport) report {
+			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == blobdemo.TableOpenRefused}
+		}),
+
+	regionRow("graphdemo", "Scene", graphdemo.SceneLoadMeasure, graphdemo.SceneLoad, graphdemo.SceneMeasure, graphdemo.SceneSave, func(text []byte, report *graphdemo.TableReport) (*graphdemo.Scene, []byte, bool) {
+		var b graphdemo.SceneBuilder
+		if !b.Init() {
+			return nil, nil, false
+		}
+		defer b.Shutdown()
+		ok := graphdemo.SceneFromJson(&b, text, report)
+		if !b.Lock() {
+			return nil, nil, false
+		}
+		return b.AsConst(), b.Region(), ok
+	}, graphdemo.SceneToJsonMeasure, graphdemo.SceneToJson, func(r *graphdemo.TableReport) report {
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == graphdemo.TableOpenRefused}
+	}),
+
+	regionRow("graphdemo", "ListNode", graphdemo.ListNodeLoadMeasure, graphdemo.ListNodeLoad, graphdemo.ListNodeMeasure, graphdemo.ListNodeSave, func(text []byte, report *graphdemo.TableReport) (*graphdemo.ListNode, []byte, bool) {
+		var b graphdemo.ListNodeBuilder
+		if !b.Init() {
+			return nil, nil, false
+		}
+		defer b.Shutdown()
+		ok := graphdemo.ListNodeFromJson(&b, text, report)
+		if !b.Lock() {
+			return nil, nil, false
+		}
+		return b.AsConst(), b.Region(), ok
+	}, graphdemo.ListNodeToJsonMeasure, graphdemo.ListNodeToJson, func(r *graphdemo.TableReport) report {
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == graphdemo.TableOpenRefused}
+	}),
+
+	regionRow("graphdemo", "TreeNode", graphdemo.TreeNodeLoadMeasure, graphdemo.TreeNodeLoad, graphdemo.TreeNodeMeasure, graphdemo.TreeNodeSave, func(text []byte, report *graphdemo.TableReport) (*graphdemo.TreeNode, []byte, bool) {
+		var b graphdemo.TreeNodeBuilder
+		if !b.Init() {
+			return nil, nil, false
+		}
+		defer b.Shutdown()
+		ok := graphdemo.TreeNodeFromJson(&b, text, report)
+		if !b.Lock() {
+			return nil, nil, false
+		}
+		return b.AsConst(), b.Region(), ok
+	}, graphdemo.TreeNodeToJsonMeasure, graphdemo.TreeNodeToJson, func(r *graphdemo.TableReport) report {
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == graphdemo.TableOpenRefused}
+	}),
+
+	regionRow("graphdemo", "Layer", graphdemo.LayerLoadMeasure, graphdemo.LayerLoad, graphdemo.LayerMeasure, graphdemo.LayerSave, func(text []byte, report *graphdemo.TableReport) (*graphdemo.Layer, []byte, bool) {
+		var b graphdemo.LayerBuilder
+		if !b.Init() {
+			return nil, nil, false
+		}
+		defer b.Shutdown()
+		ok := graphdemo.LayerFromJson(&b, text, report)
+		if !b.Lock() {
+			return nil, nil, false
+		}
+		return b.AsConst(), b.Region(), ok
+	}, graphdemo.LayerToJsonMeasure, graphdemo.LayerToJson, func(r *graphdemo.TableReport) report {
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == graphdemo.TableOpenRefused}
+	}),
+
+	regionRow("graphdemo", "Depot", graphdemo.DepotLoadMeasure, graphdemo.DepotLoad, graphdemo.DepotMeasure, graphdemo.DepotSave, func(text []byte, report *graphdemo.TableReport) (*graphdemo.Depot, []byte, bool) {
+		var b graphdemo.DepotBuilder
+		if !b.Init() {
+			return nil, nil, false
+		}
+		defer b.Shutdown()
+		ok := graphdemo.DepotFromJson(&b, text, report)
+		if !b.Lock() {
+			return nil, nil, false
+		}
+		return b.AsConst(), b.Region(), ok
+	}, graphdemo.DepotToJsonMeasure, graphdemo.DepotToJson, func(r *graphdemo.TableReport) report {
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == graphdemo.TableOpenRefused}
+	}),
+
+	regionRow("graphdemo", "Album", graphdemo.AlbumLoadMeasure, graphdemo.AlbumLoad, graphdemo.AlbumMeasure, graphdemo.AlbumSave, func(text []byte, report *graphdemo.TableReport) (*graphdemo.Album, []byte, bool) {
+		var b graphdemo.AlbumBuilder
+		if !b.Init() {
+			return nil, nil, false
+		}
+		defer b.Shutdown()
+		ok := graphdemo.AlbumFromJson(&b, text, report)
+		if !b.Lock() {
+			return nil, nil, false
+		}
+		return b.AsConst(), b.Region(), ok
+	}, graphdemo.AlbumToJsonMeasure, graphdemo.AlbumToJson, func(r *graphdemo.TableReport) report {
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == graphdemo.TableOpenRefused}
+	}),
+
+	regionRow("graphdemo", "Marker", graphdemo.MarkerLoadMeasure, graphdemo.MarkerLoad, graphdemo.MarkerMeasure, graphdemo.MarkerSave, func(text []byte, report *graphdemo.TableReport) (*graphdemo.Marker, []byte, bool) {
+		var b graphdemo.MarkerBuilder
+		if !b.Init() {
+			return nil, nil, false
+		}
+		defer b.Shutdown()
+		ok := graphdemo.MarkerFromJson(&b, text, report)
+		if !b.Lock() {
+			return nil, nil, false
+		}
+		return b.AsConst(), b.Region(), ok
+	}, graphdemo.MarkerToJsonMeasure, graphdemo.MarkerToJson, func(r *graphdemo.TableReport) report {
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == graphdemo.TableOpenRefused}
+	}),
+
 	row("messagedemo", "ToolMessage", messagedemo.ToolMessageReset, messagedemo.ToolMessageLoad, messagedemo.ToolMessageMeasure, messagedemo.ToolMessageSave, messagedemo.ToolMessageFromJson, messagedemo.ToolMessageToJsonMeasure, messagedemo.ToolMessageToJson, func(r *messagedemo.TableReport) report {
 		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == messagedemo.TableOpenRefused}
 	}),

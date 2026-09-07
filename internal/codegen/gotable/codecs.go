@@ -176,6 +176,10 @@ func keyedLoopBound(f *ir.Field) string { return "int(" + f.KeyEnum + "Max)" }
 // ---- storage (table declarations only; closure types come from <Base>.go) ----
 
 func (g *tableGen) emitTableStruct(st *ir.Struct) {
+	if g.regional {
+		g.tf("type %s = %sRow\n", st.Name, st.Name)
+		return
+	}
 	g.tf("%s", ir.DocComment(st.Doc, "", "//"))
 	g.tf("// %s — TABLE-wire storage: exported fields, every buffer inside the value,\n", st.Name)
 	g.tf("// declared defaults restored by %sReset (docs/SPEC-TABLES.md).\n", st.Name)
@@ -334,7 +338,7 @@ func guardWalk(st *ir.Struct, gostyle bool) map[string]string {
 func (g *tableGen) emitTableReset(st *ir.Struct) {
 	g.pf("// %sReset restores %s's declared defaults in place, reusing the storage\n", st.Name, st.Name)
 	g.pf("// the value already holds. The reader calls it before overlaying.\n")
-	g.pf("func %sReset(value *%s) {\n", st.Name, st.Name)
+	g.pf("func %sReset(value *%s) {\n", st.Name, g.storageName(st.Name))
 	if len(st.Fields) == 0 {
 		g.pf("\t_ = value // empty type: presence is the payload\n")
 	}
@@ -350,6 +354,16 @@ func (g *tableGen) emitTableReset(st *ir.Struct) {
 func (g *tableGen) emitTableResetField(f *ir.Field) {
 	name := member(f)
 	switch {
+	case f.Type.Pointer:
+		if f.Array != ir.ArrayNone {
+			g.pf("clear(value.%s[:])\n", name)
+			if f.Array == ir.ArrayCounted {
+				g.pf("value.%sCount=0\n", name)
+			}
+		} else {
+			g.pf("value.%s=0\n", name)
+		}
+
 	case f.Type.Kind == ir.TWString:
 		g.pf("clear(value.%s[:]);value.%sLength=0\n", name, name)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
@@ -459,8 +473,8 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	if len(st.Fields) == 0 {
 		g.emitTagsStatic(tagsName(st.Name, ""), st.Tags)
 		g.pf("// %sTableInfo is %s's reflection descriptor (docs/SPEC-TABLES.md §8).\n", st.Name, st.Name)
-		g.pf("var %sTableInfo = TableTypeInfo{Name: %q, Size: uint32(unsafe.Sizeof(%s{})), NumFields: 0, Reset: func(storage unsafe.Pointer) { %sReset((*%s)(storage)) }, %s}\n\n",
-			st.Name, st.Name, st.Name, st.Name, st.Name, annotationColumns(st.Doc, st.Tags, tagsName(st.Name, "")))
+		g.pf("var %sTableInfo TableTypeInfo\nfunc init() { %sTableInfo = TableTypeInfo{Name: %q, Size: uint32(unsafe.Sizeof(%s{})), NumFields: 0, Reset: func(storage unsafe.Pointer) { %sReset((*%s)(storage)) }, %s} }\n\n",
+			st.Name, st.Name, st.Name, g.storageName(st.Name), st.Name, g.storageName(st.Name), annotationColumns(st.Doc, st.Tags, tagsName(st.Name, ""))+g.typeCodecColumns(st))
 		g.pf("// %sTableType returns %s's reflection descriptor.\n", st.Name, st.Name)
 		g.pf("func %sTableType() *TableTypeInfo { return &%sTableInfo }\n\n", st.Name, st.Name)
 		return
@@ -479,9 +493,9 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	}
 	g.pf("}\n\n")
 	g.pf("// %sTableInfo is %s's reflection descriptor (docs/SPEC-TABLES.md §8).\n", st.Name, st.Name)
-	g.pf("var %sTableInfo = TableTypeInfo{Name: %q, Size: uint32(unsafe.Sizeof(%s{})), NumFields: %d, Fields: %sTableFields, Reset: func(storage unsafe.Pointer) { %sReset((*%s)(storage)) }, %s}\n\n",
-		st.Name, st.Name, st.Name, len(st.Fields), st.Name, st.Name, st.Name,
-		annotationColumns(st.Doc, st.Tags, tagsName(st.Name, "")))
+	g.pf("var %sTableInfo TableTypeInfo\nfunc init() { %sTableInfo = TableTypeInfo{Name: %q, Size: uint32(unsafe.Sizeof(%s{})), NumFields: %d, Fields: %sTableFields, Reset: func(storage unsafe.Pointer) { %sReset((*%s)(storage)) }, %s} }\n\n",
+		st.Name, st.Name, st.Name, g.storageName(st.Name), len(st.Fields), st.Name, st.Name, g.storageName(st.Name),
+		annotationColumns(st.Doc, st.Tags, tagsName(st.Name, ""))+g.typeCodecColumns(st))
 	g.pf("// %sTableType returns %s's reflection descriptor.\n", st.Name, st.Name)
 	g.pf("func %sTableType() *TableTypeInfo { return &%sTableInfo }\n\n", st.Name, st.Name)
 }
@@ -529,11 +543,11 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	name := member(f)
 	id := ir.TableFieldWireId(f)
 	kind := ir.TableWireScalarKind(f)
-	if f.Type.Kind == ir.TBytes {
+	if f.Type.Kind == ir.TBytes && !f.Type.Pointer {
 		kind = tkU8
 	}
-	isArray := f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes || f.KeyEnum != ""
-	counted := f.Array == ir.ArrayCounted || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString
+	isArray := f.Array != ir.ArrayNone || (f.Type.Kind == ir.TBytes && !f.Type.Pointer) || f.KeyEnum != ""
+	counted := f.Array == ir.ArrayCounted || !f.Type.Pointer && (f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString)
 
 	// the count column, spelled the way the storage spells its own extent: a
 	// keyed array DERIVES it from the key enum, so nothing outside the array
@@ -548,24 +562,42 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 		bound = strconv.FormatInt(f.Type.Size, 10)
 	}
 
-	elemSize := fmt.Sprintf("uint32(unsafe.Sizeof(%s{}.%s))", st.Name, name)
+	elemSize := fmt.Sprintf("uint32(unsafe.Sizeof(%s{}.%s))", g.storageName(st.Name), name)
 	if isArray {
-		elemSize = fmt.Sprintf("uint32(unsafe.Sizeof(%s{}.%s[0]))", st.Name, name)
+		elemSize = fmt.Sprintf("uint32(unsafe.Sizeof(%s{}.%s[0]))", g.storageName(st.Name), name)
 	}
 
+	offset := fmt.Sprintf("uint32(unsafe.Offsetof(%s{}.%s))", g.storageName(st.Name), name)
 	countOffset := "0xffffffff"
 	if counted {
 		companion := name + "Count"
 		if f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString {
 			companion = name + "Length"
 		}
-		countOffset = fmt.Sprintf("uint32(unsafe.Offsetof(%s{}.%s))", st.Name, companion)
+		countOffset = fmt.Sprintf("uint32(unsafe.Offsetof(%s{}.%s))", g.storageName(st.Name), companion)
 	}
 	presentOffset := "0xffffffff"
 	if f.Type.Optional {
-		presentOffset = fmt.Sprintf("uint32(unsafe.Offsetof(%s{}.%sPresent))", st.Name, name)
+		presentOffset = fmt.Sprintf("uint32(unsafe.Offsetof(%s{}.%sPresent))", g.storageName(st.Name), name)
 	}
 
+	if g.armOffset != nil {
+		pieces := ir.FieldPieces(g.unit, f, *g.armOffset)
+		offset = fmt.Sprint(pieces[0].Offset)
+		elemSize = fmt.Sprint(pieces[0].Size)
+		if isArray && f.ArrayBound > 0 {
+			elemSize = fmt.Sprint(pieces[0].Size / f.ArrayBound)
+		}
+		if f.Type.Kind == ir.TBytes && !f.Type.Pointer {
+			elemSize = "1"
+		}
+		if counted {
+			countOffset = fmt.Sprint(pieces[1].Offset)
+		}
+		if f.Type.Optional {
+			presentOffset = fmt.Sprint(pieces[len(pieces)-1].Offset)
+		}
+	}
 	table := "nil"
 	if isStructRef(f.Type) {
 		table = fmt.Sprintf("%sTableType", f.Type.Name)
@@ -636,10 +668,10 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 
 	g.pf("\t{Name: %q, Json: %q, TypeName: %q, Id: 0x%04x, Kind: %d, IsArray: %v, Counted: %v, Optional: %v,\n",
 		f.Name, ir.TableFieldJsonKey(f), tableFieldTypeName(f), id, kind, isArray, counted, f.Type.Optional)
-	g.pf("\t\tArrayBound: %s, Offset: uint32(unsafe.Offsetof(%s{}.%s)), ElemSize: %s, CountOffset: %s, PresentOffset: %s,\n",
-		bound, st.Name, name, elemSize, countOffset, presentOffset)
+	g.pf("\t\tArrayBound: %s, Offset: %s, ElemSize: %s, CountOffset: %s, PresentOffset: %s,\n",
+		bound, offset, elemSize, countOffset, presentOffset)
 	g.pf("\t\tHasRange: %s, RangeMin: %s, RangeMax: %s, EnumMax: %s,\n", hasRange, rangeMin, rangeMax, enumMax)
-	g.pf("\t\tFracBits:%d,\n", f.Type.FracBits)
+	g.pf("\t\tFracBits:%d, Pointer:%v, TargetId:0x%016x,\n", f.Type.FracBits, f.Type.Pointer, pointerTargetId(f))
 	if ir.TableKindWide(kind) {
 		if lo, hi, ok := ir.TableRawRange(f); ok {
 			l0, l1 := wideLanes(lo)
@@ -652,7 +684,7 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	g.pf("\t\tKeyTypeName: %s, KeyName: %s, KeyId: %s,\n", keyTypeName, keyName, keyId)
 	g.pf("\t\tArms: %s,\n", arms)
 	g.pf("\t\tGuard: %q, Table: %s,\n", guard, table)
-	g.pf("\t\t%s},\n", annotationColumns(f.Doc, f.Tags, tagsName(st.Name, name)))
+	g.pf("\t\t%s},\n", annotationColumns(f.Doc, f.Tags, tagsName(g.storageName(st.Name), name)))
 }
 
 // unionArmsFunc renders a union field's Arms column: a closure over ONE SLOT of
@@ -702,6 +734,10 @@ func (g *tableGen) emitUnionArms() {
 	}
 	g.pf("func init() {\n")
 	for _, un := range unions {
+		if g.regional {
+			g.emitRegionUnionDescriptor(un)
+			continue
+		}
 		g.pf("tableUnionArms[%d] = TableUnionInfo{TagOffset:uint32(unsafe.Offsetof(%s{}.Type)), TagSize:uint32(unsafe.Sizeof(%s{}.Type)), Arms: []TableUnionArmInfo{{Void:true},\n", g.unionArmSlot[un.Name], un.Name, un.Name)
 		for _, v := range un.Variants {
 			if v.Void() {

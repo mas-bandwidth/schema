@@ -6,10 +6,8 @@
 // matches the header and returns the root where it lies. There is no walk, no
 // fix-up and no allocation, which is what makes Open O(1) in the file's size.
 //
-// It reaches FURTHER than the wire half does, and that is the design rather
-// than an exception to it: a cook is POINTED AT, not parsed, so it needs not
-// one line of the codec the variable class is missing. A pointered unit gets no
-// <Base>Table.go and its cooked assets still open in full (§11).
+// The variable wire and cook use the same canonical POD rows. A cook opens
+// the packed region directly; the wire decodes into one.
 //
 // THE MEMORY IS THE CONSUMER'S, and it must stay put and stay aligned for as
 // long as the handle lives: an mmap, or a []byte the consumer keeps. This side
@@ -325,6 +323,9 @@ func (g *cookGen) assemble() ([]byte, error) {
 	if g.needsUnsafe {
 		imports = append(imports, `"unsafe"`)
 	}
+	if strings.Contains(g.structs.String(), "serialize.") {
+		imports = append(imports, `"github.com/mas-bandwidth/serialize.go"`)
+	}
 	h.WriteString(goImports(imports))
 	h.WriteString(g.runtime.String())
 	if g.structs.Len() > 0 {
@@ -398,7 +399,7 @@ func (g *cookGen) emitBlittableField(f *ir.Field, w *cookWriter) {
 	name := ir.GoExportName(f.Name)
 	next := w.next
 	switch {
-	case f.Type.Pointer:
+	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		// A *T SLOT IS EIGHT BYTES AT EIGHT (docs/SPEC-TABLES.md §6.3, §7.2),
 		// holding the SIGNED SELF-RELATIVE delta from the slot's own address,
 		// and NULL IS ZERO. It is not a Go pointer and never becomes one:
@@ -643,7 +644,13 @@ func (g *cookGen) emitAt(st *ir.Struct) {
 	g.hf("//\n")
 	g.hf("// It takes the SLOT and not its value, because a self-relative delta means\n")
 	g.hf("// nothing without the address it is relative to.\n")
-	g.hf("func %sAt(slot *int64) *%sRow {\n", name, name)
+	if len(variableTableNames(g.unit)) > 0 {
+		g.hf("func %sAt(slot *int64, arena ...*TableArena) *%sRow {\n", name, name)
+		g.hf("if len(arena)>0 && arena[0]!=nil { return (*%sRow)(arena[0].At(*slot)) }\n", name)
+	} else {
+		g.hf("func %sAt(slot *int64) *%sRow {\n", name, name)
+	}
+
 	g.hf("\tdelta := *slot\n")
 	g.hf("\tif delta == 0 {\n\t\treturn nil\n\t}\n")
 	g.hf("\treturn (*%sRow)(unsafe.Add(unsafe.Pointer(slot), uintptr(delta)))\n}\n\n", name)
@@ -710,7 +717,7 @@ func (g *cookGen) emitRecordDescriptor(record string) {
 				countOffset = pieces[len(pieces)-2].Offset
 			}
 		}
-		if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
+		if !f.Type.Pointer && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) {
 			pieces := ir.FieldPieces(g.unit, f, fl.Offset)
 			countOffset = pieces[1].Offset
 		}
@@ -721,7 +728,7 @@ func (g *cookGen) emitRecordDescriptor(record string) {
 			bound = f.ArrayBound
 			elemSize = ir.FieldPieces(g.unit, f, fl.Offset)[0].Size / bound
 		}
-		if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
+		if !f.Type.Pointer && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) {
 			// the COUNT COMPANION of a string or a `bytes` bounds a walker just
 			// as an array's does (§7.4), and the bound is the declared length
 			bound = f.Type.Size

@@ -3,6 +3,7 @@ package gotable
 import (
 	"fmt"
 	"math/bits"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -13,10 +14,16 @@ import (
 func tableWireRuntime(u *ir.Unit) string {
 	n := ir.TableWireIdCapacity(u)
 	buckets := 1 << bits.Len(uint(n*2-1))
+	source := tableWireSource
+	if len(variableTableNames(u)) > 0 {
+		source = strings.Replace(source, "type TableIds struct {", "type TableIds struct {\nNumbering *TableNumbering", 1)
+		source = strings.Replace(source, "type TableReader struct {", "type TableReader struct {\nNodes TableNodeMap", 1)
+		source = strings.ReplaceAll(source, "Ids:r.Ids, Nested:true", "Ids:r.Ids, Nested:true, Nodes:r.Nodes")
+	}
 	return fmt.Sprintf(`
 const tableIdCapacity = %d
 const tableIdBuckets = %d
-`, n, buckets) + tableWireSource + tableWStringSource
+`, n, buckets) + source + tableWStringSource
 }
 
 const tableWireSource = `

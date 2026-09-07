@@ -7,7 +7,7 @@ import (
 
 func (g *tableGen) emitTableRead(st *ir.Struct) {
 	n := st.Name
-	g.pf("func %sLoadBody(r *TableReader, value *%s) bool {\n", n, n)
+	g.pf("func %sLoadBody(r *TableReader, value *%s) bool {\n", n, g.storageName(n))
 	g.pf("\t%sReset(value)\n", n)
 	g.pf("\tfor {\n\t\tref, ok := r.Leb(); if !ok { r.Report.Malformed = true; return false }\n")
 	g.pf("\t\tif ref == 0 { return true }\n")
@@ -31,8 +31,14 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 			g.pf("\t\t\tvalue.%sPresent = true\n", member(f))
 		}
 	}
+	if g.regional {
+		g.pf("case 0xffffffffffffffff: if !r.Skip(kind) { r.Report.Malformed=true;return false }\n")
+	}
 	g.pf("\t\tdefault:\n\t\t\tr.Report.Unknown++; if !r.Skip(kind) { r.Report.Malformed = true; return false }\n\t\t}\n\t}\n}\n\n")
-	g.pf("func %sLoad(value *%s, data []byte, report *TableReport) bool {\n", n, n)
+	if g.regional && ir.VariableTables(g.unit)[st.Name] {
+		return
+	}
+	g.pf("func %sLoad(value *%s, data []byte, report *TableReport) bool {\n", n, g.storageName(n))
 	g.pf("\tif report == nil { var ignored TableReport; report = &ignored }\n")
 	g.pf("\tr, verdict := tableOpen(data, report); report.Verdict = verdict; report.Reason = \"\"\n")
 	g.pf("\tif verdict == TableOpenRefused { report.Reason = \"unsupported wire form\"; if len(data) > 0 && data[0] == 2 { report.Reason = \"message form requires an announced vocabulary and a message reader\" } }\n")
@@ -50,8 +56,10 @@ func (g *tableGen) emitReadField(f *ir.Field, ind string) {
 	switch {
 	case f.KeyEnum != "":
 		g.emitReadArray(f, ind, true)
-	case f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes:
+	case f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes && !f.Type.Pointer:
 		g.emitReadArray(f, ind, false)
+	case f.Type.Pointer:
+		g.emitReadScalar(f, expr, "r", "kind", ind, "r.Report.Malformed=true;return false")
 	case f.Type.Kind == ir.TWString:
 		g.pf("%ssub,ok:=r.Body();if !ok {r.Report.Malformed=true;return false}\n", ind)
 		g.emitReadWString(f, expr, "sub", ind, "r.Report.Malformed=true;break")
@@ -77,7 +85,7 @@ func (g *tableGen) emitReadNested(typ, expr, rdr, ind string) {
 func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 	expr := "value." + member(f)
 	kind, bound := ir.TableWireScalarKind(f), f.ArrayBound
-	if f.Type.Kind == ir.TBytes {
+	if f.Type.Kind == ir.TBytes && !f.Type.Pointer {
 		kind, bound = tkU8, f.Type.Size
 	}
 	g.pf("%ssub, ok := r.Body(); if !ok { r.Report.Malformed = true; return false }\n", ind)
@@ -133,7 +141,7 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 			g.pf("%sdecoded = int32(i+1)\n", j)
 		}
 		g.pf("%s}\n", i)
-		if f.Type.Kind == ir.TBytes {
+		if f.Type.Kind == ir.TBytes && !f.Type.Pointer {
 			g.pf("%s%sLength = decoded\n", i, expr)
 		} else if counted {
 			g.pf("%s%sCount = decoded\n", i, expr)
@@ -171,7 +179,7 @@ func (g *tableGen) emitReadUnion(un *ir.Union, expr, rdr, ind, stop string, elem
 		g.pf("%s}\n", j)
 		none := fmt.Sprintf("%s.Type = %sTypeNone", expr, un.Name)
 		g.pf("%s%s.Type = %sType%s\n", j, expr, un.Name, ir.GoExportName(v.Name))
-		g.emitReadArm(v, expr+"."+ir.GoExportName(v.Name), arm, "armKind", j, none)
+		g.emitReadArm(v, g.unionArmExpr(un, v, expr), arm, "armKind", j, none)
 	}
 	g.pf("%sdefault:r.Report.Unknown++\n%s}\n%s}\n%s}\n", i, i, ind+"\t", ind)
 }
@@ -183,12 +191,17 @@ func (g *tableGen) emitReadArm(v ir.UnionVariant, expr, rdr, kind, ind, none str
 		return
 	}
 	f := v.F
-	if v.Body() {
+	if v.Body() && !v.F.Type.Pointer {
 		g.pf("%s%sLoadBody(&%s,&%s)\n%sif %s.Offset != int64(len(%s.Buffer)) { %s }\n", ind, v.Type, rdr, expr, ind, rdr, rdr, bad)
 		return
 	}
-	if f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes {
+	if f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes && !f.Type.Pointer {
 		g.emitReadArmArray(f, expr, rdr, ind, none)
+		return
+	}
+	if f.Type.Pointer {
+		g.emitReadScalar(f, expr, rdr, kind, ind, bad)
+		g.pf("%sif %s.Offset!=int64(len(%s.Buffer)){%s}\n", ind, rdr, rdr, bad)
 		return
 	}
 	if f.Type.Kind == ir.TWString {
@@ -221,7 +234,7 @@ func (g *tableGen) emitReadArmArray(f *ir.Field, expr, rdr, ind, none string) {
 	kind, bound := ir.TableWireScalarKind(f), f.ArrayBound
 	counted := f.Array == ir.ArrayCounted || f.Type.Kind == ir.TBytes
 	companion := expr + "Count"
-	if f.Type.Kind == ir.TBytes {
+	if f.Type.Kind == ir.TBytes && !f.Type.Pointer {
 		kind, bound = tkU8, f.Type.Size
 		companion = expr + "Length"
 	}
@@ -255,8 +268,12 @@ func (g *tableGen) emitReadArmArray(f *ir.Field, expr, rdr, ind, none string) {
 }
 
 func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad string) {
+	if f.Type.Pointer {
+		g.pf("%s{index,ok:=%s.Leb();if !ok {%s};%s.Nodes.Resolve(&%s,index,0x%016x,r.Report)}\n", ind, rdr, onBad, rdr, expr, pointerTargetId(f))
+		return
+	}
 	kind := ir.TableWireScalarKind(f)
-	if f.Type.Kind == ir.TBytes {
+	if f.Type.Kind == ir.TBytes && !f.Type.Pointer {
 		kind = tkU8
 	}
 	if enumRef(f) != nil {
@@ -306,7 +323,7 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 			g.pf("%s\tif v > %d { v = %d; r.Report.Clamped++ }\n", ind, max, max)
 		}
 		typ := goFieldType(f.Type)
-		if f.Type.Kind == ir.TBytes {
+		if f.Type.Kind == ir.TBytes && !f.Type.Pointer {
 			typ = "byte"
 		}
 		g.pf("%s\t%s = %s(v)\n%s}\n", ind, expr, typ, ind)

@@ -8,16 +8,25 @@ import (
 
 func (g *tableGen) emitTableMeasure(st *ir.Struct) {
 	n := st.Name
-	g.pf("func %sMeasureBody(value *%s, ids *TableIds) int64 {\n w := TableWriter{Measuring:true, Ids:ids}\n if !%sSaveBody(&w,value) { return -1 }; return w.Offset\n}\n\n", n, n, n)
-	g.pf("func %sMeasure(value *%s) int64 {\n var ids TableIds\n w := TableWriter{Measuring:true, Ids:&ids}\n w.Put8(1)\n if !%sSaveBody(&w,value) { return -1 }; w.Trailer()\n if w.Overflow || ids.Overflow { return -1 }; return w.Offset\n}\n\n", n, n, n)
+	g.pf("func %sMeasureBody(value *%s, ids *TableIds) int64 {\n w := TableWriter{Measuring:true, Ids:ids}\n if !%sSaveBody(&w,value) { return -1 }; return w.Offset\n}\n\n", n, g.storageName(n), n)
+	if g.regional && ir.VariableTables(g.unit)[st.Name] {
+		return
+	}
+	g.pf("func %sMeasure(value *%s) int64 {\n var ids TableIds\n w := TableWriter{Measuring:true, Ids:&ids}\n w.Put8(1)\n if !%sSaveBody(&w,value) { return -1 }; w.Trailer()\n if w.Overflow || ids.Overflow { return -1 }; return w.Offset\n}\n\n", n, g.storageName(n), n)
 }
 
 func (g *tableGen) emitTableSave(st *ir.Struct) {
-	g.pf("func %sSave(value *%s, buffer []byte) int64 {\n var ids TableIds\n w := TableWriter{Buffer:buffer, Ids:&ids}\n w.Put8(1)\n if !%sSaveBody(&w,value) { return -1 }; w.Trailer()\n if w.Overflow || ids.Overflow { return -1 }; return w.Offset\n}\n\n", st.Name, st.Name, st.Name)
+	if g.regional && ir.VariableTables(g.unit)[st.Name] {
+		return
+	}
+	g.pf("func %sSave(value *%s, buffer []byte) int64 {\n var ids TableIds\n w := TableWriter{Buffer:buffer, Ids:&ids}\n w.Put8(1)\n if !%sSaveBody(&w,value) { return -1 }; w.Trailer()\n if w.Overflow || ids.Overflow { return -1 }; return w.Offset\n}\n\n", st.Name, g.storageName(st.Name), st.Name)
 }
 
 func (g *tableGen) emitTableWrite(st *ir.Struct) {
-	g.pf("func %sSaveBody(w *TableWriter, value *%s) bool {\n", st.Name, st.Name)
+	g.pf("func %sSaveBody(w *TableWriter, value *%s) bool {\n", st.Name, g.storageName(st.Name))
+	if g.regional {
+		g.pf("if !%sSaveBodyFields(w,value) { return false }; w.Put8(0); return !w.Overflow && !w.Ids.Overflow\n}\nfunc %sSaveBodyFields(w *TableWriter,value *%s) bool {\n", st.Name, st.Name, g.storageName(st.Name))
+	}
 	guards := tableGuardExprs(st)
 	for _, f := range st.Fields {
 		cond := guards[f.Name]
@@ -37,7 +46,10 @@ func (g *tableGen) emitTableWrite(st *ir.Struct) {
 			g.pf("\t}\n")
 		}
 	}
-	g.pf(" w.Put8(0)\n return !w.Overflow && !w.Ids.Overflow\n}\n\n")
+	if !g.regional {
+		g.pf("w.Put8(0)\n")
+	}
+	g.pf("return !w.Overflow && !w.Ids.Overflow\n}\n\n")
 }
 
 // A field's vocabulary is speculative until its value is known to ride. The
@@ -78,6 +90,12 @@ func (g *tableGen) emitWireField(f *ir.Field, expr, ind string) {
 }
 
 func (g *tableGen) emitStorageCheck(f *ir.Field, expr, ind string) {
+	if f.Type.Pointer {
+		if f.Array == ir.ArrayCounted {
+			g.pf("%sif %sCount<0 || %sCount>%d { return false }\n", ind, expr, expr, f.ArrayBound)
+		}
+		return
+	}
 	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString {
 		g.pf("%sif %sLength < 0 || %sLength > %d { return false }\n", ind, expr, expr, f.Type.Size)
 	} else if f.Array == ir.ArrayCounted {
@@ -86,6 +104,9 @@ func (g *tableGen) emitStorageCheck(f *ir.Field, expr, ind string) {
 }
 
 func (g *tableGen) emitFieldRides(f *ir.Field, expr, ind string) string {
+	if f.Type.Pointer && f.Array == ir.ArrayNone {
+		return expr + " != 0"
+	}
 	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
 		return byteValueRides(f, expr)
 	}
@@ -96,7 +117,7 @@ func (g *tableGen) emitFieldRides(f *ir.Field, expr, ind string) string {
 		return expr + "Count > 0"
 	}
 	if f.Array == ir.ArrayFixed {
-		if isStructRef(f.Type) {
+		if isStructRef(f.Type) && !f.Type.Pointer {
 			return "true"
 		}
 		lhs, def := expr+"[i]", fieldDefaultExpr(f)
@@ -118,8 +139,10 @@ func (g *tableGen) emitFieldRides(f *ir.Field, expr, ind string) string {
 func (g *tableGen) emitWireValue(f *ir.Field, expr, writer, ind string, framed bool) {
 	g.emitStorageCheck(f, expr, ind)
 	switch {
-	case f.KeyEnum != "" || f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes:
+	case f.KeyEnum != "" || f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes && !f.Type.Pointer:
 		g.emitWireArray(f, expr, writer, ind, framed)
+	case f.Type.Pointer:
+		g.pf("%sif %s==0 { %s.PutLeb(0) } else { index,ok := %s.Ids.Numbering.Index(&%s);if !ok {return false};%s.PutLeb(index) }\n", ind, expr, writer, writer, expr, writer)
 	case f.Type.Kind == ir.TString:
 		if framed {
 			g.pf("%s%s.PutLeb(uint64(%sLength))\n", ind, writer, expr)
@@ -153,7 +176,7 @@ func (g *tableGen) emitWireArray(f *ir.Field, expr, writer, ind string, framed b
 	body := g.nextWireWriter()
 	kind := ir.TableWireScalarKind(f)
 	count := fmt.Sprint(f.ArrayBound)
-	if f.Type.Kind == ir.TBytes {
+	if f.Type.Kind == ir.TBytes && !f.Type.Pointer {
 		kind = tkU8
 		count = expr + "Length"
 	} else if f.Array == ir.ArrayCounted {
@@ -184,7 +207,7 @@ func (g *tableGen) emitWireArrayElement(f *ir.Field, expr, writer, ind string) {
 	elem.Array = ir.ArrayNone
 	elem.KeyEnum = ""
 	elem.Type.Optional = false
-	if f.Type.Kind == ir.TBytes {
+	if f.Type.Kind == ir.TBytes && !f.Type.Pointer {
 		elem.Type = ir.FieldType{Kind: ir.TInt, Width: 8}
 	}
 	if f.KeyEnum == "" {
@@ -224,7 +247,7 @@ func (g *tableGen) emitWireUnion(un *ir.Union, expr, writer, ind string) {
 			continue
 		}
 		payload := g.nextWireWriter()
-		arm := expr + "." + ir.GoExportName(v.Name)
+		arm := g.unionArmExpr(un, v, expr)
 		g.pf("%sstart := %s.Ids.Count; %s := TableWriter{Measuring:true, Ids:%s.Ids}\n", i, writer, payload, writer)
 		g.emitWireValue(v.F, arm, payload, i, false)
 		g.pf("%sif %s.Overflow { return false }; %s.PutLeb(ref); %s.Put8(%d); %s.PutLeb(uint64(%s.Offset))\n", i, payload, writer, writer, kind, writer, payload)

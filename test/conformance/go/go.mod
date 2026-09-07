@@ -57,3 +57,10 @@ replace widedemo => ../../../build/tables-generated-go/wide
 
 require messagedemo v0.0.0
 replace messagedemo => ../../../build/tables-generated-go/messages
+
+require (
+streamdemo v0.0.0
+blobdemo v0.0.0
+)
+replace streamdemo => ../../../build/tables-generated-go/stream
+replace blobdemo => ../../../build/tables-generated-go/blobs
