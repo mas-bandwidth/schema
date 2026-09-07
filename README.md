@@ -11,7 +11,7 @@ From this one definition, schema generates code in multiple languages: C, C++, C
 
 Schema is currently under active development. See **[ROADMAP.md](ROADMAP.md)** for details.
 
-If this work helps you, please support it: **[Become a supporter](https://www.patreon.com/MasBandwidth/membership)**
+If this work helps you, **[please support it.](https://www.patreon.com/MasBandwidth/membership)**
 
 ## Design
 
