@@ -1438,17 +1438,6 @@ terminal** (§5), and refusal is the only conforming answer: no target traps,
 panics or aborts on a malformed payload. An application with genuinely
 arbitrary payloads uses `bytes(N)`, which remains exactly that.
 
-**Backend status for that rule: ONE TARGET ENFORCES IT ON READ TODAY.**
-The read side is specified ahead of its implementation in eight of the
-nine, on the terms §3.1 and §4.2 take. The C++ reference runs the
-generated validator on the READ path in every build mode and fails the
-read on a malformed payload. The other eight run the same validator as a
-WRITE-side assertion, the stance this rule replaces, so a malformed
-payload written by another language reaches their readers unrefused and
-the release build of those eight checks nothing at all. Owed as
-schema#519, narrowed by each target that moves the check, and this line
-is deleted by the last of them.
-
 Beneath the encoding rule, `string(N)` carries **bytes excluding 0x00** —
 all generated readers reject interior nulls, and writes assert per §5 (NUL
 is valid UTF-8, so the interior-null rule is its own, stricter check).
