@@ -62,3 +62,12 @@ retains arm objects and buffers. `make packet-defaults-cs-negative-control`
 removes the literal byte assignments through an overlay and requires the built
 consumer to fail the constructor-bytes marker. Both checks ride `test-cs`;
 table-closure defaults remain refused.
+
+`make packet-defaults-java` compiles with Java 17 warnings treated as errors,
+and runs with assertions enabled and disabled. It checks the eight C++ byte
+and bit pins, constructors and in-place resets, backing arrays, independent
+33/64-bit masks, a defaultless twin and both kinds of reused storage. Since
+the reader API returns a verdict rather than a cursor, every pin must accept
+its exact bit bound and refuse one bit less on a separate object. The named
+constructor-byte control builds before failing its marker, and both checks
+ride `test-java`. Table-closure defaults stay refused.
