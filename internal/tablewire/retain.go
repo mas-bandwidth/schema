@@ -92,6 +92,10 @@ type retainedField struct {
 	kind    uint8
 	payload []byte
 	cost    int
+	// placed is THE SAVE'S OWN MARK, cleared before every save: a record the
+	// walk never reached is one whose PATH NO LONGER NAMES A BODY, and it
+	// counts one `retain_lost` at the save (docs/SPEC-TABLES.md §6.6).
+	placed bool
 }
 
 // retainDepthCap is THE WALK'S NESTING CAP, a small stated constant
@@ -107,6 +111,12 @@ const retainDepthCap = 64
 type retainState struct {
 	store *Retain
 	known map[uint64]bool
+	// arms is the ARM BODY one union cell's current occurrence built. A union
+	// whose arm is written AGAIN is one of §6.6's four occurrences, and the
+	// earlier arm's records go with it whatever became of that occurrence: an
+	// arm whose own framing was damaged leaves no body on the cell at all, so
+	// the handle is held here instead of being read back off the value.
+	arms map[*tabletext.Cell]*tabletext.Instance
 }
 
 func newRetainState(m *tabletext.Model, store *Retain) *retainState {
@@ -115,7 +125,71 @@ func newRetainState(m *tabletext.Model, store *Retain) *retainState {
 	for _, id := range ir.TableWireIds(m.Unit) {
 		known[id] = true
 	}
-	return &retainState{store: store, known: known}
+	return &retainState{store: store, known: known, arms: map[*tabletext.Cell]*tabletext.Instance{}}
+}
+
+// forget DISCARDS every record held under a body the wire is about to write
+// AGAIN (docs/SPEC-TABLES.md §6.6). A RETAINED RECORD BELONGS TO THE BODY
+// OCCURRENCE THAT CARRIED IT AND DIES WITH IT: legal input can carry a known
+// child body twice, and the later occurrence resets the child and wins whole,
+// so the records retained under the earlier occurrence go with the values it
+// held. THE DISCARD MOVES NEITHER COUNTER — the writer superseded the data, so
+// nothing was lost that the load could have kept.
+//
+// It is called where the reader throws away a body in order to read a NEW
+// occurrence of it, and NEVER where damage resets a body the reader has just
+// decoded: that record is one the save cannot place, and it is counted there.
+//
+// A POINTER IS NOT FOLLOWED: a node cannot be removed from a region, so no
+// occurrence of a body ever supersedes one (§6.6).
+func (rt *retainState) forget(inst *tabletext.Instance) {
+	if rt == nil || inst == nil {
+		return
+	}
+	delete(rt.store.records, inst)
+	for i := range inst.Fields {
+		fv := &inst.Fields[i]
+		rt.forgetCell(&fv.Cell)
+		for j := range fv.Elems {
+			rt.forgetCell(&fv.Elems[j])
+		}
+		for j := range fv.Entries {
+			rt.forgetCell(&fv.Entries[j])
+		}
+	}
+}
+
+func (rt *retainState) forgetCell(cell *tabletext.Cell) {
+	if cell.Tab != nil {
+		rt.forget(cell.Tab)
+	}
+	if cell.Arm != nil {
+		rt.forgetCell(&cell.Arm.Cell)
+		for j := range cell.Arm.Elems {
+			rt.forgetCell(&cell.Arm.Elems[j])
+		}
+	}
+}
+
+// builtArm remembers the body this occurrence of a union cell built.
+func (rt *retainState) builtArm(cell *tabletext.Cell, payload *tabletext.Instance) {
+	if rt == nil {
+		return
+	}
+	rt.arms[cell] = payload
+}
+
+// forgetArm discards the records the PREVIOUS occurrence of a union cell held,
+// whether or not that occurrence left a body standing on the cell (§6.6).
+func (rt *retainState) forgetArm(cell *tabletext.Cell) {
+	if rt == nil {
+		return
+	}
+	rt.forget(cell.Tab)
+	if held := rt.arms[cell]; held != nil {
+		rt.forget(held)
+		delete(rt.arms, cell)
+	}
 }
 
 // lost counts one unknown this load or save could not keep. Every exclusion
@@ -195,18 +269,9 @@ func (rs *resolver) patch(at int) {
 	binary.LittleEndian.PutUint64(rs.out[at:], uint64(len(rs.out)-at-8))
 }
 
-// verbatim copies a payload the walk does not touch, exactly as the wire
-// spells it. Every scalar, every fixed-point and 128-bit kind, and kinds 12,
-// 31 and 33 are copied this way (§6.6), and so is an array whose element kind
-// carries no reference of its own.
-func (rs *resolver) verbatim(c *cursor, from int) {
-	rs.u64(uint64(c.off - from))
-	rs.out = append(rs.out, c.buf[from:c.off]...)
-}
-
 // skipPayload steps one payload of `kind`, by §3's framing rules alone. It is
 // the same four rules the plain read's skip takes, over a cursor rather than a
-// reader.
+// reader, and the emit side reads a copied payload back with it.
 func skipPayload(c *cursor, kind uint8) bool {
 	switch kind {
 	case ir.TableKindBool, ir.TableKindI8, ir.TableKindU8,
@@ -222,29 +287,7 @@ func skipPayload(c *cursor, kind uint8) bool {
 		}
 		c.off += w
 		return true
-	case ir.TableKindPointer, ir.TableKindEnum:
-		_, ok := c.leb()
-		return ok
-	case ir.TableKindString, ir.TableKindTable, ir.TableKindArray, ir.TableKindKeyed,
-		ir.TableKindEscape, ir.TableKindNoPayload, ir.TableKindWstring:
-		n, ok := c.leb()
-		if !ok || n > uint64(len(c.buf)) || !c.has(int(n)) {
-			return false
-		}
-		c.off += int(n)
-		return true
-	case ir.TableKindUnion:
-		arm, ok := c.leb()
-		if !ok {
-			return false
-		}
-		if arm == 0 {
-			return true
-		}
-		if !c.has(1) {
-			return false
-		}
-		c.off++
+	case ir.TableKindString, ir.TableKindEscape, ir.TableKindNoPayload, ir.TableKindWstring:
 		n, ok := c.leb()
 		if !ok || n > uint64(len(c.buf)) || !c.has(int(n)) {
 			return false
@@ -252,30 +295,28 @@ func skipPayload(c *cursor, kind uint8) bool {
 		c.off += int(n)
 		return true
 	}
-	// A kind a reader does not know at all is not skippable, and is framing
-	// damage — kind 34 included, which no writer emits and which a reader of
-	// this major cannot skip (§3).
+	// Kinds 13, 14, 15, 16, 17 and 30 are never copied, so they never come
+	// back this way: the walk resolves each of them, and a kind outside the
+	// closed set is framing damage (§3).
 	return false
 }
 
-// walkPayload is the resolving walk over one self-framed payload.
+// walkPayload is the resolving walk over one SELF-FRAMED payload — a field's,
+// an array element's, a union arm's.
 //
-// WHICH KINDS IT TOUCHES (docs/SPEC-TABLES.md §6.6): kind 13, a body's fields;
-// kind 15, an arm id and then the arm's payload under this same rule; kind 30,
-// a variant id; kind 14 where the element kind is 13, 15 or 30; and kind 16 at
-// EVERY element kind, because an enum-keyed array's body carries a KEY
-// REFERENCE per slot whatever the elements are. Every other payload is copied
-// verbatim.
+// WHICH KINDS THE WALK TOUCHES (docs/SPEC-TABLES.md §6.6): kind 13, a body's
+// fields; kind 15, an arm id and then the arm's payload under this same rule;
+// kind 30, a variant id; kind 14, where the element kind is 13, 15 or 30; and
+// kind 16 at EVERY element kind, because an enum-keyed array's body carries a
+// KEY REFERENCE per slot whatever the elements are. Every other payload is
+// copied verbatim, which is every scalar, every fixed-point and 128-bit kind,
+// and kinds 12, 31 and 33.
 //
 // KIND 17 IS WHAT THE WALK IS LOOKING FOR AS MUCH AS A REFERENCE IS: meeting
-// one anywhere in the payload drops the whole record and keeps the record
-// atomic.
+// one anywhere in the payload drops the whole record, which is what keeps a
+// retained record from ever carrying a node index.
 func (rs *resolver) walkPayload(c *cursor, kind uint8, depth int) {
 	if rs.bad {
-		return
-	}
-	if depth > retainDepthCap {
-		rs.bad = true
 		return
 	}
 	switch kind {
@@ -283,7 +324,6 @@ func (rs *resolver) walkPayload(c *cursor, kind uint8, depth int) {
 		// THE NODE-INDEX CLASS, met inside a payload rather than at the outer
 		// kind: the record is dropped whole (§6.6)
 		rs.bad = true
-		return
 	case ir.TableKindEnum:
 		ref, ok := c.leb()
 		if !ok {
@@ -291,19 +331,6 @@ func (rs *resolver) walkPayload(c *cursor, kind uint8, depth int) {
 			return
 		}
 		rs.u64(rs.id(ref))
-		return
-	case ir.TableKindTable:
-		n, ok := c.leb()
-		if !ok || n > uint64(len(c.buf)) || !c.has(int(n)) {
-			rs.bad = true
-			return
-		}
-		body := &cursor{buf: c.buf[c.off : c.off+int(n)]}
-		c.off += int(n)
-		at := rs.mark()
-		rs.walkBody(body, depth+1)
-		rs.patch(at)
-		return
 	case ir.TableKindUnion:
 		ref, ok := c.leb()
 		if !ok {
@@ -311,8 +338,8 @@ func (rs *resolver) walkPayload(c *cursor, kind uint8, depth int) {
 			return
 		}
 		if ref == 0 {
-			// AN ARM ID OF ZERO is the union holding nothing, and it names no
-			// id: it is the arm's own None and never a reference (§3)
+			// AN ARM ID OF ZERO is the union holding nothing: it is the arm's
+			// own None and never a reference (§3)
 			rs.u64(0)
 			return
 		}
@@ -324,87 +351,107 @@ func (rs *resolver) walkPayload(c *cursor, kind uint8, depth int) {
 		armKind := c.buf[c.off]
 		c.off++
 		rs.u8(armKind)
-		n, ok := c.leb()
-		if !ok || n > uint64(len(c.buf)) || !c.has(int(n)) {
-			rs.bad = true
-			return
-		}
-		arm := &cursor{buf: c.buf[c.off : c.off+int(n)]}
-		c.off += int(n)
-		at := rs.mark()
-		rs.walkContent(arm, armKind, depth+1)
-		rs.patch(at)
-		return
-	case ir.TableKindArray, ir.TableKindKeyed:
+		rs.framed(c, armKind, depth)
+	case ir.TableKindTable, ir.TableKindArray, ir.TableKindKeyed:
+		rs.framed(c, kind, depth)
+	default:
+		// EVERY OTHER PAYLOAD IS COPIED VERBATIM, exactly as the wire spells
+		// it, its own length included: nothing inside carries a reference, so
+		// the bytes re-emit unchanged. A kind the framing rules do not cover
+		// is damage and drops the record.
 		from := c.off
-		n, ok := c.leb()
-		if !ok || n > uint64(len(c.buf)) || !c.has(int(n)) {
+		if !skipPayload(c, kind) {
 			rs.bad = true
 			return
 		}
-		body := &cursor{buf: c.buf[c.off : c.off+int(n)]}
-		c.off += int(n)
-		// A BODY TOO SHORT FOR ITS OWN HEADER is inert (§4): there is no
-		// element kind to read and nothing to resolve, so it copies whole.
-		if len(body.buf) < 2 {
-			rs.verbatim(c, from)
+		rs.out = append(rs.out, c.buf[from:c.off]...)
+	}
+}
+
+// framed reads one LENGTH and hands the content it frames to walkContent. A
+// NESTED `L` THAT RUNS PAST ITS PARENT drops the record (§6.6).
+func (rs *resolver) framed(c *cursor, kind uint8, depth int) {
+	n, ok := c.leb()
+	if !ok || n > uint64(len(c.buf)) || !c.has(int(n)) {
+		rs.bad = true
+		return
+	}
+	sub := &cursor{buf: c.buf[c.off : c.off+int(n)]}
+	c.off += int(n)
+	at := rs.mark()
+	rs.walkContent(sub, kind, depth+1)
+	rs.patch(at)
+}
+
+// walkContent resolves a payload ALREADY FRAMED by a length: a kind 13, 14 or
+// 16 field's own body, a union arm's payload, and an enum-keyed slot's
+// element. THE CONTENT MUST BE CONSUMED EXACTLY. Slack a plain read would skip
+// by the length is a shape this walk cannot frame, and the record is dropped:
+// THE RESOLVING WALK IS STRICTER THAN THE PLAIN READ, and it may be, because
+// losing a field there changes nothing at all about what the read decoded.
+func (rs *resolver) walkContent(c *cursor, kind uint8, depth int) {
+	if rs.bad {
+		return
+	}
+	if depth > retainDepthCap {
+		// THE WALK'S NESTING CAP: a record past it is dropped on the same rule
+		// as any other shape the walk cannot take (§6.6)
+		rs.bad = true
+		return
+	}
+	switch kind {
+	case ir.TableKindPointer:
+		rs.bad = true
+		return
+	case ir.TableKindTable:
+		rs.walkBody(c, depth)
+	case ir.TableKindArray, ir.TableKindKeyed:
+		if !c.has(1) {
+			rs.bad = true
 			return
 		}
-		ek := body.buf[0]
+		ek := c.buf[c.off]
+		c.off++
 		if ek == ir.TableKindPointer {
 			// AN ARRAY WHOSE ELEMENT KIND IS 17 (§6.6): the excluded class,
 			// caught here for a keyed body exactly as for a positional one
 			rs.bad = true
 			return
 		}
-		if kind == ir.TableKindArray && !rs.walks(ek) {
-			// an array of a kind carrying no reference of its own copies whole
-			rs.verbatim(c, from)
-			return
-		}
-		body.off = 1
-		count, ok := body.leb()
+		rs.u8(ek)
+		count, ok := c.leb()
 		if !ok {
 			rs.bad = true
 			return
 		}
-		at := rs.mark()
-		rs.u8(ek)
 		rs.u64(count)
 		for range count {
 			if rs.bad {
-				break
+				return
 			}
 			if kind == ir.TableKindKeyed {
-				rs.keyedSlot(body, ek, depth+1)
+				rs.keyedSlot(c, ek, depth)
 				continue
 			}
-			rs.walkPayload(body, ek, depth+1)
+			rs.walkPayload(c, ek, depth)
 		}
-		rs.patch(at)
-		return
+	case ir.TableKindUnion, ir.TableKindEnum:
+		rs.walkPayload(c, kind, depth)
+	default:
+		// the content is copied whole: it carries no reference, and its outer
+		// length is what frames it
+		rs.out = append(rs.out, c.buf[c.off:]...)
+		c.off = len(c.buf)
 	}
-	// EVERY OTHER PAYLOAD IS COPIED VERBATIM: every scalar, every fixed-point
-	// and 128-bit kind, and kinds 12, 31 and 33. Kind 32 has no payload and
-	// there is nothing to walk. A kind the framing rules do not cover is
-	// damage and drops the record.
-	from := c.off
-	if !skipPayload(c, kind) {
+	if !rs.bad && c.off != len(c.buf) {
 		rs.bad = true
-		return
 	}
-	rs.verbatim(c, from)
-}
-
-// walks reports whether an ARRAY's element kind carries a reference of its
-// own, which is kind 13, 15 or 30 and nothing else (§6.6).
-func (rs *resolver) walks(ek uint8) bool {
-	return ek == ir.TableKindTable || ek == ir.TableKindUnion || ek == ir.TableKindEnum
 }
 
 // keyedSlot is one triple of an enum-keyed body: the KEY REFERENCE, the
-// element's own length, and the element. THE KEYS RESOLVE EVEN WHEN THE
-// ELEMENTS CARRY NO REFERENCE OF THEIR OWN (§3.2, §6.6).
+// element's own length, and the element. THE KEYS RESOLVE AT EVERY ELEMENT
+// KIND (§3.2, §6.6), which is why a keyed body is walked where a positional
+// array of the same elements would carry nothing to resolve.
 func (rs *resolver) keyedSlot(c *cursor, ek uint8, depth int) {
 	ref, ok := c.leb()
 	if !ok {
@@ -412,58 +459,13 @@ func (rs *resolver) keyedSlot(c *cursor, ek uint8, depth int) {
 		return
 	}
 	rs.u64(rs.id(ref))
-	n, ok := c.leb()
-	if !ok || n > uint64(len(c.buf)) || !c.has(int(n)) {
-		rs.bad = true
-		return
-	}
-	elem := &cursor{buf: c.buf[c.off : c.off+int(n)]}
-	c.off += int(n)
-	at := rs.mark()
-	rs.walkContent(elem, ek, depth)
-	rs.patch(at)
-}
-
-// walkContent resolves a payload ALREADY FRAMED by an outer length — a union
-// arm's, and an enum-keyed slot's element. A body carries its fields directly
-// with no inner length of its own.
-func (rs *resolver) walkContent(c *cursor, kind uint8, depth int) {
-	if rs.bad {
-		return
-	}
-	switch kind {
-	case ir.TableKindPointer:
-		rs.bad = true
-	case ir.TableKindTable:
-		rs.walkBody(c, depth+1)
-	case ir.TableKindEnum:
-		ref, ok := c.leb()
-		if !ok || c.off != len(c.buf) {
-			rs.bad = true
-			return
-		}
-		rs.u64(rs.id(ref))
-	case ir.TableKindUnion:
-		rs.walkPayload(c, ir.TableKindUnion, depth)
-		if c.off != len(c.buf) {
-			rs.bad = true
-		}
-	default:
-		// the content is copied whole: it carries no reference, and its outer
-		// length is what frames it
-		rs.u64(uint64(len(c.buf)))
-		rs.out = append(rs.out, c.buf...)
-	}
+	rs.framed(c, ek, depth)
 }
 
 // walkBody resolves one table body: its fields, each an id REFERENCE, a kind
 // byte and a payload, ending at the body's own ZERO REFERENCE. AN INNER BODY
 // WHOSE TERMINATOR FALLS SHORT drops the record (§6.6).
 func (rs *resolver) walkBody(c *cursor, depth int) {
-	if depth > retainDepthCap {
-		rs.bad = true
-		return
-	}
 	for {
 		if rs.bad {
 			return
@@ -474,9 +476,10 @@ func (rs *resolver) walkBody(c *cursor, depth int) {
 			return
 		}
 		if ref == 0 {
-			if c.off != len(c.buf) {
-				rs.bad = true
-			}
+			// THE TERMINATOR IS A REFERENCE, and a reference in the resolved
+			// form is a fixed eight-byte id: the zero that ends a body rides
+			// at the width every other one does.
+			rs.u64(0)
 			return
 		}
 		if !c.has(1) {
@@ -487,7 +490,7 @@ func (rs *resolver) walkBody(c *cursor, depth int) {
 		c.off++
 		rs.u64(rs.id(ref))
 		rs.u8(kind)
-		rs.walkPayload(c, kind, depth+1)
+		rs.walkPayload(c, kind, depth)
 	}
 }
 
@@ -593,22 +596,7 @@ func (em *emitter) record(w *buf, rec retainedField) {
 	em.payload(w, c, rec.kind)
 }
 
-func (em *emitter) framed(c *cursor) *cursor {
-	if !c.has(8) {
-		em.bad = true
-		return &cursor{}
-	}
-	n := int(binary.LittleEndian.Uint64(c.buf[c.off:]))
-	c.off += 8
-	if n < 0 || !c.has(8+n-8) || c.off+n > len(c.buf) {
-		em.bad = true
-		return &cursor{}
-	}
-	sub := &cursor{buf: c.buf[c.off : c.off+n]}
-	c.off += n
-	return sub
-}
-
+// resolved reads one eight-byte id out of the record and answers it.
 func (em *emitter) resolved(c *cursor) uint64 {
 	if !c.has(8) {
 		em.bad = true
@@ -619,6 +607,27 @@ func (em *emitter) resolved(c *cursor) uint64 {
 	return v
 }
 
+// framedIn reads one of the capture's fixed-width lengths and answers the
+// content it frames.
+func (em *emitter) framedIn(c *cursor) *cursor {
+	if !c.has(8) {
+		em.bad = true
+		return &cursor{}
+	}
+	n := int(binary.LittleEndian.Uint64(c.buf[c.off:]))
+	c.off += 8
+	if n < 0 || !c.has(n) {
+		em.bad = true
+		return &cursor{}
+	}
+	sub := &cursor{buf: c.buf[c.off : c.off+n]}
+	c.off += n
+	return sub
+}
+
+// payload is the capture's walkPayload run the other way: every resolved id is
+// re-interned into THIS file's table, and every length is written back as
+// canonical LEB128.
 func (em *emitter) payload(w *buf, c *cursor, kind uint8) {
 	if em.bad {
 		return
@@ -626,14 +635,6 @@ func (em *emitter) payload(w *buf, c *cursor, kind uint8) {
 	switch kind {
 	case ir.TableKindEnum:
 		em.ref(w, em.resolved(c))
-		return
-	case ir.TableKindTable:
-		body := em.framed(c)
-		inner := &buf{}
-		em.body(inner, body)
-		w.leb(uint64(len(inner.b)))
-		w.raw(inner.b)
-		return
 	case ir.TableKindUnion:
 		arm := em.resolved(c)
 		if arm == 0 {
@@ -641,79 +642,49 @@ func (em *emitter) payload(w *buf, c *cursor, kind uint8) {
 			return
 		}
 		em.ref(w, arm)
-		if !c.has(1) {
+		if em.bad || !c.has(1) {
 			em.bad = true
 			return
 		}
 		armKind := c.buf[c.off]
 		c.off++
 		w.u8(armKind)
-		content := em.framed(c)
-		inner := &buf{}
-		em.content(inner, content, armKind)
-		w.leb(uint64(len(inner.b)))
-		w.raw(inner.b)
-		return
-	case ir.TableKindArray, ir.TableKindKeyed:
-		body := em.framed(c)
-		if body.off == 0 && len(body.buf) > 0 && !em.structured(kind, body) {
-			// a body copied whole rides back exactly as it came
-			w.leb(uint64(len(body.buf)))
-			w.raw(body.buf)
+		em.framed(w, c, armKind)
+	case ir.TableKindTable, ir.TableKindArray, ir.TableKindKeyed:
+		em.framed(w, c, kind)
+	default:
+		// a payload copied whole rides back exactly as it came, its own
+		// canonical length included
+		from := c.off
+		if !skipPayload(c, kind) {
+			em.bad = true
 			return
 		}
-		inner := &buf{}
-		em.arrayBody(inner, body, kind)
-		w.leb(uint64(len(inner.b)))
-		w.raw(inner.b)
+		w.raw(c.buf[from:c.off])
+	}
+}
+
+// framed writes one content and the CANONICAL LEB128 LENGTH that frames it. IT
+// IS ONE POST-ORDER PASS (docs/SPEC-TABLES.md §6.6): a wire length rides FIRST,
+// so the content is built once and the length is written from its size. A port
+// that instead measured a content by walking it, then walked it again to write
+// it, would double its work at every level of a nesting the FILE chooses, and
+// the security bound forbids it.
+func (em *emitter) framed(w *buf, c *cursor, kind uint8) {
+	content := em.framedIn(c)
+	if em.bad {
 		return
 	}
-	verbatim := em.framed(c)
-	w.raw(verbatim.buf)
-}
-
-// structured reports whether an array or keyed payload was captured in the
-// resolved shape rather than copied whole. A keyed body always is, because its
-// keys resolve at every element kind; a positional array is exactly when its
-// element kind is 13, 15 or 30 (§6.6).
-func (em *emitter) structured(kind uint8, body *cursor) bool {
-	if kind == ir.TableKindKeyed {
-		return true
-	}
-	if len(body.buf) < 1 {
-		return false
-	}
-	ek := body.buf[0]
-	return ek == ir.TableKindTable || ek == ir.TableKindUnion || ek == ir.TableKindEnum
-}
-
-func (em *emitter) arrayBody(w *buf, c *cursor, kind uint8) {
-	if !c.has(1) {
-		em.bad = true
+	inner := &buf{}
+	em.content(inner, content, kind)
+	if em.bad {
 		return
 	}
-	ek := c.buf[c.off]
-	c.off++
-	w.u8(ek)
-	count := em.resolved(c)
-	w.leb(count)
-	for range count {
-		if em.bad {
-			return
-		}
-		if kind == ir.TableKindKeyed {
-			em.ref(w, em.resolved(c))
-			content := em.framed(c)
-			inner := &buf{}
-			em.content(inner, content, ek)
-			w.leb(uint64(len(inner.b)))
-			w.raw(inner.b)
-			continue
-		}
-		em.payload(w, c, ek)
-	}
+	w.leb(uint64(len(inner.b)))
+	w.raw(inner.b)
 }
 
+// content is the capture's walkContent run the other way.
 func (em *emitter) content(w *buf, c *cursor, kind uint8) {
 	if em.bad {
 		return
@@ -721,22 +692,49 @@ func (em *emitter) content(w *buf, c *cursor, kind uint8) {
 	switch kind {
 	case ir.TableKindTable:
 		em.body(w, c)
-	case ir.TableKindEnum:
-		em.ref(w, em.resolved(c))
-	case ir.TableKindUnion:
-		em.payload(w, c, ir.TableKindUnion)
+	case ir.TableKindArray, ir.TableKindKeyed:
+		if !c.has(1) {
+			em.bad = true
+			return
+		}
+		ek := c.buf[c.off]
+		c.off++
+		w.u8(ek)
+		count := em.resolved(c)
+		w.leb(count)
+		for range count {
+			if em.bad {
+				return
+			}
+			if kind == ir.TableKindKeyed {
+				em.ref(w, em.resolved(c))
+				em.framed(w, c, ek)
+				continue
+			}
+			em.payload(w, c, ek)
+		}
+	case ir.TableKindUnion, ir.TableKindEnum:
+		em.payload(w, c, kind)
 	default:
-		verbatim := em.framed(c)
-		w.raw(verbatim.buf)
+		w.raw(c.buf[c.off:])
+		c.off = len(c.buf)
 	}
 }
 
+// body writes one table body's fields and the zero reference that ends it.
 func (em *emitter) body(w *buf, c *cursor) {
-	for c.off < len(c.buf) {
+	for {
 		if em.bad {
 			return
 		}
 		id := em.resolved(c)
+		if em.bad {
+			return
+		}
+		if id == 0 {
+			w.u8(0) // the body ENDS AT ITS OWN ZERO REFERENCE
+			return
+		}
 		if !c.has(1) {
 			em.bad = true
 			return
@@ -750,7 +748,6 @@ func (em *emitter) body(w *buf, c *cursor) {
 		w.u8(kind)
 		em.payload(w, c, kind)
 	}
-	w.u8(0) // the body ENDS AT ITS OWN ZERO REFERENCE
 }
 
 // tail writes one body's retained fields AT THE END OF THAT BODY, IN THE ORDER
@@ -766,11 +763,13 @@ func (e *encoder) tail(w *buf, inst *tabletext.Instance) {
 	if e.rt == nil {
 		return
 	}
-	for _, rec := range e.rt.store.records[inst] {
+	recs := e.rt.store.records[inst]
+	for i := range recs {
 		em := &emitter{e: e, rt: e.rt}
 		inner := &buf{}
 		mark := e.ids.mark()
-		em.record(inner, rec)
+		em.record(inner, recs[i])
+		recs[i].placed = true // the walk REACHED it, whatever came of the emit
 		if em.bad {
 			e.ids.rollback(mark)
 			e.retainLost++

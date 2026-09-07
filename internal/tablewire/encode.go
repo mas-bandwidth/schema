@@ -39,6 +39,15 @@ func encodeWith(m *tabletext.Model, inst *tabletext.Instance, rt *retainState) (
 		return nil, 0, err
 	}
 	e := &encoder{m: m, g: g, ids: newIdTable(), rt: rt}
+	if rt != nil {
+		// THE SAVE'S OWN MARK IS CLEARED BEFORE EVERY SAVE, which is what makes
+		// the second save of one region the first save byte for byte (§6.6)
+		for _, recs := range rt.store.records {
+			for i := range recs {
+				recs[i].placed = false
+			}
+		}
+	}
 	fields, err := encodeBodyFields(e, inst)
 	if err != nil {
 		return nil, e.retainLost, err
@@ -61,6 +70,22 @@ func encodeWith(m *tabletext.Model, inst *tabletext.Instance, rt *retainState) (
 	// COUNT, the one fixed-width number on the wire (§3).
 	for _, id := range e.ids.ids {
 		out = binary.LittleEndian.AppendUint64(out, id)
+	}
+	if rt != nil {
+		// AND AT SAVE, A RETAINED RECORD WHOSE PATH NO LONGER NAMES A BODY
+		// COUNTS ONE `retain_lost` (docs/SPEC-TABLES.md §6.6). In this engine a
+		// path is the body itself, so a record the save walk never reached is
+		// exactly that record: the body it belonged to is gone, because damage
+		// reset it or because the caller changed the shape between load and
+		// save. A body SUPERSEDED by a later legal occurrence is not here at
+		// all, because the load discarded it (forget, above).
+		for _, recs := range rt.store.records {
+			for i := range recs {
+				if !recs[i].placed {
+					e.retainLost++
+				}
+			}
+		}
 	}
 	return binary.LittleEndian.AppendUint64(out, uint64(len(e.ids.ids))), e.retainLost, nil
 }

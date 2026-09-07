@@ -592,3 +592,38 @@ func WideValue(cell *Cell) *big.Int {
 // list's slots are grown against the body rather than sized from the
 // declaration.
 func (m *Model) ElementZero(f *ir.Field) Cell { return m.elementZero(f) }
+
+// Refill re-establishes an instance's DECLARED DEFAULTS IN PLACE, keeping the
+// instance itself and every nested instance it already holds.
+//
+// A BY-VALUE NESTED BODY IS A MEMBER OF ITS PARENT in every generated target
+// (docs/SPEC-TABLES.md §2, §6.1), so its storage does not move when the value
+// it holds is reset: a body the wire writes again, and a body whose framing
+// damage makes the reader fall back on its declared defaults (§3), are the
+// same storage before and after. This is what lets an address name a body for
+// the life of a load, which retention's path rests on (§6.6), and it is why
+// resetting a body is not the same act as replacing it.
+func (m *Model) Refill(inst *Instance) {
+	if inst == nil {
+		return
+	}
+	for i := range inst.Fields {
+		fv := &inst.Fields[i]
+		held := fv.Cell.Tab
+		elems := make([]*Instance, len(fv.Elems))
+		for j := range fv.Elems {
+			elems[j] = fv.Elems[j].Tab
+		}
+		m.reset(fv)
+		if held != nil {
+			m.Refill(held)
+			fv.Cell.Tab = held
+		}
+		for j := range elems {
+			if j < len(fv.Elems) && elems[j] != nil {
+				m.Refill(elems[j])
+				fv.Elems[j].Tab = elems[j]
+			}
+		}
+	}
+}

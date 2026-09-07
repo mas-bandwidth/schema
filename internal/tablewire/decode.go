@@ -513,7 +513,17 @@ func (r *wireReader) field(fv *tabletext.Field) bool {
 			return false
 		}
 		sub := r.sub(int(n))
-		fv.Cell.Tab = r.m.New(tabletext.StructOf(f))
+		// A LATER LEGAL OCCURRENCE OF THIS BODY WINS WHOLE (§3, §4), so the
+		// records the earlier one carried go with the values it held (§6.6).
+		// THE BODY ITSELF IS THE SAME STORAGE either way: it is a member of its
+		// parent in every generated target, so it is RESET rather than replaced
+		// and an address names one body for the life of a load.
+		r.rt.forget(fv.Cell.Tab)
+		if fv.Cell.Tab == nil {
+			fv.Cell.Tab = r.m.New(tabletext.StructOf(f))
+		} else {
+			r.m.Refill(fv.Cell.Tab)
+		}
 		sub.bodyAt(fv.Cell.Tab, true)
 		// A BODY'S TERMINATOR IS THE END OF ITS PAYLOAD (§3): a body whose
 		// terminator is not the last byte of its L is framing damage — the
@@ -521,7 +531,10 @@ func (r *wireReader) field(fv *tabletext.Field) bool {
 		// enclosing body continues past it by L.
 		if sub.off != int(n) {
 			r.report.Malformed = true
-			fv.Cell.Tab = r.m.New(tabletext.StructOf(f))
+			// THE BODY FALLS BACK ON ITS DECLARED DEFAULTS AND STAYS THE BODY
+			// IT WAS: damage is not a later occurrence, so the records already
+			// retained under it are neither discarded nor counted here (§6.6)
+			r.m.Refill(fv.Cell.Tab)
 		}
 		r.off += int(n)
 		return true
@@ -581,6 +594,9 @@ func (r *wireReader) mapField(fv *tabletext.Field) bool {
 	}
 	bodyLen := int(n)
 	end := r.off + bodyLen
+	for i := range fv.Entries {
+		r.rt.forget(fv.Entries[i].Tab)
+	}
 	fv.Entries = nil
 	if bodyLen >= 2 {
 		elemKind := r.u8()
@@ -658,6 +674,7 @@ func (r *wireReader) mapField(fv *tabletext.Field) bool {
 				// EQUAL: a DUPLICATE. Last wins WHOLE — the slot the earlier
 				// entry took is replaced by this one's decode, so a field the
 				// repeat elides reads its default. The map's count excludes it.
+				r.rt.forget(fv.Entries[len(fv.Entries)-1].Tab)
 				fv.Entries[len(fv.Entries)-1] = tabletext.Cell{Tab: decoded}
 				r.report.Duplicate++
 				continue
@@ -897,6 +914,7 @@ func (r *wireReader) element(fv *tabletext.Field, i int, ek int) bool {
 			r.report.Malformed = true
 			return false
 		}
+		r.rt.forget(fv.Elems[i].Tab)
 		fv.Elems[i].U = 0
 		fv.Elems[i].Tab = nil
 		return r.unionCell(&fv.Elems[i], f)
@@ -922,7 +940,12 @@ func (r *wireReader) element(fv *tabletext.Field, i int, ek int) bool {
 			return false
 		}
 		sub := r.sub(int(n))
-		fv.Elems[i].Tab = r.m.New(tabletext.StructOf(f))
+		r.rt.forget(fv.Elems[i].Tab)
+		if fv.Elems[i].Tab == nil {
+			fv.Elems[i].Tab = r.m.New(tabletext.StructOf(f))
+		} else {
+			r.m.Refill(fv.Elems[i].Tab)
+		}
 		sub.bodyAt(fv.Elems[i].Tab, true)
 		r.off += int(n)
 		return true
@@ -1014,7 +1037,12 @@ func (r *wireReader) keyed(fv *tabletext.Field) bool {
 		case tabletext.EnumOf(f) != nil:
 			elem.enumCell(&fv.Elems[slot], f)
 		case tabletext.StructOf(f) != nil:
-			fv.Elems[slot].Tab = r.m.New(tabletext.StructOf(f))
+			r.rt.forget(fv.Elems[slot].Tab)
+			if fv.Elems[slot].Tab == nil {
+				fv.Elems[slot].Tab = r.m.New(tabletext.StructOf(f))
+			} else {
+				r.m.Refill(fv.Elems[slot].Tab)
+			}
 			elem.bodyAt(fv.Elems[slot].Tab, true)
 		default:
 			elem.scalarAt(&fv.Elems[slot], f, int(elemKind))
@@ -1032,6 +1060,10 @@ func (r *wireReader) union(fv *tabletext.Field) bool { return r.unionCell(&fv.Ce
 // reference, the arm's KIND byte, `L`, then `L` bytes of arm payload.
 func (r *wireReader) unionCell(cell *tabletext.Cell, f *ir.Field) bool {
 	un := tabletext.UnionOf(f)
+	// A UNION WHOSE ARM IS WRITTEN AGAIN, THE SAME ARM OR ANOTHER, is one of
+	// §6.6's four occurrences: the earlier arm body's records go with it, and
+	// the discard moves neither counter.
+	r.rt.forgetArm(cell)
 	ref, ok := r.leb()
 	if !ok {
 		r.report.Malformed = true
@@ -1113,6 +1145,7 @@ func (r *wireReader) unionCell(cell *tabletext.Cell, f *ir.Field) bool {
 		arm := un.Variants[tag-1]
 		if arm.Body() {
 			payload := r.m.New(arm.Ref)
+			r.rt.builtArm(cell, payload)
 			sub.bodyAt(payload, true)
 			if sub.off != length {
 				// a body whose terminator is not the last byte of its L is
