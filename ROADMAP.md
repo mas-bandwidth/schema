@@ -71,10 +71,8 @@
 
 ## How the work is done
 
-Schema is built by Glenn Fiedler, who has written about how multiplayer games
-work and given the code away for twenty years, together with an AI
-collaborator that does much of the building, testing and porting. Glenn owns
-every design decision. Every month a
+Schema is built by Glenn Fiedler, together with AI collaborators that do much of 
+the building, testing and porting. Glenn owns every design decision. Every month a
 [public ledger](https://github.com/mas-bandwidth/patreon#public-ledgers) shows
 where the AI collaborator's tokens went, by repository, and what they bought.
 
