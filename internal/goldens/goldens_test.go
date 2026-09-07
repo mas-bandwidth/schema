@@ -295,6 +295,36 @@ func TestGoldenWideSource(t *testing.T) {
 	pinDir(t, filepath.Join(goldenDir, "wide", "cpp"), generate(t, u, "cpp", nil))
 }
 
+// The packet file is isolated from examples-wide's table kind 33 and its
+// baseline. Each port pins the exact same packet declarations as C++.
+var packetWideTargets = []string{"cpp", "c"}
+
+func TestGoldenPacketWideSource(t *testing.T) {
+	source, err := os.ReadFile(filepath.Join(corpusWideDir, "WideText.schema"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "WideText.schema"), source, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	u := loadCorpusDir(t, dir)
+	for _, target := range compiler.New().Targets() {
+		carried := false
+		for _, name := range packetWideTargets {
+			if name == target {
+				carried = true
+			}
+		}
+		if carried {
+			pinDir(t, filepath.Join(goldenDir, "packet-wide", target), generate(t, u, target, nil))
+		} else if _, err := schema.Generate(u, target, nil); err == nil || !strings.Contains(err.Error(), "wstring(N)") {
+			t.Errorf("%s must refuse unported packet wide text by name: %v", target, err)
+		}
+	}
+	pinDir(t, filepath.Join(goldenDir, "packet-wide", "identity"), map[string][]byte{"id.txt": []byte(fmt.Sprintf("0x%016x\n", u.ProtocolId))})
+}
+
 // TestWideTextIsRefusedByEveryOtherTarget is the other half of the pin above:
 // a target that has not landed the wstring codec must refuse the unit BY NAME
 // rather than emit a field it never laid out (SPEC §4.12). A backend that

@@ -34,14 +34,14 @@ func packed(s string) string {
 	return s
 }
 
-func corpus(path string) []vector {
+func corpus(path string, wide bool) []vector {
 	f, err := os.Open(path)
 	must(err)
 	defer func() { must(f.Close()) }()
 	var all []vector
 	v := vector{}
 	flush := func() {
-		if v.name != "" && v.bound == 16 {
+		if v.name != "" && ((!wide && v.bound == 16) || (wide && (v.bound == 8 || v.bound == 5))) {
 			all = append(all, v)
 		}
 		v = vector{}
@@ -116,8 +116,29 @@ func main() {
 	oracle := flag.String("oracle", "build/packet-text/cpp/driver", "C++ oracle executable")
 	path := flag.String("corpus", "testdata/conformance/text/string.txt", "shared string corpus")
 	mutationsOnly := flag.Bool("mutations-only", false, "compare only bit-flip cases (negative control)")
+	wide := flag.Bool("wide", false, "wide corpus: UTF-16 groups at bounds 7 and 4")
 	flag.Parse()
-	base := corpus(*path)
+	base := corpus(*path, *wide)
+	if *wide {
+		// The six cross-language cases in SPEC §4.12, independently packed
+		// one bit at a time so the oracle must reproduce their groups too.
+		for i, units := range [][]uint16{{}, {0x043c, 0x0438, 0x0440}, {0xe000}, {0xffff}, {0x41, 0xd83d, 0xde00, 0x42}, {0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67}} {
+			bits := 3 + 32*len(units)
+			wire := make([]byte, (bits+7)/8)
+			wire[0] = byte(len(units))
+			var payload strings.Builder
+			for j, unit := range units {
+				fmt.Fprintf(&payload, "%04x", unit)
+				for k := range 16 {
+					if unit&(1<<k) != 0 {
+						offset := 3 + 32*j + k
+						wire[offset/8] |= 1 << (offset % 8)
+					}
+				}
+			}
+			base = append(base, vector{name: fmt.Sprintf("wstring-interop-%d", i), wire: hex.EncodeToString(wire), payload: packed(payload.String()), bits: bits, bound: 8, canonical: true})
+		}
+	}
 	all := append([]vector{}, base...)
 	for _, v := range base {
 		if v.refused {
@@ -128,11 +149,14 @@ func main() {
 		for bit := 0; bit < len(raw)*8; bit++ {
 			mutant := append([]byte{}, raw...)
 			mutant[bit/8] ^= 1 << (bit % 8)
-			all = append(all, vector{name: fmt.Sprintf("%s/flip-%d", v.name, bit), wire: hex.EncodeToString(mutant), mutation: true})
+			all = append(all, vector{name: fmt.Sprintf("%s/flip-%d", v.name, bit), wire: hex.EncodeToString(mutant), bound: v.bound, mutation: true})
 		}
 	}
 	var input strings.Builder
 	for _, v := range all {
+		if *wide {
+			fmt.Fprintf(&input, "%d ", v.bound-1)
+		}
 		fmt.Fprintln(&input, v.wire)
 	}
 	want := run([]string{*oracle}, input.String(), len(all))

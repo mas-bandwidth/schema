@@ -20,6 +20,8 @@ func (g *gen) call(ind, expr string) {
 
 func (g *gen) emitWriteField(f *ir.Field, ind string) {
 	switch {
+	case f.Type.Kind == ir.TWString:
+		g.emitWriteWString(f, ind)
 	case f.Type.Kind == ir.TString:
 		// Composed from primitives, NOT serialize_write_string: schema frames
 		// the length over [0, N] where the runtime's string call frames it over
@@ -243,6 +245,8 @@ func (g *gen) emitWriteBits(f *ir.Field, expr, ind string) {
 
 func (g *gen) emitReadField(f *ir.Field, ind string) {
 	switch {
+	case f.Type.Kind == ir.TWString:
+		g.emitReadWString(f, ind)
 	case f.Type.Kind == ir.TString:
 		g.call(ind, fmt.Sprintf("serialize_read_int( stream, &value->%s_length, 0, %s )", f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size))))
 		g.call(ind, fmt.Sprintf("serialize_read_bytes( stream, (serialize_uint8_t *) value->%s, (int) value->%s_length )", f.Name, f.Name))
