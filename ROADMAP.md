@@ -73,19 +73,17 @@
 cells are not equal in size. The table will be printed as it stands with every
 release from here.
 
-Each language is in one of three states, applied to each wire on its own.
+Each language is in one of three states on each wire. The state is read off
+the table above and the README's performance table, never written here, so it
+cannot go stale.
 
-- **Performant and production ready.** Every feature is done. The test corpus
-  is bit-identical on every push. The speed is measured against C++ on the
-  benchmark standard and published.
-- **Done, but not yet mature.** Every feature is done and the tests are green.
-  The speed measurement is still owed.
-- **Coming.** Not every feature is done.
-
-On the packet wire as released in 2.4.0, C, C++, Rust, C# and Go are
-performant and production ready, and Java, JavaScript, Dart and Elixir are
-done but not yet mature. On the table wire every language is coming, C++ at 30
-of 31 and the rest as the table shows.
+- **Performant and production ready.** Every cell in the column is ✅, the test
+  corpus is bit-identical on every push, and the speed is measured against C++
+  on the benchmark standard and published in the
+  [README's performance table](README.md#performance).
+- **Done, but not yet mature.** Every cell in the column is ✅ and the tests are
+  green. The speed measurement is still owed.
+- **Coming.** The column has a ❌.
 
 ## How the work is done
 
