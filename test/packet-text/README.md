@@ -58,3 +58,10 @@ Runtime reads expose their consumed bits; flat reads check the exact measured
 bound and refuse one bit less. Each tier has its own mutation-only failure
 check after the sabotaged modules pass syntax checks and import successfully.
 Both targets ride `test-js`.
+
+`make packet-utf8-dart` runs JIT with assertions and compiled AOT, plus the
+analyzer and formatter. A private helper validates used bytes in place;
+accepted reads must fit the exact measured bit bound and refuse one bit
+less. The AOT negative control skips only its scan and must fail mutation
+agreement. Both targets ride `test-dart`; the nested defaults fixture also
+passes its formatter and wire checks with the new read guard.
