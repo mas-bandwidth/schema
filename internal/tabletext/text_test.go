@@ -652,12 +652,9 @@ func TestIllFormedByteIsReplacedOnRead(t *testing.T) {
 }
 
 // §16.2: RE-ESTABLISHMENT HAPPENS ON PLACEMENT. A repeated key whose repeat the
-// walk refuses at the VALUE level — a fraction in an integer field, whatever
-// spelling carries it, a token that is not JSON at all — leaves the first
-// occurrence's value standing. Only a value actually placed replaces one, and a
-// CLAMPED value is a placed one: an integer field's magnitude is clamped and
-// counted, never refused, so the row below that pins the other direction uses a
-// fraction and not a magnitude.
+// walk refuses at the VALUE level — a fraction in an integer field, a magnitude
+// no float of that width holds, a token that is not JSON at all — leaves the
+// first occurrence's value standing. Only a value actually placed replaces one.
 func TestRejectedRepeatKeepsTheFirstValue(t *testing.T) {
 	cases := []struct {
 		table, text, key string
@@ -665,7 +662,7 @@ func TestRejectedRepeatKeepsTheFirstValue(t *testing.T) {
 	}{
 		{"ProfileConfig", `{ "tilt": 100, "tilt": 5e-324 }`, "tilt", 100},
 		{"ProfileConfig", `{ "experience": 5, "experience": 2.5 }`, "experience", 5},
-		{"ProfileConfig", `{ "badge": 9, "badge": 1e-1 }`, "badge", 9},
+		{"ProfileConfig", `{ "badge": 9, "badge": 1e309 }`, "badge", 9},
 		{"WeaponConfig", `{ "penetration": 3, "penetration": 1.5 }`, "penetration", 3},
 	}
 	for _, tc := range cases {
@@ -699,36 +696,41 @@ func TestRejectedRepeatKeepsTheFirstValue(t *testing.T) {
 	}
 }
 
-// AN INTEGER FIELD CLAMPS A MAGNITUDE, whatever its spelling and however far
-// out it is (docs/SPEC-TABLES.md §16.2 Bounds): a token past what sixty-four
-// bits hold saturates at that edge and counts, and the declared range clamps
-// after it on the same terms an int64 field saturates at INT64_MAX. It is a
-// PLACED value, so a repeat of it replaces the first — the other half of the
-// re-establishment rule above.
+// A FIELD READS ITS TOKEN THROUGH THE FLOAT64 AND A MAP KEY READS IT EXACTLY,
+// and this row is the field half. The exact reader lives on the key path alone
+// (§16.2's map row, and the key rows in test/conformance/harness/maps_test.go),
+// because a key is an identity that two spellings must not share, while a
+// field's value is a quantity read the same way by every port that reads these
+// texts. So the field path keeps the interpretation the C, Go and Rust readers
+// have: a magnitude past what a float64 holds is kind_mismatch and nothing is
+// stored, and a token at 2^53 lands the value the mantissa carries.
 //
-// A magnitude past a double's own range is this same value: the reader's path
-// carries no double, so 1e309 is a decimal integer far above uint8 and not an
-// infinity, and an infinity is the one thing §16.2 makes a kind_mismatch, for a
-// FLOAT field whose width cannot represent it.
-func TestAnIntegerFieldClampsAMagnitudePastADouble(t *testing.T) {
+// The two verdicts below are the ones the ports produce, and moving either of
+// them is a change to all four readers at once.
+func TestAnIntegerFieldReadsItsTokenThroughTheFloat(t *testing.T) {
 	_, inst, r := read(t, "ProfileConfig", `{ "badge": 1e309 }`)
-	if r.KindMismatch != 0 || r.Malformed {
-		t.Fatalf("a decimal integer is not the wrong shape for an integer field: %+v", r)
+	if r.KindMismatch != 1 || r.Clamped != 0 || r.Malformed {
+		t.Fatalf("a magnitude no float64 holds is kind_mismatch for an integer field: %+v", r)
 	}
-	if r.Clamped == 0 {
-		t.Fatalf("a magnitude outside the field's domain clamps and counts: %+v", r)
+	if got := field(t, inst, "badge").Cell.U; got != 0 {
+		t.Fatalf("nothing is stored on a mismatch: got %d, want 0", got)
 	}
-	if got := field(t, inst, "badge").Cell.U; got != 255 {
-		t.Fatalf("uint8 clamps at its ceiling: got %d, want 255", got)
-	}
-	// and the FLOAT field's row is untouched: a width that cannot represent the
-	// value is kind_mismatch, so an infinity is never stored
+	// the same spelling in a FLOAT field, which has always answered this way
 	_, inst, r = read(t, "ProfileConfig", `{ "precision": 1e400 }`)
 	if r.KindMismatch != 1 || r.Clamped != 0 {
 		t.Fatalf("a float64 that cannot hold the value mismatches: %+v", r)
 	}
 	if got := field(t, inst, "precision").Cell.F; got != 0 {
 		t.Fatalf("nothing is stored on a mismatch: got %v", got)
+	}
+	// and at 2^53 the field lands what the mantissa carries, where the KEY path
+	// lands the digits the token spells
+	_, inst, r = read(t, "ProfileConfig", `{ "epoch": 9007199254740993.0 }`)
+	if r.KindMismatch != 0 || r.Clamped != 0 {
+		t.Fatalf("an integral value is placed: %+v", r)
+	}
+	if got := field(t, inst, "epoch").Cell.U; got != 9007199254740992 {
+		t.Fatalf("the field path rounds at the mantissa: got %d, want 9007199254740992", got)
 	}
 }
 
