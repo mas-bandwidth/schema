@@ -27,16 +27,8 @@ import (
 // tablePrimitives so one definition survives any include order.
 func tableArenaRuntime(u *ir.Unit, anyExtent bool) string {
 	pkg := u.Package
-	align := int64(8)
-	for name := range ir.TableClosure(u) {
-		if st := memberOf(u, name); st != nil {
-			align = max(align, ir.RecordLayout(u, st).Align)
-		}
-	}
-	alignComment := "every node starts 8-aligned"
-	if align == 16 {
-		alignComment = "every node starts 16-aligned"
-	}
+	align := ir.TableRegionAlign(u)
+	alignComment := fmt.Sprintf("every node starts %d-aligned", align)
 	guard := strings.ToUpper(pkg) + "_SCHEMA_TABLE_ARENA"
 	// A UNIT WITH NEITHER A MAP NOR A LIST CARRIES NOT ONE SYMBOL OF THE EXTENT
 	// MACHINERY (docs/SPEC-TABLES.md §2.2, §2.8, §2.9), the node map's extent
@@ -111,7 +103,7 @@ static const uint32_t kTableSegmentSize = 1u << kTableSegmentBits;
 static const uint32_t kTableSegmentMask = kTableSegmentSize - 1u;
 static const uint32_t kTableMaxSegments = 1u << ( 32 - kTableSegmentBits ); // 1024 -> 4 GiB
 static const uint32_t kTableSlabBytes   = 64u * 1024u;                 // one atomic per slab
-static const uint32_t kTableAlign       = ` + fmt.Sprint(align) + `;                           // ` + alignComment + `
+static const uint32_t kTableAlign       = ` + fmt.Sprint(align) + `;` + strings.Repeat(" ", 28-len(fmt.Sprint(align))) + `// ` + alignComment + `
 static const uint32_t kTableAllocFailed = 0xFFFFFFFFu;
 
 // ---- THE CALLER'S ALLOCATOR (docs/SPEC-TABLES.md §6.5) ----

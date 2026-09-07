@@ -83,9 +83,10 @@ type wireRoot struct {
 	// paths (docs/SPEC-TABLES.md §6.6)
 	retain bool
 	// the C ABI storage each node type commands (docs/SPEC-TABLES.md §6.5,
-	// §20.3), by wire type id, eight-aligned as a reader's LoadMeasure rounds it
+	// §20.3), by wire type id, rounded to the unit alignment as a reader's LoadMeasure rounds it
 	storage               map[uint64]int64
 	rootStorage           int64
+	align                 int64
 	maxStorage            int64
 	maxElement            int64
 	blobBytes, blobString bool
@@ -99,7 +100,7 @@ const nodeDirEntryBytes = int64(16)
 // type id and its length. It bounds how many records a wire can carry.
 const nodeRecordHeaderBytes = int64(2)
 
-func alignUp8(n int64) int64 { return (n + 7) &^ 7 }
+func (r *wireRoot) roundStorage(n int64) int64 { return (n + r.align - 1) & -r.align }
 
 // THE RETENTION ARM'S TWO CAPACITIES (docs/SPEC-TABLES.md §6.6), and they are
 // declared LARGE ON PURPOSE.
@@ -156,7 +157,8 @@ func newWireRoot(u *units, unitKey, rootName string, message, retain bool) (*wir
 			}
 		}
 	}
-	r.rootStorage = alignUp8(ir.RecordLayout(unit, def).Size)
+	r.align = ir.TableRegionAlign(unit)
+	r.rootStorage = r.roundStorage(ir.RecordLayout(unit, def).Size)
 	r.blobBytes, r.blobString = ir.PointerReachableBlobs(def)
 	// THE STORAGE A RECORD COMMANDS is its type's, and only for a type THIS
 	// ROOT can place: a table no pointer below the root targets is a node the
@@ -168,7 +170,7 @@ func newWireRoot(u *units, unitKey, rootName string, message, retain bool) (*wir
 		if st == nil {
 			continue
 		}
-		size := alignUp8(ir.RecordLayout(unit, st).Size)
+		size := r.roundStorage(ir.RecordLayout(unit, st).Size)
 		r.storage[ir.TableTypeId(st.WireName())] = size
 		if size > r.maxStorage {
 			r.maxStorage = size
@@ -913,7 +915,7 @@ func (r *wireRoot) sizeBatch(ans *oracleAnswer, data []byte) {
 				if rec.TypeId == ir.StringWireTypeId {
 					terminator = 1
 				}
-				ans.bytes += alignUp8(8 + rec.Length + terminator)
+				ans.bytes += r.roundStorage(8 + rec.Length + terminator)
 				continue
 			}
 			ans.bytes += r.storage[rec.TypeId] // a type id this build cannot name commands none

@@ -15,16 +15,7 @@ func FileRegionMeasure(u *ir.Unit, root *ir.Struct, data []byte) (bytes int64, w
 	if len(data) == 0 || data[0] != ir.TableWireForm || !ok {
 		return 0, false, false
 	}
-	align := int64(8)
-	for name := range ir.TableClosure(u) {
-		st := u.Tables[name]
-		if st == nil {
-			st = u.Structs[name]
-		}
-		if st != nil {
-			align = max(align, ir.RecordLayout(u, st).Align)
-		}
-	}
+	align := ir.TableRegionAlign(u)
 	round := func(n int64) int64 { return (n + align - 1) & -align }
 	size := func(st *ir.Struct, body []byte) (int64, bool) {
 		walk := extentScan{u: u, ids: ids}

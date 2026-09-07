@@ -73,13 +73,7 @@ func (g *tableGen) emitRegionRuntime(blocks *ir.BlockUnit) {
 		}
 		g.emitUnionRow(un)
 	}
-	aligns := []int64{8}
-	for n := range ir.TableClosure(g.unit) {
-		if st := cookMember(g.unit, n); st != nil {
-			aligns = append(aligns, ir.RecordLayout(g.unit, st).Align)
-		}
-	}
-	g.pf("const tableRegionAlign int64 = %d\n", ir.RegionAlignOf(aligns...))
+	g.pf("const tableRegionAlign int64 = %d\n", ir.TableRegionAlign(g.unit))
 	g.pf("const tableBytesTypeId uint64=0x%016x\nconst tableStringTypeId uint64=0x%016x\n", ir.TableWireId("bytes"), ir.TableWireId("string"))
 	source := tableRegionSource + tableRegionJsonSource + tableRegionBlobSource + tableBuilderLoadSource
 	if unitHasContainers(g.unit) {

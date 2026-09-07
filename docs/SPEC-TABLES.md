@@ -6801,7 +6801,7 @@ each, and the terminating ZERO UNIT is what `wstring(N)`'s `char16_t[N + 1]`
 storage carries for the same reason (§7.2). The units begin at offset eight,
 so they are two-aligned by construction and a region hands back a terminated
 `char16_t` string with no copy. Its
-alignment is eight and its extent runs to the next entry as every node's
+alignment is the unit's and its extent runs to the next entry as every node's
 does; its directory entry carries the reserved type id of §3.1. A `*bytes`
 slot is the same eight-byte self-relative delta every pointer slot is, and it
 resolves to the header: `data` is the header plus eight, and `length` is the
