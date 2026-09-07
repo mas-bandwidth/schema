@@ -72,10 +72,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_default_arm( serialize_writ
             }
         }
     }
-    if ( (serialize_int64_t) value->marker > 7 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->marker <= 7 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->marker ), 3 ) )
     {
         return 0;

@@ -94,7 +94,12 @@ func (g *gen) emitWriteScalar(f *ir.Field, expr, ind string) {
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:
 			bits := ir.BitsRequired(big.NewInt(0), big.NewInt(ref.Max))
-			g.pf("%sif ( %s > %d )\n%s{\n%s    return 0; /* headroom above the wire range cannot ride */\n%s}\n", ind, expr, ref.Max, ind, ind, ind)
+			// storage headroom above the wire range is writer misuse, not
+			// content: a debug assert that compiles out under NDEBUG, the
+			// same guard the C++ backend folds in (SPEC §5). The low half is
+			// vacuous where the enum's underlying type is unsigned, which is
+			// what the emitted storage asks for.
+			g.pf("%sserialize_assert( %s <= %d );\n", ind, expr, ref.Max)
 			if bits > 0 {
 				g.call(ind, fmt.Sprintf("serialize_write_bits( stream, (serialize_uint32_t) %s, %d )", expr, bits))
 			}
@@ -165,8 +170,12 @@ func (g *gen) emitWriteRangedInt(f *ir.Field, expr, ind string) {
 	g.pf("%s}\n", ind)
 }
 
-// emitRangeAssertWrite refuses an out-of-contract write rather than wrapping
-// it -- the same guard the other backends fold in.
+// emitRangeAssertWrite asserts the field's declared range on write. A value
+// outside it is WRITER MISUSE, not content: the guard is a serialize_assert
+// that fires in a debug build and compiles out under NDEBUG, exactly as the
+// C++ backend's emitWriteRangedFold32/64 fold it in (SPEC §5). "Every
+// language, by design, compiles out asserts/checks in release build. This is
+// the whole point!"
 //
 // Each half is emitted only when it CAN be false for the storage type. GCC's
 // -Wtype-limits rejects a vacuous comparison (an unsigned value < 0, or a
@@ -199,14 +208,13 @@ func (g *gen) emitRangeAssertWrite(f *ir.Field, expr, ind string) {
 	var cond string
 	switch {
 	case loNeeded && hiNeeded:
-		cond = fmt.Sprintf("(%s) %s < %s || (%s) %s > %s", cast, expr, lo, cast, expr, hi)
+		cond = fmt.Sprintf("(%s) %s >= %s && (%s) %s <= %s", cast, expr, lo, cast, expr, hi)
 	case loNeeded:
-		cond = fmt.Sprintf("(%s) %s < %s", cast, expr, lo)
+		cond = fmt.Sprintf("(%s) %s >= %s", cast, expr, lo)
 	default:
-		cond = fmt.Sprintf("(%s) %s > %s", cast, expr, hi)
+		cond = fmt.Sprintf("(%s) %s <= %s", cast, expr, hi)
 	}
-	g.pf("%sif ( %s )\n%s{\n%s    return 0;\n%s}\n",
-		ind, cond, ind, ind, ind)
+	g.pf("%sserialize_assert( %s );\n", ind, cond)
 }
 
 // storageRange is the inclusive range the field's STORAGE type can hold. A
@@ -427,25 +435,25 @@ func (g *gen) emitWriteFixed(f *ir.Field, expr, ind string) {
 		return
 	}
 	if lo.Cmp(hi) == 0 {
-		// degenerate range: ZERO bits — the range refusal and no wire call
+		// degenerate range: ZERO bits — the §5 misuse assert and no wire call
 		// at all, so no runtime degenerate support is needed (SPEC §4.6,
 		// decided deliberately). The one legal raw is min << F, compared in
 		// the storage's own signedness (a wide ufixed raw can live above
-		// INT64_MAX).
+		// INT64_MAX). The C++ backend asserts the same equality.
 		rawMin := new(big.Int).Lsh(lo, uint(f.Type.FracBits))
 		switch {
 		case f.Type.Width == 128 && f.Type.Signed:
-			g.pf("%sif ( !serialize_int128_equal( %s, %s ) )\n%s{\n%s    return 0;\n%s}\n",
-				ind, expr, g.int128Literal(nil, rawMin), ind, ind, ind)
+			g.pf("%sserialize_assert( serialize_int128_equal( %s, %s ) );\n",
+				ind, expr, g.int128Literal(nil, rawMin))
 		case f.Type.Width == 128:
-			g.pf("%sif ( !serialize_uint128_equal( %s, %s ) )\n%s{\n%s    return 0;\n%s}\n",
-				ind, expr, uint128Literal(rawMin), ind, ind, ind)
+			g.pf("%sserialize_assert( serialize_uint128_equal( %s, %s ) );\n",
+				ind, expr, uint128Literal(rawMin))
 		case f.Type.Signed:
-			g.pf("%sif ( (serialize_int64_t) %s != %s )\n%s{\n%s    return 0;\n%s}\n",
-				ind, expr, intLit(rawMin, "LL"), ind, ind, ind)
+			g.pf("%sserialize_assert( (serialize_int64_t) %s == %s );\n",
+				ind, expr, intLit(rawMin, "LL"))
 		default:
-			g.pf("%sif ( (serialize_uint64_t) %s != %s )\n%s{\n%s    return 0;\n%s}\n",
-				ind, expr, intLit(rawMin, "ULL"), ind, ind, ind)
+			g.pf("%sserialize_assert( (serialize_uint64_t) %s == %s );\n",
+				ind, expr, intLit(rawMin, "ULL"))
 		}
 		return
 	}
@@ -575,9 +583,10 @@ func (g *gen) emitWrite128(f *ir.Field, expr, ind string) {
 		return
 	}
 	if f.IntMin.Cmp(f.IntMax) == 0 {
-		// degenerate range: ZERO bits — refusal only (SPEC §4.6)
-		g.pf("%sif ( !serialize_int128_equal( %s, %s ) )\n%s{\n%s    return 0;\n%s}\n",
-			ind, expr, g.int128Literal(f.IntMinExpr, f.IntMin), ind, ind, ind)
+		// degenerate range: ZERO bits — the §5 misuse assert only, the same
+		// guard the C++ backend folds in (SPEC §4.6)
+		g.pf("%sserialize_assert( serialize_int128_equal( %s, %s ) );\n",
+			ind, expr, g.int128Literal(f.IntMinExpr, f.IntMin))
 		return
 	}
 	g.call(ind, fmt.Sprintf("serialize_write_int128( stream, %s, %s, %s )",

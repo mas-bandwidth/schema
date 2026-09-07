@@ -70,10 +70,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_render_sprite( serialize_wr
     {
         return 0;
     }
-    if ( value->team > 2 )
-    {
-        return 0; /* headroom above the wire range cannot ride */
-    }
+    serialize_assert( value->team <= 2 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->team, 2 ) )
     {
         return 0;

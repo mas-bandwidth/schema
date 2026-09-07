@@ -136,10 +136,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_quat( serialize_read_stream_t
 /* Writes Handle. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_handle( serialize_write_stream_t * stream, const Handle * value )
 {
-    if ( (serialize_int64_t) value->object_id < 0 || (serialize_int64_t) value->object_id > MAX_OBJECTS - 1 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->object_id >= 0 && (serialize_int64_t) value->object_id <= MAX_OBJECTS - 1 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->object_id ), 14 ) )
     {
         return 0;
@@ -182,26 +179,17 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_handle( serialize_read_stream
 /* Writes QuantizedPosition. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_quantized_position( serialize_write_stream_t * stream, const QuantizedPosition * value )
 {
-    if ( (serialize_int64_t) value->x < -MAX_POSITION_UNITS || (serialize_int64_t) value->x > MAX_POSITION_UNITS )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->x >= -MAX_POSITION_UNITS && (serialize_int64_t) value->x <= MAX_POSITION_UNITS );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->x) - (-MAX_POSITION_UNITS) ), 25 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->y < -MAX_POSITION_UNITS || (serialize_int64_t) value->y > MAX_POSITION_UNITS )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->y >= -MAX_POSITION_UNITS && (serialize_int64_t) value->y <= MAX_POSITION_UNITS );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->y) - (-MAX_POSITION_UNITS) ), 25 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->z < -MAX_POSITION_UNITS || (serialize_int64_t) value->z > MAX_POSITION_UNITS )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->z >= -MAX_POSITION_UNITS && (serialize_int64_t) value->z <= MAX_POSITION_UNITS );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->z) - (-MAX_POSITION_UNITS) ), 25 ) )
     {
         return 0;
@@ -260,26 +248,17 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_quantized_position( serialize
 /* Writes QuantizedVelocity. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_quantized_velocity( serialize_write_stream_t * stream, const QuantizedVelocity * value )
 {
-    if ( (serialize_int64_t) value->x < -MAX_VELOCITY_UNITS || (serialize_int64_t) value->x > MAX_VELOCITY_UNITS )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->x >= -MAX_VELOCITY_UNITS && (serialize_int64_t) value->x <= MAX_VELOCITY_UNITS );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->x) - (-MAX_VELOCITY_UNITS) ), 23 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->y < -MAX_VELOCITY_UNITS || (serialize_int64_t) value->y > MAX_VELOCITY_UNITS )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->y >= -MAX_VELOCITY_UNITS && (serialize_int64_t) value->y <= MAX_VELOCITY_UNITS );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->y) - (-MAX_VELOCITY_UNITS) ), 23 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->z < -MAX_VELOCITY_UNITS || (serialize_int64_t) value->z > MAX_VELOCITY_UNITS )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->z >= -MAX_VELOCITY_UNITS && (serialize_int64_t) value->z <= MAX_VELOCITY_UNITS );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->z) - (-MAX_VELOCITY_UNITS) ), 23 ) )
     {
         return 0;
@@ -338,34 +317,22 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_quantized_velocity( serialize
 /* Writes QuantizedRotation. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_quantized_rotation( serialize_write_stream_t * stream, const QuantizedRotation * value )
 {
-    if ( (serialize_int64_t) value->x < -ROTATION_UNITS || (serialize_int64_t) value->x > ROTATION_UNITS )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->x >= -ROTATION_UNITS && (serialize_int64_t) value->x <= ROTATION_UNITS );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->x) - (-ROTATION_UNITS) ), 12 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->y < -ROTATION_UNITS || (serialize_int64_t) value->y > ROTATION_UNITS )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->y >= -ROTATION_UNITS && (serialize_int64_t) value->y <= ROTATION_UNITS );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->y) - (-ROTATION_UNITS) ), 12 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->z < -ROTATION_UNITS || (serialize_int64_t) value->z > ROTATION_UNITS )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->z >= -ROTATION_UNITS && (serialize_int64_t) value->z <= ROTATION_UNITS );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->z) - (-ROTATION_UNITS) ), 12 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->w < -ROTATION_UNITS || (serialize_int64_t) value->w > ROTATION_UNITS )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->w >= -ROTATION_UNITS && (serialize_int64_t) value->w <= ROTATION_UNITS );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->w) - (-ROTATION_UNITS) ), 12 ) )
     {
         return 0;
@@ -697,10 +664,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_input_packet( serialize_read_
 /* Writes ShipCreate. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_ship_create( serialize_write_stream_t * stream, const ShipCreate * value )
 {
-    if ( value->ship_type > 5 )
-    {
-        return 0; /* headroom above the wire range cannot ride */
-    }
+    serialize_assert( value->ship_type <= 5 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->ship_type, 3 ) )
     {
         return 0;
@@ -728,34 +692,22 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_ship_create( serialize_writ
             return 0;
         }
     }
-    if ( value->team > 2 )
-    {
-        return 0; /* headroom above the wire range cannot ride */
-    }
+    serialize_assert( value->team <= 2 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->team, 2 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->health < 0 || (serialize_int64_t) value->health > MAX_HEALTH )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->health >= 0 && (serialize_int64_t) value->health <= MAX_HEALTH );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->health ), 10 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->thrust < 0 || (serialize_int64_t) value->thrust > 100 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->thrust >= 0 && (serialize_int64_t) value->thrust <= 100 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->thrust ), 7 ) )
     {
         return 0;
     }
-    if ( value->pending > 0 )
-    {
-        return 0; /* headroom above the wire range cannot ride */
-    }
+    serialize_assert( value->pending <= 0 );
     return 1;
 }
 
@@ -852,18 +804,12 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_ship_create( serialize_read_s
 /* Writes ExpressionProbe. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_expression_probe( serialize_write_stream_t * stream, const ExpressionProbe * value )
 {
-    if ( (serialize_int64_t) value->hardpoint_index < 0 || (serialize_int64_t) value->hardpoint_index > (SHIP_MAX_LASERS + SHIP_MAX_MISSILES) - 1 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->hardpoint_index >= 0 && (serialize_int64_t) value->hardpoint_index <= (SHIP_MAX_LASERS + SHIP_MAX_MISSILES) - 1 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->hardpoint_index ), 5 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->spin_rate < -(-ROTATION_UNITS) || (serialize_int64_t) value->spin_rate > ROTATION_UNITS * 2 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->spin_rate >= -(-ROTATION_UNITS) && (serialize_int64_t) value->spin_rate <= ROTATION_UNITS * 2 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->spin_rate) - (-(-ROTATION_UNITS)) ), 11 ) )
     {
         return 0;
@@ -908,10 +854,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_expression_probe( serialize_r
 /* Writes ExtremeProbe. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_extreme_probe( serialize_write_stream_t * stream, const ExtremeProbe * value )
 {
-    if ( (serialize_int64_t) value->floor_bound > 100 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->floor_bound <= 100 );
     {
         serialize_uint64_t offset_value = (serialize_uint64_t) ( (value->floor_bound) - (( -9223372036854775807LL - 1 )) );
         if ( !serialize_write_bits( stream, (serialize_uint32_t) ( offset_value & 0xFFFFFFFFu ), 32 ) )
@@ -923,10 +866,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_extreme_probe( serialize_wr
             return 0;
         }
     }
-    if ( (serialize_int64_t) value->doubled_floor > 100 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->doubled_floor <= 100 );
     {
         serialize_uint64_t offset_value = (serialize_uint64_t) ( (value->doubled_floor) - (( -9223372036854775807LL - 1 )) );
         if ( !serialize_write_bits( stream, (serialize_uint32_t) ( offset_value & 0xFFFFFFFFu ), 32 ) )
@@ -938,10 +878,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_extreme_probe( serialize_wr
             return 0;
         }
     }
-    if ( (serialize_uint64_t) value->ceiling_range < 1 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_uint64_t) value->ceiling_range >= 1 );
     {
         serialize_uint64_t offset_value = (serialize_uint64_t) ( (value->ceiling_range) - (1) );
         if ( !serialize_write_bits( stream, (serialize_uint32_t) ( offset_value & 0xFFFFFFFFu ), 32 ) )
@@ -1046,10 +983,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_extreme_probe( serialize_read
 /* Writes ExtremeRow. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_extreme_row( serialize_write_stream_t * stream, const ExtremeRow * value )
 {
-    if ( (serialize_int64_t) value->clamped_floor > 100 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->clamped_floor <= 100 );
     {
         serialize_uint64_t offset_value = (serialize_uint64_t) ( (value->clamped_floor) - (( -9223372036854775807LL - 1 )) );
         if ( !serialize_write_bits( stream, (serialize_uint32_t) ( offset_value & 0xFFFFFFFFu ), 32 ) )
@@ -1061,10 +995,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_extreme_row( serialize_writ
             return 0;
         }
     }
-    if ( (serialize_uint64_t) value->clamped_ceiling < 1 || (serialize_uint64_t) value->clamped_ceiling > 18446744073709551614ULL )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_uint64_t) value->clamped_ceiling >= 1 && (serialize_uint64_t) value->clamped_ceiling <= 18446744073709551614ULL );
     {
         serialize_uint64_t offset_value = (serialize_uint64_t) ( (value->clamped_ceiling) - (1) );
         if ( !serialize_write_bits( stream, (serialize_uint32_t) ( offset_value & 0xFFFFFFFFu ), 32 ) )

@@ -631,10 +631,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_arm_array( serialize_write_
             int32_t i;
             for ( i = 0; i < value->items_count; i++ )
             {
-                if ( (serialize_int64_t) value->items[i] > 8191 )
-                {
-                    return 0;
-                }
+                serialize_assert( (serialize_int64_t) value->items[i] <= 8191 );
                 if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->items[i] ), 13 ) )
                 {
                     return 0;
@@ -964,10 +961,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_regain_after_align( seriali
         int32_t i;
         for ( i = 0; i < value->items_count; i++ )
         {
-            if ( (serialize_int64_t) value->items[i] > 8191 )
-            {
-                return 0;
-            }
+            serialize_assert( (serialize_int64_t) value->items[i] <= 8191 );
             if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->items[i] ), 13 ) )
             {
                 return 0;

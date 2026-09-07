@@ -177,10 +177,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_w13( serialize_write_stream
         int32_t i;
         for ( i = 0; i < value->items_count; i++ )
         {
-            if ( (serialize_int64_t) value->items[i] > 8191 )
-            {
-                return 0;
-            }
+            serialize_assert( (serialize_int64_t) value->items[i] <= 8191 );
             if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->items[i] ), 13 ) )
             {
                 return 0;
@@ -235,10 +232,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_w17( serialize_write_stream
         int32_t i;
         for ( i = 0; i < value->items_count; i++ )
         {
-            if ( (serialize_int64_t) value->items[i] > 131071 )
-            {
-                return 0;
-            }
+            serialize_assert( (serialize_int64_t) value->items[i] <= 131071 );
             if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->items[i] ), 17 ) )
             {
                 return 0;
@@ -293,10 +287,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_w26( serialize_write_stream
         int32_t i;
         for ( i = 0; i < value->items_count; i++ )
         {
-            if ( (serialize_int64_t) value->items[i] > 67108863 )
-            {
-                return 0;
-            }
+            serialize_assert( (serialize_int64_t) value->items[i] <= 67108863 );
             if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->items[i] ), 26 ) )
             {
                 return 0;
@@ -351,10 +342,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_w1( serialize_write_stream_
         int32_t i;
         for ( i = 0; i < value->items_count; i++ )
         {
-            if ( (serialize_int64_t) value->items[i] > 1 )
-            {
-                return 0;
-            }
+            serialize_assert( (serialize_int64_t) value->items[i] <= 1 );
             if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->items[i] ), 1 ) )
             {
                 return 0;
@@ -409,10 +397,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_w52( serialize_write_stream
         int32_t i;
         for ( i = 0; i < value->items_count; i++ )
         {
-            if ( (serialize_uint64_t) value->items[i] > 4503599627370495 )
-            {
-                return 0;
-            }
+            serialize_assert( (serialize_uint64_t) value->items[i] <= 4503599627370495 );
             {
                 serialize_uint64_t offset_value = (serialize_uint64_t) ( value->items[i] );
                 if ( !serialize_write_bits( stream, (serialize_uint32_t) ( offset_value & 0xFFFFFFFFu ), 32 ) )
@@ -479,10 +464,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_w50( serialize_write_stream
         int32_t i;
         for ( i = 0; i < value->items_count; i++ )
         {
-            if ( (serialize_uint64_t) value->items[i] > 1125899906842623 )
-            {
-                return 0;
-            }
+            serialize_assert( (serialize_uint64_t) value->items[i] <= 1125899906842623 );
             {
                 serialize_uint64_t offset_value = (serialize_uint64_t) ( value->items[i] );
                 if ( !serialize_write_bits( stream, (serialize_uint32_t) ( offset_value & 0xFFFFFFFFu ), 32 ) )
@@ -541,10 +523,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_f13( serialize_write_stream
         int32_t i;
         for ( i = 0; i < 7; i++ )
         {
-            if ( (serialize_int64_t) value->items[i] > 8191 )
-            {
-                return 0;
-            }
+            serialize_assert( (serialize_int64_t) value->items[i] <= 8191 );
             if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->items[i] ), 13 ) )
             {
                 return 0;

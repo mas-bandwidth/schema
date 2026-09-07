@@ -164,10 +164,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_interior_null_( const seria
 /* Writes WideSeven. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_wide_seven( serialize_write_stream_t * stream, const WideSeven * value )
 {
-    if ( value->text_length < 0 || value->text_length > 7 )
-    {
-        return 0;
-    }
+    serialize_assert( value->text_length >= 0 && value->text_length <= 7 );
     if ( !serialize_write_int( stream, value->text_length, 0, 7 ) )
     {
         return 0;
@@ -176,7 +173,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_wide_seven( serialize_write
         int32_t i;
         for ( i = 0; i < value->text_length; i++ )
         {
-            if ( value->text[i] == 0 ) { return 0; } /* interior null on write (SPEC §4.12) */
+            serialize_assert( value->text[i] != 0 ); /* interior null on write (SPEC §4.12) */
             if ( !serialize_write_bits( stream, (serialize_uint32_t) value->text[i], 32 ) )
             {
                 return 0;
@@ -220,10 +217,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_wide_seven( serialize_read_st
 /* Writes WideFour. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_wide_four( serialize_write_stream_t * stream, const WideFour * value )
 {
-    if ( value->text_length < 0 || value->text_length > 4 )
-    {
-        return 0;
-    }
+    serialize_assert( value->text_length >= 0 && value->text_length <= 4 );
     if ( !serialize_write_int( stream, value->text_length, 0, 4 ) )
     {
         return 0;
@@ -232,7 +226,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_wide_four( serialize_write_
         int32_t i;
         for ( i = 0; i < value->text_length; i++ )
         {
-            if ( value->text[i] == 0 ) { return 0; } /* interior null on write (SPEC §4.12) */
+            serialize_assert( value->text[i] != 0 ); /* interior null on write (SPEC §4.12) */
             if ( !serialize_write_bits( stream, (serialize_uint32_t) value->text[i], 32 ) )
             {
                 return 0;
@@ -313,10 +307,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_narrow_fifteen( serialize_rea
 /* Writes WideInterop. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_wide_interop( serialize_write_stream_t * stream, const WideInterop * value )
 {
-    if ( value->caption_length < 0 || value->caption_length > 7 )
-    {
-        return 0;
-    }
+    serialize_assert( value->caption_length >= 0 && value->caption_length <= 7 );
     if ( !serialize_write_int( stream, value->caption_length, 0, 7 ) )
     {
         return 0;
@@ -325,7 +316,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_wide_interop( serialize_wri
         int32_t i;
         for ( i = 0; i < value->caption_length; i++ )
         {
-            if ( value->caption[i] == 0 ) { return 0; } /* interior null on write (SPEC §4.12) */
+            serialize_assert( value->caption[i] != 0 ); /* interior null on write (SPEC §4.12) */
             if ( !serialize_write_bits( stream, (serialize_uint32_t) value->caption[i], 32 ) )
             {
                 return 0;

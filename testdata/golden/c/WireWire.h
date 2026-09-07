@@ -374,10 +374,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_sample( serialize_wri
     }
     if ( value->active )
     {
-        if ( value->weapon > 15 )
-        {
-            return 0; /* headroom above the wire range cannot ride */
-        }
+        serialize_assert( value->weapon <= 15 );
         if ( !serialize_write_bits( stream, (serialize_uint32_t) value->weapon, 4 ) )
         {
             return 0;
@@ -546,10 +543,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_ring( serialize_read_st
 /* Writes ProbeSlab. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_slab( serialize_write_stream_t * stream, const ProbeSlab * value )
 {
-    if ( (serialize_int64_t) value->width > 100 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->width <= 100 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->width ), 7 ) )
     {
         return 0;
@@ -718,10 +712,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_config( serialize_wri
     {
         return 0;
     }
-    if ( value->preferred > 15 )
-    {
-        return 0; /* headroom above the wire range cannot ride */
-    }
+    serialize_assert( value->preferred <= 15 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->preferred, 4 ) )
     {
         return 0;
@@ -818,26 +809,17 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_test( serialize_write_strea
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->test_b < 0 || (serialize_int64_t) value->test_b > 1000 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->test_b >= 0 && (serialize_int64_t) value->test_b <= 1000 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->test_b ), 10 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->test_c < 0 || (serialize_int64_t) value->test_c > 1000 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->test_c >= 0 && (serialize_int64_t) value->test_c <= 1000 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->test_c ), 10 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->test_d < 0 || (serialize_int64_t) value->test_d > 1000 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->test_d >= 0 && (serialize_int64_t) value->test_d <= 1000 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->test_d ), 10 ) )
     {
         return 0;
@@ -1009,26 +991,17 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_report( serialize_read_
 /* Writes TestData. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_test_data( serialize_write_stream_t * stream, const TestData * value )
 {
-    if ( (serialize_int64_t) value->a < -100 || (serialize_int64_t) value->a > 100 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->a >= -100 && (serialize_int64_t) value->a <= 100 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->a) - (-100) ), 8 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->b < -100 || (serialize_int64_t) value->b > 100 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->b >= -100 && (serialize_int64_t) value->b <= 100 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->b) - (-100) ), 8 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->c < -100 || (serialize_int64_t) value->c > 150 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->c >= -100 && (serialize_int64_t) value->c <= 150 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->c) - (-100) ), 8 ) )
     {
         return 0;
@@ -1061,10 +1034,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_test_data( serialize_write_
         int32_t i;
         for ( i = 0; i < value->items_count; i++ )
         {
-            if ( (serialize_int64_t) value->items[i] < 0 || (serialize_int64_t) value->items[i] > 255 )
-            {
-                return 0;
-            }
+            serialize_assert( (serialize_int64_t) value->items[i] >= 0 && (serialize_int64_t) value->items[i] <= 255 );
             if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->items[i] ), 8 ) )
             {
                 return 0;
@@ -1111,10 +1081,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_test_data( serialize_write_
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->int64_range < -1000000000000 || (serialize_int64_t) value->int64_range > 1000000000000 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->int64_range >= -1000000000000 && (serialize_int64_t) value->int64_range <= 1000000000000 );
     {
         serialize_uint64_t offset_value = (serialize_uint64_t) ( (value->int64_range) - (-1000000000000) );
         if ( !serialize_write_bits( stream, (serialize_uint32_t) ( offset_value & 0xFFFFFFFFu ), 32 ) )

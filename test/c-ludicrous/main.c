@@ -177,7 +177,7 @@ int main( void )
        fixed128 entry's low lane — and this byte-compare against the
        C++-pinned golden is the gate. Values mirror test/ludicrous_main.cpp. */
     {
-        UnsignedProbe in, out, bad;
+        UnsignedProbe in, out;
         int i;
         memset( &in, 0, sizeof( in ) );
         in.angle = 2981888;                                          /* +45.5 * 2^16 */
@@ -208,12 +208,12 @@ int main( void )
         check( out.locked == 196608, "the degenerate ufixed materializes from the range alone" );
         check( out.tail == 0xA5, "the tail rides after zero degenerate bits" );
 
-        /* the write-side degenerate refusal: any raw but 3 * 2^16 is
-           refused before a single bit is written */
-        bad = in;
-        bad.locked = 196609;
-        serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
-        check( !write_unsigned_probe( &w, &bad ), "a wrong degenerate ufixed raw is REFUSED on write" );
+        /* NO write-side degenerate refusal is tested here. A raw other than
+           3 * 2^16 is WRITER MISUSE, held by a serialize_assert that fires in
+           a debug build and compiles out under NDEBUG — the same contract the
+           C++ leg holds (test/ludicrous_main.cpp tests no such refusal
+           either). "Every language, by design, compiles out asserts/checks in
+           release build. This is the whole point!" */
 
         /* hostile: span's 64 offset bits (bits 25..88) all-ones = 2^64 - 1,
            above the raw range 0xFFFFFFFFFFFF0000 — the headroom is exactly

@@ -146,12 +146,42 @@ construction. The Rust `-O2` leg is a named harness gap.
 ## Reading the table honestly
 
 **The ratios cross safety contracts, and the harness says so in captions rather than hiding
-it.** C++ compiles its debug asserts and bounds checks out; C validates the wire and API
-contract in every build; Rust, C# and Go carry bounds, range and sticky-error checks in every
-build by contract. A ratio between two of those columns includes the price of a different
-promise. The clearest evidence that the price is real: C and Rust — the two per-field-checked
-writers — land within 5% of each other on every round-trip write row, from wholly independent
-implementations. Two minds arriving at the same cost for the same guarantee.
+it.** C++ compiles its debug asserts and bounds checks out; **so does C, from 2026-09-07** —
+the ruling was "Every language, by design, compiles out asserts/checks in release build. This
+is the whole point!", and the C backend's per-field write-side range and bounds refusals
+became `serialize_assert`s that vanish under `NDEBUG`, the tier C++'s are in (C still asserts
+less than C++ in two places, a flags value wider than its wire width and interior nulls in a
+`string(N)` on write; those are the next change). Two write-side checks stay in every build in
+both, because the spec mandates them in all nine targets: a counted array's count outside
+`[A, B]` (SPEC §4.6) and a union tag outside its variant set (§4.8); every read-side check
+stays in every build everywhere, by the other half of the same ruling. Rust, C# and Go carry bounds,
+range and sticky-error checks in every build by contract. A ratio between two of those columns
+includes the price of a different promise.
+
+**Measured the same day, the C change bought nothing the instrument can see.** A twins pass on
+the C and C++ legs with the asserts in place
+([CSV](../bench/results/2026-09-07-arm64-studio-c-asserts-twins-pass.csv), seven interleaved
+rounds, window OK, control delta 1.6%) renders C at 105.2% of C++, inside the §2.8 tie band
+(the pair's combined round-trip spread, 4.2 + 4.4 = 8.6 points) and so reported as a tie: write 8,858,514 against 8,863,042 messages a second,
+round trip 4,408,928 against 4,636,506. Two passes over identical code earlier the same day
+differed by 0.4%, and a pass with the refusals compiled out by hand moved C by 0.4% and 0.1%
+against them. By row, C is within 3% of C++ on the packet write and faster on the raw
+bit-packer write, and C++ reads raw bits 1.58 times faster; the remaining C-to-C++ distance is
+the C runtime's read path, not the generated code's checks.
+
+**The two dated `<!-- CAPTION -->` lines above this section are the provenance the
+2026-08-15 passes recorded, and they predate both halves of C's move**: the runtime's own
+release checks went in serialize.c ruling #20 on 2026-08-17 (the bench runner has recorded
+`checks=removed` for C since), and the generated code's went today. The sentence those
+captions carry — that C's wire and API contract validation stays in every build — was true of
+the runs they caption and is not true of C now. The C/C++ ratio is no longer a ratio across
+two check models; the pass above is the first rendered without one, and the 2026-08-15 tables
+stand as they were measured.
+
+Rust remains the per-field-checked writer of the set. The older reading of the table — that C
+and Rust, the two then-per-field-checked writers, landing within 5% of each other on every
+round-trip write row was independent confirmation of the cost of that guarantee — describes
+the C that measured, not the C that is here now.
 
 Relative numbers move with compiler and microarchitecture. Treat the table as a dated
 snapshot, not a verdict. Full tables, the pre-campaign baseline of the same day, and

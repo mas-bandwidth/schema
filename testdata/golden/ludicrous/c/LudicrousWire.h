@@ -199,10 +199,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_unsigned_probe( serialize_w
             }
         }
     }
-    if ( (serialize_uint64_t) value->locked != 196608ULL )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_uint64_t) value->locked == 196608ULL );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->tail, 8 ) )
     {
         return 0;
@@ -326,10 +323,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_wide_probe( serialize_read_st
 /* Writes LudicrousState. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_ludicrous_state( serialize_write_stream_t * stream, const LudicrousState * value )
 {
-    if ( value->mode > 3 )
-    {
-        return 0; /* headroom above the wire range cannot ride */
-    }
+    serialize_assert( value->mode <= 3 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->mode, 2 ) )
     {
         return 0;
@@ -432,18 +426,9 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_ludicrous_state( serialize_re
 /* Writes DegenerateProbe. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_degenerate_probe( serialize_write_stream_t * stream, const DegenerateProbe * value )
 {
-    if ( (serialize_int64_t) value->locked_fixed != -196608LL )
-    {
-        return 0;
-    }
-    if ( (serialize_int64_t) value->locked_int < 7 || (serialize_int64_t) value->locked_int > 7 )
-    {
-        return 0;
-    }
-    if ( !serialize_int128_equal( value->locked_wide, serialize_int128_from_int64( -12345678901234 ) ) )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->locked_fixed == -196608LL );
+    serialize_assert( (serialize_int64_t) value->locked_int >= 7 && (serialize_int64_t) value->locked_int <= 7 );
+    serialize_assert( serialize_int128_equal( value->locked_wide, serialize_int128_from_int64( -12345678901234 ) ) );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->tail, 8 ) )
     {
         return 0;
