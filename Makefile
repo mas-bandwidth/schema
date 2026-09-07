@@ -4,9 +4,11 @@
 # runtime checkouts and toolchains documented below.
 #
 # THE TOOLCHAIN GATE (issue #599). `make test` REFUSES BY NAME when a pinned
-# toolchain a make/<lang>.mk names does not resolve. It prints the leg it would
-# have skipped and the path the pin looked in, and it stops before the chain
-# spends an hour on the legs that do resolve. A gate that passes while its
+# toolchain a make/<lang>.mk names does not resolve. It probes EVERY registered
+# leg and names every one that does not resolve in the same run, with the path
+# each pin looked in, rather than stopping at the first and making a fresh
+# clone a queue, and it stops before the chain spends an hour on the legs that
+# do resolve. A gate that passes while its
 # toolchain is missing is a gate with no blade: that is how a red in the Dart
 # leg once rode a green run, after a merge deleted a clone's dist link.
 #
@@ -4568,11 +4570,38 @@ ifneq ($(UNKNOWN_SKIPS),)
 	@exit 1
 endif
 
+# EVERY PROBED LEG IS PROBED, and every one that does not resolve is NAMED, in
+# one run. A leg's probe as a PREREQUISITE stops the gate at the first one that
+# fails, which turns a fresh clone into a queue: install one toolchain, run
+# again, learn the next name. So the legs go through sub-makes here instead,
+# each leg's own refusal passed through as it printed it, and the summary names
+# them together with the skip line that would run the chain without them.
+#
+# The green line says how many of the registered legs were probed, and when
+# that is none it says so as a skip rather than as a claim about toolchains it
+# never looked at.
+TOOLCHAIN_GREEN = toolchain gate: $(words $(PROBED_TOOLCHAIN_LEGS)) of $(words $(TOOLCHAIN_LEGS)) registered legs probed, $(if $(PROBED_TOOLCHAIN_LEGS),every pinned toolchain resolves,every registered leg is named in SCHEMA_SKIP_LEGS)
 .PHONY: toolchain
-toolchain: toolchain-names $(addprefix toolchain-,$(PROBED_TOOLCHAIN_LEGS))
-	@$(foreach leg,$(SKIPPED_TOOLCHAIN_LEGS), \
-		echo "toolchain gate: the $(leg) leg is SKIPPED on purpose, SCHEMA_SKIP_LEGS names it";)
-	@echo "toolchain gate: $(words $(PROBED_TOOLCHAIN_LEGS)) of $(words $(TOOLCHAIN_LEGS)) registered legs probed, every pinned toolchain resolves"
+toolchain: toolchain-names
+	@rm -rf build/toolchain && mkdir -p build/toolchain
+	@missing=""; \
+	$(foreach leg,$(PROBED_TOOLCHAIN_LEGS), \
+		$(MAKE) --no-print-directory toolchain-$(leg) \
+			> build/toolchain/$(leg).log 2> build/toolchain/$(leg).err \
+			|| missing="$$missing $(leg)"; \
+		cat build/toolchain/$(leg).log; \
+		grep -q "REFUSES: the $(leg) leg" build/toolchain/$(leg).log \
+			|| cat build/toolchain/$(leg).err;) \
+	$(foreach leg,$(SKIPPED_TOOLCHAIN_LEGS), \
+		echo "toolchain gate: the $(leg) leg is SKIPPED on purpose, SCHEMA_SKIP_LEGS names it";) \
+	if [ -n "$$missing" ]; then \
+		echo "make test REFUSES: the pinned toolchain does not resolve for:$$missing"; \
+		echo "  every refusal above names its leg, its pin and the path that pin looked in"; \
+		echo "  to run the chain without those legs, name the skips on purpose:"; \
+		echo "      make test SCHEMA_SKIP_LEGS=$$(echo $(SKIPPED_LEGS) $$missing | tr ' ' ',')"; \
+		exit 1; \
+	fi; \
+	echo "$(TOOLCHAIN_GREEN)"
 
 # ITS NEGATIVE CONTROL. A gate that has never gone red is a gate with no blade,
 # and going red is this one's whole job, so the control makes it go red: EVERY
