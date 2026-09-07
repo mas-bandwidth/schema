@@ -6122,10 +6122,18 @@ that replays it:
    encodes what it decoded; the bytes must be identical, or both must refuse
    to write. A reader that reports correctly and fabricates a value from a
    neighbor's bytes fails here. **This runs with RETENTION OFF** (§6.6), which
-   is what leaves the requirement the one stated. A retention leg is owed
-   beside it, and its cost lands on the ORACLE first: `internal/tablewire`
-   carries no retention, so there is nothing to compare a retaining leg
-   against until it does.
+   is what leaves the requirement the one stated. **THE RETENTION LEG RUNS
+   BESIDE IT**, `make tables-wire-fuzz-retain`, driving the same mutants
+   through both engines' RETAINING paths and comparing the two retention
+   counters beside the six and the saved bytes beside them. Its arm is the
+   VARIABLE-CLASS FILE ROOTS and nothing else, because a fixed-class root's
+   `LoadRetain` is refused by name and a form-2 `SaveRetain` refuses by name
+   (§6.6, §3.3), and the line says how many seeds it left out. **Both
+   capacities are declared large on both sides**: a record's BYTE cost is the
+   port's own, so two engines at one tight capacity would drop different
+   records and the arm would measure the two layouts rather than the feature.
+   The capacity rule itself is held by each engine's own retain gate, where
+   the buffer is pinned one byte short of the last record.
 4. **`LoadMeasure` never asks past a stated bound.** For a variable root the
    region it asks for is held to the framing. When the node table read whole
    AND the read reports nothing, the answer is EXACT: the root's storage, each
@@ -6170,6 +6178,16 @@ guards:
 Both go red PLAIN, without a sanitizer, which is what says the oracle and not
 the redzone is doing the work. `make tables-wire-fuzz-negative-control` runs
 the pair.
+
+**THE RETENTION LEG HAS ITS OWN PAIR**, on the same rule and for the same
+reason, one control per ENGINE because the leg compares two of them, and each
+blade matches exactly one line of one file.
+`make tables-wire-fuzz-retain-negative-control` runs the pair.
+
+| control | what it removes | what must go red |
+|---|---|---|
+| `tables-wire-fuzz-retain-oracle-negative-control` | the ORACLE's DROP RULE, which is the verdict the resolving walk states (§6.6) | the retention report: the oracle keeps a record the reference drops, and the two counters differ on the mutant that carried it |
+| `tables-wire-fuzz-retain-class-negative-control` | the REFERENCE's `retain_lost` on an EXCLUDED CLASS at the unknown arm | the retention report: the leg under-reports every class a mutant carries there |
 
 **The sweep's naming, so the register can read it off the Makefile.** A port
 carries `tables-<lang>-wire-fuzz` and `tables-<lang>-wire-fuzz-negative-control`;
@@ -7382,22 +7400,25 @@ above), the fixed class's own row excepted:
   produces and what the step pair exists to prevent.
 
 **The wire fuzzer runs with retention OFF** (§4.2), which leaves its round-trip
-requirement the requirement it is today, and it gains one leg that runs with it
-ON: the same six counters, and a save the oracle reproduces. **That leg needs
-the ORACLE to retain too.** `internal/tablewire` is the compiler-side engine
-the fuzzer compares against, a third reading of §3 written from the page rather
-than from a backend, and it carries no retention today. The leg is not
-buildable until it does, and that is part of what the feature costs rather than
-a detail of it.
+requirement the requirement it is today, and it carries one leg that runs with
+it ON: the same six counters, the two retention counters beside them, and a
+save the oracle reproduces. **THAT LEG NEEDS THE ORACLE TO RETAIN TOO**, and it
+does. `internal/tablewire` is the compiler-side engine the fuzzer compares
+against, a third reading of §3 written from the page rather than from a
+backend, and it carries the retention this subsection specifies: the caller's
+two stores, the resolving walk one pass each way, the six excluded classes at
+one `retain_lost` each, the drop rule, the record that dies with the occurrence
+that carried it, the retained tail at the end of its own body and the two
+stores numbered into one trailer in merged first-use order. The leg's own two
+negative controls, one per engine, stand beside the fuzzer's (§4.2).
 
-**Backend status: the C++ REFERENCE carries it, and no port does.** The
-reference emits `TableRetain`, the three verbs on every variable-class root,
-the refusal on every fixed-class one, and a second family of body functions
-beside the three the wire already had, so `Load`, `Measure` and `Save` are
-unchanged. What is still owed is the eight ports, `internal/tablewire`'s own
-retention and the fuzzer leg that needs it (§4.2), and the MESSAGE form's
-`LoadRetain` (§3.3): the form 2 write refuses by name and the form 2 read is
-not built.
+**Backend status: the C++ REFERENCE and the ORACLE carry it, and no port
+does.** The reference emits `TableRetain`, the three verbs on every
+variable-class root, the refusal on every fixed-class one, and a second family
+of body functions beside the three the wire already had, so `Load`, `Measure`
+and `Save` are unchanged. What is still owed is the eight ports and the MESSAGE
+form's `LoadRetain` (§3.3): the form 2 write refuses by name and the form 2
+read is not built.
 
 ## 7. The cooked form
 

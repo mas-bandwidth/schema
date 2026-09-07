@@ -1076,10 +1076,10 @@ repository not yet behind it. The 3.0.0 release holds the list at zero.
   `[N]T` under a `const N` that folds from either still compile there, which
   SPEC-TABLES.md §2.4 and §11 state as refused, so those two spellings reopen
   the class §4.1 closed. The `type`-held case is ruled on #606.
-- #525: retain-unknown in the eight ports, `internal/tablewire`'s own
-  retention and the fuzzer leg that needs it, the MESSAGE form's `LoadRetain`,
-  and the conformance rows. The C++ reference and the two report counters are
-  built.
+- #525: retain-unknown in the eight ports, the MESSAGE form's `LoadRetain`,
+  and the conformance rows. The C++ reference, the two report counters,
+  `internal/tablewire`'s own retention and the wire fuzzer's retention leg,
+  which needed it, are built.
 - #522: `*wstring`, the unbounded twin of wide text — the blob record is
   specified and no backend emits one (SPEC-TABLES.md §2.5). The BOUNDED
   spelling's table half, kind `33`, has landed in the C++ reference and the

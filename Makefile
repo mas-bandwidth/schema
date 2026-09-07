@@ -2834,6 +2834,12 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	# is `make tables-cpp-release`.
 	$(MAKE) tables-wire-fuzz N=20000
 	$(MAKE) tables-wire-fuzz-negative-control N=0
+	# THE RETENTION LEG (docs/SPEC-TABLES.md §6.6): the same mutants through
+	# both engines' RETAINING paths, comparing the two retention counters
+	# beside the six and the saved bytes beside them, and its own two controls
+	# at N=0, one per engine.
+	$(MAKE) tables-wire-fuzz-retain N=20000
+	$(MAKE) tables-wire-fuzz-retain-negative-control N=0
 	# THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): its rules are refusals and an
 	# ORDER, and a green run cannot be read for either, so each control removes
 	# one and names the gate that must go red.
@@ -3905,12 +3911,15 @@ define wire_fuzz_control
 	@echo "negative control: removing the $(1) check from the emitter turns the wire fuzzer RED"
 endef
 
-# THE C++ RELEASE GATE: the wire fuzzer at a long random pass, both builds.
-# certify.yml runs every `tables-<lang>-release` target by name.
+# THE C++ RELEASE GATE: the wire fuzzer at a long random pass, both builds,
+# and the retention leg beside it at the same length (docs/SPEC-TABLES.md
+# §6.6). certify.yml runs every `tables-<lang>-release` target by name.
 .PHONY: tables-cpp-release
 tables-cpp-release:
 	$(MAKE) tables-wire-fuzz N=500000
 	$(MAKE) tables-wire-fuzz SEED=2 N=500000
+	$(MAKE) tables-wire-fuzz-retain N=500000
+	$(MAKE) tables-wire-fuzz-retain SEED=2 N=500000
 
 .PHONY: tables-wire-fuzz-negative-control tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-node-type-negative-control tables-wire-fuzz-blob-node-negative-control
 tables-wire-fuzz-negative-control: tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-node-type-negative-control tables-wire-fuzz-blob-node-negative-control tables-wire-fuzz-wide-text-negative-control
