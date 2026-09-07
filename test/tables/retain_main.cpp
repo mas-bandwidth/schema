@@ -573,7 +573,12 @@ static void capacities()
         retain.bytes = storage;
         retain.capacity = sizeof( storage );
         retain.ids = ids;
-        retain.id_capacity = 2; // the wire carries THREE distinct retained ids
+        // THE WIRE CARRIES TWELVE distinct retained ids, and `parcel` is the
+        // one record that names more than its own: the eight `future` records
+        // and `extra` take two entries between them, so a list of two is short
+        // for `parcel` and long enough for every other record. Measured rather
+        // than assumed, a full save reports id_used == 12.
+        retain.id_capacity = 2;
         tblrt1::TableReport report;
         const tblrt1::Node * root = tblrt1::NodeLoadRetain( region.base, region.bytes, wire, n, &retain, &report );
         CHECK( root != NULL );
@@ -588,6 +593,10 @@ static void capacities()
         // that record is dropped: the count is per record, as the page pins
         CHECK( save_report.retain_lost == 1 );
         CHECK( retain.id_used == 2 );
+        // AND THE BYTES ARE PINNED, so the oracle answers this save and not
+        // only its counter: a drop for want of an id entry moves a record out
+        // of a body and every reference behind it, which a count cannot see.
+        pin_golden( "retain_rt1_save_id_short", out, w );
         // the file still reads, and the other retained id rode
         Region back;
         back.size( tblrt2::NodeLoadMeasure( out, w ) );

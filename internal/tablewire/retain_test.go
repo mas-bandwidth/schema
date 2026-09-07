@@ -350,6 +350,21 @@ func TestRetainCapacities(t *testing.T) {
 	if whole.Used() <= 0 {
 		t.Fatal("the retention buffer holds nothing after nine records")
 	}
+	// THE LIST FILLS AS THE SAVE WALK INTERNS, and a load writes into neither
+	// store (§6.6), so the retained ids this wire carries are only countable
+	// after a SAVE with room for all of them. Sizing the short list off a
+	// decode alone reads zero, and one short of zero loses every record.
+	var wholeSave tabletext.Report
+	if _, err := tablewire.EncodeRetain(m, full, &whole, &wholeSave); err != nil {
+		t.Fatal(err)
+	}
+	if wholeSave.RetainLost != 0 {
+		t.Fatalf("a save with room for every id lost %d records", wholeSave.RetainLost)
+	}
+	carried := len(whole.Ids())
+	if carried < 2 {
+		t.Fatalf("the wire carries %d distinct retained ids, and one entry short of it is not a row", carried)
+	}
 
 	// ONE BYTE SHORT OF THE LAST RECORD: one record fewer is kept, one more
 	// retain_lost counts, and the READ's own counters do not move.
@@ -373,7 +388,7 @@ func TestRetainCapacities(t *testing.T) {
 	// AN ID LIST ONE ENTRY SHORT: the records whose id has no entry are
 	// dropped, one retain_lost each, and the save is NEVER REFUSED.
 	sparse := m.New(m.Lookup("Node"))
-	one := tablewire.Retain{Capacity: 1 << 20, IdCapacity: len(whole.Ids())}
+	one := tablewire.Retain{Capacity: 1 << 20, IdCapacity: carried}
 	var loadReport tabletext.Report
 	if _, err := tablewire.DecodeRetain(m, sparse, wire, &one, &loadReport); err != nil {
 		t.Fatal(err)
@@ -382,17 +397,48 @@ func TestRetainCapacities(t *testing.T) {
 	if loadReport.Retained != wholeReport.Retained {
 		t.Fatalf("the load dropped a record for an id list it never wrote into: %+v", loadReport)
 	}
-	one.IdCapacity = len(whole.Ids()) - 1
-	var saveReport tabletext.Report
-	out, err := tablewire.EncodeRetain(m, sparse, &one, &saveReport)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(out) == 0 {
-		t.Fatal("the save was refused, and an id past the capacity is never a refusal")
-	}
-	if saveReport.RetainLost == 0 {
-		t.Fatal("an id list one entry short dropped no record")
+	// `parcel` is the ONE record naming ids beyond its own, so it is the one a
+	// short list cannot seat, and every other record rides whatever the
+	// shortfall. Two capacities say it: one entry short of the twelve the wire
+	// carries, which is the page's own row, and the two the reference's gate
+	// runs, which is short by ten. THE COUNT IS PER RECORD AND NOT PER ENTRY,
+	// so both answer one.
+	wantShort := retainVector(t, "retain_rt1_save_id_short")
+	for _, capacity := range []int{carried - 1, 2} {
+		one.IdCapacity = capacity
+		var saveReport tabletext.Report
+		out, err := tablewire.EncodeRetain(m, sparse, &one, &saveReport)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(out) == 0 {
+			t.Fatalf("capacity %d: the save was refused, and an id past the capacity is never a refusal", capacity)
+		}
+		if saveReport.RetainLost != 1 {
+			t.Fatalf("capacity %d: retain_lost=%d, want 1: one record's ids do not fit and exactly it is dropped",
+				capacity, saveReport.RetainLost)
+		}
+		// AND THE DROPPED RECORD SPENT NO ENTRY: the entries it reached before
+		// the overflow are given back, so what is left is what the records that
+		// RODE named.
+		if got := len(one.Ids()); got > capacity {
+			t.Fatalf("capacity %d: the caller's list holds %d entries", capacity, got)
+		}
+		if slices.Contains(one.Ids(), ir.TableWireId("parcel")) {
+			t.Fatalf("capacity %d: the dropped record's own id took an entry in the caller's list", capacity)
+		}
+		for _, name := range []string{"future", "extra"} {
+			if !slices.Contains(one.Ids(), ir.TableWireId(name)) {
+				t.Fatalf("capacity %d: %q names a record that rode, and it is not in the caller's list", capacity, name)
+			}
+		}
+		// AND THE BYTES ARE THE REFERENCE'S: a drop for want of an id entry
+		// takes a record out of a body and renumbers every reference behind it,
+		// which a counter cannot see.
+		if !bytes.Equal(out, wantShort) {
+			t.Fatalf("capacity %d: the save is %d bytes and the reference's pin is %d, and they differ",
+				capacity, len(out), len(wantShort))
+		}
 	}
 }
 
