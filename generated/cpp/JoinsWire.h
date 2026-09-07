@@ -372,10 +372,7 @@ SCHEMA_WRITE_INLINE bool WriteArmArray( serialize::WriteStream & stream, const A
     write_bool( stream, value.flag );
     if ( value.flag )
     {
-        if ( int32_t( value.items_count ) < int32_t( 0 ) || int32_t( value.items_count ) > int32_t( 3 ) )
-        {
-            return false; // a count outside its wire range is refused in every build (SPEC §4.6)
-        }
+        serialize_assert( int32_t( value.items_count ) >= int32_t( 0 ) && int32_t( value.items_count ) <= int32_t( 3 ) );
         write_bits( stream, uint32_t( value.items_count ), 2 );
         for ( int32_t i = 0; i < value.items_count; i++ )
         {
@@ -444,6 +441,7 @@ SCHEMA_READ_INLINE bool ReadWide( serialize::ReadStream & stream, Wide & value )
 
 SCHEMA_WRITE_INLINE bool WriteUneven( serialize::WriteStream & stream, const Uneven & value )
 {
+    serialize_assert( value.type <= UnevenType::Max ); // an out-of-set tag is caller error (SPEC §4.8, §5)
     switch ( value.type )
     {
         case UnevenType::None:
@@ -458,7 +456,7 @@ SCHEMA_WRITE_INLINE bool WriteUneven( serialize::WriteStream & stream, const Une
         default:
             break;
     }
-    return false; // not a UnevenType value; nothing was written (SPEC §4.8)
+    return true; // an out-of-set tag selected no arm, so no bits rode: the assert above is the contract (SPEC §5)
 }
 
 SCHEMA_READ_INLINE bool ReadUneven( serialize::ReadStream & stream, Uneven & value )
@@ -505,10 +503,7 @@ SCHEMA_READ_INLINE bool ReadHoldsUneven( serialize::ReadStream & stream, HoldsUn
 SCHEMA_WRITE_INLINE bool WriteArrUneven( serialize::WriteStream & stream, const ArrUneven & value )
 {
     write_bits( stream, value.lead, 5 );
-    if ( int32_t( value.items_count ) < int32_t( 0 ) || int32_t( value.items_count ) > int32_t( 3 ) )
-    {
-        return false; // a count outside its wire range is refused in every build (SPEC §4.6)
-    }
+    serialize_assert( int32_t( value.items_count ) >= int32_t( 0 ) && int32_t( value.items_count ) <= int32_t( 3 ) );
     write_bits( stream, uint32_t( value.items_count ), 2 );
     for ( int32_t i = 0; i < value.items_count; i++ )
     {
@@ -539,10 +534,7 @@ SCHEMA_READ_INLINE bool ReadArrUneven( serialize::ReadStream & stream, ArrUneven
 SCHEMA_WRITE_INLINE bool WriteRegainAfterAlign( serialize::WriteStream & stream, const RegainAfterAlign & value )
 {
     write_bits( stream, value.lead, 5 );
-    if ( int32_t( value.items_count ) < int32_t( 0 ) || int32_t( value.items_count ) > int32_t( 3 ) )
-    {
-        return false; // a count outside its wire range is refused in every build (SPEC §4.6)
-    }
+    serialize_assert( int32_t( value.items_count ) >= int32_t( 0 ) && int32_t( value.items_count ) <= int32_t( 3 ) );
     write_bits( stream, uint32_t( value.items_count ), 2 );
     for ( int32_t i = 0; i < value.items_count; i++ )
     {

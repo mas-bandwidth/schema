@@ -99,8 +99,7 @@ void initVec3(Vec3 value) {
 
 // writeVec3 packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// vec3MaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// vec3MaxBytes. Returns the bytes written.
 int writeVec3(Vec3 value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= vec3MaxBytes);
@@ -257,8 +256,7 @@ void initQuat(Quat value) {
 
 // writeQuat packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// quatMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// quatMaxBytes. Returns the bytes written.
 int writeQuat(Quat value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= quatMaxBytes);
@@ -436,8 +434,7 @@ void initHandle(Handle value) {
 
 // writeHandle packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// handleMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// handleMaxBytes. Returns the bytes written.
 int writeHandle(Handle value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= handleMaxBytes);
@@ -540,8 +537,7 @@ void initQuantizedPosition(QuantizedPosition value) {
 
 // writeQuantizedPosition packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// quantizedPositionMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// quantizedPositionMaxBytes. Returns the bytes written.
 int writeQuantizedPosition(QuantizedPosition value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= quantizedPositionMaxBytes);
@@ -677,8 +673,7 @@ void initQuantizedVelocity(QuantizedVelocity value) {
 
 // writeQuantizedVelocity packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// quantizedVelocityMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// quantizedVelocityMaxBytes. Returns the bytes written.
 int writeQuantizedVelocity(QuantizedVelocity value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= quantizedVelocityMaxBytes);
@@ -818,8 +813,7 @@ void initQuantizedRotation(QuantizedRotation value) {
 
 // writeQuantizedRotation packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// quantizedRotationMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// quantizedRotationMaxBytes. Returns the bytes written.
 int writeQuantizedRotation(QuantizedRotation value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= quantizedRotationMaxBytes);
@@ -957,8 +951,7 @@ void initRigidBody(RigidBody value) {
 
 // writeRigidBody packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// rigidBodyMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// rigidBodyMaxBytes. Returns the bytes written.
 int writeRigidBody(RigidBody value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= rigidBodyMaxBytes);
@@ -1435,8 +1428,7 @@ void initInput(Input value) {
 
 // writeInput packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// inputMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// inputMaxBytes. Returns the bytes written.
 int writeInput(Input value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= inputMaxBytes);
@@ -1625,8 +1617,7 @@ void initInputPacket(InputPacket value) {
 
 // writeInputPacket packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// inputPacketMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// inputPacketMaxBytes. Returns the bytes written.
 int writeInputPacket(InputPacket value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= inputPacketMaxBytes);
@@ -1652,9 +1643,8 @@ int writeInputPacket(InputPacket value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  if (value.inputsCount < 0 || value.inputsCount > 16) {
-    return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
-  }
+  assert(value.inputsCount >= 0);
+  assert(value.inputsCount <= 16);
   v = (value.startFrame);
   scratch |= v << scratchBits;
   scratchBits += 64;
@@ -1933,8 +1923,7 @@ void initShipCreate(ShipCreate value) {
 
 // writeShipCreate packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// shipCreateMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// shipCreateMaxBytes. Returns the bytes written.
 int writeShipCreate(ShipCreate value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= shipCreateMaxBytes);
@@ -2249,8 +2238,7 @@ void initExpressionProbe(ExpressionProbe value) {
 
 // writeExpressionProbe packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// expressionProbeMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// expressionProbeMaxBytes. Returns the bytes written.
 int writeExpressionProbe(ExpressionProbe value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= expressionProbeMaxBytes);
@@ -2369,8 +2357,7 @@ void initExtremeProbe(ExtremeProbe value) {
 
 // writeExtremeProbe packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// extremeProbeMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// extremeProbeMaxBytes. Returns the bytes written.
 int writeExtremeProbe(ExtremeProbe value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= extremeProbeMaxBytes);
@@ -2595,8 +2582,7 @@ void initExtremeRow(ExtremeRow value) {
 
 // writeExtremeRow packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// extremeRowMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// extremeRowMaxBytes. Returns the bytes written.
 int writeExtremeRow(ExtremeRow value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= extremeRowMaxBytes);

@@ -1986,9 +1986,9 @@ function writeRealPacketFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteRealPacketFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
-// count outside its wire range in every build (SPEC §4.6), and any other
-// contract in the checked build. The buffer behind view must hold RealPacketMaxBytes.
+// WriteRealPacketFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// writer contract in the checked build — the production writer holds none
+// of them (SPEC §5). The buffer behind view must hold RealPacketMaxBytes.
 export const WriteRealPacketFlat = PRODUCTION ? writeRealPacketFlatProduction : writeRealPacketFlatChecked;
 
 // ReadRealPacketFlat(value, view, numBits) -> bool. The buffer behind view must

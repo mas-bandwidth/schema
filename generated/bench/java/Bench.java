@@ -2735,6 +2735,8 @@ public final class Bench {
         assert value.worldTime <= 1000000000000L;
         assert value.serverTime >= 0;
         assert value.serverTime <= 16776960;
+        assert value.entitiesCount >= 1;
+        assert value.entitiesCount <= 8;
         for (int i0 = 0; i0 < value.entitiesCount; i0++) {
             final MixedEntity e0 = value.entities[i0];
             assert e0.posX >= -16383;
@@ -2755,6 +2757,8 @@ public final class Bench {
             assert (e0.weapon & 0xffL) <= 15;
             assert e0.damage >>> 8 == 0;
         }
+        assert value.statsCount >= 0;
+        assert value.statsCount <= 80;
         for (int i0 = 0; i0 < value.statsCount; i0++) {
             final MixedStat e0 = value.stats[i0];
             assert e0.delta >= -512;
@@ -2941,9 +2945,6 @@ public final class Bench {
             scratchBits -= 64;
             scratch = v >>> (24 - scratchBits);
         }
-        if (value.entitiesCount < 1 || value.entitiesCount > 8) {
-            return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
-        }
         v = (value.entitiesCount - 1) & 0x7L;
         scratch |= v << scratchBits;
         scratchBits += 3;
@@ -3081,9 +3082,6 @@ public final class Bench {
                 scratchBits -= 64;
                 scratch = v >>> (1 - scratchBits);
             }
-        }
-        if (value.statsCount < 0 || value.statsCount > 80) {
-            return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
         }
         v = (value.statsCount) & 0x7fL;
         scratch |= v << scratchBits;

@@ -826,16 +826,15 @@ void main() {
       writeChat(bad, writeView);
     }, 'an out-of-range string length must trip the writer contract');
 
-    // A COUNT IS NOT A CHECKED-TWIN CONTRACT (SPEC §4.6): the count guards
-    // the element loop and the pack subtracts the low bound, so a count
-    // outside its wire range is refused in EVERY build — with asserts and
-    // without — rather than left to a predicate release removes.
-    {
+    // A COUNT IS A WRITER CONTRACT LIKE ANY OTHER (SPEC §4.6, §5):
+    // "writing packets correctness is the caller's responsibility, and it is
+    // our duty to catch it with asserts in debug." The count asserts with
+    // --enable-asserts and is gone from release.
+    expectAssert(() {
       final bad = InputPacket();
       bad.inputsCount = 17; // above [0, MaxInputsPerPacket]
-      check(writeInputPacket(bad, writeView) == -1,
-          'a count above its wire range is refused in every build');
-    }
+      writeInputPacket(bad, writeView);
+    }, 'a count above its wire range must trip the writer contract');
 
     expectAssert(() {
       final bad = ShipCreate();

@@ -541,9 +541,8 @@ int32_t name_length = 0;
 ```
 
 The write holds embedded NULs and any length past the maximum in its
-target's own §5 idiom (C++ asserts both, dormant under `NDEBUG`; C's
-runtime asserts the length and C does not yet scan for the NUL), and the
-read validates both in every build. In C and C++ a successful read also writes the zero
+target's own §5 idiom (C++ and C both assert both, dormant under `NDEBUG`),
+and the read validates both in every build. In C and C++ a successful read also writes the zero
 byte at `name[name_length]`, so `name` is a valid C string every time the
 read succeeds, which is what the `+ 1` in the array is for. The other seven
 targets carry the buffer and the used length with nothing written past it.
@@ -643,11 +642,17 @@ outside that count's own wire range, so a fresh value would otherwise carry a
 count no reader accepts. It is the one place storage starts at something other
 than zero without a declared default, and `[..N]` is born at 0 as usual.
 
-Writing a count outside its bound is **refused in every build**, in all nine
-targets, and it is the one write-side contract that is never a debug-only
-assert. The count guards the element loop and the pack subtracts the low
-bound, so an unchecked out-of-range count would wrap and report a successful
-write of bytes no reader takes.
+Writing a count outside its bound is **caller error**, and it is a write-side
+contract like every other (SPEC.md §5): it asserts in DEBUG in each target
+whose language has that idiom, and is refused in every build only in Go and
+Elixir, which have none. (Implementation note, 2026-09-07: Rust and C# reach
+that form in the two changes landing the same day, schema#696 and schema#697;
+until they merge, their emitters still refuse on the write in every build.)
+The count guards the element loop and the pack subtracts the low bound, so
+an out-of-range count wraps and a release build will happily write bytes no
+reader takes — which is why the debug assert is worth having, and why
+keeping the count in range is your job. The READ refuses an out-of-range
+count in every build, in all nine.
 
 ### Composition
 

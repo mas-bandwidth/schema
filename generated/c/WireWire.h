@@ -26,9 +26,10 @@ extern "C" {
 
 /* Every write_x/read_x returns 1 on success, 0 on failure — the stream
    latches the error, so a caller may check once at the end of a message.
-   Reads REFUSE out-of-range values, never clamp. A tag is validated BEFORE
-   it rides, and every read reconstructs the selected arm with its declared
-   initial values before decoding it (SPEC §4.8, §5). */
+   Reads REFUSE out-of-range values, never clamp, in every build. A tag on
+   WRITE is asserted before it rides — caller error, gone under NDEBUG — and
+   every read reconstructs the selected arm with its declared initial values
+   before decoding it (SPEC §4.8, §5). */
 
 #ifndef SCHEMA_C_SPINE_INLINE_DEFINED
 #define SCHEMA_C_SPINE_INLINE_DEFINED
@@ -398,10 +399,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_sample( serialize_wri
             return 0;
         }
     }
-    if ( value->samples_count < 1 || value->samples_count > 8 )
-    {
-        return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
-    }
+    serialize_assert( value->samples_count >= 1 && value->samples_count <= 8 );
     if ( !serialize_write_int( stream, value->samples_count, 1, 8 ) )
     {
         return 0;
@@ -586,10 +584,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_slab( serialize_read_st
 /* Writes ProbeShape. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_shape( serialize_write_stream_t * stream, const ProbeShape * value )
 {
-    if ( value->type > PROBE_SHAPE_TYPE_MAX )
-    {
-        return 0; /* not a ProbeShapeType value; nothing was written */
-    }
+    serialize_assert( value->type <= PROBE_SHAPE_TYPE_MAX ); /* an out-of-set tag is caller error (SPEC §4.8, §5) */
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->type, 2 ) )
     {
         return 0;
@@ -648,10 +643,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_collider( serialize_w
     {
         return 0;
     }
-    if ( value->extras_count < 0 || value->extras_count > 2 )
-    {
-        return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
-    }
+    serialize_assert( value->extras_count >= 0 && value->extras_count <= 2 );
     if ( !serialize_write_int( stream, value->extras_count, 0, 2 ) )
     {
         return 0;
@@ -914,6 +906,13 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_block( serialize_read_stream_
 /* Writes Chat. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_chat( serialize_write_stream_t * stream, const Chat * value )
 {
+    {
+        int32_t i;
+        for ( i = 0; i < value->text_length; i++ )
+        {
+            serialize_assert( value->text[i] != 0 ); /* interior null on write (SPEC §4.7) */
+        }
+    }
     if ( !serialize_write_int( stream, value->text_length, 0, MAX_CHAT_LENGTH ) )
     {
         return 0;
@@ -955,6 +954,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_report( serialize_wri
     {
         return 0;
     }
+    serialize_assert( value->flags < ( 1ULL << 8 ) );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->flags, 8 ) )
     {
         return 0;
@@ -1022,10 +1022,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_test_data( serialize_write_
     {
         return 0;
     }
-    if ( value->items_count < 0 || value->items_count > 16 )
-    {
-        return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
-    }
+    serialize_assert( value->items_count >= 0 && value->items_count <= 16 );
     if ( !serialize_write_int( stream, value->items_count, 0, 16 ) )
     {
         return 0;
@@ -1100,6 +1097,13 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_test_data( serialize_write_
     if ( !serialize_write_bytes( stream, value->fixed_bytes, 17 ) /* byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop */ )
     {
         return 0;
+    }
+    {
+        int32_t i;
+        for ( i = 0; i < value->text_length; i++ )
+        {
+            serialize_assert( value->text[i] != 0 ); /* interior null on write (SPEC §4.7) */
+        }
     }
     if ( !serialize_write_int( stream, value->text_length, 0, 255 ) )
     {

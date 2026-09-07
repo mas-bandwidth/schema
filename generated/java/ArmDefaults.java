@@ -65,6 +65,8 @@ public final class ArmDefaults {
     private static boolean checkWriteDefaultArm(DefaultArm value, byte[] data) {
         assert data.length % 8 == 0;
         assert data.length >= defaultArmMaxBytes;
+        assert value.entriesCount >= 0;
+        assert value.entriesCount <= 2;
         for (int i0 = 0; i0 < value.entriesCount; i0++) {
             final Wire.ProbeConfig e0 = value.entries[i0];
             assert (e0.preferred & 0xffL) >= 0;
@@ -84,9 +86,6 @@ public final class ArmDefaults {
         int scratchBits = 0;
         int wordIndex = 0;
         long v = 0;
-        if (value.entriesCount < 0 || value.entriesCount > 2) {
-            return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
-        }
         v = (value.entriesCount) & 0x3L;
         scratch |= v << scratchBits;
         scratchBits += 2;
@@ -284,6 +283,8 @@ public final class ArmDefaults {
         assert (value.type & 0xffL) <= 2;
         switch (value.type) {
             case 1:
+                assert value.first.entriesCount >= 0;
+                assert value.first.entriesCount <= 2;
                 for (int i0 = 0; i0 < value.first.entriesCount; i0++) {
                     final Wire.ProbeConfig e0 = value.first.entries[i0];
                     assert (e0.preferred & 0xffL) >= 0;
@@ -293,6 +294,8 @@ public final class ArmDefaults {
                 assert (value.first.marker & 0xffL) <= 7;
                 break;
             case 2:
+                assert value.second.entriesCount >= 0;
+                assert value.second.entriesCount <= 2;
                 for (int i0 = 0; i0 < value.second.entriesCount; i0++) {
                     final Wire.ProbeConfig e0 = value.second.entries[i0];
                     assert (e0.preferred & 0xffL) >= 0;
@@ -325,9 +328,6 @@ public final class ArmDefaults {
         }
         switch (value.type) {
             case 1:
-                if (value.first.entriesCount < 0 || value.first.entriesCount > 2) {
-                    return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
-                }
                 v = (value.first.entriesCount) & 0x3L;
                 scratch |= v << scratchBits;
                 scratchBits += 2;
@@ -369,9 +369,6 @@ public final class ArmDefaults {
                 }
                 break;
             case 2:
-                if (value.second.entriesCount < 0 || value.second.entriesCount > 2) {
-                    return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
-                }
                 v = (value.second.entriesCount) & 0x3L;
                 scratch |= v << scratchBits;
                 scratchBits += 2;
@@ -643,6 +640,8 @@ public final class ArmDefaults {
         assert (value.choice.type & 0xffL) <= 2;
         switch (value.choice.type) {
             case 1:
+                assert value.choice.first.entriesCount >= 0;
+                assert value.choice.first.entriesCount <= 2;
                 for (int i0 = 0; i0 < value.choice.first.entriesCount; i0++) {
                     final Wire.ProbeConfig e0 = value.choice.first.entries[i0];
                     assert (e0.preferred & 0xffL) >= 0;
@@ -652,6 +651,8 @@ public final class ArmDefaults {
                 assert (value.choice.first.marker & 0xffL) <= 7;
                 break;
             case 2:
+                assert value.choice.second.entriesCount >= 0;
+                assert value.choice.second.entriesCount <= 2;
                 for (int i0 = 0; i0 < value.choice.second.entriesCount; i0++) {
                     final Wire.ProbeConfig e0 = value.choice.second.entries[i0];
                     assert (e0.preferred & 0xffL) >= 0;
@@ -684,9 +685,6 @@ public final class ArmDefaults {
         }
         switch (value.choice.type) {
             case 1:
-                if (value.choice.first.entriesCount < 0 || value.choice.first.entriesCount > 2) {
-                    return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
-                }
                 v = (value.choice.first.entriesCount) & 0x3L;
                 scratch |= v << scratchBits;
                 scratchBits += 2;
@@ -728,9 +726,6 @@ public final class ArmDefaults {
                 }
                 break;
             case 2:
-                if (value.choice.second.entriesCount < 0 || value.choice.second.entriesCount > 2) {
-                    return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
-                }
                 v = (value.choice.second.entriesCount) & 0x3L;
                 scratch |= v << scratchBits;
                 scratchBits += 2;
@@ -1005,6 +1000,8 @@ public final class ArmDefaults {
     private static boolean checkWriteDefaultBulkArm(DefaultBulkArm value, byte[] data) {
         assert data.length % 8 == 0;
         assert data.length >= defaultBulkArmMaxBytes;
+        assert value.payload.entriesCount >= 0;
+        assert value.payload.entriesCount <= 2;
         for (int i0 = 0; i0 < value.payload.entriesCount; i0++) {
             final Wire.ProbeConfig e0 = value.payload.entries[i0];
             assert (e0.preferred & 0xffL) >= 0;
@@ -1026,9 +1023,6 @@ public final class ArmDefaults {
         int scratchBits = 0;
         int wordIndex = 0;
         long v = 0;
-        if (value.payload.entriesCount < 0 || value.payload.entriesCount > 2) {
-            return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
-        }
         v = (value.payload.entriesCount) & 0x3L;
         scratch |= v << scratchBits;
         scratchBits += 2;
@@ -1296,6 +1290,8 @@ public final class ArmDefaults {
         assert (value.type & 0xffL) <= 2;
         switch (value.type) {
             case 1:
+                assert value.first.payload.entriesCount >= 0;
+                assert value.first.payload.entriesCount <= 2;
                 for (int i0 = 0; i0 < value.first.payload.entriesCount; i0++) {
                     final Wire.ProbeConfig e0 = value.first.payload.entries[i0];
                     assert (e0.preferred & 0xffL) >= 0;
@@ -1307,6 +1303,8 @@ public final class ArmDefaults {
                 assert value.first.dataLength <= 2;
                 break;
             case 2:
+                assert value.second.payload.entriesCount >= 0;
+                assert value.second.payload.entriesCount <= 2;
                 for (int i0 = 0; i0 < value.second.payload.entriesCount; i0++) {
                     final Wire.ProbeConfig e0 = value.second.payload.entries[i0];
                     assert (e0.preferred & 0xffL) >= 0;
@@ -1341,9 +1339,6 @@ public final class ArmDefaults {
         }
         switch (value.type) {
             case 1:
-                if (value.first.payload.entriesCount < 0 || value.first.payload.entriesCount > 2) {
-                    return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
-                }
                 v = (value.first.payload.entriesCount) & 0x3L;
                 scratch |= v << scratchBits;
                 scratchBits += 2;
@@ -1420,9 +1415,6 @@ public final class ArmDefaults {
                 }
                 break;
             case 2:
-                if (value.second.payload.entriesCount < 0 || value.second.payload.entriesCount > 2) {
-                    return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
-                }
                 v = (value.second.payload.entriesCount) & 0x3L;
                 scratch |= v << scratchBits;
                 scratchBits += 2;

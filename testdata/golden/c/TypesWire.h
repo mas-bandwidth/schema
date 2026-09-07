@@ -27,9 +27,10 @@ extern "C" {
 
 /* Every write_x/read_x returns 1 on success, 0 on failure — the stream
    latches the error, so a caller may check once at the end of a message.
-   Reads REFUSE out-of-range values, never clamp. A tag is validated BEFORE
-   it rides, and every read reconstructs the selected arm with its declared
-   initial values before decoding it (SPEC §4.8, §5). */
+   Reads REFUSE out-of-range values, never clamp, in every build. A tag on
+   WRITE is asserted before it rides — caller error, gone under NDEBUG — and
+   every read reconstructs the selected arm with its declared initial values
+   before decoding it (SPEC §4.8, §5). */
 
 #ifndef SCHEMA_C_SPINE_INLINE_DEFINED
 #define SCHEMA_C_SPINE_INLINE_DEFINED
@@ -596,10 +597,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_input_packet( serialize_wri
     {
         return 0;
     }
-    if ( value->inputs_count < 0 || value->inputs_count > MAX_INPUTS_PER_PACKET )
-    {
-        return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
-    }
+    serialize_assert( value->inputs_count >= 0 && value->inputs_count <= MAX_INPUTS_PER_PACKET );
     if ( !serialize_write_int( stream, value->inputs_count, 0, MAX_INPUTS_PER_PACKET ) )
     {
         return 0;
@@ -687,6 +685,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_ship_create( serialize_writ
     }
     if ( value->has_flags )
     {
+        serialize_assert( value->flags < ( 1ULL << 4 ) );
         if ( !serialize_write_bits( stream, (serialize_uint32_t) value->flags, 4 ) )
         {
             return 0;

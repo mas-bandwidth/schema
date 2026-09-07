@@ -1358,18 +1358,32 @@ All compile errors with positions:
   own range at rest. The element range above is a different bound and still
   must reach zero.
 
-  **A count outside [A, B] is refused by the WRITE in every build, in all
-  nine targets.** That is not a compile error but the other half of the same
-  rule, and it is stated here because it is the rule generated code cites. It is the one write-side
-  contract that is never a debug-only
-  assert (§5). The count guards the element loop and the pack subtracts the
-  low bound, so a count below A wraps to a large unsigned value and the write
-  would otherwise report success on bytes no reader accepts. Each target
-  refuses in its own convention: C `0`, C++ and C# `false`, Dart and Java
-  `-1`, Go `serialize.ErrValueOutOfRange`, Rust
-  `Err(serialize::Error::ValueOutOfRange)`, Elixir `ArgumentError`, and
-  JavaScript `false` from the stream writer and `-1` from BOTH tiers of the
-  flat writer, the production tier included.
+  **A count outside [A, B] on the WRITE is caller error, and it is a
+  write-side contract like every other (§5).** That is not a compile error
+  but the other half of the same rule, and it is stated here because it is
+  the rule generated code cites. The count guards the element loop and the
+  pack subtracts the low bound, so a count below A wraps to a large unsigned
+  value, and a release build then drives the element loop over a
+  fixed-capacity array with nothing left to stop it: a bad count is an
+  out-of-bounds READ of the caller's array and an out-of-bounds WRITE of the
+  stream buffer, whose capacity serialize.h makes the writer's contract
+  (issue #52). That is the same exposure a `string(N)` or a `bytes(N)` length
+  past its bound already carries, and it is the ruling's intent rather than
+  an oversight of it — the debug build's assert is where a bad count is meant
+  to be caught, which is why every target catches it there and why no target
+  catches it in release. What such a write leaves on the wire, where it
+  completes at all, is DEFINED BUT UNSPECIFIED: a reader may refuse it, or
+  may accept some other message.
+  Settled 2026-09-07: "consistency matters. writing packets
+  correctness is the caller's responsibility, and it is our duty to catch it
+  with asserts in debug." So the count asserts in DEBUG ONLY in each target
+  whose language has that idiom — `serialize_assert` in C++ and C,
+  `debug_assert!` in Rust, `Debug.Assert` in C#, `assert` in Java and Dart,
+  and the checked side of JavaScript's checked/production fork — and is
+  refused in every build only where the language has no such idiom: Go
+  returns `serialize.ErrValueOutOfRange` and Elixir raises `ArgumentError`.
+  The READ is untouched: a decoded count outside [A, B] fails the read in
+  every build, in all nine.
 - **Attribute discipline:** an unknown attribute key, a key repeated, an
   attribute on a type that does not take it, `min` without `max` (or vice
   versa), and `resolution` without both bounds are compile errors, each
@@ -1691,8 +1705,20 @@ union Value
   **rejects a tag above the count** — refusal, never clamping, the ranged-
   integer rule. MaxBits = tag bits + the largest payload's MaxBits; a union
   no arm of which carries a payload has MaxBits equal to its tag bits.
-  `Write<Union>` validates the tag BEFORE it rides — an out-of-set tag
-  value in storage writes nothing and fails, it never desyncs the stream.
+  `Write<Union>` ASSERTS the tag before it rides. An out-of-set tag value in
+  storage is caller error like every other write-side value, and it follows
+  §5's tiers exactly: a debug-only assert wherever the language has the
+  idiom (C++, C, C#, Java, Dart, and JavaScript's flat fork), unrepresentable
+  in Rust because the tag IS the enum discriminant, and an every-build
+  refusal only in Go and Elixir, where every write contract is every-build.
+  What a release build handed an out-of-set tag writes is DEFINED BUT
+  UNSPECIFIED, and not bytes every reader is guaranteed to refuse: no arm is
+  selected, so the payload the tag names never rides, but C++ writes no tag
+  bits at all while C writes the tag unmasked — a 2-bit tag holding 4 rides
+  as `00`, a legal `None`, with the spilled bit landing in whatever follows.
+  A shifted-but-legal parse is reachable from either. That is the caller's
+  responsibility, not the writer's to check. The READ rejects a tag above the
+  count in EVERY build, in all nine.
 - **Selection uses ordinary construction (§4.2).** Selecting an arm with a
   payload constructs it with the declared defaults, recursively. Application
   code initializes the payload before populating it and setting its tag;
@@ -2155,37 +2181,75 @@ readers face untrusted data and keep every mandated check above.
 
 Within that doctrine, misuse surfaces by each target's own convention — a
 language verifies correctness the way that language verifies correctness —
-and the list is exhaustive at all nine. **Four debug-assert**, unchecked in
-release: C++ and C through `serialize_assert`, Dart and Java through the
-language's own `assert`, live under `--enable-asserts` and `-ea` (Java's
-contracts ride one `check<Name>` predicate call, so a dormant assert costs
-the JIT one inlining slot rather than a body). C's generated writes asserted
-from 2026-09-07, on the ruling "Every language, by design, compiles out
-asserts/checks in release build. This is the whole point!" — C has `assert`
-and `NDEBUG`, so the tier it belongs in is the one C++ is in. **One raises in every
-build**: Elixir's `ArgumentError`, the BEAM having no dormant assert to
-compile out. **Four return failure from the write** rather than invent an
-assert their language does not have: C# and JavaScript `false`, Go
-`serialize.ErrValueOutOfRange`, Rust `Err(serialize::Error::ValueOutOfRange)`
-— and JavaScript's flat tier, which forks checked/production at module load
-(§6.1), refuses with `-1` on the checked side and trusts the caller on the
-production one. **No target panics and none throws**: Elixir's raise is the
-only unwinding path in the nine, and it is the BEAM's own.
+and the list is exhaustive at all nine. **Seven are DEBUG ONLY**, gone from
+release: C++ and C through `serialize_assert` under `NDEBUG`, Rust through
+`debug_assert!`, C# through `Debug.Assert` and `[Conditional("DEBUG")]`, Java
+and Dart through the language's own `assert` under `-ea` and
+`--enable-asserts` (Java's contracts ride one `checkWrite<Name>` predicate
+call, so a dormant assert costs the JIT one inlining slot rather than a
+body), and JavaScript through the checked/production fork its flat writers
+take at module load (§6.1) — the checked writer refuses with `-1`, the
+production writer holds nothing. **Two hold in EVERY BUILD**, because their
+languages have no debug-only idiom to compile out: Go returns
+`serialize.ErrValueOutOfRange` and Elixir raises `ArgumentError`. That is
+deliberate, not an oversight — "For each language, do not force this in. If
+the language simply doesn't have this concept (Golang) then it is not
+something we can do. ... The bottom line is that a user of schema/serialize
+in that languages should feel that the implementation is native to their
+language and how it is used in best practice." (2026-09-07). **No target
+panics and none throws**: Elixir's raise is the only unwinding path in the
+nine, and it is the BEAM's own.
 
-**The tier split has exactly one stated exception, and it is a counted
-array's COUNT.** A count outside its declared `[A, B]` is refused by the
-write IN EVERY BUILD in all nine targets, so C++, C, Dart and Java refuse it
-from the write rather than through the assert their other contracts ride,
-and JavaScript's flat production tier refuses it rather than trusting the
-caller. The count is not a diagnostic: it guards the element loop and the
-pack subtracts the low bound, so a count below A wraps and an unchecked
-write reports success on bytes no reader accepts (§4.6). Every other
-write-side contract in this section keeps the tiers above.
+**Implementation note, 2026-09-07.** The Rust and C# backends reach the form
+stated above in the two changes landing the same day (schema#696 for Rust,
+schema#697 for C#); until they merge, their emitters still refuse on the
+write in every build. This note is removed by the second of them.
+
+**There is no exception to the tier split.** Settled 2026-09-07: "No runtime
+should ever promise to keep checks in writing packets (asserts) in release
+build. Removing them is the whole point. ... checks are *DEBUG ONLY*". A
+counted array's COUNT (§4.6) and a union's TAG (§4.8) were the last two
+write-side checks this section held outside the tiers — one by contract, one
+by structure — and neither is one now. Both are writer contracts like every
+other range, asserted in debug and gone in release wherever the language has
+the idiom, and every-build only in Go and Elixir, where every other write
+contract is every-build too. What a release build writes is the
+caller's responsibility, in all nine. (One implementation note, not a rule:
+JavaScript's STREAM tier still refuses from the write in both modes for
+every contract it holds, the count included; the fork the flat tier already
+takes lands there with that tier's own change.)
+
+**A union tag outside its variant set is one of these contracts too, and it
+takes the same tiers.** It had been argued the other way — that dispatch is
+not a guard, so the `switch`'s own `default` may refuse in every build — and
+that argument is retired: the rule has no structural exception any more than
+it has a per-contract one. An out-of-set tag in storage is a value the
+CALLER put there, exactly like a count past its bound or an int outside its
+range, so the write ASSERTS it in debug wherever the language has the idiom
+(C++ and C through `serialize_assert`, C# through `Debug.Assert`, Java and
+Dart through `assert`, JavaScript's flat writers through the checked/
+production fork) and does not check it in release. Rust needs no check at
+all: its tag IS the enum discriminant, so an out-of-set tag cannot be built.
+Go and Elixir keep the every-build refusal, for the same reason they keep
+every other one. What a release build does with an out-of-set tag is defined
+but unspecified — no arm is selected, so the arm's payload never rides, but
+C++ writes no tag bits at all and C writes the tag unmasked, so a reader may
+refuse the result or may accept some other message (§4.8). The READ refuses
+an out-of-set tag in EVERY build, in all nine, and that is the half that
+faces untrusted bytes.
+
+**None of this reaches the read side.** "Of course, on read side we MUST
+always do the checks!" (2026-09-07). Every read-side refusal §4 and this
+section name — ranges, counts, bounds, wire constants, reserved bits, enum
+values, union tags, UTF-8 in `string(N)` and UTF-16 in `wstring(N)` — runs
+in EVERY BUILD MODE in all nine targets, and a refusal is terminal. Readers
+face untrusted bytes; writers do not.
 
 The generated
 write code's job is to
-make misuse impossible by construction — bounds come from the schema. Costlier contracts
-assert in DEBUG ONLY, and only where a target carries one at all. Text
+make misuse impossible by construction — bounds come from the schema. Every
+write-side contract
+asserts in DEBUG ONLY, and only where a target carries the idiom at all. Text
 well-formedness is not one of them. UTF-8 in `string(N)` and UTF-16 in
 `wstring(N)` are READ-side refusals in every target (§4.7, §4.12), so the
 guarantee rests on the reader rather than on a write-side check some

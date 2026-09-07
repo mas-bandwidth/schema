@@ -387,6 +387,7 @@ SCHEMA_READ_INLINE bool ReadMixedPickupEvent( serialize::ReadStream & stream, Mi
 
 SCHEMA_WRITE_INLINE bool WriteMixedEvent( serialize::WriteStream & stream, const MixedEvent & value )
 {
+    serialize_assert( value.type <= MixedEventType::Max ); // an out-of-set tag is caller error (SPEC §4.8, §5)
     switch ( value.type )
     {
         case MixedEventType::None:
@@ -404,7 +405,7 @@ SCHEMA_WRITE_INLINE bool WriteMixedEvent( serialize::WriteStream & stream, const
         default:
             break;
     }
-    return false; // not a MixedEventType value; nothing was written (SPEC §4.8)
+    return true; // an out-of-set tag selected no arm, so no bits rode: the assert above is the contract (SPEC §5)
 }
 
 SCHEMA_READ_INLINE bool ReadMixedEvent( serialize::ReadStream & stream, MixedEvent & value )
@@ -446,10 +447,7 @@ SCHEMA_WRITE_INLINE bool WriteBenchMixed( serialize::WriteStream & stream, const
         int32_t fixed_value = value.server_time;
         write_fixed( stream, fixed_value, 24, 8, 0, 65535 );
     }
-    if ( int32_t( value.entities_count ) < int32_t( 1 ) || int32_t( value.entities_count ) > int32_t( 8 ) )
-    {
-        return false; // a count outside its wire range is refused in every build (SPEC §4.6)
-    }
+    serialize_assert( int32_t( value.entities_count ) >= int32_t( 1 ) && int32_t( value.entities_count ) <= int32_t( 8 ) );
     write_bits( stream, uint32_t( value.entities_count ) - uint32_t( 1 ), 3 );
     for ( int32_t i = 0; i < value.entities_count; i++ )
     {
@@ -458,10 +456,7 @@ SCHEMA_WRITE_INLINE bool WriteBenchMixed( serialize::WriteStream & stream, const
             return false;
         }
     }
-    if ( int32_t( value.stats_count ) < int32_t( 0 ) || int32_t( value.stats_count ) > int32_t( 80 ) )
-    {
-        return false; // a count outside its wire range is refused in every build (SPEC §4.6)
-    }
+    serialize_assert( int32_t( value.stats_count ) >= int32_t( 0 ) && int32_t( value.stats_count ) <= int32_t( 80 ) );
     write_bits( stream, uint32_t( value.stats_count ), 7 );
     for ( int32_t i = 0; i < value.stats_count; i++ )
     {

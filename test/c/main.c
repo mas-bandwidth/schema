@@ -415,10 +415,11 @@ int main( void )
         serialize_read_stream_init( &r, buffer, bytes );
         check( !read_probe_collider( &r, &out ), "a corrupt union arm payload is refused (SPEC §4.8)" );
 
-        /* the write side validates the tag BEFORE it rides */
-        in.shape.type = (ProbeShapeType) 3;
-        serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
-        check( !write_probe_collider( &w, &in ), "an out-of-set union tag writes nothing (SPEC §4.8)" );
+        /* NO write-side case for an out-of-set tag: the tag on WRITE is a
+           caller-error contract like every other write-side value, a
+           serialize_assert that would abort this (assert-live) suite and that
+           is gone under NDEBUG (SPEC §4.8, §5). The read half above is the
+           every-build one, and it is the one a test can hold. */
     }
 
     /* ---- TestData: signed narrows, full-range ints, align, fixed bytes, string ---- */

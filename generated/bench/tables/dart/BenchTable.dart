@@ -208,8 +208,7 @@ void initTableHitEvent(TableHitEvent value) {
 
 // writeTableHitEvent packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// tableHitEventMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// tableHitEventMaxBytes. Returns the bytes written.
 int writeTableHitEvent(TableHitEvent value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= tableHitEventMaxBytes);
@@ -316,8 +315,7 @@ void initTableChatEvent(TableChatEvent value) {
 
 // writeTableChatEvent packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// tableChatEventMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// tableChatEventMaxBytes. Returns the bytes written.
 int writeTableChatEvent(TableChatEvent value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= tableChatEventMaxBytes);
@@ -412,8 +410,7 @@ void initTablePickupEvent(TablePickupEvent value) {
 
 // writeTablePickupEvent packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// tablePickupEventMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// tablePickupEventMaxBytes. Returns the bytes written.
 int writeTablePickupEvent(TablePickupEvent value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= tablePickupEventMaxBytes);
@@ -533,8 +530,7 @@ void zeroTableEvent(TableEvent value) {
 
 // writeTableEvent packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// tableEventMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// tableEventMaxBytes. Returns the bytes written.
 int writeTableEvent(TableEvent value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= tableEventMaxBytes);

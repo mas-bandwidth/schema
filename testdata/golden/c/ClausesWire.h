@@ -25,9 +25,10 @@ extern "C" {
 
 /* Every write_x/read_x returns 1 on success, 0 on failure — the stream
    latches the error, so a caller may check once at the end of a message.
-   Reads REFUSE out-of-range values, never clamp. A tag is validated BEFORE
-   it rides, and every read reconstructs the selected arm with its declared
-   initial values before decoding it (SPEC §4.8, §5). */
+   Reads REFUSE out-of-range values, never clamp, in every build. A tag on
+   WRITE is asserted before it rides — caller error, gone under NDEBUG — and
+   every read reconstructs the selected arm with its declared initial values
+   before decoding it (SPEC §4.8, §5). */
 
 #ifndef SCHEMA_C_SPINE_INLINE_DEFINED
 #define SCHEMA_C_SPINE_INLINE_DEFINED
@@ -165,10 +166,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_interior_null_( const seria
 /* Writes W13. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_w13( serialize_write_stream_t * stream, const W13 * value )
 {
-    if ( value->items_count < 0 || value->items_count > 12 )
-    {
-        return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
-    }
+    serialize_assert( value->items_count >= 0 && value->items_count <= 12 );
     if ( !serialize_write_int( stream, value->items_count, 0, 12 ) )
     {
         return 0;
@@ -220,10 +218,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_w13( serialize_read_stream_t 
 /* Writes W17. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_w17( serialize_write_stream_t * stream, const W17 * value )
 {
-    if ( value->items_count < 0 || value->items_count > 9 )
-    {
-        return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
-    }
+    serialize_assert( value->items_count >= 0 && value->items_count <= 9 );
     if ( !serialize_write_int( stream, value->items_count, 0, 9 ) )
     {
         return 0;
@@ -275,10 +270,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_w17( serialize_read_stream_t 
 /* Writes W26. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_w26( serialize_write_stream_t * stream, const W26 * value )
 {
-    if ( value->items_count < 0 || value->items_count > 6 )
-    {
-        return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
-    }
+    serialize_assert( value->items_count >= 0 && value->items_count <= 6 );
     if ( !serialize_write_int( stream, value->items_count, 0, 6 ) )
     {
         return 0;
@@ -330,10 +322,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_w26( serialize_read_stream_t 
 /* Writes W1. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_w1( serialize_write_stream_t * stream, const W1 * value )
 {
-    if ( value->items_count < 0 || value->items_count > 20 )
-    {
-        return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
-    }
+    serialize_assert( value->items_count >= 0 && value->items_count <= 20 );
     if ( !serialize_write_int( stream, value->items_count, 0, 20 ) )
     {
         return 0;
@@ -385,10 +374,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_w1( serialize_read_stream_t *
 /* Writes W52. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_w52( serialize_write_stream_t * stream, const W52 * value )
 {
-    if ( value->items_count < 0 || value->items_count > 3 )
-    {
-        return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
-    }
+    serialize_assert( value->items_count >= 0 && value->items_count <= 3 );
     if ( !serialize_write_int( stream, value->items_count, 0, 3 ) )
     {
         return 0;
@@ -452,10 +438,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_w52( serialize_read_stream_t 
 /* Writes W50. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_w50( serialize_write_stream_t * stream, const W50 * value )
 {
-    if ( value->items_count < 0 || value->items_count > 3 )
-    {
-        return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
-    }
+    serialize_assert( value->items_count >= 0 && value->items_count <= 3 );
     if ( !serialize_write_int( stream, value->items_count, 0, 3 ) )
     {
         return 0;
@@ -598,10 +581,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_tri3( serialize_read_stream_t
 /* Writes ArrTri3. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_arr_tri3( serialize_write_stream_t * stream, const ArrTri3 * value )
 {
-    if ( value->items_count < 0 || value->items_count > 10 )
-    {
-        return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
-    }
+    serialize_assert( value->items_count >= 0 && value->items_count <= 10 );
     if ( !serialize_write_int( stream, value->items_count, 0, 10 ) )
     {
         return 0;
@@ -742,10 +722,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_empty_b( serialize_read_strea
 /* Writes EmptyUnion. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_empty_union( serialize_write_stream_t * stream, const EmptyUnion * value )
 {
-    if ( value->type > EMPTY_UNION_TYPE_MAX )
-    {
-        return 0; /* not a EmptyUnionType value; nothing was written */
-    }
+    serialize_assert( value->type <= EMPTY_UNION_TYPE_MAX ); /* an out-of-set tag is caller error (SPEC §4.8, §5) */
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->type, 2 ) )
     {
         return 0;
@@ -840,6 +817,13 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_strs( serialize_write_strea
     {
         return 0;
     }
+    {
+        int32_t i;
+        for ( i = 0; i < value->s_length; i++ )
+        {
+            serialize_assert( value->s[i] != 0 ); /* interior null on write (SPEC §4.7) */
+        }
+    }
     if ( !serialize_write_int( stream, value->s_length, 0, 8 ) )
     {
         return 0;
@@ -917,10 +901,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_arr_nested( serialize_write
     {
         return 0;
     }
-    if ( value->items_count < 0 || value->items_count > 4 )
-    {
-        return 0; /* a count outside its wire range is refused in every build (SPEC §4.6) */
-    }
+    serialize_assert( value->items_count >= 0 && value->items_count <= 4 );
     if ( !serialize_write_int( stream, value->items_count, 0, 4 ) )
     {
         return 0;

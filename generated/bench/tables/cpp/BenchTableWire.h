@@ -105,6 +105,7 @@ SCHEMA_READ_INLINE bool ReadTablePickupEvent( serialize::ReadStream & stream, Ta
 
 SCHEMA_WRITE_INLINE bool WriteTableEvent( serialize::WriteStream & stream, const TableEvent & value )
 {
+    serialize_assert( value.type <= TableEventType::Max ); // an out-of-set tag is caller error (SPEC §4.8, §5)
     switch ( value.type )
     {
         case TableEventType::None:
@@ -122,7 +123,7 @@ SCHEMA_WRITE_INLINE bool WriteTableEvent( serialize::WriteStream & stream, const
         default:
             break;
     }
-    return false; // not a TableEventType value; nothing was written (SPEC §4.8)
+    return true; // an out-of-set tag selected no arm, so no bits rode: the assert above is the contract (SPEC §5)
 }
 
 SCHEMA_READ_INLINE bool ReadTableEvent( serialize::ReadStream & stream, TableEvent & value )

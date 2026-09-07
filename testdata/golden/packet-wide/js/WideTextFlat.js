@@ -100,9 +100,9 @@ function writeWideSevenFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteWideSevenFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
-// count outside its wire range in every build (SPEC §4.6), and any other
-// contract in the checked build. The buffer behind view must hold WideSevenMaxBytes.
+// WriteWideSevenFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// writer contract in the checked build — the production writer holds none
+// of them (SPEC §5). The buffer behind view must hold WideSevenMaxBytes.
 export const WriteWideSevenFlat = PRODUCTION ? writeWideSevenFlatProduction : writeWideSevenFlatChecked;
 
 // ReadWideSevenFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -208,9 +208,9 @@ function writeWideFourFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteWideFourFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
-// count outside its wire range in every build (SPEC §4.6), and any other
-// contract in the checked build. The buffer behind view must hold WideFourMaxBytes.
+// WriteWideFourFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// writer contract in the checked build — the production writer holds none
+// of them (SPEC §5). The buffer behind view must hold WideFourMaxBytes.
 export const WriteWideFourFlat = PRODUCTION ? writeWideFourFlatProduction : writeWideFourFlatChecked;
 
 // ReadWideFourFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -357,9 +357,9 @@ function writeNarrowFifteenFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteNarrowFifteenFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
-// count outside its wire range in every build (SPEC §4.6), and any other
-// contract in the checked build. The buffer behind view must hold NarrowFifteenMaxBytes.
+// WriteNarrowFifteenFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// writer contract in the checked build — the production writer holds none
+// of them (SPEC §5). The buffer behind view must hold NarrowFifteenMaxBytes.
 export const WriteNarrowFifteenFlat = PRODUCTION ? writeNarrowFifteenFlatProduction : writeNarrowFifteenFlatChecked;
 
 // ReadNarrowFifteenFlat(value, view, numBits) -> bool. The buffer behind view must
@@ -488,9 +488,9 @@ function writeWideInteropFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteWideInteropFlat(value, view) -> bytes written (>= 0), or -1 on a refusal: a
-// count outside its wire range in every build (SPEC §4.6), and any other
-// contract in the checked build. The buffer behind view must hold WideInteropMaxBytes.
+// WriteWideInteropFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// writer contract in the checked build — the production writer holds none
+// of them (SPEC §5). The buffer behind view must hold WideInteropMaxBytes.
 export const WriteWideInteropFlat = PRODUCTION ? writeWideInteropFlatProduction : writeWideInteropFlatChecked;
 
 // ReadWideInteropFlat(value, view, numBits) -> bool. The buffer behind view must

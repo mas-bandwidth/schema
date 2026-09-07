@@ -222,8 +222,7 @@ void initProbeHeader(ProbeHeader value) {
 
 // writeProbeHeader packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// probeHeaderMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// probeHeaderMaxBytes. Returns the bytes written.
 int writeProbeHeader(ProbeHeader value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= probeHeaderMaxBytes);
@@ -393,8 +392,7 @@ void initProbeBits(ProbeBits value) {
 
 // writeProbeBits packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// probeBitsMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// probeBitsMaxBytes. Returns the bytes written.
 int writeProbeBits(ProbeBits value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= probeBitsMaxBytes);
@@ -594,8 +592,7 @@ void initProbeSample(ProbeSample value) {
 
 // writeProbeSample packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// probeSampleMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// probeSampleMaxBytes. Returns the bytes written.
 int writeProbeSample(ProbeSample value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= probeSampleMaxBytes);
@@ -683,9 +680,8 @@ int writeProbeSample(ProbeSample value, ByteData view) {
       scratch = v >>> (32 - scratchBits);
     }
   }
-  if (value.samplesCount < 1 || value.samplesCount > 8) {
-    return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
-  }
+  assert(value.samplesCount >= 1);
+  assert(value.samplesCount <= 8);
   v = ((value.samplesCount - 1) & 0x7);
   scratch |= v << scratchBits;
   scratchBits += 3;
@@ -929,8 +925,7 @@ void initProbeRing(ProbeRing value) {
 
 // writeProbeRing packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// probeRingMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// probeRingMaxBytes. Returns the bytes written.
 int writeProbeRing(ProbeRing value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= probeRingMaxBytes);
@@ -1020,8 +1015,7 @@ void initProbeSlab(ProbeSlab value) {
 
 // writeProbeSlab packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// probeSlabMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// probeSlabMaxBytes. Returns the bytes written.
 int writeProbeSlab(ProbeSlab value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= probeSlabMaxBytes);
@@ -1140,8 +1134,7 @@ void zeroProbeShape(ProbeShape value) {
 
 // writeProbeShape packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// probeShapeMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// probeShapeMaxBytes. Returns the bytes written.
 int writeProbeShape(ProbeShape value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= probeShapeMaxBytes);
@@ -1319,8 +1312,7 @@ void initProbeCollider(ProbeCollider value) {
 
 // writeProbeCollider packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// probeColliderMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// probeColliderMaxBytes. Returns the bytes written.
 int writeProbeCollider(ProbeCollider value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= probeColliderMaxBytes);
@@ -1402,9 +1394,8 @@ int writeProbeCollider(ProbeCollider value, ByteData view) {
         scratch = v >>> (15 - scratchBits);
       }
   }
-  if (value.extrasCount < 0 || value.extrasCount > 2) {
-    return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
-  }
+  assert(value.extrasCount >= 0);
+  assert(value.extrasCount <= 2);
   v = ((value.extrasCount) & 0x3);
   scratch |= v << scratchBits;
   scratchBits += 2;
@@ -1720,8 +1711,7 @@ void initProbeConfig(ProbeConfig value) {
 
 // writeProbeConfig packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// probeConfigMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// probeConfigMaxBytes. Returns the bytes written.
 int writeProbeConfig(ProbeConfig value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= probeConfigMaxBytes);
@@ -1819,8 +1809,7 @@ void initProbeArray(ProbeArray value) {
 
 // writeProbeArray packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// probeArrayMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// probeArrayMaxBytes. Returns the bytes written.
 int writeProbeArray(ProbeArray value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= probeArrayMaxBytes);
@@ -1910,9 +1899,8 @@ int writeProbeArray(ProbeArray value, ByteData view) {
         scratch = v >>> (32 - scratchBits);
       }
     }
-    if (e0.samplesCount < 1 || e0.samplesCount > 8) {
-      return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
-    }
+    assert(e0.samplesCount >= 1);
+    assert(e0.samplesCount <= 8);
     v = ((e0.samplesCount - 1) & 0x7);
     scratch |= v << scratchBits;
     scratchBits += 3;
@@ -2193,8 +2181,7 @@ void initHeartbeat(Heartbeat value) {
 
 // writeHeartbeat packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// heartbeatMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// heartbeatMaxBytes. Returns the bytes written.
 int writeHeartbeat(Heartbeat value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= heartbeatMaxBytes);
@@ -2254,8 +2241,7 @@ void initTest(Test value) {
 
 // writeTest packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// testMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// testMaxBytes. Returns the bytes written.
 int writeTest(Test value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= testMaxBytes);
@@ -2373,8 +2359,7 @@ void initBlock(Block value) {
 
 // writeBlock packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// blockMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// blockMaxBytes. Returns the bytes written.
 int writeBlock(Block value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= blockMaxBytes);
@@ -2538,8 +2523,7 @@ void initChat(Chat value) {
 
 // writeChat packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// chatMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// chatMaxBytes. Returns the bytes written.
 int writeChat(Chat value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= chatMaxBytes);
@@ -2714,8 +2698,7 @@ void initProbeReport(ProbeReport value) {
 
 // writeProbeReport packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// probeReportMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// probeReportMaxBytes. Returns the bytes written.
 int writeProbeReport(ProbeReport value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= probeReportMaxBytes);
@@ -2997,8 +2980,7 @@ void initTestData(TestData value) {
 
 // writeTestData packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// testDataMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// testDataMaxBytes. Returns the bytes written.
 int writeTestData(TestData value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= testDataMaxBytes);
@@ -3012,9 +2994,8 @@ int writeTestData(TestData value, ByteData view) {
   assert(value.b <= 100);
   assert(value.c >= -100);
   assert(value.c <= 150);
-  if (value.itemsCount < 0 || value.itemsCount > 16) {
-    return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
-  }
+  assert(value.itemsCount >= 0);
+  assert(value.itemsCount <= 16);
   v =
       ((value.a + 100) & 0xff) |
       (((value.b + 100) & 0xff) << 8) |
@@ -3587,8 +3568,7 @@ void initCompressedProbe(CompressedProbe value) {
 
 // writeCompressedProbe packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// compressedProbeMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// compressedProbeMaxBytes. Returns the bytes written.
 int writeCompressedProbe(CompressedProbe value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= compressedProbeMaxBytes);

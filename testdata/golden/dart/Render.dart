@@ -45,8 +45,7 @@ void initRenderSprite(RenderSprite value) {
 
 // writeRenderSprite packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// renderSpriteMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// renderSpriteMaxBytes. Returns the bytes written.
 int writeRenderSprite(RenderSprite value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= renderSpriteMaxBytes);
@@ -203,8 +202,7 @@ void initRenderBlock(RenderBlock value) {
 
 // writeRenderBlock packs value into view — the trusted writer (contracts asserted,
 // compiled out without --enable-asserts). The buffer behind view must hold
-// renderBlockMaxBytes. Returns the bytes written, or -1 when a count is outside its
-// wire range, which is refused in every build (SPEC §4.6).
+// renderBlockMaxBytes. Returns the bytes written.
 int writeRenderBlock(RenderBlock value, ByteData view) {
   assert(view.lengthInBytes % 8 == 0);
   assert(view.lengthInBytes >= renderBlockMaxBytes);
@@ -212,9 +210,8 @@ int writeRenderBlock(RenderBlock value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  if (value.spritesCount < 0 || value.spritesCount > 64) {
-    return -1; // a count outside its wire range is refused in every build (SPEC §4.6)
-  }
+  assert(value.spritesCount >= 0);
+  assert(value.spritesCount <= 64);
   v =
       ((value.workerIndex) & 0xffffffff) |
       (((value.spriteCountHint) & 0xffffffff) << 32);
