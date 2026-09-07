@@ -269,7 +269,7 @@ func (s *scan) placedArray(at, size, align int64, what, container string) (start
 	}
 	start, end, fits := arrayExtent(at, delta, count, size, s.base, s.extent)
 	if !fits {
-		return 0, 0, fmt.Errorf("the %s array at %d with delta %d, count %d and size %d leaves the node's extent [%d, %d)", what, at, delta, count, size, s.base, s.extent)
+		return 0, 0, fmt.Errorf("the array leaves the node's extent [%d, %d): %s array at %d with delta %d, count %d and size %d", s.base, s.extent, what, at, delta, count, size)
 	}
 	if start%align != 0 {
 		return 0, 0, fmt.Errorf("the %s array starts at %d, which is not aligned to %d", what, start, align)
