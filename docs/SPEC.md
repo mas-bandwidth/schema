@@ -1097,7 +1097,10 @@ The rules:
   references there keep the basis name. The native header includes that
   header to derive from the basis; a mapped reference would be circular.
   Sibling types declared in the same schema file therefore store the basis
-  type, which is the correct default for pure wire compounds.
+  type, which is the correct default for pure wire compounds. A unit of ONE
+  FILE has nowhere left for the mapping to ride, so a `cpp_native` there is a
+  compile error naming the file: an attribute that does nothing anywhere in
+  the unit is a silent no-op rather than a default.
 - **Language bindings never move the protocol id.** `cpp_*` attributes rename
   what one target CALLS the storage; they cannot change a wire bit, and the
   projection (§3.1) excludes them.

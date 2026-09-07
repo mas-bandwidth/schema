@@ -135,6 +135,7 @@ func Unit(files []SourceFile) (*ir.Unit, []error) {
 	c.checkTables()
 	c.checkTableFileDag()
 	c.checkClaimedNames()
+	c.checkNativeMapping()
 	c.checkTargetNames()
 	c.assemble()
 	c.checkSizes()
@@ -184,6 +185,44 @@ func (c *checker) checkViewFileName() {
 			c.errf(f.AST.PkgPos, "schema file %s.schema generates the same name as the unit's view file %s.h "+
 				"(the registry is one pair per unit, named for the package — docs/SPEC-TABLES.md §8.5) — rename the file",
 				view, view)
+		}
+	}
+}
+
+// checkNativeMapping refuses a `cpp_native` mapping that can never ride
+// (schema#451). The C++ backend takes the mapping at a reference from ANOTHER
+// file of the unit only: the hand type derives from the generated basis
+// struct and so includes the header the basis is in, and a mapped reference
+// inside that same header would be circular (SPEC §4.2, docs/USAGE.md's
+// per-language C++ notes). A unit of ONE FILE therefore has nowhere for the
+// mapping to apply, and what an author gets today is generated C++ with no
+// trace of the attribute and nothing saying so. It is the first thing most
+// people try, and a silent no-op is the worst answer available.
+//
+// A sibling in the declaring file that keeps the basis type stays legal: the
+// mapping is off at that one reference and rides at every other, which the
+// page states as the rule. What is refused here is the attribute that rides
+// NOWHERE, and the file is named because the unit's file count is the fact
+// the author has to change.
+func (c *checker) checkNativeMapping() {
+	if len(c.files) != 1 {
+		return
+	}
+	f := c.files[0]
+	for _, d := range f.AST.Decls {
+		td, ok := d.(*ast.TypeDecl)
+		if !ok {
+			continue
+		}
+		if st := c.structs[td.Name]; st == nil || st.CppNative == "" {
+			continue
+		}
+		for _, a := range td.Attrs {
+			if a.Key != "cpp_native" {
+				continue
+			}
+			c.errf(a.Pos, "cpp_native on type %s can never ride: generated C++ takes the mapping at a reference from ANOTHER file of the unit only (the mapped header derives from the generated basis, so a mapped reference inside the basis's own header would be circular), and %s is the unit's only file; move the declarations that reference %s into a second file, or drop the attribute (SPEC §4.2 Native type mapping)",
+				td.Name, f.Name, td.Name)
 		}
 	}
 }

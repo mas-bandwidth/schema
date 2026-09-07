@@ -566,6 +566,17 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype V | cpp_native = VMath, cpp_include = vh { x float64 }\n"},
 		{name: "a valued type attr that is not a binding is still rejected", want: "bare identifier",
 			src: "package t\ntype V | vec3 = 4 { x float64 }\n"},
+		// ---- a mapping that can never ride (schema#451) ----
+		// The mapping is off inside the mapped type's own generated header
+		// (the hand type derives from the generated basis, so a mapped
+		// reference there would be circular), which makes it off everywhere
+		// in a unit of ONE FILE: the attribute is accepted, the generated C++
+		// carries no trace of it, and nothing says so. That is the first
+		// thing most people try (docs/USAGE.md, Per-language notes: C++).
+		{name: "cpp_native in a unit of one file", want: "can never ride",
+			src: "package t\ntype V | cpp_native = VMath, cpp_include = \"v.h\" { x float64 }\ntype Body { p V }\n"},
+		{name: "cpp_native in a unit of one file, referenced by nothing", want: "can never ride",
+			src: "package t\ntype V | cpp_native = VMath, cpp_include = \"v.h\" { x float64 }\n"},
 		// ---- §11's claimed runtime names, including the GO port's LOWERCASE
 		// ---- family. Unexported is not private: a Go package is one namespace,
 		// ---- so `const tableJsonMaxDepth = 5` beside a table generates a
@@ -653,6 +664,20 @@ func TestGoodCornersStillCompile(t *testing.T) {
 		// untouched (docs/SPEC-TABLES.md §11).
 		{name: "near-miss spellings of the table runtime's names",
 			src: "package t\nconst tableJsonMaxDepths = 5\ntype tableJsonInput { n int32 }\ntype TableReports { n int32 }\n"},
+		// THE MAPPING THE PAGE BLESSES (schema#451, docs/USAGE.md): a sibling
+		// declared beside the mapped type keeps the basis type, and that is
+		// not an error as long as the unit has a file the mapping can ride
+		// from. What is refused is the mapping that can never ride at all.
+		{name: "cpp_native referenced from another file of the unit",
+			srcs: map[string]string{
+				"A.schema": "package t\ntype V | cpp_native = VMath, cpp_include = \"v.h\" { x float64 }\n",
+				"B.schema": "package t\ntype Body { p V }\n",
+			}},
+		{name: "cpp_native with a sibling in the declaring file that keeps the basis type",
+			srcs: map[string]string{
+				"A.schema": "package t\ntype V | cpp_native = VMath, cpp_include = \"v.h\" { x float64 }\ntype Near { p V }\n",
+				"B.schema": "package t\ntype Far { q V }\n",
+			}},
 		{name: "nested if with cond in the same branch",
 			src: "package t\ntype T {\n    a bool\n    if a {\n        b bool\n        if b { x uint8 }\n    }\n}\n"},
 		// The self-negation refusal (schema#268) is about ONE name taken both

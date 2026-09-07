@@ -3726,8 +3726,9 @@ the basis is in; a mapped reference in that same header would be circular.
 The generated header a schema file produces covers every declaration in
 THAT FILE, so a sibling declared beside `Vector3` in one `.schema` stores
 the basis type and nothing in the output mentions your header. A unit of one
-file therefore never sees the mapping do anything, which is the first thing
-most people try:
+file therefore has nowhere for the mapping to ride, which is the first thing
+most people try, so the front end refuses it there rather than generating a
+header with no trace of the attribute:
 
 ```
 $ cat A.schema
@@ -3735,14 +3736,18 @@ package nat
 type Vec2 | cpp_native = GameVec2, cpp_include = "vec2.h" { x float32
                                                             y float32 }
 type Body { p Vec2 }
-$ schema generate --lang cpp --out g . && grep -n 'GameVec2\|vec2.h' g/*.h
-$
+$ schema check .
+A.schema:2:13: cpp_native on type Vec2 can never ride: generated C++ takes
+the mapping at a reference from ANOTHER file of the unit only ... and
+A.schema is the unit's only file; move the declarations that reference Vec2
+into a second file, or drop the attribute (SPEC §4.2 Native type mapping)
 ```
 
-Put `Body` in `B.schema` beside it and `g/B.h` gets both the `#include` and
-`::GameVec2 p;`. The attribute is accepted either way: it is a mapping, not
-a request, and there is nothing wrong with a file whose own siblings keep
-the basis type.
+Put `Body` in `B.schema` beside it and the unit compiles: `g/B.h` gets both
+the `#include` and `::GameVec2 p;`. A sibling that stays in `A.schema` beside
+`Vec2` keeps the basis type and is not an error, because the mapping is off
+at that one reference and rides at every other. What the refusal is of is a
+mapping that rides nowhere at all.
 
 **`cpp_native` names a GLOBAL type.** The value is an identifier and the
 emitted spelling is `::GameVec2`, so a namespaced engine type — `math::Vec2`,
