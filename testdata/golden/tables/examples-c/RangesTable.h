@@ -347,9 +347,9 @@ static SCHEMA_UNUSED TableReader table_reader_make( const uint8_t * buffer, int6
     return r;
 }
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int table_reader_has( const TableReader * r, int64_t n )
-{ return n >= 0 && r->offset <= r->size && n <= r->size - r->offset; }
+{ return n >= 0 && r->offset >= 0 && r->offset <= r->size && n <= r->size - r->offset; }
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int table_reader_room( const TableReader * r, uint64_t n )
-{ return r->offset <= r->size && n <= (uint64_t) (r->size - r->offset); }
+{ return r->offset >= 0 && r->offset <= r->size && n <= (uint64_t) (r->size - r->offset); }
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE uint8_t table_reader_get8( TableReader * r ) { return r->buffer[r->offset++]; }
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE uint16_t table_reader_get16( TableReader * r )
 { uint16_t v = r->buffer[r->offset]; v |= (uint16_t) ((uint16_t) r->buffer[r->offset+1] << 8); r->offset += 2; return v; }

@@ -347,9 +347,9 @@ static SCHEMA_UNUSED TableReader table_reader_make( const uint8_t * buffer, int6
     return r;
 }
 static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int table_reader_has( const TableReader * r, int64_t n )
-{ return n >= 0 && r->offset <= r->size && n <= r->size - r->offset; }
+{ return n >= 0 && r->offset >= 0 && r->offset <= r->size && n <= r->size - r->offset; }
 static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int table_reader_room( const TableReader * r, uint64_t n )
-{ return r->offset <= r->size && n <= (uint64_t) (r->size - r->offset); }
+{ return r->offset >= 0 && r->offset <= r->size && n <= (uint64_t) (r->size - r->offset); }
 static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE uint8_t table_reader_get8( TableReader * r ) { return r->buffer[r->offset++]; }
 static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE uint16_t table_reader_get16( TableReader * r )
 { uint16_t v = r->buffer[r->offset]; v |= (uint16_t) ((uint16_t) r->buffer[r->offset+1] << 8); r->offset += 2; return v; }
@@ -5729,6 +5729,7 @@ static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * 
                             TableReader elem;
                             if ( !table_reader_span( &sub, &elem ) ) { r->report->malformed = 1; goto end_cameras; }
                             render_camera_load_body( &elem, &value->cameras[i] );
+                            if(elem.offset!=elem.size) { r->report->malformed=1; render_camera_reset(&value->cameras[i]); }
                             value->cameras_count = (int32_t) i + 1;
                         }
                         end_cameras: ;
@@ -5764,6 +5765,7 @@ static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * 
                             TableReader elem;
                             if ( !table_reader_span( &sub, &elem ) ) { r->report->malformed = 1; goto end_ships; }
                             render_ship_load_body( &elem, &value->ships[i] );
+                            if(elem.offset!=elem.size) { r->report->malformed=1; render_ship_reset(&value->ships[i]); }
                             value->ships_count = (int32_t) i + 1;
                         }
                         end_ships: ;
@@ -5799,6 +5801,7 @@ static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * 
                             TableReader elem;
                             if ( !table_reader_span( &sub, &elem ) ) { r->report->malformed = 1; goto end_turrets; }
                             render_turret_load_body( &elem, &value->turrets[i] );
+                            if(elem.offset!=elem.size) { r->report->malformed=1; render_turret_reset(&value->turrets[i]); }
                             value->turrets_count = (int32_t) i + 1;
                         }
                         end_turrets: ;
@@ -5834,6 +5837,7 @@ static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * 
                             TableReader elem;
                             if ( !table_reader_span( &sub, &elem ) ) { r->report->malformed = 1; goto end_missiles; }
                             render_missile_load_body( &elem, &value->missiles[i] );
+                            if(elem.offset!=elem.size) { r->report->malformed=1; render_missile_reset(&value->missiles[i]); }
                             value->missiles_count = (int32_t) i + 1;
                         }
                         end_missiles: ;
@@ -5869,6 +5873,7 @@ static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * 
                             TableReader elem;
                             if ( !table_reader_span( &sub, &elem ) ) { r->report->malformed = 1; goto end_dynamic_props; }
                             render_dynamic_prop_load_body( &elem, &value->dynamic_props[i] );
+                            if(elem.offset!=elem.size) { r->report->malformed=1; render_dynamic_prop_reset(&value->dynamic_props[i]); }
                             value->dynamic_props_count = (int32_t) i + 1;
                         }
                         end_dynamic_props: ;
@@ -5904,6 +5909,7 @@ static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * 
                             TableReader elem;
                             if ( !table_reader_span( &sub, &elem ) ) { r->report->malformed = 1; goto end_static_props; }
                             render_static_prop_load_body( &elem, &value->static_props[i] );
+                            if(elem.offset!=elem.size) { r->report->malformed=1; render_static_prop_reset(&value->static_props[i]); }
                             value->static_props_count = (int32_t) i + 1;
                         }
                         end_static_props: ;
@@ -5939,6 +5945,7 @@ static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * 
                             TableReader elem;
                             if ( !table_reader_span( &sub, &elem ) ) { r->report->malformed = 1; goto end_cosmetic_props; }
                             render_cosmetic_prop_load_body( &elem, &value->cosmetic_props[i] );
+                            if(elem.offset!=elem.size) { r->report->malformed=1; render_cosmetic_prop_reset(&value->cosmetic_props[i]); }
                             value->cosmetic_props_count = (int32_t) i + 1;
                         }
                         end_cosmetic_props: ;
@@ -5974,6 +5981,7 @@ static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * 
                             TableReader elem;
                             if ( !table_reader_span( &sub, &elem ) ) { r->report->malformed = 1; goto end_lasers; }
                             render_laser_load_body( &elem, &value->lasers[i] );
+                            if(elem.offset!=elem.size) { r->report->malformed=1; render_laser_reset(&value->lasers[i]); }
                             value->lasers_count = (int32_t) i + 1;
                         }
                         end_lasers: ;
@@ -6009,6 +6017,7 @@ static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * 
                             TableReader elem;
                             if ( !table_reader_span( &sub, &elem ) ) { r->report->malformed = 1; goto end_explosions; }
                             render_explosion_load_body( &elem, &value->explosions[i] );
+                            if(elem.offset!=elem.size) { r->report->malformed=1; render_explosion_reset(&value->explosions[i]); }
                             value->explosions_count = (int32_t) i + 1;
                         }
                         end_explosions: ;

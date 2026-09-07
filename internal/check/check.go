@@ -1760,6 +1760,10 @@ func (c *checker) resolveDefault(f *ast.Field, out *ir.Field) {
 				c.errf(lit.Pos, "field %s: default %q is not valid UTF-8, which is what a string(N) holds (SPEC §4.2, §4.7)", f.Name, lit.Value)
 				return
 			}
+			if out.Type.Kind == ir.TString && strings.IndexByte(lit.Value, 0) >= 0 {
+				c.errf(lit.Pos, "field %s: a string(N) default cannot contain a zero byte (SPEC §4.7)", f.Name)
+				return
+			}
 			out.HasDefault = true
 			out.DefBytes = []byte(lit.Value)
 		case ir.TWString:
@@ -1803,6 +1807,10 @@ func (c *checker) resolveDefault(f *ast.Field, out *ir.Field) {
 	case ir.TFloat32, ir.TFloat64:
 		v, ok := c.evalFloat(f.Default)
 		if !ok {
+			return
+		}
+		if out.Type.Kind == ir.TFloat32 && (math.IsNaN(v) || math.IsInf(v, 0) || math.Abs(v) > math.MaxFloat32) {
+			c.errf(f.Default.ExprPos(), "field %s: default %g does not fit finite float32 storage", f.Name, v)
 			return
 		}
 		if out.HasFloatRange && (v < out.FMin || v > out.FMax) {
@@ -1998,8 +2006,16 @@ func (c *checker) resolveAttrs(f *ast.Field, out *ir.Field) {
 				f.Name, fmax, fmin, res)
 			return
 		}
+		if !ir.ValidCompressedFloatParams(fmin, fmax, res) {
+			c.errf(byKey["resolution"].Pos, "field %s: compressed-float step derivation overflows or requires the upper clamp at float32 (SPEC §4.3)", f.Name)
+			return
+		}
 		out.HasFloatRange = true
 		out.FMin, out.FMax, out.Resolution = fmin, fmax, res
+		// Steps is a frozen projection token computed from the source triple.
+		// The projection also includes every triple parameter, so this is
+		// not the codec's width or a source of false protocol matches.
+		// Runtime widths come only from ir.CompressedFloatParams.
 		out.Steps = int64(steps)
 		// `nearest` is a FROZEN projection token: every compressed-float
 		// line renders `round=nearest`, and keeping the assignment keeps

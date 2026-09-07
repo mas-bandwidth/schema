@@ -100,8 +100,17 @@ func (g *tableGen) wireWidenedScalar(f *ir.Field, source int, dst, rdr, ind, onB
 	g.pf("%s%s = decoded_wide;\n", ind, dst)
 }
 
+// A builder storage-cap refusal must pass through every enclosing body without
+// a default reset or an extra malformed event.
+func (g *tableGen) wireRefusalCheck(ind string) {
+	if g.anySequence {
+		g.pf("%sif(r->nodes!=NULL && r->nodes->refused) { return 0; }\n", ind)
+	}
+}
+
 func (g *tableGen) emitWireRead(st *ir.Struct) {
 	g.pf("static SCHEMA_UNUSED int %s( TableReader * r, %s * value )\n{\n", g.api(st.Name, "load_body"), st.Name)
+	g.wireRefusalCheck("    ")
 	g.pf("    %s( value );\n", g.api(st.Name, "reset"))
 	g.pf("    for ( ;; )\n    {\n        uint64_t ref, id; uint8_t kind;\n")
 	g.pf("        if ( !table_reader_leb( r, &ref ) ) { r->report->malformed = 1; return 0; }\n")
@@ -220,8 +229,8 @@ func (g *tableGen) wireReadFieldPayload(f *ir.Field, kind int, dst, bounded stri
 		case tkTable:
 			g.pf("%s            TableReader elem;\n%s            if ( !table_reader_span( &sub, &elem ) ) { %s }\n", ind, ind, bad)
 			g.pf("%s            %s( &elem, &%s[i] );\n", ind, g.api(f.Type.Name, "load_body"), dst)
-			// Array elements retain the decoded prefix, matching the reference
-			// rather than applying a nested field's exact-extent reset.
+			g.wireRefusalCheck(ind + "            ")
+			g.pf("%s            if(elem.offset!=elem.size) { r->report->malformed=1; %s(&%s[i]); }\n", ind, g.api(f.Type.Name, "reset"), dst)
 		case tkUnion:
 			g.pf("%s            if ( !%s( &sub, &%s[i], 1 ) ) { %s }\n", ind, g.unionWireName(f.Type.Ref.(*ir.Union), "load"), dst, bad)
 		default:
@@ -237,6 +246,7 @@ func (g *tableGen) wireReadFieldPayload(f *ir.Field, kind int, dst, bounded stri
 	case kind == tkTable:
 		g.pf("%sTableReader sub;\n%sif ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }\n", ind, ind)
 		g.pf("%s%s( &sub, &%s );\n", ind, g.api(f.Type.Name, "load_body"), dst)
+		g.wireRefusalCheck(ind)
 		g.pf("%sif ( sub.offset != sub.size ) { r->report->malformed = 1; %s( &%s ); }\n", ind, g.api(f.Type.Name, "reset"), dst)
 	default:
 		g.wireScalarRead(f, dst, "(*r)", "kind", ind, "r->report->malformed = 1; return 0;")
@@ -260,6 +270,8 @@ func (g *tableGen) wireReadKeyed(f *ir.Field, kind int, ind string) {
 	dst := fmt.Sprintf("value->%s[slot]", f.Name)
 	if kind == tkTable {
 		g.pf("%s        %s( &elem, &%s );\n", ind, g.api(f.Type.Name, "load_body"), dst)
+		g.wireRefusalCheck(ind + "        ")
+		g.pf("%s        if(elem.offset!=elem.size) { r->report->malformed=1; %s(&%s); }\n", ind, g.api(f.Type.Name, "reset"), dst)
 	} else {
 		g.wireScalarRead(f, dst, "elem", "elem_kind", ind+"        ", "r->report->malformed = 1; goto next_"+f.Name+";")
 	}

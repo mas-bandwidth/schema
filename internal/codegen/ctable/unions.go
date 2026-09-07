@@ -169,6 +169,7 @@ func (g *tableGen) emitUnionWire(un *ir.Union) {
 		}
 		if !v.Void() {
 			g.wireReadArm(v, armValue("(*value)", v), "            ")
+			g.wireRefusalCheck("            ")
 		}
 		if k != tkUnion {
 			g.pf("            if ( arm.offset != arm.size ) { r->report->malformed = 1; break; }\n")
@@ -241,7 +242,9 @@ func (g *tableGen) wireReadArm(v ir.UnionVariant, dst, ind string) {
 		}
 		g.wireReadFieldPayload(f, kind, dst, "arm")
 	case k == tkUnion:
-		g.pf("%sif ( !%s( &arm, &%s, 0 ) ) { %s }\n", ind, g.unionWireName(f.Type.Ref.(*ir.Union), "load"), dst, bad)
+		g.pf("%sif ( !%s( &arm, &%s, 0 ) ) {\n", ind, g.unionWireName(f.Type.Ref.(*ir.Union), "load"), dst)
+		g.wireRefusalCheck(ind + "    ")
+		g.pf("%s    %s }\n", ind, bad)
 	default:
 		// A short payload is confined to this arm and leaves it unset.
 		g.wireScalarRead(f, dst, "arm", "kind", ind, "r->report->malformed = 1; goto bad_arm_"+v.Name+";")

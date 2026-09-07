@@ -90,7 +90,7 @@ inline bool schema_utf8_valid( const uint8_t * bytes, int32_t length )
         {
             return false;
         }
-        if ( i + continuations >= length )
+        if ( continuations >= length - i )
         {
             return false;
         }
@@ -134,7 +134,7 @@ SCHEMA_READ_INLINE bool schema_interior_null( const uint8_t * bytes, int32_t len
     int32_t i = 0;
     if ( length >= 8 )
     {
-        for ( ; i + 8 <= length; i += 8 )
+        for ( ; i <= length - 8; i += 8 )
         {
             memcpy( &word, bytes + i, 8 );
             if ( ( ( word - 0x0101010101010101ull ) & ~word & 0x8080808080808080ull ) != 0 )

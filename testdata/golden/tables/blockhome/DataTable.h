@@ -3737,6 +3737,7 @@ BLOCKHOME_TABLE_INLINE bool GunnerSettingsLoadBody( TableReader & r, GunnerSetti
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             FiringGroupLoadBody( elem, value.firing_groups[(int32_t) i] );
+                            if ( elem.offset != elem.size ) { r.report->malformed = true; FiringGroupReset( value.firing_groups[(int32_t) i] ); }
                         }
                         sub.offset += (int64_t) elem_len;
                         decoded = i + 1;
@@ -3790,6 +3791,7 @@ BLOCKHOME_TABLE_INLINE bool GunnerSettingsLoadBody( TableReader & r, GunnerSetti
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             FiringGroupLoadBody( elem, value.missile_groups[(int32_t) i] );
+                            if ( elem.offset != elem.size ) { r.report->malformed = true; FiringGroupReset( value.missile_groups[(int32_t) i] ); }
                         }
                         sub.offset += (int64_t) elem_len;
                         decoded = i + 1;

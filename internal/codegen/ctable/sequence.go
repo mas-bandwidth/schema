@@ -141,13 +141,14 @@ static SCHEMA_UNUSED int table_extent_reserve(int64_t * at,int64_t count,int64_t
 typedef struct TableSequenceFill
 {
     TableSequence * value; TableWorker * worker; uint8_t * array;
-    int64_t width; int32_t capacity; int ok;
+    int64_t width; int32_t capacity; int ok,refused;
 } TableSequenceFill;
 static SCHEMA_UNUSED TableSequenceFill table_sequence_fill(TableSink * sink,TableSequence * value,uint64_t count,int64_t width,int64_t alignment)
 {
     TableSequenceFill f; memset(&f,0,sizeof(f)); f.value=value; f.width=width;
     memset(value,0,sizeof(*value));
-    if(sink==NULL || count>INT32_MAX) { return f; }
+    if(sink==NULL) { return f; }
+    if(count>INT32_MAX) { f.refused=sink->worker!=NULL; return f; }
     f.worker=sink->worker; f.capacity=(int32_t)count;
     if(f.worker!=NULL) { f.ok=1; return f; }
     if(sink->region!=NULL) {
@@ -249,7 +250,7 @@ func (g *tableGen) emitListRead(f *ir.Field, dst, bounded string) {
 		g.pf("                    elem_kind=table_reader_get8(&sub); if(!table_reader_leb(&sub,&count)) { r->report->malformed=1; break; }\n")
 	}
 	g.pf("                    if(elem_kind!=%d) { if(!(%s)) { r->report->kind_mismatch++; break; } r->report->widened++; }\n", kind, wireElementWidenTest(f, kind, "elem_kind"))
-	g.pf("                    fill=table_sequence_fill(r->nodes ? r->nodes->sink : NULL,&%s,count,sizeof(%s),SCHEMA_TABLE_ALIGNOF(%s));\n                    if(!fill.ok) { r->report->malformed=1; break; }\n", dst, typ, typ)
+	g.pf("                    fill=table_sequence_fill(r->nodes ? r->nodes->sink : NULL,&%s,count,sizeof(%s),SCHEMA_TABLE_ALIGNOF(%s));\n                    if(fill.refused) { r->nodes->refused=1; return 0; }\n                    if(!fill.ok) { r->report->malformed=1; break; }\n", dst, typ, typ)
 	g.pf("                    for(i=0;i<count;i++) {\n                        %s * element=(%s *)table_sequence_fill_next(&fill); if(element==NULL) { r->report->malformed=1; break; }\n", typ, typ)
 	if ref, ok := e.Type.Ref.(*ir.Struct); ok && !e.Type.Pointer {
 		g.pf("                        %s(element);\n", g.api(ref.Name, "reset"))
@@ -259,6 +260,8 @@ func (g *tableGen) emitListRead(f *ir.Field, dst, bounded string) {
 	switch kind {
 	case tkTable:
 		g.pf("                            TableReader item; if(!table_reader_span(&sub,&item)) { %s }\n                            %s(&item,element);\n", bad, g.api(e.Type.Name, "load_body"))
+		g.wireRefusalCheck("                            ")
+		g.pf("                            if(item.offset!=item.size) { r->report->malformed=1; %s(element); }\n", g.api(e.Type.Name, "reset"))
 	case tkUnion:
 		g.pf("                            if(!%s(&sub,element,1)) { %s }\n", g.unionWireName(e.Type.Ref.(*ir.Union), "load"), bad)
 	default:

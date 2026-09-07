@@ -5654,7 +5654,13 @@ inline bool MarkerLoadBody( TableReader & r, const TableNodeMap & nodes, Marker 
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.label[0] = 0; value.label_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
+                {
+                    r.report->malformed = true;
+                    memset( value.label, 0, sizeof( value.label ) );
+                    value.label_length = 0;
+                    r.offset += (int64_t) len; break;
+                }
                 uint64_t keep = len;
                 if ( keep > 8 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 8 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.label, r.buffer + r.offset, (size_t) keep );
@@ -7097,7 +7103,13 @@ inline bool MarkerLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, M
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.label[0] = 0; value.label_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
+                {
+                    r.report->malformed = true;
+                    memset( value.label, 0, sizeof( value.label ) );
+                    value.label_length = 0;
+                    r.offset += (int64_t) len; break;
+                }
                 uint64_t keep = len;
                 if ( keep > 8 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 8 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.label, r.buffer + r.offset, (size_t) keep );

@@ -76,6 +76,14 @@ func (g *tableGen) loadCall(f *ir.Field, name, reader, expr string) string {
 	return fmt.Sprintf("%sLoadBody( %s, %s )", name, reader, expr)
 }
 
+// emitLoadRefusal stops the containing decode before its framing recovery can
+// turn a nested builder storage refusal into a malformed event.
+func (g *tableGen) emitLoadRefusal(name, ind string) {
+	if g.anyExtent && g.isVar(name) {
+		g.pf("%sif ( nodes.refused ) { return false; }\n", ind)
+	}
+}
+
 // walker returns true when a member needs the pointer-graph walkers: every
 // variable member, plus every table some pointer targets (a pointed-at table
 // may itself be pointer-free, and still needs to be allocated, packed,
@@ -1150,6 +1158,9 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("            if ( directory[k + 1].offset != kTableNodeAbsent )\n            {\n")
 	g.pf("                TableReader sub( body, length, out, &ids_table );\n")
 	g.pf("                %sNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );\n", n)
+	if g.anyExtent {
+		g.pf("                if ( nodes.refused ) { break; }\n")
+	}
 	g.pf("            }\n")
 	g.pf("            k++;\n")
 	g.pf("        }\n    }\n")

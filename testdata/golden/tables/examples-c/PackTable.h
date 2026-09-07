@@ -347,9 +347,9 @@ static SCHEMA_UNUSED TableReader table_reader_make( const uint8_t * buffer, int6
     return r;
 }
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int table_reader_has( const TableReader * r, int64_t n )
-{ return n >= 0 && r->offset <= r->size && n <= r->size - r->offset; }
+{ return n >= 0 && r->offset >= 0 && r->offset <= r->size && n <= r->size - r->offset; }
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int table_reader_room( const TableReader * r, uint64_t n )
-{ return r->offset <= r->size && n <= (uint64_t) (r->size - r->offset); }
+{ return r->offset >= 0 && r->offset <= r->size && n <= (uint64_t) (r->size - r->offset); }
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE uint8_t table_reader_get8( TableReader * r ) { return r->buffer[r->offset++]; }
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE uint16_t table_reader_get16( TableReader * r )
 { uint16_t v = r->buffer[r->offset]; v |= (uint16_t) ((uint16_t) r->buffer[r->offset+1] << 8); r->offset += 2; return v; }
@@ -1963,6 +1963,7 @@ static SCHEMA_UNUSED int pack_config_load_body( TableReader * r, PackConfig * va
                         }
                         if ( slot < 0 ) { continue; }
                         ship_entry_load_body( &elem, &value->ships[slot] );
+                        if(elem.offset!=elem.size) { r->report->malformed=1; ship_entry_reset(&value->ships[slot]); }
                     }
                 }
                 break;
@@ -2061,6 +2062,7 @@ static SCHEMA_UNUSED int pack_config_load_body( TableReader * r, PackConfig * va
                             TableReader elem;
                             if ( !table_reader_span( &sub, &elem ) ) { r->report->malformed = 1; goto end_reserves; }
                             ship_entry_load_body( &elem, &value->reserves[i] );
+                            if(elem.offset!=elem.size) { r->report->malformed=1; ship_entry_reset(&value->reserves[i]); }
                             value->reserves_count = (int32_t) i + 1;
                         }
                         end_reserves: ;

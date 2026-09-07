@@ -6630,7 +6630,7 @@ inline PairsSlotsEntryKeyRead PairsSlotsEntryReadKey( const uint8_t * body, int6
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { out.malformed = true; return out; }
-        if ( field_ref == 0 ) { return out; } // the terminator: no key field is the key's DEFAULT
+        if ( field_ref == 0 ) { out.malformed = r.offset != r.size; return out; } // the terminator consumes the entry's L
         if ( ids == NULL || field_ref > (uint64_t) ids->count ) { out.malformed = true; return out; }
         const uint64_t field_id = ids->at( field_ref );
         if ( !r.has( 1 ) ) { out.malformed = true; return out; }
@@ -6755,6 +6755,7 @@ inline bool PairsSlotsEntrySaveBody( const Ctx & ctx, const TableNumbering & num
 
 inline bool PairsSlotsEntryLoadBody( TableReader & r, const TableNodeMap & nodes, PairsSlotsEntry & value )
 {
+    if ( nodes.refused ) { return false; }
     PairsSlotsEntryReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -7102,6 +7103,7 @@ inline bool PairsSaveBody( const Ctx & ctx, const TableNumbering & numbering, Ta
 
 inline bool PairsLoadBody( TableReader & r, const TableNodeMap & nodes, Pairs & value )
 {
+    if ( nodes.refused ) { return false; }
     PairsReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -7203,6 +7205,7 @@ inline bool PairsLoadBody( TableReader & r, const TableNodeMap & nodes, Pairs & 
                         {
                             TableReader elem( elem_body, (int64_t) elem_len, r.report, r.ids );
                             PairsSlotsEntryLoadBody( elem, nodes, *slot );
+                            if ( nodes.refused ) { return false; }
                         }
                         last_key = read.key; // the WIRE keys of the entries that LAND
                         landed = true;
@@ -8801,6 +8804,7 @@ inline bool PairsLoadBuilder( PairsBuilder & builder, const uint8_t * wire_file,
             {
                 TableReader sub( body, length, out, &ids_table );
                 PairsNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                if ( nodes.refused ) { break; }
             }
             k++;
         }
@@ -8900,6 +8904,7 @@ inline bool PairsSlotsEntrySaveBodyRetain( const Ctx & ctx, const TableNumbering
 
 inline bool PairsSlotsEntryLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, PairsSlotsEntry & value, TableRetain * retain, const TableRetainPath & path )
 {
+    if ( nodes.refused ) { return false; }
     PairsSlotsEntryReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
@@ -9209,6 +9214,7 @@ inline bool PairsSaveBodyRetain( const Ctx & ctx, const TableNumbering & numberi
 
 inline bool PairsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Pairs & value, TableRetain * retain, const TableRetainPath & path )
 {
+    if ( nodes.refused ) { return false; }
     PairsReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
@@ -9318,6 +9324,7 @@ inline bool PairsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Pa
                         {
                             TableReader elem( elem_body, (int64_t) elem_len, r.report, r.ids );
                             PairsSlotsEntryLoadBodyRetain( elem, nodes, *slot, retain, TableRetainStepInto( path, 0, (uint32_t) ( fill.map->count - 1 ) ) );
+                            if ( nodes.refused ) { return false; }
                         }
                         last_key = read.key; // the WIRE keys of the entries that LAND
                         landed = true;

@@ -341,7 +341,7 @@ typedef struct TableReader
     int64_t size, offset;
     TableReport * report;
     const uint8_t * ids;
-    const struct TableNodeMap * nodes;
+    struct TableNodeMap * nodes;
     uint64_t id_count;
     int nested;
 } TableReader;
@@ -353,9 +353,9 @@ static SCHEMA_UNUSED TableReader table_reader_make( const uint8_t * buffer, int6
     return r;
 }
 static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int table_reader_has( const TableReader * r, int64_t n )
-{ return n >= 0 && r->offset <= r->size && n <= r->size - r->offset; }
+{ return n >= 0 && r->offset >= 0 && r->offset <= r->size && n <= r->size - r->offset; }
 static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int table_reader_room( const TableReader * r, uint64_t n )
-{ return r->offset <= r->size && n <= (uint64_t) (r->size - r->offset); }
+{ return r->offset >= 0 && r->offset <= r->size && n <= (uint64_t) (r->size - r->offset); }
 static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE uint8_t table_reader_get8( TableReader * r ) { return r->buffer[r->offset++]; }
 static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE uint16_t table_reader_get16( TableReader * r )
 { uint16_t v = r->buffer[r->offset]; v |= (uint16_t) ((uint16_t) r->buffer[r->offset+1] << 8); r->offset += 2; return v; }
@@ -1315,7 +1315,7 @@ typedef struct TableNodeMap
     uint8_t * base;
     const TableNodeDirEntry * entries;
     uint64_t count;
-    int good, arena;
+    int good, arena, refused;
     TableSink * sink;
 } TableNodeMap;
 
@@ -2159,7 +2159,7 @@ static SCHEMA_UNUSED int schema_graphdemo_marker_load_graph_(TableReader * reade
             if(size<0 || size>sink->region->capacity-at) { reader->report->malformed=1; return 0; }
             directory[k+1].offset=(uint64_t)at; sink->region->used+=size;
         } else {
-            uint32_t at=table_worker_alloc(sink->worker,table_node_wire_storage(type,&body));
+            uint32_t at=table_worker_alloc(sink->worker,type->blob ? table_node_wire_storage(type,&body) : type->size);
             if(at==kTableAllocFailed) { reader->report->malformed=1; return 0; }
             directory[k+1].offset=at;
         }
@@ -2180,14 +2180,15 @@ static SCHEMA_UNUSED int schema_graphdemo_marker_load_graph_(TableReader * reade
                     case UINT64_C(0x69ff34904242a73d): tally_load_body(&body,(Tally *)value); break;
                     default: break;
                 }
+                if(nodes->refused) { return 0; }
             }
             k++;
         }
     }
     reader->nodes=nodes; reader->nested=0;
-    { TableRegionSink extent; TableSink carve; carve.worker=sink->worker; carve.region=NULL;
+    { int read_ok; TableRegionSink extent; TableSink carve; carve.worker=sink->worker; carve.region=NULL;
       if(!nodes->arena) { extent.base=(uint8_t *)(void *)root; extent.used=sizeof(*root); extent.capacity=schema_graphdemo_marker_wire_storage_(reader); carve.region=&extent; }
-      nodes->sink=&carve; marker_load_body(reader,root); nodes->sink=NULL; } return 1;
+      nodes->sink=&carve; read_ok=marker_load_body(reader,root); nodes->sink=NULL; return !nodes->refused && (!nodes->arena || read_ok); }
 }
 static SCHEMA_UNUSED const Marker * marker_load(uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, TableReport * report)
 {
@@ -2198,23 +2199,23 @@ static SCHEMA_UNUSED const Marker * marker_load(uint8_t * region, int64_t region
     if(total<0 || region==NULL || region_bytes<total || ((uintptr_t)region & (kTableAlign-1))!=0) { report->malformed=1; return NULL; }
     memset(region,0,(size_t)total); directory=(TableNodeDirEntry *)(void *)(region+data);
     directory[0].offset=0; directory[0].type_id=UINT64_C(0xd6458a3eef83d457);
-    nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0;
+    nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0; nodes.refused=0; nodes.sink=NULL;
     place.base=region; place.capacity=data; place.used=schema_graphdemo_marker_wire_storage_(&reader); sink.region=&place; sink.worker=NULL;
     if(!schema_graphdemo_marker_load_graph_(&reader,(Marker *)(void *)region,&nodes,directory,&sink)) { return NULL; }
     return (const Marker *)(const void *)region;
 }
 static SCHEMA_UNUSED int marker_load_builder(MarkerBuilder * builder, const uint8_t * wire, int64_t wire_bytes, TableReport * report)
 {
-    TableReport ignored; TableReader reader; TableNodeMap nodes; TableNodeDirEntry * directory; TableSink sink; int64_t data,records,total; Marker * root; int ok;
+    TableReport ignored; TableReader reader; TableNodeMap nodes; TableNodeDirEntry * directory; TableSink sink; TableNodeScan scan; TableReader body; uint64_t id; int64_t records=0; Marker * root; int ok;
     memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; }
     if(!table_wire_open(&reader,wire,wire_bytes,report)) { return 0; }
-    total=schema_graphdemo_marker_load_layout_(&reader,&data,&records);
-    if(total<0) { report->malformed=1; return 0; }
+    scan=table_node_scan_begin(&reader); while(table_node_scan_next(&scan,&id,&body)) { records++; }
+    if(records>=INT64_MAX/(int64_t)sizeof(TableNodeDirEntry)-1) { report->malformed=1; return 0; }
     root=marker_builder_root(builder); if(root==NULL) { report->malformed=1; return 0; }
     directory=(TableNodeDirEntry *)table_allocate(builder->arena.allocator,(records+1)*(int64_t)sizeof(TableNodeDirEntry));
     if(directory==NULL) { report->malformed=1; return 0; }
     directory[0].offset=(uint64_t)builder->root_ref.value; directory[0].type_id=UINT64_C(0xd6458a3eef83d457);
-    nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; sink.region=NULL; sink.worker=&builder->main;
+    nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; sink.region=NULL; sink.worker=&builder->main;
     ok=schema_graphdemo_marker_load_graph_(&reader,root,&nodes,directory,&sink); table_release(builder->arena.allocator,directory); return ok;
 }
 /* ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ---- */
