@@ -1,2 +1,2 @@
 {"targets": "build/conformance-harness build/tables-generated-js/.stamp table-base64-js",
- "node": "26"}
+ "node": "26", "env": "NODE=node"}
