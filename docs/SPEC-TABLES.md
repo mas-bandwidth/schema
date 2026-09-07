@@ -13623,6 +13623,26 @@ schema name, as everywhere else in that backend.
   so that the base's alignment can be the last clause. A block whose bytes
   are fewer than its prologue answers `truncated`, and a null base
   `unaligned_base`, on the readings §7 gives those two.
+
+  **THE READ SIDE TAKES A CONST OVERLOAD, and the surface SPLITS the way C#'s
+  already does.** A block is memory another build wrote, so a consumer opens
+  bytes it did not produce: it reads them and writes nothing, and a read-only
+  mapping is not something a loader should have to `const_cast` to open. So
+  `bool <Name>BlockOpen( <Name>Block::Const & block, const void * base,
+  int64_t bytes, TableRefuseReason * reason = NULL )` sits beside the mutable
+  one. `<Name>Block::Const` is a MEMBER TYPE of the handle above and claims no
+  name of its own (§11); it carries the same three facts with `const` on both
+  pointers, and the row accessors overloaded on it answer the CONST VIEWS,
+  `TableBlockConstRows<Row>` and `TableBlockConstSpan<Row>`, whose iterators,
+  spans and typed base all hand back `const Row`. **THE CHECK IS ONE BODY**:
+  both overloads run the same clauses in the same order and name the same
+  reason on the same refusal, because a check reads and never writes, so the
+  two paths cannot drift. **The PRODUCER's path is unchanged** in every part:
+  `Begin`, the fill accessors and the typed base a worker indexes are what
+  they were, and a producer holds a mutable block exactly as before. The split
+  is the one C# states above with `ref readonly` and `ReadOnlySpan<Row>`, and
+  the one Rust has by returning `&[Row]`. **A write through a const view is a
+  COMPILE ERROR**, held by a negative compile control (§19.5).
 - **An array is ITERATED, not indexed by hand.** The accessor yields a
   reference to each row where it lies, at the pitch the instance gives, for
   `count` rows — a range-for in C++, an enumerator in C#, the equivalent per
@@ -13835,6 +13855,17 @@ difference between a form and a convention.
   offset in the compiler's layout model and the generated asserts go red on
   both backends. A layout test that shares its layout model with the code it
   checks proves nothing, and these two are what separate them.
+- **THE CONST READ PATH, and its NEGATIVE COMPILE CONTROL** (§19.2). A pinned
+  block image is loaded, held as a `const uint8_t *` from that moment and
+  opened with no cast through the const overload; its rows are walked through
+  `TableBlockConstRows` and `TableBlockConstSpan` and compared, value for
+  value, against the same bytes opened writable, so the two overloads agree
+  and the producer's path is proved unchanged rather than assumed. The refusal
+  clauses answer on the const overload too, a null base and a short buffer and
+  an unaligned base each naming what §19.2 gives it. The CONTROL is the half a
+  run cannot hold: the same program with one assignment through the const view
+  must FAIL TO COMPILE, on the const qualification, because a read-only view
+  whose writes compile is a view in name only.
 - **A `bool` row.** A row type carrying two `bool`s beside its scalars, whose
   C# size and offsets are asserted under the managed model (§19.3) — the case
   where the two C# layout models disagree, pinned so a port cannot pick the
