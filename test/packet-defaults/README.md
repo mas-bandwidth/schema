@@ -53,3 +53,12 @@ Rust's `Default` stays the zero form; `new()` applies declared defaults.
 copies through an overlay and requires the compiled consumer to fail the
 constructor-bytes marker. Both targets are dependencies of `test-rust`, and
 table-closure defaults remain refused in Rust.
+
+`make packet-defaults-cs` runs the eight C++ pins in Debug and Release. It
+checks construction, allocation-free in-place `Init`, the distinct `Zero` form,
+backing-array defaults, short and empty literals, unsigned 33/64-bit masks, a
+defaultless twin, reused prefixes and repeated union selection. The reader
+retains arm objects and buffers. `make packet-defaults-cs-negative-control`
+removes the literal byte assignments through an overlay and requires the built
+consumer to fail the constructor-bytes marker. Both checks ride `test-cs`;
+table-closure defaults remain refused.
