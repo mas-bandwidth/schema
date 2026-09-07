@@ -1,6 +1,8 @@
 # schema — working conventions for sessions in this repo
 
-- **docs/SPEC.md is the one source of truth, written as a clean reference.** It states the
+- **docs/SPEC.md is the source of truth for the type wire, and docs/SPEC-TABLES.md is
+  the source of truth for the table wire.** Both are written as clean references, and the
+  two wires share one language, one unit and one compiler (SPEC.md §1 non-goals). Each states the
   most recent specification only — present tense, reference register, no history, no
   decision narration (Glenn's directive, 2026-08-18: SPEC must read for a human
   implementer, not like a CLAUDE.md). Decision provenance — who ruled what, when, in
@@ -65,19 +67,28 @@ The long arc (Glenn, 2026-08-04): schema as the single data-definition language,
 the opinionated layers built on top of it living elsewhere. The boundary, in Glenn's
 words (2026-08-25): *"schema is types and bitpacking and enums and constants."*
 
-- **The table layer left the language (2026-08-25).** Tables, collections and
-  the JSON data compiler are not part of schema: the language is the realtime
-  wire — hardcoded structs, one protocol id, same-or-refuse — and content
-  pipelines are out of scope. `table` stays a reserved word and the parser
-  refuses it by name.
-- **The protocol layer left the language (2026-08-26).** Messages, objects,
-  the view markers, quantize, round and contexts are not part of schema: the
-  free offering is types, enums, flags, unions, constants and bitpacking — a
-  pure data contract, zero protocol conventions. `message` and `object` stay
-  reserved words and the parser refuses them by name; the projection carries
-  frozen `message=false` and `round=nearest` tokens beside `table=false` so
-  the refusals moved no protocol-free unit's id. The positioning is
-  empowerment: build your own message types with enums and unions.
+- **The table layer is part of the language.** `table` declares a data type on
+  the evolution-tolerant table wire, and docs/SPEC-TABLES.md is its normative page
+  beside docs/SPEC.md. `type` is the realtime wire (hardcoded structs, one protocol
+  id, same-or-refuse) and `table` is the tolerant one (identity by name hash, unknown
+  fields skipped, absent fields defaulted, any reader reads any data). Collections
+  live in a `table` body alone: the unbounded `map[K]V` and `[]T` are declarable there
+  and refused by name in a `type` (SPEC.md §1, SPEC-TABLES.md §2.8, §2.9). The data
+  path is schema's too, as `schema pack`, `unpack`, `cook`, `cook-check` and `uncook`
+  over a JSON tree. ROADMAP.md's table-wire rows carry each backend's state, C++ the
+  reference and the other eight ports behind it.
+- **The protocol layer stays out of the language.** Messages, objects, the view
+  markers, quantize, round and contexts are not part of schema: the offering is
+  types, enums, flags, unions, constants and bitpacking on the type wire, and tables
+  on the table wire, with zero protocol conventions on either. `message` and `object`
+  are reserved words the parser refuses by name, and `contexts` is refused at file
+  scope. The packet projection carries frozen `table=false` and `message=false`
+  tokens on every `type` line and a frozen `round=nearest` on every compressed-float
+  line, which hold every existing unit's id stable; moving either is a
+  ProjectionVersion bump, taken deliberately or not at all. The positioning is
+  empowerment: build your own message types with enums and unions. The table wire's
+  own MESSAGE FORM (SPEC-TABLES.md §3.3) is a form byte on that wire and declares
+  nothing, so it takes no keyword and refuses none.
 - **The delta pass** stays out of scope here (SPEC's non-goals): schema
   declares types; delta encoding is an application's own layer.
 - **Constants migrate through a temporary duplicate set** (schema + flatbuffers) while
