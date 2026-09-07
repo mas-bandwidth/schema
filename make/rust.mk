@@ -9,6 +9,33 @@ SERIALIZE_RS ?= ../serialize.rs
 # cargo lives in the rustup keg, which is not on PATH by default
 RUSTUP_BIN ?= /opt/homebrew/opt/rustup/bin
 
+build/packet-text/rust/.stamp: bin/schema test/packet-text/Narrow.schema test/packet-text/rust/src/main.rs make/rust.mk
+	./bin/schema generate --lang rust --out build/packet-text/rust/src test/packet-text/Narrow.schema
+	cp test/packet-text/rust/src/main.rs build/packet-text/rust/src/main.rs
+	@printf '[package]\nname = "packettext"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "%s/$(SERIALIZE_RS)" }\n' "$(CURDIR)" > build/packet-text/rust/Cargo.toml
+	@touch $@
+
+.PHONY: packet-utf8-rust packet-utf8-rust-negative-control
+packet-utf8-rust: build/packet-text/rust/.stamp build/packet-text/cpp/driver build/packet-text/harness
+	PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --manifest-path build/packet-text/rust/Cargo.toml
+	./build/packet-text/harness ./build/packet-text/rust/target/debug/packettext
+	PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --release --manifest-path build/packet-text/rust/Cargo.toml
+	./build/packet-text/harness ./build/packet-text/rust/target/release/packettext
+
+packet-utf8-rust-negative-control: packet-utf8-rust
+	@mkdir -p build/packet-text/rust-negative
+	go run ./tools/sabotage -name packet-utf8-rust-read -out build/packet-text/rust-negative/functions.gotext internal/codegen/rust/functions.go
+	@printf '{"Replace":{"%s/internal/codegen/rust/functions.go":"%s/build/packet-text/rust-negative/functions.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-text/rust-negative/overlay.json
+	go run -overlay=build/packet-text/rust-negative/overlay.json ./cmd/schema generate --lang rust --out build/packet-text/rust-negative/src test/packet-text/Narrow.schema
+	cp test/packet-text/rust/src/main.rs build/packet-text/rust-negative/src/main.rs
+	cp build/packet-text/rust/Cargo.toml build/packet-text/rust-negative/Cargo.toml
+	PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --release --manifest-path build/packet-text/rust-negative/Cargo.toml
+	@if ./build/packet-text/harness -mutations-only ./build/packet-text/rust-negative/target/release/packettext > build/packet-text/rust-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: Rust UTF-8 removal passed'; exit 1; fi
+	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-text/rust-negative/log || { cat build/packet-text/rust-negative/log; exit 1; }
+	@echo 'packet UTF-8 Rust negative control: removed read validation fails bit-flip agreement'
+
+test-rust: packet-utf8-rust packet-utf8-rust-negative-control
+
 generated/rust-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 	./bin/schema generate --lang rust --out generated/rust-ludicrous/src examples128
 	@printf '[package]\nname = "ludicrous"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../$(SERIALIZE_RS)" }\n' > generated/rust-ludicrous/Cargo.toml
