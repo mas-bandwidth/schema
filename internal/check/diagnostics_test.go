@@ -75,6 +75,26 @@ func TestDiagnostics(t *testing.T) {
 		{name: "if condition is a bool array", want: "must be a bool",
 			src: "package t\ntype T {\n    flags [4]bool\n    if flags { x uint8 }\n}\n"},
 
+		// ---- a guard nested under its own negation (schema#268) ----
+		// Nested guards CONJOIN, so `if on { if !on { ... } }` emits
+		// `if ( value.on && !value.on )` and clang refuses the generated
+		// header under -Werror: "'&&' of a value and its negation always
+		// evaluates to false" (-Wtautological-negation-compare). No field
+		// under the inner guard ever rides, in any target, so the answer is
+		// owed at the source rather than by one backend's warning.
+		{name: "a guard nested under its own negation", want: "can never ride",
+			src: "package t\ntype T {\n    on bool\n    if on {\n        if !on { x int32 }\n    }\n}\n"},
+		{name: "a guard nested under its own negation, in a table", want: "can never ride",
+			src: "package t\ntable T {\n    on bool\n    if on {\n        if !on { x int32 }\n    }\n}\n"},
+		{name: "a guard nested under the else of its own condition", want: "can never ride",
+			src: "package t\ntype T {\n    on bool\n    if on {\n    } else {\n        if on { x int32 }\n    }\n}\n"},
+		{name: "an else side that contradicts its enclosing guard", want: "can never ride",
+			src: "package t\ntype T {\n    on bool\n    if on {\n        if on { x int32 } else { y int32 }\n    }\n}\n"},
+		{name: "a self-negating guard two blocks down", want: "can never ride",
+			src: "package t\ntype T {\n    on bool\n    other bool\n    if on {\n        if other {\n            if !on { x int32 }\n        }\n    }\n}\n"},
+		{name: "a negated guard renegated under itself", want: "can never ride",
+			src: "package t\ntype T {\n    on bool\n    if !on {\n        if on { x int32 }\n    }\n}\n"},
+
 		// ---- ranges and storage ----
 		{name: "range does not fit storage", want: "does not fit its declared storage",
 			src: "package t\ntype T { h int8 | min = 0, max = 1000 }\n"},
@@ -613,6 +633,20 @@ func TestGoodCornersStillCompile(t *testing.T) {
 			src: "package t\nconst tableJsonMaxDepth = 5\ntype tableJsonIn { n int32 }\ntype tableCookRecords { n int32 }\n"},
 		{name: "nested if with cond in the same branch",
 			src: "package t\ntype T {\n    a bool\n    if a {\n        b bool\n        if b { x uint8 }\n    }\n}\n"},
+		// The self-negation refusal (schema#268) is about ONE name taken both
+		// ways down one path. A guard that AGREES with its enclosing guard is
+		// redundant and rides; two different names never conjoin to false; and
+		// two sibling branches on one name are the ordinary either-or shape.
+		{name: "a guard that agrees with its enclosing guard",
+			src: "package t\ntype T {\n    on bool\n    if on {\n        if on { x int32 }\n    }\n}\n"},
+		{name: "a negated guard that agrees with its enclosing negation",
+			src: "package t\ntype T {\n    on bool\n    if !on {\n        if !on { x int32 }\n    }\n}\n"},
+		{name: "a nested guard on another name",
+			src: "package t\ntype T {\n    on bool\n    other bool\n    if on {\n        if !other { x int32 }\n    }\n}\n"},
+		{name: "sibling branches on one name",
+			src: "package t\ntype T {\n    on bool\n    if on { x int32 }\n    if !on { y int32 }\n}\n"},
+		{name: "the else side of a nested guard that agrees with nothing above it",
+			src: "package t\ntype T {\n    on bool\n    other bool\n    if on {\n        if other { x int32 } else { y int32 }\n    }\n}\n"},
 		{name: "fixed default in whole units, exactly representable (the reopened door)",
 			src: "package t\ntype Q { w fixed(2, 30) = 1.0 | min = -1, max = 1\n x fixed(16, 16) = 0.5 | min = 0, max = 100\n y fixed(48, 16) = 3 | min = -10, max = 10 }\n"},
 		{name: "field named flags at block scope",
@@ -955,5 +989,40 @@ func TestArrayOfTablesArmIsRefused(t *testing.T) {
 		if errs := runUnit(t, map[string]string{"Good.schema": tc.src}); len(errs) != 0 {
 			t.Errorf("%s: refused: %v", tc.name, errs)
 		}
+	}
+}
+
+// A SELF-NEGATING GUARD NAMES BOTH GUARDS (schema#268). The refusal is about
+// a pair, so one half of it is not an answer: the message spells the inner
+// guard, the enclosing guard it contradicts, and where that one is. Reverting
+// the outer half of the message turns this red.
+func TestSelfNegatingGuardNamesBothGuards(t *testing.T) {
+	for _, tc := range []struct {
+		name, src string
+		want      []string
+	}{
+		{
+			name: "the negation nested under the plain guard",
+			src:  "package t\ntype T {\n    on bool\n    if on {\n        if !on { x int32 }\n    }\n}\n",
+			want: []string{"if !on can never ride", "if on", "Bad.schema:4:8"},
+		},
+		{
+			name: "the plain guard nested under the else",
+			src:  "package t\ntype T {\n    on bool\n    if on {\n    } else {\n        if on { x int32 }\n    }\n}\n",
+			want: []string{"if on can never ride", "the else of if on", "Bad.schema:4:8"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			errs := runUnit(t, map[string]string{"Bad.schema": tc.src})
+			if len(errs) != 1 {
+				t.Fatalf("want 1 diagnostic, got %d: %v", len(errs), errs)
+			}
+			got := errs[0].Error()
+			for _, want := range tc.want {
+				if !strings.Contains(got, want) {
+					t.Errorf("the diagnostic does not carry %q: %s", want, got)
+				}
+			}
+		})
 	}
 }

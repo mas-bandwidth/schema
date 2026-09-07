@@ -1293,6 +1293,13 @@ array element fields are compile errors naming the offending reference and
 the rule. The rule is stated over `if` sides; it extends unchanged to `case`
 bodies when `switch` lands.
 
+**Nested guards conjoin, so a branch that contradicts an enclosing guard on
+the same field is a compile error naming both guards.** `if on { if !on
+{ ... } }` fixes `on` both ways down one path: no field under the inner guard
+is ever written or read, in any target. An `else` side counts as the guard it
+is, so `if on { } else { if on { ... } }` is refused on the same rule, while a
+branch that agrees with an enclosing guard stays legal.
+
 ### 4.6 Shape checks
 
 All compile errors with positions:

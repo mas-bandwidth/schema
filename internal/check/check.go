@@ -1121,11 +1121,23 @@ type scopeFrame struct {
 	fields map[string]*ir.Field
 }
 
+// condFrame is one enclosing branch as the block under it sees it: the
+// condition field's name, the value the branch fixes that field to, the way a
+// diagnostic spells the guard, and where it is. A branch under an enclosing
+// guard on the SAME name and the OTHER value is unreachable (schema#268), and
+// this is what the walk carries down to see that.
+type condFrame struct {
+	name string
+	want bool
+	desc string
+	pos  ast.Pos
+}
+
 func (c *checker) resolveBody(owner string, body *ast.Block, inTable bool) ([]*ir.Field, []ir.Item) {
 	var out []*ir.Field
 	names := map[string]ast.Pos{}
-	var walk func(b *ast.Block, guard string, scopes []*scopeFrame) []ir.Item
-	walk = func(b *ast.Block, guard string, scopes []*scopeFrame) []ir.Item {
+	var walk func(b *ast.Block, guard string, scopes []*scopeFrame, conds []condFrame) []ir.Item
+	walk = func(b *ast.Block, guard string, scopes []*scopeFrame, conds []condFrame) []ir.Item {
 		var items []ir.Item
 		frame := scopes[len(scopes)-1]
 		for _, item := range b.Items {
@@ -1167,10 +1179,19 @@ func (c *checker) resolveBody(owner string, body *ast.Block, inTable bool) ([]*i
 				if item.Neg {
 					pos, negated = negated, pos
 				}
+				// A BRANCH THAT CONTRADICTS AN ENCLOSING GUARD IS REFUSED
+				// (schema#268). Nested guards conjoin, so the then side of
+				// `if !on` under `if on` emits `value.on && !value.on`, which
+				// clang refuses in the generated header under -Werror
+				// (-Wtautological-negation-compare) and which no target ever
+				// takes. The check enters each side separately, so the legal
+				// half of a nested if/else stays legal.
+				thenConds := c.enterCond(conds, item.Cond, "if "+pos, !item.Neg)
 				br := &ir.Branch{Neg: item.Neg, Cond: item.Cond.Text}
-				br.Then = walk(item.Then, and(guard, pos), append(scopes, &scopeFrame{fields: map[string]*ir.Field{}}))
+				br.Then = walk(item.Then, and(guard, pos), append(scopes, &scopeFrame{fields: map[string]*ir.Field{}}), thenConds)
 				if item.Else != nil {
-					br.Else = walk(item.Else, and(guard, negated), append(scopes, &scopeFrame{fields: map[string]*ir.Field{}}))
+					elseConds := c.enterCond(conds, item.Cond, "the else of if "+pos, item.Neg)
+					br.Else = walk(item.Else, and(guard, negated), append(scopes, &scopeFrame{fields: map[string]*ir.Field{}}), elseConds)
 				}
 				items = append(items, br)
 			case *ast.ConstField:
@@ -1209,8 +1230,31 @@ func (c *checker) resolveBody(owner string, body *ast.Block, inTable bool) ([]*i
 		}
 		return items
 	}
-	items := walk(body, "", []*scopeFrame{{fields: map[string]*ir.Field{}}})
+	items := walk(body, "", []*scopeFrame{{fields: map[string]*ir.Field{}}}, nil)
 	return out, items
+}
+
+// enterCond records the guard a branch enters and refuses one that no value
+// of its condition field satisfies (schema#268): an enclosing guard on the
+// same name already fixed that field the other way, the two conjoin in every
+// generated target, and nothing under the branch is ever written or read.
+// C++ says so at the header, where clang reads `value.on && !value.on` and
+// refuses it under -Werror; the other eight targets say nothing at all, which
+// is why the answer belongs here.
+//
+// The frames are compared by NAME, which is the whole identity a condition
+// has: one body's field names are unique across branch sides (SPEC §4.6), so
+// a name in an enclosing frame is the same field this branch names.
+func (c *checker) enterCond(conds []condFrame, cond ast.Name, desc string, want bool) []condFrame {
+	for _, outer := range conds {
+		if outer.name != cond.Text || outer.want == want {
+			continue
+		}
+		c.errf(cond.Pos, "%s can never ride: it is nested inside %s at %s, which fixes %s the other way, so no field under it is ever written (the dominance rule, SPEC §4.5)",
+			desc, outer.desc, outer.pos, cond.Text)
+		break
+	}
+	return append(conds[:len(conds):len(conds)], condFrame{name: cond.Text, want: want, desc: desc, pos: cond.Pos})
 }
 
 func (c *checker) lookupScope(scopes []*scopeFrame, name string) *ir.Field {
