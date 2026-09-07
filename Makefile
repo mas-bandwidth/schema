@@ -3085,8 +3085,8 @@ tables-maps-depth-negative-control: bin/schema build/tables-generated/.stamp
 # repeat that fills nothing reads as the declared default and never as the
 # first insert's. The sabotage drops that reset at its call site, which leaves
 # the value's STORAGE holding what the first insert put there. A TEXT value is
-# where it bites hardest, and why this control arrived with `Text`: its storage
-# is a PAIR — the buffer and the int32 used length — so the repeat rides the
+# where it bites hardest: its storage is a PAIR, the buffer and the int32 used
+# length, so the repeat rides the
 # first insert's bytes AND its length, and the `Text` unit's duplicate row
 # names both. The `Fleet` rows name the same rule for a table value.
 .PHONY: tables-maps-value-reset-negative-control

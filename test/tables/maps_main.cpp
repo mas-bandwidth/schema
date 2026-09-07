@@ -1399,7 +1399,7 @@ static void test_text_values()
     }
     free( region );
 
-    // THE TEXT FORM: the value takes its own §16.2 row under the map's key —
+    // THE TEXT FORM: the value takes its own §16.2 row under the map's key,
     // a string as itself, wide text TRANSCODED to UTF-8, a byte buffer BASE64.
     CHECK( b.Lock() );
     const Text * locked = b.AsConst();
@@ -1434,11 +1434,12 @@ static void test_text_values()
     CHECK( memcmp( from_text, wire, (size_t) n ) == 0 );
     free( json );
 
-    // CONTROL: `TableResetMapValue` resets the entry's KEY half instead of its
-    // VALUE half. A DUPLICATE key REPLACES and the value is reset WHOLE (§2.8),
-    // so a repeat that fills nothing reads as the declared default and never as
-    // the first insert's text — which for a text value means the BUFFER and the
-    // LENGTH COMPANION both, the two members its storage is.
+    // CONTROL: the `TableResetMapValue` call at the placement site is dropped,
+    // so a repeated key keeps the first insert's value. A DUPLICATE key REPLACES
+    // and the value is reset WHOLE (§2.8), so a repeat that fills nothing reads
+    // as the declared default and never as the first insert's text, which for a
+    // text value means the BUFFER and the LENGTH COMPANION both, the two members
+    // its storage is.
     {
         TextBuilder dup;
         Text * d = dup.GetRoot();
