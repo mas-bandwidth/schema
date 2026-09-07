@@ -382,3 +382,41 @@ func fieldByName(t *testing.T, inst *tabletext.Instance, name string) *tabletext
 	t.Fatalf("%s declares no field %s", inst.Def.Name, name)
 	return nil
 }
+
+func TestListFileRegionMeasureUsesFraming(t *testing.T) {
+	m := listModel(t, listUnit)
+	inst := place(t, m, "Save", listText)
+	wire, err := tablewire.Encode(m, inst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	size, whole, refused := tablewire.FileRegionMeasure(m.Unit, inst.Def, wire)
+	// Root 48, placement array24, pointer array24, scores12: rounded112.
+	// One shared LogEntry rounds to8, and two directory entries add32.
+	if size != 152 || !whole || refused {
+		t.Fatalf("list measure: %d whole=%v refused=%v", size, whole, refused)
+	}
+	scalar := listModel(t, "package probe\ntable Root { values []int32 }\n")
+	v := place(t, scalar, "Root", `{"values":[1,2,3]}`)
+	data, err := tablewire.Encode(scalar, v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := listModel(t, "package probe\ntable Root { values []int8 }\n")
+	narrow, err := tablewire.Encode(source, place(t, source, "Root", `{"values":[-128,0,127]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	widened, whole, refused := tablewire.FileRegionMeasure(scalar.Unit, v.Def, narrow)
+	if widened != 48 || !whole || refused {
+		t.Fatalf("widened list measure: %d whole=%v refused=%v", widened, whole, refused)
+	}
+	if data[5] != 3 {
+		t.Fatalf("count moved: %x", data)
+	}
+	data[5] = 4
+	size, whole, refused = tablewire.FileRegionMeasure(scalar.Unit, v.Def, data)
+	if size != -1 || !whole || !refused {
+		t.Fatalf("count over length: %d whole=%v refused=%v", size, whole, refused)
+	}
+}

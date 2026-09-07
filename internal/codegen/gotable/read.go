@@ -54,6 +54,8 @@ func (g *tableGen) emitReadField(f *ir.Field, ind string) {
 	expr := "value." + member(f)
 	kind := ir.TableWireScalarKind(f)
 	switch {
+	case f.IsList():
+		g.emitListRead(f, ind)
 	case f.KeyEnum != "":
 		g.emitReadArray(f, ind, true)
 	case f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes && !f.Type.Pointer:
@@ -80,6 +82,7 @@ func (g *tableGen) emitReadField(f *ir.Field, ind string) {
 
 func (g *tableGen) emitReadNested(typ, expr, rdr, ind string) {
 	g.pf("%s%sLoadBody(&%s, &%s)\n%sif %s.Offset != int64(len(%s.Buffer)) { r.Report.Malformed = true; %sReset(&%s) }\n", ind, typ, rdr, expr, ind, rdr, rdr, typ, expr)
+	g.emitCarveReturn("r", rdr, ind)
 }
 
 func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
@@ -115,8 +118,10 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 		g.pf("%svar slot %s; if !slot.TableEnumValue(key) { r.Report.Unknown++; continue }\n", j, f.KeyEnum)
 		if kind == tkTable {
 			g.pf("%s%sLoadBody(&elem, &%s[int(slot)-1])\n", j, f.Type.Name, expr)
+			g.emitCarveReturn("sub", "elem", j)
 		} else if kind == tkUnion {
 			g.emitReadUnion(f.Type.Ref.(*ir.Union), expr+"[int(slot)-1]", "elem", j, "continue", true)
+			g.emitCarveReturn("sub", "elem", j)
 		} else {
 			g.emitReadScalar(f, expr+"[int(slot)-1]", "elem", "elemKind", j, "r.Report.Malformed = true; continue")
 		}
@@ -132,6 +137,7 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 		if kind == tkTable {
 			g.pf("%selem, ok := sub.Body(); if !ok { r.Report.Malformed = true; break }\n", j)
 			g.pf("%s%sLoadBody(&elem, &%s[i])\n", j, f.Type.Name, expr)
+			g.emitCarveReturn("sub", "elem", j)
 		} else if kind == tkUnion {
 			g.emitReadUnion(f.Type.Ref.(*ir.Union), expr+"[i]", "sub", j, "break", true)
 		} else {
@@ -148,6 +154,7 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 		}
 	}
 	g.pf("%s\t}\n%s}\n", ind, ind)
+	g.emitCarveReturn("r", "sub", ind)
 }
 
 func (g *tableGen) emitReadUnion(un *ir.Union, expr, rdr, ind, stop string, element ...bool) {
@@ -181,7 +188,9 @@ func (g *tableGen) emitReadUnion(un *ir.Union, expr, rdr, ind, stop string, elem
 		g.pf("%s%s.Type = %sType%s\n", j, expr, un.Name, ir.GoExportName(v.Name))
 		g.emitReadArm(v, g.unionArmExpr(un, v, expr), arm, "armKind", j, none)
 	}
-	g.pf("%sdefault:r.Report.Unknown++\n%s}\n%s}\n%s}\n", i, i, ind+"\t", ind)
+	g.pf("%sdefault:r.Report.Unknown++\n%s}\n", i, i)
+	g.emitCarveReturn(rdr, arm, i)
+	g.pf("%s}\n%s}\n", ind+"\t", ind)
 }
 
 func (g *tableGen) emitReadArm(v ir.UnionVariant, expr, rdr, kind, ind, none string) {
@@ -256,6 +265,7 @@ func (g *tableGen) emitReadArmArray(f *ir.Field, expr, rdr, ind, none string) {
 	if isStructRef(f.Type) {
 		elem := g.nextWireWriter()
 		g.pf("%s%s,ok:=%s.Body();if !ok {r.Report.Malformed=true;break};%sLoadBody(&%s,&%s[i])\n", j, elem, rdr, f.Type.Name, elem, expr)
+		g.emitCarveReturn(rdr, elem, j)
 	} else if isUnionRef(f.Type) {
 		g.emitReadUnion(f.Type.Ref.(*ir.Union), expr+"[i]", rdr, j, "break", true)
 	} else {
@@ -327,5 +337,11 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 			typ = "byte"
 		}
 		g.pf("%s\t%s = %s(v)\n%s}\n", ind, expr, typ, ind)
+	}
+}
+
+func (g *tableGen) emitCarveReturn(parent, child, ind string) {
+	if unitHasContainers(g.unit) {
+		g.pf("%s%s.Take(%s)\n", ind, parent, child)
 	}
 }

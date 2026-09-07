@@ -622,6 +622,9 @@ func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFie
 
 func tableJsonWriteField(out *tableJsonOut, base unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
 	storage := unsafe.Add(base, uintptr(f.Offset))
+	if f.List {
+		return tableJsonWriteList(out, storage, f, depth)
+	}
 	if f.Kind == 33 {
 		tableJsonWriteWString(out, unsafe.Slice((*uint16)(storage), tableJsonCount(base, f)))
 		return true
@@ -1536,6 +1539,9 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 
 func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
 	storage := unsafe.Add(base, uintptr(f.Offset))
+	if f.List {
+		return tableJsonReadList(in, storage, f, depth)
+	}
 	if f.Kind == 33 {
 		units := unsafe.Slice((*uint16)(storage), f.ArrayBound)
 		clear(units)
@@ -2280,10 +2286,11 @@ type tableJsonLabel struct {
 	open   bool
 }
 type tableJsonGraph struct {
-	alloc  func(int64) (unsafe.Pointer, int64)
-	nodes  map[unsafe.Pointer]*tableJsonGraphNode
-	labels map[uint64]tableJsonLabel
-	next   uint64
+	alloc   func(int64) (unsafe.Pointer, int64)
+	listAdd func(unsafe.Pointer, int64) unsafe.Pointer
+	nodes   map[unsafe.Pointer]*tableJsonGraphNode
+	labels  map[uint64]tableJsonLabel
+	next    uint64
 }
 
 func tableJsonPointerAt(slot *int64) unsafe.Pointer {
@@ -2530,6 +2537,82 @@ func tableJsonDropLabel(in *tableJsonIn) {
 	}
 	if _, exists := in.graph.labels[label]; !exists {
 		in.graph.labels[label] = tableJsonLabel{}
+	}
+}
+
+func tableJsonWriteList(out *tableJsonOut, holder unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
+	count := *(*int32)(unsafe.Add(holder, 8))
+	if count < 0 {
+		return false
+	}
+	if count == 0 {
+		out.text("[]")
+		return true
+	}
+	ref := *(*int64)(holder)
+	if ref == 0 {
+		return false
+	}
+	p := unsafe.Add(holder, ref)
+	out.put('[')
+	for i := int32(0); i < count; i++ {
+		if i > 0 {
+			out.put(',')
+		}
+		out.line(depth + 1)
+		if !tableJsonWriteScalar(out, unsafe.Add(p, uintptr(i)*uintptr(f.ElemSize)), f, depth+1) {
+			return false
+		}
+	}
+	out.line(depth)
+	out.put(']')
+	return true
+}
+func tableJsonReadList(in *tableJsonIn, holder unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
+	if in.peek() != '[' || in.graph == nil || in.graph.listAdd == nil {
+		in.bad = true
+		return false
+	}
+	in.pos++
+	clear(unsafe.Slice((*byte)(holder), 16))
+	shape := tableJsonElementShape(f)
+	for {
+		c := in.peek()
+		if c == ']' {
+			in.pos++
+			return true
+		}
+		if c == 0 {
+			in.bad = true
+			return false
+		}
+		p := in.graph.listAdd(holder, int64(f.ElemSize))
+		if p == nil {
+			in.bad = true
+			return false
+		}
+		if f.Kind == 13 && !f.Pointer {
+			f.Table().Reset(p)
+		}
+		if in.valueShape() != shape && !(f.Pointer && in.valueShape() == 'z') {
+			in.report.KindMismatch++
+			if !in.skipValue(depth + 1) {
+				return false
+			}
+		} else if !tableJsonReadScalar(in, p, f, depth+1) {
+			return false
+		}
+		c = in.peek()
+		if c == ',' {
+			in.pos++
+			continue
+		}
+		if c == ']' {
+			in.pos++
+			return true
+		}
+		in.bad = true
+		return false
 	}
 }
 

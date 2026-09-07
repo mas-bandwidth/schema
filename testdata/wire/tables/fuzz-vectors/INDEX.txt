@@ -136,3 +136,8 @@ message_blob_ill_formed_text blobdemo Catalog testdata/wire/tables/fuzz-vectors/
 # ill-formed sequence, or only the interior zero, goes red on one of them and
 # not the other.
 message_blob_zero_byte blobdemo Catalog testdata/wire/tables/fuzz-vectors/message_blob_zero_byte.bin message
+
+# A list's wire elements widen while its region uses the declared width.
+# Before schema#713, C++ LoadMeasure omitted this extent, then Load reported
+# a valid widening as malformed. The shared report row also checks counters.
+list_scalar_widen listdemo Save testdata/wire/tables/fuzz-vectors/list_scalar_widen.bin

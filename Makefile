@@ -4355,12 +4355,12 @@ clean:
 # of the two minutes, and sharding per language leg, the way the type wire's
 # nine legs already are, is what the numbers say to do if that stops holding;
 # it is not needed at this size.
-CONFORMANCE_INCLUDES := -Ibuild/tables-generated/examples -Ibuild/tables-generated/v1 \
+CONFORMANCE_INCLUDES := -Ibuild/tables-generated/lists -Ibuild/tables-generated/examples -Ibuild/tables-generated/v1 \
 	-Ibuild/tables-generated/v2 -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	-Ibuild/tables-generated/block -Ibuild/tables-generated/pointers \
 	-Ibuild/tables-generated/p2 -Ibuild/tables-generated/messages -Ibuild/tables-generated/stream \
 	-Ibuild/tables-generated/m1 -Ibuild/tables-generated/m2 -Ibuild/tables-generated/a1 -Ibuild/tables-generated/a2 -Ibuild/tables-generated/g1 -Ibuild/tables-generated/k1 -Ibuild/tables-generated/k2 -Ibuild/tables-generated/w1 -Ibuild/tables-generated/w2 -Ibuild/tables-generated/r1 -Ibuild/tables-generated/r2 -Ibuild/tables-generated/blobs -Itest/tables -Ibuild/tables-generated/scalars -Ibuild/tables-generated/scalars2 -Ibuild/tables-generated/backend -Ibuild/tables-generated/vocab -Ibuild/tables-generated/vocab9 -Ibuild/tables-generated/arms -Ibuild/tables-generated/rt1 -Ibuild/tables-generated/wide -I$(SERIALIZE)
-CONFORMANCE_SOURCES = build/tables-generated/examples/TablesTable.cpp \
+CONFORMANCE_SOURCES = $(wildcard build/tables-generated/lists/*Table.cpp) build/tables-generated/examples/TablesTable.cpp \
 	build/tables-generated/w1/W1Table.cpp build/tables-generated/w2/W2Table.cpp \
 	build/tables-generated/r1/R1Table.cpp build/tables-generated/r2/R2Table.cpp \
 	build/tables-generated/scalars/ScalarsTable.cpp build/tables-generated/scalars2/Scalars2Table.cpp \

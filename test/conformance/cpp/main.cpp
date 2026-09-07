@@ -79,6 +79,11 @@
 // the BYTE BUFFER unit (docs/SPEC-TABLES.md §2.5): a blob at its used size,
 // pointed at — a variable root like any pointered one
 #include "AssetsTable.h"
+#include "SaveTable.h"
+#include "HoldersTable.h"
+#include "SharedTable.h"
+#include "MigrateTable.h"
+#include "ReportTable.h"
 
 // ---------------------------------------------------------------------------
 // the manifest, read exactly as testdata/conformance/tables/FORMAT.md states it
@@ -364,6 +369,13 @@ struct VarCodec
     }
 
 static const VarCodec var_codecs[] = {
+    VARCODEC( "listdemo", listdemo, Save ),
+    VARCODEC( "listdemo", listdemo, Mixed ),
+    VARCODEC( "listdemo", listdemo, Album ),
+    VARCODEC( "listdemo", listdemo, Sheet ),
+    VARCODEC( "listdemo", listdemo, Army ),
+    VARCODEC( "listdemo", listdemo, Unbounded ),
+
     VARCODEC( "graphdemo", graphdemo, Scene ),
     VARCODEC( "tblp2", tblp2, Chain ),
     VARCODEC( "streamdemo", streamdemo, Feed ),

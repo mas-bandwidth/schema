@@ -26,9 +26,6 @@ func (goTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	if err := refuseMaps(u, "go"); err != nil {
 		return nil, err
 	}
-	if err := refuseLists(u, "go"); err != nil {
-		return nil, err
-	}
 	files, err := golang.Generate(u)
 	if err != nil {
 		return nil, err
@@ -53,6 +50,7 @@ func (goTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 func init() {
 	registerBuiltin(goTarget{}, true, true, true, true)
 	registerOptionalArrayCarrier("go")
+	registerListCarrier("go")
 	valueDefaultTargets = append(valueDefaultTargets, "go")
 	wasRowTargets = append(wasRowTargets, "go")
 	registerPacketValueDefaultCarrier("go")

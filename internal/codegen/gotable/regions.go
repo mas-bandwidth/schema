@@ -81,7 +81,12 @@ func (g *tableGen) emitRegionRuntime(blocks *ir.BlockUnit) {
 	}
 	g.pf("const tableRegionAlign int64 = %d\n", ir.RegionAlignOf(aligns...))
 	g.pf("const tableBytesTypeId uint64=0x%016x\nconst tableStringTypeId uint64=0x%016x\n", ir.TableWireId("bytes"), ir.TableWireId("string"))
-	g.pf("%s", tableRegionSource+tableRegionJsonSource+tableRegionBlobSource)
+	source := tableRegionSource + tableRegionJsonSource + tableRegionBlobSource
+	if unitHasContainers(g.unit) {
+		source = containerRegionSource(source)
+		source += tableContainerSource
+	}
+	g.pf("%s", source)
 }
 func (g *tableGen) emitRegionMember(st *ir.Struct) {
 	n, typ := st.Name, g.storageName(st.Name)
@@ -152,6 +157,7 @@ type TableWorker struct { Arena *TableArena; front,end int64 }
 func (w *TableWorker) Alloc(n int64) (unsafe.Pointer,TableRef) { if w==nil || w.Arena==nil || w.Arena.Locked || n<=0 {return nil,0};n=tableRegionRound(n);if n>tableArenaSlabBytes {at,_:=w.Arena.grab(n);return w.Arena.At(at),at};if w.front+n>w.end {w.front,w.end=w.Arena.grab(n);if w.front==0{return nil,0}};at:=w.front;w.front+=n;return w.Arena.At(at),at }
 func tableOptionalArena(a []*TableArena) *TableArena { if len(a)>0 {return a[0]};return nil }
 func tableRefAt(slot *TableRef,a *TableArena) unsafe.Pointer { if slot==nil || *slot==0 {return nil};if a!=nil{return a.At(*slot)};return unsafe.Add(unsafe.Pointer(slot),*slot) }
+func tableRegionCount(base unsafe.Pointer,f *TableFieldInfo) int32 {if f.Counted {return *(*int32)(unsafe.Add(base,f.CountOffset))};return f.ArrayBound}
 func tableRegionRound(n int64) int64 {return (n+tableRegionAlign-1)& -tableRegionAlign}
 
 type tableNodeEntry struct { node unsafe.Pointer; info *TableTypeInfo; id uint64; open bool; offset int64 }
@@ -164,12 +170,12 @@ func tableNumber(root unsafe.Pointer,info *TableTypeInfo,a *TableArena) (*TableN
  if !visit(root,info,info.Id) {return nil,false};return n,true
 }
 func tableRegionEdges(base unsafe.Pointer,info *TableTypeInfo,visit func(*TableRef,*TableFieldInfo) bool) bool {
- for i:=range info.Fields {f:=&info.Fields[i];if !tableJsonGuardHolds(base,info,f.Guard) || f.Optional && !*(*bool)(unsafe.Add(base,f.PresentOffset)){continue};p:=unsafe.Add(base,f.Offset);count:=int32(1);if f.IsArray {count=tableJsonCount(base,f);if count<0 || count>f.ArrayBound{return false}};for j:=int32(0);j<count;j++ {at:=unsafe.Add(p,uintptr(j)*uintptr(f.ElemSize));if !tableRegionValueEdges(at,f,visit){return false}} };return true
+ for i:=range info.Fields {f:=&info.Fields[i];if !tableJsonGuardHolds(base,info,f.Guard) || f.Optional && !*(*bool)(unsafe.Add(base,f.PresentOffset)){continue};p:=unsafe.Add(base,f.Offset);count:=int32(1);if f.IsArray {count=tableRegionCount(base,f);if count<0 || count>f.ArrayBound{return false}};for j:=int32(0);j<count;j++ {at:=unsafe.Add(p,uintptr(j)*uintptr(f.ElemSize));if !tableRegionValueEdges(at,f,visit){return false}} };return true
 }
 func tableRegionValueEdges(p unsafe.Pointer,f *TableFieldInfo,visit func(*TableRef,*TableFieldInfo) bool) bool {
  if f.Pointer {return visit((*TableRef)(p),f)}
  if f.Kind==13 && f.Table!=nil {return tableRegionEdges(p,f.Table(),visit)}
- if f.Kind==15 && f.Arms!=nil {arms:=f.Arms();tag:=tableJsonGetRaw(unsafe.Add(p,arms.TagOffset),arms.TagSize);if tag>=uint64(len(arms.Arms)){return false};if tag!=0 {arm:=&arms.Arms[tag];if arm.Void{return true};af:=&arm.Field;at:=unsafe.Add(p,af.Offset);count:=int32(1);if af.IsArray {count=tableJsonCount(p,af);if count<0 || count>af.ArrayBound{return false}};for j:=int32(0);j<count;j++ {if !tableRegionValueEdges(unsafe.Add(at,uintptr(j)*uintptr(af.ElemSize)),af,visit){return false}}} };return true
+ if f.Kind==15 && f.Arms!=nil {arms:=f.Arms();tag:=tableJsonGetRaw(unsafe.Add(p,arms.TagOffset),arms.TagSize);if tag>=uint64(len(arms.Arms)){return false};if tag!=0 {arm:=&arms.Arms[tag];if arm.Void{return true};af:=&arm.Field;at:=unsafe.Add(p,af.Offset);count:=int32(1);if af.IsArray {count=tableRegionCount(p,af);if count<0 || count>af.ArrayBound{return false}};for j:=int32(0);j<count;j++ {if !tableRegionValueEdges(unsafe.Add(at,uintptr(j)*uintptr(af.ElemSize)),af,visit){return false}}} };return true
 }
 func tableNodeWrite(w *TableWriter,e *tableNodeEntry) bool { if e.info!=nil{return e.info.SaveBody(w,e.node)};length:=*(*uint64)(e.node);w.Raw(unsafe.Slice((*byte)(unsafe.Add(e.node,8)),int(length)));return !w.Overflow }
 func tableNodeMeasure(ids *TableIds,e *tableNodeEntry) int64 {w:=TableWriter{Measuring:true,Ids:ids};if !tableNodeWrite(&w,e){return -1};return w.Offset}

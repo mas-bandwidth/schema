@@ -49,7 +49,7 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 	fmt.Fprintf(&b, "package %s\n\n", u.Package)
 	b.WriteString("import (\n\t\"math\"\n\t\"strconv\"\n\t\"unsafe\"\n\t\"unicode/utf8\"\n)\n\n")
 	b.WriteString(strings.Replace(tableJsonWalkSource, "// ---- json walk: end ----",
-		tableJsonWideSource+tableJsonWStringSource+tableJsonGraphSource+"// ---- json walk: end ----", 1))
+		tableJsonWideSource+tableJsonWStringSource+tableJsonGraphSource+tableJsonListSource+"// ---- json walk: end ----", 1))
 
 	// the per-member surface, in the order the closure declares it, so the
 	// generated text is deterministic
@@ -662,6 +662,7 @@ func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFie
 
 func tableJsonWriteField(out *tableJsonOut, base unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
 	storage := unsafe.Add(base, uintptr(f.Offset))
+ if f.List {return tableJsonWriteList(out,storage,f,depth)}
  if f.Kind==33 {tableJsonWriteWString(out,unsafe.Slice((*uint16)(storage),tableJsonCount(base,f)));return true}
 	if f.Kind == 12 {
 		tableJsonWriteString(out, tableJsonBytes(storage, tableJsonCount(base, f)))
@@ -1527,6 +1528,7 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 
 func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
 	storage := unsafe.Add(base, uintptr(f.Offset))
+ if f.List {return tableJsonReadList(in,storage,f,depth)}
  if f.Kind==33 {units:=unsafe.Slice((*uint16)(storage),f.ArrayBound);clear(units);n,ok:=in.scanText(nil,units);if !ok{return false};tableJsonSetCount(base,f,n);return true}
 	if f.Kind == 12 {
 		length, ok := in.scanString(tableJsonBytes(storage, f.ArrayBound))

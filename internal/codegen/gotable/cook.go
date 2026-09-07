@@ -399,6 +399,9 @@ func (g *cookGen) emitBlittableField(f *ir.Field, w *cookWriter) {
 	name := ir.GoExportName(f.Name)
 	next := w.next
 	switch {
+	case f.IsList():
+		next()
+		g.sf("\t%s TableList[%s]\n", name, containerElementType(g.unit, f))
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		// A *T SLOT IS EIGHT BYTES AT EIGHT (docs/SPEC-TABLES.md §6.3, §7.2),
 		// holding the SIGNED SELF-RELATIVE delta from the slot's own address,
@@ -444,6 +447,11 @@ func (g *cookGen) emitBlittableField(f *ir.Field, w *cookWriter) {
 // goCookBlittableType is goBlittableType with one difference: a pointer
 // field's storage is the delta slot, never the target's record.
 func goCookBlittableType(u *ir.Unit, t ir.FieldType) string {
+	if t.Kind == ir.TNamed {
+		if _, ok := t.Ref.(*ir.Flags); ok {
+			return t.Name
+		}
+	}
 	if t.Pointer {
 		return "int64"
 	}
@@ -721,7 +729,7 @@ func (g *cookGen) emitRecordDescriptor(record string) {
 			pieces := ir.FieldPieces(g.unit, f, fl.Offset)
 			countOffset = pieces[1].Offset
 		}
-		isArray := f.KeyEnum != "" || f.Array != ir.ArrayNone
+		isArray := f.KeyEnum != "" || f.Array != ir.ArrayNone && !f.IsList()
 		bound := int64(1)
 		elemSize := fl.Size
 		if isArray {

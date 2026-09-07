@@ -87,6 +87,7 @@ type wireRoot struct {
 	storage               map[uint64]int64
 	rootStorage           int64
 	maxStorage            int64
+	maxElement            int64
 	blobBytes, blobString bool
 }
 
@@ -141,6 +142,20 @@ func newWireRoot(u *units, unitKey, rootName string, message, retain bool) (*wir
 			return nil, fmt.Errorf("unit %s: its own announcement was refused: %w", unitKey, err)
 		}
 	}
+	for name := range ir.TableClosure(unit) {
+		st := m.Lookup(name)
+		if st == nil {
+			continue
+		}
+		for _, f := range st.Fields {
+			if f.IsList() {
+				size, _ := ir.ListElementLayout(unit, f)
+				r.maxElement = max(r.maxElement, size)
+			} else if f.IsMap() {
+				r.maxElement = max(r.maxElement, ir.RecordLayout(unit, f.MapEntry).Size)
+			}
+		}
+	}
 	r.rootStorage = alignUp8(ir.RecordLayout(unit, def).Size)
 	r.blobBytes, r.blobString = ir.PointerReachableBlobs(def)
 	// THE STORAGE A RECORD COMMANDS is its type's, and only for a type THIS
@@ -185,8 +200,9 @@ type oracleAnswer struct {
 	encFail bool
 	// the region bytes a variable-class reader owes: exact when the node
 	// table read whole, else the most the framing could have commanded
-	exact bool
-	bytes int64
+	exact          bool
+	measureRefused bool
+	bytes          int64
 	// the same two counters from the engine
 	retained   int
 	retainLost int
@@ -276,23 +292,19 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 			r.sizeBatch(&ans, data)
 			return ans, nil
 		}
-		frames, whole := tablewire.NodeRecordFrames(data)
+		measured, whole, refused := tablewire.FileRegionMeasure(r.model.Unit, r.def, data)
+		if refused {
+			ans.bytes = -1
+			ans.measureRefused = true
+			return ans, nil
+		}
 		if whole {
 			ans.exact = true
-			ans.bytes = r.rootStorage + (int64(len(frames))+1)*nodeDirEntryBytes
-			for _, frame := range frames {
-				size := r.storage[frame.TypeId]
-				if frame.TypeId == ir.BytesWireTypeId && r.blobBytes {
-					size = alignUp8(8 + frame.Length)
-				}
-				if frame.TypeId == ir.StringWireTypeId && r.blobString {
-					size = alignUp8(9 + frame.Length)
-				}
-				ans.bytes += size // a type id this build cannot name commands none
-			}
+			ans.bytes = measured
 		} else {
 			records := int64(len(data))/nodeRecordHeaderBytes + 1
 			ans.bytes = r.rootStorage + records*(r.maxStorage+nodeDirEntryBytes)
+			ans.bytes += int64(len(data)) * (r.maxElement + 16)
 			if r.blobBytes || r.blobString {
 				ans.bytes += int64(len(data)) + records*16
 			}
@@ -461,7 +473,7 @@ func wireVerdict(root *wireRoot, reply legReply, ans oracleAnswer) string {
 			// measure and the oracle reads body one and counts one malformed.
 			// Requiring the tuples to match would require one of those two
 			// sentences to be false.
-			if !ans.report.Malformed && !ans.report.Refused {
+			if !ans.measureRefused && !ans.report.Malformed && !ans.report.Refused {
 				return "the leg's LoadMeasure refused the framing; the oracle read the same bytes cleanly"
 			}
 			return ""

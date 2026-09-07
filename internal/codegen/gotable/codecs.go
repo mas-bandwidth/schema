@@ -354,6 +354,8 @@ func (g *tableGen) emitTableReset(st *ir.Struct) {
 func (g *tableGen) emitTableResetField(f *ir.Field) {
 	name := member(f)
 	switch {
+	case f.IsList():
+		g.pf("value.%s=TableList[%s]{}\n", name, containerElementType(g.unit, f))
 	case f.Type.Pointer:
 		if f.Array != ir.ArrayNone {
 			g.pf("clear(value.%s[:])\n", name)
@@ -563,7 +565,7 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	}
 
 	elemSize := fmt.Sprintf("uint32(unsafe.Sizeof(%s{}.%s))", g.storageName(st.Name), name)
-	if isArray {
+	if isArray && !f.IsList() {
 		elemSize = fmt.Sprintf("uint32(unsafe.Sizeof(%s{}.%s[0]))", g.storageName(st.Name), name)
 	}
 
@@ -597,6 +599,12 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 		if f.Type.Optional {
 			presentOffset = fmt.Sprint(pieces[len(pieces)-1].Offset)
 		}
+	}
+	if f.IsList() {
+		elemSize = fmt.Sprintf("uint32(unsafe.Sizeof(*new(%s)))", containerElementType(g.unit, f))
+		counted = true
+		bound = "2147483647"
+		countOffset = "(" + offset + ")+8"
 	}
 	table := "nil"
 	if isStructRef(f.Type) {
@@ -671,6 +679,10 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	g.pf("\t\tArrayBound: %s, Offset: %s, ElemSize: %s, CountOffset: %s, PresentOffset: %s,\n",
 		bound, offset, elemSize, countOffset, presentOffset)
 	g.pf("\t\tHasRange: %s, RangeMin: %s, RangeMax: %s, EnumMax: %s,\n", hasRange, rangeMin, rangeMax, enumMax)
+	if f.IsList() {
+		_, align := ir.ListElementLayout(g.unit, f)
+		g.pf("List:true,ElemAlign:%d,\n", align)
+	}
 	g.pf("\t\tFracBits:%d, Pointer:%v, TargetId:0x%016x,\n", f.Type.FracBits, f.Type.Pointer, pointerTargetId(f))
 	if ir.TableKindWide(kind) {
 		if lo, hi, ok := ir.TableRawRange(f); ok {

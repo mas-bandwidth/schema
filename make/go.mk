@@ -83,12 +83,10 @@ tables-go-json-walk: build/tables-generated-go/.stamp
 # a generated package names its schema's `package` and Go resolves an import by
 # module path — so the conformance leg's go.mod replaces one path per unit,
 # exactly as test/go/go.mod already does for the packet corpus.
-build/tables-generated-go/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema $(wildcard test/tables/[MAKR][12].schema) tables/scalars/Scalars.schema test/tables/Scalars2.schema $(wildcard examples-wide/*.schema) tables/messages/Messages.schema $(wildcard tables/stream/*.schema tables/blobs/*.schema)
+build/tables-generated-go/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema $(wildcard test/tables/[MAKR][12].schema) tables/scalars/Scalars.schema test/tables/Scalars2.schema $(wildcard examples-wide/*.schema) tables/messages/Messages.schema $(wildcard tables/stream/*.schema tables/blobs/*.schema tables/lists/*.schema)
 	@mkdir -p build/tables-generated-go
 	./bin/schema generate --lang go --out build/tables-generated-go/examples tables/examples
-	# the POINTERED unit: its Go WIRE surface is refused by name (§11) and its
-	# two ACCELERATORS are emitted all the same, because neither needs a codec
-	# (§7, §19). This is where the cook's Go read side comes from.
+	# The pointer corpus exercises the wire, region and cook read surfaces.
 	./bin/schema generate --lang go --out build/tables-generated-go/pointers tables/pointers
 	./bin/schema generate --lang go --out build/tables-generated-go/block tables/block
 	./bin/schema generate --lang go --out build/tables-generated-go/blockhome tables/blockhome
@@ -113,6 +111,8 @@ build/tables-generated-go/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_
 	$(call go_table_module,stream,streamdemo)
 	./bin/schema generate --lang go --out build/tables-generated-go/blobs tables/blobs
 	$(call go_table_module,blobs,blobdemo)
+	./bin/schema generate --lang go --out build/tables-generated-go/lists tables/lists/Save.schema tables/lists/Report.schema tables/lists/Shared.schema tables/lists/Migrate.schema
+	$(call go_table_module,lists,listdemo)
 	$(call go_table_module,messages,messagedemo)
 	$(call go_table_module,examples,tabledemo)
 	$(call go_table_module,pointers,graphdemo)

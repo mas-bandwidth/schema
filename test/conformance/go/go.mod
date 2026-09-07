@@ -64,3 +64,6 @@ blobdemo v0.0.0
 )
 replace streamdemo => ../../../build/tables-generated-go/stream
 replace blobdemo => ../../../build/tables-generated-go/blobs
+
+require listdemo v0.0.0
+replace listdemo => ../../../build/tables-generated-go/lists

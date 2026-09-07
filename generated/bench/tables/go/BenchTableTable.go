@@ -133,16 +133,18 @@ const TableDocNone = ""
 
 // TableFieldInfo is one field's descriptor.
 type TableFieldInfo struct {
-	Name     string // schema field name, e.g. "health"
-	Json     string // the TEXT form's key: the json = "key" attribute, else Name (§16.3)
-	TypeName string // schema type name, e.g. "float32", "Grade"
-	Id       uint64 // table-wire field id (name hash; the was alias's hash after a rename)
-	Pointer  bool
-	TargetId uint64
-	Kind     uint8 // table-wire kind; for arrays/strings/bytes, the ELEMENT kind
-	IsArray  bool  // fixed or counted array (bytes included)
-	Counted  bool  // a <Name>Count/<Name>Length int32 companion exists
-	Optional bool  // a ?T field: a <Name>Present bool decides whether it rides
+	List      bool // unbounded by-value container
+	ElemAlign uint32
+	Name      string // schema field name, e.g. "health"
+	Json      string // the TEXT form's key: the json = "key" attribute, else Name (§16.3)
+	TypeName  string // schema type name, e.g. "float32", "Grade"
+	Id        uint64 // table-wire field id (name hash; the was alias's hash after a rename)
+	Pointer   bool
+	TargetId  uint64
+	Kind      uint8 // table-wire kind; for arrays/strings/bytes, the ELEMENT kind
+	IsArray   bool  // fixed or counted array (bytes included)
+	Counted   bool  // a <Name>Count/<Name>Length int32 companion exists
+	Optional  bool  // a ?T field: a <Name>Present bool decides whether it rides
 
 	ArrayBound    int32  // array capacity / string max length; 0 for plain scalars
 	Offset        uint32 // unsafe.Offsetof the storage member

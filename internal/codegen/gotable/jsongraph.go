@@ -7,6 +7,7 @@ type tableJsonGraphNode struct { refs int; label uint64; written bool }
 type tableJsonLabel struct { ref int64; target uint64; open bool }
 type tableJsonGraph struct {
  alloc func(int64)(unsafe.Pointer,int64)
+ listAdd func(unsafe.Pointer,int64)unsafe.Pointer
  nodes map[unsafe.Pointer]*tableJsonGraphNode
  labels map[uint64]tableJsonLabel
  next uint64

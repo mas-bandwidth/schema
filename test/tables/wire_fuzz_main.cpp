@@ -65,6 +65,11 @@
 #include "W2Table.h"
 #include "R1Table.h"
 #include "R2Table.h"
+#include "SaveTable.h"
+#include "HoldersTable.h"
+#include "SharedTable.h"
+#include "MigrateTable.h"
+#include "ReportTable.h"
 
 struct Reply
 {
@@ -390,6 +395,15 @@ static const Codec codecs[] = {
     // sites to plant at (§4.2)
     FIXED( "widedemo", wide, Caption ),
     FIXED( "widedemo", wide, Stamp ),
+    VARIABLE( "listdemo", listdemo, Save ),
+    VARIABLE( "listdemo", listdemo, Mixed ),
+    VARIABLE( "listdemo", listdemo, Album ),
+    VARIABLE( "listdemo", listdemo, Sheet ),
+    VARIABLE( "listdemo", listdemo, Army ),
+    VARIABLE( "listdemo", listdemo, Unbounded ),
+    VARIABLE( "listdemo", listdemo, Ints ),
+    VARIABLE( "listdemo", listdemo, Floats ),
+    VARIABLE( "listdemo", listdemo, Bytes ),
     VARIABLE( "graphdemo", graphdemo, Scene ),
     VARIABLE( "tblp2", tblp2, Chain ),
     VARIABLE( "streamdemo", streamdemo, Feed ),

@@ -202,6 +202,11 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			g.emitTableRead(st)
 			if regional {
 				g.emitRegionMember(st)
+				for _, f := range st.Fields {
+					if f.IsList() {
+						g.emitListSurface(st, f)
+					}
+				}
 			}
 		}
 		if len(members) > 0 {
@@ -452,6 +457,8 @@ const TableDocNone = ""
 
 // TableFieldInfo is one field's descriptor.
 type TableFieldInfo struct {
+ List bool // unbounded by-value container
+ ElemAlign uint32
 	Name     string // schema field name, e.g. "health"
 	Json     string // the TEXT form's key: the json = "key" attribute, else Name (§16.3)
 	TypeName string // schema type name, e.g. "float32", "Grade"

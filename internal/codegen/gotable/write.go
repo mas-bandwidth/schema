@@ -90,6 +90,10 @@ func (g *tableGen) emitWireField(f *ir.Field, expr, ind string) {
 }
 
 func (g *tableGen) emitStorageCheck(f *ir.Field, expr, ind string) {
+	if f.IsList() {
+		g.pf("%sif %s.Count<0 {return false}\n", ind, expr)
+		return
+	}
 	if f.Type.Pointer {
 		if f.Array == ir.ArrayCounted {
 			g.pf("%sif %sCount<0 || %sCount>%d { return false }\n", ind, expr, expr, f.ArrayBound)
@@ -104,6 +108,9 @@ func (g *tableGen) emitStorageCheck(f *ir.Field, expr, ind string) {
 }
 
 func (g *tableGen) emitFieldRides(f *ir.Field, expr, ind string) string {
+	if f.IsList() {
+		return expr + ".Count>0"
+	}
 	if f.Type.Pointer && f.Array == ir.ArrayNone {
 		return expr + " != 0"
 	}
@@ -139,6 +146,8 @@ func (g *tableGen) emitFieldRides(f *ir.Field, expr, ind string) string {
 func (g *tableGen) emitWireValue(f *ir.Field, expr, writer, ind string, framed bool) {
 	g.emitStorageCheck(f, expr, ind)
 	switch {
+	case f.IsList():
+		g.emitListWrite(f, expr, writer, ind, framed)
 	case f.KeyEnum != "" || f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes && !f.Type.Pointer:
 		g.emitWireArray(f, expr, writer, ind, framed)
 	case f.Type.Pointer:

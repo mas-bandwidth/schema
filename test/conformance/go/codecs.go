@@ -7,6 +7,7 @@ package main
 import (
 	"blobdemo"
 	"graphdemo"
+	"listdemo"
 	"messagedemo"
 	"scalardemo"
 	"streamdemo"
@@ -53,6 +54,112 @@ func snapP3(r *tblp3.TableReport) report {
 }
 
 var codecTable = []codec{
+	regionRow("listdemo", "Save", listdemo.SaveLoadMeasure, listdemo.SaveLoad, listdemo.SaveMeasure, listdemo.SaveSave,
+		func(text []byte, r *listdemo.TableReport) (*listdemo.Save, []byte, bool) {
+			var b listdemo.SaveBuilder
+			if !b.Init() {
+				return nil, nil, false
+			}
+			defer b.Shutdown()
+			ok := listdemo.SaveFromJson(&b, text, r)
+			if !b.Lock() {
+				return nil, nil, false
+			}
+			return b.AsConst(), b.Region(), ok
+		}, listdemo.SaveToJsonMeasure, listdemo.SaveToJson, func(r *listdemo.TableReport) report {
+			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == listdemo.TableOpenRefused}
+		}),
+	regionRow("listdemo", "Mixed", listdemo.MixedLoadMeasure, listdemo.MixedLoad, listdemo.MixedMeasure, listdemo.MixedSave,
+		func(text []byte, r *listdemo.TableReport) (*listdemo.Mixed, []byte, bool) {
+			var b listdemo.MixedBuilder
+			if !b.Init() {
+				return nil, nil, false
+			}
+			defer b.Shutdown()
+			ok := listdemo.MixedFromJson(&b, text, r)
+			if !b.Lock() {
+				return nil, nil, false
+			}
+			return b.AsConst(), b.Region(), ok
+		}, listdemo.MixedToJsonMeasure, listdemo.MixedToJson, func(r *listdemo.TableReport) report {
+			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == listdemo.TableOpenRefused}
+		}),
+	regionRow("listdemo", "Bytes", listdemo.BytesLoadMeasure, listdemo.BytesLoad, listdemo.BytesMeasure, listdemo.BytesSave,
+		func(text []byte, r *listdemo.TableReport) (*listdemo.Bytes, []byte, bool) {
+			var b listdemo.BytesBuilder
+			if !b.Init() {
+				return nil, nil, false
+			}
+			defer b.Shutdown()
+			ok := listdemo.BytesFromJson(&b, text, r)
+			if !b.Lock() {
+				return nil, nil, false
+			}
+			return b.AsConst(), b.Region(), ok
+		}, listdemo.BytesToJsonMeasure, listdemo.BytesToJson, func(r *listdemo.TableReport) report {
+			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == listdemo.TableOpenRefused}
+		}),
+	regionRow("listdemo", "Ints", listdemo.IntsLoadMeasure, listdemo.IntsLoad, listdemo.IntsMeasure, listdemo.IntsSave,
+		func(text []byte, r *listdemo.TableReport) (*listdemo.Ints, []byte, bool) {
+			var b listdemo.IntsBuilder
+			if !b.Init() {
+				return nil, nil, false
+			}
+			defer b.Shutdown()
+			ok := listdemo.IntsFromJson(&b, text, r)
+			if !b.Lock() {
+				return nil, nil, false
+			}
+			return b.AsConst(), b.Region(), ok
+		}, listdemo.IntsToJsonMeasure, listdemo.IntsToJson, func(r *listdemo.TableReport) report {
+			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == listdemo.TableOpenRefused}
+		}),
+	regionRow("listdemo", "Floats", listdemo.FloatsLoadMeasure, listdemo.FloatsLoad, listdemo.FloatsMeasure, listdemo.FloatsSave,
+		func(text []byte, r *listdemo.TableReport) (*listdemo.Floats, []byte, bool) {
+			var b listdemo.FloatsBuilder
+			if !b.Init() {
+				return nil, nil, false
+			}
+			defer b.Shutdown()
+			ok := listdemo.FloatsFromJson(&b, text, r)
+			if !b.Lock() {
+				return nil, nil, false
+			}
+			return b.AsConst(), b.Region(), ok
+		}, listdemo.FloatsToJsonMeasure, listdemo.FloatsToJson, func(r *listdemo.TableReport) report {
+			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == listdemo.TableOpenRefused}
+		}),
+	regionRow("listdemo", "Album", listdemo.AlbumLoadMeasure, listdemo.AlbumLoad, listdemo.AlbumMeasure, listdemo.AlbumSave,
+		func(text []byte, r *listdemo.TableReport) (*listdemo.Album, []byte, bool) {
+			var b listdemo.AlbumBuilder
+			if !b.Init() {
+				return nil, nil, false
+			}
+			defer b.Shutdown()
+			ok := listdemo.AlbumFromJson(&b, text, r)
+			if !b.Lock() {
+				return nil, nil, false
+			}
+			return b.AsConst(), b.Region(), ok
+		}, listdemo.AlbumToJsonMeasure, listdemo.AlbumToJson, func(r *listdemo.TableReport) report {
+			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == listdemo.TableOpenRefused}
+		}),
+	regionRow("listdemo", "Unbounded", listdemo.UnboundedLoadMeasure, listdemo.UnboundedLoad, listdemo.UnboundedMeasure, listdemo.UnboundedSave,
+		func(text []byte, r *listdemo.TableReport) (*listdemo.Unbounded, []byte, bool) {
+			var b listdemo.UnboundedBuilder
+			if !b.Init() {
+				return nil, nil, false
+			}
+			defer b.Shutdown()
+			ok := listdemo.UnboundedFromJson(&b, text, r)
+			if !b.Lock() {
+				return nil, nil, false
+			}
+			return b.AsConst(), b.Region(), ok
+		}, listdemo.UnboundedToJsonMeasure, listdemo.UnboundedToJson, func(r *listdemo.TableReport) report {
+			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == listdemo.TableOpenRefused}
+		}),
+
 	regionRow("streamdemo", "Feed", streamdemo.FeedLoadMeasure, streamdemo.FeedLoad, streamdemo.FeedMeasure, streamdemo.FeedSave,
 		func(text []byte, r *streamdemo.TableReport) (*streamdemo.Feed, []byte, bool) {
 			var b streamdemo.FeedBuilder
