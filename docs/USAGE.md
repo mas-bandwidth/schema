@@ -275,11 +275,11 @@ lets illegal states (two shapes at once) exist for every consumer to police.
 A read **rejects a tag above the count**, and a write validates the tag
 before it rides. The representation is per target, all nine covered: C++ and
 C generate the tagged union above; Go, C#, JS, Dart and Java lay the
-tag beside one pre-allocated arm per variant; Elixir uses immutable structs
-with a tag and arm fields; Rust gets a real
+tag beside one pre-allocated arm per variant with a payload; Elixir uses
+immutable structs with a tag and arm fields; Rust gets a real
 `enum ColliderShape { None, Box(BoxCollider), ... }`.
 
-Selecting an arm initializes its payload with its declared defaults, just
+Selecting an arm with a payload initializes it with its declared defaults, just
 like a fresh value of that type. Initialize the payload before populating it
 and setting the tag; assigning the tag alone does not initialize storage.
 Use the generated constructor where available, or `Init<Type>` / `init<Type>`
@@ -297,12 +297,11 @@ that name nothing. A union with an arm whose payload is anything else — a
 `table`, a pointer, a scalar, a string, an array — belongs to a table
 closure (SPEC-TABLES.md §2.6). Unions ride `type` bodies, arrays included.
 
-The payload-free arm in a `type` body is carried by `--lang cs`, `dart`,
-`elixir`, `go`, `java`, `js` and `rust` today. `--lang c` and `--lang cpp`
-refuse the unit by name at generate time and say so: their tagged-union
-storage has no member for an arm that has none, and the pair is a named
-follow-on. `schema check` is target-neutral, so it accepts the unit and the
-refusal arrives at `schema generate`.
+All nine targets carry payload-free arms in a `type` body. Select one by
+setting its tag alone: it has no payload to initialize. C and C++ emit no
+member for a payload-free arm, and omit the storage union entirely when no
+arm has a payload. Payload-free arms in a table closure remain C++ only;
+the other eight targets refuse that table-side use (SPEC-TABLES.md §11).
 
 **Building your protocol.** A union of payload types is a message system
 waiting for your framing, and the primitives compose into whichever framing

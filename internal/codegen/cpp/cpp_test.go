@@ -95,7 +95,15 @@ type Payload {
 `,
 		"Choice.schema": `package t
 union Choice {
+    ping
     payload Payload
+    pong
+}
+`,
+		"Signals.schema": `package t
+union Signals {
+    ping
+    pong
 }
 `,
 		"Empty.schema": `package t
@@ -118,5 +126,37 @@ union Empty {}
 	}
 	if !strings.Contains(string(files["Choice.h"]), "Application code must include <new>") {
 		t.Error("Choice.h must tell applications to include <new> for its placement-construction example")
+	}
+	if !strings.Contains(string(files["Choice.h"]), "// ::new ( (void*) &value.payload ) Payload{}; value.type = ChoiceType::Payload;") {
+		t.Error("Choice.h must use its first payload arm, not its first tag, for the construction example")
+	}
+	if !strings.Contains(string(files["Signals.h"]), "// For example: value.type = SignalsType::Ping;") {
+		t.Error("Signals.h must demonstrate tag-only application selection")
+	}
+	for _, name := range []string{"Signals.h", "Empty.h"} {
+		if strings.Contains(string(files[name]), "\n    union\n") {
+			t.Errorf("%s emitted an anonymous union without payload members", name)
+		}
+	}
+	for _, name := range []string{"Choice.h", "Signals.h", "ChoiceWire.h", "SignalsWire.h"} {
+		for _, absent := range []string{" ping;", " pong;", "value.ping", "value.pong"} {
+			if strings.Contains(string(files[name]), absent) {
+				t.Errorf("%s gives a payload-free arm storage or access: %q", name, absent)
+			}
+		}
+	}
+	for _, want := range []string{"Ping = 1", "Payload = 2", "Pong = 3", "Count = 3", "Max = 3"} {
+		if !strings.Contains(string(files["Choice.h"]), want) {
+			t.Errorf("Choice.h lost a tag when omitting payload-free storage: %q", want)
+		}
+	}
+	for _, name := range []string{"ChoiceWire.h", "SignalsWire.h"} {
+		// Both void arms must remain explicit in both directions. Omitting
+		// a case would reject a legal tag even though no member is needed.
+		for _, arm := range []string{"Ping", "Pong"} {
+			if got := strings.Count(string(files[name]), "::"+arm+":"); got != 2 {
+				t.Errorf("%s has %d cases for %s, want write and read", name, got, arm)
+			}
+		}
 	}
 }

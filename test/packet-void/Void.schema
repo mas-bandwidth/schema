@@ -1,0 +1,46 @@
+package packetvoid
+
+type DefaultEntry
+{
+    retries int8 = -1
+}
+
+type DefaultArm
+{
+    entries [..2]DefaultEntry
+    marker bits(3) = 5
+}
+
+// The first arm has no storage; the second requires fresh construction.
+union Mixed
+{
+    ping
+    payload DefaultArm
+}
+
+union Tags
+{
+    ping
+    pong
+}
+
+union Single
+{
+    ack
+}
+
+union Empty
+{
+}
+
+type Frame
+{
+    lead bits(3)
+    choice Mixed
+    tail bits(3)
+}
+
+type Batch
+{
+    values [..2]Mixed
+}

@@ -36,6 +36,43 @@ var sabotages = map[string][]edit{
 		new: "\t\t\tg.pf(\"\\t// SABOTAGED: %s = [%s]byte{\", name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)))",
 	}},
 
+	// SPEC §4.8 / #503: a payload-free arm adds no bits after its tag.
+	// Sabotage one direction at a time; the opposite direction remains an
+	// independent check and no writer-produced bytes feed the reader oracle.
+	"packet-void-write-cpp": {{
+		old: `			g.pf("            write_bits( stream, %du, %d );\n", i+1, bits)
+			if v.Void() {
+				g.pf("            return true; // payload-free arm — the tag is the whole wire (SPEC §4.8)\n")`,
+		new: `			g.pf("            write_bits( stream, %du, %d );\n", i+1, bits)
+			if v.Void() {
+				g.pf("            write_bits( stream, 0u, 1 ); // SABOTAGED: extra void payload bit\n")
+				g.pf("            return true; // payload-free arm — the tag is the whole wire (SPEC §4.8)\n")`,
+	}},
+	"packet-void-read-cpp": {{
+		old: `		if v.Void() {
+			g.pf("            return true; // payload-free arm — the tag is the whole wire (SPEC §4.8)\n")
+			continue
+		}
+		g.needsNew = true`,
+		new: `		if v.Void() {
+			g.pf("            { uint32_t extra = 0; read_bits( stream, extra, 1 ); (void) extra; } // SABOTAGED: extra void payload bit\n")
+			g.pf("            return true; // payload-free arm — the tag is the whole wire (SPEC §4.8)\n")
+			continue
+		}
+		g.needsNew = true`,
+	}},
+	"packet-void-write-c": {{
+		old: `				g.pf("        case %d:\n            return 1; /* payload-free arm — the tag is the whole wire (SPEC §4.8) */\n", i+1)`,
+		new: `				g.pf("        case %d:\n", i+1)
+				g.call("            ", "serialize_write_bits( stream, 0, 1 )") // SABOTAGED: extra void payload bit
+				g.pf("            return 1; /* payload-free arm — the tag is the whole wire (SPEC §4.8) */\n")`,
+	}},
+	"packet-void-read-c": {{
+		old: `			g.pf("            return 1; /* payload-free arm — the tag is the whole wire (SPEC §4.8) */\n")`,
+		new: `			g.pf("            { serialize_uint32_t extra = 0; if ( !serialize_read_bits( stream, &extra, 1 ) ) return 0; } /* SABOTAGED: extra void payload bit */\n")
+			g.pf("            return 1; /* payload-free arm — the tag is the whole wire (SPEC §4.8) */\n")`,
+	}},
+
 	// docs/SPEC-TABLES.md §3: a kind 33 payload carrying an UNPAIRED SURROGATE
 	// is DAMAGE, not data. Take the pairing rule out of the table runtime's
 	// content check and the gate's surrogate rows stop being refused. The zero

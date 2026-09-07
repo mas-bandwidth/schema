@@ -276,9 +276,10 @@ an `[E]T` key (4), one named only through a `const` (5), one named only inside
 an `else` body (7), and one named only through a `type` two steps away (8).
 
 **EDGE 6 CANNOT BE ISOLATED, and the reason is structural rather than a gap in
-the cases.** A union in a `type` body takes `type` payloads only
-(SPEC-TABLES.md §2.6), and every `type` declaration is a ROOT of the walk, so a
-projected union's ARM PAYLOAD IS A ROOT BY CONSTRUCTION and is in the closure
+the cases.** Every payload in a union in a `type` body names a declared `type`
+(§4.8); a payload-free arm has no declaration to descend into. Every `type`
+declaration is a ROOT of the walk, so a projected union's ARM PAYLOAD IS A ROOT
+BY CONSTRUCTION and is in the closure
 before the arm is ever walked. No unit can therefore hold a declaration
 reachable only through the arm descent, and removing that descent moves no id,
 which is to say a control over it could not go red. The descent is implemented
@@ -1591,11 +1592,10 @@ union Value
   so there is nothing for a port to guess: it rides the packet wire as its
   tag alone (the wire bullet below), and a `type` body takes it. `check` is
   target-neutral and accepts it, as it accepts every construct some target
-  carries. The backends that carry it today are C#, Dart, Elixir, Go, Java,
-  JavaScript and Rust; **C and C++ refuse the unit by name at generate
-  time**, naming the union, the carriers and the follow-on, because their
-  tagged-union storage has no member for an arm that has none. That pair is
-  the named follow-on (SPEC-TABLES.md §11, §15).
+  carries. **All nine backends carry payload-free arms on the packet wire.**
+  C and C++ emit no member for such an arm; selecting it sets the tag alone.
+  If no arm has a payload, their generated struct holds only its tag, with no
+  empty storage union. The table side remains C++ only (SPEC-TABLES.md §11, §15).
 - **The implicit None row.** Entry 0 of every union is **None — no
   payload** — mirroring the enum sentinel-zero convention: optionality
   rides in-band as the natural stream terminator, a zero-initialized
@@ -1668,13 +1668,14 @@ union Value
   integer rule. MaxBits = tag bits + the largest payload's MaxBits.
   `Write<Union>` validates the tag BEFORE it rides — an out-of-set tag
   value in storage writes nothing and fails, it never desyncs the stream.
-- **Selection uses ordinary construction (§4.2).** Selecting an arm
-  constructs its payload with the declared defaults, recursively. Application
+- **Selection uses ordinary construction (§4.2).** Selecting an arm with a
+  payload constructs it with the declared defaults, recursively. Application
   code initializes the payload before populating it and setting its tag;
-  assigning the public tag alone does not initialize storage. A read performs
-  this construction before decoding the selected payload on EVERY selection,
-  including when the tag repeats. Mutable managed targets reuse their allocated
-  objects and buffers in place. The payload then follows §5's normal decoding
+  assigning the public tag alone does not initialize storage. A payload-free
+  arm selects by setting its tag alone; it has no payload to initialize. A
+  read performs this construction before decoding the selected payload on
+  EVERY selection, including when the tag repeats. Mutable managed targets
+  reuse their allocated objects and buffers in place. The payload then follows §5's normal decoding
   rules, including the treatment of untaken branches. Arms not selected by a read are
   unspecified: in the C/C++ union representation their bytes are
   indeterminate; in mutable targets whose storage lays every arm out separately
@@ -1701,14 +1702,15 @@ union Value
   explicitly NOT part of the contract; what binds every target is
   behavioral only — identical bytes, None is a valid empty read, an
   out-of-range tag is a validation failure. C++ generates a struct holding
-  the `<Union>Type type;` tag over an anonymous union of the arms (member
-  names = variant names), constructed as None, trivially copyable
+  the `<Union>Type type;` tag over an anonymous union of the payload-bearing
+  arms (member names = variant names), constructed as None, trivially copyable
   (asserted); a variant named `type` is refused at check time — the tag
   field's own name. **What an arm's own storage looks like is
   SPEC-TABLES.md §2.6's**, which states the companion an arm may need and
   the payload-free arm, whose whole surface is its tag value.
-  C mirrors it with its named `as` union. Go, C#, JS, Dart,
-  Java and Elixir lay the tag beside one pre-allocated arm per variant —
+  C mirrors it with its named `as` union. Both omit that storage union when
+  no arm has a payload. Go, C#, JS, Dart, Java and Elixir lay the tag beside
+  one pre-allocated arm per payload-bearing variant —
   nothing heap-allocates per value. Rust holds the value as a real
   `enum <Union> { None, Box(BoxCollider), ... }`, `None` the default — and
   STILL emits the `<Union>Type` tag newtype beside it: the tag surface
