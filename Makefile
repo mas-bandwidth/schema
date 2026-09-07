@@ -4174,6 +4174,39 @@ update-goldens: build/schema_test_retain build/schema_test build/schema_test_lud
 bench:
 	bench/run.sh
 
+# LOCKING C AND C++ TOGETHER (owner, 2026-09-07: "So we should now be able to
+# lock C and C++ together now in perf and make sure we don't regress").
+# The maintainer's pass: a cpp,c A/A twins pass, seven rounds, into
+# bench/results/<date>-<arch>-<host>-lock-pass.csv, then the ledger check over
+# the whole committed record. Two teeth fire from that one file — the §2.8 tie
+# band between the legs, and each leg's own curve against the BEST of the
+# previous three points on the SAME machine (absolute rates do not compare
+# across machines, §2), so run it on the box those points came from: the
+# Studio. Only files carrying BOTH legs are points on that axis.
+#
+# `--twins` is not optional here. The lock is a claim about two binaries
+# measured in one window, and §2.6.1's A/A legs are what rules out
+# state-selective interference dressing up as a separation.
+#
+# WHAT THE LOCK COVERS: bench_mixed / family gen / round_trip / best rate —
+# the headline statistic §2.8 rules on, and the whole of the lock. The
+# bitpacker rows and the write path are OUTSIDE it. Not an oversight: in
+# bench/results/2026-09-07-arm64-studio-bitpacker-checked-read-pass.csv, a
+# `window: OK` pass this lock calls green at 106.1%, bitpacker/read has c at
+# 161.4% of cpp. A band over that row is a ruling about a different statistic
+# and is not invented here — it would need its own §2.8-style paragraph in
+# bench/BENCH-STANDARD.md first.
+#
+# CI does not run this — it reads the committed CSV. A GitHub-hosted runner is
+# too noisy for a window the standard would accept (§2.6, §7), so the lock
+# lives in the record a maintainer commits, and the gate reads the record.
+# bench/README.md, "Locking C and C++ together".
+.PHONY: bench-lock
+bench-lock:
+	bench/tools/pass-driver.sh --twins --rounds 7 --langs cpp,c \
+	  --out "bench/results/$$(date +%F)-$$(uname -m)-$$(hostname -s)-lock-pass.csv"
+	go run ./bench/tools ledger --check
+
 # The bench_mixed variant data (issue #191): 64 wire buffers the data-driven
 # drivers bench, regenerated from bench/corpus/Bench.schema's generated Go
 # codec. Deterministic — a regeneration that changes the committed file means
@@ -5219,6 +5252,7 @@ include make/checks/packet-arm-defaults.mk
 include make/checks/packet-void.mk
 include make/checks/packet-defaults.mk
 include make/checks/packet-text.mk
+include make/checks/table-base64.mk
 
 # THE CONFORMANCE MATRIX (test/conformance/README.md): every discovered driver
 # over every surface it lists. The reference leg is C++ and is built here; the

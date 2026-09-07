@@ -468,6 +468,31 @@ inline const char * TableJsonBase64Alphabet()
     return "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 }
 
+// Byte-indexed sextets avoid an alphabet scan for every input character.
+// -1 preserves the text reader's invalid-character verdict, including NUL.
+inline int32_t TableJsonBase64Value( uint8_t c )
+{
+    static const int8_t values[256] = {
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 62, -1, -1, -1, 63,
+        52, 53, 54, 55, 56, 57, 58, 59, 60, 61, -1, -1, -1, -1, -1, -1,
+        -1,  0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14,
+        15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, -1, -1, -1, -1, -1,
+        -1, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
+        41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, -1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    };
+    return values[c];
+}
+
 inline void TableJsonWriteBase64( TableJsonOut & out, const uint8_t * data, int32_t length )
 {
     const char * alphabet = TableJsonBase64Alphabet();
@@ -2170,7 +2195,6 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
         in.pos++;
         memset( storage, 0, (size_t) f->array_bound );
         TableJsonSetCount( base, f, 0 );
-        const char * alphabet = TableJsonBase64Alphabet();
         int32_t placed = 0;
         uint32_t accumulator = 0;
         int32_t held = 0;
@@ -2182,9 +2206,9 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             char c = in.text[in.pos++];
             if ( c == '"' ) { break; }
             if ( c == '=' || malformed ) { continue; }
-            const char * at = c != 0 ? strchr( alphabet, c ) : NULL;
-            if ( at == NULL ) { malformed = true; continue; }
-            accumulator = ( accumulator << 6 ) | (uint32_t) ( at - alphabet );
+            const int32_t at = TableJsonBase64Value( (uint8_t) c );
+            if ( at < 0 ) { malformed = true; continue; }
+            accumulator = ( accumulator << 6 ) | (uint32_t) at;
             held += 6;
             if ( held >= 8 )
             {
