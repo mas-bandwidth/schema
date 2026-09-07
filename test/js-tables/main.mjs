@@ -1201,8 +1201,8 @@ function alloc(iterations, body, baseline, budgetMs) {
 // same number four times, which is what ONE SMALL ALLOCATION looks like.
 //
 // Eight bytes is the residual of the instrument itself after the empty body is
-// subtracted: on the pinned node it reads 0.00 exactly, and on the newer one it
-// reads under 1.5. Anything a port could plausibly allocate — a boxed double is
+// subtracted: on one V8 major it reads 0.00 exactly and on another under 1.5
+// (0.0 to 0.4 on the pinned 26.7.0, measured 2026-09-07). Anything a port could plausibly allocate — a boxed double is
 // sixteen bytes, the smallest object literal thirty-four, a BigInt more — sits
 // clear of it, and the negative control puts eight objects in.
 const ZeroFloor = 8;
@@ -1403,13 +1403,13 @@ function gateAllocation(measured, where) {
 }
 
 // THE RUNTIME THIS PROPERTY IS CLAIMED FOR, and the gate refuses to certify on
-// another. That is not fussiness: an allocation a newer V8 optimizes away can
-// be steady at sixteen bytes a call on the pinned one — a generated body
-// sitting over the older engine's optimization threshold — and a number read
-// on whatever `node` a PATH lookup found says nothing about the runtime the
-// claim is for. Pass SCHEMA_JS_ALLOC_ANY_NODE=1 to read the numbers on
-// another runtime; the gate then reports and does not certify.
-const PinnedNodeMajor = "20";
+// another. That is not fussiness: an allocation one major optimizes away can be
+// steady at sixteen bytes a call on another — a generated body sitting over
+// that engine's inlining threshold — and a number read on whatever `node` a
+// PATH lookup found says nothing about the runtime the claim is for. Pass
+// SCHEMA_JS_ALLOC_ANY_NODE=1 to read the numbers on another runtime; the gate
+// then reports and does not certify.
+const PinnedNodeMajor = "26";
 
 function checkAllocation(iterations) {
   let bad = false;
@@ -1418,10 +1418,10 @@ function checkAllocation(iterations) {
   if (major !== PinnedNodeMajor && !anyNode) {
     console.log("FAILED: this gate holds an allocation floor for node " + PinnedNodeMajor +
       ", which is the version CI pins, and it is running on node " + process.versions.node +
-      ". A newer V8 optimizes generated bodies an older one leaves on its threshold, where a " +
-      "double store boxes — so a floor measured here says nothing about the runtime the claim is " +
-      "for. Run `make dist-node` and re-run, or set SCHEMA_JS_ALLOC_ANY_NODE=1 to read the numbers " +
-      "without certifying them.");
+      ". V8 inlines generated bodies differently between majors, and a body left over the " +
+      "inlining threshold boxes its double store — so a floor measured here says nothing about " +
+      "the runtime the claim is for. Unpack the pinned runtime into dist/ (make/js.mk says how) and re-run, or set " +
+      "SCHEMA_JS_ALLOC_ANY_NODE=1 to read the numbers without certifying them.");
     failed = true;
     return;
   }

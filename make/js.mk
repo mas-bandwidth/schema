@@ -17,11 +17,11 @@
 # (test/js-tables/main.mjs, PinnedNodeMajor). The default points at the repo-local unpacked runtime; CI
 # installs the same major and overrides with NODE=node. To populate dist/
 # (gitignored):
-#   Node.js 20.20.2 (LTS, darwin-arm64)
-#   url:    https://nodejs.org/dist/v20.20.2/node-v20.20.2-darwin-arm64.tar.gz
-#   sha256: 466e05f3477c20dfb723054dfebffe55bc74660ee77f612166fca121dacb65b6
-#   untar into dist/ (the tarball already unpacks to node-v20.20.2-darwin-arm64)
-NODE ?= $(CURDIR)/dist/node-v20.20.2-darwin-arm64/bin/node
+#   Node.js 26.7.0 (darwin-arm64)
+#   url:    https://nodejs.org/dist/v26.7.0/node-v26.7.0-darwin-arm64.tar.gz
+#   sha256: 7ee659a7768e641bbfd5360940660b8e8fd0052f77488f365562bac522fc15d4
+#   untar into dist/ (the tarball already unpacks to node-v26.7.0-darwin-arm64)
+NODE ?= $(CURDIR)/dist/node-v26.7.0-darwin-arm64/bin/node
 # the conformance driver is a shell script the harness spawns, so it reads the
 # pin from the environment and falls back to PATH
 export NODE
@@ -480,8 +480,8 @@ test-js: toolchain-js generated/js/.stamp generated/js-ludicrous/.stamp generate
 	$(MAKE) conformance-negative-control-js
 	$(MAKE) tables-js-runtime-home
 	$(MAKE) tables-js-runtime-home-negative-control
-	cd test/js && node main.mjs && NODE_ENV=production node main.mjs
-	cd test/js-ludicrous && node main.mjs && NODE_ENV=production node main.mjs
+	cd test/js && $(NODE) main.mjs && NODE_ENV=production $(NODE) main.mjs
+	cd test/js-ludicrous && $(NODE) main.mjs && NODE_ENV=production $(NODE) main.mjs
 
 TEST_LEGS         += test-js
 TOOLCHAIN_LEGS    += js

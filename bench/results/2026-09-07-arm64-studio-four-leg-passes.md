@@ -1,11 +1,11 @@
-# Studio, 2026-09-07: two nine-language sittings, four four-leg driver passes, and what moved since the README's sitting
+# Studio, 2026-09-07: three nine-language sittings, four four-leg driver passes, and the node 20/26 pair
 
 All on the shared Mac Studio (Apple M3 Ultra, 32 cores, 512 GiB, Darwin 25.6.0, Apple clang
 21.0.0 clang-2100.1.1.101, go 1.27.1, cargo 1.98.0), unpinned, a desktop session and a Codex
 session live on the account throughout, the keeper's estate under another user. Loads are in
-each preamble.
+each driver pass's preamble; `bench/run.sh` sittings do not record one.
 
-## The two sittings
+## The two node-20 sittings
 
 `bench/run.sh` sittings, seven measured runs per leg, every leg gated on the wire goldens
 (`corpus_id 6b213fbfa1a03a99`), schema main 3d01b479. The runtimes were at the tags
@@ -25,7 +25,7 @@ README's. Rendered by `bench/render.awk` (round-trip best rate, C++ = 100%), exc
 JavaScript, which render.awk refuses (no C++ row in its file) and is computed here by hand from
 the two files' best rates:
 
-| language | sitting 2 | sitting 1 | Air sitting, 2026-09-01 |
+| language | sitting 2 | sitting 1 | Air (Apple M2) sitting, 2026-09-01 |
 |---|---:|---:|---:|
 | C++ | 100% | 100% | 100% |
 | C | 107% | 109% | 98%, tie |
@@ -51,8 +51,9 @@ Best round-trip rates, messages per second, with the spread of the seven runs:
 | js | 1,199,841 | 1.0% | 1,224,748 | 2.4% | 1,361,635 |
 | elixir | 324,874 | 0.7% | 322,502 | 5.7% | 280,148 |
 
-The sittings, ten minutes apart, differ by 1.1 to 4.2% on every ratio (Elixir's 62 points is
-4.2% of 1489), most of it the C++ denominator; no row in either is past the §2.3 noisy line.
+The sittings, ten minutes apart, differ by 1.1 to 4.2% on every ratio but C++'s, the
+denominator (Elixir's 62 points is 4.2% of 1489), most of it the C++ denominator itself; no
+row in either is past the §2.3 noisy line.
 
 ## The four driver passes: the two-by-two
 
@@ -90,9 +91,10 @@ and 2,040,720 (1.3%), C's between 4,343,435 and 4,454,055 (2.5%); cell D to cell
 7.7% in cell A (4,733,118), 9.3% and 5.5% in the two sittings (4,801,451 and 4,637,510). Both
 changes contribute and the split between them is not resolved: read along one path of the
 two-by-two, the schema commits since 7eba63f add 2.5% (D to C) and serialize.h between
-cebaed2 and v1.16.2 adds 5.1% (C to A); along the other, 4.3% (B to A) and 3.3% (D to B).
-Each step is smaller than the C++ round-trip spread inside the passes it is read from (2.0,
-3.0, 6.8 and 13.4% in D, B, A and C). The schema side changed the C++ emitter,
+cebaed2 and v1.16.2 adds 5.1% (C to A); along the other, 4.3% (B to A) and 3.3% (D to B). The
+four steps are 2.5, 5.1, 4.3 and 3.3%; the C++ round-trip spreads inside the passes they are
+read from are 2.0, 3.0, 6.8 and 13.4% in D, B, A and C. The steps are of the same order as the
+spreads, so the split is not resolved. The schema side changed the C++ emitter,
 `internal/codegen/cpp`, and the generated bench code, `generated/bench/cpp`, not the C++ runner
 in `bench/cpp`; the serialize.h side is 583 lines; which commit is responsible is not
 isolated. C++ is the denominator, so every other language's percentage widened by that much
@@ -106,15 +108,17 @@ check is coarser than the 7.7% move and does not resolve it. Absolute rates do n
 across machines under §2, and the Air-to-Studio rises are reported here for the ledger only:
 cpp 22% (cell D) to 32% (cell A), c 19 to 22%, go 18 to 19%, rust 14 to 17%.
 
-**JavaScript.** The Air's 264% ran node 26.7.0 where the repo pins 20.20.2, which is what ran
-here. The Studio's absolute JavaScript rate, 1.20 to 1.22 million a second, is below the
-Air's 1.36 million while every other leg is 14 to 29% above it. Two terms are open and the
-data does not separate them: the node version, and the Air's own variance on this leg. The
-Air's three sittings of 2026-09-01 rendered JavaScript 461%, 318% and 264% on that one node
-(762,465, 1,124,935 and 1,361,635 a second) and Dart 363, 225, 227; the README's Air number
-was the fast end of that range; the Studio's two sittings agree on JavaScript within 2%. A
-node 26 run on this machine is the measurement that would settle the version term and has
-not been made.
+**JavaScript.** The Air's 264% ran node 26.7.0 where the repo pinned 20.20.2, which is what
+ran in these two sittings and these four passes. The Studio's absolute JavaScript rate on node
+20, 1.20 to 1.22 million a second, is below the Air's 1.36 million while every other leg is 14
+to 29% above it. Two terms were open and this day's data did not separate them: the node
+version, and the Air's own variance on this leg. The Air's three sittings of 2026-09-01
+rendered JavaScript 461%, 318% and 264% on that one node (762,465, 1,124,935 and 1,361,635 a
+second) and Dart 363, 225, 227; the README's Air number was the fast end of that range; the
+Studio's two node-20 sittings agree on JavaScript to 2.1% on absolute rate (1,224,748 in
+sitting 1, 1,199,841 in sitting 2). The node 26 run on this machine that would settle the
+version term has since been made: it is in "The node runs" below, and it is +30.5%. The Air's
+variance on this leg stays true and is now the secondary term.
 
 **What to know before trusting a row.** Pass B's control delta, 4.0%, is inside the 5% window
 and in the standard's warning zone (its control fell from 6,994,002 to 6,717,419 under a
@@ -142,11 +146,81 @@ driver refused the three codegen-only legs at its §3.5 pre-flight (no case for 
 elixir; `bench/run.sh` exempted them by name; #692 gives the pre-flight the case); that is why
 the nine-language numbers are sittings and the two-by-two is four legs.
 
+## The node runs
+
+Three files taken after the four passes, when the node pin moved from 20.20.2 to 26.7.0. All
+three are `bench/run.sh` sittings on the same Studio, seven measured runs per leg, every leg
+gated on the same wire goldens (`corpus_id 6b213fbfa1a03a99`), and every preamble records
+schema commit `3d01b479` — the tree the two sittings above ran. Main's `7622f23b` after that
+commit changed only `bench/tools`, `bench/run.sh`, docs and results, so the generated code and
+the runtime checkouts under these three are identical to the two sittings' and to today's
+main. `run.sh` sittings carry no `load_*` preamble line — automatic load capture is a
+pass-driver feature — so the load under them is unrecorded; the desktop and Codex sessions
+named at the top of this note were live throughout.
+
+| file | date | node | legs |
+|---|---|---|---|
+| `2026-09-07-arm64-studio-js-node20.csv` | 15:42:19Z | v20.20.2 | js |
+| `2026-09-07-arm64-studio-js-node26.csv` | 15:44:00Z | v26.7.0 | js |
+| `2026-09-07-arm64-studio-ninelang-sitting-node26.csv` | 15:45:27Z | v26.7.0 | all nine |
+
+**The back-to-back pair.** The JavaScript leg alone, run twice on one machine 101 seconds
+apart, the node version the only thing changed between them:
+
+| node | best round-trip | median | spread |
+|---|---:|---:|---:|
+| 20.20.2 | 1,222,630 | 1,207,413 | 2.08% |
+| 26.7.0 | 1,595,367 | 1,580,122 | 1.46% |
+
++30.5% on best rate, +30.9% on median. Both spreads are well under the step. This is the
+measurement the JavaScript paragraph above wanted and did not have: the version term, on one
+machine, with nothing else moving. It does not measure the Air's variance on this leg, which
+is a separate term and stays open. In the `bits` family the two files are less comparable: the
+node-20 file's `js/bitpacker` write and read rows carry 14.19% and 14.26% spreads against the
+node-26 file's 1.51% and 2.18% — under §2.3's 15% noisy threshold, but the pair's claim is the
+`gen` round-trip row above, not those.
+
+**The nine-language sitting on node 26.7.0.** Rendered by `bench/render.awk` (round-trip best
+rate, C++ = 100%), with sitting 2's node-20 ratios beside it:
+
+| language | node 26 | sitting 2 (node 20) | best round-trip, node 26 | spread |
+|---|---:|---:|---:|---:|
+| C++ | 100% | 100% | 4,665,785 | 3.16% |
+| C | 107% | 107% | 4,378,533 | 1.40% |
+| Java | 169% | 169% | 2,754,761 | 2.08% |
+| Rust | 173% | 172% | 2,701,657 | 2.69% |
+| Go | 231% | 230% | 2,020,216 | 0.65% |
+| C# | 253% | 253% | 1,843,454 | 1.03% |
+| Dart | 267% | 256% | 1,746,369 | 2.81% |
+| JavaScript | 292% | 387% | 1,598,165 | 0.80% |
+| Elixir | 1451% | 1427% | 321,467 | 4.13% |
+
+JavaScript, 387% to 292%, is the row that moved with the runtime, and the pair above is what
+moved it. Every other ratio is within a point of sitting 2's except Dart, 256% to 267%, and
+Elixir, 1427% to 1451%; on absolute rate Dart is -3.6% and Elixir -1.0% against sitting 2
+while the C++ denominator is +0.6%. Those two are sitting-to-sitting variance, the same kind
+the two node-20 sittings show, and nothing here measures a cause for them. No row in the file
+is past §2.3's noisy threshold (the highest is `elixir/bench_mixed/write` at 8.47%).
+
+The sitting's JavaScript best, 1,598,165, is 0.2% above the pair's node-26 run — two
+independent node-26 measurements of the same leg inside one three-minute window. Against the
+Air, the Studio's JavaScript leg on node 26 is 17.4% above (1,598,165 against 1,361,635),
+inside the 10.1 to 29.8% the other eight legs run above the Air in this same sitting; on node
+20 it was 11.9% *below*. The row no longer stands apart from the rest of the table.
+
+The invocations below are reconstructed from the preambles, not copied from a shell history;
+the node runs selected the runtime by putting its bin directory first on the PATH, which the
+lines do not show.
+
 ```sh
 bench/run.sh --out bench/results/2026-09-07-arm64-studio-ninelang-sitting-2.csv     # node, dotnet on PATH
 bench/tools/pass-driver.sh --rounds 7 --langs cpp,c,go,rust --twins --out bench/results/2026-09-07-arm64-studio-four-legs-twins-pass.csv
 # in a worktree at 7eba63f, beside the same runtime checkouts:
 BENCH_TOOLS=<fixed bench/tools binary> bench/tools/pass-driver.sh --rounds 7 --langs cpp,c,go,rust --twins --out bench/results/2026-09-07-arm64-studio-four-legs-twins-schema7eba63f-pass.csv
 SERIALIZE=<cebaed2> SERIALIZE_C=<37db942> SERIALIZE_GO=<287e2fe> SERIALIZE_RS=<6b52aa6> bench/tools/pass-driver.sh --rounds 7 --langs cpp,c,go,rust --twins --out <pass C or D>
+# the node runs, with the named node first on the PATH:
+bench/run.sh --only js --out bench/results/2026-09-07-arm64-studio-js-node20.csv   # node v20.20.2
+bench/run.sh --only js --out bench/results/2026-09-07-arm64-studio-js-node26.csv   # node v26.7.0
+bench/run.sh          --out bench/results/2026-09-07-arm64-studio-ninelang-sitting-node26.csv   # node v26.7.0, dotnet on PATH
 awk -F, -v skips="" -f bench/render.awk <csv>
 ```

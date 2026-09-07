@@ -111,12 +111,14 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
 
-      # One node version, the runtime's floor (serialize.js engines >= 20):
-      # the runtime's own CI carries the version matrix; this repo proves
-      # wire identity, which does not vary by node version.
+      # One node version, the pin make/js.mk names (the allocation gate holds
+      # its floor on this major and no other): the runtime's own CI carries
+      # the version matrix, and serialize.js's engines floor of >= 20 is
+      # satisfied by it; this repo proves wire identity, which does not vary
+      # by node version.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '20'
+          node-version: '26'
 
       # The Dart SDK, pinned to the same version the Makefile documents for
       # the repo-local dist/ (generated Dart is self-contained — the SDK is
@@ -255,7 +257,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '20'
+          node-version: '26'
 
       - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
         with:
@@ -355,7 +357,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '20'
+          node-version: '26'
 
       - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
         with:
