@@ -94,7 +94,11 @@ func enumerate(root string) ([]definition, error) {
 		if err != nil {
 			rel = file
 		}
-		for _, target := range targetsIn(string(body)) {
+		targets, err := targetsIn(string(body))
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", rel, err)
+		}
+		for _, target := range targets {
 			if _, ok := found[target]; !ok {
 				found[target] = rel
 			}
@@ -112,7 +116,7 @@ func enumerate(root string) ([]definition, error) {
 // logical lines: a recipe line starts with a tab, a `define` block is skipped
 // whole, and a trailing backslash continues the line. What is left is a rule
 // head when a colon stands outside a variable reference with no `=` before it.
-func targetsIn(body string) []string {
+func targetsIn(body string) ([]string, error) {
 	var targets []string
 	var pending string
 	continuing := false
@@ -124,7 +128,11 @@ func targetsIn(body string) []string {
 				continue
 			}
 			continuing = false
-			targets = append(targets, headTargets(pending)...)
+			names, err := headTargets(pending)
+			if err != nil {
+				return nil, err
+			}
+			targets = append(targets, names...)
 			pending = ""
 			continue
 		}
@@ -149,9 +157,13 @@ func targetsIn(body string) []string {
 			continuing = true
 			continue
 		}
-		targets = append(targets, headTargets(trimmed)...)
+		names, err := headTargets(trimmed)
+		if err != nil {
+			return nil, err
+		}
+		targets = append(targets, names...)
 	}
-	return targets
+	return targets, nil
 }
 
 // headTargets returns the marked names on the left of a rule's colon, or
@@ -161,14 +173,21 @@ func targetsIn(body string) []string {
 // well as the left. Every control in this tree carries both a `.PHONY` line and
 // a rule head, so the two readings agree today; reading both is what keeps a
 // control findable if one of them is ever spelled through a variable.
-func headTargets(line string) []string {
+//
+// A marked head spelled through a variable (`$(GENERATED)-negative-control`) or
+// as a pattern rule (`pattern-%-negative-control`) is REFUSED rather than
+// dropped. This reader does not expand variables and does not know a pattern's
+// instances, so it cannot name the controls such a head stands for; dropping it
+// would leave those controls in no group and in no exclusion, with every test
+// here green, which is the one outcome this package exists to prevent.
+func headTargets(line string) ([]string, error) {
 	colon := ruleColon(line)
 	if colon < 0 {
-		return nil
+		return nil, nil
 	}
 	head := line[:colon]
 	if strings.ContainsAny(head, "=") {
-		return nil
+		return nil, nil
 	}
 	names := strings.Fields(head)
 	if len(names) == 1 && names[0] == ".PHONY" {
@@ -176,11 +195,15 @@ func headTargets(line string) []string {
 	}
 	var out []string
 	for _, name := range names {
-		if strings.Contains(name, marker) && !strings.ContainsAny(name, "$%") {
-			out = append(out, name)
+		if !strings.Contains(name, marker) {
+			continue
 		}
+		if strings.ContainsAny(name, "$%") {
+			return nil, fmt.Errorf("the rule head %q names a %s through a variable or a pattern, and this reader expands neither, so it cannot say which controls the head stands for: spell them out, or take the marker out of the name", name, marker)
+		}
+		out = append(out, name)
 	}
-	return out
+	return out, nil
 }
 
 // ruleColon finds the colon that separates a rule's targets from its

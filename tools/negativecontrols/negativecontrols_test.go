@@ -1,8 +1,11 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -167,19 +170,17 @@ define A_MACRO
 inside-negative-control: nothing
 endef
 
-$(GENERATED)-negative-control: prereq
-	@echo generated
-
-pattern-%-negative-control: prereq
-	@echo pattern
-
 double-negative-control:: prereq
 	@echo double
 
 VAR_WITH_COLON = a:b-negative-control
 `
+	targets, err := targetsIn(body)
+	if err != nil {
+		t.Fatal(err)
+	}
 	got := map[string]bool{}
-	for _, target := range targetsIn(body) {
+	for _, target := range targets {
 		got[target] = true
 	}
 	for _, want := range []string{
@@ -192,11 +193,34 @@ VAR_WITH_COLON = a:b-negative-control
 	}
 	for _, unwanted := range []string{
 		"not-a-negative-control-target", "inside-negative-control",
-		"$(GENERATED)-negative-control", "pattern-%-negative-control",
 		"a:b-negative-control", "-Ifoo:bar-negative-control",
 	} {
 		if got[unwanted] {
 			t.Errorf("targetsIn invented %s", unwanted)
+		}
+	}
+}
+
+// TestAMarkedHeadThisReaderCannotNameIsRefused is the other half of the parser
+// contract. A control whose head is spelled through a variable or as a pattern
+// rule has a name this reader cannot resolve, and a reader that drops such a
+// head leaves those controls in no group, in no exclusion, and in no job, with
+// every test in this file green. So the head is refused by name instead, which
+// is the one outcome an author can act on.
+func TestAMarkedHeadThisReaderCannotNameIsRefused(t *testing.T) {
+	for _, body := range []string{
+		"$(GENERATED)-negative-control: prereq\n\t@echo generated\n",
+		"pattern-%-negative-control: prereq\n\t@echo pattern\n",
+		".PHONY: $(LANGS:%=packet-%-negative-control)\n",
+		"head-negative-control \\\n\t$(OTHER)-negative-control: prereq\n\t@echo continued\n",
+	} {
+		targets, err := targetsIn(body)
+		if err == nil {
+			t.Errorf("targetsIn read %q and returned %q instead of refusing a head it cannot name", body, targets)
+			continue
+		}
+		if !strings.Contains(err.Error(), marker) {
+			t.Errorf("the refusal for %q does not name the head: %v", body, err)
 		}
 	}
 }
@@ -222,6 +246,296 @@ func TestEnumerateReadsEveryIncludedFile(t *testing.T) {
 	for _, want := range []string{"Makefile", "make/js.mk", "make/checks/packet-arm-defaults.mk"} {
 		if !seen[want] {
 			t.Errorf("the include set does not carry %s", want)
+		}
+	}
+}
+
+// legs are the two jobs that expand this package's plan: one per tier, each in
+// the workflow that tier runs on.
+var legs = []struct {
+	workflow  string
+	job       string
+	matrixJob string
+	command   string
+}{
+	{"ci.yml", "negative-controls", "negative-controls-matrix", "go run ./tools/negativecontrols matrix"},
+	{"certify.yml", "negative-controls-nightly", "negative-controls-nightly-matrix", "go run ./tools/negativecontrols matrix nightly"},
+}
+
+// TestEachLegExpandsTheToolsMatrix reads the workflows as YAML rather than as
+// text. The test above it asks whether the file CONTAINS the tool's commands,
+// which a leg that kept the old expression in a comment and typed an include
+// list beside it still satisfies. This one asks what the leg actually expands:
+// its `strategy.matrix` has to BE the matrix job's output, and it has to
+// `needs` that job, or the leg runs whatever somebody remembered rather than
+// the plan.
+func TestEachLegExpandsTheToolsMatrix(t *testing.T) {
+	root := testRoot(t)
+	for _, leg := range legs {
+		body, err := os.ReadFile(filepath.Join(root, ".github", "workflows", leg.workflow))
+		if err != nil {
+			t.Fatal(err)
+		}
+		doc, err := parseWorkflow(string(body))
+		if err != nil {
+			t.Fatalf(".github/workflows/%s does not parse: %v", leg.workflow, err)
+		}
+
+		matrix, err := mappingAt(doc, "jobs", leg.job, "strategy", "matrix")
+		if err != nil {
+			t.Errorf(".github/workflows/%s: %v", leg.workflow, err)
+			continue
+		}
+		want := fmt.Sprintf("${{ fromJSON(needs.%s.outputs.matrix) }}", leg.matrixJob)
+		if matrix != want {
+			t.Errorf(".github/workflows/%s: the %s job expands %#v as its matrix, want %q: a matrix written any other way is a target list this package did not enumerate", leg.workflow, leg.job, matrix, want)
+		}
+
+		needsValue, err := mappingAt(doc, "jobs", leg.job, "needs")
+		if err != nil {
+			t.Errorf(".github/workflows/%s: the %s job names no `needs`, so its matrix expression resolves to nothing: %v", leg.workflow, leg.job, err)
+			continue
+		}
+		needs, err := stringsOf(needsValue)
+		if err != nil {
+			t.Errorf(".github/workflows/%s: the %s job's `needs` is not a job name or a list of them: %v", leg.workflow, leg.job, err)
+			continue
+		}
+		if !slices.Contains(needs, leg.matrixJob) {
+			t.Errorf(".github/workflows/%s: the %s job needs %q and not %s", leg.workflow, leg.job, needs, leg.matrixJob)
+		}
+
+		// And the other end of the same wire: the matrix job's output is a
+		// step's, and that step runs this tool.
+		output, err := mappingAt(doc, "jobs", leg.matrixJob, "outputs", "matrix")
+		if err != nil {
+			t.Errorf(".github/workflows/%s: %v", leg.workflow, err)
+			continue
+		}
+		id, ok := stepIDOf(output)
+		if !ok {
+			t.Errorf(".github/workflows/%s: the %s job's matrix output is %#v, which names no step", leg.workflow, leg.matrixJob, output)
+			continue
+		}
+		steps, err := mappingAt(doc, "jobs", leg.matrixJob, "steps")
+		if err != nil {
+			t.Errorf(".github/workflows/%s: %v", leg.workflow, err)
+			continue
+		}
+		run, ok := runOfStep(steps, id)
+		if !ok {
+			t.Errorf(".github/workflows/%s: the %s job has no step with id %q", leg.workflow, leg.matrixJob, id)
+			continue
+		}
+		if !strings.Contains(run, leg.command) {
+			t.Errorf(".github/workflows/%s: step %q of %s does not run %q, so the matrix it publishes is not the plan's:\n%s", leg.workflow, id, leg.matrixJob, leg.command, run)
+		}
+	}
+}
+
+// stepIDOf reads the step id out of a `${{ steps.<id>.outputs.matrix }}`
+// expression.
+func stepIDOf(value any) (string, bool) {
+	text, ok := value.(string)
+	if !ok {
+		return "", false
+	}
+	rest, ok := strings.CutPrefix(strings.TrimSpace(text), "${{ steps.")
+	if !ok {
+		return "", false
+	}
+	id, _, ok := strings.Cut(rest, ".outputs.matrix }}")
+	if !ok || id == "" {
+		return "", false
+	}
+	return id, true
+}
+
+// runOfStep finds one step of a job by its id and returns its `run` script.
+func runOfStep(steps any, id string) (string, bool) {
+	items, ok := steps.([]any)
+	if !ok {
+		return "", false
+	}
+	for _, item := range items {
+		step, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		if step["id"] != id {
+			continue
+		}
+		run, ok := step["run"].(string)
+		return run, ok
+	}
+	return "", false
+}
+
+// TestParseWorkflowReadsTheShapesAWorkflowWrites pins the reader against the
+// spellings these two files use, each of which a line-at-a-time scan gets
+// wrong: a scalar carrying an expression, a `needs` written as a list, a step
+// sequence whose items are mappings, an inline comment after a value, and a
+// `run:` block whose script lines look like mapping entries and sequence items
+// and are neither.
+func TestParseWorkflowReadsTheShapesAWorkflowWrites(t *testing.T) {
+	const body = `name: Example
+
+# a comment: not: a: mapping
+on:
+  schedule:
+    - cron: '17 9 * * *'
+  workflow_dispatch:
+
+jobs:
+  plan-job:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@abc123 # v7.0.1
+      - id: plan
+        name: the plan, as a matrix
+        run: |
+          matrix=$(go run ./tools/negativecontrols matrix)
+          # - not: a sequence item
+          if grep -q 'a: b' out; then echo "::error::no"; fi
+
+  leg:
+    needs:
+      - plan-job
+      - other
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan-job.outputs.matrix) }}
+`
+	doc, err := parseWorkflow(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if doc["name"] != "Example" {
+		t.Errorf("the document's name is %#v", doc["name"])
+	}
+	matrix, err := mappingAt(doc, "jobs", "leg", "strategy", "matrix")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "${{ fromJSON(needs.plan-job.outputs.matrix) }}"; matrix != want {
+		t.Errorf("the leg's matrix reads %#v, want %q", matrix, want)
+	}
+	needsValue, err := mappingAt(doc, "jobs", "leg", "needs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	needs, err := stringsOf(needsValue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(needs) != 2 || needs[0] != "plan-job" || needs[1] != "other" {
+		t.Errorf("the leg needs %q", needs)
+	}
+	output, err := mappingAt(doc, "jobs", "plan-job", "outputs", "matrix")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id, ok := stepIDOf(output); !ok || id != "plan" {
+		t.Errorf("the output names step %q (read %v)", id, ok)
+	}
+	steps, err := mappingAt(doc, "jobs", "plan-job", "steps")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if items, ok := steps.([]any); !ok || len(items) != 2 {
+		t.Fatalf("the plan job has %#v for steps", steps)
+	}
+	run, ok := runOfStep(steps, "plan")
+	if !ok {
+		t.Fatal("the plan step has no run script")
+	}
+	for _, want := range []string{"go run ./tools/negativecontrols matrix", "# - not: a sequence item", "if grep -q 'a: b' out"} {
+		if !strings.Contains(run, want) {
+			t.Errorf("the run script lost %q:\n%s", want, run)
+		}
+	}
+	// A single-quoted cron value keeps its colon-free text, and a `- ` item
+	// under a nested key is a sequence and not a mapping.
+	schedule, err := mappingAt(doc, "on", "schedule")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if items, ok := schedule.([]any); !ok || len(items) != 1 {
+		t.Fatalf("the schedule reads %#v", schedule)
+	}
+	// A line that opens no block and follows nothing is a refusal, not a
+	// silently dropped line.
+	if _, err := parseWorkflow("jobs:\n  leg:\n    runs-on: x\n   stray\n"); err == nil {
+		t.Error("a line at an indentation no block opened parsed clean")
+	}
+}
+
+// TestToolchainPinsMatchTheConformanceRegistry holds the plan's toolchain
+// versions against test/conformance/<lang>/ci.json, which is where the same
+// version is written for the conformance legs. Both files install a toolchain
+// for the same generated code, so a bump in one and not the other means a
+// negative control runs against a runtime its own conformance leg no longer
+// uses, and nothing else in this tree would say so.
+func TestToolchainPinsMatchTheConformanceRegistry(t *testing.T) {
+	root := testRoot(t)
+	files, err := filepath.Glob(filepath.Join(root, "test", "conformance", "*", "ci.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) == 0 {
+		t.Fatal("no test/conformance/*/ci.json: this test would pass over an empty set")
+	}
+	registry := map[string]string{}
+	source := map[string]string{}
+	for _, file := range files {
+		body, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var entry map[string]string
+		if err := json.Unmarshal(body, &entry); err != nil {
+			t.Fatalf("%s: %v", file, err)
+		}
+		lang := filepath.Base(filepath.Dir(file))
+		for _, field := range versionedToolchains {
+			version := entry[field]
+			if version == "" {
+				continue
+			}
+			if held, ok := registry[field]; ok && held != version {
+				t.Errorf("the registry pins %s at %s in %s and at %s in %s", field, held, source[field], version, lang)
+				continue
+			}
+			registry[field] = version
+			source[field] = lang
+		}
+	}
+	m, err := loadManifest(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, g := range m.Groups {
+		for _, field := range versionedToolchains {
+			version := g.toolchain(field)
+			if version == "" {
+				continue
+			}
+			held, ok := registry[field]
+			if !ok {
+				t.Errorf("group %q installs %s %s and no test/conformance/*/ci.json names that toolchain", g.Name, field, version)
+				continue
+			}
+			if held != version {
+				t.Errorf("group %q installs %s %s and test/conformance/%s/ci.json pins %s: bump both or neither", g.Name, field, version, source[field], held)
+			}
+		}
+		// The .NET pin is the one version neither file carries: it lives in
+		// .github/dotnet-version, and both workflows read it from there. A
+		// group that wrote a version here would be a second pin.
+		if strings.ContainsAny(g.Dotnet, "0123456789") {
+			t.Errorf("group %q pins dotnet at %q: the SDK version lives in .github/dotnet-version, and this field only says the row needs it", g.Name, g.Dotnet)
 		}
 	}
 }

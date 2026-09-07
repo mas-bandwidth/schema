@@ -160,6 +160,19 @@ target whose name carries `negative-control`, and holds that set against
 direction: a control the makefiles define and the plan does not carry, and a
 control the plan names and no makefile defines.
 
+**So the name is the convention, and `-negative-control` is the spelling.** A
+control called `<thing>-negative` is invisible to the enumerator, which is a
+control in no group, in no exclusion and on no workflow, with every test here
+green. A marked head the reader cannot resolve to names, one written through a
+variable or as a pattern rule, is refused rather than dropped, for the same
+reason.
+
+The same package's tests hold two more joins nothing else in the tree holds:
+the two legs are parsed as YAML, and each has to expand `${{ fromJSON(...) }}`
+over the matrix job's output rather than a hand-typed include list; and the
+toolchain versions in `make/negative-controls.json` have to match
+`test/conformance/<lang>/ci.json`, so a runtime bump moves both or neither.
+
 So adding a negative control costs one line in `make/negative-controls.json`,
 in the group whose toolchain it needs and whose job still fits the rule with it
 added, and forgetting that line is a red test rather than a control that runs

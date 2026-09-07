@@ -68,6 +68,34 @@ type Exclusion struct {
 	Reason string `json:"reason"`
 }
 
+// versionedToolchains are the fields a group and a conformance registry entry
+// (test/conformance/<lang>/ci.json) spell the same way, with the same version
+// string, because a group's setup step and a conformance leg's setup step
+// install the same toolchain. `dotnet` is not among them on purpose: the .NET
+// pin lives in .github/dotnet-version and both files carry a marker instead of
+// the version, so there is no version here to hold against anything.
+var versionedToolchains = []string{"rust", "node", "dart", "java", "otp", "elixir"}
+
+// toolchain returns the version this group installs for one of the fields in
+// versionedToolchains, or the empty string when the group names none.
+func (g Group) toolchain(field string) string {
+	switch field {
+	case "rust":
+		return g.Rust
+	case "node":
+		return g.Node
+	case "dart":
+		return g.Dart
+	case "java":
+		return g.Java
+	case "otp":
+		return g.OTP
+	case "elixir":
+		return g.Elixir
+	}
+	return ""
+}
+
 // covered returns every target the manifest accounts for, and reports the
 // first target that appears twice.
 func (m Manifest) covered() (map[string]string, error) {
