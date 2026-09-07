@@ -1679,6 +1679,37 @@ exactly as a pointer field is**: two keys naming one node hold one node, one
 index on the wire (§3.1), one body in a region (§6.3), one `&node` in the
 text (§16.7).
 
+**THE VALUE'S STORAGE IS THE ROW ITS KIND TAKES AT A FIELD** (§4.2, §7.2).
+The entry is a real table and `value` is an ordinary field of it, so nothing
+about a value's storage is the map's:
+
+- a scalar, an enum, a `flags` mask, a declared `type` and a table by value
+  store the type itself, ONE member;
+- `string(N)`, `wstring(N)` and `bytes(N)` store the buffer beside the `int32`
+  used length every text field carries, TWO members;
+- `[N]T` stores `T value[N]`, one member, complete by construction;
+- `[..N]T` stores `T value[N]` beside its `int32` used count, two members;
+- `[E]T` stores one slot per named variant and no count, one member;
+- `[]T` stores the sixteen-byte list slot, one member, and its elements ride in
+  the holder's node extent as any list's do (§2.9), laid after the entry array
+  by the pre-order rule the memory layout below states;
+- a map stores the sixteen-byte map slot, one member, and its entries ride
+  there too, under that same rule;
+- `*T`, `*string` and `*bytes` store the eight-byte reference every pointer
+  field has (§2.1, §2.5), one member, and the node it names takes its index
+  where the map is reached.
+
+**THE HANDLE FOLLOWS THE STORAGE.** `Insert`, `Find` and `Each` hand back a
+pointer to the `value` member where the storage is ONE member, and the ENTRY
+where it is two, because two members are not one addressable slot and a caller
+that cannot set the length or the count cannot fill the value. A `[N]T` value's
+handle points at the ARRAY rather than at its first element, so the extent
+survives the handoff. A `*T`, `*string` or `*bytes` value's BUILDER handle is
+the SLOT, which is what an `Emplace` fills, and the const `Find` answers the
+RESOLVED node, one add on the self-relative delta. Where the handle is the
+entry, the caller fills `value` and its companion and leaves `key` to the map,
+which owns the order the key carries.
+
 **And a map is a BY-VALUE EDGE of the ONE declaration-order walk** (§3.1,
 schema#438). The numbering, the pack measure and the pack are one walk over
 the fields in declaration order that descends each by-value edge WHERE IT IS
@@ -6121,6 +6152,19 @@ has:
   each way and at both extremes; a record's type id reference flipped and
   cleared;
 - **a window spliced in** from another seed of the same unit.
+
+**A MAP'S VALUE IS A FIELD POSITION, and every strategy above reaches it there
+without a rule of its own.** The value is an ordinary field of the generated
+entry and its storage is that field's own row (§2.8), so an entry's body
+carries a field header, a length and a payload of the value's own kind: an
+array's `N` and ELEMENT KIND where the value is `[N]T`, `[..N]T`, `[E]T` or an
+unbounded `[]T`; a kind `17` NODE INDEX where it is `*T`, `*string` or
+`*bytes`, and the blob record it names is a record of the node table like any
+other; and the kind `12` and kind `33` payloads the text strategies above name.
+The strategies are enumerated over field positions, so each lands inside an
+entry as it lands in any body. What stays the MAP'S rather than the value's is
+the KEY: its kind, its widening, its length and its order, each with the map's
+own verdict above.
 
 The enumerated passes run every mutant they name, whatever `N` is, so the
 checks each aims at are exercised on every run; the RANDOM pass stacks one to
@@ -11205,6 +11249,16 @@ inspects everything in the schema built:
 
 ## 15. Named follow-ons
 
+- **AN OPTIONAL MAP VALUE'S PRESENCE COMPANION HAS NO HANDLE** (§2.3, §2.8).
+  `?T` and `?[N]T` store the value beside a `bool` presence companion, which
+  is two members, and §2.8's handle rule answers the ENTRY for two members.
+  The C++ reference answers the value member instead, so a caller can fill a
+  `map[K]?T`'s value and cannot set its presence, and the value is elided on
+  every wire. `?[..N]T` is the exception by accident: its count companion
+  already makes it a pair, so its handle is the entry and its presence bit is
+  reachable. Closing it is the same one-line predicate the pair rule is
+  already spelled as, plus a corpus unit per spelling; the page's rule is
+  already the one above and nothing about it is undecided.
 - **THE UNIT REGISTRY IN THE EIGHT PORTS** (§8.3, §8.7). The C++ reference
   emits `UnitView()` and the eight ports do not, so in those eight an enum
   VARIANT's, a flags BIT's and a record-naming ARM's `doc` and `tags` reach

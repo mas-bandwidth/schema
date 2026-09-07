@@ -1,0 +1,15 @@
+package mapdemo
+
+// A map whose VALUE is a COUNTED ARRAY (docs/SPEC-TABLES.md §2.8): "A VALUE is
+// anything a table field can hold ... `[..N]T`". The value is an ordinary field
+// of the generated entry, so its storage is that field's own row, the element
+// array beside its `int32` used count (§4.2). Two members are not one
+// addressable slot, so the handle every map surface hands back is the ENTRY,
+// which reaches both. The element is a TABLE, so an entry's extent walk has a
+// nested record to reach.
+
+table Runs
+{
+    spans map[uint16][..4]Item // [..N]T: the elements and the used count beside them
+    after int32
+}

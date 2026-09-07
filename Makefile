@@ -3198,6 +3198,39 @@ tables-maps-value-reset-negative-control: bin/schema build/tables-generated/.sta
 tables-maps-text-order-negative-control: bin/schema build/tables-generated/.stamp
 	$(call map_negative_control,textorder,'s@const void \* entry = (const void \*) ( entries + (int64_t) i \* f->elem_size );@const void * entry = (const void *) ( entries + (int64_t) ( count - 1 - i ) * f->elem_size ); // SABOTAGED@',internal/codegen/cpptable/json.go,writing a map text out of key order left the map gate GREEN)
 
+# A MAP IS A BY-VALUE EDGE OF THE ONE DECLARATION-ORDER WALK (§2.8, §3.1), so
+# the numbering descends every entry and a node named ONLY by a map entry takes
+# its index there. The sabotage short-circuits that per-entry descent. The
+# `Docs` and `Chunks` rows are what meet it: their `*string` and `*bytes` values
+# are the only slots in this corpus that name a node NOTHING ELSE names, so an
+# undescended entry leaves a non-null slot the walk never reached and `Save`
+# answers the -1 §7.6 gives a pointer in that position. `Fleet.by_id` cannot
+# meet it, because `Fleet.flagship` names the same node.
+#
+# Its sabotage carries the unbalanced parenthesis a $(call) argument cannot, so
+# the recipe is spelled out as the keylength one below is. Everything else about
+# it is map_negative_control.
+.PHONY: tables-maps-entry-node-negative-control
+tables-maps-entry-node-negative-control: bin/schema build/tables-generated/.stamp
+	@mkdir -p build
+	@sed -e 's@if ( !%sNumber( ctx@if ( false \&\& !%sNumber( ctx@' \
+		internal/codegen/cpptable/maps.go > build/map-entrynode.gotext
+	@cmp -s build/map-entrynode.gotext internal/codegen/cpptable/maps.go && \
+		{ echo "NEGATIVE CONTROL FAILED: the entrynode sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/maps.go":"%s/build/map-entrynode.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/map-entrynode-overlay.json
+	@go build -overlay=build/map-entrynode-overlay.json -o build/schema-map-entrynode ./cmd/schema
+	@rm -rf build/tables-map-entrynode && mkdir -p build/tables-map-entrynode
+	@./build/schema-map-entrynode generate --lang cpp --out build/tables-map-entrynode/maps tables/maps
+	@$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-map-entrynode/maps -Itest/tables test/tables/maps_main.cpp \
+		build/tables-map-entrynode/maps/*Table.cpp -o build/schema_test_maps_entrynode
+	@if ./build/schema_test_maps_entrynode > build/map-entrynode.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: an entry the numbering never descended left the map gate GREEN"; exit 1; \
+	fi
+	@grep -q "^FAIL test/tables/maps_main.cpp" build/map-entrynode.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on a CHECK"; cat build/map-entrynode.log; exit 1; }
+	@echo "negative control: entrynode turns the MAP GATE red — $$(grep -c '^FAIL' build/map-entrynode.log) failures"
+
 # AN UNREACHED NON-EMPTY MAP SLOT IS REFUSED by Cook and by Lock, the same
 # refusal §7.6 gives a pointer in that position. The `Depth` instance whose
 # counted array holds a map PAST ITS LIVE COUNT meets it, and dropping the
@@ -3278,6 +3311,7 @@ tables-maps-negative-controls: tables-maps-sort-negative-control \
 	tables-maps-key-domain-negative-control \
 	tables-maps-place-failure-negative-control \
 	tables-maps-value-reset-negative-control \
+	tables-maps-entry-node-negative-control \
 	tables-maps-unreached-negative-control
 
 # ---- THE LIST GATE (docs/SPEC-TABLES.md §2.9) ------------------------------

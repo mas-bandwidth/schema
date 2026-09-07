@@ -13,7 +13,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
-	"sort"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -737,15 +736,7 @@ func encodeMap(e *encoder, w *buf, fv *tabletext.Field, id uint64) error {
 	if len(fv.Entries) == 0 {
 		return nil
 	}
-	order := make([]int, len(fv.Entries))
-	for i := range order {
-		order[i] = i
-	}
-	sort.SliceStable(order, func(a, b int) bool {
-		return tabletext.MapKeyOrder(f,
-			tabletext.MapKeyOf(f, fv.Entries[order[a]].Tab),
-			tabletext.MapKeyOf(f, fv.Entries[order[b]].Tab)) < 0
-	})
+	order := MapEntryOrder(f, fv)
 	w.leb(e.ids.ref(id))
 	w.u8(uint8(ir.TableKindArray))
 	body := &buf{}

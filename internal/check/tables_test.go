@@ -311,6 +311,13 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\ntable Tab { m map[uint32]int32 = 0 }\n"},
 		{name: "an attribute on a map is refused by name", want: "does not apply to a map",
 			src: "package t\ntable Tab { m map[uint32]int32 | max = 4 }\n"},
+		// THE ONE VALUE KIND REFUSED BY NAME (§2.8, §2.5). Every other kind
+		// §2.8 lists is an ordinary field of the generated entry and compiles
+		// as one; `*wstring` is refused wherever it is declared, and the entry
+		// is where the refusal has to reach a map's value, because the value
+		// is a field of a table nobody wrote.
+		{name: "a *wstring map value is refused by name", want: "*wstring is specified ahead of its implementation",
+			src: "package t\ntable Tab { m map[uint32]*wstring }\n"},
 		// the by-value cycle reaches THROUGH the entry, and a map of *Self is
 		// the ordinary legal recursion through a pointer
 		{name: "a map of ITSELF closes a by-value cycle", want: "type composition cycle",

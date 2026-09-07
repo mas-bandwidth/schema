@@ -1,0 +1,14 @@
+package mapdemo
+
+// A map whose VALUE is a FIXED ARRAY (docs/SPEC-TABLES.md §2.8): "A VALUE is
+// anything a table field can hold ... `[N]T`". The value is an ordinary field
+// of the generated entry, so its storage is that field's own row, `T value[N]`
+// (§4.2), and its codec is a fixed array's. What is the map's own is the
+// HANDLE: an array is not one element, so every map surface hands back the
+// ARRAY, and a field past the map makes a stop visible.
+
+table Cells
+{
+    rows  map[string(8)][3]int32 // [N]T: a fixed extent, complete by construction
+    after int32
+}
