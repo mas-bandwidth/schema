@@ -33,7 +33,7 @@
 typedef struct ConformanceReport
 {
     int unknown, kind_mismatch, clamped, duplicate;
-    int malformed;
+    int malformed, refused, widened;
 } ConformanceReport;
 
 /* One row per (unit, root) the corpus names. Every row is the SAME six

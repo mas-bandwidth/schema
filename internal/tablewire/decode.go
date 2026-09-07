@@ -1408,10 +1408,9 @@ func (r *wireReader) scalarAt(cell *tabletext.Cell, f *ir.Field, kind int) bool 
 	}
 	cell.I = value
 	cell.U = uint64(value)
-	if !signed && width < 8 {
-		cell.U = uint64(value) & (uint64(1)<<uint(width*8) - 1)
-		cell.I = int64(cell.U)
-	}
+	// raw was already zero-extended when read. A declared range may clamp a
+	// widened value above the source width; masking here would truncate the
+	// result back to the old width (u8 255 -> u64 min 1000 became 232).
 	return true
 }
 

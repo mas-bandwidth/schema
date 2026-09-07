@@ -26,6 +26,8 @@
         ( to )->clamped = ( from ).clamped; \
         ( to )->duplicate = ( from ).duplicate; \
         ( to )->malformed = ( from ).malformed; \
+        ( to )->refused = ( from ).refused; \
+        ( to )->widened = ( from ).widened; \
     } while ( 0 )
 
 #define SCHEMA_CONFORMANCE_CODEC( TYPE, FN ) \

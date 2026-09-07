@@ -109,7 +109,12 @@ typedef struct TableReport
        id twice is legal input whose last occurrence wins, silently (§3). */
     int32_t duplicate;
     int malformed;         /* framing damage; decode stopped, partial result kept */
+    int32_t widened;        /* exact widening of a known kind */
+    int refused;           /* unsupported file form, not framing damage */
+    int reason;            /* SCHEMA_TABLE_REFUSAL_REASON */
 } TableReport;
+
+enum SCHEMA_TABLE_REFUSAL_REASON { SCHEMA_TABLE_NO_REFUSAL, SCHEMA_TABLE_NEWER_FORM, SCHEMA_TABLE_MESSAGE_FORM_AS_FILE };
 
 /* ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 

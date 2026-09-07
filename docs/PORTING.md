@@ -835,7 +835,7 @@ through `go build -overlay` and each turning the fuzzer red on its own verdict.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ❌ #512 | ❌ #518 | ❌ #511 | ❌ #513 | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 |
+| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ✅ fixed-unit file wire only: `tables-c-wire-fuzz` and `tables-c-wire-fuzz-negative-control`; message form and other kinds remain absent | ❌ #518 | ❌ #511 | ❌ #513 | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 |
 
 ### M21 — A float crosses two widths by bit surgery, never by conversion
 

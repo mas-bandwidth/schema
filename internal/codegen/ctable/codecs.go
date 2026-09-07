@@ -1308,15 +1308,18 @@ func (g *tableGen) emitFieldVocabulary(st *ir.Struct, f *ir.Field) {
 		}
 		for i := int64(0); i <= ref.Max; i++ {
 			if n, ok := names[i]; ok {
-				id := uint16(0)
+				id := uint64(0)
 				if i != 0 {
-					id = ir.VariantId(n)
+					id = uint64(ir.VariantId(n))
+					if g.fileWire() {
+						id = ir.TableWireId(ref.VariantWireName(int(i - 1)))
+					}
 				}
-				g.pf("    { \"%s\", 0x%04x },\n", n, id)
+				g.pf("    { \"%s\", 0x%016xull },\n", n, id)
 				continue
 			}
 			// headroom past the declared set: a value the vocabulary does not
-			// name, and the reserved id 0 no declared name can fold to (§5)
+			// name; distinguish it by its missing name, not by its identity
 			g.pf("    { NULL, 0 },\n")
 		}
 		g.pf("};\n")
@@ -1339,7 +1342,11 @@ func (g *tableGen) emitFieldVocabulary(st *ir.Struct, f *ir.Field) {
 		g.pf("static const TableVariantInfo %s[] = {\n", g.vocabularySymbol(st.Name, f.Name, "variants"))
 		g.pf("    { \"None\", 0 },\n")
 		for _, v := range ref.Variants {
-			g.pf("    { \"%s\", 0x%04x },\n", v.Name, ir.VariantId(v.Name))
+			id := uint64(ir.VariantId(v.Name))
+			if g.fileWire() {
+				id = ir.TableWireId(v.WireName())
+			}
+			g.pf("    { \"%s\", 0x%016xull },\n", v.Name, id)
 		}
 		g.pf("};\n")
 		g.pf("static const TableUnionArmInfo %s[] = {\n", g.vocabularySymbol(st.Name, f.Name, "arms"))
@@ -1364,11 +1371,14 @@ func (g *tableGen) emitFieldVocabulary(st *ir.Struct, f *ir.Field) {
 		}
 		for i := int64(0); i <= key.Max; i++ {
 			if n, ok := names[i]; ok {
-				id := uint16(0)
+				id := uint64(0)
 				if i != 0 {
-					id = ir.VariantId(n)
+					id = uint64(ir.VariantId(n))
+					if g.fileWire() {
+						id = ir.TableWireId(key.VariantWireName(int(i - 1)))
+					}
 				}
-				g.pf("    { \"%s\", 0x%04x },\n", n, id)
+				g.pf("    { \"%s\", 0x%016xull },\n", n, id)
 				continue
 			}
 			g.pf("    { NULL, 0 },\n")
@@ -1378,8 +1388,14 @@ func (g *tableGen) emitFieldVocabulary(st *ir.Struct, f *ir.Field) {
 }
 
 func (g *tableGen) emitFieldDescriptor(st *ir.Struct, f *ir.Field, guard string) {
-	id := ir.TableFieldId(f)
+	id := uint64(ir.TableFieldId(f))
+	if g.fileWire() {
+		id = ir.TableFieldWireId(f)
+	}
 	kind := tableScalarKind(f)
+	if g.fileWire() {
+		kind = ir.TableWireScalarKind(f)
+	}
 	if f.Type.Kind == ir.TBytes {
 		kind = tkU8
 	}
@@ -1494,7 +1510,7 @@ func (g *tableGen) emitFieldDescriptor(st *ir.Struct, f *ir.Field, guard string)
 	if g.anyVariable {
 		pointerColumn = fmt.Sprintf("%s, ", boolC(f.Type.Pointer))
 	}
-	g.pf("    { \"%s\", \"%s\", \"%s\", 0x%04x, %d, %s, %s%s, %s, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, \"%s\", %s },\n",
+	g.pf("    { \"%s\", \"%s\", \"%s\", 0x%016xull, %d, %s, %s%s, %s, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, \"%s\", %s },\n",
 		f.Name, ir.TableFieldJsonKey(f), tableFieldTypeName(f), id, kind, boolC(isArray), pointerColumn,
 		boolC(counted), boolC(f.Type.Optional), bound,
 		st.Name, f.Name, elemSize, countOffset, presentOffset, table,

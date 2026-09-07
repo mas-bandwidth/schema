@@ -240,7 +240,7 @@ static int surface_report( const char * out )
         void * value;
         ConformanceReport report;
         char text[128];
-        int n, ok;
+        int n;
         if ( strcmp( f->field[0], "report" ) != 0 ) { continue; }
         codec = find_codec( f->field[2], f->field[3] );
         if ( codec == NULL ) { if ( !spill_absent( out, f->field[1] ) ) { return 1; } continue; }
@@ -248,11 +248,11 @@ static int surface_report( const char * out )
         if ( wire == NULL ) { fprintf( stderr, "driver: cannot read %s\n", f->field[4] ); return 1; }
         value = codec->storage();
         memset( &report, 0, sizeof( report ) );
-        ok = codec->load( value, wire, (int64_t) bytes, &report );
+        codec->load( value, wire, (int64_t) bytes, &report );
         free( wire );
-        n = snprintf( text, sizeof( text ), "%d,%d,%d,%d,%s\n",
-                      report.unknown, report.kind_mismatch, report.clamped, report.duplicate,
-                      ( report.malformed || !ok ) ? "true" : "false" );
+        n = snprintf( text, sizeof( text ), "%d,%d,%d,%d,%d,%s,%s\n",
+                      report.unknown, report.kind_mismatch, report.widened, report.clamped, report.duplicate,
+                      report.malformed ? "true" : "false", report.refused ? "refused" : "read" );
         if ( !spill( out, f->field[1], text, (size_t) n ) ) { return 1; }
     }
     return 0;
@@ -357,8 +357,8 @@ static int surface_json_hostile( const char * out )
         }
         else
         {
-            n = snprintf( verdict, sizeof( verdict ), "%d,%d,%d,%d,false\n",
-                          report.unknown, report.kind_mismatch, report.clamped, report.duplicate );
+            n = snprintf( verdict, sizeof( verdict ), "%d,%d,%d,%d,%d,false,read\n",
+                          report.unknown, report.kind_mismatch, report.widened, report.clamped, report.duplicate );
         }
         if ( !spill( out, f->field[1], verdict, (size_t) n ) ) { return 1; }
     }
@@ -544,10 +544,7 @@ int main( int argc, char ** argv )
     surface = argv[2];
     if ( strcmp( surface, "list" ) == 0 )
     {
-        /* the five WIRE-CARRYING surfaces are ABSENT: this port writes the wire's
-           PREVIOUS form and the corpus is pinned in the id-table form
-           (docs/SPEC-TABLES.md §3). schema#512 is the port's row. */
-        printf( "cook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\n" );
+        printf( "wire\nreport\njson-read\njson-write\njson-hostile\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\n" );
         return 0;
     }
     if ( argc < 4 )

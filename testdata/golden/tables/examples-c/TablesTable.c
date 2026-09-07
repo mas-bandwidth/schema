@@ -78,7 +78,7 @@ static SCHEMA_UNUSED const char * table_json_variant_name( const TableFieldInfo 
     return f->variants[value].name;
 }
 
-static SCHEMA_UNUSED uint16_t table_json_variant_id( const TableFieldInfo * f, uint64_t value )
+static SCHEMA_UNUSED uint64_t table_json_variant_id( const TableFieldInfo * f, uint64_t value )
 {
     if ( f->variants == NULL || f->enum_max < 0 || value > (uint64_t) f->enum_max ) { return 0; }
     return f->variants[value].id;
@@ -90,7 +90,7 @@ static SCHEMA_UNUSED const char * table_json_key_name( const TableFieldInfo * f,
     return f->keys[key].name;
 }
 
-static SCHEMA_UNUSED uint16_t table_json_key_id( const TableFieldInfo * f, uint64_t key )
+static SCHEMA_UNUSED uint64_t table_json_key_id( const TableFieldInfo * f, uint64_t key )
 {
     if ( f->keys == NULL || f->key_max < 0 || key > (uint64_t) f->key_max ) { return 0; }
     return f->keys[key].id;
@@ -196,11 +196,11 @@ static SCHEMA_UNUSED uint64_t table_json_keyed_slot_key( int64_t slot )
 
 /* A slot whose key names a variant of the keying enum. Every slot in
    [0, array_bound) does, unless the enum carries max-headroom variants outside
-   a table closure, where a reserved value names nothing and its key id is 0 —
-   the reserved id no declared name can fold to (§5). */
+   a table closure. Such headroom has no declared name. A full identity may
+   be zero, so identity alone cannot distinguish a valid key. */
 static SCHEMA_UNUSED int table_json_keyed_slot_valid( const TableFieldInfo * f, int64_t slot )
 {
-    return table_json_key_id( f, table_json_keyed_slot_key( slot ) ) != 0;
+    return table_json_key_name( f, table_json_keyed_slot_key( slot ) ) != NULL;
 }
 
 static SCHEMA_UNUSED int table_json_is_flags( const TableFieldInfo * f )
@@ -372,15 +372,9 @@ static SCHEMA_UNUSED int32_t table_json_utf8( const char * s, int32_t remaining,
     return code;
 }
 
-/* A JSON text MUST be valid UTF-8 (RFC 8259 §8.1). The read path is
-   byte-transparent — the wire imposes no encoding (§3) and a string may hold
-   anything — so the WRITER is where that obligation is met: a byte that is
-   not part of a well-formed sequence is written as U+FFFD, one per bad byte,
-   and never raw. A text this walk writes is therefore readable by any
-   conforming parser, which a raw byte would not be. The cost is stated
-   plainly: for a string holding invalid UTF-8, the round trip is NOT
-   byte-identical, because the alternative is emitting a text that is not
-   JSON. */
+/* A JSON text must be valid UTF-8. Caller-filled storage can still contain
+   invalid bytes; write each such byte as U+FFFD rather than emitting invalid
+   JSON. The text reader also replaces ill-formed sequences before clamping. */
 static SCHEMA_UNUSED void table_json_write_string( TableJsonOut * out, const char * s, int32_t length )
 {
     static const char hex[] = "0123456789abcdef";
@@ -547,7 +541,7 @@ static SCHEMA_UNUSED int table_json_write_scalar( TableJsonOut * out, const void
            wire identity: the writer REFUSES rather than writing None over it,
            the rule measure and save already apply (docs/SPEC-TABLES.md §5) */
         if ( (int64_t) value > f->enum_max ) { return 0; }
-        if ( value != 0 && table_json_variant_id( f, value ) == 0 ) { return 0; }
+        if ( value != 0 && table_json_variant_name( f, value ) == NULL ) { return 0; }
         name = table_json_variant_name( f, value );
         if ( name == NULL ) { return 0; }
         table_json_write_string( out, name, (int32_t) strlen( name ) );
@@ -730,8 +724,21 @@ static SCHEMA_UNUSED void table_json_space( TableJsonIn * in )
     {
         char c = in->text[in->pos];
         if ( c == ' ' || c == '\t' || c == '\n' || c == '\r' ) { in->pos++; continue; }
-        /* comments are not JSON, and a walk that guessed at one would be
-           reading a dialect nobody wrote down */
+        /* SPEC-TABLES 16.2: comments are whitespace on read. */
+        if ( c == '/' && in->pos + 1 < in->size && in->text[in->pos + 1] == '/' )
+        {
+            in->pos += 2;
+            while ( in->pos < in->size && in->text[in->pos] != '\n' ) { in->pos++; }
+            continue;
+        }
+        if ( c == '/' && in->pos + 1 < in->size && in->text[in->pos + 1] == '*' )
+        {
+            int64_t at = in->pos + 2;
+            while ( at + 1 < in->size && !(in->text[at] == '*' && in->text[at + 1] == '/') ) { at++; }
+            if ( at + 1 >= in->size ) { in->bad = 1; in->pos = in->size; return; }
+            in->pos = at + 2;
+            continue;
+        }
         if ( c == '/' ) { in->bad = 1; }
         return;
     }
@@ -890,11 +897,9 @@ static SCHEMA_UNUSED int table_json_scan_string( TableJsonIn * in, char * out, i
         }
         else
         {
-            /* a UTF-8 sequence read WHOLE, so the clamp below can only land
-               between code points. Only bytes that ACTUALLY look like
-               continuations are taken: the wire imposes no encoding (§3), so
-               a string may legitimately hold a stray lead byte, and one at
-               the end of a text must not swallow the closing quote. */
+            /* Read a sequence whole so clamping lands between code points.
+               Take only continuations: a stray lead must not swallow the
+               closing quote. Replace malformed input before applying the bound. */
             unsigned char lead = (unsigned char) c;
             int32_t want = 1;
             if ( ( lead & 0xe0 ) == 0xc0 ) { want = 2; }
@@ -907,6 +912,13 @@ static SCHEMA_UNUSED int table_json_scan_string( TableJsonIn * in, char * out, i
                     ( (unsigned char) in->text[in->pos] & 0xc0 ) == 0x80 )
             {
                 unit[unit_length++] = in->text[in->pos++];
+            }
+            {
+                int32_t checked_width = 0;
+                if ( table_json_utf8( unit, unit_length, &checked_width ) < 0 )
+                {
+                    unit_length = table_json_encode_utf8( 0xfffd, unit );
+                }
             }
         }
         if ( out != NULL )
@@ -1708,8 +1720,8 @@ static SCHEMA_UNUSED int64_t table_json_write( const void * value, const TableTy
 
 static const TableVariantInfo schema_tabledemo_weapon_config_effect_variants_[] = {
     { "None", 0 },
-    { "buff", 0xeae6 },
-    { "debuff", 0xb0d3 },
+    { "buff", 0xffb5be9be2e469ccull },
+    { "debuff", 0x13cdc5ede73d2fd7ull },
 };
 static const TableUnionArmInfo schema_tabledemo_weapon_config_effect_arms_[] = {
     { 0, NULL },
@@ -1720,33 +1732,33 @@ static const TableUnionInfo schema_tabledemo_weapon_config_effect_union_ = { (ui
 static const char * const schema_tabledemo_weapon_config_damage_tags_[] = { "ui_slider", "hot", "tuning" };
 static const char * const schema_tabledemo_weapon_config_tags_[] = { "designer_facing" };
 static const TableFieldInfo schema_tabledemo_weapon_config_fields_[] = {
-    { "damage", "damage", "float32", 0x15a9, 10, 0, 0, 0, 0, (uint32_t) offsetof( WeaponConfig, damage ), (uint32_t) sizeof( ( (WeaponConfig *) 0 )->damage ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", " Damage per hit, before armor.\n\nThe armor curve is written \"hardness \\ hit\" in the design notes,\nand the backslash is part of the name.", 3, schema_tabledemo_weapon_config_damage_tags_ },
-    { "speed", "speed", "float32", 0x2e46, 10, 0, 0, 0, 0, (uint32_t) offsetof( WeaponConfig, speed ), (uint32_t) sizeof( ( (WeaponConfig *) 0 )->speed ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "penetration", "penetration", "int32", 0x6557, 4, 0, 0, 0, 0, (uint32_t) offsetof( WeaponConfig, penetration ), (uint32_t) sizeof( ( (WeaponConfig *) 0 )->penetration ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 10.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "channel", "channel", "bits(6)", 0x7366, 6, 0, 0, 0, 0, (uint32_t) offsetof( WeaponConfig, channel ), (uint32_t) sizeof( ( (WeaponConfig *) 0 )->channel ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 63.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "homing", "homing", "bool", 0xab40, 1, 0, 0, 0, 0, (uint32_t) offsetof( WeaponConfig, homing ), (uint32_t) sizeof( ( (WeaponConfig *) 0 )->homing ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "effect", "effect", "Effect", 0xe33a, 15, 0, 0, 0, 0, (uint32_t) offsetof( WeaponConfig, effect ), (uint32_t) sizeof( ( (WeaponConfig *) 0 )->effect ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, 2, schema_tabledemo_weapon_config_effect_variants_, 1, NULL, NULL, -1, &schema_tabledemo_weapon_config_effect_union_, "", TableDocNone, 0, NULL },
+    { "damage", "damage", "float32", 0x7f6308be8ab37fc0ull, 10, 0, 0, 0, 0, (uint32_t) offsetof( WeaponConfig, damage ), (uint32_t) sizeof( ( (WeaponConfig *) 0 )->damage ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", " Damage per hit, before armor.\n\nThe armor curve is written \"hardness \\ hit\" in the design notes,\nand the backslash is part of the name.", 3, schema_tabledemo_weapon_config_damage_tags_ },
+    { "speed", "speed", "float32", 0x1733055702acb1d2ull, 10, 0, 0, 0, 0, (uint32_t) offsetof( WeaponConfig, speed ), (uint32_t) sizeof( ( (WeaponConfig *) 0 )->speed ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "penetration", "penetration", "int32", 0x4f31c5309e13e932ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( WeaponConfig, penetration ), (uint32_t) sizeof( ( (WeaponConfig *) 0 )->penetration ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 10.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "channel", "channel", "bits(6)", 0xa5013e9ad5caeda4ull, 6, 0, 0, 0, 0, (uint32_t) offsetof( WeaponConfig, channel ), (uint32_t) sizeof( ( (WeaponConfig *) 0 )->channel ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 63.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "homing", "homing", "bool", 0xad6587bc602e3f59ull, 1, 0, 0, 0, 0, (uint32_t) offsetof( WeaponConfig, homing ), (uint32_t) sizeof( ( (WeaponConfig *) 0 )->homing ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "effect", "effect", "Effect", 0x36c1c83b51f24394ull, 15, 0, 0, 0, 0, (uint32_t) offsetof( WeaponConfig, effect ), (uint32_t) sizeof( ( (WeaponConfig *) 0 )->effect ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, 2, schema_tabledemo_weapon_config_effect_variants_, 1, NULL, NULL, -1, &schema_tabledemo_weapon_config_effect_union_, "", TableDocNone, 0, NULL },
 };
 
 const TableTypeInfo schema_tabledemo_weapon_config_info_ = { "WeaponConfig", (uint32_t) sizeof( WeaponConfig ), 6, schema_tabledemo_weapon_config_fields_, schema_tabledemo_weapon_config_reset_raw_, "One weapon's tuning. A designer edits this table and nothing else.", 1, schema_tabledemo_weapon_config_tags_ };
 
 static const TableVariantInfo schema_tabledemo_loadout_config_grade_variants_[] = {
-    { "None", 0x0000 },
-    { "Bronze", 0x3407 },
-    { "Silver", 0xa3e7 },
-    { "Gold", 0xda27 },
+    { "None", 0x0000000000000000ull },
+    { "Bronze", 0xc4927739aac4c591ull },
+    { "Silver", 0xc3e51adeeaf12580ull },
+    { "Gold", 0xc416c97e0d3218b3ull },
 };
 static const TableVariantInfo schema_tabledemo_loadout_config_grades_variants_[] = {
-    { "None", 0x0000 },
-    { "Bronze", 0x3407 },
-    { "Silver", 0xa3e7 },
-    { "Gold", 0xda27 },
+    { "None", 0x0000000000000000ull },
+    { "Bronze", 0xc4927739aac4c591ull },
+    { "Silver", 0xc3e51adeeaf12580ull },
+    { "Gold", 0xc416c97e0d3218b3ull },
 };
 static const TableVariantInfo schema_tabledemo_loadout_config_podium_variants_[] = {
-    { "None", 0x0000 },
-    { "Bronze", 0x3407 },
-    { "Silver", 0xa3e7 },
-    { "Gold", 0xda27 },
+    { "None", 0x0000000000000000ull },
+    { "Bronze", 0xc4927739aac4c591ull },
+    { "Silver", 0xc3e51adeeaf12580ull },
+    { "Gold", 0xc416c97e0d3218b3ull },
 };
 static const TableVariantInfo schema_tabledemo_loadout_config_perks_variants_[] = {
     { "Shielded", 0 },
@@ -1754,58 +1766,58 @@ static const TableVariantInfo schema_tabledemo_loadout_config_perks_variants_[] 
     { "Turbo", 0 },
 };
 static const TableFieldInfo schema_tabledemo_loadout_config_fields_[] = {
-    { "grade", "grade", "Grade", 0xd272, 7, 0, 0, 0, 0, (uint32_t) offsetof( LoadoutConfig, grade ), (uint32_t) sizeof( ( (LoadoutConfig *) 0 )->grade ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, 3, schema_tabledemo_loadout_config_grade_variants_, 1, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "grades", "grades", "Grade", 0x301a, 7, 1, 1, 0, 4, (uint32_t) offsetof( LoadoutConfig, grades ), (uint32_t) sizeof( ( (LoadoutConfig *) 0 )->grades[0] ), (uint32_t) offsetof( LoadoutConfig, grades_count ), 0xffffffffu, NULL, 0, 0.0, 0.0, 3, schema_tabledemo_loadout_config_grades_variants_, 1, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "podium", "podium", "Grade", 0x088a, 7, 1, 0, 0, 3, (uint32_t) offsetof( LoadoutConfig, podium ), (uint32_t) sizeof( ( (LoadoutConfig *) 0 )->podium[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, 3, schema_tabledemo_loadout_config_podium_variants_, 1, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "perks", "perks", "Perks", 0x2fc5, 9, 0, 0, 0, 0, (uint32_t) offsetof( LoadoutConfig, perks ), (uint32_t) sizeof( ( (LoadoutConfig *) 0 )->perks ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, 2, schema_tabledemo_loadout_config_perks_variants_, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "primary", "primary", "WeaponConfig", 0x05f7, 13, 0, 0, 0, 0, (uint32_t) offsetof( LoadoutConfig, primary ), (uint32_t) sizeof( ( (LoadoutConfig *) 0 )->primary ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_weapon_config_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "backups", "backups", "WeaponConfig", 0x1647, 13, 1, 0, 0, 2, (uint32_t) offsetof( LoadoutConfig, backups ), (uint32_t) sizeof( ( (LoadoutConfig *) 0 )->backups[0] ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_weapon_config_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "attachments", "attachments", "Attachment", 0x44d5, 13, 1, 1, 0, 8, (uint32_t) offsetof( LoadoutConfig, attachments ), (uint32_t) sizeof( ( (LoadoutConfig *) 0 )->attachments[0] ), (uint32_t) offsetof( LoadoutConfig, attachments_count ), 0xffffffffu, &schema_tabledemo_attachment_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "grade", "grade", "Grade", 0x32a89b2977c48ad4ull, 30, 0, 0, 0, 0, (uint32_t) offsetof( LoadoutConfig, grade ), (uint32_t) sizeof( ( (LoadoutConfig *) 0 )->grade ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, 3, schema_tabledemo_loadout_config_grade_variants_, 1, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "grades", "grades", "Grade", 0xd90a4e7682f799c5ull, 30, 1, 1, 0, 4, (uint32_t) offsetof( LoadoutConfig, grades ), (uint32_t) sizeof( ( (LoadoutConfig *) 0 )->grades[0] ), (uint32_t) offsetof( LoadoutConfig, grades_count ), 0xffffffffu, NULL, 0, 0.0, 0.0, 3, schema_tabledemo_loadout_config_grades_variants_, 1, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "podium", "podium", "Grade", 0xb46ff45a23d72549ull, 30, 1, 0, 0, 3, (uint32_t) offsetof( LoadoutConfig, podium ), (uint32_t) sizeof( ( (LoadoutConfig *) 0 )->podium[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, 3, schema_tabledemo_loadout_config_podium_variants_, 1, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "perks", "perks", "Perks", 0x4b06f5847096e54aull, 9, 0, 0, 0, 0, (uint32_t) offsetof( LoadoutConfig, perks ), (uint32_t) sizeof( ( (LoadoutConfig *) 0 )->perks ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, 2, schema_tabledemo_loadout_config_perks_variants_, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "primary", "primary", "WeaponConfig", 0xbf31137ff783e939ull, 13, 0, 0, 0, 0, (uint32_t) offsetof( LoadoutConfig, primary ), (uint32_t) sizeof( ( (LoadoutConfig *) 0 )->primary ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_weapon_config_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "backups", "backups", "WeaponConfig", 0xde28f0f5118acc24ull, 13, 1, 0, 0, 2, (uint32_t) offsetof( LoadoutConfig, backups ), (uint32_t) sizeof( ( (LoadoutConfig *) 0 )->backups[0] ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_weapon_config_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "attachments", "attachments", "Attachment", 0xf901aa0340249a41ull, 13, 1, 1, 0, 8, (uint32_t) offsetof( LoadoutConfig, attachments ), (uint32_t) sizeof( ( (LoadoutConfig *) 0 )->attachments[0] ), (uint32_t) offsetof( LoadoutConfig, attachments_count ), 0xffffffffu, &schema_tabledemo_attachment_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
 };
 
 const TableTypeInfo schema_tabledemo_loadout_config_info_ = { "LoadoutConfig", (uint32_t) sizeof( LoadoutConfig ), 7, schema_tabledemo_loadout_config_fields_, schema_tabledemo_loadout_config_reset_raw_, TableDocNone, 0, NULL };
 
 static const TableFieldInfo schema_tabledemo_profile_config_fields_[] = {
-    { "name", "name", "string", 0x30df, 12, 0, 1, 0, 32, (uint32_t) offsetof( ProfileConfig, name ), (uint32_t) sizeof( ( (ProfileConfig *) 0 )->name ), (uint32_t) offsetof( ProfileConfig, name_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "icon", "icon", "bytes", 0xf3b0, 6, 1, 1, 0, 16, (uint32_t) offsetof( ProfileConfig, icon ), (uint32_t) sizeof( ( (ProfileConfig *) 0 )->icon[0] ), (uint32_t) offsetof( ProfileConfig, icon_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "experience", "experience", "uint32", 0x61d8, 8, 0, 0, 0, 0, (uint32_t) offsetof( ProfileConfig, experience ), (uint32_t) sizeof( ( (ProfileConfig *) 0 )->experience ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "tilt", "tilt", "int8", 0x023c, 2, 0, 0, 0, 0, (uint32_t) offsetof( ProfileConfig, tilt ), (uint32_t) sizeof( ( (ProfileConfig *) 0 )->tilt ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "heading", "heading", "int16", 0x885d, 3, 0, 0, 0, 0, (uint32_t) offsetof( ProfileConfig, heading ), (uint32_t) sizeof( ( (ProfileConfig *) 0 )->heading ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "timestamp", "timestamp", "int64", 0x67a0, 5, 0, 0, 0, 0, (uint32_t) offsetof( ProfileConfig, timestamp ), (uint32_t) sizeof( ( (ProfileConfig *) 0 )->timestamp ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "badge", "badge", "uint8", 0xb71c, 6, 0, 0, 0, 0, (uint32_t) offsetof( ProfileConfig, badge ), (uint32_t) sizeof( ( (ProfileConfig *) 0 )->badge ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "port", "port", "uint16", 0x6942, 7, 0, 0, 0, 0, (uint32_t) offsetof( ProfileConfig, port ), (uint32_t) sizeof( ( (ProfileConfig *) 0 )->port ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "epoch", "epoch", "uint64", 0xf4bd, 9, 0, 0, 0, 0, (uint32_t) offsetof( ProfileConfig, epoch ), (uint32_t) sizeof( ( (ProfileConfig *) 0 )->epoch ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "precision", "precision", "float64", 0x96e0, 11, 0, 0, 0, 0, (uint32_t) offsetof( ProfileConfig, precision ), (uint32_t) sizeof( ( (ProfileConfig *) 0 )->precision ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "ratings", "ratings", "float32", 0x97dd, 10, 1, 0, 0, 4, (uint32_t) offsetof( ProfileConfig, ratings ), (uint32_t) sizeof( ( (ProfileConfig *) 0 )->ratings[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "has_loadout", "has_loadout", "bool", 0xb4db, 1, 0, 0, 0, 0, (uint32_t) offsetof( ProfileConfig, has_loadout ), (uint32_t) sizeof( ( (ProfileConfig *) 0 )->has_loadout ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "loadout", "loadout", "LoadoutConfig", 0x9f78, 13, 0, 0, 0, 0, (uint32_t) offsetof( ProfileConfig, loadout ), (uint32_t) sizeof( ( (ProfileConfig *) 0 )->loadout ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_loadout_config_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "has_loadout", TableDocNone, 0, NULL },
+    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, 0, 1, 0, 32, (uint32_t) offsetof( ProfileConfig, name ), (uint32_t) sizeof( ( (ProfileConfig *) 0 )->name ), (uint32_t) offsetof( ProfileConfig, name_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "icon", "icon", "bytes", 0xdbff4cc56c2092f0ull, 6, 1, 1, 0, 16, (uint32_t) offsetof( ProfileConfig, icon ), (uint32_t) sizeof( ( (ProfileConfig *) 0 )->icon[0] ), (uint32_t) offsetof( ProfileConfig, icon_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "experience", "experience", "uint32", 0xab8b6d521f80b969ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( ProfileConfig, experience ), (uint32_t) sizeof( ( (ProfileConfig *) 0 )->experience ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "tilt", "tilt", "int8", 0x1e5088ef2e9bafc6ull, 2, 0, 0, 0, 0, (uint32_t) offsetof( ProfileConfig, tilt ), (uint32_t) sizeof( ( (ProfileConfig *) 0 )->tilt ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "heading", "heading", "int16", 0xb128829190ca0f75ull, 3, 0, 0, 0, 0, (uint32_t) offsetof( ProfileConfig, heading ), (uint32_t) sizeof( ( (ProfileConfig *) 0 )->heading ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "timestamp", "timestamp", "int64", 0x5ddc92338ef53403ull, 5, 0, 0, 0, 0, (uint32_t) offsetof( ProfileConfig, timestamp ), (uint32_t) sizeof( ( (ProfileConfig *) 0 )->timestamp ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "badge", "badge", "uint8", 0x10bda981fe095518ull, 6, 0, 0, 0, 0, (uint32_t) offsetof( ProfileConfig, badge ), (uint32_t) sizeof( ( (ProfileConfig *) 0 )->badge ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "port", "port", "uint16", 0x8c2cdb0da8933fa6ull, 7, 0, 0, 0, 0, (uint32_t) offsetof( ProfileConfig, port ), (uint32_t) sizeof( ( (ProfileConfig *) 0 )->port ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "epoch", "epoch", "uint64", 0xfc9697d1196e6ba6ull, 9, 0, 0, 0, 0, (uint32_t) offsetof( ProfileConfig, epoch ), (uint32_t) sizeof( ( (ProfileConfig *) 0 )->epoch ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "precision", "precision", "float64", 0x288427f5babd05f7ull, 11, 0, 0, 0, 0, (uint32_t) offsetof( ProfileConfig, precision ), (uint32_t) sizeof( ( (ProfileConfig *) 0 )->precision ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "ratings", "ratings", "float32", 0xb921eb8a3d0cb0f9ull, 10, 1, 0, 0, 4, (uint32_t) offsetof( ProfileConfig, ratings ), (uint32_t) sizeof( ( (ProfileConfig *) 0 )->ratings[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "has_loadout", "has_loadout", "bool", 0xa06f5e0a148e253cull, 1, 0, 0, 0, 0, (uint32_t) offsetof( ProfileConfig, has_loadout ), (uint32_t) sizeof( ( (ProfileConfig *) 0 )->has_loadout ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "loadout", "loadout", "LoadoutConfig", 0x5759ce7586bbb5a3ull, 13, 0, 0, 0, 0, (uint32_t) offsetof( ProfileConfig, loadout ), (uint32_t) sizeof( ( (ProfileConfig *) 0 )->loadout ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_loadout_config_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "has_loadout", TableDocNone, 0, NULL },
 };
 
 const TableTypeInfo schema_tabledemo_profile_config_info_ = { "ProfileConfig", (uint32_t) sizeof( ProfileConfig ), 13, schema_tabledemo_profile_config_fields_, schema_tabledemo_profile_config_reset_raw_, TableDocNone, 0, NULL };
 
 static const TableFieldInfo schema_tabledemo_root_config_fields_[] = {
-    { "version_note", "version_note", "string", 0xe726, 12, 0, 1, 0, 16, (uint32_t) offsetof( RootConfig, version_note ), (uint32_t) sizeof( ( (RootConfig *) 0 )->version_note ), (uint32_t) offsetof( RootConfig, version_note_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "weapons", "weapons", "WeaponConfig", 0x91cd, 13, 1, 1, 0, 8, (uint32_t) offsetof( RootConfig, weapons ), (uint32_t) sizeof( ( (RootConfig *) 0 )->weapons[0] ), (uint32_t) offsetof( RootConfig, weapons_count ), 0xffffffffu, &schema_tabledemo_weapon_config_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "profiles", "profiles", "ProfileConfig", 0x73fd, 13, 1, 1, 0, 4, (uint32_t) offsetof( RootConfig, profiles ), (uint32_t) sizeof( ( (RootConfig *) 0 )->profiles[0] ), (uint32_t) offsetof( RootConfig, profiles_count ), 0xffffffffu, &schema_tabledemo_profile_config_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "version_note", "version_note", "string", 0x8a67c9728746d394ull, 12, 0, 1, 0, 16, (uint32_t) offsetof( RootConfig, version_note ), (uint32_t) sizeof( ( (RootConfig *) 0 )->version_note ), (uint32_t) offsetof( RootConfig, version_note_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "weapons", "weapons", "WeaponConfig", 0x41cbd901b87fabb6ull, 13, 1, 1, 0, 8, (uint32_t) offsetof( RootConfig, weapons ), (uint32_t) sizeof( ( (RootConfig *) 0 )->weapons[0] ), (uint32_t) offsetof( RootConfig, weapons_count ), 0xffffffffu, &schema_tabledemo_weapon_config_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "profiles", "profiles", "ProfileConfig", 0x8181e61fc0436767ull, 13, 1, 1, 0, 4, (uint32_t) offsetof( RootConfig, profiles ), (uint32_t) sizeof( ( (RootConfig *) 0 )->profiles[0] ), (uint32_t) offsetof( RootConfig, profiles_count ), 0xffffffffu, &schema_tabledemo_profile_config_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
 };
 
 const TableTypeInfo schema_tabledemo_root_config_info_ = { "RootConfig", (uint32_t) sizeof( RootConfig ), 3, schema_tabledemo_root_config_fields_, schema_tabledemo_root_config_reset_raw_, TableDocNone, 0, NULL };
 
 static const TableFieldInfo schema_tabledemo_attachment_fields_[] = {
-    { "slot", "slot", "int32", 0x37e4, 4, 0, 0, 0, 0, (uint32_t) offsetof( Attachment, slot ), (uint32_t) sizeof( ( (Attachment *) 0 )->slot ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 7.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "power", "power", "float32", 0xd609, 10, 0, 0, 0, 0, (uint32_t) offsetof( Attachment, power ), (uint32_t) sizeof( ( (Attachment *) 0 )->power ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "slot", "slot", "int32", 0x6a771618f6fe31d1ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( Attachment, slot ), (uint32_t) sizeof( ( (Attachment *) 0 )->slot ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 7.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "power", "power", "float32", 0xeef9d1358ae7b4e6ull, 10, 0, 0, 0, 0, (uint32_t) offsetof( Attachment, power ), (uint32_t) sizeof( ( (Attachment *) 0 )->power ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
 };
 
 const TableTypeInfo schema_tabledemo_attachment_info_ = { "Attachment", (uint32_t) sizeof( Attachment ), 2, schema_tabledemo_attachment_fields_, schema_tabledemo_attachment_reset_raw_, TableDocNone, 0, NULL };
 
 static const TableFieldInfo schema_tabledemo_buff_fields_[] = {
-    { "multiplier", "multiplier", "float32", 0x32e0, 10, 0, 0, 0, 0, (uint32_t) offsetof( Buff, multiplier ), (uint32_t) sizeof( ( (Buff *) 0 )->multiplier ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "multiplier", "multiplier", "float32", 0x9adc623a805c87c6ull, 10, 0, 0, 0, 0, (uint32_t) offsetof( Buff, multiplier ), (uint32_t) sizeof( ( (Buff *) 0 )->multiplier ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
 };
 
 const TableTypeInfo schema_tabledemo_buff_info_ = { "Buff", (uint32_t) sizeof( Buff ), 1, schema_tabledemo_buff_fields_, schema_tabledemo_buff_reset_raw_, TableDocNone, 0, NULL };
 
 static const TableFieldInfo schema_tabledemo_debuff_fields_[] = {
-    { "amount", "amount", "int32", 0x39cc, 4, 0, 0, 0, 0, (uint32_t) offsetof( Debuff, amount ), (uint32_t) sizeof( ( (Debuff *) 0 )->amount ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 100.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "amount", "amount", "int32", 0x8113fe7ea2b16969ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( Debuff, amount ), (uint32_t) sizeof( ( (Debuff *) 0 )->amount ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 100.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
 };
 
 const TableTypeInfo schema_tabledemo_debuff_info_ = { "Debuff", (uint32_t) sizeof( Debuff ), 1, schema_tabledemo_debuff_fields_, schema_tabledemo_debuff_reset_raw_, TableDocNone, 0, NULL };

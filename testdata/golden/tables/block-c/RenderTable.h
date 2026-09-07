@@ -109,7 +109,12 @@ typedef struct TableReport
        id twice is legal input whose last occurrence wins, silently (§3). */
     int32_t duplicate;
     int malformed;         /* framing damage; decode stopped, partial result kept */
+    int32_t widened;        /* exact widening of a known kind */
+    int refused;           /* unsupported file form, not framing damage */
+    int reason;            /* SCHEMA_TABLE_REFUSAL_REASON */
 } TableReport;
+
+enum SCHEMA_TABLE_REFUSAL_REASON { SCHEMA_TABLE_NO_REFUSAL, SCHEMA_TABLE_NEWER_FORM, SCHEMA_TABLE_MESSAGE_FORM_AS_FILE };
 
 /* ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 
@@ -154,7 +159,7 @@ typedef struct TableUnionInfo
 typedef struct TableVariantInfo
 {
     const char * name;
-    uint16_t id;
+    uint64_t id;
 } TableVariantInfo;
 
 /* THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1): a declaration with no ///
@@ -169,7 +174,7 @@ typedef struct TableFieldInfo
     const char * name;      /* schema field name, e.g. "health" */
     const char * json;      /* the TEXT form's key: the json = "key" attribute, else name (§16.3) */
     const char * type_name; /* schema type name, e.g. "float32", "Grade" */
-    uint16_t id;            /* table-wire field id (name hash; the was alias's hash after a rename) */
+    uint64_t id;            /* table-wire field id (name hash; the was alias's hash after a rename) */
     uint8_t kind;           /* table-wire kind; for arrays/strings/bytes, the ELEMENT kind */
     int is_array;           /* fixed or counted array (bytes included) */
     int counted;            /* a _count/_length int32 companion exists (counted arrays, strings, bytes) */
@@ -231,137 +236,226 @@ typedef struct TableTypeInfo
     const char * const * tags;
 } TableTypeInfo;
 
+
+/* The vocabulary is bounded by the unit's complete set of wire identities.
+   Each save owns its scratch; no globals, allocator, or caller-sized VLA. */
 typedef struct TableWriter
 {
     uint8_t * buffer;
-    int64_t capacity;
-    int64_t offset;
-    int overflow;
+    int64_t capacity, offset;
+    int overflow, id_count;
+    uint64_t ids[89];
 } TableWriter;
 
 static SCHEMA_UNUSED TableWriter table_writer_make( uint8_t * buffer, int64_t capacity )
 {
     TableWriter w;
-    w.buffer = buffer;
-    w.capacity = capacity;
-    w.offset = 0;
-    w.overflow = 0;
+    memset( &w, 0, sizeof( w ) );
+    w.buffer = buffer; w.capacity = capacity;
     return w;
 }
-
 static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void table_writer_raw( TableWriter * w, const void * data, int64_t bytes )
 {
-    if ( w->offset + bytes > w->capacity ) { w->overflow = 1; return; }
-    memcpy( w->buffer + w->offset, data, (size_t) bytes );
+    if ( bytes < 0 || w->offset > w->capacity || bytes > w->capacity - w->offset ) { w->overflow = 1; return; }
+    if ( w->buffer != NULL && bytes != 0 ) { memcpy( w->buffer + w->offset, data, (size_t) bytes ); }
     w->offset += bytes;
 }
 static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void table_writer_put8( TableWriter * w, uint8_t v ) { table_writer_raw( w, &v, 1 ); }
 static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void table_writer_put16( TableWriter * w, uint16_t v )
 {
-    uint8_t b[2];
-    b[0] = (uint8_t) v; b[1] = (uint8_t) ( v >> 8 );
-    table_writer_raw( w, b, 2 );
+    uint8_t b[2]; b[0] = (uint8_t) v; b[1] = (uint8_t) (v >> 8); table_writer_raw( w, b, 2 );
 }
 static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void table_writer_put32( TableWriter * w, uint32_t v )
 {
-    uint8_t b[4];
-    b[0] = (uint8_t) v; b[1] = (uint8_t) ( v >> 8 ); b[2] = (uint8_t) ( v >> 16 ); b[3] = (uint8_t) ( v >> 24 );
-    table_writer_raw( w, b, 4 );
+    uint8_t b[4]; int i; for ( i = 0; i < 4; i++ ) { b[i] = (uint8_t) (v >> (8*i)); } table_writer_raw( w, b, 4 );
 }
 static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void table_writer_put64( TableWriter * w, uint64_t v )
 {
-    table_writer_put32( w, (uint32_t) v );
-    table_writer_put32( w, (uint32_t) ( v >> 32 ) );
+    table_writer_put32( w, (uint32_t) v ); table_writer_put32( w, (uint32_t) (v >> 32) );
 }
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void table_writer_patch32( TableWriter * w, int64_t at, uint32_t v )
+static SCHEMA_UNUSED void table_writer_leb( TableWriter * w, uint64_t v )
 {
-    if ( at + 4 > w->capacity ) { w->overflow = 1; return; }
-    w->buffer[at] = (uint8_t) v; w->buffer[at+1] = (uint8_t) ( v >> 8 );
-    w->buffer[at+2] = (uint8_t) ( v >> 16 ); w->buffer[at+3] = (uint8_t) ( v >> 24 );
+    do { uint8_t b = (uint8_t) (v & 127); v >>= 7; table_writer_put8( w, (uint8_t) (b | (v ? 128 : 0)) ); } while ( v );
+}
+static SCHEMA_UNUSED void table_writer_id( TableWriter * w, uint64_t id )
+{
+    int i;
+    for ( i = 0; i < w->id_count; i++ ) { if ( w->ids[i] == id ) { table_writer_leb( w, (uint64_t) i + 1 ); return; } }
+    if ( w->id_count == 89 ) { w->overflow = 1; return; }
+    w->ids[w->id_count++] = id;
+    table_writer_leb( w, (uint64_t) w->id_count );
+}
+static SCHEMA_UNUSED TableWriter table_writer_probe( const TableWriter * w )
+{
+    TableWriter probe = *w;
+    probe.buffer = NULL; probe.capacity = INT64_MAX; probe.offset = 0; probe.overflow = 0;
+    return probe;
+}
+static SCHEMA_UNUSED void table_writer_finish( TableWriter * w )
+{
+    int i; for ( i = 0; i < w->id_count; i++ ) { table_writer_put64( w, w->ids[i] ); }
+    table_writer_put64( w, (uint64_t) w->id_count );
 }
 
 typedef struct TableReader
 {
     const uint8_t * buffer;
-    int64_t size;
-    int64_t offset;
+    int64_t size, offset;
     TableReport * report;
+    const uint8_t * ids;
+    uint64_t id_count;
+    int nested;
 } TableReader;
 
 static SCHEMA_UNUSED TableReader table_reader_make( const uint8_t * buffer, int64_t size, TableReport * report )
 {
     TableReader r;
-    r.buffer = buffer;
-    r.size = size;
-    r.offset = 0;
-    r.report = report;
+    memset( &r, 0, sizeof( r ) ); r.buffer = buffer; r.size = size; r.report = report; r.nested = 1;
     return r;
 }
-
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int table_reader_has( const TableReader * r, int64_t bytes ) { return r->offset + bytes <= r->size; }
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int table_reader_has( const TableReader * r, int64_t n )
+{ return n >= 0 && r->offset <= r->size && n <= r->size - r->offset; }
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int table_reader_room( const TableReader * r, uint64_t n )
+{ return r->offset <= r->size && n <= (uint64_t) (r->size - r->offset); }
 static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE uint8_t table_reader_get8( TableReader * r ) { return r->buffer[r->offset++]; }
 static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE uint16_t table_reader_get16( TableReader * r )
-{
-    uint16_t v = (uint16_t) ( (uint16_t) r->buffer[r->offset] | ( (uint16_t) r->buffer[r->offset+1] << 8 ) );
-    r->offset += 2;
-    return v;
-}
+{ uint16_t v = r->buffer[r->offset]; v |= (uint16_t) ((uint16_t) r->buffer[r->offset+1] << 8); r->offset += 2; return v; }
 static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE uint32_t table_reader_get32( TableReader * r )
-{
-    uint32_t v = (uint32_t) r->buffer[r->offset] | ( (uint32_t) r->buffer[r->offset+1] << 8 )
-               | ( (uint32_t) r->buffer[r->offset+2] << 16 ) | ( (uint32_t) r->buffer[r->offset+3] << 24 );
-    r->offset += 4;
-    return v;
-}
+{ uint32_t v = 0; int i; for ( i = 0; i < 4; i++ ) { v |= (uint32_t) table_reader_get8( r ) << (8*i); } return v; }
 static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE uint64_t table_reader_get64( TableReader * r )
+{ uint64_t lo = table_reader_get32( r ); return lo | ((uint64_t) table_reader_get32( r ) << 32); }
+static SCHEMA_UNUSED uint64_t table_reader_id_at( const TableReader * r, uint64_t ref )
 {
-    uint64_t lo = table_reader_get32( r );
-    uint64_t hi = table_reader_get32( r );
-    return lo | ( hi << 32 );
+    TableReader entry = table_reader_make( r->ids + (ref-1)*8, 8, r->report );
+    return table_reader_get64( &entry );
 }
-
-/* skip one payload by kind; 0 = framing damage */
+/* Rejected numbers do not consume input: the containing body's exact extent
+   must still be able to detect the damaged spelling. */
+static SCHEMA_UNUSED int table_reader_leb( TableReader * r, uint64_t * value )
+{
+    int i; int64_t at = r->offset; *value = 0;
+    for ( i = 0; i < 10; i++ )
+    {
+        uint8_t b;
+        if ( !table_reader_has( r, 1 ) ) { r->offset = at; return 0; }
+        b = table_reader_get8( r );
+        if ( i == 9 && b > 1 ) { r->offset = at; return 0; }
+        *value |= (uint64_t) (b & 127) << (7*i);
+        if ( (b & 128) == 0 ) { if ( i && b == 0 ) { r->offset = at; return 0; } return 1; }
+    }
+    r->offset = at; return 0;
+}
+static SCHEMA_UNUSED TableReader table_reader_child( const TableReader * r, int64_t offset, int64_t bytes )
+{
+    TableReader child = *r;
+    child.buffer = r->buffer + offset; child.size = bytes; child.offset = 0; child.nested = 1;
+    return child;
+}
+static SCHEMA_UNUSED int table_reader_span( TableReader * r, TableReader * sub )
+{
+    uint64_t bytes;
+    if ( !table_reader_leb( r, &bytes ) || !table_reader_room( r, bytes ) ) { return 0; }
+    *sub = table_reader_child( r, r->offset, (int64_t) bytes ); r->offset += (int64_t) bytes; return 1;
+}
+/* The reference reads the array header in the enclosing body, then bounds
+   elements by L. Keep that recovery order even when the count crosses L. */
+static SCHEMA_UNUSED int table_reader_array_header( TableReader * sub, const TableReader * parent, uint8_t * kind, uint64_t * count )
+{
+    TableReader header = *sub;
+    int ok;
+    header.size += parent->size - parent->offset;
+    *kind = table_reader_get8( &header );
+    ok = table_reader_leb( &header, count ); sub->offset = header.offset;
+    return ok;
+}
 static SCHEMA_UNUSED int table_reader_skip( TableReader * r, uint8_t kind )
 {
+    int width = 0; uint64_t n;
     switch ( kind )
     {
-        case 1: case 2: case 6:
+        case 1: case 2: case 6: case 20: case 25: width = 1; break;
+        case 3: case 7: case 21: case 26: width = 2; break;
+        case 4: case 8: case 10: case 22: case 27: width = 4; break;
+        case 5: case 9: case 11: case 23: case 28: width = 8; break;
+        case 18: case 19: case 24: case 29: width = 16; break;
+        case 17: case 30: return table_reader_leb( r, &n );
+        case 15:
+            if ( !table_reader_leb( r, &n ) ) { return 0; }
+            if ( n == 0 ) { return 1; }
             if ( !table_reader_has( r, 1 ) ) { return 0; }
-            r->offset += 1; return 1;
-        case 3: case 7:
-            if ( !table_reader_has( r, 2 ) ) { return 0; }
-            r->offset += 2; return 1;
-        /* 17 is a NODE INDEX (docs/SPEC-TABLES.md 3.1): four bytes, so it costs
-           one row here and a reader without the kind still skips a pointer field */
-        case 4: case 8: case 10: case 17:
-            if ( !table_reader_has( r, 4 ) ) { return 0; }
-            r->offset += 4; return 1;
-        case 5: case 9: case 11:
-            if ( !table_reader_has( r, 8 ) ) { return 0; }
-            r->offset += 8; return 1;
-        case 12: case 13: case 14: case 16:
-        {
-            uint32_t n;
-            if ( !table_reader_has( r, 4 ) ) { return 0; }
-            n = table_reader_get32( r );
-            if ( !table_reader_has( r, n ) ) { return 0; }
-            r->offset += n;
-            return 1;
-        }
-        case 15: /* union: u16 arm id, then the arm length-prefixed (id 0 = empty, no body) */
-        {
-            uint32_t n;
-            if ( !table_reader_has( r, 2 ) ) { return 0; }
-            if ( table_reader_get16( r ) == 0 ) { return 1; }
-            if ( !table_reader_has( r, 4 ) ) { return 0; }
-            n = table_reader_get32( r );
-            if ( !table_reader_has( r, n ) ) { return 0; }
-            r->offset += n;
-            return 1;
-        }
-        default: break;
+            r->offset++;
+            /* fall through: every nonempty arm is framed, whatever its kind */
+        case 12: case 13: case 14: case 16: case 31: case 32: case 33:
+            if ( !table_reader_leb( r, &n ) || !table_reader_room( r, n ) ) { return 0; }
+            r->offset += (int64_t) n; return 1;
+        default: return 0;
     }
-    return 0;
+    if ( !table_reader_has( r, width ) ) { return 0; } r->offset += width; return 1;
+}
+static SCHEMA_UNUSED int table_kind_widens( uint8_t kind, uint8_t declared )
+{
+    if ( declared >= 3 && declared <= 5 ) { return kind >= 2 && kind < declared; }
+    if ( declared >= 7 && declared <= 9 ) { return kind >= 6 && kind < declared; }
+    return declared == 11 && kind == 10;
+}
+static SCHEMA_UNUSED double table_wire_widen_f32( uint32_t bits )
+{
+    if ( (bits & 0x7f800000u) == 0x7f800000u && (bits & 0x007fffffu) != 0 )
+    {
+        uint64_t wide = ((uint64_t) (bits >> 31) << 63) | 0x7ff0000000000000ull | ((uint64_t) (bits & 0x007fffffu) << 29);
+        double d; memcpy( &d, &wide, 8 ); return d;
+    }
+    { float f; memcpy( &f, &bits, 4 ); return (double) f; }
+}
+static SCHEMA_UNUSED int table_wire_open( TableReader * r, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    uint64_t count, i, j; int64_t span; TableReader tail;
+    if ( bytes < 1 || buffer == NULL ) { report->malformed = 1; return 0; }
+    if ( buffer[0] != 1 ) { report->refused = 1; report->reason = buffer[0] == 2 ? SCHEMA_TABLE_MESSAGE_FORM_AS_FILE : SCHEMA_TABLE_NEWER_FORM; return 0; }
+    if ( bytes < 9 ) { report->malformed = 1; return 0; }
+    tail = table_reader_make( buffer + bytes - 8, 8, report ); count = table_reader_get64( &tail );
+    if ( count > (uint64_t) ((bytes - 9) / 8) ) { report->malformed = 1; return 0; }
+    span = (int64_t) count * 8 + 8;
+    *r = table_reader_make( buffer + 1, bytes - span - 1, report );
+    r->ids = buffer + bytes - span; r->id_count = count; r->nested = 0;
+    for ( i = 1; i < count; i++ ) { for ( j = 0; j < i; j++ ) {
+        if ( table_reader_id_at( r, i+1 ) == table_reader_id_at( r, j+1 ) ) { report->malformed = 1; return 0; }
+    } }
+    /* Root slack invalidates the whole file before any overlay. A stopped
+       body is different: its successfully decoded prefix must survive. */
+    tail = *r;
+    for ( ;; )
+    {
+        uint64_t ref; uint8_t kind;
+        if ( !table_reader_leb( &tail, &ref ) ) { break; }
+        if ( ref == 0 ) { if ( tail.offset != tail.size ) { report->malformed = 1; return 0; } break; }
+        if ( ref > count || !table_reader_has( &tail, 1 ) ) { break; }
+        kind = table_reader_get8( &tail ); if ( !table_reader_skip( &tail, kind ) ) { break; }
+    }
+    return 1;
+}
+/* UTF-8 admits Unicode scalar values except U+0000, which cannot be held in
+   the generated terminated string storage. */
+static SCHEMA_UNUSED int table_wire_utf8( const uint8_t * p, uint64_t n )
+{
+    uint64_t i = 0;
+    while ( i < n )
+    {
+        uint8_t b = p[i++]; uint32_t cp; int more, j;
+        if ( b == 0 ) { return 0; } if ( b < 128 ) { continue; }
+        if ( b >= 194 && b <= 223 ) { cp = b & 31; more = 1; }
+        else if ( b >= 224 && b <= 239 ) { cp = b & 15; more = 2; }
+        else if ( b >= 240 && b <= 244 ) { cp = b & 7; more = 3; }
+        else { return 0; }
+        if ( (uint64_t) more > n-i ) { return 0; }
+        for ( j = 0; j < more; j++ ) { b = p[i++]; if ( (b & 192) != 128 ) { return 0; } cp = (cp << 6) | (b & 63); }
+        if ( (more == 2 && cp < 2048) || (more == 3 && cp < 65536) || cp > 1114111 || (cp >= 55296 && cp <= 57343) ) { return 0; }
+    }
+    return 1;
+}
+static SCHEMA_UNUSED uint64_t table_wire_utf8_clamp( const uint8_t * p, uint64_t n, uint64_t cap )
+{
+    if ( n <= cap ) { return n; } while ( cap && (p[cap] & 192) == 128 ) { cap--; } return cap;
 }
 
 /* The storage index a key names, with the None refusal that stands in EVERY
@@ -952,94 +1046,102 @@ static SCHEMA_UNUSED int64_t render_quaternion_measure( const RenderQuaternion *
 static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_quaternion_save_body( TableWriter * w, const RenderQuaternion * value );
 static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_quaternion_load_body( TableReader * r, RenderQuaternion * value );
 
-static SCHEMA_UNUSED int64_t render_camera_measure( const RenderCamera * value )
+static SCHEMA_UNUSED int render_camera_save_body( TableWriter * w, const RenderCamera * value )
 {
-    int64_t bytes = 2; /* terminator */
-    {
-        int64_t body_position = render_vector3_measure( &value->position );
-        if ( body_position < 0 ) { return -1; }
-        if ( body_position > 2 ) { bytes += 3 + 4 + body_position; } /* position: all-default nested elides */
+    (void) value;
+    { /* position */
+        TableWriter default_probe = table_writer_probe( w );
+        if ( !render_vector3_save_body( &default_probe, &value->position ) ) { return 0; }
+        if ( default_probe.offset > 1 )
+        {
+            table_writer_id( w, 0x4cbf3a26fca1d74aull ); table_writer_put8( w, 13 );
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !render_vector3_save_body( &probe, &value->position ) ) { return 0; }
+                table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !render_vector3_save_body( w, &value->position ) ) { return 0; }
+            }
+        }
     }
-    {
-        int64_t body_rotation = render_quaternion_measure( &value->rotation );
-        if ( body_rotation < 0 ) { return -1; }
-        if ( body_rotation > 2 ) { bytes += 3 + 4 + body_rotation; } /* rotation: all-default nested elides */
+    { /* rotation */
+        TableWriter default_probe = table_writer_probe( w );
+        if ( !render_quaternion_save_body( &default_probe, &value->rotation ) ) { return 0; }
+        if ( default_probe.offset > 1 )
+        {
+            table_writer_id( w, 0xb51afb05cd34709full ); table_writer_put8( w, 13 );
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !render_quaternion_save_body( &probe, &value->rotation ) ) { return 0; }
+                table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !render_quaternion_save_body( w, &value->rotation ) ) { return 0; }
+            }
+        }
     }
-    if ( value->camera_id != 0 ) { bytes += 3 + 4; } /* camera_id */
-    if ( value->camera_type != 0 ) { bytes += 3 + 4; } /* camera_type */
-    if ( value->target_object_id != 0 ) { bytes += 3 + 4; } /* target_object_id */
-    if ( value->fov != 0.0f ) { bytes += 3 + 4; } /* fov */
-    return bytes;
+    { /* camera_id */
+        if ( value->camera_id != 0 )
+        {
+            table_writer_id( w, 0x9f61700f084ab92eull ); table_writer_put8( w, 8 );
+            table_writer_put32( w, (uint32_t) ( value->camera_id ) );
+        }
+    }
+    { /* camera_type */
+        if ( value->camera_type != 0 )
+        {
+            table_writer_id( w, 0x336d3dc7fffd0c9bull ); table_writer_put8( w, 8 );
+            table_writer_put32( w, (uint32_t) ( value->camera_type ) );
+        }
+    }
+    { /* target_object_id */
+        if ( value->target_object_id != 0 )
+        {
+            table_writer_id( w, 0x6a0c6a156952b9c2ull ); table_writer_put8( w, 8 );
+            table_writer_put32( w, (uint32_t) ( value->target_object_id ) );
+        }
+    }
+    { /* fov */
+        if ( value->fov != 0.0f )
+        {
+            table_writer_id( w, 0xdcb27c18fed9e15cull ); table_writer_put8( w, 10 );
+            table_writer_put32( w, table_float_to_bits( value->fov ) );
+        }
+    }
+    table_writer_leb( w, 0 );
+    return !w->overflow;
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_camera_save_body( TableWriter * w, const RenderCamera * value )
+static SCHEMA_UNUSED int64_t render_camera_measure( const RenderCamera * value )
 {
-    {
-        int64_t body_position = render_vector3_measure( &value->position );
-        if ( body_position < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
-        if ( body_position > 2 ) /* all-default nested elides */
-        {
-            table_writer_put16( w, 0xdd45 ); table_writer_put8( w, 13 ); /* position */
-            table_writer_put32( w, (uint32_t) body_position );
-            if ( !render_vector3_save_body( w, &value->position ) ) { return 0; }
-        }
-    }
-    {
-        int64_t body_rotation = render_quaternion_measure( &value->rotation );
-        if ( body_rotation < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
-        if ( body_rotation > 2 ) /* all-default nested elides */
-        {
-            table_writer_put16( w, 0x60f3 ); table_writer_put8( w, 13 ); /* rotation */
-            table_writer_put32( w, (uint32_t) body_rotation );
-            if ( !render_quaternion_save_body( w, &value->rotation ) ) { return 0; }
-        }
-    }
-    if ( value->camera_id != 0 )
-    {
-        table_writer_put16( w, 0x25bd ); table_writer_put8( w, 8 ); /* camera_id */
-        table_writer_put32( w, (uint32_t) ( value->camera_id ) );
-    }
-    if ( value->camera_type != 0 )
-    {
-        table_writer_put16( w, 0x9920 ); table_writer_put8( w, 8 ); /* camera_type */
-        table_writer_put32( w, (uint32_t) ( value->camera_type ) );
-    }
-    if ( value->target_object_id != 0 )
-    {
-        table_writer_put16( w, 0x38dc ); table_writer_put8( w, 8 ); /* target_object_id */
-        table_writer_put32( w, (uint32_t) ( value->target_object_id ) );
-    }
-    if ( value->fov != 0.0f )
-    {
-        table_writer_put16( w, 0x392f ); table_writer_put8( w, 10 ); /* fov */
-        table_writer_put32( w, table_float_to_bits( value->fov ) );
-    }
-    table_writer_put16( w, 0 ); /* terminator */
-    return !w->overflow;
+    TableWriter w = table_writer_make( NULL, INT64_MAX );
+    table_writer_put8( &w, 1 );
+    if ( !render_camera_save_body( &w, value ) ) { return -1; }
+    table_writer_finish( &w );
+    return w.overflow ? -1 : w.offset;
 }
 
 static SCHEMA_UNUSED int64_t render_camera_save( const RenderCamera * value, uint8_t * buffer, int64_t capacity )
 {
+    if ( buffer == NULL || capacity < 0 ) { return -1; }
     TableWriter w = table_writer_make( buffer, capacity );
+    table_writer_put8( &w, 1 );
     if ( !render_camera_save_body( &w, value ) ) { return -1; }
-    return w.offset; /* == render_camera_measure( value ) */
+    table_writer_finish( &w );
+    return w.overflow ? -1 : w.offset;
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_camera_load_body( TableReader * r, RenderCamera * value )
+static SCHEMA_UNUSED int render_camera_load_body( TableReader * r, RenderCamera * value )
 {
-    render_camera_reset( value ); /* prefill declared defaults in place, then overlay */
+    render_camera_reset( value );
     for ( ;; )
     {
-        uint16_t field_id;
-        uint8_t kind;
-        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = table_reader_get16( r );
-        if ( field_id == 0 ) { return 1; }
-        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = table_reader_get8( r );
-        switch ( field_id )
+        uint64_t ref, id; uint8_t kind;
+        if ( !table_reader_leb( r, &ref ) ) { r->report->malformed = 1; return 0; }
+        if ( ref == 0 ) { return 1; }
+        if ( ref > r->id_count || !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        id = table_reader_id_at( r, ref ); kind = table_reader_get8( r );
+        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->malformed = 1; return 0; }
+        switch ( id )
         {
-            case 0xdd45: /* position */
+            case 0x4cbf3a26fca1d74aull: /* position */
             {
                 if ( kind != 13 )
                 {
@@ -1047,18 +1149,13 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_camera_load_body( 
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint32_t body_len;
-                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = table_reader_get32( r );
-                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
-                {
-                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
-                    render_vector3_load_body( &sub, &value->position );
-                }
-                r->offset += body_len;
+                TableReader sub;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                render_vector3_load_body( &sub, &value->position );
+                if ( sub.offset != sub.size ) { r->report->malformed = 1; render_vector3_reset( &value->position ); }
                 break;
             }
-            case 0x60f3: /* rotation */
+            case 0xb51afb05cd34709full: /* rotation */
             {
                 if ( kind != 13 )
                 {
@@ -1066,257 +1163,418 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_camera_load_body( 
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint32_t body_len;
-                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = table_reader_get32( r );
-                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
-                {
-                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
-                    render_quaternion_load_body( &sub, &value->rotation );
-                }
-                r->offset += body_len;
+                TableReader sub;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                render_quaternion_load_body( &sub, &value->rotation );
+                if ( sub.offset != sub.size ) { r->report->malformed = 1; render_quaternion_reset( &value->rotation ); }
                 break;
             }
-            case 0x25bd: /* camera_id */
+            case 0x9f61700f084ab92eull: /* camera_id */
             {
                 if ( kind != 8 )
                 {
+                    if ( table_kind_widens( kind, 8 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 6:
+                            {
+                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                                value->camera_id = decoded_wide;
+                                break;
+                            }
+                            case 7:
+                            {
+                                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                                value->camera_id = decoded_wide;
+                                break;
+                            }
+                            case 8:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                {
+                                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                                    value->camera_id = decoded_v;
+                                }
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                switch ( kind )
                 {
-                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
-                    value->camera_id = decoded_v;
+                    case 6:
+                    {
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                        value->camera_id = decoded_wide;
+                        break;
+                    }
+                    case 7:
+                    {
+                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                        value->camera_id = decoded_wide;
+                        break;
+                    }
+                    case 8:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        {
+                            uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                            value->camera_id = decoded_v;
+                        }
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
                 }
                 break;
             }
-            case 0x9920: /* camera_type */
+            case 0x336d3dc7fffd0c9bull: /* camera_type */
             {
                 if ( kind != 8 )
                 {
+                    if ( table_kind_widens( kind, 8 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 6:
+                            {
+                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                                value->camera_type = decoded_wide;
+                                break;
+                            }
+                            case 7:
+                            {
+                                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                                value->camera_type = decoded_wide;
+                                break;
+                            }
+                            case 8:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                {
+                                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                                    value->camera_type = decoded_v;
+                                }
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                switch ( kind )
                 {
-                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
-                    value->camera_type = decoded_v;
+                    case 6:
+                    {
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                        value->camera_type = decoded_wide;
+                        break;
+                    }
+                    case 7:
+                    {
+                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                        value->camera_type = decoded_wide;
+                        break;
+                    }
+                    case 8:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        {
+                            uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                            value->camera_type = decoded_v;
+                        }
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
                 }
                 break;
             }
-            case 0x38dc: /* target_object_id */
+            case 0x6a0c6a156952b9c2ull: /* target_object_id */
             {
                 if ( kind != 8 )
                 {
+                    if ( table_kind_widens( kind, 8 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 6:
+                            {
+                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                                value->target_object_id = decoded_wide;
+                                break;
+                            }
+                            case 7:
+                            {
+                                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                                value->target_object_id = decoded_wide;
+                                break;
+                            }
+                            case 8:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                {
+                                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                                    value->target_object_id = decoded_v;
+                                }
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                switch ( kind )
                 {
-                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
-                    value->target_object_id = decoded_v;
+                    case 6:
+                    {
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                        value->target_object_id = decoded_wide;
+                        break;
+                    }
+                    case 7:
+                    {
+                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                        value->target_object_id = decoded_wide;
+                        break;
+                    }
+                    case 8:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        {
+                            uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                            value->target_object_id = decoded_v;
+                        }
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
                 }
                 break;
             }
-            case 0x392f: /* fov */
+            case 0xdcb27c18fed9e15cull: /* fov */
             {
                 if ( kind != 10 )
                 {
+                    if ( table_kind_widens( kind, 10 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 10:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                value->fov = table_bits_to_float( table_reader_get32( &(*r) ) );
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                value->fov = table_bits_to_float( table_reader_get32( &(*r) ) );
+                switch ( kind )
+                {
+                    case 10:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        value->fov = table_bits_to_float( table_reader_get32( &(*r) ) );
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
+                }
                 break;
             }
             default:
-            {
                 r->report->unknown++;
                 if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
-            }
         }
     }
 }
 
 static SCHEMA_UNUSED int render_camera_load( RenderCamera * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
-    TableReport ignored;
-    TableReader r;
+    TableReport ignored; TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    if ( report == NULL ) { report = &ignored; }
+    render_camera_reset( value );
+    if ( !table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     return render_camera_load_body( &r, value );
+}
+
+static SCHEMA_UNUSED int render_ship_save_body( TableWriter * w, const RenderShip * value )
+{
+    (void) value;
+    { /* position */
+        TableWriter default_probe = table_writer_probe( w );
+        if ( !render_vector3_save_body( &default_probe, &value->position ) ) { return 0; }
+        if ( default_probe.offset > 1 )
+        {
+            table_writer_id( w, 0x4cbf3a26fca1d74aull ); table_writer_put8( w, 13 );
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !render_vector3_save_body( &probe, &value->position ) ) { return 0; }
+                table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !render_vector3_save_body( w, &value->position ) ) { return 0; }
+            }
+        }
+    }
+    { /* rotation */
+        TableWriter default_probe = table_writer_probe( w );
+        if ( !render_quaternion_save_body( &default_probe, &value->rotation ) ) { return 0; }
+        if ( default_probe.offset > 1 )
+        {
+            table_writer_id( w, 0xb51afb05cd34709full ); table_writer_put8( w, 13 );
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !render_quaternion_save_body( &probe, &value->rotation ) ) { return 0; }
+                table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !render_quaternion_save_body( w, &value->rotation ) ) { return 0; }
+            }
+        }
+    }
+    { /* flags */
+        if ( value->flags != 0 )
+        {
+            table_writer_id( w, 0x17a3a1a985f75aecull ); table_writer_put8( w, 9 );
+            table_writer_put64( w, (uint64_t) ( value->flags ) );
+        }
+    }
+    { /* object_id */
+        if ( value->object_id != 0 )
+        {
+            table_writer_id( w, 0x0bdab42c07f19812ull ); table_writer_put8( w, 8 );
+            table_writer_put32( w, (uint32_t) ( value->object_id ) );
+        }
+    }
+    { /* target_object_id */
+        if ( value->target_object_id != 0 )
+        {
+            table_writer_id( w, 0x6a0c6a156952b9c2ull ); table_writer_put8( w, 8 );
+            table_writer_put32( w, (uint32_t) ( value->target_object_id ) );
+        }
+    }
+    { /* thrust */
+        if ( value->thrust != 0.0f )
+        {
+            table_writer_id( w, 0xcfd587cb3100cd73ull ); table_writer_put8( w, 10 );
+            table_writer_put32( w, table_float_to_bits( value->thrust ) );
+        }
+    }
+    { /* object_sequence */
+        if ( value->object_sequence != 0 )
+        {
+            table_writer_id( w, 0x5de0015285763c46ull ); table_writer_put8( w, 6 );
+            table_writer_put8( w, (uint8_t) ( value->object_sequence ) );
+        }
+    }
+    { /* ship_type */
+        if ( value->ship_type != SHIP_TYPE_NONE )
+        {
+            table_writer_id( w, 0x1f7d2e86a2e77268ull ); table_writer_put8( w, 30 );
+            switch ( value->ship_type )
+            {
+                case SHIP_TYPE_NONE: table_writer_leb( w, 0 ); break;
+                case SHIP_TYPE_FIGHTER: table_writer_id( w, 0xd011f7c3c15285c2ull ); break;
+                case SHIP_TYPE_BOMBER: table_writer_id( w, 0xa8216aa1c554cb8aull ); break;
+                case SHIP_TYPE_FREIGHTER: table_writer_id( w, 0x6c2321a3d00e23dbull ); break;
+                default: return 0; /* no declared identity */
+            }
+        }
+    }
+    { /* team */
+        if ( value->team != TEAM_NONE )
+        {
+            table_writer_id( w, 0xfa23d9ef19afc32cull ); table_writer_put8( w, 30 );
+            switch ( value->team )
+            {
+                case TEAM_NONE: table_writer_leb( w, 0 ); break;
+                case TEAM_RED: table_writer_id( w, 0x9ff1de19feac1b7cull ); break;
+                case TEAM_BLUE: table_writer_id( w, 0xecf3d3a7c1693e2dull ); break;
+                case TEAM_GREEN: table_writer_id( w, 0xcf00d78fd5953f1cull ); break;
+                case TEAM_GOLD: table_writer_id( w, 0xc416c97e0d3218b3ull ); break;
+                default: return 0; /* no declared identity */
+            }
+        }
+    }
+    { /* has_target_lock */
+        if ( value->has_target_lock != 0 )
+        {
+            table_writer_id( w, 0x1554fa45a1220171ull ); table_writer_put8( w, 1 );
+            table_writer_put8( w, value->has_target_lock ? 1 : 0 );
+        }
+    }
+    { /* predicted_explode */
+        if ( value->predicted_explode != 0 )
+        {
+            table_writer_id( w, 0x4d5be97ba1b9cb81ull ); table_writer_put8( w, 1 );
+            table_writer_put8( w, value->predicted_explode ? 1 : 0 );
+        }
+    }
+    table_writer_leb( w, 0 );
+    return !w->overflow;
 }
 
 static SCHEMA_UNUSED int64_t render_ship_measure( const RenderShip * value )
 {
-    int64_t bytes = 2; /* terminator */
-    {
-        int64_t body_position = render_vector3_measure( &value->position );
-        if ( body_position < 0 ) { return -1; }
-        if ( body_position > 2 ) { bytes += 3 + 4 + body_position; } /* position: all-default nested elides */
-    }
-    {
-        int64_t body_rotation = render_quaternion_measure( &value->rotation );
-        if ( body_rotation < 0 ) { return -1; }
-        if ( body_rotation > 2 ) { bytes += 3 + 4 + body_rotation; } /* rotation: all-default nested elides */
-    }
-    if ( value->flags != 0 ) { bytes += 3 + 8; } /* flags */
-    if ( value->object_id != 0 ) { bytes += 3 + 4; } /* object_id */
-    if ( value->target_object_id != 0 ) { bytes += 3 + 4; } /* target_object_id */
-    if ( value->thrust != 0.0f ) { bytes += 3 + 4; } /* thrust */
-    if ( value->object_sequence != 0 ) { bytes += 3 + 1; } /* object_sequence */
-    if ( value->ship_type != SHIP_TYPE_NONE )
-    {
-        uint16_t id_ship_type = 0;
-        switch ( value->ship_type ) /* ShipType rides as the u16 hash of its VARIANT NAME (§5) */
-        {
-            case SHIP_TYPE_NONE: id_ship_type = 0; break;
-            case SHIP_TYPE_FIGHTER: id_ship_type = 0x412b; break;
-            case SHIP_TYPE_BOMBER: id_ship_type = 0xb7ce; break;
-            case SHIP_TYPE_FREIGHTER: id_ship_type = 0xb617; break;
-            default: return -1; /* no variant names this value: no wire identity */
-        }
-        (void) id_ship_type;
-        bytes += 3 + 2; /* ship_type: the variant's name hash */
-    }
-    if ( value->team != TEAM_NONE )
-    {
-        uint16_t id_team = 0;
-        switch ( value->team ) /* Team rides as the u16 hash of its VARIANT NAME (§5) */
-        {
-            case TEAM_NONE: id_team = 0; break;
-            case TEAM_RED: id_team = 0xbb03; break;
-            case TEAM_BLUE: id_team = 0xf630; break;
-            case TEAM_GREEN: id_team = 0x6e0f; break;
-            case TEAM_GOLD: id_team = 0xda27; break;
-            default: return -1; /* no variant names this value: no wire identity */
-        }
-        (void) id_team;
-        bytes += 3 + 2; /* team: the variant's name hash */
-    }
-    if ( value->has_target_lock != 0 ) { bytes += 3 + 1; } /* has_target_lock */
-    if ( value->predicted_explode != 0 ) { bytes += 3 + 1; } /* predicted_explode */
-    return bytes;
-}
-
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_ship_save_body( TableWriter * w, const RenderShip * value )
-{
-    {
-        int64_t body_position = render_vector3_measure( &value->position );
-        if ( body_position < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
-        if ( body_position > 2 ) /* all-default nested elides */
-        {
-            table_writer_put16( w, 0xdd45 ); table_writer_put8( w, 13 ); /* position */
-            table_writer_put32( w, (uint32_t) body_position );
-            if ( !render_vector3_save_body( w, &value->position ) ) { return 0; }
-        }
-    }
-    {
-        int64_t body_rotation = render_quaternion_measure( &value->rotation );
-        if ( body_rotation < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
-        if ( body_rotation > 2 ) /* all-default nested elides */
-        {
-            table_writer_put16( w, 0x60f3 ); table_writer_put8( w, 13 ); /* rotation */
-            table_writer_put32( w, (uint32_t) body_rotation );
-            if ( !render_quaternion_save_body( w, &value->rotation ) ) { return 0; }
-        }
-    }
-    if ( value->flags != 0 )
-    {
-        table_writer_put16( w, 0xe64b ); table_writer_put8( w, 9 ); /* flags */
-        table_writer_put64( w, (uint64_t) ( value->flags ) );
-    }
-    if ( value->object_id != 0 )
-    {
-        table_writer_put16( w, 0xdc71 ); table_writer_put8( w, 8 ); /* object_id */
-        table_writer_put32( w, (uint32_t) ( value->object_id ) );
-    }
-    if ( value->target_object_id != 0 )
-    {
-        table_writer_put16( w, 0x38dc ); table_writer_put8( w, 8 ); /* target_object_id */
-        table_writer_put32( w, (uint32_t) ( value->target_object_id ) );
-    }
-    if ( value->thrust != 0.0f )
-    {
-        table_writer_put16( w, 0x9e51 ); table_writer_put8( w, 10 ); /* thrust */
-        table_writer_put32( w, table_float_to_bits( value->thrust ) );
-    }
-    if ( value->object_sequence != 0 )
-    {
-        table_writer_put16( w, 0x57ee ); table_writer_put8( w, 6 ); /* object_sequence */
-        table_writer_put8( w, (uint8_t) ( value->object_sequence ) );
-    }
-    if ( value->ship_type != SHIP_TYPE_NONE )
-    {
-        uint16_t id_ship_type = 0;
-        switch ( value->ship_type ) /* ShipType rides as the u16 hash of its VARIANT NAME (§5) */
-        {
-            case SHIP_TYPE_NONE: id_ship_type = 0; break;
-            case SHIP_TYPE_FIGHTER: id_ship_type = 0x412b; break;
-            case SHIP_TYPE_BOMBER: id_ship_type = 0xb7ce; break;
-            case SHIP_TYPE_FREIGHTER: id_ship_type = 0xb617; break;
-            default: return 0; /* no variant names this value: no wire identity */
-        }
-        table_writer_put16( w, 0x38e9 ); table_writer_put8( w, 7 ); /* ship_type */
-        table_writer_put16( w, id_ship_type );
-    }
-    if ( value->team != TEAM_NONE )
-    {
-        uint16_t id_team = 0;
-        switch ( value->team ) /* Team rides as the u16 hash of its VARIANT NAME (§5) */
-        {
-            case TEAM_NONE: id_team = 0; break;
-            case TEAM_RED: id_team = 0xbb03; break;
-            case TEAM_BLUE: id_team = 0xf630; break;
-            case TEAM_GREEN: id_team = 0x6e0f; break;
-            case TEAM_GOLD: id_team = 0xda27; break;
-            default: return 0; /* no variant names this value: no wire identity */
-        }
-        table_writer_put16( w, 0xdff1 ); table_writer_put8( w, 7 ); /* team */
-        table_writer_put16( w, id_team );
-    }
-    if ( value->has_target_lock != 0 )
-    {
-        table_writer_put16( w, 0xf223 ); table_writer_put8( w, 1 ); /* has_target_lock */
-        table_writer_put8( w, value->has_target_lock ? 1 : 0 );
-    }
-    if ( value->predicted_explode != 0 )
-    {
-        table_writer_put16( w, 0x88bd ); table_writer_put8( w, 1 ); /* predicted_explode */
-        table_writer_put8( w, value->predicted_explode ? 1 : 0 );
-    }
-    table_writer_put16( w, 0 ); /* terminator */
-    return !w->overflow;
+    TableWriter w = table_writer_make( NULL, INT64_MAX );
+    table_writer_put8( &w, 1 );
+    if ( !render_ship_save_body( &w, value ) ) { return -1; }
+    table_writer_finish( &w );
+    return w.overflow ? -1 : w.offset;
 }
 
 static SCHEMA_UNUSED int64_t render_ship_save( const RenderShip * value, uint8_t * buffer, int64_t capacity )
 {
+    if ( buffer == NULL || capacity < 0 ) { return -1; }
     TableWriter w = table_writer_make( buffer, capacity );
+    table_writer_put8( &w, 1 );
     if ( !render_ship_save_body( &w, value ) ) { return -1; }
-    return w.offset; /* == render_ship_measure( value ) */
+    table_writer_finish( &w );
+    return w.overflow ? -1 : w.offset;
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_ship_load_body( TableReader * r, RenderShip * value )
+static SCHEMA_UNUSED int render_ship_load_body( TableReader * r, RenderShip * value )
 {
-    render_ship_reset( value ); /* prefill declared defaults in place, then overlay */
+    render_ship_reset( value );
     for ( ;; )
     {
-        uint16_t field_id;
-        uint8_t kind;
-        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = table_reader_get16( r );
-        if ( field_id == 0 ) { return 1; }
-        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = table_reader_get8( r );
-        switch ( field_id )
+        uint64_t ref, id; uint8_t kind;
+        if ( !table_reader_leb( r, &ref ) ) { r->report->malformed = 1; return 0; }
+        if ( ref == 0 ) { return 1; }
+        if ( ref > r->id_count || !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        id = table_reader_id_at( r, ref ); kind = table_reader_get8( r );
+        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->malformed = 1; return 0; }
+        switch ( id )
         {
-            case 0xdd45: /* position */
+            case 0x4cbf3a26fca1d74aull: /* position */
             {
                 if ( kind != 13 )
                 {
@@ -1324,18 +1582,13 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_ship_load_body( Ta
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint32_t body_len;
-                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = table_reader_get32( r );
-                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
-                {
-                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
-                    render_vector3_load_body( &sub, &value->position );
-                }
-                r->offset += body_len;
+                TableReader sub;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                render_vector3_load_body( &sub, &value->position );
+                if ( sub.offset != sub.size ) { r->report->malformed = 1; render_vector3_reset( &value->position ); }
                 break;
             }
-            case 0x60f3: /* rotation */
+            case 0xb51afb05cd34709full: /* rotation */
             {
                 if ( kind != 13 )
                 {
@@ -1343,298 +1596,566 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_ship_load_body( Ta
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint32_t body_len;
-                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = table_reader_get32( r );
-                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
-                {
-                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
-                    render_quaternion_load_body( &sub, &value->rotation );
-                }
-                r->offset += body_len;
+                TableReader sub;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                render_quaternion_load_body( &sub, &value->rotation );
+                if ( sub.offset != sub.size ) { r->report->malformed = 1; render_quaternion_reset( &value->rotation ); }
                 break;
             }
-            case 0xe64b: /* flags */
+            case 0x17a3a1a985f75aecull: /* flags */
             {
                 if ( kind != 9 )
                 {
+                    if ( table_kind_widens( kind, 9 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 6:
+                            {
+                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                                value->flags = decoded_wide;
+                                break;
+                            }
+                            case 7:
+                            {
+                                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                                value->flags = decoded_wide;
+                                break;
+                            }
+                            case 8:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint32_t) table_reader_get32( &(*r) );
+                                value->flags = decoded_wide;
+                                break;
+                            }
+                            case 9:
+                            {
+                                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                                {
+                                    uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
+                                    value->flags = decoded_v;
+                                }
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                switch ( kind )
                 {
-                    uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
-                    value->flags = decoded_v;
+                    case 6:
+                    {
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                        value->flags = decoded_wide;
+                        break;
+                    }
+                    case 7:
+                    {
+                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                        value->flags = decoded_wide;
+                        break;
+                    }
+                    case 8:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint32_t) table_reader_get32( &(*r) );
+                        value->flags = decoded_wide;
+                        break;
+                    }
+                    case 9:
+                    {
+                        if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                        {
+                            uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
+                            value->flags = decoded_v;
+                        }
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
                 }
                 break;
             }
-            case 0xdc71: /* object_id */
+            case 0x0bdab42c07f19812ull: /* object_id */
             {
                 if ( kind != 8 )
                 {
+                    if ( table_kind_widens( kind, 8 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 6:
+                            {
+                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                                value->object_id = decoded_wide;
+                                break;
+                            }
+                            case 7:
+                            {
+                                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                                value->object_id = decoded_wide;
+                                break;
+                            }
+                            case 8:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                {
+                                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                                    value->object_id = decoded_v;
+                                }
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                switch ( kind )
                 {
-                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
-                    value->object_id = decoded_v;
+                    case 6:
+                    {
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                        value->object_id = decoded_wide;
+                        break;
+                    }
+                    case 7:
+                    {
+                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                        value->object_id = decoded_wide;
+                        break;
+                    }
+                    case 8:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        {
+                            uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                            value->object_id = decoded_v;
+                        }
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
                 }
                 break;
             }
-            case 0x38dc: /* target_object_id */
+            case 0x6a0c6a156952b9c2ull: /* target_object_id */
             {
                 if ( kind != 8 )
                 {
+                    if ( table_kind_widens( kind, 8 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 6:
+                            {
+                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                                value->target_object_id = decoded_wide;
+                                break;
+                            }
+                            case 7:
+                            {
+                                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                                value->target_object_id = decoded_wide;
+                                break;
+                            }
+                            case 8:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                {
+                                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                                    value->target_object_id = decoded_v;
+                                }
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                switch ( kind )
                 {
-                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
-                    value->target_object_id = decoded_v;
+                    case 6:
+                    {
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                        value->target_object_id = decoded_wide;
+                        break;
+                    }
+                    case 7:
+                    {
+                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                        value->target_object_id = decoded_wide;
+                        break;
+                    }
+                    case 8:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        {
+                            uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                            value->target_object_id = decoded_v;
+                        }
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
                 }
                 break;
             }
-            case 0x9e51: /* thrust */
+            case 0xcfd587cb3100cd73ull: /* thrust */
             {
                 if ( kind != 10 )
                 {
+                    if ( table_kind_widens( kind, 10 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 10:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                value->thrust = table_bits_to_float( table_reader_get32( &(*r) ) );
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                value->thrust = table_bits_to_float( table_reader_get32( &(*r) ) );
+                switch ( kind )
+                {
+                    case 10:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        value->thrust = table_bits_to_float( table_reader_get32( &(*r) ) );
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
+                }
                 break;
             }
-            case 0x57ee: /* object_sequence */
+            case 0x5de0015285763c46ull: /* object_sequence */
             {
                 if ( kind != 6 )
                 {
+                    if ( table_kind_widens( kind, 6 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 6:
+                            {
+                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                {
+                                    uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
+                                    value->object_sequence = decoded_v;
+                                }
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                switch ( kind )
                 {
-                    uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
-                    value->object_sequence = decoded_v;
+                    case 6:
+                    {
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        {
+                            uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
+                            value->object_sequence = decoded_v;
+                        }
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
                 }
                 break;
             }
-            case 0x38e9: /* ship_type */
+            case 0x1f7d2e86a2e77268ull: /* ship_type */
             {
-                if ( kind != 7 )
+                if ( kind != 30 )
                 {
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t variant = table_reader_get16( &(*r) );
-                    switch ( variant )
+                    uint64_t variant_ref;
+                    if ( !table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->malformed = 1; return 0; }
+                    if ( variant_ref == 0 ) { value->ship_type = SHIP_TYPE_NONE; }
+                    else
                     {
-                        case 0: value->ship_type = SHIP_TYPE_NONE; break;
-                        case 0x412b: value->ship_type = SHIP_TYPE_FIGHTER; break;
-                        case 0xb7ce: value->ship_type = SHIP_TYPE_BOMBER; break;
-                        case 0xb617: value->ship_type = SHIP_TYPE_FREIGHTER; break;
-                        default: value->ship_type = SHIP_TYPE_NONE; r->report->unknown++; break; /* an id this build cannot name */
+                        switch ( table_reader_id_at( &(*r), variant_ref ) )
+                        {
+                            case 0xd011f7c3c15285c2ull: value->ship_type = SHIP_TYPE_FIGHTER; break;
+                            case 0xa8216aa1c554cb8aull: value->ship_type = SHIP_TYPE_BOMBER; break;
+                            case 0x6c2321a3d00e23dbull: value->ship_type = SHIP_TYPE_FREIGHTER; break;
+                            default: value->ship_type = SHIP_TYPE_NONE; r->report->unknown++; break;
+                        }
                     }
                 }
                 break;
             }
-            case 0xdff1: /* team */
+            case 0xfa23d9ef19afc32cull: /* team */
             {
-                if ( kind != 7 )
+                if ( kind != 30 )
                 {
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t variant = table_reader_get16( &(*r) );
-                    switch ( variant )
+                    uint64_t variant_ref;
+                    if ( !table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->malformed = 1; return 0; }
+                    if ( variant_ref == 0 ) { value->team = TEAM_NONE; }
+                    else
                     {
-                        case 0: value->team = TEAM_NONE; break;
-                        case 0xbb03: value->team = TEAM_RED; break;
-                        case 0xf630: value->team = TEAM_BLUE; break;
-                        case 0x6e0f: value->team = TEAM_GREEN; break;
-                        case 0xda27: value->team = TEAM_GOLD; break;
-                        default: value->team = TEAM_NONE; r->report->unknown++; break; /* an id this build cannot name */
+                        switch ( table_reader_id_at( &(*r), variant_ref ) )
+                        {
+                            case 0x9ff1de19feac1b7cull: value->team = TEAM_RED; break;
+                            case 0xecf3d3a7c1693e2dull: value->team = TEAM_BLUE; break;
+                            case 0xcf00d78fd5953f1cull: value->team = TEAM_GREEN; break;
+                            case 0xc416c97e0d3218b3ull: value->team = TEAM_GOLD; break;
+                            default: value->team = TEAM_NONE; r->report->unknown++; break;
+                        }
                     }
                 }
                 break;
             }
-            case 0xf223: /* has_target_lock */
+            case 0x1554fa45a1220171ull: /* has_target_lock */
             {
                 if ( kind != 1 )
                 {
+                    if ( table_kind_widens( kind, 1 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 1:
+                            {
+                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                value->has_target_lock = table_reader_get8( &(*r) ) != 0;
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                value->has_target_lock = table_reader_get8( &(*r) ) != 0;
+                switch ( kind )
+                {
+                    case 1:
+                    {
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        value->has_target_lock = table_reader_get8( &(*r) ) != 0;
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
+                }
                 break;
             }
-            case 0x88bd: /* predicted_explode */
+            case 0x4d5be97ba1b9cb81ull: /* predicted_explode */
             {
                 if ( kind != 1 )
                 {
+                    if ( table_kind_widens( kind, 1 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 1:
+                            {
+                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                value->predicted_explode = table_reader_get8( &(*r) ) != 0;
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                value->predicted_explode = table_reader_get8( &(*r) ) != 0;
+                switch ( kind )
+                {
+                    case 1:
+                    {
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        value->predicted_explode = table_reader_get8( &(*r) ) != 0;
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
+                }
                 break;
             }
             default:
-            {
                 r->report->unknown++;
                 if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
-            }
         }
     }
 }
 
 static SCHEMA_UNUSED int render_ship_load( RenderShip * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
-    TableReport ignored;
-    TableReader r;
+    TableReport ignored; TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    if ( report == NULL ) { report = &ignored; }
+    render_ship_reset( value );
+    if ( !table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     return render_ship_load_body( &r, value );
+}
+
+static SCHEMA_UNUSED int render_turret_save_body( TableWriter * w, const RenderTurret * value )
+{
+    (void) value;
+    { /* rotation */
+        TableWriter default_probe = table_writer_probe( w );
+        if ( !render_quaternion_save_body( &default_probe, &value->rotation ) ) { return 0; }
+        if ( default_probe.offset > 1 )
+        {
+            table_writer_id( w, 0xb51afb05cd34709full ); table_writer_put8( w, 13 );
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !render_quaternion_save_body( &probe, &value->rotation ) ) { return 0; }
+                table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !render_quaternion_save_body( w, &value->rotation ) ) { return 0; }
+            }
+        }
+    }
+    { /* flags */
+        if ( value->flags != 0 )
+        {
+            table_writer_id( w, 0x17a3a1a985f75aecull ); table_writer_put8( w, 9 );
+            table_writer_put64( w, (uint64_t) ( value->flags ) );
+        }
+    }
+    { /* object_id */
+        if ( value->object_id != 0 )
+        {
+            table_writer_id( w, 0x0bdab42c07f19812ull ); table_writer_put8( w, 8 );
+            table_writer_put32( w, (uint32_t) ( value->object_id ) );
+        }
+    }
+    { /* parent_object_id */
+        if ( value->parent_object_id != 0 )
+        {
+            table_writer_id( w, 0x0bee7b3cb4046c93ull ); table_writer_put8( w, 8 );
+            table_writer_put32( w, (uint32_t) ( value->parent_object_id ) );
+        }
+    }
+    { /* turret_index */
+        if ( value->turret_index != 0 )
+        {
+            table_writer_id( w, 0x88a11a6aed541f54ull ); table_writer_put8( w, 8 );
+            table_writer_put32( w, (uint32_t) ( value->turret_index ) );
+        }
+    }
+    { /* target_object_id */
+        if ( value->target_object_id != 0 )
+        {
+            table_writer_id( w, 0x6a0c6a156952b9c2ull ); table_writer_put8( w, 8 );
+            table_writer_put32( w, (uint32_t) ( value->target_object_id ) );
+        }
+    }
+    { /* object_sequence */
+        if ( value->object_sequence != 0 )
+        {
+            table_writer_id( w, 0x5de0015285763c46ull ); table_writer_put8( w, 6 );
+            table_writer_put8( w, (uint8_t) ( value->object_sequence ) );
+        }
+    }
+    { /* team */
+        if ( value->team != TEAM_NONE )
+        {
+            table_writer_id( w, 0xfa23d9ef19afc32cull ); table_writer_put8( w, 30 );
+            switch ( value->team )
+            {
+                case TEAM_NONE: table_writer_leb( w, 0 ); break;
+                case TEAM_RED: table_writer_id( w, 0x9ff1de19feac1b7cull ); break;
+                case TEAM_BLUE: table_writer_id( w, 0xecf3d3a7c1693e2dull ); break;
+                case TEAM_GREEN: table_writer_id( w, 0xcf00d78fd5953f1cull ); break;
+                case TEAM_GOLD: table_writer_id( w, 0xc416c97e0d3218b3ull ); break;
+                default: return 0; /* no declared identity */
+            }
+        }
+    }
+    { /* has_target_lock */
+        if ( value->has_target_lock != 0 )
+        {
+            table_writer_id( w, 0x1554fa45a1220171ull ); table_writer_put8( w, 1 );
+            table_writer_put8( w, value->has_target_lock ? 1 : 0 );
+        }
+    }
+    table_writer_leb( w, 0 );
+    return !w->overflow;
 }
 
 static SCHEMA_UNUSED int64_t render_turret_measure( const RenderTurret * value )
 {
-    int64_t bytes = 2; /* terminator */
-    {
-        int64_t body_rotation = render_quaternion_measure( &value->rotation );
-        if ( body_rotation < 0 ) { return -1; }
-        if ( body_rotation > 2 ) { bytes += 3 + 4 + body_rotation; } /* rotation: all-default nested elides */
-    }
-    if ( value->flags != 0 ) { bytes += 3 + 8; } /* flags */
-    if ( value->object_id != 0 ) { bytes += 3 + 4; } /* object_id */
-    if ( value->parent_object_id != 0 ) { bytes += 3 + 4; } /* parent_object_id */
-    if ( value->turret_index != 0 ) { bytes += 3 + 4; } /* turret_index */
-    if ( value->target_object_id != 0 ) { bytes += 3 + 4; } /* target_object_id */
-    if ( value->object_sequence != 0 ) { bytes += 3 + 1; } /* object_sequence */
-    if ( value->team != TEAM_NONE )
-    {
-        uint16_t id_team = 0;
-        switch ( value->team ) /* Team rides as the u16 hash of its VARIANT NAME (§5) */
-        {
-            case TEAM_NONE: id_team = 0; break;
-            case TEAM_RED: id_team = 0xbb03; break;
-            case TEAM_BLUE: id_team = 0xf630; break;
-            case TEAM_GREEN: id_team = 0x6e0f; break;
-            case TEAM_GOLD: id_team = 0xda27; break;
-            default: return -1; /* no variant names this value: no wire identity */
-        }
-        (void) id_team;
-        bytes += 3 + 2; /* team: the variant's name hash */
-    }
-    if ( value->has_target_lock != 0 ) { bytes += 3 + 1; } /* has_target_lock */
-    return bytes;
-}
-
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_turret_save_body( TableWriter * w, const RenderTurret * value )
-{
-    {
-        int64_t body_rotation = render_quaternion_measure( &value->rotation );
-        if ( body_rotation < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
-        if ( body_rotation > 2 ) /* all-default nested elides */
-        {
-            table_writer_put16( w, 0x60f3 ); table_writer_put8( w, 13 ); /* rotation */
-            table_writer_put32( w, (uint32_t) body_rotation );
-            if ( !render_quaternion_save_body( w, &value->rotation ) ) { return 0; }
-        }
-    }
-    if ( value->flags != 0 )
-    {
-        table_writer_put16( w, 0xe64b ); table_writer_put8( w, 9 ); /* flags */
-        table_writer_put64( w, (uint64_t) ( value->flags ) );
-    }
-    if ( value->object_id != 0 )
-    {
-        table_writer_put16( w, 0xdc71 ); table_writer_put8( w, 8 ); /* object_id */
-        table_writer_put32( w, (uint32_t) ( value->object_id ) );
-    }
-    if ( value->parent_object_id != 0 )
-    {
-        table_writer_put16( w, 0xeeb6 ); table_writer_put8( w, 8 ); /* parent_object_id */
-        table_writer_put32( w, (uint32_t) ( value->parent_object_id ) );
-    }
-    if ( value->turret_index != 0 )
-    {
-        table_writer_put16( w, 0xae10 ); table_writer_put8( w, 8 ); /* turret_index */
-        table_writer_put32( w, (uint32_t) ( value->turret_index ) );
-    }
-    if ( value->target_object_id != 0 )
-    {
-        table_writer_put16( w, 0x38dc ); table_writer_put8( w, 8 ); /* target_object_id */
-        table_writer_put32( w, (uint32_t) ( value->target_object_id ) );
-    }
-    if ( value->object_sequence != 0 )
-    {
-        table_writer_put16( w, 0x57ee ); table_writer_put8( w, 6 ); /* object_sequence */
-        table_writer_put8( w, (uint8_t) ( value->object_sequence ) );
-    }
-    if ( value->team != TEAM_NONE )
-    {
-        uint16_t id_team = 0;
-        switch ( value->team ) /* Team rides as the u16 hash of its VARIANT NAME (§5) */
-        {
-            case TEAM_NONE: id_team = 0; break;
-            case TEAM_RED: id_team = 0xbb03; break;
-            case TEAM_BLUE: id_team = 0xf630; break;
-            case TEAM_GREEN: id_team = 0x6e0f; break;
-            case TEAM_GOLD: id_team = 0xda27; break;
-            default: return 0; /* no variant names this value: no wire identity */
-        }
-        table_writer_put16( w, 0xdff1 ); table_writer_put8( w, 7 ); /* team */
-        table_writer_put16( w, id_team );
-    }
-    if ( value->has_target_lock != 0 )
-    {
-        table_writer_put16( w, 0xf223 ); table_writer_put8( w, 1 ); /* has_target_lock */
-        table_writer_put8( w, value->has_target_lock ? 1 : 0 );
-    }
-    table_writer_put16( w, 0 ); /* terminator */
-    return !w->overflow;
+    TableWriter w = table_writer_make( NULL, INT64_MAX );
+    table_writer_put8( &w, 1 );
+    if ( !render_turret_save_body( &w, value ) ) { return -1; }
+    table_writer_finish( &w );
+    return w.overflow ? -1 : w.offset;
 }
 
 static SCHEMA_UNUSED int64_t render_turret_save( const RenderTurret * value, uint8_t * buffer, int64_t capacity )
 {
+    if ( buffer == NULL || capacity < 0 ) { return -1; }
     TableWriter w = table_writer_make( buffer, capacity );
+    table_writer_put8( &w, 1 );
     if ( !render_turret_save_body( &w, value ) ) { return -1; }
-    return w.offset; /* == render_turret_measure( value ) */
+    table_writer_finish( &w );
+    return w.overflow ? -1 : w.offset;
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_turret_load_body( TableReader * r, RenderTurret * value )
+static SCHEMA_UNUSED int render_turret_load_body( TableReader * r, RenderTurret * value )
 {
-    render_turret_reset( value ); /* prefill declared defaults in place, then overlay */
+    render_turret_reset( value );
     for ( ;; )
     {
-        uint16_t field_id;
-        uint8_t kind;
-        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = table_reader_get16( r );
-        if ( field_id == 0 ) { return 1; }
-        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = table_reader_get8( r );
-        switch ( field_id )
+        uint64_t ref, id; uint8_t kind;
+        if ( !table_reader_leb( r, &ref ) ) { r->report->malformed = 1; return 0; }
+        if ( ref == 0 ) { return 1; }
+        if ( ref > r->id_count || !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        id = table_reader_id_at( r, ref ); kind = table_reader_get8( r );
+        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->malformed = 1; return 0; }
+        switch ( id )
         {
-            case 0x60f3: /* rotation */
+            case 0xb51afb05cd34709full: /* rotation */
             {
                 if ( kind != 13 )
                 {
@@ -1642,299 +2163,608 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_turret_load_body( 
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint32_t body_len;
-                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = table_reader_get32( r );
-                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
-                {
-                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
-                    render_quaternion_load_body( &sub, &value->rotation );
-                }
-                r->offset += body_len;
+                TableReader sub;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                render_quaternion_load_body( &sub, &value->rotation );
+                if ( sub.offset != sub.size ) { r->report->malformed = 1; render_quaternion_reset( &value->rotation ); }
                 break;
             }
-            case 0xe64b: /* flags */
+            case 0x17a3a1a985f75aecull: /* flags */
             {
                 if ( kind != 9 )
                 {
+                    if ( table_kind_widens( kind, 9 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 6:
+                            {
+                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                                value->flags = decoded_wide;
+                                break;
+                            }
+                            case 7:
+                            {
+                                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                                value->flags = decoded_wide;
+                                break;
+                            }
+                            case 8:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint32_t) table_reader_get32( &(*r) );
+                                value->flags = decoded_wide;
+                                break;
+                            }
+                            case 9:
+                            {
+                                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                                {
+                                    uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
+                                    value->flags = decoded_v;
+                                }
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                switch ( kind )
                 {
-                    uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
-                    value->flags = decoded_v;
+                    case 6:
+                    {
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                        value->flags = decoded_wide;
+                        break;
+                    }
+                    case 7:
+                    {
+                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                        value->flags = decoded_wide;
+                        break;
+                    }
+                    case 8:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint32_t) table_reader_get32( &(*r) );
+                        value->flags = decoded_wide;
+                        break;
+                    }
+                    case 9:
+                    {
+                        if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                        {
+                            uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
+                            value->flags = decoded_v;
+                        }
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
                 }
                 break;
             }
-            case 0xdc71: /* object_id */
+            case 0x0bdab42c07f19812ull: /* object_id */
             {
                 if ( kind != 8 )
                 {
+                    if ( table_kind_widens( kind, 8 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 6:
+                            {
+                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                                value->object_id = decoded_wide;
+                                break;
+                            }
+                            case 7:
+                            {
+                                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                                value->object_id = decoded_wide;
+                                break;
+                            }
+                            case 8:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                {
+                                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                                    value->object_id = decoded_v;
+                                }
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                switch ( kind )
                 {
-                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
-                    value->object_id = decoded_v;
+                    case 6:
+                    {
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                        value->object_id = decoded_wide;
+                        break;
+                    }
+                    case 7:
+                    {
+                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                        value->object_id = decoded_wide;
+                        break;
+                    }
+                    case 8:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        {
+                            uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                            value->object_id = decoded_v;
+                        }
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
                 }
                 break;
             }
-            case 0xeeb6: /* parent_object_id */
+            case 0x0bee7b3cb4046c93ull: /* parent_object_id */
             {
                 if ( kind != 8 )
                 {
+                    if ( table_kind_widens( kind, 8 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 6:
+                            {
+                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                                value->parent_object_id = decoded_wide;
+                                break;
+                            }
+                            case 7:
+                            {
+                                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                                value->parent_object_id = decoded_wide;
+                                break;
+                            }
+                            case 8:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                {
+                                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                                    value->parent_object_id = decoded_v;
+                                }
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                switch ( kind )
                 {
-                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
-                    value->parent_object_id = decoded_v;
+                    case 6:
+                    {
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                        value->parent_object_id = decoded_wide;
+                        break;
+                    }
+                    case 7:
+                    {
+                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                        value->parent_object_id = decoded_wide;
+                        break;
+                    }
+                    case 8:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        {
+                            uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                            value->parent_object_id = decoded_v;
+                        }
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
                 }
                 break;
             }
-            case 0xae10: /* turret_index */
+            case 0x88a11a6aed541f54ull: /* turret_index */
             {
                 if ( kind != 8 )
                 {
+                    if ( table_kind_widens( kind, 8 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 6:
+                            {
+                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                                value->turret_index = decoded_wide;
+                                break;
+                            }
+                            case 7:
+                            {
+                                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                                value->turret_index = decoded_wide;
+                                break;
+                            }
+                            case 8:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                {
+                                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                                    value->turret_index = decoded_v;
+                                }
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                switch ( kind )
                 {
-                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
-                    value->turret_index = decoded_v;
+                    case 6:
+                    {
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                        value->turret_index = decoded_wide;
+                        break;
+                    }
+                    case 7:
+                    {
+                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                        value->turret_index = decoded_wide;
+                        break;
+                    }
+                    case 8:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        {
+                            uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                            value->turret_index = decoded_v;
+                        }
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
                 }
                 break;
             }
-            case 0x38dc: /* target_object_id */
+            case 0x6a0c6a156952b9c2ull: /* target_object_id */
             {
                 if ( kind != 8 )
                 {
+                    if ( table_kind_widens( kind, 8 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 6:
+                            {
+                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                                value->target_object_id = decoded_wide;
+                                break;
+                            }
+                            case 7:
+                            {
+                                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                                value->target_object_id = decoded_wide;
+                                break;
+                            }
+                            case 8:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                {
+                                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                                    value->target_object_id = decoded_v;
+                                }
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                switch ( kind )
                 {
-                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
-                    value->target_object_id = decoded_v;
+                    case 6:
+                    {
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                        value->target_object_id = decoded_wide;
+                        break;
+                    }
+                    case 7:
+                    {
+                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                        value->target_object_id = decoded_wide;
+                        break;
+                    }
+                    case 8:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        {
+                            uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                            value->target_object_id = decoded_v;
+                        }
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
                 }
                 break;
             }
-            case 0x57ee: /* object_sequence */
+            case 0x5de0015285763c46ull: /* object_sequence */
             {
                 if ( kind != 6 )
                 {
+                    if ( table_kind_widens( kind, 6 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 6:
+                            {
+                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                {
+                                    uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
+                                    value->object_sequence = decoded_v;
+                                }
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                switch ( kind )
                 {
-                    uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
-                    value->object_sequence = decoded_v;
+                    case 6:
+                    {
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        {
+                            uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
+                            value->object_sequence = decoded_v;
+                        }
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
                 }
                 break;
             }
-            case 0xdff1: /* team */
+            case 0xfa23d9ef19afc32cull: /* team */
             {
-                if ( kind != 7 )
+                if ( kind != 30 )
                 {
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t variant = table_reader_get16( &(*r) );
-                    switch ( variant )
+                    uint64_t variant_ref;
+                    if ( !table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->malformed = 1; return 0; }
+                    if ( variant_ref == 0 ) { value->team = TEAM_NONE; }
+                    else
                     {
-                        case 0: value->team = TEAM_NONE; break;
-                        case 0xbb03: value->team = TEAM_RED; break;
-                        case 0xf630: value->team = TEAM_BLUE; break;
-                        case 0x6e0f: value->team = TEAM_GREEN; break;
-                        case 0xda27: value->team = TEAM_GOLD; break;
-                        default: value->team = TEAM_NONE; r->report->unknown++; break; /* an id this build cannot name */
+                        switch ( table_reader_id_at( &(*r), variant_ref ) )
+                        {
+                            case 0x9ff1de19feac1b7cull: value->team = TEAM_RED; break;
+                            case 0xecf3d3a7c1693e2dull: value->team = TEAM_BLUE; break;
+                            case 0xcf00d78fd5953f1cull: value->team = TEAM_GREEN; break;
+                            case 0xc416c97e0d3218b3ull: value->team = TEAM_GOLD; break;
+                            default: value->team = TEAM_NONE; r->report->unknown++; break;
+                        }
                     }
                 }
                 break;
             }
-            case 0xf223: /* has_target_lock */
+            case 0x1554fa45a1220171ull: /* has_target_lock */
             {
                 if ( kind != 1 )
                 {
+                    if ( table_kind_widens( kind, 1 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 1:
+                            {
+                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                value->has_target_lock = table_reader_get8( &(*r) ) != 0;
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                value->has_target_lock = table_reader_get8( &(*r) ) != 0;
+                switch ( kind )
+                {
+                    case 1:
+                    {
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        value->has_target_lock = table_reader_get8( &(*r) ) != 0;
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
+                }
                 break;
             }
             default:
-            {
                 r->report->unknown++;
                 if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
-            }
         }
     }
 }
 
 static SCHEMA_UNUSED int render_turret_load( RenderTurret * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
-    TableReport ignored;
-    TableReader r;
+    TableReport ignored; TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    if ( report == NULL ) { report = &ignored; }
+    render_turret_reset( value );
+    if ( !table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     return render_turret_load_body( &r, value );
+}
+
+static SCHEMA_UNUSED int render_missile_save_body( TableWriter * w, const RenderMissile * value )
+{
+    (void) value;
+    { /* position */
+        TableWriter default_probe = table_writer_probe( w );
+        if ( !render_vector3_save_body( &default_probe, &value->position ) ) { return 0; }
+        if ( default_probe.offset > 1 )
+        {
+            table_writer_id( w, 0x4cbf3a26fca1d74aull ); table_writer_put8( w, 13 );
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !render_vector3_save_body( &probe, &value->position ) ) { return 0; }
+                table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !render_vector3_save_body( w, &value->position ) ) { return 0; }
+            }
+        }
+    }
+    { /* rotation */
+        TableWriter default_probe = table_writer_probe( w );
+        if ( !render_quaternion_save_body( &default_probe, &value->rotation ) ) { return 0; }
+        if ( default_probe.offset > 1 )
+        {
+            table_writer_id( w, 0xb51afb05cd34709full ); table_writer_put8( w, 13 );
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !render_quaternion_save_body( &probe, &value->rotation ) ) { return 0; }
+                table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !render_quaternion_save_body( w, &value->rotation ) ) { return 0; }
+            }
+        }
+    }
+    { /* flags */
+        if ( value->flags != 0 )
+        {
+            table_writer_id( w, 0x17a3a1a985f75aecull ); table_writer_put8( w, 9 );
+            table_writer_put64( w, (uint64_t) ( value->flags ) );
+        }
+    }
+    { /* object_id */
+        if ( value->object_id != 0 )
+        {
+            table_writer_id( w, 0x0bdab42c07f19812ull ); table_writer_put8( w, 8 );
+            table_writer_put32( w, (uint32_t) ( value->object_id ) );
+        }
+    }
+    { /* object_sequence */
+        if ( value->object_sequence != 0 )
+        {
+            table_writer_id( w, 0x5de0015285763c46ull ); table_writer_put8( w, 6 );
+            table_writer_put8( w, (uint8_t) ( value->object_sequence ) );
+        }
+    }
+    { /* missile_type */
+        if ( value->missile_type != MISSILE_TYPE_NONE )
+        {
+            table_writer_id( w, 0x151b2a0e2c07b4bcull ); table_writer_put8( w, 30 );
+            switch ( value->missile_type )
+            {
+                case MISSILE_TYPE_NONE: table_writer_leb( w, 0 ); break;
+                case MISSILE_TYPE_SEEKER: table_writer_id( w, 0xf5d0a4d25a76afcaull ); break;
+                case MISSILE_TYPE_DUMB: table_writer_id( w, 0x478d7972f6d9075dull ); break;
+                default: return 0; /* no declared identity */
+            }
+        }
+    }
+    { /* team */
+        if ( value->team != TEAM_NONE )
+        {
+            table_writer_id( w, 0xfa23d9ef19afc32cull ); table_writer_put8( w, 30 );
+            switch ( value->team )
+            {
+                case TEAM_NONE: table_writer_leb( w, 0 ); break;
+                case TEAM_RED: table_writer_id( w, 0x9ff1de19feac1b7cull ); break;
+                case TEAM_BLUE: table_writer_id( w, 0xecf3d3a7c1693e2dull ); break;
+                case TEAM_GREEN: table_writer_id( w, 0xcf00d78fd5953f1cull ); break;
+                case TEAM_GOLD: table_writer_id( w, 0xc416c97e0d3218b3ull ); break;
+                default: return 0; /* no declared identity */
+            }
+        }
+    }
+    table_writer_leb( w, 0 );
+    return !w->overflow;
 }
 
 static SCHEMA_UNUSED int64_t render_missile_measure( const RenderMissile * value )
 {
-    int64_t bytes = 2; /* terminator */
-    {
-        int64_t body_position = render_vector3_measure( &value->position );
-        if ( body_position < 0 ) { return -1; }
-        if ( body_position > 2 ) { bytes += 3 + 4 + body_position; } /* position: all-default nested elides */
-    }
-    {
-        int64_t body_rotation = render_quaternion_measure( &value->rotation );
-        if ( body_rotation < 0 ) { return -1; }
-        if ( body_rotation > 2 ) { bytes += 3 + 4 + body_rotation; } /* rotation: all-default nested elides */
-    }
-    if ( value->flags != 0 ) { bytes += 3 + 8; } /* flags */
-    if ( value->object_id != 0 ) { bytes += 3 + 4; } /* object_id */
-    if ( value->object_sequence != 0 ) { bytes += 3 + 1; } /* object_sequence */
-    if ( value->missile_type != MISSILE_TYPE_NONE )
-    {
-        uint16_t id_missile_type = 0;
-        switch ( value->missile_type ) /* MissileType rides as the u16 hash of its VARIANT NAME (§5) */
-        {
-            case MISSILE_TYPE_NONE: id_missile_type = 0; break;
-            case MISSILE_TYPE_SEEKER: id_missile_type = 0xf8ff; break;
-            case MISSILE_TYPE_DUMB: id_missile_type = 0xd533; break;
-            default: return -1; /* no variant names this value: no wire identity */
-        }
-        (void) id_missile_type;
-        bytes += 3 + 2; /* missile_type: the variant's name hash */
-    }
-    if ( value->team != TEAM_NONE )
-    {
-        uint16_t id_team = 0;
-        switch ( value->team ) /* Team rides as the u16 hash of its VARIANT NAME (§5) */
-        {
-            case TEAM_NONE: id_team = 0; break;
-            case TEAM_RED: id_team = 0xbb03; break;
-            case TEAM_BLUE: id_team = 0xf630; break;
-            case TEAM_GREEN: id_team = 0x6e0f; break;
-            case TEAM_GOLD: id_team = 0xda27; break;
-            default: return -1; /* no variant names this value: no wire identity */
-        }
-        (void) id_team;
-        bytes += 3 + 2; /* team: the variant's name hash */
-    }
-    return bytes;
-}
-
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_missile_save_body( TableWriter * w, const RenderMissile * value )
-{
-    {
-        int64_t body_position = render_vector3_measure( &value->position );
-        if ( body_position < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
-        if ( body_position > 2 ) /* all-default nested elides */
-        {
-            table_writer_put16( w, 0xdd45 ); table_writer_put8( w, 13 ); /* position */
-            table_writer_put32( w, (uint32_t) body_position );
-            if ( !render_vector3_save_body( w, &value->position ) ) { return 0; }
-        }
-    }
-    {
-        int64_t body_rotation = render_quaternion_measure( &value->rotation );
-        if ( body_rotation < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
-        if ( body_rotation > 2 ) /* all-default nested elides */
-        {
-            table_writer_put16( w, 0x60f3 ); table_writer_put8( w, 13 ); /* rotation */
-            table_writer_put32( w, (uint32_t) body_rotation );
-            if ( !render_quaternion_save_body( w, &value->rotation ) ) { return 0; }
-        }
-    }
-    if ( value->flags != 0 )
-    {
-        table_writer_put16( w, 0xe64b ); table_writer_put8( w, 9 ); /* flags */
-        table_writer_put64( w, (uint64_t) ( value->flags ) );
-    }
-    if ( value->object_id != 0 )
-    {
-        table_writer_put16( w, 0xdc71 ); table_writer_put8( w, 8 ); /* object_id */
-        table_writer_put32( w, (uint32_t) ( value->object_id ) );
-    }
-    if ( value->object_sequence != 0 )
-    {
-        table_writer_put16( w, 0x57ee ); table_writer_put8( w, 6 ); /* object_sequence */
-        table_writer_put8( w, (uint8_t) ( value->object_sequence ) );
-    }
-    if ( value->missile_type != MISSILE_TYPE_NONE )
-    {
-        uint16_t id_missile_type = 0;
-        switch ( value->missile_type ) /* MissileType rides as the u16 hash of its VARIANT NAME (§5) */
-        {
-            case MISSILE_TYPE_NONE: id_missile_type = 0; break;
-            case MISSILE_TYPE_SEEKER: id_missile_type = 0xf8ff; break;
-            case MISSILE_TYPE_DUMB: id_missile_type = 0xd533; break;
-            default: return 0; /* no variant names this value: no wire identity */
-        }
-        table_writer_put16( w, 0x423a ); table_writer_put8( w, 7 ); /* missile_type */
-        table_writer_put16( w, id_missile_type );
-    }
-    if ( value->team != TEAM_NONE )
-    {
-        uint16_t id_team = 0;
-        switch ( value->team ) /* Team rides as the u16 hash of its VARIANT NAME (§5) */
-        {
-            case TEAM_NONE: id_team = 0; break;
-            case TEAM_RED: id_team = 0xbb03; break;
-            case TEAM_BLUE: id_team = 0xf630; break;
-            case TEAM_GREEN: id_team = 0x6e0f; break;
-            case TEAM_GOLD: id_team = 0xda27; break;
-            default: return 0; /* no variant names this value: no wire identity */
-        }
-        table_writer_put16( w, 0xdff1 ); table_writer_put8( w, 7 ); /* team */
-        table_writer_put16( w, id_team );
-    }
-    table_writer_put16( w, 0 ); /* terminator */
-    return !w->overflow;
+    TableWriter w = table_writer_make( NULL, INT64_MAX );
+    table_writer_put8( &w, 1 );
+    if ( !render_missile_save_body( &w, value ) ) { return -1; }
+    table_writer_finish( &w );
+    return w.overflow ? -1 : w.offset;
 }
 
 static SCHEMA_UNUSED int64_t render_missile_save( const RenderMissile * value, uint8_t * buffer, int64_t capacity )
 {
+    if ( buffer == NULL || capacity < 0 ) { return -1; }
     TableWriter w = table_writer_make( buffer, capacity );
+    table_writer_put8( &w, 1 );
     if ( !render_missile_save_body( &w, value ) ) { return -1; }
-    return w.offset; /* == render_missile_measure( value ) */
+    table_writer_finish( &w );
+    return w.overflow ? -1 : w.offset;
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_missile_load_body( TableReader * r, RenderMissile * value )
+static SCHEMA_UNUSED int render_missile_load_body( TableReader * r, RenderMissile * value )
 {
-    render_missile_reset( value ); /* prefill declared defaults in place, then overlay */
+    render_missile_reset( value );
     for ( ;; )
     {
-        uint16_t field_id;
-        uint8_t kind;
-        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = table_reader_get16( r );
-        if ( field_id == 0 ) { return 1; }
-        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = table_reader_get8( r );
-        switch ( field_id )
+        uint64_t ref, id; uint8_t kind;
+        if ( !table_reader_leb( r, &ref ) ) { r->report->malformed = 1; return 0; }
+        if ( ref == 0 ) { return 1; }
+        if ( ref > r->id_count || !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        id = table_reader_id_at( r, ref ); kind = table_reader_get8( r );
+        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->malformed = 1; return 0; }
+        switch ( id )
         {
-            case 0xdd45: /* position */
+            case 0x4cbf3a26fca1d74aull: /* position */
             {
                 if ( kind != 13 )
                 {
@@ -1942,18 +2772,13 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_missile_load_body(
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint32_t body_len;
-                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = table_reader_get32( r );
-                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
-                {
-                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
-                    render_vector3_load_body( &sub, &value->position );
-                }
-                r->offset += body_len;
+                TableReader sub;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                render_vector3_load_body( &sub, &value->position );
+                if ( sub.offset != sub.size ) { r->report->malformed = 1; render_vector3_reset( &value->position ); }
                 break;
             }
-            case 0x60f3: /* rotation */
+            case 0xb51afb05cd34709full: /* rotation */
             {
                 if ( kind != 13 )
                 {
@@ -1961,265 +2786,391 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_missile_load_body(
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint32_t body_len;
-                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = table_reader_get32( r );
-                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
-                {
-                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
-                    render_quaternion_load_body( &sub, &value->rotation );
-                }
-                r->offset += body_len;
+                TableReader sub;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                render_quaternion_load_body( &sub, &value->rotation );
+                if ( sub.offset != sub.size ) { r->report->malformed = 1; render_quaternion_reset( &value->rotation ); }
                 break;
             }
-            case 0xe64b: /* flags */
+            case 0x17a3a1a985f75aecull: /* flags */
             {
                 if ( kind != 9 )
                 {
+                    if ( table_kind_widens( kind, 9 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 6:
+                            {
+                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                                value->flags = decoded_wide;
+                                break;
+                            }
+                            case 7:
+                            {
+                                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                                value->flags = decoded_wide;
+                                break;
+                            }
+                            case 8:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint32_t) table_reader_get32( &(*r) );
+                                value->flags = decoded_wide;
+                                break;
+                            }
+                            case 9:
+                            {
+                                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                                {
+                                    uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
+                                    value->flags = decoded_v;
+                                }
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                switch ( kind )
                 {
-                    uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
-                    value->flags = decoded_v;
+                    case 6:
+                    {
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                        value->flags = decoded_wide;
+                        break;
+                    }
+                    case 7:
+                    {
+                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                        value->flags = decoded_wide;
+                        break;
+                    }
+                    case 8:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint32_t) table_reader_get32( &(*r) );
+                        value->flags = decoded_wide;
+                        break;
+                    }
+                    case 9:
+                    {
+                        if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                        {
+                            uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
+                            value->flags = decoded_v;
+                        }
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
                 }
                 break;
             }
-            case 0xdc71: /* object_id */
+            case 0x0bdab42c07f19812ull: /* object_id */
             {
                 if ( kind != 8 )
                 {
+                    if ( table_kind_widens( kind, 8 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 6:
+                            {
+                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                                value->object_id = decoded_wide;
+                                break;
+                            }
+                            case 7:
+                            {
+                                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                                value->object_id = decoded_wide;
+                                break;
+                            }
+                            case 8:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                {
+                                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                                    value->object_id = decoded_v;
+                                }
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                switch ( kind )
                 {
-                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
-                    value->object_id = decoded_v;
+                    case 6:
+                    {
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                        value->object_id = decoded_wide;
+                        break;
+                    }
+                    case 7:
+                    {
+                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                        value->object_id = decoded_wide;
+                        break;
+                    }
+                    case 8:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        {
+                            uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                            value->object_id = decoded_v;
+                        }
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
                 }
                 break;
             }
-            case 0x57ee: /* object_sequence */
+            case 0x5de0015285763c46ull: /* object_sequence */
             {
                 if ( kind != 6 )
                 {
+                    if ( table_kind_widens( kind, 6 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 6:
+                            {
+                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                {
+                                    uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
+                                    value->object_sequence = decoded_v;
+                                }
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                switch ( kind )
                 {
-                    uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
-                    value->object_sequence = decoded_v;
+                    case 6:
+                    {
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        {
+                            uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
+                            value->object_sequence = decoded_v;
+                        }
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
                 }
                 break;
             }
-            case 0x423a: /* missile_type */
+            case 0x151b2a0e2c07b4bcull: /* missile_type */
             {
-                if ( kind != 7 )
+                if ( kind != 30 )
                 {
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t variant = table_reader_get16( &(*r) );
-                    switch ( variant )
+                    uint64_t variant_ref;
+                    if ( !table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->malformed = 1; return 0; }
+                    if ( variant_ref == 0 ) { value->missile_type = MISSILE_TYPE_NONE; }
+                    else
                     {
-                        case 0: value->missile_type = MISSILE_TYPE_NONE; break;
-                        case 0xf8ff: value->missile_type = MISSILE_TYPE_SEEKER; break;
-                        case 0xd533: value->missile_type = MISSILE_TYPE_DUMB; break;
-                        default: value->missile_type = MISSILE_TYPE_NONE; r->report->unknown++; break; /* an id this build cannot name */
+                        switch ( table_reader_id_at( &(*r), variant_ref ) )
+                        {
+                            case 0xf5d0a4d25a76afcaull: value->missile_type = MISSILE_TYPE_SEEKER; break;
+                            case 0x478d7972f6d9075dull: value->missile_type = MISSILE_TYPE_DUMB; break;
+                            default: value->missile_type = MISSILE_TYPE_NONE; r->report->unknown++; break;
+                        }
                     }
                 }
                 break;
             }
-            case 0xdff1: /* team */
+            case 0xfa23d9ef19afc32cull: /* team */
             {
-                if ( kind != 7 )
+                if ( kind != 30 )
                 {
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t variant = table_reader_get16( &(*r) );
-                    switch ( variant )
+                    uint64_t variant_ref;
+                    if ( !table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->malformed = 1; return 0; }
+                    if ( variant_ref == 0 ) { value->team = TEAM_NONE; }
+                    else
                     {
-                        case 0: value->team = TEAM_NONE; break;
-                        case 0xbb03: value->team = TEAM_RED; break;
-                        case 0xf630: value->team = TEAM_BLUE; break;
-                        case 0x6e0f: value->team = TEAM_GREEN; break;
-                        case 0xda27: value->team = TEAM_GOLD; break;
-                        default: value->team = TEAM_NONE; r->report->unknown++; break; /* an id this build cannot name */
+                        switch ( table_reader_id_at( &(*r), variant_ref ) )
+                        {
+                            case 0x9ff1de19feac1b7cull: value->team = TEAM_RED; break;
+                            case 0xecf3d3a7c1693e2dull: value->team = TEAM_BLUE; break;
+                            case 0xcf00d78fd5953f1cull: value->team = TEAM_GREEN; break;
+                            case 0xc416c97e0d3218b3ull: value->team = TEAM_GOLD; break;
+                            default: value->team = TEAM_NONE; r->report->unknown++; break;
+                        }
                     }
                 }
                 break;
             }
             default:
-            {
                 r->report->unknown++;
                 if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
-            }
         }
     }
 }
 
 static SCHEMA_UNUSED int render_missile_load( RenderMissile * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
-    TableReport ignored;
-    TableReader r;
+    TableReport ignored; TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    if ( report == NULL ) { report = &ignored; }
+    render_missile_reset( value );
+    if ( !table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     return render_missile_load_body( &r, value );
+}
+
+static SCHEMA_UNUSED int render_dynamic_prop_save_body( TableWriter * w, const RenderDynamicProp * value )
+{
+    (void) value;
+    { /* position */
+        TableWriter default_probe = table_writer_probe( w );
+        if ( !render_vector3_save_body( &default_probe, &value->position ) ) { return 0; }
+        if ( default_probe.offset > 1 )
+        {
+            table_writer_id( w, 0x4cbf3a26fca1d74aull ); table_writer_put8( w, 13 );
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !render_vector3_save_body( &probe, &value->position ) ) { return 0; }
+                table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !render_vector3_save_body( w, &value->position ) ) { return 0; }
+            }
+        }
+    }
+    { /* rotation */
+        TableWriter default_probe = table_writer_probe( w );
+        if ( !render_quaternion_save_body( &default_probe, &value->rotation ) ) { return 0; }
+        if ( default_probe.offset > 1 )
+        {
+            table_writer_id( w, 0xb51afb05cd34709full ); table_writer_put8( w, 13 );
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !render_quaternion_save_body( &probe, &value->rotation ) ) { return 0; }
+                table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !render_quaternion_save_body( w, &value->rotation ) ) { return 0; }
+            }
+        }
+    }
+    { /* flags */
+        if ( value->flags != 0 )
+        {
+            table_writer_id( w, 0x17a3a1a985f75aecull ); table_writer_put8( w, 9 );
+            table_writer_put64( w, (uint64_t) ( value->flags ) );
+        }
+    }
+    { /* object_id */
+        if ( value->object_id != 0 )
+        {
+            table_writer_id( w, 0x0bdab42c07f19812ull ); table_writer_put8( w, 8 );
+            table_writer_put32( w, (uint32_t) ( value->object_id ) );
+        }
+    }
+    { /* object_sequence */
+        if ( value->object_sequence != 0 )
+        {
+            table_writer_id( w, 0x5de0015285763c46ull ); table_writer_put8( w, 6 );
+            table_writer_put8( w, (uint8_t) ( value->object_sequence ) );
+        }
+    }
+    { /* prop_type */
+        if ( value->prop_type != PROP_TYPE_NONE )
+        {
+            table_writer_id( w, 0xe5626f155e4c5dadull ); table_writer_put8( w, 30 );
+            switch ( value->prop_type )
+            {
+                case PROP_TYPE_NONE: table_writer_leb( w, 0 ); break;
+                case PROP_TYPE_ROCK: table_writer_id( w, 0xcaa6172bef74e234ull ); break;
+                case PROP_TYPE_STATION: table_writer_id( w, 0x4f98acac2852d653ull ); break;
+                case PROP_TYPE_BEACON: table_writer_id( w, 0x7f3a7e4744ea3019ull ); break;
+                default: return 0; /* no declared identity */
+            }
+        }
+    }
+    { /* team */
+        if ( value->team != TEAM_NONE )
+        {
+            table_writer_id( w, 0xfa23d9ef19afc32cull ); table_writer_put8( w, 30 );
+            switch ( value->team )
+            {
+                case TEAM_NONE: table_writer_leb( w, 0 ); break;
+                case TEAM_RED: table_writer_id( w, 0x9ff1de19feac1b7cull ); break;
+                case TEAM_BLUE: table_writer_id( w, 0xecf3d3a7c1693e2dull ); break;
+                case TEAM_GREEN: table_writer_id( w, 0xcf00d78fd5953f1cull ); break;
+                case TEAM_GOLD: table_writer_id( w, 0xc416c97e0d3218b3ull ); break;
+                default: return 0; /* no declared identity */
+            }
+        }
+    }
+    table_writer_leb( w, 0 );
+    return !w->overflow;
 }
 
 static SCHEMA_UNUSED int64_t render_dynamic_prop_measure( const RenderDynamicProp * value )
 {
-    int64_t bytes = 2; /* terminator */
-    {
-        int64_t body_position = render_vector3_measure( &value->position );
-        if ( body_position < 0 ) { return -1; }
-        if ( body_position > 2 ) { bytes += 3 + 4 + body_position; } /* position: all-default nested elides */
-    }
-    {
-        int64_t body_rotation = render_quaternion_measure( &value->rotation );
-        if ( body_rotation < 0 ) { return -1; }
-        if ( body_rotation > 2 ) { bytes += 3 + 4 + body_rotation; } /* rotation: all-default nested elides */
-    }
-    if ( value->flags != 0 ) { bytes += 3 + 8; } /* flags */
-    if ( value->object_id != 0 ) { bytes += 3 + 4; } /* object_id */
-    if ( value->object_sequence != 0 ) { bytes += 3 + 1; } /* object_sequence */
-    if ( value->prop_type != PROP_TYPE_NONE )
-    {
-        uint16_t id_prop_type = 0;
-        switch ( value->prop_type ) /* PropType rides as the u16 hash of its VARIANT NAME (§5) */
-        {
-            case PROP_TYPE_NONE: id_prop_type = 0; break;
-            case PROP_TYPE_ROCK: id_prop_type = 0x2c93; break;
-            case PROP_TYPE_STATION: id_prop_type = 0x4532; break;
-            case PROP_TYPE_BEACON: id_prop_type = 0x4b61; break;
-            default: return -1; /* no variant names this value: no wire identity */
-        }
-        (void) id_prop_type;
-        bytes += 3 + 2; /* prop_type: the variant's name hash */
-    }
-    if ( value->team != TEAM_NONE )
-    {
-        uint16_t id_team = 0;
-        switch ( value->team ) /* Team rides as the u16 hash of its VARIANT NAME (§5) */
-        {
-            case TEAM_NONE: id_team = 0; break;
-            case TEAM_RED: id_team = 0xbb03; break;
-            case TEAM_BLUE: id_team = 0xf630; break;
-            case TEAM_GREEN: id_team = 0x6e0f; break;
-            case TEAM_GOLD: id_team = 0xda27; break;
-            default: return -1; /* no variant names this value: no wire identity */
-        }
-        (void) id_team;
-        bytes += 3 + 2; /* team: the variant's name hash */
-    }
-    return bytes;
-}
-
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_dynamic_prop_save_body( TableWriter * w, const RenderDynamicProp * value )
-{
-    {
-        int64_t body_position = render_vector3_measure( &value->position );
-        if ( body_position < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
-        if ( body_position > 2 ) /* all-default nested elides */
-        {
-            table_writer_put16( w, 0xdd45 ); table_writer_put8( w, 13 ); /* position */
-            table_writer_put32( w, (uint32_t) body_position );
-            if ( !render_vector3_save_body( w, &value->position ) ) { return 0; }
-        }
-    }
-    {
-        int64_t body_rotation = render_quaternion_measure( &value->rotation );
-        if ( body_rotation < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
-        if ( body_rotation > 2 ) /* all-default nested elides */
-        {
-            table_writer_put16( w, 0x60f3 ); table_writer_put8( w, 13 ); /* rotation */
-            table_writer_put32( w, (uint32_t) body_rotation );
-            if ( !render_quaternion_save_body( w, &value->rotation ) ) { return 0; }
-        }
-    }
-    if ( value->flags != 0 )
-    {
-        table_writer_put16( w, 0xe64b ); table_writer_put8( w, 9 ); /* flags */
-        table_writer_put64( w, (uint64_t) ( value->flags ) );
-    }
-    if ( value->object_id != 0 )
-    {
-        table_writer_put16( w, 0xdc71 ); table_writer_put8( w, 8 ); /* object_id */
-        table_writer_put32( w, (uint32_t) ( value->object_id ) );
-    }
-    if ( value->object_sequence != 0 )
-    {
-        table_writer_put16( w, 0x57ee ); table_writer_put8( w, 6 ); /* object_sequence */
-        table_writer_put8( w, (uint8_t) ( value->object_sequence ) );
-    }
-    if ( value->prop_type != PROP_TYPE_NONE )
-    {
-        uint16_t id_prop_type = 0;
-        switch ( value->prop_type ) /* PropType rides as the u16 hash of its VARIANT NAME (§5) */
-        {
-            case PROP_TYPE_NONE: id_prop_type = 0; break;
-            case PROP_TYPE_ROCK: id_prop_type = 0x2c93; break;
-            case PROP_TYPE_STATION: id_prop_type = 0x4532; break;
-            case PROP_TYPE_BEACON: id_prop_type = 0x4b61; break;
-            default: return 0; /* no variant names this value: no wire identity */
-        }
-        table_writer_put16( w, 0xe338 ); table_writer_put8( w, 7 ); /* prop_type */
-        table_writer_put16( w, id_prop_type );
-    }
-    if ( value->team != TEAM_NONE )
-    {
-        uint16_t id_team = 0;
-        switch ( value->team ) /* Team rides as the u16 hash of its VARIANT NAME (§5) */
-        {
-            case TEAM_NONE: id_team = 0; break;
-            case TEAM_RED: id_team = 0xbb03; break;
-            case TEAM_BLUE: id_team = 0xf630; break;
-            case TEAM_GREEN: id_team = 0x6e0f; break;
-            case TEAM_GOLD: id_team = 0xda27; break;
-            default: return 0; /* no variant names this value: no wire identity */
-        }
-        table_writer_put16( w, 0xdff1 ); table_writer_put8( w, 7 ); /* team */
-        table_writer_put16( w, id_team );
-    }
-    table_writer_put16( w, 0 ); /* terminator */
-    return !w->overflow;
+    TableWriter w = table_writer_make( NULL, INT64_MAX );
+    table_writer_put8( &w, 1 );
+    if ( !render_dynamic_prop_save_body( &w, value ) ) { return -1; }
+    table_writer_finish( &w );
+    return w.overflow ? -1 : w.offset;
 }
 
 static SCHEMA_UNUSED int64_t render_dynamic_prop_save( const RenderDynamicProp * value, uint8_t * buffer, int64_t capacity )
 {
+    if ( buffer == NULL || capacity < 0 ) { return -1; }
     TableWriter w = table_writer_make( buffer, capacity );
+    table_writer_put8( &w, 1 );
     if ( !render_dynamic_prop_save_body( &w, value ) ) { return -1; }
-    return w.offset; /* == render_dynamic_prop_measure( value ) */
+    table_writer_finish( &w );
+    return w.overflow ? -1 : w.offset;
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_dynamic_prop_load_body( TableReader * r, RenderDynamicProp * value )
+static SCHEMA_UNUSED int render_dynamic_prop_load_body( TableReader * r, RenderDynamicProp * value )
 {
-    render_dynamic_prop_reset( value ); /* prefill declared defaults in place, then overlay */
+    render_dynamic_prop_reset( value );
     for ( ;; )
     {
-        uint16_t field_id;
-        uint8_t kind;
-        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = table_reader_get16( r );
-        if ( field_id == 0 ) { return 1; }
-        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = table_reader_get8( r );
-        switch ( field_id )
+        uint64_t ref, id; uint8_t kind;
+        if ( !table_reader_leb( r, &ref ) ) { r->report->malformed = 1; return 0; }
+        if ( ref == 0 ) { return 1; }
+        if ( ref > r->id_count || !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        id = table_reader_id_at( r, ref ); kind = table_reader_get8( r );
+        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->malformed = 1; return 0; }
+        switch ( id )
         {
-            case 0xdd45: /* position */
+            case 0x4cbf3a26fca1d74aull: /* position */
             {
                 if ( kind != 13 )
                 {
@@ -2227,18 +3178,13 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_dynamic_prop_load_
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint32_t body_len;
-                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = table_reader_get32( r );
-                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
-                {
-                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
-                    render_vector3_load_body( &sub, &value->position );
-                }
-                r->offset += body_len;
+                TableReader sub;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                render_vector3_load_body( &sub, &value->position );
+                if ( sub.offset != sub.size ) { r->report->malformed = 1; render_vector3_reset( &value->position ); }
                 break;
             }
-            case 0x60f3: /* rotation */
+            case 0xb51afb05cd34709full: /* rotation */
             {
                 if ( kind != 13 )
                 {
@@ -2246,266 +3192,392 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_dynamic_prop_load_
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint32_t body_len;
-                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = table_reader_get32( r );
-                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
-                {
-                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
-                    render_quaternion_load_body( &sub, &value->rotation );
-                }
-                r->offset += body_len;
+                TableReader sub;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                render_quaternion_load_body( &sub, &value->rotation );
+                if ( sub.offset != sub.size ) { r->report->malformed = 1; render_quaternion_reset( &value->rotation ); }
                 break;
             }
-            case 0xe64b: /* flags */
+            case 0x17a3a1a985f75aecull: /* flags */
             {
                 if ( kind != 9 )
                 {
+                    if ( table_kind_widens( kind, 9 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 6:
+                            {
+                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                                value->flags = decoded_wide;
+                                break;
+                            }
+                            case 7:
+                            {
+                                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                                value->flags = decoded_wide;
+                                break;
+                            }
+                            case 8:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint32_t) table_reader_get32( &(*r) );
+                                value->flags = decoded_wide;
+                                break;
+                            }
+                            case 9:
+                            {
+                                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                                {
+                                    uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
+                                    value->flags = decoded_v;
+                                }
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                switch ( kind )
                 {
-                    uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
-                    value->flags = decoded_v;
+                    case 6:
+                    {
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                        value->flags = decoded_wide;
+                        break;
+                    }
+                    case 7:
+                    {
+                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                        value->flags = decoded_wide;
+                        break;
+                    }
+                    case 8:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint32_t) table_reader_get32( &(*r) );
+                        value->flags = decoded_wide;
+                        break;
+                    }
+                    case 9:
+                    {
+                        if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                        {
+                            uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
+                            value->flags = decoded_v;
+                        }
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
                 }
                 break;
             }
-            case 0xdc71: /* object_id */
+            case 0x0bdab42c07f19812ull: /* object_id */
             {
                 if ( kind != 8 )
                 {
+                    if ( table_kind_widens( kind, 8 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 6:
+                            {
+                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                                value->object_id = decoded_wide;
+                                break;
+                            }
+                            case 7:
+                            {
+                                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                                value->object_id = decoded_wide;
+                                break;
+                            }
+                            case 8:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                {
+                                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                                    value->object_id = decoded_v;
+                                }
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                switch ( kind )
                 {
-                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
-                    value->object_id = decoded_v;
+                    case 6:
+                    {
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                        value->object_id = decoded_wide;
+                        break;
+                    }
+                    case 7:
+                    {
+                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                        value->object_id = decoded_wide;
+                        break;
+                    }
+                    case 8:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        {
+                            uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                            value->object_id = decoded_v;
+                        }
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
                 }
                 break;
             }
-            case 0x57ee: /* object_sequence */
+            case 0x5de0015285763c46ull: /* object_sequence */
             {
                 if ( kind != 6 )
                 {
+                    if ( table_kind_widens( kind, 6 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 6:
+                            {
+                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                {
+                                    uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
+                                    value->object_sequence = decoded_v;
+                                }
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                switch ( kind )
                 {
-                    uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
-                    value->object_sequence = decoded_v;
+                    case 6:
+                    {
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        {
+                            uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
+                            value->object_sequence = decoded_v;
+                        }
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
                 }
                 break;
             }
-            case 0xe338: /* prop_type */
+            case 0xe5626f155e4c5dadull: /* prop_type */
             {
-                if ( kind != 7 )
+                if ( kind != 30 )
                 {
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t variant = table_reader_get16( &(*r) );
-                    switch ( variant )
+                    uint64_t variant_ref;
+                    if ( !table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->malformed = 1; return 0; }
+                    if ( variant_ref == 0 ) { value->prop_type = PROP_TYPE_NONE; }
+                    else
                     {
-                        case 0: value->prop_type = PROP_TYPE_NONE; break;
-                        case 0x2c93: value->prop_type = PROP_TYPE_ROCK; break;
-                        case 0x4532: value->prop_type = PROP_TYPE_STATION; break;
-                        case 0x4b61: value->prop_type = PROP_TYPE_BEACON; break;
-                        default: value->prop_type = PROP_TYPE_NONE; r->report->unknown++; break; /* an id this build cannot name */
+                        switch ( table_reader_id_at( &(*r), variant_ref ) )
+                        {
+                            case 0xcaa6172bef74e234ull: value->prop_type = PROP_TYPE_ROCK; break;
+                            case 0x4f98acac2852d653ull: value->prop_type = PROP_TYPE_STATION; break;
+                            case 0x7f3a7e4744ea3019ull: value->prop_type = PROP_TYPE_BEACON; break;
+                            default: value->prop_type = PROP_TYPE_NONE; r->report->unknown++; break;
+                        }
                     }
                 }
                 break;
             }
-            case 0xdff1: /* team */
+            case 0xfa23d9ef19afc32cull: /* team */
             {
-                if ( kind != 7 )
+                if ( kind != 30 )
                 {
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t variant = table_reader_get16( &(*r) );
-                    switch ( variant )
+                    uint64_t variant_ref;
+                    if ( !table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->malformed = 1; return 0; }
+                    if ( variant_ref == 0 ) { value->team = TEAM_NONE; }
+                    else
                     {
-                        case 0: value->team = TEAM_NONE; break;
-                        case 0xbb03: value->team = TEAM_RED; break;
-                        case 0xf630: value->team = TEAM_BLUE; break;
-                        case 0x6e0f: value->team = TEAM_GREEN; break;
-                        case 0xda27: value->team = TEAM_GOLD; break;
-                        default: value->team = TEAM_NONE; r->report->unknown++; break; /* an id this build cannot name */
+                        switch ( table_reader_id_at( &(*r), variant_ref ) )
+                        {
+                            case 0x9ff1de19feac1b7cull: value->team = TEAM_RED; break;
+                            case 0xecf3d3a7c1693e2dull: value->team = TEAM_BLUE; break;
+                            case 0xcf00d78fd5953f1cull: value->team = TEAM_GREEN; break;
+                            case 0xc416c97e0d3218b3ull: value->team = TEAM_GOLD; break;
+                            default: value->team = TEAM_NONE; r->report->unknown++; break;
+                        }
                     }
                 }
                 break;
             }
             default:
-            {
                 r->report->unknown++;
                 if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
-            }
         }
     }
 }
 
 static SCHEMA_UNUSED int render_dynamic_prop_load( RenderDynamicProp * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
-    TableReport ignored;
-    TableReader r;
+    TableReport ignored; TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    if ( report == NULL ) { report = &ignored; }
+    render_dynamic_prop_reset( value );
+    if ( !table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     return render_dynamic_prop_load_body( &r, value );
+}
+
+static SCHEMA_UNUSED int render_static_prop_save_body( TableWriter * w, const RenderStaticProp * value )
+{
+    (void) value;
+    { /* position */
+        TableWriter default_probe = table_writer_probe( w );
+        if ( !render_vector3_save_body( &default_probe, &value->position ) ) { return 0; }
+        if ( default_probe.offset > 1 )
+        {
+            table_writer_id( w, 0x4cbf3a26fca1d74aull ); table_writer_put8( w, 13 );
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !render_vector3_save_body( &probe, &value->position ) ) { return 0; }
+                table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !render_vector3_save_body( w, &value->position ) ) { return 0; }
+            }
+        }
+    }
+    { /* rotation */
+        TableWriter default_probe = table_writer_probe( w );
+        if ( !render_quaternion_save_body( &default_probe, &value->rotation ) ) { return 0; }
+        if ( default_probe.offset > 1 )
+        {
+            table_writer_id( w, 0xb51afb05cd34709full ); table_writer_put8( w, 13 );
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !render_quaternion_save_body( &probe, &value->rotation ) ) { return 0; }
+                table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !render_quaternion_save_body( w, &value->rotation ) ) { return 0; }
+            }
+        }
+    }
+    { /* scale */
+        if ( value->scale != 0.0 )
+        {
+            table_writer_id( w, 0x6aacb9fbb71a1d91ull ); table_writer_put8( w, 11 );
+            table_writer_put64( w, table_double_to_bits( value->scale ) );
+        }
+    }
+    { /* flags */
+        if ( value->flags != 0 )
+        {
+            table_writer_id( w, 0x17a3a1a985f75aecull ); table_writer_put8( w, 9 );
+            table_writer_put64( w, (uint64_t) ( value->flags ) );
+        }
+    }
+    { /* static_prop_id */
+        if ( value->static_prop_id != 0 )
+        {
+            table_writer_id( w, 0xd23da7ab574b95c3ull ); table_writer_put8( w, 8 );
+            table_writer_put32( w, (uint32_t) ( value->static_prop_id ) );
+        }
+    }
+    { /* prop_type */
+        if ( value->prop_type != PROP_TYPE_NONE )
+        {
+            table_writer_id( w, 0xe5626f155e4c5dadull ); table_writer_put8( w, 30 );
+            switch ( value->prop_type )
+            {
+                case PROP_TYPE_NONE: table_writer_leb( w, 0 ); break;
+                case PROP_TYPE_ROCK: table_writer_id( w, 0xcaa6172bef74e234ull ); break;
+                case PROP_TYPE_STATION: table_writer_id( w, 0x4f98acac2852d653ull ); break;
+                case PROP_TYPE_BEACON: table_writer_id( w, 0x7f3a7e4744ea3019ull ); break;
+                default: return 0; /* no declared identity */
+            }
+        }
+    }
+    { /* team */
+        if ( value->team != TEAM_NONE )
+        {
+            table_writer_id( w, 0xfa23d9ef19afc32cull ); table_writer_put8( w, 30 );
+            switch ( value->team )
+            {
+                case TEAM_NONE: table_writer_leb( w, 0 ); break;
+                case TEAM_RED: table_writer_id( w, 0x9ff1de19feac1b7cull ); break;
+                case TEAM_BLUE: table_writer_id( w, 0xecf3d3a7c1693e2dull ); break;
+                case TEAM_GREEN: table_writer_id( w, 0xcf00d78fd5953f1cull ); break;
+                case TEAM_GOLD: table_writer_id( w, 0xc416c97e0d3218b3ull ); break;
+                default: return 0; /* no declared identity */
+            }
+        }
+    }
+    table_writer_leb( w, 0 );
+    return !w->overflow;
 }
 
 static SCHEMA_UNUSED int64_t render_static_prop_measure( const RenderStaticProp * value )
 {
-    int64_t bytes = 2; /* terminator */
-    {
-        int64_t body_position = render_vector3_measure( &value->position );
-        if ( body_position < 0 ) { return -1; }
-        if ( body_position > 2 ) { bytes += 3 + 4 + body_position; } /* position: all-default nested elides */
-    }
-    {
-        int64_t body_rotation = render_quaternion_measure( &value->rotation );
-        if ( body_rotation < 0 ) { return -1; }
-        if ( body_rotation > 2 ) { bytes += 3 + 4 + body_rotation; } /* rotation: all-default nested elides */
-    }
-    if ( value->scale != 0.0 ) { bytes += 3 + 8; } /* scale */
-    if ( value->flags != 0 ) { bytes += 3 + 8; } /* flags */
-    if ( value->static_prop_id != 0 ) { bytes += 3 + 4; } /* static_prop_id */
-    if ( value->prop_type != PROP_TYPE_NONE )
-    {
-        uint16_t id_prop_type = 0;
-        switch ( value->prop_type ) /* PropType rides as the u16 hash of its VARIANT NAME (§5) */
-        {
-            case PROP_TYPE_NONE: id_prop_type = 0; break;
-            case PROP_TYPE_ROCK: id_prop_type = 0x2c93; break;
-            case PROP_TYPE_STATION: id_prop_type = 0x4532; break;
-            case PROP_TYPE_BEACON: id_prop_type = 0x4b61; break;
-            default: return -1; /* no variant names this value: no wire identity */
-        }
-        (void) id_prop_type;
-        bytes += 3 + 2; /* prop_type: the variant's name hash */
-    }
-    if ( value->team != TEAM_NONE )
-    {
-        uint16_t id_team = 0;
-        switch ( value->team ) /* Team rides as the u16 hash of its VARIANT NAME (§5) */
-        {
-            case TEAM_NONE: id_team = 0; break;
-            case TEAM_RED: id_team = 0xbb03; break;
-            case TEAM_BLUE: id_team = 0xf630; break;
-            case TEAM_GREEN: id_team = 0x6e0f; break;
-            case TEAM_GOLD: id_team = 0xda27; break;
-            default: return -1; /* no variant names this value: no wire identity */
-        }
-        (void) id_team;
-        bytes += 3 + 2; /* team: the variant's name hash */
-    }
-    return bytes;
-}
-
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_static_prop_save_body( TableWriter * w, const RenderStaticProp * value )
-{
-    {
-        int64_t body_position = render_vector3_measure( &value->position );
-        if ( body_position < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
-        if ( body_position > 2 ) /* all-default nested elides */
-        {
-            table_writer_put16( w, 0xdd45 ); table_writer_put8( w, 13 ); /* position */
-            table_writer_put32( w, (uint32_t) body_position );
-            if ( !render_vector3_save_body( w, &value->position ) ) { return 0; }
-        }
-    }
-    {
-        int64_t body_rotation = render_quaternion_measure( &value->rotation );
-        if ( body_rotation < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
-        if ( body_rotation > 2 ) /* all-default nested elides */
-        {
-            table_writer_put16( w, 0x60f3 ); table_writer_put8( w, 13 ); /* rotation */
-            table_writer_put32( w, (uint32_t) body_rotation );
-            if ( !render_quaternion_save_body( w, &value->rotation ) ) { return 0; }
-        }
-    }
-    if ( value->scale != 0.0 )
-    {
-        table_writer_put16( w, 0x9ee6 ); table_writer_put8( w, 11 ); /* scale */
-        table_writer_put64( w, table_double_to_bits( value->scale ) );
-    }
-    if ( value->flags != 0 )
-    {
-        table_writer_put16( w, 0xe64b ); table_writer_put8( w, 9 ); /* flags */
-        table_writer_put64( w, (uint64_t) ( value->flags ) );
-    }
-    if ( value->static_prop_id != 0 )
-    {
-        table_writer_put16( w, 0x0f74 ); table_writer_put8( w, 8 ); /* static_prop_id */
-        table_writer_put32( w, (uint32_t) ( value->static_prop_id ) );
-    }
-    if ( value->prop_type != PROP_TYPE_NONE )
-    {
-        uint16_t id_prop_type = 0;
-        switch ( value->prop_type ) /* PropType rides as the u16 hash of its VARIANT NAME (§5) */
-        {
-            case PROP_TYPE_NONE: id_prop_type = 0; break;
-            case PROP_TYPE_ROCK: id_prop_type = 0x2c93; break;
-            case PROP_TYPE_STATION: id_prop_type = 0x4532; break;
-            case PROP_TYPE_BEACON: id_prop_type = 0x4b61; break;
-            default: return 0; /* no variant names this value: no wire identity */
-        }
-        table_writer_put16( w, 0xe338 ); table_writer_put8( w, 7 ); /* prop_type */
-        table_writer_put16( w, id_prop_type );
-    }
-    if ( value->team != TEAM_NONE )
-    {
-        uint16_t id_team = 0;
-        switch ( value->team ) /* Team rides as the u16 hash of its VARIANT NAME (§5) */
-        {
-            case TEAM_NONE: id_team = 0; break;
-            case TEAM_RED: id_team = 0xbb03; break;
-            case TEAM_BLUE: id_team = 0xf630; break;
-            case TEAM_GREEN: id_team = 0x6e0f; break;
-            case TEAM_GOLD: id_team = 0xda27; break;
-            default: return 0; /* no variant names this value: no wire identity */
-        }
-        table_writer_put16( w, 0xdff1 ); table_writer_put8( w, 7 ); /* team */
-        table_writer_put16( w, id_team );
-    }
-    table_writer_put16( w, 0 ); /* terminator */
-    return !w->overflow;
+    TableWriter w = table_writer_make( NULL, INT64_MAX );
+    table_writer_put8( &w, 1 );
+    if ( !render_static_prop_save_body( &w, value ) ) { return -1; }
+    table_writer_finish( &w );
+    return w.overflow ? -1 : w.offset;
 }
 
 static SCHEMA_UNUSED int64_t render_static_prop_save( const RenderStaticProp * value, uint8_t * buffer, int64_t capacity )
 {
+    if ( buffer == NULL || capacity < 0 ) { return -1; }
     TableWriter w = table_writer_make( buffer, capacity );
+    table_writer_put8( &w, 1 );
     if ( !render_static_prop_save_body( &w, value ) ) { return -1; }
-    return w.offset; /* == render_static_prop_measure( value ) */
+    table_writer_finish( &w );
+    return w.overflow ? -1 : w.offset;
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_static_prop_load_body( TableReader * r, RenderStaticProp * value )
+static SCHEMA_UNUSED int render_static_prop_load_body( TableReader * r, RenderStaticProp * value )
 {
-    render_static_prop_reset( value ); /* prefill declared defaults in place, then overlay */
+    render_static_prop_reset( value );
     for ( ;; )
     {
-        uint16_t field_id;
-        uint8_t kind;
-        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = table_reader_get16( r );
-        if ( field_id == 0 ) { return 1; }
-        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = table_reader_get8( r );
-        switch ( field_id )
+        uint64_t ref, id; uint8_t kind;
+        if ( !table_reader_leb( r, &ref ) ) { r->report->malformed = 1; return 0; }
+        if ( ref == 0 ) { return 1; }
+        if ( ref > r->id_count || !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        id = table_reader_id_at( r, ref ); kind = table_reader_get8( r );
+        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->malformed = 1; return 0; }
+        switch ( id )
         {
-            case 0xdd45: /* position */
+            case 0x4cbf3a26fca1d74aull: /* position */
             {
                 if ( kind != 13 )
                 {
@@ -2513,18 +3585,13 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_static_prop_load_b
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint32_t body_len;
-                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = table_reader_get32( r );
-                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
-                {
-                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
-                    render_vector3_load_body( &sub, &value->position );
-                }
-                r->offset += body_len;
+                TableReader sub;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                render_vector3_load_body( &sub, &value->position );
+                if ( sub.offset != sub.size ) { r->report->malformed = 1; render_vector3_reset( &value->position ); }
                 break;
             }
-            case 0x60f3: /* rotation */
+            case 0xb51afb05cd34709full: /* rotation */
             {
                 if ( kind != 13 )
                 {
@@ -2532,269 +3599,407 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_static_prop_load_b
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint32_t body_len;
-                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = table_reader_get32( r );
-                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
-                {
-                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
-                    render_quaternion_load_body( &sub, &value->rotation );
-                }
-                r->offset += body_len;
+                TableReader sub;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                render_quaternion_load_body( &sub, &value->rotation );
+                if ( sub.offset != sub.size ) { r->report->malformed = 1; render_quaternion_reset( &value->rotation ); }
                 break;
             }
-            case 0x9ee6: /* scale */
+            case 0x6aacb9fbb71a1d91ull: /* scale */
             {
                 if ( kind != 11 )
                 {
+                    if ( table_kind_widens( kind, 11 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 10:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                double decoded_wide = table_wire_widen_f32( table_reader_get32( &(*r) ) );
+                                value->scale = decoded_wide;
+                                break;
+                            }
+                            case 11:
+                            {
+                                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                                value->scale = table_bits_to_double( table_reader_get64( &(*r) ) );
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                value->scale = table_bits_to_double( table_reader_get64( &(*r) ) );
+                switch ( kind )
+                {
+                    case 10:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        double decoded_wide = table_wire_widen_f32( table_reader_get32( &(*r) ) );
+                        value->scale = decoded_wide;
+                        break;
+                    }
+                    case 11:
+                    {
+                        if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                        value->scale = table_bits_to_double( table_reader_get64( &(*r) ) );
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
+                }
                 break;
             }
-            case 0xe64b: /* flags */
+            case 0x17a3a1a985f75aecull: /* flags */
             {
                 if ( kind != 9 )
                 {
+                    if ( table_kind_widens( kind, 9 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 6:
+                            {
+                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                                value->flags = decoded_wide;
+                                break;
+                            }
+                            case 7:
+                            {
+                                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                                value->flags = decoded_wide;
+                                break;
+                            }
+                            case 8:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint32_t) table_reader_get32( &(*r) );
+                                value->flags = decoded_wide;
+                                break;
+                            }
+                            case 9:
+                            {
+                                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                                {
+                                    uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
+                                    value->flags = decoded_v;
+                                }
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                switch ( kind )
                 {
-                    uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
-                    value->flags = decoded_v;
+                    case 6:
+                    {
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                        value->flags = decoded_wide;
+                        break;
+                    }
+                    case 7:
+                    {
+                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                        value->flags = decoded_wide;
+                        break;
+                    }
+                    case 8:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint32_t) table_reader_get32( &(*r) );
+                        value->flags = decoded_wide;
+                        break;
+                    }
+                    case 9:
+                    {
+                        if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                        {
+                            uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
+                            value->flags = decoded_v;
+                        }
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
                 }
                 break;
             }
-            case 0x0f74: /* static_prop_id */
+            case 0xd23da7ab574b95c3ull: /* static_prop_id */
             {
                 if ( kind != 8 )
                 {
+                    if ( table_kind_widens( kind, 8 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 6:
+                            {
+                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                                value->static_prop_id = decoded_wide;
+                                break;
+                            }
+                            case 7:
+                            {
+                                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                                value->static_prop_id = decoded_wide;
+                                break;
+                            }
+                            case 8:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                {
+                                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                                    value->static_prop_id = decoded_v;
+                                }
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                switch ( kind )
                 {
-                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
-                    value->static_prop_id = decoded_v;
+                    case 6:
+                    {
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                        value->static_prop_id = decoded_wide;
+                        break;
+                    }
+                    case 7:
+                    {
+                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                        value->static_prop_id = decoded_wide;
+                        break;
+                    }
+                    case 8:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        {
+                            uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                            value->static_prop_id = decoded_v;
+                        }
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
                 }
                 break;
             }
-            case 0xe338: /* prop_type */
+            case 0xe5626f155e4c5dadull: /* prop_type */
             {
-                if ( kind != 7 )
+                if ( kind != 30 )
                 {
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t variant = table_reader_get16( &(*r) );
-                    switch ( variant )
+                    uint64_t variant_ref;
+                    if ( !table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->malformed = 1; return 0; }
+                    if ( variant_ref == 0 ) { value->prop_type = PROP_TYPE_NONE; }
+                    else
                     {
-                        case 0: value->prop_type = PROP_TYPE_NONE; break;
-                        case 0x2c93: value->prop_type = PROP_TYPE_ROCK; break;
-                        case 0x4532: value->prop_type = PROP_TYPE_STATION; break;
-                        case 0x4b61: value->prop_type = PROP_TYPE_BEACON; break;
-                        default: value->prop_type = PROP_TYPE_NONE; r->report->unknown++; break; /* an id this build cannot name */
+                        switch ( table_reader_id_at( &(*r), variant_ref ) )
+                        {
+                            case 0xcaa6172bef74e234ull: value->prop_type = PROP_TYPE_ROCK; break;
+                            case 0x4f98acac2852d653ull: value->prop_type = PROP_TYPE_STATION; break;
+                            case 0x7f3a7e4744ea3019ull: value->prop_type = PROP_TYPE_BEACON; break;
+                            default: value->prop_type = PROP_TYPE_NONE; r->report->unknown++; break;
+                        }
                     }
                 }
                 break;
             }
-            case 0xdff1: /* team */
+            case 0xfa23d9ef19afc32cull: /* team */
             {
-                if ( kind != 7 )
+                if ( kind != 30 )
                 {
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t variant = table_reader_get16( &(*r) );
-                    switch ( variant )
+                    uint64_t variant_ref;
+                    if ( !table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->malformed = 1; return 0; }
+                    if ( variant_ref == 0 ) { value->team = TEAM_NONE; }
+                    else
                     {
-                        case 0: value->team = TEAM_NONE; break;
-                        case 0xbb03: value->team = TEAM_RED; break;
-                        case 0xf630: value->team = TEAM_BLUE; break;
-                        case 0x6e0f: value->team = TEAM_GREEN; break;
-                        case 0xda27: value->team = TEAM_GOLD; break;
-                        default: value->team = TEAM_NONE; r->report->unknown++; break; /* an id this build cannot name */
+                        switch ( table_reader_id_at( &(*r), variant_ref ) )
+                        {
+                            case 0x9ff1de19feac1b7cull: value->team = TEAM_RED; break;
+                            case 0xecf3d3a7c1693e2dull: value->team = TEAM_BLUE; break;
+                            case 0xcf00d78fd5953f1cull: value->team = TEAM_GREEN; break;
+                            case 0xc416c97e0d3218b3ull: value->team = TEAM_GOLD; break;
+                            default: value->team = TEAM_NONE; r->report->unknown++; break;
+                        }
                     }
                 }
                 break;
             }
             default:
-            {
                 r->report->unknown++;
                 if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
-            }
         }
     }
 }
 
 static SCHEMA_UNUSED int render_static_prop_load( RenderStaticProp * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
-    TableReport ignored;
-    TableReader r;
+    TableReport ignored; TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    if ( report == NULL ) { report = &ignored; }
+    render_static_prop_reset( value );
+    if ( !table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     return render_static_prop_load_body( &r, value );
+}
+
+static SCHEMA_UNUSED int render_cosmetic_prop_save_body( TableWriter * w, const RenderCosmeticProp * value )
+{
+    (void) value;
+    { /* position */
+        TableWriter default_probe = table_writer_probe( w );
+        if ( !render_vector3_save_body( &default_probe, &value->position ) ) { return 0; }
+        if ( default_probe.offset > 1 )
+        {
+            table_writer_id( w, 0x4cbf3a26fca1d74aull ); table_writer_put8( w, 13 );
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !render_vector3_save_body( &probe, &value->position ) ) { return 0; }
+                table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !render_vector3_save_body( w, &value->position ) ) { return 0; }
+            }
+        }
+    }
+    { /* rotation */
+        TableWriter default_probe = table_writer_probe( w );
+        if ( !render_quaternion_save_body( &default_probe, &value->rotation ) ) { return 0; }
+        if ( default_probe.offset > 1 )
+        {
+            table_writer_id( w, 0xb51afb05cd34709full ); table_writer_put8( w, 13 );
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !render_quaternion_save_body( &probe, &value->rotation ) ) { return 0; }
+                table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !render_quaternion_save_body( w, &value->rotation ) ) { return 0; }
+            }
+        }
+    }
+    { /* scale */
+        if ( value->scale != 0.0 )
+        {
+            table_writer_id( w, 0x6aacb9fbb71a1d91ull ); table_writer_put8( w, 11 );
+            table_writer_put64( w, table_double_to_bits( value->scale ) );
+        }
+    }
+    { /* flags */
+        if ( value->flags != 0 )
+        {
+            table_writer_id( w, 0x17a3a1a985f75aecull ); table_writer_put8( w, 9 );
+            table_writer_put64( w, (uint64_t) ( value->flags ) );
+        }
+    }
+    { /* cosmetic_prop_id */
+        if ( value->cosmetic_prop_id != 0 )
+        {
+            table_writer_id( w, 0xb66e4449e56b2e26ull ); table_writer_put8( w, 8 );
+            table_writer_put32( w, (uint32_t) ( value->cosmetic_prop_id ) );
+        }
+    }
+    { /* prop_sequence */
+        if ( value->prop_sequence != 0 )
+        {
+            table_writer_id( w, 0x4d7bf73bcbddc228ull ); table_writer_put8( w, 6 );
+            table_writer_put8( w, (uint8_t) ( value->prop_sequence ) );
+        }
+    }
+    { /* prop_type */
+        if ( value->prop_type != PROP_TYPE_NONE )
+        {
+            table_writer_id( w, 0xe5626f155e4c5dadull ); table_writer_put8( w, 30 );
+            switch ( value->prop_type )
+            {
+                case PROP_TYPE_NONE: table_writer_leb( w, 0 ); break;
+                case PROP_TYPE_ROCK: table_writer_id( w, 0xcaa6172bef74e234ull ); break;
+                case PROP_TYPE_STATION: table_writer_id( w, 0x4f98acac2852d653ull ); break;
+                case PROP_TYPE_BEACON: table_writer_id( w, 0x7f3a7e4744ea3019ull ); break;
+                default: return 0; /* no declared identity */
+            }
+        }
+    }
+    { /* team */
+        if ( value->team != TEAM_NONE )
+        {
+            table_writer_id( w, 0xfa23d9ef19afc32cull ); table_writer_put8( w, 30 );
+            switch ( value->team )
+            {
+                case TEAM_NONE: table_writer_leb( w, 0 ); break;
+                case TEAM_RED: table_writer_id( w, 0x9ff1de19feac1b7cull ); break;
+                case TEAM_BLUE: table_writer_id( w, 0xecf3d3a7c1693e2dull ); break;
+                case TEAM_GREEN: table_writer_id( w, 0xcf00d78fd5953f1cull ); break;
+                case TEAM_GOLD: table_writer_id( w, 0xc416c97e0d3218b3ull ); break;
+                default: return 0; /* no declared identity */
+            }
+        }
+    }
+    table_writer_leb( w, 0 );
+    return !w->overflow;
 }
 
 static SCHEMA_UNUSED int64_t render_cosmetic_prop_measure( const RenderCosmeticProp * value )
 {
-    int64_t bytes = 2; /* terminator */
-    {
-        int64_t body_position = render_vector3_measure( &value->position );
-        if ( body_position < 0 ) { return -1; }
-        if ( body_position > 2 ) { bytes += 3 + 4 + body_position; } /* position: all-default nested elides */
-    }
-    {
-        int64_t body_rotation = render_quaternion_measure( &value->rotation );
-        if ( body_rotation < 0 ) { return -1; }
-        if ( body_rotation > 2 ) { bytes += 3 + 4 + body_rotation; } /* rotation: all-default nested elides */
-    }
-    if ( value->scale != 0.0 ) { bytes += 3 + 8; } /* scale */
-    if ( value->flags != 0 ) { bytes += 3 + 8; } /* flags */
-    if ( value->cosmetic_prop_id != 0 ) { bytes += 3 + 4; } /* cosmetic_prop_id */
-    if ( value->prop_sequence != 0 ) { bytes += 3 + 1; } /* prop_sequence */
-    if ( value->prop_type != PROP_TYPE_NONE )
-    {
-        uint16_t id_prop_type = 0;
-        switch ( value->prop_type ) /* PropType rides as the u16 hash of its VARIANT NAME (§5) */
-        {
-            case PROP_TYPE_NONE: id_prop_type = 0; break;
-            case PROP_TYPE_ROCK: id_prop_type = 0x2c93; break;
-            case PROP_TYPE_STATION: id_prop_type = 0x4532; break;
-            case PROP_TYPE_BEACON: id_prop_type = 0x4b61; break;
-            default: return -1; /* no variant names this value: no wire identity */
-        }
-        (void) id_prop_type;
-        bytes += 3 + 2; /* prop_type: the variant's name hash */
-    }
-    if ( value->team != TEAM_NONE )
-    {
-        uint16_t id_team = 0;
-        switch ( value->team ) /* Team rides as the u16 hash of its VARIANT NAME (§5) */
-        {
-            case TEAM_NONE: id_team = 0; break;
-            case TEAM_RED: id_team = 0xbb03; break;
-            case TEAM_BLUE: id_team = 0xf630; break;
-            case TEAM_GREEN: id_team = 0x6e0f; break;
-            case TEAM_GOLD: id_team = 0xda27; break;
-            default: return -1; /* no variant names this value: no wire identity */
-        }
-        (void) id_team;
-        bytes += 3 + 2; /* team: the variant's name hash */
-    }
-    return bytes;
-}
-
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_cosmetic_prop_save_body( TableWriter * w, const RenderCosmeticProp * value )
-{
-    {
-        int64_t body_position = render_vector3_measure( &value->position );
-        if ( body_position < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
-        if ( body_position > 2 ) /* all-default nested elides */
-        {
-            table_writer_put16( w, 0xdd45 ); table_writer_put8( w, 13 ); /* position */
-            table_writer_put32( w, (uint32_t) body_position );
-            if ( !render_vector3_save_body( w, &value->position ) ) { return 0; }
-        }
-    }
-    {
-        int64_t body_rotation = render_quaternion_measure( &value->rotation );
-        if ( body_rotation < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
-        if ( body_rotation > 2 ) /* all-default nested elides */
-        {
-            table_writer_put16( w, 0x60f3 ); table_writer_put8( w, 13 ); /* rotation */
-            table_writer_put32( w, (uint32_t) body_rotation );
-            if ( !render_quaternion_save_body( w, &value->rotation ) ) { return 0; }
-        }
-    }
-    if ( value->scale != 0.0 )
-    {
-        table_writer_put16( w, 0x9ee6 ); table_writer_put8( w, 11 ); /* scale */
-        table_writer_put64( w, table_double_to_bits( value->scale ) );
-    }
-    if ( value->flags != 0 )
-    {
-        table_writer_put16( w, 0xe64b ); table_writer_put8( w, 9 ); /* flags */
-        table_writer_put64( w, (uint64_t) ( value->flags ) );
-    }
-    if ( value->cosmetic_prop_id != 0 )
-    {
-        table_writer_put16( w, 0x0843 ); table_writer_put8( w, 8 ); /* cosmetic_prop_id */
-        table_writer_put32( w, (uint32_t) ( value->cosmetic_prop_id ) );
-    }
-    if ( value->prop_sequence != 0 )
-    {
-        table_writer_put16( w, 0x3069 ); table_writer_put8( w, 6 ); /* prop_sequence */
-        table_writer_put8( w, (uint8_t) ( value->prop_sequence ) );
-    }
-    if ( value->prop_type != PROP_TYPE_NONE )
-    {
-        uint16_t id_prop_type = 0;
-        switch ( value->prop_type ) /* PropType rides as the u16 hash of its VARIANT NAME (§5) */
-        {
-            case PROP_TYPE_NONE: id_prop_type = 0; break;
-            case PROP_TYPE_ROCK: id_prop_type = 0x2c93; break;
-            case PROP_TYPE_STATION: id_prop_type = 0x4532; break;
-            case PROP_TYPE_BEACON: id_prop_type = 0x4b61; break;
-            default: return 0; /* no variant names this value: no wire identity */
-        }
-        table_writer_put16( w, 0xe338 ); table_writer_put8( w, 7 ); /* prop_type */
-        table_writer_put16( w, id_prop_type );
-    }
-    if ( value->team != TEAM_NONE )
-    {
-        uint16_t id_team = 0;
-        switch ( value->team ) /* Team rides as the u16 hash of its VARIANT NAME (§5) */
-        {
-            case TEAM_NONE: id_team = 0; break;
-            case TEAM_RED: id_team = 0xbb03; break;
-            case TEAM_BLUE: id_team = 0xf630; break;
-            case TEAM_GREEN: id_team = 0x6e0f; break;
-            case TEAM_GOLD: id_team = 0xda27; break;
-            default: return 0; /* no variant names this value: no wire identity */
-        }
-        table_writer_put16( w, 0xdff1 ); table_writer_put8( w, 7 ); /* team */
-        table_writer_put16( w, id_team );
-    }
-    table_writer_put16( w, 0 ); /* terminator */
-    return !w->overflow;
+    TableWriter w = table_writer_make( NULL, INT64_MAX );
+    table_writer_put8( &w, 1 );
+    if ( !render_cosmetic_prop_save_body( &w, value ) ) { return -1; }
+    table_writer_finish( &w );
+    return w.overflow ? -1 : w.offset;
 }
 
 static SCHEMA_UNUSED int64_t render_cosmetic_prop_save( const RenderCosmeticProp * value, uint8_t * buffer, int64_t capacity )
 {
+    if ( buffer == NULL || capacity < 0 ) { return -1; }
     TableWriter w = table_writer_make( buffer, capacity );
+    table_writer_put8( &w, 1 );
     if ( !render_cosmetic_prop_save_body( &w, value ) ) { return -1; }
-    return w.offset; /* == render_cosmetic_prop_measure( value ) */
+    table_writer_finish( &w );
+    return w.overflow ? -1 : w.offset;
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_cosmetic_prop_load_body( TableReader * r, RenderCosmeticProp * value )
+static SCHEMA_UNUSED int render_cosmetic_prop_load_body( TableReader * r, RenderCosmeticProp * value )
 {
-    render_cosmetic_prop_reset( value ); /* prefill declared defaults in place, then overlay */
+    render_cosmetic_prop_reset( value );
     for ( ;; )
     {
-        uint16_t field_id;
-        uint8_t kind;
-        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = table_reader_get16( r );
-        if ( field_id == 0 ) { return 1; }
-        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = table_reader_get8( r );
-        switch ( field_id )
+        uint64_t ref, id; uint8_t kind;
+        if ( !table_reader_leb( r, &ref ) ) { r->report->malformed = 1; return 0; }
+        if ( ref == 0 ) { return 1; }
+        if ( ref > r->id_count || !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        id = table_reader_id_at( r, ref ); kind = table_reader_get8( r );
+        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->malformed = 1; return 0; }
+        switch ( id )
         {
-            case 0xdd45: /* position */
+            case 0x4cbf3a26fca1d74aull: /* position */
             {
                 if ( kind != 13 )
                 {
@@ -2802,18 +4007,13 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_cosmetic_prop_load
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint32_t body_len;
-                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = table_reader_get32( r );
-                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
-                {
-                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
-                    render_vector3_load_body( &sub, &value->position );
-                }
-                r->offset += body_len;
+                TableReader sub;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                render_vector3_load_body( &sub, &value->position );
+                if ( sub.offset != sub.size ) { r->report->malformed = 1; render_vector3_reset( &value->position ); }
                 break;
             }
-            case 0x60f3: /* rotation */
+            case 0xb51afb05cd34709full: /* rotation */
             {
                 if ( kind != 13 )
                 {
@@ -2821,270 +4021,433 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_cosmetic_prop_load
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint32_t body_len;
-                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = table_reader_get32( r );
-                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
-                {
-                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
-                    render_quaternion_load_body( &sub, &value->rotation );
-                }
-                r->offset += body_len;
+                TableReader sub;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                render_quaternion_load_body( &sub, &value->rotation );
+                if ( sub.offset != sub.size ) { r->report->malformed = 1; render_quaternion_reset( &value->rotation ); }
                 break;
             }
-            case 0x9ee6: /* scale */
+            case 0x6aacb9fbb71a1d91ull: /* scale */
             {
                 if ( kind != 11 )
                 {
+                    if ( table_kind_widens( kind, 11 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 10:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                double decoded_wide = table_wire_widen_f32( table_reader_get32( &(*r) ) );
+                                value->scale = decoded_wide;
+                                break;
+                            }
+                            case 11:
+                            {
+                                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                                value->scale = table_bits_to_double( table_reader_get64( &(*r) ) );
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                value->scale = table_bits_to_double( table_reader_get64( &(*r) ) );
+                switch ( kind )
+                {
+                    case 10:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        double decoded_wide = table_wire_widen_f32( table_reader_get32( &(*r) ) );
+                        value->scale = decoded_wide;
+                        break;
+                    }
+                    case 11:
+                    {
+                        if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                        value->scale = table_bits_to_double( table_reader_get64( &(*r) ) );
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
+                }
                 break;
             }
-            case 0xe64b: /* flags */
+            case 0x17a3a1a985f75aecull: /* flags */
             {
                 if ( kind != 9 )
                 {
+                    if ( table_kind_widens( kind, 9 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 6:
+                            {
+                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                                value->flags = decoded_wide;
+                                break;
+                            }
+                            case 7:
+                            {
+                                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                                value->flags = decoded_wide;
+                                break;
+                            }
+                            case 8:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint32_t) table_reader_get32( &(*r) );
+                                value->flags = decoded_wide;
+                                break;
+                            }
+                            case 9:
+                            {
+                                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                                {
+                                    uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
+                                    value->flags = decoded_v;
+                                }
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                switch ( kind )
                 {
-                    uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
-                    value->flags = decoded_v;
+                    case 6:
+                    {
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                        value->flags = decoded_wide;
+                        break;
+                    }
+                    case 7:
+                    {
+                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                        value->flags = decoded_wide;
+                        break;
+                    }
+                    case 8:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint32_t) table_reader_get32( &(*r) );
+                        value->flags = decoded_wide;
+                        break;
+                    }
+                    case 9:
+                    {
+                        if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                        {
+                            uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
+                            value->flags = decoded_v;
+                        }
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
                 }
                 break;
             }
-            case 0x0843: /* cosmetic_prop_id */
+            case 0xb66e4449e56b2e26ull: /* cosmetic_prop_id */
             {
                 if ( kind != 8 )
                 {
+                    if ( table_kind_widens( kind, 8 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 6:
+                            {
+                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                                value->cosmetic_prop_id = decoded_wide;
+                                break;
+                            }
+                            case 7:
+                            {
+                                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                                value->cosmetic_prop_id = decoded_wide;
+                                break;
+                            }
+                            case 8:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                {
+                                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                                    value->cosmetic_prop_id = decoded_v;
+                                }
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                switch ( kind )
                 {
-                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
-                    value->cosmetic_prop_id = decoded_v;
+                    case 6:
+                    {
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                        value->cosmetic_prop_id = decoded_wide;
+                        break;
+                    }
+                    case 7:
+                    {
+                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                        value->cosmetic_prop_id = decoded_wide;
+                        break;
+                    }
+                    case 8:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        {
+                            uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                            value->cosmetic_prop_id = decoded_v;
+                        }
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
                 }
                 break;
             }
-            case 0x3069: /* prop_sequence */
+            case 0x4d7bf73bcbddc228ull: /* prop_sequence */
             {
                 if ( kind != 6 )
                 {
+                    if ( table_kind_widens( kind, 6 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 6:
+                            {
+                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                {
+                                    uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
+                                    value->prop_sequence = decoded_v;
+                                }
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                switch ( kind )
                 {
-                    uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
-                    value->prop_sequence = decoded_v;
+                    case 6:
+                    {
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        {
+                            uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
+                            value->prop_sequence = decoded_v;
+                        }
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
                 }
                 break;
             }
-            case 0xe338: /* prop_type */
+            case 0xe5626f155e4c5dadull: /* prop_type */
             {
-                if ( kind != 7 )
+                if ( kind != 30 )
                 {
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t variant = table_reader_get16( &(*r) );
-                    switch ( variant )
+                    uint64_t variant_ref;
+                    if ( !table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->malformed = 1; return 0; }
+                    if ( variant_ref == 0 ) { value->prop_type = PROP_TYPE_NONE; }
+                    else
                     {
-                        case 0: value->prop_type = PROP_TYPE_NONE; break;
-                        case 0x2c93: value->prop_type = PROP_TYPE_ROCK; break;
-                        case 0x4532: value->prop_type = PROP_TYPE_STATION; break;
-                        case 0x4b61: value->prop_type = PROP_TYPE_BEACON; break;
-                        default: value->prop_type = PROP_TYPE_NONE; r->report->unknown++; break; /* an id this build cannot name */
+                        switch ( table_reader_id_at( &(*r), variant_ref ) )
+                        {
+                            case 0xcaa6172bef74e234ull: value->prop_type = PROP_TYPE_ROCK; break;
+                            case 0x4f98acac2852d653ull: value->prop_type = PROP_TYPE_STATION; break;
+                            case 0x7f3a7e4744ea3019ull: value->prop_type = PROP_TYPE_BEACON; break;
+                            default: value->prop_type = PROP_TYPE_NONE; r->report->unknown++; break;
+                        }
                     }
                 }
                 break;
             }
-            case 0xdff1: /* team */
+            case 0xfa23d9ef19afc32cull: /* team */
             {
-                if ( kind != 7 )
+                if ( kind != 30 )
                 {
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t variant = table_reader_get16( &(*r) );
-                    switch ( variant )
+                    uint64_t variant_ref;
+                    if ( !table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->malformed = 1; return 0; }
+                    if ( variant_ref == 0 ) { value->team = TEAM_NONE; }
+                    else
                     {
-                        case 0: value->team = TEAM_NONE; break;
-                        case 0xbb03: value->team = TEAM_RED; break;
-                        case 0xf630: value->team = TEAM_BLUE; break;
-                        case 0x6e0f: value->team = TEAM_GREEN; break;
-                        case 0xda27: value->team = TEAM_GOLD; break;
-                        default: value->team = TEAM_NONE; r->report->unknown++; break; /* an id this build cannot name */
+                        switch ( table_reader_id_at( &(*r), variant_ref ) )
+                        {
+                            case 0x9ff1de19feac1b7cull: value->team = TEAM_RED; break;
+                            case 0xecf3d3a7c1693e2dull: value->team = TEAM_BLUE; break;
+                            case 0xcf00d78fd5953f1cull: value->team = TEAM_GREEN; break;
+                            case 0xc416c97e0d3218b3ull: value->team = TEAM_GOLD; break;
+                            default: value->team = TEAM_NONE; r->report->unknown++; break;
+                        }
                     }
                 }
                 break;
             }
             default:
-            {
                 r->report->unknown++;
                 if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
-            }
         }
     }
 }
 
 static SCHEMA_UNUSED int render_cosmetic_prop_load( RenderCosmeticProp * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
-    TableReport ignored;
-    TableReader r;
+    TableReport ignored; TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    if ( report == NULL ) { report = &ignored; }
+    render_cosmetic_prop_reset( value );
+    if ( !table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     return render_cosmetic_prop_load_body( &r, value );
+}
+
+static SCHEMA_UNUSED int render_laser_save_body( TableWriter * w, const RenderLaser * value )
+{
+    (void) value;
+    { /* start */
+        TableWriter default_probe = table_writer_probe( w );
+        if ( !render_vector3_save_body( &default_probe, &value->start ) ) { return 0; }
+        if ( default_probe.offset > 1 )
+        {
+            table_writer_id( w, 0xee5d97ad45ad251full ); table_writer_put8( w, 13 );
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !render_vector3_save_body( &probe, &value->start ) ) { return 0; }
+                table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !render_vector3_save_body( w, &value->start ) ) { return 0; }
+            }
+        }
+    }
+    { /* finish */
+        TableWriter default_probe = table_writer_probe( w );
+        if ( !render_vector3_save_body( &default_probe, &value->finish ) ) { return 0; }
+        if ( default_probe.offset > 1 )
+        {
+            table_writer_id( w, 0x6917a5bab91540f2ull ); table_writer_put8( w, 13 );
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !render_vector3_save_body( &probe, &value->finish ) ) { return 0; }
+                table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !render_vector3_save_body( w, &value->finish ) ) { return 0; }
+            }
+        }
+    }
+    { /* t */
+        if ( value->t != 0.0 )
+        {
+            table_writer_id( w, 0xaf63e94c860202a3ull ); table_writer_put8( w, 11 );
+            table_writer_put64( w, table_double_to_bits( value->t ) );
+        }
+    }
+    { /* laser_id */
+        if ( value->laser_id != 0 )
+        {
+            table_writer_id( w, 0xcd29c05f390294ecull ); table_writer_put8( w, 8 );
+            table_writer_put32( w, (uint32_t) ( value->laser_id ) );
+        }
+    }
+    { /* laser_type */
+        if ( value->laser_type != LASER_TYPE_NONE )
+        {
+            table_writer_id( w, 0x96b593c242133841ull ); table_writer_put8( w, 30 );
+            switch ( value->laser_type )
+            {
+                case LASER_TYPE_NONE: table_writer_leb( w, 0 ); break;
+                case LASER_TYPE_PULSE: table_writer_id( w, 0x94e8a172d8f4805eull ); break;
+                case LASER_TYPE_BEAM: table_writer_id( w, 0xa0745aa7967eeffaull ); break;
+                default: return 0; /* no declared identity */
+            }
+        }
+    }
+    { /* team */
+        if ( value->team != TEAM_NONE )
+        {
+            table_writer_id( w, 0xfa23d9ef19afc32cull ); table_writer_put8( w, 30 );
+            switch ( value->team )
+            {
+                case TEAM_NONE: table_writer_leb( w, 0 ); break;
+                case TEAM_RED: table_writer_id( w, 0x9ff1de19feac1b7cull ); break;
+                case TEAM_BLUE: table_writer_id( w, 0xecf3d3a7c1693e2dull ); break;
+                case TEAM_GREEN: table_writer_id( w, 0xcf00d78fd5953f1cull ); break;
+                case TEAM_GOLD: table_writer_id( w, 0xc416c97e0d3218b3ull ); break;
+                default: return 0; /* no declared identity */
+            }
+        }
+    }
+    table_writer_leb( w, 0 );
+    return !w->overflow;
 }
 
 static SCHEMA_UNUSED int64_t render_laser_measure( const RenderLaser * value )
 {
-    int64_t bytes = 2; /* terminator */
-    {
-        int64_t body_start = render_vector3_measure( &value->start );
-        if ( body_start < 0 ) { return -1; }
-        if ( body_start > 2 ) { bytes += 3 + 4 + body_start; } /* start: all-default nested elides */
-    }
-    {
-        int64_t body_finish = render_vector3_measure( &value->finish );
-        if ( body_finish < 0 ) { return -1; }
-        if ( body_finish > 2 ) { bytes += 3 + 4 + body_finish; } /* finish: all-default nested elides */
-    }
-    if ( value->t != 0.0 ) { bytes += 3 + 8; } /* t */
-    if ( value->laser_id != 0 ) { bytes += 3 + 4; } /* laser_id */
-    if ( value->laser_type != LASER_TYPE_NONE )
-    {
-        uint16_t id_laser_type = 0;
-        switch ( value->laser_type ) /* LaserType rides as the u16 hash of its VARIANT NAME (§5) */
-        {
-            case LASER_TYPE_NONE: id_laser_type = 0; break;
-            case LASER_TYPE_PULSE: id_laser_type = 0xc187; break;
-            case LASER_TYPE_BEAM: id_laser_type = 0x1f28; break;
-            default: return -1; /* no variant names this value: no wire identity */
-        }
-        (void) id_laser_type;
-        bytes += 3 + 2; /* laser_type: the variant's name hash */
-    }
-    if ( value->team != TEAM_NONE )
-    {
-        uint16_t id_team = 0;
-        switch ( value->team ) /* Team rides as the u16 hash of its VARIANT NAME (§5) */
-        {
-            case TEAM_NONE: id_team = 0; break;
-            case TEAM_RED: id_team = 0xbb03; break;
-            case TEAM_BLUE: id_team = 0xf630; break;
-            case TEAM_GREEN: id_team = 0x6e0f; break;
-            case TEAM_GOLD: id_team = 0xda27; break;
-            default: return -1; /* no variant names this value: no wire identity */
-        }
-        (void) id_team;
-        bytes += 3 + 2; /* team: the variant's name hash */
-    }
-    return bytes;
-}
-
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_laser_save_body( TableWriter * w, const RenderLaser * value )
-{
-    {
-        int64_t body_start = render_vector3_measure( &value->start );
-        if ( body_start < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
-        if ( body_start > 2 ) /* all-default nested elides */
-        {
-            table_writer_put16( w, 0x61f4 ); table_writer_put8( w, 13 ); /* start */
-            table_writer_put32( w, (uint32_t) body_start );
-            if ( !render_vector3_save_body( w, &value->start ) ) { return 0; }
-        }
-    }
-    {
-        int64_t body_finish = render_vector3_measure( &value->finish );
-        if ( body_finish < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
-        if ( body_finish > 2 ) /* all-default nested elides */
-        {
-            table_writer_put16( w, 0x2d84 ); table_writer_put8( w, 13 ); /* finish */
-            table_writer_put32( w, (uint32_t) body_finish );
-            if ( !render_vector3_save_body( w, &value->finish ) ) { return 0; }
-        }
-    }
-    if ( value->t != 0.0 )
-    {
-        table_writer_put16( w, 0xccaf ); table_writer_put8( w, 11 ); /* t */
-        table_writer_put64( w, table_double_to_bits( value->t ) );
-    }
-    if ( value->laser_id != 0 )
-    {
-        table_writer_put16( w, 0xc5ca ); table_writer_put8( w, 8 ); /* laser_id */
-        table_writer_put32( w, (uint32_t) ( value->laser_id ) );
-    }
-    if ( value->laser_type != LASER_TYPE_NONE )
-    {
-        uint16_t id_laser_type = 0;
-        switch ( value->laser_type ) /* LaserType rides as the u16 hash of its VARIANT NAME (§5) */
-        {
-            case LASER_TYPE_NONE: id_laser_type = 0; break;
-            case LASER_TYPE_PULSE: id_laser_type = 0xc187; break;
-            case LASER_TYPE_BEAM: id_laser_type = 0x1f28; break;
-            default: return 0; /* no variant names this value: no wire identity */
-        }
-        table_writer_put16( w, 0xc46a ); table_writer_put8( w, 7 ); /* laser_type */
-        table_writer_put16( w, id_laser_type );
-    }
-    if ( value->team != TEAM_NONE )
-    {
-        uint16_t id_team = 0;
-        switch ( value->team ) /* Team rides as the u16 hash of its VARIANT NAME (§5) */
-        {
-            case TEAM_NONE: id_team = 0; break;
-            case TEAM_RED: id_team = 0xbb03; break;
-            case TEAM_BLUE: id_team = 0xf630; break;
-            case TEAM_GREEN: id_team = 0x6e0f; break;
-            case TEAM_GOLD: id_team = 0xda27; break;
-            default: return 0; /* no variant names this value: no wire identity */
-        }
-        table_writer_put16( w, 0xdff1 ); table_writer_put8( w, 7 ); /* team */
-        table_writer_put16( w, id_team );
-    }
-    table_writer_put16( w, 0 ); /* terminator */
-    return !w->overflow;
+    TableWriter w = table_writer_make( NULL, INT64_MAX );
+    table_writer_put8( &w, 1 );
+    if ( !render_laser_save_body( &w, value ) ) { return -1; }
+    table_writer_finish( &w );
+    return w.overflow ? -1 : w.offset;
 }
 
 static SCHEMA_UNUSED int64_t render_laser_save( const RenderLaser * value, uint8_t * buffer, int64_t capacity )
 {
+    if ( buffer == NULL || capacity < 0 ) { return -1; }
     TableWriter w = table_writer_make( buffer, capacity );
+    table_writer_put8( &w, 1 );
     if ( !render_laser_save_body( &w, value ) ) { return -1; }
-    return w.offset; /* == render_laser_measure( value ) */
+    table_writer_finish( &w );
+    return w.overflow ? -1 : w.offset;
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_laser_load_body( TableReader * r, RenderLaser * value )
+static SCHEMA_UNUSED int render_laser_load_body( TableReader * r, RenderLaser * value )
 {
-    render_laser_reset( value ); /* prefill declared defaults in place, then overlay */
+    render_laser_reset( value );
     for ( ;; )
     {
-        uint16_t field_id;
-        uint8_t kind;
-        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = table_reader_get16( r );
-        if ( field_id == 0 ) { return 1; }
-        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = table_reader_get8( r );
-        switch ( field_id )
+        uint64_t ref, id; uint8_t kind;
+        if ( !table_reader_leb( r, &ref ) ) { r->report->malformed = 1; return 0; }
+        if ( ref == 0 ) { return 1; }
+        if ( ref > r->id_count || !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        id = table_reader_id_at( r, ref ); kind = table_reader_get8( r );
+        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->malformed = 1; return 0; }
+        switch ( id )
         {
-            case 0x61f4: /* start */
+            case 0xee5d97ad45ad251full: /* start */
             {
                 if ( kind != 13 )
                 {
@@ -3092,18 +4455,13 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_laser_load_body( T
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint32_t body_len;
-                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = table_reader_get32( r );
-                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
-                {
-                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
-                    render_vector3_load_body( &sub, &value->start );
-                }
-                r->offset += body_len;
+                TableReader sub;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                render_vector3_load_body( &sub, &value->start );
+                if ( sub.offset != sub.size ) { r->report->malformed = 1; render_vector3_reset( &value->start ); }
                 break;
             }
-            case 0x2d84: /* finish */
+            case 0x6917a5bab91540f2ull: /* finish */
             {
                 if ( kind != 13 )
                 {
@@ -3111,245 +4469,315 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_laser_load_body( T
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint32_t body_len;
-                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = table_reader_get32( r );
-                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
-                {
-                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
-                    render_vector3_load_body( &sub, &value->finish );
-                }
-                r->offset += body_len;
+                TableReader sub;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                render_vector3_load_body( &sub, &value->finish );
+                if ( sub.offset != sub.size ) { r->report->malformed = 1; render_vector3_reset( &value->finish ); }
                 break;
             }
-            case 0xccaf: /* t */
+            case 0xaf63e94c860202a3ull: /* t */
             {
                 if ( kind != 11 )
                 {
+                    if ( table_kind_widens( kind, 11 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 10:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                double decoded_wide = table_wire_widen_f32( table_reader_get32( &(*r) ) );
+                                value->t = decoded_wide;
+                                break;
+                            }
+                            case 11:
+                            {
+                                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                                value->t = table_bits_to_double( table_reader_get64( &(*r) ) );
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                value->t = table_bits_to_double( table_reader_get64( &(*r) ) );
+                switch ( kind )
+                {
+                    case 10:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        double decoded_wide = table_wire_widen_f32( table_reader_get32( &(*r) ) );
+                        value->t = decoded_wide;
+                        break;
+                    }
+                    case 11:
+                    {
+                        if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                        value->t = table_bits_to_double( table_reader_get64( &(*r) ) );
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
+                }
                 break;
             }
-            case 0xc5ca: /* laser_id */
+            case 0xcd29c05f390294ecull: /* laser_id */
             {
                 if ( kind != 8 )
                 {
+                    if ( table_kind_widens( kind, 8 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 6:
+                            {
+                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                                value->laser_id = decoded_wide;
+                                break;
+                            }
+                            case 7:
+                            {
+                                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                                value->laser_id = decoded_wide;
+                                break;
+                            }
+                            case 8:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                {
+                                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                                    value->laser_id = decoded_v;
+                                }
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                switch ( kind )
                 {
-                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
-                    value->laser_id = decoded_v;
+                    case 6:
+                    {
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                        value->laser_id = decoded_wide;
+                        break;
+                    }
+                    case 7:
+                    {
+                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                        value->laser_id = decoded_wide;
+                        break;
+                    }
+                    case 8:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        {
+                            uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                            value->laser_id = decoded_v;
+                        }
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
                 }
                 break;
             }
-            case 0xc46a: /* laser_type */
+            case 0x96b593c242133841ull: /* laser_type */
             {
-                if ( kind != 7 )
+                if ( kind != 30 )
                 {
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t variant = table_reader_get16( &(*r) );
-                    switch ( variant )
+                    uint64_t variant_ref;
+                    if ( !table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->malformed = 1; return 0; }
+                    if ( variant_ref == 0 ) { value->laser_type = LASER_TYPE_NONE; }
+                    else
                     {
-                        case 0: value->laser_type = LASER_TYPE_NONE; break;
-                        case 0xc187: value->laser_type = LASER_TYPE_PULSE; break;
-                        case 0x1f28: value->laser_type = LASER_TYPE_BEAM; break;
-                        default: value->laser_type = LASER_TYPE_NONE; r->report->unknown++; break; /* an id this build cannot name */
+                        switch ( table_reader_id_at( &(*r), variant_ref ) )
+                        {
+                            case 0x94e8a172d8f4805eull: value->laser_type = LASER_TYPE_PULSE; break;
+                            case 0xa0745aa7967eeffaull: value->laser_type = LASER_TYPE_BEAM; break;
+                            default: value->laser_type = LASER_TYPE_NONE; r->report->unknown++; break;
+                        }
                     }
                 }
                 break;
             }
-            case 0xdff1: /* team */
+            case 0xfa23d9ef19afc32cull: /* team */
             {
-                if ( kind != 7 )
+                if ( kind != 30 )
                 {
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t variant = table_reader_get16( &(*r) );
-                    switch ( variant )
+                    uint64_t variant_ref;
+                    if ( !table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->malformed = 1; return 0; }
+                    if ( variant_ref == 0 ) { value->team = TEAM_NONE; }
+                    else
                     {
-                        case 0: value->team = TEAM_NONE; break;
-                        case 0xbb03: value->team = TEAM_RED; break;
-                        case 0xf630: value->team = TEAM_BLUE; break;
-                        case 0x6e0f: value->team = TEAM_GREEN; break;
-                        case 0xda27: value->team = TEAM_GOLD; break;
-                        default: value->team = TEAM_NONE; r->report->unknown++; break; /* an id this build cannot name */
+                        switch ( table_reader_id_at( &(*r), variant_ref ) )
+                        {
+                            case 0x9ff1de19feac1b7cull: value->team = TEAM_RED; break;
+                            case 0xecf3d3a7c1693e2dull: value->team = TEAM_BLUE; break;
+                            case 0xcf00d78fd5953f1cull: value->team = TEAM_GREEN; break;
+                            case 0xc416c97e0d3218b3ull: value->team = TEAM_GOLD; break;
+                            default: value->team = TEAM_NONE; r->report->unknown++; break;
+                        }
                     }
                 }
                 break;
             }
             default:
-            {
                 r->report->unknown++;
                 if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
-            }
         }
     }
 }
 
 static SCHEMA_UNUSED int render_laser_load( RenderLaser * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
-    TableReport ignored;
-    TableReader r;
+    TableReport ignored; TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    if ( report == NULL ) { report = &ignored; }
+    render_laser_reset( value );
+    if ( !table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     return render_laser_load_body( &r, value );
+}
+
+static SCHEMA_UNUSED int render_explosion_save_body( TableWriter * w, const RenderExplosion * value )
+{
+    (void) value;
+    { /* position */
+        TableWriter default_probe = table_writer_probe( w );
+        if ( !render_vector3_save_body( &default_probe, &value->position ) ) { return 0; }
+        if ( default_probe.offset > 1 )
+        {
+            table_writer_id( w, 0x4cbf3a26fca1d74aull ); table_writer_put8( w, 13 );
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !render_vector3_save_body( &probe, &value->position ) ) { return 0; }
+                table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !render_vector3_save_body( w, &value->position ) ) { return 0; }
+            }
+        }
+    }
+    { /* rotation */
+        TableWriter default_probe = table_writer_probe( w );
+        if ( !render_quaternion_save_body( &default_probe, &value->rotation ) ) { return 0; }
+        if ( default_probe.offset > 1 )
+        {
+            table_writer_id( w, 0xb51afb05cd34709full ); table_writer_put8( w, 13 );
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !render_quaternion_save_body( &probe, &value->rotation ) ) { return 0; }
+                table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !render_quaternion_save_body( w, &value->rotation ) ) { return 0; }
+            }
+        }
+    }
+    { /* t */
+        if ( value->t != 0.0 )
+        {
+            table_writer_id( w, 0xaf63e94c860202a3ull ); table_writer_put8( w, 11 );
+            table_writer_put64( w, table_double_to_bits( value->t ) );
+        }
+    }
+    { /* explosion_id */
+        if ( value->explosion_id != 0 )
+        {
+            table_writer_id( w, 0xfd7f3fa0b16ed778ull ); table_writer_put8( w, 8 );
+            table_writer_put32( w, (uint32_t) ( value->explosion_id ) );
+        }
+    }
+    { /* parent_object_id */
+        if ( value->parent_object_id != 0 )
+        {
+            table_writer_id( w, 0x0bee7b3cb4046c93ull ); table_writer_put8( w, 8 );
+            table_writer_put32( w, (uint32_t) ( value->parent_object_id ) );
+        }
+    }
+    { /* explosion_type */
+        if ( value->explosion_type != EXPLOSION_TYPE_NONE )
+        {
+            table_writer_id( w, 0xdc89eb9cd3393be5ull ); table_writer_put8( w, 30 );
+            switch ( value->explosion_type )
+            {
+                case EXPLOSION_TYPE_NONE: table_writer_leb( w, 0 ); break;
+                case EXPLOSION_TYPE_SMALL: table_writer_id( w, 0x3d2cc8d952adebecull ); break;
+                case EXPLOSION_TYPE_LARGE: table_writer_id( w, 0xc8736ef79380e634ull ); break;
+                default: return 0; /* no declared identity */
+            }
+        }
+    }
+    { /* team */
+        if ( value->team != TEAM_NONE )
+        {
+            table_writer_id( w, 0xfa23d9ef19afc32cull ); table_writer_put8( w, 30 );
+            switch ( value->team )
+            {
+                case TEAM_NONE: table_writer_leb( w, 0 ); break;
+                case TEAM_RED: table_writer_id( w, 0x9ff1de19feac1b7cull ); break;
+                case TEAM_BLUE: table_writer_id( w, 0xecf3d3a7c1693e2dull ); break;
+                case TEAM_GREEN: table_writer_id( w, 0xcf00d78fd5953f1cull ); break;
+                case TEAM_GOLD: table_writer_id( w, 0xc416c97e0d3218b3ull ); break;
+                default: return 0; /* no declared identity */
+            }
+        }
+    }
+    table_writer_leb( w, 0 );
+    return !w->overflow;
 }
 
 static SCHEMA_UNUSED int64_t render_explosion_measure( const RenderExplosion * value )
 {
-    int64_t bytes = 2; /* terminator */
-    {
-        int64_t body_position = render_vector3_measure( &value->position );
-        if ( body_position < 0 ) { return -1; }
-        if ( body_position > 2 ) { bytes += 3 + 4 + body_position; } /* position: all-default nested elides */
-    }
-    {
-        int64_t body_rotation = render_quaternion_measure( &value->rotation );
-        if ( body_rotation < 0 ) { return -1; }
-        if ( body_rotation > 2 ) { bytes += 3 + 4 + body_rotation; } /* rotation: all-default nested elides */
-    }
-    if ( value->t != 0.0 ) { bytes += 3 + 8; } /* t */
-    if ( value->explosion_id != 0 ) { bytes += 3 + 4; } /* explosion_id */
-    if ( value->parent_object_id != 0 ) { bytes += 3 + 4; } /* parent_object_id */
-    if ( value->explosion_type != EXPLOSION_TYPE_NONE )
-    {
-        uint16_t id_explosion_type = 0;
-        switch ( value->explosion_type ) /* ExplosionType rides as the u16 hash of its VARIANT NAME (§5) */
-        {
-            case EXPLOSION_TYPE_NONE: id_explosion_type = 0; break;
-            case EXPLOSION_TYPE_SMALL: id_explosion_type = 0x2eac; break;
-            case EXPLOSION_TYPE_LARGE: id_explosion_type = 0x6edf; break;
-            default: return -1; /* no variant names this value: no wire identity */
-        }
-        (void) id_explosion_type;
-        bytes += 3 + 2; /* explosion_type: the variant's name hash */
-    }
-    if ( value->team != TEAM_NONE )
-    {
-        uint16_t id_team = 0;
-        switch ( value->team ) /* Team rides as the u16 hash of its VARIANT NAME (§5) */
-        {
-            case TEAM_NONE: id_team = 0; break;
-            case TEAM_RED: id_team = 0xbb03; break;
-            case TEAM_BLUE: id_team = 0xf630; break;
-            case TEAM_GREEN: id_team = 0x6e0f; break;
-            case TEAM_GOLD: id_team = 0xda27; break;
-            default: return -1; /* no variant names this value: no wire identity */
-        }
-        (void) id_team;
-        bytes += 3 + 2; /* team: the variant's name hash */
-    }
-    return bytes;
-}
-
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_explosion_save_body( TableWriter * w, const RenderExplosion * value )
-{
-    {
-        int64_t body_position = render_vector3_measure( &value->position );
-        if ( body_position < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
-        if ( body_position > 2 ) /* all-default nested elides */
-        {
-            table_writer_put16( w, 0xdd45 ); table_writer_put8( w, 13 ); /* position */
-            table_writer_put32( w, (uint32_t) body_position );
-            if ( !render_vector3_save_body( w, &value->position ) ) { return 0; }
-        }
-    }
-    {
-        int64_t body_rotation = render_quaternion_measure( &value->rotation );
-        if ( body_rotation < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
-        if ( body_rotation > 2 ) /* all-default nested elides */
-        {
-            table_writer_put16( w, 0x60f3 ); table_writer_put8( w, 13 ); /* rotation */
-            table_writer_put32( w, (uint32_t) body_rotation );
-            if ( !render_quaternion_save_body( w, &value->rotation ) ) { return 0; }
-        }
-    }
-    if ( value->t != 0.0 )
-    {
-        table_writer_put16( w, 0xccaf ); table_writer_put8( w, 11 ); /* t */
-        table_writer_put64( w, table_double_to_bits( value->t ) );
-    }
-    if ( value->explosion_id != 0 )
-    {
-        table_writer_put16( w, 0x5be0 ); table_writer_put8( w, 8 ); /* explosion_id */
-        table_writer_put32( w, (uint32_t) ( value->explosion_id ) );
-    }
-    if ( value->parent_object_id != 0 )
-    {
-        table_writer_put16( w, 0xeeb6 ); table_writer_put8( w, 8 ); /* parent_object_id */
-        table_writer_put32( w, (uint32_t) ( value->parent_object_id ) );
-    }
-    if ( value->explosion_type != EXPLOSION_TYPE_NONE )
-    {
-        uint16_t id_explosion_type = 0;
-        switch ( value->explosion_type ) /* ExplosionType rides as the u16 hash of its VARIANT NAME (§5) */
-        {
-            case EXPLOSION_TYPE_NONE: id_explosion_type = 0; break;
-            case EXPLOSION_TYPE_SMALL: id_explosion_type = 0x2eac; break;
-            case EXPLOSION_TYPE_LARGE: id_explosion_type = 0x6edf; break;
-            default: return 0; /* no variant names this value: no wire identity */
-        }
-        table_writer_put16( w, 0x98fa ); table_writer_put8( w, 7 ); /* explosion_type */
-        table_writer_put16( w, id_explosion_type );
-    }
-    if ( value->team != TEAM_NONE )
-    {
-        uint16_t id_team = 0;
-        switch ( value->team ) /* Team rides as the u16 hash of its VARIANT NAME (§5) */
-        {
-            case TEAM_NONE: id_team = 0; break;
-            case TEAM_RED: id_team = 0xbb03; break;
-            case TEAM_BLUE: id_team = 0xf630; break;
-            case TEAM_GREEN: id_team = 0x6e0f; break;
-            case TEAM_GOLD: id_team = 0xda27; break;
-            default: return 0; /* no variant names this value: no wire identity */
-        }
-        table_writer_put16( w, 0xdff1 ); table_writer_put8( w, 7 ); /* team */
-        table_writer_put16( w, id_team );
-    }
-    table_writer_put16( w, 0 ); /* terminator */
-    return !w->overflow;
+    TableWriter w = table_writer_make( NULL, INT64_MAX );
+    table_writer_put8( &w, 1 );
+    if ( !render_explosion_save_body( &w, value ) ) { return -1; }
+    table_writer_finish( &w );
+    return w.overflow ? -1 : w.offset;
 }
 
 static SCHEMA_UNUSED int64_t render_explosion_save( const RenderExplosion * value, uint8_t * buffer, int64_t capacity )
 {
+    if ( buffer == NULL || capacity < 0 ) { return -1; }
     TableWriter w = table_writer_make( buffer, capacity );
+    table_writer_put8( &w, 1 );
     if ( !render_explosion_save_body( &w, value ) ) { return -1; }
-    return w.offset; /* == render_explosion_measure( value ) */
+    table_writer_finish( &w );
+    return w.overflow ? -1 : w.offset;
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_explosion_load_body( TableReader * r, RenderExplosion * value )
+static SCHEMA_UNUSED int render_explosion_load_body( TableReader * r, RenderExplosion * value )
 {
-    render_explosion_reset( value ); /* prefill declared defaults in place, then overlay */
+    render_explosion_reset( value );
     for ( ;; )
     {
-        uint16_t field_id;
-        uint8_t kind;
-        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = table_reader_get16( r );
-        if ( field_id == 0 ) { return 1; }
-        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = table_reader_get8( r );
-        switch ( field_id )
+        uint64_t ref, id; uint8_t kind;
+        if ( !table_reader_leb( r, &ref ) ) { r->report->malformed = 1; return 0; }
+        if ( ref == 0 ) { return 1; }
+        if ( ref > r->id_count || !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        id = table_reader_id_at( r, ref ); kind = table_reader_get8( r );
+        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->malformed = 1; return 0; }
+        switch ( id )
         {
-            case 0xdd45: /* position */
+            case 0x4cbf3a26fca1d74aull: /* position */
             {
                 if ( kind != 13 )
                 {
@@ -3357,18 +4785,13 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_explosion_load_bod
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint32_t body_len;
-                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = table_reader_get32( r );
-                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
-                {
-                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
-                    render_vector3_load_body( &sub, &value->position );
-                }
-                r->offset += body_len;
+                TableReader sub;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                render_vector3_load_body( &sub, &value->position );
+                if ( sub.offset != sub.size ) { r->report->malformed = 1; render_vector3_reset( &value->position ); }
                 break;
             }
-            case 0x60f3: /* rotation */
+            case 0xb51afb05cd34709full: /* rotation */
             {
                 if ( kind != 13 )
                 {
@@ -3376,456 +4799,658 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_explosion_load_bod
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint32_t body_len;
-                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = table_reader_get32( r );
-                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
-                {
-                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
-                    render_quaternion_load_body( &sub, &value->rotation );
-                }
-                r->offset += body_len;
+                TableReader sub;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                render_quaternion_load_body( &sub, &value->rotation );
+                if ( sub.offset != sub.size ) { r->report->malformed = 1; render_quaternion_reset( &value->rotation ); }
                 break;
             }
-            case 0xccaf: /* t */
+            case 0xaf63e94c860202a3ull: /* t */
             {
                 if ( kind != 11 )
                 {
-                    r->report->kind_mismatch++;
-                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
-                    break;
-                }
-                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                value->t = table_bits_to_double( table_reader_get64( &(*r) ) );
-                break;
-            }
-            case 0x5be0: /* explosion_id */
-            {
-                if ( kind != 8 )
-                {
-                    r->report->kind_mismatch++;
-                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
-                    break;
-                }
-                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                {
-                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
-                    value->explosion_id = decoded_v;
-                }
-                break;
-            }
-            case 0xeeb6: /* parent_object_id */
-            {
-                if ( kind != 8 )
-                {
-                    r->report->kind_mismatch++;
-                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
-                    break;
-                }
-                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                {
-                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
-                    value->parent_object_id = decoded_v;
-                }
-                break;
-            }
-            case 0x98fa: /* explosion_type */
-            {
-                if ( kind != 7 )
-                {
-                    r->report->kind_mismatch++;
-                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
-                    break;
-                }
-                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
-                {
-                    uint16_t variant = table_reader_get16( &(*r) );
-                    switch ( variant )
+                    if ( table_kind_widens( kind, 11 ) )
                     {
-                        case 0: value->explosion_type = EXPLOSION_TYPE_NONE; break;
-                        case 0x2eac: value->explosion_type = EXPLOSION_TYPE_SMALL; break;
-                        case 0x6edf: value->explosion_type = EXPLOSION_TYPE_LARGE; break;
-                        default: value->explosion_type = EXPLOSION_TYPE_NONE; r->report->unknown++; break; /* an id this build cannot name */
+                        switch ( kind )
+                        {
+                            case 10:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                double decoded_wide = table_wire_widen_f32( table_reader_get32( &(*r) ) );
+                                value->t = decoded_wide;
+                                break;
+                            }
+                            case 11:
+                            {
+                                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                                value->t = table_bits_to_double( table_reader_get64( &(*r) ) );
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
+                    r->report->kind_mismatch++;
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    break;
+                }
+                switch ( kind )
+                {
+                    case 10:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        double decoded_wide = table_wire_widen_f32( table_reader_get32( &(*r) ) );
+                        value->t = decoded_wide;
+                        break;
+                    }
+                    case 11:
+                    {
+                        if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                        value->t = table_bits_to_double( table_reader_get64( &(*r) ) );
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
+                }
+                break;
+            }
+            case 0xfd7f3fa0b16ed778ull: /* explosion_id */
+            {
+                if ( kind != 8 )
+                {
+                    if ( table_kind_widens( kind, 8 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 6:
+                            {
+                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                                value->explosion_id = decoded_wide;
+                                break;
+                            }
+                            case 7:
+                            {
+                                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                                value->explosion_id = decoded_wide;
+                                break;
+                            }
+                            case 8:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                {
+                                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                                    value->explosion_id = decoded_v;
+                                }
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
+                    r->report->kind_mismatch++;
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    break;
+                }
+                switch ( kind )
+                {
+                    case 6:
+                    {
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                        value->explosion_id = decoded_wide;
+                        break;
+                    }
+                    case 7:
+                    {
+                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                        value->explosion_id = decoded_wide;
+                        break;
+                    }
+                    case 8:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        {
+                            uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                            value->explosion_id = decoded_v;
+                        }
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
+                }
+                break;
+            }
+            case 0x0bee7b3cb4046c93ull: /* parent_object_id */
+            {
+                if ( kind != 8 )
+                {
+                    if ( table_kind_widens( kind, 8 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 6:
+                            {
+                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                                value->parent_object_id = decoded_wide;
+                                break;
+                            }
+                            case 7:
+                            {
+                                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                                value->parent_object_id = decoded_wide;
+                                break;
+                            }
+                            case 8:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                {
+                                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                                    value->parent_object_id = decoded_v;
+                                }
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
+                    r->report->kind_mismatch++;
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    break;
+                }
+                switch ( kind )
+                {
+                    case 6:
+                    {
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                        value->parent_object_id = decoded_wide;
+                        break;
+                    }
+                    case 7:
+                    {
+                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                        value->parent_object_id = decoded_wide;
+                        break;
+                    }
+                    case 8:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        {
+                            uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                            value->parent_object_id = decoded_v;
+                        }
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
+                }
+                break;
+            }
+            case 0xdc89eb9cd3393be5ull: /* explosion_type */
+            {
+                if ( kind != 30 )
+                {
+                    r->report->kind_mismatch++;
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    break;
+                }
+                {
+                    uint64_t variant_ref;
+                    if ( !table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->malformed = 1; return 0; }
+                    if ( variant_ref == 0 ) { value->explosion_type = EXPLOSION_TYPE_NONE; }
+                    else
+                    {
+                        switch ( table_reader_id_at( &(*r), variant_ref ) )
+                        {
+                            case 0x3d2cc8d952adebecull: value->explosion_type = EXPLOSION_TYPE_SMALL; break;
+                            case 0xc8736ef79380e634ull: value->explosion_type = EXPLOSION_TYPE_LARGE; break;
+                            default: value->explosion_type = EXPLOSION_TYPE_NONE; r->report->unknown++; break;
+                        }
                     }
                 }
                 break;
             }
-            case 0xdff1: /* team */
+            case 0xfa23d9ef19afc32cull: /* team */
             {
-                if ( kind != 7 )
+                if ( kind != 30 )
                 {
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t variant = table_reader_get16( &(*r) );
-                    switch ( variant )
+                    uint64_t variant_ref;
+                    if ( !table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->malformed = 1; return 0; }
+                    if ( variant_ref == 0 ) { value->team = TEAM_NONE; }
+                    else
                     {
-                        case 0: value->team = TEAM_NONE; break;
-                        case 0xbb03: value->team = TEAM_RED; break;
-                        case 0xf630: value->team = TEAM_BLUE; break;
-                        case 0x6e0f: value->team = TEAM_GREEN; break;
-                        case 0xda27: value->team = TEAM_GOLD; break;
-                        default: value->team = TEAM_NONE; r->report->unknown++; break; /* an id this build cannot name */
+                        switch ( table_reader_id_at( &(*r), variant_ref ) )
+                        {
+                            case 0x9ff1de19feac1b7cull: value->team = TEAM_RED; break;
+                            case 0xecf3d3a7c1693e2dull: value->team = TEAM_BLUE; break;
+                            case 0xcf00d78fd5953f1cull: value->team = TEAM_GREEN; break;
+                            case 0xc416c97e0d3218b3ull: value->team = TEAM_GOLD; break;
+                            default: value->team = TEAM_NONE; r->report->unknown++; break;
+                        }
                     }
                 }
                 break;
             }
             default:
-            {
                 r->report->unknown++;
                 if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
-            }
         }
     }
 }
 
 static SCHEMA_UNUSED int render_explosion_load( RenderExplosion * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
-    TableReport ignored;
-    TableReader r;
+    TableReport ignored; TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    if ( report == NULL ) { report = &ignored; }
+    render_explosion_reset( value );
+    if ( !table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     return render_explosion_load_body( &r, value );
+}
+
+static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_cameras_( TableWriter * w, const RenderFrame * value )
+{
+    int32_t i;
+    table_writer_put8( w, 13 ); table_writer_leb( w, (uint64_t) value->cameras_count );
+    for ( i = 0; i < value->cameras_count; i++ )
+    {
+        {
+            TableWriter probe = table_writer_probe( w );
+            if ( !render_camera_save_body( &probe, &value->cameras[i] ) ) { return 0; }
+            table_writer_leb( w, (uint64_t) probe.offset );
+            if ( !render_camera_save_body( w, &value->cameras[i] ) ) { return 0; }
+        }
+    }
+    return !w->overflow;
+}
+
+static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_ships_( TableWriter * w, const RenderFrame * value )
+{
+    int32_t i;
+    table_writer_put8( w, 13 ); table_writer_leb( w, (uint64_t) value->ships_count );
+    for ( i = 0; i < value->ships_count; i++ )
+    {
+        {
+            TableWriter probe = table_writer_probe( w );
+            if ( !render_ship_save_body( &probe, &value->ships[i] ) ) { return 0; }
+            table_writer_leb( w, (uint64_t) probe.offset );
+            if ( !render_ship_save_body( w, &value->ships[i] ) ) { return 0; }
+        }
+    }
+    return !w->overflow;
+}
+
+static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_turrets_( TableWriter * w, const RenderFrame * value )
+{
+    int32_t i;
+    table_writer_put8( w, 13 ); table_writer_leb( w, (uint64_t) value->turrets_count );
+    for ( i = 0; i < value->turrets_count; i++ )
+    {
+        {
+            TableWriter probe = table_writer_probe( w );
+            if ( !render_turret_save_body( &probe, &value->turrets[i] ) ) { return 0; }
+            table_writer_leb( w, (uint64_t) probe.offset );
+            if ( !render_turret_save_body( w, &value->turrets[i] ) ) { return 0; }
+        }
+    }
+    return !w->overflow;
+}
+
+static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_missiles_( TableWriter * w, const RenderFrame * value )
+{
+    int32_t i;
+    table_writer_put8( w, 13 ); table_writer_leb( w, (uint64_t) value->missiles_count );
+    for ( i = 0; i < value->missiles_count; i++ )
+    {
+        {
+            TableWriter probe = table_writer_probe( w );
+            if ( !render_missile_save_body( &probe, &value->missiles[i] ) ) { return 0; }
+            table_writer_leb( w, (uint64_t) probe.offset );
+            if ( !render_missile_save_body( w, &value->missiles[i] ) ) { return 0; }
+        }
+    }
+    return !w->overflow;
+}
+
+static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_dynamic_props_( TableWriter * w, const RenderFrame * value )
+{
+    int32_t i;
+    table_writer_put8( w, 13 ); table_writer_leb( w, (uint64_t) value->dynamic_props_count );
+    for ( i = 0; i < value->dynamic_props_count; i++ )
+    {
+        {
+            TableWriter probe = table_writer_probe( w );
+            if ( !render_dynamic_prop_save_body( &probe, &value->dynamic_props[i] ) ) { return 0; }
+            table_writer_leb( w, (uint64_t) probe.offset );
+            if ( !render_dynamic_prop_save_body( w, &value->dynamic_props[i] ) ) { return 0; }
+        }
+    }
+    return !w->overflow;
+}
+
+static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_static_props_( TableWriter * w, const RenderFrame * value )
+{
+    int32_t i;
+    table_writer_put8( w, 13 ); table_writer_leb( w, (uint64_t) value->static_props_count );
+    for ( i = 0; i < value->static_props_count; i++ )
+    {
+        {
+            TableWriter probe = table_writer_probe( w );
+            if ( !render_static_prop_save_body( &probe, &value->static_props[i] ) ) { return 0; }
+            table_writer_leb( w, (uint64_t) probe.offset );
+            if ( !render_static_prop_save_body( w, &value->static_props[i] ) ) { return 0; }
+        }
+    }
+    return !w->overflow;
+}
+
+static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_cosmetic_props_( TableWriter * w, const RenderFrame * value )
+{
+    int32_t i;
+    table_writer_put8( w, 13 ); table_writer_leb( w, (uint64_t) value->cosmetic_props_count );
+    for ( i = 0; i < value->cosmetic_props_count; i++ )
+    {
+        {
+            TableWriter probe = table_writer_probe( w );
+            if ( !render_cosmetic_prop_save_body( &probe, &value->cosmetic_props[i] ) ) { return 0; }
+            table_writer_leb( w, (uint64_t) probe.offset );
+            if ( !render_cosmetic_prop_save_body( w, &value->cosmetic_props[i] ) ) { return 0; }
+        }
+    }
+    return !w->overflow;
+}
+
+static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_lasers_( TableWriter * w, const RenderFrame * value )
+{
+    int32_t i;
+    table_writer_put8( w, 13 ); table_writer_leb( w, (uint64_t) value->lasers_count );
+    for ( i = 0; i < value->lasers_count; i++ )
+    {
+        {
+            TableWriter probe = table_writer_probe( w );
+            if ( !render_laser_save_body( &probe, &value->lasers[i] ) ) { return 0; }
+            table_writer_leb( w, (uint64_t) probe.offset );
+            if ( !render_laser_save_body( w, &value->lasers[i] ) ) { return 0; }
+        }
+    }
+    return !w->overflow;
+}
+
+static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_explosions_( TableWriter * w, const RenderFrame * value )
+{
+    int32_t i;
+    table_writer_put8( w, 13 ); table_writer_leb( w, (uint64_t) value->explosions_count );
+    for ( i = 0; i < value->explosions_count; i++ )
+    {
+        {
+            TableWriter probe = table_writer_probe( w );
+            if ( !render_explosion_save_body( &probe, &value->explosions[i] ) ) { return 0; }
+            table_writer_leb( w, (uint64_t) probe.offset );
+            if ( !render_explosion_save_body( w, &value->explosions[i] ) ) { return 0; }
+        }
+    }
+    return !w->overflow;
+}
+
+static SCHEMA_UNUSED int render_frame_save_body( TableWriter * w, const RenderFrame * value )
+{
+    (void) value;
+    { /* version */
+        if ( value->version != 0 )
+        {
+            table_writer_id( w, 0xbb62c62c9808ea37ull ); table_writer_put8( w, 9 );
+            table_writer_put64( w, (uint64_t) ( value->version ) );
+        }
+    }
+    { /* cameras */
+        if ( value->cameras_count < 0 || value->cameras_count > 1 ) { return 0; }
+        if ( value->cameras_count > 0 )
+        {
+            table_writer_id( w, 0x0f9222d2ba7aa2a7ull ); table_writer_put8( w, 14 );
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !schema_blockdemo_render_frame_wire_cameras_( &probe, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !schema_blockdemo_render_frame_wire_cameras_( w, value ) ) { return 0; }
+            }
+        }
+    }
+    { /* ships */
+        if ( value->ships_count < 0 || value->ships_count > 4096 ) { return 0; }
+        if ( value->ships_count > 0 )
+        {
+            table_writer_id( w, 0x294a5c4913e1ad44ull ); table_writer_put8( w, 14 );
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !schema_blockdemo_render_frame_wire_ships_( &probe, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !schema_blockdemo_render_frame_wire_ships_( w, value ) ) { return 0; }
+            }
+        }
+    }
+    { /* turrets */
+        if ( value->turrets_count < 0 || value->turrets_count > 1024 ) { return 0; }
+        if ( value->turrets_count > 0 )
+        {
+            table_writer_id( w, 0x84f8260bc283608cull ); table_writer_put8( w, 14 );
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !schema_blockdemo_render_frame_wire_turrets_( &probe, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !schema_blockdemo_render_frame_wire_turrets_( w, value ) ) { return 0; }
+            }
+        }
+    }
+    { /* missiles */
+        if ( value->missiles_count < 0 || value->missiles_count > 4096 ) { return 0; }
+        if ( value->missiles_count > 0 )
+        {
+            table_writer_id( w, 0x1c3027194b1ba4d0ull ); table_writer_put8( w, 14 );
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !schema_blockdemo_render_frame_wire_missiles_( &probe, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !schema_blockdemo_render_frame_wire_missiles_( w, value ) ) { return 0; }
+            }
+        }
+    }
+    { /* dynamic_props */
+        if ( value->dynamic_props_count < 0 || value->dynamic_props_count > 4096 ) { return 0; }
+        if ( value->dynamic_props_count > 0 )
+        {
+            table_writer_id( w, 0x43125398a9903d27ull ); table_writer_put8( w, 14 );
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !schema_blockdemo_render_frame_wire_dynamic_props_( &probe, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !schema_blockdemo_render_frame_wire_dynamic_props_( w, value ) ) { return 0; }
+            }
+        }
+    }
+    { /* static_props */
+        if ( value->static_props_count < 0 || value->static_props_count > 20000 ) { return 0; }
+        if ( value->static_props_count > 0 )
+        {
+            table_writer_id( w, 0xc1f8d7edff7fcfd2ull ); table_writer_put8( w, 14 );
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !schema_blockdemo_render_frame_wire_static_props_( &probe, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !schema_blockdemo_render_frame_wire_static_props_( w, value ) ) { return 0; }
+            }
+        }
+    }
+    { /* cosmetic_props */
+        if ( value->cosmetic_props_count < 0 || value->cosmetic_props_count > 8192 ) { return 0; }
+        if ( value->cosmetic_props_count > 0 )
+        {
+            table_writer_id( w, 0x33408e39f5f480ffull ); table_writer_put8( w, 14 );
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !schema_blockdemo_render_frame_wire_cosmetic_props_( &probe, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !schema_blockdemo_render_frame_wire_cosmetic_props_( w, value ) ) { return 0; }
+            }
+        }
+    }
+    { /* lasers */
+        if ( value->lasers_count < 0 || value->lasers_count > 32000 ) { return 0; }
+        if ( value->lasers_count > 0 )
+        {
+            table_writer_id( w, 0xd982b77b3e92d16dull ); table_writer_put8( w, 14 );
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !schema_blockdemo_render_frame_wire_lasers_( &probe, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !schema_blockdemo_render_frame_wire_lasers_( w, value ) ) { return 0; }
+            }
+        }
+    }
+    { /* explosions */
+        if ( value->explosions_count < 0 || value->explosions_count > 32000 ) { return 0; }
+        if ( value->explosions_count > 0 )
+        {
+            table_writer_id( w, 0x876a8c1a85806a69ull ); table_writer_put8( w, 14 );
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !schema_blockdemo_render_frame_wire_explosions_( &probe, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !schema_blockdemo_render_frame_wire_explosions_( w, value ) ) { return 0; }
+            }
+        }
+    }
+    table_writer_leb( w, 0 );
+    return !w->overflow;
 }
 
 static SCHEMA_UNUSED int64_t render_frame_measure( const RenderFrame * value )
 {
-    int64_t bytes = 2; /* terminator */
-    if ( value->version != 0 ) { bytes += 3 + 8; } /* version */
-    if ( value->cameras_count < 0 || value->cameras_count > 1 ) { return -1; } /* storage invariant */
-    if ( value->cameras_count > 0 )
-    {
-        int32_t i;
-        bytes += 3 + 4 + 5; /* cameras */
-        for ( i = 0; i < value->cameras_count; i++ )
-        {
-            int64_t elem_cameras = render_camera_measure( &value->cameras[i] );
-            if ( elem_cameras < 0 ) { return -1; }
-            bytes += 4 + elem_cameras;
-        }
-    }
-    if ( value->ships_count < 0 || value->ships_count > 4096 ) { return -1; } /* storage invariant */
-    if ( value->ships_count > 0 )
-    {
-        int32_t i;
-        bytes += 3 + 4 + 5; /* ships */
-        for ( i = 0; i < value->ships_count; i++ )
-        {
-            int64_t elem_ships = render_ship_measure( &value->ships[i] );
-            if ( elem_ships < 0 ) { return -1; }
-            bytes += 4 + elem_ships;
-        }
-    }
-    if ( value->turrets_count < 0 || value->turrets_count > 1024 ) { return -1; } /* storage invariant */
-    if ( value->turrets_count > 0 )
-    {
-        int32_t i;
-        bytes += 3 + 4 + 5; /* turrets */
-        for ( i = 0; i < value->turrets_count; i++ )
-        {
-            int64_t elem_turrets = render_turret_measure( &value->turrets[i] );
-            if ( elem_turrets < 0 ) { return -1; }
-            bytes += 4 + elem_turrets;
-        }
-    }
-    if ( value->missiles_count < 0 || value->missiles_count > 4096 ) { return -1; } /* storage invariant */
-    if ( value->missiles_count > 0 )
-    {
-        int32_t i;
-        bytes += 3 + 4 + 5; /* missiles */
-        for ( i = 0; i < value->missiles_count; i++ )
-        {
-            int64_t elem_missiles = render_missile_measure( &value->missiles[i] );
-            if ( elem_missiles < 0 ) { return -1; }
-            bytes += 4 + elem_missiles;
-        }
-    }
-    if ( value->dynamic_props_count < 0 || value->dynamic_props_count > 4096 ) { return -1; } /* storage invariant */
-    if ( value->dynamic_props_count > 0 )
-    {
-        int32_t i;
-        bytes += 3 + 4 + 5; /* dynamic_props */
-        for ( i = 0; i < value->dynamic_props_count; i++ )
-        {
-            int64_t elem_dynamic_props = render_dynamic_prop_measure( &value->dynamic_props[i] );
-            if ( elem_dynamic_props < 0 ) { return -1; }
-            bytes += 4 + elem_dynamic_props;
-        }
-    }
-    if ( value->static_props_count < 0 || value->static_props_count > 20000 ) { return -1; } /* storage invariant */
-    if ( value->static_props_count > 0 )
-    {
-        int32_t i;
-        bytes += 3 + 4 + 5; /* static_props */
-        for ( i = 0; i < value->static_props_count; i++ )
-        {
-            int64_t elem_static_props = render_static_prop_measure( &value->static_props[i] );
-            if ( elem_static_props < 0 ) { return -1; }
-            bytes += 4 + elem_static_props;
-        }
-    }
-    if ( value->cosmetic_props_count < 0 || value->cosmetic_props_count > 8192 ) { return -1; } /* storage invariant */
-    if ( value->cosmetic_props_count > 0 )
-    {
-        int32_t i;
-        bytes += 3 + 4 + 5; /* cosmetic_props */
-        for ( i = 0; i < value->cosmetic_props_count; i++ )
-        {
-            int64_t elem_cosmetic_props = render_cosmetic_prop_measure( &value->cosmetic_props[i] );
-            if ( elem_cosmetic_props < 0 ) { return -1; }
-            bytes += 4 + elem_cosmetic_props;
-        }
-    }
-    if ( value->lasers_count < 0 || value->lasers_count > 32000 ) { return -1; } /* storage invariant */
-    if ( value->lasers_count > 0 )
-    {
-        int32_t i;
-        bytes += 3 + 4 + 5; /* lasers */
-        for ( i = 0; i < value->lasers_count; i++ )
-        {
-            int64_t elem_lasers = render_laser_measure( &value->lasers[i] );
-            if ( elem_lasers < 0 ) { return -1; }
-            bytes += 4 + elem_lasers;
-        }
-    }
-    if ( value->explosions_count < 0 || value->explosions_count > 32000 ) { return -1; } /* storage invariant */
-    if ( value->explosions_count > 0 )
-    {
-        int32_t i;
-        bytes += 3 + 4 + 5; /* explosions */
-        for ( i = 0; i < value->explosions_count; i++ )
-        {
-            int64_t elem_explosions = render_explosion_measure( &value->explosions[i] );
-            if ( elem_explosions < 0 ) { return -1; }
-            bytes += 4 + elem_explosions;
-        }
-    }
-    return bytes;
-}
-
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_frame_save_body( TableWriter * w, const RenderFrame * value )
-{
-    if ( value->version != 0 )
-    {
-        table_writer_put16( w, 0xe8e6 ); table_writer_put8( w, 9 ); /* version */
-        table_writer_put64( w, (uint64_t) ( value->version ) );
-    }
-    if ( value->cameras_count < 0 || value->cameras_count > 1 ) { return 0; } /* storage invariant */
-    if ( value->cameras_count > 0 )
-    {
-        int64_t len_at_cameras;
-        int32_t i;
-        table_writer_put16( w, 0x8b0e ); table_writer_put8( w, 14 ); /* cameras */
-        len_at_cameras = w->offset; table_writer_put32( w, 0 );
-        table_writer_put8( w, 13 ); table_writer_put32( w, (uint32_t) value->cameras_count );
-        for ( i = 0; i < value->cameras_count; i++ )
-        {
-            {
-                int64_t elem_len_at = w->offset;
-                table_writer_put32( w, 0 );
-                if ( !render_camera_save_body( w, &value->cameras[i] ) ) { return 0; }
-                table_writer_patch32( w, elem_len_at, (uint32_t) ( w->offset - elem_len_at - 4 ) );
-            }
-        }
-        table_writer_patch32( w, len_at_cameras, (uint32_t) ( w->offset - len_at_cameras - 4 ) );
-    }
-    if ( value->ships_count < 0 || value->ships_count > 4096 ) { return 0; } /* storage invariant */
-    if ( value->ships_count > 0 )
-    {
-        int64_t len_at_ships;
-        int32_t i;
-        table_writer_put16( w, 0x2d39 ); table_writer_put8( w, 14 ); /* ships */
-        len_at_ships = w->offset; table_writer_put32( w, 0 );
-        table_writer_put8( w, 13 ); table_writer_put32( w, (uint32_t) value->ships_count );
-        for ( i = 0; i < value->ships_count; i++ )
-        {
-            {
-                int64_t elem_len_at = w->offset;
-                table_writer_put32( w, 0 );
-                if ( !render_ship_save_body( w, &value->ships[i] ) ) { return 0; }
-                table_writer_patch32( w, elem_len_at, (uint32_t) ( w->offset - elem_len_at - 4 ) );
-            }
-        }
-        table_writer_patch32( w, len_at_ships, (uint32_t) ( w->offset - len_at_ships - 4 ) );
-    }
-    if ( value->turrets_count < 0 || value->turrets_count > 1024 ) { return 0; } /* storage invariant */
-    if ( value->turrets_count > 0 )
-    {
-        int64_t len_at_turrets;
-        int32_t i;
-        table_writer_put16( w, 0x48ad ); table_writer_put8( w, 14 ); /* turrets */
-        len_at_turrets = w->offset; table_writer_put32( w, 0 );
-        table_writer_put8( w, 13 ); table_writer_put32( w, (uint32_t) value->turrets_count );
-        for ( i = 0; i < value->turrets_count; i++ )
-        {
-            {
-                int64_t elem_len_at = w->offset;
-                table_writer_put32( w, 0 );
-                if ( !render_turret_save_body( w, &value->turrets[i] ) ) { return 0; }
-                table_writer_patch32( w, elem_len_at, (uint32_t) ( w->offset - elem_len_at - 4 ) );
-            }
-        }
-        table_writer_patch32( w, len_at_turrets, (uint32_t) ( w->offset - len_at_turrets - 4 ) );
-    }
-    if ( value->missiles_count < 0 || value->missiles_count > 4096 ) { return 0; } /* storage invariant */
-    if ( value->missiles_count > 0 )
-    {
-        int64_t len_at_missiles;
-        int32_t i;
-        table_writer_put16( w, 0xa532 ); table_writer_put8( w, 14 ); /* missiles */
-        len_at_missiles = w->offset; table_writer_put32( w, 0 );
-        table_writer_put8( w, 13 ); table_writer_put32( w, (uint32_t) value->missiles_count );
-        for ( i = 0; i < value->missiles_count; i++ )
-        {
-            {
-                int64_t elem_len_at = w->offset;
-                table_writer_put32( w, 0 );
-                if ( !render_missile_save_body( w, &value->missiles[i] ) ) { return 0; }
-                table_writer_patch32( w, elem_len_at, (uint32_t) ( w->offset - elem_len_at - 4 ) );
-            }
-        }
-        table_writer_patch32( w, len_at_missiles, (uint32_t) ( w->offset - len_at_missiles - 4 ) );
-    }
-    if ( value->dynamic_props_count < 0 || value->dynamic_props_count > 4096 ) { return 0; } /* storage invariant */
-    if ( value->dynamic_props_count > 0 )
-    {
-        int64_t len_at_dynamic_props;
-        int32_t i;
-        table_writer_put16( w, 0x810b ); table_writer_put8( w, 14 ); /* dynamic_props */
-        len_at_dynamic_props = w->offset; table_writer_put32( w, 0 );
-        table_writer_put8( w, 13 ); table_writer_put32( w, (uint32_t) value->dynamic_props_count );
-        for ( i = 0; i < value->dynamic_props_count; i++ )
-        {
-            {
-                int64_t elem_len_at = w->offset;
-                table_writer_put32( w, 0 );
-                if ( !render_dynamic_prop_save_body( w, &value->dynamic_props[i] ) ) { return 0; }
-                table_writer_patch32( w, elem_len_at, (uint32_t) ( w->offset - elem_len_at - 4 ) );
-            }
-        }
-        table_writer_patch32( w, len_at_dynamic_props, (uint32_t) ( w->offset - len_at_dynamic_props - 4 ) );
-    }
-    if ( value->static_props_count < 0 || value->static_props_count > 20000 ) { return 0; } /* storage invariant */
-    if ( value->static_props_count > 0 )
-    {
-        int64_t len_at_static_props;
-        int32_t i;
-        table_writer_put16( w, 0x55a9 ); table_writer_put8( w, 14 ); /* static_props */
-        len_at_static_props = w->offset; table_writer_put32( w, 0 );
-        table_writer_put8( w, 13 ); table_writer_put32( w, (uint32_t) value->static_props_count );
-        for ( i = 0; i < value->static_props_count; i++ )
-        {
-            {
-                int64_t elem_len_at = w->offset;
-                table_writer_put32( w, 0 );
-                if ( !render_static_prop_save_body( w, &value->static_props[i] ) ) { return 0; }
-                table_writer_patch32( w, elem_len_at, (uint32_t) ( w->offset - elem_len_at - 4 ) );
-            }
-        }
-        table_writer_patch32( w, len_at_static_props, (uint32_t) ( w->offset - len_at_static_props - 4 ) );
-    }
-    if ( value->cosmetic_props_count < 0 || value->cosmetic_props_count > 8192 ) { return 0; } /* storage invariant */
-    if ( value->cosmetic_props_count > 0 )
-    {
-        int64_t len_at_cosmetic_props;
-        int32_t i;
-        table_writer_put16( w, 0x1142 ); table_writer_put8( w, 14 ); /* cosmetic_props */
-        len_at_cosmetic_props = w->offset; table_writer_put32( w, 0 );
-        table_writer_put8( w, 13 ); table_writer_put32( w, (uint32_t) value->cosmetic_props_count );
-        for ( i = 0; i < value->cosmetic_props_count; i++ )
-        {
-            {
-                int64_t elem_len_at = w->offset;
-                table_writer_put32( w, 0 );
-                if ( !render_cosmetic_prop_save_body( w, &value->cosmetic_props[i] ) ) { return 0; }
-                table_writer_patch32( w, elem_len_at, (uint32_t) ( w->offset - elem_len_at - 4 ) );
-            }
-        }
-        table_writer_patch32( w, len_at_cosmetic_props, (uint32_t) ( w->offset - len_at_cosmetic_props - 4 ) );
-    }
-    if ( value->lasers_count < 0 || value->lasers_count > 32000 ) { return 0; } /* storage invariant */
-    if ( value->lasers_count > 0 )
-    {
-        int64_t len_at_lasers;
-        int32_t i;
-        table_writer_put16( w, 0x411a ); table_writer_put8( w, 14 ); /* lasers */
-        len_at_lasers = w->offset; table_writer_put32( w, 0 );
-        table_writer_put8( w, 13 ); table_writer_put32( w, (uint32_t) value->lasers_count );
-        for ( i = 0; i < value->lasers_count; i++ )
-        {
-            {
-                int64_t elem_len_at = w->offset;
-                table_writer_put32( w, 0 );
-                if ( !render_laser_save_body( w, &value->lasers[i] ) ) { return 0; }
-                table_writer_patch32( w, elem_len_at, (uint32_t) ( w->offset - elem_len_at - 4 ) );
-            }
-        }
-        table_writer_patch32( w, len_at_lasers, (uint32_t) ( w->offset - len_at_lasers - 4 ) );
-    }
-    if ( value->explosions_count < 0 || value->explosions_count > 32000 ) { return 0; } /* storage invariant */
-    if ( value->explosions_count > 0 )
-    {
-        int64_t len_at_explosions;
-        int32_t i;
-        table_writer_put16( w, 0x6bfb ); table_writer_put8( w, 14 ); /* explosions */
-        len_at_explosions = w->offset; table_writer_put32( w, 0 );
-        table_writer_put8( w, 13 ); table_writer_put32( w, (uint32_t) value->explosions_count );
-        for ( i = 0; i < value->explosions_count; i++ )
-        {
-            {
-                int64_t elem_len_at = w->offset;
-                table_writer_put32( w, 0 );
-                if ( !render_explosion_save_body( w, &value->explosions[i] ) ) { return 0; }
-                table_writer_patch32( w, elem_len_at, (uint32_t) ( w->offset - elem_len_at - 4 ) );
-            }
-        }
-        table_writer_patch32( w, len_at_explosions, (uint32_t) ( w->offset - len_at_explosions - 4 ) );
-    }
-    table_writer_put16( w, 0 ); /* terminator */
-    return !w->overflow;
+    TableWriter w = table_writer_make( NULL, INT64_MAX );
+    table_writer_put8( &w, 1 );
+    if ( !render_frame_save_body( &w, value ) ) { return -1; }
+    table_writer_finish( &w );
+    return w.overflow ? -1 : w.offset;
 }
 
 static SCHEMA_UNUSED int64_t render_frame_save( const RenderFrame * value, uint8_t * buffer, int64_t capacity )
 {
+    if ( buffer == NULL || capacity < 0 ) { return -1; }
     TableWriter w = table_writer_make( buffer, capacity );
+    table_writer_put8( &w, 1 );
     if ( !render_frame_save_body( &w, value ) ) { return -1; }
-    return w.offset; /* == render_frame_measure( value ) */
+    table_writer_finish( &w );
+    return w.overflow ? -1 : w.offset;
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_frame_load_body( TableReader * r, RenderFrame * value )
+static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * value )
 {
-    render_frame_reset( value ); /* prefill declared defaults in place, then overlay */
+    render_frame_reset( value );
     for ( ;; )
     {
-        uint16_t field_id;
-        uint8_t kind;
-        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = table_reader_get16( r );
-        if ( field_id == 0 ) { return 1; }
-        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = table_reader_get8( r );
-        switch ( field_id )
+        uint64_t ref, id; uint8_t kind;
+        if ( !table_reader_leb( r, &ref ) ) { r->report->malformed = 1; return 0; }
+        if ( ref == 0 ) { return 1; }
+        if ( ref > r->id_count || !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        id = table_reader_id_at( r, ref ); kind = table_reader_get8( r );
+        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->malformed = 1; return 0; }
+        switch ( id )
         {
-            case 0xe8e6: /* version */
+            case 0xbb62c62c9808ea37ull: /* version */
             {
                 if ( kind != 9 )
                 {
+                    if ( table_kind_widens( kind, 9 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 6:
+                            {
+                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                                value->version = decoded_wide;
+                                break;
+                            }
+                            case 7:
+                            {
+                                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                                value->version = decoded_wide;
+                                break;
+                            }
+                            case 8:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint32_t) table_reader_get32( &(*r) );
+                                value->version = decoded_wide;
+                                break;
+                            }
+                            case 9:
+                            {
+                                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                                {
+                                    uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
+                                    value->version = decoded_v;
+                                }
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                switch ( kind )
                 {
-                    uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
-                    value->version = decoded_v;
+                    case 6:
+                    {
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                        value->version = decoded_wide;
+                        break;
+                    }
+                    case 7:
+                    {
+                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                        value->version = decoded_wide;
+                        break;
+                    }
+                    case 8:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint32_t) table_reader_get32( &(*r) );
+                        value->version = decoded_wide;
+                        break;
+                    }
+                    case 9:
+                    {
+                        if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                        {
+                            uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
+                            value->version = decoded_v;
+                        }
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
                 }
                 break;
             }
-            case 0x8b0e: /* cameras */
+            case 0x0f9222d2ba7aa2a7ull: /* cameras */
             {
                 if ( kind != 14 )
                 {
@@ -3833,47 +5458,34 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_frame_load_body( T
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint32_t body_len;
-                int64_t body_end;
-                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = table_reader_get32( r );
-                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
-                body_end = r->offset + body_len;
-                if ( body_len >= 5 )
+                TableReader sub;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( sub.size >= 2 )
                 {
-                    uint8_t elem_kind = table_reader_get8( r );
-                    uint32_t count = table_reader_get32( r );
-                    uint32_t keep;
-                    TableReader sub;
-                    uint32_t i;
-                    uint32_t decoded = 0;
-                    if ( elem_kind != 13 ) { r->report->kind_mismatch++; r->offset = body_end; break; }
-                    keep = count;
-                    if ( keep > 1 ) { keep = 1; r->report->clamped++; }
-                    /* elements are BOUNDED by the field body: a count the length
-                       cannot cover keeps the decoded prefix, flags malformed, and
-                       the parent continues at the next field — following fields'
-                       bytes are never fabricated into elements */
-                    sub = table_reader_make( r->buffer + r->offset, body_end - r->offset, r->report );
-                    for ( i = 0; i < keep; i++ )
+                    uint8_t elem_kind; uint64_t count, keep, i;
+                    if ( !table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->malformed = 1; }
+                    else
                     {
-                        uint32_t elem_len;
-                        if ( !table_reader_has( &sub, 4 ) ) { r->report->malformed = 1; break; }
-                        elem_len = table_reader_get32( &sub );
-                        if ( !table_reader_has( &sub, elem_len ) ) { r->report->malformed = 1; break; }
+                        if ( elem_kind != 13 )
                         {
-                            TableReader elem = table_reader_make( sub.buffer + sub.offset, elem_len, r->report );
+                            if ( !table_kind_widens( elem_kind, 13 ) ) { r->report->kind_mismatch++; break; }
+                            r->report->widened++;
+                        }
+                        keep = count; if ( keep > 1 ) { keep = 1; r->report->clamped++; }
+                        value->cameras_count = 0;
+                        for ( i = 0; i < keep; i++ )
+                        {
+                            TableReader elem;
+                            if ( !table_reader_span( &sub, &elem ) ) { r->report->malformed = 1; goto end_cameras; }
                             render_camera_load_body( &elem, &value->cameras[i] );
+                            value->cameras_count = (int32_t) i + 1;
                         }
-                        sub.offset += elem_len;
-                        decoded = i + 1;
+                        end_cameras: ;
                     }
-                    value->cameras_count = (int32_t) decoded;
                 }
-                r->offset = body_end; /* excess elements and slack skip via the length */
                 break;
             }
-            case 0x2d39: /* ships */
+            case 0x294a5c4913e1ad44ull: /* ships */
             {
                 if ( kind != 14 )
                 {
@@ -3881,47 +5493,34 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_frame_load_body( T
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint32_t body_len;
-                int64_t body_end;
-                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = table_reader_get32( r );
-                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
-                body_end = r->offset + body_len;
-                if ( body_len >= 5 )
+                TableReader sub;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( sub.size >= 2 )
                 {
-                    uint8_t elem_kind = table_reader_get8( r );
-                    uint32_t count = table_reader_get32( r );
-                    uint32_t keep;
-                    TableReader sub;
-                    uint32_t i;
-                    uint32_t decoded = 0;
-                    if ( elem_kind != 13 ) { r->report->kind_mismatch++; r->offset = body_end; break; }
-                    keep = count;
-                    if ( keep > 4096 ) { keep = 4096; r->report->clamped++; }
-                    /* elements are BOUNDED by the field body: a count the length
-                       cannot cover keeps the decoded prefix, flags malformed, and
-                       the parent continues at the next field — following fields'
-                       bytes are never fabricated into elements */
-                    sub = table_reader_make( r->buffer + r->offset, body_end - r->offset, r->report );
-                    for ( i = 0; i < keep; i++ )
+                    uint8_t elem_kind; uint64_t count, keep, i;
+                    if ( !table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->malformed = 1; }
+                    else
                     {
-                        uint32_t elem_len;
-                        if ( !table_reader_has( &sub, 4 ) ) { r->report->malformed = 1; break; }
-                        elem_len = table_reader_get32( &sub );
-                        if ( !table_reader_has( &sub, elem_len ) ) { r->report->malformed = 1; break; }
+                        if ( elem_kind != 13 )
                         {
-                            TableReader elem = table_reader_make( sub.buffer + sub.offset, elem_len, r->report );
+                            if ( !table_kind_widens( elem_kind, 13 ) ) { r->report->kind_mismatch++; break; }
+                            r->report->widened++;
+                        }
+                        keep = count; if ( keep > 4096 ) { keep = 4096; r->report->clamped++; }
+                        value->ships_count = 0;
+                        for ( i = 0; i < keep; i++ )
+                        {
+                            TableReader elem;
+                            if ( !table_reader_span( &sub, &elem ) ) { r->report->malformed = 1; goto end_ships; }
                             render_ship_load_body( &elem, &value->ships[i] );
+                            value->ships_count = (int32_t) i + 1;
                         }
-                        sub.offset += elem_len;
-                        decoded = i + 1;
+                        end_ships: ;
                     }
-                    value->ships_count = (int32_t) decoded;
                 }
-                r->offset = body_end; /* excess elements and slack skip via the length */
                 break;
             }
-            case 0x48ad: /* turrets */
+            case 0x84f8260bc283608cull: /* turrets */
             {
                 if ( kind != 14 )
                 {
@@ -3929,47 +5528,34 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_frame_load_body( T
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint32_t body_len;
-                int64_t body_end;
-                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = table_reader_get32( r );
-                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
-                body_end = r->offset + body_len;
-                if ( body_len >= 5 )
+                TableReader sub;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( sub.size >= 2 )
                 {
-                    uint8_t elem_kind = table_reader_get8( r );
-                    uint32_t count = table_reader_get32( r );
-                    uint32_t keep;
-                    TableReader sub;
-                    uint32_t i;
-                    uint32_t decoded = 0;
-                    if ( elem_kind != 13 ) { r->report->kind_mismatch++; r->offset = body_end; break; }
-                    keep = count;
-                    if ( keep > 1024 ) { keep = 1024; r->report->clamped++; }
-                    /* elements are BOUNDED by the field body: a count the length
-                       cannot cover keeps the decoded prefix, flags malformed, and
-                       the parent continues at the next field — following fields'
-                       bytes are never fabricated into elements */
-                    sub = table_reader_make( r->buffer + r->offset, body_end - r->offset, r->report );
-                    for ( i = 0; i < keep; i++ )
+                    uint8_t elem_kind; uint64_t count, keep, i;
+                    if ( !table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->malformed = 1; }
+                    else
                     {
-                        uint32_t elem_len;
-                        if ( !table_reader_has( &sub, 4 ) ) { r->report->malformed = 1; break; }
-                        elem_len = table_reader_get32( &sub );
-                        if ( !table_reader_has( &sub, elem_len ) ) { r->report->malformed = 1; break; }
+                        if ( elem_kind != 13 )
                         {
-                            TableReader elem = table_reader_make( sub.buffer + sub.offset, elem_len, r->report );
+                            if ( !table_kind_widens( elem_kind, 13 ) ) { r->report->kind_mismatch++; break; }
+                            r->report->widened++;
+                        }
+                        keep = count; if ( keep > 1024 ) { keep = 1024; r->report->clamped++; }
+                        value->turrets_count = 0;
+                        for ( i = 0; i < keep; i++ )
+                        {
+                            TableReader elem;
+                            if ( !table_reader_span( &sub, &elem ) ) { r->report->malformed = 1; goto end_turrets; }
                             render_turret_load_body( &elem, &value->turrets[i] );
+                            value->turrets_count = (int32_t) i + 1;
                         }
-                        sub.offset += elem_len;
-                        decoded = i + 1;
+                        end_turrets: ;
                     }
-                    value->turrets_count = (int32_t) decoded;
                 }
-                r->offset = body_end; /* excess elements and slack skip via the length */
                 break;
             }
-            case 0xa532: /* missiles */
+            case 0x1c3027194b1ba4d0ull: /* missiles */
             {
                 if ( kind != 14 )
                 {
@@ -3977,47 +5563,34 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_frame_load_body( T
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint32_t body_len;
-                int64_t body_end;
-                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = table_reader_get32( r );
-                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
-                body_end = r->offset + body_len;
-                if ( body_len >= 5 )
+                TableReader sub;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( sub.size >= 2 )
                 {
-                    uint8_t elem_kind = table_reader_get8( r );
-                    uint32_t count = table_reader_get32( r );
-                    uint32_t keep;
-                    TableReader sub;
-                    uint32_t i;
-                    uint32_t decoded = 0;
-                    if ( elem_kind != 13 ) { r->report->kind_mismatch++; r->offset = body_end; break; }
-                    keep = count;
-                    if ( keep > 4096 ) { keep = 4096; r->report->clamped++; }
-                    /* elements are BOUNDED by the field body: a count the length
-                       cannot cover keeps the decoded prefix, flags malformed, and
-                       the parent continues at the next field — following fields'
-                       bytes are never fabricated into elements */
-                    sub = table_reader_make( r->buffer + r->offset, body_end - r->offset, r->report );
-                    for ( i = 0; i < keep; i++ )
+                    uint8_t elem_kind; uint64_t count, keep, i;
+                    if ( !table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->malformed = 1; }
+                    else
                     {
-                        uint32_t elem_len;
-                        if ( !table_reader_has( &sub, 4 ) ) { r->report->malformed = 1; break; }
-                        elem_len = table_reader_get32( &sub );
-                        if ( !table_reader_has( &sub, elem_len ) ) { r->report->malformed = 1; break; }
+                        if ( elem_kind != 13 )
                         {
-                            TableReader elem = table_reader_make( sub.buffer + sub.offset, elem_len, r->report );
+                            if ( !table_kind_widens( elem_kind, 13 ) ) { r->report->kind_mismatch++; break; }
+                            r->report->widened++;
+                        }
+                        keep = count; if ( keep > 4096 ) { keep = 4096; r->report->clamped++; }
+                        value->missiles_count = 0;
+                        for ( i = 0; i < keep; i++ )
+                        {
+                            TableReader elem;
+                            if ( !table_reader_span( &sub, &elem ) ) { r->report->malformed = 1; goto end_missiles; }
                             render_missile_load_body( &elem, &value->missiles[i] );
+                            value->missiles_count = (int32_t) i + 1;
                         }
-                        sub.offset += elem_len;
-                        decoded = i + 1;
+                        end_missiles: ;
                     }
-                    value->missiles_count = (int32_t) decoded;
                 }
-                r->offset = body_end; /* excess elements and slack skip via the length */
                 break;
             }
-            case 0x810b: /* dynamic_props */
+            case 0x43125398a9903d27ull: /* dynamic_props */
             {
                 if ( kind != 14 )
                 {
@@ -4025,47 +5598,34 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_frame_load_body( T
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint32_t body_len;
-                int64_t body_end;
-                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = table_reader_get32( r );
-                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
-                body_end = r->offset + body_len;
-                if ( body_len >= 5 )
+                TableReader sub;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( sub.size >= 2 )
                 {
-                    uint8_t elem_kind = table_reader_get8( r );
-                    uint32_t count = table_reader_get32( r );
-                    uint32_t keep;
-                    TableReader sub;
-                    uint32_t i;
-                    uint32_t decoded = 0;
-                    if ( elem_kind != 13 ) { r->report->kind_mismatch++; r->offset = body_end; break; }
-                    keep = count;
-                    if ( keep > 4096 ) { keep = 4096; r->report->clamped++; }
-                    /* elements are BOUNDED by the field body: a count the length
-                       cannot cover keeps the decoded prefix, flags malformed, and
-                       the parent continues at the next field — following fields'
-                       bytes are never fabricated into elements */
-                    sub = table_reader_make( r->buffer + r->offset, body_end - r->offset, r->report );
-                    for ( i = 0; i < keep; i++ )
+                    uint8_t elem_kind; uint64_t count, keep, i;
+                    if ( !table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->malformed = 1; }
+                    else
                     {
-                        uint32_t elem_len;
-                        if ( !table_reader_has( &sub, 4 ) ) { r->report->malformed = 1; break; }
-                        elem_len = table_reader_get32( &sub );
-                        if ( !table_reader_has( &sub, elem_len ) ) { r->report->malformed = 1; break; }
+                        if ( elem_kind != 13 )
                         {
-                            TableReader elem = table_reader_make( sub.buffer + sub.offset, elem_len, r->report );
+                            if ( !table_kind_widens( elem_kind, 13 ) ) { r->report->kind_mismatch++; break; }
+                            r->report->widened++;
+                        }
+                        keep = count; if ( keep > 4096 ) { keep = 4096; r->report->clamped++; }
+                        value->dynamic_props_count = 0;
+                        for ( i = 0; i < keep; i++ )
+                        {
+                            TableReader elem;
+                            if ( !table_reader_span( &sub, &elem ) ) { r->report->malformed = 1; goto end_dynamic_props; }
                             render_dynamic_prop_load_body( &elem, &value->dynamic_props[i] );
+                            value->dynamic_props_count = (int32_t) i + 1;
                         }
-                        sub.offset += elem_len;
-                        decoded = i + 1;
+                        end_dynamic_props: ;
                     }
-                    value->dynamic_props_count = (int32_t) decoded;
                 }
-                r->offset = body_end; /* excess elements and slack skip via the length */
                 break;
             }
-            case 0x55a9: /* static_props */
+            case 0xc1f8d7edff7fcfd2ull: /* static_props */
             {
                 if ( kind != 14 )
                 {
@@ -4073,47 +5633,34 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_frame_load_body( T
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint32_t body_len;
-                int64_t body_end;
-                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = table_reader_get32( r );
-                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
-                body_end = r->offset + body_len;
-                if ( body_len >= 5 )
+                TableReader sub;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( sub.size >= 2 )
                 {
-                    uint8_t elem_kind = table_reader_get8( r );
-                    uint32_t count = table_reader_get32( r );
-                    uint32_t keep;
-                    TableReader sub;
-                    uint32_t i;
-                    uint32_t decoded = 0;
-                    if ( elem_kind != 13 ) { r->report->kind_mismatch++; r->offset = body_end; break; }
-                    keep = count;
-                    if ( keep > 20000 ) { keep = 20000; r->report->clamped++; }
-                    /* elements are BOUNDED by the field body: a count the length
-                       cannot cover keeps the decoded prefix, flags malformed, and
-                       the parent continues at the next field — following fields'
-                       bytes are never fabricated into elements */
-                    sub = table_reader_make( r->buffer + r->offset, body_end - r->offset, r->report );
-                    for ( i = 0; i < keep; i++ )
+                    uint8_t elem_kind; uint64_t count, keep, i;
+                    if ( !table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->malformed = 1; }
+                    else
                     {
-                        uint32_t elem_len;
-                        if ( !table_reader_has( &sub, 4 ) ) { r->report->malformed = 1; break; }
-                        elem_len = table_reader_get32( &sub );
-                        if ( !table_reader_has( &sub, elem_len ) ) { r->report->malformed = 1; break; }
+                        if ( elem_kind != 13 )
                         {
-                            TableReader elem = table_reader_make( sub.buffer + sub.offset, elem_len, r->report );
+                            if ( !table_kind_widens( elem_kind, 13 ) ) { r->report->kind_mismatch++; break; }
+                            r->report->widened++;
+                        }
+                        keep = count; if ( keep > 20000 ) { keep = 20000; r->report->clamped++; }
+                        value->static_props_count = 0;
+                        for ( i = 0; i < keep; i++ )
+                        {
+                            TableReader elem;
+                            if ( !table_reader_span( &sub, &elem ) ) { r->report->malformed = 1; goto end_static_props; }
                             render_static_prop_load_body( &elem, &value->static_props[i] );
+                            value->static_props_count = (int32_t) i + 1;
                         }
-                        sub.offset += elem_len;
-                        decoded = i + 1;
+                        end_static_props: ;
                     }
-                    value->static_props_count = (int32_t) decoded;
                 }
-                r->offset = body_end; /* excess elements and slack skip via the length */
                 break;
             }
-            case 0x1142: /* cosmetic_props */
+            case 0x33408e39f5f480ffull: /* cosmetic_props */
             {
                 if ( kind != 14 )
                 {
@@ -4121,47 +5668,34 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_frame_load_body( T
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint32_t body_len;
-                int64_t body_end;
-                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = table_reader_get32( r );
-                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
-                body_end = r->offset + body_len;
-                if ( body_len >= 5 )
+                TableReader sub;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( sub.size >= 2 )
                 {
-                    uint8_t elem_kind = table_reader_get8( r );
-                    uint32_t count = table_reader_get32( r );
-                    uint32_t keep;
-                    TableReader sub;
-                    uint32_t i;
-                    uint32_t decoded = 0;
-                    if ( elem_kind != 13 ) { r->report->kind_mismatch++; r->offset = body_end; break; }
-                    keep = count;
-                    if ( keep > 8192 ) { keep = 8192; r->report->clamped++; }
-                    /* elements are BOUNDED by the field body: a count the length
-                       cannot cover keeps the decoded prefix, flags malformed, and
-                       the parent continues at the next field — following fields'
-                       bytes are never fabricated into elements */
-                    sub = table_reader_make( r->buffer + r->offset, body_end - r->offset, r->report );
-                    for ( i = 0; i < keep; i++ )
+                    uint8_t elem_kind; uint64_t count, keep, i;
+                    if ( !table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->malformed = 1; }
+                    else
                     {
-                        uint32_t elem_len;
-                        if ( !table_reader_has( &sub, 4 ) ) { r->report->malformed = 1; break; }
-                        elem_len = table_reader_get32( &sub );
-                        if ( !table_reader_has( &sub, elem_len ) ) { r->report->malformed = 1; break; }
+                        if ( elem_kind != 13 )
                         {
-                            TableReader elem = table_reader_make( sub.buffer + sub.offset, elem_len, r->report );
+                            if ( !table_kind_widens( elem_kind, 13 ) ) { r->report->kind_mismatch++; break; }
+                            r->report->widened++;
+                        }
+                        keep = count; if ( keep > 8192 ) { keep = 8192; r->report->clamped++; }
+                        value->cosmetic_props_count = 0;
+                        for ( i = 0; i < keep; i++ )
+                        {
+                            TableReader elem;
+                            if ( !table_reader_span( &sub, &elem ) ) { r->report->malformed = 1; goto end_cosmetic_props; }
                             render_cosmetic_prop_load_body( &elem, &value->cosmetic_props[i] );
+                            value->cosmetic_props_count = (int32_t) i + 1;
                         }
-                        sub.offset += elem_len;
-                        decoded = i + 1;
+                        end_cosmetic_props: ;
                     }
-                    value->cosmetic_props_count = (int32_t) decoded;
                 }
-                r->offset = body_end; /* excess elements and slack skip via the length */
                 break;
             }
-            case 0x411a: /* lasers */
+            case 0xd982b77b3e92d16dull: /* lasers */
             {
                 if ( kind != 14 )
                 {
@@ -4169,47 +5703,34 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_frame_load_body( T
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint32_t body_len;
-                int64_t body_end;
-                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = table_reader_get32( r );
-                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
-                body_end = r->offset + body_len;
-                if ( body_len >= 5 )
+                TableReader sub;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( sub.size >= 2 )
                 {
-                    uint8_t elem_kind = table_reader_get8( r );
-                    uint32_t count = table_reader_get32( r );
-                    uint32_t keep;
-                    TableReader sub;
-                    uint32_t i;
-                    uint32_t decoded = 0;
-                    if ( elem_kind != 13 ) { r->report->kind_mismatch++; r->offset = body_end; break; }
-                    keep = count;
-                    if ( keep > 32000 ) { keep = 32000; r->report->clamped++; }
-                    /* elements are BOUNDED by the field body: a count the length
-                       cannot cover keeps the decoded prefix, flags malformed, and
-                       the parent continues at the next field — following fields'
-                       bytes are never fabricated into elements */
-                    sub = table_reader_make( r->buffer + r->offset, body_end - r->offset, r->report );
-                    for ( i = 0; i < keep; i++ )
+                    uint8_t elem_kind; uint64_t count, keep, i;
+                    if ( !table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->malformed = 1; }
+                    else
                     {
-                        uint32_t elem_len;
-                        if ( !table_reader_has( &sub, 4 ) ) { r->report->malformed = 1; break; }
-                        elem_len = table_reader_get32( &sub );
-                        if ( !table_reader_has( &sub, elem_len ) ) { r->report->malformed = 1; break; }
+                        if ( elem_kind != 13 )
                         {
-                            TableReader elem = table_reader_make( sub.buffer + sub.offset, elem_len, r->report );
+                            if ( !table_kind_widens( elem_kind, 13 ) ) { r->report->kind_mismatch++; break; }
+                            r->report->widened++;
+                        }
+                        keep = count; if ( keep > 32000 ) { keep = 32000; r->report->clamped++; }
+                        value->lasers_count = 0;
+                        for ( i = 0; i < keep; i++ )
+                        {
+                            TableReader elem;
+                            if ( !table_reader_span( &sub, &elem ) ) { r->report->malformed = 1; goto end_lasers; }
                             render_laser_load_body( &elem, &value->lasers[i] );
+                            value->lasers_count = (int32_t) i + 1;
                         }
-                        sub.offset += elem_len;
-                        decoded = i + 1;
+                        end_lasers: ;
                     }
-                    value->lasers_count = (int32_t) decoded;
                 }
-                r->offset = body_end; /* excess elements and slack skip via the length */
                 break;
             }
-            case 0x6bfb: /* explosions */
+            case 0x876a8c1a85806a69ull: /* explosions */
             {
                 if ( kind != 14 )
                 {
@@ -4217,292 +5738,554 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_frame_load_body( T
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint32_t body_len;
-                int64_t body_end;
-                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = table_reader_get32( r );
-                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
-                body_end = r->offset + body_len;
-                if ( body_len >= 5 )
+                TableReader sub;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( sub.size >= 2 )
                 {
-                    uint8_t elem_kind = table_reader_get8( r );
-                    uint32_t count = table_reader_get32( r );
-                    uint32_t keep;
-                    TableReader sub;
-                    uint32_t i;
-                    uint32_t decoded = 0;
-                    if ( elem_kind != 13 ) { r->report->kind_mismatch++; r->offset = body_end; break; }
-                    keep = count;
-                    if ( keep > 32000 ) { keep = 32000; r->report->clamped++; }
-                    /* elements are BOUNDED by the field body: a count the length
-                       cannot cover keeps the decoded prefix, flags malformed, and
-                       the parent continues at the next field — following fields'
-                       bytes are never fabricated into elements */
-                    sub = table_reader_make( r->buffer + r->offset, body_end - r->offset, r->report );
-                    for ( i = 0; i < keep; i++ )
+                    uint8_t elem_kind; uint64_t count, keep, i;
+                    if ( !table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->malformed = 1; }
+                    else
                     {
-                        uint32_t elem_len;
-                        if ( !table_reader_has( &sub, 4 ) ) { r->report->malformed = 1; break; }
-                        elem_len = table_reader_get32( &sub );
-                        if ( !table_reader_has( &sub, elem_len ) ) { r->report->malformed = 1; break; }
+                        if ( elem_kind != 13 )
                         {
-                            TableReader elem = table_reader_make( sub.buffer + sub.offset, elem_len, r->report );
-                            render_explosion_load_body( &elem, &value->explosions[i] );
+                            if ( !table_kind_widens( elem_kind, 13 ) ) { r->report->kind_mismatch++; break; }
+                            r->report->widened++;
                         }
-                        sub.offset += elem_len;
-                        decoded = i + 1;
+                        keep = count; if ( keep > 32000 ) { keep = 32000; r->report->clamped++; }
+                        value->explosions_count = 0;
+                        for ( i = 0; i < keep; i++ )
+                        {
+                            TableReader elem;
+                            if ( !table_reader_span( &sub, &elem ) ) { r->report->malformed = 1; goto end_explosions; }
+                            render_explosion_load_body( &elem, &value->explosions[i] );
+                            value->explosions_count = (int32_t) i + 1;
+                        }
+                        end_explosions: ;
                     }
-                    value->explosions_count = (int32_t) decoded;
                 }
-                r->offset = body_end; /* excess elements and slack skip via the length */
                 break;
             }
             default:
-            {
                 r->report->unknown++;
                 if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
-            }
         }
     }
 }
 
 static SCHEMA_UNUSED int render_frame_load( RenderFrame * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
-    TableReport ignored;
-    TableReader r;
+    TableReport ignored; TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    if ( report == NULL ) { report = &ignored; }
+    render_frame_reset( value );
+    if ( !table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     return render_frame_load_body( &r, value );
+}
+
+static SCHEMA_UNUSED int render_vector3_save_body( TableWriter * w, const RenderVector3 * value )
+{
+    (void) value;
+    { /* x */
+        if ( value->x != 0.0 )
+        {
+            table_writer_id( w, 0xaf63f54c86021707ull ); table_writer_put8( w, 11 );
+            table_writer_put64( w, table_double_to_bits( value->x ) );
+        }
+    }
+    { /* y */
+        if ( value->y != 0.0 )
+        {
+            table_writer_id( w, 0xaf63f44c86021554ull ); table_writer_put8( w, 11 );
+            table_writer_put64( w, table_double_to_bits( value->y ) );
+        }
+    }
+    { /* z */
+        if ( value->z != 0.0 )
+        {
+            table_writer_id( w, 0xaf63f74c86021a6dull ); table_writer_put8( w, 11 );
+            table_writer_put64( w, table_double_to_bits( value->z ) );
+        }
+    }
+    table_writer_leb( w, 0 );
+    return !w->overflow;
 }
 
 static SCHEMA_UNUSED int64_t render_vector3_measure( const RenderVector3 * value )
 {
-    int64_t bytes = 2; /* terminator */
-    if ( value->x != 0.0 ) { bytes += 3 + 8; } /* x */
-    if ( value->y != 0.0 ) { bytes += 3 + 8; } /* y */
-    if ( value->z != 0.0 ) { bytes += 3 + 8; } /* z */
-    return bytes;
-}
-
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_vector3_save_body( TableWriter * w, const RenderVector3 * value )
-{
-    if ( value->x != 0.0 )
-    {
-        table_writer_put16( w, 0xad8b ); table_writer_put8( w, 11 ); /* x */
-        table_writer_put64( w, table_double_to_bits( value->x ) );
-    }
-    if ( value->y != 0.0 )
-    {
-        table_writer_put16( w, 0xb2f8 ); table_writer_put8( w, 11 ); /* y */
-        table_writer_put64( w, table_double_to_bits( value->y ) );
-    }
-    if ( value->z != 0.0 )
-    {
-        table_writer_put16( w, 0xaca1 ); table_writer_put8( w, 11 ); /* z */
-        table_writer_put64( w, table_double_to_bits( value->z ) );
-    }
-    table_writer_put16( w, 0 ); /* terminator */
-    return !w->overflow;
+    TableWriter w = table_writer_make( NULL, INT64_MAX );
+    table_writer_put8( &w, 1 );
+    if ( !render_vector3_save_body( &w, value ) ) { return -1; }
+    table_writer_finish( &w );
+    return w.overflow ? -1 : w.offset;
 }
 
 static SCHEMA_UNUSED int64_t render_vector3_save( const RenderVector3 * value, uint8_t * buffer, int64_t capacity )
 {
+    if ( buffer == NULL || capacity < 0 ) { return -1; }
     TableWriter w = table_writer_make( buffer, capacity );
+    table_writer_put8( &w, 1 );
     if ( !render_vector3_save_body( &w, value ) ) { return -1; }
-    return w.offset; /* == render_vector3_measure( value ) */
+    table_writer_finish( &w );
+    return w.overflow ? -1 : w.offset;
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_vector3_load_body( TableReader * r, RenderVector3 * value )
+static SCHEMA_UNUSED int render_vector3_load_body( TableReader * r, RenderVector3 * value )
 {
-    render_vector3_reset( value ); /* prefill declared defaults in place, then overlay */
+    render_vector3_reset( value );
     for ( ;; )
     {
-        uint16_t field_id;
-        uint8_t kind;
-        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = table_reader_get16( r );
-        if ( field_id == 0 ) { return 1; }
-        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = table_reader_get8( r );
-        switch ( field_id )
+        uint64_t ref, id; uint8_t kind;
+        if ( !table_reader_leb( r, &ref ) ) { r->report->malformed = 1; return 0; }
+        if ( ref == 0 ) { return 1; }
+        if ( ref > r->id_count || !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        id = table_reader_id_at( r, ref ); kind = table_reader_get8( r );
+        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->malformed = 1; return 0; }
+        switch ( id )
         {
-            case 0xad8b: /* x */
+            case 0xaf63f54c86021707ull: /* x */
             {
                 if ( kind != 11 )
                 {
+                    if ( table_kind_widens( kind, 11 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 10:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                double decoded_wide = table_wire_widen_f32( table_reader_get32( &(*r) ) );
+                                value->x = decoded_wide;
+                                break;
+                            }
+                            case 11:
+                            {
+                                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                                value->x = table_bits_to_double( table_reader_get64( &(*r) ) );
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                value->x = table_bits_to_double( table_reader_get64( &(*r) ) );
+                switch ( kind )
+                {
+                    case 10:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        double decoded_wide = table_wire_widen_f32( table_reader_get32( &(*r) ) );
+                        value->x = decoded_wide;
+                        break;
+                    }
+                    case 11:
+                    {
+                        if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                        value->x = table_bits_to_double( table_reader_get64( &(*r) ) );
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
+                }
                 break;
             }
-            case 0xb2f8: /* y */
+            case 0xaf63f44c86021554ull: /* y */
             {
                 if ( kind != 11 )
                 {
+                    if ( table_kind_widens( kind, 11 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 10:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                double decoded_wide = table_wire_widen_f32( table_reader_get32( &(*r) ) );
+                                value->y = decoded_wide;
+                                break;
+                            }
+                            case 11:
+                            {
+                                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                                value->y = table_bits_to_double( table_reader_get64( &(*r) ) );
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                value->y = table_bits_to_double( table_reader_get64( &(*r) ) );
+                switch ( kind )
+                {
+                    case 10:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        double decoded_wide = table_wire_widen_f32( table_reader_get32( &(*r) ) );
+                        value->y = decoded_wide;
+                        break;
+                    }
+                    case 11:
+                    {
+                        if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                        value->y = table_bits_to_double( table_reader_get64( &(*r) ) );
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
+                }
                 break;
             }
-            case 0xaca1: /* z */
+            case 0xaf63f74c86021a6dull: /* z */
             {
                 if ( kind != 11 )
                 {
+                    if ( table_kind_widens( kind, 11 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 10:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                double decoded_wide = table_wire_widen_f32( table_reader_get32( &(*r) ) );
+                                value->z = decoded_wide;
+                                break;
+                            }
+                            case 11:
+                            {
+                                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                                value->z = table_bits_to_double( table_reader_get64( &(*r) ) );
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                value->z = table_bits_to_double( table_reader_get64( &(*r) ) );
+                switch ( kind )
+                {
+                    case 10:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        double decoded_wide = table_wire_widen_f32( table_reader_get32( &(*r) ) );
+                        value->z = decoded_wide;
+                        break;
+                    }
+                    case 11:
+                    {
+                        if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                        value->z = table_bits_to_double( table_reader_get64( &(*r) ) );
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
+                }
                 break;
             }
             default:
-            {
                 r->report->unknown++;
                 if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
-            }
         }
     }
 }
 
 static SCHEMA_UNUSED int render_vector3_load( RenderVector3 * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
-    TableReport ignored;
-    TableReader r;
+    TableReport ignored; TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    if ( report == NULL ) { report = &ignored; }
+    render_vector3_reset( value );
+    if ( !table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     return render_vector3_load_body( &r, value );
+}
+
+static SCHEMA_UNUSED int render_quaternion_save_body( TableWriter * w, const RenderQuaternion * value )
+{
+    (void) value;
+    { /* x */
+        if ( value->x != 0.0 )
+        {
+            table_writer_id( w, 0xaf63f54c86021707ull ); table_writer_put8( w, 11 );
+            table_writer_put64( w, table_double_to_bits( value->x ) );
+        }
+    }
+    { /* y */
+        if ( value->y != 0.0 )
+        {
+            table_writer_id( w, 0xaf63f44c86021554ull ); table_writer_put8( w, 11 );
+            table_writer_put64( w, table_double_to_bits( value->y ) );
+        }
+    }
+    { /* z */
+        if ( value->z != 0.0 )
+        {
+            table_writer_id( w, 0xaf63f74c86021a6dull ); table_writer_put8( w, 11 );
+            table_writer_put64( w, table_double_to_bits( value->z ) );
+        }
+    }
+    { /* w */
+        if ( value->w != 1.0 )
+        {
+            table_writer_id( w, 0xaf63ea4c86020456ull ); table_writer_put8( w, 11 );
+            table_writer_put64( w, table_double_to_bits( value->w ) );
+        }
+    }
+    table_writer_leb( w, 0 );
+    return !w->overflow;
 }
 
 static SCHEMA_UNUSED int64_t render_quaternion_measure( const RenderQuaternion * value )
 {
-    int64_t bytes = 2; /* terminator */
-    if ( value->x != 0.0 ) { bytes += 3 + 8; } /* x */
-    if ( value->y != 0.0 ) { bytes += 3 + 8; } /* y */
-    if ( value->z != 0.0 ) { bytes += 3 + 8; } /* z */
-    if ( value->w != 1.0 ) { bytes += 3 + 8; } /* w */
-    return bytes;
-}
-
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_quaternion_save_body( TableWriter * w, const RenderQuaternion * value )
-{
-    if ( value->x != 0.0 )
-    {
-        table_writer_put16( w, 0xad8b ); table_writer_put8( w, 11 ); /* x */
-        table_writer_put64( w, table_double_to_bits( value->x ) );
-    }
-    if ( value->y != 0.0 )
-    {
-        table_writer_put16( w, 0xb2f8 ); table_writer_put8( w, 11 ); /* y */
-        table_writer_put64( w, table_double_to_bits( value->y ) );
-    }
-    if ( value->z != 0.0 )
-    {
-        table_writer_put16( w, 0xaca1 ); table_writer_put8( w, 11 ); /* z */
-        table_writer_put64( w, table_double_to_bits( value->z ) );
-    }
-    if ( value->w != 1.0 )
-    {
-        table_writer_put16( w, 0xcd3a ); table_writer_put8( w, 11 ); /* w */
-        table_writer_put64( w, table_double_to_bits( value->w ) );
-    }
-    table_writer_put16( w, 0 ); /* terminator */
-    return !w->overflow;
+    TableWriter w = table_writer_make( NULL, INT64_MAX );
+    table_writer_put8( &w, 1 );
+    if ( !render_quaternion_save_body( &w, value ) ) { return -1; }
+    table_writer_finish( &w );
+    return w.overflow ? -1 : w.offset;
 }
 
 static SCHEMA_UNUSED int64_t render_quaternion_save( const RenderQuaternion * value, uint8_t * buffer, int64_t capacity )
 {
+    if ( buffer == NULL || capacity < 0 ) { return -1; }
     TableWriter w = table_writer_make( buffer, capacity );
+    table_writer_put8( &w, 1 );
     if ( !render_quaternion_save_body( &w, value ) ) { return -1; }
-    return w.offset; /* == render_quaternion_measure( value ) */
+    table_writer_finish( &w );
+    return w.overflow ? -1 : w.offset;
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_quaternion_load_body( TableReader * r, RenderQuaternion * value )
+static SCHEMA_UNUSED int render_quaternion_load_body( TableReader * r, RenderQuaternion * value )
 {
-    render_quaternion_reset( value ); /* prefill declared defaults in place, then overlay */
+    render_quaternion_reset( value );
     for ( ;; )
     {
-        uint16_t field_id;
-        uint8_t kind;
-        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = table_reader_get16( r );
-        if ( field_id == 0 ) { return 1; }
-        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = table_reader_get8( r );
-        switch ( field_id )
+        uint64_t ref, id; uint8_t kind;
+        if ( !table_reader_leb( r, &ref ) ) { r->report->malformed = 1; return 0; }
+        if ( ref == 0 ) { return 1; }
+        if ( ref > r->id_count || !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        id = table_reader_id_at( r, ref ); kind = table_reader_get8( r );
+        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->malformed = 1; return 0; }
+        switch ( id )
         {
-            case 0xad8b: /* x */
+            case 0xaf63f54c86021707ull: /* x */
             {
                 if ( kind != 11 )
                 {
+                    if ( table_kind_widens( kind, 11 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 10:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                double decoded_wide = table_wire_widen_f32( table_reader_get32( &(*r) ) );
+                                value->x = decoded_wide;
+                                break;
+                            }
+                            case 11:
+                            {
+                                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                                value->x = table_bits_to_double( table_reader_get64( &(*r) ) );
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                value->x = table_bits_to_double( table_reader_get64( &(*r) ) );
+                switch ( kind )
+                {
+                    case 10:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        double decoded_wide = table_wire_widen_f32( table_reader_get32( &(*r) ) );
+                        value->x = decoded_wide;
+                        break;
+                    }
+                    case 11:
+                    {
+                        if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                        value->x = table_bits_to_double( table_reader_get64( &(*r) ) );
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
+                }
                 break;
             }
-            case 0xb2f8: /* y */
+            case 0xaf63f44c86021554ull: /* y */
             {
                 if ( kind != 11 )
                 {
+                    if ( table_kind_widens( kind, 11 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 10:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                double decoded_wide = table_wire_widen_f32( table_reader_get32( &(*r) ) );
+                                value->y = decoded_wide;
+                                break;
+                            }
+                            case 11:
+                            {
+                                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                                value->y = table_bits_to_double( table_reader_get64( &(*r) ) );
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                value->y = table_bits_to_double( table_reader_get64( &(*r) ) );
+                switch ( kind )
+                {
+                    case 10:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        double decoded_wide = table_wire_widen_f32( table_reader_get32( &(*r) ) );
+                        value->y = decoded_wide;
+                        break;
+                    }
+                    case 11:
+                    {
+                        if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                        value->y = table_bits_to_double( table_reader_get64( &(*r) ) );
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
+                }
                 break;
             }
-            case 0xaca1: /* z */
+            case 0xaf63f74c86021a6dull: /* z */
             {
                 if ( kind != 11 )
                 {
+                    if ( table_kind_widens( kind, 11 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 10:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                double decoded_wide = table_wire_widen_f32( table_reader_get32( &(*r) ) );
+                                value->z = decoded_wide;
+                                break;
+                            }
+                            case 11:
+                            {
+                                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                                value->z = table_bits_to_double( table_reader_get64( &(*r) ) );
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                value->z = table_bits_to_double( table_reader_get64( &(*r) ) );
+                switch ( kind )
+                {
+                    case 10:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        double decoded_wide = table_wire_widen_f32( table_reader_get32( &(*r) ) );
+                        value->z = decoded_wide;
+                        break;
+                    }
+                    case 11:
+                    {
+                        if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                        value->z = table_bits_to_double( table_reader_get64( &(*r) ) );
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
+                }
                 break;
             }
-            case 0xcd3a: /* w */
+            case 0xaf63ea4c86020456ull: /* w */
             {
                 if ( kind != 11 )
                 {
+                    if ( table_kind_widens( kind, 11 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 10:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                double decoded_wide = table_wire_widen_f32( table_reader_get32( &(*r) ) );
+                                value->w = decoded_wide;
+                                break;
+                            }
+                            case 11:
+                            {
+                                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                                value->w = table_bits_to_double( table_reader_get64( &(*r) ) );
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                value->w = table_bits_to_double( table_reader_get64( &(*r) ) );
+                switch ( kind )
+                {
+                    case 10:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        double decoded_wide = table_wire_widen_f32( table_reader_get32( &(*r) ) );
+                        value->w = decoded_wide;
+                        break;
+                    }
+                    case 11:
+                    {
+                        if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                        value->w = table_bits_to_double( table_reader_get64( &(*r) ) );
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
+                }
                 break;
             }
             default:
-            {
                 r->report->unknown++;
                 if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
-            }
         }
     }
 }
 
 static SCHEMA_UNUSED int render_quaternion_load( RenderQuaternion * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
-    TableReport ignored;
-    TableReader r;
+    TableReport ignored; TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    if ( report == NULL ) { report = &ignored; }
+    render_quaternion_reset( value );
+    if ( !table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     return render_quaternion_load_body( &r, value );
 }
 

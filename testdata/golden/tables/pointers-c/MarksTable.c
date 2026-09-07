@@ -78,7 +78,7 @@ static SCHEMA_UNUSED const char * table_json_variant_name( const TableFieldInfo 
     return f->variants[value].name;
 }
 
-static SCHEMA_UNUSED uint16_t table_json_variant_id( const TableFieldInfo * f, uint64_t value )
+static SCHEMA_UNUSED uint64_t table_json_variant_id( const TableFieldInfo * f, uint64_t value )
 {
     if ( f->variants == NULL || f->enum_max < 0 || value > (uint64_t) f->enum_max ) { return 0; }
     return f->variants[value].id;
@@ -90,7 +90,7 @@ static SCHEMA_UNUSED const char * table_json_key_name( const TableFieldInfo * f,
     return f->keys[key].name;
 }
 
-static SCHEMA_UNUSED uint16_t table_json_key_id( const TableFieldInfo * f, uint64_t key )
+static SCHEMA_UNUSED uint64_t table_json_key_id( const TableFieldInfo * f, uint64_t key )
 {
     if ( f->keys == NULL || f->key_max < 0 || key > (uint64_t) f->key_max ) { return 0; }
     return f->keys[key].id;
@@ -196,11 +196,11 @@ static SCHEMA_UNUSED uint64_t table_json_keyed_slot_key( int64_t slot )
 
 /* A slot whose key names a variant of the keying enum. Every slot in
    [0, array_bound) does, unless the enum carries max-headroom variants outside
-   a table closure, where a reserved value names nothing and its key id is 0 —
-   the reserved id no declared name can fold to (§5). */
+   a table closure. Such headroom has no declared name. A full identity may
+   be zero, so identity alone cannot distinguish a valid key. */
 static SCHEMA_UNUSED int table_json_keyed_slot_valid( const TableFieldInfo * f, int64_t slot )
 {
-    return table_json_key_id( f, table_json_keyed_slot_key( slot ) ) != 0;
+    return table_json_key_name( f, table_json_keyed_slot_key( slot ) ) != NULL;
 }
 
 static SCHEMA_UNUSED int table_json_is_flags( const TableFieldInfo * f )
@@ -372,15 +372,9 @@ static SCHEMA_UNUSED int32_t table_json_utf8( const char * s, int32_t remaining,
     return code;
 }
 
-/* A JSON text MUST be valid UTF-8 (RFC 8259 §8.1). The read path is
-   byte-transparent — the wire imposes no encoding (§3) and a string may hold
-   anything — so the WRITER is where that obligation is met: a byte that is
-   not part of a well-formed sequence is written as U+FFFD, one per bad byte,
-   and never raw. A text this walk writes is therefore readable by any
-   conforming parser, which a raw byte would not be. The cost is stated
-   plainly: for a string holding invalid UTF-8, the round trip is NOT
-   byte-identical, because the alternative is emitting a text that is not
-   JSON. */
+/* A JSON text must be valid UTF-8. Caller-filled storage can still contain
+   invalid bytes; write each such byte as U+FFFD rather than emitting invalid
+   JSON. The text reader also replaces ill-formed sequences before clamping. */
 static SCHEMA_UNUSED void table_json_write_string( TableJsonOut * out, const char * s, int32_t length )
 {
     static const char hex[] = "0123456789abcdef";
@@ -547,7 +541,7 @@ static SCHEMA_UNUSED int table_json_write_scalar( TableJsonOut * out, const void
            wire identity: the writer REFUSES rather than writing None over it,
            the rule measure and save already apply (docs/SPEC-TABLES.md §5) */
         if ( (int64_t) value > f->enum_max ) { return 0; }
-        if ( value != 0 && table_json_variant_id( f, value ) == 0 ) { return 0; }
+        if ( value != 0 && table_json_variant_name( f, value ) == NULL ) { return 0; }
         name = table_json_variant_name( f, value );
         if ( name == NULL ) { return 0; }
         table_json_write_string( out, name, (int32_t) strlen( name ) );
@@ -730,8 +724,21 @@ static SCHEMA_UNUSED void table_json_space( TableJsonIn * in )
     {
         char c = in->text[in->pos];
         if ( c == ' ' || c == '\t' || c == '\n' || c == '\r' ) { in->pos++; continue; }
-        /* comments are not JSON, and a walk that guessed at one would be
-           reading a dialect nobody wrote down */
+        /* SPEC-TABLES 16.2: comments are whitespace on read. */
+        if ( c == '/' && in->pos + 1 < in->size && in->text[in->pos + 1] == '/' )
+        {
+            in->pos += 2;
+            while ( in->pos < in->size && in->text[in->pos] != '\n' ) { in->pos++; }
+            continue;
+        }
+        if ( c == '/' && in->pos + 1 < in->size && in->text[in->pos + 1] == '*' )
+        {
+            int64_t at = in->pos + 2;
+            while ( at + 1 < in->size && !(in->text[at] == '*' && in->text[at + 1] == '/') ) { at++; }
+            if ( at + 1 >= in->size ) { in->bad = 1; in->pos = in->size; return; }
+            in->pos = at + 2;
+            continue;
+        }
         if ( c == '/' ) { in->bad = 1; }
         return;
     }
@@ -890,11 +897,9 @@ static SCHEMA_UNUSED int table_json_scan_string( TableJsonIn * in, char * out, i
         }
         else
         {
-            /* a UTF-8 sequence read WHOLE, so the clamp below can only land
-               between code points. Only bytes that ACTUALLY look like
-               continuations are taken: the wire imposes no encoding (§3), so
-               a string may legitimately hold a stray lead byte, and one at
-               the end of a text must not swallow the closing quote. */
+            /* Read a sequence whole so clamping lands between code points.
+               Take only continuations: a stray lead must not swallow the
+               closing quote. Replace malformed input before applying the bound. */
             unsigned char lead = (unsigned char) c;
             int32_t want = 1;
             if ( ( lead & 0xe0 ) == 0xc0 ) { want = 2; }
@@ -907,6 +912,13 @@ static SCHEMA_UNUSED int table_json_scan_string( TableJsonIn * in, char * out, i
                     ( (unsigned char) in->text[in->pos] & 0xc0 ) == 0x80 )
             {
                 unit[unit_length++] = in->text[in->pos++];
+            }
+            {
+                int32_t checked_width = 0;
+                if ( table_json_utf8( unit, unit_length, &checked_width ) < 0 )
+                {
+                    unit_length = table_json_encode_utf8( 0xfffd, unit );
+                }
             }
         }
         if ( out != NULL )
@@ -1707,14 +1719,14 @@ static SCHEMA_UNUSED int64_t table_json_write( const void * value, const TableTy
 /* ---- json walk: end ---- */
 
 static const TableFieldInfo schema_graphdemo_tally_fields_[] = {
-    { "hits", "hits", "int32", 0xb723, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( Tally, hits ), (uint32_t) sizeof( ( (Tally *) 0 )->hits ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 10000.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "hits", "hits", "int32", 0x000000000000b723ull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( Tally, hits ), (uint32_t) sizeof( ( (Tally *) 0 )->hits ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 10000.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
 };
 
 const TableTypeInfo schema_graphdemo_tally_info_ = { "Tally", (uint32_t) sizeof( Tally ), 1, schema_graphdemo_tally_fields_, schema_graphdemo_tally_reset_raw_, 0, TableDocNone, 0, NULL };
 
 static const TableFieldInfo schema_graphdemo_marker_fields_[] = {
-    { "label", "label", "string", 0xe16a, 12, 0, 0, 1, 0, 8, (uint32_t) offsetof( Marker, label ), (uint32_t) sizeof( ( (Marker *) 0 )->label ), (uint32_t) offsetof( Marker, label_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "note", "note", "Tally", 0x9da7, 13, 0, 1, 0, 0, 0, (uint32_t) offsetof( Marker, note ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_tally_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "label", "label", "string", 0x000000000000e16aull, 12, 0, 0, 1, 0, 8, (uint32_t) offsetof( Marker, label ), (uint32_t) sizeof( ( (Marker *) 0 )->label ), (uint32_t) offsetof( Marker, label_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "note", "note", "Tally", 0x0000000000009da7ull, 13, 0, 1, 0, 0, 0, (uint32_t) offsetof( Marker, note ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_tally_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
 };
 
 const TableTypeInfo schema_graphdemo_marker_info_ = { "Marker", (uint32_t) sizeof( Marker ), 2, schema_graphdemo_marker_fields_, schema_graphdemo_marker_reset_raw_, 1, TableDocNone, 0, NULL };

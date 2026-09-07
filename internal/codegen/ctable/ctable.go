@@ -230,7 +230,12 @@ static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key )
 // tablePrimitives is the shared runtime, emitted into every Table.h behind a
 // per-package guard — one definition per TU whatever the include order, and a
 // lone Table.h works standalone.
-func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool) string {
+func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, wireRuntime string) string {
+	idType := "uint64_t"
+	if wireRuntime == "" {
+		idType = "uint16_t"
+		wireRuntime = legacyTableWireRuntime(tableInlineMacro(pkg))
+	}
 	keyed := ""
 	if anyKeyed {
 		keyed = tableKeyedAccessor
@@ -327,7 +332,12 @@ typedef struct TableReport
        id twice is legal input whose last occurrence wins, silently (§3). */
     int32_t duplicate;
     int malformed;         /* framing damage; decode stopped, partial result kept */
+    int32_t widened;        /* exact widening of a known kind */
+    int refused;           /* unsupported file form, not framing damage */
+    int reason;            /* SCHEMA_TABLE_REFUSAL_REASON */
 } TableReport;
+
+enum SCHEMA_TABLE_REFUSAL_REASON { SCHEMA_TABLE_NO_REFUSAL, SCHEMA_TABLE_NEWER_FORM, SCHEMA_TABLE_MESSAGE_FORM_AS_FILE };
 
 /* ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 
@@ -372,7 +382,7 @@ typedef struct TableUnionInfo
 typedef struct TableVariantInfo
 {
     const char * name;
-    uint16_t id;
+    ` + idType + ` id;
 } TableVariantInfo;
 
 /* THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1): a declaration with no ///
@@ -387,7 +397,7 @@ typedef struct TableFieldInfo
     const char * name;      /* schema field name, e.g. "health" */
     const char * json;      /* the TEXT form's key: the json = "key" attribute, else name (§16.3) */
     const char * type_name; /* schema type name, e.g. "float32", "Grade" */
-    uint16_t id;            /* table-wire field id (name hash; the was alias's hash after a rename) */
+    ` + idType + ` id;            /* table-wire field id (name hash; the was alias's hash after a rename) */
     uint8_t kind;           /* table-wire kind; for arrays/strings/bytes, the ELEMENT kind */
     int is_array;           /* fixed or counted array (bytes included) */` + pointerFieldMember + `
     int counted;            /* a _count/_length int32 companion exists (counted arrays, strings, bytes) */
@@ -449,7 +459,20 @@ typedef struct TableTypeInfo
     const char * const * tags;
 } TableTypeInfo;
 
-typedef struct TableWriter
+` + wireRuntime + keyed + `
+static SCHEMA_UNUSED float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
+static SCHEMA_UNUSED uint32_t table_float_to_bits( float f ) { uint32_t b; memcpy( &b, &f, 4 ); return b; }
+static SCHEMA_UNUSED double table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
+static SCHEMA_UNUSED uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
+
+#endif /* ` + guard + ` */
+`
+}
+
+// legacyTableWireRuntime remains with the variable carrier until its node-table
+// codec is ported. Fixed units select the form-1 runtime in wire.go.
+func legacyTableWireRuntime(forceInline string) string {
+	return `typedef struct TableWriter
 {
     uint8_t * buffer;
     int64_t capacity;
@@ -581,13 +604,6 @@ static SCHEMA_UNUSED int table_reader_skip( TableReader * r, uint8_t kind )
     }
     return 0;
 }
-` + keyed + `
-static SCHEMA_UNUSED float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
-static SCHEMA_UNUSED uint32_t table_float_to_bits( float f ) { uint32_t b; memcpy( &b, &f, 4 ); return b; }
-static SCHEMA_UNUSED double table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
-static SCHEMA_UNUSED uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
-
-#endif /* ` + guard + ` */
 `
 }
 
@@ -647,10 +663,15 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			g.emitCodecDeclarations(members)
 			for _, st := range members {
 				g.owner = st
-				g.emitTableMeasure(st)
-				g.emitTableWrite(st)
-				g.emitTableSave(st)
-				g.emitTableRead(st)
+				if g.fileWire() {
+					g.emitWireWrite(st)
+					g.emitWireRead(st)
+				} else {
+					g.emitTableMeasure(st)
+					g.emitTableWrite(st)
+					g.emitTableSave(st)
+					g.emitTableRead(st)
+				}
 			}
 			g.emitVariableSurface(members)
 			g.emitCookSurface(members)
@@ -738,7 +759,7 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 	// defines it and the other agrees.
 	h.WriteString("\n#ifndef SCHEMA_UNUSED\n#if defined(__GNUC__) || defined(__clang__)\n#define SCHEMA_UNUSED __attribute__((unused))\n#else\n#define SCHEMA_UNUSED\n#endif\n#endif\n")
 	h.WriteString("\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n")
-	h.WriteString(tablePrimitives(u.Package, g.anyVariable, g.anyKeyed))
+	h.WriteString(g.wirePrimitives())
 	if g.anyVariable {
 		h.WriteString("\n")
 		h.WriteString(tableArenaRuntime(u.Package))

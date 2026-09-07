@@ -35,6 +35,14 @@ func TestCTableRuntimeNamesAreClaimed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Both carriers contribute runtime names until the variable wire is ported.
+	fixed, err := New().Generate(unitFromSource(t, runtimeSrc), "c", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range fixed {
+		files["fixed-"+name] = data
+	}
 	ident := regexp.MustCompile(`\b(?:Table|kTable|table_|BuildVersion)[A-Za-z0-9_]*\b`)
 	// the unit's own type names start with Table for a schema that declares one;
 	// the corpus here declares none, and the file base does, so the two file
