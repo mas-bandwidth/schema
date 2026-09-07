@@ -1132,7 +1132,7 @@ func (g *tableGen) emitMapKeyReader(f *ir.Field) {
 	g.pf("    for ( ;; )\n    {\n")
 	g.pf("        uint64_t field_ref = 0;\n")
 	g.pf("        if ( !r.getleb( field_ref ) ) { out.malformed = true; return out; }\n")
-	g.pf("        if ( field_ref == 0 ) { return out; } // the terminator: no key field is the key's DEFAULT\n")
+	g.pf("        if ( field_ref == 0 ) { out.malformed = r.offset != r.size; return out; } // the terminator consumes the entry's L\n")
 	g.pf("        if ( ids == NULL || field_ref > (uint64_t) ids->count ) { out.malformed = true; return out; }\n")
 	g.pf("        const uint64_t field_id = ids->at( field_ref );\n")
 	g.pf("        if ( !r.has( 1 ) ) { out.malformed = true; return out; }\n")
@@ -1266,6 +1266,7 @@ func (g *tableGen) emitMapReadField(f *ir.Field) {
 	g.pf("%s            TableReader elem( elem_body, (int64_t) elem_len, r.report, r.ids );\n", ind)
 	g.inStep("fill.map->count - 1", func() {
 		g.pf("%s            %s;\n", ind, g.loadCall(f, n, "elem", "*slot"))
+		g.emitLoadRefusal(n, ind+"            ")
 	})
 	g.pf("%s        }\n", ind)
 	if mapKeyIsString(f) {

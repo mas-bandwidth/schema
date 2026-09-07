@@ -6919,7 +6919,7 @@ inline RowEntriesEntryKeyRead RowEntriesEntryReadKey( const uint8_t * body, int6
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { out.malformed = true; return out; }
-        if ( field_ref == 0 ) { return out; } // the terminator: no key field is the key's DEFAULT
+        if ( field_ref == 0 ) { out.malformed = r.offset != r.size; return out; } // the terminator consumes the entry's L
         if ( ids == NULL || field_ref > (uint64_t) ids->count ) { out.malformed = true; return out; }
         const uint64_t field_id = ids->at( field_ref );
         if ( !r.has( 1 ) ) { out.malformed = true; return out; }
@@ -6993,7 +6993,7 @@ inline WideRowEntriesEntryKeyRead WideRowEntriesEntryReadKey( const uint8_t * bo
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { out.malformed = true; return out; }
-        if ( field_ref == 0 ) { return out; } // the terminator: no key field is the key's DEFAULT
+        if ( field_ref == 0 ) { out.malformed = r.offset != r.size; return out; } // the terminator consumes the entry's L
         if ( ids == NULL || field_ref > (uint64_t) ids->count ) { out.malformed = true; return out; }
         const uint64_t field_id = ids->at( field_ref );
         if ( !r.has( 1 ) ) { out.malformed = true; return out; }
@@ -7084,7 +7084,7 @@ inline EdgeRowNamesEntryKeyRead EdgeRowNamesEntryReadKey( const uint8_t * body, 
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { out.malformed = true; return out; }
-        if ( field_ref == 0 ) { return out; } // the terminator: no key field is the key's DEFAULT
+        if ( field_ref == 0 ) { out.malformed = r.offset != r.size; return out; } // the terminator consumes the entry's L
         if ( ids == NULL || field_ref > (uint64_t) ids->count ) { out.malformed = true; return out; }
         const uint64_t field_id = ids->at( field_ref );
         if ( !r.has( 1 ) ) { out.malformed = true; return out; }
@@ -7158,7 +7158,7 @@ inline EdgeRowIdsEntryKeyRead EdgeRowIdsEntryReadKey( const uint8_t * body, int6
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { out.malformed = true; return out; }
-        if ( field_ref == 0 ) { return out; } // the terminator: no key field is the key's DEFAULT
+        if ( field_ref == 0 ) { out.malformed = r.offset != r.size; return out; } // the terminator consumes the entry's L
         if ( ids == NULL || field_ref > (uint64_t) ids->count ) { out.malformed = true; return out; }
         const uint64_t field_id = ids->at( field_ref );
         if ( !r.has( 1 ) ) { out.malformed = true; return out; }
@@ -7305,7 +7305,13 @@ MAPDEMO_TABLE_INLINE bool RowEntriesEntryLoadBody( TableReader & r, RowEntriesEn
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.key[0] = 0; value.key_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
+                {
+                    r.report->malformed = true;
+                    memset( value.key, 0, sizeof( value.key ) );
+                    value.key_length = 0;
+                    r.offset += (int64_t) len; break;
+                }
                 uint64_t keep = len;
                 if ( keep > 8 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 8 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.key, r.buffer + r.offset, (size_t) keep );
@@ -7545,6 +7551,7 @@ inline bool RowSaveBody( const Ctx & ctx, const TableNumbering & numbering, Tabl
 inline bool RowLoadBody( TableReader & r, const TableNodeMap & nodes, Row & value )
 {
     (void) nodes;
+    if ( nodes.refused ) { return false; }
     RowReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -8258,6 +8265,7 @@ inline bool WideRowSaveBody( const Ctx & ctx, const TableNumbering & numbering, 
 inline bool WideRowLoadBody( TableReader & r, const TableNodeMap & nodes, WideRow & value )
 {
     (void) nodes;
+    if ( nodes.refused ) { return false; }
     WideRowReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -8724,7 +8732,13 @@ MAPDEMO_TABLE_INLINE bool EdgeRowNamesEntryLoadBody( TableReader & r, EdgeRowNam
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.key[0] = 0; value.key_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
+                {
+                    r.report->malformed = true;
+                    memset( value.key, 0, sizeof( value.key ) );
+                    value.key_length = 0;
+                    r.offset += (int64_t) len; break;
+                }
                 uint64_t keep = len;
                 if ( keep > 300 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 300 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.key, r.buffer + r.offset, (size_t) keep );
@@ -9257,6 +9271,7 @@ inline bool EdgeRowSaveBody( const Ctx & ctx, const TableNumbering & numbering, 
 inline bool EdgeRowLoadBody( TableReader & r, const TableNodeMap & nodes, EdgeRow & value )
 {
     (void) nodes;
+    if ( nodes.refused ) { return false; }
     EdgeRowReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -11517,6 +11532,7 @@ inline bool RowLoadBuilder( RowBuilder & builder, const uint8_t * wire_file, int
             {
                 TableReader sub( body, length, out, &ids_table );
                 RowNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                if ( nodes.refused ) { break; }
             }
             k++;
         }
@@ -12415,6 +12431,7 @@ inline bool WideRowLoadBuilder( WideRowBuilder & builder, const uint8_t * wire_f
             {
                 TableReader sub( body, length, out, &ids_table );
                 WideRowNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                if ( nodes.refused ) { break; }
             }
             k++;
         }
@@ -13313,6 +13330,7 @@ inline bool EdgeRowLoadBuilder( EdgeRowBuilder & builder, const uint8_t * wire_f
             {
                 TableReader sub( body, length, out, &ids_table );
                 EdgeRowNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                if ( nodes.refused ) { break; }
             }
             k++;
         }
@@ -13418,7 +13436,13 @@ MAPDEMO_TABLE_INLINE bool RowEntriesEntryLoadBodyRetain( TableReader & r, RowEnt
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.key[0] = 0; value.key_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
+                {
+                    r.report->malformed = true;
+                    memset( value.key, 0, sizeof( value.key ) );
+                    value.key_length = 0;
+                    r.offset += (int64_t) len; break;
+                }
                 uint64_t keep = len;
                 if ( keep > 8 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 8 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.key, r.buffer + r.offset, (size_t) keep );
@@ -13621,6 +13645,7 @@ inline bool RowSaveBodyRetain( const Ctx & ctx, const TableNumbering & numbering
 inline bool RowLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Row & value, TableRetain * retain, const TableRetainPath & path )
 {
     (void) nodes;
+    if ( nodes.refused ) { return false; }
     RowReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
@@ -14241,6 +14266,7 @@ inline bool WideRowSaveBodyRetain( const Ctx & ctx, const TableNumbering & numbe
 inline bool WideRowLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, WideRow & value, TableRetain * retain, const TableRetainPath & path )
 {
     (void) nodes;
+    if ( nodes.refused ) { return false; }
     WideRowReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
@@ -14645,7 +14671,13 @@ MAPDEMO_TABLE_INLINE bool EdgeRowNamesEntryLoadBodyRetain( TableReader & r, Edge
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.key[0] = 0; value.key_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
+                {
+                    r.report->malformed = true;
+                    memset( value.key, 0, sizeof( value.key ) );
+                    value.key_length = 0;
+                    r.offset += (int64_t) len; break;
+                }
                 uint64_t keep = len;
                 if ( keep > 300 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 300 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.key, r.buffer + r.offset, (size_t) keep );
@@ -15115,6 +15147,7 @@ inline bool EdgeRowSaveBodyRetain( const Ctx & ctx, const TableNumbering & numbe
 inline bool EdgeRowLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, EdgeRow & value, TableRetain * retain, const TableRetainPath & path )
 {
     (void) nodes;
+    if ( nodes.refused ) { return false; }
     EdgeRowReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so

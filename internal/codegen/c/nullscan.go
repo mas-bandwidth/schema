@@ -29,7 +29,7 @@ func (g *gen) emitInteriorNullScan() {
 	g.pf("    serialize_uint64_t word;\n")
 	g.pf("    int32_t i = 0;\n")
 	g.pf("    if ( length >= 8 )\n    {\n")
-	g.pf("        for ( ; i + 8 <= length; i += 8 )\n        {\n")
+	g.pf("        for ( ; i <= length - 8; i += 8 )\n        {\n")
 	g.pf("            memcpy( &word, bytes + i, 8 );\n")
 	g.pf("            if ( ( ( word - 0x0101010101010101ULL ) & ~word & 0x8080808080808080ULL ) != 0 )\n")
 	g.pf("            {\n                return 1;\n            }\n        }\n")

@@ -2575,6 +2575,7 @@ WIDE_TABLE_INLINE bool CaptionLoadBody( TableReader & r, Caption & value )
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             LineLoadBody( elem, value.lines[(int32_t) i] );
+                            if ( elem.offset != elem.size ) { r.report->malformed = true; LineReset( value.lines[(int32_t) i] ); }
                         }
                         sub.offset += (int64_t) elem_len;
                         decoded = i + 1;

@@ -6631,7 +6631,7 @@ inline SpansTracksEntryKeyRead SpansTracksEntryReadKey( const uint8_t * body, in
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { out.malformed = true; return out; }
-        if ( field_ref == 0 ) { return out; } // the terminator: no key field is the key's DEFAULT
+        if ( field_ref == 0 ) { out.malformed = r.offset != r.size; return out; } // the terminator consumes the entry's L
         if ( ids == NULL || field_ref > (uint64_t) ids->count ) { out.malformed = true; return out; }
         const uint64_t field_id = ids->at( field_ref );
         if ( !r.has( 1 ) ) { out.malformed = true; return out; }
@@ -6745,6 +6745,7 @@ inline bool SpansTracksEntrySaveBody( const Ctx & ctx, const TableNumbering & nu
 inline bool SpansTracksEntryLoadBody( TableReader & r, const TableNodeMap & nodes, SpansTracksEntry & value )
 {
     (void) nodes;
+    if ( nodes.refused ) { return false; }
     SpansTracksEntryReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -6831,6 +6832,7 @@ inline bool SpansTracksEntryLoadBody( TableReader & r, const TableNodeMap & node
                                 {
                                     TableReader elem_value( sub.buffer + sub.offset, (int64_t) elem_len_value, r.report, r.ids );
                                     ItemLoadBody( elem_value, ( *slot ) );
+                                    if ( elem_value.offset != elem_value.size ) { r.report->malformed = true; ItemReset( ( *slot ) ); }
                                 }
                                 sub.offset += (int64_t) elem_len_value;
                                 landed = true;
@@ -7105,6 +7107,7 @@ inline bool SpansSaveBody( const Ctx & ctx, const TableNumbering & numbering, Ta
 inline bool SpansLoadBody( TableReader & r, const TableNodeMap & nodes, Spans & value )
 {
     (void) nodes;
+    if ( nodes.refused ) { return false; }
     SpansReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -7206,6 +7209,7 @@ inline bool SpansLoadBody( TableReader & r, const TableNodeMap & nodes, Spans & 
                         {
                             TableReader elem( elem_body, (int64_t) elem_len, r.report, r.ids );
                             SpansTracksEntryLoadBody( elem, nodes, *slot );
+                            if ( nodes.refused ) { return false; }
                         }
                         last_key = read.key; // the WIRE keys of the entries that LAND
                         landed = true;
@@ -8762,6 +8766,7 @@ inline bool SpansLoadBuilder( SpansBuilder & builder, const uint8_t * wire_file,
             {
                 TableReader sub( body, length, out, &ids_table );
                 SpansNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                if ( nodes.refused ) { break; }
             }
             k++;
         }
@@ -8859,6 +8864,7 @@ inline bool SpansTracksEntrySaveBodyRetain( const Ctx & ctx, const TableNumberin
 inline bool SpansTracksEntryLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, SpansTracksEntry & value, TableRetain * retain, const TableRetainPath & path )
 {
     (void) nodes;
+    if ( nodes.refused ) { return false; }
     SpansTracksEntryReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
@@ -8953,6 +8959,7 @@ inline bool SpansTracksEntryLoadBodyRetain( TableReader & r, const TableNodeMap 
                                 {
                                     TableReader elem_value( sub.buffer + sub.offset, (int64_t) elem_len_value, r.report, r.ids );
                                     ItemLoadBodyRetain( elem_value, ( *slot ), retain, TableRetainStepInto( path, 1, (uint32_t) ( i ) ) );
+                                    if ( elem_value.offset != elem_value.size ) { r.report->malformed = true; ItemReset( ( *slot ) ); }
                                 }
                                 sub.offset += (int64_t) elem_len_value;
                                 landed = true;
@@ -9154,6 +9161,7 @@ inline bool SpansSaveBodyRetain( const Ctx & ctx, const TableNumbering & numberi
 inline bool SpansLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Spans & value, TableRetain * retain, const TableRetainPath & path )
 {
     (void) nodes;
+    if ( nodes.refused ) { return false; }
     SpansReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
@@ -9263,6 +9271,7 @@ inline bool SpansLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sp
                         {
                             TableReader elem( elem_body, (int64_t) elem_len, r.report, r.ids );
                             SpansTracksEntryLoadBodyRetain( elem, nodes, *slot, retain, TableRetainStepInto( path, 0, (uint32_t) ( fill.map->count - 1 ) ) );
+                            if ( nodes.refused ) { return false; }
                         }
                         last_key = read.key; // the WIRE keys of the entries that LAND
                         landed = true;

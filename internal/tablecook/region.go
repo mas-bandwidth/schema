@@ -117,6 +117,9 @@ func Layout(m *tabletext.Model, g *tablewire.NodeGraph) (*Region, error) {
 	offset := int64(0)
 	for _, node := range g.Nodes {
 		if node.Blob != nil {
+			if uint64(len(node.Blob.Data)) > math.MaxUint32 {
+				return nil, fmt.Errorf("blob length %d exceeds the cook uint32 length limit", len(node.Blob.Data))
+			}
 			// a BYTE BUFFER's node: the header and its bytes, at eight (§7.2)
 			offset = alignUp(offset, BlobAlign)
 			n := Node{Offset: offset, Blob: node.Blob, String: node.Kind == ir.TString}
