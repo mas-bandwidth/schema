@@ -64,42 +64,15 @@
 | unbounded arrays | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | the message form | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | bitpacked table message form | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| retain-unknown | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| retain-unknown | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | doc comments and tags in the descriptors | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | the unit registry, UnitView | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | widening on read, and the refusal reasons | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
-339 of 1180 cells are done. That is a count of features, not of effort, since the
-cells are not equal in size. The table will be printed as it stands with every
-release from here.
-
-Each language is in one of three states, applied to each wire on its own.
-
-- **Performant and production ready.** Every feature is done. The test corpus
-  is bit-identical on every push. The speed is measured against C++ on the
-  benchmark standard and published.
-- **Done, but not yet mature.** Every feature is done and the tests are green.
-  The speed measurement is still owed.
-- **Coming.** Not every feature is done.
-
-On the packet wire as released in 2.4.0, C, C++, Rust, C# and Go are
-performant and production ready, and Java, JavaScript, Dart and Elixir are
-done but not yet mature. On the table wire every language is coming, C++ at 30
-of 31 and the rest as the table shows.
-
 ## How the work is done
 
-Numbers you can check, and code you own. Nothing lands without
-[tests that run on every push](.github/workflows/ci.yml). No speed is claimed
-that the benchmark did not measure, and no size the specification does not
-work out to the bit. The compiler is
-AGPL-3.0. The code it generates is yours, under any terms, and the
-[LICENSE](LICENSE) says so in writing.
-
-Schema is built by Glenn Fiedler, who has written about how multiplayer games
-work and given the code away for twenty years, together with an AI
-collaborator that does much of the building, testing and porting. Glenn owns
-every design decision. Every month a
+Schema is built by Glenn Fiedler, together with AI collaborators that do much of 
+the building, testing and porting. Glenn owns every design decision. Every month a
 [public ledger](https://github.com/mas-bandwidth/patreon#public-ledgers) shows
 where the AI collaborator's tokens went, by repository, and what they bought.
 

@@ -441,18 +441,82 @@ func TestDartVerbClaimNeedsATable(t *testing.T) {
 	buildUnit(t, "package t\ntype P { measure int32\n  save int32\n  to_json int32 }\n")
 }
 
-// TestTypeFreeOfTableSymbols: a table-free unit keeps its whole namespace —
-// the TableReport claim exists only when a table is declared.
-func TestTypeFreeOfTableSymbols(t *testing.T) {
-	if errs := runUnit(t, map[string]string{"T.schema": "package t\ntype TableReport { y int32 }\n"}); len(errs) > 0 {
-		t.Fatalf("a table-free unit must not claim the table runtime names: %v", errs)
+// TestTableRuntimeClaimSplitsOnTheViewFile (schema#672, narrowing #363): the
+// registry is claimed in TWO scopes, and the split follows the one reason
+// docs/SPEC-TABLES.md:560 gives for an every-unit claim.
+//
+// The VIEW FILE's descriptor surface is claimed in EVERY unit: a table-free
+// unit's view defines those names (§8.2), so a name free today would be a
+// collision the day the view is emitted. The REST of the registry, meaning
+// the announcement vocabulary, the refusal vocabulary, the accelerators'
+// runtimes and the cooked form's names, is defined by the generated TABLE
+// sources and by nothing else, so it is claimed where those sources are written: in a unit
+// that declares a table.
+func TestTableRuntimeClaimSplitsOnTheViewFile(t *testing.T) {
+	// (1) the view file's own names, refused with no table in sight, and the
+	// diagnostic says WHY a table-free unit is refused
+	for _, name := range tablenames.ClaimedInEveryUnit() {
+		src := "package t\ntype " + name + " { y int32 }\n"
+		errs := runUnit(t, map[string]string{"T.schema": src})
+		if len(errs) == 0 {
+			t.Errorf("a table-free unit declaring %s was accepted: the view file defines it (docs/SPEC-TABLES.md §8.2)", name)
+			continue
+		}
+		if !strings.Contains(errs[0].Error(), "view file") {
+			t.Errorf("%s is refused in a table-free unit, but the diagnostic does not name the view file: %v", name, errs[0])
+		}
 	}
-	// and the RUST CONSTANT SPACE is scoped the same way: a table-free unit
-	// keeps every spelling that would lower onto a runtime constant
-	for _, name := range []string{"table_cook_magic", "TABLE_JSON_MAX_DEPTH", "build_version", "tab_block_max_bytes"} {
-		src := "package t\nconst " + name + " = 1\ntype P { x int32 }\n"
-		if errs := runUnit(t, map[string]string{"T.schema": src}); len(errs) > 0 {
+	// (2) the rest of the registry is the table sources', so a packet-only
+	// unit draws no runtime claim from any of those names. A few of them
+	// trip an unrelated refusal on their spelling alone (the C macro space,
+	// Go's export casing), so what is asserted is the CLAIM's absence rather
+	// than a clean unit.
+	for _, name := range tablenames.ClaimedWithATable() {
+		src := "package t\ntype Holder { y int32 }\nenum " + name + " { A, B }\n"
+		for _, e := range runUnit(t, map[string]string{"T.schema": src}) {
+			if strings.Contains(e.Error(), "TABLE-wire runtime") || strings.Contains(e.Error(), "view file") {
+				t.Errorf("a packet-only unit declaring %s drew the table claim: %v", name, e)
+			}
+		}
+	}
+	// (3) and every one of them is refused the moment a table rides
+	for _, name := range tablenames.ClaimedWithATable() {
+		src := "package t\ntable Tab { x int32 }\nenum " + name + " { A, B }\n"
+		errs := runUnit(t, map[string]string{"T.schema": src})
+		if len(errs) == 0 {
+			t.Errorf("a unit with a table declaring %s was accepted: the generated table sources define that name", name)
+		}
+	}
+	// (4) THE #363 PAIR, measured. TABLE_COOK_MAGIC and TableReport are not
+	// names a table-free unit's outputs define and not names the view file
+	// spells, so the refusal #363 gave them narrows to a unit with a table.
+	if errs := runUnit(t, map[string]string{"T.schema": "package t\nconst TABLE_COOK_MAGIC = 7\ntype TableReport { y int32 }\n"}); len(errs) > 0 {
+		t.Errorf("a table-free unit must keep TABLE_COOK_MAGIC and TableReport: %v", errs)
+	}
+	if errs := runUnit(t, map[string]string{"T.schema": "package t\ntable Tab { x int32 }\nconst TABLE_COOK_MAGIC = 7\n"}); len(errs) == 0 {
+		t.Error("a unit with a table declaring TABLE_COOK_MAGIC was accepted")
+	}
+	// and the RUST CONSTANT SPACE is claimed on the same terms as the
+	// spelling it lowers from: beside a table, and not before
+	for _, name := range []string{"table_cook_magic", "TABLE_JSON_MAX_DEPTH", "build_version"} {
+		free := "package t\nconst " + name + " = 1\ntype P { x int32 }\n"
+		if errs := runUnit(t, map[string]string{"T.schema": free}); len(errs) > 0 {
 			t.Errorf("a table-free unit must keep %s: %v", name, errs)
+		}
+		beside := "package t\ntable Tab { x int32 }\nconst " + name + " = 1\n"
+		if errs := runUnit(t, map[string]string{"T.schema": beside}); len(errs) == 0 {
+			t.Errorf("a unit with a table declaring %s was accepted", name)
+		}
+	}
+	// and a name that lowers onto NO runtime constant stays the author's, in
+	// a table-free unit and beside a table alike: the claim is the registry's
+	// list and nothing wider
+	for _, src := range []string{
+		"package t\nconst tab_block_max_bytes = 1\ntype P { x int32 }\n",
+		"package t\ntable Holder { x int32 }\nconst tab_block_max_bytes = 1\n",
+	} {
+		if errs := runUnit(t, map[string]string{"T.schema": src}); len(errs) > 0 {
+			t.Errorf("a name the runtime does not spell must stay legal: %v", errs)
 		}
 	}
 }

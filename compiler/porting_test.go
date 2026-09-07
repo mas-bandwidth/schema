@@ -602,10 +602,10 @@ func TestPortingRegisterGateGoesRed(t *testing.T) {
 	// still yields the target, a workflow comment yields nothing, and a leg
 	// registered through a list variable in an included file is reached from
 	// `test` — while one registered in no list is not
-	if got := makeTargetsAfter(` -j"$(nproc)" tables-big-endian-negative BE_CXX=g++ `); len(got) != 1 || got[0] != "tables-big-endian-negative" {
+	if got := makeTargetsAfter(` -j"$(nproc)" tables-big-endian-negative-control BE_CXX=g++ `); len(got) != 1 || got[0] != "tables-big-endian-negative-control" {
 		t.Errorf("makeTargetsAfter read %q, want the one target", got)
 	}
-	if got := workflowMakeTargets([]string{"# 87 s of its 109 is `make tables-big-endian-negative`\n"}); len(got) != 0 {
+	if got := workflowMakeTargets([]string{"# 87 s of its 109 is `make tables-big-endian-negative-control`\n"}); len(got) != 0 {
 		t.Errorf("a workflow comment counted as a root: %q", got)
 	}
 	exists, reached := makefileReach([]string{

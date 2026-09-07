@@ -20,6 +20,7 @@ package cpptable
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -29,13 +30,28 @@ func (g *tableGen) emitMessageLoadBody(st *ir.Struct) {
 	g.pf("// defaults first, then whatever the wire says, field by field. An entry this\n")
 	g.pf("// build cannot name is skipped by its SHAPE and counted; one whose kind is\n")
 	g.pf("// not this field's is a kind mismatch and skipped the same way.\n")
+	if g.retain {
+		g.pf("// UNDER RETENTION the same body keeps the fields this build cannot name,\n")
+		g.pf("// resolved against the CONNECTION'S VOCABULARY instead of a trailer, with the\n")
+		g.pf("// path threaded at every child-body descent (docs/SPEC-TABLES.md §3.3, §6.6).\n")
+		g.pf("// The reader's own data is exactly what it would have been with retention off.\n")
+	}
 	if g.isVar(st.Name) {
-		g.pf("inline bool %sLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, %s & value )\n{\n", st.Name, st.Name)
+		g.pf("inline bool %s( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, %s & value%s )\n{\n",
+			g.verb(st.Name, "LoadMessageBody"), st.Name, g.retainParams())
 		g.pf("    (void) nodes; (void) index_bits;\n")
 	} else {
-		g.pf("inline bool %sLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, %s & value )\n{\n", st.Name, st.Name)
+		g.pf("inline bool %s( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, %s & value%s )\n{\n",
+			g.verb(st.Name, "LoadMessageBody"), st.Name, g.retainParams())
 	}
 	g.pf("    %sReset( value );\n", st.Name)
+	if g.retain {
+		g.pf("    // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT\n")
+		g.pf("    // (docs/SPEC-TABLES.md §6.6): this body is being established, so whatever\n")
+		g.pf("    // an earlier occurrence of it left is discarded before the winning one is\n")
+		g.pf("    // read. The discard moves neither counter.\n")
+		g.pf("    TableRetainDiscardBody( retain, path );\n")
+	}
 	g.pf("    for ( ;; )\n    {\n")
 	g.pf("        uint64_t ref = 0;\n")
 	g.pf("        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }\n")
@@ -64,6 +80,22 @@ func (g *tableGen) emitMessageLoadBody(st *ir.Struct) {
 	}
 	g.pf("            default:\n")
 	g.pf("                report->unknown++;\n")
+	if g.retain {
+		// THE SKIP RUNS FIRST AND THE CAPTURE SECOND, over the same bits
+		// (§3.3): the plain read's verdict on this entry is the SKIP's,
+		// whether or not this build retains, and the capture re-reads the bits
+		// the skip delimited. It drops the record instead where an excluded
+		// class, a full buffer or a shape the walk cannot frame says it cannot
+		// be kept, and the read continues either way (§6.6).
+		g.pf("            {\n")
+		g.pf("                const int64_t unknown_at = r.offset;\n")
+		g.pf("                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }\n")
+		g.pf("                TableMessageRetainCapture( retain, r, vocabulary, index_bits, entry, path, report, unknown_at );\n")
+		g.pf("            }\n")
+		g.pf("                break;\n")
+		g.pf("        }\n    }\n}\n\n")
+		return
+	}
 	g.pf("                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }\n")
 	g.pf("                break;\n")
 	g.pf("        }\n    }\n}\n\n")
@@ -102,6 +134,15 @@ func (g *tableGen) emitMessageWidenBranch(f *ir.Field, mine ir.TableVocabularyEn
 func (g *tableGen) emitMessageReadField(f *ir.Field) {
 	ind := "                "
 	name := f.Name
+	if g.retain && fieldDiscardsWhole(f) {
+		// THE FIELD IS BEING READ AGAIN (docs/SPEC-TABLES.md §6.6): a repeated
+		// table field and a union whose arm is written again both replace
+		// everything the earlier occurrence held, so every record under this
+		// field goes before the winning one is read. A map, a list and a
+		// bounded array take this at the point their own read commits to
+		// replace instead, and an enum-keyed array never takes it at all.
+		g.pf("%sTableRetainDiscardField( retain, path, %d );\n", ind, g.ordinal[f])
+	}
 	switch {
 	case f.IsMap():
 		g.emitMessageReadMap(f, ind)
@@ -121,7 +162,7 @@ func (g *tableGen) emitMessageReadField(f *ir.Field) {
 	case tableScalarKind(f) == tkUnion:
 		g.emitMessageReadUnion(f, "value."+name, ind)
 	case tableScalarKind(f) == tkTable:
-		g.pf("%sif ( !%s ) { return false; }\n", ind, g.msgLoadCall(f.Type.Name, "r", "value."+name))
+		g.pf("%sif ( !%s ) { return false; }\n", ind, g.msgLoadCall(f, f.Type.Name, "r", "value."+name))
 	case tableScalarKind(f) == tkEnum:
 		g.emitMessageReadEnum(f, "value."+name, ind)
 	default:
@@ -134,7 +175,7 @@ func (g *tableGen) emitMessageReadPayload(f *ir.Field, expr, ind string) {
 	case f.Array != ir.ArrayNone:
 		g.emitMessageReadArrayFrom(f, expr, fmt.Sprintf("value.%s_count", f.Name), ind, "entry", false)
 	case tableScalarKind(f) == tkTable:
-		g.pf("%sif ( !%s ) { return false; }\n", ind, g.msgLoadCall(f.Type.Name, "r", expr))
+		g.pf("%sif ( !%s ) { return false; }\n", ind, g.msgLoadCall(f, f.Type.Name, "r", expr))
 	case tableScalarKind(f) == tkEnum:
 		g.emitMessageReadEnum(f, expr, ind)
 	default:
@@ -210,6 +251,7 @@ func (g *tableGen) emitMessageReadTextFrom(f *ir.Field, value, count, ind, from 
 	// discipline over a count rather than a value: a length at or above 2^31
 	// narrowed FIRST is negative, passes a signed test against the bound
 	// untouched, and lands a negative length in the caller's storage
+	g.emitRetainReplaced(f, ind+"    ")
 	g.pf("%s    int32_t kept%s = 0;\n", ind, sfx)
 	g.pf("%s    if ( n%s > (uint64_t) %d ) { kept%s = %d; report->clamped++; } else { kept%s = (int32_t) n%s; }\n", ind, sfx, f.Type.Size, sfx, f.Type.Size, sfx, sfx)
 	if f.Type.Kind == ir.TWString {
@@ -294,14 +336,26 @@ func (g *tableGen) emitMessageReadArrayFrom(f *ir.Field, base, count, ind, from 
 	case tableScalarKind(f) == tkTable:
 		g.pf("%s%s scratch%s;\n", inner, f.Type.Name, sfx)
 		g.pf("%s%sReset( scratch%s );\n", inner, f.Type.Name, sfx)
-		g.pf("%sif ( !%s ) { return false; }\n", inner, g.msgLoadCall(f.Type.Name, "r", elem))
+		g.inStep(idx, func() {
+			g.inDrop("in_bounds"+sfx, func() {
+				g.pf("%sif ( !%s ) { return false; }\n", inner, g.msgLoadCall(f, f.Type.Name, "r", elem))
+			})
+		})
 	case tableScalarKind(f) == tkEnum:
 		g.pf("%s%s slot_value%s = %s::None;\n", inner, f.Type.Name, sfx, f.Type.Name)
 		g.emitMessageReadEnum(f, "slot_value"+sfx, inner)
 		g.pf("%sif ( in_bounds%s ) { %s[%s] = slot_value%s; }\n", inner, sfx, base, idx, sfx)
 	case tableScalarKind(f) == tkUnion:
 		g.pf("%s%s scratch%s;\n", inner, f.Type.Name, sfx)
-		g.emitMessageReadUnion(f, elem, inner)
+		// AN ARRAY OF UNIONS TAKES TWO STEPS AND NOT ONE (docs/SPEC-TABLES.md
+		// §6.6): the array field's step names the element by its index, and the
+		// element's own step names the arm by its ordinal.
+		g.inStep(idx, func() {
+			wasPath, wasIndex := g.pathExpr, g.elemIndex
+			g.pathExpr, g.elemIndex = g.step(f), "0"
+			g.inDrop("in_bounds"+sfx, func() { g.emitMessageReadUnion(f, elem, inner) })
+			g.pathExpr, g.elemIndex = wasPath, wasIndex
+		})
 	default:
 		// A DISCARDED SURPLUS ELEMENT NEVER ACQUIRES A LIVE DESTINATION. A
 		// fixed-width surplus is stepped over by the arithmetic below and
@@ -339,7 +393,11 @@ func (g *tableGen) emitMessageReadEnum(f *ir.Field, dst, ind string) {
 	g.pf("%s    TableMessageEntry variant_entry%s;\n", ind, sfx)
 	g.pf("%s    if ( variant_ref%s == 0 ) { %s = %s::None; } // the zero reference is the enum's None\n", ind, sfx, dst, e)
 	g.pf("%s    else if ( !TableMessageNameEntry( vocabulary, variant_ref%s, variant_entry%s ) ) { report->malformed = true; return false; }\n", ind, sfx, sfx)
-	g.pf("%s    else if ( !TableEnumValue( variant_entry%s.id, %s ) ) { %s = %s::None; report->unknown++; }\n", ind, sfx, dst, dst, e)
+	// AN UNKNOWN ENUM VARIANT REFERENCE IS AN EXCLUDED CLASS
+	// (docs/SPEC-TABLES.md §6.6): the FIELD is the reader's, and the reader
+	// writes its own value under that id, so a retained copy would be a second
+	// occurrence of an id the reader already wrote.
+	g.pf("%s    else if ( !TableEnumValue( variant_entry%s.id, %s ) ) { %s = %s::None; report->unknown++;%s }\n", ind, sfx, dst, dst, e, g.retainLostMessageInline())
 	g.pf("%s}\n", ind)
 }
 
@@ -360,7 +418,14 @@ func (g *tableGen) emitMessageReadUnion(f *ir.Field, dst, ind string) {
 	g.pf("%s    else if ( !TableMessageArmEntry( vocabulary, arm_ref%s, %s ) ) { report->malformed = true; return false; }\n", ind, sfx, arm)
 	g.pf("%s    else\n%s    {\n", ind, ind)
 	g.pf("%s        switch ( %s.id )\n%s        {\n", ind, arm, ind)
-	for _, v := range un.Variants {
+	// THE ARM'S OWN ORDINAL is the element index of a union's step, and not
+	// "whichever arm is set" (docs/SPEC-TABLES.md §6.6): a caller that switches
+	// the arm between load and save leaves a step no child body answers, so the
+	// record is dropped rather than placed in the other arm's body.
+	wasField := g.unionField
+	g.unionField = f
+	defer func() { g.unionField = wasField }()
+	for ai, v := range un.Variants {
 		mine := ir.TableArmEntry(v)
 		g.noteRef(v.Type)
 		// the arm's id is `mine.Id`, the announcement's own entry, which reads
@@ -384,19 +449,33 @@ func (g *tableGen) emitMessageReadUnion(f *ir.Field, dst, ind string) {
 		g.pf("%s                    if ( !TableMessageSkip( r, vocabulary, index_bits, %s ) ) { report->malformed = true; return false; }\n", ind, arm)
 		g.pf("%s                    break;\n%s                }\n", ind, ind)
 		g.pf("%s                %s.type = %sType::%s;\n", ind, dst, un.Name, ir.GoExportName(v.Name))
-		switch {
-		case v.Void():
-		case v.Body():
-			g.pf("%s                if ( !%s ) { return false; }\n", ind, g.msgLoadCall(v.Type, "r", armValue(dst, v)))
-		default:
-			g.emitMessageReadArm(v, dst, ind+"                ", arm, false)
-		}
+		g.inStep(strconv.Itoa(ai), func() {
+			switch {
+			case v.Void():
+			case v.Body():
+				g.pf("%s                if ( !%s ) { return false; }\n", ind, g.msgLoadCall(g.unionField, v.Type, "r", armValue(dst, v)))
+			default:
+				g.emitMessageReadArm(v, dst, ind+"                ", arm, false)
+			}
+		})
 		g.pf("%s                break;\n%s            }\n", ind, ind)
 	}
 	g.pf("%s            default:\n", ind)
-	g.pf("%s                %s.type = %sType::None; report->unknown++;\n", ind, dst, un.Name)
+	g.pf("%s                %s.type = %sType::None; report->unknown++;%s\n", ind, dst, un.Name, g.retainLostMessageInline())
 	g.pf("%s                if ( !TableMessageSkip( r, vocabulary, index_bits, %s ) ) { report->malformed = true; return false; }\n", ind, arm)
 	g.pf("%s                break;\n%s        }\n%s    }\n%s}\n", ind, ind, ind, ind)
+}
+
+// retainLostMessageInline is one EXCLUDED CLASS counted on a MESSAGE body
+// (docs/SPEC-TABLES.md §6.6), emitted into the retain family only and beside
+// the unknown the plain read already counts. It is the file form's own
+// retainLostInline with this form's report handle: a message body carries the
+// report as a parameter where a file's rides on the reader.
+func (g *tableGen) retainLostMessageInline() string {
+	if !g.retain {
+		return ""
+	}
+	return " report->retain_lost++;"
 }
 
 func (g *tableGen) emitMessageReadArm(v ir.UnionVariant, base, ind, arm string, widened bool) {
@@ -415,7 +494,9 @@ func (g *tableGen) emitMessageReadArm(v ir.UnionVariant, base, ind, arm string, 
 	case tableScalarKind(af) == tkEnum:
 		g.emitMessageReadEnum(af, value, ind)
 	case tableScalarKind(af) == tkTable:
-		g.pf("%sif ( !%s ) { return false; }\n", ind, g.msgLoadCall(af.Type.Name, "r", value))
+		// the step is the UNION FIELD's ordinal and the arm's own, which the
+		// caller has already put in scope (docs/SPEC-TABLES.md §6.6)
+		g.pf("%sif ( !%s ) { return false; }\n", ind, g.msgLoadCall(g.unionField, af.Type.Name, "r", value))
 	default:
 		g.emitMessageReadScalarFromEntry(af, value, ind, arm, false, widened)
 	}
@@ -442,7 +523,10 @@ func (g *tableGen) emitMessageReadKeyed(f *ir.Field, ind string) {
 	g.pf("%sif ( !TableMessageNameEntry( vocabulary, key_ref%s, key_entry%s ) ) { report->malformed = true; return false; }\n", inner, sfx, sfx)
 	g.pf("%s%s key%s = %s::None;\n", inner, f.KeyEnum, sfx, f.KeyEnum)
 	g.pf("%sconst bool named%s = TableEnumValue( key_entry%s.id, key%s );\n", inner, sfx, sfx, sfx)
-	g.pf("%sif ( !named%s ) { report->unknown++; }\n", inner, sfx)
+	// AN UNKNOWN KEYED-ARRAY SLOT IS AN EXCLUDED CLASS (docs/SPEC-TABLES.md
+	// §6.6): a slot is not a field, the reader rewrites the array body whole,
+	// and a slot has nowhere to append to.
+	g.pf("%sif ( !named%s ) { report->unknown++;%s }\n", inner, sfx, g.retainLostMessageInline())
 	g.pf("%sconst int32_t slot%s = named%s ? (int32_t) key%s - 1 : -1;\n", inner, sfx, sfx, sfx)
 	g.pf("%sconst bool in_bounds%s = slot%s >= 0 && slot%s < %d;\n", inner, sfx, sfx, sfx, f.ArrayBound)
 	elem := fmt.Sprintf("( in_bounds%s ? %s[slot%s] : scratch%s )", sfx, slots, sfx, sfx)
@@ -453,7 +537,14 @@ func (g *tableGen) emitMessageReadKeyed(f *ir.Field, ind string) {
 	case kind == tkTable:
 		g.pf("%s%s scratch%s;\n", inner, f.Type.Name, sfx)
 		g.pf("%s%sReset( scratch%s );\n", inner, f.Type.Name, sfx)
-		g.pf("%sif ( !%s ) { return false; }\n", inner, g.msgLoadCall(f.Type.Name, "r", elem))
+		// THE KEY'S SLOT is the element index of a keyed array's step (§6.6),
+		// and a slot this build cannot name captures nothing: it was excluded
+		// whole, and everything under it went with that one retain_lost.
+		g.inStep("slot"+sfx, func() {
+			g.inDrop("in_bounds"+sfx, func() {
+				g.pf("%sif ( !%s ) { return false; }\n", inner, g.msgLoadCall(f, f.Type.Name, "r", elem))
+			})
+		})
 	case kind == tkEnum:
 		g.pf("%s%s slot_value%s = %s::None;\n", inner, f.Type.Name, sfx, f.Type.Name)
 		g.emitMessageReadEnum(f, "slot_value"+sfx, inner)
@@ -486,6 +577,7 @@ func (g *tableGen) emitMessageReadMap(f *ir.Field, ind string) {
 	g.pf("%s    uint64_t count%s = 0;\n", ind, sfx)
 	g.pf("%s    if ( !r.get( count%s, TableBitsRequired( entry.min, entry.max ) ) ) { report->malformed = true; return false; }\n", ind, sfx)
 	g.pf("%s    count%s += (uint64_t) entry.min;\n", ind, sfx)
+	g.emitRetainReplaced(f, ind+"    ")
 	g.pf("%s    TableMapFill<%s> fill%s = TableMapFillBegin( nodes, value.%s, (uint32_t) count%s );\n", ind, n, sfx, f.Name, sfx)
 	g.pf("%s    if ( !fill%s.ok ) { report->malformed = true; return false; } // the measure and the load disagree\n", ind, sfx)
 	if stringKey {
@@ -529,7 +621,11 @@ func (g *tableGen) emitMessageReadMap(f *ir.Field, ind string) {
 	g.pf("%s            slot%s = TableMapFillNext( fill%s ); // ASCENDING: the next slot\n", ind, sfx, sfx)
 	g.pf("%s        }\n", ind)
 	g.pf("%s        if ( slot%s == NULL ) { report->malformed = true; return false; }\n", ind, sfx)
-	g.pf("%s        if ( !%s ) { return false; }\n", ind, g.msgLoadCall(n, "r", "*slot"+sfx))
+	// THE KEY'S SLOT is the element index of a map's step, which is the
+	// entry's index in ascending key order (docs/SPEC-TABLES.md §6.6, §2.8).
+	g.inStep(fmt.Sprintf("fill%s.map->count - 1", sfx), func() {
+		g.pf("%s        if ( !%s ) { return false; }\n", ind, g.msgLoadCall(f, n, "r", "*slot"+sfx))
+	})
 	g.pf("%s        if ( r.offset != read%s.end ) { report->malformed = true; return false; } // the scan and the decode disagree about where the entry ends\n", ind, sfx)
 	if stringKey {
 		g.pf("%s        last_key%s = read%s.key; last_length%s = read%s.length; // the WIRE keys of the entries that LAND\n", ind, sfx, sfx, sfx, sfx)
@@ -829,6 +925,7 @@ func (g *tableGen) emitMessageReadList(f *ir.Field, ind string) {
 	if listElementWireKind(f) == tkU8 {
 		g.pf("%s    if ( !r.align() ) { report->malformed = true; return false; } // an array of kind 6 aligns before its elements\n", ind)
 	}
+	g.emitRetainReplaced(f, ind+"    ")
 	g.pf("%s    TableListFill<%s> fill%s = TableListFillBegin( nodes, value.%s, n%s );\n", ind, g.listTypeArg(f), sfx, f.Name, sfx)
 	g.pf("%s    if ( fill%s.refused ) { nodes.refused = true; return false; }\n", ind, sfx)
 	g.pf("%s    if ( !fill%s.ok ) { report->malformed = true; return false; } // the measure and the load disagree\n", ind, sfx)
@@ -841,7 +938,11 @@ func (g *tableGen) emitMessageReadList(f *ir.Field, ind string) {
 	case f.Type.Pointer:
 		g.emitMessageReadIndex(f, elem, inner)
 	case tableScalarKind(f) == tkTable:
-		g.pf("%sif ( !%s ) { return false; }\n", inner, g.msgLoadCall(f.Type.Name, "r", elem))
+		// THE ELEMENT'S INDEX is the second half of an unbounded array's step
+		// (docs/SPEC-TABLES.md §6.6, §2.9)
+		g.inStep(idx, func() {
+			g.pf("%sif ( !%s ) { return false; }\n", inner, g.msgLoadCall(f, f.Type.Name, "r", elem))
+		})
 	case tableScalarKind(f) == tkEnum:
 		g.emitMessageReadEnum(f, elem, inner)
 	case tableScalarKind(f) == tkUnion:

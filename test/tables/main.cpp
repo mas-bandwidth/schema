@@ -46,6 +46,7 @@
 #include "R1Table.h"
 #include "R2Table.h"
 #include "ScalarsTable.h"
+#include "floatnan.h"
 #include "wirebuilder.h"
 
 static int failures = 0;
@@ -3184,6 +3185,7 @@ static void test_golden_reload()
     reload_table_golden( "scalars_full", scalardemo::SimStateLoad, scalardemo::SimStateSave );
     reload_table_golden( "scalars_default", scalardemo::SimStateLoad, scalardemo::SimStateSave );
     reload_table_golden( "scalars_edges", scalardemo::SimStateLoad, scalardemo::SimStateSave );
+    reload_table_golden( "floats_nan", tblf1::FloatsLoad, tblf1::FloatsSave );
     reload_table_golden( "v2_seams", tblv2::CfgLoad, tblv2::CfgSave );
     reload_table_golden( "chain_value", tblp1::ChainLoad, tblp1::ChainSave );
     reload_table_golden( "chain_value_empty", tblp1::ChainLoad, tblp1::ChainSave );
@@ -3451,6 +3453,17 @@ static void test_golden_wire()
         int64_t wrote = scalardemo::SimStateSave( s, buffer, sizeof( buffer ) );
         CHECK( wrote > 0 && wrote == scalardemo::SimStateMeasure( s ) );
         pin_table_golden( "scalars_edges", buffer, wrote );
+    }
+    {
+        // THE FLOAT BIT-PATTERN PIN (docs/SPEC-TABLES.md §3, schema#480): a
+        // signalling NaN and a NaN with a nonzero payload, at both widths and
+        // as array elements. Nothing canonicalizes a float on the way to the
+        // wire, so these 32 bits are what the file holds.
+        static tblf1::Floats f;
+        build_golden_floats_nan( f );
+        int64_t wrote = tblf1::FloatsSave( f, buffer, sizeof( buffer ) );
+        CHECK( wrote > 0 && wrote == tblf1::FloatsMeasure( f ) );
+        pin_table_golden( "floats_nan", buffer, wrote );
     }
 }
 

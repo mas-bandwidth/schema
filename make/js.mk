@@ -26,6 +26,13 @@ NODE ?= $(CURDIR)/dist/node-v20.20.2-darwin-arm64/bin/node
 # pin from the environment and falls back to PATH
 export NODE
 
+# THE TOOLCHAIN GATE, this leg's half (issue #599; the Makefile's header and
+# docs/CONTRIBUTING.md, "Adding a language"). `make test` runs this before the
+# chain starts and refuses by name when the pin does not resolve, because a leg
+# that skips in silence is a leg whose red rides a green run.
+.PHONY: toolchain-js
+toolchain-js:
+	@$(call toolchain_probe,js,NODE,$(NODE))
 build/packet-defaults/js/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema make/js.mk
 	./bin/schema generate --lang js --out build/packet-defaults/js/defaults test/packet-defaults/Defaults.schema
 	./bin/schema generate --lang js --out build/packet-defaults/js/plain test/packet-defaults/Plain.schema
@@ -456,7 +463,7 @@ conformance-negative-control-js:
 # controls, the conformance negative control, the runtime-home gate, and the
 # packet tests in both node modes.
 .PHONY: test-js
-test-js: generated/js/.stamp generated/js-ludicrous/.stamp generated/bench/js/.stamp generated/bench/tables/js/.stamp
+test-js: toolchain-js generated/js/.stamp generated/js-ludicrous/.stamp generated/bench/js/.stamp generated/bench/tables/js/.stamp
 	$(MAKE) tables-js-json-walk
 	$(MAKE) tables-js-standalone
 	$(MAKE) tables-js-refuses-pointers
@@ -477,7 +484,9 @@ test-js: generated/js/.stamp generated/js-ludicrous/.stamp generated/bench/js/.s
 	cd test/js-ludicrous && node main.mjs && NODE_ENV=production node main.mjs
 
 TEST_LEGS         += test-js
-CONFORMANCE_LEGS  += build/tables-generated-js/.stamp
+TOOLCHAIN_LEGS    += js
+TOOLCHAIN_PINS_js  := NODE
+CONFORMANCE_LEGS  += $(call unless_skipped,js,build/tables-generated-js/.stamp)
 BENCH_TABLES_LEGS += generated/bench/tables/js/.stamp
 # Both JavaScript packet tiers share the UTF-8 rule and mutation corpus.
 build/packet-text/js/.stamp: bin/schema test/packet-text/Narrow.schema

@@ -53,11 +53,45 @@ func (g *tableGen) msgSaveCall(name, expr string) string {
 	return fmt.Sprintf("%sSaveMessageBody( w, %s )", name, expr)
 }
 
-func (g *tableGen) msgLoadCall(name, reader, expr string) string {
+func (g *tableGen) msgLoadCall(f *ir.Field, name, reader, expr string) string {
+	if g.retain {
+		// THE PATH IS THREADED exactly as the file form threads it
+		// (docs/SPEC-TABLES.md §6.6): the step is computed LOCALLY, at the
+		// moment the walk descends, and the store is NULL where the element is
+		// one the reader is dropping.
+		if g.isVar(name) {
+			return fmt.Sprintf("%sLoadMessageBodyRetain( %s, vocabulary, report, nodes, index_bits, %s, %s, %s )",
+				name, reader, expr, g.retainStore(), g.step(f))
+		}
+		return fmt.Sprintf("%sLoadMessageBodyRetain( %s, vocabulary, report, index_bits, %s, %s, %s )",
+			name, reader, expr, g.retainStore(), g.step(f))
+	}
 	if g.isVar(name) {
 		return fmt.Sprintf("%sLoadMessageBody( %s, vocabulary, report, nodes, index_bits, %s )", name, reader, expr)
 	}
 	return fmt.Sprintf("%sLoadMessageBody( %s, vocabulary, report, index_bits, %s )", name, reader, expr)
+}
+
+// retainStore is the caller's buffer as a NESTED READ takes it. A bit stream
+// has to be walked past, so an element this build is DROPPING, one past its
+// own array bound, one under a keyed key it cannot name, is decoded into a
+// scratch where a file's reader steps over it by its length. Nothing in that
+// body is a field of this region, so the store it captures into is none
+// (docs/SPEC-TABLES.md §6.6).
+func (g *tableGen) retainStore() string {
+	if g.retainGate == "" {
+		return "retain"
+	}
+	return fmt.Sprintf("( %s ? retain : NULL )", g.retainGate)
+}
+
+// inDrop runs `emit` with the store gated on the element being this build's,
+// and puts back what was there.
+func (g *tableGen) inDrop(gate string, emit func()) {
+	was := g.retainGate
+	g.retainGate = gate
+	emit()
+	g.retainGate = was
 }
 
 // msgEnter opens one nesting level of the message codec's emission and answers

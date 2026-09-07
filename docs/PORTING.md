@@ -460,7 +460,7 @@ and `:501-502`.
 **Measured effect.** The s390x battery (`tables-big-endian`, `conformance-big-endian`)
 is green under emulation.
 
-**Negative control.** `tables-big-endian-negative` puts one store back to
+**Negative control.** `tables-big-endian-negative-control` puts one store back to
 host order and requires red on the target while green on the host.
 
 **Targets:** none
@@ -729,8 +729,12 @@ the reader at `emitMapReadField`. The walk's map edge is
 compiler's own engine sorts, writes and reads a map at three depths — a map of
 maps with a keyed array and a union arm holding one included — and agrees with
 the reference byte for byte on all three pinned wires and on the text round
-trip. The tool's COOK half is what remains, and its surfaces refuse a
-map-bearing unit by name until it lands.
+trip, and `schema cook-check`'s MAP-SLOT clause (#380): the four clauses a
+list's slot takes, against `alignof( Entry )` and `count × sizeof( Entry )`,
+plus the fifth a list has no analogue for — the KEYS read ascending with no
+repeat, because a cook a `Find` cannot search is a forgery. The tool's COOK
+and UNCOOK halves are what remains, and those two surfaces refuse a map-bearing
+unit by name until they land.
 
 **Measured effect.** Zero bytes past the entries themselves in a region and a
 cook, `Open` still O(1), `Find` in place at `floor( log2 n ) + 1` key compares
@@ -745,13 +749,17 @@ rule dropped, the key-kind rule decoding anyway, the reader clamping a key
 instead of dropping its entry, the `N`-against-`L` fit check dropped,
 `LoadMeasure` summing the extent at one depth only, `ToJson` writing the
 entries in any order but ascending, and `Lock` writing an UNREACHED non-empty
-map slot instead of refusing it.
+map slot instead of refusing it. And the tool's map-slot clause has two of its
+own (`tables-maps-cook-check-negative-control`): the SHARED containment test
+dropped, which must turn the map's test red beside the list's, and the KEYS'
+ascending test dropped, which is the map's alone and would go untested under a
+shared control.
 
-**Targets:** maps, json-map-walk, maps-sort-negative-control, maps-dead-entry-negative-control, maps-ascending-negative-control, maps-duplicate-negative-control, maps-key-kind-negative-control, maps-clamp-negative-control, maps-fit-negative-control, maps-depth-negative-control, maps-text-order-negative-control, maps-unreached-negative-control
+**Targets:** maps, json-map-walk, maps-sort-negative-control, maps-dead-entry-negative-control, maps-ascending-negative-control, maps-duplicate-negative-control, maps-key-kind-negative-control, maps-clamp-negative-control, maps-fit-negative-control, maps-depth-negative-control, maps-text-order-negative-control, maps-unreached-negative-control, maps-cook-check-negative-control
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-maps` `tables-json-map-walk` `tables-maps-negative-controls`, and the TOOL's wire and text halves (`TestTheToolWritesTheReferencesMapBytes`) | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 |
+| ✅ `tables-maps` `tables-json-map-walk` `tables-maps-negative-controls` `tables-maps-cook-check-negative-control`, and the TOOL's wire and text halves and its cook-check clause (`TestTheToolWritesTheReferencesMapBytes`, `TestCookCheckMapSlot`) | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 |
 
 ### M20 — The id-table wire
 
@@ -828,6 +836,60 @@ through `go build -overlay` and each turning the fuzzer red on its own verdict.
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
 | ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ❌ #512 | ❌ #518 | ❌ #511 | ❌ #513 | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 |
+
+### M21 — A float crosses two widths by bit surgery, never by conversion
+
+**Method.** A float rides as its IEEE-754 BIT PATTERN with no canonicalisation
+(docs/SPEC-TABLES.md §3, SPEC.md §4.3), so a backend that holds a `float32` in
+a WIDER cell moves the pattern BIT FOR BIT and never through a float
+conversion. The hardware conversion sets the QUIET BIT on a signalling NaN and
+drops a payload the narrower cell would have kept, so a port that models a
+float32 in a float64 rewrites values the wire carried — silently, on the read
+side, where a byte comparison of its own writing catches nothing. Two
+functions, inverse over every float32 NaN: widening takes the sign, an
+all-ones exponent and the 23 payload bits into the TOP of the double's 52;
+narrowing takes them back, and a payload that would round away is forced to
+the quiet bit rather than to an INFINITY. Ordinary values take the ordinary
+conversion, exact in both directions. The rule reaches three places in a port:
+the read of kind `10`, §4's FLOAT RUNG where `10` widens into `11`, and any
+storage between them that is wider than the field, such as a cook's region
+slot. The text form is not one of them: JSON spells no NaN, the text writer
+refuses a non-finite float and the reader counts a NaN token as a kind
+mismatch (§16.2), so a NaN payload never rides through a text cell.
+
+**Reference.** `internal/codegen/cpptable/widen.go` (`TableWidenF32`, emitted
+into every unit's header) and its use at
+`internal/codegen/cpptable/messageload.go`. The compiler's own engines carry
+the same pair, EXPORTED so nothing mints a second copy:
+`internal/tablewire/encode.go`'s `WidenF32` and `NarrowF32`, read by
+`internal/tablecook/region.go` and `internal/tablecook/uncook.go`; the wire
+decoders' kind-`10` arms (`decode.go`, `messagedecode.go`) test the NaN
+predicate inline and share the same widening helper, so the surgery itself
+lives in one place.
+
+**Proven in.** C++ (#480), and the TOOL: the Go oracle and the tool's cook both
+model a float32 in a float64 cell, and both read and write the pinned patterns
+unchanged. The eight ports are a row on #366 — JavaScript holds every number as
+a float64 and Elixir's floats are doubles, so those two owe the technique for
+the field itself; the rest owe it at §4's float rung, where the widened value
+lands in a double however the field is stored.
+
+**Measured effect.** Nothing on the ordinary path: the branch is one mask and
+one compare against an exponent word already loaded, and every finite value
+takes the conversion it took before. What it buys is the byte-identity promise
+holding over a class of values the corpus can now pin.
+
+**Negative control.** `tables-float-nan-negative-control` puts the hardware
+conversion back in `TableWidenF32` through an overlay sabotage (I2),
+regenerates only the F1/F2 pair from the sabotaged emitter, and requires the
+pin to go RED on the payload: the observed failure is `0x7ff0000020000000`
+read back as `0x7ff8000020000000`, which is the quiet bit the conversion set.
+
+**Targets:** tables-float-nan, tables-float-nan-negative-control
+
+| cpp | c | rust | go | cs | java | js | dart | elixir |
+|---|---|---|---|---|---|---|---|---|
+| ✅ `tables-float-nan` `tables-float-nan-negative-control`, and the TOOL's two engines (`TestOracleCarriesTheFloatBitPattern`, `TestOracleWidensTheFloatBitPattern`, `TestACookCarriesAFloatBitPattern`) | ❌ #366 | ❌ #366 | ❌ #366 | ❌ #366 | ❌ #366 | ❌ #366 | ❌ #366 | ❌ #366 |
 
 ### I1 — The independent allocation gate
 
@@ -1030,7 +1092,7 @@ refuse, under s390x emulation); `tables-java-order`;
 
 **Measured effect.** Structural.
 
-**Negative control.** `tables-big-endian-negative`;
+**Negative control.** `tables-big-endian-negative-control`;
 `conformance-negative-control-c-foreign` neuters the byte swap and requires
 both foreign rows red with `cook` and `block` green.
 

@@ -104,34 +104,48 @@ func TestListRefusalNamesTheCarrier(t *testing.T) {
 	}
 }
 
-// TestTheToolsCookRefusesAList: the tool's WIRE and TEXT halves carry the
-// construct and `cook-check` reads one, and its COOK half does not, so the
-// cook and uncook surfaces refuse by name rather than laying out a region
-// short of the element arrays.
-func TestTheToolsCookRefusesAList(t *testing.T) {
+// TestTheToolsCookCarriesAList: the tool's COOK and UNCOOK halves carry the
+// unbounded array (schema#380), so no surface refuses a list-bearing unit BY
+// CONSTRUCT any more. All three reach their engines, and the refusal each
+// answers for an empty file is the FILE'S — the header's, or the wire's — and
+// never the construct's.
+func TestTheToolsCookCarriesAList(t *testing.T) {
 	u := unitFromSource(t, listSrc)
-	err := refuseToolLists(u)
-	if err == nil {
-		t.Fatal("the tool's cook accepted a unit declaring an unbounded array")
-	}
-	for _, want := range []string{"Save.placements", "WIRE and TEXT halves carry", "--lang cpp"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("the cook refusal does not name %q: %v", want, err)
+	c := New()
+	for _, probe := range []struct {
+		what string
+		err  error
+	}{
+		{"cook", cookErr(c, u)},
+		{"uncook", uncookErr(c, u)},
+		{"cook-check", cookCheckErr(c, u)},
+	} {
+		if probe.err == nil {
+			t.Errorf("the tool's %s accepted an empty file", probe.what)
+			continue
+		}
+		if strings.Contains(probe.err.Error(), "unbounded array") {
+			t.Errorf("the tool's %s refused a list-bearing unit by construct rather than reading the file: %v", probe.what, probe.err)
 		}
 	}
-	if err := refuseToolLists(unitFromSource(t, mapSrc)); err != nil {
-		t.Fatalf("the tool refused a list-free unit: %v", err)
+	// and the MAP's tool cook half is still OWED, still refused by name
+	if _, _, _, err := c.Cook(unitFromSource(t, mapSrc), "Fleet", nil, CookOptions{}); err == nil ||
+		!strings.Contains(err.Error(), "declares a map") {
+		t.Errorf("the tool's cook did not refuse a map-bearing unit by name: %v", err)
 	}
-	c := New()
-	if _, _, _, err := c.Cook(u, "Save", nil, CookOptions{}); err == nil || !strings.Contains(err.Error(), "unbounded array") {
-		t.Errorf("the tool's cook did not refuse a list-bearing unit by name: %v", err)
-	}
-	if _, err := c.Uncook(u, "Save", nil); err == nil || !strings.Contains(err.Error(), "unbounded array") {
-		t.Errorf("the tool's uncook did not refuse a list-bearing unit by name: %v", err)
-	}
-	// cook-check reaches its scan: the refusal it answers for an empty file is
-	// the header's, not the construct's
-	if _, err := c.CookCheck(u, "Save", nil); err == nil || strings.Contains(err.Error(), "unbounded array") {
-		t.Errorf("cook-check refused a list-bearing unit by construct rather than reading the file: %v", err)
-	}
+}
+
+func cookErr(c *Compiler, u *ir.Unit) error {
+	_, _, _, err := c.Cook(u, "Save", nil, CookOptions{})
+	return err
+}
+
+func uncookErr(c *Compiler, u *ir.Unit) error {
+	_, err := c.Uncook(u, "Save", nil)
+	return err
+}
+
+func cookCheckErr(c *Compiler, u *ir.Unit) error {
+	_, err := c.CookCheck(u, "Save", nil)
+	return err
 }

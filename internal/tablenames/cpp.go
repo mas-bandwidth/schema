@@ -48,21 +48,36 @@ func init() {
 		Name{Name: "AnnounceRead", What: "read an announcement into one direction's table"},
 		Name{Name: "TableWriter", What: "the wire writer over the caller's buffer"},
 		Name{Name: "TableReader", What: "the wire reader over the caller's buffer"},
-		Name{Name: "TableTypeInfo", What: "a table's reflection descriptor"},
-		Name{Name: "TableFieldInfo", What: "a field's reflection descriptor"},
+		// THE DESCRIPTOR SURFACE, and the one part of this registry a VIEW
+		// FILE carries itself (docs/SPEC-TABLES.md §8.2): the vocabulary
+		// keeps its Table spellings "in a unit that declares no table at
+		// all", and a table-free unit carries the descriptor primitives in
+		// its view file behind the same include guard the table headers use.
+		// These carry View, so they are the names claimed in EVERY unit; the
+		// reason docs/SPEC-TABLES.md:560 gives for an every-unit claim is
+		// this one, and it reaches exactly this far.
+		Name{Name: "TableTypeInfo", What: "a table's reflection descriptor", View: true},
+		Name{Name: "TableFieldInfo", What: "a field's reflection descriptor", View: true},
 		// THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1, §8.7): every field row
 		// and every declaration row with no `///` block names this ONE
 		// definition, so absence costs a unit no string data and a printer
-		// concatenates doc columns with no null test. Claimed wherever a unit
-		// declares a table.
-		Name{Name: "TableDocNone", What: "the one shared empty doc every unannotated descriptor row names"},
+		// concatenates doc columns with no null test. Every row a view file
+		// writes names it, so it rides with the descriptors above.
+		Name{Name: "TableDocNone", What: "the one shared empty doc every unannotated descriptor row names", View: true},
 		// a UNION field's shape (docs/SPEC-TABLES.md §8.1): the tag, and each arm's
 		// payload by its own descriptor. Every backend defines both, and every one
 		// puts them at unit level beside the two descriptors above — a union
 		// field's column has to name a type, and a nested one would be reached
-		// through a descriptor a walk holds by value.
-		Name{Name: "TableUnionInfo", What: "a union field's tag and its arms"},
-		Name{Name: "TableUnionArmInfo", What: "one union arm's payload and descriptor"},
+		// through a descriptor a walk holds by value. The view file spells
+		// both, on a union field's row, so they take the descriptors' scope.
+		Name{Name: "TableUnionInfo", What: "a union field's tag and its arms", View: true},
+		Name{Name: "TableUnionArmInfo", What: "one union arm's payload and descriptor", View: true},
+		// the identity pair is NOT view surface, and the measurement says so:
+		// a declaration no table closure reaches has ids nothing ever checked,
+		// so its rows carry id 0 and its variant_id column answers 0 as a
+		// literal (docs/SPEC-TABLES.md §8.2). A view file over out-of-closure
+		// declarations, which is the whole of a table-free unit's view,
+		// spells neither name.
 		Name{Name: "TableEnumId", What: "an enum value -> its table-wire variant id"},
 		Name{Name: "TableEnumValue", What: "a table-wire variant id -> its enum value"},
 		// the ENUM-KEYED array's storage type (docs/SPEC-TABLES.md §2.4). C++ spells it
@@ -112,6 +127,11 @@ func init() {
 		// lazy factory for the nested table's descriptor, which is scoped. The
 		// C++ meaning is unit-level, so the name is claimed whatever the target —
 		// the claim is the union, never the intersection.
+		// TableRef and TableWorker reach a view file only through a POINTER
+		// field's resolve and emplace lambdas (§8.1), and a pointer is
+		// refused outside a table body (§2.1), so no view file over
+		// out-of-closure declarations spells either, and neither is claimed
+		// in a table-free unit.
 		Name{Name: "TableRef", What: "C++: a pointer's eight-byte reference slot; C#: a field descriptor's nested-table factory"},
 		Name{Name: "TableSlot", What: "an arena slot"},
 		Name{Name: "TableArena", What: "the builder's segmented slab arena"},
