@@ -1699,6 +1699,21 @@ about a value's storage is the map's:
   field has (§2.1, §2.5), one member, and the node it names takes its index
   where the map is reached.
 
+**AN ARRAY OF POINTERS IS ITS ARRAY FORM'S ROW OVER A REFERENCE ELEMENT**
+(§2.1, §4.2). The element is a pointer, so the ELEMENT is the eight-byte
+reference and the ARRAY FORM decides the rest, exactly as the same three
+spellings decide it at any other field:
+
+- `[N]*T` stores `N` references, one member;
+- `[..N]*T` stores `N` references beside its `int32` used count, two members;
+- `[]*T` stores the sixteen-byte list slot over reference elements, one member.
+
+Each slot names a node of the walk below, so two slots may name one node and a
+slot may name none, and nothing about that is the map's either. `[E]*T`,
+`[N]*string` and `[]*bytes` are refused by name (§2.4, §15), and the refusal
+reaches a map's value at the entry, because the value is a field of a table
+nobody wrote.
+
 **THE HANDLE FOLLOWS THE STORAGE.** `Insert`, `Find` and `Each` hand back a
 pointer to the `value` member where the storage is ONE member, and the ENTRY
 where it is two, because two members are not one addressable slot and a caller
@@ -1706,9 +1721,12 @@ that cannot set the length or the count cannot fill the value. A `[N]T` value's
 handle points at the ARRAY rather than at its first element, so the extent
 survives the handoff. A `*T`, `*string` or `*bytes` value's BUILDER handle is
 the SLOT, which is what an `Emplace` fills, and the const `Find` answers the
-RESOLVED node, one add on the self-relative delta. Where the handle is the
-entry, the caller fills `value` and its companion and leaves `key` to the map,
-which owns the order the key carries.
+RESOLVED node, one add on the self-relative delta. THE ARRAY FORM DECIDES AN
+ARRAY OF POINTERS' HANDLE, NEVER THE ELEMENT: a `[N]*T` hands back the array of
+references, a `[..N]*T` the entry, a `[]*T` the list slot, and the caller
+resolves each slot as it resolves any pointer. Where the handle is the entry,
+the caller fills `value` and its companion and leaves `key` to the map, which
+owns the order the key carries.
 
 **And a map is a BY-VALUE EDGE of the ONE declaration-order walk** (§3.1,
 schema#438). The numbering, the pack measure and the pack are one walk over
@@ -6167,7 +6185,9 @@ without a rule of its own.** The value is an ordinary field of the generated
 entry and its storage is that field's own row (§2.8), so an entry's body
 carries a field header, a length and a payload of the value's own kind: an
 array's `N` and ELEMENT KIND where the value is `[N]T`, `[..N]T`, `[E]T` or an
-unbounded `[]T`; a kind `17` NODE INDEX where it is `*T`, `*string` or
+unbounded `[]T`, and that element kind is `17` where the element is a pointer,
+so a `[N]*T`, a `[..N]*T` and a `[]*T` are the array strategies over node
+indices; a kind `17` NODE INDEX where the value is `*T`, `*string` or
 `*bytes`, and the blob record it names is a record of the node table like any
 other; and the kind `12` and kind `33` payloads the text strategies above name.
 The strategies are enumerated over field positions, so each lands inside an
