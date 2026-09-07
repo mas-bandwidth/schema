@@ -4876,12 +4876,21 @@ damage (§3). A wire that had shipped would have taken `3` on that same rule.
 #### Retention, and what does not move
 
 **RETENTION (§6.6) ON A MESSAGE BODY: the load side is unchanged and the save
-side REFUSES.** The C++ reference carries the WRITE half of this
-paragraph, which is the refusal, and the form 2 `LoadRetain` is not built (§6.6).
+side REFUSES.** The C++ reference and the compiler's own engine carry both
+halves of this paragraph.
 
 `LoadRetain` reads a form-`2` body as it reads a file's, the resolving walk
 replacing every reference with the id it names, against the connection's
-vocabulary instead of a trailer. **`SaveRetain` writing form `2` REFUSES BY NAME
+vocabulary instead of a trailer. **THE RECORD IS THE FILE FORM'S OWN**, because
+a retained record carries the field's bytes with every reference resolved so
+that re-emitting it into any id table is correct, and the table it is re-emitted
+into is a FILE's: a bitpacked value is read at the width its announced shape
+states and written at the width the file form spells, which is this form's
+third difference (above) taken in the one direction retention has. **A BATCH
+TAKES ONE REGION AND ONE RETENTION BUFFER A BODY**, because each body carries
+its own node directory inside that one region (above), so a record's first step
+stays an index into the directory of the body it came from and `SaveRetain`'s
+accounting is the file form's unchanged. **`SaveRetain` writing form `2` REFUSES BY NAME
 and returns `-1`.** A form-`2` writer names entries through slots of a
 vocabulary the compiler settled, and a retained id is by definition one this
 build's closure does not contain, so it has no slot AND no announced shape, which
@@ -4995,6 +5004,11 @@ precedent.
   single message is the batch of one, and no singular verb is carried beside
   them: a surface with both would let a caller write one message a call and
   never learn that the batch is where the bandwidth is.
+- **`LoadRetainMessages` beside them**, the form-`2` read with retention on
+  (§6.6), PLURAL for the same reason and claimed on §11's own rule because it
+  is emitted. It takes one retention buffer a BODY, parallel to the caller's
+  array of roots, and there is no measure and no save beside it: retention
+  writing form `2` is `SaveRetainMessages`, which refuses by name (above).
 - **The refusal reason values `no_vocabulary`, `second_announcement`,
   `vocabulary_too_large`, `batch_too_large` and `message_form_as_file`** beside
   the form byte's own `newer_form`. `vocabulary_too_large` covers both bounds,
@@ -7438,9 +7452,15 @@ instance, and the discipline is to retain, edit values, and save, or to reload
 after a shape edit. The safety check is still read after `Save`, and it
 catches the drop.
 
-**HELD BY TEST, when it lands.** The rows the conformance manifest owes, each
-red for one reason, and **every row on a POINTERED unit** (the variable class,
-above), the fixed class's own row excepted:
+**HELD BY TEST.** The rows below, each red for one reason, and **every row on a
+POINTERED unit** (the variable class, above), the fixed class's own row
+excepted. **NINE OF THEM ARE THE CONFORMANCE MANIFEST'S OWN DATA**, on its
+`retain` and `retain-message` lines: the round trip at depth, the truncated
+record, the id list one short, the five excluded classes a wire can carry to the
+unknown arm, and the message form's tail. The rest are the two engines' own
+gates, because each asks something a shared row cannot: a record's BYTE cost is
+the port's own, an allocation audit is a language's own instrument, and a
+refusal by name is a compile error rather than an answer a driver writes.
 
 - a wire whose unknown fields sit at three depths, retained and re-emitted,
   the save pinned as a byte string of its own. Red if a field is lost,
@@ -7530,11 +7550,10 @@ negative controls, one per engine, stand beside the fuzzer's (§4.2).
 
 **Backend status: the C++ REFERENCE and the ORACLE carry it, and no port
 does.** The reference emits `TableRetain`, the three verbs on every
-variable-class root, the refusal on every fixed-class one, and a second family
-of body functions beside the three the wire already had, so `Load`, `Measure`
-and `Save` are unchanged. What is still owed is the eight ports and the MESSAGE
-form's `LoadRetain` (§3.3): the form 2 write refuses by name and the form 2
-read is not built.
+variable-class root, the refusal on every fixed-class one, the MESSAGE form's
+own `LoadRetainMessages` beside them (§3.3), and a second family of body
+functions beside the three the wire already had, so `Load`, `Measure` and
+`Save` are unchanged. What is still owed is the eight ports.
 
 ## 7. The cooked form
 
@@ -10139,9 +10158,9 @@ in build version (§20.5).
   types share one symbol table (§13.1), which is what makes the generated
   surface unprefixed and collision-free — so every name a closure member
   claims is refused to everything else. A member `X` claims `X` followed by
-  each of these **52 suffixes**, and a declaration spelling one of them is
+  each of these **53 suffixes**, and a declaration spelling one of them is
   refused naming the collision — the block form's nine and the C backend's
-  seven follow below, for **68 in all**:
+  seven follow below, for **69 in all**:
 
   ```
   Measure  MeasureBody  Save  SaveBody  SaveBodyFields  Load  LoadBody
@@ -10153,7 +10172,7 @@ in build version (§20.5).
   Open  TableFields  TableInfo
   FromJson  ToJson  ToJsonMeasure  Table
   MeasureMessages  SaveMessages  LoadMessages
-  LoadRetain  MeasureRetain  SaveRetain  SaveRetainMessages
+  LoadRetain  MeasureRetain  SaveRetain  LoadRetainMessages  SaveRetainMessages
   LoadBodyRetain  MeasureBodyRetain  SaveBodyRetain  SaveBodyFieldsRetain
   MeasureWireRetain  SaveWireRetain  NodeBodyRetain
   ```
@@ -10161,19 +10180,21 @@ in build version (§20.5).
   The set is claimed for EVERY closure member, not only pointer-bearing
   ones: a table gains or loses pointers as an edit, and a name that was
   free yesterday must not become a collision tomorrow. That list is the
-  checker's own, and this section is held to it: the three lists here, 52, then
+  checker's own, and this section is held to it: the three lists here, 53, then
   the block form's nine, then the C backend's seven, are `tableGeneratedVerbs`
-  entire, spelling for spelling and 68 in all, because a claim the page states
+  entire, spelling for spelling and 69 in all, because a claim the page states
   and the checker does not make is a name a user may take.
 
-  **RETAIN-UNKNOWN'S ELEVEN ARE THREE AND EIGHT** (§6.6). `LoadRetain`,
+  **RETAIN-UNKNOWN'S TWELVE ARE THREE AND NINE** (§6.6). `LoadRetain`,
   `MeasureRetain` and `SaveRetain` are the SURFACE the feature owes this
-  section. The other eight are what carries them, and they are claimed on
+  section. The other nine are what carries them, and they are claimed on
   this list's own rule because they are EMITTED: the second family of body
   functions, the wire pair a pointered root takes, the node dispatch that
-  reaches each record's own body, and `SaveRetainMessages`, which is REFUSED
-  BY NAME on a form 2 write (§3.3) and is a definition rather than only a
-  claim for exactly that reason.
+  reaches each record's own body, and the MESSAGE form's two.
+  `LoadRetainMessages` is the form 2 READ, which resolves against the
+  connection's vocabulary where the file form resolves against a trailer, and
+  `SaveRetainMessages` is the form 2 WRITE, REFUSED BY NAME (§3.3) and a
+  definition rather than only a claim for exactly that reason.
 
   **`Open` AND `Cook` ARE BOTH EMITTED NOW — in different languages, and that is
   what the C# rule below is for. `OpenWalk` was RETIRED.** The C++ table backend

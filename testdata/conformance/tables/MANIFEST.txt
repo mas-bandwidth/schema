@@ -15,6 +15,17 @@
 #            testdata/conformance/tables/json/<name>.json (§16). The same
 #            instance both ways.
 #
+#   retain   <case> <unit> <root> <wire> <capacity> <ids> <counters> <save lost> <saves>
+#   retain-message <case> <connection> <unit> <root> <wire> <capacity> <ids> ...
+#            one RETAIN-UNKNOWN round trip (§6.6): the wire, the two capacities
+#            the caller declares, the counters the LOAD owes and the one the
+#            SAVE adds, and the file the pair writes back. The byte capacity is
+#            a RULE where a number would not travel, a record's byte cost is
+#            the port's own, so `full` and `short` say what a leg DOES rather
+#            than how many bytes it declares, and the id list, being a COUNT,
+#            travels as one. The message row is the form-2 read, whose save is
+#            the FILE form (§3.3). FORMAT.md states both shapes.
+#
 #   report   <case> <unit> <root> <wire file>
 #            bytes read by a type that did not write them — the evolution class
 #            (§4). The counters are the whole expectation, and they live in
@@ -903,3 +914,53 @@ refusal block_count_past_extent   bad_layout
 refusal block_count_past_maximum  bad_layout
 refusal block_offset_overflow     bad_layout
 refusal block_extent_padding      truncated
+
+# ---- RETAIN-UNKNOWN (docs/SPEC-TABLES.md §6.6) ------------------------------
+#
+# THE RT SET is the reader and the two newer builds: RT1 cannot name what RT2
+# and RT3 wrote, and every row below is one §6.6 owes. The wires are the same
+# pinned vectors test/tables/retain_main.cpp writes, and the counters are the
+# hand-authored expectation.
+#
+# `capacity` is `full`, a buffer the whole load fits in, or `short`, ONE BYTE
+# SHORT of the last record: a record's byte cost is the port's own, so the
+# short row is stated as a rule a leg applies rather than as a number two
+# layouts would read differently. `ids` is `full` or the ENTRIES the caller's
+# retained-id list holds, which is a COUNT and is comparable.
+unit tblrt1 test/tables/RT1.schema
+unit tblrt2 test/tables/RT2.schema
+unit tblrt3 test/tables/RT3.schema
+
+# THE CONNECTION the message-form row resolves against: RT2's own announcement,
+# read by RT1, which is a receiver meeting a LARGER unit (§3.3).
+connection retain_conn tblrt2 0x59185ac86252d03a testdata/wire/tables/retain_conn.bin
+
+# THE ROUND TRIP AT DEPTH, and the two capacities. The first save is a pinned
+# byte string of its own: moving a field changes the order ids are first used
+# in, so the trailer is permuted and every reference moves with it.
+retain retain_round_trip   tblrt1 Node testdata/wire/tables/retain_rt2.bin full  full 9,2,11 0 testdata/wire/tables/retain_rt1_save.bin
+retain retain_truncated    tblrt1 Node testdata/wire/tables/retain_rt2.bin short full 8,3,11 0 -
+retain retain_ids_short    tblrt1 Node testdata/wire/tables/retain_rt2.bin full  2    9,2,11 1 testdata/wire/tables/retain_rt1_save_id_short.bin
+
+# THE FIVE EXCLUDED CLASSES a wire can carry to the unknown arm, one row each
+# and one retain_lost each, with `retained` unmoved. The NODE-INDEX class's row
+# is the RECURSIVE shape, which is the widest case it has: an unknown outer
+# table holding a nested pointer three bodies down. The SIXTH class, the
+# reserved node-table field, has no row, because it is excluded by construction
+# and a test cannot reach it.
+retain retain_node_index   tblrt1 Node testdata/wire/tables/retain_excluded_2.bin full full 0,1,1 0 -
+retain retain_enum_variant tblrt1 Node testdata/wire/tables/retain_excluded_3.bin full full 0,1,1 0 -
+retain retain_union_arm    tblrt1 Node testdata/wire/tables/retain_excluded_4.bin full full 0,1,1 0 -
+retain retain_keyed_slot   tblrt1 Node testdata/wire/tables/retain_excluded_5.bin full full 0,1,1 0 -
+retain retain_node_record  tblrt1 Node testdata/wire/tables/retain_rt3.bin        full full 0,1,1 0 -
+
+# THE MESSAGE FORM'S TAIL (§3.3): a form-2 batch loaded with retention against
+# the connection's announced vocabulary and saved as FILES, which is the one
+# direction retention crosses the forms. The batch's two bodies take one region
+# and one retention buffer each, and the saves ride back to back in body order.
+# `unknown` is SEVENTEEN where the two retention counters sum to sixteen, and
+# the seventeenth is the plain read's own: a bit stream has to be walked past,
+# so the DISCARDED SLOT's element body is decoded where a file's reader steps
+# over it by its length, and the field inside it that RT1 cannot name counts
+# there.
+retain-message retain_message_tail retain_conn tblrt1 Node testdata/wire/tables/retain_message.bin full full 10,6,17 0 testdata/wire/tables/retain_message_save_0.bin,testdata/wire/tables/retain_message_save_1.bin

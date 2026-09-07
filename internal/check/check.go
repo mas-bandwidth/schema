@@ -3641,9 +3641,11 @@ var tableGeneratedVerbs = []string{
 	// SaveRetain, and the rest are what carries them: the second family of
 	// body functions,
 	// the wire pair over a pointered root, the node dispatch that reaches each
-	// record's body, and the form 2 write, which is refused by name (§3.3).
+	// record's body, and the MESSAGE form's two: the form 2 READ, which
+	// retains against the connection's vocabulary, and the form 2 WRITE, which
+	// is refused by name (§3.3).
 	// Every one is emitted, so every one is claimed on this list's own rule.
-	"LoadRetain", "MeasureRetain", "SaveRetain", "SaveRetainMessages",
+	"LoadRetain", "MeasureRetain", "SaveRetain", "LoadRetainMessages", "SaveRetainMessages",
 	"LoadBodyRetain", "MeasureBodyRetain", "SaveBodyRetain", "SaveBodyFieldsRetain",
 	"MeasureWireRetain", "SaveWireRetain", "NodeBodyRetain",
 	"FromJson", "ToJson", "ToJsonMeasure",

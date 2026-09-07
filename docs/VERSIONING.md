@@ -1071,10 +1071,10 @@ repository not yet behind it. The 3.0.0 release holds the list at zero.
 - #432: the cook triple, and the byte-order sentences in five places.
 - #441: the retired-names ledger.
 - #446: the evolution table's fixtures.
-- #525: retain-unknown in the eight ports, the MESSAGE form's `LoadRetain`,
-  and the conformance rows. The C++ reference, the two report counters,
-  `internal/tablewire`'s own retention and the wire fuzzer's retention leg,
-  which needed it, are built.
+- #525: retain-unknown in the eight ports. The C++ reference, the two report
+  counters, `internal/tablewire`'s own retention, the wire fuzzer's retention
+  leg, which needed it, the MESSAGE form's `LoadRetain` and the conformance
+  manifest's retain rows are built.
 - #522: `*wstring`, the unbounded twin of wide text — the blob record is
   specified and no backend emits one (SPEC-TABLES.md §2.5). The BOUNDED
   spelling's table half, kind `33`, has landed in the C++ reference and the

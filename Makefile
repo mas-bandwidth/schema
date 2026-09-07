@@ -3100,6 +3100,7 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	$(MAKE) tables-retain
 	$(MAKE) tables-retain-fixed-class-negative-control
 	$(MAKE) tables-retain-message-form-negative-control
+	$(MAKE) tables-message-form-retain-negative-control
 	$(MAKE) tables-json-walk
 	$(MAKE) tables-json-graph-walk
 	$(MAKE) tables-json-negative-control
@@ -3541,6 +3542,43 @@ tables-retain-message-form-negative-control: build/tables-generated/.stamp
 	fi
 	@grep -q "Retention writing the MESSAGE form is refused by name" build/retain-message-form.log || { echo "RETAIN GATE FAILED: the message-form refusal was not by name"; cat build/retain-message-form.log; exit 1; }
 	@echo "retention writing form 2 refuses BY NAME (docs/SPEC-TABLES.md §3.3)"
+
+# AND THE FORM 2 READ, WHICH RETAINS (docs/SPEC-TABLES.md §3.3, §6.6). The
+# unknown arm of a retaining message body SKIPS the entry and then re-reads the
+# bits it delimited, which is the whole of the form-2 capture. Take the second
+# half away and the skip is all that is left: the read is unchanged to the byte,
+# the six counters stand, and nothing about the batch says a field was lost.
+# What goes red is the pinned batch's own row of the retain gate, `retained` at
+# zero where the page says ten, which is what makes that row an instrument
+# rather than a restatement of what the emitter happens to do.
+#
+# The sabotage is one line of the emitter, through `go build -overlay`, so no
+# tracked file moves; the RT set is regenerated from the sabotaged compiler and
+# the gate is built against it.
+RETAIN_MSG_NC := build/retain-nc-message
+.PHONY: tables-message-form-retain-negative-control
+tables-message-form-retain-negative-control: bin/schema test/tables/retain_main.cpp
+	@rm -rf $(RETAIN_MSG_NC) && mkdir -p $(RETAIN_MSG_NC)
+	@go run ./tools/sabotage -name message-retain-no-capture \
+		-out $(RETAIN_MSG_NC)/messageload.gotext internal/codegen/cpptable/messageload.go
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/messageload.go":"%s/$(RETAIN_MSG_NC)/messageload.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(RETAIN_MSG_NC)/overlay.json
+	go build -overlay $(RETAIN_MSG_NC)/overlay.json -o $(RETAIN_MSG_NC)/schema ./cmd/schema
+	@for u in rt1 rt2 rt3; do mkdir -p $(RETAIN_MSG_NC)/$$u; done
+	./$(RETAIN_MSG_NC)/schema generate --lang cpp --out $(RETAIN_MSG_NC)/rt1 test/tables/RT1.schema
+	./$(RETAIN_MSG_NC)/schema generate --lang cpp --out $(RETAIN_MSG_NC)/rt2 test/tables/RT2.schema
+	./$(RETAIN_MSG_NC)/schema generate --lang cpp --out $(RETAIN_MSG_NC)/rt3 test/tables/RT3.schema
+	$(CXX) $(TABLES_CXXFLAGS) -I$(RETAIN_MSG_NC)/rt1 -I$(RETAIN_MSG_NC)/rt2 -I$(RETAIN_MSG_NC)/rt3 \
+		-Itest/tables -I$(SERIALIZE) test/tables/retain_main.cpp -o $(RETAIN_MSG_NC)/gate
+	@if ./$(RETAIN_MSG_NC)/gate > $(RETAIN_MSG_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the message path never entered the walk and the retain gate stayed green"; \
+		cat $(RETAIN_MSG_NC)/log; exit 1; \
+	fi
+	@grep -q "report.retained == 10" $(RETAIN_MSG_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the message batch's own row"; \
+		  cat $(RETAIN_MSG_NC)/log; exit 1; }
+	@grep -m1 "FAIL" $(RETAIN_MSG_NC)/log
+	@echo "negative control: removing the message path's call into the walk turns the pinned batch RED"
 
 # ---- A FLOAT RIDES AS ITS BIT PATTERN (docs/SPEC-TABLES.md §3, §4, SPEC.md
 # ---- §4.3, schema#480) -----------------------------------------------------
@@ -4274,7 +4312,7 @@ CONFORMANCE_INCLUDES := -Ibuild/tables-generated/examples -Ibuild/tables-generat
 	-Ibuild/tables-generated/v2 -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	-Ibuild/tables-generated/block -Ibuild/tables-generated/pointers \
 	-Ibuild/tables-generated/p2 -Ibuild/tables-generated/messages -Ibuild/tables-generated/stream \
-	-Ibuild/tables-generated/m1 -Ibuild/tables-generated/m2 -Ibuild/tables-generated/a1 -Ibuild/tables-generated/a2 -Ibuild/tables-generated/g1 -Ibuild/tables-generated/k1 -Ibuild/tables-generated/k2 -Ibuild/tables-generated/w1 -Ibuild/tables-generated/w2 -Ibuild/tables-generated/r1 -Ibuild/tables-generated/r2 -Ibuild/tables-generated/blobs -Itest/tables -Ibuild/tables-generated/scalars -Ibuild/tables-generated/scalars2 -Ibuild/tables-generated/backend -Ibuild/tables-generated/vocab -Ibuild/tables-generated/vocab9 -Ibuild/tables-generated/arms -Ibuild/tables-generated/wide -I$(SERIALIZE)
+	-Ibuild/tables-generated/m1 -Ibuild/tables-generated/m2 -Ibuild/tables-generated/a1 -Ibuild/tables-generated/a2 -Ibuild/tables-generated/g1 -Ibuild/tables-generated/k1 -Ibuild/tables-generated/k2 -Ibuild/tables-generated/w1 -Ibuild/tables-generated/w2 -Ibuild/tables-generated/r1 -Ibuild/tables-generated/r2 -Ibuild/tables-generated/blobs -Itest/tables -Ibuild/tables-generated/scalars -Ibuild/tables-generated/scalars2 -Ibuild/tables-generated/backend -Ibuild/tables-generated/vocab -Ibuild/tables-generated/vocab9 -Ibuild/tables-generated/arms -Ibuild/tables-generated/rt1 -Ibuild/tables-generated/wide -I$(SERIALIZE)
 CONFORMANCE_SOURCES = build/tables-generated/examples/TablesTable.cpp \
 	build/tables-generated/w1/W1Table.cpp build/tables-generated/w2/W2Table.cpp \
 	build/tables-generated/r1/R1Table.cpp build/tables-generated/r2/R2Table.cpp \
