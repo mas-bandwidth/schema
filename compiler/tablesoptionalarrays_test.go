@@ -81,12 +81,12 @@ func TestOptionalArraysAreLegal(t *testing.T) {
 	}
 }
 
-// TestOptionalArraysAreCppOnly: --lang cpp emits the table sources for a unit
+// TestOptionalArraysCarriers: --lang cpp emits the table sources for a unit
 // whose closure holds an optional array; every other registered target
 // refuses the UNIT, naming the fields, the carrier and the flag that selects
 // it — a fixed-class codec that never met the presence companion beside an
 // array must not be emitted.
-func TestOptionalArraysAreCppOnly(t *testing.T) {
+func TestOptionalArraysCarriers(t *testing.T) {
 	u := unitFromSource(t, optionalArraySrc)
 	c := New()
 	files, err := c.Generate(u, "cpp", Options{})
@@ -97,6 +97,13 @@ func TestOptionalArraysAreCppOnly(t *testing.T) {
 		t.Fatalf("--lang cpp emitted no ProbeTable.h for a unit with an optional array; got %d files", len(files))
 	}
 	for _, target := range c.Targets() {
+		if target == "rust" {
+			files, err := c.Generate(u, "rust", Options{})
+			if err != nil || len(files["probe_table.rs"]) == 0 {
+				t.Fatalf("Rust generation: %v", err)
+			}
+			continue
+		}
 		if target == "cpp" {
 			continue
 		}

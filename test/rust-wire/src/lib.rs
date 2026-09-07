@@ -260,3 +260,150 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod arms {
+    use rustarms::*;
+    fn take<'a>(bytes: &mut &'a [u8]) -> &'a [u8] {
+        let n = u32::from_le_bytes(bytes[..4].try_into().unwrap()) as usize;
+        let result = &bytes[4..4 + n];
+        *bytes = &bytes[4 + n..];
+        result
+    }
+    fn json(value: &Root) -> Vec<u8> {
+        let n = root_to_json_measure(value);
+        assert!(n >= 0);
+        let mut bytes = vec![0; n as usize];
+        assert_eq!(root_to_json(value, &mut bytes), n);
+        bytes
+    }
+    #[test]
+    fn general_arms_and_optional_arrays_match_cpp() {
+        let data = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../build/rust-arms/cpp.bin"
+        ))
+        .unwrap();
+        let mut data = data.as_slice();
+        for text in include_str!("../arms.jsonl").lines() {
+            let expected_wire = take(&mut data);
+            let expected_json = take(&mut data);
+            let counts: Vec<u32> = (0..4)
+                .map(|_| u32::from_le_bytes(take(&mut data).try_into().unwrap()))
+                .collect();
+            let mut value = Root::default();
+            let mut report = TableReport::default();
+            assert!(
+                root_from_json(&mut value, text.as_bytes(), &mut report),
+                "{text}"
+            );
+            assert_eq!(
+                [
+                    report.unknown as u32,
+                    report.kind_mismatch as u32,
+                    report.clamped as u32,
+                    report.duplicate as u32
+                ],
+                counts.as_slice(),
+                "{text}"
+            );
+            assert_eq!(json(&value), expected_json, "{text}");
+            assert_eq!(root_measure(&value), expected_wire.len() as i64, "{text}");
+            let mut wire = vec![0; expected_wire.len()];
+            assert_eq!(root_save(&value, &mut wire), wire.len() as i64);
+            assert_eq!(wire, expected_wire, "{text}");
+            let mut decoded = Root::default();
+            let mut report = TableReport::default();
+            assert!(root_load(&mut decoded, &wire, &mut report));
+            assert!(!report.malformed);
+            assert_eq!(json(&decoded), expected_json, "wire {text}");
+        }
+        assert!(data.is_empty());
+    }
+    #[test]
+    fn malformed_general_arms_match_cpp() {
+        let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../build/rust-arms");
+        let data = std::fs::read(base.join("cpp.bin")).unwrap();
+        let mut data = data.as_slice();
+        let mut mutations = Vec::new();
+        while !data.is_empty() {
+            let wire = take(&mut data);
+            for _ in 0..5 {
+                take(&mut data);
+            }
+            for length in 0..wire.len() {
+                mutations.push(wire[..length].to_vec());
+            }
+            for i in 0..wire.len() {
+                for mask in [1, 0x80, 0xff] {
+                    let mut m = wire.to_vec();
+                    m[i] ^= mask;
+                    mutations.push(m);
+                }
+            }
+        }
+        let mut input = Vec::new();
+        for m in &mutations {
+            input.extend_from_slice(&(m.len() as u32).to_le_bytes());
+            input.extend_from_slice(m);
+        }
+        std::fs::write(base.join("mutations.in"), input).unwrap();
+        assert!(
+            std::process::Command::new(base.join("reference"))
+                .arg("--wire")
+                .arg(base.join("mutations.in"))
+                .arg(base.join("mutations.out"))
+                .status()
+                .unwrap()
+                .success()
+        );
+        let output = std::fs::read(base.join("mutations.out")).unwrap();
+        let mut output = output.as_slice();
+        for (i, m) in mutations.iter().enumerate() {
+            let counts: Vec<u32> = (0..7)
+                .map(|_| u32::from_le_bytes(take(&mut output).try_into().unwrap()))
+                .collect();
+            let wire = take(&mut output);
+            let mut value = Root::default();
+            let mut report = TableReport::default();
+            let ok = root_load(&mut value, m, &mut report);
+            assert_eq!(
+                [
+                    report.unknown as u32,
+                    report.kind_mismatch as u32,
+                    report.widened as u32,
+                    report.clamped as u32,
+                    report.duplicate as u32,
+                    report.malformed as u32,
+                    ok as u32
+                ],
+                counts.as_slice(),
+                "mutant {i}: {m:02x?}"
+            );
+            let mut expected = Root::default();
+            root_load(&mut expected, wire, &mut TableReport::default());
+            assert_eq!(
+                root_measure(&value),
+                wire.len() as i64,
+                "mutant {i}: input {m:02x?}; actual {value:?}; expected {expected:?}"
+            );
+            let mut actual = vec![0; wire.len()];
+            assert_eq!(root_save(&value, &mut actual), wire.len() as i64);
+            assert_eq!(actual, wire, "mutant {i}: {m:02x?}");
+        }
+        assert!(output.is_empty());
+    }
+
+    #[test]
+    fn optional_null_resets_storage_and_presence() {
+        let mut value = Root::default();
+        let mut report = TableReport::default();
+        assert!(root_from_json(&mut value,br#"{"entries":[{"n":99}],"entries":null,"weights":[1,2],"weights":null,"grades":["Silver"],"grades":null}"#,&mut report));
+        assert!(!value.entries_present && !value.weights_present && !value.grades_present);
+        assert_eq!(value.entries_count, 0);
+        assert_eq!(value.grades_count, 0);
+        assert!(value.entries.iter().all(|v| v.n == 7));
+        assert_eq!(value.weights, [0.0; 2]);
+        assert_eq!(value.grades, [Grade::NONE; 3]);
+    }
+}

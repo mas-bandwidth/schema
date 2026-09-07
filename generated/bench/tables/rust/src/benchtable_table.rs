@@ -174,6 +174,75 @@ impl Default for TableMixed {
     }
 }
 
+pub fn table_event_save_union(w: &mut TableWriter, value: &TableEvent) -> bool {
+    match value {
+        TableEvent::None => w.putleb(0),
+        TableEvent::Hit(arm) => {
+            w.putid(0x33732819300680aa);
+            w.put8(13);
+            if !w.framed(|w| {
+        if !table_hit_event_save_body(w, &*arm) { return false; }
+                !w.overflow
+            }) { return false; }
+        }
+        TableEvent::Chat(arm) => {
+            w.putid(0xf2a38d910b5b348b);
+            w.put8(13);
+            if !w.framed(|w| {
+        if !table_chat_event_save_body(w, &*arm) { return false; }
+                !w.overflow
+            }) { return false; }
+        }
+        TableEvent::Pickup(arm) => {
+            w.putid(0x9fa3a41c86ecb765);
+            w.put8(13);
+            if !w.framed(|w| {
+        if !table_pickup_event_save_body(w, &*arm) { return false; }
+                !w.overflow
+            }) { return false; }
+        }
+    }
+    !w.overflow
+}
+
+pub fn table_event_load_union(r: &mut TableReader, report: &mut TableReport, value: &mut TableEvent, element: bool) -> bool {
+    let id = match r.getid() { Some(id) => id, None => { report.malformed = true; return false; } };
+    if element { *value = TableEvent::None; }
+    let id = match id { Some(id) => id, None => { *value = TableEvent::None; return true; } };
+    if !r.has(1) { report.malformed = true; return false; }
+    let kind = r.get8();
+let mut body = match r.take() { Some(r) => r, None => { report.malformed = true; return false; } };
+*value = TableEvent::None;
+match id {
+0x33732819300680aa => {
+if kind != 13 { report.kind_mismatch += 1; return true; }
+let mut arm = TableHitEvent::default();
+table_hit_event_load_body(&mut body, report, &mut arm);
+if body.offset != body.buffer.len() { report.malformed = true; table_hit_event_reset(&mut arm); }
+if body.offset != body.buffer.len() { report.malformed = true; return true; }
+*value = TableEvent::Hit(arm);
+}
+0xf2a38d910b5b348b => {
+if kind != 13 { report.kind_mismatch += 1; return true; }
+let mut arm = TableChatEvent::default();
+table_chat_event_load_body(&mut body, report, &mut arm);
+if body.offset != body.buffer.len() { report.malformed = true; table_chat_event_reset(&mut arm); }
+if body.offset != body.buffer.len() { report.malformed = true; return true; }
+*value = TableEvent::Chat(arm);
+}
+0x9fa3a41c86ecb765 => {
+if kind != 13 { report.kind_mismatch += 1; return true; }
+let mut arm = TablePickupEvent::default();
+table_pickup_event_load_body(&mut body, report, &mut arm);
+if body.offset != body.buffer.len() { report.malformed = true; table_pickup_event_reset(&mut arm); }
+if body.offset != body.buffer.len() { report.malformed = true; return true; }
+*value = TableEvent::Pickup(arm);
+}
+_ => { report.unknown += 1; }
+}
+true
+}
+
 // TableWeapon on the TABLE wire: a value rides as the 64-bit hash of its VARIANT
 // NAME, so a variant may be added anywhere, removed, or reordered and old
 // data still reads (docs/SPEC-TABLES.md §5). None takes reference 0.
@@ -921,24 +990,7 @@ pub fn table_mixed_save_body(w: &mut TableWriter, value: &TableMixed) -> bool {
     if value.game_event != TableEvent::None {
         w.putid(0x2e35dc5321aa5790);
         w.put8(15); // game_event
-        match &value.game_event {
-            TableEvent::None => w.putleb(0),
-            TableEvent::Hit(arm) => {
-                w.putid(0x33732819300680aa);
-                w.put8(13);
-                if !w.framed(|w| table_hit_event_save_body(w, arm)) { return false; }
-            }
-            TableEvent::Chat(arm) => {
-                w.putid(0xf2a38d910b5b348b);
-                w.put8(13);
-                if !w.framed(|w| table_chat_event_save_body(w, arm)) { return false; }
-            }
-            TableEvent::Pickup(arm) => {
-                w.putid(0x9fa3a41c86ecb765);
-                w.put8(13);
-                if !w.framed(|w| table_pickup_event_save_body(w, arm)) { return false; }
-            }
-        }
+if !table_event_save_union(w, &(value.game_event)) { return false; }
     }
     if value.loadout.iter().any(|v| *v != 0) {
         w.putid(0x5759ce7586bbb5a3);
@@ -1315,46 +1367,7 @@ value.stats_count = decoded_count as i32;
 report.kind_mismatch += 1;
 if !r.skip(kind) { report.malformed = true; return false; }
 } else {
-let arm_id = match r.getid() { Some(id) => id, None => { report.malformed = true; return false; } };
-if let Some(arm_id) = arm_id {
-if !r.has(1) { report.malformed = true; return false; }
-let arm_kind = r.get8();
-let mut arm_body = match r.take() { Some(r) => r, None => { report.malformed = true; return false; } };
-value.game_event = TableEvent::None;
-match arm_id {
-0x33732819300680aa => {
-    if arm_kind != 13 { report.kind_mismatch += 1; }
-    else {
-        let mut arm = TableHitEvent::default();
-        table_hit_event_load_body(&mut arm_body, report, &mut arm);
-        if arm_body.offset == arm_body.buffer.len() {
-            value.game_event = TableEvent::Hit(arm);
-        } else { report.malformed = true; }
-    }
-}
-0xf2a38d910b5b348b => {
-    if arm_kind != 13 { report.kind_mismatch += 1; }
-    else {
-        let mut arm = TableChatEvent::default();
-        table_chat_event_load_body(&mut arm_body, report, &mut arm);
-        if arm_body.offset == arm_body.buffer.len() {
-            value.game_event = TableEvent::Chat(arm);
-        } else { report.malformed = true; }
-    }
-}
-0x9fa3a41c86ecb765 => {
-    if arm_kind != 13 { report.kind_mismatch += 1; }
-    else {
-        let mut arm = TablePickupEvent::default();
-        table_pickup_event_load_body(&mut arm_body, report, &mut arm);
-        if arm_body.offset == arm_body.buffer.len() {
-            value.game_event = TableEvent::Pickup(arm);
-        } else { report.malformed = true; }
-    }
-}
-_ => { report.unknown += 1; }
-}
-} else { value.game_event = TableEvent::None; }
+if !table_event_load_union(&mut *r, report, &mut value.game_event, false) { report.malformed = true; return false; }
                 }
             }
             0x5759ce7586bbb5a3 => { // loadout
@@ -2054,82 +2067,145 @@ const _: () = table_relocatable::<TableHitEvent>();
 const _: () = table_relocatable::<TableChatEvent>();
 const _: () = table_relocatable::<TablePickupEvent>();
 
-// TableEvent's arms, for the generic walk: Rust spells a union as a real enum,
-// so the payload's address comes out of a match rather than off an offset.
 pub fn table_event_table_union() -> &'static TableUnionInfo {
-    fn read_tag(storage: *const u8) -> u64 {
-        unsafe {
-            match &*(storage as *const TableEvent) {
-                TableEvent::None => 0,
-                TableEvent::Hit(_) => 1,
-                TableEvent::Chat(_) => 2,
-                TableEvent::Pickup(_) => 3,
-            }
-        }
-    }
-    fn clear(storage: *mut u8) {
-        unsafe { *(storage as *mut TableEvent) = TableEvent::None }
-    }
-    fn select(storage: *mut u8, tag: u64) -> *mut u8 {
-        unsafe {
-            let value = &mut *(storage as *mut TableEvent);
-            match tag {
-                1 => {
-                    let mut arm = TableHitEvent::default();
-                    table_hit_event_reset(&mut arm);
-                    *value = TableEvent::Hit(arm);
-                    match value {
-                        TableEvent::Hit(a) => a as *mut TableHitEvent as *mut u8,
-                        _ => core::ptr::null_mut(),
-                    }
-                }
-                2 => {
-                    let mut arm = TableChatEvent::default();
-                    table_chat_event_reset(&mut arm);
-                    *value = TableEvent::Chat(arm);
-                    match value {
-                        TableEvent::Chat(a) => a as *mut TableChatEvent as *mut u8,
-                        _ => core::ptr::null_mut(),
-                    }
-                }
-                3 => {
-                    let mut arm = TablePickupEvent::default();
-                    table_pickup_event_reset(&mut arm);
-                    *value = TableEvent::Pickup(arm);
-                    match value {
-                        TableEvent::Pickup(a) => a as *mut TablePickupEvent as *mut u8,
-                        _ => core::ptr::null_mut(),
-                    }
-                }
-                _ => core::ptr::null_mut(),
-            }
-        }
-    }
-    fn payload(storage: *const u8, tag: u64) -> *const u8 {
-        unsafe {
-            let value = &*(storage as *const TableEvent);
-            match (tag, value) {
-                (1, TableEvent::Hit(a)) => a as *const TableHitEvent as *const u8,
-                (2, TableEvent::Chat(a)) => a as *const TableChatEvent as *const u8,
-                (3, TableEvent::Pickup(a)) => a as *const TablePickupEvent as *const u8,
-                _ => core::ptr::null(),
-            }
-        }
-    }
-    static ARMS: [TableUnionArmInfo; 4] = [
-        TableUnionArmInfo { name: "None", table: None },
-        TableUnionArmInfo { name: "hit", table: Some(table_hit_event_table_type) },
-        TableUnionArmInfo { name: "chat", table: Some(table_chat_event_table_type) },
-        TableUnionArmInfo { name: "pickup", table: Some(table_pickup_event_table_type) },
-    ];
-    static INFO: TableUnionInfo = TableUnionInfo {
-        read_tag,
-        clear,
-        select,
-        payload,
-        arms: &ARMS,
-    };
-    &INFO
+unsafe fn read_tag(storage: *const u8) -> u64 { unsafe { match &*(storage as *const TableEvent) {
+TableEvent::None => 0,
+TableEvent::Hit(_) => 1,
+TableEvent::Chat(_) => 2,
+TableEvent::Pickup(_) => 3,
+} } }
+unsafe fn clear(storage: *mut u8) { unsafe { *(storage as *mut TableEvent) = TableEvent::None; } }
+unsafe fn select(storage: *mut u8, tag: u64) -> *mut u8 { unsafe { let value = &mut *(storage as *mut TableEvent); match tag {
+1 => {
+let arm = TableHitEvent::default();
+*value = TableEvent::Hit(arm);
+match value { TableEvent::Hit(a) => a as *mut TableHitEvent as *mut u8, _ => core::ptr::null_mut() }
+}
+2 => {
+let arm = TableChatEvent::default();
+*value = TableEvent::Chat(arm);
+match value { TableEvent::Chat(a) => a as *mut TableChatEvent as *mut u8, _ => core::ptr::null_mut() }
+}
+3 => {
+let arm = TablePickupEvent::default();
+*value = TableEvent::Pickup(arm);
+match value { TableEvent::Pickup(a) => a as *mut TablePickupEvent as *mut u8, _ => core::ptr::null_mut() }
+}
+_ => core::ptr::null_mut(),
+} } }
+unsafe fn payload(storage: *const u8, tag: u64) -> *const u8 { unsafe { match (tag, &*(storage as *const TableEvent)) {
+(1, TableEvent::Hit(a)) => a as *const TableHitEvent as *const u8,
+(2, TableEvent::Chat(a)) => a as *const TableChatEvent as *const u8,
+(3, TableEvent::Pickup(a)) => a as *const TablePickupEvent as *const u8,
+_ => core::ptr::null(),
+} } }
+unsafe fn reset_0(base: *mut u8) { unsafe { *(base as *mut TableHitEvent) = TableHitEvent::default(); } }
+static ARM_0: TableFieldInfo = TableFieldInfo {
+            reset: reset_0,
+            name: "hit",
+            json: "hit",
+            type_name: "TableHitEvent",
+            id: 0x33732819300680aa,
+            kind: 13,
+            is_array: false,
+            counted: false,
+            optional: false,
+            array_bound: 0,
+            offset: 0,
+            elem_size: core::mem::size_of::<TableHitEvent>() as u32,
+            count_offset: u32::MAX,
+            present_offset: u32::MAX,
+            table: Some(table_hit_event_table_type),
+            has_range: false,
+            range_min: 0.0,
+            range_max: 0.0,
+            enum_max: -1,
+            enum_name: None,
+            flag_name: None,
+            variant_id: None,
+            key_type_name: None,
+            key_name: None,
+            key_id: None,
+            arms: None,
+            guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
+        };
+unsafe fn reset_1(base: *mut u8) { unsafe { *(base as *mut TableChatEvent) = TableChatEvent::default(); } }
+static ARM_1: TableFieldInfo = TableFieldInfo {
+            reset: reset_1,
+            name: "chat",
+            json: "chat",
+            type_name: "TableChatEvent",
+            id: 0xf2a38d910b5b348b,
+            kind: 13,
+            is_array: false,
+            counted: false,
+            optional: false,
+            array_bound: 0,
+            offset: 0,
+            elem_size: core::mem::size_of::<TableChatEvent>() as u32,
+            count_offset: u32::MAX,
+            present_offset: u32::MAX,
+            table: Some(table_chat_event_table_type),
+            has_range: false,
+            range_min: 0.0,
+            range_max: 0.0,
+            enum_max: -1,
+            enum_name: None,
+            flag_name: None,
+            variant_id: None,
+            key_type_name: None,
+            key_name: None,
+            key_id: None,
+            arms: None,
+            guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
+        };
+unsafe fn reset_2(base: *mut u8) { unsafe { *(base as *mut TablePickupEvent) = TablePickupEvent::default(); } }
+static ARM_2: TableFieldInfo = TableFieldInfo {
+            reset: reset_2,
+            name: "pickup",
+            json: "pickup",
+            type_name: "TablePickupEvent",
+            id: 0x9fa3a41c86ecb765,
+            kind: 13,
+            is_array: false,
+            counted: false,
+            optional: false,
+            array_bound: 0,
+            offset: 0,
+            elem_size: core::mem::size_of::<TablePickupEvent>() as u32,
+            count_offset: u32::MAX,
+            present_offset: u32::MAX,
+            table: Some(table_pickup_event_table_type),
+            has_range: false,
+            range_min: 0.0,
+            range_max: 0.0,
+            enum_max: -1,
+            enum_name: None,
+            flag_name: None,
+            variant_id: None,
+            key_type_name: None,
+            key_name: None,
+            key_id: None,
+            arms: None,
+            guard: "",
+            doc: TABLE_DOC_NONE,
+            num_tags: 0,
+            tags: None,
+        };
+static ARMS: [TableUnionArmInfo; 4] = [
+TableUnionArmInfo { name: "None", table: None, field: None },
+TableUnionArmInfo { name: "hit", table: Some(table_hit_event_table_type), field: Some(&ARM_0) },
+TableUnionArmInfo { name: "chat", table: Some(table_chat_event_table_type), field: Some(&ARM_1) },
+TableUnionArmInfo { name: "pickup", table: Some(table_pickup_event_table_type), field: Some(&ARM_2) },
+];
+static INFO: TableUnionInfo = TableUnionInfo { read_tag, clear, select, payload, arms: &ARMS };
+&INFO
 }
 
 // ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----
@@ -2142,11 +2218,54 @@ pub fn table_event_table_union() -> &'static TableUnionInfo {
 // immutable, so any thread may read them.
 
 pub fn table_entity_table_type() -> &'static TableTypeInfo {
-    fn table_entity_table_reset_at(storage: *mut u8) {
+    unsafe fn table_entity_table_reset_at(storage: *mut u8) {
         unsafe { table_entity_reset(&mut *(storage as *mut TableEntity)) }
     }
+unsafe fn reset_entity_id(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableEntity);
+    value.entity_id = 0;
+} }
+unsafe fn reset_pos_x(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableEntity);
+    value.pos_x = 0;
+} }
+unsafe fn reset_pos_y(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableEntity);
+    value.pos_y = 0;
+} }
+unsafe fn reset_pos_z(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableEntity);
+    value.pos_z = 0;
+} }
+unsafe fn reset_yaw(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableEntity);
+    value.yaw = 0;
+} }
+unsafe fn reset_pitch(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableEntity);
+    value.pitch = 0;
+} }
+unsafe fn reset_vel_x(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableEntity);
+    value.vel_x = 0;
+} }
+unsafe fn reset_vel_y(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableEntity);
+    value.vel_y = 0;
+} }
+unsafe fn reset_vel_z(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableEntity);
+    value.vel_z = 0;
+} }
+unsafe fn reset_health(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableEntity);
+    value.health = 0;
+} }
+unsafe fn reset_weapon(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableEntity);
+    value.weapon = TableWeapon::NONE;
+} }
+unsafe fn reset_damage(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableEntity);
+    value.damage = 0;
+} }
+unsafe fn reset_moving(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableEntity);
+    value.moving = false;
+} }
+unsafe fn reset_firing(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableEntity);
+    value.firing = false;
+} }
     static FIELDS: [TableFieldInfo; 14] = [
         TableFieldInfo {
+            reset: reset_entity_id,
             name: "entity_id",
             json: "entity_id",
             type_name: "bits(12)",
@@ -2178,6 +2297,7 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_pos_x,
             name: "pos_x",
             json: "pos_x",
             type_name: "int32",
@@ -2209,6 +2329,7 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_pos_y,
             name: "pos_y",
             json: "pos_y",
             type_name: "int32",
@@ -2240,6 +2361,7 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_pos_z,
             name: "pos_z",
             json: "pos_z",
             type_name: "int32",
@@ -2271,6 +2393,7 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_yaw,
             name: "yaw",
             json: "yaw",
             type_name: "bits(9)",
@@ -2302,6 +2425,7 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_pitch,
             name: "pitch",
             json: "pitch",
             type_name: "bits(9)",
@@ -2333,6 +2457,7 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_vel_x,
             name: "vel_x",
             json: "vel_x",
             type_name: "int32",
@@ -2364,6 +2489,7 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_vel_y,
             name: "vel_y",
             json: "vel_y",
             type_name: "int32",
@@ -2395,6 +2521,7 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_vel_z,
             name: "vel_z",
             json: "vel_z",
             type_name: "int32",
@@ -2426,6 +2553,7 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_health,
             name: "health",
             json: "health",
             type_name: "int32",
@@ -2457,6 +2585,7 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_weapon,
             name: "weapon",
             json: "weapon",
             type_name: "TableWeapon",
@@ -2488,6 +2617,7 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_damage,
             name: "damage",
             json: "damage",
             type_name: "TableDamage",
@@ -2519,6 +2649,7 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_moving,
             name: "moving",
             json: "moving",
             type_name: "bool",
@@ -2550,6 +2681,7 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_firing,
             name: "firing",
             json: "firing",
             type_name: "bool",
@@ -2595,11 +2727,18 @@ pub fn table_entity_table_type() -> &'static TableTypeInfo {
 }
 
 pub fn table_stat_table_type() -> &'static TableTypeInfo {
-    fn table_stat_table_reset_at(storage: *mut u8) {
+    unsafe fn table_stat_table_reset_at(storage: *mut u8) {
         unsafe { table_stat_reset(&mut *(storage as *mut TableStat)) }
     }
+unsafe fn reset_stat_id(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableStat);
+    value.stat_id = 0;
+} }
+unsafe fn reset_delta(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableStat);
+    value.delta = 0;
+} }
     static FIELDS: [TableFieldInfo; 2] = [
         TableFieldInfo {
+            reset: reset_stat_id,
             name: "stat_id",
             json: "stat_id",
             type_name: "bits(8)",
@@ -2631,6 +2770,7 @@ pub fn table_stat_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_delta,
             name: "delta",
             json: "delta",
             type_name: "int32",
@@ -2676,11 +2816,104 @@ pub fn table_stat_table_type() -> &'static TableTypeInfo {
 }
 
 pub fn table_mixed_table_type() -> &'static TableTypeInfo {
-    fn table_mixed_table_reset_at(storage: *mut u8) {
+    unsafe fn table_mixed_table_reset_at(storage: *mut u8) {
         unsafe { table_mixed_reset(&mut *(storage as *mut TableMixed)) }
     }
+unsafe fn reset_protocol_magic(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableMixed);
+    value.protocol_magic = 0;
+} }
+unsafe fn reset_sequence(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableMixed);
+    value.sequence = 0;
+} }
+unsafe fn reset_ack_sequence(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableMixed);
+    value.ack_sequence = 0;
+} }
+unsafe fn reset_ack_bits(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableMixed);
+    value.ack_bits = 0;
+} }
+unsafe fn reset_session_id(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableMixed);
+    value.session_id = 0;
+} }
+unsafe fn reset_client_id(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableMixed);
+    value.client_id = 0;
+} }
+unsafe fn reset_nonce(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableMixed);
+    value.nonce = 1;
+} }
+unsafe fn reset_world_time(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableMixed);
+    value.world_time = 0;
+} }
+unsafe fn reset_frame_tick(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableMixed);
+    value.frame_tick = 0;
+} }
+unsafe fn reset_server_time(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableMixed);
+    value.server_time = 0.0;
+} }
+unsafe fn reset_entities(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableMixed);
+    for element in value.entities.iter_mut() {
+        table_entity_reset(element);
+    }
+    value.entities_count = 0;
+} }
+unsafe fn reset_stats(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableMixed);
+    for element in value.stats.iter_mut() {
+        table_stat_reset(element);
+    }
+    value.stats_count = 0;
+} }
+unsafe fn reset_game_event(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableMixed);
+    value.game_event = TableEvent::None;
+} }
+unsafe fn reset_loadout(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableMixed);
+    value.loadout.fill(0);
+} }
+unsafe fn reset_player_name(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableMixed);
+    value.player_name.fill(0);
+    value.player_name_length = 0;
+} }
+unsafe fn reset_payload(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableMixed);
+    value.payload.fill(0);
+    value.payload_length = 0;
+} }
+unsafe fn reset_aim_x(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableMixed);
+    value.aim_x = 0.0;
+} }
+unsafe fn reset_aim_y(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableMixed);
+    value.aim_y = 0.0;
+} }
+unsafe fn reset_aim_z(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableMixed);
+    value.aim_z = 0.0;
+} }
+unsafe fn reset_recoil(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableMixed);
+    value.recoil = 0.0;
+} }
+unsafe fn reset_drift(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableMixed);
+    value.drift = 0.0;
+} }
+unsafe fn reset_wide_key(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableMixed);
+    value.wide_key = 0;
+} }
+unsafe fn reset_flux(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableMixed);
+    value.flux = 0;
+} }
+unsafe fn reset_ping(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableMixed);
+    value.ping = 0.0;
+} }
+unsafe fn reset_crc_hint(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableMixed);
+    value.crc_hint = 0;
+} }
+unsafe fn reset_has_extra(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableMixed);
+    value.has_extra = false;
+} }
+unsafe fn reset_extra(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableMixed);
+    value.extra = 0;
+} }
+unsafe fn reset_idle_ticks(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableMixed);
+    value.idle_ticks = 0;
+} }
     static FIELDS: [TableFieldInfo; 28] = [
         TableFieldInfo {
+            reset: reset_protocol_magic,
             name: "protocol_magic",
             json: "protocol_magic",
             type_name: "uint16",
@@ -2712,6 +2945,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_sequence,
             name: "sequence",
             json: "sequence",
             type_name: "bits(16)",
@@ -2743,6 +2977,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_ack_sequence,
             name: "ack_sequence",
             json: "ack_sequence",
             type_name: "int32",
@@ -2774,6 +3009,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_ack_bits,
             name: "ack_bits",
             json: "ack_bits",
             type_name: "bits(32)",
@@ -2805,6 +3041,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_session_id,
             name: "session_id",
             json: "session_id",
             type_name: "uint64",
@@ -2836,6 +3073,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_client_id,
             name: "client_id",
             json: "client_id",
             type_name: "uint32",
@@ -2867,6 +3105,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_nonce,
             name: "nonce",
             json: "nonce",
             type_name: "uint64",
@@ -2898,6 +3137,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_world_time,
             name: "world_time",
             json: "world_time",
             type_name: "int64",
@@ -2929,6 +3169,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_frame_tick,
             name: "frame_tick",
             json: "frame_tick",
             type_name: "bits(48)",
@@ -2960,6 +3201,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_server_time,
             name: "server_time",
             json: "server_time",
             type_name: "float32",
@@ -2991,6 +3233,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_entities,
             name: "entities",
             json: "entities",
             type_name: "TableEntity",
@@ -3022,6 +3265,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_stats,
             name: "stats",
             json: "stats",
             type_name: "TableStat",
@@ -3053,6 +3297,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_game_event,
             name: "game_event",
             json: "game_event",
             type_name: "TableEvent",
@@ -3095,6 +3340,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_loadout,
             name: "loadout",
             json: "loadout",
             type_name: "uint8",
@@ -3126,6 +3372,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_player_name,
             name: "player_name",
             json: "player_name",
             type_name: "string",
@@ -3157,6 +3404,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_payload,
             name: "payload",
             json: "payload",
             type_name: "bytes",
@@ -3188,6 +3436,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_aim_x,
             name: "aim_x",
             json: "aim_x",
             type_name: "float32",
@@ -3219,6 +3468,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_aim_y,
             name: "aim_y",
             json: "aim_y",
             type_name: "float32",
@@ -3250,6 +3500,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_aim_z,
             name: "aim_z",
             json: "aim_z",
             type_name: "float32",
@@ -3281,6 +3532,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_recoil,
             name: "recoil",
             json: "recoil",
             type_name: "float32",
@@ -3312,6 +3564,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_drift,
             name: "drift",
             json: "drift",
             type_name: "float64",
@@ -3343,6 +3596,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_wide_key,
             name: "wide_key",
             json: "wide_key",
             type_name: "uint64",
@@ -3374,6 +3628,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_flux,
             name: "flux",
             json: "flux",
             type_name: "int64",
@@ -3405,6 +3660,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_ping,
             name: "ping",
             json: "ping",
             type_name: "float32",
@@ -3436,6 +3692,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_crc_hint,
             name: "crc_hint",
             json: "crc_hint",
             type_name: "bits(24)",
@@ -3467,6 +3724,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_has_extra,
             name: "has_extra",
             json: "has_extra",
             type_name: "bool",
@@ -3498,6 +3756,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_extra,
             name: "extra",
             json: "extra",
             type_name: "int32",
@@ -3529,6 +3788,7 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_idle_ticks,
             name: "idle_ticks",
             json: "idle_ticks",
             type_name: "int32",
@@ -3574,11 +3834,24 @@ pub fn table_mixed_table_type() -> &'static TableTypeInfo {
 }
 
 pub fn table_hit_event_table_type() -> &'static TableTypeInfo {
-    fn table_hit_event_table_reset_at(storage: *mut u8) {
+    unsafe fn table_hit_event_table_reset_at(storage: *mut u8) {
         unsafe { table_hit_event_reset(&mut *(storage as *mut TableHitEvent)) }
     }
+unsafe fn reset_target_id(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableHitEvent);
+    value.target_id = 0;
+} }
+unsafe fn reset_damage(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableHitEvent);
+    value.damage = 0;
+} }
+unsafe fn reset_hit_kind(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableHitEvent);
+    value.hit_kind = 0;
+} }
+unsafe fn reset_crit(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableHitEvent);
+    value.crit = false;
+} }
     static FIELDS: [TableFieldInfo; 4] = [
         TableFieldInfo {
+            reset: reset_target_id,
             name: "target_id",
             json: "target_id",
             type_name: "bits(12)",
@@ -3610,6 +3883,7 @@ pub fn table_hit_event_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_damage,
             name: "damage",
             json: "damage",
             type_name: "int32",
@@ -3641,6 +3915,7 @@ pub fn table_hit_event_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_hit_kind,
             name: "hit_kind",
             json: "hit_kind",
             type_name: "int32",
@@ -3672,6 +3947,7 @@ pub fn table_hit_event_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_crit,
             name: "crit",
             json: "crit",
             type_name: "bool",
@@ -3717,11 +3993,18 @@ pub fn table_hit_event_table_type() -> &'static TableTypeInfo {
 }
 
 pub fn table_chat_event_table_type() -> &'static TableTypeInfo {
-    fn table_chat_event_table_reset_at(storage: *mut u8) {
+    unsafe fn table_chat_event_table_reset_at(storage: *mut u8) {
         unsafe { table_chat_event_reset(&mut *(storage as *mut TableChatEvent)) }
     }
+unsafe fn reset_channel(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableChatEvent);
+    value.channel = 0;
+} }
+unsafe fn reset_speaker(base: *mut u8) { unsafe { let value = &mut *(base as *mut TableChatEvent);
+    value.speaker = 0;
+} }
     static FIELDS: [TableFieldInfo; 2] = [
         TableFieldInfo {
+            reset: reset_channel,
             name: "channel",
             json: "channel",
             type_name: "int32",
@@ -3753,6 +4036,7 @@ pub fn table_chat_event_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_speaker,
             name: "speaker",
             json: "speaker",
             type_name: "bits(12)",
@@ -3798,11 +4082,18 @@ pub fn table_chat_event_table_type() -> &'static TableTypeInfo {
 }
 
 pub fn table_pickup_event_table_type() -> &'static TableTypeInfo {
-    fn table_pickup_event_table_reset_at(storage: *mut u8) {
+    unsafe fn table_pickup_event_table_reset_at(storage: *mut u8) {
         unsafe { table_pickup_event_reset(&mut *(storage as *mut TablePickupEvent)) }
     }
+unsafe fn reset_item_id(base: *mut u8) { unsafe { let value = &mut *(base as *mut TablePickupEvent);
+    value.item_id = 0;
+} }
+unsafe fn reset_amount(base: *mut u8) { unsafe { let value = &mut *(base as *mut TablePickupEvent);
+    value.amount = 0;
+} }
     static FIELDS: [TableFieldInfo; 2] = [
         TableFieldInfo {
+            reset: reset_item_id,
             name: "item_id",
             json: "item_id",
             type_name: "bits(10)",
@@ -3834,6 +4125,7 @@ pub fn table_pickup_event_table_type() -> &'static TableTypeInfo {
             tags: None,
         },
         TableFieldInfo {
+            reset: reset_amount,
             name: "amount",
             json: "amount",
             type_name: "int32",

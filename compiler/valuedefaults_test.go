@@ -31,11 +31,17 @@ table Fleet
 }
 `
 
-func TestTableValueDefaultsAreCppOnly(t *testing.T) {
+func TestTableValueDefaultsCarriers(t *testing.T) {
 	u := unitFromSource(t, valueDefaultsUnit)
 	c := New()
 	for _, target := range c.Targets() {
 		out, err := c.Generate(u, target, Options{})
+		if target == "rust" {
+			if err != nil {
+				t.Fatalf("Rust defaults: %v", err)
+			}
+			continue
+		}
 		if target == "cpp" {
 			if err != nil {
 				t.Fatalf("cpp carries the defaults and refused: %v", err)

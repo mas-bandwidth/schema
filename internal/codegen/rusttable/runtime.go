@@ -213,7 +213,12 @@ pub fn table_double_to_bits(value: f64) -> u64 {
 // union's own accessors below rather than through an offset: Rust spells a
 // union as a real enum (SPEC §6.1's union row), which has no committed
 // payload offset for a walker to add.
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct TableArm<T> { pub value: T, pub length: i32 }
+
 pub struct TableUnionArmInfo {
+    pub field: Option<&'static TableFieldInfo>,
     pub name: &'static str,
     pub table: Option<fn() -> &'static TableTypeInfo>,
 }
@@ -222,14 +227,14 @@ pub struct TableUnionArmInfo {
 // enum needs where C++ needs a tag offset and an arm offset.
 pub struct TableUnionInfo {
     // the tag ordinal a union value currently holds: 0 is None.
-    pub read_tag: fn(*const u8) -> u64,
+    pub read_tag: unsafe fn(*const u8) -> u64,
     // put the value at None.
-    pub clear: fn(*mut u8),
+    pub clear: unsafe fn(*mut u8),
     // select an arm, establishing the arm's declared defaults, and answer the
     // payload's address.
-    pub select: fn(*mut u8, u64) -> *mut u8,
+    pub select: unsafe fn(*mut u8, u64) -> *mut u8,
     // the CURRENT arm's payload address; the tag must be the value's own.
-    pub payload: fn(*const u8, u64) -> *const u8,
+    pub payload: unsafe fn(*const u8, u64) -> *const u8,
     // indexed by tag: entry 0 is None and names no table.
     pub arms: &'static [TableUnionArmInfo],
 }
@@ -244,6 +249,8 @@ pub struct TableUnionInfo {
 pub static TABLE_DOC_NONE: &str = "";
 
 pub struct TableFieldInfo {
+    /// Restore this field, including its count, presence and declared defaults.
+    pub reset: unsafe fn(*mut u8),
     pub name: &'static str,      // schema field name, e.g. "health"
     pub json: &'static str,      // the TEXT form's key: json = "key", else name (§16.3)
     pub type_name: &'static str, // schema type name, e.g. "float32", "Grade"
@@ -303,7 +310,7 @@ pub struct TableTypeInfo {
     // put one instance back at its declared defaults, in place. A generic
     // walker that fills a value has to be able to establish the defaults an
     // absent field takes, and it holds no type to spell.
-    pub reset: fn(*mut u8),
+    pub reset: unsafe fn(*mut u8),
     // the declaration's own doc and tags, on the same terms as a field's
     // (docs/SPEC-TABLES.md §8.1)
     pub doc: &'static str,
@@ -515,7 +522,7 @@ fn table_json_shape(f: &TableFieldInfo) -> u8 {
 
 // the ELEMENT shape of an array field — the same classifier one level down
 fn table_json_element_shape(f: &TableFieldInfo) -> u8 {
-    if f.kind == 13 {
+    if f.kind == 13 || f.arms.is_some() {
         return b'o';
     }
     if table_json_is_enum(f) {
@@ -981,17 +988,13 @@ unsafe fn table_json_write_scalar(
                 return false;
             }
             let entry = &arms.arms[tag as usize];
-            let table = match entry.table {
-                Some(t) => t,
-                None => return false,
-            };
             out.put(b'{');
             out.line(depth + 1);
             table_json_write_string(out, arm);
             out.raw(b": ");
-            if !table_json_write_value(out, (arms.payload)(storage, tag), table(), depth + 1) {
-                return false;
-            }
+            if let Some(field) = entry.field {
+                if !table_json_write_field(out, (arms.payload)(storage, tag), field, depth + 1) { return false; }
+            } else { out.raw(b"null"); }
             out.line(depth);
             out.put(b'}');
             return true;
@@ -1790,10 +1793,21 @@ unsafe fn table_json_read_scalar(
                     return false;
                 }
             } else {
-                let table = arms.arms[tag as usize].table.unwrap()();
-                let payload = (arms.select)(storage, tag as u64);
-                if !table_json_read_table(input, payload, table, depth + 1, report) {
-                    return false;
+                let entry = &arms.arms[tag as usize];
+                if let Some(field) = entry.field {
+                    if input.value_shape() != table_json_shape(field) {
+                        report.kind_mismatch += 1;
+                        if !table_json_skip_value(input, depth + 1, report) { return false; }
+                    } else {
+                        let payload = (arms.select)(storage, tag as u64);
+                        if !table_json_read_field(input, payload, field, depth + 1, report) { return false; }
+                    }
+                } else if input.value_shape() == b'z' {
+                    if !input.literal(b"null") { return false; }
+                    (arms.select)(storage, tag as u64);
+                } else {
+                    report.kind_mismatch += 1;
+                    if !table_json_skip_value(input, depth + 1, report) { return false; }
                 }
             }
             let mut c = input.peek();
@@ -2125,13 +2139,7 @@ unsafe fn table_json_read_field(
             // every slot back to its declared defaults first, so a key the
             // text omits keeps them and a repeated field key cannot leave an
             // earlier occurrence's slots standing
-            for i in 0..f.array_bound as usize {
-                let slot = storage.add(i * f.elem_size as usize);
-                match f.table {
-                    Some(t) if f.kind == 13 => (t().reset)(slot),
-                    _ => ptr::write_bytes(slot, 0, f.elem_size as usize),
-                }
-            }
+            (f.reset)(base);
             let shape = table_json_element_shape(f);
             // A KEYED OBJECT'S KEYS ARE KEYS: a variant named twice is a
             // duplicate key like any other, last-wins and counted (§16.2).
@@ -2218,19 +2226,7 @@ unsafe fn table_json_read_field(
             // wire-visible: a fixed array writes every slot, so a second,
             // shorter occurrence overlaying a prefix would leave the first
             // occurrence's tail standing.
-            match f.table {
-                Some(t) if f.kind == 13 => {
-                    let info = t();
-                    for i in 0..f.array_bound as usize {
-                        (info.reset)(storage.add(i * f.elem_size as usize));
-                    }
-                }
-                _ => ptr::write_bytes(
-                    storage,
-                    0,
-                    f.array_bound as usize * f.elem_size as usize,
-                ),
-            }
+            (f.reset)(base);
             table_json_set_count(base, f, 0);
             let mut placed = 0i32;
             let shape = table_json_element_shape(f);
@@ -2376,14 +2372,7 @@ unsafe fn table_json_read_table(
                     // absent, and back at its defaults: a repeated key whose
                     // last occurrence is null must not leave an earlier value
                     // standing
-                    match f.table {
-                        Some(t) => (t().reset)(base.add(f.offset as usize)),
-                        None => ptr::write_bytes(
-                            base.add(f.offset as usize),
-                            0,
-                            f.elem_size as usize,
-                        ),
-                    }
+                    (f.reset)(base);
                     table_json_set_raw(base.add(f.present_offset as usize), 1, 0);
                 } else {
                     if got != table_json_shape(f) {

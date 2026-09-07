@@ -8,6 +8,7 @@ func init() {
 		Name{Name: "TableOpenVerdict", What: "the file-form open and body-read verdict"},
 		Name{Name: "TableReport", What: "the read report — the permissive contract's ledger"},
 		Name{Name: "TableWriter", What: "the wire writer over the caller's buffer"},
+		Name{Name: "TableArm", What: "a bounded union payload and its live length"},
 		Name{Name: "TableReader", What: "the wire reader over the caller's buffer"},
 		Name{Name: "TableTypeInfo", What: "a table's reflection descriptor"},
 		Name{Name: "TableFieldInfo", What: "a field's reflection descriptor"},

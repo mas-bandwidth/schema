@@ -18,7 +18,8 @@ import (
 // reflection descriptors and the text form's entry points.
 func (g *gen) tableModule() []byte {
 	members := g.members()
-	if len(members) == 0 {
+	unions, enums := g.unionMembers(), g.allTableEnums()
+	if len(members) == 0 && len(unions) == 0 && len(enums) == 0 {
 		return nil
 	}
 
@@ -27,7 +28,13 @@ func (g *gen) tableModule() []byte {
 			g.emitStorage(st)
 		}
 	}
-	for _, e := range g.tableEnums(members) {
+	for _, u := range unions {
+		if g.unit.TableUnions[u.Name] != nil {
+			g.emitUnionStorage(u)
+		}
+		g.emitUnionWire(u)
+	}
+	for _, e := range enums {
 		g.emitEnumIdentity(e)
 	}
 	for _, st := range members {
@@ -243,9 +250,9 @@ func (g *gen) emitStorageField(f *ir.Field) {
 		g.pf("    pub %s_count: i32,\n", f.Name)
 	default:
 		g.pf("    pub %s: %s,\n", f.Name, typ)
-		if f.Type.Optional {
-			g.pf("    pub %s_present: bool, // ?%s: absent until set\n", f.Name, tableFieldTypeName(f))
-		}
+	}
+	if f.Type.Optional {
+		g.pf("    pub %s_present: bool,\n", f.Name)
 	}
 }
 
@@ -266,9 +273,9 @@ func (g *gen) emitZeroInit(f *ir.Field, ind string) {
 		}
 	default:
 		g.pf("%s%s: %s,\n", ind, f.Name, zeroScalar(f))
-		if f.Type.Optional {
-			g.pf("%s%s_present: false,\n", ind, f.Name)
-		}
+	}
+	if f.Type.Optional {
+		g.pf("%s%s_present: false,\n", ind, f.Name)
 	}
 }
 
@@ -338,7 +345,10 @@ func (g *gen) emitResetField(f *ir.Field) {
 	switch {
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.pf("    value.%s.fill(0);\n", name)
-		g.pf("    value.%s_length = 0;\n", name)
+		g.pf("    value.%s_length = %d;\n", name, len(f.DefBytes))
+		if len(f.DefBytes) > 0 {
+			g.pf("    value.%s[..%d].copy_from_slice(&%s);\n", name, len(f.DefBytes), rustBytes(f.DefBytes))
+		}
 	case f.KeyEnum != "":
 		if isStruct(f) {
 			g.pf("    for slot in %s.iter_mut() {\n", g.keyedSlots(f))
@@ -363,16 +373,13 @@ func (g *gen) emitResetField(f *ir.Field) {
 		}
 	case isStruct(f):
 		g.pf("    %s(&mut value.%s);\n", fn(f.Type.Name, "reset"), name)
-		if f.Type.Optional {
-			g.pf("    value.%s_present = false;\n", name)
-		}
 	case isUnion(f):
 		g.pf("    value.%s = %s::None;\n", name, f.Type.Name)
 	default:
 		g.pf("    value.%s = %s;\n", name, g.defaultValue(f))
-		if f.Type.Optional {
-			g.pf("    value.%s_present = false;\n", name)
-		}
+	}
+	if f.Type.Optional {
+		g.pf("    value.%s_present = false;\n", name)
 	}
 }
 
@@ -408,10 +415,21 @@ func (g *gen) defaultValue(f *ir.Field) string {
 			}
 			return f.Type.Name + "::NONE"
 		case *ir.Flags:
+			if f.HasDefault && f.DefInt != nil {
+				return f.DefInt.String()
+			}
 			return "0"
 		}
 	}
 	return "0"
+}
+
+func rustBytes(bytes []byte) string {
+	values := make([]string, len(bytes))
+	for i, b := range bytes {
+		values[i] = fmt.Sprint(b)
+	}
+	return "[" + strings.Join(values, ",") + "]"
 }
 
 // ---- guards ----

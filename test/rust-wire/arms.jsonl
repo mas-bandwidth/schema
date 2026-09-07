@@ -1,0 +1,10 @@
+{}
+{"value":{"number":-9223372036854775808},"tail":23}
+{"value":{"text":"caf\u00e9"},"values":[{"grade":"Silver"},{"counted":[-32768,7,32767]},{"nested":{"empty":null}}],"tail":3}
+{"value":{"data":"AAH+/w=="},"values":[{"positions":[0,4294967295]},{"body":{}},{"empty":null}],"positions":[{"body":{"n":17}},{"empty":null}],"tail":91}
+{"entries":[],"weights":[0,1.5],"grades":["Bronze","Silver"],"tail":8}
+{"entries":[{"n":11},{"n":13}],"entries":null,"weights":[3,4],"weights":null,"grades":["Silver"],"grades":null}
+{"value":{"text":"abcdefg\u00e9"},"values":[{"counted":[1,2,3,4]},{"data":"AAECAwQFBgcICQ=="}]}
+{"value":{"number":"bad"},"values":[{"grade":"missing"},{"empty":2},{"nested":{"number":-3}}]}
+{"label":"","tag":"","caps":[]}
+{"label":"changed","tag":"Yg==","caps":["Jump"]}

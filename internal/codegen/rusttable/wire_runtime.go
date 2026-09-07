@@ -202,6 +202,9 @@ impl<'a> TableReader<'a> {
             if !r.skip(kind) { return false; }
         }
     }
+    pub fn width(kind: u8) -> usize {
+        match kind { 1|2|6|20|25 => 1, 3|7|21|26 => 2, 4|8|10|22|27 => 4, 5|9|11|23|28 => 8, 18|19|24|29 => 16, _ => 0 }
+    }
     pub fn widens(kind: u8, declared: u8) -> bool {
         (kind >= 2 && kind < declared && declared <= 5) ||
         (kind >= 6 && kind < declared && declared <= 9) ||

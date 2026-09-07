@@ -314,13 +314,13 @@ generated/bench/rust/.stamp: bin/schema $(SCHEMAS_BENCH)
 # way it is a C++ namespace — its own package, its own protocol id, its own
 # table runtime. The crates carry a generated Cargo.toml each; nothing here is
 # checked in.
-RUST_TABLE_UNITS := tblk1:test/tables/K1.schema tblk2:test/tables/K2.schema tabledemo:tables/examples graphdemo:tables/pointers \
+RUST_TABLE_UNITS := tblr1:test/tables/R1.schema tblr2:test/tables/R2.schema tblf1:test/tables/F1.schema tblf2:test/tables/F2.schema tbla1:test/tables/A1.schema tbla2:test/tables/A2.schema tblk1:test/tables/K1.schema tblk2:test/tables/K2.schema tabledemo:tables/examples graphdemo:tables/pointers \
 	blockdemo:tables/block blockhome:tables/blockhome \
 	tblv1:test/tables/V1.schema tblv2:test/tables/V2.schema \
 	tblp1:test/tables/P1.schema tblp2:test/tables/P2.schema \
 	tblp3:test/tables/P3.schema jsonkeys:test/tables/JsonKeys.schema
 
-build/tables-generated-rust/.stamp: make/rust.mk test/tables/K1.schema test/tables/K2.schema bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema
+build/tables-generated-rust/.stamp: test/tables/A1.schema test/tables/A2.schema make/rust.mk test/tables/K1.schema test/tables/K2.schema bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema
 	@mkdir -p build/tables-generated-rust
 	@for unit in $(RUST_TABLE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \
@@ -474,8 +474,9 @@ build/rust-wire/reference: build/rust-wire/.stamp test/rust-wire/reference.cpp
 	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/rust-wire/cpp test/rust-wire/reference.cpp build/rust-wire/cpp/*Table.cpp -o $@
 
 .PHONY: tables-rust-wire-boundaries
-tables-rust-wire-boundaries: build/rust-wire/reference
+tables-rust-wire-boundaries: build/rust-wire/reference build/rust-arms/reference
 	./build/rust-wire/reference build/rust-wire/cpp.bin
+	./build/rust-arms/reference test/rust-wire/arms.jsonl build/rust-arms/cpp.bin
 	PATH="$(RUSTUP_BIN):$$PATH" cargo test --quiet --manifest-path test/rust-wire/Cargo.toml
 	PATH="$(RUSTUP_BIN):$$PATH" cargo test --quiet --release --manifest-path test/rust-wire/Cargo.toml
 
@@ -504,3 +505,13 @@ tables-rust-wire-fuzz-negative-control: build/conformance-harness
 	@echo 'Rust wire negative control: nonminimal LEB128 changes the report against the oracle'
 
 test-rust: tables-rust-wire-fuzz-negative-control
+
+# General arms and optional arrays consume the same JSON through C++ and Rust.
+build/rust-arms/.stamp: build/rust-wire/.stamp bin/schema test/rust-wire/Arms.schema make/rust.mk
+	./bin/schema generate --lang rust --out build/rust-arms/rust/src test/rust-wire/Arms.schema
+	./bin/schema generate --lang cpp --out build/rust-arms/cpp test/rust-wire/Arms.schema
+	@sed 's/name = "rustwire"/name = "rustarms"/' build/rust-wire/rust/Cargo.toml > build/rust-arms/rust/Cargo.toml
+	@touch $@
+
+build/rust-arms/reference: build/rust-wire/.stamp build/rust-arms/.stamp test/rust-wire/arms_reference.cpp
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/rust-arms/cpp test/rust-wire/arms_reference.cpp build/rust-arms/cpp/*Table.cpp -o $@

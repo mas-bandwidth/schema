@@ -30,9 +30,16 @@ func (g *gen) emitDescriptors(members []*ir.Struct) {
 }
 
 func (g *gen) emitDescriptor(st *ir.Struct) {
+	g.owner = st
+	defer func() { g.owner = nil }()
 	guards := guardStrings(st)
 	g.pf("pub fn %s() -> &'static TableTypeInfo {\n", fn(st.Name, "table_type"))
 	reset := g.resetAdapter(st)
+	for _, f := range st.Fields {
+		g.pf("unsafe fn reset_%s(base: *mut u8) { unsafe { let value = &mut *(base as *mut %s);\n", f.Name, st.Name)
+		g.emitResetField(f)
+		g.pf("} }\n")
+	}
 	// the TAG lists (docs/SPEC-TABLES.md §8.1), one static per tagged field and
 	// one for a tagged declaration, named from the descriptor row as the
 	// function's other statics are
@@ -99,7 +106,7 @@ func annotationColumns(doc string, tags []string, tagsName string) (string, int,
 // constant, and a fn item is one.
 func (g *gen) resetAdapter(st *ir.Struct) string {
 	name := fn(st.Name, "table_reset_at")
-	g.pf("    fn %s(storage: *mut u8) {\n", name)
+	g.pf("    unsafe fn %s(storage: *mut u8) {\n", name)
 	g.pf("        unsafe { %s(&mut *(storage as *mut %s)) }\n", fn(st.Name, "reset"), st.Name)
 	g.pf("    }\n")
 	return name
@@ -107,6 +114,9 @@ func (g *gen) resetAdapter(st *ir.Struct) string {
 
 // descriptorRow renders one TableFieldInfo literal.
 func (g *gen) descriptorRow(st *ir.Struct, f *ir.Field, guard string) string {
+	return g.descriptorRowAt(f, guard, "reset_"+f.Name, func(member string) string { return offsetOf(st.Name, member) })
+}
+func (g *gen) descriptorRowAt(f *ir.Field, guard, reset string, offset func(string) string) string {
 	var b strings.Builder
 	// the descriptor's kind column is the FIELD's kind, and for an array, a
 	// string or a `bytes` it is the ELEMENT's: `bytes` rides as an array of u8
@@ -128,13 +138,13 @@ func (g *gen) descriptorRow(st *ir.Struct, f *ir.Field, guard string) string {
 	case f.Type.Kind == ir.TString:
 		arrayBound = fmt.Sprint(f.Type.Size)
 		counted = "true"
-		countOffset = offsetOf(st.Name, f.Name+"_length")
+		countOffset = offset(f.Name + "_length")
 		elemSize = fmt.Sprintf("%d", f.Type.Size)
 	case f.Type.Kind == ir.TBytes:
 		arrayBound = fmt.Sprint(f.Type.Size)
 		isArray = "true"
 		counted = "true"
-		countOffset = offsetOf(st.Name, f.Name+"_length")
+		countOffset = offset(f.Name + "_length")
 		elemSize = "1"
 	case f.KeyEnum != "":
 		arrayBound = fmt.Sprintf("%s::MAX.0 as i32", f.KeyEnum)
@@ -143,13 +153,13 @@ func (g *gen) descriptorRow(st *ir.Struct, f *ir.Field, guard string) string {
 		arrayBound = fmt.Sprint(f.ArrayBound)
 		isArray = "true"
 		counted = "true"
-		countOffset = offsetOf(st.Name, f.Name+"_count")
+		countOffset = offset(f.Name + "_count")
 	case f.Array == ir.ArrayFixed:
 		arrayBound = fmt.Sprint(f.ArrayBound)
 		isArray = "true"
 	}
 	if f.Type.Optional {
-		presentOffset = offsetOf(st.Name, f.Name+"_present")
+		presentOffset = offset(f.Name + "_present")
 	}
 
 	// the declared [min, max], and a bits(N) field's IMPLIED one: N bits hold
@@ -206,7 +216,7 @@ func (g *gen) descriptorRow(st *ir.Struct, f *ir.Field, guard string) string {
 		keyId = fmt.Sprintf("Some(|v| %s(v as %s).table_id().unwrap_or(0))", key.Name, rustUint(key.StorageBits))
 	}
 
-	fmt.Fprintf(&b, "TableFieldInfo {\n")
+	fmt.Fprintf(&b, "TableFieldInfo {\n            reset: %s,\n", reset)
 	fmt.Fprintf(&b, "            name: %q,\n", f.Name)
 	fmt.Fprintf(&b, "            json: %q,\n", ir.TableFieldJsonKey(f))
 	fmt.Fprintf(&b, "            type_name: %q,\n", tableFieldTypeName(f))
@@ -216,7 +226,7 @@ func (g *gen) descriptorRow(st *ir.Struct, f *ir.Field, guard string) string {
 	fmt.Fprintf(&b, "            counted: %s,\n", counted)
 	fmt.Fprintf(&b, "            optional: %v,\n", f.Type.Optional)
 	fmt.Fprintf(&b, "            array_bound: %s,\n", arrayBound)
-	fmt.Fprintf(&b, "            offset: %s,\n", offsetOf(st.Name, f.Name))
+	fmt.Fprintf(&b, "            offset: %s,\n", offset(f.Name))
 	fmt.Fprintf(&b, "            elem_size: %s,\n", elemSize)
 	fmt.Fprintf(&b, "            count_offset: %s,\n", countOffset)
 	fmt.Fprintf(&b, "            present_offset: %s,\n", presentOffset)
@@ -283,19 +293,8 @@ func unionIdFn(un *ir.Union) string {
 // offset, so where C++ hands the walker an offset this hands it three
 // functions: read the tag, clear the value, and select an arm.
 func (g *gen) emitUnionInfos(members []*ir.Struct) {
-	seen := map[string]*ir.Union{}
-	for _, st := range members {
-		for _, f := range st.Fields {
-			if un := unionOf(f); un != nil {
-				if home, ok := g.unit.DeclFile[un.Name]; ok && home != g.file.Base {
-					continue
-				}
-				seen[un.Name] = un
-			}
-		}
-	}
-	for _, name := range sortedUnionNames(seen) {
-		g.emitUnionInfo(seen[name])
+	for _, un := range g.unionMembers() {
+		g.emitUnionInfo(un)
 	}
 }
 
@@ -314,52 +313,64 @@ func sortedUnionNames(m map[string]*ir.Union) []string {
 
 func (g *gen) emitUnionInfo(un *ir.Union) {
 	name := un.Name
-	g.pf("// %s's arms, for the generic walk: Rust spells a union as a real enum,\n", name)
-	g.pf("// so the payload's address comes out of a match rather than off an offset.\n")
 	g.pf("pub fn %s() -> &'static TableUnionInfo {\n", fn(name, "table_union"))
-	g.pf("    fn read_tag(storage: *const u8) -> u64 {\n")
-	g.pf("        unsafe {\n            match &*(storage as *const %s) {\n", name)
-	g.pf("                %s::None => 0,\n", name)
+	g.pf("unsafe fn read_tag(storage: *const u8) -> u64 { unsafe { match &*(storage as *const %s) {\n%s::None => 0,\n", name, name)
 	for i, v := range un.Variants {
-		g.pf("                %s::%s(_) => %d,\n", name, ir.GoExportName(v.Name), i+1)
+		pat := "(_)"
+		if v.Void() {
+			pat = ""
+		}
+		g.pf("%s::%s%s => %d,\n", name, ir.GoExportName(v.Name), pat, i+1)
 	}
-	g.pf("            }\n        }\n    }\n")
-	g.pf("    fn clear(storage: *mut u8) {\n")
-	g.pf("        unsafe { *(storage as *mut %s) = %s::None }\n    }\n", name, name)
-	g.pf("    fn select(storage: *mut u8, tag: u64) -> *mut u8 {\n")
-	g.pf("        unsafe {\n            let value = &mut *(storage as *mut %s);\n", name)
-	g.pf("            match tag {\n")
+	g.pf("} } }\nunsafe fn clear(storage: *mut u8) { unsafe { *(storage as *mut %s) = %s::None; } }\n", name, name)
+	g.pf("unsafe fn select(storage: *mut u8, tag: u64) -> *mut u8 { unsafe { let value = &mut *(storage as *mut %s); match tag {\n", name)
 	for i, v := range un.Variants {
-		g.pf("                %d => {\n", i+1)
-		g.pf("                    let mut arm = %s::default();\n", v.Type)
-		g.pf("                    %s(&mut arm);\n", fn(v.Type, "reset"))
-		g.pf("                    *value = %s::%s(arm);\n", name, ir.GoExportName(v.Name))
-		g.pf("                    match value {\n")
-		g.pf("                        %s::%s(a) => a as *mut %s as *mut u8,\n", name, ir.GoExportName(v.Name), v.Type)
-		g.pf("                        _ => core::ptr::null_mut(),\n")
-		g.pf("                    }\n")
-		g.pf("                }\n")
+		g.pf("%d => {\n", i+1)
+		if v.Void() {
+			g.pf("*value = %s::%s; core::ptr::null_mut()\n", name, ir.GoExportName(v.Name))
+		} else {
+			g.pf("let arm = %s;\n*value = %s::%s(arm);\nmatch value { %s::%s(a) => a as *mut %s as *mut u8, _ => core::ptr::null_mut() }\n", armZero(v.F), name, ir.GoExportName(v.Name), name, ir.GoExportName(v.Name), armType(v.F))
+		}
+		g.pf("}\n")
 	}
-	g.pf("                _ => core::ptr::null_mut(),\n")
-	g.pf("            }\n        }\n    }\n")
-	g.pf("    fn payload(storage: *const u8, tag: u64) -> *const u8 {\n")
-	g.pf("        unsafe {\n            let value = &*(storage as *const %s);\n", name)
-	g.pf("            match (tag, value) {\n")
+	g.pf("_ => core::ptr::null_mut(),\n} } }\n")
+	g.pf("unsafe fn payload(storage: *const u8, tag: u64) -> *const u8 { unsafe { match (tag, &*(storage as *const %s)) {\n", name)
 	for i, v := range un.Variants {
-		g.pf("                (%d, %s::%s(a)) => a as *const %s as *const u8,\n", i+1, name, ir.GoExportName(v.Name), v.Type)
+		if !v.Void() {
+			g.pf("(%d, %s::%s(a)) => a as *const %s as *const u8,\n", i+1, name, ir.GoExportName(v.Name), armType(v.F))
+		}
 	}
-	g.pf("                _ => core::ptr::null(),\n")
-	g.pf("            }\n        }\n    }\n")
-	g.pf("    static ARMS: [TableUnionArmInfo; %d] = [\n", len(un.Variants)+1)
-	g.pf("        TableUnionArmInfo { name: \"None\", table: None },\n")
-	for _, v := range un.Variants {
-		g.pf("        TableUnionArmInfo { name: %q, table: Some(%s) },\n", v.Name, fn(v.Type, "table_type"))
+	g.pf("_ => core::ptr::null(),\n} } }\n")
+	for i, v := range un.Variants {
+		if v.Void() {
+			continue
+		}
+		f := v.F
+		g.emitTagsStatic(fieldTagsName(f), f.Tags)
+		g.pf("unsafe fn reset_%d(base: *mut u8) { unsafe { *(base as *mut %s) = %s; } }\n", i, armType(f), armZero(f))
+		row := g.descriptorRowAt(f, "", fmt.Sprintf("reset_%d", i), func(member string) string {
+			if !armCounted(f) {
+				return "0"
+			}
+			if member == f.Name {
+				return offsetOf(armType(f), "value")
+			}
+			return offsetOf(armType(f), "length")
+		})
+		g.pf("static ARM_%d: TableFieldInfo = %s;\n", i, row)
 	}
-	g.pf("    ];\n")
-	g.pf("    static INFO: TableUnionInfo = TableUnionInfo {\n")
-	g.pf("        read_tag,\n        clear,\n        select,\n        payload,\n        arms: &ARMS,\n")
-	g.pf("    };\n")
-	g.pf("    &INFO\n}\n\n")
+	g.pf("static ARMS: [TableUnionArmInfo; %d] = [\nTableUnionArmInfo { name: \"None\", table: None, field: None },\n", len(un.Variants)+1)
+	for i, v := range un.Variants {
+		table, field := "None", "None"
+		if v.Body() {
+			table = "Some(" + fn(v.Type, "table_type") + ")"
+		}
+		if !v.Void() {
+			field = fmt.Sprintf("Some(&ARM_%d)", i)
+		}
+		g.pf("TableUnionArmInfo { name: %q, table: %s, field: %s },\n", v.Name, table, field)
+	}
+	g.pf("];\nstatic INFO: TableUnionInfo = TableUnionInfo { read_tag, clear, select, payload, arms: &ARMS };\n&INFO\n}\n\n")
 }
 
 // ---- the text form's per-table entry points (docs/SPEC-TABLES.md §16) ----

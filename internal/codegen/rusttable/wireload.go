@@ -138,25 +138,22 @@ func (g *gen) emitLoadKeyed(f *ir.Field) {
 }
 
 func (g *gen) emitLoadUnion(f *ir.Field, r, target, onBad string) {
-	g.pf("let arm_id = match %s.getid() { Some(id) => id, None => { %s } };\n", r, onBad)
-	g.pf("if let Some(arm_id) = arm_id {\nif !%s.has(1) { %s }\nlet arm_kind = %s.get8();\n", r, onBad, r)
-	g.takeBody(r, "arm_body", onBad)
-	g.pf("%s = %s::None;\n", target, f.Type.Name)
-	g.pf("match arm_id {\n")
-	for _, v := range unionOf(f).Variants {
-		g.pf("0x%016x => {\n", ir.TableWireId(v.WireName()))
-		g.pf("    if arm_kind != 13 { report.kind_mismatch += 1; }\n    else {\n        let mut arm = %s::default();\n        %s(&mut arm_body, report, &mut arm);\n        if arm_body.offset == arm_body.buffer.len() {\n            %s = %s::%s(arm);\n        } else { report.malformed = true; }\n    }\n", v.Type, fn(v.Type, "load_body"), target, f.Type.Name, ir.GoExportName(v.Name))
-		g.pf("}\n")
+	if r == "r" {
+		r = "*r"
 	}
-	g.pf("_ => { report.unknown += 1; }\n}\n} else { %s = %s::None; }\n", target, f.Type.Name)
+	g.pf("if !%s(&mut %s, report, &mut %s, %v) { %s }\n", fn(f.Type.Name, "load_union"), r, target, f.Array != ir.ArrayNone, onBad)
 }
 
 func (g *gen) emitElementKindCheck(f *ir.Field, kind int) {
+	mismatch := "report.kind_mismatch += 1;"
+	if f.Type.Optional {
+		mismatch += " continue;"
+	}
 	if widenable(f) {
-		g.pf("if element_kind != %d && !TableReader::widens(element_kind, %d) { report.kind_mismatch += 1; } else {\n", kind, kind)
+		g.pf("if element_kind != %d && !TableReader::widens(element_kind, %d) { %s } else {\n", kind, kind, mismatch)
 		g.pf("if element_kind != %d { report.widened += 1; }\n", kind)
 	} else {
-		g.pf("if element_kind != %d { report.kind_mismatch += 1; } else {\n", kind)
+		g.pf("if element_kind != %d { %s } else {\n", kind, mismatch)
 	}
 }
 

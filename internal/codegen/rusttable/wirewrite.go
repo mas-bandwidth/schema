@@ -56,6 +56,9 @@ func (g *gen) emitSaveField(f *ir.Field) {
 		cond = "value." + f.Name + "_present"
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		cond = "value." + f.Name + "_length > 0"
+		if len(f.DefBytes) > 0 {
+			cond = fmt.Sprintf("value.%s_length != %d || value.%s[..value.%s_length as usize] != %s", f.Name, len(f.DefBytes), f.Name, f.Name, rustBytes(f.DefBytes))
+		}
 	case f.KeyEnum != "":
 		cond = "pairs > 0"
 		g.pf("    {\n    let mut pairs = 0u64;\n    for i in 0..%s {\n", arrayLen(f))
@@ -107,6 +110,9 @@ func (g *gen) emitSaveField(f *ir.Field) {
 }
 
 func (g *gen) emitSaveElement(f *ir.Field, expr string, framed bool) {
+	if expr == "*arm" && isEnum(f) {
+		expr = "(*arm)"
+	}
 	switch {
 	case isStruct(f):
 		if framed {
@@ -117,11 +123,7 @@ func (g *gen) emitSaveElement(f *ir.Field, expr string, framed bool) {
 	case isEnum(f):
 		g.pf("        match %s.table_id() { Some(id) => {\n            if %s.0 == 0 { w.putleb(0); } else { w.putid(id); }\n        }, None => return false }\n", expr, expr)
 	case isUnion(f):
-		g.pf("        match &%s {\n            %s::None => w.putleb(0),\n", expr, f.Type.Name)
-		for _, v := range unionOf(f).Variants {
-			g.pf("            %s::%s(arm) => {\n                w.putid(0x%016x);\n                w.put8(13);\n                if !w.framed(|w| %s(w, arm)) { return false; }\n            }\n", f.Type.Name, ir.GoExportName(v.Name), ir.TableWireId(v.WireName()), fn(v.Type, "save_body"))
-		}
-		g.pf("        }\n")
+		g.pf("if !%s(w, &(%s)) { return false; }\n", fn(f.Type.Name, "save_union"), expr)
 	case f.Type.Kind == ir.TBytes:
 		g.pf("        w.put8(%s);\n", expr)
 	default:

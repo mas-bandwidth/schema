@@ -1,0 +1,35 @@
+package rustarms
+
+flags Caps { Jump, Fly }
+
+enum Grade { Bronze, Silver }
+
+type Body { n uint32 = 7 }
+union Plain { body Body
+ empty }
+union Inner { number int32
+ empty }
+union Value {
+    number int64
+    text string(8)
+    data bytes(8)
+    positions [2]uint32
+    counted [..3]int16
+    grade Grade
+    body Body
+    nested Inner
+    empty
+}
+table Root {
+    label string(16) = "hello"
+    tag bytes(4) = "ab"
+    caps Caps = { Jump, Fly }
+    inner Inner
+    value Value
+    values [..3]Value
+    positions [2]Plain
+    entries ?[..4]Body
+    weights ?[2]float32
+    grades ?[..3]Grade
+    tail uint32
+}

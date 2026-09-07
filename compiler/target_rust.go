@@ -20,11 +20,10 @@ func (rustTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	if err := refuseWideText(u, "rust"); err != nil {
 		return nil, err
 	}
-	if err := refuseUnported(u, "rust"); err != nil {
-		return nil, err
-	}
-	if err := refuseOptionalArrays(u, "rust"); err != nil {
-		return nil, err
+	for _, check := range []func(*ir.Unit, string) error{refuseBlobs} {
+		if err := check(u, "rust"); err != nil {
+			return nil, err
+		}
 	}
 	if err := refuseMaps(u, "rust"); err != nil {
 		return nil, err
@@ -65,5 +64,8 @@ func (rustTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 func init() {
 	registerWideTextCarrier("rust")
 	registerPacketValueDefaultCarrier("rust")
-	registerBuiltin(rustTarget{}, true, false, false, false)
+	registerOptionalArrayCarrier("rust")
+	valueDefaultTargets = append(valueDefaultTargets, "rust")
+	wasRowTargets = append(wasRowTargets, "rust")
+	registerBuiltin(rustTarget{}, true, true, true, false)
 }
