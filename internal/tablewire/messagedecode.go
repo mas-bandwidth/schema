@@ -65,6 +65,14 @@ func MessageCount(data []byte, v *Vocabulary) (int, error) {
 //     is read. The storage for body `k` holds whatever the decode had put in
 //     it, and the COUNT is what says it is not a body.
 func DecodeMessages(m *tabletext.Model, insts []*tabletext.Instance, data []byte, v *Vocabulary, report *tabletext.Report) (int, bool, error) {
+	return decodeMessagesWith(m, insts, data, v, report, nil)
+}
+
+// decodeMessagesWith is the batch read under an optional RETENTION STATE A
+// BODY (docs/SPEC-TABLES.md §6.6, retainmessage.go). `states` is nil for the
+// plain read and holds one entry per body for the retaining one, so the plain
+// path is the path it always was and retains nothing.
+func decodeMessagesWith(m *tabletext.Model, insts []*tabletext.Instance, data []byte, v *Vocabulary, report *tabletext.Report, states []*retainState) (int, bool, error) {
 	// THE FORM BYTE IS READ FIRST, before the count and before any body, so a
 	// wire that is both a form this reader does not carry and damaged is a
 	// refusal and never damage (§3).
@@ -95,6 +103,9 @@ func DecodeMessages(m *tabletext.Model, insts []*tabletext.Instance, data []byte
 	}
 	for i := range count {
 		d := &bitDecoder{m: m, v: v, report: report, r: r, refBits: v.RefBits(), indexBits: ir.TableMessageBitsRequired(0, 1)}
+		if i < len(states) {
+			d.rt = states[i]
+		}
 		if !d.root(insts[i]) {
 			return i, false, nil
 		}
@@ -136,6 +147,26 @@ type bitDecoder struct {
 	// many entries carry it (§2.8, §4). It is consumed by the entry body it
 	// was set for, so a nested body never sees it.
 	mapKey *bool
+	// rt, when set, is THIS BODY's retention state (§6.6): the caller's two
+	// stores and the ids this build can spell. A batch holds one a body,
+	// because a body carries its own node directory inside the batch's one
+	// region and a record's first step is an index into it (§3.3).
+	rt *retainState
+}
+
+// dropped runs one element's read with RETENTION OFF (docs/SPEC-TABLES.md
+// §6.6). A bit stream has to be walked past, so an element the reader is
+// dropping, an unknown keyed slot's, a keyed key past this build's slots, an
+// array element past this build's bound, is DECODED into a sink where a file's
+// reader steps over it by its length. Nothing in that body is a field of this
+// region: the slot or the element is what was excluded, and everything under it
+// went with it under that one `retain_lost`.
+func (d *bitDecoder) dropped(read func() bool) bool {
+	was := d.rt
+	d.rt = nil
+	ok := read()
+	d.rt = was
+	return ok
 }
 
 // BitSpot is one number's place in a batch's bit stream: a reference at
@@ -450,9 +481,16 @@ func (d *bitDecoder) body(inst *tabletext.Instance) bool {
 		i, known := index[entry.Id]
 		if !known {
 			d.report.Unknown++
+			// THE SKIP RUNS FIRST AND THE CAPTURE SECOND, over the same bits
+			// (retainmessage.go): the plain read's verdict on this entry is the
+			// skip's, whether or not this build retains.
+			at := d.r.off
 			if !d.skip(entry) {
 				d.report.Malformed = true
 				return false
+			}
+			if d.rt != nil {
+				d.rt.captureMessage(d, inst, entry, at, d.r.off)
 			}
 			continue
 		}
@@ -488,6 +526,11 @@ func (d *bitDecoder) body(inst *tabletext.Instance) bool {
 				return false
 			}
 			continue
+		}
+		if discardsWhole(fv.Def) {
+			// THE FIELD IS BEING READ AGAIN (docs/SPEC-TABLES.md §6.6): every
+			// record under it goes before the winning occurrence is read.
+			d.rt.forgetField(fv)
 		}
 		if !d.field(fv, entry) {
 			return false
@@ -702,6 +745,13 @@ func (d *bitDecoder) array(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 	// exists to find the bit the array ENDS at, and where the element's width
 	// is announced that bit is a multiplication rather than a loop, which is
 	// also what keeps a zero-width element under a wide count bounded.
+	// A SECOND OCCURRENCE OF A COLLECTION REPLACES IT WHOLE, and it takes its
+	// discard HERE rather than at the field: the commitment is past the count
+	// and the align, and a header that turned the occurrence inert would have
+	// left the field standing with its records (docs/SPEC-TABLES.md §6.6).
+	for i := range fv.Elems {
+		d.rt.forgetCellRecords(&fv.Elems[i])
+	}
 	walk := n
 	if run >= 0 && walk > kept {
 		walk = kept
@@ -709,13 +759,21 @@ func (d *bitDecoder) array(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 	for i := uint64(0); i < walk; i++ {
 		var sink tabletext.Cell
 		cell := &sink
-		if f.Array == ir.ArrayList {
+		mine := true
+		switch {
+		case f.Array == ir.ArrayList:
 			fv.Elems = append(fv.Elems, d.m.ElementZero(f))
 			cell = &fv.Elems[i]
-		} else if i < kept {
+		case i < kept:
 			cell = &fv.Elems[i]
+		default:
+			mine = false // an element past this build's bound: read into a sink and dropped
 		}
-		if !d.element(cell, f, shape) {
+		element := func() bool { return d.element(cell, f, shape) }
+		if !mine {
+			element = func() bool { return d.dropped(func() bool { return d.element(cell, f, shape) }) }
+		}
+		if !element() {
 			return false
 		}
 	}
@@ -740,6 +798,7 @@ func (d *bitDecoder) element(cell *tabletext.Cell, f *ir.Field, shape ir.TableMe
 	}
 	switch int(shape.Elem) {
 	case ir.TableKindTable:
+		d.rt.forgetCellRecords(cell) // the element's earlier body goes with it (§6.6)
 		cell.Tab = d.m.New(tabletext.StructOf(f))
 		return d.body(cell.Tab)
 	case ir.TableKindPointer:
@@ -785,15 +844,33 @@ func (d *bitDecoder) keyed(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 		value := enumValueForId(f.KeyEnumRef, key.Id)
 		var sink tabletext.Cell
 		cell := &sink
+		kept := true
 		switch {
 		case value < 0:
 			d.report.Unknown++
+			if d.rt != nil {
+				// AN UNKNOWN KEYED-ARRAY SLOT IS AN EXCLUDED CLASS
+				// (docs/SPEC-TABLES.md §6.6): a slot is not a field, the reader
+				// rewrites the array body whole, and a slot has nowhere to
+				// append to.
+				d.rt.lost(d.report)
+			}
+			kept = false
 		case value > int64(tabletext.KeyedSlotCount(f)):
 			d.report.Clamped++
+			kept = false
 		default:
+			// A KEYED-ARRAY SLOT WRITTEN AGAIN is one of §6.6's four
+			// occurrences, and only the slots this occurrence carries are
+			// replaced: the rest stand, and so do their records. The discard
+			// is the element's own, below.
 			cell = &fv.Elems[value-1]
 		}
-		if !d.element(cell, f, shape) {
+		element := func() bool { return d.element(cell, f, shape) }
+		if !kept {
+			element = func() bool { return d.dropped(func() bool { return d.element(cell, f, shape) }) }
+		}
+		if !element() {
 			return false
 		}
 	}
@@ -819,6 +896,12 @@ func (d *bitDecoder) mapField(fv *tabletext.Field, entry ir.TableVocabularyEntry
 		d.report.Malformed = true
 		return false
 	}
+	// A SECOND OCCURRENCE OF A MAP REPLACES IT WHOLE (docs/SPEC-TABLES.md
+	// §6.6): every record under an entry the earlier occurrence held goes with
+	// the entry, and the discard moves neither counter.
+	for i := range fv.Entries {
+		d.rt.forgetCellRecords(&fv.Entries[i])
+	}
 	fv.Entries = nil
 	var last *tabletext.Instance
 	// A KEY KIND THIS DECLARATION WIDENS IS NOT A DISAGREEMENT (§2.8, §4):
@@ -835,7 +918,10 @@ func (d *bitDecoder) mapField(fv *tabletext.Field, entry ir.TableVocabularyEntry
 		}
 		key := tabletext.MapKeyOf(f, decoded)
 		if !tabletext.MapKeyFits(f, key) {
-			// KEYS NEVER CLAMP: the entry is dropped whole, one count per entry
+			// KEYS NEVER CLAMP: the entry is dropped whole, one count per entry.
+			// A record the decode captured under it is one the save's walk will
+			// not reach, and it counts its `retain_lost` THERE, exactly as the
+			// file form's own dropped entry does (§6.6).
 			d.report.Clamped++
 			continue
 		}
@@ -849,6 +935,9 @@ func (d *bitDecoder) mapField(fv *tabletext.Field, entry ir.TableVocabularyEntry
 		}
 		if order == 0 {
 			// EQUAL: a DUPLICATE. Last wins WHOLE, and the count excludes it.
+			// A MAP'S DUPLICATE KEY is one of §6.6's four occurrences: the
+			// records the slot's earlier entry held go with it.
+			d.rt.forgetCellRecords(&fv.Entries[len(fv.Entries)-1])
 			fv.Entries[len(fv.Entries)-1] = tabletext.Cell{Tab: decoded}
 			d.report.Duplicate++
 			last = decoded
@@ -870,6 +959,10 @@ func (d *bitDecoder) mapField(fv *tabletext.Field, entry ir.TableVocabularyEntry
 // arm's payload is skipped by the ARM's own announced entry.
 func (d *bitDecoder) unionCell(cell *tabletext.Cell, f *ir.Field) bool {
 	un := tabletext.UnionOf(f)
+	// A UNION WHOSE ARM IS WRITTEN AGAIN, THE SAME ARM OR ANOTHER, is one of
+	// §6.6's four occurrences: the earlier arm body's records go with it, and
+	// the discard moves neither counter.
+	d.rt.forgetArm(cell)
 	ref, ok := d.reference()
 	if !ok {
 		d.report.Malformed = true
@@ -896,6 +989,12 @@ func (d *bitDecoder) unionCell(cell *tabletext.Cell, f *ir.Field) bool {
 	if tag == 0 {
 		cell.U = 0
 		d.report.Unknown++
+		if d.rt != nil {
+			// AN UNKNOWN UNION ARM ID IS AN EXCLUDED CLASS
+			// (docs/SPEC-TABLES.md §6.6): the same as an unknown enum variant,
+			// one level in, because the union FIELD is the reader's.
+			d.rt.lost(d.report)
+		}
 		return d.skip(entry)
 	}
 	arm := un.Variants[tag-1]
@@ -916,6 +1015,7 @@ func (d *bitDecoder) unionCell(cell *tabletext.Cell, f *ir.Field) bool {
 		return true
 	case arm.Body():
 		cell.Tab = d.m.New(arm.Ref)
+		d.rt.builtArm(cell, cell.Tab)
 		return d.body(cell.Tab)
 	}
 	fv := d.m.NewArm(arm)
@@ -968,6 +1068,13 @@ func (d *bitDecoder) enumCell(cell *tabletext.Cell, f *ir.Field) bool {
 	if v < 0 {
 		cell.U = 0
 		d.report.Unknown++
+		if d.rt != nil {
+			// AN UNKNOWN ENUM VARIANT REFERENCE IS AN EXCLUDED CLASS
+			// (docs/SPEC-TABLES.md §6.6): the FIELD is the reader's, and the
+			// reader writes its own value under that id, so a retained copy
+			// would be a second occurrence of an id the reader already wrote.
+			d.rt.lost(d.report)
+		}
 		return true
 	}
 	cell.U = uint64(v)

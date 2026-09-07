@@ -701,11 +701,31 @@ func cellIsDefault(e *encoder, f *ir.Field, cell *tabletext.Cell) bool {
 	return cell.U == def.U
 }
 
-// A float32 NaN's PAYLOAD IS DATA the reference carries bit for bit, and the
-// hardware conversions between float32 and float64 set the quiet bit on a
-// signaling one — so a NaN crosses the two widths by bit surgery instead, the
-// 23 payload bits riding in the top of the double's 52. The round trip through
-// these two is exact for every float32 NaN.
+// A FLOAT RIDES AS ITS IEEE-754 BIT PATTERN, WITH NO CANONICALISATION
+// (docs/SPEC-TABLES.md §3, SPEC.md §4.3): a float32 NaN's PAYLOAD IS DATA the
+// reference carries bit for bit, and the hardware conversions between float32
+// and float64 set the quiet bit on a signaling one — so a NaN crosses the two
+// widths by bit surgery instead, the 23 payload bits riding in the top of the
+// double's 52. The round trip through these two is exact for every float32
+// NaN.
+//
+// They are EXPORTED because every engine that models a float32 in a float64
+// cell owes the same technique and must take it from one place: the wire
+// engine here, `internal/tablecook`'s region writer and reader, and the
+// PORTING.md row that names the pair for a port to copy (schema#480).
+
+// WidenF32 is the float64 a float32's bits take, exactly: the value for a
+// finite one, and the pattern in the top of the mantissa for a NaN.
+func WidenF32(bits uint32) float64 {
+	if bits&0x7F800000 == 0x7F800000 && bits&0x007FFFFF != 0 {
+		return widenF32NaN(bits)
+	}
+	return float64(math.Float32frombits(bits))
+}
+
+// NarrowF32 is its inverse: the 32 bits a float64 cell holding a float32 rides
+// as, by bit surgery for a NaN and by the ordinary conversion otherwise.
+func NarrowF32(v float64) uint32 { return narrowF32(v) }
 
 func widenF32NaN(bits uint32) float64 {
 	sign := uint64(bits>>31) << 63
