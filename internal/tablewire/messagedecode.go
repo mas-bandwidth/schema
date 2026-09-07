@@ -525,6 +525,12 @@ func (d *bitDecoder) field(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 // ALIGN that buys a memcpy, then the bytes. A payload longer than this
 // reader's bound keeps what fits and counts `clamped`, which is not damage,
 // because the length was read and the position after it is known.
+//
+// The content rule is kind 12's own (§3), reached through the same textValid
+// and textBoundary the file form reads with: a payload that is not well-formed
+// UTF-8, or that carries a zero byte, is DAMAGE, checked as the bytes arrive
+// and before this reader's bound, and a clamp cuts at a code point boundary. A
+// `bytes(N)` carries no such rule, because its payload is bytes.
 func (d *bitDecoder) text(cell *tabletext.Cell, count *int, f *ir.Field, entry ir.TableVocabularyEntry) bool {
 	shape := entry.Shape
 	width := ir.TableMessageBitsRequired(0, shape.Max)
@@ -537,9 +543,21 @@ func (d *bitDecoder) text(cell *tabletext.Cell, count *int, f *ir.Field, entry i
 		return false
 	}
 	raw, _ := d.r.bytes(int(n))
+	if f.Type.Kind == ir.TString && !textValid(raw) {
+		// ILL-FORMED TEXT IS DAMAGE HERE TOO, AND IT IS TERMINAL (§3.3): a bit
+		// stream has no defined position to continue from, which is the only
+		// thing that differs from §3's recovery
+		d.report.Malformed = true
+		return false
+	}
 	keep := len(raw)
 	if bound := int(f.Type.Size); keep > bound {
 		keep = bound
+		if f.Type.Kind == ir.TString {
+			// A CLAMP CUTS AT A CODE POINT BOUNDARY (§3, §3.3): the last whole
+			// code point that fits within the bound
+			keep = textBoundary(raw, bound)
+		}
 		d.report.Clamped++
 	}
 	cell.Str = raw[:keep]

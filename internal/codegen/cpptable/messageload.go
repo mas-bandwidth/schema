@@ -163,6 +163,11 @@ func (g *tableGen) emitMessageReadIndex(f *ir.Field, dst, ind string) {
 // the SENDER's own width, the ALIGN, then the bytes; or a `wstring(N)`: the
 // length, no align, sixteen bits a unit. A payload longer than this reader's
 // bound keeps what fits and counts `clamped`, which is not damage.
+//
+// A kind 12 payload takes §3's ONE CONTENT RULE through the runtime's own
+// TableUtf8Valid and TableUtf8Clamp, which is what the FILE form reads one
+// with: the align left the bytes on a byte boundary, so the payload is one
+// span of the buffer and the two forms reach the same two functions.
 func (g *tableGen) emitMessageReadTextFrom(f *ir.Field, value, count, ind, from string) {
 	sfx := g.msgEnter()
 	defer g.msgLeave()
@@ -178,6 +183,28 @@ func (g *tableGen) emitMessageReadTextFrom(f *ir.Field, value, count, ind, from 
 		g.pf("%s    if ( !r.get( n%s, %s ) || !r.has( (int64_t) n%s * 16 ) ) { report->malformed = true; return false; }\n", ind, sfx, width, sfx)
 	} else {
 		g.pf("%s    if ( !r.get( n%s, %s ) || !r.align() || !r.has( (int64_t) n%s * 8 ) ) { report->malformed = true; return false; }\n", ind, sfx, width, sfx)
+	}
+	if f.Type.Kind == ir.TString {
+		g.pf("%s    const uint8_t * text%s = r.buffer + ( r.offset >> 3 );\n", ind, sfx)
+		// ILL-FORMED TEXT IS DAMAGE HERE TOO, AND IT IS TERMINAL (§3.3): the
+		// check runs over the WHOLE payload as it arrives and before this
+		// reader's bound, because a payload that is not text is not text at
+		// whatever length the reader would have kept. A bit stream has no
+		// recovery, which is the only thing that differs from §3.
+		g.pf("%s    if ( !TableUtf8Valid( text%s, n%s ) ) { report->malformed = true; return false; }\n", ind, sfx, sfx)
+		// A CLAMP CUTS AT A CODE POINT BOUNDARY (§3, §3.3), and the bound
+		// applies while the LENGTH IS STILL WIDE: TableUtf8Clamp takes the
+		// wire's own sixty-four bit number and answers at or below the bound,
+		// so a length no reader could have bounded leaves it bounded
+		g.pf("%s    const int32_t kept%s = (int32_t) TableUtf8Clamp( text%s, n%s, %d );\n", ind, sfx, sfx, sfx, f.Type.Size)
+		g.pf("%s    if ( (uint64_t) kept%s < n%s ) { report->clamped++; }\n", ind, sfx, sfx)
+		g.pf("%s    memcpy( %s, text%s, (size_t) kept%s );\n", ind, value, sfx, sfx)
+		g.pf("%s    %s[kept%s] = 0;\n", ind, value, sfx)
+		// the payload is stepped over WHOLE, clamp or not, because the batch's
+		// next field begins after the bytes the length framed
+		g.pf("%s    r.offset += (int64_t) n%s * 8;\n", ind, sfx)
+		g.pf("%s    %s = kept%s;\n%s}\n", ind, count, sfx, ind)
+		return
 	}
 	// THE BOUND APPLIES WHILE THE COUNT IS WIDE (§3.3), which is M6's
 	// discipline over a count rather than a value: a length at or above 2^31
@@ -211,15 +238,11 @@ func (g *tableGen) emitMessageReadTextFrom(f *ir.Field, value, count, ind, from 
 		g.pf("%s        if ( last%s >= 0xD800 && last%s <= 0xDBFF ) { kept%s--; }\n%s    }\n", ind, sfx, sfx, sfx, ind)
 		g.pf("%s    %s[kept%s] = 0;\n", ind, value, sfx)
 	} else {
+		// a `bytes(N)` and every ARRAY whose element kind is 6: the payload is
+		// bytes, so it carries no content rule and the surplus is stepped over
+		// one byte at a time
 		g.pf("%s        uint64_t by%s = 0;\n%s        if ( !r.get( by%s, 8 ) ) { report->malformed = true; return false; }\n", ind, sfx, ind, sfx)
-		cast := "(uint8_t)"
-		if f.Type.Kind == ir.TString {
-			cast = "(char)"
-		}
-		g.pf("%s        if ( (int32_t) %s < kept%s ) { %s[%s] = %s by%s; }\n%s    }\n", ind, idx, sfx, value, idx, cast, sfx, ind)
-		if f.Type.Kind == ir.TString {
-			g.pf("%s    %s[kept%s] = 0;\n", ind, value, sfx)
-		}
+		g.pf("%s        if ( (int32_t) %s < kept%s ) { %s[%s] = (uint8_t) by%s; }\n%s    }\n", ind, idx, sfx, value, idx, sfx, ind)
 	}
 	g.pf("%s    %s = kept%s;\n%s}\n", ind, count, sfx, ind)
 }

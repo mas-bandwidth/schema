@@ -3066,15 +3066,13 @@ inline bool CaptionLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                                 {
                                     uint64_t n_2 = 0;
                                     if ( !r.get( n_2, TableBitsRequired( 0, arm.max ) ) || !r.align() || !r.has( (int64_t) n_2 * 8 ) ) { report->malformed = true; return false; }
-                                    int32_t kept_2 = 0;
-                                    if ( n_2 > (uint64_t) 4 ) { kept_2 = 4; report->clamped++; } else { kept_2 = (int32_t) n_2; }
-                                    for ( uint64_t i_2 = 0; i_2 < n_2; i_2++ )
-                                    {
-                                        uint64_t by_2 = 0;
-                                        if ( !r.get( by_2, 8 ) ) { report->malformed = true; return false; }
-                                        if ( (int32_t) i_2 < kept_2 ) { value.body.narrow.value[i_2] = (char) by_2; }
-                                    }
+                                    const uint8_t * text_2 = r.buffer + ( r.offset >> 3 );
+                                    if ( !TableUtf8Valid( text_2, n_2 ) ) { report->malformed = true; return false; }
+                                    const int32_t kept_2 = (int32_t) TableUtf8Clamp( text_2, n_2, 4 );
+                                    if ( (uint64_t) kept_2 < n_2 ) { report->clamped++; }
+                                    memcpy( value.body.narrow.value, text_2, (size_t) kept_2 );
                                     value.body.narrow.value[kept_2] = 0;
+                                    r.offset += (int64_t) n_2 * 8;
                                     value.body.narrow.value_length = kept_2;
                                 }
                                 break;
