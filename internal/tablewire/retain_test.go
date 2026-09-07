@@ -685,3 +685,72 @@ func TestRetainDroppedRecordSpendsNoId(t *testing.T) {
 		}
 	}
 }
+
+// THE MESSAGE FORM'S LoadRetain (docs/SPEC-TABLES.md §3.3, §6.6). `LoadRetain`
+// reads a form-2 body as it reads a file's, the resolving walk replacing every
+// reference with the id it names AGAINST THE CONNECTION'S VOCABULARY instead
+// of a trailer, and `SaveRetain` writing form 2 refuses by name. So the round
+// trip is form 2 in and form 1 out, and this row is the same pinned batch the
+// reference's own gate reads, saved to the same bytes.
+//
+// A BATCH TAKES ONE REGION AND ONE RETENTION BUFFER A BODY (§3.3): each body
+// carries its own node directory inside that one region, so a record's first
+// step is an index into the directory of the body it came from.
+func TestRetainMessageForm(t *testing.T) {
+	m := retainModel(t, "RT1.schema")
+	sender := retainModel(t, "RT2.schema")
+
+	v := &tablewire.Vocabulary{}
+	var announced tabletext.Report
+	if err := v.AnnounceRead(ir.TableAnnouncement(sender.Unit), &announced); err != nil {
+		t.Fatalf("RT2's own announcement was refused: %v", err)
+	}
+
+	batch := retainVector(t, "retain_message")
+	insts := []*tabletext.Instance{m.New(m.Lookup("Node")), m.New(m.Lookup("Node"))}
+	retains := []*tablewire.Retain{
+		{Capacity: 8192, IdCapacity: 1024},
+		{Capacity: 8192, IdCapacity: 1024},
+	}
+	var report tabletext.Report
+	read, ok, err := tablewire.DecodeRetainMessages(m, insts, batch, v, retains, &report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || report.Malformed {
+		t.Fatalf("the load reported damage on a sound batch: %+v", report)
+	}
+	if read != 2 {
+		t.Fatalf("the batch carries 2 bodies and the load read %d", read)
+	}
+	// THE FIRST BODY carries eight retained fields and six unknowns of the
+	// excluded classes: the enum variant `tier` names, the union arm `pick`
+	// names, the keyed slot RT2's third variant writes, a field of kind 17, an
+	// array whose element kind is 17, and a table whose payload meets a 17
+	// three bodies down. THE SECOND carries two retained fields and nothing
+	// excluded.
+	if report.Retained != 10 || report.RetainLost != 6 || report.Unknown != 16 {
+		t.Fatalf("retained=%d retain_lost=%d unknown=%d, want 10 / 6 / 16",
+			report.Retained, report.RetainLost, report.Unknown)
+	}
+	if report.KindMismatch != 0 || report.Clamped != 0 || report.Widened != 0 {
+		t.Fatalf("retention moved a read counter: %+v", report)
+	}
+
+	// AND THE SAVE IS THE FILE FORM'S, byte for byte the reference's own pin
+	for i, inst := range insts {
+		var save tabletext.Report
+		out, err := tablewire.EncodeRetain(m, inst, retains[i], &save)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if save.RetainLost != 0 {
+			t.Fatalf("body %d: the save lost %d records it had room for", i, save.RetainLost)
+		}
+		want := retainVector(t, []string{"retain_message_save_0", "retain_message_save_1"}[i])
+		if !bytes.Equal(out, want) {
+			t.Fatalf("body %d: the save is %d bytes and the reference's pin is %d, and they differ",
+				i, len(out), len(want))
+		}
+	}
+}
