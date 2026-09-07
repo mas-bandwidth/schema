@@ -6692,7 +6692,7 @@ inline SlotsSeatsEntryKeyRead SlotsSeatsEntryReadKey( const uint8_t * body, int6
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { out.malformed = true; return out; }
-        if ( field_ref == 0 ) { return out; } // the terminator: no key field is the key's DEFAULT
+        if ( field_ref == 0 ) { out.malformed = r.offset != r.size; return out; } // the terminator consumes the entry's L
         if ( ids == NULL || field_ref > (uint64_t) ids->count ) { out.malformed = true; return out; }
         const uint64_t field_id = ids->at( field_ref );
         if ( !r.has( 1 ) ) { out.malformed = true; return out; }
@@ -7244,6 +7244,7 @@ inline bool SlotsSaveBody( const Ctx & ctx, const TableNumbering & numbering, Ta
 inline bool SlotsLoadBody( TableReader & r, const TableNodeMap & nodes, Slots & value )
 {
     (void) nodes;
+    if ( nodes.refused ) { return false; }
     SlotsReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -8734,6 +8735,7 @@ inline bool SlotsLoadBuilder( SlotsBuilder & builder, const uint8_t * wire_file,
             {
                 TableReader sub( body, length, out, &ids_table );
                 SlotsNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                if ( nodes.refused ) { break; }
             }
             k++;
         }
@@ -9201,6 +9203,7 @@ inline bool SlotsSaveBodyRetain( const Ctx & ctx, const TableNumbering & numberi
 inline bool SlotsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Slots & value, TableRetain * retain, const TableRetainPath & path )
 {
     (void) nodes;
+    if ( nodes.refused ) { return false; }
     SlotsReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so

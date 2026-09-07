@@ -6225,6 +6225,7 @@ inline bool GateSaveBody( const Ctx & ctx, const TableNumbering & numbering, Tab
 
 inline bool GateLoadBody( TableReader & r, const TableNodeMap & nodes, Gate & value )
 {
+    if ( nodes.refused ) { return false; }
     GateReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -7939,6 +7940,7 @@ inline bool GateLoadBuilder( GateBuilder & builder, const uint8_t * wire_file, i
             {
                 TableReader sub( body, length, out, &ids_table );
                 GateNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                if ( nodes.refused ) { break; }
             }
             k++;
         }
@@ -8264,6 +8266,7 @@ inline bool GateSaveBodyRetain( const Ctx & ctx, const TableNumbering & numberin
 
 inline bool GateLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Gate & value, TableRetain * retain, const TableRetainPath & path )
 {
+    if ( nodes.refused ) { return false; }
     GateReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so

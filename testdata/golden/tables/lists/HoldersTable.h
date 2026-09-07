@@ -6694,7 +6694,7 @@ inline SquadRosterEntryKeyRead SquadRosterEntryReadKey( const uint8_t * body, in
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { out.malformed = true; return out; }
-        if ( field_ref == 0 ) { return out; } // the terminator: no key field is the key's DEFAULT
+        if ( field_ref == 0 ) { out.malformed = r.offset != r.size; return out; } // the terminator consumes the entry's L
         if ( ids == NULL || field_ref > (uint64_t) ids->count ) { out.malformed = true; return out; }
         const uint64_t field_id = ids->at( field_ref );
         if ( !r.has( 1 ) ) { out.malformed = true; return out; }
@@ -7166,6 +7166,7 @@ inline bool RowSaveBody( const Ctx & ctx, const TableNumbering & numbering, Tabl
 inline bool RowLoadBody( TableReader & r, const TableNodeMap & nodes, Row & value )
 {
     (void) nodes;
+    if ( nodes.refused ) { return false; }
     RowReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -7237,6 +7238,7 @@ inline bool RowLoadBody( TableReader & r, const TableNodeMap & nodes, Row & valu
                                 {
                                     TableReader elem_items( sub.buffer + sub.offset, (int64_t) elem_len_items, r.report, r.ids );
                                     SampleLoadBody( elem_items, ( *slot ) );
+                                    if ( elem_items.offset != elem_items.size ) { r.report->malformed = true; SampleReset( ( *slot ) ); }
                                 }
                                 sub.offset += (int64_t) elem_len_items;
                                 landed = true;
@@ -7581,6 +7583,7 @@ inline bool SheetSaveBody( const Ctx & ctx, const TableNumbering & numbering, Ta
 
 inline bool SheetLoadBody( TableReader & r, const TableNodeMap & nodes, Sheet & value )
 {
+    if ( nodes.refused ) { return false; }
     SheetReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -7652,6 +7655,8 @@ inline bool SheetLoadBody( TableReader & r, const TableNodeMap & nodes, Sheet & 
                                 {
                                     TableReader elem_rows( sub.buffer + sub.offset, (int64_t) elem_len_rows, r.report, r.ids );
                                     RowLoadBody( elem_rows, nodes, ( *slot ) );
+                                    if ( nodes.refused ) { return false; }
+                                    if ( elem_rows.offset != elem_rows.size ) { r.report->malformed = true; RowReset( ( *slot ) ); }
                                 }
                                 sub.offset += (int64_t) elem_len_rows;
                                 landed = true;
@@ -8509,6 +8514,7 @@ inline bool SquadSaveBody( const Ctx & ctx, const TableNumbering & numbering, Ta
 inline bool SquadLoadBody( TableReader & r, const TableNodeMap & nodes, Squad & value )
 {
     (void) nodes;
+    if ( nodes.refused ) { return false; }
     SquadReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -8969,6 +8975,7 @@ inline bool ArmySaveBody( const Ctx & ctx, const TableNumbering & numbering, Tab
 
 inline bool ArmyLoadBody( TableReader & r, const TableNodeMap & nodes, Army & value )
 {
+    if ( nodes.refused ) { return false; }
     ArmyReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -9040,6 +9047,8 @@ inline bool ArmyLoadBody( TableReader & r, const TableNodeMap & nodes, Army & va
                                 {
                                     TableReader elem_squads( sub.buffer + sub.offset, (int64_t) elem_len_squads, r.report, r.ids );
                                     SquadLoadBody( elem_squads, nodes, ( *slot ) );
+                                    if ( nodes.refused ) { return false; }
+                                    if ( elem_squads.offset != elem_squads.size ) { r.report->malformed = true; SquadReset( ( *slot ) ); }
                                 }
                                 sub.offset += (int64_t) elem_len_squads;
                                 landed = true;
@@ -9360,6 +9369,7 @@ inline bool DeckSaveBody( const Ctx & ctx, const TableNumbering & numbering, Tab
 
 inline bool DeckLoadBody( TableReader & r, const TableNodeMap & nodes, Deck & value )
 {
+    if ( nodes.refused ) { return false; }
     DeckReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -9426,6 +9436,8 @@ inline bool DeckLoadBody( TableReader & r, const TableNodeMap & nodes, Deck & va
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             RowLoadBody( elem, nodes, value.hands[(int32_t) i] );
+                            if ( nodes.refused ) { return false; }
+                            if ( elem.offset != elem.size ) { r.report->malformed = true; RowReset( value.hands[(int32_t) i] ); }
                         }
                         sub.offset += (int64_t) elem_len;
                         decoded = i + 1;
@@ -11537,6 +11549,7 @@ inline bool RowLoadBuilder( RowBuilder & builder, const uint8_t * wire_file, int
             {
                 TableReader sub( body, length, out, &ids_table );
                 RowNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                if ( nodes.refused ) { break; }
             }
             k++;
         }
@@ -12445,6 +12458,7 @@ inline bool SheetLoadBuilder( SheetBuilder & builder, const uint8_t * wire_file,
             {
                 TableReader sub( body, length, out, &ids_table );
                 SheetNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                if ( nodes.refused ) { break; }
             }
             k++;
         }
@@ -13343,6 +13357,7 @@ inline bool SquadLoadBuilder( SquadBuilder & builder, const uint8_t * wire_file,
             {
                 TableReader sub( body, length, out, &ids_table );
                 SquadNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                if ( nodes.refused ) { break; }
             }
             k++;
         }
@@ -14241,6 +14256,7 @@ inline bool ArmyLoadBuilder( ArmyBuilder & builder, const uint8_t * wire_file, i
             {
                 TableReader sub( body, length, out, &ids_table );
                 ArmyNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                if ( nodes.refused ) { break; }
             }
             k++;
         }
@@ -15139,6 +15155,7 @@ inline bool DeckLoadBuilder( DeckBuilder & builder, const uint8_t * wire_file, i
             {
                 TableReader sub( body, length, out, &ids_table );
                 DeckNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                if ( nodes.refused ) { break; }
             }
             k++;
         }
@@ -15414,6 +15431,7 @@ inline bool RowSaveBodyRetain( const Ctx & ctx, const TableNumbering & numbering
 inline bool RowLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Row & value, TableRetain * retain, const TableRetainPath & path )
 {
     (void) nodes;
+    if ( nodes.refused ) { return false; }
     RowReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
@@ -15493,6 +15511,7 @@ inline bool RowLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Row 
                                 {
                                     TableReader elem_items( sub.buffer + sub.offset, (int64_t) elem_len_items, r.report, r.ids );
                                     SampleLoadBodyRetain( elem_items, ( *slot ), retain, TableRetainStepInto( path, 0, (uint32_t) ( i ) ) );
+                                    if ( elem_items.offset != elem_items.size ) { r.report->malformed = true; SampleReset( ( *slot ) ); }
                                 }
                                 sub.offset += (int64_t) elem_len_items;
                                 landed = true;
@@ -15764,6 +15783,7 @@ inline bool SheetSaveBodyRetain( const Ctx & ctx, const TableNumbering & numberi
 
 inline bool SheetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sheet & value, TableRetain * retain, const TableRetainPath & path )
 {
+    if ( nodes.refused ) { return false; }
     SheetReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
@@ -15843,6 +15863,8 @@ inline bool SheetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sh
                                 {
                                     TableReader elem_rows( sub.buffer + sub.offset, (int64_t) elem_len_rows, r.report, r.ids );
                                     RowLoadBodyRetain( elem_rows, nodes, ( *slot ), retain, TableRetainStepInto( path, 0, (uint32_t) ( i ) ) );
+                                    if ( nodes.refused ) { return false; }
+                                    if ( elem_rows.offset != elem_rows.size ) { r.report->malformed = true; RowReset( ( *slot ) ); }
                                 }
                                 sub.offset += (int64_t) elem_len_rows;
                                 landed = true;
@@ -16437,6 +16459,7 @@ inline bool SquadSaveBodyRetain( const Ctx & ctx, const TableNumbering & numberi
 inline bool SquadLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Squad & value, TableRetain * retain, const TableRetainPath & path )
 {
     (void) nodes;
+    if ( nodes.refused ) { return false; }
     SquadReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
@@ -16830,6 +16853,7 @@ inline bool ArmySaveBodyRetain( const Ctx & ctx, const TableNumbering & numberin
 
 inline bool ArmyLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Army & value, TableRetain * retain, const TableRetainPath & path )
 {
+    if ( nodes.refused ) { return false; }
     ArmyReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
@@ -16909,6 +16933,8 @@ inline bool ArmyLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Arm
                                 {
                                     TableReader elem_squads( sub.buffer + sub.offset, (int64_t) elem_len_squads, r.report, r.ids );
                                     SquadLoadBodyRetain( elem_squads, nodes, ( *slot ), retain, TableRetainStepInto( path, 0, (uint32_t) ( i ) ) );
+                                    if ( nodes.refused ) { return false; }
+                                    if ( elem_squads.offset != elem_squads.size ) { r.report->malformed = true; SquadReset( ( *slot ) ); }
                                 }
                                 sub.offset += (int64_t) elem_len_squads;
                                 landed = true;
@@ -17155,6 +17181,7 @@ inline bool DeckSaveBodyRetain( const Ctx & ctx, const TableNumbering & numberin
 
 inline bool DeckLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Deck & value, TableRetain * retain, const TableRetainPath & path )
 {
+    if ( nodes.refused ) { return false; }
     DeckReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
@@ -17229,6 +17256,8 @@ inline bool DeckLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Dec
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             RowLoadBodyRetain( elem, nodes, value.hands[(int32_t) i], retain, TableRetainStepInto( path, 0, (uint32_t) ( i ) ) );
+                            if ( nodes.refused ) { return false; }
+                            if ( elem.offset != elem.size ) { r.report->malformed = true; RowReset( value.hands[(int32_t) i] ); }
                         }
                         sub.offset += (int64_t) elem_len;
                         decoded = i + 1;

@@ -5872,6 +5872,7 @@ inline bool LeafSaveBody( const Ctx & ctx, const TableNumbering & numbering, Tab
 inline bool LeafLoadBody( TableReader & r, const TableNodeMap & nodes, Leaf & value )
 {
     (void) nodes;
+    if ( nodes.refused ) { return false; }
     LeafReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -6257,6 +6258,7 @@ inline bool HolderSaveBody( const Ctx & ctx, const TableNumbering & numbering, T
 
 inline bool HolderLoadBody( TableReader & r, const TableNodeMap & nodes, Holder & value )
 {
+    if ( nodes.refused ) { return false; }
     HolderReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -6315,6 +6317,7 @@ inline bool HolderLoadBody( TableReader & r, const TableNodeMap & nodes, Holder 
                             }
                             value.carry.type = CarryType::Leaf;
                             LeafLoadBody( sub, nodes, value.carry.leaf );
+                            if ( nodes.refused ) { return false; }
                             if ( sub.offset != sub.size ) { value.carry.type = CarryType::None; r.report->malformed = true; break; }
                             break;
                         }
@@ -6909,6 +6912,7 @@ inline bool HandSaveBody( const Ctx & ctx, const TableNumbering & numbering, Tab
 
 inline bool HandLoadBody( TableReader & r, const TableNodeMap & nodes, Hand & value )
 {
+    if ( nodes.refused ) { return false; }
     HandReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -6993,6 +6997,7 @@ inline bool HandLoadBody( TableReader & r, const TableNodeMap & nodes, Hand & va
                                         }
                                         value.entries[(int32_t) i].type = CarryType::Leaf;
                                         LeafLoadBody( elem_arm, nodes, value.entries[(int32_t) i].leaf );
+                                        if ( nodes.refused ) { return false; }
                                         if ( elem_arm.offset != elem_arm.size ) { value.entries[(int32_t) i].type = CarryType::None; r.report->malformed = true; break; }
                                         break;
                                     }
@@ -7554,6 +7559,7 @@ inline bool ChainSaveBody( const Ctx & ctx, const TableNumbering & numbering, Ta
 
 inline bool ChainLoadBody( TableReader & r, const TableNodeMap & nodes, Chain & value )
 {
+    if ( nodes.refused ) { return false; }
     ChainReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -7643,6 +7649,7 @@ inline bool ChainLoadBody( TableReader & r, const TableNodeMap & nodes, Chain & 
                                                 }
                                                 ( *slot ).type = CarryType::Leaf;
                                                 LeafLoadBody( elem_arm_links, nodes, ( *slot ).leaf );
+                                                if ( nodes.refused ) { return false; }
                                                 if ( elem_arm_links.offset != elem_arm_links.size ) { ( *slot ).type = CarryType::None; r.report->malformed = true; break; }
                                                 break;
                                             }
@@ -9740,6 +9747,7 @@ inline bool LeafLoadBuilder( LeafBuilder & builder, const uint8_t * wire_file, i
             {
                 TableReader sub( body, length, out, &ids_table );
                 LeafNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                if ( nodes.refused ) { break; }
             }
             k++;
         }
@@ -10638,6 +10646,7 @@ inline bool HolderLoadBuilder( HolderBuilder & builder, const uint8_t * wire_fil
             {
                 TableReader sub( body, length, out, &ids_table );
                 HolderNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                if ( nodes.refused ) { break; }
             }
             k++;
         }
@@ -11536,6 +11545,7 @@ inline bool HandLoadBuilder( HandBuilder & builder, const uint8_t * wire_file, i
             {
                 TableReader sub( body, length, out, &ids_table );
                 HandNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                if ( nodes.refused ) { break; }
             }
             k++;
         }
@@ -12434,6 +12444,7 @@ inline bool ChainLoadBuilder( ChainBuilder & builder, const uint8_t * wire_file,
             {
                 TableReader sub( body, length, out, &ids_table );
                 ChainNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                if ( nodes.refused ) { break; }
             }
             k++;
         }
@@ -12510,6 +12521,7 @@ inline bool LeafSaveBodyRetain( const Ctx & ctx, const TableNumbering & numberin
 inline bool LeafLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Leaf & value, TableRetain * retain, const TableRetainPath & path )
 {
     (void) nodes;
+    if ( nodes.refused ) { return false; }
     LeafReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
@@ -12839,6 +12851,7 @@ inline bool HolderSaveBodyRetain( const Ctx & ctx, const TableNumbering & number
 
 inline bool HolderLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Holder & value, TableRetain * retain, const TableRetainPath & path )
 {
+    if ( nodes.refused ) { return false; }
     HolderReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
@@ -12903,6 +12916,7 @@ inline bool HolderLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, H
                             }
                             value.carry.type = CarryType::Leaf;
                             LeafLoadBodyRetain( sub, nodes, value.carry.leaf, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) );
+                            if ( nodes.refused ) { return false; }
                             if ( sub.offset != sub.size ) { value.carry.type = CarryType::None; r.report->malformed = true; break; }
                             break;
                         }
@@ -13376,6 +13390,7 @@ inline bool HandSaveBodyRetain( const Ctx & ctx, const TableNumbering & numberin
 
 inline bool HandLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Hand & value, TableRetain * retain, const TableRetainPath & path )
 {
+    if ( nodes.refused ) { return false; }
     HandReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
@@ -13468,6 +13483,7 @@ inline bool HandLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Han
                                         }
                                         value.entries[(int32_t) i].type = CarryType::Leaf;
                                         LeafLoadBodyRetain( elem_arm, nodes, value.entries[(int32_t) i].leaf, retain, TableRetainStepInto( TableRetainStepInto( path, 0, (uint32_t) ( i ) ), 0, (uint32_t) ( 0 ) ) );
+                                        if ( nodes.refused ) { return false; }
                                         if ( elem_arm.offset != elem_arm.size ) { value.entries[(int32_t) i].type = CarryType::None; r.report->malformed = true; break; }
                                         break;
                                     }
@@ -13909,6 +13925,7 @@ inline bool ChainSaveBodyRetain( const Ctx & ctx, const TableNumbering & numberi
 
 inline bool ChainLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Chain & value, TableRetain * retain, const TableRetainPath & path )
 {
+    if ( nodes.refused ) { return false; }
     ChainReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
@@ -14006,6 +14023,7 @@ inline bool ChainLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ch
                                                 }
                                                 ( *slot ).type = CarryType::Leaf;
                                                 LeafLoadBodyRetain( elem_arm_links, nodes, ( *slot ).leaf, retain, TableRetainStepInto( TableRetainStepInto( path, 0, (uint32_t) ( i ) ), 0, (uint32_t) ( 0 ) ) );
+                                                if ( nodes.refused ) { return false; }
                                                 if ( elem_arm_links.offset != elem_arm_links.size ) { ( *slot ).type = CarryType::None; r.report->malformed = true; break; }
                                                 break;
                                             }

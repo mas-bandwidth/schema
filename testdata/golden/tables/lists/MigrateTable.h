@@ -6914,6 +6914,7 @@ LISTDEMO_TABLE_INLINE bool BoundedLoadBody( TableReader & r, Bounded & value )
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             UnitLoadBody( elem, value.items[(int32_t) i] );
+                            if ( elem.offset != elem.size ) { r.report->malformed = true; UnitReset( value.items[(int32_t) i] ); }
                         }
                         sub.offset += (int64_t) elem_len;
                         decoded = i + 1;
@@ -7327,6 +7328,7 @@ inline bool UnboundedSaveBody( const Ctx & ctx, const TableNumbering & numbering
 inline bool UnboundedLoadBody( TableReader & r, const TableNodeMap & nodes, Unbounded & value )
 {
     (void) nodes;
+    if ( nodes.refused ) { return false; }
     UnboundedReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -7398,6 +7400,7 @@ inline bool UnboundedLoadBody( TableReader & r, const TableNodeMap & nodes, Unbo
                                 {
                                     TableReader elem_items( sub.buffer + sub.offset, (int64_t) elem_len_items, r.report, r.ids );
                                     UnitLoadBody( elem_items, ( *slot ) );
+                                    if ( elem_items.offset != elem_items.size ) { r.report->malformed = true; UnitReset( ( *slot ) ); }
                                 }
                                 sub.offset += (int64_t) elem_len_items;
                                 landed = true;
@@ -8689,6 +8692,7 @@ inline bool UnboundedLoadBuilder( UnboundedBuilder & builder, const uint8_t * wi
             {
                 TableReader sub( body, length, out, &ids_table );
                 UnboundedNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                if ( nodes.refused ) { break; }
             }
             k++;
         }
@@ -9019,6 +9023,7 @@ LISTDEMO_TABLE_INLINE bool BoundedLoadBodyRetain( TableReader & r, Bounded & val
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             UnitLoadBodyRetain( elem, value.items[(int32_t) i], retain, TableRetainStepInto( path, 0, (uint32_t) ( i ) ) );
+                            if ( elem.offset != elem.size ) { r.report->malformed = true; UnitReset( value.items[(int32_t) i] ); }
                         }
                         sub.offset += (int64_t) elem_len;
                         decoded = i + 1;
@@ -9271,6 +9276,7 @@ inline bool UnboundedSaveBodyRetain( const Ctx & ctx, const TableNumbering & num
 inline bool UnboundedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Unbounded & value, TableRetain * retain, const TableRetainPath & path )
 {
     (void) nodes;
+    if ( nodes.refused ) { return false; }
     UnboundedReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
@@ -9350,6 +9356,7 @@ inline bool UnboundedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes
                                 {
                                     TableReader elem_items( sub.buffer + sub.offset, (int64_t) elem_len_items, r.report, r.ids );
                                     UnitLoadBodyRetain( elem_items, ( *slot ), retain, TableRetainStepInto( path, 0, (uint32_t) ( i ) ) );
+                                    if ( elem_items.offset != elem_items.size ) { r.report->malformed = true; UnitReset( ( *slot ) ); }
                                 }
                                 sub.offset += (int64_t) elem_len_items;
                                 landed = true;

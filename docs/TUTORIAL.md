@@ -1267,7 +1267,7 @@ int main()
     ship.cargo[1] = 22;
     ship.cargo[2] = 33;
 
-    uint8_t buffer[ShipStateMaxBytes];
+    uint8_t buffer[ShipStateMaxBytes + 8]; // reader allocation includes eight bytes of slack
     serialize::WriteStream writer( buffer, sizeof( buffer ) );
     WriteShipState( writer, ship );
     writer.Flush();
@@ -1673,7 +1673,7 @@ int main()
     strcpy( second.chat.text, "on my way" );
     second.chat.text_length = 9;
 
-    uint8_t buffer[PacketMaxBytes];
+    uint8_t buffer[PacketMaxBytes + 8]; // pass the true packet length to the reader
     serialize::WriteStream w( buffer, sizeof( buffer ) );
     WritePacket( w, packet );
     w.Flush();

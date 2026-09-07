@@ -5,9 +5,11 @@ package tablepack
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -170,9 +172,22 @@ func unpackWith(m *tabletext.Model, root string, wire []byte, dir string, oneFil
 // message writes is the tree a file writes.
 func writeTree(m *tabletext.Model, inst *tabletext.Instance, root, dir string, oneFile bool) error {
 	st := inst.Def
+	if !oneFile {
+		for _, f := range st.Fields {
+			key := ir.TableFieldJsonKey(f)
+			if !treeComponent(key) {
+				return fmt.Errorf("field %s: JSON key %q is not one safe local path component; use --one-file to preserve this key in JSON", f.Name, key)
+			}
+		}
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
+	out, err := os.OpenRoot(dir)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = out.Close() }() // only the directory handle; file writes close and report their own errors
 	// what the ROOT's shape owns at this level, whichever shape is written:
 	// every field key, and the root's own name
 	owned := map[string]bool{root: true}
@@ -185,10 +200,10 @@ func writeTree(m *tabletext.Model, inst *tabletext.Instance, root, dir string, o
 			return err
 		}
 		name := root + ".json"
-		if err := os.WriteFile(filepath.Join(dir, name), append(text, '\n'), 0o644); err != nil {
+		if err := out.WriteFile(name, append(text, '\n'), 0o644); err != nil {
 			return err
 		}
-		return prune(dir, owned, map[string]bool{name: true})
+		return prune(out, owned, map[string]bool{name: true})
 	}
 	guards := tabletext.Guards(st)
 	written := map[string]bool{}
@@ -203,7 +218,7 @@ func writeTree(m *tabletext.Model, inst *tabletext.Instance, root, dir string, o
 			continue
 		}
 		if f.KeyEnum != "" {
-			if err := unpackKeyed(m, fv, filepath.Join(dir, key)); err != nil {
+			if err := unpackKeyed(m, fv, out, key); err != nil {
 				return err
 			}
 			written[key] = true
@@ -213,18 +228,23 @@ func writeTree(m *tabletext.Model, inst *tabletext.Instance, root, dir string, o
 		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(filepath.Join(dir, key+".json"), append(text, '\n'), 0o644); err != nil {
+		if err := out.WriteFile(key+".json", append(text, '\n'), 0o644); err != nil {
 			return err
 		}
 		written[key+".json"] = true
 	}
-	return prune(dir, owned, written)
+	return prune(out, owned, written)
 }
 
-func unpackKeyed(m *tabletext.Model, fv *tabletext.Field, dir string) error {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+func unpackKeyed(m *tabletext.Model, fv *tabletext.Field, parent *os.Root, dir string) error {
+	if err := parent.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
+	out, err := parent.OpenRoot(dir)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = out.Close() }() // only the directory handle; file writes close and report their own errors
 	f := fv.Def
 	written := map[string]bool{}
 	owned := map[string]bool{}
@@ -238,12 +258,12 @@ func unpackKeyed(m *tabletext.Model, fv *tabletext.Field, dir string) error {
 		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(filepath.Join(dir, name+".json"), append(text, '\n'), 0o644); err != nil {
+		if err := out.WriteFile(name+".json", append(text, '\n'), 0o644); err != nil {
 			return err
 		}
 		written[name+".json"] = true
 	}
-	return prune(dir, owned, written)
+	return prune(out, owned, written)
 }
 
 // prune removes the entries at one level that NAME something this level owns —
@@ -251,8 +271,8 @@ func unpackKeyed(m *tabletext.Model, fv *tabletext.Field, dir string) error {
 // write. Both spellings of a value are pruned, so a stale `<field>/` directory
 // left beside a fresh `<field>.json` cannot become "two entries claim one
 // value" on the next pack. Anything the level does not own is left alone.
-func prune(dir string, owned, written map[string]bool) error {
-	entries, err := os.ReadDir(dir)
+func prune(out *os.Root, owned, written map[string]bool) error {
+	entries, err := fs.ReadDir(out.FS(), ".")
 	if err != nil {
 		return err
 	}
@@ -264,7 +284,7 @@ func prune(dir string, owned, written map[string]bool) error {
 		if !ok || !owned[key] {
 			continue
 		}
-		if err := os.RemoveAll(filepath.Join(dir, e.Name())); err != nil {
+		if err := out.RemoveAll(e.Name()); err != nil {
 			return err
 		}
 	}
@@ -303,4 +323,12 @@ func DescribeAnnouncement(m *tabletext.Model, announcement []byte) (string, tabl
 		fmt.Fprintf(&b, "%4d  %016x  %-24s  kind %-2d  %s\n", i+1, e.Id, name, e.Kind, ir.TableMessageShapeString(e.Kind, e.Shape))
 	}
 	return b.String(), report, nil
+}
+
+// JSON keys may name arbitrary text. Only the expanded filesystem form needs
+// a safe local component; the one-file form keeps the original JSON vocabulary.
+func treeComponent(key string) bool {
+	return key != "" && key != "." && key != ".." && filepath.IsLocal(key) &&
+		!strings.ContainsAny(key, "/\\:") && strings.IndexFunc(key, unicode.IsControl) < 0 &&
+		!strings.HasSuffix(key, ".") && !strings.HasSuffix(key, " ")
 }

@@ -6633,7 +6633,7 @@ inline CrewsMembersEntryKeyRead CrewsMembersEntryReadKey( const uint8_t * body, 
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { out.malformed = true; return out; }
-        if ( field_ref == 0 ) { return out; } // the terminator: no key field is the key's DEFAULT
+        if ( field_ref == 0 ) { out.malformed = r.offset != r.size; return out; } // the terminator consumes the entry's L
         if ( ids == NULL || field_ref > (uint64_t) ids->count ) { out.malformed = true; return out; }
         const uint64_t field_id = ids->at( field_ref );
         if ( !r.has( 1 ) ) { out.malformed = true; return out; }
@@ -6752,6 +6752,7 @@ inline bool CrewsMembersEntrySaveBody( const Ctx & ctx, const TableNumbering & n
 
 inline bool CrewsMembersEntryLoadBody( TableReader & r, const TableNodeMap & nodes, CrewsMembersEntry & value )
 {
+    if ( nodes.refused ) { return false; }
     CrewsMembersEntryReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -7099,6 +7100,7 @@ inline bool CrewsSaveBody( const Ctx & ctx, const TableNumbering & numbering, Ta
 
 inline bool CrewsLoadBody( TableReader & r, const TableNodeMap & nodes, Crews & value )
 {
+    if ( nodes.refused ) { return false; }
     CrewsReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -7200,6 +7202,7 @@ inline bool CrewsLoadBody( TableReader & r, const TableNodeMap & nodes, Crews & 
                         {
                             TableReader elem( elem_body, (int64_t) elem_len, r.report, r.ids );
                             CrewsMembersEntryLoadBody( elem, nodes, *slot );
+                            if ( nodes.refused ) { return false; }
                         }
                         last_key = read.key; // the WIRE keys of the entries that LAND
                         landed = true;
@@ -8798,6 +8801,7 @@ inline bool CrewsLoadBuilder( CrewsBuilder & builder, const uint8_t * wire_file,
             {
                 TableReader sub( body, length, out, &ids_table );
                 CrewsNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                if ( nodes.refused ) { break; }
             }
             k++;
         }
@@ -8891,6 +8895,7 @@ inline bool CrewsMembersEntrySaveBodyRetain( const Ctx & ctx, const TableNumberi
 
 inline bool CrewsMembersEntryLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, CrewsMembersEntry & value, TableRetain * retain, const TableRetainPath & path )
 {
+    if ( nodes.refused ) { return false; }
     CrewsMembersEntryReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
@@ -9204,6 +9209,7 @@ inline bool CrewsSaveBodyRetain( const Ctx & ctx, const TableNumbering & numberi
 
 inline bool CrewsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Crews & value, TableRetain * retain, const TableRetainPath & path )
 {
+    if ( nodes.refused ) { return false; }
     CrewsReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
@@ -9313,6 +9319,7 @@ inline bool CrewsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Cr
                         {
                             TableReader elem( elem_body, (int64_t) elem_len, r.report, r.ids );
                             CrewsMembersEntryLoadBodyRetain( elem, nodes, *slot, retain, TableRetainStepInto( path, 0, (uint32_t) ( fill.map->count - 1 ) ) );
+                            if ( nodes.refused ) { return false; }
                         }
                         last_key = read.key; // the WIRE keys of the entries that LAND
                         landed = true;

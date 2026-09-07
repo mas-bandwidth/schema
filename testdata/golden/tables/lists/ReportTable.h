@@ -6525,6 +6525,7 @@ inline bool BytesSaveBody( const Ctx & ctx, const TableNumbering & numbering, Ta
 inline bool BytesLoadBody( TableReader & r, const TableNodeMap & nodes, Bytes & value )
 {
     (void) nodes;
+    if ( nodes.refused ) { return false; }
     BytesReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -6914,6 +6915,7 @@ inline bool IntsSaveBody( const Ctx & ctx, const TableNumbering & numbering, Tab
 inline bool IntsLoadBody( TableReader & r, const TableNodeMap & nodes, Ints & value )
 {
     (void) nodes;
+    if ( nodes.refused ) { return false; }
     IntsReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -7335,6 +7337,7 @@ inline bool FloatsSaveBody( const Ctx & ctx, const TableNumbering & numbering, T
 inline bool FloatsLoadBody( TableReader & r, const TableNodeMap & nodes, Floats & value )
 {
     (void) nodes;
+    if ( nodes.refused ) { return false; }
     FloatsReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -9021,6 +9024,7 @@ inline bool BytesLoadBuilder( BytesBuilder & builder, const uint8_t * wire_file,
             {
                 TableReader sub( body, length, out, &ids_table );
                 BytesNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                if ( nodes.refused ) { break; }
             }
             k++;
         }
@@ -9919,6 +9923,7 @@ inline bool IntsLoadBuilder( IntsBuilder & builder, const uint8_t * wire_file, i
             {
                 TableReader sub( body, length, out, &ids_table );
                 IntsNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                if ( nodes.refused ) { break; }
             }
             k++;
         }
@@ -10817,6 +10822,7 @@ inline bool FloatsLoadBuilder( FloatsBuilder & builder, const uint8_t * wire_fil
             {
                 TableReader sub( body, length, out, &ids_table );
                 FloatsNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                if ( nodes.refused ) { break; }
             }
             k++;
         }
@@ -10899,6 +10905,7 @@ inline bool BytesSaveBodyRetain( const Ctx & ctx, const TableNumbering & numberi
 inline bool BytesLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Bytes & value, TableRetain * retain, const TableRetainPath & path )
 {
     (void) nodes;
+    if ( nodes.refused ) { return false; }
     BytesReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
@@ -11219,6 +11226,7 @@ inline bool IntsSaveBodyRetain( const Ctx & ctx, const TableNumbering & numberin
 inline bool IntsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ints & value, TableRetain * retain, const TableRetainPath & path )
 {
     (void) nodes;
+    if ( nodes.refused ) { return false; }
     IntsReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
@@ -11574,6 +11582,7 @@ inline bool FloatsSaveBodyRetain( const Ctx & ctx, const TableNumbering & number
 inline bool FloatsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Floats & value, TableRetain * retain, const TableRetainPath & path )
 {
     (void) nodes;
+    if ( nodes.refused ) { return false; }
     FloatsReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so

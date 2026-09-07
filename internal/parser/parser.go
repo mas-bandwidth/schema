@@ -974,7 +974,11 @@ func (p *parser) parsePrimary() ast.Expr {
 	case scanner.Int:
 		p.advance()
 		v := new(big.Int)
-		if _, ok := v.SetString(t.Text, 0); !ok {
+		base := 10
+		if strings.HasPrefix(t.Text, "0x") || strings.HasPrefix(t.Text, "0X") || strings.HasPrefix(t.Text, "0b") || strings.HasPrefix(t.Text, "0B") {
+			base = 0
+		}
+		if _, ok := v.SetString(t.Text, base); !ok {
 			p.errf(t.Pos, "malformed integer literal %q", t.Text)
 		}
 		return &ast.IntLit{Pos: t.Pos, Value: v, Text: t.Text}
@@ -987,7 +991,7 @@ func (p *parser) parsePrimary() ast.Expr {
 		return &ast.FloatLit{Pos: t.Pos, Value: v, Text: t.Text}
 	case scanner.String:
 		p.advance()
-		return &ast.StringLit{Pos: t.Pos, Value: strings.Trim(t.Text, `"`)}
+		return &ast.StringLit{Pos: t.Pos, Value: t.Text[1 : len(t.Text)-1]}
 	case scanner.Ident:
 		p.advance()
 		// E.Max / E.Count — contextual after '.' (SPEC §4.2)

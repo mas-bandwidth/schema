@@ -91,7 +91,7 @@ static SCHEMA_UNUSED int schema_utf8_valid_( const serialize_uint8_t * bytes, in
         {
             return 0;
         }
-        if ( i + continuations >= length )
+        if ( continuations >= length - i )
         {
             return 0;
         }
@@ -135,7 +135,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_interior_null_( const seria
     int32_t i = 0;
     if ( length >= 8 )
     {
-        for ( ; i + 8 <= length; i += 8 )
+        for ( ; i <= length - 8; i += 8 )
         {
             memcpy( &word, bytes + i, 8 );
             if ( ( ( word - 0x0101010101010101ULL ) & ~word & 0x8080808080808080ULL ) != 0 )

@@ -41,7 +41,7 @@ func (g *gen) emitUtf8Validator() {
 	g.pf("        else if ( ( lead & 0xF0 ) == 0xE0 )\n        {\n            continuations = 2;\n            code_point = lead & 0x0F;\n        }\n")
 	g.pf("        else if ( ( lead & 0xF8 ) == 0xF0 )\n        {\n            continuations = 3;\n            code_point = lead & 0x07;\n        }\n")
 	g.pf("        else\n        {\n            return 0;\n        }\n")
-	g.pf("        if ( i + continuations >= length )\n        {\n            return 0;\n        }\n")
+	g.pf("        if ( continuations >= length - i )\n        {\n            return 0;\n        }\n")
 	g.pf("        for ( k = 1; k <= continuations; k++ )\n        {\n")
 	g.pf("            if ( ( bytes[i + k] & 0xC0 ) != 0x80 )\n            {\n                return 0;\n            }\n")
 	g.pf("            code_point = ( code_point << 6 ) | (serialize_uint32_t) ( bytes[i + k] & 0x3F );\n        }\n")

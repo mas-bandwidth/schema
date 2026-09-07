@@ -6627,7 +6627,7 @@ inline RunsSpansEntryKeyRead RunsSpansEntryReadKey( const uint8_t * body, int64_
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { out.malformed = true; return out; }
-        if ( field_ref == 0 ) { return out; } // the terminator: no key field is the key's DEFAULT
+        if ( field_ref == 0 ) { out.malformed = r.offset != r.size; return out; } // the terminator consumes the entry's L
         if ( ids == NULL || field_ref > (uint64_t) ids->count ) { out.malformed = true; return out; }
         const uint64_t field_id = ids->at( field_ref );
         if ( !r.has( 1 ) ) { out.malformed = true; return out; }
@@ -6822,6 +6822,7 @@ MAPDEMO_TABLE_INLINE bool RunsSpansEntryLoadBody( TableReader & r, RunsSpansEntr
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             ItemLoadBody( elem, value.value[(int32_t) i] );
+                            if ( elem.offset != elem.size ) { r.report->malformed = true; ItemReset( value.value[(int32_t) i] ); }
                         }
                         sub.offset += (int64_t) elem_len;
                         decoded = i + 1;
@@ -7071,6 +7072,7 @@ inline bool RunsSaveBody( const Ctx & ctx, const TableNumbering & numbering, Tab
 inline bool RunsLoadBody( TableReader & r, const TableNodeMap & nodes, Runs & value )
 {
     (void) nodes;
+    if ( nodes.refused ) { return false; }
     RunsReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -8561,6 +8563,7 @@ inline bool RunsLoadBuilder( RunsBuilder & builder, const uint8_t * wire_file, i
             {
                 TableReader sub( body, length, out, &ids_table );
                 RunsNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                if ( nodes.refused ) { break; }
             }
             k++;
         }
@@ -8739,6 +8742,7 @@ MAPDEMO_TABLE_INLINE bool RunsSpansEntryLoadBodyRetain( TableReader & r, RunsSpa
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             ItemLoadBodyRetain( elem, value.value[(int32_t) i], retain, TableRetainStepInto( path, 1, (uint32_t) ( i ) ) );
+                            if ( elem.offset != elem.size ) { r.report->malformed = true; ItemReset( value.value[(int32_t) i] ); }
                         }
                         sub.offset += (int64_t) elem_len;
                         decoded = i + 1;
@@ -8951,6 +8955,7 @@ inline bool RunsSaveBodyRetain( const Ctx & ctx, const TableNumbering & numberin
 inline bool RunsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Runs & value, TableRetain * retain, const TableRetainPath & path )
 {
     (void) nodes;
+    if ( nodes.refused ) { return false; }
     RunsReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so

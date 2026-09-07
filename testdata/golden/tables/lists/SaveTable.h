@@ -7579,6 +7579,7 @@ inline bool SaveSaveBody( const Ctx & ctx, const TableNumbering & numbering, Tab
 
 inline bool SaveLoadBody( TableReader & r, const TableNodeMap & nodes, Save & value )
 {
+    if ( nodes.refused ) { return false; }
     SaveReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -7650,6 +7651,7 @@ inline bool SaveLoadBody( TableReader & r, const TableNodeMap & nodes, Save & va
                                 {
                                     TableReader elem_placements( sub.buffer + sub.offset, (int64_t) elem_len_placements, r.report, r.ids );
                                     PlacementLoadBody( elem_placements, ( *slot ) );
+                                    if ( elem_placements.offset != elem_placements.size ) { r.report->malformed = true; PlacementReset( ( *slot ) ); }
                                 }
                                 sub.offset += (int64_t) elem_len_placements;
                                 landed = true;
@@ -8784,6 +8786,7 @@ inline bool MixedSaveBody( const Ctx & ctx, const TableNumbering & numbering, Ta
 inline bool MixedLoadBody( TableReader & r, const TableNodeMap & nodes, Mixed & value )
 {
     (void) nodes;
+    if ( nodes.refused ) { return false; }
     MixedReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -11317,6 +11320,7 @@ inline bool SaveLoadBuilder( SaveBuilder & builder, const uint8_t * wire_file, i
             {
                 TableReader sub( body, length, out, &ids_table );
                 SaveNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                if ( nodes.refused ) { break; }
             }
             k++;
         }
@@ -12215,6 +12219,7 @@ inline bool MixedLoadBuilder( MixedBuilder & builder, const uint8_t * wire_file,
             {
                 TableReader sub( body, length, out, &ids_table );
                 MixedNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                if ( nodes.refused ) { break; }
             }
             k++;
         }
@@ -12816,6 +12821,7 @@ inline bool SaveSaveBodyRetain( const Ctx & ctx, const TableNumbering & numberin
 
 inline bool SaveLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Save & value, TableRetain * retain, const TableRetainPath & path )
 {
+    if ( nodes.refused ) { return false; }
     SaveReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
@@ -12895,6 +12901,7 @@ inline bool SaveLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sav
                                 {
                                     TableReader elem_placements( sub.buffer + sub.offset, (int64_t) elem_len_placements, r.report, r.ids );
                                     PlacementLoadBodyRetain( elem_placements, ( *slot ), retain, TableRetainStepInto( path, 0, (uint32_t) ( i ) ) );
+                                    if ( elem_placements.offset != elem_placements.size ) { r.report->malformed = true; PlacementReset( ( *slot ) ); }
                                 }
                                 sub.offset += (int64_t) elem_len_placements;
                                 landed = true;
@@ -13728,6 +13735,7 @@ inline bool MixedSaveBodyRetain( const Ctx & ctx, const TableNumbering & numberi
 inline bool MixedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Mixed & value, TableRetain * retain, const TableRetainPath & path )
 {
     (void) nodes;
+    if ( nodes.refused ) { return false; }
     MixedReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
