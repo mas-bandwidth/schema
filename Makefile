@@ -1657,9 +1657,9 @@ tables-json-keyed-dup-negative-control: bin/schema test/tables/json_keyed_dup_ne
 # THE CONTROL IS RUN BOTH WAYS, because a binary that only ever meets the
 # sabotage cannot show it has a blade: against the sabotaged walker it must SEE
 # the wrong bytes, and against the HONEST one it must find nothing to see. The
-# second arm is what fails if the control ever softens into a verdict it prints
-# whatever it read, which is the shape it had while a failed read and a moved
-# clamp count were both spelled `return 0`.
+# second arm is the one that goes red for a control whose verdict is whatever it
+# read rather than a reading of the bytes, which is what a control becomes the
+# moment a failed read or a moved clamp count counts as success.
 .PHONY: tables-json-clamp-prefix-negative-control
 tables-json-clamp-prefix-negative-control: bin/schema test/tables/json_clamp_prefix_negative_main.cpp
 	@rm -rf build/json-clamp-sabotage && mkdir -p build/json-clamp-sabotage

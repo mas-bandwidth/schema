@@ -281,3 +281,51 @@ func TestADecimalMapKeyAtTheTopOfTheDomainIsTheSameKey(t *testing.T) {
 		t.Errorf("last wins: count %d, want 2", count.Cell.I)
 	}
 }
+
+// AN INTEGER KEY PAST THE SCAN'S BUFFER DROPS AS kind_mismatch, in this reader
+// and in the C++ reference's (#609). The bytes a scan keeps are a PREFIX, and a
+// prefix is a different token, so the entry drops rather than a truncation
+// being read as a value.
+//
+// The length alone does not settle it, which is what this row holds: the key
+// below is 256 bytes and spells the integer 1, a value the kind holds, and the
+// prefix that fits the buffer spells 1 as well. A read that truncated would
+// merge it into the entry beside it and call two keys one. The map keeps one
+// entry, and it is the one the text spells as 1.
+func TestAnIntegerMapKeyPastTheBufferDrops(t *testing.T) {
+	m := mapsModel(t)
+	inst := m.New(m.Lookup("EdgeRow"))
+	var r tabletext.Report
+	long := "1e" + strings.Repeat("0", 254)
+	text := `{"ids":{"1":{"count":7},"` + long + `":{"count":9}}}`
+	if !m.Read(inst, []byte(text), &r) || r.Malformed {
+		t.Fatalf("an over-long key drops its entry and the read goes on: %+v", r)
+	}
+	if r.KindMismatch != 1 {
+		t.Errorf("the entry drops as kind_mismatch: %+v", r)
+	}
+	if r.Duplicate != 0 {
+		t.Errorf("a truncated key would collide with the 1 beside it: %+v", r)
+	}
+	fv, ok := inst.FieldByKey("ids")
+	if !ok {
+		t.Fatal("no ids field")
+	}
+	if len(fv.Entries) != 1 {
+		t.Fatalf("expected one entry, got %d", len(fv.Entries))
+	}
+	if got := fv.Entries[0].Tab.Fields[0].Cell.U; got != 1 {
+		t.Errorf("key %d, want 1", got)
+	}
+	item := fv.Entries[0].Tab.Fields[1].Cell.Tab
+	if item == nil {
+		t.Fatal("the entry carries no value")
+	}
+	count, ok := item.FieldByKey("count")
+	if !ok {
+		t.Fatal("no count field")
+	}
+	if count.Cell.I != 7 {
+		t.Errorf("the surviving entry is the first: count %d, want 7", count.Cell.I)
+	}
+}

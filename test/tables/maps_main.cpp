@@ -1132,6 +1132,32 @@ static void test_text()
         CHECK( item != NULL );
         if ( item != NULL ) { CHECK_EQ( item->count, 2 ); } // last wins
     }
+    {
+        // AN INTEGER KEY PAST THE SCAN'S BUFFER DROPS AS kind_mismatch, in this
+        // walker and in the tool's (#609). The bytes a scan keeps are a PREFIX,
+        // and a prefix is a different token, so the entry drops rather than a
+        // truncation being read as a value.
+        //
+        // The length alone does not settle it, which is what this row holds:
+        // the key below is 256 bytes and spells the integer 1, a value the kind
+        // holds, and the prefix that fits the buffer spells 1 as well. A read
+        // that truncated would merge it into the entry beside it and call two
+        // keys one. The map keeps one entry, and it is the one the text spells
+        // as 1.
+        char t[512];
+        int n = snprintf( t, sizeof( t ), "{\"ids\":{\"1\":{\"count\":7},\"1e" );
+        for ( int i = 0; i < 254; i++ ) { t[n++] = '0'; }
+        n += snprintf( t + n, sizeof( t ) - (size_t) n, "\":{\"count\":9}}}" );
+        EdgeRowBuilder eb;
+        TableReport r;
+        CHECK( EdgeRowFromJson( eb, t, (int64_t) n, &r ) );
+        CHECK_EQ( eb.GetRoot()->ids.count, 1 );
+        CHECK_EQ( r.kind_mismatch, 1 );
+        CHECK_EQ( r.duplicate, 0 );
+        const Item * item = EdgeRowIdsFind( eb.arena, eb.GetRoot()->ids, 1ull );
+        CHECK( item != NULL );
+        if ( item != NULL ) { CHECK_EQ( item->count, 7 ); }
+    }
     test_text_allocation_refusals();
 }
 

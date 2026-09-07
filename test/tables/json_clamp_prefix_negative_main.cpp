@@ -20,12 +20,12 @@
 //                                           the suite cannot see
 //   anything else                        -> the defect was never reached
 //
-// A READ THAT FAILED AND A CLAMP COUNT THAT MOVED ARE THE THIRD OUTCOME, not
-// the first. Both were success here, so a sabotage that broke the read outright,
-// or moved the ledger as well as the bytes, printed the word red and returned
-// zero over a run that observed no prefix at all. A control has to fail on the
-// read's VERDICT and on the CLAMPED COUNT as surely as on the bytes, or the
-// branch it passes through is a branch that proves nothing.
+// A READ THAT FAILS AND A CLAMP COUNT THAT MOVES ARE BOTH THE THIRD OUTCOME,
+// never the first: a run that never reached the clamp stored no prefix, and a
+// run whose ledger moved is not the one-clamp read this control reads bytes out
+// of. Each of them fails here. The control's verdict rests on the read's own
+// verdict and on the CLAMPED COUNT as surely as on the bytes, so every branch
+// it can pass through is a branch that establishes the defect it names.
 
 #include <cstdio>
 #include <cstring>

@@ -732,6 +732,16 @@ func TestAnIntegerFieldReadsItsTokenThroughTheFloat(t *testing.T) {
 	if got := field(t, inst, "epoch").Cell.U; got != 9007199254740992 {
 		t.Fatalf("the field path rounds at the mantissa: got %d, want 9007199254740992", got)
 	}
+	// and the decimal spelling of UINT64_MAX rounds UP through the float64, so
+	// the field saturates and COUNTS the clamp, where the key path reads the
+	// digits and counts nothing
+	_, inst, r = read(t, "ProfileConfig", `{ "epoch": 18446744073709551615.0 }`)
+	if r.KindMismatch != 0 || r.Clamped != 1 {
+		t.Fatalf("a magnitude at the top of the domain saturates and counts: %+v", r)
+	}
+	if got := field(t, inst, "epoch").Cell.U; got != math.MaxUint64 {
+		t.Fatalf("the field holds the edge: got %d, want %d", got, uint64(math.MaxUint64))
+	}
 }
 
 // KeyedSlot resolves a variant name to its slot for a keyed field.
