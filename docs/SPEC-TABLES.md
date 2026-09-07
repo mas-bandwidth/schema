@@ -3177,12 +3177,15 @@ one document rather than two.
   the array.
 
   **A BODY'S TERMINATOR IS THE END OF ITS PAYLOAD**, and that holds for a
-  kind `13` field and for an arm whose payload is a body alike. The zero
+  kind `13` field, an array element, a map entry and an arm whose payload is a body alike. The zero
   reference is the last byte of the payload's `L`. A terminator that arrives
   earlier leaves bytes inside `L` that no field claims, which is framing
   damage: `malformed` counts, the field reads its declared default and a
   union reads `None`, and the enclosing body continues past the payload by
-  `L`.
+  `L`. An array element takes its own declared defaults. A map checks the
+  entry's terminator during the key scan, before choosing a slot: malformed
+  entry framing stops the map with its earlier ascending prefix intact, and
+  the parent continues past the map's `L`.
 
   **AN ARM HEADER IS A FIELD HEADER**: the arm id reference, the arm's KIND
   byte, `L`, then `L` bytes of arm payload. One framing serves a field and an
@@ -12730,6 +12733,14 @@ The tree MIRRORS the root table's shape, and nothing else:
 - a **byte buffer** (§2.5) is inline base64 in that file, as §16.2 spells it;
   a blob held in the tree as a file of its own, named by a relative path, is
   the include named in §15.
+
+The expanded output requires every field key to be one safe local path
+component: no `.` or `..`, separators, drive colon, control characters, or
+trailing dot or space. Platform-specific filename rules also apply; this does
+not promise that a tree written on one OS can be used on every other OS.
+A key that cannot name such a component remains valid
+in JSON; use `unpack --one-file` for it. Filesystem writes and pruning are
+confined to the selected output directory, including through existing symlinks.
 
 Each file's content is read under §16's rules, so everything about kinds,
 presence, numbers, clamping and the report is that section's and is not

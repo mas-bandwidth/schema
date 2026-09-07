@@ -150,6 +150,10 @@ func bodyExtent(body []byte, ids []uint64) (end int, terminated bool) {
 }
 
 type wireReader struct {
+	// Installed by decodeVariable and shared by its nested readers. Only
+	// value-only and framing/key scanners omit it; none can decode a list.
+	countRefusal *bool // a storage refusal, not a malformed event
+
 	buf    []byte
 	off    int
 	report *tabletext.Report
@@ -207,7 +211,7 @@ func (r *wireReader) id(ref uint64) (uint64, bool) {
 }
 
 func (r *wireReader) sub(n int) *wireReader {
-	return &wireReader{buf: r.buf[r.off : r.off+n], report: r.report, m: r.m, ids: r.ids, st: r.st, rt: r.rt}
+	return &wireReader{buf: r.buf[r.off : r.off+n], report: r.report, m: r.m, ids: r.ids, st: r.st, rt: r.rt, countRefusal: r.countRefusal}
 }
 
 // subTo spans from the cursor to `end`, the last byte of the body the cursor
@@ -317,6 +321,9 @@ func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
 		index[ir.TableFieldWireId(inst.Fields[i].Def)] = i
 	}
 	for {
+		if r.countRefused() {
+			return false
+		}
 		ref, ok := r.leb()
 		if !ok {
 			r.report.Malformed = true
@@ -528,6 +535,9 @@ func (r *wireReader) field(fv *tabletext.Field) bool {
 			r.m.Refill(fv.Cell.Tab)
 		}
 		sub.bodyAt(fv.Cell.Tab, true)
+		if r.countRefused() {
+			return false
+		}
 		// A BODY'S TERMINATOR IS THE END OF ITS PAYLOAD (§3): a body whose
 		// terminator is not the last byte of its L is framing damage — the
 		// payload stops, the field reads its declared defaults, and the
@@ -673,6 +683,9 @@ func (r *wireReader) mapField(fv *tabletext.Field) bool {
 			whole.off = 0
 			decoded := r.m.NewMapEntry(f)
 			whole.bodyAt(decoded, true)
+			if r.countRefused() {
+				return false
+			}
 			if order == 0 {
 				// EQUAL: a DUPLICATE. Last wins WHOLE — the slot the earlier
 				// entry took is replaced by this one's decode, so a field the
@@ -712,7 +725,7 @@ func (r *wireReader) mapKey(f *ir.Field, entry *tabletext.Instance, kindBad, wid
 			return key, false
 		}
 		if ref == 0 {
-			return key, true // no key field is the key's DEFAULT
+			return key, scan.off == len(scan.buf) // the terminator must consume the entry's L
 		}
 		id, named := scan.id(ref)
 		if !named || !scan.has(1) {
@@ -857,7 +870,13 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 			// so the walk stops here rather than sizing a slot list from a
 			// number the wire chose.
 			if count > uint64(math.MaxInt32) {
-				r.report.Malformed = true
+				if r.countRefusal != nil {
+					*r.countRefusal = true
+				} else {
+					// A reader without variable-root state cannot decode
+					// lists. Do not silently accept a misrouted internal read.
+					r.report.Malformed = true
+				}
 				r.off = end
 				return false, false
 			}
@@ -959,6 +978,13 @@ func (r *wireReader) element(fv *tabletext.Field, i int, ek int) bool {
 			r.m.Refill(fv.Elems[i].Tab)
 		}
 		sub.bodyAt(fv.Elems[i].Tab, true)
+		if r.countRefused() {
+			return false
+		}
+		if sub.off != int(n) {
+			r.report.Malformed = true
+			r.m.Refill(fv.Elems[i].Tab)
+		}
 		r.off += int(n)
 		return true
 	}
@@ -1056,6 +1082,13 @@ func (r *wireReader) keyed(fv *tabletext.Field) bool {
 				r.m.Refill(fv.Elems[slot].Tab)
 			}
 			elem.bodyAt(fv.Elems[slot].Tab, true)
+			if r.countRefused() {
+				return false
+			}
+			if elem.off != int(elemLen) {
+				r.report.Malformed = true
+				r.m.Refill(fv.Elems[slot].Tab)
+			}
 		default:
 			elem.scalarAt(&fv.Elems[slot], f, int(elemKind))
 		}
@@ -1159,6 +1192,9 @@ func (r *wireReader) unionCell(cell *tabletext.Cell, f *ir.Field) bool {
 			payload := r.m.New(arm.Ref)
 			r.rt.builtArm(cell, payload)
 			sub.bodyAt(payload, true)
+			if r.countRefused() {
+				return false
+			}
 			if sub.off != length {
 				// a body whose terminator is not the last byte of its L is
 				// framing damage: the union reads None and the enclosing body
@@ -1432,3 +1468,14 @@ func bigInt64(v *big.Int) int64 {
 	}
 	return v.Int64()
 }
+
+// CountRefusal is the file reader's builder-path storage refusal (§2.9).
+// The caller must discard the partial value. Earlier report events stand;
+// meeting the cap itself adds no malformed event or other counter.
+type CountRefusal struct{}
+
+func (*CountRefusal) Error() string {
+	return "list count exceeds the int32 storage cap; discard the partial value"
+}
+
+func (r *wireReader) countRefused() bool { return r.countRefusal != nil && *r.countRefusal }

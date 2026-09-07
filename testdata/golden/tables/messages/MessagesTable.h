@@ -2786,7 +2786,13 @@ MESSAGEDEMO_TABLE_INLINE bool UserLoadBody( TableReader & r, User & value )
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.name[0] = 0; value.name_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
+                {
+                    r.report->malformed = true;
+                    memset( value.name, 0, sizeof( value.name ) );
+                    value.name_length = 0;
+                    r.offset += (int64_t) len; break;
+                }
                 uint64_t keep = len;
                 if ( keep > 16 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 16 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.name, r.buffer + r.offset, (size_t) keep );
@@ -3104,7 +3110,13 @@ MESSAGEDEMO_TABLE_INLINE bool ScriptLoadBody( TableReader & r, Script & value )
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.path[0] = 0; value.path_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
+                {
+                    r.report->malformed = true;
+                    memset( value.path, 0, sizeof( value.path ) );
+                    value.path_length = 0;
+                    r.offset += (int64_t) len; break;
+                }
                 uint64_t keep = len;
                 if ( keep > 64 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 64 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.path, r.buffer + r.offset, (size_t) keep );
@@ -4246,7 +4258,13 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.text[0] = 0; value.text_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
+                {
+                    r.report->malformed = true;
+                    memset( value.text, 0, sizeof( value.text ) );
+                    value.text_length = 0;
+                    r.offset += (int64_t) len; break;
+                }
                 uint64_t keep = len;
                 if ( keep > 32 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 32 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.text, r.buffer + r.offset, (size_t) keep );
@@ -6752,7 +6770,13 @@ MESSAGEDEMO_TABLE_INLINE bool OpenDocumentLoadBody( TableReader & r, OpenDocumen
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.path[0] = 0; value.path_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
+                {
+                    r.report->malformed = true;
+                    memset( value.path, 0, sizeof( value.path ) );
+                    value.path_length = 0;
+                    r.offset += (int64_t) len; break;
+                }
                 uint64_t keep = len;
                 if ( keep > 64 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 64 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.path, r.buffer + r.offset, (size_t) keep );
@@ -7184,7 +7208,13 @@ MESSAGEDEMO_TABLE_INLINE bool SaveDocumentLoadBody( TableReader & r, SaveDocumen
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.path[0] = 0; value.path_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
+                {
+                    r.report->malformed = true;
+                    memset( value.path, 0, sizeof( value.path ) );
+                    value.path_length = 0;
+                    r.offset += (int64_t) len; break;
+                }
                 uint64_t keep = len;
                 if ( keep > 64 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 64 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.path, r.buffer + r.offset, (size_t) keep );
@@ -7893,7 +7923,13 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.reason[0] = 0; value.reason_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
+                {
+                    r.report->malformed = true;
+                    memset( value.reason, 0, sizeof( value.reason ) );
+                    value.reason_length = 0;
+                    r.offset += (int64_t) len; break;
+                }
                 uint64_t keep = len;
                 if ( keep > 16 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 16 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.reason, r.buffer + r.offset, (size_t) keep );
@@ -7945,6 +7981,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             EditLoadBody( elem, value.edits[(int32_t) i] );
+                            if ( elem.offset != elem.size ) { r.report->malformed = true; EditReset( value.edits[(int32_t) i] ); }
                         }
                         sub.offset += (int64_t) elem_len;
                         decoded = i + 1;
@@ -8269,6 +8306,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             SelectionLoadBody( elem, value.snapshots[(int32_t) i] );
+                            if ( elem.offset != elem.size ) { r.report->malformed = true; SelectionReset( value.snapshots[(int32_t) i] ); }
                         }
                         sub.offset += (int64_t) elem_len;
                     }
@@ -10711,6 +10749,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             ScriptLoadBody( elem, value.trace[(int32_t) i] );
+                            if ( elem.offset != elem.size ) { r.report->malformed = true; ScriptReset( value.trace[(int32_t) i] ); }
                         }
                         sub.offset += (int64_t) elem_len;
                         decoded = i + 1;

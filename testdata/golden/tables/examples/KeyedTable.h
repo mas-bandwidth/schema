@@ -2852,7 +2852,13 @@ TABLEDEMO_TABLE_INLINE bool TeamConfigLoadBody( TableReader & r, TeamConfig & va
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
                 // default, one malformed counts, and the parent reads on past L
-                if ( !TableUtf8Valid( r.buffer + r.offset, len ) ) { r.report->malformed = true; value.banner[0] = 0; value.banner_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
+                {
+                    r.report->malformed = true;
+                    memset( value.banner, 0, sizeof( value.banner ) );
+                    value.banner_length = 0;
+                    r.offset += (int64_t) len; break;
+                }
                 uint64_t keep = len;
                 if ( keep > 16 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 16 ); r.report->clamped++; } // at a code point boundary (§3)
                 memcpy( value.banner, r.buffer + r.offset, (size_t) keep );
@@ -4119,6 +4125,7 @@ TABLEDEMO_TABLE_INLINE bool HullConfigLoadBody( TableReader & r, HullConfig & va
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             TurretConfigLoadBody( elem, value.turrets.slots[int32_t( slot ) - 1] );
+                            if ( elem.offset != elem.size ) { r.report->malformed = true; TurretConfigReset( value.turrets.slots[int32_t( slot ) - 1] ); }
                         }
                         sub.offset += (int64_t) elem_len;
                     }
@@ -4723,6 +4730,7 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigLoadBody( TableReader & r, KeyedConfig & 
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             TeamConfigLoadBody( elem, value.teams.slots[int32_t( slot ) - 1] );
+                            if ( elem.offset != elem.size ) { r.report->malformed = true; TeamConfigReset( value.teams.slots[int32_t( slot ) - 1] ); }
                         }
                         sub.offset += (int64_t) elem_len;
                     }
@@ -4776,6 +4784,7 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigLoadBody( TableReader & r, KeyedConfig & 
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             HullConfigLoadBody( elem, value.hulls.slots[int32_t( slot ) - 1] );
+                            if ( elem.offset != elem.size ) { r.report->malformed = true; HullConfigReset( value.hulls.slots[int32_t( slot ) - 1] ); }
                         }
                         sub.offset += (int64_t) elem_len;
                     }

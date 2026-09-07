@@ -10674,6 +10674,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             RenderCameraLoadBody( elem, value.cameras[(int32_t) i] );
+                            if ( elem.offset != elem.size ) { r.report->malformed = true; RenderCameraReset( value.cameras[(int32_t) i] ); }
                         }
                         sub.offset += (int64_t) elem_len;
                         decoded = i + 1;
@@ -10727,6 +10728,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             RenderShipLoadBody( elem, value.ships[(int32_t) i] );
+                            if ( elem.offset != elem.size ) { r.report->malformed = true; RenderShipReset( value.ships[(int32_t) i] ); }
                         }
                         sub.offset += (int64_t) elem_len;
                         decoded = i + 1;
@@ -10780,6 +10782,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             RenderTurretLoadBody( elem, value.turrets[(int32_t) i] );
+                            if ( elem.offset != elem.size ) { r.report->malformed = true; RenderTurretReset( value.turrets[(int32_t) i] ); }
                         }
                         sub.offset += (int64_t) elem_len;
                         decoded = i + 1;
@@ -10833,6 +10836,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             RenderMissileLoadBody( elem, value.missiles[(int32_t) i] );
+                            if ( elem.offset != elem.size ) { r.report->malformed = true; RenderMissileReset( value.missiles[(int32_t) i] ); }
                         }
                         sub.offset += (int64_t) elem_len;
                         decoded = i + 1;
@@ -10886,6 +10890,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             RenderDynamicPropLoadBody( elem, value.dynamic_props[(int32_t) i] );
+                            if ( elem.offset != elem.size ) { r.report->malformed = true; RenderDynamicPropReset( value.dynamic_props[(int32_t) i] ); }
                         }
                         sub.offset += (int64_t) elem_len;
                         decoded = i + 1;
@@ -10939,6 +10944,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             RenderStaticPropLoadBody( elem, value.static_props[(int32_t) i] );
+                            if ( elem.offset != elem.size ) { r.report->malformed = true; RenderStaticPropReset( value.static_props[(int32_t) i] ); }
                         }
                         sub.offset += (int64_t) elem_len;
                         decoded = i + 1;
@@ -10992,6 +10998,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             RenderCosmeticPropLoadBody( elem, value.cosmetic_props[(int32_t) i] );
+                            if ( elem.offset != elem.size ) { r.report->malformed = true; RenderCosmeticPropReset( value.cosmetic_props[(int32_t) i] ); }
                         }
                         sub.offset += (int64_t) elem_len;
                         decoded = i + 1;
@@ -11045,6 +11052,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             RenderLaserLoadBody( elem, value.lasers[(int32_t) i] );
+                            if ( elem.offset != elem.size ) { r.report->malformed = true; RenderLaserReset( value.lasers[(int32_t) i] ); }
                         }
                         sub.offset += (int64_t) elem_len;
                         decoded = i + 1;
@@ -11098,6 +11106,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             RenderExplosionLoadBody( elem, value.explosions[(int32_t) i] );
+                            if ( elem.offset != elem.size ) { r.report->malformed = true; RenderExplosionReset( value.explosions[(int32_t) i] ); }
                         }
                         sub.offset += (int64_t) elem_len;
                         decoded = i + 1;
