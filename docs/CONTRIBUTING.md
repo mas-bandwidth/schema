@@ -109,7 +109,7 @@ have signed the [Contributor Assignment Agreement](#the-contributor-assignment-a
 
 A negative control breaks what a gate watches and requires the gate to go red.
 It is how this repository proves a gate is watching something rather than
-passing over an empty set, and there are 194 of them. Every one refuses when
+passing over an empty set, and there are 196 of them. Every one refuses when
 its sabotage patches nothing, so a control whose `sed` pattern has drifted off
 the line it aims at says so instead of reading as a pass.
 

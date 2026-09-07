@@ -776,8 +776,8 @@ jobs:
   #
   # MEASURED, 2026-09-07 on the author's machine (arm64 macOS, one target per
   # make invocation, off one warm build) and on the runner (the per-job wall
-  # times below, from this branch's own pull-request run). 194 controls. The
-  # base toolchain carries 128 of them and needed ten jobs rather than one: the
+  # times below, from this branch's own pull-request run). 196 controls. The
+  # base toolchain carries 130 of them and needed ten jobs rather than one: the
   # map gate alone is 17 controls at 4 s each on the author's machine and 1.6x
   # that on the runner, and the conformance driver's two sabotage rebuilds are
   # 45 s and 47 s of runner time on their own. The tolerant-wire family is one
