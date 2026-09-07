@@ -197,6 +197,13 @@ jobs:
   # ONE SIBLING, ../serialize, because the legs that write the wire pins are the
   # C++ reference's and every other language's half of `update-goldens` is
   # `bin/schema generate` and a copy. Its pin is the shared SERIALIZE_TAG above.
+  #
+  # MEASURED at 1m44s on the run that introduced it (34113070433), against
+  # 4m27s for big-endian in the same run: this job is inside the two-minute
+  # rule and it is not the binding constraint. Its own budget is the C++
+  # reference binaries `update-goldens` builds plus that target's closing
+  # `go test ./...`, which is the duplicate of go-test's and the first place
+  # to look if this job ever wants the time back.
   pins:
     runs-on: ubuntu-latest
     timeout-minutes: 10
