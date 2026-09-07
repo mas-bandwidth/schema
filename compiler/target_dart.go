@@ -57,5 +57,6 @@ func (dartTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 }
 
 func init() {
+	registerPacketValueDefaultCarrier("dart")
 	registerBuiltin(dartTarget{}, true, false, false, false)
 }

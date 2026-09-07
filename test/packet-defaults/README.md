@@ -81,3 +81,12 @@ pins stay unchanged. Constructors, in-place reset, zero forms, unsigned
 33/64-bit masks, defaultless values, counted backing storage and repeated
 selection all run in both tiers. The constructor-byte sabotage syntax-checks
 and imports both modules before failing its marker. Both checks ride `test-js`.
+
+`make packet-defaults-dart` analyzes and format-checks both fixture units,
+then runs all eight C++ byte/bit pins under JIT assertions and compiled AOT.
+Exact-bit reads accept and one-bit-short reads refuse. Constructors, in-place
+resets, zero forms, backing arrays, a defaultless twin, independent 33/64-bit
+masks and repeated union selection are covered. Long nested byte paths are
+emitted in the Dart formatter's multiline form. The constructor-byte control
+compiles an AOT consumer before it fails its marker. Both checks ride
+`test-dart`, and table-closure defaults remain refused.
