@@ -25,23 +25,21 @@ on:
     - cron: '17 9 * * *'
   workflow_dispatch:
 
-# EVERY MAIN COMMIT CERTIFIES, AND NO RUN EVER CANCELS ANOTHER (issue #471).
-# A concurrency group holds one running and one PENDING run, so a third entrant
-# evicts the pending one — with `cancel-in-progress: false` that eviction is
-# still a cancellation, and it lands on the middle commit. Keying every push on
-# its own commit puts each in a group of one, so nothing can displace it: three
-# merges inside twenty minutes on 2026-09-04 cancelled all three certification
-# runs (33827063336, 33828317708, 33829466673) while a fourth still held the
-# shared group, and main went a morning with no full chain behind it.
+# CERTIFY THE LATEST MAIN, with nightly and explicit branch runs beside it.
+# A burst of merges must not leave the integrated head waiting behind a full
+# matrix for every intermediate commit. On 2026-09-07, thirty Certify runs
+# showed queued after the packet stack landed, with the macOS pool occupied
+# by earlier heads. Pushes now share the main ref's group and a newer push
+# cancels its superseded run, including running jobs. An intermediate commit
+# may therefore have no complete certificate; only a successful full run at
+# its exact SHA is certification evidence. Per-PR CI is unchanged.
 #
-# The nightly keeps a ref-keyed group of its own — a queued cron run should be
-# ONE run whatever the schedule does — and a dispatch keeps the branch it was
-# asked for. The event name stays in the key so none of the three can ever
-# collide. This repository is public: runner minutes are not the constraint,
-# concurrency is, and a certification that never runs proves nothing.
+# Keep event names separate: a nightly or an explicit branch dispatch never
+# cancels a push's proof. Neither cancels an in-progress run in its own group;
+# a newer request may still replace that group's pending run.
 concurrency:
-  group: certify-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || github.ref }}
-  cancel-in-progress: false
+  group: certify-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 # The runtimes the generated code targets, PINNED to each sibling's latest
 # RELEASED tag, never main: a sibling merging to main mid-day must not change
