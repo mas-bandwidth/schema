@@ -5,41 +5,40 @@ name: Certify
 # the full `make test` chain on both OSes, the per-port inline-budget gates,
 # and every `tables-<lang>-release` target a port carries. None of it fits the
 # owner's one-to-two-minute rule for CI that runs on each pull request, and
-# none of it needs to: it runs on every push to main, nightly, and on demand.
+# none of it needs to: it runs nightly and on demand, never per push. The
+# owner's rule, 2026-09-07: CI that runs per commit finishes in one minute,
+# two at most; anything longer is nightly or manually triggered.
 #
 # THE PULL-REQUEST GATE IS ci.yml, and it is the fast half of this same set.
 # Nothing is checked less than it was before the split — what moved is WHEN a
 # certification instrument runs. A regression only this file can see fails
-# loudly on main minutes after the merge, and the nightly re-certifies a main
-# nobody pushed to.
+# loudly at the next nightly, or the same hour when someone dispatches this
+# file on main after a landing that touched the hot paths.
 #
 # Before merging a change near the hot paths, or anything that moves the C++
 # emitters, run this file on the branch first:
 #   gh workflow run certify.yml --ref <branch>
 
 on:
-  push:
-    branches: [ main ]
-  # a quiet main still gets certified daily (and govulncheck sees new CVEs)
+  # main is certified daily (and govulncheck sees new CVEs), and on demand:
+  #   gh workflow run certify.yml --ref main
   schedule:
     - cron: '17 9 * * *'
   workflow_dispatch:
 
-# CERTIFY THE LATEST MAIN, with nightly and explicit branch runs beside it.
-# A burst of merges must not leave the integrated head waiting behind a full
-# matrix for every intermediate commit. On 2026-09-07, thirty Certify runs
-# showed queued after the packet stack landed, with the macOS pool occupied
-# by earlier heads. Pushes now share the main ref's group and a newer push
-# cancels its superseded run, including running jobs. An intermediate commit
-# may therefore have no complete certificate; only a successful full run at
-# its exact SHA is certification evidence. Per-PR CI is unchanged.
+# NO PUSH TRIGGER, by the owner's rule. On 2026-09-07 a burst of merges left
+# thirty Certify runs queued, one full matrix per intermediate commit, with the
+# macOS pool occupied by heads nobody would act on, while the integrated head
+# could not start. A thirty-minute suite is not per-commit CI; it is nightly
+# and dispatched. A certificate is a successful full run at an exact SHA, so
+# after a landing that matters, dispatch this file on main and read that run.
 #
-# Keep event names separate: a nightly or an explicit branch dispatch never
-# cancels a push's proof. Neither cancels an in-progress run in its own group;
-# a newer request may still replace that group's pending run.
+# One group per event and ref, and nothing is cancelled: a nightly and an
+# explicit dispatch never cancel each other's proof, and a newer request only
+# replaces a pending one in its own group.
 concurrency:
   group: certify-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'push' }}
+  cancel-in-progress: false
 
 # The runtimes the generated code targets, PINNED to each sibling's latest
 # RELEASED tag, never main: a sibling merging to main mid-day must not change
