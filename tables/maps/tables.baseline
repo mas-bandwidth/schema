@@ -29,6 +29,10 @@ table 0a53e00afba279af.7b024c46e98d3404
     field key id=0x3dc94a19365b10ec kind=8
     field value id=0x7ce4fd9430e80cea kind=17 type=ShipConfig
 
+table 1404200dab337086.e68c2e6bb1ee5646
+    field key id=0x3dc94a19365b10ec kind=8
+    field value id=0x7ce4fd9430e80cea kind=14 elem=17 type=Item array=fixed bound=2
+
 table 1f781dc01a2b5152.a3a7061ff10a8138
     field key id=0x3dc94a19365b10ec kind=12 size=8
     field value id=0x7ce4fd9430e80cea kind=14 elem=4 array=fixed bound=3
@@ -57,6 +61,10 @@ table Chunks
     field blobs id=0x14e2eaab9cde925b kind=14 elem=13 array=map keykind=4
     field after id=0xbf82010f6f71eae9 kind=4
 
+table Crews
+    field members id=0x79d594675e391090 kind=14 elem=13 array=map keykind=8
+    field after id=0xbf82010f6f71eae9 kind=4
+
 table Depth
     field one id=0x1a08aa1921ca5caf kind=13 type=Squad
     field many id=0x1f6459a2cea1fc02 kind=14 elem=13 type=Squad array=bounded bound=3
@@ -82,6 +90,10 @@ table Fleet
 
 table Item
     field count id=0xb1e5e28e4479a274 kind=4
+
+table Pairs
+    field slots id=0xe68c2e6bb1ee5646 kind=14 elem=13 array=map keykind=8
+    field after id=0xbf82010f6f71eae9 kind=4
 
 table Row
     field entries id=0xc5b2a72c0845a253 kind=14 elem=13 array=map keykind=12 keybound=8
@@ -112,6 +124,10 @@ table Text
     field blobs id=0x14e2eaab9cde925b kind=14 elem=13 array=map keykind=4
     field after id=0xbf82010f6f71eae9 kind=4
 
+table Trails
+    field steps id=0x124250ad5a5b6d14 kind=14 elem=13 array=map keykind=8
+    field after id=0xbf82010f6f71eae9 kind=4
+
 table WideRow
     field entries id=0xc5b2a72c0845a253 kind=14 elem=13 array=map keykind=8
     field after id=0xbf82010f6f71eae9 kind=4
@@ -123,6 +139,14 @@ table a013e119fec906fb.c5b2a72c0845a253
 table b413964e3571a316.c5b2a72c0845a253
     field key id=0x3dc94a19365b10ec kind=8
     field value id=0x7ce4fd9430e80cea kind=13 type=Item
+
+table b4578774a78fb150.124250ad5a5b6d14
+    field key id=0x3dc94a19365b10ec kind=8
+    field value id=0x7ce4fd9430e80cea kind=14 elem=17 type=Item array=unbounded
+
+table c85b940060088651.79d594675e391090
+    field key id=0x3dc94a19365b10ec kind=8
+    field value id=0x7ce4fd9430e80cea kind=14 elem=17 type=Item array=bounded bound=2
 
 table e8130af045a036f8.2b7dea192bb7be29
     field key id=0x3dc94a19365b10ec kind=9
@@ -169,4 +193,7 @@ union Force
 - no compatibility-affecting edits; the wire absorbs the rest
 
 ### 2026-09-07 (UTC) — Cells, Runs, Slots, Spans, Docs and Chunks: one map per value kind that carries an extent or names a buffer node (#628)
+- no compatibility-affecting edits; the wire absorbs the rest
+
+### 2026-09-07 (UTC) — Pairs, Crews and Trails: one map per value kind whose element is a pointer (#666)
 - no compatibility-affecting edits; the wire absorbs the rest

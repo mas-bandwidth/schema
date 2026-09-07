@@ -36,6 +36,10 @@ func TestTheToolWritesTheReferencesMapBytes(t *testing.T) {
 		// unbounded array, a text buffer and a byte buffer, each under a map key
 		{"map_cells", "Cells"}, {"map_runs", "Runs"}, {"map_slots", "Slots"},
 		{"map_spans", "Spans"}, {"map_docs", "Docs"}, {"map_chunks", "Chunks"},
+		// one row per value kind whose ELEMENT is a pointer (#666): a fixed
+		// array, a counted array and an unbounded array of node references,
+		// each carrying a shared node and a slot that names none
+		{"map_pairs", "Pairs"}, {"map_crews", "Crews"}, {"map_trails", "Trails"},
 	} {
 		name, rootName := tc.name, tc.root
 		data, err := os.ReadFile(root + "testdata/wire/tables/" + name + ".bin")
