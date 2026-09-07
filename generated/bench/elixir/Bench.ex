@@ -2380,6 +2380,8 @@ defmodule Bench.Bench do
       if bits_read + len * 8 > num_bits, do: throw(:invalid)
       v_player_name = binary_part(data, bits_read >>> 3, len)
       bits_read = bits_read + len * 8
+      # malformed UTF-8 is content the read refuses (SPEC §4.7)
+      if not String.valid?(v_player_name), do: throw(:invalid)
       # an interior null is content the read refuses (SPEC §4.7)
       if :binary.match(v_player_name, <<0>>) != :nomatch, do: throw(:invalid)
       if bits_read + 5 > num_bits, do: throw(:invalid)

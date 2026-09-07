@@ -379,3 +379,26 @@ test-elixir: generated/bench/tables/elixir/.stamp generated/elixir/.stamp genera
 TEST_LEGS         += test-elixir
 CONFORMANCE_LEGS  += build-conformance-elixir
 BENCH_TABLES_LEGS += generated/bench/tables/elixir/.stamp
+# Packet UTF-8 content validation, including a compiled mutation control.
+build/packet-text/elixir/.stamp: bin/schema test/packet-text/Narrow.schema
+	@mkdir -p build/packet-text/elixir/source
+	cp test/packet-text/Narrow.schema build/packet-text/elixir/source/Text.schema
+	./bin/schema generate --lang elixir --out build/packet-text/elixir build/packet-text/elixir/source/Text.schema
+	@touch $@
+
+.PHONY: packet-utf8-elixir packet-utf8-elixir-negative-control
+packet-utf8-elixir: build/packet-text/elixir/.stamp build/packet-text/cpp/driver build/packet-text/harness
+	$(MIX) format --check-formatted build/packet-text/elixir/*.ex test/packet-text/elixir/*.exs
+	./build/packet-text/harness env $(ELIXIR) test/packet-text/elixir/main.exs
+
+packet-utf8-elixir-negative-control: packet-utf8-elixir
+	@mkdir -p build/packet-text/elixir-negative/beam
+	go run ./tools/sabotage -name packet-utf8-elixir-read -out build/packet-text/elixir-negative/functions.gotext internal/codegen/elixir/functions.go
+	@printf '{"Replace":{"%s/internal/codegen/elixir/functions.go":"%s/build/packet-text/elixir-negative/functions.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-text/elixir-negative/overlay.json
+	go run -overlay=build/packet-text/elixir-negative/overlay.json ./cmd/schema generate --lang elixir --out build/packet-text/elixir-negative build/packet-text/elixir/source/Text.schema
+	$(ELIXIRC) --warnings-as-errors -o build/packet-text/elixir-negative/beam build/packet-text/elixir-negative/*.ex
+	@if ./build/packet-text/harness -mutations-only env $(ELIXIR) test/packet-text/elixir/main.exs "$(CURDIR)/build/packet-text/elixir-negative" > build/packet-text/elixir-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: Elixir UTF-8 removal passed'; exit 1; fi
+	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-text/elixir-negative/log || { cat build/packet-text/elixir-negative/log; exit 1; }
+	@echo 'packet UTF-8 Elixir negative control: removed read validation fails bit-flip agreement'
+
+test-elixir: packet-utf8-elixir packet-utf8-elixir-negative-control
