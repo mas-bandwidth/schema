@@ -187,7 +187,7 @@ func writeTree(m *tabletext.Model, inst *tabletext.Instance, root, dir string, o
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }() // only the directory handle; file writes close and report their own errors
 	// what the ROOT's shape owns at this level, whichever shape is written:
 	// every field key, and the root's own name
 	owned := map[string]bool{root: true}
@@ -244,7 +244,7 @@ func unpackKeyed(m *tabletext.Model, fv *tabletext.Field, parent *os.Root, dir s
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }() // only the directory handle; file writes close and report their own errors
 	f := fv.Def
 	written := map[string]bool{}
 	owned := map[string]bool{}

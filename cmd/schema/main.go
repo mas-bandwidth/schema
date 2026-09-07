@@ -675,7 +675,7 @@ func writeGenerated(dir string, files map[string][]byte, verbose bool) error {
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }() // only the directory handle; file writes close and report their own errors
 	for _, name := range names {
 		if err := out.WriteFile(name, files[name], 0o644); err != nil {
 			return err
