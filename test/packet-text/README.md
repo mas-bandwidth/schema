@@ -22,3 +22,10 @@ mutation-only sweep to fail its exact verdict marker. The corpus's refusal
 rows alone cannot satisfy that negative control. Both targets ride `test-c`.
 
 Normal checks never regenerate the shared corpus or packet wire goldens.
+
+`make packet-utf8-rust` runs debug and release against the same cases.
+`std::str::from_utf8` borrows the used slice, validates strictly and allocates
+nothing. A malformed payload returns `Error::Validation` in both modes;
+the former writer-only debug assertion is removed. The compiled release
+negative control must fail mutation agreement, and both checks ride
+`test-rust`.
