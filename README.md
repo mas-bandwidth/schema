@@ -124,8 +124,7 @@ against Protocol Buffers, FlatBuffers, Cap'n Proto and Avro),
 
 ## License
 
-**The compiler is AGPL-3.0, and will stay that way. The code it generates is
-yours.**
+**The compiler is AGPL-3.0. The code it generates is yours.**
 
 The compiler is licensed under the GNU Affero General Public License v3.0,
 with an explicit additional permission for generated output written into
