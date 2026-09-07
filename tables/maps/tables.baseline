@@ -21,6 +21,18 @@ table 0a53e00afba279af.7b024c46e98d3404
     field key id=0x3dc94a19365b10ec kind=8
     field value id=0x7ce4fd9430e80cea kind=17 type=ShipConfig
 
+table 2492f5fb1b05b45e.14e2eaab9cde925b
+    field key id=0x3dc94a19365b10ec kind=4
+    field value id=0x7ce4fd9430e80cea kind=14 elem=6 size=10
+
+table 2492f5fb1b05b45e.a633f1f655715cca
+    field key id=0x3dc94a19365b10ec kind=7
+    field value id=0x7ce4fd9430e80cea kind=33 size=6
+
+table 2492f5fb1b05b45e.afb728fff268814f
+    field key id=0x3dc94a19365b10ec kind=12 size=8
+    field value id=0x7ce4fd9430e80cea kind=12 size=16
+
 table Depth
     field one id=0x1a08aa1921ca5caf kind=13 type=Squad
     field many id=0x1f6459a2cea1fc02 kind=14 elem=13 type=Squad array=bounded bound=3
@@ -53,6 +65,12 @@ table ShipConfig
 
 table Squad
     field roster id=0x1c84390d304f4f42 kind=14 elem=13 array=map keykind=6
+
+table Text
+    field names id=0xafb728fff268814f kind=14 elem=13 array=map keykind=12 keybound=8
+    field wide id=0xa633f1f655715cca kind=14 elem=13 array=map keykind=7
+    field blobs id=0x14e2eaab9cde925b kind=14 elem=13 array=map keykind=4
+    field after id=0xbf82010f6f71eae9 kind=4
 
 table WideRow
     field entries id=0xc5b2a72c0845a253 kind=14 elem=13 array=map keykind=8
@@ -97,4 +115,7 @@ union Force
 - baseline REGENERATED over an unreadable one (baseline version 6, this compiler writes 7); the projection is this unit as it stands and the history above is preserved, but the previous projection could not be diffed, so no per-edit lines follow
 
 ### 2026-09-06 (UTC) — EdgeRow: a map key bound above the text walker's key buffer, and a uint64 key (#566)
+- no compatibility-affecting edits; the wire absorbs the rest
+
+### 2026-09-06 (UTC) — Text: a map whose values are string(N), wstring(N) and bytes(N), the three text value kinds (#619)
 - no compatibility-affecting edits; the wire absorbs the rest
