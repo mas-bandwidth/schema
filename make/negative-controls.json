@@ -1,0 +1,253 @@
+{
+  "groups": [
+    {
+      "name": "base",
+      "why": "Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. Measured 355 s over 101 controls.",
+      "targets": [
+        "check-zero-range-negative-control",
+        "conformance-negative-control",
+        "conformance-negative-control-absent",
+        "conformance-negative-control-block-dump",
+        "conformance-negative-control-c",
+        "conformance-negative-control-c-foreign",
+        "conformance-negative-control-go",
+        "conformance-negative-control-go-walk",
+        "conformance-negative-control-reference-surface",
+        "packet-arm-defaults-c-negative-control",
+        "packet-arm-defaults-cpp-negative-control",
+        "packet-arm-defaults-go-negative-control",
+        "packet-defaults-go-negative-control",
+        "packet-void-c-read-negative-control",
+        "packet-void-c-write-negative-control",
+        "packet-void-cpp-read-negative-control",
+        "packet-void-cpp-write-negative-control",
+        "projection-union-arm-order-negative-control",
+        "projection-variant-order-negative-control",
+        "projection-wire-law-negative-control",
+        "tables-arms-array-framing-negative-control",
+        "tables-arms-cook-arm-negative-control",
+        "tables-arms-cook-check-negative-control",
+        "tables-arms-list-edge-negative-control",
+        "tables-arms-negative-controls",
+        "tables-arms-nested-union-negative-control",
+        "tables-arms-reachable-negative-control",
+        "tables-arms-slot-index-negative-control",
+        "tables-blob-read-hooks-negative-control",
+        "tables-blob-span-negative-control",
+        "tables-block-fill-refuser-negative-control",
+        "tables-block-race-negative-control",
+        "tables-c-fuzz-negative-control",
+        "tables-c-keyed-none-refusal-negative-control",
+        "tables-c-soak-negative-control",
+        "tables-clamp-limits-negative-control",
+        "tables-cook-fuzz-negative-control",
+        "tables-cook-open-lengths-negative-control",
+        "tables-cook-open-root-negative-control",
+        "tables-cook-open-walk-negative-control",
+        "tables-cook-write-hooks-negative-control",
+        "tables-cook-write-negative-control",
+        "tables-doctags-negative-controls",
+        "tables-flat-wire-negative-control",
+        "tables-go-fuzz-extent-negative-control",
+        "tables-go-fuzz-maximum-negative-control",
+        "tables-json-clamp-prefix-negative-control",
+        "tables-json-keyed-dup-negative-control",
+        "tables-json-negative-control",
+        "tables-keyed-iteration-negative-control",
+        "tables-keyed-max-refusal-negative-control",
+        "tables-keyed-none-refusal-negative-control",
+        "tables-keyed-shift-negative-control",
+        "tables-lists-allocation-negative-control",
+        "tables-lists-clamp-negative-control",
+        "tables-lists-cook-check-negative-control",
+        "tables-lists-dead-element-negative-control",
+        "tables-lists-depth-negative-control",
+        "tables-lists-element-kind-negative-control",
+        "tables-lists-fit-negative-control",
+        "tables-lists-negative-controls",
+        "tables-lists-order-negative-control",
+        "tables-lists-preorder-negative-control",
+        "tables-lists-shared-negative-control",
+        "tables-lists-unreached-negative-control",
+        "tables-lists-walk-order-negative-control",
+        "tables-maps-ascending-negative-control",
+        "tables-maps-cap-negative-control",
+        "tables-maps-clamp-negative-control",
+        "tables-maps-dead-entry-negative-control",
+        "tables-maps-depth-negative-control",
+        "tables-maps-duplicate-negative-control",
+        "tables-maps-fit-negative-control",
+        "tables-maps-key-domain-negative-control",
+        "tables-maps-key-identity-negative-control",
+        "tables-maps-key-kind-negative-control",
+        "tables-maps-key-length-negative-control",
+        "tables-maps-negative-controls",
+        "tables-maps-place-failure-negative-control",
+        "tables-maps-sort-negative-control",
+        "tables-maps-text-order-negative-control",
+        "tables-maps-unreached-negative-control",
+        "tables-maps-value-reset-negative-control",
+        "tables-retain-fixed-class-negative-control",
+        "tables-retain-message-form-negative-control",
+        "tables-runtime-home-negative-control",
+        "tables-shared-node-negative-control",
+        "tables-view-containment-negative-control",
+        "tables-view-negative-controls",
+        "tables-was-negative-control",
+        "tables-wasrows-negative-control",
+        "tables-zero-cost-negative-control",
+        "wide-no-align-negative-control",
+        "wide-surrogate-negative-control",
+        "wide-table-byte-length-negative-control",
+        "wide-table-clamp-negative-control",
+        "wide-table-odd-length-negative-control",
+        "wide-table-surrogate-negative-control",
+        "wide-table-zero-unit-negative-control",
+        "wide-terminator-negative-control",
+        "wide-utf8-read-negative-control"
+      ]
+    },
+    {
+      "name": "block-fuzz",
+      "why": "the two block fuzz oracles, which sabotage the C++, C# and Rust block emitters together and then require all three fuzzers to go red, so one job needs both the .NET SDK and cargo. Measured 11 s over 2 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached.",
+      "targets": [
+        "tables-block-fuzz-extent-negative-control",
+        "tables-block-fuzz-maximum-negative-control"
+      ],
+      "rust": "stable",
+      "dotnet": "pin"
+    },
+    {
+      "name": "conformance",
+      "why": "one control, and it is here because its make prerequisite is the bare `conformance` target, which builds and runs all nine legs. It reads only build/conformance-rust and the manifest that run leaves behind, so narrowing that prerequisite would move it into the rust group and save this job its six SDK installs. Measured 5 s over 1 control, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached.",
+      "targets": [
+        "tables-rust-alloc-negative-control"
+      ],
+      "rust": "stable",
+      "dotnet": "pin",
+      "node": "20",
+      "dart": "3.13.2",
+      "java": "21",
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
+      "name": "cs",
+      "why": "the C# port's controls, plus the block layout and cook-open gates whose instrument is the C# reader. Measured 10 s over 10 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached.",
+      "targets": [
+        "conformance-negative-control-cs",
+        "packet-arm-defaults-cs-negative-control",
+        "tables-block-home-negative-control",
+        "tables-block-inline-array-negative-control",
+        "tables-block-layout-model-negative-control",
+        "tables-block-padding-negative-control",
+        "tables-block-pitch-negative-control",
+        "tables-cook-open-cs-lengths-negative-control",
+        "tables-cook-open-cs-root-negative-control",
+        "tables-cook-open-cs-walk-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "dart",
+      "why": "the Dart port's controls. Measured 5 s over 7 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached.",
+      "targets": [
+        "conformance-negative-control-dart",
+        "packet-arm-defaults-dart-negative-control",
+        "tables-dart-alloc-negative-control",
+        "tables-dart-fuzz-negative-control",
+        "tables-dart-names-negative-control",
+        "tables-dart-soak-negative-control",
+        "tables-dart-standalone-negative-control"
+      ],
+      "dart": "3.13.2"
+    },
+    {
+      "name": "elixir",
+      "why": "the Elixir port's controls. Measured 1 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached.",
+      "targets": [
+        "conformance-negative-control-elixir",
+        "tables-elixir-alloc-negative-control",
+        "tables-elixir-block-lead-negative-control",
+        "tables-elixir-fuzz-negative-control",
+        "tables-elixir-soak-negative-control"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
+      "name": "java",
+      "why": "the Java port's controls. Measured 6 s over 7 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached.",
+      "targets": [
+        "conformance-negative-control-java",
+        "conformance-negative-control-java-block",
+        "packet-arm-defaults-java-negative-control",
+        "tables-java-alloc-negative-control",
+        "tables-java-cook-extent-negative-control",
+        "tables-java-fuzz-negative-control",
+        "tables-java-soak-negative-control"
+      ],
+      "java": "21"
+    },
+    {
+      "name": "js",
+      "why": "the JavaScript port's controls, and the packet arm-default oracle's two JS legs. Measured 9 s over 10 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached.",
+      "targets": [
+        "conformance-negative-control-js",
+        "packet-arm-defaults-js-flat-negative-control",
+        "packet-arm-defaults-js-runtime-negative-control",
+        "tables-js-accessor-negative-control",
+        "tables-js-alloc-negative-control",
+        "tables-js-fuzz-negative-control",
+        "tables-js-json-differential-negative-control",
+        "tables-js-keyed-negative-control",
+        "tables-js-runtime-home-negative-control",
+        "tables-js-slot-negative-control"
+      ],
+      "node": "20"
+    },
+    {
+      "name": "message-form",
+      "why": "the message-form gate, on the same toolchain as base and split out of it on cost: 103 s of base's original 733 s, nearly all of it the one target that drives 46 sabotage rows, one submake each. Measured 103 s over 3 controls.",
+      "targets": [
+        "tables-message-form-count-negative-control",
+        "tables-message-form-emitter-negative-control",
+        "tables-message-form-negative-control"
+      ]
+    },
+    {
+      "name": "rust",
+      "why": "the Rust port's name gate, and the packet arm-default oracle's Rust leg. Measured 3 s over 2 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached.",
+      "targets": [
+        "packet-arm-defaults-rust-negative-control",
+        "tables-rust-names-negative-control"
+      ],
+      "rust": "stable"
+    },
+    {
+      "name": "wire-fuzz",
+      "why": "the tolerant-wire forgery fuzzers, on the same toolchain as base and split out of it on cost: 275 s of base's original 733 s, because each control rebuilds the compiler under a source overlay. Measured 275 s over 9 controls.",
+      "targets": [
+        "tables-wire-fuzz-arm-terminator-negative-control",
+        "tables-wire-fuzz-arm-width-negative-control",
+        "tables-wire-fuzz-blob-node-negative-control",
+        "tables-wire-fuzz-index-negative-control",
+        "tables-wire-fuzz-length-negative-control",
+        "tables-wire-fuzz-negative-control",
+        "tables-wire-fuzz-node-type-negative-control",
+        "tables-wire-fuzz-oracle-negative-control",
+        "tables-wire-fuzz-wide-text-negative-control"
+      ]
+    }
+  ],
+  "excluded": [
+    {
+      "target": "packet-arm-defaults-negative-controls",
+      "reason": "an alias that re-invokes make once per language for the nine packet-arm-defaults-<lang>-negative-control targets, every one of which this leg already runs in its own toolchain group. Running the alias too would need all seven SDKs on one runner to prove a second time what seven parallel jobs prove once."
+    },
+    {
+      "target": "tables-message-form-one-negative-control",
+      "reason": "a parameterized worker with no sabotage of its own: it reads SABOTAGE, SABOTAGE_FILE and SABOTAGE_TEST from the command line, and tables-message-form-negative-control, which this leg runs in the base group, drives it once for each of its 46 sabotage rows. Invoked bare it has nothing to break."
+    }
+  ]
+}
