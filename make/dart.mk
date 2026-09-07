@@ -12,6 +12,39 @@
 #   unzip into dist/ and rename dart-sdk -> dart-sdk-3.13.2
 DART ?= $(CURDIR)/dist/dart-sdk-3.13.2/bin/dart
 
+build/packet-defaults/dart/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema make/dart.mk
+	./bin/schema generate --lang dart --out build/packet-defaults/dart/defaults test/packet-defaults/Defaults.schema
+	./bin/schema generate --lang dart --out build/packet-defaults/dart/plain test/packet-defaults/Plain.schema
+	@touch $@
+
+.PHONY: packet-defaults-dart packet-defaults-dart-negative-control
+packet-defaults-dart: build/packet-defaults/dart/.stamp packet-defaults-cpp
+	$(DART) analyze build/packet-defaults/dart test/packet-defaults/dart
+	$(DART) format --set-exit-if-changed --output=none build/packet-defaults/dart
+	$(DART) --enable-asserts test/packet-defaults/dart/main.dart testdata/wire/packet-defaults
+	$(DART) compile exe -o build/packet-defaults/dart/checker test/packet-defaults/dart/main.dart
+	./build/packet-defaults/dart/checker testdata/wire/packet-defaults
+
+packet-defaults-dart-negative-control: packet-defaults-dart
+	@mkdir -p build/packet-defaults/dart-negative
+	go run ./tools/sabotage -name packet-defaults-dart-constructor-bytes \
+		-out build/packet-defaults/dart-negative/dart.gotext internal/codegen/dart/dart.go
+	@printf '{"Replace":{"%s/internal/codegen/dart/dart.go":"%s/build/packet-defaults/dart-negative/dart.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/packet-defaults/dart-negative/overlay.json
+	go build -overlay=build/packet-defaults/dart-negative/overlay.json -o build/packet-defaults/dart-negative/schema ./cmd/schema
+	./build/packet-defaults/dart-negative/schema generate --lang dart --out build/packet-defaults/dart-negative/generated test/packet-defaults/Defaults.schema
+	@sed -e 's|../../../build/packet-defaults/dart/defaults|$(CURDIR)/build/packet-defaults/dart-negative/generated|' \
+		-e 's|../../../build/packet-defaults/dart/plain|$(CURDIR)/build/packet-defaults/dart/plain|' \
+		test/packet-defaults/dart/main.dart > build/packet-defaults/dart-negative/main.dart
+	$(DART) compile exe -o build/packet-defaults/dart-negative/checker build/packet-defaults/dart-negative/main.dart
+	@if ./build/packet-defaults/dart-negative/checker testdata/wire/packet-defaults > build/packet-defaults/dart-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: missing constructor bytes passed in Dart'; exit 1; fi
+	@grep -Fq 'packet-default constructor bytes' build/packet-defaults/dart-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: Dart failed for another reason'; cat build/packet-defaults/dart-negative/log; exit 1; }
+	@echo 'packet defaults Dart negative control: missing constructor bytes fail the runtime check'
+
+test-dart: packet-defaults-dart packet-defaults-dart-negative-control
+
 # the Dart target: generated libraries only, no wiring file at all —
 # generated Dart is self-contained (the bitpacker is inlined per issue #155),
 # so there is no runtime checkout and no pubspec; the test legs import the
