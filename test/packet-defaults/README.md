@@ -71,3 +71,13 @@ the reader API returns a verdict rather than a cursor, every pin must accept
 its exact bit bound and refuse one bit less on a separate object. The named
 constructor-byte control builds before failing its marker, and both checks
 ride `test-java`. Table-closure defaults stay refused.
+
+`make packet-defaults-js` checks both runtime and flat codecs in development
+and production on pinned Node 20.20.2. Runtime reads check the consumed bits;
+flat reads must accept the exact bit bound and refuse one bit less. A
+`ChoiceEnvelope` type places its union at bit zero so the flat API, which
+exposes type codecs, consumes the same standalone union pin. Existing eight
+pins stay unchanged. Constructors, in-place reset, zero forms, unsigned
+33/64-bit masks, defaultless values, counted backing storage and repeated
+selection all run in both tiers. The constructor-byte sabotage syntax-checks
+and imports both modules before failing its marker. Both checks ride `test-js`.

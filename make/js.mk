@@ -26,6 +26,34 @@ NODE ?= $(CURDIR)/dist/node-v20.20.2-darwin-arm64/bin/node
 # pin from the environment and falls back to PATH
 export NODE
 
+build/packet-defaults/js/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema make/js.mk
+	./bin/schema generate --lang js --out build/packet-defaults/js/defaults test/packet-defaults/Defaults.schema
+	./bin/schema generate --lang js --out build/packet-defaults/js/plain test/packet-defaults/Plain.schema
+	@touch $@
+
+.PHONY: packet-defaults-js packet-defaults-js-negative-control
+packet-defaults-js: build/packet-defaults/js/.stamp packet-defaults-cpp
+	$(NODE) test/packet-defaults/js/main.mjs testdata/wire/packet-defaults
+	NODE_ENV=production $(NODE) test/packet-defaults/js/main.mjs testdata/wire/packet-defaults
+
+packet-defaults-js-negative-control: packet-defaults-js
+	@mkdir -p build/packet-defaults/js-negative
+	go run ./tools/sabotage -name packet-defaults-js-constructor-bytes \
+		-out build/packet-defaults/js-negative/js.gotext internal/codegen/js/js.go
+	@printf '{"Replace":{"%s/internal/codegen/js/js.go":"%s/build/packet-defaults/js-negative/js.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/packet-defaults/js-negative/overlay.json
+	go build -overlay=build/packet-defaults/js-negative/overlay.json -o build/packet-defaults/js-negative/schema ./cmd/schema
+	./build/packet-defaults/js-negative/schema generate --lang js --out build/packet-defaults/js-negative/generated test/packet-defaults/Defaults.schema
+	$(NODE) --check build/packet-defaults/js-negative/generated/Defaults.js
+	$(NODE) --check build/packet-defaults/js-negative/generated/DefaultsFlat.js
+	@if $(NODE) test/packet-defaults/js/main.mjs testdata/wire/packet-defaults "$(CURDIR)/build/packet-defaults/js-negative/generated" > build/packet-defaults/js-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: missing constructor bytes passed in JavaScript'; exit 1; fi
+	@grep -Fq 'packet-default constructor bytes' build/packet-defaults/js-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: JavaScript failed for another reason'; cat build/packet-defaults/js-negative/log; exit 1; }
+	@echo 'packet defaults JavaScript negative control: missing constructor bytes fail the runtime check'
+
+test-js: packet-defaults-js packet-defaults-js-negative-control
+
 # the JavaScript target: generated ES modules only, no wiring file at all —
 # generated code never imports the runtime (every wire call is a method on
 # the stream parameter), so the serialize.js sibling checkout is a test-leg

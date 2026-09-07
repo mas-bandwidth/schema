@@ -60,5 +60,6 @@ func (jsTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 }
 
 func init() {
+	registerPacketValueDefaultCarrier("js")
 	registerBuiltin(jsTarget{}, true, false, false, false)
 }

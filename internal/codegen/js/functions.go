@@ -141,6 +141,7 @@ func (g *gen) emitInitField(f *ir.Field, path, ind string) {
 	switch {
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.pf("%s%s.fill(0);\n%s%sLength = 0;\n", ind, name, ind, name)
+		g.emitByteDefault(f, name, ind)
 	case f.Array != ir.ArrayNone:
 		if f.Type.Kind == ir.TNamed && isClassRef(f.Type.Ref) {
 			index := fmt.Sprintf("initIndex%d", g.initDepth)
