@@ -3,9 +3,9 @@
 [![CI](https://github.com/mas-bandwidth/schema/actions/workflows/ci.yml/badge.svg)](https://github.com/mas-bandwidth/schema/actions/workflows/ci.yml)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
-![Schema — a game world taking shape from an architectural blueprint](images/schema.png)
-
 **Schema. The data language for games.**
+
+![Schema — a game world taking shape from an architectural blueprint](images/schema.png)
 
 Schema is a data language where you define your constants, enums, flags, types and tables for your game. 
 
