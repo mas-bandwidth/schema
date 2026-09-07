@@ -130,6 +130,20 @@ timing test/conformance/harness/wirefuzz.go 1 the wire fuzzer's throughput line 
 
 timing test/tables/cook_main.cpp 2 the cook's open-cost gate (§7, §7.5): open time flat across 1 MB and 100 MB, paired medians — a constant-time header match, no shape named
 timing test/cs-cook/src/Program.cs 3 the cook's open-cost gate on the C# leg (§7, §7.5): the same two fixtures, the same paired medians, one warm-up pass because a tiered runtime measured cold measures tier-up — a constant-time header match, no shape named
+
+# THE RESOLVING WALK's LINEARITY BOUND (docs/SPEC-TABLES.md §6.6) is the same
+# kind of instrument as the cook's, and for the same reason: it measures a cost
+# the FILE can drive, not a cost the schema has. Retain-unknown copies an
+# unknown field out with every reference resolved, and a port that sized each
+# framed content by walking it and then walked it again to write it would
+# double its work at every level of a nesting the wire chooses. The gate is an
+# ABSOLUTE ceiling, fifty milliseconds, on a record forty bodies deep, so the
+# quadratic walk does not return and the linear one is microseconds. It names
+# no shape, reads no field and reports no rate: the printed line is a
+# diagnostic beside a pass or fail, and what a red arm would mean is that
+# somebody put the second pass back.
+
+timing test/tables/retain_main.cpp 4 the resolving walk's linearity bound (§6.6): an absolute ceiling on a record forty bodies deep, so a walk that measures each framed content twice does not return, no rate reported and no shape named
 timing test/conformance/elixir/driver_impl.ex 3 the Elixir SOAK's deadline and its interval reports (docs/SPEC-TABLES.md, the reading tier's allocation budget): a clock that decides when to stop and when to print, never a rate — the soak's instrument is the live heap and the binary memory against a warm baseline, and the COUNT half beside it (make tables-elixir-alloc-audit) uses no clock at all
 timing test/conformance/rust/src/main.rs 3 the Rust SOAK's deadline and its interval reports (docs/SPEC-TABLES.md, "every read path allocates nothing"): a clock that decides when to stop and when to print, never a rate — the soak's instrument is LIVE ALLOCATED BYTES and it emits no timing number at all
 

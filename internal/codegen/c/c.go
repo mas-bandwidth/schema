@@ -421,7 +421,11 @@ func (g *gen) emitUnion(d *ir.Union) {
 	g.pf("   live; None = 0 is the empty union, and the tag range is [0, %d]. */\n", d.Max)
 	g.pf("typedef %s %s;\n", cUint(d.StorageBits), tag)
 	g.pf("#define %s_NONE 0\n", screaming(tag))
+	hasPayload := false
 	for i, v := range d.Variants {
+		if !v.Void() {
+			hasPayload = true
+		}
 		g.pf("%s", ir.DocComment(v.Doc, "", "//"))
 		g.pf("#define %s_%s %d\n", screaming(tag), screaming(v.Name), i+1)
 	}
@@ -437,8 +441,8 @@ func (g *gen) emitUnion(d *ir.Union) {
 	}
 	g.pf("        default: return \"???\";\n    }\n}\n\n")
 
-	if len(d.Variants) == 0 {
-		g.pf("/* An empty union holds only None; C forbids an empty union member, so the\n")
+	if !hasPayload {
+		g.pf("/* No arm has a payload; C forbids an empty union member, so the\n")
 		g.pf("   struct is the tag alone. */\n")
 		g.pf("typedef struct %s {\n    %s type;\n} %s;\n\n", d.Name, tag, d.Name)
 	} else {
@@ -446,6 +450,9 @@ func (g *gen) emitUnion(d *ir.Union) {
 		g.pf("    %s type;\n", tag)
 		g.pf("    union {\n")
 		for _, v := range d.Variants {
+			if v.Void() {
+				continue // a payload-free arm has only its tag (SPEC §4.8)
+			}
 			g.pf("        %s %s;\n", v.Type, v.Name)
 		}
 		g.pf("    } as;\n")
@@ -635,6 +642,10 @@ func (g *gen) emitUnionWire(d *ir.Union) {
 		g.call("    ", fmt.Sprintf("serialize_write_bits( stream, (serialize_uint32_t) value->type, %d )", bits))
 		g.pf("    switch ( value->type )\n    {\n")
 		for i, v := range d.Variants {
+			if v.Void() {
+				g.pf("        case %d:\n            return 1; /* payload-free arm — the tag is the whole wire (SPEC §4.8) */\n", i+1)
+				continue
+			}
 			g.pf("        case %d:\n            return write_%s( stream, &value->as.%s );\n", i+1, snake(v.Type), v.Name)
 		}
 		g.pf("        default:\n            return 1; /* None — the tag is the whole wire (SPEC §4.8) */\n")
@@ -655,6 +666,10 @@ func (g *gen) emitUnionWire(d *ir.Union) {
 	g.pf("    switch ( value->type )\n    {\n")
 	for i, v := range d.Variants {
 		g.pf("        case %d:\n", i+1)
+		if v.Void() {
+			g.pf("            return 1; /* payload-free arm — the tag is the whole wire (SPEC §4.8) */\n")
+			continue
+		}
 		if v.Ref != nil && structHasDefaults(v.Ref) {
 			g.pf("            value->as.%s = new_%s();\n", v.Name, snake(v.Type))
 		} else {

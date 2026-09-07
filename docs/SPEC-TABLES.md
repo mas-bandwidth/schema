@@ -1477,9 +1477,11 @@ field. The enum-KEYED spelling `[E]Body` is a named follow-on (§15): a keyed
 body elides slots by name (§3.2), and a `None` slot there wants its rule
 stated before it is wire, as `[E]*T` does.
 
-**A union whose arms do not all name declared `type`s is a TABLE-CLOSURE
-construct.** It is emitted beside the tables, in C++ in the Table header
-after the tables its arms name and never in the packet header, and a `type`
+**A union with a payload that is not a declared `type` is a TABLE-CLOSURE
+construct.** Payload-free arms are outside that class and ride the packet
+wire in all nine backends (SPEC §4.8). A table-closure union is emitted beside
+the tables, in C++ in the Table header after the tables its arms name and
+never in the packet header, and a `type`
 body that holds one is refused by name, as is such a union that no table
 reaches (§11). A table holding one has no BLOCK form, by §19's standing rule
 for every union in a block closure. The packet wire's encoding of a general
@@ -4792,8 +4794,8 @@ damage (§3). A wire that had shipped would have taken `3` on that same rule.
 #### Retention, and what does not move
 
 **RETENTION (§6.6) ON A MESSAGE BODY: the load side is unchanged and the save
-side REFUSES.** Retention itself is NOT BUILT in any language (§6.6, owed as
-schema#525), so this paragraph is the rule that lands WITH it.
+side REFUSES.** The C++ reference carries the WRITE half of this
+paragraph, which is the refusal, and the form 2 `LoadRetain` is not built (§6.6).
 
 `LoadRetain` reads a form-`2` body as it reads a file's, the resolving walk
 replacing every reference with the id it names, against the connection's
@@ -5468,9 +5470,10 @@ entries announces about 5 KB once.
   checker accepts a planted name, or accepts it as a `was`.
 - **Retention across the forms.** A body loaded with retention and saved in form
   `2`, which must return `-1` and write nothing, and the same load saved in form
-  `1`, which must write every retained record under §6.6's rules. The row lands
-  WITH retention, which is not built in any language (§6.6, schema#525), so the
-  suite carries no test for it yet and carries no skipped one either.
+  `1`, which must write every retained record under §6.6's rules. The C++ reference holds
+  the form 2 half as a COMPILE-TIME refusal that names itself (§6.6), and the
+  form 1 half rides in the reference's own retain gate; the suite gains the
+  row when a second port carries retention.
 - **The cost rows.** The twelve pinned wires, the batch vector and the
   announcement. A byte figure in the table above that drifts moves a pinned wire.
 
@@ -6839,10 +6842,16 @@ rather than this one.
 **RETENTION IS THE VARIABLE CLASS'S, AND A FIXED-CLASS ROOT GETS NONE.** A
 fixed-class root is a value (§6.1): it has no region and no node directory, so
 the path's first step names nothing and the anchor the round trip rests on does
-not exist. **`LoadRetain` on a fixed-class root is REFUSED BY NAME**, in the
-source the unit does emit rather than as a missing symbol, on §11's rule for a
+not exist. **`LoadRetain` on a fixed-class root is REFUSED BY NAME**, in EVERY
+unit's own source rather than as a missing symbol, on §11's rule for a
 surface a class does not carry, and `MeasureRetain` and `SaveRetain` go with
-it. The three suffixes stay claimed on EVERY closure member all the same
+it. **Every unit, including one whose tables are all fixed-class**: the three
+names are function templates that define nothing and instantiate nothing until
+one is called, so a unit carrying no retention machinery pays nothing for them,
+and §2.2's zero-cost gate, which scans for the pointer, map and list symbols,
+finds none of them here. A fixed-class root's answer is the same sentence
+wherever it is declared, rather than a named refusal in one unit and a linker
+error in another. The three suffixes stay claimed on EVERY closure member all the same
 (§11), fixed and variable alike, because a table gains or loses pointers as an
 edit and a name that is free today must not become a collision tomorrow. **The
 conformance rows below live on POINTERED units** for the same reason, and the
@@ -6861,12 +6870,18 @@ retain.ids = ids;
 retain.id_capacity = sizeof( ids ) / sizeof( ids[ 0 ] );
 
 TableReport report;                        // zeroed once, read at the end
-SceneLoadRetain( scene, region, region_size, wire, wire_size,
-                 &retain, &report );
+const Scene * scene = SceneLoadRetain( region, region_size,
+                                       wire, wire_size,
+                                       &retain, &report );
 // ... the game edits values ...
 int64_t size = SceneMeasureRetain( scene, &retain );
 SceneSaveRetain( scene, &retain, buffer, size, &report );
 ```
+
+`LoadRetain` takes the region and the wire and ANSWERS the root, exactly as
+`Load` does (§6.5), and the root it answers is what `MeasureRetain` and
+`SaveRetain` take. The retention buffer is the one argument the three share,
+and it is the same buffer across all three by construction.
 
 - **`TableRetain` is a byte buffer, a capacity, an id list, an id capacity,
   and what has been used of each.** It allocates nothing, it never grows, and
@@ -6903,7 +6918,10 @@ SceneSaveRetain( scene, &retain, buffer, size, &report );
   `SaveRetain` in `tableGeneratedVerbs`, and **Dart's three member spellings**
   `loadRetain`, `measureRetain` and `saveRetain`, which take that backend's
   nine claimed field-name verbs to twelve (§11), plus `TableRetain` in the
-  Dart library-scope registry the names negative control holds.
+  Dart library-scope registry, which lands with THAT PORT rather than with the
+  feature: the registry says what a backend DEFINES, and a gate holds it to
+  that, so a name Dart does not define yet cannot be registered there without
+  taking the gate away.
 
 **THE RETAINED IDS' STORAGE IS THE CALLER'S, DECLARED BY CAPACITY, AND THE
 CODEC NEVER ALLOCATES.** A save names every id it writes through a table, and
@@ -6977,7 +6995,7 @@ number and never has to reason about the list.
 |---|---|---|
 | a FIELD id this reader cannot name, of any kind but those below | **yes** | a self-framed unit, and no id this reader writes can collide with it |
 | a field whose payload carries a NODE INDEX anywhere in it: kind `17` itself, an ARRAY whose element kind is `17` (§3.1), and a table, union, array or map whose recursively walked payload meets a `17` at ANY depth | no | the payload is a NODE INDEX into the writer's numbering, and this reader neither keeps that numbering nor retains the record it names, so a re-emitted index would point at another node or at nothing. A `17` met INSIDE an unknown table's or union's payload rejects the WHOLE record, because a record is atomic and a field holding a node index is not self-contained: a save can omit or renumber the node it names. The unrelated unknown siblings inside that outer field are lost with it, and that is the trade, stated: one `retain_lost` for the record and never a partial one |
-| the RESERVED node-table field, id `0xFFFFFFFFFFFFFFFF` under kind `12` (§3.1) | no | it is the writer's whole numbering. A build with no kind `17` counts it one `unknown`, and re-emitting it would put a second numbering in a file whose own numbering the writer re-derives |
+| the RESERVED node-table field, id `0xFFFFFFFFFFFFFFFF` under kind `12` (§3.1) | no | it is the writer's whole numbering, and re-emitting it would put a second numbering in a file whose own numbering the writer re-derives. **It is excluded BY CONSTRUCTION and not by a branch**: every variable body either consumes the id, in the one body whose transport it is, or refuses it, in every other, so it never reaches the unknown arm at all, and a fixed root gets no retention. A build with no kind `17` counts it one `unknown` on the plain read exactly as it always did |
 | an unknown ENUM variant reference (§3) | no | the FIELD is the reader's, and the reader writes its own value under that id, so a retained copy would be a second occurrence of an id the reader already wrote |
 | an unknown UNION arm id (§3) | no | the same, one level in: the union field is the reader's |
 | an unknown KEYED-ARRAY slot (§3.2) | no | a slot is not a field, the reader rewrites the array body whole, and a slot has nowhere to append to |
@@ -7023,6 +7041,32 @@ the sixty-four-bit id it names**, and every length that frames a rewritten
 reference recomputed. It is one walk driven by §3's skip rules and nothing
 else, and it runs in the other direction at save.
 
+**IT IS ONE PASS EACH WAY, and its cost is LINEAR IN THE RECORD'S BYTES.** The
+lengths inside a record are the port's own spelling and nothing outside the
+reader ever reads them, so a port writes each one AFTER the content it frames
+rather than before, and a record costs one pass to capture. The save cannot do
+that, because a wire length is canonical LEB128 and rides first, so it takes
+one POST-ORDER pass that computes each content's wire size and leaves it where
+the emit can read it. **A port that instead measured a content by walking it,
+then walked it again to write it, would double its work at every level of a
+nesting the FILE chooses**, and a field of a couple of hundred bytes would not
+return. That is a bound the wire can drive, and §6.6's security bound forbids
+it. Measured on the reference over one unknown table field, `-O3 -DNDEBUG`, best
+of seven: at nesting depth 1 the record is 55 bytes and `LoadRetain` costs 1.5
+times the plain `Load` of the same wire, and at depth 8 the record is 230 bytes
+and it costs 4.1 times. `SaveRetain` costs 1.2 times the plain `Save` at depth 1
+and 1.9 times at depth 8. The ADDED cost per record byte is the same at every
+one of those readings, near one nanosecond on the load and near one on the save,
+and the multiple grows only because the record does: the plain `Load` skips the
+whole field by its outer framing, so its own cost barely moves between the two
+depths and the multiple is the record's size read against a flat denominator.
+
+**The walk's nesting cap is a SMALL STATED CONSTANT: 64 nested bodies.** A
+retained record's inner nesting is the WRITER's and not this build's, so it is
+the one depth on this path a file can drive, and a record past the cap is
+dropped on the same rule as any other shape the walk cannot take. It bounds the
+recursion and nothing else: with the walk linear, no cost rests on it.
+
 **A retained record is READER-PRIVATE.** It is not a wire form: it has no form
 byte, no version, no declared byte order, and nothing ever writes one to disk
 or hands one to another process or another build. What this page specifies is
@@ -7065,8 +7109,11 @@ nothing to walk.
 references means reading the field's inner structure, which the plain read did
 not do: the plain read skipped the whole field by its outer framing and was
 right to. So the walk can meet damage the read never looked at: a reference
-above the id table's entry count, a non-canonical length, an inner body whose
-terminator falls short, a nested `L` that runs past its parent. **Any of those
+above the id table's entry count, a reference at an id-table entry of ZERO,
+which names no id at all, a reference at one of the three RESERVED ids (§3.1,
+§3.3), which would be re-emitted into a nested body where it is malformed, a
+non-canonical length, an inner body whose terminator falls short, and a nested
+`L` that runs past its parent. **Any of those
 DROPS THE RECORD, counts one `retain_lost`, and changes nothing else.** In
 particular it **never raises `malformed` on the plain read**: the outer
 framing was sound, the enclosing body walked past the field correctly, every
@@ -7100,7 +7147,11 @@ without re-reading its own error handling.
   DATA-DRIVEN, a map or an unbounded array, be addressed by the same step a
   union and a nested table take: a flat ordinal over a body would have to
   count elements the wire supplies, and an arm-indexed one would have no
-  room for an element. **A pointer field is not a step**, because its target
+  room for an element. **An ARRAY OF UNIONS takes TWO steps and not one**:
+  the array field's step names the element by its index, and the element's
+  own step names the arm by its ordinal, because the array and the union are
+  two bodies and a step descends through one field at a time.
+  **A pointer field is not a step**, because its target
   is a node and takes a first step of its own. **The retention form encodes
   the pair**, both numbers, for every step after the first.
 - **THE ARM ORDINAL IS WHY A SWITCHED ARM DROPS ITS RECORDS.** A caller that
@@ -7274,22 +7325,46 @@ above), the fixed class's own row excepted:
 - a retained field whose inner structure is damaged inside sound outer
   framing, pinning `retain_lost` at one, `malformed` at zero, and every
   sibling field's value intact. Red if the read reports damage it did not see.
-- **SIX ROWS, one per excluded class and each class named ONCE**, every row
-  pinning `retain_lost` at one and `retained` unmoved. Red if the class is
-  retained, and red if the counter lands anywhere but one. The
+- **FIVE ROWS, one per excluded class a wire can carry to the unknown arm**,
+  every row pinning `retain_lost` at one and `retained` unmoved. Red if the
+  class is retained, and red if the counter lands anywhere but one. The
   NODE-INDEX class's row is the RECURSIVE shape, which is the widest case it
   has: an unknown outer table holding a nested pointer three bodies down,
   beside an unknown scalar in that same outer field, with the save carrying
   nothing of the outer field. Red if a leg re-emits the node index, keeps the
   scalar sibling as a record of its own, or counts more than one. The other
-  five rows are the reserved node-table field, an unknown enum variant
-  reference, an unknown union arm id, an unknown keyed-array slot, and a node
-  record whose type id this reader cannot name.
-- an id list one entry short of the retained ids a wire carries: the record
-  whose id has no entry is dropped, `retain_lost` counts one, the save answers
-  the size the measure gave, and the file's own id table carries every other
-  retained id in first-use order. Red if the save is refused, if a record
-  rides without its id, or if the generated id table grew an entry.
+  four rows are an unknown enum variant reference, an unknown union arm id, an
+  unknown keyed-array slot, and a node record whose type id this reader cannot
+  name. **The SIXTH class, the reserved node-table field, has no row, because
+  it is excluded by construction and a test cannot reach it**: every variable
+  body consumes or refuses the id before the unknown arm, and a fixed root gets
+  no retention.
+- an id list one entry short of the retained ids a wire carries: the records
+  whose id has no entry are dropped, `retain_lost` counts EXACTLY ONE for each
+  such record, the save answers the size the measure gave, and the file's own
+  id table carries every other retained id in first-use order. Red if the save
+  is refused, if a record rides without its id, if the count is anything but
+  one per dropped record, or if the generated id table grew an entry.
+- **a retained record forty bodies deep, loaded and saved inside an ABSOLUTE
+  time bound**, with a record one past the walk's cap refused by name and the
+  last depth the cap admits still riding. Red if the walk is not one pass each
+  way: a leg that measures a content by walking it and then walks it again to
+  write it doubles at every level, and this row does not return.
+- **a body-holding field written TWICE with DISJOINT parts**, an enum-keyed
+  array whose two occurrences carry different slots, and a list whose second
+  occurrence is INERT. Both sets of records survive to the save and the writer
+  reads both back. Red if a leg discards at the field on either, which loses
+  the records under the parts the second occurrence never touched, and loses
+  them with no counter moving to say so.
+- **the resolution half read back**: a retained field of kind `13` whose body
+  carries an enum's variant reference, a union's arm, an enum-keyed body's
+  keys, a nested table body and an array of table bodies, every value read
+  again by the build that wrote it. Red if any of the five kinds the walk
+  RESOLVES is copied verbatim instead, which the permuted trailer turns into a
+  reference pointing at another name.
+- **the allocation audit brackets the WHOLE family and not `LoadRetain` alone**:
+  the loads, the measure and the saves all run inside one mark. Red if any of
+  them reaches the allocator.
 - a FIXED-class root, whose `LoadRetain` is refused by name. Red if the call
   compiles, and red if the refusal is a missing symbol rather than a named
   one.
@@ -7315,10 +7390,14 @@ than from a backend, and it carries no retention today. The leg is not
 buildable until it does, and that is part of what the feature costs rather than
 a detail of it.
 
-**Backend status: NOT BUILT, in any language.** No port carries `TableRetain`
-or the three calls, no generated file mentions them, `internal/tablewire` has
-no retention, and this subsection is the specification a port is written from
-rather than a description of the tree. Owed as schema#525.
+**Backend status: the C++ REFERENCE carries it, and no port does.** The
+reference emits `TableRetain`, the three verbs on every variable-class root,
+the refusal on every fixed-class one, and a second family of body functions
+beside the three the wire already had, so `Load`, `Measure` and `Save` are
+unchanged. What is still owed is the eight ports, `internal/tablewire`'s own
+retention and the fuzzer leg that needs it (§4.2), and the MESSAGE form's
+`LoadRetain` (§3.3): the form 2 write refuses by name and the form 2 read is
+not built.
 
 ## 7. The cooked form
 
@@ -9870,18 +9949,20 @@ in build version (§20.5).
   one file-name collision, and nothing else.
 - **A TABLE-CLOSURE union outside a table closure** (§2.6), from both sides:
   a `type` body holding one, and one that no table reaches. A union
-  declared for the type wire takes `type` payloads only, because types are
-  value semantics and the general arms wait on the ports (SPEC §4.8, §15).
+  declared for the type wire takes `type` payloads or payload-free arms,
+  because types are value semantics and the general arms wait on the ports
+  (SPEC §4.8, §15).
   The class is a union with a `table` arm, and a union with any arm whose
   PAYLOAD is not a declared `type` — a pointer, a scalar, an enum, a flags
   mask, a string, a `bytes`, an array — each refusal naming the arm that
   makes it one. **A payload-free arm is outside the class**: it has no
   payload, so it rides the packet wire as its tag alone and a `type` body
-  takes it (SPEC §4.8). What that arm meets instead is the per-target
-  refusal below. And **such a union under every backend but C++**, refused naming
-  the union and the target: the ports are a named follow-on (§15), and a
-  port that emitted the union would name a table it never declares, or
-  overlay storage its fixed-class codecs never met.
+  takes it in all nine backends (SPEC §4.8). **A payload-free arm reached by
+  a table closure remains C++ only**, and the other eight targets refuse it
+  naming the union and the target. And **a TABLE-CLOSURE union under every
+  backend but C++** is refused naming the union and the target: the ports are
+  a named follow-on (§15), and a port that emitted the union would name a
+  table it never declares, or overlay storage its fixed-class codecs never met.
 - **On an ARM** (§2.6, which states each reason): a specified default; `?`;
   `was`; `json`; an enum-keyed array `[E]T`; an `if` guard; and **a MAP
   (§2.8) or an UNBOUNDED ARRAY (§2.9)**, whose elements live in the holder's
@@ -9919,9 +10000,9 @@ in build version (§20.5).
   types share one symbol table (§13.1), which is what makes the generated
   surface unprefixed and collision-free — so every name a closure member
   claims is refused to everything else. A member `X` claims `X` followed by
-  each of these **41 suffixes**, and a declaration spelling one of them is
+  each of these **52 suffixes**, and a declaration spelling one of them is
   refused naming the collision — the block form's nine and the C backend's
-  seven follow below, for **57 in all**:
+  seven follow below, for **68 in all**:
 
   ```
   Measure  MeasureBody  Save  SaveBody  SaveBodyFields  Load  LoadBody
@@ -9933,15 +10014,27 @@ in build version (§20.5).
   Open  TableFields  TableInfo
   FromJson  ToJson  ToJsonMeasure  Table
   MeasureMessages  SaveMessages  LoadMessages
+  LoadRetain  MeasureRetain  SaveRetain  SaveRetainMessages
+  LoadBodyRetain  MeasureBodyRetain  SaveBodyRetain  SaveBodyFieldsRetain
+  MeasureWireRetain  SaveWireRetain  NodeBodyRetain
   ```
 
   The set is claimed for EVERY closure member, not only pointer-bearing
   ones: a table gains or loses pointers as an edit, and a name that was
   free yesterday must not become a collision tomorrow. That list is the
-  checker's own, and this section is held to it: the three lists here — 41, then
-  the block form's nine, then the C backend's seven — are `tableGeneratedVerbs`
-  entire, spelling for spelling and 57 in all, because a claim the page states
+  checker's own, and this section is held to it: the three lists here, 52, then
+  the block form's nine, then the C backend's seven, are `tableGeneratedVerbs`
+  entire, spelling for spelling and 68 in all, because a claim the page states
   and the checker does not make is a name a user may take.
+
+  **RETAIN-UNKNOWN'S ELEVEN ARE THREE AND EIGHT** (§6.6). `LoadRetain`,
+  `MeasureRetain` and `SaveRetain` are the SURFACE the feature owes this
+  section. The other eight are what carries them, and they are claimed on
+  this list's own rule because they are EMITTED: the second family of body
+  functions, the wire pair a pointered root takes, the node dispatch that
+  reaches each record's own body, and `SaveRetainMessages`, which is REFUSED
+  BY NAME on a form 2 write (§3.3) and is a definition rather than only a
+  claim for exactly that reason.
 
   **`Open` AND `Cook` ARE BOTH EMITTED NOW — in different languages, and that is
   what the C# rule below is for. `OpenWalk` was RETIRED.** The C++ table backend
@@ -10139,7 +10232,7 @@ in build version (§20.5).
     reached through its owner, and a declaration lowers to a module rather than
     to a function of one.
 
-    **DART ADDS SIX, WIDENS SEVEN, AND CLAIMS NINE VERBS AGAINST FIELD
+    **DART ADDS SIX, WIDENS SEVEN, AND CLAIMS TWELVE VERBS AGAINST FIELD
     NAMES.** A Dart library is a file and its privacy is per library, so a
     runtime shared across a unit's files is PUBLIC, and every spelling of it
     is claimed: `TableEnumVocab` (the per-enum vocabularies are its static
@@ -10160,12 +10253,13 @@ in build version (§20.5).
     **And its verbs are MEMBERS**, so a different claim applies to them: a
     table's verbs are methods on its class and a closure `type`'s ride on
     `extension <Name>Table on <Name>` — so `Table` joins the suffix set — and
-    a FIELD whose Dart spelling is `reset`, `measure`, `save`, `saveBody`,
-    `load`, `loadBody`, `fromJson`, `toJson` or `toJsonMeasure` is refused on
+    a FIELD whose Dart spelling is one of the twelve (`reset`, `measure`, `save`,
+    `saveBody`, `load`, `loadBody`, `fromJson`, `toJson`, `toJsonMeasure`,
+    `loadRetain`, `measureRetain` or `saveRetain`) is refused on
     every closure member, because on a class it collides with the method and
-    on an extension it silently hides it. The nine are the whole per-member
+    on an extension it silently hides it. The twelve are the whole per-member
     surface: the descriptors stay library-scope constants and the accessors
-    stay on `<Name>TableFields`, precisely so the list is nine and not twenty.
+    stay on `<Name>TableFields`, precisely so the list is twelve and not twenty-five.
 
   **The view's own unit-scope spellings are refused as declaration names in
   every unit, always** (§8.3): `UnitView`, `UnitViewInfo`, `ViewType`,
@@ -11412,14 +11506,14 @@ inspects everything in the schema built:
   element's body ends, and that is schema#579.
 - **GENERAL ARMS ON THE PACKET WIRE** (SPEC §4.8, §2.6): the encoding is
   stated where the packet union is, and what waits is the nine backends'
-  packet codecs. Until they land, a union whose arms do not all name
-  declared `type`s is a table-closure construct, refused by name outside
-  one (§11).
-- **A UNION WITH GENERAL ARMS IN EVERY OTHER BACKEND** (§2.6): C++ and the
-  tool carry the scalar, enum, `flags`, string, `bytes`, array, pointer,
-  nested-union and payload-free arms, and every other backend refuses a
-  unit that declares one, by name (§11). What a port needs is the arm
-  payload framing in its union paths — measure, save, load, the
+  packet codecs. Until they land, a union with a payload that is not a
+  declared `type` is a table-closure construct, refused by name outside
+  one (§11). Payload-free arms already ride as the tag alone in all nine.
+- **A UNION WITH GENERAL ARMS ON THE TABLE WIRE IN EVERY OTHER BACKEND**
+  (§2.6): C++ and the tool carry the scalar, enum, `flags`, string, `bytes`,
+  array, pointer, nested-union and payload-free arms, and every other backend
+  refuses a unit whose table closure reaches one, by name (§11). What a port needs is
+  the arm payload framing in its union paths — measure, save, load, the
   descriptors' per-arm field column, the text form's arm-value row, and the
   walks that descend a pointer arm — held to the corpus instances and
   hostile rows the harness carries.

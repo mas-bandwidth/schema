@@ -263,7 +263,7 @@ func (g *tableGen) emitKeyedTriples(f *ir.Field, kind int, ind string, widened b
 	g.pf("%s        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->malformed = true; break; }\n", ind)
 	g.pf("%s        %s slot = %s::None;\n", ind, f.KeyEnum, f.KeyEnum)
 	g.pf("%s        if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )\n%s        {\n", ind, ind)
-	g.pf("%s            r.report->unknown++; // a slot this reader cannot name\n", ind)
+	g.pf("%s            r.report->unknown++;%s // a slot this reader cannot name\n", ind, g.retainLostInline())
 	g.pf("%s            sub.offset += (int64_t) elem_len;\n%s            continue;\n%s        }\n", ind, ind, ind)
 	g.pf("%s        {\n%s            TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );\n", ind, ind)
 	// the key k lives at STORAGE INDEX k-1 (docs/SPEC-TABLES.md §2.4)
@@ -273,7 +273,9 @@ func (g *tableGen) emitKeyedTriples(f *ir.Field, kind int, ind string, widened b
 	case widened:
 		g.emitWidenedScalar(f, kind, "elem_kind", slot, ind+"            ", "elem", onTrunc)
 	case kind == tkTable:
-		g.pf("%s            %s;\n", ind, g.loadCall(f.Type.Name, "elem", slot))
+		g.inStep("int32_t( slot ) - 1", func() {
+			g.pf("%s            %s;\n", ind, g.loadCall(f, f.Type.Name, "elem", slot))
+		})
 	case kind == tkEnum:
 		g.emitEnumRefLoad(f, slot, ind+"            ", "elem", onTrunc)
 	default:

@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -460,8 +461,17 @@ func tableHeader(t *testing.T, src string) string {
 // FORM's vocabulary rather than the pointer machinery's, since every unit's
 // cook Open names its refusal in it (docs/SPEC-TABLES.md §7, §11), and
 // `TableRef`, the pointer handle, is a PREFIX of it.
+//
+// THE FIXED-CLASS RETAIN REFUSAL is stripped on the same rule (§6.6). It lands
+// in every unit, because a name refused by a missing symbol is not refused by
+// name, and it is three function templates that define nothing and instantiate
+// nothing until one is called: no builder, no arena, no reference type, no
+// column and no include. It is read out between its own two markers so that
+// this scan says exactly that, rather than saying it by the absence of the
+// words "template" and "variable", which the refusal's own text carries.
 func TestZeroCostForValueOnlyTables(t *testing.T) {
 	header := strings.ReplaceAll(tableHeader(t, tableSrc), "TableRefuseReason", "")
+	header = withoutRetainRefusal(t, header)
 	for _, leak := range []string{
 		"TableArena", "TableSlot", "TableWorker", "TableRef", "TableRegion",
 		"kTableSegment", "kTableSlab", "kTableMaxDepth", "is_pointer", "variable",
@@ -479,6 +489,21 @@ func TestZeroCostForValueOnlyTables(t *testing.T) {
 			t.Errorf("value-only table lost its surface: %q missing", want)
 		}
 	}
+}
+
+// withoutRetainRefusal reads the fixed-class retain refusal out of a header,
+// between the two markers the emitter writes around it (docs/SPEC-TABLES.md
+// §6.6). It FAILS when a header has one marker and not the other, so a block
+// that stopped being delimited is a red rather than a silent pass, and it
+// fails when the block is absent, because §6.6 says every unit carries it.
+func withoutRetainRefusal(t *testing.T, header string) string {
+	t.Helper()
+	open := strings.Index(header, cpptable.RetainRefusalOpen)
+	close := strings.Index(header, cpptable.RetainRefusalClose)
+	if open < 0 || close < 0 || close < open {
+		t.Fatalf("the fixed-class retain refusal is not delimited: open=%d close=%d", open, close)
+	}
+	return header[:open] + header[close+len(cpptable.RetainRefusalClose):]
 }
 
 // TestPointerSurfaceEmitted: the variable-length surface appears exactly where
