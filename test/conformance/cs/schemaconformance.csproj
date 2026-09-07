@@ -33,6 +33,8 @@
 
   <ItemGroup>
     <Compile Include="src/*.cs" />
+    <Compile Include="$(TablesGeneratedDir)/k1/*.cs" Exclude="$(TablesGeneratedDir)/k1/*Block.cs;$(TablesGeneratedDir)/k1/*Cook.cs" />
+    <Compile Include="$(TablesGeneratedDir)/k2/*.cs" Exclude="$(TablesGeneratedDir)/k2/*Block.cs;$(TablesGeneratedDir)/k2/*Cook.cs" />
     <Compile Include="$(TablesGeneratedDir)/examples/*.cs" Exclude="$(TablesGeneratedDir)/examples/*Block.cs;$(TablesGeneratedDir)/examples/*Cook.cs" />
     <Compile Include="$(TablesGeneratedDir)/v1/*.cs" Exclude="$(TablesGeneratedDir)/v1/*Block.cs;$(TablesGeneratedDir)/v1/*Cook.cs" />
     <Compile Include="$(TablesGeneratedDir)/v2/*.cs" Exclude="$(TablesGeneratedDir)/v2/*Block.cs;$(TablesGeneratedDir)/v2/*Cook.cs" />

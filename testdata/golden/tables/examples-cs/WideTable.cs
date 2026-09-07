@@ -19,7 +19,7 @@ namespace Tabledemo
         public int LabelLength;
         public byte[] Payload = new byte[70000]; // bytes(MaxBlobBytes): fixed buffer, used length beside it
         public int PayloadLength;
-        public ushort[] Samples = new ushort[70000]; // used count beside it; count in [0, 70000]
+        public ulong[] Samples = new ulong[70000]; // used count beside it; count in [0, 70000]
         public int SamplesCount;
     }
 
@@ -42,181 +42,24 @@ namespace Tabledemo
 
         public static long WideBlobMeasure(WideBlob value)
         {
-            long bytes = 2; // terminator
-            if (value.LabelLength < 0 || value.LabelLength > 70000) { return -1; } // storage invariant
-            if (value.LabelLength > 0) { bytes += 3 + 4 + value.LabelLength; } // label
-            if (value.PayloadLength < 0 || value.PayloadLength > 70000) { return -1; } // storage invariant
-            if (value.PayloadLength > 0) { bytes += 3 + 4 + 5 + value.PayloadLength; } // payload
-            if (value.SamplesCount < 0 || value.SamplesCount > 70000) { return -1; } // storage invariant
-            if (value.SamplesCount > 0)
-            {
-                bytes += 3 + 4 + 5 + (long)value.SamplesCount * 2; // samples
-            }
-            return bytes;
-        }
-
-        public static bool WideBlobSaveBody(ref TableWriter w, WideBlob value)
-        {
-            if (value.LabelLength < 0 || value.LabelLength > 70000) { return false; } // storage invariant
-            if (value.LabelLength > 0)
-            {
-                w.Put16(0xe16a); w.Put8(12); // label
-                w.Put32((uint)value.LabelLength);
-                w.Raw(new ReadOnlySpan<byte>(value.Label, 0, value.LabelLength));
-            }
-            if (value.PayloadLength < 0 || value.PayloadLength > 70000) { return false; } // storage invariant
-            if (value.PayloadLength > 0)
-            {
-                w.Put16(0x44aa); w.Put8(14); // payload
-                w.Put32((uint)(5 + value.PayloadLength));
-                w.Put8(6); w.Put32((uint)value.PayloadLength);
-                w.Raw(new ReadOnlySpan<byte>(value.Payload, 0, value.PayloadLength));
-            }
-            if (value.SamplesCount < 0 || value.SamplesCount > 70000) { return false; } // storage invariant
-            if (value.SamplesCount > 0)
-            {
-                w.Put16(0xaf9a); w.Put8(14); // samples
-                int lenAt = w.Offset; w.Put32(0);
-                w.Put8(7); w.Put32((uint)value.SamplesCount);
-                for (int i = 0; i < value.SamplesCount; i++)
-                {
-                    w.Put16(unchecked((ushort)(value.Samples[i])));
-                }
-                w.Patch32(lenAt, (uint)(w.Offset - lenAt - 4));
-            }
-            w.Put16(0); // terminator
-            return !w.Overflow;
+            Span<ulong> ids = stackalloc ulong[155];
+            return TableWire.Save(value, WideBlobTableType(), Span<byte>.Empty, ids, true);
         }
 
         public static long WideBlobSave(WideBlob value, Span<byte> buffer)
         {
-            TableWriter w = new TableWriter(buffer);
-            if (!WideBlobSaveBody(ref w, value)) { return -1; }
-            return w.Offset; // == WideBlobMeasure(value)
+            Span<ulong> ids = stackalloc ulong[155];
+            return TableWire.Save(value, WideBlobTableType(), buffer, ids, false);
         }
 
-        public static bool WideBlobLoadBody(ref TableReader r, WideBlob value)
+        public static TableWire.Verdict WideBlobLoadVerdict(WideBlob value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReset(value); // restore declared defaults in place, then overlay
-            for (;;)
-            {
-                if (!r.Has(2)) { r.Report.Malformed = true; return false; }
-                ushort fieldId = r.Get16();
-                if (fieldId == 0) { return true; }
-                if (!r.Has(1)) { r.Report.Malformed = true; return false; }
-                byte kind = r.Get8();
-                switch (fieldId)
-                {
-                    case 0xe16a: // label
-                    {
-                        if (kind != 12)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        uint len = r.Get32();
-                        if (!r.Has(len)) { r.Report.Malformed = true; return false; }
-                        uint keep = len;
-                        if (keep > 70000) { keep = 70000; r.Report.Clamped++; }
-                        r.Buffer.Slice(r.Offset, (int)keep).CopyTo(new Span<byte>(value.Label, 0, (int)keep));
-                        value.LabelLength = (int)keep;
-                        r.Offset += (int)len;
-                        break;
-                    }
-                    case 0x44aa: // payload
-                    {
-                        if (kind != 14)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        uint bodyLen = r.Get32();
-                        if (!r.Has(bodyLen)) { r.Report.Malformed = true; return false; }
-                        int bodyEnd = r.Offset + (int)bodyLen;
-                        if (bodyLen >= 5)
-                        {
-                            byte elemKind = r.Get8();
-                            uint count = r.Get32();
-                            if (elemKind != 6) { r.Report.KindMismatch++; r.Offset = bodyEnd; break; }
-                            uint keep = count;
-                            if (keep > 70000) { keep = 70000; r.Report.Clamped++; }
-                            // elements are BOUNDED by the field body: a count the length
-                            // cannot cover keeps the decoded prefix, flags malformed, and
-                            // the parent continues at the next field — following fields'
-                            // bytes are never fabricated into elements
-                            TableReader sub = new TableReader(r.Buffer.Slice(r.Offset, bodyEnd - r.Offset), r.Report);
-                            uint decoded = 0;
-                            for (uint i = 0; i < keep; i++)
-                            {
-                                if (!sub.Has(1)) { r.Report.Malformed = true; break; }
-                                {
-                                    byte decodedV = unchecked((byte)sub.Get8());
-                                    value.Payload[i] = decodedV;
-                                }
-                                decoded = i + 1;
-                            }
-                            value.PayloadLength = (int)decoded;
-                        }
-                        r.Offset = bodyEnd; // excess elements and slack skip via the length
-                        break;
-                    }
-                    case 0xaf9a: // samples
-                    {
-                        if (kind != 14)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        uint bodyLen = r.Get32();
-                        if (!r.Has(bodyLen)) { r.Report.Malformed = true; return false; }
-                        int bodyEnd = r.Offset + (int)bodyLen;
-                        if (bodyLen >= 5)
-                        {
-                            byte elemKind = r.Get8();
-                            uint count = r.Get32();
-                            if (elemKind != 7) { r.Report.KindMismatch++; r.Offset = bodyEnd; break; }
-                            uint keep = count;
-                            if (keep > 70000) { keep = 70000; r.Report.Clamped++; }
-                            // elements are BOUNDED by the field body: a count the length
-                            // cannot cover keeps the decoded prefix, flags malformed, and
-                            // the parent continues at the next field — following fields'
-                            // bytes are never fabricated into elements
-                            TableReader sub = new TableReader(r.Buffer.Slice(r.Offset, bodyEnd - r.Offset), r.Report);
-                            uint decoded = 0;
-                            for (uint i = 0; i < keep; i++)
-                            {
-                                if (!sub.Has(2)) { r.Report.Malformed = true; break; }
-                                {
-                                    ushort decodedV = unchecked((ushort)sub.Get16());
-                                    value.Samples[i] = decodedV;
-                                }
-                                decoded = i + 1;
-                            }
-                            value.SamplesCount = (int)decoded;
-                        }
-                        r.Offset = bodyEnd; // excess elements and slack skip via the length
-                        break;
-                    }
-                    default:
-                    {
-                        r.Report.Unknown++;
-                        if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                        break;
-                    }
-                }
-            }
+            return TableWire.Load(value, WideBlobTableType(), bytes, report);
         }
 
         public static bool WideBlobLoad(WideBlob value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReader r = new TableReader(bytes, report != null ? report : new TableReport());
-            return WideBlobLoadBody(ref r, value);
+            return WideBlobLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
         // ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----
@@ -228,12 +71,13 @@ namespace Tabledemo
             if (info != null) { return info; }
             info = new TableTypeInfo();
             info.Name = "WideBlob";
+            info.Id = 0xab6a6961d3366451ul;
             info.NumFields = 3;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "label", Json = "label", TypeName = "string", Id = 0xe16a, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 70000, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate(object o) { return ((WideBlob)o).Label; }, GetCount = delegate(object o) { return ((WideBlob)o).LabelLength; }, SetCount = delegate(object o, int n) { ((WideBlob)o).LabelLength = n; } },
-                new TableFieldInfo { Name = "payload", Json = "payload", TypeName = "bytes", Id = 0x44aa, Kind = 6, IsArray = true, Counted = true, Optional = false, ArrayBound = 70000, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate(object o) { return ((WideBlob)o).Payload; }, GetCount = delegate(object o) { return ((WideBlob)o).PayloadLength; }, SetCount = delegate(object o, int n) { ((WideBlob)o).PayloadLength = n; } },
-                new TableFieldInfo { Name = "samples", Json = "samples", TypeName = "uint16", Id = 0xaf9a, Kind = 7, IsArray = true, Counted = true, Optional = false, ArrayBound = 70000, ElemWidth = 2, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((WideBlob)o).Samples[i]; }, SetRaw = delegate(object o, int i, ulong r) { ((WideBlob)o).Samples[i] = unchecked((ushort)r); }, GetCount = delegate(object o) { return ((WideBlob)o).SamplesCount; }, SetCount = delegate(object o, int n) { ((WideBlob)o).SamplesCount = n; } },
+                new TableFieldInfo { Name = "label", Json = "label", TypeName = "string", Id = 0x39f7fcec8fcb623d, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 70000, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate(object o) { return ((WideBlob)o).Label; }, GetCount = delegate(object o) { return ((WideBlob)o).LabelLength; }, SetCount = delegate(object o, int n) { ((WideBlob)o).LabelLength = n; }, ResetField = delegate(object o) { var value = (WideBlob)o; Array.Clear(value.Label, 0, value.Label.Length); value.LabelLength = 0; } },
+                new TableFieldInfo { Name = "payload", Json = "payload", TypeName = "bytes", Id = 0xcfb8a9d063b5e9e5, Kind = 6, IsArray = true, Counted = true, Optional = false, ArrayBound = 70000, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate(object o) { return ((WideBlob)o).Payload; }, GetCount = delegate(object o) { return ((WideBlob)o).PayloadLength; }, SetCount = delegate(object o, int n) { ((WideBlob)o).PayloadLength = n; }, ResetField = delegate(object o) { var value = (WideBlob)o; Array.Clear(value.Payload, 0, value.Payload.Length); value.PayloadLength = 0; } },
+                new TableFieldInfo { Name = "samples", Json = "samples", TypeName = "uint16", Id = 0xe3b1ca6a3b48dddc, Kind = 7, IsArray = true, Counted = true, Optional = false, ArrayBound = 70000, ElemWidth = 2, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((WideBlob)o).Samples[i]; }, SetRaw = delegate(object o, int i, ulong r) { ((WideBlob)o).Samples[i] = unchecked((ulong)r); }, GetCount = delegate(object o) { return ((WideBlob)o).SamplesCount; }, SetCount = delegate(object o, int n) { ((WideBlob)o).SamplesCount = n; }, ResetField = delegate(object o) { var value = (WideBlob)o; Array.Clear(value.Samples, 0, value.Samples.Length); value.SamplesCount = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { ulong v = unchecked((ulong)raw); return (ulong)v; } },
             };
             info.Reset = delegate(object o) { TableReset((WideBlob)o); };
             info.Doc = TableDocNone;

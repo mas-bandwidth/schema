@@ -20,7 +20,7 @@ using V2 = Tblv2;
 using P1 = Tblp1;
 using P3 = Tblp3;
 
-static class Program
+static partial class Program
 {
     static bool failed;
     static string goldenDir;
@@ -34,19 +34,39 @@ static class Program
         }
     }
 
-    // an independent implementation of the table-wire field id —
-    // fold16(fnv1a32(name)), 0 rebounds to 1 — pinning the compiler's hash
-    // against a second implementation written from the spec alone
-    static ushort FieldId(string name)
+    // Independently written from SPEC-TABLES section 3: full FNV-1a identity,
+    // canonical unsigned LEB128 and a vocabulary at the end of the file.
+    static ulong FieldId(string name)
     {
-        uint h = 0x811C9DC5u;
-        foreach (char c in name)
+        ulong h = 0xcbf29ce484222325ul;
+        foreach (byte c in Encoding.UTF8.GetBytes(name)) { h = unchecked((h ^ c) * 0x100000001b3ul); }
+        return h;
+    }
+    static byte[] Join(params byte[][] pieces)
+    {
+        using MemoryStream into = new MemoryStream();
+        foreach (byte[] piece in pieces) { into.Write(piece); }
+        return into.ToArray();
+    }
+    static byte[] Var(ulong v)
+    {
+        using MemoryStream into = new MemoryStream();
+        while (v >= 128) { into.WriteByte((byte)(v | 128)); v >>= 7; }
+        into.WriteByte((byte)v); return into.ToArray();
+    }
+    static byte[] U32(uint v) { byte[] bytes = new byte[4]; Le32(bytes, 0, v); return bytes; }
+    static byte[] Fixture(byte[] body, params string[] names)
+    {
+        using MemoryStream into = new MemoryStream();
+        into.WriteByte(1); into.Write(body);
+        foreach (string name in names)
         {
-            h ^= (byte)c;
-            h *= 0x01000193u;
+            ulong id = FieldId(name);
+            for (int i = 0; i < 8; i++) { into.WriteByte((byte)id); id >>= 8; }
         }
-        ushort id = (ushort)((h ^ (h >> 16)) & 0xFFFF);
-        return id == 0 ? (ushort)1 : id;
+        ulong count = (ulong)names.Length;
+        for (int i = 0; i < 8; i++) { into.WriteByte((byte)count); count >>= 8; }
+        return into.ToArray();
     }
 
     static string FindGoldenDir()
@@ -268,7 +288,7 @@ static class Program
 
         Demo.RootConfig empty = new Demo.RootConfig();
         wrote = Demo.Schema.RootConfigSave(empty, buffer);
-        Check(wrote == 2, "root_default: everything elides to the bare terminator");
+        Check(wrote == 10, "root_default: everything elides to the form, terminator and empty vocabulary");
         GoldenWire("root_default", new ReadOnlySpan<byte>(buffer, 0, (int)wrote));
 
         // the ELISION shape: non-default fields around an all-default nested
@@ -524,49 +544,17 @@ static class Program
 
     static void TestBoundedElements()
     {
-        V1.TableFieldInfo items = V1Field(V1.Schema.CfgTableType(), "items");
-        V1.TableFieldInfo a = V1Field(V1.Schema.CfgTableType(), "a");
-        Check(items != null && a != null, "bounded elements: descriptors found");
-
-        byte[] wire = new byte[32];
-        int n = 0;
-        Le16(wire, n, items.Id); n += 2;
-        wire[n++] = 14;                  // kArray
-        Le32(wire, n, 5); n += 4;        // body_len: header only, no element bytes
-        wire[n++] = 4;                   // elem_kind kI32
-        Le32(wire, n, 2); n += 4;        // count 2 — a lie
-        Le16(wire, n, a.Id); n += 2;
-        wire[n++] = 4;                   // kI32
-        Le32(wire, n, 42); n += 4;
-        Le16(wire, n, 0); n += 2;        // terminator
-
-        V1.TableReport report = new V1.TableReport();
-        V1.Cfg outCfg = new V1.Cfg();
-        Check(V1.Schema.CfgLoad(outCfg, new ReadOnlySpan<byte>(wire, 0, n), report), "bounded elements: load returns true");
-        Check(report.Malformed, "bounded elements: the lie is framing damage");
-        Check(outCfg.ItemsCount == 0, "bounded elements: no fabricated elements");
-        Check(outCfg.A == 42, "bounded elements: the parent continued at the next field");
-
-        // a body covering one full element plus slack: the decoded PREFIX is kept
-        n = 0;
-        Le16(wire, n, items.Id); n += 2;
-        wire[n++] = 14;
-        Le32(wire, n, 5 + 4 + 2); n += 4; // one i32 element + 2 slack bytes
-        wire[n++] = 4;
-        Le32(wire, n, 2); n += 4;         // count 2, body holds 1.5
-        Le32(wire, n, 10); n += 4;        // element 0
-        wire[n++] = 0; wire[n++] = 0;     // the half element
-        Le16(wire, n, a.Id); n += 2;
-        wire[n++] = 4;
-        Le32(wire, n, 42); n += 4;
-        Le16(wire, n, 0); n += 2;
-
-        V1.TableReport report2 = new V1.TableReport();
-        V1.Cfg out2 = new V1.Cfg();
-        Check(V1.Schema.CfgLoad(out2, new ReadOnlySpan<byte>(wire, 0, n), report2), "bounded prefix: load returns true");
-        Check(report2.Malformed, "bounded prefix: malformed");
-        Check(out2.ItemsCount == 1 && out2.Items[0] == 10, "bounded prefix kept");
-        Check(out2.A == 42, "bounded prefix: parent read on");
+        foreach (bool prefix in new[] { false, true })
+        {
+            byte[] payload = prefix ? Join(new byte[] { 4, 2 }, U32(10), new byte[] { 0, 0 }) : new byte[] { 4, 2 };
+            byte[] wire = Fixture(Join(new byte[] { 1, 14 }, Var((ulong)payload.Length), payload,
+                new byte[] { 2, 4 }, U32(42), new byte[] { 0 }), "items", "a");
+            V1.Cfg value = new V1.Cfg(); V1.TableReport report = new V1.TableReport();
+            Check(V1.Schema.CfgLoad(value, wire, report), "bounded elements: parent reaches terminator");
+            Check(report.Malformed && value.A == 42, "bounded elements: local damage preserves sibling");
+            Check(value.ItemsCount == (prefix ? 1 : 0), "bounded elements: decoded prefix only");
+            if (prefix) { Check(value.Items[0] == 10, "bounded elements: prefix value"); }
+        }
     }
 
     // ---- all-default: everything elides, decode restores every default ----
@@ -576,8 +564,8 @@ static class Program
         Demo.WeaponConfig weapon = new Demo.WeaponConfig();
         byte[] buffer = new byte[64];
         long wrote = Demo.Schema.WeaponConfigSave(weapon, buffer);
-        Check(wrote == 2, "all-default: bare terminator");
-        Check(Demo.Schema.WeaponConfigMeasure(weapon) == 2, "all-default: measure == 2");
+        Check(wrote == 10, "all-default: form, terminator and empty vocabulary");
+        Check(Demo.Schema.WeaponConfigMeasure(weapon) == 10, "all-default: measure == 10");
 
         Demo.TableReport report = new Demo.TableReport();
         Demo.WeaponConfig outWeapon = new Demo.WeaponConfig();
@@ -599,7 +587,7 @@ static class Program
 
         byte[] buffer = new byte[512];
         long wrote = Demo.Schema.ProfileConfigSave(p, buffer);
-        Check(wrote == 2, "guard: guard false + everything else default: all elides");
+        Check(wrote == 10, "guard: guard false + everything else default: all elides");
         Check(Demo.Schema.ProfileConfigMeasure(p) == wrote, "guard: measure == save");
 
         Demo.TableReport report = new Demo.TableReport();
@@ -679,7 +667,7 @@ static class Program
         Check(bytes > 0 && bytes == V1.Schema.CfgMeasure(v1), "enum insert: v1 saved");
 
         V1.TableFieldInfo grade = V1Field(V1.Schema.CfgTableType(), "grade");
-        Check(grade != null && grade.Kind == 7, "enum insert: kU16 for every enum, every width");
+        Check(grade != null && grade.Kind == 30, "enum insert: kU16 for every enum, every width");
         Check(grade.VariantId != null && grade.VariantId(2) == FieldId("Gold"), "enum insert: the wire value is the NAME hash");
 
         V2.TableReport report = new V2.TableReport();
@@ -804,40 +792,17 @@ static class Program
 
     static void TestRepeatedIdUnnameableVariant()
     {
-        V1.TableFieldInfo effect = V1Field(V1.Schema.CfgTableType(), "effect");
-        V1.TableFieldInfo grade = V1Field(V1.Schema.CfgTableType(), "grade");
-        Check(effect != null && grade != null, "repeated id: descriptors found");
-
-        V1.Cfg src = new V1.Cfg();
-        src.Effect.Type = V1.EffectType.Ward;
-        src.Effect.Ward.Charge = 0.5f;
-        src.Grade = V1.Grade.Gold;
-
-        byte[] wire = new byte[512];
-        long saved = V1.Schema.CfgSave(src, wire);
-        Check(saved > 2, "repeated id: source saved");
-
-        // occurrence two, spliced over the terminator: the same ids, an arm id
-        // and a variant id no build names
-        int n = (int)(saved - 2);
-        Le16(wire, n, effect.Id); n += 2;
-        wire[n++] = 15;                    // kUnion
-        Le16(wire, n, 0xBEEF); n += 2;     // an arm id this reader cannot name
-        Le32(wire, n, 2); n += 4;
-        Le16(wire, n, 0); n += 2;          // the arm body: a bare terminator
-        Le16(wire, n, grade.Id); n += 2;
-        wire[n++] = 7;                     // kU16
-        Le16(wire, n, 0xBEEF); n += 2;     // a variant id this reader cannot name
-        Le16(wire, n, 0); n += 2;          // the table terminator
-
-        V1.TableReport report = new V1.TableReport();
-        V1.Cfg outCfg = new V1.Cfg();
-        outCfg.Effect.Type = V1.EffectType.Boost; // junk the reset must erase
-        Check(V1.Schema.CfgLoad(outCfg, new ReadOnlySpan<byte>(wire, 0, n), report), "repeated id: load");
-        Check(!report.Malformed, "repeated id: not malformed");
-        Check(report.Unknown == 2, "repeated id: one arm id, one variant id");
-        Check(outCfg.Effect.Type == V1.EffectType.None, "repeated id: the reader's empty value, explicitly written");
-        Check(outCfg.Grade == V1.Grade.None, "repeated id: the same answer for the enum vocabulary");
+        byte[] wire = Fixture(new byte[] {
+            1,15,2,13,7,3,10,0,0,0,63,0, // ward { charge = 0.5 }
+            4,30,5,                       // grade = Gold
+            1,15,6,13,1,0,                // same union, an unknown arm
+            4,30,6,0                      // same enum, an unknown variant
+        }, "effect", "ward", "charge", "grade", "Gold", "unknown");
+        V1.Cfg value = new V1.Cfg(); V1.TableReport report = new V1.TableReport();
+        Check(V1.Schema.CfgLoad(value, wire, report), "repeated variant: load");
+        Check(!report.Malformed && report.Unknown == 2, "repeated variant: two unknown names");
+        Check(value.Effect.Type == V1.EffectType.None && value.Grade == V1.Grade.None,
+            "repeated variant: last occurrence replaces earlier value");
     }
 
     // ---- an array's BOUND is not wire identity ----
@@ -909,29 +874,12 @@ static class Program
 
     static void TestUnnameableEnumElementRead()
     {
-        V1.TableFieldInfo grades = V1Field(V1.Schema.CfgTableType(), "grades");
-        Check(grades != null && grades.Kind == 7 && grades.IsArray, "unnameable element read: descriptor");
-
-        byte[] wire = new byte[32];
-        int n = 0;
-        Le16(wire, n, grades.Id); n += 2;
-        wire[n++] = 14;                     // kArray
-        Le32(wire, n, 5 + 6); n += 4;       // header + three u16 elements
-        wire[n++] = 7;                      // elem_kind kU16
-        Le32(wire, n, 3); n += 4;
-        Le16(wire, n, FieldId("Gold")); n += 2;
-        Le16(wire, n, 0xBEEF); n += 2;      // an element id no build names
-        Le16(wire, n, FieldId("Bronze")); n += 2;
-        Le16(wire, n, 0); n += 2;           // terminator
-
-        V1.TableReport report = new V1.TableReport();
-        V1.Cfg outCfg = new V1.Cfg();
-        Check(V1.Schema.CfgLoad(outCfg, new ReadOnlySpan<byte>(wire, 0, n), report), "unnameable element read: load");
-        Check(!report.Malformed && report.Unknown == 1, "unnameable element read: one unknown");
-        Check(outCfg.GradesCount == 3, "unnameable element read: count");
-        Check(outCfg.Grades[0] == V1.Grade.Gold, "unnameable element read: first element");
-        Check(outCfg.Grades[1] == V1.Grade.None, "unnameable element read: never a neighbour's variant");
-        Check(outCfg.Grades[2] == V1.Grade.Bronze, "unnameable element read: the element after it decodes");
+        byte[] wire = Fixture(new byte[] { 1,14,5,30,3,2,3,4,0 }, "grades", "Gold", "unknown", "Bronze");
+        V1.Cfg value = new V1.Cfg(); V1.TableReport report = new V1.TableReport();
+        Check(V1.Schema.CfgLoad(value, wire, report), "enum elements: load");
+        Check(!report.Malformed && report.Unknown == 1, "enum elements: one unknown");
+        Check(value.GradesCount == 3 && value.Grades[0] == V1.Grade.Gold &&
+            value.Grades[1] == V1.Grade.None && value.Grades[2] == V1.Grade.Bronze, "enum elements: named values survive");
     }
 
     // ---- FLAGS STAY POSITIONAL ----
@@ -960,20 +908,11 @@ static class Program
         long wrote = Demo.Schema.LoadoutConfigSave(loadout, buffer);
         Check(wrote > 0, "flags: saved");
 
-        // the payload is the mask itself: bit position IS the identity
-        bool found = false;
-        for (int i = 0; i + 11 <= wrote; i++)
-        {
-            if (buffer[i] == (byte)(perks.Id & 0xff) && buffer[i + 1] == (byte)(perks.Id >> 8) && buffer[i + 2] == 9)
-            {
-                Check(buffer[i + 3] == 2, "flags: 1 << 1, little-endian, low byte");
-                found = true;
-            }
-        }
-        Check(found, "flags: the mask rides raw");
+        byte[] expected = Fixture(Join(new byte[] { 1,9 }, new byte[] { 2,0,0,0,0,0,0,0 }, new byte[] { 2,14,6,13,2,1,0,1,0,0 }), "perks", "backups");
+        Check(buffer.AsSpan(0, (int)wrote).SequenceEqual(expected), "flags: raw positional mask");
     }
 
-    // ---- extents past 65535: u32 lengths and u32 counts ----
+    // ---- extents past 65535: canonical LEB128 lengths and counts ----
 
     static void TestWideExtents()
     {
@@ -999,114 +938,60 @@ static class Program
         Check(outBlob.PayloadLength == 70000 && outBlob.Payload[69999] == (byte)(69999 & 0xff), "wide extents: payload");
         Check(outBlob.SamplesCount == 70000 && outBlob.Samples[69999] == unchecked((ushort)69999), "wide extents: samples");
 
-        // the wide case of the bounded-elements rule
-        Demo.TableFieldInfo samples = DemoField(Demo.Schema.WideBlobTableType(), "samples");
-        Demo.TableFieldInfo label = DemoField(Demo.Schema.WideBlobTableType(), "label");
-        Check(samples != null && label != null, "wide extents: descriptors");
-        byte[] wire = new byte[64];
-        int n = 0;
-        Le16(wire, n, samples.Id); n += 2;
-        wire[n++] = 14;                     // kArray
-        Le32(wire, n, 5 + 4); n += 4;       // body: header + two u16 elements
-        wire[n++] = 7;                      // elem_kind kU16
-        Le32(wire, n, 70000); n += 4;       // a count no uint16 could even hold — a lie
-        Le16(wire, n, 11); n += 2;
-        Le16(wire, n, 22); n += 2;
-        Le16(wire, n, label.Id); n += 2;
-        wire[n++] = 12;                     // kString
-        Le32(wire, n, 2); n += 4;
-        wire[n++] = (byte)'o'; wire[n++] = (byte)'k';
-        Le16(wire, n, 0); n += 2;
-
-        Demo.TableReport report2 = new Demo.TableReport();
-        Demo.WideBlob out2 = new Demo.WideBlob();
-        Check(Demo.Schema.WideBlobLoad(out2, new ReadOnlySpan<byte>(wire, 0, n), report2), "wide lie: load");
-        Check(report2.Malformed, "wide lie: framing damage");
-        Check(out2.SamplesCount == 2 && out2.Samples[0] == 11 && out2.Samples[1] == 22, "wide lie: the bounded prefix");
-        Check(out2.LabelLength == 2 && GetString(out2.Label, out2.LabelLength) == "ok", "wide lie: the parent read on");
+        byte[] payload = Join(new byte[] { 7 }, Var(70000), new byte[] { 11,0,22,0 });
+        byte[] wire = Fixture(Join(new byte[] { 1,14 }, Var((ulong)payload.Length), payload,
+            new byte[] { 2,12,2,(byte)'o',(byte)'k',0 }), "samples", "label");
+        Demo.TableReport report2 = new Demo.TableReport(); Demo.WideBlob out2 = new Demo.WideBlob();
+        Check(Demo.Schema.WideBlobLoad(out2, wire, report2), "wide prefix: load");
+        Check(report2.Malformed && out2.SamplesCount == 2 && out2.Samples[0] == 11 && out2.Samples[1] == 22,
+            "wide prefix: bounded payload cannot fabricate 70000 elements");
+        Check(out2.LabelLength == 2 && GetString(out2.Label, 2) == "ok", "wide prefix: sibling survived");
     }
 
     // ---- clamping: hostile or stale numerics clamp and count ----
 
     static void TestClamping()
     {
-        V1.TableFieldInfo a = V1Field(V1.Schema.CfgTableType(), "a");
-        Check(a != null && a.Kind == 4 && a.HasRange && a.RangeMax == 1000.0, "clamping: descriptor carries the range");
-
-        byte[] wire = new byte[16];
-        int n = 0;
-        Le16(wire, n, a.Id); n += 2;
-        wire[n++] = 4; // kI32
-        Le32(wire, n, 2000); n += 4;
-        Le16(wire, n, 0); n += 2;
-
-        V1.TableReport report = new V1.TableReport();
-        V1.Cfg outCfg = new V1.Cfg();
-        Check(V1.Schema.CfgLoad(outCfg, new ReadOnlySpan<byte>(wire, 0, n), report), "clamping: load");
-        Check(report.Clamped == 1 && outCfg.A == 1000, "clamping: clamped to the reader's declared bound");
-
-        // bits(6) width clamp: a u8 payload of 200 clamps to 63
-        Demo.TableFieldInfo ch = DemoField(Demo.Schema.WeaponConfigTableType(), "channel");
-        Check(ch != null && ch.Kind == 6, "clamping: bits(6) rides as kU8");
-        byte[] wire2 = new byte[8];
-        n = 0;
-        Le16(wire2, n, ch.Id); n += 2;
-        wire2[n++] = 6; // kU8
-        wire2[n++] = 200;
-        Le16(wire2, n, 0); n += 2;
-
-        Demo.TableReport report2 = new Demo.TableReport();
-        Demo.WeaponConfig weapon = new Demo.WeaponConfig();
-        Check(Demo.Schema.WeaponConfigLoad(weapon, new ReadOnlySpan<byte>(wire2, 0, n), report2), "clamping bits: load");
-        Check(report2.Clamped == 1 && weapon.Channel == 63, "clamping bits: width clamp");
-
-        // an over-long string clamps to capacity and counts
-        V1.TableFieldInfo nameInfo = V1Field(V1.Schema.CfgTableType(), "name");
-        byte[] wire4 = new byte[64];
-        n = 0;
-        Le16(wire4, n, nameInfo.Id); n += 2;
-        wire4[n++] = 12; // kString
-        Le32(wire4, n, 40); n += 4; // longer than string(32)
-        for (int i = 0; i < 40; i++) { wire4[n++] = (byte)'y'; }
-        Le16(wire4, n, 0); n += 2;
-
-        V1.TableReport report4 = new V1.TableReport();
-        V1.Cfg out4 = new V1.Cfg();
-        Check(V1.Schema.CfgLoad(out4, new ReadOnlySpan<byte>(wire4, 0, n), report4), "clamping string: load");
-        Check(report4.Clamped == 1 && out4.NameLength == 32, "clamping string: clamped to capacity");
+        V1.Cfg value = new V1.Cfg(); V1.TableReport report = new V1.TableReport();
+        byte[] wire = Fixture(Join(new byte[] { 1,4 }, U32(2000), new byte[] { 0 }), "a");
+        Check(V1.Schema.CfgLoad(value, wire, report) && report.Clamped == 1 && value.A == 1000, "integer clamp");
+        Demo.WeaponConfig weapon = new Demo.WeaponConfig(); Demo.TableReport bits = new Demo.TableReport();
+        Check(Demo.Schema.WeaponConfigLoad(weapon, Fixture(new byte[] { 1,6,200,0 }, "channel"), bits) &&
+            bits.Clamped == 1 && weapon.Channel == 63, "bits width clamp");
+        report = new V1.TableReport();
+        wire = Fixture(Join(new byte[] { 1,12,40 }, Encoding.UTF8.GetBytes(new string('y',40)), new byte[] { 0 }), "name");
+        Check(V1.Schema.CfgLoad(value, wire, report) && report.Clamped == 1 && value.NameLength == 32, "string bound clamp");
     }
 
     // ---- malformed framing: decode stops, partial result kept, flag raised ----
 
     static void TestMalformed()
     {
+        V1.Cfg value = new V1.Cfg();
+        foreach (byte form in new byte[] { 0,2,3,255 })
+        {
+            V1.TableReport r = new V1.TableReport();
+            Check(!V1.Schema.CfgLoad(value, new byte[] { form }, r) && r.Refused && !r.Malformed,
+                "unknown form refuses before trailer damage");
+            Check(r.Reason == (form == 2 ? "message_form_as_file" : "newer_form"), "named form refusal");
+        }
         V1.TableReport report = new V1.TableReport();
-        V1.Cfg outCfg = new V1.Cfg();
-
-        byte[] oneByte = new byte[] { 0x34 };
-        Check(!V1.Schema.CfgLoad(outCfg, oneByte, report), "malformed: one byte refuses");
-        Check(report.Malformed, "malformed: flagged");
-
-        // a valid field id whose payload is truncated mid-scalar
-        V1.TableFieldInfo a = V1Field(V1.Schema.CfgTableType(), "a");
-        byte[] truncated = new byte[5];
-        Le16(truncated, 0, a.Id);
-        truncated[2] = 4; // kI32 wants 4 payload bytes; only 2 follow
-        V1.TableReport report2 = new V1.TableReport();
-        Check(!V1.Schema.CfgLoad(outCfg, truncated, report2), "malformed: truncated scalar refuses");
-        Check(report2.Malformed, "malformed: truncated scalar flagged");
-
-        // damage after good fields: the good prefix survives (partial result)
-        V1.Cfg src = new V1.Cfg();
-        src.A = 42;
-        byte[] wire = new byte[256];
-        long bytes = V1.Schema.CfgSave(src, wire);
-        Check(bytes > 0, "malformed: source saved");
-        V1.TableReport report3 = new V1.TableReport();
-        V1.Cfg out3 = new V1.Cfg();
-        Check(!V1.Schema.CfgLoad(out3, new ReadOnlySpan<byte>(wire, 0, (int)bytes - 2), report3),
-            "malformed: terminator cut off refuses");
-        Check(report3.Malformed && out3.A == 42, "malformed: the good prefix survives");
+        Check(!V1.Schema.CfgLoad(value, new byte[] { 1 }, report) && report.Malformed, "known form with missing trailer is damaged");
+        report = new V1.TableReport();
+        Check(!V1.Schema.CfgLoad(value, Fixture(new byte[] { 1,4,0,0 }, "a"), report) && report.Malformed,
+            "truncated scalar stops root");
+        report = new V1.TableReport();
+        Check(!V1.Schema.CfgLoad(value, Fixture(Join(new byte[] { 1,4 }, U32(42)), "a"), report) && report.Malformed && value.A == 42,
+            "missing root terminator keeps good prefix");
+        report = new V1.TableReport();
+        Check(!V1.Schema.CfgLoad(value, Fixture(Join(new byte[] { 1,4 }, U32(42), new byte[] { 0,99 }), "a"), report) && value.A == 5,
+            "slack before vocabulary defaults the entire file");
+        report = new V1.TableReport();
+        Check(!V1.Schema.CfgLoad(value, Fixture(new byte[] { 0 }, "a", "a"), report) && report.Malformed,
+            "duplicate vocabulary entry is damaged");
+        report = new V1.TableReport();
+        Check(!V1.Schema.CfgLoad(value, Fixture(new byte[] { 0x80,0 }), report) && report.Malformed,
+            "noncanonical reference is damaged");
     }
 
     // ---- reflection: walk, identify and describe fields with no schema files ----
@@ -1299,7 +1184,7 @@ static class Program
 
         Demo.KeyedConfig empty = new Demo.KeyedConfig();
         wrote = Demo.Schema.KeyedConfigSave(empty, buffer);
-        Check(wrote == 2, "keyed_default: every slot default, every keyed array elides");
+        Check(wrote == 10, "keyed_default: every slot default, every keyed array elides");
         GoldenWire("keyed_default", new ReadOnlySpan<byte>(buffer, 0, (int)wrote));
 
         V1.Cfg v1 = new V1.Cfg();
@@ -1341,7 +1226,7 @@ static class Program
         // writes nothing; a PRESENT optional writes its body anyway
         P1.Chain valueEmpty = new P1.Chain();
         long wValueEmpty = P1.Schema.ChainSave(valueEmpty, buffer);
-        Check(wValueEmpty == 2, "chain_value_empty: an all-default nesting elides");
+        Check(wValueEmpty == 10, "chain_value_empty: an all-default nesting elides");
         GoldenWire("chain_value_empty", new ReadOnlySpan<byte>(buffer, 0, (int)wValueEmpty));
 
         P3.Chain optionalEmpty = new P3.Chain();
@@ -1461,7 +1346,7 @@ static class Program
         // ABSENT: nothing rides at all
         V1.Cfg none = new V1.Cfg();
         long bytes = V1.Schema.CfgSave(none, wire);
-        Check(bytes == 2, "optional: absent writes nothing — the terminator alone");
+        Check(bytes == 10, "optional: absent writes nothing — the terminator alone");
 
         // PRESENT and entirely DEFAULT: it rides anyway
         V1.Cfg present = new V1.Cfg();
@@ -1582,62 +1467,18 @@ static class Program
 
     static void TestKeyedHostileKeys()
     {
-        V1.TableFieldInfo tokens = V1Field(V1.Schema.CfgTableType(), "tokens");
-        V1.TableFieldInfo a = V1Field(V1.Schema.CfgTableType(), "a");
-        Check(tokens != null && a != null && tokens.Kind == 4, "keyed hostile: descriptors");
-
-        // two pairs: the FIRST is a real Beta slot, the SECOND carries key 0.
-        // None is the null key and 0 is the reserved id no declared name can
-        // fold to, so the body is DAMAGED — the decode stops there, keeps what
-        // it decoded, and the parent reads on past the length.
-        byte[] wire = new byte[64];
-        int n = 0;
-        Le16(wire, n, tokens.Id); n += 2;
-        wire[n++] = 16;                       // kind 16: an enum-keyed body
-        Le32(wire, n, 5 + 2 * (2 + 4 + 4)); n += 4;
-        wire[n++] = 4;                        // element kind i32
-        Le32(wire, n, 2); n += 4;             // two pairs
-        Le16(wire, n, FieldId("Beta")); n += 2;
-        Le32(wire, n, 4); n += 4;
-        Le32(wire, n, 77); n += 4;
-        Le16(wire, n, 0); n += 2;             // KEY 0 — None's, and never legal
-        Le32(wire, n, 4); n += 4;
-        Le32(wire, n, 88); n += 4;
-        Le16(wire, n, a.Id); n += 2;          // a following field, after the body
-        wire[n++] = 4;
-        Le32(wire, n, 42); n += 4;
-        Le16(wire, n, 0); n += 2;
-
-        V1.TableReport report = new V1.TableReport();
-        V1.Cfg outCfg = new V1.Cfg();
-        Check(V1.Schema.CfgLoad(outCfg, new ReadOnlySpan<byte>(wire, 0, n), report), "key 0: load returns true");
-        Check(report.Malformed, "key 0: a None key is framing damage, not an unknown variant");
-        Check(report.Unknown == 0, "key 0: and it is NOT counted unknown — 0 names nothing, it is damage");
-        Check(outCfg.Tokens[(int)V1.Slot.Beta] == 77, "key 0: the pair decoded before the damage is kept");
-        Check(outCfg.A == 42, "key 0: the parent read on past the body's length");
-
-        // an UNKNOWN key is a different event: skipped by its length, counted
-        // unknown, and the slots around it land normally
-        n = 0;
-        Le16(wire, n, tokens.Id); n += 2;
-        wire[n++] = 16;
-        Le32(wire, n, 5 + 2 * (2 + 4 + 4)); n += 4;
-        wire[n++] = 4;
-        Le32(wire, n, 2); n += 4;
-        Le16(wire, n, 0xBEEF); n += 2;        // a key no build names
-        Le32(wire, n, 4); n += 4;
-        Le32(wire, n, 88); n += 4;
-        Le16(wire, n, FieldId("Delta")); n += 2;
-        Le32(wire, n, 4); n += 4;
-        Le32(wire, n, 99); n += 4;
-        Le16(wire, n, 0); n += 2;
-
-        V1.TableReport r2 = new V1.TableReport();
-        V1.Cfg out2 = new V1.Cfg();
-        Check(V1.Schema.CfgLoad(out2, new ReadOnlySpan<byte>(wire, 0, n), r2), "unknown key: load");
-        Check(!r2.Malformed, "unknown key: not damage");
-        Check(r2.Unknown == 1, "unknown key: counted, the same counter an unknown field id uses");
-        Check(out2.Tokens[(int)V1.Slot.Delta] == 99, "unknown key: the slot after it decodes normally");
+        byte[] payload = Join(new byte[] { 4,2,2,4 }, U32(77), new byte[] { 0,4 }, U32(88));
+        byte[] wire = Fixture(Join(new byte[] { 1,16 }, Var((ulong)payload.Length), payload,
+            new byte[] { 3,4 }, U32(42), new byte[] { 0 }), "tokens", "Beta", "a");
+        V1.Cfg value = new V1.Cfg(); V1.TableReport report = new V1.TableReport();
+        Check(V1.Schema.CfgLoad(value, wire, report), "null key: load");
+        Check(report.Malformed && report.Unknown == 0 && value.Tokens[(int)V1.Slot.Beta] == 77 && value.A == 42,
+            "null key: damage keeps prefix and sibling");
+        payload = Join(new byte[] { 4,2,2,4 }, U32(88), new byte[] { 3,4 }, U32(99));
+        wire = Fixture(Join(new byte[] { 1,16 }, Var((ulong)payload.Length), payload, new byte[] { 0 }), "tokens", "unknown", "Delta");
+        report = new V1.TableReport();
+        Check(V1.Schema.CfgLoad(value, wire, report) && !report.Malformed && report.Unknown == 1 &&
+            value.Tokens[(int)V1.Slot.Delta] == 99, "unknown key: skip and continue");
     }
 
     // ---- reflection: the presence companion and the key's vocabulary (§8) ----
@@ -1858,6 +1699,7 @@ static class Program
     {
         goldenDir = FindGoldenDir();
 
+        TestWireContracts();
         TestGoldenWireWrite();
         TestGoldenWireRead();
         TestGoldenSeamsWrite();

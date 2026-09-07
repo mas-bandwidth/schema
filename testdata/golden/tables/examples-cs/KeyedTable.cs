@@ -81,83 +81,80 @@ namespace Tabledemo
     // one slice per generated file.
     public static partial class Schema
     {
-        // Team on the TABLE wire: a value rides as the u16 hash of its VARIANT
+        // Team on the TABLE wire: a value rides as the 64-bit hash of its VARIANT
         // NAME, so a variant may be added anywhere, removed, or reordered and old
-        // data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.
-        public static bool TableEnumId(Team value, out ushort id)
+        // data still reads (docs/SPEC-TABLES.md §5). None rides as reference zero.
+        public static bool TableEnumId(Team value, out ulong id)
         {
             switch (value)
             {
                 case Team.None: id = 0; return true;
-                case Team.Red: id = 0xbb03; return true;
-                case Team.Blue: id = 0xf630; return true;
-                case Team.Green: id = 0x6e0f; return true;
+                case Team.Red: id = 0x9ff1de19feac1b7c; return true;
+                case Team.Blue: id = 0xecf3d3a7c1693e2d; return true;
+                case Team.Green: id = 0xcf00d78fd5953f1c; return true;
                 default: id = 0; return false; // no variant names this value: no wire identity
             }
         }
 
-        public static bool TableEnumValue(ushort id, out Team value)
+        public static bool TableEnumValue(ulong id, out Team value)
         {
             switch (id)
             {
-                case 0: value = Team.None; return true;
-                case 0xbb03: value = Team.Red; return true;
-                case 0xf630: value = Team.Blue; return true;
-                case 0x6e0f: value = Team.Green; return true;
+                case 0x9ff1de19feac1b7c: value = Team.Red; return true;
+                case 0xecf3d3a7c1693e2d: value = Team.Blue; return true;
+                case 0xcf00d78fd5953f1c: value = Team.Green; return true;
                 default: value = Team.None; return false; // an id this build cannot name
             }
         }
 
-        // Hull on the TABLE wire: a value rides as the u16 hash of its VARIANT
+        // Hull on the TABLE wire: a value rides as the 64-bit hash of its VARIANT
         // NAME, so a variant may be added anywhere, removed, or reordered and old
-        // data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.
-        public static bool TableEnumId(Hull value, out ushort id)
+        // data still reads (docs/SPEC-TABLES.md §5). None rides as reference zero.
+        public static bool TableEnumId(Hull value, out ulong id)
         {
             switch (value)
             {
                 case Hull.None: id = 0; return true;
-                case Hull.Interceptor: id = 0xf0f0; return true;
-                case Hull.Gunship: id = 0xb534; return true;
-                case Hull.Freighter: id = 0xb617; return true;
+                case Hull.Interceptor: id = 0xae61a6cbe88c2cf4; return true;
+                case Hull.Gunship: id = 0x334d24e1420dbc1f; return true;
+                case Hull.Freighter: id = 0x6c2321a3d00e23db; return true;
                 default: id = 0; return false; // no variant names this value: no wire identity
             }
         }
 
-        public static bool TableEnumValue(ushort id, out Hull value)
+        public static bool TableEnumValue(ulong id, out Hull value)
         {
             switch (id)
             {
-                case 0: value = Hull.None; return true;
-                case 0xf0f0: value = Hull.Interceptor; return true;
-                case 0xb534: value = Hull.Gunship; return true;
-                case 0xb617: value = Hull.Freighter; return true;
+                case 0xae61a6cbe88c2cf4: value = Hull.Interceptor; return true;
+                case 0x334d24e1420dbc1f: value = Hull.Gunship; return true;
+                case 0x6c2321a3d00e23db: value = Hull.Freighter; return true;
                 default: value = Hull.None; return false; // an id this build cannot name
             }
         }
 
-        // Weapon on the TABLE wire: a value rides as the u16 hash of its VARIANT
+        // Weapon on the TABLE wire: a value rides as the 64-bit hash of its VARIANT
         // NAME, so a variant may be added anywhere, removed, or reordered and old
-        // data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.
-        public static bool TableEnumId(Weapon value, out ushort id)
+        // data still reads (docs/SPEC-TABLES.md §5). None rides as reference zero.
+        public static bool TableEnumId(Weapon value, out ulong id)
         {
             switch (value)
             {
                 case Weapon.None: id = 0; return true;
-                case Weapon.Cannon: id = 0xf055; return true;
-                case Weapon.Missile: id = 0x16b3; return true;
-                case Weapon.Mine: id = 0x61bf; return true;
+                case Weapon.Cannon: id = 0x5854debe3b2e767c; return true;
+                case Weapon.Missile: id = 0xb528592e5a4583e3; return true;
+                case Weapon.Mine: id = 0x04dc16aea8ff5276; return true;
                 default: id = 0; return false; // no variant names this value: no wire identity
             }
         }
 
-        public static bool TableEnumValue(ushort id, out Weapon value)
+        public static bool TableEnumValue(ulong id, out Weapon value)
         {
             switch (id)
             {
-                case 0: value = Weapon.None; return true;
-                case 0xf055: value = Weapon.Cannon; return true;
-                case 0x16b3: value = Weapon.Missile; return true;
-                case 0x61bf: value = Weapon.Mine; return true;
+                case 0x5854debe3b2e767c: value = Weapon.Cannon; return true;
+                case 0xb528592e5a4583e3: value = Weapon.Missile; return true;
+                case 0x04dc16aea8ff5276: value = Weapon.Mine; return true;
                 default: value = Weapon.None; return false; // an id this build cannot name
             }
         }
@@ -173,99 +170,24 @@ namespace Tabledemo
 
         public static long TeamConfigMeasure(TeamConfig value)
         {
-            long bytes = 2; // terminator
-            if (value.SpawnCount != 4) { bytes += 3 + 4; } // spawn_count
-            if (value.BannerLength < 0 || value.BannerLength > 16) { return -1; } // storage invariant
-            if (value.BannerLength > 0) { bytes += 3 + 4 + value.BannerLength; } // banner
-            return bytes;
-        }
-
-        public static bool TeamConfigSaveBody(ref TableWriter w, TeamConfig value)
-        {
-            if (value.SpawnCount != 4)
-            {
-                w.Put16(0x3668); w.Put8(4); // spawn_count
-                w.Put32(unchecked((uint)(value.SpawnCount)));
-            }
-            if (value.BannerLength < 0 || value.BannerLength > 16) { return false; } // storage invariant
-            if (value.BannerLength > 0)
-            {
-                w.Put16(0x80e4); w.Put8(12); // banner
-                w.Put32((uint)value.BannerLength);
-                w.Raw(new ReadOnlySpan<byte>(value.Banner, 0, value.BannerLength));
-            }
-            w.Put16(0); // terminator
-            return !w.Overflow;
+            Span<ulong> ids = stackalloc ulong[155];
+            return TableWire.Save(value, TeamConfigTableType(), Span<byte>.Empty, ids, true);
         }
 
         public static long TeamConfigSave(TeamConfig value, Span<byte> buffer)
         {
-            TableWriter w = new TableWriter(buffer);
-            if (!TeamConfigSaveBody(ref w, value)) { return -1; }
-            return w.Offset; // == TeamConfigMeasure(value)
+            Span<ulong> ids = stackalloc ulong[155];
+            return TableWire.Save(value, TeamConfigTableType(), buffer, ids, false);
         }
 
-        public static bool TeamConfigLoadBody(ref TableReader r, TeamConfig value)
+        public static TableWire.Verdict TeamConfigLoadVerdict(TeamConfig value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReset(value); // restore declared defaults in place, then overlay
-            for (;;)
-            {
-                if (!r.Has(2)) { r.Report.Malformed = true; return false; }
-                ushort fieldId = r.Get16();
-                if (fieldId == 0) { return true; }
-                if (!r.Has(1)) { r.Report.Malformed = true; return false; }
-                byte kind = r.Get8();
-                switch (fieldId)
-                {
-                    case 0x3668: // spawn_count
-                    {
-                        if (kind != 4)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        {
-                            int decodedV = unchecked((int)r.Get32());
-                            if (decodedV < 0) { decodedV = 0; r.Report.Clamped++; }
-                            else if (decodedV > 64) { decodedV = 64; r.Report.Clamped++; }
-                            value.SpawnCount = decodedV;
-                        }
-                        break;
-                    }
-                    case 0x80e4: // banner
-                    {
-                        if (kind != 12)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        uint len = r.Get32();
-                        if (!r.Has(len)) { r.Report.Malformed = true; return false; }
-                        uint keep = len;
-                        if (keep > 16) { keep = 16; r.Report.Clamped++; }
-                        r.Buffer.Slice(r.Offset, (int)keep).CopyTo(new Span<byte>(value.Banner, 0, (int)keep));
-                        value.BannerLength = (int)keep;
-                        r.Offset += (int)len;
-                        break;
-                    }
-                    default:
-                    {
-                        r.Report.Unknown++;
-                        if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                        break;
-                    }
-                }
-            }
+            return TableWire.Load(value, TeamConfigTableType(), bytes, report);
         }
 
         public static bool TeamConfigLoad(TeamConfig value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReader r = new TableReader(bytes, report != null ? report : new TableReport());
-            return TeamConfigLoadBody(ref r, value);
+            return TeamConfigLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
         // TableReset(GunnerConfig) restores GunnerConfig's declared defaults in place, reusing every
@@ -278,85 +200,24 @@ namespace Tabledemo
 
         public static long GunnerConfigMeasure(GunnerConfig value)
         {
-            long bytes = 2; // terminator
-            if (value.Reaction != 0.2f) { bytes += 3 + 4; } // reaction
-            if (value.Tracking != false) { bytes += 3 + 1; } // tracking
-            return bytes;
-        }
-
-        public static bool GunnerConfigSaveBody(ref TableWriter w, GunnerConfig value)
-        {
-            if (value.Reaction != 0.2f)
-            {
-                w.Put16(0x900f); w.Put8(10); // reaction
-                w.Put32(TableFloatToBits(value.Reaction));
-            }
-            if (value.Tracking != false)
-            {
-                w.Put16(0x53d5); w.Put8(1); // tracking
-                w.Put8(value.Tracking ? (byte)1 : (byte)0);
-            }
-            w.Put16(0); // terminator
-            return !w.Overflow;
+            Span<ulong> ids = stackalloc ulong[155];
+            return TableWire.Save(value, GunnerConfigTableType(), Span<byte>.Empty, ids, true);
         }
 
         public static long GunnerConfigSave(GunnerConfig value, Span<byte> buffer)
         {
-            TableWriter w = new TableWriter(buffer);
-            if (!GunnerConfigSaveBody(ref w, value)) { return -1; }
-            return w.Offset; // == GunnerConfigMeasure(value)
+            Span<ulong> ids = stackalloc ulong[155];
+            return TableWire.Save(value, GunnerConfigTableType(), buffer, ids, false);
         }
 
-        public static bool GunnerConfigLoadBody(ref TableReader r, GunnerConfig value)
+        public static TableWire.Verdict GunnerConfigLoadVerdict(GunnerConfig value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReset(value); // restore declared defaults in place, then overlay
-            for (;;)
-            {
-                if (!r.Has(2)) { r.Report.Malformed = true; return false; }
-                ushort fieldId = r.Get16();
-                if (fieldId == 0) { return true; }
-                if (!r.Has(1)) { r.Report.Malformed = true; return false; }
-                byte kind = r.Get8();
-                switch (fieldId)
-                {
-                    case 0x900f: // reaction
-                    {
-                        if (kind != 10)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        value.Reaction = TableBitsToFloat(r.Get32());
-                        break;
-                    }
-                    case 0x53d5: // tracking
-                    {
-                        if (kind != 1)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(1)) { r.Report.Malformed = true; return false; }
-                        value.Tracking = r.Get8() != 0;
-                        break;
-                    }
-                    default:
-                    {
-                        r.Report.Unknown++;
-                        if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                        break;
-                    }
-                }
-            }
+            return TableWire.Load(value, GunnerConfigTableType(), bytes, report);
         }
 
         public static bool GunnerConfigLoad(GunnerConfig value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReader r = new TableReader(bytes, report != null ? report : new TableReport());
-            return GunnerConfigLoadBody(ref r, value);
+            return GunnerConfigLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
         // TableReset(TurretConfig) restores TurretConfig's declared defaults in place, reusing every
@@ -371,118 +232,24 @@ namespace Tabledemo
 
         public static long TurretConfigMeasure(TurretConfig value)
         {
-            long bytes = 2; // terminator
-            if (value.Damage != 10.0f) { bytes += 3 + 4; } // damage
-            if (value.Cooldown != 0.5f) { bytes += 3 + 4; } // cooldown
-            if (value.GunnerPresent) // ?GunnerConfig: presence decides, not content
-            {
-                long body = GunnerConfigMeasure(value.Gunner);
-                if (body < 0) { return -1; }
-                bytes += 3 + 4 + body; // gunner
-            }
-            return bytes;
-        }
-
-        public static bool TurretConfigSaveBody(ref TableWriter w, TurretConfig value)
-        {
-            if (value.Damage != 10.0f)
-            {
-                w.Put16(0x15a9); w.Put8(10); // damage
-                w.Put32(TableFloatToBits(value.Damage));
-            }
-            if (value.Cooldown != 0.5f)
-            {
-                w.Put16(0x2230); w.Put8(10); // cooldown
-                w.Put32(TableFloatToBits(value.Cooldown));
-            }
-            if (value.GunnerPresent) // ?GunnerConfig
-            {
-                long body = GunnerConfigMeasure(value.Gunner);
-                if (body < 0) { return false; } // storage invariant, refused as measure refuses it
-                w.Put16(0x2bc9); w.Put8(13); // gunner
-                w.Put32((uint)body);
-                if (!GunnerConfigSaveBody(ref w, value.Gunner)) { return false; }
-            }
-            w.Put16(0); // terminator
-            return !w.Overflow;
+            Span<ulong> ids = stackalloc ulong[155];
+            return TableWire.Save(value, TurretConfigTableType(), Span<byte>.Empty, ids, true);
         }
 
         public static long TurretConfigSave(TurretConfig value, Span<byte> buffer)
         {
-            TableWriter w = new TableWriter(buffer);
-            if (!TurretConfigSaveBody(ref w, value)) { return -1; }
-            return w.Offset; // == TurretConfigMeasure(value)
+            Span<ulong> ids = stackalloc ulong[155];
+            return TableWire.Save(value, TurretConfigTableType(), buffer, ids, false);
         }
 
-        public static bool TurretConfigLoadBody(ref TableReader r, TurretConfig value)
+        public static TableWire.Verdict TurretConfigLoadVerdict(TurretConfig value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReset(value); // restore declared defaults in place, then overlay
-            for (;;)
-            {
-                if (!r.Has(2)) { r.Report.Malformed = true; return false; }
-                ushort fieldId = r.Get16();
-                if (fieldId == 0) { return true; }
-                if (!r.Has(1)) { r.Report.Malformed = true; return false; }
-                byte kind = r.Get8();
-                switch (fieldId)
-                {
-                    case 0x15a9: // damage
-                    {
-                        if (kind != 10)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        value.Damage = TableBitsToFloat(r.Get32());
-                        break;
-                    }
-                    case 0x2230: // cooldown
-                    {
-                        if (kind != 10)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        value.Cooldown = TableBitsToFloat(r.Get32());
-                        break;
-                    }
-                    case 0x2bc9: // gunner
-                    {
-                        if (kind != 13)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        uint bodyLen = r.Get32();
-                        if (!r.Has(bodyLen)) { r.Report.Malformed = true; return false; }
-                        {
-                            TableReader sub = new TableReader(r.Buffer.Slice(r.Offset, (int)bodyLen), r.Report);
-                            GunnerConfigLoadBody(ref sub, value.Gunner);
-                        }
-                        r.Offset += (int)bodyLen;
-                        value.GunnerPresent = true;
-                        break;
-                    }
-                    default:
-                    {
-                        r.Report.Unknown++;
-                        if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                        break;
-                    }
-                }
-            }
+            return TableWire.Load(value, TurretConfigTableType(), bytes, report);
         }
 
         public static bool TurretConfigLoad(TurretConfig value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReader r = new TableReader(bytes, report != null ? report : new TableReport());
-            return TurretConfigLoadBody(ref r, value);
+            return TurretConfigLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
         // TableReset(HullConfig) restores HullConfig's declared defaults in place, reusing every
@@ -499,187 +266,24 @@ namespace Tabledemo
 
         public static long HullConfigMeasure(HullConfig value)
         {
-            long bytes = 2; // terminator
-            if (value.Health != 100.0f) { bytes += 3 + 4; } // health
-            if (value.Mass != 1.0f) { bytes += 3 + 4; } // mass
-            {
-                long pairs = 0, keyedBytes = 0;
-                for (int i = 0; i < 3; i++) // [Weapon]: every stored slot is a named variant's
-                {
-                    long elemBytes = TurretConfigMeasure(value.Turrets.Slots[i]);
-                    if (elemBytes < 0) { return -1; }
-                    if (elemBytes <= 2) { continue; } // an all-default slot elides
-                    ushort keyId;
-                    if (!TableEnumId((Weapon)(i + 1), out keyId)) { return -1; } // i is the STORAGE index; the key it holds is i + 1
-                    pairs++; keyedBytes += 2 + 4 + elemBytes; // key, length, body
-                }
-                if (pairs > 0) { bytes += 3 + 4 + 5 + keyedBytes; } // turrets
-            }
-            return bytes;
-        }
-
-        public static bool HullConfigSaveBody(ref TableWriter w, HullConfig value)
-        {
-            if (value.Health != 100.0f)
-            {
-                w.Put16(0x8617); w.Put8(10); // health
-                w.Put32(TableFloatToBits(value.Health));
-            }
-            if (value.Mass != 1.0f)
-            {
-                w.Put16(0xe7a6); w.Put8(10); // mass
-                w.Put32(TableFloatToBits(value.Mass));
-            }
-            {
-                uint pairs = 0;
-                for (int i = 0; i < 3; i++) // [Weapon]: every stored slot is a named variant's
-                {
-                    long elemBytes = TurretConfigMeasure(value.Turrets.Slots[i]);
-                    if (elemBytes < 0) { return false; }
-                    if (elemBytes <= 2) { continue; } // an all-default slot elides
-                    ushort keyId;
-                    if (!TableEnumId((Weapon)(i + 1), out keyId)) { return false; } // i is the STORAGE index; the key it holds is i + 1
-                    pairs++;
-                }
-                if (pairs > 0)
-                {
-                    // KIND 16, not 14: a keyed body and a positional one are
-                    // incompatible, so a reader of the other kind must see a kind
-                    // mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2)
-                    w.Put16(0x48ad); w.Put8(16); // turrets (keyed by Weapon)
-                    int lenAt = w.Offset; w.Put32(0);
-                    w.Put8(13); w.Put32(pairs);
-                    // ASCENDING BY VARIANT ORDINAL, which is slot order — this
-                    // writer's choice, and a reader must not rely on it: every
-                    // slot is found by its key (docs/SPEC-TABLES.md §3.2)
-                    for (int i = 0; i < 3; i++)
-                    {
-                        long elemBytes = TurretConfigMeasure(value.Turrets.Slots[i]);
-                        if (elemBytes < 0) { return false; }
-                        if (elemBytes <= 2) { continue; } // an all-default slot elides
-                        ushort keyId;
-                        if (!TableEnumId((Weapon)(i + 1), out keyId)) { return false; } // i is the STORAGE index; the key it holds is i + 1
-                        w.Put16(keyId); // the slot's VARIANT id, not its position
-                        int elemLenAt = w.Offset; w.Put32(0);
-                        if (!TurretConfigSaveBody(ref w, value.Turrets.Slots[i])) { return false; }
-                        w.Patch32(elemLenAt, (uint)(w.Offset - elemLenAt - 4));
-                    }
-                    w.Patch32(lenAt, (uint)(w.Offset - lenAt - 4));
-                }
-            }
-            w.Put16(0); // terminator
-            return !w.Overflow;
+            Span<ulong> ids = stackalloc ulong[155];
+            return TableWire.Save(value, HullConfigTableType(), Span<byte>.Empty, ids, true);
         }
 
         public static long HullConfigSave(HullConfig value, Span<byte> buffer)
         {
-            TableWriter w = new TableWriter(buffer);
-            if (!HullConfigSaveBody(ref w, value)) { return -1; }
-            return w.Offset; // == HullConfigMeasure(value)
+            Span<ulong> ids = stackalloc ulong[155];
+            return TableWire.Save(value, HullConfigTableType(), buffer, ids, false);
         }
 
-        public static bool HullConfigLoadBody(ref TableReader r, HullConfig value)
+        public static TableWire.Verdict HullConfigLoadVerdict(HullConfig value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReset(value); // restore declared defaults in place, then overlay
-            for (;;)
-            {
-                if (!r.Has(2)) { r.Report.Malformed = true; return false; }
-                ushort fieldId = r.Get16();
-                if (fieldId == 0) { return true; }
-                if (!r.Has(1)) { r.Report.Malformed = true; return false; }
-                byte kind = r.Get8();
-                switch (fieldId)
-                {
-                    case 0x8617: // health
-                    {
-                        if (kind != 10)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        value.Health = TableBitsToFloat(r.Get32());
-                        break;
-                    }
-                    case 0xe7a6: // mass
-                    {
-                        if (kind != 10)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        value.Mass = TableBitsToFloat(r.Get32());
-                        break;
-                    }
-                    case 0x48ad: // turrets
-                    {
-                        if (kind != 16)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        uint bodyLen = r.Get32();
-                        if (!r.Has(bodyLen)) { r.Report.Malformed = true; return false; }
-                        int bodyEnd = r.Offset + (int)bodyLen;
-                        if (bodyLen >= 5)
-                        {
-                            byte elemKind = r.Get8();
-                            uint count = r.Get32();
-                            if (elemKind != 13) { r.Report.KindMismatch++; r.Offset = bodyEnd; break; }
-                            TableReader sub = new TableReader(r.Buffer.Slice(r.Offset, bodyEnd - r.Offset), r.Report);
-                            for (uint i = 0; i < count; i++)
-                            {
-                                if (!sub.Has(2)) { r.Report.Malformed = true; break; }
-                                ushort key = sub.Get16();
-                                if (!sub.Has(4)) { r.Report.Malformed = true; break; }
-                                uint elemLen = sub.Get32();
-                                if (!sub.Has(elemLen)) { r.Report.Malformed = true; break; }
-                                if (key == 0)
-                                {
-                                    // None is the NULL KEY: 0 is the reserved id no declared
-                                    // name can fold to, so a body carrying one is DAMAGED, not
-                                    // merely foreign. Framing damage stops this body, keeps what
-                                    // it decoded, and the parent reads on past the length
-                                    // (docs/SPEC-TABLES.md §3.2, §4).
-                                    r.Report.Malformed = true;
-                                    break;
-                                }
-                                Weapon slot;
-                                if (!TableEnumValue(key, out slot))
-                                {
-                                    r.Report.Unknown++; // a slot this reader cannot name
-                                    sub.Offset += (int)elemLen;
-                                    continue;
-                                }
-                                {
-                                    TableReader elem = new TableReader(sub.Buffer.Slice(sub.Offset, (int)elemLen), r.Report);
-                                    TurretConfigLoadBody(ref elem, value.Turrets.Slots[(int)slot - 1]);
-                                }
-                                sub.Offset += (int)elemLen;
-                            }
-                        }
-                        r.Offset = bodyEnd; // unread pairs and slack skip via the length
-                        break;
-                    }
-                    default:
-                    {
-                        r.Report.Unknown++;
-                        if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                        break;
-                    }
-                }
-            }
+            return TableWire.Load(value, HullConfigTableType(), bytes, report);
         }
 
         public static bool HullConfigLoad(HullConfig value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReader r = new TableReader(bytes, report != null ? report : new TableReport());
-            return HullConfigLoadBody(ref r, value);
+            return HullConfigLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
         // TableReset(KeyedConfig) restores KeyedConfig's declared defaults in place, reusing every
@@ -699,286 +303,24 @@ namespace Tabledemo
 
         public static long KeyedConfigMeasure(KeyedConfig value)
         {
-            long bytes = 2; // terminator
-            {
-                long pairs = 0, keyedBytes = 0;
-                for (int i = 0; i < 3; i++) // [Team]: every stored slot is a named variant's
-                {
-                    long elemBytes = TeamConfigMeasure(value.Teams.Slots[i]);
-                    if (elemBytes < 0) { return -1; }
-                    if (elemBytes <= 2) { continue; } // an all-default slot elides
-                    ushort keyId;
-                    if (!TableEnumId((Team)(i + 1), out keyId)) { return -1; } // i is the STORAGE index; the key it holds is i + 1
-                    pairs++; keyedBytes += 2 + 4 + elemBytes; // key, length, body
-                }
-                if (pairs > 0) { bytes += 3 + 4 + 5 + keyedBytes; } // teams
-            }
-            {
-                long pairs = 0, keyedBytes = 0;
-                for (int i = 0; i < 3; i++) // [Hull]: every stored slot is a named variant's
-                {
-                    long elemBytes = HullConfigMeasure(value.Hulls.Slots[i]);
-                    if (elemBytes < 0) { return -1; }
-                    if (elemBytes <= 2) { continue; } // an all-default slot elides
-                    ushort keyId;
-                    if (!TableEnumId((Hull)(i + 1), out keyId)) { return -1; } // i is the STORAGE index; the key it holds is i + 1
-                    pairs++; keyedBytes += 2 + 4 + elemBytes; // key, length, body
-                }
-                if (pairs > 0) { bytes += 3 + 4 + 5 + keyedBytes; } // hulls
-            }
-            {
-                long body = ScoreBoardMeasure(value.Scores);
-                if (body < 0) { return -1; }
-                if (body > 2) { bytes += 3 + 4 + body; } // scores: all-default nested elides
-            }
-            return bytes;
-        }
-
-        public static bool KeyedConfigSaveBody(ref TableWriter w, KeyedConfig value)
-        {
-            {
-                uint pairs = 0;
-                for (int i = 0; i < 3; i++) // [Team]: every stored slot is a named variant's
-                {
-                    long elemBytes = TeamConfigMeasure(value.Teams.Slots[i]);
-                    if (elemBytes < 0) { return false; }
-                    if (elemBytes <= 2) { continue; } // an all-default slot elides
-                    ushort keyId;
-                    if (!TableEnumId((Team)(i + 1), out keyId)) { return false; } // i is the STORAGE index; the key it holds is i + 1
-                    pairs++;
-                }
-                if (pairs > 0)
-                {
-                    // KIND 16, not 14: a keyed body and a positional one are
-                    // incompatible, so a reader of the other kind must see a kind
-                    // mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2)
-                    w.Put16(0x9ae1); w.Put8(16); // teams (keyed by Team)
-                    int lenAt = w.Offset; w.Put32(0);
-                    w.Put8(13); w.Put32(pairs);
-                    // ASCENDING BY VARIANT ORDINAL, which is slot order — this
-                    // writer's choice, and a reader must not rely on it: every
-                    // slot is found by its key (docs/SPEC-TABLES.md §3.2)
-                    for (int i = 0; i < 3; i++)
-                    {
-                        long elemBytes = TeamConfigMeasure(value.Teams.Slots[i]);
-                        if (elemBytes < 0) { return false; }
-                        if (elemBytes <= 2) { continue; } // an all-default slot elides
-                        ushort keyId;
-                        if (!TableEnumId((Team)(i + 1), out keyId)) { return false; } // i is the STORAGE index; the key it holds is i + 1
-                        w.Put16(keyId); // the slot's VARIANT id, not its position
-                        int elemLenAt = w.Offset; w.Put32(0);
-                        if (!TeamConfigSaveBody(ref w, value.Teams.Slots[i])) { return false; }
-                        w.Patch32(elemLenAt, (uint)(w.Offset - elemLenAt - 4));
-                    }
-                    w.Patch32(lenAt, (uint)(w.Offset - lenAt - 4));
-                }
-            }
-            {
-                uint pairs = 0;
-                for (int i = 0; i < 3; i++) // [Hull]: every stored slot is a named variant's
-                {
-                    long elemBytes = HullConfigMeasure(value.Hulls.Slots[i]);
-                    if (elemBytes < 0) { return false; }
-                    if (elemBytes <= 2) { continue; } // an all-default slot elides
-                    ushort keyId;
-                    if (!TableEnumId((Hull)(i + 1), out keyId)) { return false; } // i is the STORAGE index; the key it holds is i + 1
-                    pairs++;
-                }
-                if (pairs > 0)
-                {
-                    // KIND 16, not 14: a keyed body and a positional one are
-                    // incompatible, so a reader of the other kind must see a kind
-                    // mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2)
-                    w.Put16(0xeff5); w.Put8(16); // hulls (keyed by Hull)
-                    int lenAt = w.Offset; w.Put32(0);
-                    w.Put8(13); w.Put32(pairs);
-                    // ASCENDING BY VARIANT ORDINAL, which is slot order — this
-                    // writer's choice, and a reader must not rely on it: every
-                    // slot is found by its key (docs/SPEC-TABLES.md §3.2)
-                    for (int i = 0; i < 3; i++)
-                    {
-                        long elemBytes = HullConfigMeasure(value.Hulls.Slots[i]);
-                        if (elemBytes < 0) { return false; }
-                        if (elemBytes <= 2) { continue; } // an all-default slot elides
-                        ushort keyId;
-                        if (!TableEnumId((Hull)(i + 1), out keyId)) { return false; } // i is the STORAGE index; the key it holds is i + 1
-                        w.Put16(keyId); // the slot's VARIANT id, not its position
-                        int elemLenAt = w.Offset; w.Put32(0);
-                        if (!HullConfigSaveBody(ref w, value.Hulls.Slots[i])) { return false; }
-                        w.Patch32(elemLenAt, (uint)(w.Offset - elemLenAt - 4));
-                    }
-                    w.Patch32(lenAt, (uint)(w.Offset - lenAt - 4));
-                }
-            }
-            {
-                long body = ScoreBoardMeasure(value.Scores);
-                if (body < 0) { return false; } // storage invariant, refused as measure refuses it
-                if (body > 2) // all-default nested elides
-                {
-                    w.Put16(0xdcf3); w.Put8(13); // scores
-                    w.Put32((uint)body);
-                    if (!ScoreBoardSaveBody(ref w, value.Scores)) { return false; }
-                }
-            }
-            w.Put16(0); // terminator
-            return !w.Overflow;
+            Span<ulong> ids = stackalloc ulong[155];
+            return TableWire.Save(value, KeyedConfigTableType(), Span<byte>.Empty, ids, true);
         }
 
         public static long KeyedConfigSave(KeyedConfig value, Span<byte> buffer)
         {
-            TableWriter w = new TableWriter(buffer);
-            if (!KeyedConfigSaveBody(ref w, value)) { return -1; }
-            return w.Offset; // == KeyedConfigMeasure(value)
+            Span<ulong> ids = stackalloc ulong[155];
+            return TableWire.Save(value, KeyedConfigTableType(), buffer, ids, false);
         }
 
-        public static bool KeyedConfigLoadBody(ref TableReader r, KeyedConfig value)
+        public static TableWire.Verdict KeyedConfigLoadVerdict(KeyedConfig value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReset(value); // restore declared defaults in place, then overlay
-            for (;;)
-            {
-                if (!r.Has(2)) { r.Report.Malformed = true; return false; }
-                ushort fieldId = r.Get16();
-                if (fieldId == 0) { return true; }
-                if (!r.Has(1)) { r.Report.Malformed = true; return false; }
-                byte kind = r.Get8();
-                switch (fieldId)
-                {
-                    case 0x9ae1: // teams
-                    {
-                        if (kind != 16)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        uint bodyLen = r.Get32();
-                        if (!r.Has(bodyLen)) { r.Report.Malformed = true; return false; }
-                        int bodyEnd = r.Offset + (int)bodyLen;
-                        if (bodyLen >= 5)
-                        {
-                            byte elemKind = r.Get8();
-                            uint count = r.Get32();
-                            if (elemKind != 13) { r.Report.KindMismatch++; r.Offset = bodyEnd; break; }
-                            TableReader sub = new TableReader(r.Buffer.Slice(r.Offset, bodyEnd - r.Offset), r.Report);
-                            for (uint i = 0; i < count; i++)
-                            {
-                                if (!sub.Has(2)) { r.Report.Malformed = true; break; }
-                                ushort key = sub.Get16();
-                                if (!sub.Has(4)) { r.Report.Malformed = true; break; }
-                                uint elemLen = sub.Get32();
-                                if (!sub.Has(elemLen)) { r.Report.Malformed = true; break; }
-                                if (key == 0)
-                                {
-                                    // None is the NULL KEY: 0 is the reserved id no declared
-                                    // name can fold to, so a body carrying one is DAMAGED, not
-                                    // merely foreign. Framing damage stops this body, keeps what
-                                    // it decoded, and the parent reads on past the length
-                                    // (docs/SPEC-TABLES.md §3.2, §4).
-                                    r.Report.Malformed = true;
-                                    break;
-                                }
-                                Team slot;
-                                if (!TableEnumValue(key, out slot))
-                                {
-                                    r.Report.Unknown++; // a slot this reader cannot name
-                                    sub.Offset += (int)elemLen;
-                                    continue;
-                                }
-                                {
-                                    TableReader elem = new TableReader(sub.Buffer.Slice(sub.Offset, (int)elemLen), r.Report);
-                                    TeamConfigLoadBody(ref elem, value.Teams.Slots[(int)slot - 1]);
-                                }
-                                sub.Offset += (int)elemLen;
-                            }
-                        }
-                        r.Offset = bodyEnd; // unread pairs and slack skip via the length
-                        break;
-                    }
-                    case 0xeff5: // hulls
-                    {
-                        if (kind != 16)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        uint bodyLen = r.Get32();
-                        if (!r.Has(bodyLen)) { r.Report.Malformed = true; return false; }
-                        int bodyEnd = r.Offset + (int)bodyLen;
-                        if (bodyLen >= 5)
-                        {
-                            byte elemKind = r.Get8();
-                            uint count = r.Get32();
-                            if (elemKind != 13) { r.Report.KindMismatch++; r.Offset = bodyEnd; break; }
-                            TableReader sub = new TableReader(r.Buffer.Slice(r.Offset, bodyEnd - r.Offset), r.Report);
-                            for (uint i = 0; i < count; i++)
-                            {
-                                if (!sub.Has(2)) { r.Report.Malformed = true; break; }
-                                ushort key = sub.Get16();
-                                if (!sub.Has(4)) { r.Report.Malformed = true; break; }
-                                uint elemLen = sub.Get32();
-                                if (!sub.Has(elemLen)) { r.Report.Malformed = true; break; }
-                                if (key == 0)
-                                {
-                                    // None is the NULL KEY: 0 is the reserved id no declared
-                                    // name can fold to, so a body carrying one is DAMAGED, not
-                                    // merely foreign. Framing damage stops this body, keeps what
-                                    // it decoded, and the parent reads on past the length
-                                    // (docs/SPEC-TABLES.md §3.2, §4).
-                                    r.Report.Malformed = true;
-                                    break;
-                                }
-                                Hull slot;
-                                if (!TableEnumValue(key, out slot))
-                                {
-                                    r.Report.Unknown++; // a slot this reader cannot name
-                                    sub.Offset += (int)elemLen;
-                                    continue;
-                                }
-                                {
-                                    TableReader elem = new TableReader(sub.Buffer.Slice(sub.Offset, (int)elemLen), r.Report);
-                                    HullConfigLoadBody(ref elem, value.Hulls.Slots[(int)slot - 1]);
-                                }
-                                sub.Offset += (int)elemLen;
-                            }
-                        }
-                        r.Offset = bodyEnd; // unread pairs and slack skip via the length
-                        break;
-                    }
-                    case 0xdcf3: // scores
-                    {
-                        if (kind != 13)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        uint bodyLen = r.Get32();
-                        if (!r.Has(bodyLen)) { r.Report.Malformed = true; return false; }
-                        {
-                            TableReader sub = new TableReader(r.Buffer.Slice(r.Offset, (int)bodyLen), r.Report);
-                            ScoreBoardLoadBody(ref sub, value.Scores);
-                        }
-                        r.Offset += (int)bodyLen;
-                        break;
-                    }
-                    default:
-                    {
-                        r.Report.Unknown++;
-                        if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                        break;
-                    }
-                }
-            }
+            return TableWire.Load(value, KeyedConfigTableType(), bytes, report);
         }
 
         public static bool KeyedConfigLoad(KeyedConfig value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReader r = new TableReader(bytes, report != null ? report : new TableReport());
-            return KeyedConfigLoadBody(ref r, value);
+            return KeyedConfigLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
         // TableReset(ScoreBoard) restores ScoreBoard's declared defaults in place, reusing every
@@ -990,151 +332,24 @@ namespace Tabledemo
 
         public static long ScoreBoardMeasure(ScoreBoard value)
         {
-            long bytes = 2; // terminator
-            {
-                long pairs = 0, keyedBytes = 0;
-                for (int i = 0; i < 3; i++) // [Team]: every stored slot is a named variant's
-                {
-                    if (value.PerTeam[i] == 0) { continue; } // a default slot elides
-                    ushort keyId;
-                    if (!TableEnumId((Team)(i + 1), out keyId)) { return -1; } // i is the STORAGE index; the key it holds is i + 1
-                    pairs++; keyedBytes += 2 + 4 + 4; // key, length, element
-                }
-                if (pairs > 0) { bytes += 3 + 4 + 5 + keyedBytes; } // per_team
-            }
-            return bytes;
-        }
-
-        public static bool ScoreBoardSaveBody(ref TableWriter w, ScoreBoard value)
-        {
-            {
-                uint pairs = 0;
-                for (int i = 0; i < 3; i++) // [Team]: every stored slot is a named variant's
-                {
-                    if (value.PerTeam[i] == 0) { continue; } // a default slot elides
-                    ushort keyId;
-                    if (!TableEnumId((Team)(i + 1), out keyId)) { return false; } // i is the STORAGE index; the key it holds is i + 1
-                    pairs++;
-                }
-                if (pairs > 0)
-                {
-                    // KIND 16, not 14: a keyed body and a positional one are
-                    // incompatible, so a reader of the other kind must see a kind
-                    // mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2)
-                    w.Put16(0x443f); w.Put8(16); // per_team (keyed by Team)
-                    int lenAt = w.Offset; w.Put32(0);
-                    w.Put8(4); w.Put32(pairs);
-                    // ASCENDING BY VARIANT ORDINAL, which is slot order — this
-                    // writer's choice, and a reader must not rely on it: every
-                    // slot is found by its key (docs/SPEC-TABLES.md §3.2)
-                    for (int i = 0; i < 3; i++)
-                    {
-                        if (value.PerTeam[i] == 0) { continue; } // a default slot elides
-                        ushort keyId;
-                        if (!TableEnumId((Team)(i + 1), out keyId)) { return false; } // i is the STORAGE index; the key it holds is i + 1
-                        w.Put16(keyId); // the slot's VARIANT id, not its position
-                        int elemLenAt = w.Offset; w.Put32(0);
-                        w.Put32(unchecked((uint)(value.PerTeam[i])));
-                        w.Patch32(elemLenAt, (uint)(w.Offset - elemLenAt - 4));
-                    }
-                    w.Patch32(lenAt, (uint)(w.Offset - lenAt - 4));
-                }
-            }
-            w.Put16(0); // terminator
-            return !w.Overflow;
+            Span<ulong> ids = stackalloc ulong[155];
+            return TableWire.Save(value, ScoreBoardTableType(), Span<byte>.Empty, ids, true);
         }
 
         public static long ScoreBoardSave(ScoreBoard value, Span<byte> buffer)
         {
-            TableWriter w = new TableWriter(buffer);
-            if (!ScoreBoardSaveBody(ref w, value)) { return -1; }
-            return w.Offset; // == ScoreBoardMeasure(value)
+            Span<ulong> ids = stackalloc ulong[155];
+            return TableWire.Save(value, ScoreBoardTableType(), buffer, ids, false);
         }
 
-        public static bool ScoreBoardLoadBody(ref TableReader r, ScoreBoard value)
+        public static TableWire.Verdict ScoreBoardLoadVerdict(ScoreBoard value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReset(value); // restore declared defaults in place, then overlay
-            for (;;)
-            {
-                if (!r.Has(2)) { r.Report.Malformed = true; return false; }
-                ushort fieldId = r.Get16();
-                if (fieldId == 0) { return true; }
-                if (!r.Has(1)) { r.Report.Malformed = true; return false; }
-                byte kind = r.Get8();
-                switch (fieldId)
-                {
-                    case 0x443f: // per_team
-                    {
-                        if (kind != 16)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        uint bodyLen = r.Get32();
-                        if (!r.Has(bodyLen)) { r.Report.Malformed = true; return false; }
-                        int bodyEnd = r.Offset + (int)bodyLen;
-                        if (bodyLen >= 5)
-                        {
-                            byte elemKind = r.Get8();
-                            uint count = r.Get32();
-                            if (elemKind != 4) { r.Report.KindMismatch++; r.Offset = bodyEnd; break; }
-                            TableReader sub = new TableReader(r.Buffer.Slice(r.Offset, bodyEnd - r.Offset), r.Report);
-                            for (uint i = 0; i < count; i++)
-                            {
-                                if (!sub.Has(2)) { r.Report.Malformed = true; break; }
-                                ushort key = sub.Get16();
-                                if (!sub.Has(4)) { r.Report.Malformed = true; break; }
-                                uint elemLen = sub.Get32();
-                                if (!sub.Has(elemLen)) { r.Report.Malformed = true; break; }
-                                if (key == 0)
-                                {
-                                    // None is the NULL KEY: 0 is the reserved id no declared
-                                    // name can fold to, so a body carrying one is DAMAGED, not
-                                    // merely foreign. Framing damage stops this body, keeps what
-                                    // it decoded, and the parent reads on past the length
-                                    // (docs/SPEC-TABLES.md §3.2, §4).
-                                    r.Report.Malformed = true;
-                                    break;
-                                }
-                                Team slot;
-                                if (!TableEnumValue(key, out slot))
-                                {
-                                    r.Report.Unknown++; // a slot this reader cannot name
-                                    sub.Offset += (int)elemLen;
-                                    continue;
-                                }
-                                {
-                                    TableReader elem = new TableReader(sub.Buffer.Slice(sub.Offset, (int)elemLen), r.Report);
-                                    if (!elem.Has(4)) { r.Report.Malformed = true; sub.Offset += (int)elemLen; continue; }
-                                    {
-                                        int decodedV = unchecked((int)elem.Get32());
-                                        if (decodedV < 0) { decodedV = 0; r.Report.Clamped++; }
-                                        else if (decodedV > 100000) { decodedV = 100000; r.Report.Clamped++; }
-                                        value.PerTeam[(int)slot - 1] = decodedV;
-                                    }
-                                }
-                                sub.Offset += (int)elemLen;
-                            }
-                        }
-                        r.Offset = bodyEnd; // unread pairs and slack skip via the length
-                        break;
-                    }
-                    default:
-                    {
-                        r.Report.Unknown++;
-                        if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                        break;
-                    }
-                }
-            }
+            return TableWire.Load(value, ScoreBoardTableType(), bytes, report);
         }
 
         public static bool ScoreBoardLoad(ScoreBoard value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReader r = new TableReader(bytes, report != null ? report : new TableReport());
-            return ScoreBoardLoadBody(ref r, value);
+            return ScoreBoardLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
         // ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----
@@ -1146,11 +361,12 @@ namespace Tabledemo
             if (info != null) { return info; }
             info = new TableTypeInfo();
             info.Name = "TeamConfig";
+            info.Id = 0x1cf8555d11fb113aul;
             info.NumFields = 2;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "spawn_count", Json = "spawn_count", TypeName = "int32", Id = 0x3668, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 64.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((TeamConfig)o).SpawnCount; }, SetRaw = delegate(object o, int i, ulong r) { ((TeamConfig)o).SpawnCount = unchecked((int)(long)r); } },
-                new TableFieldInfo { Name = "banner", Json = "banner", TypeName = "string", Id = 0x80e4, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 16, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate(object o) { return ((TeamConfig)o).Banner; }, GetCount = delegate(object o) { return ((TeamConfig)o).BannerLength; }, SetCount = delegate(object o, int n) { ((TeamConfig)o).BannerLength = n; } },
+                new TableFieldInfo { Name = "spawn_count", Json = "spawn_count", TypeName = "int32", Id = 0xceec99e2d65db674, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 64.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((TeamConfig)o).SpawnCount; }, SetRaw = delegate(object o, int i, ulong r) { ((TeamConfig)o).SpawnCount = unchecked((int)(long)r); }, ResetField = delegate(object o) { var value = (TeamConfig)o; value.SpawnCount = 4; }, DefaultRaw = (ulong)(long)4, ClampRaw = delegate(ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { r.Clamped++; v = 0; } if (v > 64) { r.Clamped++; v = 64; } return (ulong)(long)v; } },
+                new TableFieldInfo { Name = "banner", Json = "banner", TypeName = "string", Id = 0xbca0dab1c7a00ccf, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 16, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate(object o) { return ((TeamConfig)o).Banner; }, GetCount = delegate(object o) { return ((TeamConfig)o).BannerLength; }, SetCount = delegate(object o, int n) { ((TeamConfig)o).BannerLength = n; }, ResetField = delegate(object o) { var value = (TeamConfig)o; Array.Clear(value.Banner, 0, value.Banner.Length); value.BannerLength = 0; } },
             };
             info.Reset = delegate(object o) { TableReset((TeamConfig)o); };
             info.Doc = TableDocNone;
@@ -1167,11 +383,12 @@ namespace Tabledemo
             if (info != null) { return info; }
             info = new TableTypeInfo();
             info.Name = "GunnerConfig";
+            info.Id = 0x5fcbe04615411b64ul;
             info.NumFields = 2;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "reaction", Json = "reaction", TypeName = "float32", Id = 0x900f, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((GunnerConfig)o).Reaction); }, SetRaw = delegate(object o, int i, ulong r) { ((GunnerConfig)o).Reaction = TableBitsToFloat(unchecked((uint)r)); } },
-                new TableFieldInfo { Name = "tracking", Json = "tracking", TypeName = "bool", Id = 0x53d5, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return ((GunnerConfig)o).Tracking ? 1ul : 0ul; }, SetRaw = delegate(object o, int i, ulong r) { ((GunnerConfig)o).Tracking = r != 0; } },
+                new TableFieldInfo { Name = "reaction", Json = "reaction", TypeName = "float32", Id = 0xb75aa3662201646a, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((GunnerConfig)o).Reaction); }, SetRaw = delegate(object o, int i, ulong r) { ((GunnerConfig)o).Reaction = TableBitsToFloat(unchecked((uint)r)); }, ResetField = delegate(object o) { var value = (GunnerConfig)o; value.Reaction = 0.2f; }, DefaultRaw = (ulong)TableFloatToBits(0.2f), ClampRaw = delegate(ulong raw, TableReport r) { float v = TableBitsToFloat(unchecked((uint)raw)); return (ulong)TableFloatToBits(v); } },
+                new TableFieldInfo { Name = "tracking", Json = "tracking", TypeName = "bool", Id = 0xa6bf719a4602b0bc, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return ((GunnerConfig)o).Tracking ? 1ul : 0ul; }, SetRaw = delegate(object o, int i, ulong r) { ((GunnerConfig)o).Tracking = r != 0; }, ResetField = delegate(object o) { var value = (GunnerConfig)o; value.Tracking = false; }, DefaultRaw = false ? 1ul : 0ul },
             };
             info.Reset = delegate(object o) { TableReset((GunnerConfig)o); };
             info.Doc = TableDocNone;
@@ -1188,12 +405,13 @@ namespace Tabledemo
             if (info != null) { return info; }
             info = new TableTypeInfo();
             info.Name = "TurretConfig";
+            info.Id = 0x469dba0c16b2ad15ul;
             info.NumFields = 3;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "damage", Json = "damage", TypeName = "float32", Id = 0x15a9, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((TurretConfig)o).Damage); }, SetRaw = delegate(object o, int i, ulong r) { ((TurretConfig)o).Damage = TableBitsToFloat(unchecked((uint)r)); } },
-                new TableFieldInfo { Name = "cooldown", Json = "cooldown", TypeName = "float32", Id = 0x2230, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((TurretConfig)o).Cooldown); }, SetRaw = delegate(object o, int i, ulong r) { ((TurretConfig)o).Cooldown = TableBitsToFloat(unchecked((uint)r)); } },
-                new TableFieldInfo { Name = "gunner", Json = "gunner", TypeName = "GunnerConfig", Id = 0x2bc9, Kind = 13, IsArray = false, Counted = false, Optional = true, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return GunnerConfigTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((TurretConfig)o).Gunner; }, GetPresent = delegate(object o) { return ((TurretConfig)o).GunnerPresent; }, SetPresent = delegate(object o, bool p) { ((TurretConfig)o).GunnerPresent = p; } },
+                new TableFieldInfo { Name = "damage", Json = "damage", TypeName = "float32", Id = 0x7f6308be8ab37fc0, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((TurretConfig)o).Damage); }, SetRaw = delegate(object o, int i, ulong r) { ((TurretConfig)o).Damage = TableBitsToFloat(unchecked((uint)r)); }, ResetField = delegate(object o) { var value = (TurretConfig)o; value.Damage = 10.0f; }, DefaultRaw = (ulong)TableFloatToBits(10.0f), ClampRaw = delegate(ulong raw, TableReport r) { float v = TableBitsToFloat(unchecked((uint)raw)); return (ulong)TableFloatToBits(v); } },
+                new TableFieldInfo { Name = "cooldown", Json = "cooldown", TypeName = "float32", Id = 0xdc2cbe6953343d48, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((TurretConfig)o).Cooldown); }, SetRaw = delegate(object o, int i, ulong r) { ((TurretConfig)o).Cooldown = TableBitsToFloat(unchecked((uint)r)); }, ResetField = delegate(object o) { var value = (TurretConfig)o; value.Cooldown = 0.5f; }, DefaultRaw = (ulong)TableFloatToBits(0.5f), ClampRaw = delegate(ulong raw, TableReport r) { float v = TableBitsToFloat(unchecked((uint)raw)); return (ulong)TableFloatToBits(v); } },
+                new TableFieldInfo { Name = "gunner", Json = "gunner", TypeName = "GunnerConfig", Id = 0x40dbb648c0cd44aa, Kind = 13, IsArray = false, Counted = false, Optional = true, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return GunnerConfigTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((TurretConfig)o).Gunner; }, GetPresent = delegate(object o) { return ((TurretConfig)o).GunnerPresent; }, SetPresent = delegate(object o, bool p) { ((TurretConfig)o).GunnerPresent = p; }, ResetField = delegate(object o) { var value = (TurretConfig)o; TableReset(value.Gunner); } },
             };
             info.Reset = delegate(object o) { TableReset((TurretConfig)o); };
             info.Doc = TableDocNone;
@@ -1210,12 +428,13 @@ namespace Tabledemo
             if (info != null) { return info; }
             info = new TableTypeInfo();
             info.Name = "HullConfig";
+            info.Id = 0x3066b130dfbd7890ul;
             info.NumFields = 3;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "health", Json = "health", TypeName = "float32", Id = 0x8617, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((HullConfig)o).Health); }, SetRaw = delegate(object o, int i, ulong r) { ((HullConfig)o).Health = TableBitsToFloat(unchecked((uint)r)); } },
-                new TableFieldInfo { Name = "mass", Json = "mass", TypeName = "float32", Id = 0xe7a6, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((HullConfig)o).Mass); }, SetRaw = delegate(object o, int i, ulong r) { ((HullConfig)o).Mass = TableBitsToFloat(unchecked((uint)r)); } },
-                new TableFieldInfo { Name = "turrets", Json = "turrets", TypeName = "TurretConfig", Id = 0x48ad, Kind = 13, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)Weapon.Max, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Weapon", KeyName = delegate(ulong v) { return EnumNameWeapon(v); }, KeyId = delegate(ulong v) { ushort id; TableEnumId((Weapon)v, out id); return id; }, Guard = "", TableRef = delegate { return TurretConfigTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((HullConfig)o).Turrets.Slots[i]; } },
+                new TableFieldInfo { Name = "health", Json = "health", TypeName = "float32", Id = 0x7f69d4b5288ba9cf, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((HullConfig)o).Health); }, SetRaw = delegate(object o, int i, ulong r) { ((HullConfig)o).Health = TableBitsToFloat(unchecked((uint)r)); }, ResetField = delegate(object o) { var value = (HullConfig)o; value.Health = 100.0f; }, DefaultRaw = (ulong)TableFloatToBits(100.0f), ClampRaw = delegate(ulong raw, TableReport r) { float v = TableBitsToFloat(unchecked((uint)raw)); return (ulong)TableFloatToBits(v); } },
+                new TableFieldInfo { Name = "mass", Json = "mass", TypeName = "float32", Id = 0x1f3757a2ce7b0ab1, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((HullConfig)o).Mass); }, SetRaw = delegate(object o, int i, ulong r) { ((HullConfig)o).Mass = TableBitsToFloat(unchecked((uint)r)); }, ResetField = delegate(object o) { var value = (HullConfig)o; value.Mass = 1.0f; }, DefaultRaw = (ulong)TableFloatToBits(1.0f), ClampRaw = delegate(ulong raw, TableReport r) { float v = TableBitsToFloat(unchecked((uint)raw)); return (ulong)TableFloatToBits(v); } },
+                new TableFieldInfo { Name = "turrets", Json = "turrets", TypeName = "TurretConfig", Id = 0x84f8260bc283608c, Kind = 13, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)Weapon.Max, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Weapon", KeyName = delegate(ulong v) { return EnumNameWeapon(v); }, KeyId = delegate(ulong v) { ulong id; TableEnumId((Weapon)v, out id); return id; }, Guard = "", TableRef = delegate { return TurretConfigTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((HullConfig)o).Turrets.Slots[i]; }, ResetField = delegate(object o) { var value = (HullConfig)o; for (int i = 0; i < value.Turrets.Slots.Length; i++) { TableReset(value.Turrets.Slots[i]); } } },
             };
             info.Reset = delegate(object o) { TableReset((HullConfig)o); };
             info.Doc = TableDocNone;
@@ -1232,12 +451,13 @@ namespace Tabledemo
             if (info != null) { return info; }
             info = new TableTypeInfo();
             info.Name = "KeyedConfig";
+            info.Id = 0xd6633ae4e94deecful;
             info.NumFields = 3;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "teams", Json = "teams", TypeName = "TeamConfig", Id = 0x9ae1, Kind = 13, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)Team.Max, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Team", KeyName = delegate(ulong v) { return EnumNameTeam(v); }, KeyId = delegate(ulong v) { ushort id; TableEnumId((Team)v, out id); return id; }, Guard = "", TableRef = delegate { return TeamConfigTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((KeyedConfig)o).Teams.Slots[i]; } },
-                new TableFieldInfo { Name = "hulls", Json = "hulls", TypeName = "HullConfig", Id = 0xeff5, Kind = 13, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)Hull.Max, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Hull", KeyName = delegate(ulong v) { return EnumNameHull(v); }, KeyId = delegate(ulong v) { ushort id; TableEnumId((Hull)v, out id); return id; }, Guard = "", TableRef = delegate { return HullConfigTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((KeyedConfig)o).Hulls.Slots[i]; } },
-                new TableFieldInfo { Name = "scores", Json = "scores", TypeName = "ScoreBoard", Id = 0xdcf3, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return ScoreBoardTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((KeyedConfig)o).Scores; } },
+                new TableFieldInfo { Name = "teams", Json = "teams", TypeName = "TeamConfig", Id = 0xbaaeb048a5a8fa6d, Kind = 13, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)Team.Max, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Team", KeyName = delegate(ulong v) { return EnumNameTeam(v); }, KeyId = delegate(ulong v) { ulong id; TableEnumId((Team)v, out id); return id; }, Guard = "", TableRef = delegate { return TeamConfigTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((KeyedConfig)o).Teams.Slots[i]; }, ResetField = delegate(object o) { var value = (KeyedConfig)o; for (int i = 0; i < value.Teams.Slots.Length; i++) { TableReset(value.Teams.Slots[i]); } } },
+                new TableFieldInfo { Name = "hulls", Json = "hulls", TypeName = "HullConfig", Id = 0xce0ac3c25694d8ff, Kind = 13, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)Hull.Max, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Hull", KeyName = delegate(ulong v) { return EnumNameHull(v); }, KeyId = delegate(ulong v) { ulong id; TableEnumId((Hull)v, out id); return id; }, Guard = "", TableRef = delegate { return HullConfigTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((KeyedConfig)o).Hulls.Slots[i]; }, ResetField = delegate(object o) { var value = (KeyedConfig)o; for (int i = 0; i < value.Hulls.Slots.Length; i++) { TableReset(value.Hulls.Slots[i]); } } },
+                new TableFieldInfo { Name = "scores", Json = "scores", TypeName = "ScoreBoard", Id = 0x01986b0b27400fb2, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return ScoreBoardTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((KeyedConfig)o).Scores; }, ResetField = delegate(object o) { var value = (KeyedConfig)o; TableReset(value.Scores); } },
             };
             info.Reset = delegate(object o) { TableReset((KeyedConfig)o); };
             info.Doc = TableDocNone;
@@ -1254,10 +474,11 @@ namespace Tabledemo
             if (info != null) { return info; }
             info = new TableTypeInfo();
             info.Name = "ScoreBoard";
+            info.Id = 0x38b429bf239b38dbul;
             info.NumFields = 1;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "per_team", Json = "per_team", TypeName = "int32", Id = 0x443f, Kind = 4, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)Team.Max, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 100000.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Team", KeyName = delegate(ulong v) { return EnumNameTeam(v); }, KeyId = delegate(ulong v) { ushort id; TableEnumId((Team)v, out id); return id; }, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((ScoreBoard)o).PerTeam[i]; }, SetRaw = delegate(object o, int i, ulong r) { ((ScoreBoard)o).PerTeam[i] = unchecked((int)(long)r); } },
+                new TableFieldInfo { Name = "per_team", Json = "per_team", TypeName = "int32", Id = 0xf10fad739a0e1660, Kind = 4, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)Team.Max, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 100000.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Team", KeyName = delegate(ulong v) { return EnumNameTeam(v); }, KeyId = delegate(ulong v) { ulong id; TableEnumId((Team)v, out id); return id; }, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((ScoreBoard)o).PerTeam[i]; }, SetRaw = delegate(object o, int i, ulong r) { ((ScoreBoard)o).PerTeam[i] = unchecked((int)(long)r); }, ResetField = delegate(object o) { var value = (ScoreBoard)o; Array.Clear(value.PerTeam, 0, value.PerTeam.Length); }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate(ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { r.Clamped++; v = 0; } if (v > 100000) { r.Clamped++; v = 100000; } return (ulong)(long)v; } },
             };
             info.Reset = delegate(object o) { TableReset((ScoreBoard)o); };
             info.Doc = TableDocNone;

@@ -1,0 +1,48 @@
+using System;
+using System.IO;
+using V1 = Tblv1;
+using Demo = Tabledemo;
+
+static partial class Program
+{
+    static void TestWireContracts()
+    {
+        Csids.WideIds wide = new Csids.WideIds();
+        string[] names = new string[141]; names[0] = "words";
+        using MemoryStream elements = new MemoryStream();
+        for (int i = 0; i < 140; i++)
+        {
+            wide.Words[i] = (Csids.Word)(i + 1);
+            names[i + 1] = "V" + (i + 1).ToString("D3");
+            elements.Write(Var((ulong)i + 2));
+        }
+        byte[] payload = Join(new byte[] { 30 }, Var(140), elements.ToArray());
+        byte[] expected = Fixture(Join(new byte[] { 1,14 }, Var((ulong)payload.Length), payload, new byte[] { 0 }), names);
+        Check(Csids.Schema.WideIdsMeasure(wide) == expected.Length, "reference boundary: exact measure");
+        byte[] actual = new byte[expected.Length];
+        Check(Csids.Schema.WideIdsSave(wide, actual) == expected.Length && actual.AsSpan().SequenceEqual(expected),
+            "reference boundary: independent first-use bytes, including 128");
+        Check(Csids.Schema.WideIdsSave(wide, new byte[actual.Length - 1]) == -1, "reference boundary: short output refused");
+        Csids.WideIds decoded = new Csids.WideIds(); Csids.TableReport wideReport = new Csids.TableReport();
+        Check(Csids.Schema.WideIdsLoad(decoded, expected, wideReport) && decoded.Words[139] == (Csids.Word)140,
+            "reference boundary: decode independent bytes");
+
+        V1.Cfg cfg = new V1.Cfg(); V1.TableReport report = new V1.TableReport();
+        Check(V1.Schema.CfgLoad(cfg, Fixture(new byte[] { 1,3,42,0,0 }, "a"), report) &&
+            cfg.A == 42 && report.Widened == 1 && report.KindMismatch == 0, "signed widening");
+        Demo.ProfileConfig profile = new Demo.ProfileConfig(); Demo.TableReport floatReport = new Demo.TableReport();
+        uint raw = 0x7f812345u; // signalling NaN, whose payload must not be quieted
+        Check(Demo.Schema.ProfileConfigLoad(profile, Fixture(Join(new byte[] { 1,10 }, U32(raw), new byte[] { 0 }), "precision"), floatReport),
+            "float widening: load");
+        Check(Demo.Schema.TableDoubleToBits(profile.Precision) == (0x7ff0000000000000ul | ((ulong)(raw & 0x7fffff) << 29)) &&
+            floatReport.Widened == 1, "float widening: sign and signalling payload preserved");
+
+        // The report and all typed storage belong to the caller. Warm metadata
+        // and the JIT, then measure only repeated loads and saves.
+        for (int i = 0; i < 1000; i++) { Csids.Schema.WideIdsLoad(decoded, expected, wideReport); Csids.Schema.WideIdsSave(wide, actual); }
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1000; i++) { Csids.Schema.WideIdsLoad(decoded, expected, wideReport); Csids.Schema.WideIdsSave(wide, actual); }
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Check(allocated == 0, "wire load/save allocate zero bytes after warmup: " + allocated);
+    }
+}

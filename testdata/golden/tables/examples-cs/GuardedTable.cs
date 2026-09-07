@@ -56,201 +56,24 @@ namespace Tabledemo
 
         public static long PatrolMeasure(Patrol value)
         {
-            long bytes = 2; // terminator
-            if (value.Active != false) { bytes += 3 + 1; } // active
-            if (value.Active)
-            {
-                if (value.Speed != 1.0f) { bytes += 3 + 4; } // speed
-            }
-            if (value.Active)
-            {
-                if (value.HasTarget != false) { bytes += 3 + 1; } // has_target
-            }
-            if (value.Active && value.HasTarget)
-            {
-                if (value.TargetId != 0) { bytes += 3 + 4; } // target_id
-            }
-            if (value.Active && !value.HasTarget)
-            {
-                if (value.Wander != 0.5f) { bytes += 3 + 4; } // wander
-            }
-            if (!value.Active)
-            {
-                if (value.NoteLength < 0 || value.NoteLength > 8) { return -1; } // storage invariant
-                if (value.NoteLength > 0) { bytes += 3 + 4 + value.NoteLength; } // note
-            }
-            return bytes;
-        }
-
-        public static bool PatrolSaveBody(ref TableWriter w, Patrol value)
-        {
-            if (value.Active != false)
-            {
-                w.Put16(0x405a); w.Put8(1); // active
-                w.Put8(value.Active ? (byte)1 : (byte)0);
-            }
-            if (value.Active)
-            {
-                if (value.Speed != 1.0f)
-                {
-                    w.Put16(0xbc00); w.Put8(10); // speed
-                    w.Put32(TableFloatToBits(value.Speed));
-                }
-            }
-            if (value.Active)
-            {
-                if (value.HasTarget != false)
-                {
-                    w.Put16(0xb0a7); w.Put8(1); // has_target
-                    w.Put8(value.HasTarget ? (byte)1 : (byte)0);
-                }
-            }
-            if (value.Active && value.HasTarget)
-            {
-                if (value.TargetId != 0)
-                {
-                    w.Put16(0xdf6a); w.Put8(4); // target_id
-                    w.Put32(unchecked((uint)(value.TargetId)));
-                }
-            }
-            if (value.Active && !value.HasTarget)
-            {
-                if (value.Wander != 0.5f)
-                {
-                    w.Put16(0x832f); w.Put8(10); // wander
-                    w.Put32(TableFloatToBits(value.Wander));
-                }
-            }
-            if (!value.Active)
-            {
-                if (value.NoteLength < 0 || value.NoteLength > 8) { return false; } // storage invariant
-                if (value.NoteLength > 0)
-                {
-                    w.Put16(0x9da7); w.Put8(12); // note
-                    w.Put32((uint)value.NoteLength);
-                    w.Raw(new ReadOnlySpan<byte>(value.Note, 0, value.NoteLength));
-                }
-            }
-            w.Put16(0); // terminator
-            return !w.Overflow;
+            Span<ulong> ids = stackalloc ulong[155];
+            return TableWire.Save(value, PatrolTableType(), Span<byte>.Empty, ids, true);
         }
 
         public static long PatrolSave(Patrol value, Span<byte> buffer)
         {
-            TableWriter w = new TableWriter(buffer);
-            if (!PatrolSaveBody(ref w, value)) { return -1; }
-            return w.Offset; // == PatrolMeasure(value)
+            Span<ulong> ids = stackalloc ulong[155];
+            return TableWire.Save(value, PatrolTableType(), buffer, ids, false);
         }
 
-        public static bool PatrolLoadBody(ref TableReader r, Patrol value)
+        public static TableWire.Verdict PatrolLoadVerdict(Patrol value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReset(value); // restore declared defaults in place, then overlay
-            for (;;)
-            {
-                if (!r.Has(2)) { r.Report.Malformed = true; return false; }
-                ushort fieldId = r.Get16();
-                if (fieldId == 0) { return true; }
-                if (!r.Has(1)) { r.Report.Malformed = true; return false; }
-                byte kind = r.Get8();
-                switch (fieldId)
-                {
-                    case 0x405a: // active
-                    {
-                        if (kind != 1)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(1)) { r.Report.Malformed = true; return false; }
-                        value.Active = r.Get8() != 0;
-                        break;
-                    }
-                    case 0xbc00: // speed
-                    {
-                        if (kind != 10)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        value.Speed = TableBitsToFloat(r.Get32());
-                        break;
-                    }
-                    case 0xb0a7: // has_target
-                    {
-                        if (kind != 1)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(1)) { r.Report.Malformed = true; return false; }
-                        value.HasTarget = r.Get8() != 0;
-                        break;
-                    }
-                    case 0xdf6a: // target_id
-                    {
-                        if (kind != 4)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        {
-                            int decodedV = unchecked((int)r.Get32());
-                            if (decodedV < 0) { decodedV = 0; r.Report.Clamped++; }
-                            else if (decodedV > 1000) { decodedV = 1000; r.Report.Clamped++; }
-                            value.TargetId = decodedV;
-                        }
-                        break;
-                    }
-                    case 0x832f: // wander
-                    {
-                        if (kind != 10)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        value.Wander = TableBitsToFloat(r.Get32());
-                        break;
-                    }
-                    case 0x9da7: // note
-                    {
-                        if (kind != 12)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        uint len = r.Get32();
-                        if (!r.Has(len)) { r.Report.Malformed = true; return false; }
-                        uint keep = len;
-                        if (keep > 8) { keep = 8; r.Report.Clamped++; }
-                        r.Buffer.Slice(r.Offset, (int)keep).CopyTo(new Span<byte>(value.Note, 0, (int)keep));
-                        value.NoteLength = (int)keep;
-                        r.Offset += (int)len;
-                        break;
-                    }
-                    default:
-                    {
-                        r.Report.Unknown++;
-                        if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                        break;
-                    }
-                }
-            }
+            return TableWire.Load(value, PatrolTableType(), bytes, report);
         }
 
         public static bool PatrolLoad(Patrol value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReader r = new TableReader(bytes, report != null ? report : new TableReport());
-            return PatrolLoadBody(ref r, value);
+            return PatrolLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
         // ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----
@@ -262,15 +85,16 @@ namespace Tabledemo
             if (info != null) { return info; }
             info = new TableTypeInfo();
             info.Name = "Patrol";
+            info.Id = 0x1c182e1c2529027bul;
             info.NumFields = 6;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "active", Json = "active", TypeName = "bool", Id = 0x405a, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return ((Patrol)o).Active ? 1ul : 0ul; }, SetRaw = delegate(object o, int i, ulong r) { ((Patrol)o).Active = r != 0; } },
-                new TableFieldInfo { Name = "speed", Json = "speed", TypeName = "float32", Id = 0xbc00, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "active", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((Patrol)o).Speed); }, SetRaw = delegate(object o, int i, ulong r) { ((Patrol)o).Speed = TableBitsToFloat(unchecked((uint)r)); } },
-                new TableFieldInfo { Name = "has_target", Json = "has_target", TypeName = "bool", Id = 0xb0a7, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "active", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return ((Patrol)o).HasTarget ? 1ul : 0ul; }, SetRaw = delegate(object o, int i, ulong r) { ((Patrol)o).HasTarget = r != 0; } },
-                new TableFieldInfo { Name = "target_id", Json = "target_id", TypeName = "int32", Id = 0xdf6a, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 1000.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "active && has_target", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((Patrol)o).TargetId; }, SetRaw = delegate(object o, int i, ulong r) { ((Patrol)o).TargetId = unchecked((int)(long)r); } },
-                new TableFieldInfo { Name = "wander", Json = "wander", TypeName = "float32", Id = 0x832f, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "active && !has_target", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((Patrol)o).Wander); }, SetRaw = delegate(object o, int i, ulong r) { ((Patrol)o).Wander = TableBitsToFloat(unchecked((uint)r)); } },
-                new TableFieldInfo { Name = "note", Json = "note", TypeName = "string", Id = 0x9da7, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 8, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "!active", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate(object o) { return ((Patrol)o).Note; }, GetCount = delegate(object o) { return ((Patrol)o).NoteLength; }, SetCount = delegate(object o, int n) { ((Patrol)o).NoteLength = n; } },
+                new TableFieldInfo { Name = "active", Json = "active", TypeName = "bool", Id = 0x6580790b036f0c6f, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return ((Patrol)o).Active ? 1ul : 0ul; }, SetRaw = delegate(object o, int i, ulong r) { ((Patrol)o).Active = r != 0; }, ResetField = delegate(object o) { var value = (Patrol)o; value.Active = false; }, DefaultRaw = false ? 1ul : 0ul },
+                new TableFieldInfo { Name = "speed", Json = "speed", TypeName = "float32", Id = 0x2281498aa0200e40, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "active", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((Patrol)o).Speed); }, SetRaw = delegate(object o, int i, ulong r) { ((Patrol)o).Speed = TableBitsToFloat(unchecked((uint)r)); }, WireGuard = delegate(object o) { var value = (Patrol)o; return value.Active; }, ResetField = delegate(object o) { var value = (Patrol)o; value.Speed = 1.0f; }, DefaultRaw = (ulong)TableFloatToBits(1.0f), ClampRaw = delegate(ulong raw, TableReport r) { float v = TableBitsToFloat(unchecked((uint)raw)); return (ulong)TableFloatToBits(v); } },
+                new TableFieldInfo { Name = "has_target", Json = "has_target", TypeName = "bool", Id = 0x247f0e7f55aacfbd, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "active", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return ((Patrol)o).HasTarget ? 1ul : 0ul; }, SetRaw = delegate(object o, int i, ulong r) { ((Patrol)o).HasTarget = r != 0; }, WireGuard = delegate(object o) { var value = (Patrol)o; return value.Active; }, ResetField = delegate(object o) { var value = (Patrol)o; value.HasTarget = false; }, DefaultRaw = false ? 1ul : 0ul },
+                new TableFieldInfo { Name = "target_id", Json = "target_id", TypeName = "int32", Id = 0xb7bc9ac015a25050, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 1000.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "active && has_target", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((Patrol)o).TargetId; }, SetRaw = delegate(object o, int i, ulong r) { ((Patrol)o).TargetId = unchecked((int)(long)r); }, WireGuard = delegate(object o) { var value = (Patrol)o; return value.Active && value.HasTarget; }, ResetField = delegate(object o) { var value = (Patrol)o; value.TargetId = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate(ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { r.Clamped++; v = 0; } if (v > 1000) { r.Clamped++; v = 1000; } return (ulong)(long)v; } },
+                new TableFieldInfo { Name = "wander", Json = "wander", TypeName = "float32", Id = 0xb8c758d8bd1845d4, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "active && !has_target", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((Patrol)o).Wander); }, SetRaw = delegate(object o, int i, ulong r) { ((Patrol)o).Wander = TableBitsToFloat(unchecked((uint)r)); }, WireGuard = delegate(object o) { var value = (Patrol)o; return value.Active && !value.HasTarget; }, ResetField = delegate(object o) { var value = (Patrol)o; value.Wander = 0.5f; }, DefaultRaw = (ulong)TableFloatToBits(0.5f), ClampRaw = delegate(ulong raw, TableReport r) { float v = TableBitsToFloat(unchecked((uint)raw)); return (ulong)TableFloatToBits(v); } },
+                new TableFieldInfo { Name = "note", Json = "note", TypeName = "string", Id = 0x3bf8fbbad1587cdd, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 8, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "!active", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate(object o) { return ((Patrol)o).Note; }, GetCount = delegate(object o) { return ((Patrol)o).NoteLength; }, SetCount = delegate(object o, int n) { ((Patrol)o).NoteLength = n; }, WireGuard = delegate(object o) { var value = (Patrol)o; return !value.Active; }, ResetField = delegate(object o) { var value = (Patrol)o; Array.Clear(value.Note, 0, value.Note.Length); value.NoteLength = 0; } },
             };
             info.Reset = delegate(object o) { TableReset((Patrol)o); };
             info.Doc = TableDocNone;

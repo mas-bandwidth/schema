@@ -63,7 +63,8 @@ static class Program
 
     sealed class Report
     {
-        public int Unknown, KindMismatch, Clamped, Duplicate;
+        public int Unknown, KindMismatch, Widened, Clamped, Duplicate;
+        public bool Refused;
         public bool Malformed;
     }
 
@@ -71,6 +72,7 @@ static class Program
     {
         public string Unit;
         public string Root;
+        public Func<byte[], Report, object> PartialLoad;
         public Func<byte[], Report, object> Load;   // null on refusal
         public Func<object, long> Measure;
         public Func<object, byte[], long> Save;
@@ -81,30 +83,44 @@ static class Program
     }
 
     // Each unit declares its own TableReport, so the driver carries one report
-    // shape and every row copies into it — five counters is the whole of §4.
+    // shape and every row copies into it — the report columns follow the common driver contract.
     static Report Copy(Tabledemo.TableReport r)
     {
-        return new Report { Unknown = r.Unknown, KindMismatch = r.KindMismatch, Clamped = r.Clamped, Duplicate = r.Duplicate, Malformed = r.Malformed };
+        return new Report { Unknown = r.Unknown, KindMismatch = r.KindMismatch, Widened = r.Widened, Refused = r.Refused, Clamped = r.Clamped, Duplicate = r.Duplicate, Malformed = r.Malformed };
     }
     static Report Copy(Tblv1.TableReport r)
     {
-        return new Report { Unknown = r.Unknown, KindMismatch = r.KindMismatch, Clamped = r.Clamped, Duplicate = r.Duplicate, Malformed = r.Malformed };
+        return new Report { Unknown = r.Unknown, KindMismatch = r.KindMismatch, Widened = r.Widened, Refused = r.Refused, Clamped = r.Clamped, Duplicate = r.Duplicate, Malformed = r.Malformed };
     }
     static Report Copy(Tblv2.TableReport r)
     {
-        return new Report { Unknown = r.Unknown, KindMismatch = r.KindMismatch, Clamped = r.Clamped, Duplicate = r.Duplicate, Malformed = r.Malformed };
+        return new Report { Unknown = r.Unknown, KindMismatch = r.KindMismatch, Widened = r.Widened, Refused = r.Refused, Clamped = r.Clamped, Duplicate = r.Duplicate, Malformed = r.Malformed };
     }
     static Report Copy(Tblp1.TableReport r)
     {
-        return new Report { Unknown = r.Unknown, KindMismatch = r.KindMismatch, Clamped = r.Clamped, Duplicate = r.Duplicate, Malformed = r.Malformed };
+        return new Report { Unknown = r.Unknown, KindMismatch = r.KindMismatch, Widened = r.Widened, Refused = r.Refused, Clamped = r.Clamped, Duplicate = r.Duplicate, Malformed = r.Malformed };
     }
     static Report Copy(Tblp3.TableReport r)
     {
-        return new Report { Unknown = r.Unknown, KindMismatch = r.KindMismatch, Clamped = r.Clamped, Duplicate = r.Duplicate, Malformed = r.Malformed };
+        return new Report { Unknown = r.Unknown, KindMismatch = r.KindMismatch, Widened = r.Widened, Refused = r.Refused, Clamped = r.Clamped, Duplicate = r.Duplicate, Malformed = r.Malformed };
     }
 
+    static Report Copy(Tblk1.TableReport r)
+    {
+        return new Report { Unknown = r.Unknown, KindMismatch = r.KindMismatch, Widened = r.Widened, Refused = r.Refused, Clamped = r.Clamped, Duplicate = r.Duplicate, Malformed = r.Malformed };
+    }
+    static Report Copy(Tblk2.TableReport r)
+    {
+        return new Report { Unknown = r.Unknown, KindMismatch = r.KindMismatch, Widened = r.Widened, Refused = r.Refused, Clamped = r.Clamped, Duplicate = r.Duplicate, Malformed = r.Malformed };
+    }
     static readonly List<Codec> codecs = new List<Codec>
     {
+        Row<Tblk1.Root, Tblk1.TableReport>("tblk1", "Root", () => new Tblk1.TableReport(), Copy,
+            Tblk1.Schema.RootLoad, Tblk1.Schema.RootMeasure, Tblk1.Schema.RootSave,
+            Tblk1.Schema.RootFromJson, Tblk1.Schema.RootToJsonMeasure, Tblk1.Schema.RootToJson),
+        Row<Tblk2.Root, Tblk2.TableReport>("tblk2", "Root", () => new Tblk2.TableReport(), Copy,
+            Tblk2.Schema.RootLoad, Tblk2.Schema.RootMeasure, Tblk2.Schema.RootSave,
+            Tblk2.Schema.RootFromJson, Tblk2.Schema.RootToJsonMeasure, Tblk2.Schema.RootToJson),
         Demo<Tabledemo.RootConfig>("RootConfig", Tabledemo.Schema.RootConfigLoad, Tabledemo.Schema.RootConfigMeasure, Tabledemo.Schema.RootConfigSave,
             Tabledemo.Schema.RootConfigFromJson, Tabledemo.Schema.RootConfigToJsonMeasure, Tabledemo.Schema.RootConfigToJson),
         Demo<Tabledemo.ProfileConfig>("ProfileConfig", Tabledemo.Schema.ProfileConfigLoad, Tabledemo.Schema.ProfileConfigMeasure, Tabledemo.Schema.ProfileConfigSave,
@@ -154,6 +170,14 @@ static class Program
         {
             Unit = unit,
             Root = root,
+            PartialLoad = (bytes, report) =>
+            {
+                TValue value = new TValue();
+                TReport inner = make();
+                load(value, bytes, inner);
+                Fill(report, copy(inner));
+                return value;
+            },
             Load = (bytes, report) =>
             {
                 TValue value = new TValue();
@@ -189,6 +213,8 @@ static class Program
     static void Fill(Report to, Report from)
     {
         to.Unknown = from.Unknown;
+        to.Widened = from.Widened;
+        to.Refused = from.Refused;
         to.KindMismatch = from.KindMismatch;
         to.Clamped = from.Clamped;
         to.Duplicate = from.Duplicate;
@@ -344,8 +370,8 @@ static class Program
             object value = codec.FromJson(text, report);
             string verdict = value == null || report.Malformed
                 ? "refused\n"
-                : report.Unknown + "," + report.KindMismatch + "," + report.Clamped + "," +
-                  report.Duplicate + ",false\n";
+                : report.Unknown + "," + report.KindMismatch + "," + report.Widened + "," + report.Clamped + "," +
+                  report.Duplicate + ",false,read\n";
             File.WriteAllText(Path.Combine(outDir, f[1]), verdict);
         }
         return 0;
@@ -366,9 +392,9 @@ static class Program
             byte[] wire = File.ReadAllBytes(f[4]);
             Report report = new Report();
             object value = codec.Load(wire, report);
-            bool malformed = report.Malformed || value == null;
-            string text = report.Unknown + "," + report.KindMismatch + "," + report.Clamped + "," +
-                          report.Duplicate + "," + (malformed ? "true" : "false") + "\n";
+            bool malformed = report.Malformed || (value == null && !report.Refused);
+            string text = report.Unknown + "," + report.KindMismatch + "," + report.Widened + "," + report.Clamped + "," +
+                          report.Duplicate + "," + (malformed ? "true" : "false") + "," + (report.Refused ? "refused" : "read") + "\n";
             File.WriteAllText(Path.Combine(outDir, f[1]), text);
         }
         return 0;
@@ -676,8 +702,46 @@ static class Program
         return 0;
     }
 
+    static int WireFuzz()
+    {
+        using BinaryReader input = new BinaryReader(Console.OpenStandardInput());
+        using BinaryWriter output = new BinaryWriter(Console.OpenStandardOutput());
+        uint n = input.ReadUInt32();
+        Codec[] roster = new Codec[n];
+        for (int i = 0; i < n; i++)
+        {
+            string unit = Encoding.UTF8.GetString(input.ReadBytes(input.ReadUInt16()));
+            string root = Encoding.UTF8.GetString(input.ReadBytes(input.ReadUInt16()));
+            byte form = input.ReadByte(), retain = input.ReadByte();
+            roster[i] = form == 1 && retain == 0 ? Find(unit, root) : null;
+            output.Write((byte)(roster[i] != null ? 1 : 0));
+        }
+        output.Flush();
+        for (;;)
+        {
+            uint index;
+            try { index = input.ReadUInt32(); } catch (EndOfStreamException) { return 0; }
+            byte[] bytes = input.ReadBytes(checked((int)input.ReadUInt32()));
+            Codec codec = roster[index];
+            Report report = new Report();
+            object value = codec.PartialLoad(bytes, report);
+            output.Write((byte)1);
+            output.Write(report.Unknown); output.Write(report.KindMismatch); output.Write(report.Widened);
+            output.Write(report.Clamped); output.Write(report.Duplicate);
+            output.Write((byte)(report.Malformed ? 1 : 0)); output.Write((byte)(report.Refused ? 1 : 0));
+            output.Write((long)-1); output.Write(0); output.Write(0);
+            long size = codec.Measure(value);
+            byte[] saved = size < 0 ? Array.Empty<byte>() : new byte[checked((int)size)];
+            long written = size < 0 ? -1 : codec.Save(value, saved);
+            output.Write(written);
+            if (written > 0) { output.Write(saved, 0, checked((int)written)); }
+            output.Flush();
+        }
+    }
+
     static int Main(string[] args)
     {
+        if (args.Length == 1 && args[0] == "wire-fuzz") { return WireFuzz(); }
         if (args.Length < 2)
         {
             Console.Error.WriteLine("usage: driver <manifest> list\n       driver <manifest> <surface> <outdir>");
@@ -687,10 +751,9 @@ static class Program
         string surface = args[1];
         if (surface == "list")
         {
-            // the five WIRE-CARRYING surfaces are ABSENT: this port writes the wire's
-            // PREVIOUS form and the corpus is pinned in the id-table form
-            // (docs/SPEC-TABLES.md §3). schema#513 is the port's row.
-            Console.Out.Write("block\nblock-foreign\nblock-dump\nforgery\n");
+            // Form-1 wire and its five conformance surfaces. Unsupported constructs
+            // remain explicit per-case absences, as in the other language drivers.
+            Console.Out.Write("wire\nreport\njson-read\njson-write\njson-hostile\nblock\nblock-foreign\nblock-dump\nforgery\n");
             return 0;
         }
         if (args.Length < 3)

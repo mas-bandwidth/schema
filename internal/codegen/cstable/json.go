@@ -10,7 +10,7 @@
 //
 // THE C++ BACKEND IS THE REFERENCE and this file mirrors it: the same
 // classifier, the same shapes, the same clamps, the same report events, the
-// same acceptance of a trailing comma and the same refusal of a comment. Where
+// same acceptance of a trailing comma and line/block comments. Where
 // C# forces a different spelling the reason is stated at the site, and there
 // are exactly four:
 //
@@ -61,8 +61,8 @@ const tableJsonWalkSource = `// ---- json walk: begin ----
 // that holds it.
 //
 // The dialect: trailing commas are accepted on read (the authoring files this
-// exists for carry them) and never written; comments are not JSON and are
-// refused; unknown keys are skipped and counted; a duplicate key is last-wins
+// exists for carry them) and never written; line and block comments are accepted;
+// unknown keys are skipped and counted; a duplicate key is last-wins
 // and counted; a key present with the wrong JSON type is skipped and counted,
 // never coerced. The canonical text ends with exactly ONE newline, which the
 // writer emits and the reader accepts with or without.
@@ -805,8 +805,24 @@ public static class TableJson
         {
             byte c = text[input.Pos];
             if (c == ' ' || c == '\t' || c == '\n' || c == '\r') { input.Pos++; continue; }
-            // comments are not JSON, and a walk that guessed at one would be
-            // reading a dialect nobody wrote down
+            if (c == '/' && input.Pos + 1 < text.Length)
+            {
+                byte next = text[input.Pos + 1];
+                if (next == '/')
+                {
+                    input.Pos += 2;
+                    while (input.Pos < text.Length && text[input.Pos] != '\n') { input.Pos++; }
+                    continue;
+                }
+                if (next == '*')
+                {
+                    input.Pos += 2;
+                    while (input.Pos + 1 < text.Length && !(text[input.Pos] == '*' && text[input.Pos + 1] == '/')) { input.Pos++; }
+                    if (input.Pos + 1 >= text.Length) { input.Bad = true; return; }
+                    input.Pos += 2;
+                    continue;
+                }
+            }
             if (c == '/') { input.Bad = true; }
             return;
         }
@@ -961,27 +977,23 @@ public static class TableJson
             }
             else
             {
-                // a UTF-8 sequence read WHOLE, so the clamp below can only land
-                // between code points. Only bytes that ACTUALLY look like
-                // continuations are taken: the wire imposes no encoding (§3),
-                // so a string may legitimately hold a stray lead byte, and one
-                // at the end of a text must not swallow the closing quote.
-                int want = 1;
-                if ((c & 0xe0) == 0xc0) { want = 2; }
-                else if ((c & 0xf0) == 0xe0) { want = 3; }
-                else if ((c & 0xf8) == 0xf0) { want = 4; }
-                unit[0] = c;
-                input.Pos++;
-                unitLength = 1;
-                while (unitLength < want && input.Pos < text.Length &&
-                       (text[input.Pos] & 0xc0) == 0x80)
+                // Decode a complete scalar, replacing ill-formed UTF-8 before
+                // applying the destination bound (the text form's U+FFFD rule).
+                int want = c < 0x80 ? 1 : c >= 0xc2 && c <= 0xdf ? 2 : c >= 0xe0 && c <= 0xef ? 3 : c >= 0xf0 && c <= 0xf4 ? 4 : 0;
+                if (want != 0 && want <= text.Length - input.Pos && TableWire.TextValid(text.Slice(input.Pos, want)))
                 {
-                    unit[unitLength++] = text[input.Pos++];
+                    text.Slice(input.Pos, want).CopyTo(unit);
+                    input.Pos += want; unitLength = want;
+                }
+                else
+                {
+                    input.Pos++;
+                    unitLength = EncodeUtf8(0xfffd, unit);
                 }
             }
             if (keep)
             {
-                if (placed + unitLength <= destination.Length)
+                if (!clamped && placed + unitLength <= destination.Length)
                 {
                     unit.Slice(0, unitLength).CopyTo(destination.Slice(placed, unitLength));
                     placed += unitLength;

@@ -27,109 +27,24 @@ namespace Blockhome
 
         public static long ArmorPlateMeasure(ArmorPlate value)
         {
-            long bytes = 2; // terminator
-            if (value.Thickness != 0.0) { bytes += 3 + 8; } // thickness
-            if (value.Material != 0) { bytes += 3 + 4; } // material
-            if (value.Layer != 0) { bytes += 3 + 1; } // layer
-            return bytes;
-        }
-
-        public static bool ArmorPlateSaveBody(ref TableWriter w, ArmorPlate value)
-        {
-            if (value.Thickness != 0.0)
-            {
-                w.Put16(0xc81a); w.Put8(11); // thickness
-                w.Put64(TableDoubleToBits(value.Thickness));
-            }
-            if (value.Material != 0)
-            {
-                w.Put16(0x0284); w.Put8(8); // material
-                w.Put32(unchecked((uint)(value.Material)));
-            }
-            if (value.Layer != 0)
-            {
-                w.Put16(0x4750); w.Put8(6); // layer
-                w.Put8(unchecked((byte)(value.Layer)));
-            }
-            w.Put16(0); // terminator
-            return !w.Overflow;
+            Span<ulong> ids = stackalloc ulong[28];
+            return TableWire.Save(value, ArmorPlateTableType(), Span<byte>.Empty, ids, true);
         }
 
         public static long ArmorPlateSave(ArmorPlate value, Span<byte> buffer)
         {
-            TableWriter w = new TableWriter(buffer);
-            if (!ArmorPlateSaveBody(ref w, value)) { return -1; }
-            return w.Offset; // == ArmorPlateMeasure(value)
+            Span<ulong> ids = stackalloc ulong[28];
+            return TableWire.Save(value, ArmorPlateTableType(), buffer, ids, false);
         }
 
-        public static bool ArmorPlateLoadBody(ref TableReader r, ArmorPlate value)
+        public static TableWire.Verdict ArmorPlateLoadVerdict(ArmorPlate value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReset(value); // restore declared defaults in place, then overlay
-            for (;;)
-            {
-                if (!r.Has(2)) { r.Report.Malformed = true; return false; }
-                ushort fieldId = r.Get16();
-                if (fieldId == 0) { return true; }
-                if (!r.Has(1)) { r.Report.Malformed = true; return false; }
-                byte kind = r.Get8();
-                switch (fieldId)
-                {
-                    case 0xc81a: // thickness
-                    {
-                        if (kind != 11)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(8)) { r.Report.Malformed = true; return false; }
-                        value.Thickness = TableBitsToDouble(r.Get64());
-                        break;
-                    }
-                    case 0x0284: // material
-                    {
-                        if (kind != 8)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        {
-                            uint decodedV = unchecked((uint)r.Get32());
-                            value.Material = decodedV;
-                        }
-                        break;
-                    }
-                    case 0x4750: // layer
-                    {
-                        if (kind != 6)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(1)) { r.Report.Malformed = true; return false; }
-                        {
-                            byte decodedV = unchecked((byte)r.Get8());
-                            value.Layer = decodedV;
-                        }
-                        break;
-                    }
-                    default:
-                    {
-                        r.Report.Unknown++;
-                        if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                        break;
-                    }
-                }
-            }
+            return TableWire.Load(value, ArmorPlateTableType(), bytes, report);
         }
 
         public static bool ArmorPlateLoad(ArmorPlate value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReader r = new TableReader(bytes, report != null ? report : new TableReport());
-            return ArmorPlateLoadBody(ref r, value);
+            return ArmorPlateLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
         // TableReset(ArmorConfig) restores ArmorConfig's declared defaults in place, reusing every
@@ -144,154 +59,24 @@ namespace Blockhome
 
         public static long ArmorConfigMeasure(ArmorConfig value)
         {
-            long bytes = 2; // terminator
-            {
-                long body = ArmorPlateMeasure(value.Front);
-                if (body < 0) { return -1; }
-                if (body > 2) { bytes += 3 + 4 + body; } // front: all-default nested elides
-            }
-            {
-                long body = ArmorPlateMeasure(value.Rear);
-                if (body < 0) { return -1; }
-                if (body > 2) { bytes += 3 + 4 + body; } // rear: all-default nested elides
-            }
-            if (value.Rating != 0.0f) { bytes += 3 + 4; } // rating
-            if (value.Tier != 0) { bytes += 3 + 1; } // tier
-            return bytes;
-        }
-
-        public static bool ArmorConfigSaveBody(ref TableWriter w, ArmorConfig value)
-        {
-            {
-                long body = ArmorPlateMeasure(value.Front);
-                if (body < 0) { return false; } // storage invariant, refused as measure refuses it
-                if (body > 2) // all-default nested elides
-                {
-                    w.Put16(0x3aa1); w.Put8(13); // front
-                    w.Put32((uint)body);
-                    if (!ArmorPlateSaveBody(ref w, value.Front)) { return false; }
-                }
-            }
-            {
-                long body = ArmorPlateMeasure(value.Rear);
-                if (body < 0) { return false; } // storage invariant, refused as measure refuses it
-                if (body > 2) // all-default nested elides
-                {
-                    w.Put16(0x6b5c); w.Put8(13); // rear
-                    w.Put32((uint)body);
-                    if (!ArmorPlateSaveBody(ref w, value.Rear)) { return false; }
-                }
-            }
-            if (value.Rating != 0.0f)
-            {
-                w.Put16(0xe2d9); w.Put8(10); // rating
-                w.Put32(TableFloatToBits(value.Rating));
-            }
-            if (value.Tier != 0)
-            {
-                w.Put16(0xe958); w.Put8(6); // tier
-                w.Put8(unchecked((byte)(value.Tier)));
-            }
-            w.Put16(0); // terminator
-            return !w.Overflow;
+            Span<ulong> ids = stackalloc ulong[28];
+            return TableWire.Save(value, ArmorConfigTableType(), Span<byte>.Empty, ids, true);
         }
 
         public static long ArmorConfigSave(ArmorConfig value, Span<byte> buffer)
         {
-            TableWriter w = new TableWriter(buffer);
-            if (!ArmorConfigSaveBody(ref w, value)) { return -1; }
-            return w.Offset; // == ArmorConfigMeasure(value)
+            Span<ulong> ids = stackalloc ulong[28];
+            return TableWire.Save(value, ArmorConfigTableType(), buffer, ids, false);
         }
 
-        public static bool ArmorConfigLoadBody(ref TableReader r, ArmorConfig value)
+        public static TableWire.Verdict ArmorConfigLoadVerdict(ArmorConfig value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReset(value); // restore declared defaults in place, then overlay
-            for (;;)
-            {
-                if (!r.Has(2)) { r.Report.Malformed = true; return false; }
-                ushort fieldId = r.Get16();
-                if (fieldId == 0) { return true; }
-                if (!r.Has(1)) { r.Report.Malformed = true; return false; }
-                byte kind = r.Get8();
-                switch (fieldId)
-                {
-                    case 0x3aa1: // front
-                    {
-                        if (kind != 13)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        uint bodyLen = r.Get32();
-                        if (!r.Has(bodyLen)) { r.Report.Malformed = true; return false; }
-                        {
-                            TableReader sub = new TableReader(r.Buffer.Slice(r.Offset, (int)bodyLen), r.Report);
-                            ArmorPlateLoadBody(ref sub, value.Front);
-                        }
-                        r.Offset += (int)bodyLen;
-                        break;
-                    }
-                    case 0x6b5c: // rear
-                    {
-                        if (kind != 13)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        uint bodyLen = r.Get32();
-                        if (!r.Has(bodyLen)) { r.Report.Malformed = true; return false; }
-                        {
-                            TableReader sub = new TableReader(r.Buffer.Slice(r.Offset, (int)bodyLen), r.Report);
-                            ArmorPlateLoadBody(ref sub, value.Rear);
-                        }
-                        r.Offset += (int)bodyLen;
-                        break;
-                    }
-                    case 0xe2d9: // rating
-                    {
-                        if (kind != 10)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        value.Rating = TableBitsToFloat(r.Get32());
-                        break;
-                    }
-                    case 0xe958: // tier
-                    {
-                        if (kind != 6)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(1)) { r.Report.Malformed = true; return false; }
-                        {
-                            byte decodedV = unchecked((byte)r.Get8());
-                            value.Tier = decodedV;
-                        }
-                        break;
-                    }
-                    default:
-                    {
-                        r.Report.Unknown++;
-                        if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                        break;
-                    }
-                }
-            }
+            return TableWire.Load(value, ArmorConfigTableType(), bytes, report);
         }
 
         public static bool ArmorConfigLoad(ArmorConfig value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReader r = new TableReader(bytes, report != null ? report : new TableReport());
-            return ArmorConfigLoadBody(ref r, value);
+            return ArmorConfigLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
         // TableReset(FiringGroup) restores FiringGroup's declared defaults in place, reusing every
@@ -304,88 +89,24 @@ namespace Blockhome
 
         public static long FiringGroupMeasure(FiringGroup value)
         {
-            long bytes = 2; // terminator
-            if (value.Barrel != 0) { bytes += 3 + 4; } // barrel
-            if (value.Cooldown != 0.0f) { bytes += 3 + 4; } // cooldown
-            return bytes;
-        }
-
-        public static bool FiringGroupSaveBody(ref TableWriter w, FiringGroup value)
-        {
-            if (value.Barrel != 0)
-            {
-                w.Put16(0x87ed); w.Put8(8); // barrel
-                w.Put32(unchecked((uint)(value.Barrel)));
-            }
-            if (value.Cooldown != 0.0f)
-            {
-                w.Put16(0x2230); w.Put8(10); // cooldown
-                w.Put32(TableFloatToBits(value.Cooldown));
-            }
-            w.Put16(0); // terminator
-            return !w.Overflow;
+            Span<ulong> ids = stackalloc ulong[28];
+            return TableWire.Save(value, FiringGroupTableType(), Span<byte>.Empty, ids, true);
         }
 
         public static long FiringGroupSave(FiringGroup value, Span<byte> buffer)
         {
-            TableWriter w = new TableWriter(buffer);
-            if (!FiringGroupSaveBody(ref w, value)) { return -1; }
-            return w.Offset; // == FiringGroupMeasure(value)
+            Span<ulong> ids = stackalloc ulong[28];
+            return TableWire.Save(value, FiringGroupTableType(), buffer, ids, false);
         }
 
-        public static bool FiringGroupLoadBody(ref TableReader r, FiringGroup value)
+        public static TableWire.Verdict FiringGroupLoadVerdict(FiringGroup value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReset(value); // restore declared defaults in place, then overlay
-            for (;;)
-            {
-                if (!r.Has(2)) { r.Report.Malformed = true; return false; }
-                ushort fieldId = r.Get16();
-                if (fieldId == 0) { return true; }
-                if (!r.Has(1)) { r.Report.Malformed = true; return false; }
-                byte kind = r.Get8();
-                switch (fieldId)
-                {
-                    case 0x87ed: // barrel
-                    {
-                        if (kind != 8)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        {
-                            uint decodedV = unchecked((uint)r.Get32());
-                            value.Barrel = decodedV;
-                        }
-                        break;
-                    }
-                    case 0x2230: // cooldown
-                    {
-                        if (kind != 10)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        value.Cooldown = TableBitsToFloat(r.Get32());
-                        break;
-                    }
-                    default:
-                    {
-                        r.Report.Unknown++;
-                        if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                        break;
-                    }
-                }
-            }
+            return TableWire.Load(value, FiringGroupTableType(), bytes, report);
         }
 
         public static bool FiringGroupLoad(FiringGroup value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReader r = new TableReader(bytes, report != null ? report : new TableReport());
-            return FiringGroupLoadBody(ref r, value);
+            return FiringGroupLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
         // TableReset(GunnerSettings) restores GunnerSettings's declared defaults in place, reusing every
@@ -408,226 +129,24 @@ namespace Blockhome
 
         public static long GunnerSettingsMeasure(GunnerSettings value)
         {
-            long bytes = 2; // terminator
-            if (value.FiringGroupsCount < 0 || value.FiringGroupsCount > 32) { return -1; } // storage invariant
-            if (value.FiringGroupsCount > 0)
-            {
-                bytes += 3 + 4 + 5; // firing_groups
-                for (int i = 0; i < value.FiringGroupsCount; i++)
-                {
-                    long elem = FiringGroupMeasure(value.FiringGroups[i]);
-                    if (elem < 0) { return -1; }
-                    bytes += 4 + elem;
-                }
-            }
-            if (value.MissileGroupsCount < 0 || value.MissileGroupsCount > 4) { return -1; } // storage invariant
-            if (value.MissileGroupsCount > 0)
-            {
-                bytes += 3 + 4 + 5; // missile_groups
-                for (int i = 0; i < value.MissileGroupsCount; i++)
-                {
-                    long elem = FiringGroupMeasure(value.MissileGroups[i]);
-                    if (elem < 0) { return -1; }
-                    bytes += 4 + elem;
-                }
-            }
-            if (value.ReloadSeconds != 0.0f) { bytes += 3 + 4; } // reload_seconds
-            if (value.GunnerId != 0) { bytes += 3 + 4; } // gunner_id
-            return bytes;
-        }
-
-        public static bool GunnerSettingsSaveBody(ref TableWriter w, GunnerSettings value)
-        {
-            if (value.FiringGroupsCount < 0 || value.FiringGroupsCount > 32) { return false; } // storage invariant
-            if (value.FiringGroupsCount > 0)
-            {
-                w.Put16(0xc79d); w.Put8(14); // firing_groups
-                int lenAt = w.Offset; w.Put32(0);
-                w.Put8(13); w.Put32((uint)value.FiringGroupsCount);
-                for (int i = 0; i < value.FiringGroupsCount; i++)
-                {
-                    {
-                        int elemLenAt = w.Offset; w.Put32(0);
-                        if (!FiringGroupSaveBody(ref w, value.FiringGroups[i])) { return false; }
-                        w.Patch32(elemLenAt, (uint)(w.Offset - elemLenAt - 4));
-                    }
-                }
-                w.Patch32(lenAt, (uint)(w.Offset - lenAt - 4));
-            }
-            if (value.MissileGroupsCount < 0 || value.MissileGroupsCount > 4) { return false; } // storage invariant
-            if (value.MissileGroupsCount > 0)
-            {
-                w.Put16(0x6a31); w.Put8(14); // missile_groups
-                int lenAt = w.Offset; w.Put32(0);
-                w.Put8(13); w.Put32((uint)value.MissileGroupsCount);
-                for (int i = 0; i < value.MissileGroupsCount; i++)
-                {
-                    {
-                        int elemLenAt = w.Offset; w.Put32(0);
-                        if (!FiringGroupSaveBody(ref w, value.MissileGroups[i])) { return false; }
-                        w.Patch32(elemLenAt, (uint)(w.Offset - elemLenAt - 4));
-                    }
-                }
-                w.Patch32(lenAt, (uint)(w.Offset - lenAt - 4));
-            }
-            if (value.ReloadSeconds != 0.0f)
-            {
-                w.Put16(0xd08f); w.Put8(10); // reload_seconds
-                w.Put32(TableFloatToBits(value.ReloadSeconds));
-            }
-            if (value.GunnerId != 0)
-            {
-                w.Put16(0xe0d2); w.Put8(8); // gunner_id
-                w.Put32(unchecked((uint)(value.GunnerId)));
-            }
-            w.Put16(0); // terminator
-            return !w.Overflow;
+            Span<ulong> ids = stackalloc ulong[28];
+            return TableWire.Save(value, GunnerSettingsTableType(), Span<byte>.Empty, ids, true);
         }
 
         public static long GunnerSettingsSave(GunnerSettings value, Span<byte> buffer)
         {
-            TableWriter w = new TableWriter(buffer);
-            if (!GunnerSettingsSaveBody(ref w, value)) { return -1; }
-            return w.Offset; // == GunnerSettingsMeasure(value)
+            Span<ulong> ids = stackalloc ulong[28];
+            return TableWire.Save(value, GunnerSettingsTableType(), buffer, ids, false);
         }
 
-        public static bool GunnerSettingsLoadBody(ref TableReader r, GunnerSettings value)
+        public static TableWire.Verdict GunnerSettingsLoadVerdict(GunnerSettings value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReset(value); // restore declared defaults in place, then overlay
-            for (;;)
-            {
-                if (!r.Has(2)) { r.Report.Malformed = true; return false; }
-                ushort fieldId = r.Get16();
-                if (fieldId == 0) { return true; }
-                if (!r.Has(1)) { r.Report.Malformed = true; return false; }
-                byte kind = r.Get8();
-                switch (fieldId)
-                {
-                    case 0xc79d: // firing_groups
-                    {
-                        if (kind != 14)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        uint bodyLen = r.Get32();
-                        if (!r.Has(bodyLen)) { r.Report.Malformed = true; return false; }
-                        int bodyEnd = r.Offset + (int)bodyLen;
-                        if (bodyLen >= 5)
-                        {
-                            byte elemKind = r.Get8();
-                            uint count = r.Get32();
-                            if (elemKind != 13) { r.Report.KindMismatch++; r.Offset = bodyEnd; break; }
-                            uint keep = count;
-                            if (keep > 32) { keep = 32; r.Report.Clamped++; }
-                            // elements are BOUNDED by the field body: a count the length
-                            // cannot cover keeps the decoded prefix, flags malformed, and
-                            // the parent continues at the next field — following fields'
-                            // bytes are never fabricated into elements
-                            TableReader sub = new TableReader(r.Buffer.Slice(r.Offset, bodyEnd - r.Offset), r.Report);
-                            uint decoded = 0;
-                            for (uint i = 0; i < keep; i++)
-                            {
-                                if (!sub.Has(4)) { r.Report.Malformed = true; break; }
-                                uint elemLen = sub.Get32();
-                                if (!sub.Has(elemLen)) { r.Report.Malformed = true; break; }
-                                {
-                                    TableReader elem = new TableReader(sub.Buffer.Slice(sub.Offset, (int)elemLen), r.Report);
-                                    FiringGroupLoadBody(ref elem, value.FiringGroups[i]);
-                                }
-                                sub.Offset += (int)elemLen;
-                                decoded = i + 1;
-                            }
-                            value.FiringGroupsCount = (int)decoded;
-                        }
-                        r.Offset = bodyEnd; // excess elements and slack skip via the length
-                        break;
-                    }
-                    case 0x6a31: // missile_groups
-                    {
-                        if (kind != 14)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        uint bodyLen = r.Get32();
-                        if (!r.Has(bodyLen)) { r.Report.Malformed = true; return false; }
-                        int bodyEnd = r.Offset + (int)bodyLen;
-                        if (bodyLen >= 5)
-                        {
-                            byte elemKind = r.Get8();
-                            uint count = r.Get32();
-                            if (elemKind != 13) { r.Report.KindMismatch++; r.Offset = bodyEnd; break; }
-                            uint keep = count;
-                            if (keep > 4) { keep = 4; r.Report.Clamped++; }
-                            // elements are BOUNDED by the field body: a count the length
-                            // cannot cover keeps the decoded prefix, flags malformed, and
-                            // the parent continues at the next field — following fields'
-                            // bytes are never fabricated into elements
-                            TableReader sub = new TableReader(r.Buffer.Slice(r.Offset, bodyEnd - r.Offset), r.Report);
-                            uint decoded = 0;
-                            for (uint i = 0; i < keep; i++)
-                            {
-                                if (!sub.Has(4)) { r.Report.Malformed = true; break; }
-                                uint elemLen = sub.Get32();
-                                if (!sub.Has(elemLen)) { r.Report.Malformed = true; break; }
-                                {
-                                    TableReader elem = new TableReader(sub.Buffer.Slice(sub.Offset, (int)elemLen), r.Report);
-                                    FiringGroupLoadBody(ref elem, value.MissileGroups[i]);
-                                }
-                                sub.Offset += (int)elemLen;
-                                decoded = i + 1;
-                            }
-                            value.MissileGroupsCount = (int)decoded;
-                        }
-                        r.Offset = bodyEnd; // excess elements and slack skip via the length
-                        break;
-                    }
-                    case 0xd08f: // reload_seconds
-                    {
-                        if (kind != 10)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        value.ReloadSeconds = TableBitsToFloat(r.Get32());
-                        break;
-                    }
-                    case 0xe0d2: // gunner_id
-                    {
-                        if (kind != 8)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        {
-                            uint decodedV = unchecked((uint)r.Get32());
-                            value.GunnerId = decodedV;
-                        }
-                        break;
-                    }
-                    default:
-                    {
-                        r.Report.Unknown++;
-                        if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                        break;
-                    }
-                }
-            }
+            return TableWire.Load(value, GunnerSettingsTableType(), bytes, report);
         }
 
         public static bool GunnerSettingsLoad(GunnerSettings value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReader r = new TableReader(bytes, report != null ? report : new TableReport());
-            return GunnerSettingsLoadBody(ref r, value);
+            return GunnerSettingsLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
         // ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----
@@ -639,12 +158,13 @@ namespace Blockhome
             if (info != null) { return info; }
             info = new TableTypeInfo();
             info.Name = "ArmorPlate";
+            info.Id = 0x6993400379bdc520ul;
             info.NumFields = 3;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "thickness", Json = "thickness", TypeName = "float64", Id = 0xc81a, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return TableDoubleToBits(((ArmorPlate)o).Thickness); }, SetRaw = delegate(object o, int i, ulong r) { ((ArmorPlate)o).Thickness = TableBitsToDouble(r); } },
-                new TableFieldInfo { Name = "material", Json = "material", TypeName = "uint32", Id = 0x0284, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((ArmorPlate)o).Material; }, SetRaw = delegate(object o, int i, ulong r) { ((ArmorPlate)o).Material = unchecked((uint)r); } },
-                new TableFieldInfo { Name = "layer", Json = "layer", TypeName = "uint8", Id = 0x4750, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((ArmorPlate)o).Layer; }, SetRaw = delegate(object o, int i, ulong r) { ((ArmorPlate)o).Layer = unchecked((byte)r); } },
+                new TableFieldInfo { Name = "thickness", Json = "thickness", TypeName = "float64", Id = 0xdbae65ca25b4f315, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return TableDoubleToBits(((ArmorPlate)o).Thickness); }, SetRaw = delegate(object o, int i, ulong r) { ((ArmorPlate)o).Thickness = TableBitsToDouble(r); }, ResetField = delegate(object o) { var value = (ArmorPlate)o; value.Thickness = 0.0; }, DefaultRaw = TableDoubleToBits(0.0), ClampRaw = delegate(ulong raw, TableReport r) { double v = TableBitsToDouble(raw); return TableDoubleToBits(v); } },
+                new TableFieldInfo { Name = "material", Json = "material", TypeName = "uint32", Id = 0x026f7568983161e0, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((ArmorPlate)o).Material; }, SetRaw = delegate(object o, int i, ulong r) { ((ArmorPlate)o).Material = unchecked((uint)r); }, ResetField = delegate(object o) { var value = (ArmorPlate)o; value.Material = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
+                new TableFieldInfo { Name = "layer", Json = "layer", TypeName = "uint8", Id = 0x84e39fec29768c56, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((ArmorPlate)o).Layer; }, SetRaw = delegate(object o, int i, ulong r) { ((ArmorPlate)o).Layer = unchecked((byte)r); }, ResetField = delegate(object o) { var value = (ArmorPlate)o; value.Layer = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { byte v = unchecked((byte)raw); return (ulong)v; } },
             };
             info.Reset = delegate(object o) { TableReset((ArmorPlate)o); };
             info.Doc = TableDocNone;
@@ -661,13 +181,14 @@ namespace Blockhome
             if (info != null) { return info; }
             info = new TableTypeInfo();
             info.Name = "ArmorConfig";
+            info.Id = 0xe8a7e2d995bb4cd2ul;
             info.NumFields = 4;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "front", Json = "front", TypeName = "ArmorPlate", Id = 0x3aa1, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return ArmorPlateTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((ArmorConfig)o).Front; } },
-                new TableFieldInfo { Name = "rear", Json = "rear", TypeName = "ArmorPlate", Id = 0x6b5c, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return ArmorPlateTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((ArmorConfig)o).Rear; } },
-                new TableFieldInfo { Name = "rating", Json = "rating", TypeName = "float32", Id = 0xe2d9, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((ArmorConfig)o).Rating); }, SetRaw = delegate(object o, int i, ulong r) { ((ArmorConfig)o).Rating = TableBitsToFloat(unchecked((uint)r)); } },
-                new TableFieldInfo { Name = "tier", Json = "tier", TypeName = "uint8", Id = 0xe958, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((ArmorConfig)o).Tier; }, SetRaw = delegate(object o, int i, ulong r) { ((ArmorConfig)o).Tier = unchecked((byte)r); } },
+                new TableFieldInfo { Name = "front", Json = "front", TypeName = "ArmorPlate", Id = 0x538b8c566e9e4b38, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return ArmorPlateTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((ArmorConfig)o).Front; }, ResetField = delegate(object o) { var value = (ArmorConfig)o; TableReset(value.Front); } },
+                new TableFieldInfo { Name = "rear", Json = "rear", TypeName = "ArmorPlate", Id = 0x4ce65d1fbfdde703, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return ArmorPlateTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((ArmorConfig)o).Rear; }, ResetField = delegate(object o) { var value = (ArmorConfig)o; TableReset(value.Rear); } },
+                new TableFieldInfo { Name = "rating", Json = "rating", TypeName = "float32", Id = 0x4e79ecbefe5ff4d0, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((ArmorConfig)o).Rating); }, SetRaw = delegate(object o, int i, ulong r) { ((ArmorConfig)o).Rating = TableBitsToFloat(unchecked((uint)r)); }, ResetField = delegate(object o) { var value = (ArmorConfig)o; value.Rating = 0.0f; }, DefaultRaw = (ulong)TableFloatToBits(0.0f), ClampRaw = delegate(ulong raw, TableReport r) { float v = TableBitsToFloat(unchecked((uint)raw)); return (ulong)TableFloatToBits(v); } },
+                new TableFieldInfo { Name = "tier", Json = "tier", TypeName = "uint8", Id = 0x1e6f84ef2eb65989, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((ArmorConfig)o).Tier; }, SetRaw = delegate(object o, int i, ulong r) { ((ArmorConfig)o).Tier = unchecked((byte)r); }, ResetField = delegate(object o) { var value = (ArmorConfig)o; value.Tier = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { byte v = unchecked((byte)raw); return (ulong)v; } },
             };
             info.Reset = delegate(object o) { TableReset((ArmorConfig)o); };
             info.Doc = TableDocNone;
@@ -684,11 +205,12 @@ namespace Blockhome
             if (info != null) { return info; }
             info = new TableTypeInfo();
             info.Name = "FiringGroup";
+            info.Id = 0x98a368eb20d65c7dul;
             info.NumFields = 2;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "barrel", Json = "barrel", TypeName = "uint32", Id = 0x87ed, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((FiringGroup)o).Barrel; }, SetRaw = delegate(object o, int i, ulong r) { ((FiringGroup)o).Barrel = unchecked((uint)r); } },
-                new TableFieldInfo { Name = "cooldown", Json = "cooldown", TypeName = "float32", Id = 0x2230, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((FiringGroup)o).Cooldown); }, SetRaw = delegate(object o, int i, ulong r) { ((FiringGroup)o).Cooldown = TableBitsToFloat(unchecked((uint)r)); } },
+                new TableFieldInfo { Name = "barrel", Json = "barrel", TypeName = "uint32", Id = 0x8ece059ad360b651, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((FiringGroup)o).Barrel; }, SetRaw = delegate(object o, int i, ulong r) { ((FiringGroup)o).Barrel = unchecked((uint)r); }, ResetField = delegate(object o) { var value = (FiringGroup)o; value.Barrel = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
+                new TableFieldInfo { Name = "cooldown", Json = "cooldown", TypeName = "float32", Id = 0xdc2cbe6953343d48, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((FiringGroup)o).Cooldown); }, SetRaw = delegate(object o, int i, ulong r) { ((FiringGroup)o).Cooldown = TableBitsToFloat(unchecked((uint)r)); }, ResetField = delegate(object o) { var value = (FiringGroup)o; value.Cooldown = 0.0f; }, DefaultRaw = (ulong)TableFloatToBits(0.0f), ClampRaw = delegate(ulong raw, TableReport r) { float v = TableBitsToFloat(unchecked((uint)raw)); return (ulong)TableFloatToBits(v); } },
             };
             info.Reset = delegate(object o) { TableReset((FiringGroup)o); };
             info.Doc = TableDocNone;
@@ -705,13 +227,14 @@ namespace Blockhome
             if (info != null) { return info; }
             info = new TableTypeInfo();
             info.Name = "GunnerSettings";
+            info.Id = 0xb76842b2253337aful;
             info.NumFields = 4;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "firing_groups", Json = "firing_groups", TypeName = "FiringGroup", Id = 0xc79d, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 32, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return FiringGroupTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((GunnerSettings)o).FiringGroups[i]; }, GetCount = delegate(object o) { return ((GunnerSettings)o).FiringGroupsCount; }, SetCount = delegate(object o, int n) { ((GunnerSettings)o).FiringGroupsCount = n; } },
-                new TableFieldInfo { Name = "missile_groups", Json = "missile_groups", TypeName = "FiringGroup", Id = 0x6a31, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 4, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return FiringGroupTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((GunnerSettings)o).MissileGroups[i]; }, GetCount = delegate(object o) { return ((GunnerSettings)o).MissileGroupsCount; }, SetCount = delegate(object o, int n) { ((GunnerSettings)o).MissileGroupsCount = n; } },
-                new TableFieldInfo { Name = "reload_seconds", Json = "reload_seconds", TypeName = "float32", Id = 0xd08f, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((GunnerSettings)o).ReloadSeconds); }, SetRaw = delegate(object o, int i, ulong r) { ((GunnerSettings)o).ReloadSeconds = TableBitsToFloat(unchecked((uint)r)); } },
-                new TableFieldInfo { Name = "gunner_id", Json = "gunner_id", TypeName = "uint32", Id = 0xe0d2, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((GunnerSettings)o).GunnerId; }, SetRaw = delegate(object o, int i, ulong r) { ((GunnerSettings)o).GunnerId = unchecked((uint)r); } },
+                new TableFieldInfo { Name = "firing_groups", Json = "firing_groups", TypeName = "FiringGroup", Id = 0x260b8ca6b0c3db7f, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 32, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return FiringGroupTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((GunnerSettings)o).FiringGroups[i]; }, GetCount = delegate(object o) { return ((GunnerSettings)o).FiringGroupsCount; }, SetCount = delegate(object o, int n) { ((GunnerSettings)o).FiringGroupsCount = n; }, ResetField = delegate(object o) { var value = (GunnerSettings)o; for (int i = 0; i < value.FiringGroups.Length; i++) { TableReset(value.FiringGroups[i]); } value.FiringGroupsCount = 0; } },
+                new TableFieldInfo { Name = "missile_groups", Json = "missile_groups", TypeName = "FiringGroup", Id = 0x3c99105aa087f6bc, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 4, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return FiringGroupTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((GunnerSettings)o).MissileGroups[i]; }, GetCount = delegate(object o) { return ((GunnerSettings)o).MissileGroupsCount; }, SetCount = delegate(object o, int n) { ((GunnerSettings)o).MissileGroupsCount = n; }, ResetField = delegate(object o) { var value = (GunnerSettings)o; for (int i = 0; i < value.MissileGroups.Length; i++) { TableReset(value.MissileGroups[i]); } value.MissileGroupsCount = 0; } },
+                new TableFieldInfo { Name = "reload_seconds", Json = "reload_seconds", TypeName = "float32", Id = 0xad9b64728ea52486, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((GunnerSettings)o).ReloadSeconds); }, SetRaw = delegate(object o, int i, ulong r) { ((GunnerSettings)o).ReloadSeconds = TableBitsToFloat(unchecked((uint)r)); }, ResetField = delegate(object o) { var value = (GunnerSettings)o; value.ReloadSeconds = 0.0f; }, DefaultRaw = (ulong)TableFloatToBits(0.0f), ClampRaw = delegate(ulong raw, TableReport r) { float v = TableBitsToFloat(unchecked((uint)raw)); return (ulong)TableFloatToBits(v); } },
+                new TableFieldInfo { Name = "gunner_id", Json = "gunner_id", TypeName = "uint32", Id = 0xbd9be53180256e02, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((GunnerSettings)o).GunnerId; }, SetRaw = delegate(object o, int i, ulong r) { ((GunnerSettings)o).GunnerId = unchecked((uint)r); }, ResetField = delegate(object o) { var value = (GunnerSettings)o; value.GunnerId = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
             };
             info.Reset = delegate(object o) { TableReset((GunnerSettings)o); };
             info.Doc = TableDocNone;

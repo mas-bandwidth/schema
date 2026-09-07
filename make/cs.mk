@@ -92,7 +92,7 @@ tables-cs-json-walk: build/tables-generated-cs/.stamp
 	done
 	@echo "tables C# generic-walk gate: one walker per unit, byte-identical across $$(ls build/json-walk-cs | wc -l | tr -d ' ') units"
 
-build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema
+build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/K1.schema test/tables/K2.schema test/tables/CsIds.schema
 	@mkdir -p build/tables-generated-cs
 	./bin/schema generate --lang cs --out build/tables-generated-cs/examples tables/examples
 	# the POINTERED unit: its C# WIRE surface is refused by name (§11) and its
@@ -105,6 +105,9 @@ build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_
 	./bin/schema generate --lang cs --out build/tables-generated-cs/v2 test/tables/V2.schema
 	./bin/schema generate --lang cs --out build/tables-generated-cs/p1 test/tables/P1.schema
 	./bin/schema generate --lang cs --out build/tables-generated-cs/p3 test/tables/P3.schema
+	./bin/schema generate --lang cs --out build/tables-generated-cs/k1 test/tables/K1.schema
+	./bin/schema generate --lang cs --out build/tables-generated-cs/k2 test/tables/K2.schema
+	./bin/schema generate --lang cs --out build/tables-generated-cs/csids test/tables/CsIds.schema
 	@touch $@
 
 # The C# twin of the C++ "no serialize include path" build: a generated
@@ -360,13 +363,13 @@ update-goldens-cs: build/tables-generated-cs/.stamp
 # from its wire golden, re-saved and byte-compared, and every §16 text read and
 # written beside it. It is the C# twin of tables-js-leg.
 #
-# THE LEG IS DORMANT while this port writes the wire's previous form (schema
-# #513): the goldens under testdata/wire/tables are the id-table form, and a
-# codec that does not write that form cannot reproduce them. What is absent is
-# the corpus it holds itself to, not the leg.
-.PHONY: tables-cs-leg
-tables-cs-leg:
-	@echo "tables-cs-leg: dormant — the corpus it gates against is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#513)"
+.PHONY: tables-cs-leg tables-cs-wire-fuzz
+tables-cs-leg: build/tables-generated-cs/.stamp
+	cd test/cs-tables && $(DOTNET) run
+	cd test/cs-tables && $(DOTNET) run -c Release
+
+tables-cs-wire-fuzz: build-conformance-cs build/conformance-harness
+	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(N)
 
 # THE C# LEG of `make test`: the table gates and the C# conformance negative
 # control, the cook-open gates on the C# side, the bench units' compile gates
@@ -378,6 +381,7 @@ test-cs: toolchain-cs build/tables-generated-cs/.stamp generated/bench/tables/cs
 	$(MAKE) tables-cs-standalone
 	$(MAKE) tables-cs-refuses-pointers
 	$(MAKE) tables-cs-leg
+	$(MAKE) tables-cs-wire-fuzz
 	$(MAKE) conformance-negative-control-cs
 	$(MAKE) tables-cook-open-cs
 	$(MAKE) tables-cook-open-cs-lengths-negative-control

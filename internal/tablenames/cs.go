@@ -5,9 +5,8 @@ const Cs Backend = 1 << 1
 
 func init() {
 	define(Cs,
+		Name{Name: "TableWire", What: "the form-1 descriptor wire walk, nested in Schema"},
 		Name{Name: "TableReport", What: "the read report — the permissive contract's ledger"},
-		Name{Name: "TableWriter", What: "the wire writer over the caller's buffer"},
-		Name{Name: "TableReader", What: "the wire reader over the caller's buffer"},
 		Name{Name: "TableTypeInfo", What: "a table's reflection descriptor"},
 		Name{Name: "TableFieldInfo", What: "a field's reflection descriptor"},
 		// THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1, §8.7): every field row
