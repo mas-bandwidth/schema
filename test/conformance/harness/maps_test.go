@@ -29,7 +29,14 @@ func TestTheToolWritesTheReferencesMapBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := tabletext.NewModel(u)
-	for _, tc := range []struct{ name, root string }{{"map_full", "Fleet"}, {"map_empty", "Fleet"}, {"map_depth", "Depth"}, {"map_text", "Text"}} {
+	for _, tc := range []struct{ name, root string }{
+		{"map_full", "Fleet"}, {"map_empty", "Fleet"}, {"map_depth", "Depth"}, {"map_text", "Text"},
+		// one row per value kind that carries an extent or names a buffer node
+		// (#628): a fixed array, a counted array, an enum-keyed array, an
+		// unbounded array, a text buffer and a byte buffer, each under a map key
+		{"map_cells", "Cells"}, {"map_runs", "Runs"}, {"map_slots", "Slots"},
+		{"map_spans", "Spans"}, {"map_docs", "Docs"}, {"map_chunks", "Chunks"},
+	} {
 		name, rootName := tc.name, tc.root
 		data, err := os.ReadFile(root + "testdata/wire/tables/" + name + ".bin")
 		if err != nil {

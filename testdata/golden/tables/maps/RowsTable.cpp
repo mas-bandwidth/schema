@@ -3235,24 +3235,106 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
 
 // ---- json map walk: end ----
 
-// ---- this unit declares no unbounded array ----
-//
-// No descriptor of this unit is an out-of-line array that is not a map, so the
-// two slot adapters are unreachable and say so.
+// ---- json list walk: begin ----
 
-inline bool TableJsonIsList( const TableFieldInfo * ) { return false; }
-
-inline bool TableJsonWriteList( TableJsonOut &, const void *, const TableFieldInfo *, int32_t )
+// an unbounded array is the out-of-line array that is not a map (§8.1)
+inline bool TableJsonIsList( const TableFieldInfo * f )
 {
-    return false;
+    return f->is_array && f->array_bound == 0 && !TableJsonIsMap( f );
 }
 
-inline bool TableJsonReadList( TableJsonIn & in, void *, const TableFieldInfo *, int32_t )
+// ToJson WRITES THE ELEMENTS IN INDEX ORDER, which is the only order there is,
+// so unpack then pack is byte-stable without a rule of its own (§2.9, §17.2).
+// A region holds the array in place, so this steps it at the descriptor's pitch.
+inline bool TableJsonWriteList( TableJsonOut & out, const void * slot, const TableFieldInfo * f, int32_t depth )
 {
-    in.report->malformed = true;
-    in.bad = true;
-    return false;
+    const int32_t count = TableJsonExtentCount( slot );
+    if ( count == 0 ) { out.raw( "[]", 2 ); return true; }
+    const uint8_t * elements = TableJsonExtentElements( slot );
+    out.put( '[' );
+    for ( int32_t i = 0; i < count; i++ )
+    {
+        if ( i > 0 ) { out.put( ',' ); }
+        out.line( depth + 1 );
+        const uint8_t * element = elements + (int64_t) i * f->elem_size;
+        if ( f->kind == 17 )
+        {
+            // a []*T's elements take the pointer row (§16.7): the pointee's
+            // object in place, null, or `&node` for a shared one
+            if ( !TableJsonWritePointer( out, element, f, depth + 1 ) ) { return false; }
+        }
+        else if ( !TableJsonWriteScalar( out, element, f, depth + 1 ) ) { return false; }
+    }
+    out.line( depth );
+    out.put( ']' );
+    return true;
 }
+
+// FromJson READS EVERY ELEMENT THE TEXT CARRIES, appending each through the
+// descriptor's place resolver: `[]` is an empty list, and null is
+// kind_mismatch, the array row's own rule (§16.2). LAST WINS holds for a
+// repeated key: the list goes back to EMPTY before this occurrence's elements
+// land, the builder's storage being reclaimed at reset (§2.9).
+inline bool TableJsonReadList( TableJsonIn & in, void * slot, const TableFieldInfo * f, int32_t depth )
+{
+    TableJsonGraphIn * graph = (TableJsonGraphIn *) in.graph;
+    if ( graph == NULL ) { in.report->malformed = true; in.bad = true; return false; }
+    if ( TableJsonPeek( in ) != '[' ) { in.bad = true; return false; }
+    if ( depth + 1 > kTableJsonMaxDepth ) { in.bad = true; return false; }
+    in.pos++;
+    TableJsonSetRaw( (uint8_t *) slot, 8, 0 );
+    TableJsonSetRaw( (uint8_t *) slot + 8, 4, 0 );
+    const char shape = TableJsonElementShape( f );
+    for ( ;; )
+    {
+        char c = TableJsonPeek( in );
+        if ( c == ']' ) { in.pos++; break; }
+        if ( c == 0 ) { in.bad = true; return false; }
+        void * element = f->place( *graph->worker, slot, NULL, 0, 0 );
+        if ( element == NULL )
+        {
+            // NOT ADDED: the arena could not carve another segment, or the
+            // count met the int32 cap. The text cannot be placed whole, and
+            // the read stops where §16.1's rule stops it.
+            in.report->malformed = true;
+            in.bad = true;
+            return false;
+        }
+        if ( f->kind == 17 )
+        {
+            // an element of a []*T (§2.9): null is a null slot, an object is the
+            // pointee in place or an `&node` reference (§16.7)
+            char got = TableJsonValueShape( in );
+            if ( got == 'z' )
+            {
+                if ( !TableJsonLiteral( in, "null" ) ) { return false; }
+                TableJsonSetRaw( (uint8_t *) element, f->elem_size, 0 );
+            }
+            else if ( got != 'o' )
+            {
+                in.report->kind_mismatch++;
+                if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+            }
+            else if ( !TableJsonReadPointer( in, element, f, depth + 1 ) ) { return false; }
+        }
+        else if ( TableJsonValueShape( in ) != shape )
+        {
+            // the wrong shape for the element kind: the slot keeps its
+            // defaults and the event counts, the array row's rule (§16.2)
+            in.report->kind_mismatch++;
+            if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+        }
+        else if ( !TableJsonReadScalar( in, element, f, depth + 1 ) ) { return false; }
+        c = TableJsonPeek( in );
+        if ( c == ',' ) { in.pos++; continue; } // a trailing comma is accepted
+        if ( c == ']' ) { in.pos++; break; }
+        in.bad = true;
+        return false;
+    }
+    return true;
+}
+
+// ---- json list walk: end ----
 
 } // namespace mapdemo
 

@@ -16,6 +16,12 @@
 #include "RowsTable.h"
 #include "DepthTable.h"
 #include "TextTable.h"
+#include "CellsTable.h"
+#include "RunsTable.h"
+#include "SlotsTable.h"
+#include "SpansTable.h"
+#include "DocsTable.h"
+#include "ChunksTable.h"
 #include "wirebuilder.h"
 
 using namespace mapdemo;
@@ -1470,6 +1476,513 @@ static void test_text_values()
     }
 }
 
+// ---- A MAP WHOSE VALUE CARRIES AN EXTENT OR NAMES A NODE (§2.8, §4.2) ----
+//
+// "A VALUE is anything a table field can hold ... `*bytes`, `*string` (§2.5)
+// ... `[N]T`, `[..N]T`, `[E]T`, a map, and an unbounded `[]T` (§2.9)." Each is
+// an ORDINARY FIELD of the generated entry, so the storage is that field's own
+// §4.2 row and the codec is that field's own codec. What is the map's is the
+// HANDLE, and it follows the storage: a pointer to the value member where the
+// storage is ONE member, and the ENTRY where it is a PAIR.
+//
+// Six units, one per kind, each with a field past the map so a stop is visible.
+
+static void test_array_values()
+{
+    // [3]int32: ONE member, an array of a fixed extent, so the handle is a
+    // pointer to the ARRAY and the extent survives the handoff
+    CellsBuilder b;
+    Cells * c = b.GetRoot();
+    static const char * const keys[2] = { "beta", "alpha" }; // OUT OF KEY ORDER
+    for ( int i = 0; i < 2; i++ )
+    {
+        CellsRowsEntryValue * rows = CellsRowsInsert( b.main, c->rows, keys[i] );
+        CHECK( rows != NULL );
+        if ( rows == NULL ) { return; }
+        for ( int j = 0; j < 3; j++ ) { ( *rows )[j] = (int32_t) ( i * 10 + j ); }
+    }
+    c->after = 7;
+
+    const CellsRowsEntryValue * found = CellsRowsFind( b.arena, c->rows, "alpha" );
+    CHECK( found != NULL && ( *found )[0] == 10 && ( *found )[2] == 12 );
+
+    const int64_t measured = CellsMeasure( b );
+    static uint8_t wire[1u << 16];
+    const int64_t n = CellsSave( b, wire, sizeof( wire ) );
+    CHECK_EQ( measured, n );
+    pin_golden( "map_cells", wire, n );
+
+    const int64_t need = CellsLoadMeasure( wire, n );
+    CHECK( need > 0 );
+    uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
+    if ( region == NULL ) { return; }
+    TableReport report;
+    const Cells * loaded = CellsLoad( region, need, wire, n, &report );
+    CHECK( loaded != NULL );
+    CHECK( !report.malformed );
+    if ( loaded != NULL )
+    {
+        const CellsRowsEntryValue * alpha = loaded->rows.Find( "alpha" );
+        CHECK( alpha != NULL && ( *alpha )[0] == 10 && ( *alpha )[1] == 11 && ( *alpha )[2] == 12 );
+        const CellsRowsEntryValue * beta = loaded->rows.Find( "beta" );
+        CHECK( beta != NULL && ( *beta )[0] == 0 && ( *beta )[2] == 2 );
+        CHECK_EQ( loaded->after, 7 ); // and the parent read on past the map
+        static uint8_t again[1u << 16];
+        CHECK_EQ( CellsSave( loaded, again, sizeof( again ) ), n );
+        CHECK( memcmp( again, wire, (size_t) n ) == 0 );
+    }
+    free( region );
+
+    // the text form: the value takes its own §16.2 row, a JSON array
+    CHECK( b.Lock() );
+    const Cells * locked = b.AsConst();
+    CHECK( locked != NULL );
+    if ( locked == NULL ) { return; }
+    const int64_t json_bytes = CellsToJsonMeasure( locked );
+    CHECK( json_bytes > 0 );
+    char * json = (char *) MEASURED_CALLOC( json_bytes, 1 );
+    if ( json == NULL ) { return; }
+    CHECK_EQ( CellsToJson( locked, json, json_bytes ), json_bytes );
+    // an array value takes its own §16.2 row, a JSON array of the elements
+    CHECK( strstr( json, "\"alpha\": [\n      10,\n      11,\n      12\n    ]" ) != NULL );
+    CHECK( strstr( json, "\"beta\": [\n      0,\n      1,\n      2\n    ]" ) != NULL );
+    const char * alpha_at = strstr( json, "\"alpha\"" );
+    const char * beta_at = strstr( json, "\"beta\"" );
+    CHECK( alpha_at != NULL && beta_at != NULL && alpha_at < beta_at ); // ASCENDING
+
+    CellsBuilder into;
+    TableReport text_report;
+    CHECK( CellsFromJson( into, json, json_bytes, &text_report ) );
+    CHECK( !text_report.malformed );
+    static uint8_t from_text[1u << 16];
+    CHECK_EQ( CellsSave( into, from_text, sizeof( from_text ) ), n );
+    CHECK( memcmp( from_text, wire, (size_t) n ) == 0 );
+    free( json );
+
+    // a DUPLICATE key REPLACES and the value half is reset WHOLE (§2.8)
+    CellsBuilder dup;
+    Cells * d = dup.GetRoot();
+    CellsRowsEntryValue * first = CellsRowsInsert( dup.main, d->rows, "alpha" );
+    CHECK( first != NULL );
+    if ( first == NULL ) { return; }
+    ( *first )[0] = 5;
+    CellsRowsEntryValue * repeat = CellsRowsInsert( dup.main, d->rows, "alpha" );
+    CHECK( repeat == first ); // the same entry, key and address unchanged
+    CHECK( repeat != NULL && ( *repeat )[0] == 0 ); // the ARRAY is reset whole
+    CHECK_EQ( d->rows.count, 1 );
+}
+
+static void test_counted_array_values()
+{
+    // [..4]Item: a PAIR, the element array beside its int32 used count, so the
+    // handle is the ENTRY, which reaches both
+    RunsBuilder b;
+    Runs * r = b.GetRoot();
+    static const uint16_t keys[2] = { 9, 4 }; // OUT OF KEY ORDER
+    for ( int i = 0; i < 2; i++ )
+    {
+        RunsSpansEntry * entry = RunsSpansInsert( b.main, r->spans, keys[i] );
+        CHECK( entry != NULL );
+        if ( entry == NULL ) { return; }
+        entry->value_count = i + 1;
+        for ( int j = 0; j <= i; j++ ) { entry->value[j].count = (int32_t) ( keys[i] * 10 + j ); }
+    }
+    r->after = 3;
+
+    const int64_t measured = RunsMeasure( b );
+    static uint8_t wire[1u << 16];
+    const int64_t n = RunsSave( b, wire, sizeof( wire ) );
+    CHECK_EQ( measured, n );
+    pin_golden( "map_runs", wire, n );
+
+    const int64_t need = RunsLoadMeasure( wire, n );
+    CHECK( need > 0 );
+    uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
+    if ( region == NULL ) { return; }
+    TableReport report;
+    const Runs * loaded = RunsLoad( region, need, wire, n, &report );
+    CHECK( loaded != NULL );
+    CHECK( !report.malformed );
+    if ( loaded != NULL )
+    {
+        const RunsSpansEntry * four = loaded->spans.Find( (uint16_t) 4 );
+        CHECK( four != NULL && four->value_count == 2 );
+        CHECK( four != NULL && four->value[0].count == 40 && four->value[1].count == 41 );
+        const RunsSpansEntry * nine = loaded->spans.Find( (uint16_t) 9 );
+        CHECK( nine != NULL && nine->value_count == 1 && nine->value[0].count == 90 );
+        CHECK_EQ( loaded->after, 3 );
+        static uint8_t again[1u << 16];
+        CHECK_EQ( RunsSave( loaded, again, sizeof( again ) ), n );
+        CHECK( memcmp( again, wire, (size_t) n ) == 0 );
+    }
+    free( region );
+
+    CHECK( b.Lock() );
+    const Runs * locked = b.AsConst();
+    CHECK( locked != NULL );
+    if ( locked == NULL ) { return; }
+    const int64_t json_bytes = RunsToJsonMeasure( locked );
+    CHECK( json_bytes > 0 );
+    char * json = (char *) MEASURED_CALLOC( json_bytes, 1 );
+    if ( json == NULL ) { return; }
+    CHECK_EQ( RunsToJson( locked, json, json_bytes ), json_bytes );
+    // the USED COUNT decides the row's length: two elements under 4, one under 9
+    CHECK( strstr( json, "\"4\": [\n      {\n        \"count\": 40\n      },\n      {\n        \"count\": 41\n      }\n    ]" ) != NULL );
+    CHECK( strstr( json, "\"9\": [\n      {\n        \"count\": 90\n      }\n    ]" ) != NULL );
+    const char * four_at = strstr( json, "\"4\"" );
+    const char * nine_at = strstr( json, "\"9\"" );
+    CHECK( four_at != NULL && nine_at != NULL && four_at < nine_at ); // ASCENDING
+
+    RunsBuilder into;
+    TableReport text_report;
+    CHECK( RunsFromJson( into, json, json_bytes, &text_report ) );
+    CHECK( !text_report.malformed );
+    static uint8_t from_text[1u << 16];
+    CHECK_EQ( RunsSave( into, from_text, sizeof( from_text ) ), n );
+    CHECK( memcmp( from_text, wire, (size_t) n ) == 0 );
+    free( json );
+
+    // a DUPLICATE resets BOTH members of the pair, the elements and the count
+    RunsBuilder dup;
+    Runs * d = dup.GetRoot();
+    RunsSpansEntry * first = RunsSpansInsert( dup.main, d->spans, (uint16_t) 4 );
+    CHECK( first != NULL );
+    if ( first == NULL ) { return; }
+    first->value_count = 2;
+    first->value[0].count = 11;
+    RunsSpansEntry * repeat = RunsSpansInsert( dup.main, d->spans, (uint16_t) 4 );
+    CHECK( repeat == first );
+    CHECK( repeat != NULL && repeat->value_count == 0 );
+    CHECK( repeat != NULL && repeat->value[0].count == 0 );
+    CHECK_EQ( d->spans.count, 1 );
+}
+
+static void test_enum_extent_values()
+{
+    // [Slot]int32: ONE member, a TableKeyed<int32_t, Slot> whose extent is the
+    // enum's, so the handle is the slot itself and the keyed array's own
+    // surface reaches the variants
+    SlotsBuilder b;
+    Slots * s = b.GetRoot();
+    static const int32_t keys[2] = { 6, -2 }; // OUT OF KEY ORDER, and SIGNED
+    for ( int i = 0; i < 2; i++ )
+    {
+        TableKeyed<int32_t, Slot> * seats = SlotsSeatsInsert( b.main, s->seats, keys[i] );
+        CHECK( seats != NULL );
+        if ( seats == NULL ) { return; }
+        ( *seats )[Slot::Alpha] = (int32_t) ( i + 1 );
+        ( *seats )[Slot::Beta] = (int32_t) ( i + 100 );
+    }
+    s->after = 5;
+
+    const int64_t measured = SlotsMeasure( b );
+    static uint8_t wire[1u << 16];
+    const int64_t n = SlotsSave( b, wire, sizeof( wire ) );
+    CHECK_EQ( measured, n );
+    pin_golden( "map_slots", wire, n );
+
+    const int64_t need = SlotsLoadMeasure( wire, n );
+    CHECK( need > 0 );
+    uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
+    if ( region == NULL ) { return; }
+    TableReport report;
+    const Slots * loaded = SlotsLoad( region, need, wire, n, &report );
+    CHECK( loaded != NULL );
+    CHECK( !report.malformed );
+    if ( loaded != NULL )
+    {
+        const TableKeyed<int32_t, Slot> * low = loaded->seats.Find( (int32_t) -2 ); // sorts first
+        CHECK( low != NULL && ( *low )[Slot::Alpha] == 2 && ( *low )[Slot::Beta] == 101 );
+        const TableKeyed<int32_t, Slot> * high = loaded->seats.Find( (int32_t) 6 );
+        CHECK( high != NULL && ( *high )[Slot::Alpha] == 1 && ( *high )[Slot::Beta] == 100 );
+        CHECK_EQ( loaded->after, 5 );
+        static uint8_t again[1u << 16];
+        CHECK_EQ( SlotsSave( loaded, again, sizeof( again ) ), n );
+        CHECK( memcmp( again, wire, (size_t) n ) == 0 );
+    }
+    free( region );
+
+    CHECK( b.Lock() );
+    const Slots * locked = b.AsConst();
+    CHECK( locked != NULL );
+    if ( locked == NULL ) { return; }
+    const int64_t json_bytes = SlotsToJsonMeasure( locked );
+    CHECK( json_bytes > 0 );
+    char * json = (char *) MEASURED_CALLOC( json_bytes, 1 );
+    if ( json == NULL ) { return; }
+    CHECK_EQ( SlotsToJson( locked, json, json_bytes ), json_bytes );
+    // an enum-keyed array is an OBJECT KEYED BY VARIANT NAME, and it is that
+    // inside a map entry exactly as it is at a field
+    CHECK( strstr( json, "\"-2\": {\n      \"Alpha\": 2,\n      \"Beta\": 101\n    }" ) != NULL );
+    CHECK( strstr( json, "\"6\": {\n      \"Alpha\": 1,\n      \"Beta\": 100\n    }" ) != NULL );
+    const char * low_at = strstr( json, "\"-2\"" );
+    const char * high_at = strstr( json, "\"6\"" );
+    CHECK( low_at != NULL && high_at != NULL && low_at < high_at ); // ASCENDING, SIGNED
+
+    SlotsBuilder into;
+    TableReport text_report;
+    CHECK( SlotsFromJson( into, json, json_bytes, &text_report ) );
+    CHECK( !text_report.malformed );
+    static uint8_t from_text[1u << 16];
+    CHECK_EQ( SlotsSave( into, from_text, sizeof( from_text ) ), n );
+    CHECK( memcmp( from_text, wire, (size_t) n ) == 0 );
+    free( json );
+
+    SlotsBuilder dup;
+    Slots * d = dup.GetRoot();
+    TableKeyed<int32_t, Slot> * first = SlotsSeatsInsert( dup.main, d->seats, (int32_t) 6 );
+    CHECK( first != NULL );
+    if ( first == NULL ) { return; }
+    ( *first )[Slot::Alpha] = 9;
+    TableKeyed<int32_t, Slot> * repeat = SlotsSeatsInsert( dup.main, d->seats, (int32_t) 6 );
+    CHECK( repeat == first );
+    CHECK( repeat != NULL && ( *repeat )[Slot::Alpha] == 0 ); // EVERY slot is reset
+    CHECK_EQ( d->seats.count, 1 );
+}
+
+static void test_unbounded_values()
+{
+    // []Item: ONE member, the sixteen-byte list slot, so the handle is the slot
+    // itself. Its elements ride in the HOLDER'S node extent as any list's do,
+    // which is a term LoadMeasure has to sum at the entry's depth (§2.9, §6.5).
+    SpansBuilder b;
+    Spans * s = b.GetRoot();
+    static const uint8_t keys[2] = { 8, 1 }; // OUT OF KEY ORDER
+    for ( int i = 0; i < 2; i++ )
+    {
+        TableList<Item> * tracks = SpansTracksInsert( b.main, s->tracks, keys[i] );
+        CHECK( tracks != NULL );
+        if ( tracks == NULL ) { return; }
+        for ( int j = 0; j <= i + 1; j++ )
+        {
+            Item * item = SpansTracksEntryValueAdd( b.main, *tracks );
+            CHECK( item != NULL );
+            if ( item == NULL ) { return; }
+            item->count = (int32_t) ( keys[i] * 10 + j );
+        }
+    }
+    s->after = 4;
+
+    const int64_t measured = SpansMeasure( b );
+    static uint8_t wire[1u << 16];
+    const int64_t n = SpansSave( b, wire, sizeof( wire ) );
+    CHECK_EQ( measured, n );
+    pin_golden( "map_spans", wire, n );
+
+    // the region: the entry array first, then EACH ENTRY'S list elements
+    const int64_t need = SpansLoadMeasure( wire, n );
+    CHECK( need > 0 );
+    uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
+    if ( region == NULL ) { return; }
+    TableReport report;
+    const Spans * loaded = SpansLoad( region, need, wire, n, &report );
+    CHECK( loaded != NULL );
+    CHECK( !report.malformed );
+    if ( loaded != NULL )
+    {
+        // key 1 was inserted SECOND and carries THREE elements, key 8 first and
+        // carries two, so a walk that placed the lists in insertion order
+        // rather than in key order would read one list's elements as another's
+        const TableList<Item> * one = loaded->tracks.Find( (uint8_t) 1 );
+        CHECK( one != NULL && one->count == 3 );
+        CHECK( one != NULL && one->Elements()[0].count == 10 && one->Elements()[2].count == 12 );
+        const TableList<Item> * eight = loaded->tracks.Find( (uint8_t) 8 );
+        CHECK( eight != NULL && eight->count == 2 );
+        CHECK( eight != NULL && eight->Elements()[0].count == 80 && eight->Elements()[1].count == 81 );
+        CHECK_EQ( loaded->after, 4 );
+        static uint8_t again[1u << 16];
+        CHECK_EQ( SpansSave( loaded, again, sizeof( again ) ), n );
+        CHECK( memcmp( again, wire, (size_t) n ) == 0 );
+    }
+    free( region );
+
+    CHECK( b.Lock() );
+    const Spans * locked = b.AsConst();
+    CHECK( locked != NULL );
+    if ( locked == NULL ) { return; }
+    const int64_t json_bytes = SpansToJsonMeasure( locked );
+    CHECK( json_bytes > 0 );
+    char * json = (char *) MEASURED_CALLOC( json_bytes, 1 );
+    if ( json == NULL ) { return; }
+    CHECK_EQ( SpansToJson( locked, json, json_bytes ), json_bytes );
+    CHECK( strstr( json, "\"1\": [\n      {\n        \"count\": 10\n      },\n      {\n        \"count\": 11\n      },\n      {\n        \"count\": 12\n      }\n    ]" ) != NULL );
+    CHECK( strstr( json, "\"8\": [\n      {\n        \"count\": 80\n      },\n      {\n        \"count\": 81\n      }\n    ]" ) != NULL );
+    const char * one_at = strstr( json, "\"1\"" );
+    const char * eight_at = strstr( json, "\"8\"" );
+    CHECK( one_at != NULL && eight_at != NULL && one_at < eight_at ); // ASCENDING
+
+    SpansBuilder into;
+    TableReport text_report;
+    CHECK( SpansFromJson( into, json, json_bytes, &text_report ) );
+    CHECK( !text_report.malformed );
+    static uint8_t from_text[1u << 16];
+    CHECK_EQ( SpansSave( into, from_text, sizeof( from_text ) ), n );
+    CHECK( memcmp( from_text, wire, (size_t) n ) == 0 );
+    free( json );
+
+    // a DUPLICATE resets the list SLOT, so the repeat starts empty and the
+    // first insert's elements are unreachable rather than inherited
+    SpansBuilder dup;
+    Spans * d = dup.GetRoot();
+    TableList<Item> * first = SpansTracksInsert( dup.main, d->tracks, (uint8_t) 1 );
+    CHECK( first != NULL );
+    if ( first == NULL ) { return; }
+    CHECK( SpansTracksEntryValueAdd( dup.main, *first ) != NULL );
+    TableList<Item> * repeat = SpansTracksInsert( dup.main, d->tracks, (uint8_t) 1 );
+    CHECK( repeat == first );
+    CHECK( repeat != NULL && repeat->count == 0 );
+    CHECK_EQ( d->tracks.count, 1 );
+}
+
+static void test_blob_values()
+{
+    // *string and *bytes: a buffer is a NODE (§2.5), so the value is an
+    // ordinary pointer field of the entry and its storage is the eight-byte
+    // reference. The handle is that SLOT, which is what an Emplace fills, and
+    // the const Find answers the RESOLVED blob.
+    DocsBuilder b;
+    Docs * d = b.GetRoot();
+    static const char * const keys[2] = { "beta", "alpha" }; // OUT OF KEY ORDER
+    static const char * const texts[2] = { "second page", "first page" };
+    for ( int i = 0; i < 2; i++ )
+    {
+        TableRef * slot = DocsPagesInsert( b.main, d->pages, keys[i] );
+        CHECK( slot != NULL );
+        if ( slot == NULL ) { return; }
+        CHECK( TableStringEmplace( b.main, *slot, texts[i], (int64_t) strlen( texts[i] ) ) != NULL );
+    }
+    d->after = 6;
+
+    const int64_t measured = DocsMeasure( b );
+    static uint8_t wire[1u << 16];
+    const int64_t n = DocsSave( b, wire, sizeof( wire ) );
+    CHECK_EQ( measured, n );
+    pin_golden( "map_docs", wire, n );
+
+    const int64_t need = DocsLoadMeasure( wire, n );
+    CHECK( need > 0 );
+    uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
+    if ( region == NULL ) { return; }
+    TableReport report;
+    const Docs * loaded = DocsLoad( region, need, wire, n, &report );
+    CHECK( loaded != NULL );
+    CHECK( !report.malformed );
+    if ( loaded != NULL )
+    {
+        const TableBlob * alpha = loaded->pages.Find( "alpha" );
+        CHECK( alpha != NULL );
+        const TableStringView alpha_text = TableStringViewOf( alpha );
+        CHECK( alpha_text.length == 10 && memcmp( alpha_text.data, "first page", 10 ) == 0 );
+        const TableBlob * beta = loaded->pages.Find( "beta" );
+        const TableStringView beta_text = TableStringViewOf( beta );
+        CHECK( beta_text.length == 11 && memcmp( beta_text.data, "second page", 11 ) == 0 );
+        CHECK( loaded->pages.Find( "gamma" ) == NULL );
+        CHECK_EQ( loaded->after, 6 );
+        static uint8_t again[1u << 16];
+        CHECK_EQ( DocsSave( loaded, again, sizeof( again ) ), n );
+        CHECK( memcmp( again, wire, (size_t) n ) == 0 );
+    }
+    free( region );
+
+    CHECK( b.Lock() );
+    const Docs * locked = b.AsConst();
+    CHECK( locked != NULL );
+    if ( locked == NULL ) { return; }
+    const int64_t json_bytes = DocsToJsonMeasure( locked );
+    CHECK( json_bytes > 0 );
+    char * json = (char *) MEASURED_CALLOC( json_bytes, 1 );
+    if ( json == NULL ) { return; }
+    CHECK_EQ( DocsToJson( locked, json, json_bytes ), json_bytes );
+    CHECK( strstr( json, "\"alpha\": \"first page\"" ) != NULL );
+    CHECK( strstr( json, "\"beta\": \"second page\"" ) != NULL );
+
+    DocsBuilder into;
+    TableReport text_report;
+    CHECK( DocsFromJson( into, json, json_bytes, &text_report ) );
+    CHECK( !text_report.malformed );
+    static uint8_t from_text[1u << 16];
+    CHECK_EQ( DocsSave( into, from_text, sizeof( from_text ) ), n );
+    CHECK( memcmp( from_text, wire, (size_t) n ) == 0 );
+    free( json );
+
+    // a DUPLICATE resets the SLOT to null, so the repeat names no buffer
+    DocsBuilder dup;
+    Docs * dd = dup.GetRoot();
+    TableRef * first = DocsPagesInsert( dup.main, dd->pages, "alpha" );
+    CHECK( first != NULL );
+    if ( first == NULL ) { return; }
+    CHECK( TableStringEmplace( dup.main, *first, "text", 4 ) != NULL );
+    TableRef * repeat = DocsPagesInsert( dup.main, dd->pages, "alpha" );
+    CHECK( repeat == first );
+    CHECK( repeat != NULL && repeat->value == 0 ); // null, the pointer's default
+    CHECK_EQ( dd->pages.count, 1 );
+
+    // *bytes under a SIGNED key: an opaque buffer holding bytes text cannot
+    ChunksBuilder cb;
+    Chunks * c = cb.GetRoot();
+    static const int32_t byte_keys[2] = { 2, -3 };
+    static const uint8_t payload[2][4] = { { 0x00, 0x01, 0x80, 0xff }, { 0xde, 0xad, 0xbe, 0xef } };
+    for ( int i = 0; i < 2; i++ )
+    {
+        TableRef * slot = ChunksBlobsInsert( cb.main, c->blobs, byte_keys[i] );
+        CHECK( slot != NULL );
+        if ( slot == NULL ) { return; }
+        uint8_t * bytes = TableBytesEmplace( cb.main, *slot, 4 );
+        CHECK( bytes != NULL );
+        if ( bytes == NULL ) { return; }
+        memcpy( bytes, payload[i], 4 );
+    }
+    c->after = 8;
+
+    const int64_t chunk_measured = ChunksMeasure( cb );
+    static uint8_t chunk_wire[1u << 16];
+    const int64_t cn = ChunksSave( cb, chunk_wire, sizeof( chunk_wire ) );
+    CHECK_EQ( chunk_measured, cn );
+    pin_golden( "map_chunks", chunk_wire, cn );
+
+    const int64_t chunk_need = ChunksLoadMeasure( chunk_wire, cn );
+    CHECK( chunk_need > 0 );
+    uint8_t * chunk_region = (uint8_t *) MEASURED_CALLOC( chunk_need, 0 );
+    if ( chunk_region == NULL ) { return; }
+    TableReport chunk_report;
+    const Chunks * chunks = ChunksLoad( chunk_region, chunk_need, chunk_wire, cn, &chunk_report );
+    CHECK( chunks != NULL );
+    CHECK( !chunk_report.malformed );
+    if ( chunks != NULL )
+    {
+        const TableBytesView low = TableBytesViewOf( chunks->blobs.Find( (int32_t) -3 ) );
+        CHECK( low.length == 4 && low.data != NULL && low.data[0] == 0xde && low.data[3] == 0xef );
+        const TableBytesView high = TableBytesViewOf( chunks->blobs.Find( (int32_t) 2 ) );
+        CHECK( high.length == 4 && high.data != NULL && high.data[0] == 0x00 && high.data[3] == 0xff );
+        CHECK_EQ( chunks->after, 8 );
+        static uint8_t chunk_again[1u << 16];
+        CHECK_EQ( ChunksSave( chunks, chunk_again, sizeof( chunk_again ) ), cn );
+        CHECK( memcmp( chunk_again, chunk_wire, (size_t) cn ) == 0 );
+    }
+    free( chunk_region );
+
+    CHECK( cb.Lock() );
+    const Chunks * chunks_locked = cb.AsConst();
+    CHECK( chunks_locked != NULL );
+    if ( chunks_locked == NULL ) { return; }
+    const int64_t chunk_json_bytes = ChunksToJsonMeasure( chunks_locked );
+    CHECK( chunk_json_bytes > 0 );
+    char * chunk_json = (char *) MEASURED_CALLOC( chunk_json_bytes, 1 );
+    if ( chunk_json == NULL ) { return; }
+    CHECK_EQ( ChunksToJson( chunks_locked, chunk_json, chunk_json_bytes ), chunk_json_bytes );
+    CHECK( strstr( chunk_json, "\"-3\": \"3q2+7w==\"" ) != NULL ); // base64, PADDED
+    CHECK( strstr( chunk_json, "\"2\": \"AAGA/w==\"" ) != NULL );
+
+    ChunksBuilder chunks_into;
+    TableReport chunk_text_report;
+    CHECK( ChunksFromJson( chunks_into, chunk_json, chunk_json_bytes, &chunk_text_report ) );
+    CHECK( !chunk_text_report.malformed );
+    static uint8_t chunk_from_text[1u << 16];
+    CHECK_EQ( ChunksSave( chunks_into, chunk_from_text, sizeof( chunk_from_text ) ), cn );
+    CHECK( memcmp( chunk_from_text, chunk_wire, (size_t) cn ) == 0 );
+    free( chunk_json );
+}
+
 // ---- the MESSAGE FORM over maps (docs/SPEC-TABLES.md §2.8, §3.3) ----
 //
 // A map rides on the message wire as its thirty-two bit count and its entries
@@ -1558,6 +2071,11 @@ int main( int argc, char ** argv )
     test_text();
     test_depth();
     test_text_values();
+    test_array_values();
+    test_counted_array_values();
+    test_enum_extent_values();
+    test_unbounded_values();
+    test_blob_values();
     test_message_form();
 
     if ( failures != 0 )
