@@ -560,6 +560,9 @@ func (g *gen) emitClass(d *ir.Struct) {
 func (g *gen) emitStorageField(f *ir.Field) []string {
 	name := javaName(f.Name)
 	switch {
+	case f.Type.Kind == ir.TWString:
+		g.bpf("        public final char[] %s = new char[%s];\n        public int %sLength;\n", name, g.renderArraySize(f.Type.SizeExpr, big.NewInt(f.Type.Size)), name)
+		return nil
 	case f.Type.Kind == ir.TString:
 		g.bpf("        // string(%s): max length, used length beside it (SPEC §4.7)\n", ir.RenderExpr(f.Type.SizeExpr))
 		g.bpf("        public final byte[] %s = new byte[%s];\n", name, g.renderArraySize(f.Type.SizeExpr, big.NewInt(f.Type.Size)))

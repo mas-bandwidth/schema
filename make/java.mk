@@ -576,3 +576,29 @@ packet-utf8-java-negative-control: packet-utf8-java
 	@echo 'packet UTF-8 Java negative control: removed read validation fails bit-flip agreement'
 
 test-java: packet-utf8-java packet-utf8-java-negative-control
+
+
+build/packet-wide/java/.stamp: bin/schema build/packet-wide/source/WideText.schema test/packet-wide/Shapes.schema
+	./bin/schema generate --lang java --out build/packet-wide/java/wide build/packet-wide/source/WideText.schema
+	./bin/schema generate --lang java --out build/packet-wide/java/shapes test/packet-wide/Shapes.schema
+	@touch $@
+
+.PHONY: packet-wide-java packet-wide-java-negative-control
+packet-wide-java: build/packet-wide/java/.stamp build/packet-wide/cpp/driver build/packet-text/harness
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-wide/java/classes build/packet-wide/java/wide/*.java build/packet-wide/java/shapes/*.java test/packet-wide/java/*.java
+	$(JAVA) -ea -cp build/packet-wide/java/classes Main --contracts
+	$(JAVA) -cp build/packet-wide/java/classes Main --contracts
+	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver $(JAVA) -ea -cp build/packet-wide/java/classes Main
+	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver $(JAVA) -cp build/packet-wide/java/classes Main
+
+packet-wide-java-negative-control: packet-wide-java
+	@mkdir -p build/packet-wide/java-negative
+	go run ./tools/sabotage -name packet-wide-java-pairing -out build/packet-wide/java-negative/wstring.gotext internal/codegen/java/wstring.go
+	@printf '{"Replace":{"%s/internal/codegen/java/wstring.go":"%s/build/packet-wide/java-negative/wstring.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-wide/java-negative/overlay.json
+	go run -overlay=build/packet-wide/java-negative/overlay.json ./cmd/schema generate --lang java --out build/packet-wide/java-negative build/packet-wide/source/WideText.schema
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-wide/java-negative/classes build/packet-wide/java-negative/*.java build/packet-wide/java/shapes/*.java test/packet-wide/java/*.java
+	@if ./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver -mutations-only $(JAVA) -cp build/packet-wide/java-negative/classes Main > build/packet-wide/java-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: Java wide pairing removal passed'; exit 1; fi
+	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-wide/java-negative/log || { cat build/packet-wide/java-negative/log; exit 1; }
+	@echo 'packet wide Java negative control: removed pairing fails bit-flip agreement'
+
+test-java: packet-wide-java packet-wide-java-negative-control
