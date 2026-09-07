@@ -58,18 +58,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_table_hit_event( serialize_
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->damage < 0 || (serialize_int64_t) value->damage > 4095 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->damage >= 0 && (serialize_int64_t) value->damage <= 4095 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->damage ), 12 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->hit_kind < 0 || (serialize_int64_t) value->hit_kind > 7 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->hit_kind >= 0 && (serialize_int64_t) value->hit_kind <= 7 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->hit_kind ), 3 ) )
     {
         return 0;
@@ -130,10 +124,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_table_hit_event( serialize_re
 /* Writes TableChatEvent. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_table_chat_event( serialize_write_stream_t * stream, const TableChatEvent * value )
 {
-    if ( (serialize_int64_t) value->channel < 0 || (serialize_int64_t) value->channel > 3 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->channel >= 0 && (serialize_int64_t) value->channel <= 3 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->channel ), 2 ) )
     {
         return 0;
@@ -180,10 +171,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_table_pickup_event( seriali
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->amount < 0 || (serialize_int64_t) value->amount > 255 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->amount >= 0 && (serialize_int64_t) value->amount <= 255 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->amount ), 8 ) )
     {
         return 0;

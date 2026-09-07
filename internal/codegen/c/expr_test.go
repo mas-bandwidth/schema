@@ -79,18 +79,19 @@ func TestExprBounds(t *testing.T) {
 	data, wire := generateExprCorpus(t)
 	for _, want := range []string{
 		// the issue's own example: a declared bound as the author's expression
-		"(serialize_int64_t) value->object_id > MAX_OBJECTS - 1",
+		// (the write-side bound is a serialize_assert — see emitRangeAssertWrite)
+		"(serialize_int64_t) value->object_id <= MAX_OBJECTS - 1",
 		// doubled minus parenthesizes — "--MAX_UNITS" would be a decrement
-		"(serialize_int64_t) value->doubled < -(-MAX_UNITS)",
-		"(serialize_int64_t) value->doubled > MAX_UNITS * 2",
+		"(serialize_int64_t) value->doubled >= -(-MAX_UNITS)",
+		"(serialize_int64_t) value->doubled <= MAX_UNITS * 2",
 		// hex bound keeps its source spelling
-		"(serialize_int64_t) value->hexed > 0x10",
+		"(serialize_int64_t) value->hexed <= 0x10",
 		// int-carrier overflow folds to the literal, suffixed as always
-		"(serialize_int64_t) value->overflow > 6000000000LL",
+		"(serialize_int64_t) value->overflow <= 6000000000LL",
 		// a wide leaf rides symbolically, no suffix needed
-		"(serialize_int64_t) value->wide_ok < -WIDE",
+		"(serialize_int64_t) value->wide_ok >= -WIDE",
 		// an enum-max bound folds
-		"(serialize_int64_t) value->team_size > 2LL",
+		"(serialize_int64_t) value->team_size <= 2LL",
 		// counted array bound and string size
 		"serialize_read_int( stream, &value->counted_count, 0, MAX_OBJECTS )",
 		"serialize_read_int( stream, &value->name_length, 0, MAX_UNITS )",

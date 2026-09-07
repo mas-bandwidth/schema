@@ -165,26 +165,17 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_interior_null_( const seria
 /* Writes BenchPacket. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_packet( serialize_write_stream_t * stream, const BenchPacket * value )
 {
-    if ( (serialize_int64_t) value->a < -100 || (serialize_int64_t) value->a > 100 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->a >= -100 && (serialize_int64_t) value->a <= 100 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->a) - (-100) ), 8 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->b < 0 || (serialize_int64_t) value->b > 65535 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->b >= 0 && (serialize_int64_t) value->b <= 65535 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->b ), 16 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->c < -1000000 || (serialize_int64_t) value->c > 1000000 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->c >= -1000000 && (serialize_int64_t) value->c <= 1000000 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->c) - (-1000000) ), 21 ) )
     {
         return 0;
@@ -339,82 +330,52 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_packet( serialize_read_
 /* Writes BenchInts. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_ints( serialize_write_stream_t * stream, const BenchInts * value )
 {
-    if ( (serialize_int64_t) value->f0 < -100 || (serialize_int64_t) value->f0 > 100 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->f0 >= -100 && (serialize_int64_t) value->f0 <= 100 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->f0) - (-100) ), 8 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->f1 < 0 || (serialize_int64_t) value->f1 > 65535 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->f1 >= 0 && (serialize_int64_t) value->f1 <= 65535 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->f1 ), 16 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->f2 < -1000000 || (serialize_int64_t) value->f2 > 1000000 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->f2 >= -1000000 && (serialize_int64_t) value->f2 <= 1000000 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->f2) - (-1000000) ), 21 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->f3 < 0 || (serialize_int64_t) value->f3 > 3 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->f3 >= 0 && (serialize_int64_t) value->f3 <= 3 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->f3 ), 2 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->f4 < -15 || (serialize_int64_t) value->f4 > 15 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->f4 >= -15 && (serialize_int64_t) value->f4 <= 15 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->f4) - (-15) ), 5 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->f5 < 0 || (serialize_int64_t) value->f5 > 1000 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->f5 >= 0 && (serialize_int64_t) value->f5 <= 1000 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->f5 ), 10 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->f6 < -2048 || (serialize_int64_t) value->f6 > 2047 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->f6 >= -2048 && (serialize_int64_t) value->f6 <= 2047 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->f6) - (-2048) ), 12 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->f7 < 0 || (serialize_int64_t) value->f7 > 255 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->f7 >= 0 && (serialize_int64_t) value->f7 <= 255 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->f7 ), 8 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->f8 < -600000 || (serialize_int64_t) value->f8 > 600000 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->f8 >= -600000 && (serialize_int64_t) value->f8 <= 600000 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->f8) - (-600000) ), 21 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->f9 < 0 || (serialize_int64_t) value->f9 > 100 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->f9 >= 0 && (serialize_int64_t) value->f9 <= 100 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->f9 ), 7 ) )
     {
         return 0;
@@ -695,26 +656,17 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_mixed_entity( serialize_wri
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->pos_x < -16383 || (serialize_int64_t) value->pos_x > 16383 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->pos_x >= -16383 && (serialize_int64_t) value->pos_x <= 16383 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->pos_x) - (-16383) ), 15 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->pos_y < -16383 || (serialize_int64_t) value->pos_y > 16383 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->pos_y >= -16383 && (serialize_int64_t) value->pos_y <= 16383 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->pos_y) - (-16383) ), 15 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->pos_z < -16383 || (serialize_int64_t) value->pos_z > 16383 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->pos_z >= -16383 && (serialize_int64_t) value->pos_z <= 16383 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->pos_z) - (-16383) ), 15 ) )
     {
         return 0;
@@ -727,42 +679,27 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_mixed_entity( serialize_wri
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->vel_x < -2048 || (serialize_int64_t) value->vel_x > 2047 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->vel_x >= -2048 && (serialize_int64_t) value->vel_x <= 2047 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->vel_x) - (-2048) ), 12 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->vel_y < -2048 || (serialize_int64_t) value->vel_y > 2047 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->vel_y >= -2048 && (serialize_int64_t) value->vel_y <= 2047 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->vel_y) - (-2048) ), 12 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->vel_z < -2048 || (serialize_int64_t) value->vel_z > 2047 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->vel_z >= -2048 && (serialize_int64_t) value->vel_z <= 2047 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->vel_z) - (-2048) ), 12 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->health < 0 || (serialize_int64_t) value->health > 1000 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->health >= 0 && (serialize_int64_t) value->health <= 1000 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->health ), 10 ) )
     {
         return 0;
     }
-    if ( value->weapon > 15 )
-    {
-        return 0; /* headroom above the wire range cannot ride */
-    }
+    serialize_assert( value->weapon <= 15 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->weapon, 4 ) )
     {
         return 0;
@@ -945,10 +882,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_mixed_stat( serialize_write
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->delta < -512 || (serialize_int64_t) value->delta > 511 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->delta >= -512 && (serialize_int64_t) value->delta <= 511 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->delta) - (-512) ), 10 ) )
     {
         return 0;
@@ -991,18 +925,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_mixed_hit_event( serialize_
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->damage < 0 || (serialize_int64_t) value->damage > 4095 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->damage >= 0 && (serialize_int64_t) value->damage <= 4095 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->damage ), 12 ) )
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->hit_kind < 0 || (serialize_int64_t) value->hit_kind > 7 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->hit_kind >= 0 && (serialize_int64_t) value->hit_kind <= 7 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->hit_kind ), 3 ) )
     {
         return 0;
@@ -1063,10 +991,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_hit_event( serialize_re
 /* Writes MixedChatEvent. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_mixed_chat_event( serialize_write_stream_t * stream, const MixedChatEvent * value )
 {
-    if ( (serialize_int64_t) value->channel < 0 || (serialize_int64_t) value->channel > 3 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->channel >= 0 && (serialize_int64_t) value->channel <= 3 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->channel ), 2 ) )
     {
         return 0;
@@ -1113,10 +1038,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_mixed_pickup_event( seriali
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->amount < 0 || (serialize_int64_t) value->amount > 255 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->amount >= 0 && (serialize_int64_t) value->amount <= 255 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->amount ), 8 ) )
     {
         return 0;
@@ -1218,10 +1140,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_mixed( serialize_writ
     {
         return 0;
     }
-    if ( (serialize_int64_t) value->ack_sequence < 0 || (serialize_int64_t) value->ack_sequence > 65535 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->ack_sequence >= 0 && (serialize_int64_t) value->ack_sequence <= 65535 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->ack_sequence ), 16 ) )
     {
         return 0;
@@ -1249,10 +1168,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_mixed( serialize_writ
             return 0;
         }
     }
-    if ( (serialize_int64_t) value->world_time < -1000000000000 || (serialize_int64_t) value->world_time > 1000000000000 )
-    {
-        return 0;
-    }
+    serialize_assert( (serialize_int64_t) value->world_time >= -1000000000000 && (serialize_int64_t) value->world_time <= 1000000000000 );
     {
         serialize_uint64_t offset_value = (serialize_uint64_t) ( (value->world_time) - (-1000000000000) );
         if ( !serialize_write_bits( stream, (serialize_uint32_t) ( offset_value & 0xFFFFFFFFu ), 32 ) )
@@ -1401,10 +1317,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_mixed( serialize_writ
     }
     if ( value->has_extra )
     {
-        if ( (serialize_int64_t) value->extra < 0 || (serialize_int64_t) value->extra > 255 )
-        {
-            return 0;
-        }
+        serialize_assert( (serialize_int64_t) value->extra >= 0 && (serialize_int64_t) value->extra <= 255 );
         if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->extra ), 8 ) )
         {
             return 0;
@@ -1412,10 +1325,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_mixed( serialize_writ
     }
     else
     {
-        if ( (serialize_int64_t) value->idle_ticks < 0 || (serialize_int64_t) value->idle_ticks > 15 )
-        {
-            return 0;
-        }
+        serialize_assert( (serialize_int64_t) value->idle_ticks >= 0 && (serialize_int64_t) value->idle_ticks <= 15 );
         if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->idle_ticks ), 4 ) )
         {
             return 0;

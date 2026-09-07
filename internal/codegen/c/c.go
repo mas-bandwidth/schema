@@ -702,14 +702,16 @@ func (g *gen) emitWriteFunc(st *ir.Struct) {
 		g.pf("    (void) stream;\n    (void) value;\n    return 1; /* no fields: no wire bits */\n}\n\n")
 		return
 	}
-	if len(st.Fields) == 0 {
-		g.pf("    (void) value; /* items only — reserved/const/align carry no storage */\n")
-	}
 	if ir.MaxBitsStruct(st) == 0 {
-		// every range degenerate: the body refuses out-of-contract values but
-		// never touches the stream (zero wire bits — found by
-		// FuzzGeneratedCompiles)
-		g.pf("    (void) stream; /* zero wire bits */\n")
+		// every range degenerate: the body's only value uses are
+		// serialize_asserts that compile away under NDEBUG, and it never
+		// touches the stream (zero wire bits — found by
+		// FuzzGeneratedCompiles). Both casts keep -Wall -Wextra -Werror
+		// consumers building in every configuration, the way the C++ backend
+		// does it.
+		g.pf("    (void) stream;\n    (void) value; /* zero wire bits — asserts compile away under NDEBUG */\n")
+	} else if len(st.Fields) == 0 {
+		g.pf("    (void) value; /* items only — reserved/const/align carry no storage */\n")
 	}
 	g.emitWriteItems(st.Items, "    ")
 	g.pf("    return 1;\n}\n\n")

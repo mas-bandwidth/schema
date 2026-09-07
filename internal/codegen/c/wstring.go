@@ -10,10 +10,14 @@ import (
 func (g *gen) emitWriteWString(f *ir.Field, ind string) {
 	name := "value->" + f.Name
 	bound := g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size))
-	g.pf("%sif ( %s_length < 0 || %s_length > %s )\n%s{\n%s    return 0;\n%s}\n", ind, name, name, bound, ind, ind, ind)
+	// the used length and an interior null are writer misuse, not content:
+	// debug asserts that compile out under NDEBUG, the same two guards the
+	// C++ backend folds in (SPEC §4.12, §5). Surrogate pairing is the
+	// READER's refusal, below.
+	g.pf("%sserialize_assert( %s_length >= 0 && %s_length <= %s );\n", ind, name, name, bound)
 	g.call(ind, fmt.Sprintf("serialize_write_int( stream, %s_length, 0, %s )", name, bound))
 	g.pf("%s{\n%s    int32_t i;\n%s    for ( i = 0; i < %s_length; i++ )\n%s    {\n", ind, ind, ind, name, ind)
-	g.pf("%s        if ( %s[i] == 0 ) { return 0; } /* interior null on write (SPEC §4.12) */\n", ind, name)
+	g.pf("%s        serialize_assert( %s[i] != 0 ); /* interior null on write (SPEC §4.12) */\n", ind, name)
 	g.call(ind+"        ", fmt.Sprintf("serialize_write_bits( stream, (serialize_uint32_t) %s[i], 32 )", name))
 	g.pf("%s    }\n%s}\n", ind, ind)
 }

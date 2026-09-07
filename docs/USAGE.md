@@ -540,8 +540,10 @@ char name[MaxName + 1] = {};
 int32_t name_length = 0;
 ```
 
-The write refuses embedded NULs and any length past the maximum, and the
-read validates both. In C and C++ a successful read also writes the zero
+The write holds embedded NULs and any length past the maximum in its
+target's own §5 idiom (C++ asserts both, dormant under `NDEBUG`; C's
+runtime asserts the length and C does not yet scan for the NUL), and the
+read validates both in every build. In C and C++ a successful read also writes the zero
 byte at `name[name_length]`, so `name` is a valid C string every time the
 read succeeds, which is what the `+ 1` in the array is for. The other seven
 targets carry the buffer and the used length with nothing written past it.
@@ -805,8 +807,11 @@ and it holds in every language.
 
 **Each language uses its own correctness idiom on the write side.** C++ has
 `assert`/`NDEBUG`, a check that disappears in a release build, so the C++
-backend uses `serialize_assert`. Go has no assert idiom, so it returns
-`ErrValueOutOfRange`; C, C#, Rust and JavaScript likewise return failure
+backend uses `serialize_assert` — and so does the C backend, which has the
+same `assert` and the same `NDEBUG` (2026-09-07: "Every language, by design,
+compiles out asserts/checks in release build. This is the whole point!").
+Go has no assert idiom, so it returns
+`ErrValueOutOfRange`; C#, Rust and JavaScript likewise return failure
 rather than invent an assert. Dart has `assert` — active under
 `--enable-asserts`, compiled out of release and AOT builds — so the Dart
 writer asserts, exactly like C++; Java's `assert` is active under `-ea` and
@@ -818,9 +823,9 @@ correctness the way that language verifies correctness — not that every
 target behaves identically here.
 
 So writing `health = 2000` into a field declared `| min = 0, max = 1000`
-asserts in a C++, checked-Dart or `-ea` Java build, raises in Elixir, silently
-writes the truncated low bits in a C++ release, Dart AOT or default-JVM build,
-and returns failure in the others.
+asserts in a C++, C, checked-Dart or `-ea` Java build, raises in Elixir,
+silently writes the truncated low bits in a C++ or C release (`NDEBUG`), Dart
+AOT or default-JVM build, and returns failure in the others.
 
 Do not build on any of it. **Keep your values inside their declared bounds on
 the write side** — your simulation already knows they are, and that is the only

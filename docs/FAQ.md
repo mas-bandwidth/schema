@@ -274,9 +274,10 @@ hand-crafted hostile bytes in the cross-language test corpus.
 No. **The guarantee is on reads** — that is where untrusted input arrives, and
 it holds in all nine languages.
 
-On the write side each language uses its own correctness idiom: C++ has
-`assert`/`NDEBUG`, a check that disappears in release, so that is what it uses;
-Go has no assert idiom, so it returns `ErrValueOutOfRange`, and C, C#, Rust
+On the write side each language uses its own correctness idiom: C++ and C
+have `assert`/`NDEBUG`, a check that disappears in release, so that is what
+they use;
+Go has no assert idiom, so it returns `ErrValueOutOfRange`, and C#, Rust
 and JavaScript likewise return failure rather than invent an assert; Dart
 and Java have `assert`, so like C++ they assert; and the BEAM has no dormant
 assert at all, so Elixir raises `ArgumentError` in every build. A

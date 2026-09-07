@@ -12,15 +12,16 @@ int main(void)
     serialize_write_stream_t w;
     serialize_read_stream_t r;
     memset(&value, 0, sizeof(value));
-    value.text_length = 8;
-    serialize_write_stream_init(&w, (unsigned char *)buffer, sizeof(buffer));
-    check(!write_wide_seven(&w, &value));
-    value.text_length = -1;
-    serialize_write_stream_init(&w, (unsigned char *)buffer, sizeof(buffer));
-    check(!write_wide_seven(&w, &value));
+    /* The two WRITE-side rules of SPEC §4.12 — the used length within [0, N]
+       and no zero code unit among the used units — are WRITER MISUSE held in
+       this target's own §5 idiom: serialize_asserts that fire in a debug
+       build and compile out under NDEBUG, exactly as the C++ backend holds
+       them. ("Every language, by design, compiles out asserts/checks in
+       release build. This is the whole point!") They are not exercised here:
+       this file is built and run in BOTH modes, and an assert is not a value
+       a passing run can observe in either. What follows is the READ side,
+       which refuses in every build. */
     value.text_length = 1;
-    serialize_write_stream_init(&w, (unsigned char *)buffer, sizeof(buffer));
-    check(!write_wide_seven(&w, &value)); /* zero code unit, in every mode */
     value.text[0] = 0xd800;
     serialize_write_stream_init(&w, (unsigned char *)buffer, sizeof(buffer));
     check(write_wide_seven(&w, &value)); /* pairing is read-side */

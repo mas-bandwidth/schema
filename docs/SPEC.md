@@ -2155,14 +2155,17 @@ readers face untrusted data and keep every mandated check above.
 
 Within that doctrine, misuse surfaces by each target's own convention — a
 language verifies correctness the way that language verifies correctness —
-and the list is exhaustive at all nine. **Three debug-assert**, unchecked in
-release: C++ through `serialize_assert`, Dart and Java through the language's
-own `assert`, live under `--enable-asserts` and `-ea` (Java's contracts ride
-one `check<Name>` predicate call, so a dormant assert costs the JIT one
-inlining slot rather than a body). **One raises in every build**: Elixir's
-`ArgumentError`, the BEAM having no dormant assert to compile out.
-**Five return failure from the write** rather than invent an assert their
-language does not have: C `0`, C# and JavaScript `false`, Go
+and the list is exhaustive at all nine. **Four debug-assert**, unchecked in
+release: C++ and C through `serialize_assert`, Dart and Java through the
+language's own `assert`, live under `--enable-asserts` and `-ea` (Java's
+contracts ride one `check<Name>` predicate call, so a dormant assert costs
+the JIT one inlining slot rather than a body). C's generated writes asserted
+from 2026-09-07, on the ruling "Every language, by design, compiles out
+asserts/checks in release build. This is the whole point!" — C has `assert`
+and `NDEBUG`, so the tier it belongs in is the one C++ is in. **One raises in every
+build**: Elixir's `ArgumentError`, the BEAM having no dormant assert to
+compile out. **Four return failure from the write** rather than invent an
+assert their language does not have: C# and JavaScript `false`, Go
 `serialize.ErrValueOutOfRange`, Rust `Err(serialize::Error::ValueOutOfRange)`
 — and JavaScript's flat tier, which forks checked/production at module load
 (§6.1), refuses with `-1` on the checked side and trusts the caller on the
@@ -2171,7 +2174,7 @@ only unwinding path in the nine, and it is the BEAM's own.
 
 **The tier split has exactly one stated exception, and it is a counted
 array's COUNT.** A count outside its declared `[A, B]` is refused by the
-write IN EVERY BUILD in all nine targets, so C++, Dart and Java refuse it
+write IN EVERY BUILD in all nine targets, so C++, C, Dart and Java refuse it
 from the write rather than through the assert their other contracts ride,
 and JavaScript's flat production tier refuses it rather than trusting the
 caller. The count is not a diagnostic: it guards the element loop and the
