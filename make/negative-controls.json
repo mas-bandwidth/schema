@@ -2,100 +2,50 @@
   "groups": [
     {
       "name": "base",
-      "why": "Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. Measured 355 s over 101 controls.",
+      "when": "pull-request",
+      "why": "the front-end and projection checks, the doc, view and rename controls, the JSON and block refusers: Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. Measured 27 s over 21 controls.",
       "targets": [
+        "check-enum-bound-negative-control",
         "check-zero-range-negative-control",
-        "conformance-negative-control",
-        "conformance-negative-control-absent",
-        "conformance-negative-control-block-dump",
-        "conformance-negative-control-c",
-        "conformance-negative-control-c-foreign",
-        "conformance-negative-control-go",
-        "conformance-negative-control-go-walk",
-        "conformance-negative-control-reference-surface",
-        "packet-arm-defaults-c-negative-control",
-        "packet-arm-defaults-cpp-negative-control",
-        "packet-arm-defaults-go-negative-control",
-        "packet-defaults-go-negative-control",
-        "packet-void-c-read-negative-control",
-        "packet-void-c-write-negative-control",
-        "packet-void-cpp-read-negative-control",
-        "packet-void-cpp-write-negative-control",
         "projection-union-arm-order-negative-control",
         "projection-variant-order-negative-control",
         "projection-wire-law-negative-control",
-        "tables-arms-array-framing-negative-control",
-        "tables-arms-cook-arm-negative-control",
-        "tables-arms-cook-check-negative-control",
-        "tables-arms-list-edge-negative-control",
-        "tables-arms-negative-controls",
-        "tables-arms-nested-union-negative-control",
-        "tables-arms-reachable-negative-control",
-        "tables-arms-slot-index-negative-control",
-        "tables-blob-read-hooks-negative-control",
-        "tables-blob-span-negative-control",
         "tables-block-fill-refuser-negative-control",
         "tables-block-race-negative-control",
-        "tables-c-fuzz-negative-control",
-        "tables-c-keyed-none-refusal-negative-control",
-        "tables-c-soak-negative-control",
         "tables-clamp-limits-negative-control",
-        "tables-cook-fuzz-negative-control",
-        "tables-cook-open-lengths-negative-control",
-        "tables-cook-open-root-negative-control",
-        "tables-cook-open-walk-negative-control",
-        "tables-cook-write-hooks-negative-control",
-        "tables-cook-write-negative-control",
         "tables-doctags-negative-controls",
-        "tables-flat-wire-negative-control",
-        "tables-go-fuzz-extent-negative-control",
-        "tables-go-fuzz-maximum-negative-control",
         "tables-json-clamp-prefix-negative-control",
         "tables-json-keyed-dup-negative-control",
         "tables-json-negative-control",
-        "tables-keyed-iteration-negative-control",
-        "tables-keyed-max-refusal-negative-control",
-        "tables-keyed-none-refusal-negative-control",
-        "tables-keyed-shift-negative-control",
-        "tables-lists-allocation-negative-control",
-        "tables-lists-clamp-negative-control",
-        "tables-lists-cook-check-negative-control",
-        "tables-lists-dead-element-negative-control",
-        "tables-lists-depth-negative-control",
-        "tables-lists-element-kind-negative-control",
-        "tables-lists-fit-negative-control",
-        "tables-lists-negative-controls",
-        "tables-lists-order-negative-control",
-        "tables-lists-preorder-negative-control",
-        "tables-lists-shared-negative-control",
-        "tables-lists-unreached-negative-control",
-        "tables-lists-walk-order-negative-control",
-        "tables-maps-ascending-negative-control",
-        "tables-maps-cap-negative-control",
-        "tables-maps-clamp-negative-control",
-        "tables-maps-dead-entry-negative-control",
-        "tables-maps-depth-negative-control",
-        "tables-maps-duplicate-negative-control",
-        "tables-maps-fit-negative-control",
-        "tables-maps-key-domain-negative-control",
-        "tables-maps-key-identity-negative-control",
-        "tables-maps-key-kind-negative-control",
-        "tables-maps-key-length-negative-control",
-        "tables-maps-negative-controls",
-        "tables-maps-place-failure-negative-control",
-        "tables-maps-sort-negative-control",
-        "tables-maps-text-order-negative-control",
-        "tables-maps-unreached-negative-control",
-        "tables-maps-value-reset-negative-control",
         "tables-retain-fixed-class-negative-control",
         "tables-retain-message-form-negative-control",
         "tables-runtime-home-negative-control",
-        "tables-shared-node-negative-control",
         "tables-view-containment-negative-control",
         "tables-view-negative-controls",
         "tables-was-negative-control",
         "tables-wasrows-negative-control",
         "tables-zero-cost-negative-control",
+        "toolchain-negative-control"
+      ]
+    },
+    {
+      "name": "base-packet",
+      "when": "pull-request",
+      "why": "the four packet families on the host toolchain, and the wide-scalar controls beside them: each is one small compile off the generated tree, and they share it. Measured 42 s over 22 controls.",
+      "targets": [
+        "packet-arm-defaults-c-negative-control",
+        "packet-arm-defaults-cpp-negative-control",
+        "packet-arm-defaults-go-negative-control",
+        "packet-defaults-c-negative-control",
+        "packet-defaults-go-negative-control",
+        "packet-utf8-c-negative-control",
+        "packet-utf8-go-negative-control",
+        "packet-void-c-read-negative-control",
+        "packet-void-c-write-negative-control",
+        "packet-void-cpp-read-negative-control",
+        "packet-void-cpp-write-negative-control",
+        "packet-wide-c-negative-control",
+        "packet-wide-go-negative-control",
         "wide-no-align-negative-control",
         "wide-surrogate-negative-control",
         "wide-table-byte-length-negative-control",
@@ -108,40 +58,269 @@
       ]
     },
     {
-      "name": "block-fuzz",
-      "why": "the two block fuzz oracles, which sabotage the C++, C# and Rust block emitters together and then require all three fuzzers to go red, so one job needs both the .NET SDK and cargo. Measured 11 s over 2 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached.",
+      "name": "base-conformance",
+      "when": "pull-request",
+      "why": "the conformance harness's own controls. The first of them rebuilds the C++ reference driver under a sabotage, which is 45 s of this group on the runner and the reason the absence control sits in a group of its own. Measured 22 s over 7 controls.",
       "targets": [
-        "tables-block-fuzz-extent-negative-control",
+        "conformance-negative-control",
+        "conformance-negative-control-block-dump",
+        "conformance-negative-control-c",
+        "conformance-negative-control-c-foreign",
+        "conformance-negative-control-go",
+        "conformance-negative-control-go-walk",
+        "conformance-negative-control-reference-surface"
+      ]
+    },
+    {
+      "name": "base-conformance-absence",
+      "when": "pull-request",
+      "why": "one control, and it is alone because it costs 47 s on the runner: it rebuilds the C++ reference driver under a sabotage the way the group above does, and the two together do not fit the owner's rule in one job. Measured 15 s over 1 control.",
+      "targets": [
+        "conformance-negative-control-absent"
+      ]
+    },
+    {
+      "name": "base-maps",
+      "when": "pull-request",
+      "why": "half the map gate's controls. The family is 17 controls at about 4 s each and does not fit one job, so it runs as two, and the umbrella target that names all 17 leaves the leg rather than re-running the other half. Measured 36 s over 8 controls.",
+      "targets": [
+        "tables-maps-ascending-negative-control",
+        "tables-maps-cap-negative-control",
+        "tables-maps-clamp-negative-control",
+        "tables-maps-dead-entry-negative-control",
+        "tables-maps-depth-negative-control",
+        "tables-maps-duplicate-negative-control",
+        "tables-maps-entry-node-negative-control",
+        "tables-maps-fit-negative-control"
+      ]
+    },
+    {
+      "name": "base-maps-keys",
+      "when": "pull-request",
+      "why": "the other half of the map gate: the key controls, the placement and ordering controls, and the reset. Measured 37 s over 9 controls.",
+      "targets": [
+        "tables-maps-key-domain-negative-control",
+        "tables-maps-key-identity-negative-control",
+        "tables-maps-key-kind-negative-control",
+        "tables-maps-key-length-negative-control",
+        "tables-maps-place-failure-negative-control",
+        "tables-maps-sort-negative-control",
+        "tables-maps-text-order-negative-control",
+        "tables-maps-unreached-negative-control",
+        "tables-maps-value-reset-negative-control"
+      ]
+    },
+    {
+      "name": "base-lists",
+      "when": "pull-request",
+      "why": "the list gate, whole, with the umbrella target that names every leaf: make builds each of them once in one invocation, so the umbrella costs this group nothing and stays on the leg. Measured 35 s over 13 controls.",
+      "targets": [
+        "tables-lists-allocation-negative-control",
+        "tables-lists-clamp-negative-control",
+        "tables-lists-cook-check-negative-control",
+        "tables-lists-dead-element-negative-control",
+        "tables-lists-depth-negative-control",
+        "tables-lists-element-kind-negative-control",
+        "tables-lists-fit-negative-control",
+        "tables-lists-negative-controls",
+        "tables-lists-order-negative-control",
+        "tables-lists-preorder-negative-control",
+        "tables-lists-shared-negative-control",
+        "tables-lists-unreached-negative-control",
+        "tables-lists-walk-order-negative-control"
+      ]
+    },
+    {
+      "name": "base-arms",
+      "when": "pull-request",
+      "why": "the union-arm traversal gate, whole, with its umbrella target, and the shared-node and Go fuzz controls that read the same walk. Measured 34 s over 11 controls.",
+      "targets": [
+        "tables-arms-array-framing-negative-control",
+        "tables-arms-cook-arm-negative-control",
+        "tables-arms-cook-check-negative-control",
+        "tables-arms-list-edge-negative-control",
+        "tables-arms-negative-controls",
+        "tables-arms-nested-union-negative-control",
+        "tables-arms-reachable-negative-control",
+        "tables-arms-slot-index-negative-control",
+        "tables-go-fuzz-extent-negative-control",
+        "tables-go-fuzz-maximum-negative-control",
+        "tables-shared-node-negative-control"
+      ]
+    },
+    {
+      "name": "base-cook",
+      "when": "pull-request",
+      "why": "the cook's controls, the blob span and read hooks, and the C leg's fuzz, soak and keyed refusal: one cooked corpus, built once, that every one of them reads. Measured 34 s over 11 controls.",
+      "targets": [
+        "tables-blob-read-hooks-negative-control",
+        "tables-blob-span-negative-control",
+        "tables-c-fuzz-negative-control",
+        "tables-c-keyed-none-refusal-negative-control",
+        "tables-c-soak-negative-control",
+        "tables-cook-fuzz-negative-control",
+        "tables-cook-open-lengths-negative-control",
+        "tables-cook-open-root-negative-control",
+        "tables-cook-open-walk-negative-control",
+        "tables-cook-write-hooks-negative-control",
+        "tables-cook-write-negative-control"
+      ]
+    },
+    {
+      "name": "base-keyed",
+      "when": "pull-request",
+      "why": "the keyed-collection controls and the flat-wire one, on the same toolchain as base and split out of it on cost: the iteration and shift controls are 23 s of the 28. Measured 28 s over 5 controls.",
+      "targets": [
+        "tables-flat-wire-negative-control",
+        "tables-keyed-iteration-negative-control",
+        "tables-keyed-max-refusal-negative-control",
+        "tables-keyed-none-refusal-negative-control",
+        "tables-keyed-shift-negative-control"
+      ]
+    },
+    {
+      "name": "message-form",
+      "when": "pull-request",
+      "why": "the message form's four blades: the count, the emitter, the text content rule and the blob one. The fifth control in this family drives 49 sabotage rows one submake each and does not fit the owner's rule alone, so it runs nightly. Measured 13 s over 4 controls.",
+      "targets": [
+        "tables-message-form-blob-negative-control",
+        "tables-message-form-count-negative-control",
+        "tables-message-form-emitter-negative-control",
+        "tables-message-form-text-negative-control"
+      ]
+    },
+    {
+      "name": "wire-fuzz",
+      "when": "pull-request",
+      "why": "the tolerant-wire oracles: the four that read a pinned vector rather than rebuilding the compiler, and so are the only controls of this family that share a job. Measured 14 s over 5 controls.",
+      "targets": [
+        "tables-wire-fuzz-message-blob-oracle-negative-control",
+        "tables-wire-fuzz-message-text-oracle-negative-control",
+        "tables-wire-fuzz-node-type-negative-control",
+        "tables-wire-fuzz-oracle-negative-control",
+        "tables-wire-fuzz-retain-oracle-negative-control"
+      ]
+    },
+    {
+      "name": "wire-fuzz-length",
+      "when": "pull-request",
+      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 23 s on the author's machine and 59 s on the runner.",
+      "targets": [
+        "tables-wire-fuzz-length-negative-control"
+      ]
+    },
+    {
+      "name": "wire-fuzz-index",
+      "when": "pull-request",
+      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 24 s on the author's machine and 62 s on the runner.",
+      "targets": [
+        "tables-wire-fuzz-index-negative-control"
+      ]
+    },
+    {
+      "name": "wire-fuzz-arm-terminator",
+      "when": "pull-request",
+      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 23 s on the author's machine and 59 s on the runner.",
+      "targets": [
+        "tables-wire-fuzz-arm-terminator-negative-control"
+      ]
+    },
+    {
+      "name": "wire-fuzz-arm-width",
+      "when": "pull-request",
+      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 30 s on the author's machine and 73 s on the runner, the longest of the family.",
+      "targets": [
+        "tables-wire-fuzz-arm-width-negative-control"
+      ]
+    },
+    {
+      "name": "wire-fuzz-blob-node",
+      "when": "pull-request",
+      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 22 s on the author's machine and 58 s on the runner.",
+      "targets": [
+        "tables-wire-fuzz-blob-node-negative-control"
+      ]
+    },
+    {
+      "name": "wire-fuzz-wide-text",
+      "when": "pull-request",
+      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 28 s on the author's machine and 75 s on the runner.",
+      "targets": [
+        "tables-wire-fuzz-wide-text-negative-control"
+      ]
+    },
+    {
+      "name": "wire-fuzz-message-text",
+      "when": "pull-request",
+      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 22 s on the author's machine.",
+      "targets": [
+        "tables-wire-fuzz-message-text-leg-negative-control"
+      ]
+    },
+    {
+      "name": "wire-fuzz-message-blob",
+      "when": "pull-request",
+      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 22 s on the author's machine.",
+      "targets": [
+        "tables-wire-fuzz-message-blob-leg-negative-control"
+      ]
+    },
+    {
+      "name": "wire-fuzz-retain",
+      "when": "pull-request",
+      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 30 s on the author's machine.",
+      "targets": [
+        "tables-wire-fuzz-retain-negative-control"
+      ]
+    },
+    {
+      "name": "wire-fuzz-retain-class",
+      "when": "pull-request",
+      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 29 s on the author's machine.",
+      "targets": [
+        "tables-wire-fuzz-retain-class-negative-control"
+      ]
+    },
+    {
+      "name": "block-fuzz",
+      "when": "pull-request",
+      "why": "the block fuzz extent oracle, which sabotages the C++, C# and Rust block emitters together and then requires all three fuzzers to go red, so one job needs both the .NET SDK and cargo. Measured 48 s on the runner.",
+      "targets": [
+        "tables-block-fuzz-extent-negative-control"
+      ],
+      "rust": "stable",
+      "dotnet": "pin"
+    },
+    {
+      "name": "block-fuzz-maximum",
+      "when": "pull-request",
+      "why": "the block fuzz maximum oracle, the extent oracle's twin, in a job of its own because the two together are 81 s of control time on top of two SDK installs. Measured 33 s on the runner.",
+      "targets": [
         "tables-block-fuzz-maximum-negative-control"
       ],
       "rust": "stable",
       "dotnet": "pin"
     },
     {
-      "name": "conformance",
-      "why": "one control, and it is here because its make prerequisite is the bare `conformance` target, which builds and runs all nine legs. It reads only build/conformance-rust and the manifest that run leaves behind, so narrowing that prerequisite would move it into the rust group and save this job its six SDK installs. Measured 5 s over 1 control, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached.",
-      "targets": [
-        "tables-rust-alloc-negative-control"
-      ],
-      "rust": "stable",
-      "dotnet": "pin",
-      "node": "20",
-      "dart": "3.13.2",
-      "java": "21",
-      "otp": "29.0.5",
-      "elixir": "1.20.4"
-    },
-    {
       "name": "cs",
-      "why": "the C# port's controls, plus the block layout and cook-open gates whose instrument is the C# reader. Measured 10 s over 10 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached.",
+      "when": "pull-request",
+      "why": "the C# port's conformance leg and its four packet families. Measured 13 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached.",
       "targets": [
         "conformance-negative-control-cs",
         "packet-arm-defaults-cs-negative-control",
+        "packet-defaults-cs-negative-control",
+        "packet-utf8-cs-negative-control",
+        "packet-wide-cs-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-cook",
+      "when": "pull-request",
+      "why": "the cook-open gates whose instrument is the C# reader, and the two block controls that only compile. Measured 24 s on the runner.",
+      "targets": [
         "tables-block-home-negative-control",
         "tables-block-inline-array-negative-control",
-        "tables-block-layout-model-negative-control",
-        "tables-block-padding-negative-control",
-        "tables-block-pitch-negative-control",
         "tables-cook-open-cs-lengths-negative-control",
         "tables-cook-open-cs-root-negative-control",
         "tables-cook-open-cs-walk-negative-control"
@@ -149,53 +328,57 @@
       "dotnet": "pin"
     },
     {
-      "name": "dart",
-      "why": "the Dart port's controls. Measured 5 s over 7 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached.",
+      "name": "cs-block-layout",
+      "when": "pull-request",
+      "why": "the block layout model control, alone: it moves an offset in the compiler's model and requires both the C++ static_asserts and the C# once-run layout check to go red, which is 39 s on the runner.",
       "targets": [
-        "conformance-negative-control-dart",
-        "packet-arm-defaults-dart-negative-control",
-        "tables-dart-alloc-negative-control",
-        "tables-dart-fuzz-negative-control",
-        "tables-dart-names-negative-control",
-        "tables-dart-soak-negative-control",
-        "tables-dart-standalone-negative-control"
+        "tables-block-layout-model-negative-control"
       ],
-      "dart": "3.13.2"
+      "dotnet": "pin"
     },
     {
-      "name": "elixir",
-      "why": "the Elixir port's controls. Measured 1 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached.",
+      "name": "cs-block-pitch",
+      "when": "pull-request",
+      "why": "the block padding and pitch controls, whose instrument is the same C# layout check as the group above and which cost 31 s and 29 s on the runner.",
       "targets": [
-        "conformance-negative-control-elixir",
-        "tables-elixir-alloc-negative-control",
-        "tables-elixir-block-lead-negative-control",
-        "tables-elixir-fuzz-negative-control",
-        "tables-elixir-soak-negative-control"
+        "tables-block-padding-negative-control",
+        "tables-block-pitch-negative-control"
       ],
-      "otp": "29.0.5",
-      "elixir": "1.20.4"
+      "dotnet": "pin"
     },
     {
-      "name": "java",
-      "why": "the Java port's controls. Measured 6 s over 7 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached.",
+      "name": "rust",
+      "when": "pull-request",
+      "why": "the Rust port's name gate and its four packet families. Measured 3 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost.",
       "targets": [
-        "conformance-negative-control-java",
-        "conformance-negative-control-java-block",
-        "packet-arm-defaults-java-negative-control",
-        "tables-java-alloc-negative-control",
-        "tables-java-cook-extent-negative-control",
-        "tables-java-fuzz-negative-control",
-        "tables-java-soak-negative-control"
+        "packet-arm-defaults-rust-negative-control",
+        "packet-defaults-rust-negative-control",
+        "packet-utf8-rust-negative-control",
+        "packet-wide-rust-negative-control",
+        "tables-rust-names-negative-control"
       ],
-      "java": "21"
+      "rust": "stable"
+    },
+    {
+      "name": "rust-alloc",
+      "when": "pull-request",
+      "why": "the Rust allocation audit's control, alone, because its prerequisite is a conformance run. It used to sit in a group that installed all seven SDKs, since its prerequisite was the bare `conformance` target that builds and runs all nine legs; the prerequisite is now `conformance-rust`, which is the rust leg and the derived manifest the control actually reads, and one SDK. Measured 5 s on a host carrying no such SDK.",
+      "targets": [
+        "tables-rust-alloc-negative-control"
+      ],
+      "rust": "stable"
     },
     {
       "name": "js",
-      "why": "the JavaScript port's controls, and the packet arm-default oracle's two JS legs. Measured 9 s over 10 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached.",
+      "when": "pull-request",
+      "why": "the JavaScript port's controls, the packet arm-default oracle's two JS legs, and the three newer packet families. Measured 9 s over 13 controls, on a host carrying no such SDK, so that is a floor and not the job's cost.",
       "targets": [
         "conformance-negative-control-js",
         "packet-arm-defaults-js-flat-negative-control",
         "packet-arm-defaults-js-runtime-negative-control",
+        "packet-defaults-js-negative-control",
+        "packet-utf8-js-negative-control",
+        "packet-wide-js-negative-control",
         "tables-js-accessor-negative-control",
         "tables-js-alloc-negative-control",
         "tables-js-fuzz-negative-control",
@@ -207,36 +390,64 @@
       "node": "20"
     },
     {
-      "name": "message-form",
-      "why": "the message-form gate, on the same toolchain as base and split out of it on cost: 103 s of base's original 733 s, nearly all of it the one target that drives 46 sabotage rows, one submake each. Measured 103 s over 3 controls.",
+      "name": "dart",
+      "when": "pull-request",
+      "why": "the Dart port's controls and its four packet families. Measured 5 s over 10 controls, on a host carrying no such SDK, so that is a floor and not the job's cost.",
       "targets": [
-        "tables-message-form-count-negative-control",
-        "tables-message-form-emitter-negative-control",
-        "tables-message-form-negative-control"
-      ]
-    },
-    {
-      "name": "rust",
-      "why": "the Rust port's name gate, and the packet arm-default oracle's Rust leg. Measured 3 s over 2 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached.",
-      "targets": [
-        "packet-arm-defaults-rust-negative-control",
-        "tables-rust-names-negative-control"
+        "conformance-negative-control-dart",
+        "packet-arm-defaults-dart-negative-control",
+        "packet-defaults-dart-negative-control",
+        "packet-utf8-dart-negative-control",
+        "packet-wide-dart-negative-control",
+        "tables-dart-alloc-negative-control",
+        "tables-dart-fuzz-negative-control",
+        "tables-dart-names-negative-control",
+        "tables-dart-soak-negative-control",
+        "tables-dart-standalone-negative-control"
       ],
-      "rust": "stable"
+      "dart": "3.13.2"
     },
     {
-      "name": "wire-fuzz",
-      "why": "the tolerant-wire forgery fuzzers, on the same toolchain as base and split out of it on cost: 275 s of base's original 733 s, because each control rebuilds the compiler under a source overlay. Measured 275 s over 9 controls.",
+      "name": "java",
+      "when": "pull-request",
+      "why": "the Java port's controls and its four packet families. Measured 6 s over 10 controls, on a host carrying no such SDK, so that is a floor and not the job's cost.",
       "targets": [
-        "tables-wire-fuzz-arm-terminator-negative-control",
-        "tables-wire-fuzz-arm-width-negative-control",
-        "tables-wire-fuzz-blob-node-negative-control",
-        "tables-wire-fuzz-index-negative-control",
-        "tables-wire-fuzz-length-negative-control",
-        "tables-wire-fuzz-negative-control",
-        "tables-wire-fuzz-node-type-negative-control",
-        "tables-wire-fuzz-oracle-negative-control",
-        "tables-wire-fuzz-wide-text-negative-control"
+        "conformance-negative-control-java",
+        "conformance-negative-control-java-block",
+        "packet-arm-defaults-java-negative-control",
+        "packet-defaults-java-negative-control",
+        "packet-utf8-java-negative-control",
+        "packet-wide-java-negative-control",
+        "tables-java-alloc-negative-control",
+        "tables-java-cook-extent-negative-control",
+        "tables-java-fuzz-negative-control",
+        "tables-java-soak-negative-control"
+      ],
+      "java": "21"
+    },
+    {
+      "name": "elixir",
+      "when": "pull-request",
+      "why": "the Elixir port's controls and its three packet families. Measured 1 s over 8 controls, on a host carrying no such SDK, so that is a floor and not the job's cost.",
+      "targets": [
+        "conformance-negative-control-elixir",
+        "packet-defaults-elixir-negative-control",
+        "packet-utf8-elixir-negative-control",
+        "packet-wide-elixir-negative-control",
+        "tables-elixir-alloc-negative-control",
+        "tables-elixir-block-lead-negative-control",
+        "tables-elixir-fuzz-negative-control",
+        "tables-elixir-soak-negative-control"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
+      "name": "nightly",
+      "when": "nightly",
+      "why": "the one control that does not fit the owner's rule for CI that runs per commit, on its own, at any group size: it drives 49 sabotage rows, one submake each, and takes 124 s on the runner where the rule is 120. Its four blades run on the pull request in the message-form group, so what moves nightly is the row-by-row pass and nothing else. certify.yml runs this tier on the schedule it already carries.",
+      "targets": [
+        "tables-message-form-negative-control"
       ]
     }
   ],
@@ -247,7 +458,15 @@
     },
     {
       "target": "tables-message-form-one-negative-control",
-      "reason": "a parameterized worker with no sabotage of its own: it reads SABOTAGE, SABOTAGE_FILE and SABOTAGE_TEST from the command line, and tables-message-form-negative-control, which this leg runs in the base group, drives it once for each of its 46 sabotage rows. Invoked bare it has nothing to break."
+      "reason": "a parameterized worker with no sabotage of its own: it reads SABOTAGE, SABOTAGE_FILE and SABOTAGE_TEST from the command line, and tables-message-form-negative-control, which the nightly tier runs, drives it once for each of its 49 sabotage rows. Invoked bare it has nothing to break."
+    },
+    {
+      "target": "tables-maps-negative-controls",
+      "reason": "an umbrella over the seventeen map-gate leaves, which the base-maps and base-maps-keys groups run between them. The family is too long for one job under the owner's rule, and an umbrella in either half would re-run the other half's eight or nine controls to prove a second time what the other job proves once."
+    },
+    {
+      "target": "tables-wire-fuzz-negative-control",
+      "reason": "an umbrella over the twelve tolerant-wire leaves, which the wire-fuzz groups run between them. Each leaf rebuilds the compiler under an overlay and costs 55 s to 75 s on the runner, so they run one per job; the umbrella in any one of them would re-run all twelve and take the job to six minutes."
     }
   ]
 }

@@ -11,7 +11,8 @@ const usage = `usage: go run ./tools/negativecontrols <command>
 
   list      every negative-control target the Makefile and its includes define
   check     hold the manifest against the Makefile; exit nonzero on a difference
-  matrix    the manifest's groups as a GitHub Actions matrix, one line of JSON
+  matrix    one tier's groups as a GitHub Actions matrix, one line of JSON:
+            matrix [pull-request|nightly], pull-request when no tier is named
   targets   the make targets of one group, space separated: targets <group>
 `
 
@@ -61,16 +62,27 @@ func main() {
 				bad = true
 			}
 		}
+		for _, g := range m.tiers() {
+			fmt.Fprintf(os.Stderr, "NEGATIVE CONTROL GROUP IN NO TIER: %s runs on neither the pull request nor the nightly; name %q or %q\n", g, whenPullRequest, whenNightly)
+			bad = true
+		}
 		if bad {
 			os.Exit(1)
 		}
-		fmt.Printf("every one of the %d negative controls is in a group or in an explained exclusion\n", len(defs))
+		fmt.Printf("every one of the %d negative controls is in a group or in an explained exclusion, and every group runs on the pull request or nightly\n", len(defs))
 	case "matrix":
+		when := whenPullRequest
+		if len(os.Args) == 3 {
+			when = os.Args[2]
+		} else if len(os.Args) > 3 {
+			fmt.Fprint(os.Stderr, usage)
+			os.Exit(2)
+		}
 		m, err := loadManifest(root)
 		if err != nil {
 			fail(err)
 		}
-		out, err := m.matrix()
+		out, err := m.matrix(when)
 		if err != nil {
 			fail(err)
 		}

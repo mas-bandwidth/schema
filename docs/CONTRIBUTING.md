@@ -109,19 +109,36 @@ have signed the [Contributor Assignment Agreement](#the-contributor-assignment-a
 
 A negative control breaks what a gate watches and requires the gate to go red.
 It is how this repository proves a gate is watching something rather than
-passing over an empty set, and there are 159 of them. Every one refuses when
+passing over an empty set, and there are 194 of them. Every one refuses when
 its sabotage patches nothing, so a control whose `sed` pattern has drifted off
 the line it aims at says so instead of reading as a pass.
 
 **Every negative control runs on every pull request**, in the `negative
-controls (<group>)` jobs. The groups are mostly toolchain families: `base`
-needs Go, a host C and C++ compiler and the C/C++ serialize siblings, and each
-of `cs`, `js`, `dart`, `java`, `elixir` and `rust` adds the one SDK its
-controls need, with `block-fuzz` and `conformance` for the few controls that
-cross several. Two more, `wire-fuzz` and `message-form`, are base-toolchain
-families split out on cost: together they were half of base's machine time.
-The jobs run in parallel, and a group's controls run in one `make -k`
-invocation so one refusal does not hide the ones behind it.
+controls (<group>)` jobs, with the one exception named below. A group is a set
+of controls that share a toolchain and a compile and run in one `make -k`
+invocation, so one refusal does not hide the ones behind it, and the jobs run
+in parallel. The `base` groups need Go, a host C and C++ compiler and the
+C/C++ serialize siblings; the `cs`, `js`, `dart`, `java`, `elixir` and `rust`
+groups each add the one SDK their controls need, and `block-fuzz` needs two.
+
+**The rule that decides where a control runs is the owner's rule for CI that
+runs per commit: one minute, two at the most.** It is a rule about a job, and
+a matrix row is a job, so each group is cut to fit two minutes on the runner
+rather than the leg as a whole being cut to fit. That is why the map gate runs
+as two groups, why the tolerant-wire family runs one control per job (each of
+those rebuilds the compiler under a source overlay and then fuzzes the
+sabotaged wire, which costs 55 to 75 seconds), and why there are more groups
+than toolchains.
+
+A control that does not fit the rule **on its own** is not made to fit by
+grouping, so it runs nightly instead, in the `nightly` tier that `certify.yml`
+runs on the schedule it already carries. Today that is one control,
+`tables-message-form-negative-control`, which drives 49 sabotage rows one
+submake each and takes 124 seconds; its four blades stay on the pull request in
+the `message-form` group. Each group in `make/negative-controls.json` names its
+tier in a `when` field and says why in a `why` field, and
+`tools/negativecontrols` refuses a group that names neither tier, so a control
+cannot leave the pull request without landing on the nightly.
 
 **The target list is enumerated, not typed.** `tools/negativecontrols` reads
 the Makefile and every file the Makefile includes, collects each explicit
@@ -132,22 +149,24 @@ direction: a control the makefiles define and the plan does not carry, and a
 control the plan names and no makefile defines.
 
 So adding a negative control costs one line in `make/negative-controls.json`,
-in the group whose toolchain it needs, and forgetting that line is a red test
-rather than a control that runs nowhere. A control that cannot run on the leg
-goes in the same file's `excluded` list with a reason, which the test requires
-to be non-empty. Nothing leaves the leg silently.
+in the group whose toolchain it needs and whose job still fits the rule with it
+added, and forgetting that line is a red test rather than a control that runs
+nowhere. A control that cannot run on either tier goes in the same file's
+`excluded` list with a reason, which the test requires to be non-empty. Nothing
+leaves the leg silently.
 
 Locally:
 
 ```bash
-go run ./tools/negativecontrols list    # every control, and the file that defines it
-go run ./tools/negativecontrols check   # the plan against the makefiles
+go run ./tools/negativecontrols list             # every control, and the file that defines it
+go run ./tools/negativecontrols check            # the plan against the makefiles
+go run ./tools/negativecontrols matrix nightly   # the groups the nightly tier runs
 make -k $(go run ./tools/negativecontrols targets base)
 ```
 
 The whole set is about thirteen minutes of machine time measured one target at
-a time, and no single group is more than six of that, so running the group your
-change touches before opening a pull request is cheap.
+a time, and no single group is more than a minute of that, so running the group
+your change touches before opening a pull request is cheap.
 
 ## Changing generated output
 

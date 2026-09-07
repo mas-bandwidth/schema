@@ -20,6 +20,16 @@ type Manifest struct {
 	Skipped []Exclusion `json:"excluded"`
 }
 
+// The two tiers a group runs in. The owner's rule for CI that runs per commit
+// is one to two minutes, so a group rides the pull request exactly when it
+// fits that budget, and a control that cannot fit it alone runs nightly
+// instead. Every group names its tier and a group naming neither is refused: a
+// typo may not quietly take a control off both workflows.
+const (
+	whenPullRequest = "pull-request"
+	whenNightly     = "nightly"
+)
+
 // Group is one matrix job: a set of controls that share a toolchain and run in
 // one make invocation.
 //
@@ -32,8 +42,11 @@ type Group struct {
 	// Name is the matrix row's name, the job's display name, and the word the
 	// leg hands back to `negativecontrols targets`.
 	Name string `json:"name"`
+	// When is the tier this group runs in: pull-request or nightly.
+	When string `json:"when"`
 	// Why says what this row's controls have in common, for a reader of the
-	// plan who is not reading the workflow.
+	// plan who is not reading the workflow. A nightly row's why line carries
+	// the measurement that put it there.
 	Why string `json:"why,omitempty"`
 	// Targets are the make targets this row runs, in one invocation.
 	Targets []string `json:"targets"`
@@ -114,12 +127,26 @@ func reconcile(defs []definition, m Manifest) (missing, stale []string, err erro
 	return missing, stale, nil
 }
 
-// matrix renders the plan's groups as the GitHub Actions matrix the leg
-// expands, so the set the leg runs is the set this file names and nothing else.
-// A row carries its name and its toolchain fields; the targets themselves come
-// back through `targets <group>` inside the job, which keeps a 100-target line
-// out of the matrix value.
-func (m Manifest) matrix() ([]byte, error) {
+// tiers reports the groups whose `when` is neither tier, by name. A group that
+// names no tier runs on neither workflow, which is a control running nowhere
+// dressed as a plan.
+func (m Manifest) tiers() []string {
+	var bad []string
+	for _, g := range m.Groups {
+		if g.When != whenPullRequest && g.When != whenNightly {
+			bad = append(bad, fmt.Sprintf("%s (when %q)", g.Name, g.When))
+		}
+	}
+	sort.Strings(bad)
+	return bad
+}
+
+// matrix renders one tier's groups as the GitHub Actions matrix that tier's
+// workflow expands, so the set a workflow runs is the set this file names and
+// nothing else. A row carries its name and its toolchain fields; the targets
+// themselves come back through `targets <group>` inside the job, which keeps a
+// hundred-target line out of the matrix value.
+func (m Manifest) matrix(when string) ([]byte, error) {
 	type row struct {
 		Name   string `json:"name"`
 		Rust   string `json:"rust"`
@@ -130,8 +157,14 @@ func (m Manifest) matrix() ([]byte, error) {
 		OTP    string `json:"otp"`
 		Elixir string `json:"elixir"`
 	}
+	if when != whenPullRequest && when != whenNightly {
+		return nil, fmt.Errorf("%q is not a tier: the tiers are %s and %s", when, whenPullRequest, whenNightly)
+	}
 	rows := make([]row, 0, len(m.Groups))
 	for _, g := range m.Groups {
+		if g.When != when {
+			continue
+		}
 		rows = append(rows, row{
 			Name:   g.Name,
 			Rust:   g.Rust,

@@ -419,3 +419,126 @@ jobs:
       # mean the scanner moved under us rather than a new CVE landing.
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
+
+  # THE NIGHTLY NEGATIVE-CONTROL TIER (issue #563). Every negative control this
+  # tree defines runs on every pull request, in ci.yml, one job per group, and
+  # every one of those jobs fits the owner's rule for CI that runs per commit:
+  # one to two minutes. A control that cannot fit that rule ON ITS OWN has no
+  # place on the pull request and still has to run, so it runs here, on the
+  # schedule this file already carries.
+  #
+  # The plan is the same file the pull-request leg reads,
+  # make/negative-controls.json, and each group in it names its tier and says
+  # why. `tools/negativecontrols` refuses a group that names neither tier, so a
+  # control cannot leave the pull request without landing on this workflow, and
+  # the package's own test reads both files to prove each one runs the plan
+  # rather than a typed list.
+  negative-controls-nightly-matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+
+      - id: plan
+        name: the nightly tier, as a matrix
+        run: |
+          matrix=$(go run ./tools/negativecontrols matrix nightly)
+          echo "$matrix"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  negative-controls-nightly:
+    name: negative controls, nightly (${{ matrix.name }})
+    needs: negative-controls-nightly-matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.negative-controls-nightly-matrix.outputs.matrix) }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # All six siblings in every group, exactly as ci.yml's leg clones them: a
+      # control reaches for a runtime through the generated code it sabotages,
+      # and which one that is belongs to the control rather than to the group.
+      - name: Check out the serialize runtimes (pinned releases)
+        run: |
+          cd ..
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"    https://github.com/mas-bandwidth/serialize.git    serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG"  https://github.com/mas-bandwidth/serialize.c.git  serialize.c
+          git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
+          git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+
+      # One step per toolchain, each keyed on the row's field for it, the same
+      # way ci.yml's leg and the conformance matrix key theirs. A base row names
+      # none of them and installs none of them.
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head; the SHA freezes the action, not the compiler, and rustup resolves stable at run time
+        if: matrix.rust != ''
+
+      - name: read the .NET SDK pin
+        if: matrix.dotnet != ''
+        run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        if: matrix.dotnet != ''
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_PIN }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: matrix.node != ''
+        with:
+          node-version: ${{ matrix.node }}
+
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        if: matrix.dart != ''
+        with:
+          sdk: ${{ matrix.dart }}
+
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        if: matrix.java != ''
+        with:
+          distribution: 'temurin'
+          java-version: ${{ matrix.java }}
+
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        if: matrix.otp != ''
+        with:
+          otp-version: ${{ matrix.otp }}
+          elixir-version: ${{ matrix.elixir }}
+
+      - name: build bin/schema and the generated tree once
+        run: make -j"$(nproc)" bin/schema build/tables-generated/.stamp
+
+      # ONE make invocation for the whole group, with -k so a control that
+      # refuses does not hide the ones behind it, and the same log scan ci.yml
+      # runs: a control's own refusal lines are the sentence a reader needs, and
+      # this pulls them out of a log thousands of compiler lines long.
+      - name: every negative control in the ${{ matrix.name }} group
+        run: |
+          set -o pipefail
+          targets=$(go run ./tools/negativecontrols targets "${{ matrix.name }}")
+          echo "$targets" | tr ' ' '\n'
+          status=0
+          # shellcheck disable=SC2086
+          make -k $targets \
+            RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node \
+            2>&1 | tee controls.log || status=1
+          if grep -qE '^NEGATIVE CONTROL( FAILED)?:' controls.log; then
+            echo "::error::a negative control refused. Either its sabotage no longer patches the line it aims at, or the gate it watches stayed green under the sabotage. Both are stop-the-line: the control is watching nothing until it is repaired."
+            grep -nE '^NEGATIVE CONTROL( FAILED)?:' controls.log
+            status=1
+          fi
+          exit $status

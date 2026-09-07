@@ -9,6 +9,15 @@ name: CI
 # 1:49, msvc 1:27, windows 0:49, conformance 0:21 to 0:41 per leg, go-test
 # 0:37, lint 0:37, vuln 0:30, shape-gate 0:22, generated 0:16, cpp-lock 0:06.
 #
+# THE RULE IS PER JOB, AND EVERY JOB IN THIS FILE IS HELD TO IT. The
+# negative-control leg below is a matrix, and a matrix row is a job, so each
+# row is cut to fit the same two minutes rather than the leg as a whole being
+# cut to fit it. A control that cannot fit the rule ON ITS OWN is not made to
+# fit by grouping, so it does not run here at all: it runs on the nightly tier
+# in certify.yml, and make/negative-controls.json records which tier every
+# group is in and why. `tools/negativecontrols` refuses a group that is in
+# neither, so nothing can fall between the two files.
+#
 # `big-endian` IS THE BINDING CONSTRAINT, and it is worth naming rather than
 # rounding away: 87 s of its 109 is `make tables-big-endian-negative`, which
 # cross-compiles the tables battery for s390x, runs it under qemu, and then
@@ -16,6 +25,10 @@ name: CI
 # binaries in parallel bought 14 s of that; the rest is the control's own two
 # compiles, which are serial by construction. The next job that wants a place
 # on this gate takes the budget from somewhere, and that is where to look.
+# NOTE, 2026-09-07: that job now measures 4:15 to 4:26 on main (runs
+# 34111624059, 34111228369, 34110320928), which is over the rule and is not
+# this leg's doing. It wants the same treatment the negative controls got here
+# and has not had it yet.
 #
 # CERTIFICATION IS certify.yml: the inline gates, the full `make test` chain on
 # both OSes, every `tables-<lang>-release` target. It runs on every push to
@@ -751,22 +764,36 @@ jobs:
   # control added tomorrow cannot be left out of this leg by forgetting a line
   # in a workflow.
   #
-  # GROUPED BY TOOLCHAIN, one job per group. Most controls need Go, a host C
-  # and C++ compiler and the C/C++ serialize siblings and nothing else; the
-  # rest are per-port and need the port's runtime, installed here the same way
-  # the conformance jobs above install it, keyed on the row's field rather than
-  # on a language name.
+  # GROUPED BY TOOLCHAIN FIRST AND BY COST SECOND, one job per group. Most
+  # controls need Go, a host C and C++ compiler and the C/C++ serialize siblings
+  # and nothing else; the rest are per-port and need the port's runtime,
+  # installed here the same way the conformance jobs above install it, keyed on
+  # the row's field rather than on a language name. Inside a toolchain the
+  # groups are families that share a compile, cut where the owner's rule cuts
+  # them: a group runs in one `make -k` invocation and that invocation has to
+  # fit inside two minutes with the job's own 25 s of checkout, sibling clones
+  # and first build already spent.
   #
-  # MEASURED, 2026-09-06 on the author's machine (arm64 macOS, one target per
-  # make invocation, off one warm build, other builds sharing the box): 159
-  # controls, 792 s of machine time for all of them. Two families then came out
-  # of `base` on cost alone, which is what keeps the longest job short:
-  # `wire-fuzz` was 275 s of it and `message-form` 103 s, both on the base
-  # toolchain, and each rebuilds the compiler under an overlay once per control.
-  # What is left runs base in 355 s, and every other group in under 15 s of its
-  # own work plus its SDK install. The per-group numbers live in
+  # MEASURED, 2026-09-07 on the author's machine (arm64 macOS, one target per
+  # make invocation, off one warm build) and on the runner (the per-job wall
+  # times below, from this branch's own pull-request run). 194 controls. The
+  # base toolchain carries 128 of them and needed ten jobs rather than one: the
+  # map gate alone is 17 controls at 4 s each on the author's machine and 1.6x
+  # that on the runner, and the conformance driver's two sabotage rebuilds are
+  # 45 s and 47 s of runner time on their own. The tolerant-wire family is one
+  # control per job for the same reason: each rebuilds the compiler under a
+  # source overlay and then fuzzes the sabotaged wire, 55 s to 75 s each, so no
+  # two of them fit together. The per-group numbers live in
   # make/negative-controls.json's `why` lines, next to the targets they are
   # about.
+  #
+  # ONE CONTROL DOES NOT FIT THE RULE AT ANY GROUP SIZE, and it runs nightly
+  # instead: tables-message-form-negative-control drives 49 sabotage rows one
+  # submake each, 124 s on the runner against a 120 s rule. It is the `nightly`
+  # group in the plan, certify.yml runs that tier on the schedule it carries,
+  # and `tools/negativecontrols` refuses a group that is in neither tier, so a
+  # control cannot leave this file without landing on that one. Its four blades
+  # stay here in the `message-form` group.
   negative-controls-matrix:
     runs-on: ubuntu-latest
     timeout-minutes: 5

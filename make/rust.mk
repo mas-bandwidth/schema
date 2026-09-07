@@ -201,6 +201,23 @@ tables-rust-soak: conformance
 tables-rust-alloc-audit: conformance
 	./build/conformance-rust build/conformance/manifest.txt alloc-audit
 
+# THE RUST LEG OF THE MATRIX, ALONE, and the derived manifest a run leaves
+# behind. `conformance` builds and runs all nine legs, so it needs every pinned
+# SDK on the box; the harness derives the manifest before it runs any driver,
+# and the rust driver is the only one this file's instruments read. So a target
+# that wants the rust driver and the manifest asks for exactly that.
+#
+# The soak and the audit keep `conformance` as their prerequisite deliberately,
+# because a NUMBER measured over a corpus whose matrix is red is a number about
+# a defect. The negative control below is not a number: it asks whether the
+# gate fires under one planted allocation, and that answer does not change with
+# the other eight legs' verdicts. Which is what lets it ride the pull request
+# in one job carrying one SDK, inside the owner's one-to-two-minute rule,
+# rather than one job carrying seven.
+.PHONY: conformance-rust
+conformance-rust: build/conformance-harness build/conformance-rust
+	$(CONFORMANCE_ENV) ./build/conformance-harness run --only rust
+
 # ITS NEGATIVE CONTROL, and the soak's. A gate that has never fired proves
 # nothing, and the LIVE-BYTE gate could not fire on this class at all: live
 # bytes answer "does this leak", and a path that allocates and frees the same
@@ -208,7 +225,7 @@ tables-rust-alloc-audit: conformance
 # makes. SOAK_SABOTAGE puts ONE allocation per iteration inside the measured
 # region and both gates must go red on it.
 .PHONY: tables-rust-alloc-negative-control
-tables-rust-alloc-negative-control: conformance
+tables-rust-alloc-negative-control: conformance-rust
 	@if SOAK_SABOTAGE=1 ./build/conformance-rust build/conformance/manifest.txt alloc-audit \
 			> build/rust-alloc-control.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the allocation audit stayed green with one allocation per iteration"; \

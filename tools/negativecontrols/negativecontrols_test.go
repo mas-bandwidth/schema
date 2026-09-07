@@ -79,25 +79,58 @@ func TestGroupsAreNamedAndPopulated(t *testing.T) {
 	}
 }
 
-// TestTheLegRunsTheManifestAndNotATypedList closes the loop between this
-// package and the workflow. The enumeration is only worth its cost while the
-// leg's target list IS the manifest: a job that typed its own list would pass
-// every test above and still miss a control. So the workflow is read here, and
-// it must reach its matrix and its targets through this tool.
-func TestTheLegRunsTheManifestAndNotATypedList(t *testing.T) {
-	root := testRoot(t)
-	body, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci.yml"))
+// TestEveryGroupRunsInATier is the owner's rule made mechanical. CI that runs
+// per commit finishes inside one to two minutes, so a group either fits that
+// budget and rides the pull request, or it does not and runs nightly. A group
+// that names neither tier appears in no workflow's matrix, which is a control
+// running nowhere with a plan entry that looks like coverage.
+func TestEveryGroupRunsInATier(t *testing.T) {
+	m, err := loadManifest(testRoot(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(body)
-	for _, want := range []string{
-		"go run ./tools/negativecontrols check",
-		"go run ./tools/negativecontrols matrix",
-		"go run ./tools/negativecontrols targets",
+	for _, bad := range m.tiers() {
+		t.Errorf("group %s runs on neither the pull request nor the nightly: name %q or %q", bad, whenPullRequest, whenNightly)
+	}
+	for _, when := range []string{whenPullRequest, whenNightly} {
+		out, err := m.matrix(when)
+		if err != nil {
+			t.Fatalf("the %s matrix does not render: %v", when, err)
+		}
+		if strings.Contains(string(out), `"include":[]`) || strings.Contains(string(out), `"include":null`) {
+			t.Errorf("the %s matrix is empty, so its workflow expands to no job", when)
+		}
+	}
+}
+
+// TestTheLegRunsTheManifestAndNotATypedList closes the loop between this
+// package and the workflows. The enumeration is only worth its cost while a
+// leg's target list IS the manifest: a job that typed its own list would pass
+// every test above and still miss a control. So both workflows are read here,
+// and each must reach its matrix and its targets through this tool: ci.yml for
+// the pull-request tier, certify.yml for the nightly one, which is where this
+// repository's schedule lives.
+func TestTheLegRunsTheManifestAndNotATypedList(t *testing.T) {
+	root := testRoot(t)
+	for workflow, wants := range map[string][]string{
+		"ci.yml": {
+			"go run ./tools/negativecontrols check",
+			"go run ./tools/negativecontrols matrix",
+			"go run ./tools/negativecontrols targets",
+		},
+		"certify.yml": {
+			"go run ./tools/negativecontrols matrix nightly",
+			"go run ./tools/negativecontrols targets",
+		},
 	} {
-		if !strings.Contains(text, want) {
-			t.Errorf(".github/workflows/ci.yml does not run %q, so the leg's target list is not the one this package enumerates", want)
+		body, err := os.ReadFile(filepath.Join(root, ".github", "workflows", workflow))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, want := range wants {
+			if !strings.Contains(string(body), want) {
+				t.Errorf(".github/workflows/%s does not run %q, so that tier's target list is not the one this package enumerates", workflow, want)
+			}
 		}
 	}
 	m, err := loadManifest(root)
