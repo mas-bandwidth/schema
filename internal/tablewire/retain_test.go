@@ -184,12 +184,12 @@ func TestRetainTrailerIsMergedInFirstUseOrder(t *testing.T) {
 	}
 	// `future` interns inside `inner`'s own tail, which the walk reaches
 	// before the ROOT's tail
-	if !(at(future) > at(name) && at(future) < at(extra)) {
+	if at(future) <= at(name) || at(future) >= at(extra) {
 		t.Fatalf("future is at %d, name at %d, extra at %d", at(future), at(name), at(extra))
 	}
 	// a retained id enters AFTER its body's own fields, and `list` is the last
 	// field the root declares
-	if !(at(list) > at(name) && at(extra) > at(list)) {
+	if at(list) <= at(name) || at(extra) <= at(list) {
 		t.Fatalf("extra is at %d and list at %d: the tail did not follow the body", at(extra), at(list))
 	}
 	// the root's two records intern in the order they were retained
@@ -197,7 +197,7 @@ func TestRetainTrailerIsMergedInFirstUseOrder(t *testing.T) {
 		t.Fatalf("parcel is at %d and extra at %d", at(parcel), at(extra))
 	}
 	// THE TAIL IS PINNED BEFORE THE NODE-TABLE FIELD (§3.1, §6.6)
-	if !(at(nodes) > at(parcel)) {
+	if at(nodes) <= at(parcel) {
 		t.Fatalf("the node table's id is at %d and parcel at %d", at(nodes), at(parcel))
 	}
 	// THE SPLIT IS THE WRITER'S STORAGE RATHER THAN THE WIRE'S (§6.6): every

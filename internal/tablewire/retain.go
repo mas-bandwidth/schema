@@ -821,18 +821,6 @@ func (e *encoder) tail(w *buf, inst *tabletext.Instance) {
 	}
 }
 
-// retains reports whether a body holds a retained field. A BODY THAT CARRIES
-// ONE DOES NOT ELIDE (§6.6): a by-value `T` at its defaults writes nothing,
-// and one whose body holds a retained field writes its body, that field and
-// its terminator, because elision is about what a body CONTAINS and a retained
-// field is content.
-func (e *encoder) retains(inst *tabletext.Instance) bool {
-	if e.rt == nil || inst == nil {
-		return false
-	}
-	return len(e.rt.store.records[inst]) > 0
-}
-
 // ---------------------------------------------------------------------------
 // the two verbs
 // ---------------------------------------------------------------------------

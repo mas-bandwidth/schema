@@ -327,6 +327,12 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 		// AN ELIDED FIELD COSTS NOTHING IN THE ID TABLE EITHER (§3), so the
 		// walk interns the field's id, builds the body that decides, and undoes
 		// both when the body turns out to be its terminator alone.
+		//
+		// A BODY THAT CARRIES A RETAINED FIELD DOES NOT ELIDE (§6.6), and it
+		// holds here BY CONSTRUCTION rather than by a second test: the retained
+		// tail is written inside `encodeBody`, so a body holding one is longer
+		// than its terminator and the length below cannot fire. Elision is
+		// about what a body CONTAINS, and a retained field is content.
 		mark := e.ids.mark()
 		ref := e.ids.ref(id)
 		body, err := encodeBody(e, subInstance(e, f, &fv.Cell))
