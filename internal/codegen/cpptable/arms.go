@@ -276,6 +276,7 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 	switch {
 	case v.Body():
 		g.pf("%s%s;\n", ind, g.loadCall(g.unionField, v.Type, rdr, value))
+		g.emitLoadRefusal(v.Type, ind)
 		// A BODY'S TERMINATOR IS THE END OF ITS PAYLOAD (§3): an arm whose
 		// terminator is not the last byte of its `L` is framing damage — the
 		// payload stops, the union reads None, and the enclosing body

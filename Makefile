@@ -3884,7 +3884,7 @@ tables-lists-unreached-negative-control: bin/schema build/tables-generated/.stam
 .PHONY: tables-lists-cook-check-negative-control
 tables-lists-cook-check-negative-control:
 	@rm -rf build/list-cook-check-control && mkdir -p build/list-cook-check-control
-	@sed -e 's@if start < s.base || end > s.extent {@if ( start < s.base || end > s.extent ) \&\& false { // SABOTAGED@' \
+	@sed -e 's@start, end, fits := arrayExtent(at, delta, count, size, s.base, s.extent)@start, end, fits := at + delta, at + delta + count * size, true // SABOTAGED@' \
 		internal/tablecook/check.go > build/list-cook-check-control/check.go.txt
 
 	@cmp -s internal/tablecook/check.go build/list-cook-check-control/check.go.txt && \
@@ -3895,6 +3895,8 @@ tables-lists-cook-check-negative-control:
 			-run 'TestCookCheckListSlot' ./internal/tablecook/ > build/list-cook-check-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: dropping cook-check's element-array clause left its test GREEN"; exit 1; \
 	fi
+	@grep -q "FAILED: cook-check accepted a list slot" build/list-cook-check-control/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the test went red, but not on containment"; cat build/list-cook-check-control/log; exit 1; }
 	@echo "negative control: dropping cook-check's element-array clause turns its test RED"
 
 # AND THE MAP SLOT'S OWN TWO (schema#380, §7.4). The containment clause is
@@ -3902,13 +3904,16 @@ tables-lists-cook-check-negative-control:
 # turn the MAP's test red too; the ascending clause is the map's alone, and it
 # gets its own sabotage, because a shared control that never fired on the
 # fifth clause would leave it untested.
+# The prerequisite creates the shared overlay even when CI runs maps alone.
 .PHONY: tables-maps-cook-check-negative-control
-tables-maps-cook-check-negative-control:
+tables-maps-cook-check-negative-control: tables-lists-cook-check-negative-control
 	@rm -rf build/map-cook-check-control && mkdir -p build/map-cook-check-control
 	@if go test -count=1 -overlay=build/list-cook-check-control/overlay.json \
 			-run 'TestCookCheckMapSlot' ./internal/tablecook/ > build/map-cook-check-control/shared.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: dropping the shared containment clause left the map-slot test GREEN"; exit 1; \
 	fi
+	@grep -q -- "--- FAIL: TestCookCheckMapSlot/the_entries_leave_the_node" build/map-cook-check-control/shared.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the shared test went red, but not on containment"; cat build/map-cook-check-control/shared.log; exit 1; }
 	@sed -e 's@		if order > 0 {@		if order > 0 \&\& false { // SABOTAGED: the entries may descend@' \
 		-e 's@		if order == 0 {@		if order == 0 \&\& false { // SABOTAGED: a key may repeat@' \
 		internal/tablecook/check.go > build/map-cook-check-control/check.go.txt

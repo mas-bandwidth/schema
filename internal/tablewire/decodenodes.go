@@ -88,6 +88,7 @@ func (r *wireReader) resolveCell(cell *tabletext.Cell, f *ir.Field, index uint64
 // all, then the records, then every body.
 func decodeVariable(m *tabletext.Model, inst *tabletext.Instance, data []byte, ids []uint64, report *tabletext.Report, rt *retainState) (bool, error) {
 	st := &decodeState{root: inst}
+	countRefusal := false
 
 	payload, present, framed := nodeTableBytes(data, ids, report)
 	records, scanned := []nodeRecord(nil), true
@@ -180,11 +181,17 @@ func decodeVariable(m *tabletext.Model, inst *tabletext.Instance, data []byte, i
 		if st.nodes[i].Inst == nil {
 			continue
 		}
-		sub := &wireReader{buf: rec.Body, report: report, m: m, ids: ids, st: st, rt: rt}
+		sub := &wireReader{buf: rec.Body, report: report, m: m, ids: ids, st: st, rt: rt, countRefusal: &countRefusal}
 		sub.bodyAt(st.nodes[i].Inst, true)
+		if countRefusal {
+			return false, &CountRefusal{}
+		}
 	}
 
-	r := &wireReader{buf: data, report: report, m: m, ids: ids, st: st, rt: rt}
+	r := &wireReader{buf: data, report: report, m: m, ids: ids, st: st, rt: rt, countRefusal: &countRefusal}
 	ok := r.body(inst)
+	if countRefusal {
+		return false, &CountRefusal{}
+	}
 	return ok, nil
 }

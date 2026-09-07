@@ -302,6 +302,8 @@ func (m *Model) fieldDefault(f *ir.Field) Cell {
 		return Cell{}
 	}
 	switch f.Type.Kind {
+	case ir.TString, ir.TBytes:
+		return Cell{Str: append([]byte(nil), f.DefBytes...)}
 	case ir.TBool:
 		return Cell{B: f.HasDefault && f.DefBool}
 	case ir.TFloat32, ir.TFloat64:

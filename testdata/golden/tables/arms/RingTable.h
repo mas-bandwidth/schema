@@ -6373,6 +6373,7 @@ inline bool RingSaveBody( const Ctx & ctx, const TableNumbering & numbering, Tab
 
 inline bool RingLoadBody( TableReader & r, const TableNodeMap & nodes, Ring & value )
 {
+    if ( nodes.refused ) { return false; }
     RingReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -7063,6 +7064,7 @@ inline bool RackSaveBody( const Ctx & ctx, const TableNumbering & numbering, Tab
 
 inline bool RackLoadBody( TableReader & r, const TableNodeMap & nodes, Rack & value )
 {
+    if ( nodes.refused ) { return false; }
     RackReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -7784,6 +7786,7 @@ inline bool TraySaveBody( const Ctx & ctx, const TableNumbering & numbering, Tab
 
 inline bool TrayLoadBody( TableReader & r, const TableNodeMap & nodes, Tray & value )
 {
+    if ( nodes.refused ) { return false; }
     TrayReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -10038,6 +10041,7 @@ inline bool RingLoadBuilder( RingBuilder & builder, const uint8_t * wire_file, i
             {
                 TableReader sub( body, length, out, &ids_table );
                 RingNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                if ( nodes.refused ) { break; }
             }
             k++;
         }
@@ -10940,6 +10944,7 @@ inline bool RackLoadBuilder( RackBuilder & builder, const uint8_t * wire_file, i
             {
                 TableReader sub( body, length, out, &ids_table );
                 RackNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                if ( nodes.refused ) { break; }
             }
             k++;
         }
@@ -11838,6 +11843,7 @@ inline bool TrayLoadBuilder( TrayBuilder & builder, const uint8_t * wire_file, i
             {
                 TableReader sub( body, length, out, &ids_table );
                 TrayNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                if ( nodes.refused ) { break; }
             }
             k++;
         }
@@ -12194,6 +12200,7 @@ inline bool RingSaveBodyRetain( const Ctx & ctx, const TableNumbering & numberin
 
 inline bool RingLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ring & value, TableRetain * retain, const TableRetainPath & path )
 {
+    if ( nodes.refused ) { return false; }
     RingReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
@@ -12767,6 +12774,7 @@ inline bool RackSaveBodyRetain( const Ctx & ctx, const TableNumbering & numberin
 
 inline bool RackLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rack & value, TableRetain * retain, const TableRetainPath & path )
 {
+    if ( nodes.refused ) { return false; }
     RackReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
@@ -13371,6 +13379,7 @@ inline bool TraySaveBodyRetain( const Ctx & ctx, const TableNumbering & numberin
 
 inline bool TrayLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Tray & value, TableRetain * retain, const TableRetainPath & path )
 {
+    if ( nodes.refused ) { return false; }
     TrayReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so

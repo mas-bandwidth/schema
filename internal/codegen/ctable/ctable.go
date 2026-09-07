@@ -516,7 +516,7 @@ static SCHEMA_UNUSED TableReader table_reader_make( const uint8_t * buffer, int6
     return r;
 }
 
-static SCHEMA_UNUSED ` + forceInline + ` int table_reader_has( const TableReader * r, int64_t bytes ) { return r->offset + bytes <= r->size; }
+static SCHEMA_UNUSED ` + forceInline + ` int table_reader_has( const TableReader * r, int64_t bytes ) { return bytes >= 0 && r->offset >= 0 && r->offset <= r->size && bytes <= r->size - r->offset; }
 static SCHEMA_UNUSED ` + forceInline + ` uint8_t table_reader_get8( TableReader * r ) { return r->buffer[r->offset++]; }
 static SCHEMA_UNUSED ` + forceInline + ` uint16_t table_reader_get16( TableReader * r )
 {
