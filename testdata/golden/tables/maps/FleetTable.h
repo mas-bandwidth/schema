@@ -3415,19 +3415,21 @@ inline bool TableRetainRecordHere( const TableRetain & retain, const uint8_t * r
 // derived from. An id inside a retained record takes its trailer entry from
 // the GENERATED table when it is here and from the CALLER's list otherwise, so
 // no retained id ever enters the generated table and no id is written twice.
-static const int32_t kTableRetainKnownIds = 44;
+static const int32_t kTableRetainKnownIds = 50;
 static const uint64_t kTableRetainKnown[ kTableRetainKnownIds ] = {
-    0x0a53e00afba279afull, 0x0c2643993e3ece2eull, 0x1a08aa1921ca5cafull, 0x1c84390d304f4f42ull,
-    0x1f6459a2cea1fc02ull, 0x294a5c4913e1ad44ull, 0x294fa1b3f0f5f070ull, 0x29cf72329075c5aaull,
-    0x2b7dea192bb7be29ull, 0x2f2ec0474f1c4fe4ull, 0x3231d0dc6fe30d4aull, 0x3dc94a19365b10ecull,
-    0x4fda04cbc245e18bull, 0x52cfa1d198476806ull, 0x610dcbb318a2e4faull, 0x63dfa0c4a4b3815dull,
+    0x0a53e00afba279afull, 0x0c2643993e3ece2eull, 0x11e7ec757c03c70aull, 0x14e2eaab9cde925bull,
+    0x1a08aa1921ca5cafull, 0x1c84390d304f4f42ull, 0x1f6459a2cea1fc02ull, 0x2492f5fb1b05b45eull,
+    0x294a5c4913e1ad44ull, 0x294fa1b3f0f5f070ull, 0x29cf72329075c5aaull, 0x2b7dea192bb7be29ull,
+    0x2f2ec0474f1c4fe4ull, 0x3231d0dc6fe30d4aull, 0x3dc94a19365b10ecull, 0x4fda04cbc245e18bull,
+    0x52cfa1d198476806ull, 0x5de00b6a76064442ull, 0x610dcbb318a2e4faull, 0x63dfa0c4a4b3815dull,
     0x6dd8dc6c5fdae3ceull, 0x704be0d8faaffc58ull, 0x70551ff29550f15dull, 0x758252d2d1b14f0dull,
     0x7b024c46e98d3404ull, 0x7ce4fd9430e80ceaull, 0x7d015e53d7cb2c7cull, 0x7f69d4b5288ba9cfull,
     0x8dc5f55c70e0f637ull, 0x9b18b54fbe8e2161ull, 0xa013e119fec906fbull, 0xa0b562a796b69487ull,
-    0xaf05dfb30c5ca3deull, 0xafb728fff268814full, 0xb1e5e28e4479a274ull, 0xb413964e3571a316ull,
-    0xbc08b7f228c93506ull, 0xbf82010f6f71eae9ull, 0xc4bcadba8e631b86ull, 0xc5b2a72c0845a253ull,
-    0xd5c2bb95d63e6331ull, 0xdcdbddf89c9310a1ull, 0xe756c0190570ccb5ull, 0xe8130af045a036f8ull,
-    0xec07a2f760550a91ull, 0xfa903574575fc678ull, 0xfd4d194e1652b207ull, 0xffffffffffffffffull,
+    0xa633f1f655715ccaull, 0xaf05dfb30c5ca3deull, 0xafb728fff268814full, 0xb1e5e28e4479a274ull,
+    0xb413964e3571a316ull, 0xbc08b7f228c93506ull, 0xbf82010f6f71eae9ull, 0xc4bcadba8e631b86ull,
+    0xc5b2a72c0845a253ull, 0xd5c2bb95d63e6331ull, 0xda73c178dfcf57b7ull, 0xdcdbddf89c9310a1ull,
+    0xe756c0190570ccb5ull, 0xe8130af045a036f8ull, 0xec07a2f760550a91ull, 0xfa903574575fc678ull,
+    0xfd4d194e1652b207ull, 0xffffffffffffffffull,
 };
 
 inline bool TableRetainNameable( uint64_t id )

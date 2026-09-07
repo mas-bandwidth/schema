@@ -850,13 +850,14 @@ func (g *tableGen) emitMapEntrySurface(owner *ir.Struct, f *ir.Field) {
 		g.pf("inline void TableEntrySetKey( %s & entry, %s key ) { entry.key = key; }\n", n, typ)
 	}
 	// what a Find answers, and what an iteration yields beside the key
-	if mapValueIsPointer(f) {
+	switch {
+	case mapValueIsPointer(f):
 		t := value.Type.Name
 		g.pf("// a map[K]*T: the const Find answers the RESOLVED pointer, one add on the\n")
 		g.pf("// self-relative delta, exactly as <T>At answers it (§6.2, §6.3)\n")
 		g.pf("inline const %s * TableEntryFound( const %s * entry ) { return entry != NULL ? %sAt( entry->value ) : NULL; }\n", t, n, t)
 		g.pf("inline TableRef * TableEntryValue( %s * entry ) { return &entry->value; } // the builder hands back the SLOT\n", n)
-	} else if mapValueIsText(f) {
+	case mapValueIsText(f):
 		// a map[K]string(N), map[K]wstring(N) or map[K]bytes(N): the value's
 		// storage is the buffer and the int32 used length beside it (§2.8,
 		// §7.2), two members, so the ENTRY is the handle that reaches both.
@@ -867,7 +868,7 @@ func (g *tableGen) emitMapEntrySurface(owner *ir.Struct, f *ir.Field) {
 		g.pf("// Fill `value` and `value_length`; `key` belongs to the map's own order.\n")
 		g.pf("inline const %s * TableEntryFound( const %s * entry ) { return entry; }\n", n, n)
 		g.pf("inline %s * TableEntryValue( %s * entry ) { return entry; }\n", n, n)
-	} else {
+	default:
 		typ := g.mapValueStorageType(f)
 		g.pf("inline const %s * TableEntryFound( const %s * entry ) { return entry != NULL ? &entry->value : NULL; }\n", typ, n)
 		g.pf("inline %s * TableEntryValue( %s * entry ) { return &entry->value; }\n", typ, n)
