@@ -289,6 +289,41 @@ run is 24576 passes (6 × the historical constant), identical in every
 language, recorded in the `iters` column. The workload itself — the width
 table and the 65536-byte buffer — is unchanged.
 
+**Note, 2026-09-07 — which API layer the legs call.** This section says "the raw
+bit packer", and that phrase is about the WORKLOAD (no message shape, a width
+table specified here) rather than about an API tier. It does not license the
+legs to call different tiers, and until today they did: the C leg's read called
+`serialize_read_bits`, whose past-end test is a real branch in every build,
+while the C++ leg's read called `BitReader::ReadBits`, whose past-end test is a
+debug assert and is gone under `-DNDEBUG` — C++'s read-side check lives in
+`ReadStream`, one layer up, which that leg never entered. The row divided a
+checked reader by an unchecked one, which §5.3 forbids dividing.
+
+**The bitpacker read leg MUST call its language's checked bit read** — the
+entry point that performs a past-end test per read and whose refusal is
+terminal — in both of its §3.2 call sites. There is no common raw tier to
+choose instead: serialize.c exposes no unchecked bit read, so the checked layer
+is the only layer both languages have. The bitpacker WRITE leg calls its
+language's bit writer, whose capacity and range guards are debug asserts in
+C and C++ (issue #52; verified by disassembly, 2026-09-07), and is therefore
+already the same work on those two sides; the other legs' writers are
+unaudited on this point, like their readers below.
+
+This is a fairness rule about what the harness ASKS FOR, not a promise about
+emitted code: a compiler that can prove a leg's checks dead may still delete
+them, and one runtime's failure-latch representation can make that proof
+possible where another's does not. Such a difference is a property of the
+runtime and belongs in the row; a difference in which function the harness
+called does not.
+
+The C and C++ legs comply as of this note. The go, rust, cs and js bitpacker
+read legs call their runtimes' `BitReader` and have NOT been audited against
+this rule — each of those runtimes has to be read to say whether its raw
+reader keeps the past-end test in a release build. Named as debt here rather
+than assumed either way; until that audit lands, a bitpacker/read ratio that
+crosses one of those legs carries the same unstated risk this note just closed
+for C-vs-C++.
+
 `serialize.go/bench_test.go`'s `i % 32 + 1` workload and `serialize.rs`'s extra
 `read_bits_group` row are **removed** from cross-language reporting. They may survive
 as in-repo diagnostics under a `local` family, which the tool never ratios.

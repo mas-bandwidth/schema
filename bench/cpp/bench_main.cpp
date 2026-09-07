@@ -466,16 +466,23 @@ int64_t bits_write_pass( uint8_t * buffer, const uint32_t * values )
     return writer.GetBytesWritten();
 }
 
-// the single untimed ReadBits call site (§3.2): verifies a buffer reads back
-// exactly the values written into it — the bits family's refuse-to-bench gate
+// the single untimed SerializeBits call site (§3.2): verifies a buffer reads
+// back exactly the values written into it — the bits family's refuse-to-bench
+// gate. Reads through ReadStream, the CHECKED reader, exactly as the timed
+// loop below does, and exactly as the C leg's serialize_read_bits does.
 bool bits_read_verify( const uint8_t * buffer, const uint32_t * values )
 {
-    serialize::BitReader reader( buffer, BitsBufferSize );
-    while ( reader.GetBitsRemaining() >= 256 )
+    serialize::ReadStream reader( buffer, BitsBufferSize );
+    // C's serialize_read_bits_remaining is num_bits - bits_read; ReadStream
+    // exposes no GetBitsRemaining, and its m_numBits IS BitsBufferSize * 8
+    while ( int64_t( BitsBufferSize ) * 8 - reader.GetBitsProcessed() >= 256 )
     {
         for ( int i = 0; i < BitsNumWidths; i++ )
         {
-            if ( reader.ReadBits( bits_widths[i] ) != values[i] )
+            uint32_t value = 0;
+            if ( !reader.SerializeBits( value, bits_widths[i] ) )
+                return false;
+            if ( value != values[i] )
                 return false;
         }
     }
@@ -503,16 +510,50 @@ BENCH_NOINLINE bool bitpacker_write_loop( long passes, int64_t bytes_per_pass, u
     return true;
 }
 
+/*
+    The timed read leg goes through ReadStream::SerializeBits — the CHECKED
+    reader — and not through BitReader::ReadBits (2026-09-07).
+
+    BitReader::ReadBits performs its past-end test as serialize_assert, so
+    under -DNDEBUG the raw reader has no bounds check at all; C++'s check for
+    the read path lives one layer up, in ReadStream (WouldReadPastEnd, then
+    Fail(), which poisons the position and makes the refusal terminal). The C
+    leg has no such split: serialize.c ships ONE bit-reading entry point,
+    serialize_read_bits, whose past-end test is a real branch in every build
+    and whose refusal is terminal through the poisoned limit. So this leg used
+    to compare a checked reader against an unchecked one, and the whole
+    published C-vs-C++ read gap was the check: the instruction and branch
+    counts, before and after, are in bench/README.md under "Which layer the
+    bitpacker rows call".
+
+    The two legs can only meet at the checked layer, because the raw layer
+    does not exist in C. ReadStream::SerializeBits is serialize_read_bits'
+    exact counterpart: same width asserts, one past-end test per read,
+    refusal terminal. "On read side we MUST always do the checks!" — the
+    maintainer, 2026-09-07.
+
+    The WRITE legs are untouched: serialize_write_bits' capacity and range
+    guards are already serialize_assert (issue #52), so C's writer and C++'s
+    BitWriter are the same unchecked work under NDEBUG — bitpacker_write_loop
+    compiles to the identical instruction and branch count in both languages,
+    before and after this change.
+*/
+
 BENCH_NOINLINE bool bitpacker_read_loop( long passes )
 {
     for ( long pass = 0; pass < passes; pass++ )
     {
-        serialize::BitReader reader( g_bits_variants[pass & ( NumVariants - 1 )], BitsBufferSize );
+        serialize::ReadStream reader( g_bits_variants[pass & ( NumVariants - 1 )], BitsBufferSize );
         uint64_t sum = 0;
-        while ( reader.GetBitsRemaining() >= 256 )
+        // num_bits - bits_read, exactly C's serialize_read_bits_remaining
+        while ( int64_t( BitsBufferSize ) * 8 - reader.GetBitsProcessed() >= 256 )
         {
             for ( int i = 0; i < BitsNumWidths; i++ )
-                sum += reader.ReadBits( bits_widths[i] );
+            {
+                uint32_t value = 0;
+                reader.SerializeBits( value, bits_widths[i] );
+                sum += value;
+            }
         }
         g_sink = g_sink + sum;
     }
