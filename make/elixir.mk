@@ -362,6 +362,6 @@ test-elixir: toolchain-elixir generated/bench/tables/elixir/.stamp generated/eli
 
 TEST_LEGS            += test-elixir
 TOOLCHAIN_LEGS       += elixir
-TOOLCHAIN_PIN_elixir := ELIXIR
+TOOLCHAIN_PINS_elixir := ELIXIR ELIXIRC MIX
 CONFORMANCE_LEGS     += $(call unless_skipped,elixir,build-conformance-elixir)
 BENCH_TABLES_LEGS += generated/bench/tables/elixir/.stamp

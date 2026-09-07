@@ -362,7 +362,7 @@ test-cs: toolchain-cs build/tables-generated-cs/.stamp generated/bench/tables/cs
 
 TEST_LEGS         += test-cs
 TOOLCHAIN_LEGS    += cs
-TOOLCHAIN_PIN_cs  := DOTNET
+TOOLCHAIN_PINS_cs  := DOTNET
 CONFORMANCE_LEGS  += $(call unless_skipped,cs,build-conformance-cs build-cs-cook)
 BENCH_TABLES_LEGS += generated/bench/tables/cs/.stamp
 GOLDENS_LEGS      += update-goldens-cs

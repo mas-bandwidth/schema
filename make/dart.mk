@@ -384,6 +384,6 @@ test-dart: toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp 
 
 TEST_LEGS         += test-dart
 TOOLCHAIN_LEGS    += dart
-TOOLCHAIN_PIN_dart := DART
+TOOLCHAIN_PINS_dart := DART
 CONFORMANCE_LEGS  += $(call unless_skipped,dart,build/conformance-dart)
 BENCH_TABLES_LEGS += generated/bench/tables/dart/.stamp

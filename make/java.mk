@@ -530,7 +530,7 @@ test-java: toolchain-java generated/java/.stamp generated/java-ludicrous/.stamp 
 
 TEST_LEGS          += test-java
 TOOLCHAIN_LEGS     += java
-TOOLCHAIN_PIN_java := JAVA
+TOOLCHAIN_PINS_java := JAVA JAVAC
 CONFORMANCE_LEGS   += $(call unless_skipped,java,build-conformance-java)
 CONFORMANCE_ENV    += JAVA=$(JAVA)
 BENCH_TABLES_LEGS += generated/bench/tables/java/.stamp

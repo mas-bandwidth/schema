@@ -458,6 +458,6 @@ test-js: toolchain-js generated/js/.stamp generated/js-ludicrous/.stamp generate
 
 TEST_LEGS         += test-js
 TOOLCHAIN_LEGS    += js
-TOOLCHAIN_PIN_js  := NODE
+TOOLCHAIN_PINS_js  := NODE
 CONFORMANCE_LEGS  += $(call unless_skipped,js,build/tables-generated-js/.stamp)
 BENCH_TABLES_LEGS += generated/bench/tables/js/.stamp

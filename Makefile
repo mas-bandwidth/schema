@@ -21,9 +21,11 @@
 # JAVAC=javac, ELIXIR=elixir, MIX=mix), which resolve and pass the gate.
 #
 # `make toolchain` runs the gate alone. `make toolchain-negative-control`
-# points every registered pin at a path that does not exist and requires each
-# leg to refuse by its own name, then names every leg in SCHEMA_SKIP_LEGS and
-# requires the same gate to go green with each skip printed by name.
+# points every registered pin at a path that does not exist, ONE PIN AT A TIME
+# (a leg with two pins is proved twice, a leg with three, three times), and
+# requires each to refuse by the leg's name and that pin's, then names every
+# leg in SCHEMA_SKIP_LEGS and requires the same gate to go green with each
+# skip printed by name.
 
 CXX      ?= c++
 CXXFLAGS ?= -std=c++17 -Wall -Wextra -Werror -ffp-contract=off
@@ -4465,8 +4467,10 @@ conformance-negative-control-block-dump: build/conformance-harness build/conform
 #   GOLDENS_LEGS       update-goldens-<lang>: the leg's committed table goldens
 #   TOOLCHAIN_LEGS     the legs with a pinned toolchain, each of which also
 #                      defines toolchain-<lang> (one $(call toolchain_probe)
-#                      per pin) and sets TOOLCHAIN_PIN_<lang> to the pin the
-#                      negative control points at a path that does not exist
+#                      per pin) and sets TOOLCHAIN_PINS_<lang> to EVERY pin
+#                      that target probes. The negative control points each
+#                      one in turn at a path that does not exist, so a pin
+#                      left off the list is a probe nothing watches
 # THE WIDE-SCALAR REFUSAL GATE (docs/SPEC-TABLES.md §3, §15): every scalar the
 # type wire carries rides in a table in the C++ reference and the tool, and a
 # port that has not landed the kinds yet must REFUSE a unit declaring them, by
@@ -4571,29 +4575,42 @@ toolchain: toolchain-names $(addprefix toolchain-,$(PROBED_TOOLCHAIN_LEGS))
 	@echo "toolchain gate: $(words $(PROBED_TOOLCHAIN_LEGS)) of $(words $(TOOLCHAIN_LEGS)) registered legs probed, every pinned toolchain resolves"
 
 # ITS NEGATIVE CONTROL. A gate that has never gone red is a gate with no blade,
-# and going red is this one's whole job, so the control makes it go red: every
-# registered leg's pin, one leg at a time, pointed at a path that does not
-# exist, and each must refuse BY ITS OWN NAME and its own pin. Then the
-# POSITIVE half, with every pin still pointed at that absent path and
-# SCHEMA_SKIP_LEGS naming every leg: the same gate goes green and prints one
-# named skip per leg. Nothing here lists a language either.
+# and going red is this one's whole job, so the control makes it go red: EVERY
+# PIN OF EVERY registered leg, one pin at a time, pointed at a path that does
+# not exist, and each must refuse BY THE LEG'S OWN NAME AND THAT PIN'S. A leg
+# with a second pin is exactly where the blade goes blunt unseen: a control
+# that points one pin per leg leaves the rest of them watching nothing, and
+# deleting their probes keeps it green. Then the POSITIVE half, with every pin
+# still pointed at that absent path and SCHEMA_SKIP_LEGS naming every leg: the
+# same gate goes green and prints one named skip per leg. Nothing here lists a
+# language either.
+#
+# While one pin is absent, THE LEG'S OTHER PINS POINT AT A PATH THAT RESOLVES,
+# so the refusal is attributable to the pin under test rather than to whichever
+# pin the bench happens to be missing anyway. A bench with none of the pinned
+# toolchains installed is the case this gate exists for, so the control has to
+# hold there too, and it does not hold if an earlier probe answers first.
+TOOLCHAIN_NC_ABSENT  := $(CURDIR)/build/toolchain-nc/absent
+TOOLCHAIN_NC_PRESENT := /bin/sh
+TOOLCHAIN_ALL_PINS    = $(foreach leg,$(TOOLCHAIN_LEGS),$(TOOLCHAIN_PINS_$(leg)))
 .PHONY: toolchain-negative-control
 toolchain-negative-control:
 	@rm -rf build/toolchain-nc && mkdir -p build/toolchain-nc
-	@$(foreach leg,$(TOOLCHAIN_LEGS), \
+	@$(foreach leg,$(TOOLCHAIN_LEGS),$(foreach pin,$(TOOLCHAIN_PINS_$(leg)), \
 		if $(MAKE) --no-print-directory toolchain-$(leg) \
-				$(TOOLCHAIN_PIN_$(leg))=$(CURDIR)/build/toolchain-nc/absent \
-				> build/toolchain-nc/$(leg).log 2>&1; then \
-			echo "NEGATIVE CONTROL FAILED: the $(leg) leg stayed green with $(TOOLCHAIN_PIN_$(leg)) pointed at a path that does not exist"; \
-			cat build/toolchain-nc/$(leg).log; exit 1; \
+				$(foreach other,$(filter-out $(pin),$(TOOLCHAIN_PINS_$(leg))),$(other)=$(TOOLCHAIN_NC_PRESENT)) \
+				$(pin)=$(TOOLCHAIN_NC_ABSENT) \
+				> build/toolchain-nc/$(leg)-$(pin).log 2>&1; then \
+			echo "NEGATIVE CONTROL FAILED: the $(leg) leg stayed green with $(pin) pointed at a path that does not exist"; \
+			cat build/toolchain-nc/$(leg)-$(pin).log; exit 1; \
 		fi; \
-		grep -q "REFUSES: the $(leg) leg's pinned $(TOOLCHAIN_PIN_$(leg)) does not resolve" build/toolchain-nc/$(leg).log || \
-			{ echo "NEGATIVE CONTROL FAILED: the $(leg) leg went red, but not by name"; \
-			  cat build/toolchain-nc/$(leg).log; exit 1; }; \
-		sed -n '1,2p' build/toolchain-nc/$(leg).log;)
+		grep -q "REFUSES: the $(leg) leg's pinned $(pin) does not resolve" build/toolchain-nc/$(leg)-$(pin).log || \
+			{ echo "NEGATIVE CONTROL FAILED: the $(leg) leg went red with $(pin) absent, but not by that pin's name"; \
+			  cat build/toolchain-nc/$(leg)-$(pin).log; exit 1; }; \
+		sed -n '1,2p' build/toolchain-nc/$(leg)-$(pin).log;))
 	@$(MAKE) --no-print-directory toolchain \
 		SCHEMA_SKIP_LEGS=$(subst $(skip_space),$(skip_comma),$(strip $(TOOLCHAIN_LEGS))) \
-		$(foreach leg,$(TOOLCHAIN_LEGS),$(TOOLCHAIN_PIN_$(leg))=$(CURDIR)/build/toolchain-nc/absent) \
+		$(foreach pin,$(TOOLCHAIN_ALL_PINS),$(pin)=$(TOOLCHAIN_NC_ABSENT)) \
 		> build/toolchain-nc/skipped.log 2>&1 || \
 		{ echo "POSITIVE FAILED: SCHEMA_SKIP_LEGS named every leg and the gate refused anyway"; \
 		  cat build/toolchain-nc/skipped.log; exit 1; }
@@ -4602,7 +4619,7 @@ toolchain-negative-control:
 			{ echo "POSITIVE FAILED: the $(leg) leg was passed over without being named"; \
 			  cat build/toolchain-nc/skipped.log; exit 1; };)
 	@cat build/toolchain-nc/skipped.log
-	@echo "negative control: every registered pin pointed at a path that does not exist turns make test RED, by leg and by pin; naming the leg in SCHEMA_SKIP_LEGS turns it GREEN with the skip printed by name"
+	@echo "negative control: each of the $(words $(TOOLCHAIN_ALL_PINS)) registered pins ($(TOOLCHAIN_ALL_PINS)) pointed at a path that does not exist turns make test RED, by leg and by pin; naming the leg in SCHEMA_SKIP_LEGS turns it GREEN with the skip printed by name"
 
 # THE `was` CONTROL (docs/SPEC-TABLES.md §5). A table renamed under `was` keeps
 # the node type id every stored record carries, so W1's fleet reads under W2's

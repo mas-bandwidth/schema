@@ -144,11 +144,15 @@ Makefile to find it with no shared file edited. If a port needs to edit a file
 that lists languages, that is a defect in the registry, not a step.
 
 A port with a pinned toolchain registers it in the same file and the same way:
-`TOOLCHAIN_LEGS += <lang>`, `TOOLCHAIN_PIN_<lang> :=` the pin the negative
-control points at a path that does not exist, and a `toolchain-<lang>` target
-carrying one `$(call toolchain_probe,...)` per pin. That is what makes
-`make test` refuse the leg by name instead of skipping it, and what makes
-`SCHEMA_SKIP_LEGS=<lang>` a skip anyone can read in the log.
+`TOOLCHAIN_LEGS += <lang>`, `TOOLCHAIN_PINS_<lang> :=` every pin the leg
+probes, and a `toolchain-<lang>` target carrying one
+`$(call toolchain_probe,...)` per pin. That is what makes `make test` refuse
+the leg by name instead of skipping it, and what makes
+`SCHEMA_SKIP_LEGS=<lang>` a skip anyone can read in the log. The negative
+control points each pin on that list at a path that does not exist IN TURN,
+with the leg's other pins pointed at one that resolves, and requires the
+refusal to name that pin. A pin the target probes but the list leaves out is
+a probe nothing watches, and deleting it keeps the control green.
 
 **Three shared edits are tolerated, and are the whole list.** The port's
 column on [PORTING.md](PORTING.md), the techniques register, is written by
