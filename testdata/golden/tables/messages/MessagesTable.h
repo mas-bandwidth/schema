@@ -2235,8 +2235,23 @@ enum class OriginType : uint8_t {
     Script = 2,
     Pid = 3,
     Note = 4,
+    Count = 4, // the declared variant count (SPEC §4.2)
     Max = 4, // the exported extent (SPEC §4.2)
 };
+
+// EnumName: debug/log name for any OriginType value, out-of-set included
+inline const char * EnumName( OriginType value )
+{
+    switch ( value )
+    {
+        case OriginType::None: return "None";
+        case OriginType::User: return "User";
+        case OriginType::Script: return "Script";
+        case OriginType::Pid: return "Pid";
+        case OriginType::Note: return "Note";
+        default: return "???";
+    }
+}
 
 // union Origin — at most one of the arms; the tag says which. AN ARM IS A FIELD
 // LINE (docs/SPEC-TABLES.md §2.6), so an arm's storage is the field's storage
@@ -2287,12 +2302,29 @@ enum class EditBodyType : uint8_t {
     None = 0,
     Insert = 1,
     Remove = 2,
-    Count = 3,
+    Tally = 3,
     Marks = 4,
     Blob = 5,
     Mode = 6,
+    Count = 6, // the declared variant count (SPEC §4.2)
     Max = 6, // the exported extent (SPEC §4.2)
 };
+
+// EnumName: debug/log name for any EditBodyType value, out-of-set included
+inline const char * EnumName( EditBodyType value )
+{
+    switch ( value )
+    {
+        case EditBodyType::None: return "None";
+        case EditBodyType::Insert: return "Insert";
+        case EditBodyType::Remove: return "Remove";
+        case EditBodyType::Tally: return "Tally";
+        case EditBodyType::Marks: return "Marks";
+        case EditBodyType::Blob: return "Blob";
+        case EditBodyType::Mode: return "Mode";
+        default: return "???";
+    }
+}
 
 // union EditBody — at most one of the arms; the tag says which. AN ARM IS A FIELD
 // LINE (docs/SPEC-TABLES.md §2.6), so an arm's storage is the field's storage
@@ -2311,7 +2343,7 @@ struct EditBody
     {
         InsertText insert;
         RemoveText remove;
-        int32_t count;
+        int32_t tally;
         struct { uint16_t value[3]; int32_t value_count; } marks; // [..3]uint16
         struct { uint8_t value[4]; int32_t value_length; } blob; // bytes(4)
         Mode mode;
@@ -2369,8 +2401,27 @@ enum class ToolBodyType : uint8_t {
     Spans = 6,
     Origin = 7,
     Ack = 8,
+    Count = 8, // the declared variant count (SPEC §4.2)
     Max = 8, // the exported extent (SPEC §4.2)
 };
+
+// EnumName: debug/log name for any ToolBodyType value, out-of-set included
+inline const char * EnumName( ToolBodyType value )
+{
+    switch ( value )
+    {
+        case ToolBodyType::None: return "None";
+        case ToolBodyType::Open: return "Open";
+        case ToolBodyType::Save: return "Save";
+        case ToolBodyType::Transact: return "Transact";
+        case ToolBodyType::Ping: return "Ping";
+        case ToolBodyType::Caps: return "Caps";
+        case ToolBodyType::Spans: return "Spans";
+        case ToolBodyType::Origin: return "Origin";
+        case ToolBodyType::Ack: return "Ack";
+        default: return "???";
+    }
+}
 
 // union ToolBody — at most one of the arms; the tag says which. AN ARM IS A FIELD
 // LINE (docs/SPEC-TABLES.md §2.6), so an arm's storage is the field's storage
@@ -5638,7 +5689,7 @@ inline int64_t EditMeasureBody( TableIds & ids, const Edit & value )
                 bytes += TableLebBytes( arm_ref ) + 1 + TableLebBytes( (uint64_t) ( arm_payload ) ) + ( arm_payload );
                 break;
             }
-            case EditBodyType::Count:
+            case EditBodyType::Tally:
             {
                 int64_t arm_payload = 0;
                 const uint64_t arm_ref = ids.ref( 0xb1e5e28e4479a274ull );
@@ -5729,13 +5780,13 @@ MESSAGEDEMO_TABLE_INLINE bool EditSaveBody( TableWriter & w, TableIds & ids, con
                 if ( !RemoveTextSaveBody( w, ids, value.body.remove ) ) { return false; }
                 break;
             }
-            case EditBodyType::Count:
+            case EditBodyType::Tally:
             {
                 const uint64_t arm_ref = ids.ref( 0xb1e5e28e4479a274ull );
                 int64_t arm_payload = 0;
                 arm_payload += 4; // int32
-                w.putleb( arm_ref ); w.put8( 4 ); w.putleb( (uint64_t) arm_payload ); // count
-                w.put32( uint32_t( value.body.count ) );
+                w.putleb( arm_ref ); w.put8( 4 ); w.putleb( (uint64_t) arm_payload ); // tally
+                w.put32( uint32_t( value.body.tally ) );
                 break;
             }
             case EditBodyType::Marks:
@@ -5905,7 +5956,7 @@ MESSAGEDEMO_TABLE_INLINE bool EditLoadBody( TableReader & r, Edit & value )
                             if ( sub.offset != sub.size ) { value.body.type = EditBodyType::None; r.report->malformed = true; break; }
                             break;
                         }
-                        case 0xb1e5e28e4479a274ull: // count
+                        case 0xb1e5e28e4479a274ull: // tally
                         {
                             if ( arm_kind != 4 )
                             {
@@ -5914,14 +5965,14 @@ MESSAGEDEMO_TABLE_INLINE bool EditLoadBody( TableReader & r, Edit & value )
                                     // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L
                                     // that is not that width is the arm's own framing damage (§3)
                                     if ( sub.size != TableKindWidth( arm_kind ) ) { value.body.type = EditBodyType::None; r.report->malformed = true; break; }
-                                    memset( (void *) &value.body.count, 0, sizeof( value.body.count ) ); // selection establishes the arm (§2.6)
+                                    memset( (void *) &value.body.tally, 0, sizeof( value.body.tally ) ); // selection establishes the arm (§2.6)
                                     int64_t widened_v = 0;
                                     if ( !TableReadSignedAt( sub, arm_kind, widened_v ) ) { value.body.type = EditBodyType::None; r.report->malformed = true; break; }
                                     int32_t decoded_v = (int32_t) widened_v;
                                     if ( decoded_v < 0 ) { decoded_v = 0; r.report->clamped++; }
                                     else if ( decoded_v > 100 ) { decoded_v = 100; r.report->clamped++; }
-                                    value.body.count = decoded_v;
-                                    value.body.type = EditBodyType::Count;
+                                    value.body.tally = decoded_v;
+                                    value.body.type = EditBodyType::Tally;
                                     r.report->widened++;
                                     break;
                                 }
@@ -5931,13 +5982,13 @@ MESSAGEDEMO_TABLE_INLINE bool EditLoadBody( TableReader & r, Edit & value )
                                 r.report->kind_mismatch++;
                                 break;
                             }
-                            value.body.type = EditBodyType::Count;
+                            value.body.type = EditBodyType::Tally;
                             if ( sub.size != 4 ) { value.body.type = EditBodyType::None; r.report->malformed = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
                             if ( !sub.has( 4 ) ) { value.body.type = EditBodyType::None; r.report->malformed = true; break; }
                             int32_t decoded_v = int32_t( sub.get32( ) );
                             if ( decoded_v < 0 ) { decoded_v = 0; r.report->clamped++; }
                             else if ( decoded_v > 100 ) { decoded_v = 100; r.report->clamped++; }
-                            value.body.count = decoded_v;
+                            value.body.tally = decoded_v;
                             break;
                         }
                         case 0x9077d4a4e1726e29ull: // marks
@@ -6155,7 +6206,7 @@ inline int64_t EditMeasureMessageBody( int64_t at, const Edit & value )
                 }
                 break;
             }
-            case EditBodyType::Count:
+            case EditBodyType::Tally:
             {
                 bits += kTableMessageRefBitsHere;
                 bits += 7;
@@ -6220,10 +6271,10 @@ inline bool EditSaveMessageBody( TableBitWriter & w, const Edit & value )
                 if ( !RemoveTextSaveMessageBody( w, value.body.remove ) ) { return false; }
                 break;
             }
-            case EditBodyType::Count:
+            case EditBodyType::Tally:
             {
                 w.put( 32, kTableMessageRefBitsHere );
-                w.put( (uint64_t) ( value.body.count ), 7 );
+                w.put( (uint64_t) ( value.body.tally ), 7 );
                 break;
             }
             case EditBodyType::Marks:
@@ -6368,14 +6419,14 @@ inline bool EditLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                                 if ( !RemoveTextLoadMessageBody( r, vocabulary, report, index_bits, value.body.remove ) ) { return false; }
                                 break;
                             }
-                            case 0xb1e5e28e4479a274ull: // count
+                            case 0xb1e5e28e4479a274ull: // tally
                             {
                                 if ( arm.kind != 4 || arm.elem_kind != 0 )
                                 {
                                     if ( TableKindWidens( arm.kind, 4 ) )
                                     {
-                                        value.body.type = EditBodyType::Count;
-                                        memset( (void *) &value.body.count, 0, sizeof( value.body.count ) ); // selection establishes the arm (§2.6)
+                                        value.body.type = EditBodyType::Tally;
+                                        memset( (void *) &value.body.tally, 0, sizeof( value.body.tally ) ); // selection establishes the arm (§2.6)
                                         {
                                             const int64_t width_2 = arm.value_bits;
                                             uint64_t raw_2 = 0;
@@ -6390,7 +6441,7 @@ inline bool EditLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                                             if ( decoded_wide_2 < 0ll ) { decoded_wide_2 = 0ll; report->clamped++; }
                                             if ( decoded_wide_2 > 100ll ) { decoded_wide_2 = 100ll; report->clamped++; }
                                             int32_t decoded_v_2 = (int32_t) decoded_wide_2;
-                                            value.body.count = decoded_v_2;
+                                            value.body.tally = decoded_v_2;
                                         }
                                         report->widened++;
                                         break;
@@ -6399,7 +6450,7 @@ inline bool EditLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                                     if ( !TableMessageSkip( r, vocabulary, index_bits, arm ) ) { report->malformed = true; return false; }
                                     break;
                                 }
-                                value.body.type = EditBodyType::Count;
+                                value.body.type = EditBodyType::Tally;
                                 {
                                     const int64_t width_2 = arm.value_bits;
                                     uint64_t raw_2 = 0;
@@ -6414,7 +6465,7 @@ inline bool EditLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                                     if ( decoded_wide_2 < 0ll ) { decoded_wide_2 = 0ll; report->clamped++; }
                                     if ( decoded_wide_2 > 100ll ) { decoded_wide_2 = 100ll; report->clamped++; }
                                     int32_t decoded_v_2 = (int32_t) decoded_wide_2;
-                                    value.body.count = decoded_v_2;
+                                    value.body.tally = decoded_v_2;
                                 }
                                 break;
                             }
@@ -7477,7 +7528,7 @@ inline int64_t TransactionMeasureBody( TableIds & ids, const Transaction & value
                             body_pending += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
                             break;
                         }
-                        case EditBodyType::Count:
+                        case EditBodyType::Tally:
                         {
                             int64_t arm_payloadu = 0;
                             const uint64_t arm_refu = ids.ref( 0xb1e5e28e4479a274ull );
@@ -7628,7 +7679,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
                             body_pending += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
                             break;
                         }
-                        case EditBodyType::Count:
+                        case EditBodyType::Tally:
                         {
                             int64_t arm_payloadu = 0;
                             const uint64_t arm_refu = ids.ref( 0xb1e5e28e4479a274ull );
@@ -7706,13 +7757,13 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
                             if ( !RemoveTextSaveBody( w, ids, value.pending[elem_i].remove ) ) { return false; }
                             break;
                         }
-                        case EditBodyType::Count:
+                        case EditBodyType::Tally:
                         {
                             const uint64_t arm_refu = ids.ref( 0xb1e5e28e4479a274ull );
                             int64_t arm_payloadu = 0;
                             arm_payloadu += 4; // int32
-                            w.putleb( arm_refu ); w.put8( 4 ); w.putleb( (uint64_t) arm_payloadu ); // count
-                            w.put32( uint32_t( value.pending[elem_i].count ) );
+                            w.putleb( arm_refu ); w.put8( 4 ); w.putleb( (uint64_t) arm_payloadu ); // tally
+                            w.put32( uint32_t( value.pending[elem_i].tally ) );
                             break;
                         }
                         case EditBodyType::Marks:
@@ -7992,7 +8043,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                                         if ( elem_arm.offset != elem_arm.size ) { value.pending[(int32_t) i].type = EditBodyType::None; r.report->malformed = true; break; }
                                         break;
                                     }
-                                    case 0xb1e5e28e4479a274ull: // count
+                                    case 0xb1e5e28e4479a274ull: // tally
                                     {
                                         if ( elem_arm_kind != 4 )
                                         {
@@ -8001,26 +8052,26 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                                                 // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L
                                                 // that is not that width is the arm's own framing damage (§3)
                                                 if ( elem_arm.size != TableKindWidth( elem_arm_kind ) ) { value.pending[(int32_t) i].type = EditBodyType::None; r.report->malformed = true; break; }
-                                                memset( (void *) &value.pending[(int32_t) i].count, 0, sizeof( value.pending[(int32_t) i].count ) ); // selection establishes the arm (§2.6)
+                                                memset( (void *) &value.pending[(int32_t) i].tally, 0, sizeof( value.pending[(int32_t) i].tally ) ); // selection establishes the arm (§2.6)
                                                 int64_t widened_v = 0;
                                                 if ( !TableReadSignedAt( elem_arm, elem_arm_kind, widened_v ) ) { value.pending[(int32_t) i].type = EditBodyType::None; r.report->malformed = true; break; }
                                                 int32_t decoded_v = (int32_t) widened_v;
                                                 if ( decoded_v < 0 ) { decoded_v = 0; r.report->clamped++; }
                                                 else if ( decoded_v > 100 ) { decoded_v = 100; r.report->clamped++; }
-                                                value.pending[(int32_t) i].count = decoded_v;
-                                                value.pending[(int32_t) i].type = EditBodyType::Count;
+                                                value.pending[(int32_t) i].tally = decoded_v;
+                                                value.pending[(int32_t) i].type = EditBodyType::Tally;
                                                 r.report->widened++;
                                                 break;
                                             }
                                             value.pending[(int32_t) i].type = EditBodyType::None; r.report->kind_mismatch++; break;
                                         }
-                                        value.pending[(int32_t) i].type = EditBodyType::Count;
+                                        value.pending[(int32_t) i].type = EditBodyType::Tally;
                                         if ( elem_arm.size != 4 ) { value.pending[(int32_t) i].type = EditBodyType::None; r.report->malformed = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
                                         if ( !elem_arm.has( 4 ) ) { value.pending[(int32_t) i].type = EditBodyType::None; r.report->malformed = true; break; }
                                         int32_t decoded_v = int32_t( elem_arm.get32( ) );
                                         if ( decoded_v < 0 ) { decoded_v = 0; r.report->clamped++; }
                                         else if ( decoded_v > 100 ) { decoded_v = 100; r.report->clamped++; }
-                                        value.pending[(int32_t) i].count = decoded_v;
+                                        value.pending[(int32_t) i].tally = decoded_v;
                                         break;
                                     }
                                     case 0x9077d4a4e1726e29ull: // marks
@@ -8364,7 +8415,7 @@ inline int64_t TransactionMeasureMessageBody( int64_t at, const Transaction & va
                             }
                             break;
                         }
-                        case EditBodyType::Count:
+                        case EditBodyType::Tally:
                         {
                             bits += kTableMessageRefBitsHere;
                             bits += 7;
@@ -8471,10 +8522,10 @@ inline bool TransactionSaveMessageBody( TableBitWriter & w, const Transaction & 
                             if ( !RemoveTextSaveMessageBody( w, value.pending[i].remove ) ) { return false; }
                             break;
                         }
-                        case EditBodyType::Count:
+                        case EditBodyType::Tally:
                         {
                             w.put( 32, kTableMessageRefBitsHere );
-                            w.put( (uint64_t) ( value.pending[i].count ), 7 );
+                            w.put( (uint64_t) ( value.pending[i].tally ), 7 );
                             break;
                         }
                         case EditBodyType::Marks:
@@ -8679,14 +8730,14 @@ inline bool TransactionLoadMessageBody( TableBitReader & r, const TableVocabular
                                         if ( !RemoveTextLoadMessageBody( r, vocabulary, report, index_bits, ( in_bounds ? value.pending[i] : scratch ).remove ) ) { return false; }
                                         break;
                                     }
-                                    case 0xb1e5e28e4479a274ull: // count
+                                    case 0xb1e5e28e4479a274ull: // tally
                                     {
                                         if ( arm_2.kind != 4 || arm_2.elem_kind != 0 )
                                         {
                                             if ( TableKindWidens( arm_2.kind, 4 ) )
                                             {
-                                                ( in_bounds ? value.pending[i] : scratch ).type = EditBodyType::Count;
-                                                memset( (void *) &( in_bounds ? value.pending[i] : scratch ).count, 0, sizeof( ( in_bounds ? value.pending[i] : scratch ).count ) ); // selection establishes the arm (§2.6)
+                                                ( in_bounds ? value.pending[i] : scratch ).type = EditBodyType::Tally;
+                                                memset( (void *) &( in_bounds ? value.pending[i] : scratch ).tally, 0, sizeof( ( in_bounds ? value.pending[i] : scratch ).tally ) ); // selection establishes the arm (§2.6)
                                                 {
                                                     const int64_t width_3 = arm_2.value_bits;
                                                     uint64_t raw_3 = 0;
@@ -8701,7 +8752,7 @@ inline bool TransactionLoadMessageBody( TableBitReader & r, const TableVocabular
                                                     if ( decoded_wide_3 < 0ll ) { decoded_wide_3 = 0ll; report->clamped++; }
                                                     if ( decoded_wide_3 > 100ll ) { decoded_wide_3 = 100ll; report->clamped++; }
                                                     int32_t decoded_v_3 = (int32_t) decoded_wide_3;
-                                                    ( in_bounds ? value.pending[i] : scratch ).count = decoded_v_3;
+                                                    ( in_bounds ? value.pending[i] : scratch ).tally = decoded_v_3;
                                                 }
                                                 report->widened++;
                                                 break;
@@ -8710,7 +8761,7 @@ inline bool TransactionLoadMessageBody( TableBitReader & r, const TableVocabular
                                             if ( !TableMessageSkip( r, vocabulary, index_bits, arm_2 ) ) { report->malformed = true; return false; }
                                             break;
                                         }
-                                        ( in_bounds ? value.pending[i] : scratch ).type = EditBodyType::Count;
+                                        ( in_bounds ? value.pending[i] : scratch ).type = EditBodyType::Tally;
                                         {
                                             const int64_t width_3 = arm_2.value_bits;
                                             uint64_t raw_3 = 0;
@@ -8725,7 +8776,7 @@ inline bool TransactionLoadMessageBody( TableBitReader & r, const TableVocabular
                                             if ( decoded_wide_3 < 0ll ) { decoded_wide_3 = 0ll; report->clamped++; }
                                             if ( decoded_wide_3 > 100ll ) { decoded_wide_3 = 100ll; report->clamped++; }
                                             int32_t decoded_v_3 = (int32_t) decoded_wide_3;
-                                            ( in_bounds ? value.pending[i] : scratch ).count = decoded_v_3;
+                                            ( in_bounds ? value.pending[i] : scratch ).tally = decoded_v_3;
                                         }
                                         break;
                                     }
@@ -13542,9 +13593,9 @@ inline void EditCookBody( uint8_t * at, const Edit & value, TableByteOrder order
         {
             case EditBodyType::Insert: InsertTextCookBody( at + 4 + 4, value.body.insert, order ); break;
             case EditBodyType::Remove: RemoveTextCookBody( at + 4 + 4, value.body.remove, order ); break;
-            case EditBodyType::Count:
+            case EditBodyType::Tally:
             {
-                table_cook_put( at + 4 + 4, (uint64_t) value.body.count, 4, order );
+                table_cook_put( at + 4 + 4, (uint64_t) value.body.tally, 4, order );
                 break;
             }
             case EditBodyType::Marks:
@@ -13606,9 +13657,9 @@ inline void TransactionCookBody( uint8_t * at, const Transaction & value, TableB
             {
                 case EditBodyType::Insert: InsertTextCookBody( at + 964 + i * 308 + 4, value.pending[ i ].insert, order ); break;
                 case EditBodyType::Remove: RemoveTextCookBody( at + 964 + i * 308 + 4, value.pending[ i ].remove, order ); break;
-                case EditBodyType::Count:
+                case EditBodyType::Tally:
                 {
-                    table_cook_put( at + 964 + i * 308 + 4, (uint64_t) value.pending[ i ].count, 4, order );
+                    table_cook_put( at + 964 + i * 308 + 4, (uint64_t) value.pending[ i ].tally, 4, order );
                     break;
                 }
                 case EditBodyType::Marks:
@@ -14465,7 +14516,7 @@ inline const TableTypeInfo * EditTableType()
 {
     static const TableFieldInfo fields[] = {
         { "revision", "revision", "uint32", 0xd6a4dbc46c8e8658ull, 8, false, false, false, 0, (uint32_t) offsetof( Edit, revision ), (uint32_t) sizeof( Edit::revision ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "body", "body", "EditBody", 0xcd4de79bc6c93295ull, 15, false, false, false, 0, (uint32_t) offsetof( Edit, body ), (uint32_t) sizeof( Edit::body ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 6, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "insert"; case 2: return "remove"; case 3: return "count"; case 4: return "marks"; case 5: return "blob"; case 6: return "mode"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x7271c68759916228ull; case 2: return 0xfff83d536a1d457dull; case 3: return 0xb1e5e28e4479a274ull; case 4: return 0x9077d4a4e1726e29ull; case 5: return 0xc573b39bc29148caull; case 6: return 0x0d3deba2c41dadb2ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_EditBody[] = { { "count", "count", "int32", 0xb1e5e28e4479a274ull, 4, false, false, false, 0, (uint32_t) offsetof( EditBody, count ), (uint32_t) sizeof( EditBody::count ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, { "marks", "marks", "uint16", 0x9077d4a4e1726e29ull, 7, true, true, false, 3, (uint32_t) offsetof( EditBody, marks.value ), (uint32_t) sizeof( EditBody::marks.value[0] ), (uint32_t) offsetof( EditBody, marks.value_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, { "blob", "blob", "bytes", 0xc573b39bc29148caull, 6, true, true, false, 4, (uint32_t) offsetof( EditBody, blob.value ), (uint32_t) sizeof( EditBody::blob.value[0] ), (uint32_t) offsetof( EditBody, blob.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, { "mode", "mode", "Mode", 0x0d3deba2c41dadb2ull, 30, false, false, false, 0, (uint32_t) offsetof( EditBody, mode ), (uint32_t) sizeof( EditBody::mode ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( Mode( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Mode( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( EditBody, insert ), InsertTextTableType(), NULL, 304 }, { (uint32_t) offsetof( EditBody, remove ), RemoveTextTableType(), NULL, 16 }, { (uint32_t) offsetof( EditBody, count ), NULL, &arm_fields_EditBody[0], 4 }, { (uint32_t) offsetof( EditBody, marks ), NULL, &arm_fields_EditBody[1], 12 }, { (uint32_t) offsetof( EditBody, blob ), NULL, &arm_fields_EditBody[2], 8 }, { (uint32_t) offsetof( EditBody, mode ), NULL, &arm_fields_EditBody[3], 1 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( EditBody, type ), (uint32_t) sizeof( EditBody::type ), arms }; return &info; }, "", TableDocNone, 0, NULL },
+        { "body", "body", "EditBody", 0xcd4de79bc6c93295ull, 15, false, false, false, 0, (uint32_t) offsetof( Edit, body ), (uint32_t) sizeof( Edit::body ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 6, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "insert"; case 2: return "remove"; case 3: return "tally"; case 4: return "marks"; case 5: return "blob"; case 6: return "mode"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x7271c68759916228ull; case 2: return 0xfff83d536a1d457dull; case 3: return 0xb1e5e28e4479a274ull; case 4: return 0x9077d4a4e1726e29ull; case 5: return 0xc573b39bc29148caull; case 6: return 0x0d3deba2c41dadb2ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_EditBody[] = { { "tally", "tally", "int32", 0xb1e5e28e4479a274ull, 4, false, false, false, 0, (uint32_t) offsetof( EditBody, tally ), (uint32_t) sizeof( EditBody::tally ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, { "marks", "marks", "uint16", 0x9077d4a4e1726e29ull, 7, true, true, false, 3, (uint32_t) offsetof( EditBody, marks.value ), (uint32_t) sizeof( EditBody::marks.value[0] ), (uint32_t) offsetof( EditBody, marks.value_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, { "blob", "blob", "bytes", 0xc573b39bc29148caull, 6, true, true, false, 4, (uint32_t) offsetof( EditBody, blob.value ), (uint32_t) sizeof( EditBody::blob.value[0] ), (uint32_t) offsetof( EditBody, blob.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, { "mode", "mode", "Mode", 0x0d3deba2c41dadb2ull, 30, false, false, false, 0, (uint32_t) offsetof( EditBody, mode ), (uint32_t) sizeof( EditBody::mode ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( Mode( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Mode( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( EditBody, insert ), InsertTextTableType(), NULL, 304 }, { (uint32_t) offsetof( EditBody, remove ), RemoveTextTableType(), NULL, 16 }, { (uint32_t) offsetof( EditBody, tally ), NULL, &arm_fields_EditBody[0], 4 }, { (uint32_t) offsetof( EditBody, marks ), NULL, &arm_fields_EditBody[1], 12 }, { (uint32_t) offsetof( EditBody, blob ), NULL, &arm_fields_EditBody[2], 8 }, { (uint32_t) offsetof( EditBody, mode ), NULL, &arm_fields_EditBody[3], 1 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( EditBody, type ), (uint32_t) sizeof( EditBody::type ), arms }; return &info; }, "", TableDocNone, 0, NULL },
     };
     static const TableTypeInfo info = { "Edit", (uint32_t) sizeof( Edit ), 2, fields, +[]( void * p ) { EditReset( *(Edit *) p ); }, TableDocNone, 0, NULL };
     return &info;
@@ -14497,7 +14548,7 @@ inline const TableTypeInfo * TransactionTableType()
     static const TableFieldInfo fields[] = {
         { "reason", "reason", "string", 0x65e8d7f3474f2639ull, 12, false, true, false, 16, (uint32_t) offsetof( Transaction, reason ), (uint32_t) sizeof( Transaction::reason ), (uint32_t) offsetof( Transaction, reason_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
         { "edits", "edits", "Edit", 0x9478d06b697549e6ull, 13, true, true, false, 3, (uint32_t) offsetof( Transaction, edits ), (uint32_t) sizeof( Transaction::edits[0] ), (uint32_t) offsetof( Transaction, edits_count ), 0xffffffffu, EditTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "pending", "pending", "EditBody", 0x52dea0d6eeb5083cull, 15, true, false, false, 2, (uint32_t) offsetof( Transaction, pending ), (uint32_t) sizeof( Transaction::pending[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 6, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "insert"; case 2: return "remove"; case 3: return "count"; case 4: return "marks"; case 5: return "blob"; case 6: return "mode"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x7271c68759916228ull; case 2: return 0xfff83d536a1d457dull; case 3: return 0xb1e5e28e4479a274ull; case 4: return 0x9077d4a4e1726e29ull; case 5: return 0xc573b39bc29148caull; case 6: return 0x0d3deba2c41dadb2ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_EditBody[] = { { "count", "count", "int32", 0xb1e5e28e4479a274ull, 4, false, false, false, 0, (uint32_t) offsetof( EditBody, count ), (uint32_t) sizeof( EditBody::count ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, { "marks", "marks", "uint16", 0x9077d4a4e1726e29ull, 7, true, true, false, 3, (uint32_t) offsetof( EditBody, marks.value ), (uint32_t) sizeof( EditBody::marks.value[0] ), (uint32_t) offsetof( EditBody, marks.value_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, { "blob", "blob", "bytes", 0xc573b39bc29148caull, 6, true, true, false, 4, (uint32_t) offsetof( EditBody, blob.value ), (uint32_t) sizeof( EditBody::blob.value[0] ), (uint32_t) offsetof( EditBody, blob.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, { "mode", "mode", "Mode", 0x0d3deba2c41dadb2ull, 30, false, false, false, 0, (uint32_t) offsetof( EditBody, mode ), (uint32_t) sizeof( EditBody::mode ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( Mode( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Mode( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( EditBody, insert ), InsertTextTableType(), NULL, 304 }, { (uint32_t) offsetof( EditBody, remove ), RemoveTextTableType(), NULL, 16 }, { (uint32_t) offsetof( EditBody, count ), NULL, &arm_fields_EditBody[0], 4 }, { (uint32_t) offsetof( EditBody, marks ), NULL, &arm_fields_EditBody[1], 12 }, { (uint32_t) offsetof( EditBody, blob ), NULL, &arm_fields_EditBody[2], 8 }, { (uint32_t) offsetof( EditBody, mode ), NULL, &arm_fields_EditBody[3], 1 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( EditBody, type ), (uint32_t) sizeof( EditBody::type ), arms }; return &info; }, "", TableDocNone, 0, NULL },
+        { "pending", "pending", "EditBody", 0x52dea0d6eeb5083cull, 15, true, false, false, 2, (uint32_t) offsetof( Transaction, pending ), (uint32_t) sizeof( Transaction::pending[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 6, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "insert"; case 2: return "remove"; case 3: return "tally"; case 4: return "marks"; case 5: return "blob"; case 6: return "mode"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x7271c68759916228ull; case 2: return 0xfff83d536a1d457dull; case 3: return 0xb1e5e28e4479a274ull; case 4: return 0x9077d4a4e1726e29ull; case 5: return 0xc573b39bc29148caull; case 6: return 0x0d3deba2c41dadb2ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_EditBody[] = { { "tally", "tally", "int32", 0xb1e5e28e4479a274ull, 4, false, false, false, 0, (uint32_t) offsetof( EditBody, tally ), (uint32_t) sizeof( EditBody::tally ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, { "marks", "marks", "uint16", 0x9077d4a4e1726e29ull, 7, true, true, false, 3, (uint32_t) offsetof( EditBody, marks.value ), (uint32_t) sizeof( EditBody::marks.value[0] ), (uint32_t) offsetof( EditBody, marks.value_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, { "blob", "blob", "bytes", 0xc573b39bc29148caull, 6, true, true, false, 4, (uint32_t) offsetof( EditBody, blob.value ), (uint32_t) sizeof( EditBody::blob.value[0] ), (uint32_t) offsetof( EditBody, blob.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, { "mode", "mode", "Mode", 0x0d3deba2c41dadb2ull, 30, false, false, false, 0, (uint32_t) offsetof( EditBody, mode ), (uint32_t) sizeof( EditBody::mode ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( Mode( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Mode( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( EditBody, insert ), InsertTextTableType(), NULL, 304 }, { (uint32_t) offsetof( EditBody, remove ), RemoveTextTableType(), NULL, 16 }, { (uint32_t) offsetof( EditBody, tally ), NULL, &arm_fields_EditBody[0], 4 }, { (uint32_t) offsetof( EditBody, marks ), NULL, &arm_fields_EditBody[1], 12 }, { (uint32_t) offsetof( EditBody, blob ), NULL, &arm_fields_EditBody[2], 8 }, { (uint32_t) offsetof( EditBody, mode ), NULL, &arm_fields_EditBody[3], 1 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( EditBody, type ), (uint32_t) sizeof( EditBody::type ), arms }; return &info; }, "", TableDocNone, 0, NULL },
         { "checkpoints", "checkpoints", "uint32", 0x028afa1c4d757704ull, 8, true, false, true, 2, (uint32_t) offsetof( Transaction, checkpoints ), (uint32_t) sizeof( Transaction::checkpoints[0] ), 0xffffffffu, (uint32_t) offsetof( Transaction, checkpoints_present ), NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
         { "snapshots", "snapshots", "Selection", 0x99dc6354a681403aull, 13, true, false, true, 2, (uint32_t) offsetof( Transaction, snapshots ), (uint32_t) sizeof( Transaction::snapshots[0] ), 0xffffffffu, (uint32_t) offsetof( Transaction, snapshots_present ), SelectionTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
     };

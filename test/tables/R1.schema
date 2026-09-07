@@ -30,7 +30,7 @@ union Effect
     boost Boost
     ward  Ward
     ping
-    count int32
+    amount int32
 }
 
 table Cfg

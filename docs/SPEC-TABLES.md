@@ -1351,7 +1351,7 @@ type a FIELD's is, and an arm may name no type at all:
 ```
 union Value
 {
-    count   int32 | min = 0, max = 100
+    tally   int32 | min = 0, max = 100
     label   string(64)
     blob    bytes(16)
     samples [..8]float32
@@ -1419,7 +1419,7 @@ already spends what it would buy**, and each is refused by name (§11):
 **Selection is presence, so a set arm ALWAYS rides, whatever it holds**
 (§3). A union FIELD holding `None` elides; a union holding a selected arm
 writes the arm id and the arm's payload under its length even when the
-payload is empty or entirely default — a zero `count`, an empty `label`, an
+payload is empty or entirely default — a zero `tally`, an empty `label`, an
 all-default `offset`, a `ping` that has no payload to hold. That is the
 pointer's and the optional's rule
 (§2.3, §3.1) at an arm, and for their reason: otherwise "no arm" and "this
@@ -1440,7 +1440,7 @@ arms, in C++:
 ```
 union
 {
-    int32_t count;
+    int32_t tally;
     struct { char value[65]; int32_t value_length; } label;
     struct { float value[8]; int32_t value_count; } samples;
     Vec3 offset;
@@ -1487,6 +1487,22 @@ reaches (§11). A table holding one has no BLOCK form, by §19's standing rule
 for every union in a block closure. The packet wire's encoding of a general
 arm is stated where the packet union is (SPEC §4.8), and carrying it in the
 nine backends is the named follow-on (§15).
+
+**THE TAG SHAPE IS THE PACKET TAG ENUM'S, MEMBER FOR MEMBER.** A different
+emitter writes it, so it is worth saying what it writes: `<Union>Type` carries
+`None = 0`, then each variant in declared order dense from 1, then `Count` (the
+declared variant count, `None` excluded) and `Max` (the exported extent), and
+beside the enum the DEBUG-NAME function that takes any value, out-of-set
+included, and returns the variant's spelling or the fixed unknown marker
+(SPEC §4.2, §4.8). It is the same construct to a reader — one logging which
+body arrived writes `EnumName( edit.body.type )` whichever union it holds — so
+it presents the same surface. Nothing on the read or write path calls the
+function and no generated code does. The table layer is the C++ reference's
+(§11, §15), so this shape has ONE emitter where the packet shape has nine.
+`Count` is therefore a REFUSED ARM NAME here as it is on a packet union
+(SPEC §4.11): the member exists, so an arm exporting `Count` would define it
+twice, which C++ refuses as a redefinition. The refusal is over the exported
+spelling, so `count` goes with it.
 
 - **A union declared for the TYPE wire keeps refusing table arms.** Types
   are value semantics and their wire is positional; a table arm is a
@@ -9968,6 +9984,12 @@ in build version (§20.5).
   (§2.8) or an UNBOUNDED ARRAY (§2.9)**, whose elements live in the holder's
   NODE EXTENT and would make that extent depend on the union's tag, each
   refusal naming the table wrapper that serves.
+- **An ARM NAMED `Count`** (§2.6), over the EXPORTED spelling, so `count` is
+  refused too. The tag shape a table-closure union gets carries the declared
+  variant count as the member `Count`, exactly as a packet union's tag enum
+  does (SPEC §4.2, §4.8, §4.11), so the arm would define the member twice and
+  C++ refuses that as a redefinition. It is the reservation `None` and `Max`
+  already carry, reaching every union because the member is on every union.
 - **An array of unions** (§2.6): the enum-KEYED spelling `[E]Body`, a named
   follow-on (§15) where the bounded `[..N]Body` and `[N]Body` are not; and
   **an array of unions in a table closure under every backend but C++**,

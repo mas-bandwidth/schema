@@ -57,7 +57,7 @@ table Bolt
 union Fitting
 {
     bolt  Bolt
-    count int32
+    tally int32
 }
 
 table Parcel

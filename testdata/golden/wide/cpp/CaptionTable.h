@@ -2175,9 +2175,23 @@ enum class BodyType : uint8_t {
     None = 0,
     Wide = 1,
     Narrow = 2,
-    Count = 3,
+    Tally = 3,
+    Count = 3, // the declared variant count (SPEC §4.2)
     Max = 3, // the exported extent (SPEC §4.2)
 };
+
+// EnumName: debug/log name for any BodyType value, out-of-set included
+inline const char * EnumName( BodyType value )
+{
+    switch ( value )
+    {
+        case BodyType::None: return "None";
+        case BodyType::Wide: return "Wide";
+        case BodyType::Narrow: return "Narrow";
+        case BodyType::Tally: return "Tally";
+        default: return "???";
+    }
+}
 
 // union Body — at most one of the arms; the tag says which. AN ARM IS A FIELD
 // LINE (docs/SPEC-TABLES.md §2.6), so an arm's storage is the field's storage
@@ -2196,7 +2210,7 @@ struct Body
     {
         struct { char16_t value[4 + 1]; int32_t value_length; } wide; // wstring(4), the used length in CODE UNITS
         struct { char value[4 + 1]; int32_t value_length; } narrow; // string(4)
-        int32_t count;
+        int32_t tally;
     };
 
     Body() : type( BodyType::None ) {} // the tag only — arms are established at selection
@@ -2320,7 +2334,7 @@ inline int64_t CaptionMeasureBody( TableIds & ids, const Caption & value )
                 bytes += TableLebBytes( arm_ref ) + 1 + TableLebBytes( (uint64_t) ( arm_payload ) ) + ( arm_payload );
                 break;
             }
-            case BodyType::Count:
+            case BodyType::Tally:
             {
                 int64_t arm_payload = 0;
                 const uint64_t arm_ref = ids.ref( 0xb1e5e28e4479a274ull );
@@ -2414,13 +2428,13 @@ WIDE_TABLE_INLINE bool CaptionSaveBody( TableWriter & w, TableIds & ids, const C
                 w.raw( value.body.narrow.value, value.body.narrow.value_length );
                 break;
             }
-            case BodyType::Count:
+            case BodyType::Tally:
             {
                 const uint64_t arm_ref = ids.ref( 0xb1e5e28e4479a274ull );
                 int64_t arm_payload = 0;
                 arm_payload += 4; // int32
-                w.putleb( arm_ref ); w.put8( 4 ); w.putleb( (uint64_t) arm_payload ); // count
-                w.put32( uint32_t( value.body.count ) );
+                w.putleb( arm_ref ); w.put8( 4 ); w.putleb( (uint64_t) arm_payload ); // tally
+                w.put32( uint32_t( value.body.tally ) );
                 break;
             }
             default: return false; // write validates the tag before it rides
@@ -2645,7 +2659,7 @@ WIDE_TABLE_INLINE bool CaptionLoadBody( TableReader & r, Caption & value )
                             }
                             break;
                         }
-                        case 0xb1e5e28e4479a274ull: // count
+                        case 0xb1e5e28e4479a274ull: // tally
                         {
                             if ( arm_kind != 4 )
                             {
@@ -2654,12 +2668,12 @@ WIDE_TABLE_INLINE bool CaptionLoadBody( TableReader & r, Caption & value )
                                     // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L
                                     // that is not that width is the arm's own framing damage (§3)
                                     if ( sub.size != TableKindWidth( arm_kind ) ) { value.body.type = BodyType::None; r.report->malformed = true; break; }
-                                    memset( (void *) &value.body.count, 0, sizeof( value.body.count ) ); // selection establishes the arm (§2.6)
+                                    memset( (void *) &value.body.tally, 0, sizeof( value.body.tally ) ); // selection establishes the arm (§2.6)
                                     int64_t widened_v = 0;
                                     if ( !TableReadSignedAt( sub, arm_kind, widened_v ) ) { value.body.type = BodyType::None; r.report->malformed = true; break; }
                                     int32_t decoded_v = (int32_t) widened_v;
-                                    value.body.count = decoded_v;
-                                    value.body.type = BodyType::Count;
+                                    value.body.tally = decoded_v;
+                                    value.body.type = BodyType::Tally;
                                     r.report->widened++;
                                     break;
                                 }
@@ -2669,11 +2683,11 @@ WIDE_TABLE_INLINE bool CaptionLoadBody( TableReader & r, Caption & value )
                                 r.report->kind_mismatch++;
                                 break;
                             }
-                            value.body.type = BodyType::Count;
+                            value.body.type = BodyType::Tally;
                             if ( sub.size != 4 ) { value.body.type = BodyType::None; r.report->malformed = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
                             if ( !sub.has( 4 ) ) { value.body.type = BodyType::None; r.report->malformed = true; break; }
                             int32_t decoded_v = int32_t( sub.get32( ) );
-                            value.body.count = decoded_v;
+                            value.body.tally = decoded_v;
                             break;
                         }
                         default:
@@ -2805,7 +2819,7 @@ inline int64_t CaptionMeasureMessageBody( int64_t at, const Caption & value )
                 bits += (int64_t) value.body.narrow.value_length * 8;
                 break;
             }
-            case BodyType::Count:
+            case BodyType::Tally:
             {
                 bits += kTableMessageRefBitsHere;
                 bits += 32;
@@ -2872,10 +2886,10 @@ inline bool CaptionSaveMessageBody( TableBitWriter & w, const Caption & value )
                 w.putbytes( (const uint8_t *) value.body.narrow.value, value.body.narrow.value_length );
                 break;
             }
-            case BodyType::Count:
+            case BodyType::Tally:
             {
                 w.put( 10, kTableMessageRefBitsHere );
-                w.put( (uint64_t) ( value.body.count ), 32 );
+                w.put( (uint64_t) ( value.body.tally ), 32 );
                 break;
             }
             default: return false; // a tag no arm names has no wire identity
@@ -3079,14 +3093,14 @@ inline bool CaptionLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                                 }
                                 break;
                             }
-                            case 0xb1e5e28e4479a274ull: // count
+                            case 0xb1e5e28e4479a274ull: // tally
                             {
                                 if ( arm.kind != 4 || arm.elem_kind != 0 )
                                 {
                                     if ( TableKindWidens( arm.kind, 4 ) )
                                     {
-                                        value.body.type = BodyType::Count;
-                                        memset( (void *) &value.body.count, 0, sizeof( value.body.count ) ); // selection establishes the arm (§2.6)
+                                        value.body.type = BodyType::Tally;
+                                        memset( (void *) &value.body.tally, 0, sizeof( value.body.tally ) ); // selection establishes the arm (§2.6)
                                         {
                                             const int64_t width_2 = arm.value_bits;
                                             uint64_t raw_2 = 0;
@@ -3101,7 +3115,7 @@ inline bool CaptionLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                                             if ( decoded_wide_2 < -2147483648ll ) { decoded_wide_2 = -2147483648ll; report->clamped++; }
                                             if ( decoded_wide_2 > 2147483647ll ) { decoded_wide_2 = 2147483647ll; report->clamped++; }
                                             int32_t decoded_v_2 = (int32_t) decoded_wide_2;
-                                            value.body.count = decoded_v_2;
+                                            value.body.tally = decoded_v_2;
                                         }
                                         report->widened++;
                                         break;
@@ -3110,7 +3124,7 @@ inline bool CaptionLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                                     if ( !TableMessageSkip( r, vocabulary, index_bits, arm ) ) { report->malformed = true; return false; }
                                     break;
                                 }
-                                value.body.type = BodyType::Count;
+                                value.body.type = BodyType::Tally;
                                 {
                                     const int64_t width_2 = arm.value_bits;
                                     uint64_t raw_2 = 0;
@@ -3125,7 +3139,7 @@ inline bool CaptionLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                                     if ( decoded_wide_2 < -2147483648ll ) { decoded_wide_2 = -2147483648ll; report->clamped++; }
                                     if ( decoded_wide_2 > 2147483647ll ) { decoded_wide_2 = 2147483647ll; report->clamped++; }
                                     int32_t decoded_v_2 = (int32_t) decoded_wide_2;
-                                    value.body.count = decoded_v_2;
+                                    value.body.tally = decoded_v_2;
                                 }
                                 break;
                             }
@@ -4137,9 +4151,9 @@ inline void CaptionCookBody( uint8_t * at, const Caption & value, TableByteOrder
                 table_cook_put( at + 88 + 12, (uint64_t) (uint32_t) value.body.narrow.value_length, 4, order );
                 break;
             }
-            case BodyType::Count:
+            case BodyType::Tally:
             {
-                table_cook_put( at + 88 + 4, (uint64_t) value.body.count, 4, order );
+                table_cook_put( at + 88 + 4, (uint64_t) value.body.tally, 4, order );
                 break;
             }
             default: break; // every byte outside the set arm stays zero
@@ -4314,7 +4328,7 @@ inline const TableTypeInfo * CaptionTableType()
         { "title", "title", "wstring", 0xda31296c0c1b6029ull, 33, false, true, false, 7, (uint32_t) offsetof( Caption, title ), (uint32_t) sizeof( Caption::title ), (uint32_t) offsetof( Caption, title_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
         { "line", "line", "Line", 0xbf4ba5ad694f5907ull, 13, false, false, false, 0, (uint32_t) offsetof( Caption, line ), (uint32_t) sizeof( Caption::line ), 0xffffffffu, 0xffffffffu, LineTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
         { "lines", "lines", "Line", 0x5ce3f9a9f1d5001cull, 13, true, true, false, 3, (uint32_t) offsetof( Caption, lines ), (uint32_t) sizeof( Caption::lines[0] ), (uint32_t) offsetof( Caption, lines_count ), 0xffffffffu, LineTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "body", "body", "Body", 0xcd4de79bc6c93295ull, 15, false, false, false, 0, (uint32_t) offsetof( Caption, body ), (uint32_t) sizeof( Caption::body ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 3, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "wide"; case 2: return "narrow"; case 3: return "count"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0xa633f1f655715ccaull; case 2: return 0x96569b06f223c29aull; case 3: return 0xb1e5e28e4479a274ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Body[] = { { "wide", "wide", "wstring", 0xa633f1f655715ccaull, 33, false, true, false, 4, (uint32_t) offsetof( Body, wide.value ), (uint32_t) sizeof( Body::wide.value ), (uint32_t) offsetof( Body, wide.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, { "narrow", "narrow", "string", 0x96569b06f223c29aull, 12, false, true, false, 4, (uint32_t) offsetof( Body, narrow.value ), (uint32_t) sizeof( Body::narrow.value ), (uint32_t) offsetof( Body, narrow.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, { "count", "count", "int32", 0xb1e5e28e4479a274ull, 4, false, false, false, 0, (uint32_t) offsetof( Body, count ), (uint32_t) sizeof( Body::count ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Body, wide ), NULL, &arm_fields_Body[0], 16 }, { (uint32_t) offsetof( Body, narrow ), NULL, &arm_fields_Body[1], 12 }, { (uint32_t) offsetof( Body, count ), NULL, &arm_fields_Body[2], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Body, type ), (uint32_t) sizeof( Body::type ), arms }; return &info; }, "", TableDocNone, 0, NULL },
+        { "body", "body", "Body", 0xcd4de79bc6c93295ull, 15, false, false, false, 0, (uint32_t) offsetof( Caption, body ), (uint32_t) sizeof( Caption::body ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 3, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "wide"; case 2: return "narrow"; case 3: return "tally"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0xa633f1f655715ccaull; case 2: return 0x96569b06f223c29aull; case 3: return 0xb1e5e28e4479a274ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Body[] = { { "wide", "wide", "wstring", 0xa633f1f655715ccaull, 33, false, true, false, 4, (uint32_t) offsetof( Body, wide.value ), (uint32_t) sizeof( Body::wide.value ), (uint32_t) offsetof( Body, wide.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, { "narrow", "narrow", "string", 0x96569b06f223c29aull, 12, false, true, false, 4, (uint32_t) offsetof( Body, narrow.value ), (uint32_t) sizeof( Body::narrow.value ), (uint32_t) offsetof( Body, narrow.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, { "tally", "tally", "int32", 0xb1e5e28e4479a274ull, 4, false, false, false, 0, (uint32_t) offsetof( Body, tally ), (uint32_t) sizeof( Body::tally ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Body, wide ), NULL, &arm_fields_Body[0], 16 }, { (uint32_t) offsetof( Body, narrow ), NULL, &arm_fields_Body[1], 12 }, { (uint32_t) offsetof( Body, tally ), NULL, &arm_fields_Body[2], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Body, type ), (uint32_t) sizeof( Body::type ), arms }; return &info; }, "", TableDocNone, 0, NULL },
     };
     static const TableTypeInfo info = { "Caption", (uint32_t) sizeof( Caption ), 4, fields, +[]( void * p ) { CaptionReset( *(Caption *) p ); }, TableDocNone, 0, NULL };
     return &info;

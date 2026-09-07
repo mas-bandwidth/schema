@@ -588,7 +588,7 @@ type Inner
 union Arm
 {
     ack
-    count int32
+    tally int32
     inner Inner
 }
 

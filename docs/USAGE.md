@@ -154,9 +154,9 @@ excluded — `ShipType::Count` (C++), `ShipType.Count` (C#), `ShipTypeCount`
 `ShipType.count` (Dart and Java), `ShipType.count/0` (Elixir), and
 `E.Count` in schema expressions. Without headroom `Count` and `Max` are the
 same number. Under `| max = 15` they are 3 and 15, and that difference is
-what the two words are for. `Count` is a reserved variant name too, and a
+what the two words are for. `Count` is a reserved variant name too, and every
 union's tag enum carries it beside `Max`, so `Count` is a reserved arm name
-on a packet union for the same reason.
+on every union for the same reason.
 
 A union's tag enum carries the debug-name function too, in the same nine
 spellings the declared enum uses, so logging which arm arrived is the same

@@ -1501,7 +1501,7 @@ The tag enum is a full enum. It carries `None`, the variants, `Count` and
 compiles and prints `"Laser"`. It is the same call a declared enum takes, found
 by lookup the same way. Log a tag with it. The switch the program below writes is
 there to reach the payload, which a name cannot do. Because the enum carries
-`Count`, `count` is a refused arm name on a packet union, alongside `none` and
+`Count`, `count` is a refused arm name on every union, alongside `none` and
 `max`.
 
 To select an arm in C++, construct the payload and set its tag:

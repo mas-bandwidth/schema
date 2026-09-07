@@ -61,13 +61,13 @@ const UnitViewInfo * UnitView()
     static const TableFieldInfo Body_view_arm_fields[] = {
     { "wide", "wide", "wstring", 0xa633f1f655715ccaull, 33, false, true, false, 4, (uint32_t) offsetof( Body, wide.value ), (uint32_t) sizeof( Body::wide.value ), (uint32_t) offsetof( Body, wide.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
     { "narrow", "narrow", "string", 0x96569b06f223c29aull, 12, false, true, false, 4, (uint32_t) offsetof( Body, narrow.value ), (uint32_t) sizeof( Body::narrow.value ), (uint32_t) offsetof( Body, narrow.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-    { "count", "count", "int32", 0xb1e5e28e4479a274ull, 4, false, false, false, 0, (uint32_t) offsetof( Body, count ), (uint32_t) sizeof( Body::count ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "tally", "tally", "int32", 0xb1e5e28e4479a274ull, 4, false, false, false, 0, (uint32_t) offsetof( Body, tally ), (uint32_t) sizeof( Body::tally ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
     };
     static const ViewVariant Body_view_variants[] = {
         { 0, "None", 0, NULL, NULL, NULL, TableDocNone, 0, NULL },
         { 1, "wide", 0xa633f1f655715ccaull, "wstring(4)", NULL, &Body_view_arm_fields[0], TableDocNone, 0, NULL },
         { 2, "narrow", 0x96569b06f223c29aull, "string(4)", NULL, &Body_view_arm_fields[1], TableDocNone, 0, NULL },
-        { 3, "count", 0xb1e5e28e4479a274ull, "int32", NULL, &Body_view_arm_fields[2], TableDocNone, 0, NULL },
+        { 3, "tally", 0xb1e5e28e4479a274ull, "int32", NULL, &Body_view_arm_fields[2], TableDocNone, 0, NULL },
     };
     static const ViewVocabulary unions[] = {
         { "Body", "Caption.schema", 3, 8, 4, Body_view_variants, TableDocNone, 0, NULL },

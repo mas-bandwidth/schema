@@ -5465,8 +5465,21 @@ enum class ForceType : uint8_t {
     None = 0,
     Squad = 1,
     Plain = 2,
+    Count = 2, // the declared variant count (SPEC §4.2)
     Max = 2, // the exported extent (SPEC §4.2)
 };
+
+// EnumName: debug/log name for any ForceType value, out-of-set included
+inline const char * EnumName( ForceType value )
+{
+    switch ( value )
+    {
+        case ForceType::None: return "None";
+        case ForceType::Squad: return "Squad";
+        case ForceType::Plain: return "Plain";
+        default: return "???";
+    }
+}
 
 // union Force — at most one of the arms; the tag says which. AN ARM IS A FIELD
 // LINE (docs/SPEC-TABLES.md §2.6), so an arm's storage is the field's storage

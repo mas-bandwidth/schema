@@ -36,7 +36,7 @@ union Body
 {
     wide   wstring(4)
     narrow string(4)
-    count  int32
+    tally  int32 | was = "count"
 }
 
 // The root: every site at once, so one instance exercises them all.

@@ -1157,13 +1157,13 @@ flags declaration's `Count`: `E::Count` (C++), `E.Count` (C#), `ECount`
 Java), `E.count/0` (Elixir). `Count` is a reserved variant name for the same
 reason `Max` is, and it is a claimed name under §4.6 — a declaration whose
 generated symbol would collide with an enum's `Count` is refused, naming the
-enum. A PACKET union's generated `<Union>Type` tag enum carries `Count`
+enum. A union's generated `<Union>Type` tag enum carries `Count`
 beside `Max` too, in the same nine spellings (§4.8), so a tag enum and a
 declared enum present one surface to a reader. A tag set takes no headroom, so
 its `Count` and its `Max` are one number, and the member is there because the
 surface is uniform rather than because the two numbers ever differ. A
-table-closure union's tag shape carries `Max` alone
-([#601](https://github.com/mas-bandwidth/schema/issues/601)).
+TABLE-CLOSURE union's tag shape is a different emitter, written beside the
+tables, and it carries the same members (docs/SPEC-TABLES.md §2.6).
 
 ### 4.3 Field types and their wire encodings
 
@@ -1604,11 +1604,11 @@ union Value
   disagree with the tag. **Reserved variant names are checked over the
   EXPORTED spelling**: any variant whose exported form (the field-name
   mapping) is `None` or `Max` is refused — `none` and `max` included, not
-  just the literal spellings. **`Count` is refused the same way on a PACKET
-  union**, whose tag enum carries the member (below). The reservation is
-  scoped to where the member exists, so the name stays free on a
-  table-closure union, whose tag shape carries `Max` alone
-  ([#601](https://github.com/mas-bandwidth/schema/issues/601)).
+  just the literal spellings. **`Count` is refused the same way**, on every
+  union: each tag enum carries the member (below), the packet shape and the
+  table-closure shape alike, so an arm exporting `Count` defines it twice
+  wherever the union lands. The reservation reaches where the member exists,
+  and the member exists on every union (docs/SPEC-TABLES.md §2.6).
 - **The tag enum is generated, named `<Union>Type`**: `None = 0`, then
   each variant **in declared order**
   (exported spelling per target, the field-name mapping), dense from 1, then
@@ -1649,13 +1649,13 @@ union Value
   | js | `WeaponFireType.Count` | `EnumNameWeaponFireType(value)` |
   | rust | `WeaponFireType::COUNT` | `enum_name_weapon_fire_type` |
 
-- **A TABLE-CLOSURE union's tag shape carries `Max` alone.** It is a
-  different emitter, written beside the tables, and it gets neither `Count`
-  nor the debug-name function. Giving it both, and extending the `Count`
-  reservation to reach it, is a named follow-on
-  ([#601](https://github.com/mas-bandwidth/schema/issues/601)). `Count` is a
-  legal arm name on a table-closure union and a compile error on a packet
-  union. The split is what the checker enforces.
+- **A TABLE-CLOSURE union's tag shape carries the same surface.** It is a
+  different emitter, written beside the tables rather than among the packet
+  declarations (docs/SPEC-TABLES.md §2.6), and it emits `None`, the variants,
+  `Count`, `Max` and the debug-name function, because it is the same construct
+  to a reader. The table layer is the C++ reference's, so the shape has one
+  emitter where the packet shape has nine. `Count` is a compile error as an arm
+  name on every union, for the one reason: the member exists.
 - **The wire.** This bullet is the TYPE wire's, which a union of declared
   `type` arms rides and a table-closure union does not ride at all (above).
   The tag encodes in **minimal bits for `[0, variant
@@ -1844,15 +1844,15 @@ NAME rather than falling into a generic parse error:
 - **`doc`** (the attribute) — documentation is not an attribute: it is the
   `///` doc comment above the item (§4.1), and one text has one spelling.
   `| doc = "..."` is refused with the comment form named.
-- **`Count` as an arm name on a PACKET union.** The generated tag enum
+- **`Count` as an arm name on any union.** The generated tag enum
   carries the declared variant count as the member `Count` (§4.8), so the arm
   would define the member twice, which C++ and C# refuse outright as a
   redefinition. The refusal is over the EXPORTED spelling, so `count` is
   refused too, and the diagnostic names the tag enum that claims the name. It
   is the same reservation `None` and `Max` carry, for the same reason.
-  A table-closure union's tag shape carries no `Count` member, so the
-  name is legal there
-  ([#601](https://github.com/mas-bandwidth/schema/issues/601)).
+  A table-closure union's tag shape carries the member too
+  (docs/SPEC-TABLES.md §2.6), so the reservation reaches it and one rule
+  covers both shapes.
 
 The projection (§3.1) keeps FROZEN tokens — `table=false message=false` on
 every type line, `round=nearest` on every compressed-float field line — so
