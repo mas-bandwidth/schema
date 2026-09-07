@@ -73,11 +73,10 @@ var bornAtMinimum = map[string]string{
 // targets that still hold the count that way. Go and Elixir are here by the
 // ruling — "For each language, do not force this in. If the language simply
 // doesn't have this concept (Golang) then it is not something we can do" — an
-// error-returning runtime in Go, an always-on raise in Elixir. C# is here only
-// until its own emitter change lands; it moves to assertsInDebug then,
-// alongside every other write check in that backend.
+// error-returning runtime in Go, an always-on raise in Elixir. They are the
+// only two: every other target has a build-removable idiom and is held to it
+// by assertsInDebug.
 var refusesEveryBuild = map[string][]string{
-	"cs":     {"if (value.WindowCount < 2 || value.WindowCount > 8)"},
 	"elixir": {"if n < 2 do", "if n > 8 do", "raise ArgumentError"},
 	"go":     {"if value.WindowCount < 2 || value.WindowCount > 8 {", "return serialize.ErrValueOutOfRange"},
 }
@@ -87,6 +86,7 @@ var refusesEveryBuild = map[string][]string{
 var assertsInDebug = map[string][]string{
 	"c":    {"serialize_assert( value->window_count >= 2 && value->window_count <= 8 );"},
 	"cpp":  {"serialize_assert( int32_t( value.window_count ) >= int32_t( 2 ) && int32_t( value.window_count ) <= int32_t( 8 ) );"},
+	"cs":   {`Debug.Assert(value.WindowCount >= 2 && value.WindowCount <= 8, "value.WindowCount out of range [2, 8]");`},
 	"dart": {"assert(value.windowCount >= 2);", "assert(value.windowCount <= 8);"},
 	"java": {"assert value.windowCount >= 2;", "assert value.windowCount <= 8;"},
 	// js is not here: its debug-only idiom is not an assert statement but the
@@ -101,6 +101,7 @@ var goneFromRelease = map[string][]string{
 	"cpp": {
 		"if ( int32_t( value.window_count ) < int32_t( 2 ) || int32_t( value.window_count ) > int32_t( 8 ) )",
 	},
+	"cs":   {"if (value.WindowCount < 2 || value.WindowCount > 8)"},
 	"dart": {"if (value.windowCount < 2 || value.windowCount > 8) {"},
 	"java": {"if (value.windowCount < 2 || value.windowCount > 8) {"},
 	"rust": {"if value.window_count < 2 || value.window_count > 8 {"},
@@ -110,7 +111,6 @@ var goneFromRelease = map[string][]string{
 // contracts with. For a refusesEveryBuild target, none of them may reach the
 // count.
 var assertToken = map[string][]string{
-	"cs":     {"Debug.Assert"},
 	"elixir": nil, // the BEAM has no compile-out assert, so the raise is always on
 	"go":     nil, // the runtime returns an error, in every build
 }

@@ -5,6 +5,7 @@
 // package example — protocol id 0x8656ae68c06b97a7
 
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Serialize;
 
@@ -735,10 +736,7 @@ namespace Example
             }
             if (value.Flag)
             {
-                if (value.SLength < 0 || value.SLength > 4) // the length guards the slice (§6.3); out-of-contract writes are refused
-                {
-                    return false;
-                }
+                Debug.Assert(value.SLength >= 0 && value.SLength <= 4, "value.SLength out of range [0, 4]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
                 {
                     uint offsetValue = (uint)(value.SLength);
                     if (!stream.SerializeBits(ref offsetValue, 3))
@@ -889,10 +887,7 @@ namespace Example
             }
             if (value.Flag)
             {
-                if (value.ItemsCount < 0 || value.ItemsCount > 3) // the count guards the loop (§6.3); out-of-contract writes are refused
-                {
-                    return false;
-                }
+                Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 3, "value.ItemsCount out of range [0, 3]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
                 {
                     uint offsetValue = (uint)(value.ItemsCount);
                     if (!batch.SerializeBits(ref offsetValue, 2))
@@ -902,10 +897,7 @@ namespace Example
                 }
                 for (int i = 0; i < value.ItemsCount; i++)
                 {
-                    if (value.Items[i] > 8191)
-                    {
-                        return false;
-                    }
+                    Debug.Assert(value.Items[i] <= 8191, "value.Items[i] out of range [0, 8191]");
                     {
                         uint offsetValue = (uint)(value.Items[i]);
                         if (!batch.SerializeBits(ref offsetValue, 13))
@@ -1149,10 +1141,7 @@ namespace Example
         private static bool WriteUnevenBatch(ref WriteBatch batch, Uneven value)
         {
             uint tagValue = (uint)value.Type;
-            if (tagValue > 2) // the tag validates BEFORE it rides (SPEC §4.8)
-            {
-                return false;
-            }
+            Debug.Assert(tagValue <= 2, "the union tag is outside the variant set [0, 2]"); // the tag contract holds BEFORE it rides (SPEC §4.8)
             if (!batch.SerializeBits(ref tagValue, 2))
             {
                 return false;
@@ -1321,10 +1310,7 @@ namespace Example
             {
                 return false;
             }
-            if (value.ItemsCount < 0 || value.ItemsCount > 3) // the count guards the loop (§6.3); out-of-contract writes are refused
-            {
-                return false;
-            }
+            Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 3, "value.ItemsCount out of range [0, 3]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
                 uint offsetValue = (uint)(value.ItemsCount);
                 if (!batch.SerializeBits(ref offsetValue, 2))
@@ -1419,10 +1405,7 @@ namespace Example
             {
                 return false;
             }
-            if (value.ItemsCount < 0 || value.ItemsCount > 3) // the count guards the loop (§6.3); out-of-contract writes are refused
-            {
-                return false;
-            }
+            Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 3, "value.ItemsCount out of range [0, 3]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
                 uint offsetValue = (uint)(value.ItemsCount);
                 if (!stream.SerializeBits(ref offsetValue, 2))
@@ -1432,10 +1415,7 @@ namespace Example
             }
             for (int i = 0; i < value.ItemsCount; i++)
             {
-                if (value.Items[i] > 8191)
-                {
-                    return false;
-                }
+                Debug.Assert(value.Items[i] <= 8191, "value.Items[i] out of range [0, 8191]");
                 {
                     uint offsetValue = (uint)(value.Items[i]);
                     if (!stream.SerializeBits(ref offsetValue, 13))
@@ -1444,10 +1424,7 @@ namespace Example
                     }
                 }
             }
-            if (value.SLength < 0 || value.SLength > 4) // the length guards the slice (§6.3); out-of-contract writes are refused
-            {
-                return false;
-            }
+            Debug.Assert(value.SLength >= 0 && value.SLength <= 4, "value.SLength out of range [0, 4]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
             {
                 uint offsetValue = (uint)(value.SLength);
                 if (!stream.SerializeBits(ref offsetValue, 3))

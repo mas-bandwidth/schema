@@ -3,17 +3,32 @@
 // API — every call's bool is checked and early-outs, the C++ twin's shape
 // (§6.3 C# row), so counts and lengths are validated before the loop or slice
 // they guard. The runtime's error latch (stream.Error) rides beneath the bool
-// for callers; generated validation refusals return false without latching.
+// for callers; generated READ-side validation refusals return false without
+// latching.
 // The wire is byte-identical to the C++ target's, construct by construct.
 //
-// Write-side guards: serialize.cs's WriteStream refuses out-of-range values
-// on the ranged calls (SerializeInt/SerializeInt64 latch ValueOutOfRange and
-// return false — Serialize.cs:866-884, 887-917), exactly like serialize.go,
-// and its raw bit writer masks silently (WriteBitsUnchecked, Serialize.cs:439)
-// exactly like serialize.go's — so this emitter carries the Go target's
-// leaner guard set: generated refusals exist only where the generated code
-// bypasses the ranged calls (the flags wire-width guard and the full-range
-// unsigned raw-offset path).
+// Write-side contracts are DEBUG ONLY. The maintainer's ruling, verbatim
+// (2026-09-07): "No runtime should ever promise to keep checks in writing
+// packets (asserts) in release build. Removing them is the whole point. The
+// documented posture of the serialize and schema libraries is that it is
+// *your responsibility* in shipping release builds on the write side to be
+// correct. checks are *DEBUG ONLY*" — and, in the same breath, "Of course, on
+// read side we MUST always do the checks!"
+//
+// So every caller-error check this emitter puts on the write path — a ranged
+// integer, an enum's headroom, a flags mask above the wire width, a union
+// tag, a counted array's count, a string/bytes/wstring length, a wide
+// string's interior null, a degenerate fixed or int128 raw — is a
+// Debug.Assert, which is [Conditional("DEBUG")] and therefore gone from a
+// release build, call and arguments both. That is the idiom of the runtime
+// this code calls: serialize.cs's WriteStream documents values, capacity,
+// lengths and float finiteness as "checked by Debug.Assert in debug builds
+// and not at all in release builds", and its raw bit writer masks silently
+// (WriteBitsUnchecked, Serialize.cs:439).
+//
+// What still returns false in every build: the READ path's whole validation
+// set, and the stream's own runtime conditions (capacity, a latched error) —
+// neither is caller error.
 package csharp
 
 import (
@@ -167,7 +182,7 @@ func (g *gen) emitBatchScope(writing bool, f *ir.Field, child, ind string) {
 		if writing {
 			g.emitWriteFoldedRange(count, fmt.Sprintf("%d", f.ArrayMin), bound,
 				big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound), false, true, true,
-				" // the count guards the loop (§6.3); out-of-contract writes are refused", ind)
+				" // the count guards the loop (§6.3); an out-of-contract count is caller error", ind)
 		} else {
 			g.call(ind, fmt.Sprintf("stream.SerializeInt(ref %s, %d, %s)", count, f.ArrayMin, bound),
 				" // the count guards the loop (§6.3)")
@@ -383,12 +398,19 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 			if d.Max == 0 {
 				g.sf("    // an empty union holds only None; its degenerate tag range [0, 0]\n")
 				g.sf("    // costs zero bits (SPEC §4.8)\n")
-				g.sf("    return value.Type == %sType.None;\n", d.Name)
+				g.writeAssert("    ", fmt.Sprintf("value.Type == %sType.None", d.Name),
+					"an empty union can only hold None", "")
+				g.sf("    return true;\n")
 				return
 			}
 			g.sf("    uint tagValue = (uint)value.Type;\n")
-			g.sf("    if (tagValue > %d) // the tag validates BEFORE it rides (SPEC §4.8)\n", d.Max)
-			g.sf("    {\n        return false;\n    }\n")
+			// A C# enum variable holds any value of its underlying type — a
+			// tag outside the variant set is reachable, by an explicit cast,
+			// and it is CALLER ERROR, so the contract is a debug assertion
+			// (§5). The read side still refuses such a tag in every build.
+			g.writeAssert("    ", fmt.Sprintf("tagValue <= %d", d.Max),
+				fmt.Sprintf("the union tag is outside the variant set [0, %d]", d.Max),
+				" // the tag contract holds BEFORE it rides (SPEC §4.8)")
 			g.call("    ", fmt.Sprintf("%s.SerializeBits(ref tagValue, %d)", g.rv(), bits), "")
 			g.sf("    switch (value.Type)\n    {\n")
 			for _, v := range d.Variants {
@@ -437,6 +459,30 @@ func (g *gen) armCall(dir string, v ir.UnionVariant) string {
 
 func (g *gen) call(ind, expr, comment string) {
 	g.sf("%sif (!%s)%s\n%s{\n%s    return false;\n%s}\n", ind, expr, comment, ind, ind, ind)
+}
+
+// writeAssert emits ONE write-side contract check. cond is the CONTRACT — the
+// positive form — and message names what the caller broke.
+//
+// The maintainer's ruling, verbatim (2026-09-07): "No runtime should ever
+// promise to keep checks in writing packets (asserts) in release build.
+// Removing them is the whole point. The documented posture of the serialize
+// and schema libraries is that it is *your responsibility* in shipping release
+// builds on the write side to be correct. checks are *DEBUG ONLY*" — and "Of
+// course, on read side we MUST always do the checks!"
+//
+// Debug.Assert is itself [Conditional("DEBUG")], so in a release build the
+// call AND the evaluation of its arguments are gone from the IL: the write
+// body the JIT sees is the pack alone, which is what a separate
+// [Conditional("DEBUG")] CheckWriteX predicate would also buy, without a
+// second walk of the type. It is also the idiom the C# runtime this code calls
+// already uses — serialize.cs carries ~90 Debug.Assert and three
+// [Conditional("DEBUG")] validators, and its WriteStream doc says values,
+// capacity, lengths and float finiteness are "checked by Debug.Assert in debug
+// builds and not at all in release builds".
+func (g *gen) writeAssert(ind, cond, message, comment string) {
+	g.needsDiag = true
+	g.sf("%sDebug.Assert(%s, \"%s\");%s\n", ind, cond, message, comment)
 }
 
 // emitConstItem writes const(value, bits) on the wire; a read rejects any
@@ -606,22 +652,24 @@ func storageBounds(t ir.FieldType) (*big.Int, *big.Int) {
 // offset-from-min in a generation-time bit count. lo/hi are the rendered
 // bound expressions (typed so they compare against expr legally); wide picks
 // the 64-bit call family; guardLo/guardHi say whether each half of the range
-// refusal is non-vacuous for expr's storage type. Byte-identical to the
-// runtime SerializeInt/SerializeInt64 forms.
+// contract is non-vacuous for expr's storage type. The contract rides on
+// Debug.Assert — write-side checks are caller error and DEBUG ONLY (§5).
+// Byte-identical to the runtime SerializeInt/SerializeInt64 forms.
 func (g *gen) emitWriteFoldedRange(expr, lo, hi string, min, max *big.Int, wide, guardLo, guardHi bool, comment, ind string) {
+	msg := fmt.Sprintf("%s out of range [%s, %s]", expr, lo, hi)
 	switch {
 	case guardLo && guardHi:
-		g.sf("%sif (%s < %s || %s > %s)%s\n%s{\n%s    return false;\n%s}\n", ind, expr, lo, expr, hi, comment, ind, ind, ind)
+		g.writeAssert(ind, fmt.Sprintf("%s >= %s && %s <= %s", expr, lo, expr, hi), msg, comment)
 	case guardLo:
-		g.sf("%sif (%s < %s)%s\n%s{\n%s    return false;\n%s}\n", ind, expr, lo, comment, ind, ind, ind)
+		g.writeAssert(ind, fmt.Sprintf("%s >= %s", expr, lo), msg, comment)
 	case guardHi:
-		g.sf("%sif (%s > %s)%s\n%s{\n%s    return false;\n%s}\n", ind, expr, hi, comment, ind, ind, ind)
+		g.writeAssert(ind, fmt.Sprintf("%s <= %s", expr, hi), msg, comment)
 	}
 	bits := ir.BitsRequired(min, max)
 	if bits == 0 {
 		// A degenerate range costs ZERO BITS — the value is known from the
-		// range alone; the refusal above is the whole write (SPEC §4.6,
-		// decided deliberately)
+		// range alone; the debug assertion above is the whole write (SPEC
+		// §4.6, decided deliberately)
 		return
 	}
 	typ, fn := "uint", "SerializeBits"
@@ -709,7 +757,7 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 			count := "value." + g.m(base+"Count")
 			g.emitWriteFoldedRange(count, fmt.Sprintf("%d", f.ArrayMin), bound,
 				big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound), false, true, true,
-				" // the count guards the loop (§6.3); out-of-contract writes are refused", ind)
+				" // the count guards the loop (§6.3); an out-of-contract count is caller error", ind)
 			g.sf("%sfor (int i = 0; i < %s; i++)\n%s{\n", ind, count, ind)
 		} else {
 			// the SCHEMA bound, never the storage's Length: reassigned-short
@@ -727,25 +775,22 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 	switch f.Type.Kind {
 	case ir.TFixed:
 		if f.IntMin.Cmp(f.IntMax) == 0 {
-			// degenerate range: ZERO bits — the folded range refusal and no
+			// degenerate range: ZERO bits — the folded range contract and no
 			// wire call at all, so no runtime degenerate support is needed
 			// (SPEC §4.6). The one legal raw is min << F,
 			// compared in the storage's own signedness (a wide ufixed raw can
 			// live above long.MaxValue).
 			rawMin := new(big.Int).Lsh(f.IntMin, uint(f.Type.FracBits))
+			msg := fmt.Sprintf("%s is not %s, the one legal raw of a degenerate fixed range", name, rawMin.String())
 			switch {
 			case f.Type.Width == 128 && f.Type.Signed:
-				g.sf("%sif (%s != (Int128Value)(%s))\n%s{\n%s    return false;\n%s}\n",
-					ind, name, csRender128(rawMin), ind, ind, ind)
+				g.writeAssert(ind, fmt.Sprintf("%s == (Int128Value)(%s)", name, csRender128(rawMin)), msg, "")
 			case f.Type.Width == 128:
-				g.sf("%sif (%s != (UInt128Value)(%s))\n%s{\n%s    return false;\n%s}\n",
-					ind, name, csRenderU128(rawMin), ind, ind, ind)
+				g.writeAssert(ind, fmt.Sprintf("%s == (UInt128Value)(%s)", name, csRenderU128(rawMin)), msg, "")
 			case f.Type.Signed:
-				g.sf("%sif ((long)%s != %sL)\n%s{\n%s    return false;\n%s}\n",
-					ind, name, rawMin.String(), ind, ind, ind)
+				g.writeAssert(ind, fmt.Sprintf("(long)%s == %sL", name, rawMin.String()), msg, "")
 			default:
-				g.sf("%sif ((ulong)%s != %sUL)\n%s{\n%s    return false;\n%s}\n",
-					ind, name, rawMin.String(), ind, ind, ind)
+				g.writeAssert(ind, fmt.Sprintf("(ulong)%s == %sUL", name, rawMin.String()), msg, "")
 			}
 			return
 		}
@@ -767,9 +812,10 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		if f.Type.Width == 128 {
 			if f.HasIntRange {
 				if f.IntMin.Cmp(f.IntMax) == 0 {
-					// degenerate range: ZERO bits — refusal only (SPEC §4.6)
-					g.sf("%sif (%s != (Int128Value)(%s))\n%s{\n%s    return false;\n%s}\n",
-						ind, name, csRender128(f.IntMin), ind, ind, ind)
+					// degenerate range: ZERO bits — the contract is the whole
+					// write, and it is DEBUG ONLY (SPEC §4.6, §5)
+					g.writeAssert(ind, fmt.Sprintf("%s == (Int128Value)(%s)", name, csRender128(f.IntMin)),
+						fmt.Sprintf("%s is not the one legal value of a degenerate int128 range", name), "")
 					return
 				}
 				// int128 is ALWAYS ranged (SPEC §4.3): offset from min —
@@ -790,22 +836,19 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 				// full-range unsigned: raw offset bits (ulong storage only —
 				// no narrower storage can hold a range past long). This path
 				// bypasses the runtime's ranged calls, so it supplies their
-				// write-side range refusal (a misuse value must not wrap into
-				// valid-looking wire); vacuous halves are elided. Nothing
-				// latches — bool is the whole verdict here.
+				// write-side range CONTRACT — and the runtime's own is a
+				// Debug.Assert, so this one is too; vacuous halves are elided.
 				lo, _ := g.rangeArgs(f, "ulong")
 				loVacuous := f.IntMin.Sign() == 0
 				hiVacuous := f.IntMax.Cmp(maxUint64) == 0
+				msg := fmt.Sprintf("%s out of range [%s, %s]", name, lo, f.IntMax.String())
 				switch {
 				case !loVacuous && !hiVacuous:
-					g.sf("%sif (%s < %s || %s > %s)\n", ind, name, lo, name, f.IntMax.String())
-					g.sf("%s{\n%s    return false;\n%s}\n", ind, ind, ind)
+					g.writeAssert(ind, fmt.Sprintf("%s >= %s && %s <= %s", name, lo, name, f.IntMax.String()), msg, "")
 				case !loVacuous:
-					g.sf("%sif (%s < %s)\n", ind, name, lo)
-					g.sf("%s{\n%s    return false;\n%s}\n", ind, ind, ind)
+					g.writeAssert(ind, fmt.Sprintf("%s >= %s", name, lo), msg, "")
 				case !hiVacuous:
-					g.sf("%sif (%s > %s)\n", ind, name, f.IntMax.String())
-					g.sf("%s{\n%s    return false;\n%s}\n", ind, ind, ind)
+					g.writeAssert(ind, fmt.Sprintf("%s <= %s", name, f.IntMax.String()), msg, "")
 				}
 				if loVacuous {
 					g.sf("%s{\n%s    ulong offsetValue = %s;\n", ind, ind, name)
@@ -853,7 +896,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		length := "value." + g.m(g.fieldBase(f)+"Length")
 		g.emitWriteFoldedRange(length, "0", g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "int", false),
 			big.NewInt(0), big.NewInt(f.Type.Size), false, true, true,
-			" // the length guards the slice (§6.3); out-of-contract writes are refused", ind)
+			" // the length guards the slice (§6.3); an out-of-contract length is caller error", ind)
 		g.call(ind, fmt.Sprintf("%s.SerializeBytes(%s.AsSpan(0, %s))", g.rv(), name, length), "")
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
@@ -891,13 +934,14 @@ func (g *gen) emitWriteFoldedEnum(ref *ir.Enum, name, ind string) {
 	g.sf("%s{\n%s    %s enumValue = (%s)%s;\n", ind, ind, typ, typ, name)
 	// the guard is vacuous only when the wire range fills the backing type
 	if big.NewInt(ref.Max).Cmp(new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(ref.StorageBits)), big.NewInt(1))) < 0 {
-		g.sf("%s    if (enumValue > %d) // headroom above the wire range cannot ride\n", ind, ref.Max)
-		g.sf("%s    {\n%s        return false;\n%s    }\n", ind, ind, ind)
+		g.writeAssert(ind+"    ", fmt.Sprintf("enumValue <= %d", ref.Max),
+			fmt.Sprintf("%s above the enum wire range [0, %d]", name, ref.Max),
+			" // headroom above the wire range cannot ride")
 	}
 	// A degenerate range (an enum with only the implicit None) costs ZERO BITS
 	// -- the value is known from the range alone. The bit packer requires at
-	// least one bit, so the call is skipped entirely; the headroom guard above
-	// still rides, because a value above the range must still be refused.
+	// least one bit, so the call is skipped entirely; the headroom contract
+	// above still rides, in a debug build.
 	if bits > 0 {
 		g.call(ind+"    ", fmt.Sprintf("%s.%s(ref enumValue, %d)", g.rv(), fn, bits), "")
 	}
@@ -1186,12 +1230,14 @@ func (g *gen) emitReadFlags(name string, wireBits int, ind string) {
 
 // emitWriteFlagsValue is the write half used by emitWriteScalar. Storage is
 // wider than the wire wherever WireBits < 64, so a mask bit above the wire
-// width is refused rather than silently truncated — the raw bit calls mask,
-// so this refusal is generated (nothing latches; bool is the verdict).
+// width breaks the writer's contract rather than being silently truncated —
+// the raw bit calls mask, so the contract is generated here, as a debug
+// assertion (§5: write-side checks are caller error, DEBUG ONLY).
 func (g *gen) emitWriteFlagsValue(name string, wireBits int, ind string) {
 	if wireBits < 64 {
-		g.sf("%sif (%s >= 1ul << %d) // a mask bit above the wire width cannot ride\n", ind, name, wireBits)
-		g.sf("%s{\n%s    return false;\n%s}\n", ind, ind, ind)
+		g.writeAssert(ind, fmt.Sprintf("%s < 1ul << %d", name, wireBits),
+			fmt.Sprintf("%s has a mask bit above the %d-bit wire width", name, wireBits),
+			" // a mask bit above the wire width cannot ride")
 	}
 	if wireBits <= 32 {
 		g.sf("%s{\n%s    uint flagsValue = (uint)%s;\n", ind, ind, name)

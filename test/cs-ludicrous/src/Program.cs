@@ -283,14 +283,10 @@ static class Program
             Check(output.Locked == 196608, "the degenerate ufixed materializes from the range alone");
             Check(output.Tail == 0xA5, "the tail rides after zero degenerate bits");
 
-            // the write-side degenerate refusal: any raw but 3 * 2^16 is
-            // refused before a single bit is written
-            UnsignedProbe bad = new UnsignedProbe();
-            bad.Angle = input.Angle; bad.Span = input.Span; bad.Reach = input.Reach;
-            bad.Ticks = input.Ticks; bad.Samples[0] = input.Samples[0]; bad.Samples[1] = input.Samples[1];
-            bad.Locked = 196609; bad.Tail = input.Tail;
-            WriteStream badWs = NewWriteStream();
-            Check(!WriteUnsignedProbe(badWs, bad), "a wrong degenerate ufixed raw is REFUSED on write");
+            // the write-side degenerate contract — any raw but 3 * 2^16 —
+            // is a Debug.Assert (SPEC §5): caller error, compiled out of a
+            // release build, exactly as the C++ leg (test/ludicrous_main.cpp)
+            // has always had it. Nothing to probe here in either build.
 
             // hostile: span's 64 offset bits (starting at bit 25) all-ones =
             // 2^64 - 1, above the raw range 0xFFFFFFFFFFFF0000 — the

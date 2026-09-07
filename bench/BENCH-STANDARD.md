@@ -1043,9 +1043,16 @@ That is as far as matching goes, and the standard says so out loud:
 >
 > | value | meaning |
 > |---|---|
-> | `removed` | the build compiles its debug asserts AND its bounds/range checks away (C++ with `NDEBUG`/`SERIALIZE_RELEASE`; C with `-DNDEBUG` since serialize.c ruling #20; Rust with `debug-assertions = false` since the 2026-09-07 ruling made the generated write side `debug_assert!` — safe Rust's own slice bounds checks remain, a LANGUAGE residual this column does not price) |
-> | `always` | the library keeps bounds checks, range validation and the sticky error check in **every** build by contract (Go by design; C# by its runtime's nature) |
+> | `removed` | the build compiles its debug asserts AND its bounds/range checks away (C++ with `NDEBUG`/`SERIALIZE_RELEASE`; C with `-DNDEBUG` since serialize.c ruling #20; Rust with `debug-assertions = false` and C# with `DEBUG` undefined, since the 2026-09-07 ruling made both generated write sides `debug_assert!` and `Debug.Assert`) |
+> | `always` | the library keeps bounds checks, range validation and the sticky error check in **every** build by contract (Go by design, and Go alone: it has no debug-only idiom to compile out) |
 > | `contract` | the library's debug asserts compile out like `removed`, **but** validation that is part of the wire/API contract stays in every build. Its exemplar was serialize.c's write path until ruling #20 (2026-08-17) moved C to `removed`; no leg records it today, and the value stays defined for a runtime that makes that promise. |
+>
+> The column names the checks the LIBRARY and the GENERATED code perform. A
+> language's own memory-safety checks (safe Rust's slice bounds, the CLR's and
+> the JVM's array bounds, Dart's) are not the library's, no profile removes
+> them, and the column does not price them; a runner whose language carries
+> them says so in its comment (2026-09-07, when Rust and C# moved to
+> `removed`).
 >
 > `contract` was added 2026-08-15 because the two-value column could not
 > express serialize.c at all, and the hybrid it could not express was the

@@ -2200,11 +2200,6 @@ language and how it is used in best practice." (2026-09-07). **No target
 panics and none throws**: Elixir's raise is the only unwinding path in the
 nine, and it is the BEAM's own.
 
-**Implementation note, 2026-09-07.** The Rust and C# backends reach the form
-stated above in the two changes landing the same day (schema#696 for Rust,
-schema#697 for C#); until they merge, their emitters still refuse on the
-write in every build. This note is removed by the second of them.
-
 **There is no exception to the tier split.** Settled 2026-09-07: "No runtime
 should ever promise to keep checks in writing packets (asserts) in release
 build. Removing them is the whole point. ... checks are *DEBUG ONLY*". A

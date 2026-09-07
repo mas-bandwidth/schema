@@ -51,26 +51,27 @@ type Volley
 var tagAssertsInDebug = map[string][]string{
 	"c":    {"serialize_assert( value->type <= SHOT_TYPE_MAX );"},
 	"cpp":  {"serialize_assert( value.type <= ShotType::Max );"},
+	"cs":   {`Debug.Assert(tagValue <= 2, "the union tag is outside the variant set [0, 2]");`},
 	"dart": {"assert(value.type >= 0);", "assert(value.type <= 2);"},
 	"java": {"assert (value.type & 0xffL) >= 0;", "assert (value.type & 0xffL) <= 2;"},
 	// js is not here: its debug-only idiom is the PRODUCTION/checked fork of
 	// the flat writer, not a statement. Checked separately below.
 }
 
-// tagGoneFromRelease is the every-build refusal C and C++ used to carry. An
-// assert BESIDE a live refusal removes nothing, so none of it may survive.
+// tagGoneFromRelease is the every-build refusal each assert target used to
+// carry. An assert BESIDE a live refusal removes nothing, so none of it may
+// survive.
 var tagGoneFromRelease = map[string][]string{
 	"c":   {"if ( value->type > SHOT_TYPE_MAX )", "not a ShotType value; nothing was written"},
 	"cpp": {"not a ShotType value; nothing was written"},
+	"cs":  {"if (tagValue > 2)"},
 }
 
 // tagRefusesEveryBuild is the write's UNCONDITIONAL tag refusal, for the
 // targets that still hold it that way. Go and Elixir are here by the ruling —
-// a language with no dormant-assert idiom keeps the form native to it. C# is
-// here only until PR #697's emitter change lands on this tree; it moves to
-// tagAssertsInDebug then, with every other write check in that backend.
+// a language with no dormant-assert idiom keeps the form native to it. They
+// are the only two left.
 var tagRefusesEveryBuild = map[string][]string{
-	"cs":     {"if (tagValue > 2)"},
 	"elixir": {`raise ArgumentError, "value.type is above the wire maximum"`},
 	"go":     {"if tagValue < 0 || tagValue > 2 {"},
 }

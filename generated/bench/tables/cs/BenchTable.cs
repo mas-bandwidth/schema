@@ -4,12 +4,21 @@
 // AGPL-3.0, its output is not.
 // package benchtable — protocol id 0x0926221bcb6f475f
 //
-// Wire functions return bool — the C++-style early-out. A schema validation
-// failure (a wrong wire constant, nonzero reserved bits, an interior null)
-// returns false WITHOUT latching; stream failures latch on stream.Error —
-// the runtime's own sticky latch. Callers get bool always; Error tells the
-// two apart.
+// Wire functions return bool — the C++-style early-out. A READ-side schema
+// validation failure (a wrong wire constant, nonzero reserved bits, an
+// interior null) returns false WITHOUT latching; stream failures latch on
+// stream.Error — the runtime's own sticky latch. Callers get bool always;
+// Error tells the two apart.
+//
+// WRITE-side contracts — a value outside its declared range, a count or a
+// length outside its bound, a mask bit above the wire width, an interior
+// null in a wide string — are CALLER ERROR and ride on Debug.Assert, so
+// they compile out of a release build along with the call, exactly as
+// serialize.cs's own WriteStream does. In a shipping release build it is
+// the caller's responsibility to be correct on the write side; every check
+// the reader needs is on the read side and runs in every build.
 
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Serialize;
 
@@ -253,14 +262,8 @@ namespace Benchtable
         {
             {
                 // flat run: 28 bits in 1 chunk(s) — the field placement is folded
-                if (value.Damage < 0 || value.Damage > 4095)
-                {
-                    return false;
-                }
-                if (value.HitKind < 0 || value.HitKind > 7)
-                {
-                    return false;
-                }
+                Debug.Assert(value.Damage >= 0 && value.Damage <= 4095, "value.Damage out of range [0, 4095]");
+                Debug.Assert(value.HitKind >= 0 && value.HitKind <= 7, "value.HitKind out of range [0, 7]");
                 ulong f0 = ((ulong)value.TargetId) & 0xfffUL;
                 ulong f1 = ((ulong)((uint)(value.Damage))) & 0xfffUL;
                 ulong f2 = ((ulong)((uint)(value.HitKind))) & 0x7UL;
@@ -342,10 +345,7 @@ namespace Benchtable
         {
             {
                 // flat run: 14 bits in 1 chunk(s) — the field placement is folded
-                if (value.Channel < 0 || value.Channel > 3)
-                {
-                    return false;
-                }
+                Debug.Assert(value.Channel >= 0 && value.Channel <= 3, "value.Channel out of range [0, 3]");
                 ulong f0 = ((ulong)((uint)(value.Channel))) & 0x3UL;
                 ulong f1 = ((ulong)value.Speaker) & 0xfffUL;
                 uint w0 = (uint)(f0 | (f1 << 2));
@@ -421,10 +421,7 @@ namespace Benchtable
         {
             {
                 // flat run: 18 bits in 1 chunk(s) — the field placement is folded
-                if (value.Amount < 0 || value.Amount > 255)
-                {
-                    return false;
-                }
+                Debug.Assert(value.Amount >= 0 && value.Amount <= 255, "value.Amount out of range [0, 255]");
                 ulong f0 = ((ulong)value.ItemId) & 0x3ffUL;
                 ulong f1 = ((ulong)((uint)(value.Amount))) & 0xffUL;
                 uint w0 = (uint)(f0 | (f1 << 10));
@@ -512,10 +509,7 @@ namespace Benchtable
         private static bool WriteTableEventBatch(ref WriteBatch batch, TableEvent value)
         {
             uint tagValue = (uint)value.Type;
-            if (tagValue > 3) // the tag validates BEFORE it rides (SPEC §4.8)
-            {
-                return false;
-            }
+            Debug.Assert(tagValue <= 3, "the union tag is outside the variant set [0, 3]"); // the tag contract holds BEFORE it rides (SPEC §4.8)
             if (!batch.SerializeBits(ref tagValue, 2))
             {
                 return false;

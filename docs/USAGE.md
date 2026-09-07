@@ -645,9 +645,7 @@ than zero without a declared default, and `[..N]` is born at 0 as usual.
 Writing a count outside its bound is **caller error**, and it is a write-side
 contract like every other (SPEC.md §5): it asserts in DEBUG in each target
 whose language has that idiom, and is refused in every build only in Go and
-Elixir, which have none. (Implementation note, 2026-09-07: Rust and C# reach
-that form in the two changes landing the same day, schema#696 and schema#697;
-until they merge, their emitters still refuse on the write in every build.)
+Elixir, which have none.
 The count guards the element loop and the pack subtracts the low bound, so
 an out-of-range count wraps and a release build will happily write bytes no
 reader takes — which is why the debug assert is worth having, and why
@@ -819,9 +817,12 @@ Rust has `debug_assert!`, compiled out of release, and serialize.rs itself
 holds its API-misuse contracts with it (`src/stream.rs`, `misuse_check!`), so
 the Rust backend `debug_assert!`s (2026-09-07: "No runtime should ever promise
 to keep checks in writing packets (asserts) in release build. Removing them is
-the whole point... checks are *DEBUG ONLY*").
+the whole point... checks are *DEBUG ONLY*"). C# has `Debug.Assert` and
+`[Conditional("DEBUG")]`, which remove the check AND the call from a release
+build, so the C# backend asserts too — the same idiom the serialize.cs runtime
+it calls has always used for its own write path.
 Go has no assert idiom, so it returns
-`ErrValueOutOfRange`; C# and JavaScript likewise return failure
+`ErrValueOutOfRange`; JavaScript likewise returns failure
 rather than invent an assert. Dart has `assert` — active under
 `--enable-asserts`, compiled out of release and AOT builds — so the Dart
 writer asserts, exactly like C++; Java's `assert` is active under `-ea` and
@@ -833,12 +834,12 @@ correctness the way that language verifies correctness — not that every
 target behaves identically here.
 
 So writing `health = 2000` into a field declared `| min = 0, max = 1000`
-asserts in a C++, C, debug-Rust, checked-Dart or `-ea` Java build, raises in
-Elixir, silently writes the truncated low bits in a C++ or C release
-(`NDEBUG`), a Rust release (`debug-assertions = false`; a length or count
-past its array's end panics there on the slice instead, the language's own
-bounds check, which no profile removes), Dart AOT or default-JVM build, and
-returns failure in the others.
+asserts in a C++, C, C# `DEBUG`, debug-Rust, checked-Dart or `-ea` Java build,
+raises in Elixir, silently writes the truncated low bits in a C++ or C release
+(`NDEBUG`), a C# release, a Rust release (`debug-assertions = false`; a length
+or count past its array's end panics there on the slice instead, the
+language's own bounds check, which no profile removes), Dart AOT or
+default-JVM build, and returns failure in the others.
 
 Do not build on any of it. **Keep your values inside their declared bounds on
 the write side** — your simulation already knows they are, and that is the only

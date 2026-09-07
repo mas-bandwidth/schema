@@ -1142,9 +1142,7 @@ assert (`serialize_assert` in C++ and C, `debug_assert!` in Rust,
 `Debug.Assert` in C#, `assert` in Java and Dart, the checked writer in
 JavaScript); Go returns `ErrValueOutOfRange` and Elixir raises an
 `ArgumentError` in every build, because neither language has a debug-only
-idiom worth faking. (Implementation note, 2026-09-07: Rust and C# reach that
-form in the two changes landing the same day, schema#696 and schema#697;
-until they merge, their emitters still refuse on the write in every build.)
+idiom worth faking.
 And the READ refuses a bad count in every build, in all nine — that side is
 never trusted.
 

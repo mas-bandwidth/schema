@@ -42,17 +42,28 @@ static partial class Program
     // for each file in sorted basename order, the basename bytes, a 0x00
     // byte, the contents. The per-runner constants: family gen (these are
     // the generated-code benchmarks), linkage asm (the serialize.cs runtime
-    // is a separate assembly the JIT inlines across), checks ALWAYS —
-    // serialize.cs has no Debug.Assert and no conditional compilation of
-    // its checks: bounds checks, range validation and the sticky error
-    // latch are unconditional in every build, §3.4's definition of
-    // `always` word for word (this row previously claimed `removed`, which
-    // was wrong — there is no NDEBUG-equivalent build of serialize.cs) —
+    // is a separate assembly the JIT inlines across), checks REMOVED —
+    // §3.4: this project sets no DefineConstants, so `dotnet run -c Release`
+    // leaves DEBUG undefined and every Debug.Assert is gone, the call and
+    // its arguments both ([Conditional("DEBUG")]). That is true of the
+    // serialize.cs runtime's whole write path — WriteStream documents
+    // values, capacity, lengths and float finiteness as "checked by
+    // Debug.Assert in debug builds and not at all in release builds" — and,
+    // from 2026-09-07, of the generated code beside it: the schema
+    // compiler's C# backend emits its write-side caller-error checks as
+    // Debug.Assert too ("checks are *DEBUG ONLY*"). An earlier version of
+    // this comment claimed `always` and justified it with "serialize.cs has
+    // no Debug.Assert and no conditional compilation of its checks", which
+    // was never true of the write path — the runtime carries ~90 of them.
+    // What the label does not price is the CLR's own array bounds checks,
+    // which no build removes; §3.4 says the column names the library's and
+    // the generated code's checks, not the language's, and every managed
+    // runner is in the same position —
     // opt default (the JIT has no operator-visible optimization levels),
     // inline unknown until the verdict pass (§4.2) backfills it.
     // family is per ROW now (gen | bits — §5.1); linkage/checks/opt/
     // inline stay per-runner constants
-    const string CsvSuffix = "asm,always,default,unknown";
+    const string CsvSuffix = "asm,removed,default,unknown";
 
     static readonly List<(string Row, string Family)> gCsvRows = new List<(string, string)>();
     static readonly SortedDictionary<string, byte[]> gGoldensLoaded =
