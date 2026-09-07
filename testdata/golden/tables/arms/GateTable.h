@@ -7185,6 +7185,7 @@ inline bool GateLoadMessageBodyInto( TableBitReader & r, const TableVocabulary &
         {
             uint64_t length = 0;
             if ( !r.get( length, 32 ) || !r.align() || !r.has( (int64_t) length * 8 ) ) { out->malformed = true; return false; }
+            if ( type_id == kTableStringTypeId && !TableUtf8Valid( r.buffer + r.offset / 8, length ) ) { out->malformed = true; return false; }
             if ( directory[k + 1].offset != kTableNodeAbsent && length > 0 ) { memcpy( region + directory[k + 1].offset + kTableBlobHeader, r.buffer + r.offset / 8, (size_t) length ); }
             r.offset += (int64_t) length * 8;
             continue;

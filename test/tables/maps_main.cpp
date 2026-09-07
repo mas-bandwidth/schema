@@ -22,6 +22,9 @@
 #include "SpansTable.h"
 #include "DocsTable.h"
 #include "ChunksTable.h"
+#include "PairsTable.h"
+#include "CrewsTable.h"
+#include "TrailsTable.h"
 #include "wirebuilder.h"
 
 using namespace mapdemo;
@@ -2085,6 +2088,350 @@ static void test_byte_blob_values()
     free( chunk_json );
 }
 
+// ---- A MAP WHOSE VALUE IS AN ARRAY OF POINTERS (§2.1, §2.8, §4.2) ----
+//
+// The element is a pointer, so the value's storage is the array of `TableRef`
+// §4.2 gives an array of pointers at a field, and the handle follows the ARRAY
+// FORM and not the element: the array for a `[N]*T`, the ENTRY for a `[..N]*T`
+// because the count beside it makes two members, and the list SLOT for a
+// `[]*T`. Each slot names a node of the one declaration-order walk, so two
+// slots may name one node and a slot may name none.
+
+static void test_pointer_array_values()
+{
+    // [2]*Item: ONE member, TableRef value[2], so the handle is a pointer to
+    // the ARRAY. Key 4 spends both slots on ONE node, key 9 leaves the second
+    // null, so a share and a null both ride through a map value.
+    PairsBuilder b;
+    Pairs * p = b.GetRoot();
+    static const uint32_t keys[2] = { 9, 4 }; // OUT OF KEY ORDER
+    for ( int i = 0; i < 2; i++ )
+    {
+        PairsSlotsEntryValue * slots = PairsSlotsInsert( b.main, p->slots, keys[i] );
+        CHECK( slots != NULL );
+        if ( slots == NULL ) { return; }
+        Item * item = ItemEmplace( b.main, ( *slots )[0] );
+        CHECK( item != NULL );
+        if ( item == NULL ) { return; }
+        item->count = (int32_t) ( keys[i] * 10 );
+        // key 4 names the same node twice; key 9 leaves the second slot null
+        if ( keys[i] == 4 ) { ( *slots )[1] = ( *slots )[0]; }
+    }
+    p->after = 5;
+
+    PairsSlotsEntryValue * found = PairsSlotsFind( b.arena, p->slots, 4u );
+    CHECK( found != NULL );
+    if ( found != NULL )
+    {
+        const Item * shared = ItemAt( b.arena, ( *found )[0] );
+        CHECK( shared != NULL && shared->count == 40 );
+        CHECK( ItemAt( b.arena, ( *found )[1] ) == shared ); // two slots, one node
+    }
+
+    const int64_t measured = PairsMeasure( b );
+    static uint8_t wire[1u << 16];
+    const int64_t n = PairsSave( b, wire, sizeof( wire ) );
+    CHECK_EQ( measured, n );
+    pin_golden( "map_pairs", wire, n );
+
+    const int64_t need = PairsLoadMeasure( wire, n );
+    CHECK( need > 0 );
+    uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
+    if ( region == NULL ) { return; }
+    TableReport report;
+    const Pairs * loaded = PairsLoad( region, need, wire, n, &report );
+    CHECK( loaded != NULL );
+    CHECK( !report.malformed );
+    if ( loaded != NULL )
+    {
+        const PairsSlotsEntryValue * four = loaded->slots.Find( 4u );
+        CHECK( four != NULL );
+        if ( four != NULL )
+        {
+            const Item * a = ItemAt( ( *four )[0] );
+            CHECK( a != NULL && a->count == 40 );
+            CHECK( ItemAt( ( *four )[1] ) == a ); // ONE node in the region too
+        }
+        const PairsSlotsEntryValue * nine = loaded->slots.Find( 9u );
+        CHECK( nine != NULL );
+        if ( nine != NULL )
+        {
+            const Item * only = ItemAt( ( *nine )[0] );
+            CHECK( only != NULL && only->count == 90 );
+            CHECK( ItemAt( ( *nine )[1] ) == NULL ); // the null slot stayed null
+        }
+        CHECK_EQ( loaded->after, 5 ); // and the parent read on past the map
+        static uint8_t again[1u << 16];
+        CHECK_EQ( PairsSave( loaded, again, sizeof( again ) ), n );
+        CHECK( memcmp( again, wire, (size_t) n ) == 0 );
+    }
+    free( region );
+
+    CHECK( b.Lock() );
+    const Pairs * locked = b.AsConst();
+    CHECK( locked != NULL );
+    if ( locked == NULL ) { return; }
+    const int64_t json_bytes = PairsToJsonMeasure( locked );
+    CHECK( json_bytes > 0 );
+    char * json = (char *) MEASURED_CALLOC( json_bytes, 1 );
+    if ( json == NULL ) { return; }
+    CHECK_EQ( PairsToJson( locked, json, json_bytes ), json_bytes );
+    // the value takes the pointer row inside a JSON array: the node's object,
+    // `&node` where one node is named twice, `null` where a slot names none
+    CHECK( strstr( json, "\"&node\": 1" ) != NULL );
+    CHECK( strstr( json, "\"count\": 40" ) != NULL );
+    CHECK( strstr( json, "\"count\": 90" ) != NULL );
+    CHECK( strstr( json, "null" ) != NULL );
+    const char * four_at = strstr( json, "\"4\"" );
+    const char * nine_at = strstr( json, "\"9\"" );
+    CHECK( four_at != NULL && nine_at != NULL && four_at < nine_at ); // ASCENDING
+
+    PairsBuilder into;
+    TableReport text_report;
+    CHECK( PairsFromJson( into, json, json_bytes, &text_report ) );
+    CHECK( !text_report.malformed );
+    static uint8_t from_text[1u << 16];
+    CHECK_EQ( PairsSave( into, from_text, sizeof( from_text ) ), n );
+    CHECK( memcmp( from_text, wire, (size_t) n ) == 0 );
+    free( json );
+
+    // a DUPLICATE key REPLACES and the value half is reset WHOLE: EVERY slot
+    // back to null, so the repeat names no node the first insert named
+    PairsBuilder dup;
+    Pairs * d = dup.GetRoot();
+    PairsSlotsEntryValue * first = PairsSlotsInsert( dup.main, d->slots, 4u );
+    CHECK( first != NULL );
+    if ( first == NULL ) { return; }
+    CHECK( ItemEmplace( dup.main, ( *first )[0] ) != NULL );
+    CHECK( ItemEmplace( dup.main, ( *first )[1] ) != NULL );
+    PairsSlotsEntryValue * repeat = PairsSlotsInsert( dup.main, d->slots, 4u );
+    CHECK( repeat == first ); // the same entry, key and address unchanged
+    CHECK( repeat != NULL && ( *repeat )[0].value == 0 && ( *repeat )[1].value == 0 );
+    CHECK_EQ( d->slots.count, 1 );
+}
+
+static void test_counted_pointer_array_values()
+{
+    // [..2]*Item: a PAIR, the TableRef array beside its int32 used count, so
+    // the handle is the ENTRY, which reaches both.
+    CrewsBuilder b;
+    Crews * c = b.GetRoot();
+    static const uint32_t keys[2] = { 9, 4 }; // OUT OF KEY ORDER
+    for ( int i = 0; i < 2; i++ )
+    {
+        CrewsMembersEntry * entry = CrewsMembersInsert( b.main, c->members, keys[i] );
+        CHECK( entry != NULL );
+        if ( entry == NULL ) { return; }
+        entry->value_count = keys[i] == 4 ? 2 : 1;
+        for ( int j = 0; j < entry->value_count; j++ )
+        {
+            Item * item = ItemEmplace( b.main, entry->value[j] );
+            CHECK( item != NULL );
+            if ( item == NULL ) { return; }
+            item->count = (int32_t) ( keys[i] * 10 + j );
+        }
+    }
+    c->after = 2;
+
+    const int64_t measured = CrewsMeasure( b );
+    static uint8_t wire[1u << 16];
+    const int64_t n = CrewsSave( b, wire, sizeof( wire ) );
+    CHECK_EQ( measured, n );
+    pin_golden( "map_crews", wire, n );
+
+    const int64_t need = CrewsLoadMeasure( wire, n );
+    CHECK( need > 0 );
+    uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
+    if ( region == NULL ) { return; }
+    TableReport report;
+    const Crews * loaded = CrewsLoad( region, need, wire, n, &report );
+    CHECK( loaded != NULL );
+    CHECK( !report.malformed );
+    if ( loaded != NULL )
+    {
+        // key 4 was inserted SECOND and carries TWO slots, key 9 first and
+        // carries one, so a walk that numbered the nodes in insertion order
+        // rather than in key order would read one entry's node as another's
+        const CrewsMembersEntry * four = loaded->members.Find( 4u );
+        CHECK( four != NULL && four->value_count == 2 );
+        if ( four != NULL && four->value_count == 2 )
+        {
+            const Item * a = ItemAt( four->value[0] );
+            const Item * second = ItemAt( four->value[1] );
+            CHECK( a != NULL && a->count == 40 );
+            CHECK( second != NULL && second->count == 41 );
+        }
+        const CrewsMembersEntry * nine = loaded->members.Find( 9u );
+        CHECK( nine != NULL && nine->value_count == 1 );
+        if ( nine != NULL && nine->value_count == 1 )
+        {
+            const Item * only = ItemAt( nine->value[0] );
+            CHECK( only != NULL && only->count == 90 );
+        }
+        CHECK_EQ( loaded->after, 2 );
+        static uint8_t again[1u << 16];
+        CHECK_EQ( CrewsSave( loaded, again, sizeof( again ) ), n );
+        CHECK( memcmp( again, wire, (size_t) n ) == 0 );
+    }
+    free( region );
+
+    CHECK( b.Lock() );
+    const Crews * locked = b.AsConst();
+    CHECK( locked != NULL );
+    if ( locked == NULL ) { return; }
+    const int64_t json_bytes = CrewsToJsonMeasure( locked );
+    CHECK( json_bytes > 0 );
+    char * json = (char *) MEASURED_CALLOC( json_bytes, 1 );
+    if ( json == NULL ) { return; }
+    CHECK_EQ( CrewsToJson( locked, json, json_bytes ), json_bytes );
+    // the USED COUNT decides the row's length: two nodes under 4, one under 9
+    CHECK( strstr( json, "\"count\": 40" ) != NULL );
+    CHECK( strstr( json, "\"count\": 41" ) != NULL );
+    CHECK( strstr( json, "\"count\": 90" ) != NULL );
+    const char * four_at = strstr( json, "\"4\"" );
+    const char * nine_at = strstr( json, "\"9\"" );
+    CHECK( four_at != NULL && nine_at != NULL && four_at < nine_at ); // ASCENDING
+
+    CrewsBuilder into;
+    TableReport text_report;
+    CHECK( CrewsFromJson( into, json, json_bytes, &text_report ) );
+    CHECK( !text_report.malformed );
+    static uint8_t from_text[1u << 16];
+    CHECK_EQ( CrewsSave( into, from_text, sizeof( from_text ) ), n );
+    CHECK( memcmp( from_text, wire, (size_t) n ) == 0 );
+    free( json );
+
+    // a DUPLICATE resets BOTH members of the pair, every slot AND the count
+    CrewsBuilder dup;
+    Crews * d = dup.GetRoot();
+    CrewsMembersEntry * first = CrewsMembersInsert( dup.main, d->members, 4u );
+    CHECK( first != NULL );
+    if ( first == NULL ) { return; }
+    first->value_count = 2;
+    CHECK( ItemEmplace( dup.main, first->value[0] ) != NULL );
+    CrewsMembersEntry * repeat = CrewsMembersInsert( dup.main, d->members, 4u );
+    CHECK( repeat == first );
+    CHECK( repeat != NULL && repeat->value_count == 0 );
+    CHECK( repeat != NULL && repeat->value[0].value == 0 );
+    CHECK_EQ( d->members.count, 1 );
+}
+
+static void test_unbounded_pointer_array_values()
+{
+    // []*Item: ONE member, the sixteen-byte list slot over TableRef elements,
+    // so the handle is the slot itself. Its slots ride in the HOLDER'S node
+    // extent as any list's do, and each names a node of the one walk.
+    TrailsBuilder b;
+    Trails * t = b.GetRoot();
+    static const uint32_t keys[2] = { 9, 4 }; // OUT OF KEY ORDER
+    for ( int i = 0; i < 2; i++ )
+    {
+        TableList<Item *> * steps = TrailsStepsInsert( b.main, t->steps, keys[i] );
+        CHECK( steps != NULL );
+        if ( steps == NULL ) { return; }
+        TableRef * slot = TrailsStepsEntryValueAdd( b.main, *steps );
+        CHECK( slot != NULL );
+        if ( slot == NULL ) { return; }
+        Item * item = ItemEmplace( b.main, *slot );
+        CHECK( item != NULL );
+        if ( item == NULL ) { return; }
+        item->count = (int32_t) ( keys[i] * 10 );
+        if ( keys[i] == 4 )
+        {
+            // two slots, one node, and a slot that names none past them
+            TableRef * share = TrailsStepsEntryValueAdd( b.main, *steps );
+            CHECK( share != NULL );
+            if ( share == NULL ) { return; }
+            *share = *slot;
+            CHECK( TrailsStepsEntryValueAdd( b.main, *steps ) != NULL );
+        }
+    }
+    t->after = 1;
+
+    const int64_t measured = TrailsMeasure( b );
+    static uint8_t wire[1u << 16];
+    const int64_t n = TrailsSave( b, wire, sizeof( wire ) );
+    CHECK_EQ( measured, n );
+    pin_golden( "map_trails", wire, n );
+
+    // the region: the entry array first, then EACH ENTRY'S list slots, the
+    // pre-order placement §2.8 states
+    const int64_t need = TrailsLoadMeasure( wire, n );
+    CHECK( need > 0 );
+    uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
+    if ( region == NULL ) { return; }
+    TableReport report;
+    const Trails * loaded = TrailsLoad( region, need, wire, n, &report );
+    CHECK( loaded != NULL );
+    CHECK( !report.malformed );
+    if ( loaded != NULL )
+    {
+        // A LIST WHOSE SLOTS WERE NOT PLACED HAS A NULL ELEMENT POINTER, so
+        // the count is checked and the slots are read only under it: a walk
+        // that never laid the extent must report on a CHECK and not on a fault
+        const TableList<Item *> * four = loaded->steps.Find( 4u );
+        CHECK( four != NULL && four->count == 3 );
+        if ( four != NULL && four->count == 3 )
+        {
+            const Item * a = ( *four )[0];
+            CHECK( a != NULL && a->count == 40 );
+            CHECK( ( *four )[1] == a );    // two slots, one node
+            CHECK( ( *four )[2] == NULL ); // and a slot that names none
+        }
+        const TableList<Item *> * nine = loaded->steps.Find( 9u );
+        CHECK( nine != NULL && nine->count == 1 );
+        if ( nine != NULL && nine->count == 1 )
+        {
+            const Item * only = ( *nine )[0];
+            CHECK( only != NULL && only->count == 90 );
+        }
+        CHECK_EQ( loaded->after, 1 );
+        static uint8_t again[1u << 16];
+        CHECK_EQ( TrailsSave( loaded, again, sizeof( again ) ), n );
+        CHECK( memcmp( again, wire, (size_t) n ) == 0 );
+    }
+    free( region );
+
+    CHECK( b.Lock() );
+    const Trails * locked = b.AsConst();
+    CHECK( locked != NULL );
+    if ( locked == NULL ) { return; }
+    const int64_t json_bytes = TrailsToJsonMeasure( locked );
+    CHECK( json_bytes > 0 );
+    char * json = (char *) MEASURED_CALLOC( json_bytes, 1 );
+    if ( json == NULL ) { return; }
+    CHECK_EQ( TrailsToJson( locked, json, json_bytes ), json_bytes );
+    CHECK( strstr( json, "\"&node\": 1" ) != NULL );
+    CHECK( strstr( json, "\"count\": 40" ) != NULL );
+    CHECK( strstr( json, "\"count\": 90" ) != NULL );
+    CHECK( strstr( json, "null" ) != NULL );
+    const char * four_at = strstr( json, "\"4\"" );
+    const char * nine_at = strstr( json, "\"9\"" );
+    CHECK( four_at != NULL && nine_at != NULL && four_at < nine_at ); // ASCENDING
+
+    TrailsBuilder into;
+    TableReport text_report;
+    CHECK( TrailsFromJson( into, json, json_bytes, &text_report ) );
+    CHECK( !text_report.malformed );
+    static uint8_t from_text[1u << 16];
+    CHECK_EQ( TrailsSave( into, from_text, sizeof( from_text ) ), n );
+    CHECK( memcmp( from_text, wire, (size_t) n ) == 0 );
+    free( json );
+
+    // a DUPLICATE resets the list SLOT, so the repeat starts empty and the
+    // first insert's nodes are unreachable rather than inherited
+    TrailsBuilder dup;
+    Trails * d = dup.GetRoot();
+    TableList<Item *> * first = TrailsStepsInsert( dup.main, d->steps, 4u );
+    CHECK( first != NULL );
+    if ( first == NULL ) { return; }
+    CHECK( TrailsStepsEntryValueAdd( dup.main, *first ) != NULL );
+    TableList<Item *> * repeat = TrailsStepsInsert( dup.main, d->steps, 4u );
+    CHECK( repeat == first );
+    CHECK( repeat != NULL && repeat->count == 0 );
+    CHECK_EQ( d->steps.count, 1 );
+}
+
 // ---- the MESSAGE FORM over maps (docs/SPEC-TABLES.md §2.8, §3.3) ----
 //
 // A map rides on the message wire as its thirty-two bit count and its entries
@@ -2179,6 +2526,9 @@ int main( int argc, char ** argv )
     test_unbounded_values();
     test_blob_values();
     test_byte_blob_values();
+    test_pointer_array_values();
+    test_counted_pointer_array_values();
+    test_unbounded_pointer_array_values();
     test_message_form();
 
     if ( failures != 0 )

@@ -6,6 +6,21 @@
 # test/cs/schematest.csproj and its ludicrous twin carry the same relative path
 SERIALIZE_CS ?= ../serialize.cs
 
+# The .NET SDK, pinned per project the way every other leg's toolchain is. The
+# SDK VERSION lives in .github/dotnet-version, which both workflows read and
+# internal/ci gates; there is no unpacked copy under dist/ because the SDK
+# installs itself into the machine, so this pin names the COMMAND and the
+# toolchain gate holds it to resolving. Point it at another SDK with
+# DOTNET=/path/to/dotnet.
+DOTNET ?= dotnet
+
+# THE TOOLCHAIN GATE, this leg's half (issue #599; the Makefile's header and
+# docs/CONTRIBUTING.md, "Adding a language"). The C# half of the block gates in
+# the Makefile reads the same pin, so a dotnet that does not resolve stops the
+# chain here rather than in the middle of a two-language control.
+.PHONY: toolchain-cs
+toolchain-cs:
+	@$(call toolchain_probe,cs,DOTNET,$(DOTNET))
 # Packet defaults consume the shared C++ oracle in both build modes.
 build/packet-defaults/cs/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema make/cs.mk
 	./bin/schema generate --lang cs --out build/packet-defaults/cs/defaults test/packet-defaults/Defaults.schema
@@ -14,8 +29,8 @@ build/packet-defaults/cs/.stamp: bin/schema test/packet-defaults/Defaults.schema
 
 .PHONY: packet-defaults-cs packet-defaults-cs-negative-control
 packet-defaults-cs: build/packet-defaults/cs/.stamp packet-defaults-cpp
-	dotnet run --project test/packet-defaults/cs/packet-defaults.csproj -- testdata/wire/packet-defaults
-	dotnet run --configuration Release --project test/packet-defaults/cs/packet-defaults.csproj -- testdata/wire/packet-defaults
+	$(DOTNET) run --project test/packet-defaults/cs/packet-defaults.csproj -- testdata/wire/packet-defaults
+	$(DOTNET) run --configuration Release --project test/packet-defaults/cs/packet-defaults.csproj -- testdata/wire/packet-defaults
 
 packet-defaults-cs-negative-control: packet-defaults-cs
 	@mkdir -p build/packet-defaults/cs-negative
@@ -25,9 +40,9 @@ packet-defaults-cs-negative-control: packet-defaults-cs
 		"$(CURDIR)" "$(CURDIR)" > build/packet-defaults/cs-negative/overlay.json
 	go build -overlay=build/packet-defaults/cs-negative/overlay.json -o build/packet-defaults/cs-negative/schema ./cmd/schema
 	./build/packet-defaults/cs-negative/schema generate --lang cs --out build/packet-defaults/cs-negative/generated test/packet-defaults/Defaults.schema
-	dotnet build test/packet-defaults/cs/packet-defaults.csproj \
+	$(DOTNET) build test/packet-defaults/cs/packet-defaults.csproj \
 		-p:DefaultsDir="$(CURDIR)/build/packet-defaults/cs-negative/generated" -o build/packet-defaults/cs-negative/checker
-	@if dotnet build/packet-defaults/cs-negative/checker/packet-defaults.dll testdata/wire/packet-defaults > build/packet-defaults/cs-negative/log 2>&1; then \
+	@if $(DOTNET) build/packet-defaults/cs-negative/checker/packet-defaults.dll testdata/wire/packet-defaults > build/packet-defaults/cs-negative/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: missing constructor bytes passed in C#'; exit 1; fi
 	@grep -Fq 'FAILED: packet-default constructor bytes' build/packet-defaults/cs-negative/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: C# failed for another reason'; cat build/packet-defaults/cs-negative/log; exit 1; }
@@ -157,11 +172,11 @@ tables-cs-refuses-pointers: bin/schema
 # million mutants each is ~23 s — inside the 60 s this gate is allowed and ten
 # times the shared N. `make ... N=<n>` still overrides it.
 COOK_CS_N ?= 1000000
-COOK_CS := cd test/cs-cook && dotnet run --no-build --
+COOK_CS := cd test/cs-cook && $(DOTNET) run --no-build --
 
 .PHONY: build-cs-cook
 build-cs-cook: build/tables-generated-cs/.stamp
-	cd test/cs-cook && dotnet build -v q --nologo
+	cd test/cs-cook && $(DOTNET) build -v q --nologo
 
 .PHONY: tables-cook-open-cs
 tables-cook-open-cs: build-cs-cook build/schema_test_cook build/cook-open/.stamp build/cook-open-fixed/.stamp
@@ -185,8 +200,8 @@ tables-cook-open-cs: build-cs-cook build/schema_test_cook build/cook-open/.stamp
 	$(COOK_CS) usage Scene ../../build/cook-open/Scene.cook
 	$(COOK_CS) forge Scene ../../build/cook-open/Scene.cook
 	$(COOK_CS) forge Depot ../../build/cook-open/Depot.cook
-	cd test/cs-cook && SEED=$(SEED) N=$(if $(filter-out 100000,$(N)),$(N),$(COOK_CS_N)) dotnet run --no-build -- fuzz Scene ../../build/cook-open/Scene.cook
-	cd test/cs-cook && SEED=$(SEED) N=$(if $(filter-out 100000,$(N)),$(N),$(COOK_CS_N)) dotnet run --no-build -- fuzz TreeNode ../../build/cook-open/TreeNode.cook
+	cd test/cs-cook && SEED=$(SEED) N=$(if $(filter-out 100000,$(N)),$(N),$(COOK_CS_N)) $(DOTNET) run --no-build -- fuzz Scene ../../build/cook-open/Scene.cook
+	cd test/cs-cook && SEED=$(SEED) N=$(if $(filter-out 100000,$(N)),$(N),$(COOK_CS_N)) $(DOTNET) run --no-build -- fuzz TreeNode ../../build/cook-open/TreeNode.cook
 	$(COOK_CS) accept Scene ../../build/cook-open/Scene.cook
 	# THE BYTE-ORDER LEG's C# half, and it is HALF: a cook written --byte-order
 	# big is refused by the MAGIC here, which is the refusal the page promises.
@@ -226,7 +241,7 @@ define cook_open_cs_sabotage
 		"$(CURDIR)" "$(CURDIR)" > build/cook-open-cs-$(1)/overlay.json
 	@go build -overlay=build/cook-open-cs-$(1)/overlay.json -o build/cook-open-cs-$(1)/schema ./cmd/schema
 	./build/cook-open-cs-$(1)/schema generate --lang cs --out build/cook-open-cs-$(1)/gen tables/pointers
-	@if ( cd test/cs-cook && dotnet build -v q --nologo \
+	@if ( cd test/cs-cook && $(DOTNET) build -v q --nologo \
 			-p:CookGeneratedDir=../../build/cook-open-cs-$(1)/gen \
 			-p:BaseOutputPath=../../build/cook-open-cs-$(1)/bin/ \
 			-p:BaseIntermediateOutputPath=../../build/cook-open-cs-$(1)/obj/ \
@@ -234,7 +249,7 @@ define cook_open_cs_sabotage
 		echo "NEGATIVE CONTROL FAILED: the sabotaged emitter's output does not compile"; \
 		cat build/cook-open-cs-$(1)/build.log; exit 1; \
 	fi
-	@if ( cd test/cs-cook && dotnet run --no-build \
+	@if ( cd test/cs-cook && $(DOTNET) run --no-build \
 			-p:CookGeneratedDir=../../build/cook-open-cs-$(1)/gen \
 			-p:BaseOutputPath=../../build/cook-open-cs-$(1)/bin/ \
 			-p:BaseIntermediateOutputPath=../../build/cook-open-cs-$(1)/obj/ \
@@ -268,7 +283,7 @@ tables-cook-open-cs-walk-negative-control: build/cook-open/.stamp
 		"$(CURDIR)" "$(CURDIR)" > build/cook-open-cs-walk/overlay.json
 	@go build -overlay=build/cook-open-cs-walk/overlay.json -o build/cook-open-cs-walk/schema ./cmd/schema
 	./build/cook-open-cs-walk/schema generate --lang cs --out build/cook-open-cs-walk/gen tables/pointers
-	@if ( cd test/cs-cook && dotnet build -v q --nologo \
+	@if ( cd test/cs-cook && $(DOTNET) build -v q --nologo \
 			-p:CookGeneratedDir=../../build/cook-open-cs-walk/gen \
 			-p:BaseOutputPath=../../build/cook-open-cs-walk/bin/ \
 			-p:BaseIntermediateOutputPath=../../build/cook-open-cs-walk/obj/ \
@@ -276,7 +291,7 @@ tables-cook-open-cs-walk-negative-control: build/cook-open/.stamp
 		echo "NEGATIVE CONTROL FAILED: the sabotaged emitter's output does not compile"; \
 		cat build/cook-open-cs-walk/build.log; exit 1; \
 	fi
-	@if ( cd test/cs-cook && ITERATIONS=10 dotnet run --no-build \
+	@if ( cd test/cs-cook && ITERATIONS=10 $(DOTNET) run --no-build \
 			-p:CookGeneratedDir=../../build/cook-open-cs-walk/gen \
 			-p:BaseOutputPath=../../build/cook-open-cs-walk/bin/ \
 			-p:BaseIntermediateOutputPath=../../build/cook-open-cs-walk/obj/ \
@@ -301,7 +316,7 @@ generated/bench/cs/.stamp: bin/schema $(SCHEMAS_BENCH)
 
 .PHONY: build-conformance-cs
 build-conformance-cs: build/tables-generated-cs/.stamp
-	cd test/conformance/cs && dotnet build -v q --nologo
+	cd test/conformance/cs && $(DOTNET) build -v q --nologo
 
 # THE NEGATIVE CONTROL FOR THE C# WALK (docs/SPEC-TABLES.md §16.5), and it is a
 # different sabotage from the C++ one above on purpose. That one flips a byte of
@@ -358,7 +373,7 @@ tables-cs-leg:
 # (a unit that generates but does not compile is issue #80's lesson), and the
 # packet tests.
 .PHONY: test-cs
-test-cs: build/tables-generated-cs/.stamp generated/bench/tables/cs/.stamp generated/cs/.stamp generated/cs-ludicrous/.stamp generated/bench/cs/.stamp
+test-cs: toolchain-cs build/tables-generated-cs/.stamp generated/bench/tables/cs/.stamp generated/cs/.stamp generated/cs-ludicrous/.stamp generated/bench/cs/.stamp
 	$(MAKE) tables-cs-json-walk
 	$(MAKE) tables-cs-standalone
 	$(MAKE) tables-cs-refuses-pointers
@@ -368,13 +383,15 @@ test-cs: build/tables-generated-cs/.stamp generated/bench/tables/cs/.stamp gener
 	$(MAKE) tables-cook-open-cs-lengths-negative-control
 	$(MAKE) tables-cook-open-cs-root-negative-control
 	$(MAKE) tables-cook-open-cs-walk-negative-control
-	dotnet build bench/tables/cs -c Release --nologo -v quiet
-	cd bench/cs && dotnet build -c Release --nologo -v quiet
-	cd test/cs && dotnet run
-	cd test/cs-ludicrous && dotnet run
+	$(DOTNET) build bench/tables/cs -c Release --nologo -v quiet
+	cd bench/cs && $(DOTNET) build -c Release --nologo -v quiet
+	cd test/cs && $(DOTNET) run
+	cd test/cs-ludicrous && $(DOTNET) run
 
 TEST_LEGS         += test-cs
-CONFORMANCE_LEGS  += build-conformance-cs build-cs-cook
+TOOLCHAIN_LEGS    += cs
+TOOLCHAIN_PINS_cs  := DOTNET
+CONFORMANCE_LEGS  += $(call unless_skipped,cs,build-conformance-cs build-cs-cook)
 BENCH_TABLES_LEGS += generated/bench/tables/cs/.stamp
 GOLDENS_LEGS      += update-goldens-cs
 # Packet UTF-8 content validation, including a compiled mutation control.
@@ -384,9 +401,9 @@ build/packet-text/cs/.stamp: bin/schema test/packet-text/Narrow.schema
 
 .PHONY: packet-utf8-cs packet-utf8-cs-negative-control
 packet-utf8-cs: build/packet-text/cs/.stamp build/packet-text/cpp/driver build/packet-text/harness
-	dotnet build test/packet-text/cs/packet-text.csproj -c Debug -o build/packet-text/cs/debug --nologo
+	$(DOTNET) build test/packet-text/cs/packet-text.csproj -c Debug -o build/packet-text/cs/debug --nologo
 	./build/packet-text/harness dotnet build/packet-text/cs/debug/packet-text.dll
-	dotnet build test/packet-text/cs/packet-text.csproj -c Release -o build/packet-text/cs/release --nologo
+	$(DOTNET) build test/packet-text/cs/packet-text.csproj -c Release -o build/packet-text/cs/release --nologo
 	./build/packet-text/harness dotnet build/packet-text/cs/release/packet-text.dll
 
 packet-utf8-cs-negative-control: packet-utf8-cs
@@ -394,7 +411,7 @@ packet-utf8-cs-negative-control: packet-utf8-cs
 	go run ./tools/sabotage -name packet-utf8-cs-read -out build/packet-text/cs-negative/utf8.gotext internal/codegen/csharp/utf8.go
 	@printf '{"Replace":{"%s/internal/codegen/csharp/utf8.go":"%s/build/packet-text/cs-negative/utf8.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-text/cs-negative/overlay.json
 	go run -overlay=build/packet-text/cs-negative/overlay.json ./cmd/schema generate --lang cs --out build/packet-text/cs-negative test/packet-text/Narrow.schema
-	dotnet build test/packet-text/cs/packet-text.csproj -c Release -o build/packet-text/cs-negative/bin -p:TextDir="$(CURDIR)/build/packet-text/cs-negative" --nologo
+	$(DOTNET) build test/packet-text/cs/packet-text.csproj -c Release -o build/packet-text/cs-negative/bin -p:TextDir="$(CURDIR)/build/packet-text/cs-negative" --nologo
 	@if ./build/packet-text/harness -mutations-only dotnet build/packet-text/cs-negative/bin/packet-text.dll > build/packet-text/cs-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: C# UTF-8 removal passed'; exit 1; fi
 	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-text/cs-negative/log || { cat build/packet-text/cs-negative/log; exit 1; }
 	@echo 'packet UTF-8 C# negative control: removed read validation fails bit-flip agreement'
@@ -409,11 +426,11 @@ build/packet-wide/cs/.stamp: bin/schema build/packet-wide/source/WideText.schema
 
 .PHONY: packet-wide-cs packet-wide-cs-negative-control
 packet-wide-cs: build/packet-wide/cs/.stamp build/packet-wide/cpp/driver build/packet-text/harness
-	dotnet build test/packet-wide/cs/packet-wide.csproj -c Debug -o build/packet-wide/cs/debug --nologo
-	dotnet build/packet-wide/cs/debug/packet-wide.dll --contracts
+	$(DOTNET) build test/packet-wide/cs/packet-wide.csproj -c Debug -o build/packet-wide/cs/debug --nologo
+	$(DOTNET) build/packet-wide/cs/debug/packet-wide.dll --contracts
 	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver dotnet build/packet-wide/cs/debug/packet-wide.dll
-	dotnet build test/packet-wide/cs/packet-wide.csproj -c Release -o build/packet-wide/cs/release --nologo
-	dotnet build/packet-wide/cs/release/packet-wide.dll --contracts
+	$(DOTNET) build test/packet-wide/cs/packet-wide.csproj -c Release -o build/packet-wide/cs/release --nologo
+	$(DOTNET) build/packet-wide/cs/release/packet-wide.dll --contracts
 	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver dotnet build/packet-wide/cs/release/packet-wide.dll
 
 packet-wide-cs-negative-control: packet-wide-cs
@@ -421,7 +438,7 @@ packet-wide-cs-negative-control: packet-wide-cs
 	go run ./tools/sabotage -name packet-wide-cs-pairing -out build/packet-wide/cs-negative/wstring.gotext internal/codegen/csharp/wstring.go
 	@printf '{"Replace":{"%s/internal/codegen/csharp/wstring.go":"%s/build/packet-wide/cs-negative/wstring.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-wide/cs-negative/overlay.json
 	go run -overlay=build/packet-wide/cs-negative/overlay.json ./cmd/schema generate --lang cs --out build/packet-wide/cs-negative build/packet-wide/source/WideText.schema
-	dotnet build test/packet-wide/cs/packet-wide.csproj -c Release -o build/packet-wide/cs-negative/bin -p:TextDir="$(CURDIR)/build/packet-wide/cs-negative" --nologo
+	$(DOTNET) build test/packet-wide/cs/packet-wide.csproj -c Release -o build/packet-wide/cs-negative/bin -p:TextDir="$(CURDIR)/build/packet-wide/cs-negative" --nologo
 	@if ./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver -mutations-only dotnet build/packet-wide/cs-negative/bin/packet-wide.dll > build/packet-wide/cs-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: C# wide pairing removal passed'; exit 1; fi
 	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-wide/cs-negative/log || { cat build/packet-wide/cs-negative/log; exit 1; }
 	@echo 'packet wide C# negative control: removed pairing fails bit-flip agreement'

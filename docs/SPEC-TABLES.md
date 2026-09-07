@@ -1699,6 +1699,21 @@ about a value's storage is the map's:
   field has (§2.1, §2.5), one member, and the node it names takes its index
   where the map is reached.
 
+**AN ARRAY OF POINTERS IS ITS ARRAY FORM'S ROW OVER A REFERENCE ELEMENT**
+(§2.1, §4.2). The element is a pointer, so the ELEMENT is the eight-byte
+reference and the ARRAY FORM decides the rest, exactly as the same three
+spellings decide it at any other field:
+
+- `[N]*T` stores `N` references, one member;
+- `[..N]*T` stores `N` references beside its `int32` used count, two members;
+- `[]*T` stores the sixteen-byte list slot over reference elements, one member.
+
+Each slot names a node of the walk below, so two slots may name one node and a
+slot may name none, and nothing about that is the map's either. `[E]*T`,
+`[N]*string` and `[]*bytes` are refused by name (§2.4, §15), and the refusal
+reaches a map's value at the entry, because the value is a field of a table
+nobody wrote.
+
 **THE HANDLE FOLLOWS THE STORAGE.** `Insert`, `Find` and `Each` hand back a
 pointer to the `value` member where the storage is ONE member, and the ENTRY
 where it is two, because two members are not one addressable slot and a caller
@@ -1706,9 +1721,12 @@ that cannot set the length or the count cannot fill the value. A `[N]T` value's
 handle points at the ARRAY rather than at its first element, so the extent
 survives the handoff. A `*T`, `*string` or `*bytes` value's BUILDER handle is
 the SLOT, which is what an `Emplace` fills, and the const `Find` answers the
-RESOLVED node, one add on the self-relative delta. Where the handle is the
-entry, the caller fills `value` and its companion and leaves `key` to the map,
-which owns the order the key carries.
+RESOLVED node, one add on the self-relative delta. THE ARRAY FORM DECIDES AN
+ARRAY OF POINTERS' HANDLE, NEVER THE ELEMENT: a `[N]*T` hands back the array of
+references, a `[..N]*T` the entry, a `[]*T` the list slot, and the caller
+resolves each slot as it resolves any pointer. Where the handle is the entry,
+the caller fills `value` and its companion and leaves `key` to the map, which
+owns the order the key carries.
 
 **And a map is a BY-VALUE EDGE of the ONE declaration-order walk** (§3.1,
 schema#438). The numbering, the pack measure and the pack are one walk over
@@ -5436,6 +5454,15 @@ entries announces about 5 KB once.
   lands whole and counts nothing. Red if a leg stores text the file form
   refuses, cuts a clamp inside a code point, keeps fewer bytes than the bound
   admits, or counts `clamped` on a payload that fits.
+- **The same content rule met at a NODE.** A `*string` blob record on a
+  form-`2` body carrying a truncated sequence, one carrying a zero byte, one
+  carrying an overlong encoding and one carrying a lead byte UTF-8 never
+  spells, each damage and terminal for the batch on §3.1's own terms. Beside
+  them a well-formed blob, which loads with a silent report, and the same
+  ill-formed bytes under the reserved `bytes` id, which loads with a silent
+  report too, because a `*bytes` blob is bytes and never text. Red if a leg
+  places a record the file form refuses, refuses a record the file form places,
+  or reads a `*bytes` blob as text.
 - **The pad, and what follows it.** A batch whose trailing bits to the byte
   boundary are not zero, and a buffer carrying a whole batch and then a byte
   more. Red if a leg reads either clean.
@@ -6177,7 +6204,9 @@ without a rule of its own.** The value is an ordinary field of the generated
 entry and its storage is that field's own row (§2.8), so an entry's body
 carries a field header, a length and a payload of the value's own kind: an
 array's `N` and ELEMENT KIND where the value is `[N]T`, `[..N]T`, `[E]T` or an
-unbounded `[]T`; a kind `17` NODE INDEX where it is `*T`, `*string` or
+unbounded `[]T`, and that element kind is `17` where the element is a pointer,
+so a `[N]*T`, a `[..N]*T` and a `[]*T` are the array strategies over node
+indices; a kind `17` NODE INDEX where the value is `*T`, `*string` or
 `*bytes`, and the blob record it names is a record of the node table like any
 other; and the kind `12` and kind `33` payloads the text strategies above name.
 The strategies are enumerated over field positions, so each lands inside an
@@ -13617,6 +13646,26 @@ schema name, as everywhere else in that backend.
   so that the base's alignment can be the last clause. A block whose bytes
   are fewer than its prologue answers `truncated`, and a null base
   `unaligned_base`, on the readings §7 gives those two.
+
+  **THE READ SIDE TAKES A CONST OVERLOAD, and the surface SPLITS the way C#'s
+  already does.** A block is memory another build wrote, so a consumer opens
+  bytes it did not produce: it reads them and writes nothing, and a read-only
+  mapping is not something a loader should have to `const_cast` to open. So
+  `bool <Name>BlockOpen( <Name>Block::Const & block, const void * base,
+  int64_t bytes, TableRefuseReason * reason = NULL )` sits beside the mutable
+  one. `<Name>Block::Const` is a MEMBER TYPE of the handle above and claims no
+  name of its own (§11); it carries the same three facts with `const` on both
+  pointers, and the row accessors overloaded on it answer the CONST VIEWS,
+  `TableBlockConstRows<Row>` and `TableBlockConstSpan<Row>`, whose iterators,
+  spans and typed base all hand back `const Row`. **THE CHECK IS ONE BODY**:
+  both overloads run the same clauses in the same order and name the same
+  reason on the same refusal, because a check reads and never writes, so the
+  two paths cannot drift. **The PRODUCER's path is unchanged** in every part:
+  `Begin`, the fill accessors and the typed base a worker indexes are what
+  they were, and a producer holds a mutable block exactly as before. The split
+  is the one C# states above with `ref readonly` and `ReadOnlySpan<Row>`, and
+  the one Rust has by returning `&[Row]`. **A write through a const view is a
+  COMPILE ERROR**, held by a negative compile control (§19.5).
 - **An array is ITERATED, not indexed by hand.** The accessor yields a
   reference to each row where it lies, at the pitch the instance gives, for
   `count` rows — a range-for in C++, an enumerator in C#, the equivalent per
@@ -13829,6 +13878,17 @@ difference between a form and a convention.
   offset in the compiler's layout model and the generated asserts go red on
   both backends. A layout test that shares its layout model with the code it
   checks proves nothing, and these two are what separate them.
+- **THE CONST READ PATH, and its NEGATIVE COMPILE CONTROL** (§19.2). A pinned
+  block image is loaded, held as a `const uint8_t *` from that moment and
+  opened with no cast through the const overload; its rows are walked through
+  `TableBlockConstRows` and `TableBlockConstSpan` and compared, value for
+  value, against the same bytes opened writable, so the two overloads agree
+  and the producer's path is proved unchanged rather than assumed. The refusal
+  clauses answer on the const overload too, a null base and a short buffer and
+  an unaligned base each naming what §19.2 gives it. The CONTROL is the half a
+  run cannot hold: the same program with one assignment through the const view
+  must FAIL TO COMPILE, on the const qualification, because a read-only view
+  whose writes compile is a view in name only.
 - **A `bool` row.** A row type carrying two `bool`s beside its scalars, whose
   C# size and offsets are asserted under the managed model (§19.3) — the case
   where the two C# layout models disagree, pinned so a port cannot pick the
