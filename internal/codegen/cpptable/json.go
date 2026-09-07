@@ -275,6 +275,13 @@ inline bool TableJsonWriteMap( TableJsonOut & out, const void * slot, const Tabl
 // walked as a JSON number over its own bytes; a token that rule calls
 // malformed makes the KEY malformed, and a genuinely fractional value, or one
 // outside the key kind's range, is kind_mismatch for that entry.
+//
+// THE KEY IS THE SPELLING AND NOTHING AROUND IT. The number walk steps over
+// leading whitespace and comments, which is right BETWEEN tokens and wrong
+// INSIDE one: a key is an identity, and a padded spelling that resolved to the
+// same integer would be a second name for one entry. So the walk must begin at
+// the token's first byte, and a token with anything before the number is not a
+// JSON number at all, which is malformed on the terms "1-2" is.
 inline bool TableJsonMapKeyValue( const char * token, int32_t length, const TableFieldInfo * key,
                                   int64_t & value, bool & fits )
 {
@@ -282,14 +289,16 @@ inline bool TableJsonMapKeyValue( const char * token, int32_t length, const Tabl
     TableReport scratch;
     TableJsonIn probe = { token, (int64_t) length, 0, &scratch, false, NULL };
     bool integral = false;
+    TableJsonSpace( probe );
+    if ( probe.pos != 0 ) { return false; } // whitespace is never part of a key
     if ( !TableJsonWalkNumber( probe, &integral ) ) { return false; }
     if ( probe.pos != (int64_t) length ) { return false; } // trailing bytes: not a number
     // A MAP KEY'S POLICY over the one interpreted value: it REJECTS THE WHOLE
     // ENTRY. A key is an identity, so a clamped one is two entries merged, and
     // a value the key kind does not hold is kind_mismatch for that entry,
     // dropped and counted, never clamped.
-    const TableJsonInteger number = TableJsonInterpret( token, length, integral );
-    if ( !number.finite || number.fractional || number.saturated ) { return true; }
+    const TableJsonInteger number = TableJsonInterpretExact( token, length );
+    if ( number.fractional || number.saturated ) { return true; }
     bool moved = false;
     value = TableJsonIntegerInDomain( number, TableJsonMapKeySigned( key ), (int32_t) key->elem_size, moved );
     fits = !moved;
@@ -2036,6 +2045,13 @@ inline double TableJsonTokenDouble( const char * token, int32_t length, bool sin
 // an ordinary FIELD clamps to its domain and counts, and a MAP KEY rejects the
 // whole entry, because a key is an identity and a clamped one is two entries
 // merged. That difference is the only difference between them.
+//
+// THE KEY READS ITS TOKEN EXACTLY AND A FIELD READS IT THROUGH THE DOUBLE, and
+// that is the one place the two interpretations part. A key is an IDENTITY, so
+// two spellings a 53-bit mantissa cannot tell apart are two keys and the key
+// path carries TableJsonInterpretExact below. A field's value is a quantity
+// under a clamp, and its interpretation is the one the C, Go and Rust ports
+// read the same texts with, so it lives here and reads as they read.
 struct TableJsonInteger
 {
     uint64_t magnitude; // |value|, exact for every integral token 64 bits hold
@@ -2045,9 +2061,9 @@ struct TableJsonInteger
     bool finite;        // false: no integer target holds it at all
 };
 
-// the token, parsed digit by digit so no width and no locale can move it, and
-// through the runtime's converter only where the spelling carries a fraction or
-// an exponent
+// THE FIELD'S INTERPRETATION: the token, parsed digit by digit so no width and
+// no locale can move it, and through the runtime's converter only where the
+// spelling carries a fraction or an exponent
 inline TableJsonInteger TableJsonInterpret( const char * token, int32_t length, bool integral )
 {
     TableJsonInteger out;
@@ -2095,6 +2111,76 @@ inline TableJsonInteger TableJsonInterpret( const char * token, int32_t length, 
     if ( (double) truncated != whole ) { out.fractional = true; return out; }
     out.magnitude = truncated;
     if ( out.magnitude == 0 ) { out.negative = false; }
+    return out;
+}
+
+// THE DECIMAL BAND a token is answered in without arithmetic: 10^20 is above
+// UINT64_MAX whatever the digits are, so a point past it saturates and a token
+// spelling 1e999999999 costs nothing to refuse.
+const int64_t kTableJsonDecimalBand = 20;
+
+// THE MAP KEY'S INTERPRETATION, and no other path's: the token's own digits,
+// read where they stand, so no 53-bit mantissa decides the identity of a 64-bit
+// key. The int and frac runs are one digit string with the point after "point"
+// of them, and the exponent moves the point rather than the digits, which is
+// the normalization the wide kinds already use over one 64-bit lane. A zero
+// fraction is the integer the token spells at every magnitude the kind holds,
+// so 9007199254740993.0 is that key rather than the one a double rounds it to.
+// No exact reader has an infinity, so finite is true here always.
+inline TableJsonInteger TableJsonInterpretExact( const char * token, int32_t length )
+{
+    TableJsonInteger out;
+    out.magnitude = 0;
+    out.negative = false;
+    out.fractional = false;
+    out.saturated = false;
+    out.finite = true;
+    int32_t i = 0;
+    if ( i < length && token[i] == '-' ) { out.negative = true; i++; } // WalkNumber refuses a leading plus
+    const char * int_digits = token + i;
+    int32_t int_len = 0;
+    while ( i < length && token[i] >= '0' && token[i] <= '9' ) { int_len++; i++; }
+    const char * frac_digits = token + i;
+    int32_t frac_len = 0;
+    if ( i < length && token[i] == '.' )
+    {
+        i++;
+        frac_digits = token + i;
+        while ( i < length && token[i] >= '0' && token[i] <= '9' ) { frac_len++; i++; }
+    }
+    int64_t exp = 0;
+    if ( i < length && ( token[i] == 'e' || token[i] == 'E' ) )
+    {
+        i++;
+        bool exp_negative = false;
+        if ( i < length && ( token[i] == '-' || token[i] == '+' ) ) { exp_negative = token[i] == '-'; i++; }
+        while ( i < length && token[i] >= '0' && token[i] <= '9' )
+        {
+            if ( exp < 100000 ) { exp = exp * 10 + ( token[i] - '0' ); }
+            i++;
+        }
+        if ( exp_negative ) { exp = -exp; }
+    }
+    // leading and trailing zeros stripped, so the last digit kept is significant
+    int32_t start = 0, end = int_len + frac_len;
+    int64_t point = (int64_t) int_len + exp;
+    while ( start < end && ( start < int_len ? int_digits[start] : frac_digits[start - int_len] ) == '0' ) { start++; point--; }
+    while ( end > start && ( end - 1 < int_len ? int_digits[end - 1] : frac_digits[end - 1 - int_len] ) == '0' ) { end--; }
+    const int64_t digits = end - start;
+    if ( digits == 0 ) { out.negative = false; return out; } // the value is zero, and -0 IS zero
+    if ( point < digits ) { out.fractional = true; return out; } // a significant digit below the point
+    if ( point > kTableJsonDecimalBand ) { out.magnitude = UINT64_MAX; out.saturated = true; return out; }
+    for ( int32_t k = start; k < end; k++ )
+    {
+        const uint64_t digit = (uint64_t) ( ( k < int_len ? int_digits[k] : frac_digits[k - int_len] ) - '0' );
+        if ( out.magnitude > ( UINT64_MAX - digit ) / 10 ) { out.magnitude = UINT64_MAX; out.saturated = true; return out; }
+        out.magnitude = out.magnitude * 10 + digit;
+    }
+    for ( int64_t k = digits; k < point; k++ ) // the point's own zeros, which no digit spells
+    {
+        if ( out.magnitude > UINT64_MAX / 10 ) { out.magnitude = UINT64_MAX; out.saturated = true; return out; }
+        out.magnitude *= 10;
+    }
     return out;
 }
 
