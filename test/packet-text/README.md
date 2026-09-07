@@ -51,3 +51,10 @@ negative consumers compile with Java 17 warnings treated as errors. The
 fixture bytes are copied to `Text.schema` at build time because Java's outer
 file class cannot share the inner `Narrow` type's name. The declaration and
 wire stay identical. Both checks ride `test-java`.
+
+`make packet-utf8-js` checks both runtime and flat codecs in development and
+production. The same emitted scalar-range scan validates both tiers in place.
+Runtime reads expose their consumed bits; flat reads check the exact measured
+bound and refuse one bit less. Each tier has its own mutation-only failure
+check after the sabotaged modules pass syntax checks and import successfully.
+Both targets ride `test-js`.

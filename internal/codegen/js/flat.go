@@ -1334,6 +1334,7 @@ func (g *fgen) emitReadBytesField(f *ir.Field, name, ind string) {
 	g.pf("%s}\n", ind)
 	g.pf("%sbr += %s * 8;\n", ind, length)
 	if f.Type.Kind == ir.TString {
+		emitReadUTF8(g.pf, name, length, ind)
 		g.pf("%sfor (let %s = 0; %s < %s; %s++) {\n", ind, iv, iv, length, iv)
 		g.pf("%s  if (%s[%s] === 0) { // an interior null is content the read refuses\n", ind, name, iv)
 		g.pf("%s    return false;\n%s  }\n%s}\n", ind, ind, ind)
