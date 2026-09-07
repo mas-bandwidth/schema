@@ -1653,6 +1653,13 @@ tables-json-keyed-dup-negative-control: bin/schema test/tables/json_keyed_dup_ne
 # code point fails to fit stores bytes the input never spelled in that order
 # while the `clamped` count stays right. That is invisible to any test that
 # reads only counters. This sabotage drops the stop and the fixture must go red.
+#
+# THE CONTROL IS RUN BOTH WAYS, because a binary that only ever meets the
+# sabotage cannot show it has a blade: against the sabotaged walker it must SEE
+# the wrong bytes, and against the HONEST one it must find nothing to see. The
+# second arm is the one that goes red for a control whose verdict is whatever it
+# read rather than a reading of the bytes, which is what a control becomes the
+# moment a failed read or a moved clamp count counts as success.
 .PHONY: tables-json-clamp-prefix-negative-control
 tables-json-clamp-prefix-negative-control: bin/schema test/tables/json_clamp_prefix_negative_main.cpp
 	@rm -rf build/json-clamp-sabotage && mkdir -p build/json-clamp-sabotage
@@ -1663,6 +1670,16 @@ tables-json-clamp-prefix-negative-control: bin/schema test/tables/json_clamp_pre
 	$(CXX) -std=c++17 -Wall -Wextra -Werror -ffp-contract=off \
 		-Ibuild/json-clamp-sabotage test/tables/json_clamp_prefix_negative_main.cpp build/json-clamp-sabotage/TablesTable.cpp -o build/schema_test_json_clamp_prefix_negative
 	./build/schema_test_json_clamp_prefix_negative
+	@rm -rf build/json-clamp-honest && mkdir -p build/json-clamp-honest
+	@./bin/schema generate --lang cpp --out build/json-clamp-honest tables/examples
+	@$(CXX) -std=c++17 -Wall -Wextra -Werror -ffp-contract=off \
+		-Ibuild/json-clamp-honest test/tables/json_clamp_prefix_negative_main.cpp build/json-clamp-honest/TablesTable.cpp -o build/schema_test_json_clamp_prefix_honest
+	@if ./build/schema_test_json_clamp_prefix_honest > build/json-clamp-honest.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the control reported the defect against the HONEST walker,"; \
+		echo "      so what it prints is not a reading of the bytes"; \
+		cat build/json-clamp-honest.log; exit 1; \
+	fi
+	@echo "negative control: the clamp prefix control sees the defect under the sabotage and nothing without it"
 
 # THE NEGATIVE CONTROL FOR PER-CASE ABSENCE (test/conformance/README.md).
 #
