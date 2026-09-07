@@ -300,7 +300,7 @@ closure (SPEC-TABLES.md §2.6). Unions ride `type` bodies, arrays included.
 All nine targets carry payload-free arms in a `type` body. Select one by
 setting its tag alone: it has no payload to initialize. C and C++ emit no
 member for a payload-free arm, and omit the storage union entirely when no
-arm has a payload. Payload-free arms in a table closure remain C++ only;
+arm has a payload. Payload-free arms in a table closure are C++ only;
 the other eight targets refuse that table-side use (SPEC-TABLES.md §11).
 
 **Building your protocol.** A union of payload types is a message system

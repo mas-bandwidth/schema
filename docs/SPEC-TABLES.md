@@ -9958,7 +9958,7 @@ in build version (§20.5).
   makes it one. **A payload-free arm is outside the class**: it has no
   payload, so it rides the packet wire as its tag alone and a `type` body
   takes it in all nine backends (SPEC §4.8). **A payload-free arm reached by
-  a table closure remains C++ only**, and the other eight targets refuse it
+  a table closure is C++ only**, and the other eight targets refuse it
   naming the union and the target. And **a TABLE-CLOSURE union under every
   backend but C++** is refused naming the union and the target: the ports are
   a named follow-on (§15), and a port that emitted the union would name a
@@ -11508,7 +11508,8 @@ inspects everything in the schema built:
   stated where the packet union is, and what waits is the nine backends'
   packet codecs. Until they land, a union with a payload that is not a
   declared `type` is a table-closure construct, refused by name outside
-  one (§11). Payload-free arms already ride as the tag alone in all nine.
+  one (§11). A payload-free arm is not in this class: it rides as the tag
+  alone in all nine (§11, SPEC §4.8).
 - **A UNION WITH GENERAL ARMS ON THE TABLE WIRE IN EVERY OTHER BACKEND**
   (§2.6): C++ and the tool carry the scalar, enum, `flags`, string, `bytes`,
   array, pointer, nested-union and payload-free arms, and every other backend
