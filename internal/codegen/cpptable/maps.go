@@ -82,17 +82,32 @@ func mapKeyOrderType(f *ir.Field) string {
 	return "uint64_t"
 }
 
-// mapValueIsPointer reports a `map[K]*T` — the value is a pointer SLOT, so the
-// const form's Find answers the resolved `const T *` (docs/SPEC-TABLES.md §2.8).
-func mapValueIsPointer(f *ir.Field) bool { return ir.MapValueField(f).Type.Pointer }
-
-// mapValueIsText reports a `string(N)`, `wstring(N)` or `bytes(N)` value. Each
-// is an ordinary field of the generated entry (docs/SPEC-TABLES.md §2.8), and
-// each spells its storage as a PAIR: the buffer and the `int32` used length
-// beside it (§7.2). Two members are not one addressable slot, so the handle
-// every map surface hands back is the ENTRY, which reaches both.
-func mapValueIsText(f *ir.Field) bool {
+// mapValueIsPointer reports a `map[K]*T`, whose value is ONE pointer SLOT, so
+// the const form's Find answers the resolved `const T *` (docs/SPEC-TABLES.md
+// §2.8). AN ARRAY OF POINTERS IS NOT THIS CASE. `[N]*T`, `[..N]*T` and `[]*T`
+// store a `TableRef` PER ELEMENT (§2.1, §4.2), so each takes the arm its array
+// form takes and carries `TableRef` as the element; a predicate that read
+// `Type.Pointer` alone sent all three here and spelled `<T>At` on an array.
+// `[E]*T` is refused by name (§2.4, §15) and reaches no arm at all.
+func mapValueIsPointer(f *ir.Field) bool {
 	value := ir.MapValueField(f)
+	return value.Type.Pointer && value.Array == ir.ArrayNone && value.KeyEnum == ""
+}
+
+// mapValueIsPair reports a value whose storage is TWO MEMBERS: the buffer or
+// the element array, and the `int32` length or count beside it that says how
+// much of it is used (docs/SPEC-TABLES.md §2.8, §4.2, §7.2). That is
+// `string(N)`, `wstring(N)`, `bytes(N)`, `[..N]T` and `[..N]*T`. Each is an
+// ordinary field of the generated entry, and two members are not one
+// addressable slot, so the handle every map surface hands back is the ENTRY,
+// which reaches both. A COUNTED ARRAY IS A PAIR WHATEVER ITS ELEMENT IS: a
+// pointer element changes the element's storage to a `TableRef` and changes
+// nothing about the count beside it.
+func mapValueIsPair(f *ir.Field) bool {
+	value := ir.MapValueField(f)
+	if value.Array == ir.ArrayCounted {
+		return true
+	}
 	if value.Type.Pointer {
 		return false
 	}
@@ -101,6 +116,34 @@ func mapValueIsText(f *ir.Field) bool {
 		return true
 	}
 	return false
+}
+
+// mapValueIsFixedArray reports a `[N]T` or `[N]*T` value. Its storage is ONE
+// member, an array of a fixed extent (docs/SPEC-TABLES.md §4.2), and a pointer
+// to that member keeps the extent. `[E]T` is not this case: it stores a
+// `TableKeyed<T, E>`, which is an ordinary one-member type spelling.
+func mapValueIsFixedArray(f *ir.Field) bool {
+	value := ir.MapValueField(f)
+	return value.KeyEnum == "" && value.Array == ir.ArrayFixed
+}
+
+// mapValueArrayAlias names the array type a `[N]T` value's handle points at.
+// A return type cannot spell `T (*)[N]` inline without wrapping the declarator
+// around the function name, so the alias is what makes the handle readable.
+func mapValueArrayAlias(f *ir.Field) string { return mapEntryOf(f).Name + "Value" }
+
+// mapValueElementType is the C++ type ONE ELEMENT of an array value is stored
+// as: a `TableRef` where the element is a pointer, which is the row §4.2 gives
+// an array of pointers at a field, and the element's own type otherwise
+// (docs/SPEC-TABLES.md §2.1, §4.2).
+func (g *tableGen) mapValueElementType(f *ir.Field) string {
+	value := ir.MapValueField(f)
+	if value.Type.Pointer {
+		g.noteRef(value.Type.Name)
+		return "TableRef"
+	}
+	typ, _ := g.cppFieldType(value.Type)
+	return typ
 }
 
 // ---- the runtime (docs/SPEC-TABLES.md §2.8) ----
@@ -851,23 +894,47 @@ func (g *tableGen) emitMapEntrySurface(owner *ir.Struct, f *ir.Field) {
 	}
 	// what a Find answers, and what an iteration yields beside the key
 	switch {
+	case mapValueIsPointer(f) && value.Type.Blob():
+		// a map[K]*string or map[K]*bytes: the value names a BLOB NODE (§2.5),
+		// so its storage is the eight-byte reference every pointer field has
+		// and the const Find resolves it exactly as TableBlobAt does. A blob
+		// has no declared type name, which is why it takes its own arm here.
+		g.pf("// a map[K]*string or map[K]*bytes: the value is a slot naming a BLOB\n")
+		g.pf("// NODE (§2.5), so the const Find answers the RESOLVED blob, one add on\n")
+		g.pf("// the self-relative delta, exactly as TableBlobAt answers it (§6.2, §6.3)\n")
+		g.pf("inline const TableBlob * TableEntryFound( const %s * entry ) { return entry != NULL ? TableBlobAt( entry->value ) : NULL; }\n", n)
+		g.pf("inline TableRef * TableEntryValue( %s * entry ) { return &entry->value; } // the builder hands back the SLOT\n", n)
 	case mapValueIsPointer(f):
 		t := value.Type.Name
 		g.pf("// a map[K]*T: the const Find answers the RESOLVED pointer, one add on the\n")
 		g.pf("// self-relative delta, exactly as <T>At answers it (§6.2, §6.3)\n")
 		g.pf("inline const %s * TableEntryFound( const %s * entry ) { return entry != NULL ? %sAt( entry->value ) : NULL; }\n", t, n, t)
 		g.pf("inline TableRef * TableEntryValue( %s * entry ) { return &entry->value; } // the builder hands back the SLOT\n", n)
-	case mapValueIsText(f):
-		// a map[K]string(N), map[K]wstring(N) or map[K]bytes(N): the value's
-		// storage is the buffer and the int32 used length beside it (§2.8,
-		// §7.2), two members, so the ENTRY is the handle that reaches both.
-		// A caller fills `entry->value` and `entry->value_length`, and leaves
-		// `entry->key` to the map, which owns the sort the key carries.
-		g.pf("// A TEXT VALUE'S STORAGE IS A PAIR (§2.8, §7.2): `value` beside\n")
-		g.pf("// `value_length`, so the handle is the ENTRY and not one member of it.\n")
-		g.pf("// Fill `value` and `value_length`; `key` belongs to the map's own order.\n")
+	case mapValueIsPair(f):
+		// a map[K]string(N), map[K]wstring(N), map[K]bytes(N), map[K][..N]T or
+		// map[K][..N]*T: the value's storage is the buffer or the element array
+		// and the int32 used length or count beside it (§2.8, §4.2, §7.2), two
+		// members, so the ENTRY is the handle that reaches both. A caller fills
+		// `entry->value` and its companion, and leaves `entry->key` to the
+		// map, which owns the sort the key carries.
+		g.pf("// THIS VALUE'S STORAGE IS A PAIR (§2.8, §4.2, §7.2): `value` beside\n")
+		g.pf("// `value_%s`, so the handle is the ENTRY and not one member of it.\n", mapPairCompanion(f))
+		g.pf("// Fill both; `key` belongs to the map's own order.\n")
 		g.pf("inline const %s * TableEntryFound( const %s * entry ) { return entry; }\n", n, n)
 		g.pf("inline %s * TableEntryValue( %s * entry ) { return entry; }\n", n, n)
+	case mapValueIsFixedArray(f):
+		// a map[K][N]T or map[K][N]*T: the value's storage is ONE member, an
+		// array of a fixed extent (§4.2), so the handle is a pointer to the
+		// ARRAY and keeps that extent. A pointer element makes that element a
+		// `TableRef` (§2.1) and changes nothing else. The alias is what lets a
+		// return type spell it.
+		elem := g.mapValueElementType(f)
+		alias := mapValueArrayAlias(f)
+		g.pf("// A FIXED ARRAY VALUE IS ONE MEMBER (§2.8, §4.2): the handle points at the\n")
+		g.pf("// ARRAY and not at its first element, so the extent survives the handoff.\n")
+		g.pf("typedef %s %s[%d];\n", elem, alias, value.ArrayBound)
+		g.pf("inline const %s * TableEntryFound( const %s * entry ) { return entry != NULL ? &entry->value : NULL; }\n", alias, n)
+		g.pf("inline %s * TableEntryValue( %s * entry ) { return &entry->value; }\n", alias, n)
 	default:
 		typ := g.mapValueStorageType(f)
 		g.pf("inline const %s * TableEntryFound( const %s * entry ) { return entry != NULL ? &entry->value : NULL; }\n", typ, n)
@@ -893,17 +960,42 @@ func signedWord(key *ir.Field) string {
 	return "unsigned here"
 }
 
-// mapValueStorageType is the C++ spelling of a map value's storage.
+// mapPairCompanion names the second member of a PAIR value's storage, for the
+// comment that tells a caller to fill both.
+func mapPairCompanion(f *ir.Field) string {
+	if ir.MapValueField(f).Array == ir.ArrayCounted {
+		return "count"
+	}
+	return "length"
+}
+
+// mapValueStorageType is the C++ spelling of a map value's storage: what the
+// entry's `value` member is declared as, which is what the handle points at
+// (docs/SPEC-TABLES.md §2.8, §4.2). A value is a field of the entry, so every
+// answer here is the row §4.2 gives that field's kind.
 func (g *tableGen) mapValueStorageType(f *ir.Field) string {
 	value := ir.MapValueField(f)
 	if value.IsMap() {
 		return fmt.Sprintf("TableMap<%s>", value.MapEntry.Name)
 	}
-	if mapValueIsText(f) {
+	if value.IsList() {
+		// an unbounded []T is the sixteen-byte list slot (§2.9, §4.2)
+		return g.listStorageType(value)
+	}
+	if mapValueIsPair(f) {
 		// a PAIR is two members, so the entry is the handle (§2.8, §7.2)
 		return mapEntryOf(f).Name
 	}
+	if mapValueIsFixedArray(f) {
+		return mapValueArrayAlias(f)
+	}
 	typ, _ := g.cppFieldType(value.Type)
+	if value.KeyEnum != "" {
+		// an enum-keyed [E]T is one slot per named variant, and the type
+		// derives its own extent from the enum (§2.4, §4.2)
+		g.noteRef(value.KeyEnum)
+		return fmt.Sprintf("TableKeyed<%s, %s>", typ, value.KeyEnum)
+	}
 	return typ
 }
 
@@ -1298,10 +1390,15 @@ func (g *tableGen) mapInsertReturn(f *ir.Field) string {
 }
 
 // mapFindReturn is what the CONST form answers: the resolved pointer on a
-// map[K]*T, and a pointer to the value otherwise.
+// map[K]*T, the resolved blob on a map[K]*string or map[K]*bytes, and a
+// pointer to the value otherwise.
 func (g *tableGen) mapFindReturn(f *ir.Field) string {
+	value := ir.MapValueField(f)
 	if mapValueIsPointer(f) {
-		return "const " + ir.MapValueField(f).Type.Name + " *"
+		if value.Type.Blob() {
+			return "const TableBlob *"
+		}
+		return "const " + value.Type.Name + " *"
 	}
 	return "const " + g.mapValueStorageType(f) + " *"
 }

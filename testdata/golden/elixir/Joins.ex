@@ -685,6 +685,8 @@ defmodule Example.Joins do
           if bits_read + len * 8 > num_bits, do: throw(:invalid)
           v_s = binary_part(data, bits_read >>> 3, len)
           bits_read = bits_read + len * 8
+          # malformed UTF-8 is content the read refuses (SPEC §4.7)
+          if not String.valid?(v_s), do: throw(:invalid)
           # an interior null is content the read refuses (SPEC §4.7)
           if :binary.match(v_s, <<0>>) != :nomatch, do: throw(:invalid)
           v_b = 0
@@ -1469,6 +1471,8 @@ defmodule Example.Joins do
       if bits_read + len * 8 > num_bits, do: throw(:invalid)
       v_s = binary_part(data, bits_read >>> 3, len)
       bits_read = bits_read + len * 8
+      # malformed UTF-8 is content the read refuses (SPEC §4.7)
+      if not String.valid?(v_s), do: throw(:invalid)
       # an interior null is content the read refuses (SPEC §4.7)
       if :binary.match(v_s, <<0>>) != :nomatch, do: throw(:invalid)
       if bits_read + 84 > num_bits, do: throw(:invalid)

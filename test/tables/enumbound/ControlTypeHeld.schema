@@ -1,0 +1,22 @@
+package ebcontroltypeheld
+
+// THE FENCE, schema#606's CASE (docs/SPEC-TABLES.md §2.4): a `type` a table
+// reaches keeps the spelling. The hazard is real one body away and the two
+// answers that close it exclude each other, so the page states neither until
+// the ruling lands and this refusal stops at the table body and the union arm.
+// A control that goes red says the walk crossed into the owner's case.
+
+enum ShipType { Fighter, Bomber, Scout }
+
+const SlotCount = ShipType.Max
+
+type Inner
+{
+    direct [ShipType.Max]int32
+    named  [SlotCount]int32
+}
+
+table Root
+{
+    inner Inner
+}

@@ -5957,8 +5957,8 @@ static void build_message_arm_edits( messagedemo::ToolMessage & m )
     m.body.transact.edits_count = 3;
     messagedemo::Edit & a = m.body.transact.edits[0];
     a.revision = 1;
-    a.body.type = messagedemo::EditBodyType::Count;            // a bounded scalar arm
-    a.body.count = 100;
+    a.body.type = messagedemo::EditBodyType::Tally;            // a bounded scalar arm
+    a.body.tally = 100;
     messagedemo::Edit & b = m.body.transact.edits[1];
     b.revision = 2;
     b.body.type = messagedemo::EditBodyType::Marks;            // a counted-array arm

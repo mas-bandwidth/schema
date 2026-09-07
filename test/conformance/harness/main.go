@@ -74,6 +74,10 @@ flags:
                       "<language> <command...>" lines (a substituted one)
   --work <dir>        scratch: fixtures, driver output, the derived manifest
   --only <lang>       run one registered language (run only)
+  --skip <langs>      registered languages this run does not exercise, comma
+                      separated, each printed by name; the Makefile fills it
+                      from SCHEMA_SKIP_LEGS and the reference leg is refused
+                      (run only)
   --driver <cmd>      the leg to fuzz (wire-fuzz only)
   --seed <S> --n <N>  the random pass (wire-fuzz only)
   --replay <file> --unit <key> --root <table> [--message]
@@ -95,6 +99,7 @@ func main() {
 	drivers := fs.String("drivers", defaultDrivers, "the driver registry")
 	work := fs.String("work", defaultWork, "scratch directory")
 	only := fs.String("only", "", "run one registered language")
+	skip := fs.String("skip", "", "registered languages this run does not exercise, comma separated")
 	driver := fs.String("driver", "", "the leg to fuzz, as a command (wire-fuzz only)")
 	seed := fs.Uint64("seed", 24845619678, "the random pass's seed (wire-fuzz only)")
 	n := fs.Int("n", 100000, "the random pass's mutant count (wire-fuzz only)")
@@ -102,6 +107,7 @@ func main() {
 	unit := fs.String("unit", "", "the replayed mutant's unit key (wire-fuzz only)")
 	root := fs.String("root", "", "the replayed mutant's root table (wire-fuzz only)")
 	message := fs.Bool("message", false, "replay the mutant as a MESSAGE against the unit's announced table (docs/SPEC-TABLES.md §3.3; wire-fuzz only)")
+	retain := fs.Bool("retain", false, "run the RETENTION ARM: both engines' retaining paths over the variable-class file roots (docs/SPEC-TABLES.md §6.6; wire-fuzz only)")
 	failed := fs.String("failed", "build/wire-fuzz/failed.bin", "where a failing mutant is written (wire-fuzz only)")
 	vectors := fs.String("vectors", defaultVectors, "the pinned-vector index (wire-fuzz only)")
 	if len(os.Args) > 2 {
@@ -132,11 +138,11 @@ func main() {
 			fatalf("%v", err)
 		}
 	case "wire-fuzz":
-		if err := wireFuzz(m, wireFuzzOptions{driver: *driver, seed: *seed, n: *n, replay: *replay, unit: *unit, root: *root, message: *message, failed: *failed, vectors: *vectors}); err != nil {
+		if err := wireFuzz(m, wireFuzzOptions{driver: *driver, seed: *seed, n: *n, replay: *replay, unit: *unit, root: *root, message: *message, failed: *failed, vectors: *vectors, retain: *retain}); err != nil {
 			fatalf("%v", err)
 		}
 	case "run":
-		ok, err := run(os.Stdout, m, *manifest, *jsonDir, *reports, *drivers, *work, *only)
+		ok, err := run(os.Stdout, m, *manifest, *jsonDir, *reports, *drivers, *work, *only, *skip)
 		if err != nil {
 			fatalf("%v", err)
 		}

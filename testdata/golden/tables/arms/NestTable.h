@@ -3607,6 +3607,16 @@ inline int64_t TableRetainInContent( TableRetainIn & s, uint8_t kind, int64_t le
             }
             break;
         }
+        case 15: case 30:
+            // A UNION ARM AND AN ENUM'S VARIANT REFERENCE RESOLVE AS A FRAMED
+            // CONTENT TOO (§6.6): a kind 15 arm whose own payload is a union,
+            // and a kind 16 slot whose element kind is 15 or 30, both arrive
+            // here, and both carry a reference. Copying them as bytes would
+            // re-emit a reference into a permuted trailer, where it names
+            // another id, and would let a kind 17 UNDER A KIND 15 ARM through
+            // a walk whose whole job is to catch it.
+            if ( TableRetainInPayload( s, kind, depth ) < 0 ) { return -1; }
+            break;
         case 17: return -1; // A NODE INDEX ANYWHERE DROPS THE WHOLE RECORD (§6.6)
         default:
             // every other content is bytes: a string, wide text, an escape, a
@@ -3983,6 +3993,11 @@ inline bool TableRetainOutContent( TableRetainOut & s, uint8_t kind, int64_t len
             }
             break;
         }
+        case 15: case 30:
+            // the emit side of the capture's own rule (§6.6): an arm and a
+            // variant reference resolve as a framed content too
+            if ( !TableRetainOutPayload( s, kind, depth ) ) { return false; }
+            break;
         default:
             TableRetainOutRaw( s, s.in + s.at, length );
             s.at += length;
@@ -5151,8 +5166,21 @@ enum class InnerType : uint8_t {
     None = 0,
     Leaf = 1,
     Plain = 2,
+    Count = 2, // the declared variant count (SPEC §4.2)
     Max = 2, // the exported extent (SPEC §4.2)
 };
+
+// EnumName: debug/log name for any InnerType value, out-of-set included
+inline const char * EnumName( InnerType value )
+{
+    switch ( value )
+    {
+        case InnerType::None: return "None";
+        case InnerType::Leaf: return "Leaf";
+        case InnerType::Plain: return "Plain";
+        default: return "???";
+    }
+}
 
 // union Inner — at most one of the arms; the tag says which. AN ARM IS A FIELD
 // LINE (docs/SPEC-TABLES.md §2.6), so an arm's storage is the field's storage
@@ -5187,8 +5215,21 @@ enum class OuterType : uint8_t {
     None = 0,
     Inner = 1,
     Plain = 2,
+    Count = 2, // the declared variant count (SPEC §4.2)
     Max = 2, // the exported extent (SPEC §4.2)
 };
+
+// EnumName: debug/log name for any OuterType value, out-of-set included
+inline const char * EnumName( OuterType value )
+{
+    switch ( value )
+    {
+        case OuterType::None: return "None";
+        case OuterType::Inner: return "Inner";
+        case OuterType::Plain: return "Plain";
+        default: return "???";
+    }
+}
 
 // union Outer — at most one of the arms; the tag says which. AN ARM IS A FIELD
 // LINE (docs/SPEC-TABLES.md §2.6), so an arm's storage is the field's storage

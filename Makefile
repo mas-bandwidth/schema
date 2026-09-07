@@ -2,6 +2,32 @@
 # serialize checkouts, no language toolchains, no generation. The full
 # nine-language conformance chain is `make test`, and it needs the sibling
 # runtime checkouts and toolchains documented below.
+#
+# THE TOOLCHAIN GATE (issue #599). `make test` REFUSES BY NAME when a pinned
+# toolchain a make/<lang>.mk names does not resolve. It probes EVERY registered
+# leg and names every one that does not resolve in the same run, with the path
+# each pin looked in, rather than stopping at the first and making a fresh
+# clone a queue, and it stops before the chain spends an hour on the legs that
+# do resolve. A gate that passes while its toolchain is missing is a gate with
+# no blade: that is how a red in the Dart leg once rode a green run, after a
+# merge deleted a clone's dist link.
+#
+# To run the chain without a leg, name the skip ON PURPOSE:
+#
+#   make test SCHEMA_SKIP_LEGS=js,dart
+#
+# Every named leg prints its skip in the toolchain gate, in the conformance
+# matrix, in the two-language gates and in the leg loop, and is not run.
+# Nothing under .github sets the variable: certification installs each
+# toolchain and overrides the pins (NODE=node, DART=dart, JAVA=java,
+# JAVAC=javac, ELIXIR=elixir, MIX=mix), which resolve and pass the gate.
+#
+# `make toolchain` runs the gate alone. `make toolchain-negative-control`
+# points every registered pin at a path that does not exist, ONE PIN AT A TIME
+# (a leg with two pins is proved twice, a leg with three, three times), and
+# requires each to refuse by the leg's name and that pin's, then names every
+# leg in SCHEMA_SKIP_LEGS and requires the same gate to go green with each
+# skip printed by name.
 
 CXX      ?= c++
 CXXFLAGS ?= -std=c++17 -Wall -Wextra -Werror -ffp-contract=off
@@ -12,6 +38,39 @@ CXXFLAGS ?= -std=c++17 -Wall -Wextra -Werror -ffp-contract=off
 # language").
 SERIALIZE ?= ../serialize
 CXXFLAGS  += -I$(SERIALIZE)
+
+# THE SKIP LIST (issue #599): the legs whose toolchain is absent ON PURPOSE,
+# comma separated, empty by default and empty in every .github workflow. A leg
+# named here prints its skip and does not run; a leg NOT named here whose pin
+# does not resolve stops `make test` by name.
+SCHEMA_SKIP_LEGS ?=
+skip_comma  := ,
+skip_empty  :=
+skip_space  := $(skip_empty) $(skip_empty)
+# a literal hash, so a message held in a variable can cite an issue by number:
+# an unescaped one starts a make comment and truncates the value in silence
+skip_hash   := \#
+SKIPPED_LEGS := $(subst $(skip_comma),$(skip_space),$(SCHEMA_SKIP_LEGS))
+
+# $(call unless_skipped,<leg>,<text>) is the text, or nothing when the leg is
+# named in SCHEMA_SKIP_LEGS. A leg registers its conformance prerequisites
+# through it, so a named skip reaches the matrix and not only the leg loop.
+unless_skipped = $(if $(filter $(1),$(SKIPPED_LEGS)),,$(2))
+
+# $(call toolchain_probe,<leg>,<PIN>,<what the pin holds>[,<probe>]) is one
+# line of a leg's toolchain-<leg> recipe. It says nothing when the pin
+# resolves, and refuses by name when it does not: it names the leg, the pin,
+# the path the pin looked in, and the three ways out. The default probe
+# resolves the pin's own value; a leg whose pin carries an environment prefix
+# passes its own probe as the fourth argument.
+toolchain_probe = $(if $(4),$(4),command -v $(3)) >/dev/null 2>&1 || { \
+		echo "make test REFUSES: the $(1) leg's pinned $(2) does not resolve"; \
+		echo '  $(2) = $(3)'; \
+		echo "  test-$(1) would have been SKIPPED, and a leg that skips is a gate with no blade (issue $(skip_hash)599)"; \
+		echo "  make/$(1).mk names the pinned toolchain and where it comes from; install it,"; \
+		echo "  or override the pin ($(2)=... make test), or name the skip on purpose:"; \
+		echo "      make test SCHEMA_SKIP_LEGS=$(1)"; \
+		exit 1; }
 
 # cmd, internal, AND the public API packages: ir/ and compiler/ are compiled
 # into bin/schema like any other source, and leaving them out made an edit to
@@ -164,7 +223,7 @@ define tables_generate
 	$(1) generate --lang cpp --out $(2)/rt3 test/tables/RT3.schema
 	# the WIDE TEXT unit (docs/SPEC-TABLES.md §3, kind 33): its own directory,
 	# because examples/ pins gate 1 for all nine targets and eight of them
-	# refuse wide text on either wire (SPEC.md §4.12)
+	# refuse the table-wide unit; all nine carry its isolated packet file (SPEC.md §4.12)
 	$(1) generate --lang cpp --out $(2)/wide examples-wide
 endef
 
@@ -628,7 +687,14 @@ tables-block: build/schema_test_block build/schema_test_block_asan build/schema_
 	./build/schema_test_block
 	./build/schema_test_block_asan
 	./build/schema_test_block_tsan
-	cd test/cs-block && dotnet run
+# THE C# HALF of this two-language gate runs unless the cs leg is named in
+# SCHEMA_SKIP_LEGS (issue #599). A skip that reaches the leg loop and not here
+# is a skip that stops the chain anyway, on the same missing dotnet.
+ifeq ($(filter cs,$(SKIPPED_LEGS)),)
+	cd test/cs-block && $(DOTNET) run
+else
+	@echo "tables-block: the C# half is SKIPPED, SCHEMA_SKIP_LEGS names the cs leg"
+endif
 
 # ---------------------------------------------------------------------------
 # THE FORGERY FUZZER (docs/SPEC-TABLES.md §19.2, §19.5). The hand-written battery in
@@ -694,7 +760,12 @@ build/block-fuzz/.stamp: build/schema_test_block_fuzz
 tables-block-fuzz: build/schema_test_block_fuzz build/schema_test_block_fuzz_asan build/block-fuzz/.stamp build/tables-generated-cs/.stamp
 	SEED=$(SEED) N=$(N) ./build/schema_test_block_fuzz
 	SEED=$(SEED) N=$(N) ./build/schema_test_block_fuzz_asan
-	cd test/cs-block && SEED=$(SEED) N=$(N) dotnet run -- --fuzz
+# the C# half, on the same rule as tables-block above (issue #599)
+ifeq ($(filter cs,$(SKIPPED_LEGS)),)
+	cd test/cs-block && SEED=$(SEED) N=$(N) $(DOTNET) run -- --fuzz
+else
+	@echo "tables-block-fuzz: the C# half is SKIPPED, SCHEMA_SKIP_LEGS names the cs leg"
+endif
 
 # THE COOK FIXTURES the Rust fuzzer's cook half forges, written by test/cookgen
 # with the same chains the conformance harness uses — the fixture generator's
@@ -764,15 +835,19 @@ define block_fuzz_sabotage
 	fi
 	@grep -q "^FAILED: an opened block" build/block-fuzz-$(1)/cpp.log || \
 		{ echo "NEGATIVE CONTROL FAILED: the C++ leg went red, but not on the oracle"; cat build/block-fuzz-$(1)/cpp.log; exit 1; }
-	@if ( cd test/cs-block && SEED=$(SEED) N=$(N) dotnet run \
-			-p:BlockGeneratedDir=../../build/block-fuzz-$(1)/generated/block-cs \
-			-p:BlockHomeGeneratedDir=../../build/block-fuzz-$(1)/generated/blockhome-cs -- --fuzz ) \
-			> build/block-fuzz-$(1)/cs.log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the C# fuzzer stayed green with the $(1) check removed from the emitter"; \
-		exit 1; \
+	@if [ -n '$(filter cs,$(SKIPPED_LEGS))' ]; then \
+		echo "  the C# half of this control is SKIPPED, SCHEMA_SKIP_LEGS names the cs leg"; \
+	else \
+		if ( cd test/cs-block && SEED=$(SEED) N=$(N) $(DOTNET) run \
+				-p:BlockGeneratedDir=../../build/block-fuzz-$(1)/generated/block-cs \
+				-p:BlockHomeGeneratedDir=../../build/block-fuzz-$(1)/generated/blockhome-cs -- --fuzz ) \
+				> build/block-fuzz-$(1)/cs.log 2>&1; then \
+			echo "NEGATIVE CONTROL FAILED: the C# fuzzer stayed green with the $(1) check removed from the emitter"; \
+			exit 1; \
+		fi; \
+		grep -q "^FAILED: an opened block" build/block-fuzz-$(1)/cs.log || \
+			{ echo "NEGATIVE CONTROL FAILED: the C# leg went red, but not on the oracle"; cat build/block-fuzz-$(1)/cs.log; exit 1; }; \
 	fi
-	@grep -q "^FAILED: an opened block" build/block-fuzz-$(1)/cs.log || \
-		{ echo "NEGATIVE CONTROL FAILED: the C# leg went red, but not on the oracle"; cat build/block-fuzz-$(1)/cs.log; exit 1; }
 	@rm -f build/tables-generated-rust/.stamp
 	./build/block-fuzz-$(1)/schema generate --lang rust --out build/tables-generated-rust/blockdemo/src tables/block
 	./build/block-fuzz-$(1)/schema generate --lang rust --out build/tables-generated-rust/blockhome/src tables/blockhome
@@ -1401,12 +1476,15 @@ tables-block-fill-refuser-negative-control: build/tables-generated/.stamp
 # at the wrong offset, which is exactly what §19.3 says Size alone cannot pin.
 .PHONY: tables-block-padding-negative-control
 tables-block-padding-negative-control: build/tables-generated-cs/.stamp
+ifneq ($(filter cs,$(SKIPPED_LEGS)),)
+	@echo "tables-block-padding-negative-control: SKIPPED, it is a C# control and SCHEMA_SKIP_LEGS names the cs leg"
+else
 	@rm -rf build/block-padding-sabotage && cp -R build/tables-generated-cs/block build/block-padding-sabotage
 	@sed -i.bak '/private byte _pad/d' build/block-padding-sabotage/PaddedBlock.cs
 	@grep -q "private byte _pad" build/block-padding-sabotage/PaddedBlock.cs && \
 		{ echo "NEGATIVE CONTROL: the sabotage did not apply"; exit 1; } || true
 	@rm -f build/block-padding-sabotage/*.bak
-	@if ( cd test/cs-block && dotnet run -p:BlockGeneratedDir=../../build/block-padding-sabotage ) \
+	@if ( cd test/cs-block && $(DOTNET) run -p:BlockGeneratedDir=../../build/block-padding-sabotage ) \
 		> build/block-padding-sabotage.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the C# layout check passed with the padding fields deleted"; \
 		cat build/block-padding-sabotage.log; exit 1; \
@@ -1414,6 +1492,7 @@ tables-block-padding-negative-control: build/tables-generated-cs/.stamp
 	@grep -q "schema block layout" build/block-padding-sabotage.log || \
 		{ echo "NEGATIVE CONTROL FAILED: the failure was not the layout check"; cat build/block-padding-sabotage.log; exit 1; }
 	@echo "block padding negative control: deleting the generated padding fields turns the layout check red"
+endif
 
 # §19.5's FIRST named negative control: "perturb one row type's pitch constant
 # on one side only and the two-language test goes red". The constant is the C#
@@ -1423,13 +1502,16 @@ tables-block-padding-negative-control: build/tables-generated-cs/.stamp
 # not inert.
 .PHONY: tables-block-pitch-negative-control
 tables-block-pitch-negative-control: build/tables-generated-cs/.stamp
+ifneq ($(filter cs,$(SKIPPED_LEGS)),)
+	@echo "tables-block-pitch-negative-control: SKIPPED, it is a C# control and SCHEMA_SKIP_LEGS names the cs leg"
+else
 	@rm -rf build/block-pitch-sabotage && cp -R build/tables-generated-cs/block build/block-pitch-sabotage
 	@sed -i.bak 's|public const long ShipsStride = 88;|public const long ShipsStride = 96; // SABOTAGED|' \
 		build/block-pitch-sabotage/RenderBlock.cs
 	@grep -q "SABOTAGED" build/block-pitch-sabotage/RenderBlock.cs || \
 		{ echo "NEGATIVE CONTROL: the sabotage did not apply"; exit 1; }
 	@rm -f build/block-pitch-sabotage/*.bak
-	@if ( cd test/cs-block && dotnet run -p:BlockGeneratedDir=../../build/block-pitch-sabotage ) \
+	@if ( cd test/cs-block && $(DOTNET) run -p:BlockGeneratedDir=../../build/block-pitch-sabotage ) \
 		> build/block-pitch-sabotage.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the C# side accepted a pitch constant that is not its row's sizeof"; \
 		cat build/block-pitch-sabotage.log; exit 1; \
@@ -1437,6 +1519,7 @@ tables-block-pitch-negative-control: build/tables-generated-cs/.stamp
 	@grep -q "ShipsStride" build/block-pitch-sabotage.log || \
 		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on the pitch constant"; cat build/block-pitch-sabotage.log; exit 1; }
 	@echo "block pitch negative control: a pitch constant perturbed on ONE side turns the C# layout check red"
+endif
 
 # §19.5's SECOND named negative control: "perturb one field's offset in the
 # compiler's layout model and the generated asserts go red on both backends".
@@ -1475,7 +1558,10 @@ tables-block-layout-model-negative-control: bin/schema build/tables-generated-cs
 	@grep -q "static_assert" build/block-model-cpp.log || \
 		{ echo "NEGATIVE CONTROL FAILED: C++ went red, but not on a layout static_assert"; cat build/block-model-cpp.log; exit 1; }
 	@echo "block layout-model negative control (C++): a moved offset in the compiler's model turns the static_asserts red"
-	@if ( cd test/cs-block && dotnet run -p:BlockGeneratedDir=../../build/block-model-sabotage/cs ) \
+ifneq ($(filter cs,$(SKIPPED_LEGS)),)
+	@echo "block layout-model negative control (C#): SKIPPED, SCHEMA_SKIP_LEGS names the cs leg"
+else
+	@if ( cd test/cs-block && $(DOTNET) run -p:BlockGeneratedDir=../../build/block-model-sabotage/cs ) \
 		> build/block-model-cs.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: C# accepted a moved offset from the compiler's model"; \
 		cat build/block-model-cs.log; exit 1; \
@@ -1483,6 +1569,7 @@ tables-block-layout-model-negative-control: bin/schema build/tables-generated-cs
 	@grep -q "schema block layout" build/block-model-cs.log || \
 		{ echo "NEGATIVE CONTROL FAILED: C# went red, but not on the layout check"; cat build/block-model-cs.log; exit 1; }
 	@echo "block layout-model negative control (C#): the same moved offset turns the once-run layout check red"
+endif
 
 # THE BLOCK HOME's NEGATIVE CONTROL (docs/SPEC-TABLES.md §19.2's C# surface). The
 # dogfood found two defects with one root cause — a C# backend that emitted per
@@ -1502,6 +1589,9 @@ tables-block-layout-model-negative-control: bin/schema build/tables-generated-cs
 # have nowhere to land. The compile must FAIL.
 .PHONY: tables-block-home-negative-control
 tables-block-home-negative-control: bin/schema
+ifneq ($(filter cs,$(SKIPPED_LEGS)),)
+	@echo "tables-block-home-negative-control: SKIPPED, it is a C# control and SCHEMA_SKIP_LEGS names the cs leg"
+else
 	@mkdir -p build
 	@sed -e 's|if home != "" \&\& !runtimeWritten {|if false \&\& !runtimeWritten { // SABOTAGED: no home is emitted for the unit|' \
 		internal/codegen/cstable/block.go > build/csblock-declaring-file.gotext
@@ -1512,7 +1602,7 @@ tables-block-home-negative-control: bin/schema
 	@go build -overlay=build/csblock-overlay.json -o build/schema-csblock-sabotaged ./cmd/schema
 	@rm -rf build/blockhome-sabotage && mkdir -p build/blockhome-sabotage
 	@./build/schema-csblock-sabotaged generate --lang cs --out build/blockhome-sabotage tables/blockhome
-	@if ( cd test/cs-block && dotnet build -v q --nologo -p:BlockHomeGeneratedDir=../../build/blockhome-sabotage ) \
+	@if ( cd test/cs-block && $(DOTNET) build -v q --nologo -p:BlockHomeGeneratedDir=../../build/blockhome-sabotage ) \
 		> build/blockhome-sabotage.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the unit compiled with its block runtime emitted nowhere"; \
 		cat build/blockhome-sabotage.log; exit 1; \
@@ -1520,6 +1610,7 @@ tables-block-home-negative-control: bin/schema
 	@grep -qE "CS0103|CS0234|CS0246" build/blockhome-sabotage.log || \
 		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on an undefined name"; tail -20 build/blockhome-sabotage.log; exit 1; }
 	@echo "block home negative control: a unit with no home for its block runtime does not compile"
+endif
 
 # THE RUNTIME HOME IS THE PACKAGE (docs/SPEC-TABLES.md §19.2). A unit's shared C#
 # runtime — the table runtime and the text form's walk in <Package>Table.cs, the
@@ -1585,6 +1676,9 @@ tables-runtime-home-negative-control: bin/schema tables-runtime-home
 # and offsets). The control reports which one fired.
 .PHONY: tables-block-inline-array-negative-control
 tables-block-inline-array-negative-control: bin/schema
+ifneq ($(filter cs,$(SKIPPED_LEGS)),)
+	@echo "tables-block-inline-array-negative-control: SKIPPED, it is a C# control and SCHEMA_SKIP_LEGS names the cs leg"
+else
 	@mkdir -p build
 	@sed -e 's|if projection \&\& ir.BlockOutOfLine(f) {|if ir.BlockOutOfLine(f) { // SABOTAGED: project at every depth|' \
 	     -e 's|inline := !projection \|\| !ir.BlockOutOfLine(f)|inline := !ir.BlockOutOfLine(f)|' \
@@ -1596,7 +1690,7 @@ tables-block-inline-array-negative-control: bin/schema
 	@go build -overlay=build/csblock-depth-overlay.json -o build/schema-depth-sabotaged ./cmd/schema
 	@rm -rf build/blockhome-depth && mkdir -p build/blockhome-depth
 	@./build/schema-depth-sabotaged generate --lang cs --out build/blockhome-depth tables/blockhome
-	@if ( cd test/cs-block && dotnet run -p:BlockHomeGeneratedDir=../../build/blockhome-depth ) \
+	@if ( cd test/cs-block && $(DOTNET) run -p:BlockHomeGeneratedDir=../../build/blockhome-depth ) \
 		> build/blockhome-depth.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a bounded array projected inside a nested record passed the layout gate"; \
 		cat build/blockhome-depth.log; exit 1; \
@@ -1608,6 +1702,7 @@ tables-block-inline-array-negative-control: bin/schema
 	else \
 		echo "NEGATIVE CONTROL FAILED: it went red, but not on either half of the gate"; tail -20 build/blockhome-depth.log; exit 1; \
 	fi
+endif
 
 # GATE 2 (docs/SPEC-TABLES.md §12.1): the MEASURED gate, two numbers, and it is not
 # part of `make test` on purpose — a correctness suite whose verdict depends on
@@ -1625,7 +1720,7 @@ build/schema_test_block_gate2: build/tables-generated/.stamp test/tables/block_g
 .PHONY: tables-block-gate2
 tables-block-gate2: build/schema_test_block_gate2 build/tables-generated-cs/.stamp
 	./build/schema_test_block_gate2
-	cd test/cs-block && dotnet run -c Release -- --gate2
+	cd test/cs-block && $(DOTNET) run -c Release -- --gate2
 
 # THE SMOKE, which is what CI runs (certification legs only, never a PR).
 # The gate above is a MEASUREMENT and its verdict belongs on a quiet box; a
@@ -1638,7 +1733,7 @@ tables-block-gate2: build/schema_test_block_gate2 build/tables-generated-cs/.sta
 .PHONY: tables-block-gate2-smoke
 tables-block-gate2-smoke: build/schema_test_block_gate2 build/tables-generated-cs/.stamp
 	./build/schema_test_block_gate2 --smoke
-	cd test/cs-block && dotnet run -c Release -- --gate2-smoke
+	cd test/cs-block && $(DOTNET) run -c Release -- --gate2-smoke
 # The NEGATIVE CONTROL for a KEYED object's duplicate counting
 # (docs/SPEC-TABLES.md §16.2). Last-wins inside a keyed object was already true, so
 # the missing count was invisible to every round-trip test — the value was
@@ -2146,6 +2241,79 @@ check-zero-range-negative-control: bin/schema test/zero_range_negative_main.cpp
 		-I$(SERIALIZE) -Ibuild/zero-range-sabotage \
 		test/zero_range_negative_main.cpp -o build/schema_test_zero_range_negative
 	./build/schema_test_zero_range_negative
+
+# THE ENUM-BOUND GATE and its NEGATIVE CONTROL (docs/SPEC-TABLES.md §2.4,
+# §11, schema#605). A POSITIONAL ARRAY WHOSE BOUND FOLDS FROM AN ENUM is
+# refused in a table body and a union arm, on the bound's PROVENANCE rather
+# than its spelling: `[E.Max]T`, `[E.Count]T` and `[N]T` under a `const N`
+# that folds from either are one bound however it is spelled.
+#
+# The gate runs the compiler over test/tables/enumbound, one unit a shape, and
+# reads three answers back. Every refused shape must be refused and its
+# diagnostic must name the field or the arm, the enum, the constant where the
+# bound reaches the enum through one, and `[E]T` as the fix. The THREE
+# POSITIVE CONTROLS must compile: the packet wire, whose `[E.Max]T` is a plain
+# array the connect gate covers; a bound that folds from no enum, which is
+# refused for reaching an enum and never for being positional; and the
+# `type`-held case, which is schema#606's ruling and not this refusal's.
+#
+# The NEGATIVE CONTROL is §2.4's own: it REMOVES THE CONSTANT FOLD FROM THE
+# BOUND CHECK through `go build -overlay` (no tracked file is written), and
+# every row whose bound reaches its enum through a constant must then compile
+# clean. It is targeted rather than blanket, so the two DIRECT spellings must
+# stay refused under the same sabotage: a control that turned the whole rule
+# off would go red for a reason that says nothing about the fold.
+.PHONY: check-enum-bound-negative-control
+check-enum-bound-negative-control: bin/schema
+	@mkdir -p build/enum-bound
+	@set -e; for u in BodyMax:ShipType.Max BodyCount:ShipType.Count \
+		BodyConstMax:SlotCount BodyConstCount:SlotCount BodyFolded:SlotCount; do \
+		unit=$${u%%:*}; bound=$${u#*:}; \
+		if ./bin/schema check test/tables/enumbound/$$unit.schema > build/enum-bound/$$unit.log 2>&1; then \
+			echo "GATE FAILED: $$unit.schema compiled in a table body"; exit 1; \
+		fi; \
+		grep -q "\[$$bound\]int32 is refused in a table body" build/enum-bound/$$unit.log || \
+			{ echo "GATE FAILED: $$unit.schema was refused, but not as a table body's own bound"; cat build/enum-bound/$$unit.log; exit 1; }; \
+		grep -q "spell it \[ShipType\]int32" build/enum-bound/$$unit.log || \
+			{ echo "GATE FAILED: $$unit.schema names no fix"; cat build/enum-bound/$$unit.log; exit 1; }; \
+	done
+	@set -e; for u in ArmMax:ShipType.Max ArmCount:ShipType.Count \
+		ArmConstMax:SlotCount ArmConstCount:SlotCount ArmFolded:SlotCount; do \
+		unit=$${u%%:*}; bound=$${u#*:}; \
+		if ./bin/schema check test/tables/enumbound/$$unit.schema > build/enum-bound/$$unit.log 2>&1; then \
+			echo "GATE FAILED: $$unit.schema compiled in a union arm"; exit 1; \
+		fi; \
+		grep -q "union Payload: arm ships: \[$$bound\]int32 is refused in a union arm" build/enum-bound/$$unit.log || \
+			{ echo "GATE FAILED: $$unit.schema was refused, but not at the arm"; cat build/enum-bound/$$unit.log; exit 1; }; \
+		grep -q "table Fleet's field payload reaches Payload" build/enum-bound/$$unit.log || \
+			{ echo "GATE FAILED: $$unit.schema names no table reaching the union"; cat build/enum-bound/$$unit.log; exit 1; }; \
+	done
+	@set -e; for unit in BodyConstMax BodyConstCount BodyFolded ArmConstMax ArmConstCount ArmFolded; do \
+		grep -q "the bound SlotCount folds from ShipType\." build/enum-bound/$$unit.log || \
+			{ echo "GATE FAILED: $$unit.schema names no constant, and the constant is all a reader can see"; cat build/enum-bound/$$unit.log; exit 1; }; \
+	done
+	@set -e; for unit in ControlPacket ControlPlain ControlTypeHeld; do \
+		./bin/schema check test/tables/enumbound/$$unit.schema > build/enum-bound/$$unit.log 2>&1 || \
+			{ echo "POSITIVE CONTROL FAILED: $$unit.schema did not compile"; cat build/enum-bound/$$unit.log; exit 1; }; \
+	done
+	@echo "gate: ten shapes refused on the bound's provenance, three controls compile"
+	@sed 's|if entry == nil \|\| entry.decl == nil \|\| visiting\[e.Name\] {|if true { // SABOTAGED: the constant fold removed from the bound check|' \
+		internal/check/tablekeyed.go > build/tablekeyed-no-fold.gotext
+	@grep -q SABOTAGED build/tablekeyed-no-fold.gotext || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/check/tablekeyed.go":"%s/build/tablekeyed-no-fold.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/enum-bound-no-fold-overlay.json
+	@go build -overlay=build/enum-bound-no-fold-overlay.json -o build/schema-no-enum-bound-fold ./cmd/schema
+	@set -e; for unit in BodyConstMax BodyConstCount BodyFolded ArmConstMax ArmConstCount ArmFolded; do \
+		./build/schema-no-enum-bound-fold check test/tables/enumbound/$$unit.schema > build/enum-bound/$$unit-nofold.log 2>&1 || \
+			{ echo "NEGATIVE CONTROL FAILED: $$unit.schema was still refused without the constant fold, so the fold is not what refuses it"; cat build/enum-bound/$$unit-nofold.log; exit 1; }; \
+	done
+	@set -e; for unit in BodyMax BodyCount ArmMax ArmCount; do \
+		if ./build/schema-no-enum-bound-fold check test/tables/enumbound/$$unit.schema > build/enum-bound/$$unit-nofold.log 2>&1; then \
+			echo "NEGATIVE CONTROL FAILED: $$unit.schema compiled too, so the sabotage removed the whole rule and not the fold"; exit 1; \
+		fi; \
+	done
+	@echo "negative control: without the constant fold, six folded rows compile clean and the four direct spellings stay refused"
 
 # THE VARIANT-ORDER NEGATIVE CONTROL (SPEC §3.1, issue #462). An enum value
 # rides as its declaration ordinal and a flags variant as its bit position, so
@@ -2814,7 +2982,14 @@ build/schema_test_bench_table: generated/bench/tables/cpp/.stamp test/bench/tabl
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Igenerated/bench/tables/cpp test/bench/table_main.cpp -o $@
 
-test: build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_block build/schema_test_block_asan build/schema_test_block_fuzz build/schema_test_block_fuzz_asan build/pack-text/.stamp build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp build/schema_test_pack build/schema_test_pack_asan build/tables-pack.bin build/tables-pack-root.bin build/schema_test_tables_asan build/schema_test_random build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/conformance-harness build/schema_test_wide build/schema_test_wide_table
+# THE TOOLCHAIN GATE IS THE FIRST PREREQUISITE (issue #599): a pinned toolchain
+# that does not resolve stops the chain by name here, before an hour of C++,
+# rather than in the middle of a leg with a shell's "command not found".
+test: toolchain build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_block build/schema_test_block_asan build/schema_test_block_fuzz build/schema_test_block_fuzz_asan build/pack-text/.stamp build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp build/schema_test_pack build/schema_test_pack_asan build/tables-pack.bin build/tables-pack-root.bin build/schema_test_tables_asan build/schema_test_random build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/conformance-harness build/schema_test_wide build/schema_test_wide_table
+	# THE TOOLCHAIN GATE's own control (issue #599): the gate above is what
+	# stands between a missing toolchain and a green run, so it is held to the
+	# same rule as every other gate here. It has to go red on demand, by name.
+	$(MAKE) toolchain-negative-control
 	./build/schema_test
 	./build/schema_test_guard
 	./build/schema_test_wide
@@ -2836,6 +3011,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) wide-table-odd-length-negative-control
 	$(MAKE) wide-table-byte-length-negative-control
 	$(MAKE) check-zero-range-negative-control
+	$(MAKE) check-enum-bound-negative-control
 	$(MAKE) projection-variant-order-negative-control
 	$(MAKE) projection-wire-law-negative-control
 	$(MAKE) projection-union-arm-order-negative-control
@@ -2848,6 +3024,12 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	# is `make tables-cpp-release`.
 	$(MAKE) tables-wire-fuzz N=20000
 	$(MAKE) tables-wire-fuzz-negative-control N=0
+	# THE RETENTION LEG (docs/SPEC-TABLES.md §6.6): the same mutants through
+	# both engines' RETAINING paths, comparing the two retention counters
+	# beside the six and the saved bytes beside them, and its own two controls
+	# at N=0, one per engine.
+	$(MAKE) tables-wire-fuzz-retain N=20000
+	$(MAKE) tables-wire-fuzz-retain-negative-control N=0
 	# THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): its rules are refusals and an
 	# ORDER, and a green run cannot be read for either, so each control removes
 	# one and names the gate that must go red.
@@ -2950,8 +3132,16 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	./build/schema_test_bench_table
 	# EVERY REGISTERED LEG (make/<lang>.mk, TEST_LEGS): its generated trees, its
 	# gates and negative controls, its packet and table tests. One sub-make per
-	# leg, so a red names the leg.
-	@set -e; for leg in $(TEST_LEGS); do echo "$(MAKE) $$leg"; $(MAKE) $$leg; done
+	# leg, so a red names the leg. A leg named in SCHEMA_SKIP_LEGS is not run
+	# and says so by name (issue #599): a run that measured eight legs and a run
+	# that measured four must not read the same.
+	@set -e; for leg in $(TEST_LEGS); do \
+		case " $(SKIPPED_LEGS) " in \
+		*" $${leg#test-} "*) \
+			echo "make test SKIPS $$leg: SCHEMA_SKIP_LEGS names the $${leg#test-} leg on purpose"; \
+			continue ;; \
+		esac; \
+		echo "$(MAKE) $$leg"; $(MAKE) $$leg; done
 	go test ./...
 
 
@@ -3132,6 +3322,39 @@ tables-maps-value-reset-negative-control: bin/schema build/tables-generated/.sta
 tables-maps-text-order-negative-control: bin/schema build/tables-generated/.stamp
 	$(call map_negative_control,textorder,'s@const void \* entry = (const void \*) ( entries + (int64_t) i \* f->elem_size );@const void * entry = (const void *) ( entries + (int64_t) ( count - 1 - i ) * f->elem_size ); // SABOTAGED@',internal/codegen/cpptable/json.go,writing a map text out of key order left the map gate GREEN)
 
+# A MAP IS A BY-VALUE EDGE OF THE ONE DECLARATION-ORDER WALK (§2.8, §3.1), so
+# the numbering descends every entry and a node named ONLY by a map entry takes
+# its index there. The sabotage short-circuits that per-entry descent. The
+# `Docs` and `Chunks` rows are what meet it: their `*string` and `*bytes` values
+# are the only slots in this corpus that name a node NOTHING ELSE names, so an
+# undescended entry leaves a non-null slot the walk never reached and `Save`
+# answers the -1 §7.6 gives a pointer in that position. `Fleet.by_id` cannot
+# meet it, because `Fleet.flagship` names the same node.
+#
+# Its sabotage carries the unbalanced parenthesis a $(call) argument cannot, so
+# the recipe is spelled out as the keylength one below is. Everything else about
+# it is map_negative_control.
+.PHONY: tables-maps-entry-node-negative-control
+tables-maps-entry-node-negative-control: bin/schema build/tables-generated/.stamp
+	@mkdir -p build
+	@sed -e 's@if ( !%sNumber( ctx@if ( false \&\& !%sNumber( ctx@' \
+		internal/codegen/cpptable/maps.go > build/map-entrynode.gotext
+	@cmp -s build/map-entrynode.gotext internal/codegen/cpptable/maps.go && \
+		{ echo "NEGATIVE CONTROL FAILED: the entrynode sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/maps.go":"%s/build/map-entrynode.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/map-entrynode-overlay.json
+	@go build -overlay=build/map-entrynode-overlay.json -o build/schema-map-entrynode ./cmd/schema
+	@rm -rf build/tables-map-entrynode && mkdir -p build/tables-map-entrynode
+	@./build/schema-map-entrynode generate --lang cpp --out build/tables-map-entrynode/maps tables/maps
+	@$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-map-entrynode/maps -Itest/tables test/tables/maps_main.cpp \
+		build/tables-map-entrynode/maps/*Table.cpp -o build/schema_test_maps_entrynode
+	@if ./build/schema_test_maps_entrynode > build/map-entrynode.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: an entry the numbering never descended left the map gate GREEN"; exit 1; \
+	fi
+	@grep -q "^FAIL test/tables/maps_main.cpp" build/map-entrynode.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on a CHECK"; cat build/map-entrynode.log; exit 1; }
+	@echo "negative control: entrynode turns the MAP GATE red — $$(grep -c '^FAIL' build/map-entrynode.log) failures"
+
 # AN UNREACHED NON-EMPTY MAP SLOT IS REFUSED by Cook and by Lock, the same
 # refusal §7.6 gives a pointer in that position. The `Depth` instance whose
 # counted array holds a map PAST ITS LIVE COUNT meets it, and dropping the
@@ -3212,6 +3435,7 @@ tables-maps-negative-controls: tables-maps-sort-negative-control \
 	tables-maps-key-domain-negative-control \
 	tables-maps-place-failure-negative-control \
 	tables-maps-value-reset-negative-control \
+	tables-maps-entry-node-negative-control \
 	tables-maps-unreached-negative-control
 
 # ---- THE LIST GATE (docs/SPEC-TABLES.md §2.9) ------------------------------
@@ -3644,7 +3868,7 @@ tables-arms-negative-controls: tables-arms-list-edge-negative-control \
 # Re-pin the goldens DELIBERATELY (SPEC §7.2 gates 1, 2, 7). A wire golden
 # breaking under an unchanged schema is stop-the-line, never a quiet re-pin
 # (SPEC §3.1) — this target is for intentional emitter/schema changes only.
-update-goldens: build/schema_test build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/schema_test_tables build/schema_test_block build/schema_test_maps build/schema_test_lists build/schema_test_arms build/schema_test_wide_table build/conformance-harness
+update-goldens: build/schema_test_retain build/schema_test build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/schema_test_tables build/schema_test_block build/schema_test_maps build/schema_test_lists build/schema_test_arms build/schema_test_wide_table build/conformance-harness
 	@mkdir -p testdata/golden testdata/wire testdata/wire/tables
 	go test ./internal/goldens -update -run 'TestGolden'
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test
@@ -3654,6 +3878,7 @@ update-goldens: build/schema_test build/schema_test_ludicrous build/schema_test_
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_lists
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_arms
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_wide_table
+	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_retain
 	@for d in examples pointers block blockhome messages stream blobs scalars maps lists arms wide; do \
 		mkdir -p testdata/golden/tables/$$d; \
 		cp build/tables-generated/$$d/*Table.h build/tables-generated/$$d/*Table.cpp testdata/golden/tables/$$d/ 2>/dev/null || true; \
@@ -3918,15 +4143,18 @@ define wire_fuzz_control
 	@echo "negative control: removing the $(1) check from the emitter turns the wire fuzzer RED"
 endef
 
-# THE C++ RELEASE GATE: the wire fuzzer at a long random pass, both builds.
-# certify.yml runs every `tables-<lang>-release` target by name.
+# THE C++ RELEASE GATE: the wire fuzzer at a long random pass, both builds,
+# and the retention leg beside it at the same length (docs/SPEC-TABLES.md
+# §6.6). certify.yml runs every `tables-<lang>-release` target by name.
 .PHONY: tables-cpp-release
 tables-cpp-release:
 	$(MAKE) tables-wire-fuzz N=500000
 	$(MAKE) tables-wire-fuzz SEED=2 N=500000
+	$(MAKE) tables-wire-fuzz-retain N=500000
+	$(MAKE) tables-wire-fuzz-retain SEED=2 N=500000
 
 .PHONY: tables-wire-fuzz-negative-control tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-node-type-negative-control tables-wire-fuzz-blob-node-negative-control
-tables-wire-fuzz-negative-control: tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-node-type-negative-control tables-wire-fuzz-blob-node-negative-control tables-wire-fuzz-wide-text-negative-control
+tables-wire-fuzz-negative-control: tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-node-type-negative-control tables-wire-fuzz-blob-node-negative-control tables-wire-fuzz-wide-text-negative-control tables-wire-fuzz-message-text-oracle-negative-control tables-wire-fuzz-message-text-leg-negative-control tables-wire-fuzz-message-blob-oracle-negative-control tables-wire-fuzz-message-blob-leg-negative-control
 
 # THE CONTENT RULE ON KIND 33 (docs/SPEC-TABLES.md §3, §4): an unpaired
 # surrogate is DAMAGE, not data. The fuzzer's wide-text pass plants one at
@@ -4008,6 +4236,93 @@ tables-wire-fuzz-oracle-negative-control: build/conformance-harness build/wire-f
 		  cat $(ORACLE_NC)/log; exit 1; }
 	@grep -m1 "FAILED" $(ORACLE_NC)/log
 	@echo "negative control: removing the oracle's body-span clamp turns the pinned vector RED"
+
+# ---- THE RETENTION LEG (docs/SPEC-TABLES.md §6.6, §4.2) ---------------------
+#
+# The same mutants through both engines' RETAINING paths, comparing the two
+# retention counters beside the six and the saved bytes beside them. The arm's
+# roster is the VARIABLE-CLASS FILE ROOTS and nothing else: a fixed-class
+# root's LoadRetain is refused by name, and a form-2 SaveRetain refuses by
+# name (§3.3).
+.PHONY: tables-wire-fuzz-retain
+tables-wire-fuzz-retain: build/conformance-harness build/wire-fuzz-cpp build/wire-fuzz-cpp-asan
+	./build/conformance-harness wire-fuzz --retain --driver ./build/wire-fuzz-cpp --seed $(SEED) --n $(N)
+	./build/conformance-harness wire-fuzz --retain --driver ./build/wire-fuzz-cpp-asan --seed $(SEED) --n $(N) \
+		--failed build/wire-fuzz/failed-retain-asan.bin
+
+# TWO NEGATIVE CONTROLS STAND BEHIND THE RETENTION LEG, one per engine,
+# because a leg that has never gone red proves nothing about either. Each
+# removes ONE check — through `go build -overlay`, so no tracked file moves —
+# and requires the leg to go red on the verdict that check guards.
+#
+# THE ORACLE'S DROP RULE. THE WALK IS AN INTERPRETATION AND ITS VERDICT IS
+# STATED (§6.6): a reference above the entry count, a reference at an entry of
+# zero, a reference at one of the three reserved ids, a non-canonical length,
+# an inner body whose terminator falls short, a nested `L` past its parent, and
+# a kind 17 at any depth all DROP THE RECORD. Without the verdict the oracle
+# keeps a record the reference drops, and the two retention reports differ on
+# the mutant that carried it.
+RETAIN_ORACLE_NC := build/wire-fuzz-nc-retain-oracle
+.PHONY: tables-wire-fuzz-retain-oracle-negative-control
+tables-wire-fuzz-retain-oracle-negative-control: build/conformance-harness build/wire-fuzz-cpp
+	@rm -rf $(RETAIN_ORACLE_NC) && mkdir -p $(RETAIN_ORACLE_NC)
+	@sed -e 's|if rs.bad \|\| c.off != len(c.buf) {|if c.off != len(c.buf) { // NEGATIVE CONTROL: the walk'"'"'s verdict is ignored|' \
+		internal/tablewire/retain.go > $(RETAIN_ORACLE_NC)/retain.go.txt
+	@cmp -s internal/tablewire/retain.go $(RETAIN_ORACLE_NC)/retain.go.txt && \
+		{ echo "NEGATIVE CONTROL: the retain-oracle sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/tablewire/retain.go":"%s/$(RETAIN_ORACLE_NC)/retain.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(RETAIN_ORACLE_NC)/overlay.json
+	go build -overlay $(RETAIN_ORACLE_NC)/overlay.json -o $(RETAIN_ORACLE_NC)/harness ./test/conformance/harness
+	@if $(RETAIN_ORACLE_NC)/harness wire-fuzz --retain --driver ./build/wire-fuzz-cpp --seed $(SEED) --n $(N) \
+			--failed $(RETAIN_ORACLE_NC)/failed.bin > $(RETAIN_ORACLE_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the oracle's drop rule is gone and the retention leg stayed green"; \
+		cat $(RETAIN_ORACLE_NC)/log; exit 1; \
+	fi
+	@grep -q "the retention report differs" $(RETAIN_ORACLE_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the retention leg went red, but not on the two counters"; \
+		  cat $(RETAIN_ORACLE_NC)/log; exit 1; }
+	@grep -m1 "FAILED" $(RETAIN_ORACLE_NC)/log
+	@echo "negative control: removing the oracle's drop rule turns the retention leg RED"
+
+# THE REFERENCE'S `retain_lost` ON AN EXCLUDED CLASS. EVERY EXCLUSION COUNTS
+# (§6.6), so a caller that needs to know retention held reads ONE NUMBER and
+# never has to reason about the list. `retainLostInline` is the count the
+# emitter puts beside `unknown` at every class a wire can carry to the unknown
+# arm — an unknown enum variant, an unknown union arm, an unknown keyed slot —
+# and without it the reference under-reports every one of them.
+.PHONY: tables-wire-fuzz-retain-class-negative-control
+tables-wire-fuzz-retain-class-negative-control: build/conformance-harness
+	$(call retain_fuzz_control,retain-class,internal/codegen/cpptable/codecs.go,s|return " r.report->retain_lost++;"|return "" // NEGATIVE CONTROL: the class is not counted|,the retention report differs)
+
+# $(1) the control's name  $(2) the emitter file  $(3) the sed program
+# $(4) the verdict the leg must print
+define retain_fuzz_control
+	@rm -rf build/wire-fuzz-nc-$(1) && mkdir -p build/wire-fuzz-nc-$(1)
+	@sed -e '$(3)' $(2) > build/wire-fuzz-nc-$(1)/emitter.go.txt
+	@cmp -s $(2) build/wire-fuzz-nc-$(1)/emitter.go.txt && \
+		{ echo "NEGATIVE CONTROL: the $(1) sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/$(2)":"%s/build/wire-fuzz-nc-$(1)/emitter.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/wire-fuzz-nc-$(1)/overlay.json
+	go build -overlay build/wire-fuzz-nc-$(1)/overlay.json -o build/wire-fuzz-nc-$(1)/schema ./cmd/schema
+	$(call tables_generate,./build/wire-fuzz-nc-$(1)/schema,build/wire-fuzz-nc-$(1)/generated)
+	$(CXX) $(TABLES_CXXFLAGS) -O1 $(call tables_includes,build/wire-fuzz-nc-$(1)/generated) \
+		test/tables/wire_fuzz_main.cpp \
+		$(subst build/tables-generated/,build/wire-fuzz-nc-$(1)/generated/,$(CONFORMANCE_SOURCES)) \
+		-o build/wire-fuzz-nc-$(1)/leg
+	@if ./build/conformance-harness wire-fuzz --retain --driver ./build/wire-fuzz-nc-$(1)/leg --seed $(SEED) --n $(N) \
+			--failed build/wire-fuzz-nc-$(1)/failed.bin > build/wire-fuzz-nc-$(1)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the $(1) check is gone and the retention leg stayed green"; \
+		cat build/wire-fuzz-nc-$(1)/log; exit 1; \
+	fi
+	@grep -q "$(4)" build/wire-fuzz-nc-$(1)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the retention leg went red, but not on the $(1) check"; \
+		  cat build/wire-fuzz-nc-$(1)/log; exit 1; }
+	@grep -m1 "FAILED" build/wire-fuzz-nc-$(1)/log
+	@echo "negative control: removing the $(1) check from the emitter turns the retention leg RED"
+endef
+
+.PHONY: tables-wire-fuzz-retain-negative-control
+tables-wire-fuzz-retain-negative-control: tables-wire-fuzz-retain-oracle-negative-control tables-wire-fuzz-retain-class-negative-control
 
 # THE WIDE-VOCABULARY UNIT IS GENERATED AND COMMITTED (docs/SPEC-TABLES.md
 # §3.3): a hundred and thirty distinct field names typed by hand is a file
@@ -4108,10 +4423,13 @@ MESSAGE_FORM_CONTROLS := \
 	message-strict-check-refuses:internal/tablewire/message.go:TestTheAnnouncementsTwoStrictChecksAndItsTolerance \
 	message-duplicate-entry-accepted:internal/tablewire/message.go:TestAHostileShape \
 	message-array-of-text-accepted:ir/tablemessage.go:TestAHostileShape \
-	message-skipped-variant-unresolved:internal/tablewire/messagedecode.go:TestAReferenceOfTheWrongSort
+	message-skipped-variant-unresolved:internal/tablewire/messagedecode.go:TestAReferenceOfTheWrongSort \
+	message-text-accepts-ill-formed:internal/tablewire/messagedecode.go:TestTheMessageFormsTextContentRuleAndClamp \
+	message-text-clamp-off-boundary:internal/tablewire/messagedecode.go:TestTheMessageFormsTextContentRuleAndClamp \
+	message-blob-accepts-ill-formed:internal/tablewire/messagedecode.go:TestAStringBlobRecordOnAMessageBodyCarriesTheContentRule
 
 .PHONY: tables-message-form-negative-control
-tables-message-form-negative-control: tables-message-form-emitter-negative-control tables-message-form-count-negative-control
+tables-message-form-negative-control: tables-message-form-emitter-negative-control tables-message-form-count-negative-control tables-message-form-text-negative-control tables-message-form-blob-negative-control
 	@for row in $(MESSAGE_FORM_CONTROLS); do \
 		name=$${row%%:*}; rest=$${row#*:}; file=$${rest%%:*}; test=$${rest#*:}; \
 		$(MAKE) --no-print-directory tables-message-form-one-negative-control \
@@ -4189,6 +4507,80 @@ tables-message-form-count-negative-control: bin/schema test/tables/message_count
 		-o build/message-nc/count-true
 	./build/message-nc/count-true
 	$(call message_form_count_control,message-emitter-narrow-count-before-clamp,internal/codegen/cpptable/messageload.go)
+
+# AND THE ONE CONTENT RULE ON A MESSAGE BODY (docs/SPEC-TABLES.md §3.3,
+# schema#620): a kind 12 payload that is not well-formed UTF-8, or that carries
+# a zero byte, is damage and terminal for the batch, and a clamp cuts at a code
+# point boundary. Neither is reachable from a corpus value, because a writer
+# produces neither, so the instrument is a batch forged over backenddemo's
+# `sku` and a program that reads the report and the stored bytes back. The
+# emitter's own copy of each rule is what the two sabotages remove; the ORACLE's
+# two ride in MESSAGE_FORM_CONTROLS above. $(1) the sabotage, $(2) the emitter file.
+define message_form_text_control
+	@mkdir -p build/message-nc
+	@go run ./tools/sabotage -name $(1) -out build/message-nc/$(1).gotext $(2)
+	@printf '{"Replace":{"%s/$(2)":"%s/build/message-nc/$(1).gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/message-nc/$(1)-overlay.json
+	go build -overlay build/message-nc/$(1)-overlay.json -o build/message-nc/$(1)-schema ./cmd/schema
+	@rm -rf build/message-nc/$(1)-backend && mkdir -p build/message-nc/$(1)-backend
+	./build/message-nc/$(1)-schema generate --lang cpp --out build/message-nc/$(1)-backend tables/backend
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/message-nc/$(1)-backend -Itest/tables -I$(SERIALIZE) \
+		test/tables/message_text_main.cpp build/message-nc/$(1)-backend/BackendTable.cpp \
+		-o build/message-nc/$(1)-control
+	@if ./build/message-nc/$(1)-control > build/message-nc/$(1).log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the $(1) sabotage landed and the message text rows stayed green"; \
+		cat build/message-nc/$(1).log; exit 1; \
+	fi
+	@cat build/message-nc/$(1).log
+	@echo "negative control ($(1)): the message form's text rows go red"
+endef
+
+.PHONY: tables-message-form-text-negative-control
+tables-message-form-text-negative-control: bin/schema test/tables/message_text_main.cpp build/tables-generated/.stamp
+	@mkdir -p build/message-nc
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/backend -Itest/tables -I$(SERIALIZE) \
+		test/tables/message_text_main.cpp build/tables-generated/backend/BackendTable.cpp \
+		-o build/message-nc/text-true
+	./build/message-nc/text-true
+	$(call message_form_text_control,message-emitter-text-accepts-ill-formed,internal/codegen/cpptable/messageload.go)
+	$(call message_form_text_control,message-emitter-text-clamp-off-boundary,internal/codegen/cpptable/messageload.go)
+
+# AND THE SAME CONTENT RULE MET AT A NODE (docs/SPEC-TABLES.md §3.1, §3.3;
+# schema#632): a `*string` blob record on a form-2 body is refused on the file
+# form's own terms, and the damage is terminal for the batch. A writer produces
+# no such record, so the instrument is a batch forged over `blobdemo`'s
+# `Catalog`, whose numbering reaches a `*string` blob through `note` and a
+# `*bytes` blob through `thumb`, and a program that reads the report back. The
+# emitter's own copy of the rule is what the sabotage removes; the ORACLE's
+# rides in MESSAGE_FORM_CONTROLS above. $(1) the sabotage, $(2) the emitter file.
+define message_form_blob_control
+	@mkdir -p build/message-nc
+	@go run ./tools/sabotage -name $(1) -out build/message-nc/$(1).gotext $(2)
+	@printf '{"Replace":{"%s/$(2)":"%s/build/message-nc/$(1).gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/message-nc/$(1)-overlay.json
+	go build -overlay build/message-nc/$(1)-overlay.json -o build/message-nc/$(1)-schema ./cmd/schema
+	@rm -rf build/message-nc/$(1)-blobs && mkdir -p build/message-nc/$(1)-blobs
+	./build/message-nc/$(1)-schema generate --lang cpp --out build/message-nc/$(1)-blobs tables/blobs
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/message-nc/$(1)-blobs -Itest/tables -I$(SERIALIZE) \
+		test/tables/message_blob_main.cpp build/message-nc/$(1)-blobs/AssetsTable.cpp \
+		-o build/message-nc/$(1)-control
+	@if ./build/message-nc/$(1)-control > build/message-nc/$(1).log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the $(1) sabotage landed and the message blob rows stayed green"; \
+		cat build/message-nc/$(1).log; exit 1; \
+	fi
+	@cat build/message-nc/$(1).log
+	@echo "negative control ($(1)): the message form's blob rows go red"
+endef
+
+.PHONY: tables-message-form-blob-negative-control
+tables-message-form-blob-negative-control: bin/schema test/tables/message_blob_main.cpp build/tables-generated/.stamp
+	@mkdir -p build/message-nc
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/blobs -Itest/tables -I$(SERIALIZE) \
+		test/tables/message_blob_main.cpp build/tables-generated/blobs/AssetsTable.cpp \
+		-o build/message-nc/blob-true
+	./build/message-nc/blob-true
+	$(call message_form_blob_control,message-emitter-blob-accepts-ill-formed,internal/codegen/cpptable/messagevariable.go)
+
 # THE NODE TYPE A ROOT CANNOT PLACE (docs/SPEC-TABLES.md §3.1, §6.5, §3.3), and
 # the vector message_node_type_unpointed is the red it closed. A node record is
 # a pointer's pointee, so a table no pointer below the root targets is a node
@@ -4265,6 +4657,135 @@ tables-wire-fuzz-blob-node-negative-control: build/conformance-harness build/wir
 		  cat $(BLOB_NODE_NC)/log; exit 1; }
 	@grep -m1 "FAILED" $(BLOB_NODE_NC)/log
 	@echo "negative control: framing a blob record by reachability turns the pinned vector RED"
+
+# ILL-FORMED TEXT ON A MESSAGE BODY (docs/SPEC-TABLES.md §3, §3.3; schema#620),
+# and the vector message_ill_formed_text is what holds the two engines to one
+# answer on it. The four blades in tables-message-form-negative-control hold
+# each engine to the PAGE; these two hold the engines to EACH OTHER, which is a
+# different question and the one a differential fuzzer exists to ask: before the
+# repair both readers accepted the vector, agreeing and agreeing wrongly, so
+# nothing here could have gone red. Each control repairs one engine and takes
+# the rule back out of the other, and the run must go red ON THE VECTOR.
+#
+# THE ASSERTION IS THE VECTOR REPLAYED ALONE, not a corpus pass, for the reason
+# the node-type control names: an enumerated mutant reaches the same check and
+# would name itself instead of the property.
+MESSAGE_TEXT_VECTOR := testdata/wire/tables/fuzz-vectors/message_ill_formed_text.bin
+
+MESSAGE_TEXT_ORACLE_NC := build/wire-fuzz-nc-message-text-oracle
+.PHONY: tables-wire-fuzz-message-text-oracle-negative-control
+tables-wire-fuzz-message-text-oracle-negative-control: build/conformance-harness build/wire-fuzz-cpp
+	@rm -rf $(MESSAGE_TEXT_ORACLE_NC) && mkdir -p $(MESSAGE_TEXT_ORACLE_NC)
+	@go run ./tools/sabotage -name message-text-accepts-ill-formed \
+		-out $(MESSAGE_TEXT_ORACLE_NC)/messagedecode.go.txt internal/tablewire/messagedecode.go
+	@printf '{"Replace":{"%s/internal/tablewire/messagedecode.go":"%s/$(MESSAGE_TEXT_ORACLE_NC)/messagedecode.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(MESSAGE_TEXT_ORACLE_NC)/overlay.json
+	go build -overlay $(MESSAGE_TEXT_ORACLE_NC)/overlay.json -o $(MESSAGE_TEXT_ORACLE_NC)/harness ./test/conformance/harness
+	@if $(MESSAGE_TEXT_ORACLE_NC)/harness wire-fuzz --driver ./build/wire-fuzz-cpp \
+			--replay $(MESSAGE_TEXT_VECTOR) --unit backenddemo --root StorePurchase --message \
+			--failed $(MESSAGE_TEXT_ORACLE_NC)/failed.bin > $(MESSAGE_TEXT_ORACLE_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the oracle accepts ill-formed message text again and the pinned vector stayed green"; \
+		cat $(MESSAGE_TEXT_ORACLE_NC)/log; exit 1; \
+	fi
+	@grep -q "message_ill_formed_text" $(MESSAGE_TEXT_ORACLE_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the wire fuzzer went red, but not on the pinned vector"; \
+		  cat $(MESSAGE_TEXT_ORACLE_NC)/log; exit 1; }
+	@grep -m1 "FAILED" $(MESSAGE_TEXT_ORACLE_NC)/log
+	@echo "negative control: an oracle that accepts ill-formed message text turns the pinned vector RED"
+
+MESSAGE_TEXT_LEG_NC := build/wire-fuzz-nc-message-text-leg
+.PHONY: tables-wire-fuzz-message-text-leg-negative-control
+tables-wire-fuzz-message-text-leg-negative-control: build/conformance-harness
+	@rm -rf $(MESSAGE_TEXT_LEG_NC) && mkdir -p $(MESSAGE_TEXT_LEG_NC)
+	@go run ./tools/sabotage -name message-emitter-text-accepts-ill-formed \
+		-out $(MESSAGE_TEXT_LEG_NC)/messageload.go.txt internal/codegen/cpptable/messageload.go
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/messageload.go":"%s/$(MESSAGE_TEXT_LEG_NC)/messageload.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(MESSAGE_TEXT_LEG_NC)/overlay.json
+	go build -overlay $(MESSAGE_TEXT_LEG_NC)/overlay.json -o $(MESSAGE_TEXT_LEG_NC)/schema ./cmd/schema
+	$(call tables_generate,./$(MESSAGE_TEXT_LEG_NC)/schema,$(MESSAGE_TEXT_LEG_NC)/generated)
+	$(CXX) $(TABLES_CXXFLAGS) -O1 $(call tables_includes,$(MESSAGE_TEXT_LEG_NC)/generated) \
+		test/tables/wire_fuzz_main.cpp \
+		$(subst build/tables-generated/,$(MESSAGE_TEXT_LEG_NC)/generated/,$(CONFORMANCE_SOURCES)) \
+		-o $(MESSAGE_TEXT_LEG_NC)/leg
+	@if ./build/conformance-harness wire-fuzz --driver $(MESSAGE_TEXT_LEG_NC)/leg \
+			--replay $(MESSAGE_TEXT_VECTOR) --unit backenddemo --root StorePurchase --message \
+			--failed $(MESSAGE_TEXT_LEG_NC)/failed.bin > $(MESSAGE_TEXT_LEG_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the emitted reader accepts ill-formed message text again and the pinned vector stayed green"; \
+		cat $(MESSAGE_TEXT_LEG_NC)/log; exit 1; \
+	fi
+	@grep -q "message_ill_formed_text" $(MESSAGE_TEXT_LEG_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the wire fuzzer went red, but not on the pinned vector"; \
+		  cat $(MESSAGE_TEXT_LEG_NC)/log; exit 1; }
+	@grep -m1 "FAILED" $(MESSAGE_TEXT_LEG_NC)/log
+	@echo "negative control: an emitted reader that accepts ill-formed message text turns the pinned vector RED"
+
+# ILL-FORMED TEXT IN A *string BLOB RECORD ON A MESSAGE BODY
+# (docs/SPEC-TABLES.md §3, §3.1, §3.3; schema#632), and the two vectors
+# message_blob_ill_formed_text and message_blob_zero_byte are what hold the two
+# engines to one answer on it. The blade in
+# tables-message-form-blob-negative-control holds each engine to the PAGE;
+# these two hold the engines to EACH OTHER, which is a different question and
+# the one a differential fuzzer exists to ask: before the repair both readers
+# placed the record, agreeing and agreeing wrongly, so nothing here could have
+# gone red. Each control repairs one engine and takes the rule back out of the
+# other, and the run must go red ON THE VECTOR.
+#
+# THE ASSERTION IS THE VECTOR REPLAYED ALONE, not a corpus pass, for the reason
+# the node-type control names: an enumerated mutant reaches the same check and
+# would name itself instead of the property.
+MESSAGE_BLOB_VECTOR := testdata/wire/tables/fuzz-vectors/message_blob_ill_formed_text.bin
+MESSAGE_BLOB_ZERO_VECTOR := testdata/wire/tables/fuzz-vectors/message_blob_zero_byte.bin
+
+MESSAGE_BLOB_ORACLE_NC := build/wire-fuzz-nc-message-blob-oracle
+.PHONY: tables-wire-fuzz-message-blob-oracle-negative-control
+tables-wire-fuzz-message-blob-oracle-negative-control: build/conformance-harness build/wire-fuzz-cpp
+	@rm -rf $(MESSAGE_BLOB_ORACLE_NC) && mkdir -p $(MESSAGE_BLOB_ORACLE_NC)
+	@go run ./tools/sabotage -name message-blob-accepts-ill-formed \
+		-out $(MESSAGE_BLOB_ORACLE_NC)/messagedecode.go.txt internal/tablewire/messagedecode.go
+	@printf '{"Replace":{"%s/internal/tablewire/messagedecode.go":"%s/$(MESSAGE_BLOB_ORACLE_NC)/messagedecode.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(MESSAGE_BLOB_ORACLE_NC)/overlay.json
+	go build -overlay $(MESSAGE_BLOB_ORACLE_NC)/overlay.json -o $(MESSAGE_BLOB_ORACLE_NC)/harness ./test/conformance/harness
+	@for vector in $(MESSAGE_BLOB_VECTOR) $(MESSAGE_BLOB_ZERO_VECTOR); do \
+		if $(MESSAGE_BLOB_ORACLE_NC)/harness wire-fuzz --driver ./build/wire-fuzz-cpp \
+				--replay $$vector --unit blobdemo --root Catalog --message \
+				--failed $(MESSAGE_BLOB_ORACLE_NC)/failed.bin > $(MESSAGE_BLOB_ORACLE_NC)/log 2>&1; then \
+			echo "NEGATIVE CONTROL FAILED: the oracle places an ill-formed *string blob again and $$vector stayed green"; \
+			cat $(MESSAGE_BLOB_ORACLE_NC)/log; exit 1; \
+		fi; \
+		grep -q "$$(basename $$vector)" $(MESSAGE_BLOB_ORACLE_NC)/log || \
+			{ echo "NEGATIVE CONTROL FAILED: the wire fuzzer went red, but not on $$vector"; \
+			  cat $(MESSAGE_BLOB_ORACLE_NC)/log; exit 1; }; \
+		grep -m1 "FAILED" $(MESSAGE_BLOB_ORACLE_NC)/log; \
+	done
+	@echo "negative control: an oracle that places an ill-formed *string blob turns both pinned vectors RED"
+
+MESSAGE_BLOB_LEG_NC := build/wire-fuzz-nc-message-blob-leg
+.PHONY: tables-wire-fuzz-message-blob-leg-negative-control
+tables-wire-fuzz-message-blob-leg-negative-control: build/conformance-harness
+	@rm -rf $(MESSAGE_BLOB_LEG_NC) && mkdir -p $(MESSAGE_BLOB_LEG_NC)
+	@go run ./tools/sabotage -name message-emitter-blob-accepts-ill-formed \
+		-out $(MESSAGE_BLOB_LEG_NC)/messagevariable.go.txt internal/codegen/cpptable/messagevariable.go
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/messagevariable.go":"%s/$(MESSAGE_BLOB_LEG_NC)/messagevariable.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(MESSAGE_BLOB_LEG_NC)/overlay.json
+	go build -overlay $(MESSAGE_BLOB_LEG_NC)/overlay.json -o $(MESSAGE_BLOB_LEG_NC)/schema ./cmd/schema
+	$(call tables_generate,./$(MESSAGE_BLOB_LEG_NC)/schema,$(MESSAGE_BLOB_LEG_NC)/generated)
+	$(CXX) $(TABLES_CXXFLAGS) -O1 $(call tables_includes,$(MESSAGE_BLOB_LEG_NC)/generated) \
+		test/tables/wire_fuzz_main.cpp \
+		$(subst build/tables-generated/,$(MESSAGE_BLOB_LEG_NC)/generated/,$(CONFORMANCE_SOURCES)) \
+		-o $(MESSAGE_BLOB_LEG_NC)/leg
+	@for vector in $(MESSAGE_BLOB_VECTOR) $(MESSAGE_BLOB_ZERO_VECTOR); do \
+		if ./build/conformance-harness wire-fuzz --driver $(MESSAGE_BLOB_LEG_NC)/leg \
+				--replay $$vector --unit blobdemo --root Catalog --message \
+				--failed $(MESSAGE_BLOB_LEG_NC)/failed.bin > $(MESSAGE_BLOB_LEG_NC)/log 2>&1; then \
+			echo "NEGATIVE CONTROL FAILED: the emitted reader places an ill-formed *string blob again and $$vector stayed green"; \
+			cat $(MESSAGE_BLOB_LEG_NC)/log; exit 1; \
+		fi; \
+		grep -q "$$(basename $$vector)" $(MESSAGE_BLOB_LEG_NC)/log || \
+			{ echo "NEGATIVE CONTROL FAILED: the wire fuzzer went red, but not on $$vector"; \
+			  cat $(MESSAGE_BLOB_LEG_NC)/log; exit 1; }; \
+		grep -m1 "FAILED" $(MESSAGE_BLOB_LEG_NC)/log; \
+	done
+	@echo "negative control: an emitted reader that places an ill-formed *string blob turns both pinned vectors RED"
 
 # The GENERATED half of the data: the JSON text of every instance and the read
 # report of every evolution case, both from the compiler's own engine.
@@ -4371,6 +4892,12 @@ conformance-negative-control-block-dump: build/conformance-harness build/conform
 #   CONFORMANCE_ENV    environment the harness run carries to the drivers
 #   BENCH_TABLES_LEGS  the generated unit a leg of `make bench-tables` needs
 #   GOLDENS_LEGS       update-goldens-<lang>: the leg's committed table goldens
+#   TOOLCHAIN_LEGS     the legs with a pinned toolchain, each of which also
+#                      defines toolchain-<lang> (one $(call toolchain_probe)
+#                      per pin) and sets TOOLCHAIN_PINS_<lang> to EVERY pin
+#                      that target probes. The negative control points each
+#                      one in turn at a path that does not exist, so a pin
+#                      left off the list is a probe nothing watches
 # THE WIDE-SCALAR REFUSAL GATE (docs/SPEC-TABLES.md §3, §15): every scalar the
 # type wire carries rides in a table in the C++ reference and the tool, and a
 # port that has not landed the kinds yet must REFUSE a unit declaring them, by
@@ -4410,13 +4937,19 @@ include $(wildcard make/*.mk)
 include make/checks/packet-arm-defaults.mk
 include make/checks/packet-void.mk
 include make/checks/packet-defaults.mk
+include make/checks/packet-text.mk
 
 # THE CONFORMANCE MATRIX (test/conformance/README.md): every discovered driver
 # over every surface it lists. The reference leg is C++ and is built here; the
 # rest are what the legs registered.
+#
+# A leg named in SCHEMA_SKIP_LEGS is not built here and its driver is not run
+# (issue #599): --skip takes the same names, and the harness prints each one it
+# passes over. The reference leg cannot be skipped.
 .PHONY: conformance
 conformance: build/conformance-harness build/conformance-cpp build/schema_test_cook $(CONFORMANCE_LEGS)
-	$(CONFORMANCE_ENV) ./build/conformance-harness run
+	$(CONFORMANCE_ENV) ./build/conformance-harness run \
+		$(if $(SKIPPED_LEGS),--skip $(subst $(skip_space),$(skip_comma),$(strip $(SKIPPED_LEGS))))
 
 # THE TABLES BENCH PASS (bench/tables/README.md): every leg under
 # bench/tables/*/leg, results under bench/tables/results/. A PUBLISHABLE
@@ -4436,6 +4969,113 @@ registry:
 	@echo "conformance: $(CONFORMANCE_LEGS)"
 	@echo "bench-tables: $(BENCH_TABLES_LEGS)"
 	@echo "goldens: $(GOLDENS_LEGS)"
+	@echo "toolchain: $(TOOLCHAIN_LEGS)"
+
+# ---------------------------------------------------------------------------
+# THE TOOLCHAIN GATE (issue #599), the aggregate ----------------------------
+#
+# Every leg that registered a pinned toolchain is probed here, before the chain
+# spends its hour, and a pin that does not resolve stops `make test` by name.
+# A leg named in SCHEMA_SKIP_LEGS is not probed and prints its skip instead, so
+# the run says which legs it did not measure rather than passing over them.
+# Nothing here lists a language: a leg registers TOOLCHAIN_LEGS, its pin name
+# and its own toolchain-<lang> target in make/<lang>.mk, like every other list
+# above.
+REGISTERED_LEGS := $(patsubst test-%,%,$(TEST_LEGS))
+UNKNOWN_SKIPS   := $(filter-out $(REGISTERED_LEGS),$(SKIPPED_LEGS))
+SKIPPED_TOOLCHAIN_LEGS := $(filter $(SKIPPED_LEGS),$(TOOLCHAIN_LEGS))
+PROBED_TOOLCHAIN_LEGS  := $(filter-out $(SKIPPED_LEGS),$(TOOLCHAIN_LEGS))
+
+# A NAME THAT IS NOT A LEG IS A SKIP THAT SKIPS NOTHING, and it reads exactly
+# like one that works, so it is refused before any pin is probed.
+.PHONY: toolchain-names
+toolchain-names:
+ifneq ($(UNKNOWN_SKIPS),)
+	@echo "make test REFUSES: SCHEMA_SKIP_LEGS names $(UNKNOWN_SKIPS), which is no registered leg"
+	@echo "  the registered legs are: $(REGISTERED_LEGS) (make registry prints them)"
+	@exit 1
+endif
+
+# EVERY LEG NOT NAMED IN THE SKIP LIST IS PROBED, and every one that does not
+# resolve is NAMED, in one run. A leg's probe as a PREREQUISITE stops the gate
+# at the first one that fails, turning a fresh clone into a queue: install one
+# toolchain, run again, learn the next name. The legs go through sub-makes here
+# instead, each leg's own refusal passed through as it printed it, and the
+# summary names them together with the skip line that runs the chain without
+# them, already carrying the skips in force.
+#
+# The green line says how many of the registered legs were probed, and when
+# that is none it says so as a skip rather than as a claim about toolchains it
+# never looked at.
+TOOLCHAIN_GREEN = toolchain gate: $(words $(PROBED_TOOLCHAIN_LEGS)) of $(words $(TOOLCHAIN_LEGS)) registered legs probed, $(if $(PROBED_TOOLCHAIN_LEGS),every pinned toolchain resolves,every registered leg is named in SCHEMA_SKIP_LEGS)
+.PHONY: toolchain
+toolchain: toolchain-names
+	@rm -rf build/toolchain && mkdir -p build/toolchain
+	@missing=""; \
+	$(foreach leg,$(PROBED_TOOLCHAIN_LEGS), \
+		$(MAKE) --no-print-directory toolchain-$(leg) \
+			> build/toolchain/$(leg).log 2> build/toolchain/$(leg).err \
+			|| missing="$$missing $(leg)"; \
+		cat build/toolchain/$(leg).log; \
+		grep -q "REFUSES: the $(leg) leg" build/toolchain/$(leg).log \
+			|| cat build/toolchain/$(leg).err;) \
+	$(foreach leg,$(SKIPPED_TOOLCHAIN_LEGS), \
+		echo "toolchain gate: the $(leg) leg is SKIPPED on purpose, SCHEMA_SKIP_LEGS names it";) \
+	if [ -n "$$missing" ]; then \
+		echo "make test REFUSES: the pinned toolchain does not resolve for:$$missing"; \
+		echo "  every refusal above names its leg, its pin and the path that pin looked in"; \
+		echo "  to run the chain without those legs, name the skips on purpose:"; \
+		echo "      make test SCHEMA_SKIP_LEGS=$$(echo $(SKIPPED_LEGS) $$missing | tr ' ' ',')"; \
+		exit 1; \
+	fi; \
+	echo "$(TOOLCHAIN_GREEN)"
+
+# ITS NEGATIVE CONTROL. A gate that has never gone red is a gate with no blade,
+# and going red is this one's whole job, so the control makes it go red: EVERY
+# PIN OF EVERY registered leg, one pin at a time, pointed at a path that does
+# not exist, and each must refuse BY THE LEG'S OWN NAME AND THAT PIN'S. A leg
+# with a second pin is exactly where the blade goes blunt unseen: a control
+# that points one pin per leg leaves the rest of them watching nothing, and
+# deleting their probes keeps it green. Then the POSITIVE half, with every pin
+# still pointed at that absent path and SCHEMA_SKIP_LEGS naming every leg: the
+# same gate goes green and prints one named skip per leg. Nothing here lists a
+# language either.
+#
+# While one pin is absent, THE LEG'S OTHER PINS POINT AT A PATH THAT RESOLVES,
+# so the refusal is attributable to the pin under test rather than to whichever
+# pin the bench happens to be missing anyway. A bench with none of the pinned
+# toolchains installed is the case this gate exists for, so the control has to
+# hold there too, and it does not hold if an earlier probe answers first.
+TOOLCHAIN_NC_ABSENT  := $(CURDIR)/build/toolchain-nc/absent
+TOOLCHAIN_NC_PRESENT := /bin/sh
+TOOLCHAIN_ALL_PINS    = $(foreach leg,$(TOOLCHAIN_LEGS),$(TOOLCHAIN_PINS_$(leg)))
+.PHONY: toolchain-negative-control
+toolchain-negative-control:
+	@rm -rf build/toolchain-nc && mkdir -p build/toolchain-nc
+	@$(foreach leg,$(TOOLCHAIN_LEGS),$(foreach pin,$(TOOLCHAIN_PINS_$(leg)), \
+		if $(MAKE) --no-print-directory toolchain-$(leg) \
+				$(foreach other,$(filter-out $(pin),$(TOOLCHAIN_PINS_$(leg))),$(other)=$(TOOLCHAIN_NC_PRESENT)) \
+				$(pin)=$(TOOLCHAIN_NC_ABSENT) \
+				> build/toolchain-nc/$(leg)-$(pin).log 2>&1; then \
+			echo "NEGATIVE CONTROL FAILED: the $(leg) leg stayed green with $(pin) pointed at a path that does not exist"; \
+			cat build/toolchain-nc/$(leg)-$(pin).log; exit 1; \
+		fi; \
+		grep -q "REFUSES: the $(leg) leg's pinned $(pin) does not resolve" build/toolchain-nc/$(leg)-$(pin).log || \
+			{ echo "NEGATIVE CONTROL FAILED: the $(leg) leg went red with $(pin) absent, but not by that pin's name"; \
+			  cat build/toolchain-nc/$(leg)-$(pin).log; exit 1; }; \
+		sed -n '1,2p' build/toolchain-nc/$(leg)-$(pin).log;))
+	@$(MAKE) --no-print-directory toolchain \
+		SCHEMA_SKIP_LEGS=$(subst $(skip_space),$(skip_comma),$(strip $(TOOLCHAIN_LEGS))) \
+		$(foreach pin,$(TOOLCHAIN_ALL_PINS),$(pin)=$(TOOLCHAIN_NC_ABSENT)) \
+		> build/toolchain-nc/skipped.log 2>&1 || \
+		{ echo "POSITIVE FAILED: SCHEMA_SKIP_LEGS named every leg and the gate refused anyway"; \
+		  cat build/toolchain-nc/skipped.log; exit 1; }
+	@$(foreach leg,$(TOOLCHAIN_LEGS), \
+		grep -q "the $(leg) leg is SKIPPED on purpose" build/toolchain-nc/skipped.log || \
+			{ echo "POSITIVE FAILED: the $(leg) leg was passed over without being named"; \
+			  cat build/toolchain-nc/skipped.log; exit 1; };)
+	@cat build/toolchain-nc/skipped.log
+	@echo "negative control: each of the $(words $(TOOLCHAIN_ALL_PINS)) registered pins ($(TOOLCHAIN_ALL_PINS)) pointed at a path that does not exist turns make test RED, by leg and by pin; naming the leg in SCHEMA_SKIP_LEGS turns it GREEN with the skip printed by name"
 
 # THE `was` CONTROL (docs/SPEC-TABLES.md §5). A table renamed under `was` keeps
 # the node type id every stored record carries, so W1's fleet reads under W2's

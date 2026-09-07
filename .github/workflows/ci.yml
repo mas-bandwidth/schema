@@ -123,6 +123,17 @@ jobs:
           make projection-wire-law-negative-control
           make projection-union-arm-order-negative-control
 
+      # THE TOOLCHAIN GATE's control (issue #599), on the same reasoning and in
+      # the same job. `make test` is the only thing that runs the gate, and no
+      # job on a pull request runs `make test`, so until this step existed the
+      # gate that stops a missing toolchain was itself unwatched on the diff
+      # that changes it. The control needs no toolchain of its own: it points
+      # each registered pin at a path that does not exist and reads the
+      # refusal, which is the state this runner is already in, and takes about
+      # a second.
+      - name: the toolchain gate goes red without the toolchains it pins
+        run: make toolchain-negative-control
+
   # THE GENERATED TREE IS CURRENT (issue #30). The committed generated/ tree is
   # what this repo treats as ground truth — findings are receipted against its
   # line numbers — so a compiler change that moves the emitted text and leaves

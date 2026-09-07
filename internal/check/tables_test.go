@@ -311,6 +311,13 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\ntable Tab { m map[uint32]int32 = 0 }\n"},
 		{name: "an attribute on a map is refused by name", want: "does not apply to a map",
 			src: "package t\ntable Tab { m map[uint32]int32 | max = 4 }\n"},
+		// THE ONE VALUE KIND REFUSED BY NAME (§2.8, §2.5). Every other kind
+		// §2.8 lists is an ordinary field of the generated entry and compiles
+		// as one; `*wstring` is refused wherever it is declared, and the entry
+		// is where the refusal has to reach a map's value, because the value
+		// is a field of a table nobody wrote.
+		{name: "a *wstring map value is refused by name", want: "*wstring is specified ahead of its implementation",
+			src: "package t\ntable Tab { m map[uint32]*wstring }\n"},
 		// the by-value cycle reaches THROUGH the entry, and a map of *Self is
 		// the ordinary legal recursion through a pointer
 		{name: "a map of ITSELF closes a by-value cycle", want: "type composition cycle",
@@ -1494,5 +1501,122 @@ type Loadout {
 	keyed := strings.Replace(inTable, "[ShipType.Max]Cfg", "[ShipType]Cfg", 1)
 	if errs := runUnit(t, map[string]string{"t.schema": keyed}); len(errs) > 0 {
 		t.Fatalf("the table form [ShipType]Cfg did not compile: %v", errs)
+	}
+}
+
+// TestEnumBoundProvenanceCorpus is §2.4's "HELD BY TEST: one diagnostics row a
+// SHAPE, red first", read from the corpus rather than restated here.
+//
+// THE RULE FOLLOWS THE BOUND'S PROVENANCE AND NOT ITS SPELLING. `[E.Max]T`,
+// `[E.Count]T` and `[N]T` under a `const N` that folds from either are one
+// bound, so one file a shape stands in test/tables/enumbound and this test
+// holds each to its answer: the refused shapes in a TABLE BODY and in a UNION
+// ARM, and the three controls that hold the other edge. A row is red if the
+// unit compiles, or if the diagnostic stops naming the field, the enum, the
+// constant the field spells, and `[E]T` as the fix.
+//
+// The corpus is read rather than inlined because the same files are what
+// `check-enum-bound-negative-control` runs the compiler over: a shape stated
+// in one place is a shape that cannot drift between the two.
+func TestEnumBoundProvenanceCorpus(t *testing.T) {
+	// want is every substring the diagnostic must carry; an empty want is a
+	// CONTROL, which must compile clean.
+	cases := []struct {
+		file string
+		want []string
+	}{
+		// THE BOUND'S OWN SHAPES, IN A TABLE BODY
+		{file: "BodyMax.schema", want: []string{
+			"table Fleet: field ships", "[ShipType.Max]int32 is refused in a table body",
+			"spell it [ShipType]int32"}},
+		{file: "BodyCount.schema", want: []string{
+			"table Fleet: field ships", "[ShipType.Count]int32 is refused in a table body",
+			"spell it [ShipType]int32"}},
+		{file: "BodyConstMax.schema", want: []string{
+			"table Fleet: field ships", "[SlotCount]int32 is refused in a table body",
+			"the bound SlotCount folds from ShipType.Max", "spell it [ShipType]int32"}},
+		{file: "BodyConstCount.schema", want: []string{
+			"table Fleet: field ships", "[SlotCount]int32 is refused in a table body",
+			"the bound SlotCount folds from ShipType.Count", "spell it [ShipType]int32"}},
+		{file: "BodyFolded.schema", want: []string{
+			"table Fleet: field ships", "[SlotCount]int32 is refused in a table body",
+			"the bound SlotCount folds from ShipType.Max", "spell it [ShipType]int32"}},
+
+		// THE UNION ARM'S SHAPE, in every spelling the bound has: the
+		// diagnostic names the ARM as well, and the table that reaches the
+		// union beside it.
+		{file: "ArmMax.schema", want: []string{
+			"union Payload: arm ships", "[ShipType.Max]int32 is refused in a union arm",
+			"table Fleet's field payload reaches Payload", "spell it [ShipType]int32"}},
+		{file: "ArmCount.schema", want: []string{
+			"union Payload: arm ships", "[ShipType.Count]int32 is refused in a union arm",
+			"table Fleet's field payload reaches Payload", "spell it [ShipType]int32"}},
+		{file: "ArmConstMax.schema", want: []string{
+			"union Payload: arm ships", "[SlotCount]int32 is refused in a union arm",
+			"the bound SlotCount folds from ShipType.Max",
+			"table Fleet's field payload reaches Payload", "spell it [ShipType]int32"}},
+		{file: "ArmConstCount.schema", want: []string{
+			"union Payload: arm ships", "[SlotCount]int32 is refused in a union arm",
+			"the bound SlotCount folds from ShipType.Count",
+			"table Fleet's field payload reaches Payload", "spell it [ShipType]int32"}},
+		{file: "ArmFolded.schema", want: []string{
+			"union Payload: arm ships", "[SlotCount]int32 is refused in a union arm",
+			"the bound SlotCount folds from ShipType.Count",
+			"table Fleet's field payload reaches Payload", "spell it [ShipType]int32"}},
+
+		// THE CONTROLS HOLD THE OTHER EDGE (§2.4): the packet wire is
+		// untouched, a bound that folds from no enum stands wherever it is
+		// spelled, and the `type`-held case schema#606 rules on keeps the
+		// spelling.
+		{file: "ControlPacket.schema"},
+		{file: "ControlPlain.schema"},
+		{file: "ControlTypeHeld.schema"},
+	}
+
+	dir := filepath.Join("..", "..", "test", "tables", "enumbound")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("the enum-bound corpus: %v", err)
+	}
+	onDisk := map[string]bool{}
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".schema") {
+			onDisk[e.Name()] = true
+		}
+	}
+	for _, tc := range cases {
+		if !onDisk[tc.file] {
+			t.Errorf("%s: the corpus file is gone, and a shape with no unit is a shape nothing holds", tc.file)
+			continue
+		}
+		delete(onDisk, tc.file)
+		src, err := os.ReadFile(filepath.Join(dir, tc.file))
+		if err != nil {
+			t.Errorf("%s: %v", tc.file, err)
+			continue
+		}
+		errs := runUnit(t, map[string]string{tc.file: string(src)})
+		if len(tc.want) == 0 {
+			if len(errs) > 0 {
+				t.Errorf("%s is a CONTROL and it did not compile: %v", tc.file, errs)
+			}
+			continue
+		}
+		if len(errs) == 0 {
+			t.Errorf("%s compiled in a table closure, and a variant inserted in the middle of ShipType would land every later element one slot off in every file already written, with nothing on the wire that could say so", tc.file)
+			continue
+		}
+		joined := ""
+		for _, e := range errs {
+			joined += e.Error() + "\n"
+		}
+		for _, want := range tc.want {
+			if !strings.Contains(joined, want) {
+				t.Errorf("%s: no diagnostic says %q; got:\n%s", tc.file, want, joined)
+			}
+		}
+	}
+	for name := range onDisk {
+		t.Errorf("%s is in the corpus and no row holds it, so nothing says what its answer is", name)
 	}
 }

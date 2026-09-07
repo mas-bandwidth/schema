@@ -38,6 +38,20 @@ type Report struct {
 	// a FORM BYTE this reader does not carry. It moves no counter and reports
 	// no damage, so without it a refusal and a clean read are the same answer.
 	Refused bool
+	// Retained and RetainLost are RETENTION's two counters (docs/SPEC-TABLES.md
+	// §6.6). Retained counts the fields whose bytes were kept; RetainLost
+	// counts every unknown a load or a save could not keep — a record the
+	// remaining capacity had no room for, of either store, an unknown of one
+	// of the six excluded classes, a record the resolving walk found damaged,
+	// and, at save, a retained record whose path no longer names a body. Both
+	// are monotonic, both are zero in every read that did not opt in, and they
+	// ride the same report struct for the reason Duplicate does, which is that
+	// a caller has one report type and not two (§4). A record discarded
+	// because a known ancestor was reset or replaced by a later legal
+	// occurrence moves neither: the writer superseded it, and the load could
+	// not have kept it.
+	Retained   int
+	RetainLost int
 }
 
 // Add folds another report into this one, which is how a pack over a tree of
@@ -49,9 +63,14 @@ func (r *Report) Add(o Report) {
 	r.Clamped += o.Clamped
 	r.Duplicate += o.Duplicate
 	r.Malformed = r.Malformed || o.Malformed
+	r.Retained += o.Retained
+	r.RetainLost += o.RetainLost
 }
 
-// Silent reports whether nothing at all was counted.
+// Silent reports whether nothing at all was counted. RETENTION'S TWO COUNTERS
+// ARE NOT IN IT: `retained` names no loss at all, and `retain_lost` is read
+// beside the other four in the safety check §6.6 states rather than folded
+// into the read's own silence.
 func (r Report) Silent() bool {
 	return r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && r.Duplicate == 0 && !r.Malformed
 }
@@ -573,3 +592,38 @@ func WideValue(cell *Cell) *big.Int {
 // list's slots are grown against the body rather than sized from the
 // declaration.
 func (m *Model) ElementZero(f *ir.Field) Cell { return m.elementZero(f) }
+
+// Refill re-establishes an instance's DECLARED DEFAULTS IN PLACE, keeping the
+// instance itself and every nested instance it already holds.
+//
+// A BY-VALUE NESTED BODY IS A MEMBER OF ITS PARENT in every generated target
+// (docs/SPEC-TABLES.md §2, §6.1), so its storage does not move when the value
+// it holds is reset: a body the wire writes again, and a body whose framing
+// damage makes the reader fall back on its declared defaults (§3), are the
+// same storage before and after. This is what lets an address name a body for
+// the life of a load, which retention's path rests on (§6.6), and it is why
+// resetting a body is not the same act as replacing it.
+func (m *Model) Refill(inst *Instance) {
+	if inst == nil {
+		return
+	}
+	for i := range inst.Fields {
+		fv := &inst.Fields[i]
+		held := fv.Cell.Tab
+		elems := make([]*Instance, len(fv.Elems))
+		for j := range fv.Elems {
+			elems[j] = fv.Elems[j].Tab
+		}
+		m.reset(fv)
+		if held != nil {
+			m.Refill(held)
+			fv.Cell.Tab = held
+		}
+		for j := range elems {
+			if j < len(fv.Elems) && elems[j] != nil {
+				m.Refill(elems[j])
+				fv.Elems[j].Tab = elems[j]
+			}
+		}
+	}
+}

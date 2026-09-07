@@ -90,7 +90,7 @@ union EditBody
 {
     insert InsertText
     remove RemoveText
-    count  int32       | min = 0, max = 100
+    tally  int32       | min = 0, max = 100, was = "count"
     marks  [..3]uint16
     blob   bytes(4)
     mode   Mode

@@ -16,10 +16,7 @@ type elixirTarget struct{}
 func (elixirTarget) Names() []string { return []string{"elixir"} }
 
 func (elixirTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
-	// WIDE TEXT FIRST, ahead of every form refusal: it is a STORAGE
-	// construct (SPEC §4.12), so a target that has not laid out the
-	// member cannot emit the field under any form, and naming that is
-	// more use to a port author than naming a form the field sits in.
+	// Packet wide text is carried; table kind 33 remains refused.
 	if err := refuseWideText(u, "elixir"); err != nil {
 		return nil, err
 	}
@@ -57,5 +54,7 @@ func (elixirTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 }
 
 func init() {
+	registerPacketValueDefaultCarrier("elixir")
+	registerWideTextCarrier("elixir")
 	registerBuiltin(elixirTarget{}, true, false, false, false)
 }

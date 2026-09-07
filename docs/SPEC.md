@@ -731,10 +731,9 @@ FloatExpr   = float expression over float literals, int literals and const names
   On the TABLE wire a field at its declared default elides and an
   absent field reads as it, whatever the kind (SPEC-TABLES.md §4), so the
   string, bytes and flags defaults are part of that wire's contract exactly
-  as a scalar's is. C++ carries all three on both wires. Go carries them for
-  packet-only fields; a default reachable from any table is refused by name
-  in Go. Every other backend refuses a unit that declares one, naming the
-  follow-on.
+  as a scalar's is. C++ carries all three on both wires. The other eight
+  built-in backends carry them for packet-only fields and refuse a default
+  reachable from any table by name.
   **On the packet wire, defaults initialize storage without eliding fields.**
   A selected union payload starts at these construction values before its
   fields are decoded (§4.8). The ordinary field encodings still apply,
@@ -1157,13 +1156,13 @@ flags declaration's `Count`: `E::Count` (C++), `E.Count` (C#), `ECount`
 Java), `E.count/0` (Elixir). `Count` is a reserved variant name for the same
 reason `Max` is, and it is a claimed name under §4.6 — a declaration whose
 generated symbol would collide with an enum's `Count` is refused, naming the
-enum. A PACKET union's generated `<Union>Type` tag enum carries `Count`
+enum. A union's generated `<Union>Type` tag enum carries `Count`
 beside `Max` too, in the same nine spellings (§4.8), so a tag enum and a
 declared enum present one surface to a reader. A tag set takes no headroom, so
 its `Count` and its `Max` are one number, and the member is there because the
 surface is uniform rather than because the two numbers ever differ. A
-table-closure union's tag shape carries `Max` alone
-([#601](https://github.com/mas-bandwidth/schema/issues/601)).
+TABLE-CLOSURE union's tag shape is a different emitter, written beside the
+tables, and it carries the same members (docs/SPEC-TABLES.md §2.6).
 
 ### 4.3 Field types and their wire encodings
 
@@ -1439,17 +1438,6 @@ terminal** (§5), and refusal is the only conforming answer: no target traps,
 panics or aborts on a malformed payload. An application with genuinely
 arbitrary payloads uses `bytes(N)`, which remains exactly that.
 
-**Backend status for that rule: ONE TARGET ENFORCES IT ON READ TODAY.**
-The read side is specified ahead of its implementation in eight of the
-nine, on the terms §3.1 and §4.2 take. The C++ reference runs the
-generated validator on the READ path in every build mode and fails the
-read on a malformed payload. The other eight run the same validator as a
-WRITE-side assertion, the stance this rule replaces, so a malformed
-payload written by another language reaches their readers unrefused and
-the release build of those eight checks nothing at all. Owed as
-schema#519, narrowed by each target that moves the check, and this line
-is deleted by the last of them.
-
 Beneath the encoding rule, `string(N)` carries **bytes excluding 0x00** —
 all generated readers reject interior nulls, and writes assert per §5 (NUL
 is valid UTF-8, so the interior-null rule is its own, stricter check).
@@ -1604,11 +1592,11 @@ union Value
   disagree with the tag. **Reserved variant names are checked over the
   EXPORTED spelling**: any variant whose exported form (the field-name
   mapping) is `None` or `Max` is refused — `none` and `max` included, not
-  just the literal spellings. **`Count` is refused the same way on a PACKET
-  union**, whose tag enum carries the member (below). The reservation is
-  scoped to where the member exists, so the name stays free on a
-  table-closure union, whose tag shape carries `Max` alone
-  ([#601](https://github.com/mas-bandwidth/schema/issues/601)).
+  just the literal spellings. **`Count` is refused the same way**, on every
+  union: each tag enum carries the member (below), the packet shape and the
+  table-closure shape alike, so an arm exporting `Count` defines it twice
+  wherever the union lands. The reservation reaches where the member exists,
+  and the member exists on every union (docs/SPEC-TABLES.md §2.6).
 - **The tag enum is generated, named `<Union>Type`**: `None = 0`, then
   each variant **in declared order**
   (exported spelling per target, the field-name mapping), dense from 1, then
@@ -1649,13 +1637,13 @@ union Value
   | js | `WeaponFireType.Count` | `EnumNameWeaponFireType(value)` |
   | rust | `WeaponFireType::COUNT` | `enum_name_weapon_fire_type` |
 
-- **A TABLE-CLOSURE union's tag shape carries `Max` alone.** It is a
-  different emitter, written beside the tables, and it gets neither `Count`
-  nor the debug-name function. Giving it both, and extending the `Count`
-  reservation to reach it, is a named follow-on
-  ([#601](https://github.com/mas-bandwidth/schema/issues/601)). `Count` is a
-  legal arm name on a table-closure union and a compile error on a packet
-  union. The split is what the checker enforces.
+- **A TABLE-CLOSURE union's tag shape carries the same surface.** It is a
+  different emitter, written beside the tables rather than among the packet
+  declarations (docs/SPEC-TABLES.md §2.6), and it emits `None`, the variants,
+  `Count`, `Max` and the debug-name function, because it is the same construct
+  to a reader. The table layer is the C++ reference's, so the shape has one
+  emitter where the packet shape has nine. `Count` is a compile error as an arm
+  name on every union, for the one reason: the member exists.
 - **The wire.** This bullet is the TYPE wire's, which a union of declared
   `type` arms rides and a table-closure union does not ride at all (above).
   The tag encodes in **minimal bits for `[0, variant
@@ -1844,15 +1832,15 @@ NAME rather than falling into a generic parse error:
 - **`doc`** (the attribute) — documentation is not an attribute: it is the
   `///` doc comment above the item (§4.1), and one text has one spelling.
   `| doc = "..."` is refused with the comment form named.
-- **`Count` as an arm name on a PACKET union.** The generated tag enum
+- **`Count` as an arm name on any union.** The generated tag enum
   carries the declared variant count as the member `Count` (§4.8), so the arm
   would define the member twice, which C++ and C# refuse outright as a
   redefinition. The refusal is over the EXPORTED spelling, so `count` is
   refused too, and the diagnostic names the tag enum that claims the name. It
   is the same reservation `None` and `Max` carry, for the same reason.
-  A table-closure union's tag shape carries no `Count` member, so the
-  name is legal there
-  ([#601](https://github.com/mas-bandwidth/schema/issues/601)).
+  A table-closure union's tag shape carries the member too
+  (docs/SPEC-TABLES.md §2.6), so the reservation reaches it and one rule
+  covers both shapes.
 
 The projection (§3.1) keeps FROZEN tokens — `table=false message=false` on
 every type line, `round=nearest` on every compressed-float field line — so
@@ -1885,19 +1873,13 @@ prefix's bits and it sizes the storage. A `wstring` field takes no
 attributes and no `= default` (§4.2), and `wstring(N)` with N below 2 is a
 compile error, the same floor `string(N)` carries (§4.6).
 
-**Backend status: ONE TARGET CARRIES WIDE TEXT TODAY.** This section is
-written for all nine and one of them has landed it, on the terms §3.1
-and §4.2 take. The C++ emitter carries the storage, the wire and
-every read refusal below, on BOTH wires: the packet wire's groups here and
-kind `33` on the id-table wire (SPEC-TABLES.md §3). The other eight REFUSE a
-unit declaring a `wstring(N)` field by name at generate time, whichever wire
-declares it, rather than emit a member
-they never laid out and a wire that skips it, so the storage and
-boundary table below states what each target owes rather than what it
-runs. `*wstring`, the unbounded twin, is specified ahead of its
-implementation and no backend emits the blob record (SPEC-TABLES.md §2.5).
-Owed as schema#188, narrowed by each target that lands the codec, and this
-line is deleted by the last of them.
+**Backend status.** All nine packet targets carry the storage, groups and
+read refusals below: C++, C, Rust, Go, C#, Java, JavaScript, Dart and Elixir.
+C++ also carries table kind `33`. The other eight targets refuse wide text
+reachable from a table by name (SPEC-TABLES.md §3); an unrelated table in the
+same unit does not prevent a packet type from carrying wide text. `*wstring`,
+the unbounded twin, is specified ahead of implementation and no backend emits
+the blob record (SPEC-TABLES.md §2.5).
 
 **Why the language carries a wide type at all:** on a host whose native text
 is already UTF-16, the wire and the string hold the same units, so text
@@ -2102,16 +2084,16 @@ holding serialize.js's interop cases: empty, three basic-plane code
 units, `0xE000`, `0xFFFF`, an astral pair between two basic-plane units,
 and seven code units, the most the bound carries. **That field and the
 golden source and golden-id pins for a wstring-bearing unit (gates 1, 2
-and 7) live in `examples-wide/`, a corpus unit of its own beside the
-proving ground rather than a declaration inside it.** §7.3's `examples/`
-pins gate 1 for all nine targets and eight of them refuse wide text by
-name, so a `wstring` field declared there would stop the other eight
-pins from generating at all. `examples-wide/` rides `make check` and the
-same gates 1, 2 and 7, its C++ pin is the one target that carries the
-construct, and a companion gate holds the other eight to refusing the
-unit BY NAME so that a backend cannot go green by quietly dropping the
-field. The unit folds back into `examples/` when the ninth target lands
-the codec and the split stops paying for itself.
+and 7) live in `examples-wide/WideText.schema`.** The packet test stages that
+unchanged file separately from the directory's table declaration and baseline.
+C++ and each packet port pin the same packet source and protocol id, replay
+the shared text corpus, and compare generated writes and reads. All nine
+packet targets now carry that isolated unit; the other eight targets still
+refuse the directory's table-wide unit. The packet fixture remains an
+independent unit so its protocol identity and the established `examples/`
+identity stay stable. `make packet-wire-nine` runs the defaults, UTF-8 and
+wide-string checks with all eight ports' negative controls; `make test` also
+runs them within the full language legs.
 
 ## 5. Trust model — inherited
 

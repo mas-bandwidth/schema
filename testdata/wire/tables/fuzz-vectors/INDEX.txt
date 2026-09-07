@@ -88,3 +88,51 @@ message_node_type_unpointed graphdemo Scene testdata/wire/tables/fuzz-vectors/me
 # graph_tree_message. It is the input
 # tables-wire-fuzz-blob-node-negative-control replays.
 message_blob_node_unpointed graphdemo Scene testdata/wire/tables/fuzz-vectors/message_blob_node_unpointed.bin message
+
+# ILL-FORMED TEXT ON A MESSAGE BODY (§3, §3.3; schema#620). §3's one content
+# rule holds over a form-`2` body unchanged in what it rejects, and §3.3 says
+# so: a kind `12` payload that is not well-formed UTF-8 is DAMAGE, terminal for
+# the batch here because a bit stream has no place to resume. NEITHER ENGINE
+# CARRIED IT. The C++ reference's emitted message reader copied the bytes a
+# byte at a time with no check, and the oracle's `text` clamped at the raw
+# bound, so a body no reader should accept loaded silently into both, agreeing,
+# and agreeing wrongly, which is the one shape a differential fuzzer cannot see
+# on its own. It became a red the moment one engine was repaired, and this
+# vector is what holds the two together from here.
+#
+# The bytes are `store_full_message` with one byte of `sku`'s payload replaced
+# by 0xFF, which is a lead byte UTF-8 never spells. Nothing else moves: the
+# length, the align and every field after it are the golden's own, so what the
+# two readers answer differently is the content rule and nothing else. Its
+# controls are the four in `make tables-message-form-negative-control`, two per
+# engine, each of which parts the leg from the oracle on this vector's name.
+message_ill_formed_text backenddemo StorePurchase testdata/wire/tables/fuzz-vectors/message_ill_formed_text.bin message
+
+# ILL-FORMED TEXT IN A *string BLOB RECORD ON A MESSAGE BODY (§3, §3.1, §3.3;
+# schema#632). §3.1 states kinds `12` and `33`'s content rule MET AT A NODE, "A
+# TEXT blob's CONTENT is refused on the same terms", and §3.3 says a form-`2`
+# body's content rules are §3's, unchanged in what they reject: a `*string`
+# blob whose bytes are not well-formed UTF-8 is DAMAGE, terminal for the batch
+# here because a bit stream has no place to resume. NEITHER ENGINE CARRIED IT
+# at the message site, where both carried it at the file site, so a record no
+# reader should place loaded into both, agreeing, and agreeing wrongly, which
+# is the one shape a differential fuzzer cannot see on its own. It became a red
+# the moment one engine was repaired, and this vector is what holds the two
+# together from here.
+#
+# The bytes are `blob_str8` re-encoded as a batch of one, with the fourth byte
+# of `note`'s eight byte payload replaced by 0xFF, a lead byte UTF-8 never
+# spells. Nothing else moves: the record's length, its align and the `*bytes`
+# record beside it are the encoder's own, so what the two readers answer
+# differently is the content rule and nothing else. The `*bytes` record is the
+# vector's own control: it carries bytes no UTF-8 rule would accept and is
+# never checked, because a `*bytes` blob is bytes and never text.
+message_blob_ill_formed_text blobdemo Catalog testdata/wire/tables/fuzz-vectors/message_blob_ill_formed_text.bin message
+
+# AND THE ZERO BYTE, which §3.1 names in the same sentence: a `*string` blob
+# "whose bytes are not well-formed UTF-8 or which carries a zero byte". The
+# bytes are the vector above's with 0x00 in place of the 0xFF, so the two
+# separate the two halves of one check: a reader that rejected only the
+# ill-formed sequence, or only the interior zero, goes red on one of them and
+# not the other.
+message_blob_zero_byte blobdemo Catalog testdata/wire/tables/fuzz-vectors/message_blob_zero_byte.bin message

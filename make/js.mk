@@ -26,6 +26,41 @@ NODE ?= $(CURDIR)/dist/node-v20.20.2-darwin-arm64/bin/node
 # pin from the environment and falls back to PATH
 export NODE
 
+# THE TOOLCHAIN GATE, this leg's half (issue #599; the Makefile's header and
+# docs/CONTRIBUTING.md, "Adding a language"). `make test` runs this before the
+# chain starts and refuses by name when the pin does not resolve, because a leg
+# that skips in silence is a leg whose red rides a green run.
+.PHONY: toolchain-js
+toolchain-js:
+	@$(call toolchain_probe,js,NODE,$(NODE))
+build/packet-defaults/js/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema make/js.mk
+	./bin/schema generate --lang js --out build/packet-defaults/js/defaults test/packet-defaults/Defaults.schema
+	./bin/schema generate --lang js --out build/packet-defaults/js/plain test/packet-defaults/Plain.schema
+	@touch $@
+
+.PHONY: packet-defaults-js packet-defaults-js-negative-control
+packet-defaults-js: build/packet-defaults/js/.stamp packet-defaults-cpp
+	$(NODE) test/packet-defaults/js/main.mjs testdata/wire/packet-defaults
+	NODE_ENV=production $(NODE) test/packet-defaults/js/main.mjs testdata/wire/packet-defaults
+
+packet-defaults-js-negative-control: packet-defaults-js
+	@mkdir -p build/packet-defaults/js-negative
+	go run ./tools/sabotage -name packet-defaults-js-constructor-bytes \
+		-out build/packet-defaults/js-negative/js.gotext internal/codegen/js/js.go
+	@printf '{"Replace":{"%s/internal/codegen/js/js.go":"%s/build/packet-defaults/js-negative/js.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/packet-defaults/js-negative/overlay.json
+	go build -overlay=build/packet-defaults/js-negative/overlay.json -o build/packet-defaults/js-negative/schema ./cmd/schema
+	./build/packet-defaults/js-negative/schema generate --lang js --out build/packet-defaults/js-negative/generated test/packet-defaults/Defaults.schema
+	$(NODE) --check build/packet-defaults/js-negative/generated/Defaults.js
+	$(NODE) --check build/packet-defaults/js-negative/generated/DefaultsFlat.js
+	@if $(NODE) test/packet-defaults/js/main.mjs testdata/wire/packet-defaults "$(CURDIR)/build/packet-defaults/js-negative/generated" > build/packet-defaults/js-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: missing constructor bytes passed in JavaScript'; exit 1; fi
+	@grep -Fq 'packet-default constructor bytes' build/packet-defaults/js-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: JavaScript failed for another reason'; cat build/packet-defaults/js-negative/log; exit 1; }
+	@echo 'packet defaults JavaScript negative control: missing constructor bytes fail the runtime check'
+
+test-js: packet-defaults-js packet-defaults-js-negative-control
+
 # the JavaScript target: generated ES modules only, no wiring file at all —
 # generated code never imports the runtime (every wire call is a method on
 # the stream parameter), so the serialize.js sibling checkout is a test-leg
@@ -428,7 +463,7 @@ conformance-negative-control-js:
 # controls, the conformance negative control, the runtime-home gate, and the
 # packet tests in both node modes.
 .PHONY: test-js
-test-js: generated/js/.stamp generated/js-ludicrous/.stamp generated/bench/js/.stamp generated/bench/tables/js/.stamp
+test-js: toolchain-js generated/js/.stamp generated/js-ludicrous/.stamp generated/bench/js/.stamp generated/bench/tables/js/.stamp
 	$(MAKE) tables-js-json-walk
 	$(MAKE) tables-js-standalone
 	$(MAKE) tables-js-refuses-pointers
@@ -449,5 +484,64 @@ test-js: generated/js/.stamp generated/js-ludicrous/.stamp generated/bench/js/.s
 	cd test/js-ludicrous && node main.mjs && NODE_ENV=production node main.mjs
 
 TEST_LEGS         += test-js
-CONFORMANCE_LEGS  += build/tables-generated-js/.stamp
+TOOLCHAIN_LEGS    += js
+TOOLCHAIN_PINS_js  := NODE
+CONFORMANCE_LEGS  += $(call unless_skipped,js,build/tables-generated-js/.stamp)
 BENCH_TABLES_LEGS += generated/bench/tables/js/.stamp
+# Both JavaScript packet tiers share the UTF-8 rule and mutation corpus.
+build/packet-text/js/.stamp: bin/schema test/packet-text/Narrow.schema
+	./bin/schema generate --lang js --out build/packet-text/js test/packet-text/Narrow.schema
+	@printf '{"type":"module"}\n' > build/packet-text/js/package.json
+	@touch $@
+
+.PHONY: packet-utf8-js packet-utf8-js-negative-control
+packet-utf8-js: build/packet-text/js/.stamp build/packet-text/cpp/driver build/packet-text/harness
+	@for mode in development production; do for tier in runtime flat; do \
+		NODE_ENV=$$mode ./build/packet-text/harness $(NODE) test/packet-text/js/main.mjs $$tier || exit 1; \
+	done; done
+
+packet-utf8-js-negative-control: packet-utf8-js
+	@mkdir -p build/packet-text/js-negative
+	go run ./tools/sabotage -name packet-utf8-js-read -out build/packet-text/js-negative/utf8.gotext internal/codegen/js/utf8.go
+	@printf '{"Replace":{"%s/internal/codegen/js/utf8.go":"%s/build/packet-text/js-negative/utf8.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-text/js-negative/overlay.json
+	go run -overlay=build/packet-text/js-negative/overlay.json ./cmd/schema generate --lang js --out build/packet-text/js-negative test/packet-text/Narrow.schema
+	cp build/packet-text/js/package.json build/packet-text/js-negative/package.json
+	$(NODE) --check build/packet-text/js-negative/Narrow.js
+	$(NODE) --check build/packet-text/js-negative/NarrowFlat.js
+	@for tier in runtime flat; do \
+		if NODE_ENV=production ./build/packet-text/harness -mutations-only $(NODE) test/packet-text/js/main.mjs $$tier "$(CURDIR)/build/packet-text/js-negative" > build/packet-text/js-negative/$$tier.log 2>&1; then echo 'NEGATIVE CONTROL FAILED: JS UTF-8 removal passed'; exit 1; fi; \
+		grep -Fq 'FAILED: packet-text verdict on ' build/packet-text/js-negative/$$tier.log || { cat build/packet-text/js-negative/$$tier.log; exit 1; }; \
+	done
+	@echo 'packet UTF-8 JS negative control: removed read validation fails both tiers in bit-flip agreement'
+
+test-js: packet-utf8-js packet-utf8-js-negative-control
+
+
+build/packet-wide/js/.stamp: bin/schema build/packet-wide/source/WideText.schema test/packet-wide/Shapes.schema
+	./bin/schema generate --lang js --out build/packet-wide/js build/packet-wide/source/WideText.schema
+	./bin/schema generate --lang js --out build/packet-wide/js/shapes test/packet-wide/Shapes.schema
+	@printf '{"type":"module"}\n' > build/packet-wide/js/package.json
+	@touch $@
+
+.PHONY: packet-wide-js packet-wide-js-negative-control
+packet-wide-js: build/packet-wide/js/.stamp build/packet-wide/cpp/driver build/packet-text/harness
+	@for mode in development production; do for tier in runtime flat; do \
+		NODE_ENV=$$mode $(NODE) test/packet-wide/js/main.mjs $$tier --contracts || exit 1; \
+		NODE_ENV=$$mode ./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver $(NODE) test/packet-wide/js/main.mjs $$tier || exit 1; \
+	done; done
+
+packet-wide-js-negative-control: packet-wide-js
+	@mkdir -p build/packet-wide/js-negative
+	go run ./tools/sabotage -name packet-wide-js-pairing -out build/packet-wide/js-negative/wstring.gotext internal/codegen/js/wstring.go
+	@printf '{"Replace":{"%s/internal/codegen/js/wstring.go":"%s/build/packet-wide/js-negative/wstring.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-wide/js-negative/overlay.json
+	go run -overlay=build/packet-wide/js-negative/overlay.json ./cmd/schema generate --lang js --out build/packet-wide/js-negative build/packet-wide/source/WideText.schema
+	cp build/packet-wide/js/package.json build/packet-wide/js-negative/package.json
+	$(NODE) --check build/packet-wide/js-negative/WideText.js
+	$(NODE) --check build/packet-wide/js-negative/WideTextFlat.js
+	@for tier in runtime flat; do \
+		if NODE_ENV=production ./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver -mutations-only $(NODE) test/packet-wide/js/main.mjs $$tier "$(CURDIR)/build/packet-wide/js-negative" > build/packet-wide/js-negative/$$tier.log 2>&1; then echo 'NEGATIVE CONTROL FAILED: JS wide pairing removal passed'; exit 1; fi; \
+		grep -Fq 'FAILED: packet-text verdict on ' build/packet-wide/js-negative/$$tier.log || { cat build/packet-wide/js-negative/$$tier.log; exit 1; }; \
+	done
+	@echo 'packet wide JS negative control: removed pairing fails both tiers in bit-flip agreement'
+
+test-js: packet-wide-js packet-wide-js-negative-control

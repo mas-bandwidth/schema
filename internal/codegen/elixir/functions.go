@@ -438,7 +438,12 @@ func (g *gen) throwIf(cond, why, ind string) {
 	if why != "" {
 		g.pf("%s# %s\n", ind, why)
 	}
-	g.pf("%sif %s, do: throw(:invalid)\n", ind, cond)
+	one := fmt.Sprintf("%sif %s, do: throw(:invalid)", ind, cond)
+	if len(one) <= formatWidth {
+		g.pf("%s\n", one)
+	} else {
+		g.pf("%sif %s,\n%s  do: throw(:invalid)\n\n", ind, cond, ind)
+	}
 }
 
 // raiseIf emits a write-contract check: a block if raising ArgumentError —
@@ -446,7 +451,12 @@ func (g *gen) throwIf(cond, why, ind string) {
 func (g *gen) raiseIf(cond, msg, ind string) {
 	g.pf("\n")
 	g.pf("%sif %s do\n", ind, cond)
-	g.pf("%s  raise ArgumentError, \"%s\"\n", ind, msg)
+	one := fmt.Sprintf("%s  raise ArgumentError, %q", ind, msg)
+	if len(one) <= formatWidth {
+		g.pf("%s\n", one)
+	} else {
+		g.pf("%s  raise ArgumentError,\n%s        %q\n", ind, ind, msg)
+	}
 	g.pf("%send\n", ind)
 	g.pf("\n")
 }
@@ -547,7 +557,7 @@ func (g *gen) staticBitsField(f *ir.Field) (int64, bool) {
 
 func (g *gen) staticBitsScalar(f *ir.Field) (int64, bool) {
 	switch f.Type.Kind {
-	case ir.TString, ir.TBytes:
+	case ir.TString, ir.TBytes, ir.TWString:
 		return 0, false
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
@@ -693,7 +703,7 @@ func (g *gen) zeroScalar(t ir.FieldType) string {
 		return "false"
 	case ir.TFloat32, ir.TFloat64:
 		return "0.0"
-	case ir.TString, ir.TBytes:
+	case ir.TString, ir.TBytes, ir.TWString:
 		return "<<>>"
 	case ir.TNamed:
 		switch t.Ref.(type) {
@@ -1270,6 +1280,8 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.needF64 = true
 		g.pf("%sw = f64_bits(%s)\n", ind, name)
 		g.emitWriteWide("w", 64, ind)
+	case ir.TWString:
+		g.emitWriteWString(f, name, ind)
 	case ir.TString, ir.TBytes:
 		g.emitWriteBytesField(f, name, ind)
 	case ir.TNamed:
@@ -2081,6 +2093,8 @@ func (g *gen) emitBuildStruct(ref *ir.Struct, pre, lv, ind string) {
 
 func (g *gen) emitReadScalar(f *ir.Field, lv, ind string, bounded bool) {
 	switch f.Type.Kind {
+	case ir.TWString:
+		g.emitReadWString(f, lv, ind)
 	case ir.TString, ir.TBytes:
 		g.emitReadBytesField(f, lv, ind)
 	case ir.TFixed:
@@ -2305,6 +2319,7 @@ func (g *gen) emitReadBytesField(f *ir.Field, lv, ind string) {
 	g.pf("%sbits_read = bits_read + len * 8\n", ind)
 	g.rdBreak()
 	if f.Type.Kind == ir.TString {
+		g.throwIf(fmt.Sprintf("not String.valid?(%s)", lv), "malformed UTF-8 is content the read refuses (SPEC §4.7)", ind)
 		g.throwIf(fmt.Sprintf(":binary.match(%s, <<0>>) != :nomatch", lv),
 			"an interior null is content the read refuses (SPEC §4.7)", ind)
 	}
@@ -2454,6 +2469,10 @@ func (g *gen) emitMeasureField(f *ir.Field, path, ind string, pending *int64) {
 		name = path
 	}
 	switch {
+	case f.Type.Kind == ir.TWString:
+		*pending += ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size))
+		g.flushMeasure(pending, ind)
+		g.pf("%sbits = bits + (byte_size(%s) >>> 1) * 32\n", ind, name)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		lenBits := ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size))
 		*pending += lenBits
@@ -2564,6 +2583,9 @@ func (g *gen) emitLoopHelpers() {
 }
 
 func (g *gen) emitSupportHelpers() {
+	if g.needWString {
+		g.body.WriteString(wstringHelpers)
+	}
 	if g.needRd {
 		g.bpf("  # The port's 40-bit window decode (issue #167): enough for a 7-bit offset\n")
 		g.bpf("  # plus a 32-bit group, small enough that no intermediate ever boxes. The\n")

@@ -361,3 +361,68 @@ var messageColdReadSabotages = map[string][]edit{
 		new: "\tg.pf(\"%s    int32_t kept%s = (int32_t) n%s;\\n\", ind, sfx, sfx) // SABOTAGED: narrowed before the bound\n\tg.pf(\"%s    if ( kept%s > %d ) { kept%s = %d; report->clamped++; }\\n\", ind, sfx, f.ArrayBound, sfx, f.ArrayBound)\n",
 	}},
 }
+
+func init() {
+	maps.Copy(sabotages, messageTextSabotages)
+}
+
+// THE MESSAGE FORM'S ONE CONTENT RULE AND ITS CLAMP (docs/SPEC-TABLES.md §3.3,
+// schema#620): a kind 12 payload that is not well-formed UTF-8, or that
+// carries a zero byte, is DAMAGE and terminal for the batch, and a clamp cuts
+// at a code point boundary. Both engines read one rule through one pair of
+// functions, so there are four blades: the refusal and the clamp, in the Go
+// oracle and in the C++ emitter. Each names the row
+// TestTheMessageFormsTextContentRuleAndClamp and test/tables/message_text_main.cpp
+// hold.
+var messageTextSabotages = map[string][]edit{
+	// ILL-FORMED TEXT IS DAMAGE HERE TOO: take the check out of the oracle's
+	// message path and the file form still refuses what the message form now
+	// stores, which is the two forms parting on the one rule they share.
+	"message-text-accepts-ill-formed": {{
+		old: "\tif f.Type.Kind == ir.TString && !textValid(raw) {\n",
+		new: "\tif false && !textValid(raw) { // SABOTAGED: the kind 12 content rule is gone\n",
+	}},
+
+	// A CLAMP CUTS AT A CODE POINT BOUNDARY: take the cut off the boundary and
+	// the oracle keeps the first bytes of a code point whose last byte did not
+	// fit, which is storage no wire could have delivered.
+	"message-text-clamp-off-boundary": {{
+		old: "\t\tif f.Type.Kind == ir.TString {\n\t\t\t// A CLAMP CUTS AT A CODE POINT BOUNDARY (§3, §3.3): the last whole\n\t\t\t// code point that fits within the bound\n\t\t\tkeep = textBoundary(raw, bound)\n\t\t}\n",
+		new: "\t\t// SABOTAGED: the clamp cuts at the bound, not at a code point boundary\n",
+	}},
+
+	// AND THE SAME TWO IN THE C++ EMITTER, which is the one the reference
+	// reads with. The content rule first: the emitted reader stops calling
+	// TableUtf8Valid and stores whatever arrived.
+	"message-emitter-text-accepts-ill-formed": {{
+		old: "\t\tg.pf(\"%s    if ( !TableUtf8Valid( text%s, n%s ) ) { report->malformed = true; return false; }\\n\", ind, sfx, sfx)\n",
+		new: "\t\tg.pf(\"%s    // SABOTAGED: the kind 12 content rule is gone\\n\", ind)\n",
+	}},
+
+	// then the clamp: the emitted reader bounds the length itself instead of
+	// asking TableUtf8Clamp where the last whole code point ends.
+	"message-emitter-text-clamp-off-boundary": {{
+		old: "\t\tg.pf(\"%s    const int32_t kept%s = (int32_t) TableUtf8Clamp( text%s, n%s, %d );\\n\", ind, sfx, sfx, sfx, f.Type.Size)\n",
+		new: "\t\tg.pf(\"%s    const int32_t kept%s = n%s > (uint64_t) %d ? (int32_t) %d : (int32_t) n%s; // SABOTAGED: the clamp is off the boundary\\n\", ind, sfx, sfx, f.Type.Size, f.Type.Size, sfx)\n",
+	}},
+
+	// A TEXT BLOB'S CONTENT IS REFUSED ON THE SAME TERMS AS A KIND 12 PAYLOAD
+	// (docs/SPEC-TABLES.md §3.1), and a form-2 body's content rules are §3's
+	// (§3.3). One blade an engine: take the call out of the message site and
+	// the record a file reader refuses is placed by a message reader.
+	//
+	// THE ORACLE's, held by TestAStringBlobRecordOnAMessageBodyCarriesTheContentRule
+	// and by the pinned vectors message_blob_ill_formed_text and
+	// message_blob_zero_byte.
+	"message-blob-accepts-ill-formed": {{
+		old: "\t\t\tif kind == ir.TString && !textValid(rec.blob) {\n",
+		new: "\t\t\tif false && !textValid(rec.blob) { // SABOTAGED: the blob content rule is gone\n",
+	}},
+
+	// AND THE C++ EMITTER's, held by test/tables/message_blob_main.cpp and by
+	// the same two vectors.
+	"message-emitter-blob-accepts-ill-formed": {{
+		old: "\t\tg.pf(\"            if ( type_id == kTableStringTypeId && !TableUtf8Valid( r.buffer + r.offset / 8, length ) ) { out->malformed = true; return false; }\\n\")\n",
+		new: "\t\tg.pf(\"            // SABOTAGED: the blob content rule is gone\\n\")\n",
+	}},
+}

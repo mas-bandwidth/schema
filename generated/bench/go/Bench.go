@@ -10,6 +10,7 @@ import (
 	"errors"
 	"math"
 	"strconv"
+	"unicode/utf8"
 
 	"github.com/mas-bandwidth/serialize.go"
 )
@@ -1725,6 +1726,9 @@ func ReadBenchMixed(stream *serialize.ReadStream, value *BenchMixed) error {
 	stream.SerializeBytes(value.PlayerName[:value.PlayerNameLength])
 	if stream.Err() != nil {
 		return stream.Err()
+	}
+	if !utf8.Valid(value.PlayerName[:value.PlayerNameLength]) {
+		return ErrValidation // malformed UTF-8 (SPEC §4.7)
 	}
 	for i := int32(0); i < value.PlayerNameLength; i++ {
 		if value.PlayerName[i] == 0 {

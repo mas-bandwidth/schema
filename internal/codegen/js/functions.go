@@ -139,8 +139,9 @@ func (g *gen) emitInitFunction(st *ir.Struct) {
 func (g *gen) emitInitField(f *ir.Field, path, ind string) {
 	name := path + "." + ir.GoExportName(f.Name)
 	switch {
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
 		g.pf("%s%s.fill(0);\n%s%sLength = 0;\n", ind, name, ind, name)
+		g.emitByteDefault(f, name, ind)
 	case f.Array != ir.ArrayNone:
 		if f.Type.Kind == ir.TNamed && isClassRef(f.Type.Ref) {
 			index := fmt.Sprintf("initIndex%d", g.initDepth)
@@ -315,7 +316,7 @@ func (g *gen) emitZeroItems(items []ir.Item, ind string) {
 func (g *gen) emitZeroField(f *ir.Field, ind string) {
 	name := "value." + ir.GoExportName(f.Name)
 	switch {
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
 		g.pf("%s%s.fill(0);\n%s%sLength = 0;\n", ind, name, ind, name)
 	case f.Array != ir.ArrayNone:
 		if f.Type.Kind == ir.TNamed && isClassRef(f.Type.Ref) {
@@ -629,13 +630,13 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		scratch := g.numScratch()
 		g.pf("%s%s.value = %s;\n", ind, scratch, name)
 		g.call(ind, fmt.Sprintf("stream.serializeDouble(%s)", scratch), "")
+	case ir.TWString:
+		g.emitWriteWString(f, name, ind)
 	case ir.TString, ir.TBytes:
 		// length in [0, N], align, then the used bytes — the classic
 		// serialize_string framing over a pre-allocated buffer (SPEC §4.7),
-		// COMPOSED FROM PRIMITIVES, not the runtime's serializeString: the
-		// schema contract is writer-trusted UTF-8 with no read-path decode
-		// (SPEC §4.7), and serializeString's read side is UTF-8-strict — it
-		// would refuse wire every other target accepts. The length guard runs
+		// Composed from primitives so the N bound and in-place byte storage
+		// stay explicit. The generated reader validates UTF-8. The guard runs
 		// BEFORE the slice, so a stale length never reaches subarray (§6.3).
 		// Interior nulls are writer misuse; the read side rejects them (§4.7).
 		length := name + "Length"
@@ -879,6 +880,8 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 		scratch := g.numScratch()
 		g.call(ind, fmt.Sprintf("stream.serializeDouble(%s)", scratch), "")
 		g.pf("%s%s = %s.value;\n", ind, name, scratch)
+	case ir.TWString:
+		g.emitReadWString(f, name, ind)
 	case ir.TString, ir.TBytes:
 		// the bool is checked BEFORE the slice: a hostile length never
 		// reaches subarray (a successful ranged read guarantees [0, N])
@@ -890,6 +893,7 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 		g.pf("%s%s = %s.value;\n", ind, length, scratch)
 		g.call(ind, fmt.Sprintf("stream.serializeBytes(%s.subarray(0, %s))", name, length), "")
 		if f.Type.Kind == ir.TString {
+			emitReadUTF8(g.pf, name, length, ind)
 			// the interior-null rule is generated-code validation (SPEC §4.7);
 			// the serializeBytes bool above already surfaced a truncated
 			// stream as the stream's own latched error, so this verdict only

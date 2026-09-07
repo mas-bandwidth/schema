@@ -54,9 +54,8 @@ extern "C" {
 
 #ifndef SCHEMA_UTF8_VALID_DEFINED
 #define SCHEMA_UTF8_VALID_DEFINED
-/* string(N) payloads are well-formed UTF-8 BY CONTRACT (SPEC §4.7): the
-   write path debug-asserts with this validator and the release path costs
-   nothing. Rejects truncated sequences, bare continuations, overlongs,
+/* string(N) refuses malformed UTF-8 on read in every build mode (SPEC §4.7).
+   Rejects truncated sequences, bare continuations, overlongs,
    surrogates and code points past U+10FFFF. */
 static SCHEMA_UNUSED int schema_utf8_valid_( const serialize_uint8_t * bytes, int32_t length )
 {
@@ -933,7 +932,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_block( serialize_read_stream_
 /* Writes Chat. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_chat( serialize_write_stream_t * stream, const Chat * value )
 {
-    serialize_assert( schema_utf8_valid_( (const serialize_uint8_t *) value->text, value->text_length ) );
     if ( !serialize_write_int( stream, value->text_length, 0, MAX_CHAT_LENGTH ) )
     {
         return 0;
@@ -955,6 +953,10 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_chat( serialize_read_stream_t
     if ( !serialize_read_bytes( stream, (serialize_uint8_t *) value->text, (int) value->text_length ) )
     {
         return 0;
+    }
+    if ( !schema_utf8_valid_( (const serialize_uint8_t *) value->text, value->text_length ) )
+    {
+        return 0; /* malformed UTF-8 is content the read refuses (SPEC §4.7) */
     }
     if ( schema_interior_null_( (const serialize_uint8_t *) value->text, value->text_length ) )
     {
@@ -1132,7 +1134,6 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_test_data( serialize_write_
     {
         return 0;
     }
-    serialize_assert( schema_utf8_valid_( (const serialize_uint8_t *) value->text, value->text_length ) );
     if ( !serialize_write_int( stream, value->text_length, 0, 255 ) )
     {
         return 0;
@@ -1343,6 +1344,10 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_test_data( serialize_read_str
     if ( !serialize_read_bytes( stream, (serialize_uint8_t *) value->text, (int) value->text_length ) )
     {
         return 0;
+    }
+    if ( !schema_utf8_valid_( (const serialize_uint8_t *) value->text, value->text_length ) )
+    {
+        return 0; /* malformed UTF-8 is content the read refuses (SPEC §4.7) */
     }
     if ( schema_interior_null_( (const serialize_uint8_t *) value->text, value->text_length ) )
     {

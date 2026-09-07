@@ -34,7 +34,7 @@ union Effect
 {
     shield Ward | was = "ward"
     pong | was = "ping"
-    count int32
+    tally int32
 }
 
 table Cfg

@@ -43,11 +43,8 @@ packet-defaults-go: build/packet-defaults/go/.stamp packet-defaults-cpp
 .PHONY: packet-defaults-go-negative-control
 packet-defaults-go-negative-control: packet-defaults-go
 	@mkdir -p build/packet-defaults/go-negative
-	@test "$$(grep -Fc 'g.pf("\t%s = [%s]byte{"' internal/codegen/golang/golang.go)" = 1 || \
-		{ echo 'NEGATIVE CONTROL FAILED: expected exactly one constructor byte-array assignment anchor'; exit 1; }
-	@sed 's|g.pf("\\t%s = \[%s\]byte{"|g.pf("\\t// %s = [%s]byte{"|' internal/codegen/golang/golang.go > build/packet-defaults/go-negative/golang.go.txt
-	@if cmp -s internal/codegen/golang/golang.go build/packet-defaults/go-negative/golang.go.txt; then \
-		echo 'NEGATIVE CONTROL FAILED: constructor sabotage did not apply'; exit 1; fi
+	go run ./tools/sabotage -name packet-defaults-go-constructor-bytes \
+		-out build/packet-defaults/go-negative/golang.go.txt internal/codegen/golang/golang.go
 	@printf '{"Replace":{"%s/internal/codegen/golang/golang.go":"%s/build/packet-defaults/go-negative/golang.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/packet-defaults/go-negative/overlay.json
 	go build -overlay build/packet-defaults/go-negative/overlay.json -o build/packet-defaults/go-negative/schema ./cmd/schema
@@ -65,3 +62,37 @@ packet-defaults-go-negative-control: packet-defaults-go
 	@echo 'packet defaults Go negative control: missing constructor bytes fail the runtime check'
 
 test-go: packet-defaults-go packet-defaults-go-negative-control
+
+build/packet-defaults/c/.stamp: bin/schema $(PACKET_DEFAULT_SCHEMAS) make/checks/packet-defaults.mk
+	@mkdir -p build/packet-defaults/c
+	./bin/schema generate --lang c --out build/packet-defaults/c test/packet-defaults/Defaults.schema
+	@touch $@
+
+build/packet-defaults/c-test: build/packet-defaults/c/.stamp test/packet-defaults/c_main.c $(SERIALIZE_C)/serialize.h $(SERIALIZE_C)/serialize.c
+	$(CC) -std=c99 -Wall -Wextra -Werror -Wtype-limits $(C_TAUTOLOGICAL) \
+		-O2 -ffp-contract=off -Ibuild/packet-defaults/c -I$(SERIALIZE_C) \
+		test/packet-defaults/c_main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
+
+.PHONY: packet-defaults-c packet-defaults-c-negative-control
+packet-defaults-c: build/packet-defaults/c-test packet-defaults-cpp
+	./build/packet-defaults/c-test testdata/wire/packet-defaults
+
+packet-defaults-c-negative-control: packet-defaults-c
+	@mkdir -p build/packet-defaults/c-negative
+	go run ./tools/sabotage -name packet-defaults-c-constructor-bytes \
+		-out build/packet-defaults/c-negative/dispatch.gotext internal/codegen/c/dispatch.go
+	@printf '{"Replace":{"%s/internal/codegen/c/dispatch.go":"%s/build/packet-defaults/c-negative/dispatch.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/packet-defaults/c-negative/overlay.json
+	go build -overlay=build/packet-defaults/c-negative/overlay.json -o build/packet-defaults/c-negative/schema ./cmd/schema
+	./build/packet-defaults/c-negative/schema generate --lang c --out build/packet-defaults/c-negative/generated test/packet-defaults/Defaults.schema
+	$(CC) -std=c99 -Wall -Wextra -Werror -Wtype-limits $(C_TAUTOLOGICAL) \
+		-O2 -ffp-contract=off -Ibuild/packet-defaults/c-negative/generated -I$(SERIALIZE_C) \
+		test/packet-defaults/c_main.c $(SERIALIZE_C)/serialize.c -o build/packet-defaults/c-negative/checker -lm
+	@if ./build/packet-defaults/c-negative/checker testdata/wire/packet-defaults > build/packet-defaults/c-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: missing constructor bytes passed in C'; exit 1; fi
+	@grep -Fxq 'FAILED: packet-default constructor bytes' build/packet-defaults/c-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: C failed for another reason'; cat build/packet-defaults/c-negative/log; exit 1; }
+	@grep -Fxm1 'FAILED: packet-default constructor bytes' build/packet-defaults/c-negative/log
+
+# make test invokes test-c through TEST_LEGS in make/c.mk.
+test-c: packet-defaults-c packet-defaults-c-negative-control

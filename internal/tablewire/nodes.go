@@ -11,6 +11,7 @@ package tablewire
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -222,6 +223,20 @@ func visitEdges(m *tabletext.Model, inst *tabletext.Instance, visit func(target 
 			}
 			continue
 		}
+		if f.IsMap() {
+			// A MAP IS A BY-VALUE EDGE OF THE ONE DECLARATION-ORDER WALK
+			// (§2.8, §3.1): it is reached at its field's position, its entries
+			// are visited in ASCENDING KEY ORDER — the order the wire carries
+			// and the order a region holds — and each entry's value is
+			// descended for the pointer slots inside it before the next entry
+			// is reached. A node reached ONLY through a map is numbered here.
+			for _, at := range MapEntryOrder(f, fv) {
+				if sub := fv.Entries[at].Tab; sub != nil {
+					visitEdges(m, sub, visit)
+				}
+			}
+			continue
+		}
 		st := tabletext.StructOf(f)
 		if st == nil {
 			continue
@@ -257,6 +272,23 @@ func visitEdges(m *tabletext.Model, inst *tabletext.Instance, visit func(target 
 			}
 		}
 	}
+}
+
+// MapEntryOrder is one map field's entries in ASCENDING KEY ORDER, as indices
+// into its Entries (docs/SPEC-TABLES.md §2.8). It is the order the four writing
+// walks emit and the order the numbering visits, and both take it from here so
+// a wire and its node table cannot disagree about which entry came first.
+func MapEntryOrder(f *ir.Field, fv *tabletext.Field) []int {
+	order := make([]int, len(fv.Entries))
+	for i := range order {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(a, b int) bool {
+		return tabletext.MapKeyOrder(f,
+			tabletext.MapKeyOf(f, fv.Entries[order[a]].Tab),
+			tabletext.MapKeyOf(f, fv.Entries[order[b]].Tab)) < 0
+	})
+	return order
 }
 
 // visitArmEdges walks ONE union cell's set arm (docs/SPEC-TABLES.md §2.6,

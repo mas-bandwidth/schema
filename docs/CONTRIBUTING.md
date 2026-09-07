@@ -52,6 +52,29 @@ compiles each, and compares the emitted wire against pinned goldens. That
 cross-language bit-identity check is the property this project exists to
 provide, so a change that breaks it is wrong until proven otherwise.
 
+**`make test` refuses a missing pinned toolchain by name, and runs without a
+leg only when you name the skip on purpose.** A pin the Makefile names
+(`NODE`, `DART`, `JAVA`/`JAVAC`, `ELIXIR`/`MIX`/`ELIXIRC`, `DOTNET`) that does
+not resolve stops the run before it starts. Every registered leg is probed, so
+one run names every leg it would have skipped and the path each pin looked in
+rather than sending you back for the next name; to run the chain without those
+legs, name them in `SCHEMA_SKIP_LEGS`, which prints every skip by name and
+which the refusal spells out ready to paste:
+
+```bash
+make test SCHEMA_SKIP_LEGS=dart,java
+```
+
+A gate that passes while its toolchain is missing is a gate with no blade, and
+that is not a hypothetical here: a merge once deleted a clone's `dist` link,
+`make test` passed over four legs in silence, and a red inside one of them rode
+the green run (issue #599). Nothing under `.github` sets `SCHEMA_SKIP_LEGS`:
+certification installs every toolchain and overrides the pins, which resolve
+and pass the gate. `make toolchain` runs the gate alone, and
+`make toolchain-negative-control` proves it still has its blade, on every pin
+of every leg. That control runs inside `make test` and on every pull request,
+in the `go-test` job of `ci.yml`.
+
 The Makefile's `SERIALIZE*` variables override the sibling paths if you keep
 them elsewhere.
 
@@ -156,7 +179,7 @@ touches and two ports landing in one week do not conflict:
 | the target | `compiler/target_<lang>.go` (`target_javascript.go`: a `_js` suffix is a Go build constraint) | its `init` registers the generator |
 | the runtime's claimed names | `internal/tablenames/<lang>.go` | its `init` defines the backend's bit and names |
 | the compiler's tests | `compiler/tables<lang>_test.go` | the package |
-| the build | `make/<lang>.mk` | the Makefile's wildcard include; the file registers its `test-<lang>` leg, its conformance build, its bench unit and its goldens |
+| the build | `make/<lang>.mk` | the Makefile's wildcard include; the file registers its `test-<lang>` leg, its conformance build, its bench unit, its goldens and its pinned toolchain |
 | the conformance leg | `test/conformance/<lang>/driver` and `ci.json` | the harness discovers the driver; `harness matrix` builds the pull-request matrix from the rows |
 | the tables bench leg | `bench/tables/<lang>/leg` | `bench/tables/run.sh` runs every leg |
 | the shape gate's exemptions | `bench/<lang>/SHAPE-GATE.allow`, `bench/tables/<lang>/SHAPE-GATE.allow` | the gate reads every ledger under the tree |
@@ -167,6 +190,17 @@ touches and two ports landing in one week do not conflict:
 of the tree and requires the harness, the CI matrix, the bench pass and the
 Makefile to find it with no shared file edited. If a port needs to edit a file
 that lists languages, that is a defect in the registry, not a step.
+
+A port with a pinned toolchain registers it in the same file and the same way:
+`TOOLCHAIN_LEGS += <lang>`, `TOOLCHAIN_PINS_<lang> :=` every pin the leg
+probes, and a `toolchain-<lang>` target carrying one
+`$(call toolchain_probe,...)` per pin. That is what makes `make test` refuse
+the leg by name instead of skipping it, and what makes
+`SCHEMA_SKIP_LEGS=<lang>` a skip anyone can read in the log. The negative
+control points each pin on that list at a path that does not exist IN TURN,
+with the leg's other pins pointed at one that resolves, and requires the
+refusal to name that pin. A pin the target probes but the list leaves out is
+a probe nothing watches, and deleting it keeps the control green.
 
 **Three shared edits are tolerated, and are the whole list.** The port's
 column on [PORTING.md](PORTING.md), the techniques register, is written by

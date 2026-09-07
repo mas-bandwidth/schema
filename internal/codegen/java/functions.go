@@ -171,7 +171,7 @@ func (g *gen) staticBitsField(f *ir.Field) (int64, bool) {
 
 func (g *gen) staticBitsScalar(f *ir.Field) (int64, bool) {
 	switch f.Type.Kind {
-	case ir.TString, ir.TBytes:
+	case ir.TString, ir.TBytes, ir.TWString:
 		return 0, false
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
@@ -409,7 +409,7 @@ func (g *gen) hasCheckField(f *ir.Field) bool {
 
 func (g *gen) hasCheckScalar(f *ir.Field) bool {
 	switch f.Type.Kind {
-	case ir.TString, ir.TBytes:
+	case ir.TString, ir.TBytes, ir.TWString:
 		return true
 	case ir.TFixed:
 		return true
@@ -511,7 +511,7 @@ func (g *gen) emitCheckElem(f *ir.Field, name, iv, ind string) {
 
 func (g *gen) emitCheckScalar(f *ir.Field, name, ind string) {
 	switch f.Type.Kind {
-	case ir.TString, ir.TBytes:
+	case ir.TString, ir.TBytes, ir.TWString:
 		g.assertRange(name+"Length", big.NewInt(0), big.NewInt(f.Type.Size), true, ind)
 	case ir.TFixed:
 		rawMin, rawMax, _ := fixedRaw(f)
@@ -913,6 +913,8 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.pf("%s    final long b = Double.doubleToRawLongBits(%s);\n", ind, name)
 		g.emitWriteWide64("b", 64, ind+"    ")
 		g.pf("%s}\n", ind)
+	case ir.TWString:
+		g.emitWriteWString(f, name, ind)
 	case ir.TString, ir.TBytes:
 		g.emitWriteBytesField(f, name, ind)
 	case ir.TNamed:
@@ -1266,6 +1268,8 @@ func (g *gen) emitReadDynamicField(f *ir.Field, path, ind string) {
 		name = path
 	}
 	switch {
+	case f.Type.Kind == ir.TWString:
+		g.emitReadWString(f, name, ind)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.emitReadBytesField(f, name, ind)
 	case f.Array == ir.ArrayCounted:
@@ -1342,6 +1346,7 @@ func (g *gen) emitReadBytesField(f *ir.Field, name, ind string) {
 	g.pf("%sSystem.arraycopy(data, bitsRead >>> 3, %s, 0, %s);\n", ind, name, length)
 	g.pf("%sbitsRead += %s * 8;\n", ind, length)
 	if f.Type.Kind == ir.TString {
+		g.emitReadUTF8(name, length, ind)
 		iv := fmt.Sprintf("i%d", g.loopDepth)
 		g.loopDepth++
 		g.pf("%sfor (int %s = 0; %s < %s; %s++) {\n", ind, iv, iv, length, iv)
@@ -1385,6 +1390,8 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string, bounded bool) {
 		return
 	}
 	switch f.Type.Kind {
+	case ir.TWString:
+		g.emitReadWString(f, name, ind)
 	case ir.TString, ir.TBytes:
 		// only reachable as an array element (never inside a fused run —
 		// staticBitsScalar calls it dynamic)
@@ -1688,9 +1695,16 @@ func (g *gen) emitInitializeField(f *ir.Field, path, ind string, viaCalls, defau
 	}
 	name := path + "." + javaName(f.Name)
 	switch {
+	case f.Type.Kind == ir.TWString:
+		g.pf("%sjava.util.Arrays.fill(%s, (char) 0);\n%s%sLength = 0;\n", ind, name, ind, name)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.pf("%sjava.util.Arrays.fill(%s, (byte) 0);\n", ind, name)
 		g.pf("%s%sLength = 0;\n", ind, name)
+		if defaults {
+			for _, line := range byteDefaultLines(f, name, ind) {
+				g.pf("%s", line)
+			}
+		}
 	case f.Array != ir.ArrayNone:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Struct:
@@ -1877,6 +1891,10 @@ func (g *gen) emitMeasureField(f *ir.Field, path, ind string, pending *int64) {
 		name = path
 	}
 	switch {
+	case f.Type.Kind == ir.TWString:
+		*pending += ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size))
+		g.flushMeasure(pending, ind)
+		g.pf("%sbits += %sLength * 32;\n", ind, name)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		lenBits := ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size))
 		*pending += lenBits

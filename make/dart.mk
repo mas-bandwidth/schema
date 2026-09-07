@@ -12,6 +12,46 @@
 #   unzip into dist/ and rename dart-sdk -> dart-sdk-3.13.2
 DART ?= $(CURDIR)/dist/dart-sdk-3.13.2/bin/dart
 
+# THE TOOLCHAIN GATE, this leg's half (issue #599; the Makefile's header and
+# docs/CONTRIBUTING.md, "Adding a language"). This leg is the one the issue was
+# opened over: a merge deleted the clone's dist link, the leg was passed over
+# in silence, and the red inside it rode a green run.
+.PHONY: toolchain-dart
+toolchain-dart:
+	@$(call toolchain_probe,dart,DART,$(DART))
+build/packet-defaults/dart/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema make/dart.mk
+	./bin/schema generate --lang dart --out build/packet-defaults/dart/defaults test/packet-defaults/Defaults.schema
+	./bin/schema generate --lang dart --out build/packet-defaults/dart/plain test/packet-defaults/Plain.schema
+	@touch $@
+
+.PHONY: packet-defaults-dart packet-defaults-dart-negative-control
+packet-defaults-dart: build/packet-defaults/dart/.stamp packet-defaults-cpp
+	$(DART) analyze build/packet-defaults/dart test/packet-defaults/dart
+	$(DART) format --set-exit-if-changed --output=none build/packet-defaults/dart
+	$(DART) --enable-asserts test/packet-defaults/dart/main.dart testdata/wire/packet-defaults
+	$(DART) compile exe -o build/packet-defaults/dart/checker test/packet-defaults/dart/main.dart
+	./build/packet-defaults/dart/checker testdata/wire/packet-defaults
+
+packet-defaults-dart-negative-control: packet-defaults-dart
+	@mkdir -p build/packet-defaults/dart-negative
+	go run ./tools/sabotage -name packet-defaults-dart-constructor-bytes \
+		-out build/packet-defaults/dart-negative/dart.gotext internal/codegen/dart/dart.go
+	@printf '{"Replace":{"%s/internal/codegen/dart/dart.go":"%s/build/packet-defaults/dart-negative/dart.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/packet-defaults/dart-negative/overlay.json
+	go build -overlay=build/packet-defaults/dart-negative/overlay.json -o build/packet-defaults/dart-negative/schema ./cmd/schema
+	./build/packet-defaults/dart-negative/schema generate --lang dart --out build/packet-defaults/dart-negative/generated test/packet-defaults/Defaults.schema
+	@sed -e 's|../../../build/packet-defaults/dart/defaults|$(CURDIR)/build/packet-defaults/dart-negative/generated|' \
+		-e 's|../../../build/packet-defaults/dart/plain|$(CURDIR)/build/packet-defaults/dart/plain|' \
+		test/packet-defaults/dart/main.dart > build/packet-defaults/dart-negative/main.dart
+	$(DART) compile exe -o build/packet-defaults/dart-negative/checker build/packet-defaults/dart-negative/main.dart
+	@if ./build/packet-defaults/dart-negative/checker testdata/wire/packet-defaults > build/packet-defaults/dart-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: missing constructor bytes passed in Dart'; exit 1; fi
+	@grep -Fq 'packet-default constructor bytes' build/packet-defaults/dart-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: Dart failed for another reason'; cat build/packet-defaults/dart-negative/log; exit 1; }
+	@echo 'packet defaults Dart negative control: missing constructor bytes fail the runtime check'
+
+test-dart: packet-defaults-dart packet-defaults-dart-negative-control
+
 # the Dart target: generated libraries only, no wiring file at all —
 # generated Dart is self-contained (the bitpacker is inlined per issue #155),
 # so there is no runtime checkout and no pubspec; the test legs import the
@@ -351,7 +391,7 @@ tables-dart-zero-cost: build/tables-generated-dart/.stamp
 # then the analyzer and the formatter over every generated tree, and the
 # packet tests, checked and compiled.
 .PHONY: test-dart
-test-dart: generated/dart/.stamp generated/dart-ludicrous/.stamp generated/bench/dart/.stamp generated/bench/tables/dart/.stamp
+test-dart: toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp generated/bench/dart/.stamp generated/bench/tables/dart/.stamp
 	$(MAKE) tables-dart-clean
 	$(MAKE) tables-dart-zero-cost
 	$(MAKE) tables-dart-alloc DART_ALLOC_ITERATIONS=20000
@@ -375,5 +415,61 @@ test-dart: generated/dart/.stamp generated/dart-ludicrous/.stamp generated/bench
 	cd test/dart-ludicrous && $(DART) compile exe -o ../../build/schema_test_dart_ludicrous main.dart >/dev/null && ../../build/schema_test_dart_ludicrous
 
 TEST_LEGS         += test-dart
-CONFORMANCE_LEGS  += build/conformance-dart
+TOOLCHAIN_LEGS    += dart
+TOOLCHAIN_PINS_dart := DART
+CONFORMANCE_LEGS  += $(call unless_skipped,dart,build/conformance-dart)
 BENCH_TABLES_LEGS += generated/bench/tables/dart/.stamp
+# Packet UTF-8 content validation, including a compiled mutation control.
+build/packet-text/dart/.stamp: bin/schema test/packet-text/Narrow.schema
+	./bin/schema generate --lang dart --out build/packet-text/dart test/packet-text/Narrow.schema
+	@touch $@
+
+.PHONY: packet-utf8-dart packet-utf8-dart-negative-control
+packet-utf8-dart: build/packet-text/dart/.stamp build/packet-text/cpp/driver build/packet-text/harness
+	$(DART) analyze build/packet-text/dart test/packet-text/dart
+	$(DART) format --set-exit-if-changed --output=none build/packet-text/dart test/packet-text/dart
+	./build/packet-text/harness $(DART) --enable-asserts test/packet-text/dart/main.dart
+	$(DART) compile exe -o build/packet-text/dart/driver test/packet-text/dart/main.dart
+	./build/packet-text/harness ./build/packet-text/dart/driver
+
+packet-utf8-dart-negative-control: packet-utf8-dart
+	@mkdir -p build/packet-text/dart-negative
+	go run ./tools/sabotage -name packet-utf8-dart-read -out build/packet-text/dart-negative/utf8.gotext internal/codegen/dart/utf8.go
+	@printf '{"Replace":{"%s/internal/codegen/dart/utf8.go":"%s/build/packet-text/dart-negative/utf8.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-text/dart-negative/overlay.json
+	go run -overlay=build/packet-text/dart-negative/overlay.json ./cmd/schema generate --lang dart --out build/packet-text/dart-negative test/packet-text/Narrow.schema
+	@sed 's|../../../build/packet-text/dart|$(CURDIR)/build/packet-text/dart-negative|' test/packet-text/dart/main.dart > build/packet-text/dart-negative/main.dart
+	$(DART) compile exe -o build/packet-text/dart-negative/driver build/packet-text/dart-negative/main.dart
+	@if ./build/packet-text/harness -mutations-only ./build/packet-text/dart-negative/driver > build/packet-text/dart-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: Dart UTF-8 removal passed'; exit 1; fi
+	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-text/dart-negative/log || { cat build/packet-text/dart-negative/log; exit 1; }
+	@echo 'packet UTF-8 Dart negative control: removed read validation fails bit-flip agreement'
+
+test-dart: packet-utf8-dart packet-utf8-dart-negative-control
+
+
+build/packet-wide/dart/.stamp: bin/schema build/packet-wide/source/WideText.schema test/packet-wide/Shapes.schema
+	./bin/schema generate --lang dart --out build/packet-wide/dart build/packet-wide/source/WideText.schema
+	./bin/schema generate --lang dart --out build/packet-wide/dart/shapes test/packet-wide/Shapes.schema
+	@touch $@
+
+.PHONY: packet-wide-dart packet-wide-dart-negative-control
+packet-wide-dart: build/packet-wide/dart/.stamp build/packet-wide/cpp/driver build/packet-text/harness
+	$(DART) analyze build/packet-wide/dart test/packet-wide/dart
+	$(DART) format --set-exit-if-changed --output=none build/packet-wide/dart test/packet-wide/dart
+	$(DART) --enable-asserts test/packet-wide/dart/main.dart --contracts
+	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver $(DART) --enable-asserts test/packet-wide/dart/main.dart
+	$(DART) compile exe -o build/packet-wide/dart/driver test/packet-wide/dart/main.dart
+	./build/packet-wide/dart/driver --contracts
+	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver ./build/packet-wide/dart/driver
+
+packet-wide-dart-negative-control: packet-wide-dart
+	@mkdir -p build/packet-wide/dart-negative
+	go run ./tools/sabotage -name packet-wide-dart-pairing -out build/packet-wide/dart-negative/wstring.gotext internal/codegen/dart/wstring.go
+	@printf '{"Replace":{"%s/internal/codegen/dart/wstring.go":"%s/build/packet-wide/dart-negative/wstring.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-wide/dart-negative/overlay.json
+	go run -overlay=build/packet-wide/dart-negative/overlay.json ./cmd/schema generate --lang dart --out build/packet-wide/dart-negative build/packet-wide/source/WideText.schema
+	@sed -e 's|../../../build/packet-wide/dart/WideText.dart|$(CURDIR)/build/packet-wide/dart-negative/WideText.dart|' -e 's|../../../build/packet-wide/dart/shapes/Shapes.dart|$(CURDIR)/build/packet-wide/dart/shapes/Shapes.dart|' test/packet-wide/dart/main.dart > build/packet-wide/dart-negative/main.dart
+	$(DART) compile exe -o build/packet-wide/dart-negative/driver build/packet-wide/dart-negative/main.dart
+	@if ./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver -mutations-only ./build/packet-wide/dart-negative/driver > build/packet-wide/dart-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: Dart wide pairing removal passed'; exit 1; fi
+	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-wide/dart-negative/log || { cat build/packet-wide/dart-negative/log; exit 1; }
+	@echo 'packet wide Dart negative control: removed pairing fails bit-flip agreement'
+
+test-dart: packet-wide-dart packet-wide-dart-negative-control

@@ -124,11 +124,11 @@ func TestUnionTagEnumExportsCountAndItsDebugName(t *testing.T) {
 	}
 }
 
-// COUNT IS RESERVED EXACTLY WHERE THE MEMBER EXISTS. A packet union's tag
-// enum carries Count, so an arm exporting Count would define the member
-// twice, a redefinition in C++ and C#. A TABLE-CLOSURE union's tag shape is
-// emitted beside the tables and carries Max alone, so the name is still free
-// there, and the corpus's own tables/messages/Messages.schema uses it.
+// COUNT IS RESERVED ON EVERY UNION, because every union's tag enum carries
+// the member. A packet union's does and a TABLE-CLOSURE union's does, so an
+// arm exporting Count would define the member twice either way, a
+// redefinition in C++ and C#. The two gates below are one rule read from both
+// sides.
 const countArmPacketUnion = `package tagcount
 
 type A
@@ -183,12 +183,102 @@ func TestAPacketUnionArmNamedCountIsRefusedByName(t *testing.T) {
 	}
 }
 
-// The other side of the same rule: the name stays legal where no Count is
-// emitted. A refusal here would break the corpus, and it would reserve a name
-// against a member that does not exist.
-func TestATableClosureUnionArmNamedCountIsAccepted(t *testing.T) {
-	if errs := checkErrors(t, countArmTableUnion); len(errs) > 0 {
-		t.Errorf("a table-closure union's arm named count was refused, and its tag shape carries no Count: %v", errs[0])
+// The other side of the same rule, and it is the same answer. The
+// table-closure tag shape carries Count too, so the member exists there and
+// an arm exporting it defines it twice. One construct, one reservation.
+func TestATableClosureUnionArmNamedCountIsRefusedByName(t *testing.T) {
+	errs := checkErrors(t, countArmTableUnion)
+	if len(errs) == 0 {
+		t.Fatal("a table-closure union's arm named count passed check, and its tag enum defines Count twice")
+	}
+	var joined []string
+	for _, e := range errs {
+		joined = append(joined, e.Error())
+	}
+	text := strings.Join(joined, "\n")
+	for _, want := range []string{"variant count is a compile error", "the member Count"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the refusal does not name the rule (%q): %s", want, text)
+		}
+	}
+}
+
+// THE TABLE-CLOSURE TAG SHAPE'S OWN SURFACE GATE.
+//
+// A table-closure union (docs/SPEC-TABLES.md §2.6) has no packet wire, so its
+// tag enum is emitted by a different backend — internal/codegen/cpptable's
+// emitTableUnion, written beside the tables in the Table header rather than
+// among the packet declarations. It is the same construct to a reader, so it
+// presents the same surface: None, the variants, Count, Max and the
+// debug-name function.
+//
+// The table layer is the C++ REFERENCE's (docs/SPEC-TABLES.md §11, §15), and
+// cpptable is the one backend that emits this shape, so this gate is C++'s
+// where the packet gate above is nine-way.
+//
+// The probe unit declares an enum of THREE variants beside a union of two, the
+// trap PR #597 found running the packet control: with both at two, the
+// declared enum's own Count line satisfies a claim meant for the tag enum and
+// the control stays green.
+const tableClosureTagEnumUnit = `package tabletag
+
+enum ShipType { Fighter, Bomber, Scout }
+
+table LaserFire
+{
+    target_id uint16
+}
+
+table MissileFire
+{
+    target_id uint16
+}
+
+union WeaponFire
+{
+    laser   LaserFire
+    missile MissileFire
+}
+
+table FireCommand
+{
+    fire WeaponFire
+}
+`
+
+func TestTableClosureUnionTagEnumExportsCountAndItsDebugName(t *testing.T) {
+	text := generatedText(t, tableClosureTagEnumUnit, "cpp")
+	for _, want := range []string{
+		tagEnumSurface["cpp"].count,
+		tagEnumSurface["cpp"].max,
+		tagEnumSurface["cpp"].nameFunc,
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("cpp: the table-closure tag enum's surface is short, %q not emitted", want)
+		}
+	}
+}
+
+// The name function names every value a reader can meet, out-of-set included,
+// and the claim is ANCHORED TO ITS BODY for the reason the packet gate is:
+// None, Laser and Missile all appear elsewhere in the same header — the tag
+// enum's own members, the arm table names, the reflection descriptor's arm
+// name switch — and "???" is that descriptor's own default, so a whole-output
+// claim stays green with the function deleted.
+func TestTableClosureTagEnumDebugNameCoversNoneVariantsAndOutOfSet(t *testing.T) {
+	text := generatedText(t, tableClosureTagEnumUnit, "cpp")
+	open := strings.Index(text, tagEnumSurface["cpp"].nameFunc)
+	if open < 0 {
+		t.Fatalf("cpp: the table-closure tag enum has no name function, %q not emitted", tagEnumSurface["cpp"].nameFunc)
+	}
+	body, _, found := strings.Cut(text[open:], "???")
+	if !found {
+		t.Fatal("cpp: the table-closure tag enum's name function has no out-of-set arm, \"???\" is absent from its body")
+	}
+	for _, want := range []string{"None", "Laser", "Missile"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("cpp: the table-closure tag enum's name function does not name %q in its body:\n%s", want, body)
+		}
 	}
 }
 

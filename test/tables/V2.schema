@@ -8,6 +8,12 @@ package tblv2
 
 const MaxSlots = 3
 
+// tally is a POSITIONAL array in a table body, so its bound folds from no
+// enum: a bound that folds from one is refused there on the bound's
+// PROVENANCE (docs/SPEC-TABLES.md §2.4, §11). It is 4 here against V1's 3,
+// which is the growing bound the generations exercise.
+const TallySlots = 4
+
 enum Mode { Alpha, Beta }
 
 enum Grade { Bronze, Silver, Gold }
@@ -56,14 +62,14 @@ table Cfg
     a      float32 = 5.0
     c      bool = true
     mode   Mode = Beta
-    title  string(32)           | was = "name"
+    title  string(32)        | was = "name"
     inner  Inner
-    items  [..8]int32           | min = 0, max = 255
+    items  [..8]int32        | min = 0, max = 255
     grade  Grade
     grades [..4]Grade
     podium [3]Grade
     slots  [..MaxSlots]int32
-    tally  [Grade.Max + 1]int32
+    tally  [TallySlots]int32
     effect Effect
     bank   [Slot]Cell
     tokens [Slot]int32

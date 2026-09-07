@@ -50,6 +50,48 @@ static void check( bool ok, const char * what, int line )
     failures++;
 }
 
+// ---- the retain corpus, pinned as ordinary wire goldens ----
+//
+// The rows below are the C++ reference's, and the same bytes are the ORACLE's
+// vectors: `internal/tablewire` reads these files and must answer the same
+// counters and the same save (docs/SPEC-TABLES.md §6.6, §4.2). A break here
+// under an unchanged schema is stop-the-line, never a quiet re-pin;
+// SCHEMA_UPDATE_WIRE_GOLDENS=1 rewrites them deliberately (make
+// update-goldens).
+static bool pin_golden( const char * name, const uint8_t * data, int64_t bytes )
+{
+    char path[256];
+    snprintf( path, sizeof( path ), "testdata/wire/tables/%s.bin", name );
+    if ( getenv( "SCHEMA_UPDATE_WIRE_GOLDENS" ) )
+    {
+        FILE * f = fopen( path, "wb" );
+        if ( f == NULL ) { printf( "FAIL cannot write %s\n", path ); fflush( stdout ); failures++; return false; }
+        fwrite( data, 1, (size_t) bytes, f );
+        fclose( f );
+        return true;
+    }
+    FILE * f = fopen( path, "rb" );
+    if ( f == NULL )
+    {
+        printf( "FAIL missing table wire golden %s (run: make update-goldens)\n", path );
+        fflush( stdout );
+        failures++;
+        return false;
+    }
+    static uint8_t expected[1u << 20];
+    const size_t n = fread( expected, 1, sizeof( expected ), f );
+    fclose( f );
+    if ( (int64_t) n != bytes || memcmp( expected, data, n ) != 0 )
+    {
+        printf( "FAIL table wire golden %s: %lld bytes written, %lld pinned\n",
+                name, (long long) bytes, (long long) n );
+        fflush( stdout );
+        failures++;
+        return false;
+    }
+    return true;
+}
+
 // ---- the wire RT2 writes, and the region RT1 loads it into ----
 
 struct Region
@@ -153,6 +195,9 @@ static void round_trip()
     uint8_t wire[ 8192 ];
     const int64_t n = write_rt2( wire, sizeof( wire ) );
     CHECK( n > 0 );
+    // THE INPUT IS A PINNED VECTOR, so the oracle reads the same bytes this
+    // row reads (docs/SPEC-TABLES.md §4.2)
+    pin_golden( "retain_rt2", wire, n );
 
     Region region;
     region.size( tblrt1::NodeLoadMeasure( wire, n ) );
@@ -240,6 +285,11 @@ static void round_trip()
         0x1c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     };
     CHECK( w == (int64_t) sizeof( kFirstSave ) && memcmp( out, kFirstSave, sizeof( kFirstSave ) ) == 0 );
+    // THE SAME BYTES AS A FILE, which is what the oracle's own retain gate
+    // compares its save against (docs/SPEC-TABLES.md §4.2). The inline pin
+    // above and the file are one string: the file is written from `out`, so a
+    // drift in either is this row's red.
+    pin_golden( "retain_rt1_save", out, w );
     // THE SAVE IS BIGGER THAN THE PLAIN ONE, because the retained fields rode
     uint8_t plain[ 8192 ];
     const int64_t p = tblrt1::NodeSave( root, plain, sizeof( plain ) );
@@ -417,6 +467,9 @@ static void excluded_classes()
         uint8_t wire[ 8192 ];
         const int64_t n = write_excluded( wire, sizeof( wire ), which );
         CHECK( n > 0 );
+        char name[64];
+        snprintf( name, sizeof( name ), "retain_excluded_%d", which );
+        pin_golden( name, wire, n );
         Loaded l;
         l.load( wire, n );
         CHECK( l.root != NULL );
@@ -455,6 +508,7 @@ static void unknown_node_record()
         n = tblrt3::NodeSave( builder, wire, sizeof( wire ) );
     }
     CHECK( n > 0 );
+    pin_golden( "retain_rt3", wire, n );
     Loaded l;
     l.load( wire, n );
     CHECK( l.root != NULL );
@@ -519,7 +573,12 @@ static void capacities()
         retain.bytes = storage;
         retain.capacity = sizeof( storage );
         retain.ids = ids;
-        retain.id_capacity = 2; // the wire carries THREE distinct retained ids
+        // THE WIRE CARRIES TWELVE distinct retained ids, and `parcel` is the
+        // one record that names more than its own: the eight `future` records
+        // and `extra` take two entries between them, so a list of two is short
+        // for `parcel` and long enough for every other record. Measured rather
+        // than assumed, a full save reports id_used == 12.
+        retain.id_capacity = 2;
         tblrt1::TableReport report;
         const tblrt1::Node * root = tblrt1::NodeLoadRetain( region.base, region.bytes, wire, n, &retain, &report );
         CHECK( root != NULL );
@@ -534,6 +593,10 @@ static void capacities()
         // that record is dropped: the count is per record, as the page pins
         CHECK( save_report.retain_lost == 1 );
         CHECK( retain.id_used == 2 );
+        // AND THE BYTES ARE PINNED, so the oracle answers this save and not
+        // only its counter: a drop for want of an id entry moves a record out
+        // of a body and every reference behind it, which a count cannot see.
+        pin_golden( "retain_rt1_save_id_short", out, w );
         // the file still reads, and the other retained id rode
         Region back;
         back.size( tblrt2::NodeLoadMeasure( out, w ) );

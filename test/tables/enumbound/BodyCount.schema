@@ -1,0 +1,13 @@
+package ebbodycount
+
+// `[E.Count]T` IN A TABLE BODY (docs/SPEC-TABLES.md §2.4, §11): a second
+// spelling of one bound. `Count` is the declared variant count and `Max` the
+// extent, and under no headroom they are the same number, so the array is the
+// same positional vocabulary either way.
+
+enum ShipType { Fighter, Bomber, Scout }
+
+table Fleet
+{
+    ships [ShipType.Count]int32
+}
