@@ -172,6 +172,10 @@ int main( int argc, char ** argv )
     // this build must not compile: a read-only view whose writes compile is a
     // view in name only.
     RenderFrameShipsSpan( block )[0].object_id = 1;
+    // and the rows view's two other doors, the typed base and the iterator,
+    // each held read-only by the same build
+    RenderFrameShips( block )[0].object_id = 1;
+    for ( RenderShip & ship : RenderFrameShips( block ) ) { ship.object_id = 2; }
 #endif
 
     free( mutable_allocation );
