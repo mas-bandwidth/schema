@@ -34,3 +34,11 @@ negative control must fail mutation agreement, and both checks ride
 validates the used byte slice without allocation; malformed content returns
 `ErrValidation` after any stream error has been surfaced. Its compiled
 negative control must fail mutation agreement. Both checks ride `test-go`.
+
+`make packet-utf8-cs` runs Debug and Release over the same cases, with a
+scalar-range validator over the existing byte array. The generated read
+allocates zero bytes over 10,000 repeated valid reads. Content validation
+returns `false`, following the existing schema-verdict convention; stream
+failures retain the runtime's latched error. A compiled release control skips
+only the UTF-8 scan and must fail mutation agreement. Both checks ride
+`test-cs`.

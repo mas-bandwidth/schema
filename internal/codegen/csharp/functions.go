@@ -1110,6 +1110,7 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 			" // the length guards the slice (§6.3)")
 		g.call(ind, fmt.Sprintf("%s.SerializeBytes(%s.AsSpan(0, %s))", g.rv(), name, length), "")
 		if f.Type.Kind == ir.TString {
+			g.emitReadUTF8(name, length, ind)
 			// the interior-null rule is generated-code validation (SPEC §4.7);
 			// the SerializeBytes bool above already surfaced a truncated
 			// stream as the stream's own latched error, so this verdict only
