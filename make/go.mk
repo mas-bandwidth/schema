@@ -6,6 +6,30 @@
 # test/go/go.mod and its ludicrous twin carry the same relative path
 SERIALIZE_GO ?= ../serialize.go
 
+build/packet-text/go/.stamp: bin/schema test/packet-text/Narrow.schema make/go.mk
+	./bin/schema generate --lang go --out build/packet-text/go test/packet-text/Narrow.schema
+	@printf 'module packettext\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => %s/$(SERIALIZE_GO)\n' "$(CURDIR)" > build/packet-text/go/go.mod
+	@touch $@
+
+.PHONY: packet-utf8-go packet-utf8-go-negative-control
+packet-utf8-go: build/packet-text/go/.stamp build/packet-text/cpp/driver build/packet-text/harness
+	cd test/packet-text/go && go build -o ../../../build/packet-text/go/driver .
+	./build/packet-text/harness ./build/packet-text/go/driver
+
+packet-utf8-go-negative-control: packet-utf8-go
+	@mkdir -p build/packet-text/go-negative/checker
+	go run ./tools/sabotage -name packet-utf8-go-read -out build/packet-text/go-negative/functions.gotext internal/codegen/golang/functions.go
+	@printf '{"Replace":{"%s/internal/codegen/golang/functions.go":"%s/build/packet-text/go-negative/functions.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-text/go-negative/overlay.json
+	go run -overlay=build/packet-text/go-negative/overlay.json ./cmd/schema generate --lang go --out build/packet-text/go-negative test/packet-text/Narrow.schema
+	cp build/packet-text/go/go.mod build/packet-text/go-negative/go.mod
+	cp test/packet-text/go/main.go build/packet-text/go-negative/checker/main.go
+	cd build/packet-text/go-negative/checker && go build -o ../driver .
+	@if ./build/packet-text/harness -mutations-only ./build/packet-text/go-negative/driver > build/packet-text/go-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: Go UTF-8 removal passed'; exit 1; fi
+	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-text/go-negative/log || { cat build/packet-text/go-negative/log; exit 1; }
+	@echo 'packet UTF-8 Go negative control: removed read validation fails bit-flip agreement'
+
+test-go: packet-utf8-go packet-utf8-go-negative-control
+
 generated/go-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 	./bin/schema generate --lang go --out generated/go-ludicrous examples128
 	@printf 'module ludicrous\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../$(SERIALIZE_GO)\n' > generated/go-ludicrous/go.mod

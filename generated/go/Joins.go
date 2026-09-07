@@ -7,6 +7,8 @@
 package example
 
 import (
+	"unicode/utf8"
+
 	"github.com/mas-bandwidth/serialize.go"
 )
 
@@ -359,6 +361,9 @@ func ReadArmAlign(stream *serialize.ReadStream, value *ArmAlign) error {
 		stream.SerializeBytes(value.S[:value.SLength])
 		if stream.Err() != nil {
 			return stream.Err()
+		}
+		if !utf8.Valid(value.S[:value.SLength]) {
+			return ErrValidation // malformed UTF-8 (SPEC §4.7)
 		}
 		for i := int32(0); i < value.SLength; i++ {
 			if value.S[i] == 0 {
@@ -783,6 +788,9 @@ func ReadRegainAfterAlign(stream *serialize.ReadStream, value *RegainAfterAlign)
 	stream.SerializeBytes(value.S[:value.SLength])
 	if stream.Err() != nil {
 		return stream.Err()
+	}
+	if !utf8.Valid(value.S[:value.SLength]) {
+		return ErrValidation // malformed UTF-8 (SPEC §4.7)
 	}
 	for i := int32(0); i < value.SLength; i++ {
 		if value.S[i] == 0 {

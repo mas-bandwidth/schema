@@ -60,6 +60,7 @@ type gen struct {
 	needsMath      bool // the file emits math.Floor -> import math
 	needsErrors    bool // the file declares ErrValidation -> import errors
 	needsStrconv   bool // the file emits FlagNames* -> import strconv
+	needsUTF8      bool // the file validates string bytes on read
 
 	// bulkBytes marks the current struct's statically byte-aligned [N]uint8
 	// arrays (ir.AlignedFixedByteArrays): these serialize through the
@@ -91,6 +92,9 @@ func (g *gen) assemble() []byte {
 	}
 	if g.needsStrconv {
 		std = append(std, `"strconv"`)
+	}
+	if g.needsUTF8 {
+		std = append(std, `"unicode/utf8"`)
 	}
 	if g.needsSerialize {
 		ext = append(ext, `"github.com/mas-bandwidth/serialize.go"`)
