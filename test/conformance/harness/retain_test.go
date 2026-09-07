@@ -140,4 +140,3 @@ func TestTheOracleAnswersEveryRetainRow(t *testing.T) {
 		})
 	}
 }
-
