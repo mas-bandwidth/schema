@@ -176,11 +176,13 @@ func TestElixirRuntimeNamesAreClaimed(t *testing.T) {
 	}
 }
 
-// TestElixirRuntimeNameCollisionRepro is the REPRO the scan above exists for,
-// and its NEGATIVE CONTROL is the second half: a declaration named for a
-// generated module is refused by the checker, and the same declaration in a
-// TABLE-FREE unit is accepted — which is what says the claim is scoped to
-// units that declare a table rather than taken from every schema.
+// TestElixirRuntimeNameCollisionRepro is the REPRO the scan above exists for:
+// a declaration named for a generated module is refused by the checker in a
+// unit that declares a table, because that is where the backend writes the
+// module. None of the four is view surface: the descriptors are the view
+// file's, and these are the table, block and cook runtimes and the build
+// version, so a TABLE-FREE unit keeps every one of them
+// (docs/SPEC-TABLES.md §11, schema#672).
 func TestElixirRuntimeNameCollisionRepro(t *testing.T) {
 	for _, name := range []string{"TableRuntime", "BlockRuntime", "CookRuntime", "BuildVersion"} {
 		t.Run(name, func(t *testing.T) {
@@ -190,11 +192,16 @@ func TestElixirRuntimeNameCollisionRepro(t *testing.T) {
 				t.Fatalf("a declaration named %s was accepted — the Elixir table backend defines "+
 					"the module probe.%s, so the unit cannot compile", name, name)
 			}
-			// the NEGATIVE CONTROL: the same name in a table-free unit is the
-			// author's, and taking it there would be a claim nothing needs
+			if tablenames.InEveryUnit(name) {
+				t.Fatalf("%s is marked view surface: this repro is about the runtime modules, and a "+
+					"view-surface name is claimed in every unit instead", name)
+			}
+			// and a table-free unit keeps it: no view file spells any of the
+			// four, and the modules that do are written into table sources
+			// that unit never gets
 			free := "package probe\n\nenum " + name + " { A, B }\n\ntype Holder\n{\n    g " + name + "\n}\n"
 			if errs := checkErrors(t, free); len(errs) > 0 {
-				t.Errorf("a TABLE-FREE unit must keep the name %s: %v", name, errs)
+				t.Errorf("a TABLE-FREE unit declaring %s was refused: %v", name, errs)
 			}
 		})
 	}

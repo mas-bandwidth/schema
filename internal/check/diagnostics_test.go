@@ -75,6 +75,26 @@ func TestDiagnostics(t *testing.T) {
 		{name: "if condition is a bool array", want: "must be a bool",
 			src: "package t\ntype T {\n    flags [4]bool\n    if flags { x uint8 }\n}\n"},
 
+		// ---- a guard nested under its own negation (schema#268) ----
+		// Nested guards CONJOIN, so `if on { if !on { ... } }` emits
+		// `if ( value.on && !value.on )` and clang refuses the generated
+		// header under -Werror: "'&&' of a value and its negation always
+		// evaluates to false" (-Wtautological-negation-compare). No field
+		// under the inner guard ever rides, in any target, so the answer is
+		// owed at the source rather than by one backend's warning.
+		{name: "a guard nested under its own negation", want: "can never ride",
+			src: "package t\ntype T {\n    on bool\n    if on {\n        if !on { x int32 }\n    }\n}\n"},
+		{name: "a guard nested under its own negation, in a table", want: "can never ride",
+			src: "package t\ntable T {\n    on bool\n    if on {\n        if !on { x int32 }\n    }\n}\n"},
+		{name: "a guard nested under the else of its own condition", want: "can never ride",
+			src: "package t\ntype T {\n    on bool\n    if on {\n    } else {\n        if on { x int32 }\n    }\n}\n"},
+		{name: "an else side that contradicts its enclosing guard", want: "can never ride",
+			src: "package t\ntype T {\n    on bool\n    if on {\n        if on { x int32 } else { y int32 }\n    }\n}\n"},
+		{name: "a self-negating guard two blocks down", want: "can never ride",
+			src: "package t\ntype T {\n    on bool\n    other bool\n    if on {\n        if other {\n            if !on { x int32 }\n        }\n    }\n}\n"},
+		{name: "a negated guard taken the other way under itself", want: "can never ride",
+			src: "package t\ntype T {\n    on bool\n    if !on {\n        if on { x int32 }\n    }\n}\n"},
+
 		// ---- ranges and storage ----
 		{name: "range does not fit storage", want: "does not fit its declared storage",
 			src: "package t\ntype T { h int8 | min = 0, max = 1000 }\n"},
@@ -546,6 +566,17 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype V | cpp_native = VMath, cpp_include = vh { x float64 }\n"},
 		{name: "a valued type attr that is not a binding is still rejected", want: "bare identifier",
 			src: "package t\ntype V | vec3 = 4 { x float64 }\n"},
+		// ---- a mapping that can never ride (schema#451) ----
+		// The mapping is off inside the mapped type's own generated header
+		// (the hand type derives from the generated basis, so a mapped
+		// reference there would be circular), which makes it off everywhere
+		// in a unit of ONE FILE: the attribute is accepted, the generated C++
+		// carries no trace of it, and nothing says so. That is the first
+		// thing most people try (docs/USAGE.md, Per-language notes: C++).
+		{name: "cpp_native in a unit of one file", want: "can never ride",
+			src: "package t\ntype V | cpp_native = VMath, cpp_include = \"v.h\" { x float64 }\ntype Body { p V }\n"},
+		{name: "cpp_native in a unit of one file, referenced by nothing", want: "can never ride",
+			src: "package t\ntype V | cpp_native = VMath, cpp_include = \"v.h\" { x float64 }\n"},
 		// ---- §11's claimed runtime names, including the GO port's LOWERCASE
 		// ---- family. Unexported is not private: a Go package is one namespace,
 		// ---- so `const tableJsonMaxDepth = 5` beside a table generates a
@@ -560,6 +591,42 @@ func TestDiagnostics(t *testing.T) {
 		{name: "a table spelling the Go cook's descriptor graph",
 			src:  "package probe\n\ntable tableCookRecords\n{\n    n int32\n}\n",
 			want: "tableCookRecords"},
+		// ---- the ANNOUNCEMENT and REFUSAL vocabulary, beside a table ----
+		// These are the table wire's own names, and they are claimed where the
+		// generated table sources define them: in a unit that declares a table
+		// (docs/SPEC-TABLES.md §11's second set). A packet-only unit keeps
+		// them, which the good corners below hold.
+		{name: "a type spelling the unit's announcement, beside a table",
+			src:  "package probe\n\ntype Announce { n int32 }\n\ntable Thing\n{\n    n int32\n}\n",
+			want: "Announce"},
+		{name: "a const spelling the refusal vocabulary's ok, beside a table",
+			src:  "package probe\n\nconst ok = 1\n\ntable Thing\n{\n    n int32\n}\n",
+			want: "ok"},
+		{name: "a const spelling the cooked header's magic, beside a table",
+			src:  "package probe\n\nconst TABLE_COOK_MAGIC = 7\n\ntable Thing\n{\n    n int32\n}\n",
+			want: "TABLE_COOK_MAGIC"},
+		{name: "a type spelling the read report, beside a table",
+			src:  "package probe\n\ntype TableReport { n int32 }\n\ntable Thing\n{\n    n int32\n}\n",
+			want: "TableReport"},
+		// ---- and the VIEW FILE's descriptor surface, in a TABLE-FREE unit ----
+		// docs/SPEC-TABLES.md:560 gives one reason for the every-unit claim:
+		// the VIEW FILE defines the name in a unit that declares none. That
+		// reason reaches exactly the names the view file spells, so those and
+		// only those are refused with no table in sight, and the diagnostic
+		// says the view file, because a table-free unit's author has no table
+		// runtime to be told about.
+		{name: "a type spelling the field descriptor, in a table-free unit",
+			src:  "package probe\n\ntype TableFieldInfo { n int32 }\n",
+			want: "view file"},
+		{name: "a type spelling the type descriptor, in a table-free unit",
+			src:  "package probe\n\ntype TableTypeInfo { n int32 }\n",
+			want: "view file"},
+		{name: "a const spelling the shared empty doc, in a table-free unit",
+			src:  "package probe\n\nconst TableDocNone = 1\n",
+			want: "view file"},
+		{name: "a type spelling a union field's descriptor, in a table-free unit",
+			src:  "package probe\n\ntype TableUnionInfo { n int32 }\n",
+			want: "view file"},
 
 		// ---- the C target's PREPROCESSOR namespace (SPEC §6.1's C column) ----
 		//
@@ -579,6 +646,24 @@ func TestDiagnostics(t *testing.T) {
 			srcs: map[string]string{"T.schema": "package t\ntype SCHEMA_T_T_H { x uint8 }\n"}},
 		{name: "a declaration carrying the reserved lowercase prefix", want: "reserves for the names the",
 			src: "package t\ntype schema_thing { x uint8 }\n"},
+
+		// ---- a unit base name that spells a C standard header (#521 G-20) ----
+		// The C++ and C emitters both name a unit's header `<Base>.h`, so
+		// Math.schema emits Math.h. On a case-insensitive filesystem, and in
+		// the #include search on any filesystem where the generated directory
+		// is on the path, that file answers `#include <math.h>`: clang warns
+		// non-portable-include-path and every libm declaration disappears.
+		{name: "a unit base name spelling a C standard header", want: "C standard header",
+			srcs: map[string]string{"Math.schema": "package geom\ntype P { x float32 }\n"}},
+		{name: "the same name in another case", want: "C standard header",
+			srcs: map[string]string{"STDIO.schema": "package geom\ntype P { x float32 }\n"}},
+		{name: "a unit base name spelling string.h", want: "C standard header",
+			srcs: map[string]string{"String.schema": "package geom\ntype P { x float32 }\n"}},
+		{name: "a second file of the unit spelling one", want: "C standard header",
+			srcs: map[string]string{
+				"Types.schema": "package geom\ntype P { x float32 }\n",
+				"Time.schema":  "package geom\ntype Q { y float32 }\n",
+			}},
 	}
 
 	for _, tc := range cases {
@@ -609,10 +694,67 @@ func TestGoodCornersStillCompile(t *testing.T) {
 		src  string
 		srcs map[string]string
 	}{
-		{name: "the Go runtime's lowercase names in a TABLE-FREE unit (the negative control)",
+		// A NAME THE RUNTIME DOES NOT CLAIM stays legal in a table-free unit
+		// and beside a table alike: the claim is the registry's list and
+		// nothing wider, so a name that merely starts with the same word is
+		// untouched (docs/SPEC-TABLES.md §11).
+		{name: "near-miss spellings of the table runtime's names",
+			src: "package t\nconst tableJsonMaxDepths = 5\ntype tableJsonInput { n int32 }\ntype TableReports { n int32 }\n"},
+		// THE PACKET-ONLY UNIT KEEPS THE TABLE RUNTIME'S OWN NAMES
+		// (docs/SPEC-TABLES.md §11). The every-unit claim rests on one
+		// reason, that the view file defines the name, and the announcement
+		// vocabulary (§3.3), the refusal vocabulary (§6.5, §7, §19.2) and
+		// the accelerators' runtimes are not names the view file defines.
+		// A packet-only author reads SPEC §4.6 and declares from the whole
+		// namespace that page leaves open.
+		{name: "the announcement and refusal vocabulary in a packet-only unit",
+			src: "package t\ntype Announce { n int32 }\nconst ok = 1\n"},
+		{name: "the cooked and read-report names in a packet-only unit",
+			src: "package t\nconst TABLE_COOK_MAGIC = 7\ntype TableReport { n int32 }\n"},
+		{name: "the Go and C lowercase runtime families in a packet-only unit",
 			src: "package t\nconst tableJsonMaxDepth = 5\ntype tableJsonIn { n int32 }\ntype tableCookRecords { n int32 }\n"},
+		{name: "the accelerators' shared runtimes and the build version in a packet-only unit",
+			src: "package t\ntype BlockRuntime { n int32 }\ntype CookRuntime { n int32 }\nconst BuildVersion = 1\n"},
+		// THE MAPPING THE PAGE BLESSES (schema#451, docs/USAGE.md): a sibling
+		// declared beside the mapped type keeps the basis type, and that is
+		// not an error as long as the unit has a file the mapping can ride
+		// from. What is refused is the mapping that can never ride at all.
+		{name: "cpp_native referenced from another file of the unit",
+			srcs: map[string]string{
+				"A.schema": "package t\ntype V | cpp_native = VMath, cpp_include = \"v.h\" { x float64 }\n",
+				"B.schema": "package t\ntype Body { p V }\n",
+			}},
+		{name: "cpp_native with a sibling in the declaring file that keeps the basis type",
+			srcs: map[string]string{
+				"A.schema": "package t\ntype V | cpp_native = VMath, cpp_include = \"v.h\" { x float64 }\ntype Near { p V }\n",
+				"B.schema": "package t\ntype Far { q V }\n",
+			}},
+		// A BASE NAME THAT ONLY LOOKS LIKE A C HEADER (#521 G-20). The list is
+		// the C standard's own and is compared whole: a name that merely
+		// contains one, or that spells a C++ header (which carries no `.h`,
+		// so `Cmath.h` answers no `#include <cmath>`), is untouched.
+		{name: "base names beside the C standard header list",
+			srcs: map[string]string{
+				"Maths.schema": "package geom\ntype P { x float32 }\n",
+				"Cmath.schema": "package geom\ntype Q { y float32 }\n",
+				"Timer.schema": "package geom\ntype R { z float32 }\n",
+			}},
 		{name: "nested if with cond in the same branch",
 			src: "package t\ntype T {\n    a bool\n    if a {\n        b bool\n        if b { x uint8 }\n    }\n}\n"},
+		// The self-negation refusal (schema#268) is about ONE name taken both
+		// ways down one path. A guard that AGREES with its enclosing guard is
+		// redundant and rides; two different names never conjoin to false; and
+		// two sibling branches on one name are the ordinary either-or shape.
+		{name: "a guard that agrees with its enclosing guard",
+			src: "package t\ntype T {\n    on bool\n    if on {\n        if on { x int32 }\n    }\n}\n"},
+		{name: "a negated guard that agrees with its enclosing negation",
+			src: "package t\ntype T {\n    on bool\n    if !on {\n        if !on { x int32 }\n    }\n}\n"},
+		{name: "a nested guard on another name",
+			src: "package t\ntype T {\n    on bool\n    other bool\n    if on {\n        if !other { x int32 }\n    }\n}\n"},
+		{name: "sibling branches on one name",
+			src: "package t\ntype T {\n    on bool\n    if on { x int32 }\n    if !on { y int32 }\n}\n"},
+		{name: "the else side of a nested guard that agrees with nothing above it",
+			src: "package t\ntype T {\n    on bool\n    other bool\n    if on {\n        if other { x int32 } else { y int32 }\n    }\n}\n"},
 		{name: "fixed default in whole units, exactly representable (the reopened door)",
 			src: "package t\ntype Q { w fixed(2, 30) = 1.0 | min = -1, max = 1\n x fixed(16, 16) = 0.5 | min = 0, max = 100\n y fixed(48, 16) = 3 | min = -10, max = 10 }\n"},
 		{name: "field named flags at block scope",
@@ -955,5 +1097,40 @@ func TestArrayOfTablesArmIsRefused(t *testing.T) {
 		if errs := runUnit(t, map[string]string{"Good.schema": tc.src}); len(errs) != 0 {
 			t.Errorf("%s: refused: %v", tc.name, errs)
 		}
+	}
+}
+
+// A SELF-NEGATING GUARD NAMES BOTH GUARDS (schema#268). The refusal is about
+// a pair, so one half of it is not an answer: the message spells the inner
+// guard, the enclosing guard it contradicts, and where that one is. Reverting
+// the outer half of the message turns this red.
+func TestSelfNegatingGuardNamesBothGuards(t *testing.T) {
+	for _, tc := range []struct {
+		name, src string
+		want      []string
+	}{
+		{
+			name: "the negation nested under the plain guard",
+			src:  "package t\ntype T {\n    on bool\n    if on {\n        if !on { x int32 }\n    }\n}\n",
+			want: []string{"if !on can never ride", "if on", "Bad.schema:4:8"},
+		},
+		{
+			name: "the plain guard nested under the else",
+			src:  "package t\ntype T {\n    on bool\n    if on {\n    } else {\n        if on { x int32 }\n    }\n}\n",
+			want: []string{"if on can never ride", "the else of if on", "Bad.schema:4:8"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			errs := runUnit(t, map[string]string{"Bad.schema": tc.src})
+			if len(errs) != 1 {
+				t.Fatalf("want 1 diagnostic, got %d: %v", len(errs), errs)
+			}
+			got := errs[0].Error()
+			for _, want := range tc.want {
+				if !strings.Contains(got, want) {
+					t.Errorf("the diagnostic does not carry %q: %s", want, got)
+				}
+			}
+		})
 	}
 }

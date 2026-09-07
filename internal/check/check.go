@@ -135,6 +135,7 @@ func Unit(files []SourceFile) (*ir.Unit, []error) {
 	c.checkTables()
 	c.checkTableFileDag()
 	c.checkClaimedNames()
+	c.checkNativeMapping()
 	c.checkTargetNames()
 	c.assemble()
 	c.checkSizes()
@@ -165,6 +166,56 @@ func (c *checker) collectPackage() {
 		}
 	}
 	c.checkViewFileName()
+	c.checkCHeaderFileName()
+}
+
+// checkCHeaderFileName refuses a unit base name that spells a C standard
+// header (#521 G-20). The C++ and C emitters both name a unit's packet header
+// `<Base>.h`, so `Math.schema` emits `Math.h`, and that file answers
+// `#include <math.h>`: on a case-insensitive filesystem always, and on any
+// filesystem for the exact spelling, whenever the generated directory is on
+// the include path (a `-I` the build has to pass for the generated code to
+// compile at all). Measured with clang 21 over a generated `Math.h`:
+//
+//	shadow.c:1:10: warning: non-portable path to file '<Math.h>'; specified
+//	path differs in case from file name on disk
+//	shadow.c:2:26: error: call to undeclared library function 'sqrt'
+//
+// The whole libm surface disappears, and the diagnostic the consumer gets
+// never names the schema. The set is the C standard's own and finite, matched
+// case-insensitively over `<base>.h` and whole: a name that merely contains
+// one keeps it.
+//
+// The C++ standard headers' bare spellings (`cmath`, `vector`) are NOT in
+// scope, because no emitter writes an extensionless file: every generated
+// name carries `.h`, `.cpp` or another target's extension, so `Cmath.schema`
+// emits `Cmath.h` and answers no `#include <cmath>`. The other generated C++
+// and C names all take a suffix before the extension (`<Base>Wire.h`,
+// `<Base>Table.h`, `<Base>Block.h`), which no C header spelling reaches.
+func (c *checker) checkCHeaderFileName() {
+	for _, f := range c.files {
+		if !cStandardHeaders[strings.ToLower(f.Base)+".h"] {
+			continue
+		}
+		c.errf(f.AST.PkgPos, "schema file %s generates %s.h, which spells the C standard header <%s.h> and shadows it in the #include search (case-insensitively, so the collision does not need the exact spelling); rename the file (SPEC §4.6)",
+			f.Name, f.Base, strings.ToLower(f.Base))
+	}
+}
+
+// cStandardHeaders is the C standard library's header set, C11 plus C99's
+// `stdnoreturn.h` and `iso646.h`, as a generated `<Base>.h` could spell it.
+// It is a closed list rather than a pattern: the standard names them all and
+// adds one a decade, and a pattern here would take names from every schema
+// for free.
+var cStandardHeaders = map[string]bool{
+	"assert.h": true, "complex.h": true, "ctype.h": true, "errno.h": true,
+	"fenv.h": true, "float.h": true, "inttypes.h": true, "iso646.h": true,
+	"limits.h": true, "locale.h": true, "math.h": true, "setjmp.h": true,
+	"signal.h": true, "stdalign.h": true, "stdarg.h": true, "stdatomic.h": true,
+	"stdbool.h": true, "stddef.h": true, "stdint.h": true, "stdio.h": true,
+	"stdlib.h": true, "stdnoreturn.h": true, "string.h": true, "tgmath.h": true,
+	"threads.h": true, "time.h": true, "uchar.h": true, "wchar.h": true,
+	"wctype.h": true,
 }
 
 // checkViewFileName refuses a schema file whose generated name would be the
@@ -184,6 +235,44 @@ func (c *checker) checkViewFileName() {
 			c.errf(f.AST.PkgPos, "schema file %s.schema generates the same name as the unit's view file %s.h "+
 				"(the registry is one pair per unit, named for the package — docs/SPEC-TABLES.md §8.5) — rename the file",
 				view, view)
+		}
+	}
+}
+
+// checkNativeMapping refuses a `cpp_native` mapping that can never ride
+// (schema#451). The C++ backend takes the mapping at a reference from ANOTHER
+// file of the unit only: the hand type derives from the generated basis
+// struct and so includes the header the basis is in, and a mapped reference
+// inside that same header would be circular (SPEC §4.2, docs/USAGE.md's
+// per-language C++ notes). A unit of ONE FILE therefore has nowhere for the
+// mapping to apply, and what an author gets today is generated C++ with no
+// trace of the attribute and nothing saying so. It is the first thing most
+// people try, and a silent no-op is the worst answer available.
+//
+// A sibling in the declaring file that keeps the basis type stays legal: the
+// mapping is off at that one reference and rides at every other, which the
+// page states as the rule. What is refused here is the attribute that rides
+// NOWHERE, and the file is named because the unit's file count is the fact
+// the author has to change.
+func (c *checker) checkNativeMapping() {
+	if len(c.files) != 1 {
+		return
+	}
+	f := c.files[0]
+	for _, d := range f.AST.Decls {
+		td, ok := d.(*ast.TypeDecl)
+		if !ok {
+			continue
+		}
+		if st := c.structs[td.Name]; st == nil || st.CppNative == "" {
+			continue
+		}
+		for _, a := range td.Attrs {
+			if a.Key != "cpp_native" {
+				continue
+			}
+			c.errf(a.Pos, "cpp_native on type %s can never ride: generated C++ takes the mapping at a reference from ANOTHER file of the unit only (the mapped header derives from the generated basis, so a mapped reference inside the basis's own header would be circular), and %s is the unit's only file; move the declarations that reference %s into a second file, or drop the attribute (SPEC §4.2 Native type mapping)",
+				td.Name, f.Name, td.Name)
 		}
 	}
 }
@@ -1121,11 +1210,23 @@ type scopeFrame struct {
 	fields map[string]*ir.Field
 }
 
+// condFrame is one enclosing branch as the block under it sees it: the
+// condition field's name, the value the branch fixes that field to, the way a
+// diagnostic spells the guard, and where it is. A branch under an enclosing
+// guard on the SAME name and the OTHER value is unreachable (schema#268), and
+// this is what the walk carries down to see that.
+type condFrame struct {
+	name string
+	want bool
+	desc string
+	pos  ast.Pos
+}
+
 func (c *checker) resolveBody(owner string, body *ast.Block, inTable bool) ([]*ir.Field, []ir.Item) {
 	var out []*ir.Field
 	names := map[string]ast.Pos{}
-	var walk func(b *ast.Block, guard string, scopes []*scopeFrame) []ir.Item
-	walk = func(b *ast.Block, guard string, scopes []*scopeFrame) []ir.Item {
+	var walk func(b *ast.Block, guard string, scopes []*scopeFrame, conds []condFrame) []ir.Item
+	walk = func(b *ast.Block, guard string, scopes []*scopeFrame, conds []condFrame) []ir.Item {
 		var items []ir.Item
 		frame := scopes[len(scopes)-1]
 		for _, item := range b.Items {
@@ -1167,10 +1268,19 @@ func (c *checker) resolveBody(owner string, body *ast.Block, inTable bool) ([]*i
 				if item.Neg {
 					pos, negated = negated, pos
 				}
+				// A BRANCH THAT CONTRADICTS AN ENCLOSING GUARD IS REFUSED
+				// (schema#268). Nested guards conjoin, so the then side of
+				// `if !on` under `if on` emits `value.on && !value.on`, which
+				// clang refuses in the generated header under -Werror
+				// (-Wtautological-negation-compare) and which no target ever
+				// takes. The check enters each side separately, so the legal
+				// half of a nested if/else stays legal.
+				thenConds := c.enterCond(conds, item.Cond, "if "+pos, !item.Neg)
 				br := &ir.Branch{Neg: item.Neg, Cond: item.Cond.Text}
-				br.Then = walk(item.Then, and(guard, pos), append(scopes, &scopeFrame{fields: map[string]*ir.Field{}}))
+				br.Then = walk(item.Then, and(guard, pos), append(scopes, &scopeFrame{fields: map[string]*ir.Field{}}), thenConds)
 				if item.Else != nil {
-					br.Else = walk(item.Else, and(guard, negated), append(scopes, &scopeFrame{fields: map[string]*ir.Field{}}))
+					elseConds := c.enterCond(conds, item.Cond, "the else of if "+pos, item.Neg)
+					br.Else = walk(item.Else, and(guard, negated), append(scopes, &scopeFrame{fields: map[string]*ir.Field{}}), elseConds)
 				}
 				items = append(items, br)
 			case *ast.ConstField:
@@ -1209,8 +1319,31 @@ func (c *checker) resolveBody(owner string, body *ast.Block, inTable bool) ([]*i
 		}
 		return items
 	}
-	items := walk(body, "", []*scopeFrame{{fields: map[string]*ir.Field{}}})
+	items := walk(body, "", []*scopeFrame{{fields: map[string]*ir.Field{}}}, nil)
 	return out, items
+}
+
+// enterCond records the guard a branch enters and refuses one that no value
+// of its condition field satisfies (schema#268): an enclosing guard on the
+// same name already fixed that field the other way, the two conjoin in every
+// generated target, and nothing under the branch is ever written or read.
+// C++ says so at the header, where clang reads `value.on && !value.on` and
+// refuses it under -Werror; the other eight targets say nothing at all, which
+// is why the answer belongs here.
+//
+// The frames are compared by NAME, which is the whole identity a condition
+// has: one body's field names are unique across branch sides (SPEC §4.6), so
+// a name in an enclosing frame is the same field this branch names.
+func (c *checker) enterCond(conds []condFrame, cond ast.Name, desc string, want bool) []condFrame {
+	for _, outer := range conds {
+		if outer.name != cond.Text || outer.want == want {
+			continue
+		}
+		c.errf(cond.Pos, "%s can never ride: it is nested inside %s at %s, which fixes %s the other way, so no field under it is ever written (the dominance rule, SPEC §4.5)",
+			desc, outer.desc, outer.pos, cond.Text)
+		break
+	}
+	return append(conds[:len(conds):len(conds)], condFrame{name: cond.Text, want: want, desc: desc, pos: cond.Pos})
 }
 
 func (c *checker) lookupScope(scopes []*scopeFrame, name string) *ir.Field {
@@ -3239,6 +3372,56 @@ func (c *checker) checkTargetNames() {
 
 // ---- claimed names (SPEC §4.6) ----
 
+// tableRuntimeClaim says WHAT claims a registered runtime name, in the words
+// its own reader needs.
+//
+// The registry is claimed in two scopes (docs/SPEC-TABLES.md §11) and the
+// wording follows the scope, because the two have different readers. A
+// VIEW-SURFACE name is refused in a unit with no table in it at all, and its
+// author is owed the reason that refusal exists: the unit's generated VIEW
+// FILE defines the name. Telling that author about "the generated TABLE-wire
+// runtime" names a thing their unit does not have and cannot get.
+// Everything else is refused only beside a table, where the table runtime is
+// exactly what the reader is looking at.
+func tableRuntimeClaim(gen string) string {
+	if tablenames.InEveryUnit(gen) {
+		return "the descriptor surface the unit's generated view file defines, in a unit that declares a table and in one that declares none (docs/SPEC-TABLES.md §8.2, §11)"
+	}
+	if gen[0] >= 'a' && gen[0] <= 'z' {
+		// UNEXPORTED IS NOT PRIVATE, AND NEITHER IS snake_case. A
+		// lowercase runtime name is still a unit-scope name a
+		// declaration collides with exactly as a PascalCase one does —
+		// `const tableJsonMaxDepth = 5` beside a table is a Go
+		// redeclaration, and `int table_json_count;` beside one is a C
+		// redeclaration. The diagnostic says WHICH BACKEND, because a
+		// reader meeting it will otherwise wonder why a lowercase name
+		// was reserved (§11) — and the answer differs by language, so
+		// it is read from the registry rather than guessed from the
+		// spelling.
+		by := tablenames.By(gen)
+		switch {
+		case by&tablenames.Go != 0 && by&tablenames.C == 0:
+			return "the generated TABLE-wire runtime's Go half, which puts unexported names at package scope where a Go package is one namespace (docs/SPEC-TABLES.md §11)"
+		case by&tablenames.C != 0 && by&tablenames.Go == 0:
+			return "the generated TABLE-wire runtime's C half, which spells its functions snake_case — the packet emitter's convention in that language — with no namespace to put them in (docs/SPEC-TABLES.md §11)"
+		default:
+			return "the generated TABLE-wire runtime's Go and C halves, which both put lowercase names at unit scope (docs/SPEC-TABLES.md §11)"
+		}
+	}
+	return "the generated TABLE-wire runtime (docs/SPEC-TABLES.md)"
+}
+
+// rustConstantClaim names the Rust crate-scope constant a declaration lowers
+// onto, in the scope that constant is claimed in.
+func rustConstantClaim(gen string) string {
+	if tablenames.InEveryUnit(gen) {
+		return fmt.Sprintf("the descriptor surface's %s (Rust constant form of %s, which the unit's generated view file defines: docs/SPEC-TABLES.md §8.2, §11)",
+			ir.RustConstName(gen), gen)
+	}
+	return fmt.Sprintf("the generated TABLE-wire runtime's %s (Rust constant form of %s, docs/SPEC-TABLES.md §11)",
+		ir.RustConstName(gen), gen)
+}
+
 // checkClaimedNames builds the FULL top-level symbol table generation will
 // produce — every declaration plus every derived name any target emits (the
 // split functions, constructors, size constants, tag/variant constants, the
@@ -3286,39 +3469,42 @@ func (c *checker) checkClaimedNames() {
 	add("PROTOCOL_ID", "the unit's generated PROTOCOL_ID (Rust form)", unitPos)
 	add("Error", "the unit's generated Error type (Rust form)", unitPos)
 	add("Result", "the unit's generated Result alias (Rust form)", unitPos)
+	// THE VIEW FILE'S DESCRIPTOR SURFACE, claimed in EVERY unit
+	// (docs/SPEC-TABLES.md:560, §8.2, §11). Every unit is to emit a view
+	// file, and a table-free unit's view carries the descriptor primitives
+	// itself, behind the same include guard the table headers use, so a
+	// name a unit may legally declare today would be a collision the day
+	// its view is emitted. It is the rule the six view spellings above
+	// already take, owed to the descriptors beside them for their reason.
+	//
+	// The list is not written here: internal/tablenames is the ONE
+	// registry, read by this claim and held honest against what the
+	// emitters actually emit. A second copy of it in this file is exactly
+	// how the C# runtime's names came to be unclaimed in the first place.
+	for _, gen := range tablenames.ClaimedInEveryUnit() {
+		add(gen, tableRuntimeClaim(gen), unitPos)
+	}
+	// and the RUST CONSTANT SPACE of any view-surface name a port spells as a
+	// crate-scope constant, on the same scope as the spelling it lowers from.
+	// Rust's constant form is MANY-TO-ONE (below), so leaving the mapped
+	// spelling free in a table-free unit would leave the every-unit claim
+	// reachable through two other spellings of the one symbol.
+	for _, gen := range tablenames.RustConstants() {
+		if !tablenames.InEveryUnit(gen) {
+			continue
+		}
+		add(ir.RustConstName(gen), rustConstantClaim(gen), unitPos)
+	}
+	// AND THE REST OF THE REGISTRY WHERE THE TABLE SOURCES ARE WRITTEN.
+	// The announcement vocabulary (§3.3), the refusal vocabulary (§6.5,
+	// §7, §19.2), the accelerators' runtimes and the cooked form's names
+	// are defined by the generated TABLE sources and by no view file, so
+	// the every-unit claim's one reason does not reach them: a packet-only
+	// unit keeps `type Announce` and `const ok`, which SPEC §4.6 is the
+	// page that says so.
 	if len(c.tables) > 0 {
-		// The TABLE-wire runtime the generated table sources define once per
-		// package (docs/SPEC-TABLES.md) — claimed only when a unit declares a
-		// table, so table-free units keep their whole namespace.
-		//
-		// The list is not written here: internal/tablenames is the ONE
-		// registry, read by this claim and held honest against what the
-		// emitters actually emit. A second copy of it in this file is exactly
-		// how the C# runtime's names came to be unclaimed in the first place.
-		for _, gen := range tablenames.Claimed() {
-			what := "the generated TABLE-wire runtime (docs/SPEC-TABLES.md)"
-			if gen[0] >= 'a' && gen[0] <= 'z' {
-				// UNEXPORTED IS NOT PRIVATE, AND NEITHER IS snake_case. A
-				// lowercase runtime name is still a unit-scope name a
-				// declaration collides with exactly as a PascalCase one does —
-				// `const tableJsonMaxDepth = 5` beside a table is a Go
-				// redeclaration, and `int table_json_count;` beside one is a C
-				// redeclaration. The diagnostic says WHICH BACKEND, because a
-				// reader meeting it will otherwise wonder why a lowercase name
-				// was reserved (§11) — and the answer differs by language, so
-				// it is read from the registry rather than guessed from the
-				// spelling.
-				by := tablenames.By(gen)
-				switch {
-				case by&tablenames.Go != 0 && by&tablenames.C == 0:
-					what = "the generated TABLE-wire runtime's Go half, which puts unexported names at package scope where a Go package is one namespace (docs/SPEC-TABLES.md §11)"
-				case by&tablenames.C != 0 && by&tablenames.Go == 0:
-					what = "the generated TABLE-wire runtime's C half, which spells its functions snake_case — the packet emitter's convention in that language — with no namespace to put them in (docs/SPEC-TABLES.md §11)"
-				default:
-					what = "the generated TABLE-wire runtime's Go and C halves, which both put lowercase names at unit scope (docs/SPEC-TABLES.md §11)"
-				}
-			}
-			add(gen, what, unitPos)
+		for _, gen := range tablenames.ClaimedWithATable() {
+			add(gen, tableRuntimeClaim(gen), unitPos)
 		}
 		// AND THE SAME NAMES IN THE RUST CONSTANT SPACE. Rust spells a
 		// constant SCREAMING_SNAKE, and that spelling is MANY-TO-ONE:
@@ -3334,10 +3520,13 @@ func (c *checker) checkClaimedNames() {
 		// This is the claim two USER declarations already get from each other
 		// ("const max_health … collides with const MaxHealth … both generate
 		// the symbol MAX_HEALTH"), owed to the runtime for the same reason.
+		// The view-surface members of this space are claimed above, in every
+		// unit; what is left rides with the table sources that define it.
 		for _, gen := range tablenames.RustConstants() {
-			add(ir.RustConstName(gen),
-				fmt.Sprintf("the generated TABLE-wire runtime's %s (Rust constant form of %s, docs/SPEC-TABLES.md §11)",
-					ir.RustConstName(gen), gen), unitPos)
+			if tablenames.InEveryUnit(gen) {
+				continue
+			}
+			add(ir.RustConstName(gen), rustConstantClaim(gen), unitPos)
 		}
 	}
 

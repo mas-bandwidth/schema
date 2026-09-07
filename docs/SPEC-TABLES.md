@@ -557,12 +557,18 @@ because nothing in a schema requests it and no flag selects it (§8.4). C++
 and C# take it together, because the gate it exists for is one listing both
 backends reproduce, and the remaining backends are a named follow-on (§15).
 
-**One front-end change comes BEFORE any emitter.** The generated table
-runtime's names are claimed in every unit rather than only in a unit that
-declares a table (§11), because the view file defines them in units that
-declare none. It does not wait for a view file to exist: a name a unit may
-legally declare today must not become a collision the day its view is
-emitted.
+**One front-end change comes BEFORE any emitter.** The VIEW FILE's descriptor
+surface (`TableTypeInfo`, `TableFieldInfo`, `TableUnionInfo`,
+`TableUnionArmInfo` and `TableDocNone`) is claimed in every unit rather than
+only in a unit that declares a table (§11), because the view file defines
+those names in units that declare none. It does not wait for a view file to
+exist: a name a unit may legally declare today must not become a collision the
+day its view is emitted. **The claim reaches those names and stops there.**
+The rest of the table runtime, meaning the announcement vocabulary, the
+refusal vocabulary, the accelerators' runtimes and the cooked form's names, is
+written into the generated TABLE sources and into no view file, so it is
+claimed where those sources are, in a unit that declares a table; a
+packet-only unit keeps `type Announce` and `const ok` (§11).
 
 ## 1. Purpose
 
@@ -10287,21 +10293,55 @@ in build version (§20.5).
   list. A language whose accessors are members spells the same two names on
   the block type and claims nothing at file scope for them.
 
-  **THE DESCRIPTOR SURFACE'S CLAIMS ARE TO BE UNCONDITIONAL — every
-  declaration, every unit, tables or not — AND ARE IN FORCE ONLY WHERE A VIEW
-  FILE IS EMITTED.** Every unit is to emit a view file and that file defines
-  the descriptor surface (§8.2), so a name a table-free unit may declare today
-  would collide with its own generated code the day its view is emitted — a
-  legal schema whose generated code does not compile, which is the one defect
-  this whole list exists to prevent. **What ships today claims these names
-  only in a unit that declares a table**, which is exactly the set of units
-  the view is emitted for: a table-free unit still accepts `type TableReport`
-  and `const TABLE_COOK_MAGIC`, and it must stop doing so BEFORE its own view
-  file is emitted, not after — which is the follow-on §15 carries beside the
-  emitter that would emit it. This paragraph is the obligation, and the gap
-  between it and the checker is stated here rather than left for a port to
-  find. Two sets follow, and both are FRONT-END LAW rather than one target's
-  inventory:
+  **THE DESCRIPTOR SURFACE'S CLAIMS ARE UNCONDITIONAL — every declaration,
+  every unit, tables or not.** Every unit is to emit a view file and that file
+  defines the descriptor surface (§8.2), so a name a table-free unit may
+  declare today would collide with its own generated code the day its view is
+  emitted — a legal schema whose generated code does not compile, which is the
+  one defect this whole list exists to prevent. The claim therefore does not
+  wait for the emitter. Two sets follow, and both are FRONT-END LAW rather
+  than one target's inventory:
+
+  **THE TWO SETS ARE CLAIMED IN DIFFERENT SCOPES, AND THE LINE BETWEEN THEM IS
+  THE VIEW FILE.** A name is claimed in EVERY unit exactly when a table-free
+  unit's own view file would define it, because that is the whole of the
+  reason an every-unit claim has; every other name in this list is written
+  into the generated TABLE sources and into no view file, so it is claimed in
+  a unit that DECLARES A TABLE and nowhere else. The split is measured rather
+  than asserted. A view file over declarations no table closure reaches, which
+  is what a table-free unit's view is made of, spells `TableTypeInfo`,
+  `TableFieldInfo`, `TableUnionInfo`, `TableUnionArmInfo` and `TableDocNone`,
+  and no other name in this section.
+
+  **CLAIMED IN EVERY UNIT:** the five above, and the view's own unit-scope
+  spellings (§8.3). The three per-declaration spellings below are owed the
+  same scope for the same reason and do not have it yet, which that bullet
+  states as the gap it is.
+
+  **CLAIMED ONLY WHERE A TABLE RIDES:** everything else. That is the
+  announcement vocabulary (§3.3), the refusal vocabulary (§6.5, §7, §19.2)
+  with `ok`, `truncated`, `bad_layout` and the rest of its values, the wire's
+  writer and reader, the identity pair, the storage types, the
+  variable-length runtime, the accelerators' runtimes and `BuildVersion`, the
+  cooked form's read and write names, and the Rust CONSTANT space that mirrors
+  them. A PACKET-ONLY unit keeps every one of those names: `type Announce`,
+  `const ok`, `type TableReport` and `const TABLE_COOK_MAGIC` are legal in a
+  unit that declares no table, and each becomes a collision the day that unit
+  grows its first table. Those are the same terms every conditional claim in
+  this list already takes, since a name free today must not become a collision
+  the day a table gains a pointer, a map or a keyed array. **The identity pair
+  is on this side by measurement rather than by category**: a declaration no
+  table closure reaches has ids nothing ever checked, so its rows carry
+  `id = 0` and its `variant_id` column answers `0` as a literal (§8.2), and a
+  table-free unit's view spells `TableEnumId` nowhere. `TableRef` and
+  `TableWorker` are on this side for the same kind of reason: they reach a
+  view file only through a POINTER field's `resolve` and `emplace` (§8.1), and
+  a pointer is refused outside a table body (§2.1).
+
+  **The reader who meets this is a PACKET-ONLY author**, so SPEC.md §4.6
+  points here, and the refusal a table-free unit draws names the VIEW FILE
+  rather than the table runtime. A unit with no table has no table runtime to
+  be told about.
 
   - **The three per-declaration spellings the descriptors emit** —
     `<Name>TableFields`, `<Name>TableInfo` and `<Name>TableType` — claimed
@@ -10310,12 +10350,15 @@ in build version (§20.5).
     for every declaration in a unit that DECLARES A TABLE, which is where the
     view file is emitted; a table-free unit still accepts them, and must stop
     on the day its own view is emitted.
-  - **The unit-level TABLE-RUNTIME names**, claimed in every unit rather
-    than only in a unit that declares a table: the descriptor primitives
-    `TableTypeInfo` and `TableFieldInfo` at their head, with
+  - **The unit-level TABLE-RUNTIME names.** The descriptor primitives
+    `TableTypeInfo` and `TableFieldInfo` stand at their head, with
     `TableUnionInfo` and `TableUnionArmInfo` beside them — a union field's
     column has to NAME a type, in both backends, and a walk holds a
-    descriptor by value so neither can hide inside another — and beside them
+    descriptor by value so neither can hide inside another — and
+    `TableDocNone` with them, since every descriptor row a view file writes
+    names it (§8.1). **Those five are the every-unit half**, on the scope
+    stated above; everything that follows in this bullet is claimed in a unit
+    that declares a table and in no other. Beside them is
     the rest of the one registry the checker and the emitters share —
     `TableKeyed` (an enum-keyed array's storage, and a keyed array occurs in
     a `type` body: this document's own `ScoreBoard` declares one),
@@ -10341,8 +10384,10 @@ in build version (§20.5).
     `TableCookHeaderBytes` and `TableCookRead64` riding as members of `Schema`
     and so claiming nothing at file scope), `BuildVersion` (§20, which both
     accelerators carry) and the rest of that list. §8.2 has a table-free unit's
-    view file DEFINING those primitives, so a unit that declares no table
-    can no longer be allowed to declare their names.
+    view file DEFINING the five primitives, which is why those are claimed
+    with no table in sight; the names in this paragraph are the generated
+    TABLE sources' own, so a unit that declares no table keeps them and loses
+    them the day it declares its first table.
 
     **JAVA WIDENS TWO MORE AND ADDS ONE, on exactly the rule Go's widening
     states: a port's spelling decides the claim, and the claim is the UNION.**

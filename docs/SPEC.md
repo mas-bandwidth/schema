@@ -1097,7 +1097,10 @@ The rules:
   references there keep the basis name. The native header includes that
   header to derive from the basis; a mapped reference would be circular.
   Sibling types declared in the same schema file therefore store the basis
-  type, which is the correct default for pure wire compounds.
+  type, which is the correct default for pure wire compounds. A unit of ONE
+  FILE has nowhere left for the mapping to ride, so a `cpp_native` there is a
+  compile error naming the file: an attribute that does nothing anywhere in
+  the unit is a silent no-op rather than a default.
 - **Language bindings never move the protocol id.** `cpp_*` attributes rename
   what one target CALLS the storage; they cannot change a wire bit, and the
   projection (§3.1) excludes them.
@@ -1306,6 +1309,13 @@ array element fields are compile errors naming the offending reference and
 the rule. The rule is stated over `if` sides; it extends unchanged to `case`
 bodies when `switch` lands.
 
+**Nested guards conjoin, so a branch that contradicts an enclosing guard on
+the same field is a compile error naming both guards.** `if on { if !on
+{ ... } }` fixes `on` both ways down one path: no field under the inner guard
+is ever written or read, in any target. An `else` side counts as the guard it
+is, so `if on { } else { if on { ... } }` is refused on the same rule, while a
+branch that agrees with an enclosing guard stays legal.
+
 ### 4.6 Shape checks
 
 All compile errors with positions:
@@ -1404,7 +1414,11 @@ All compile errors with positions:
   (`Write*`/`Read*`/`New*`, `*MaxBits`/`*MaxBytes`, companion length/count
   names, an enum's `Max` and `Count`, a flags declaration's `Count`, a
   union's generated tag surface). Diagnostics name the generated
-  artifact that claims the name.
+  artifact that claims the name. A short list of unit-scope names is claimed
+  on the table layer's behalf as well, most of it only in a unit that declares
+  a `table` and a handful of reflection spellings in every unit;
+  SPEC-TABLES.md §11 states which is which and why, and a schema that declares
+  no `table` is refused none of the rest.
 - Enum `| max = K` below the variant count.
 - **Duplicate field names anywhere in one type — including across branch
   sides.** One name, one field, declared once. (schema owns the type, and
@@ -1431,6 +1445,15 @@ All compile errors with positions:
   case-sensitive match (C++ namespaces are case-sensitive), so `exits`,
   `exit2` and `Exit` stay legal. (3) The name `main`, which makes the
   generated Go a program package that cannot be imported.
+- **File-name safety:** a schema file's basename names its generated header
+  (`Math.schema` emits `Math.h` in C++ and in C), so a basename spelling a C
+  standard header is a compile error naming the file, matched
+  case-insensitively against the standard's own closed list: with the
+  generated directory on the include path, `Math.h` answers
+  `#include <math.h>` and the whole libm surface disappears with nothing in
+  the build naming the schema. The C++ headers' bare spellings are out of
+  scope, because every generated name carries an extension and `<cmath>` has
+  none.
 
 ### 4.7 Strings and byte blocks — byte strings, one shape
 
