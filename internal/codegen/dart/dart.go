@@ -621,11 +621,7 @@ func (g *gen) emitFlags(d *ir.Flags) {
 
 func (g *gen) emitClass(d *ir.Struct) {
 	g.bpf("%s", ir.DocComment(d.Doc, "", "///"))
-	if len(d.Tags) > 0 {
-		g.bpf("// type %s [%s] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)\n", d.Name, strings.Join(d.Tags, ", "))
-	} else {
-		g.bpf("// type %s\n", d.Name)
-	}
+	g.bpf("// type %s\n", d.Name)
 	g.bpf("final class %s {\n", d.Name)
 	if len(d.Fields) == 0 {
 		g.bpf("  // empty body — presence is the payload (SPEC §4.6)\n")

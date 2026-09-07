@@ -379,11 +379,7 @@ func (g *gen) emitFlags(d *ir.Flags) {
 
 func (g *gen) emitClass(d *ir.Struct) {
 	g.pf("%s", ir.DocComment(d.Doc, "", "//"))
-	if len(d.Tags) > 0 {
-		g.pf("// type %s [%s] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)\n", d.Name, strings.Join(d.Tags, ", "))
-	} else {
-		g.pf("// type %s\n", d.Name)
-	}
+	g.pf("// type %s\n", d.Name)
 	g.pf("export class %s {\n", d.Name)
 	g.pf("  constructor() {\n")
 	if len(d.Fields) == 0 {

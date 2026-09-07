@@ -12,7 +12,7 @@ import (
 	"github.com/mas-bandwidth/serialize.go"
 )
 
-// type Vec3 [vec3] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
+// type Vec3
 type Vec3 struct {
 	X float64
 	Y float64
@@ -38,7 +38,7 @@ func ReadVec3(stream *serialize.ReadStream, value *Vec3) error {
 	return stream.Err()
 }
 
-// type Quat [quat4] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
+// type Quat
 type Quat struct {
 	X float64
 	Y float64

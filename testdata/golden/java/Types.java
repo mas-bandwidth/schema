@@ -18,7 +18,7 @@ public final class Types {
             java.lang.invoke.MethodHandles.byteArrayViewVarHandle(
                     long[].class, java.nio.ByteOrder.LITTLE_ENDIAN);
 
-    // type Vec3 [vec3] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
+    // type Vec3
     public static final class Vec3 {
         public double x;
         public double y;
@@ -232,7 +232,7 @@ public final class Types {
         return 192;
     }
 
-    // type Quat [quat4] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
+    // type Quat
     public static final class Quat {
         public double x;
         public double y;

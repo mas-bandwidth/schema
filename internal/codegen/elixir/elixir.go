@@ -447,11 +447,7 @@ func (g *gen) emitUnionModules(d *ir.Union) {
 }
 
 func (g *gen) emitStructModule(d *ir.Struct) {
-	if len(d.Tags) > 0 {
-		g.bpf("# type %s [%s] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)\n", d.Name, strings.Join(d.Tags, ", "))
-	} else {
-		g.bpf("# type %s\n", d.Name)
-	}
+	g.bpf("# type %s\n", d.Name)
 	var fields []string
 	for _, f := range d.Fields {
 		fields = append(fields, fmt.Sprintf("%s: %s", elixirName(f.Name), g.storageDefault(f)))

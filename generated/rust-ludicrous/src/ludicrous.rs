@@ -518,7 +518,7 @@ pub fn read_degenerate_probe(stream: &mut ReadStream<'_>, value: &mut Degenerate
     Ok(())
 }
 
-// type FixedVec [vec3] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
+// type FixedVec
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct FixedVec {
@@ -577,7 +577,7 @@ pub fn read_fixed_vec(stream: &mut ReadStream<'_>, value: &mut FixedVec) -> Resu
     Ok(())
 }
 
-// type FixedQuat [quat4] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
+// type FixedQuat
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct FixedQuat {

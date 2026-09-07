@@ -7,7 +7,7 @@
 use crate::*;
 use serialize::{ReadStream, Stream, WriteStream};
 
-// type Vec3 [vec3] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
+// type Vec3
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Vec3 {
@@ -76,7 +76,7 @@ pub fn read_vec3(stream: &mut ReadStream<'_>, value: &mut Vec3) -> Result {
     Ok(())
 }
 
-// type Quat [quat4] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
+// type Quat
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Quat {

@@ -13,7 +13,7 @@
 
 namespace example {
 
-// type Vec3 [vec3] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
+// type Vec3
 struct Vec3 {
     double x = 0.0;
     double y = 0.0;
@@ -23,7 +23,7 @@ struct Vec3 {
 inline constexpr int64_t Vec3MaxBits = 192; // longest wire path; align pads at worst case (SPEC §6.1)
 inline constexpr int64_t Vec3MaxBytes = 24; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
-// type Quat [quat4] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
+// type Quat
 struct Quat {
     double x = 0.0;
     double y = 0.0;

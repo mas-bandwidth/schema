@@ -361,11 +361,7 @@ func (g *gen) emitFlags(d *ir.Flags) {
 
 func (g *gen) emitClass(d *ir.Struct) {
 	g.tf("%s", ir.DocComment(d.Doc, "", "//"))
-	if len(d.Tags) > 0 {
-		g.tf("// type %s [%s] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)\n", d.Name, strings.Join(d.Tags, ", "))
-	} else {
-		g.tf("// type %s\n", d.Name)
-	}
+	g.tf("// type %s\n", d.Name)
 	g.owner = d.Name
 	g.tf("public sealed class %s\n{\n", d.Name)
 	g.emitClassFields(d.Fields)

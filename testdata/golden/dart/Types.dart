@@ -70,7 +70,7 @@ double _doubleFromFloat64Bits(int bits) {
 bool _unsignedLessThan(int a, int b) =>
     (a ^ 0x8000000000000000) < (b ^ 0x8000000000000000);
 
-// type Vec3 [vec3] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
+// type Vec3
 final class Vec3 {
   double x = 0.0;
   double y = 0.0;
@@ -225,7 +225,7 @@ bool readVec3(Vec3 value, ByteData view, int numBits) {
 // trusted like the writer; static runs fold to literals at generation time.
 int measureVec3(Vec3 value) => 192;
 
-// type Quat [quat4] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
+// type Quat
 final class Quat {
   double x = 0.0;
   double y = 0.0;

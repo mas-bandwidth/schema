@@ -10,7 +10,7 @@ using Serialize;
 namespace Example
 {
 
-    // type Vec3 [vec3] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
+    // type Vec3
     public sealed class Vec3
     {
         public double X;
@@ -18,7 +18,7 @@ namespace Example
         public double Z;
     }
 
-    // type Quat [quat4] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
+    // type Quat
     public sealed class Quat
     {
         public double X;

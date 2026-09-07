@@ -2923,7 +2923,7 @@ Every row to date is settled, deferred with its design banked, or discarded.
     to give a helpful diagnostic.
 13. ~~Interpolation policy~~ — settled: no interpolation generation;
     interpolation stays hand-written until a claiming pass assigns per-tag
-    actions (§4.2, Type tags).
+    actions (§4.2, Tags).
 14. ~~The replication-policy boundary~~ — discarded: no send-scheduling
     knobs (priority/TTL/coherence) exist in this architecture, and no policy
     attributes ever will. schema fully owns serialization; nothing else was
