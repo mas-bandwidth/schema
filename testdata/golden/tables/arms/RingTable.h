@@ -114,6 +114,13 @@ struct TableReport
     // was not refused has no reason, and this member is the one the caller
     // must not look at then (docs/SPEC-TABLES.md §3.3).
     TableMessageReason reason = newer_form;
+    // RETAIN-UNKNOWN's pair (docs/SPEC-TABLES.md §6.6), on the same struct for
+    // the reason duplicate is: a caller has one report type and not two. Both
+    // are ZERO in every read that did not opt in, and retention moves no
+    // counter above. A retained field still counts unknown, because unknown
+    // says what a READER could not name and that stays true.
+    int32_t retained = 0;    // unknown fields whose bytes were kept
+    int32_t retain_lost = 0; // every unknown this load or save could not keep
 };
 
 
@@ -3105,6 +3112,1124 @@ inline bool TableMessageNodeTableSave( const Ctx & ctx, const TableNumbering & n
 
 #endif // ARMDEMO_SCHEMA_TABLE_MESSAGE_NODES
 
+#ifndef ARMDEMO_SCHEMA_TABLE_RETAIN
+#define ARMDEMO_SCHEMA_TABLE_RETAIN
+
+namespace armdemo {
+
+// ---- RETAIN-UNKNOWN (docs/SPEC-TABLES.md §6.6) ----
+//
+// A REGION ROUND TRIP AND ONLY THAT: LoadRetain is Load's path into a region
+// and SaveRetain saves from that same region. The builder path carries no
+// retention, because a builder has no node directory to anchor a record on and
+// re-derives its numbering from the reader's declaration order.
+//
+// Nothing here allocates. The record bytes and the retained-id list are the
+// caller's storage, declared with their capacities, and a record that does not
+// fit whole is dropped with one retain_lost.
+
+// THE PATH NAMES THE BODY, and it is the REGION's own address (§6.6). Step one
+// is the node's index in the region's node directory, 1 for the root body and
+// k for the node at directory position k - 1. Every further step is the PAIR:
+// the field ordinal in the body the step descends from, in the READER's own
+// declaration order, and the element index inside that field: zero for a
+// scalar body, the element's index for an array of any of the four kinds, the
+// ARM's OWN ORDINAL for a union, and the key's slot for a map.
+static const int32_t kTableRetainDepthMax = 5;
+
+struct TableRetainStep
+{
+    uint32_t ordinal;
+    uint32_t index;
+};
+
+// at is the node's own address, which is what the SAVE side matches on: a
+// record carries the directory INDEX and the directory answers the address in
+// one add, so neither side ever searches a numbering.
+struct TableRetainPath
+{
+    const void * at;
+    uint32_t node;
+    int32_t depth;
+    TableRetainStep steps[ kTableRetainDepthMax ];
+};
+
+inline TableRetainPath TableRetainPathRoot( const void * at, uint32_t node )
+{
+    TableRetainPath path;
+    path.at = at;
+    path.node = node;
+    path.depth = 0;
+    return path;
+}
+
+// A STEP IS COMPUTED LOCALLY, at the moment the walk descends (§6.6), and it
+// is taken by VALUE so that a descent is an expression: both sides walk the
+// same declaration order, so neither numbers a tree and neither pops.
+inline TableRetainPath TableRetainStepInto( const TableRetainPath & path, uint32_t ordinal, uint32_t index )
+{
+    TableRetainPath out = path;
+    if ( out.depth < kTableRetainDepthMax )
+    {
+        out.steps[ out.depth ].ordinal = ordinal;
+        out.steps[ out.depth ].index = index;
+    }
+    out.depth++;
+    return out;
+}
+
+// THE CALLER'S TWO STORES (§6.6): the record bytes and the retained ids, each
+// a pointer, a capacity and what has been used of it. A retention buffer
+// belongs to ONE loaded region, and the next LoadRetain into it resets both.
+struct TableRetain
+{
+    // AN ENTRY IS THE ID AND ITS SLOT IN THE TRAILER BEING WRITTEN. The two
+    // stores are numbered into ONE trailer in merged first-use order, so an
+    // index into this list is not the number a second reference wants and the
+    // slot rides beside the id. The layout is this port's own.
+    struct Id
+    {
+        uint64_t id;
+        int32_t slot;
+    };
+
+    uint8_t * bytes = NULL;
+    int64_t capacity = 0;
+    int64_t used = 0;
+    Id * ids = NULL;
+    int32_t id_capacity = 0;
+    int32_t id_used = 0;
+    int32_t count = 0; // records held
+
+    // the REGION this buffer belongs to: a record carries a directory index
+    // and the save resolves it here, so nothing searches and nothing allocates
+    const uint8_t * base = NULL;
+    const TableNodeDirEntry * directory = NULL;
+    int64_t directory_count = 0;
+};
+
+// A RETAINED RECORD IS READER-PRIVATE (§6.6). It is not a wire form: no form
+// byte, no version, no declared byte order, and nothing ever writes one to
+// disk or hands one to another process. What it must CARRY is the body it
+// belongs to, and the field's identity and bytes with every reference
+// resolved. This layout is one sound way to carry them and nothing compares
+// two ports' buffers.
+//
+//   u32 record bytes, this header included
+//   u32 node          the path's first step
+//   u32 depth         the step pairs that follow
+//   u32 payload bytes
+//   u64 field id
+//   u8  kind
+//   u8  placed        the save's own mark, cleared before every save
+//   depth x { u32 ordinal, u32 index }
+//   payload           the field's payload with every reference resolved
+static const int64_t kTableRetainRecordHeader = 26;
+
+inline uint32_t TableRetainRead32( const uint8_t * p )
+{
+    return uint32_t( p[0] ) | uint32_t( p[1] ) << 8 | uint32_t( p[2] ) << 16 | uint32_t( p[3] ) << 24;
+}
+
+inline uint64_t TableRetainRead64( const uint8_t * p )
+{
+    return uint64_t( TableRetainRead32( p ) ) | ( uint64_t( TableRetainRead32( p + 4 ) ) << 32 );
+}
+
+inline void TableRetainWrite32( uint8_t * p, uint32_t v )
+{
+    p[0] = uint8_t( v ); p[1] = uint8_t( v >> 8 ); p[2] = uint8_t( v >> 16 ); p[3] = uint8_t( v >> 24 );
+}
+
+inline void TableRetainWrite64( uint8_t * p, uint64_t v )
+{
+    TableRetainWrite32( p, uint32_t( v ) );
+    TableRetainWrite32( p + 4, uint32_t( v >> 32 ) );
+}
+
+inline int64_t TableRetainRecordBytes( const uint8_t * record ) { return (int64_t) TableRetainRead32( record ); }
+inline uint32_t TableRetainRecordNode( const uint8_t * record ) { return TableRetainRead32( record + 4 ); }
+inline int32_t TableRetainRecordDepth( const uint8_t * record ) { return (int32_t) TableRetainRead32( record + 8 ); }
+inline int64_t TableRetainRecordPayloadBytes( const uint8_t * record ) { return (int64_t) TableRetainRead32( record + 12 ); }
+inline uint64_t TableRetainRecordId( const uint8_t * record ) { return TableRetainRead64( record + 16 ); }
+inline uint8_t TableRetainRecordKind( const uint8_t * record ) { return record[24]; }
+inline bool TableRetainRecordPlaced( const uint8_t * record ) { return record[25] != 0; }
+inline const uint8_t * TableRetainRecordSteps( const uint8_t * record ) { return record + kTableRetainRecordHeader; }
+inline const uint8_t * TableRetainRecordPayload( const uint8_t * record )
+{
+    return record + kTableRetainRecordHeader + 8 * (int64_t) TableRetainRecordDepth( record );
+}
+inline uint8_t * TableRetainRecordPayload( uint8_t * record )
+{
+    return record + kTableRetainRecordHeader + 8 * (int64_t) TableRetainRecordDepth( record );
+}
+
+// THE RECORD'S OWN BODY, resolved through the directory the buffer holds. A
+// node index names one node for the life of the region, so this is one add.
+inline const void * TableRetainRecordAt( const TableRetain & retain, const uint8_t * record )
+{
+    const uint32_t node = TableRetainRecordNode( record );
+    if ( retain.directory == NULL || node == 0 || (int64_t) node > retain.directory_count ) { return NULL; }
+    return (const void *) ( retain.base + retain.directory[ node - 1 ].offset );
+}
+
+// Does this record belong to the body the walk is standing in? The node first,
+// which rejects almost everything in one compare, then the step pairs.
+inline bool TableRetainRecordHere( const TableRetain & retain, const uint8_t * record, const TableRetainPath & path )
+{
+    if ( TableRetainRecordDepth( record ) != path.depth ) { return false; }
+    if ( TableRetainRecordAt( retain, record ) != path.at ) { return false; }
+    const uint8_t * steps = TableRetainRecordSteps( record );
+    for ( int32_t i = 0; i < path.depth; i++ )
+    {
+        if ( TableRetainRead32( steps + 8 * i ) != path.steps[i].ordinal ) { return false; }
+        if ( TableRetainRead32( steps + 8 * i + 4 ) != path.steps[i].index ) { return false; }
+    }
+    return true;
+}
+
+// EVERY ID THIS BUILD CAN NAME, ascending: the set TableIds's capacity is
+// derived from. An id inside a retained record takes its trailer entry from
+// the GENERATED table when it is here and from the CALLER's list otherwise, so
+// no retained id ever enters the generated table and no id is written twice.
+static const int32_t kTableRetainKnownIds = 32;
+static const uint64_t kTableRetainKnown[ kTableRetainKnownIds ] = {
+    0x072ddab46af04ab7ull, 0x0fe46fc6a1b583abull, 0x1f6459a2cea1fc02ull, 0x24ad84ada20208d5ull,
+    0x2d4c068f5f889287ull, 0x2f2ec0474f1c4fe4ull, 0x30e6ed678f5e1bd4ull, 0x31badbc06c5f0b97ull,
+    0x3c2f1bbad18642adull, 0x3e7884bf4f412c6full, 0x58ba95d8757c67c0ull, 0x5cc201a9f1b8274eull,
+    0x66bd1cc6d2f6b68dull, 0x670377dcbe2f82b6ull, 0x704be0d8faaffc58ull, 0x85a6b5fb5284964dull,
+    0x891da1f305deb858ull, 0x986d012bd380b0b2ull, 0x9f8e22fb612a2f78ull, 0xa1f526c44ead452full,
+    0xa5c085b4bb73d1b5ull, 0xaf63ea4c86020456ull, 0xaf63eb4c86020609ull, 0xafcd9a3b099f8ef0ull,
+    0xb5877a7e05bbfed2ull, 0xbf82010f6f71eae9ull, 0xc5b2a72c0845a253ull, 0xd94c56ef0798d723ull,
+    0xdcea4d2bfa11ceebull, 0xfa04f4ef1995407eull, 0xfd4d194e1652b207ull, 0xffffffffffffffffull,
+};
+
+inline bool TableRetainNameable( uint64_t id )
+{
+    int32_t low = 0, high = kTableRetainKnownIds - 1;
+    while ( low <= high )
+    {
+        const int32_t mid = low + ( high - low ) / 2;
+        if ( kTableRetainKnown[mid] == id ) { return true; }
+        if ( kTableRetainKnown[mid] < id ) { low = mid + 1; } else { high = mid - 1; }
+    }
+    return false;
+}
+
+// THE TWO STORES, NUMBERED INTO ONE TRAILER in merged first-use order (§6.6).
+// It answers the surface TableIds answers, ref, count, truncate and
+// overflow, so the retain family's codec is the plain one with its names
+// changed, and
+// the GENERATED TABLE IS UNTOUCHED: its capacity, its overflow rule and its
+// -1 stand exactly as they are for every save.
+struct TableRetainIds
+{
+    TableIds known;
+    int32_t known_slot[ TableIds::kCapacity ];
+    TableRetain * retain;
+    int32_t count;
+    bool overflow;
+    bool lost; // a retained id past the caller's capacity: the record is dropped
+
+    TableRetainIds( TableRetain * to_retain ) : retain( to_retain ), count( 0 ), overflow( false ), lost( false ) {}
+
+    // an id this build CAN name, which is every id the generated codec writes
+    uint64_t ref( uint64_t id )
+    {
+        const int32_t before = known.count;
+        const uint64_t k = known.ref( id );
+        if ( known.overflow ) { overflow = true; return 1; }
+        if ( known.count != before ) { known_slot[ (int32_t) k - 1 ] = ++count; }
+        return (uint64_t) known_slot[ (int32_t) k - 1 ];
+    }
+
+    // an id from INSIDE a retained record. A retained id takes its entry from
+    // the caller's list, and one past the capacity sets lost: the record is
+    // dropped, nothing else about the save changes, and the save is never
+    // refused (§6.6).
+    uint64_t record_ref( uint64_t id )
+    {
+        if ( TableRetainNameable( id ) ) { return ref( id ); }
+        if ( retain == NULL ) { lost = true; return 0; }
+        for ( int32_t i = 0; i < retain->id_used; i++ )
+        {
+            if ( retain->ids[i].id == id ) { return (uint64_t) retain->ids[i].slot; }
+        }
+        if ( retain->id_used >= retain->id_capacity ) { lost = true; return 0; }
+        retain->ids[ retain->id_used ].id = id;
+        retain->ids[ retain->id_used ].slot = ++count;
+        retain->id_used++;
+        return (uint64_t) count;
+    }
+
+    // undo every entry taken since mark, in either store. Both are appended in
+    // slot order, so an entry removed is the last one of its store.
+    void truncate( int32_t mark )
+    {
+        while ( known.count > 0 && known_slot[ known.count - 1 ] > mark ) { known.truncate( known.count - 1 ); }
+        while ( retain != NULL && retain->id_used > 0 && retain->ids[ retain->id_used - 1 ].slot > mark ) { retain->id_used--; }
+        count = mark;
+    }
+};
+
+// THE FILE STILL CARRIES ONE ID TABLE (§3): the split is the writer's storage
+// rather than the wire's, and the trailer is one merge of two slot-ordered
+// stores.
+inline int64_t TableRetainIdsBytes( const TableRetainIds & ids ) { return int64_t( ids.count ) * 8 + 8; }
+
+// A TWO-WAY MERGE over the stores' own slot order, and not a scan for each
+// slot. Every entry either store holds took its slot from the same counter, so
+// the two runs interleave to exactly the slots 1 to count and the merge has no
+// case for a slot neither store took.
+inline void TableRetainIdsWrite( TableWriter & w, const TableRetainIds & ids )
+{
+    const int32_t retained = ids.retain != NULL ? ids.retain->id_used : 0;
+    int32_t i = 0, j = 0;
+    while ( i < ids.known.count || j < retained )
+    {
+        if ( j >= retained || ( i < ids.known.count && ids.known_slot[i] < ids.retain->ids[j].slot ) )
+        {
+            w.put64( ids.known.ids[i] );
+            i++;
+            continue;
+        }
+        w.put64( ids.retain->ids[j].id );
+        j++;
+    }
+    w.put64( uint64_t( ids.count ) );
+}
+
+// ---- THE RESOLVING WALK (§6.6) ----
+//
+// A reference names a SLOT of the file's id table, so a verbatim copy
+// re-emitted into a file whose table is ordered differently would point at
+// other names in silence. A retained record therefore holds the field with
+// every reference replaced by the sixty-four-bit id it names, and every length
+// that frames a rewritten reference recomputed.
+//
+// THE WALK IS AN INTERPRETATION, AND ITS VERDICT IS STATED: it reads kind
+// bytes, lengths and references and nothing else. No value is decoded, no
+// bound is checked, no branch is taken on a payload byte, and anything it
+// cannot frame DROPS THE RECORD, counts one retain_lost, and never raises
+// malformed on the plain read.
+//
+// THE WALK IS ONE PASS EACH WAY, and its cost is linear in the record's own
+// bytes. Every length that frames a content in the resolved form is a fixed
+// slot rather than a canonical LEB128, so the capture reserves it, writes the
+// content, and fills the slot in behind it. A spelling that had to know the
+// resolved size before writing it would have to walk each content twice, once
+// at every level, and the file chooses the nesting.
+//
+// A retained record's inner nesting is the WRITER's and not this build's, so
+// it is the one depth on this path a file can drive. The cap counts NESTED
+// BODIES, and a record past it is dropped on the same rule as any other shape
+// the walk cannot take. Time no longer rests on it: it is a small stated
+// constant and nothing more.
+static const int32_t kTableRetainWalkDepthMax = 64;
+
+// the three RESERVED ids (§3.1, §3.3). One inside a retained record's payload
+// would be re-emitted into a nested body, where it is malformed, so meeting
+// one drops the record.
+inline bool TableRetainReservedId( uint64_t id )
+{
+    return id == kTableNodeTableFieldId || id == kTableBuildVersionFieldId || id == kTableMessageVocabularyFieldId;
+}
+
+struct TableRetainIn
+{
+    const uint8_t * in;
+    int64_t size;
+    int64_t at;
+    const TableIdTable * ids;
+    uint8_t * out;   // NULL: measuring, and nothing is written
+    int64_t out_at;
+};
+
+inline void TableRetainInRaw( TableRetainIn & s, const uint8_t * from, int64_t bytes )
+{
+    if ( s.out != NULL ) { memcpy( s.out + s.out_at, from, (size_t) bytes ); }
+    s.out_at += bytes;
+}
+
+inline void TableRetainInLeb( TableRetainIn & s, uint64_t v )
+{
+    uint8_t b[10];
+    int64_t n = 0;
+    while ( v >= 0x80 ) { b[n++] = uint8_t( v ) | 0x80; v >>= 7; }
+    b[n++] = uint8_t( v );
+    TableRetainInRaw( s, b, n );
+}
+
+inline void TableRetainInId( TableRetainIn & s, uint64_t id )
+{
+    uint8_t b[8];
+    TableRetainWrite64( b, id );
+    TableRetainInRaw( s, b, 8 );
+}
+
+inline bool TableRetainInLebRead( TableRetainIn & s, uint64_t & value )
+{
+    value = 0;
+    uint32_t shift = 0;
+    for ( int32_t i = 0; i < 10; i++ )
+    {
+        if ( s.at >= s.size ) { return false; }
+        const uint8_t b = s.in[ s.at++ ];
+        if ( i == 9 && b > 1 ) { return false; }
+        value |= uint64_t( b & 0x7F ) << shift;
+        if ( ( b & 0x80 ) == 0 ) { return i == 0 || b != 0; }
+        shift += 7;
+    }
+    return false;
+}
+
+// one REFERENCE resolved to the id it names. A zero reference is the wire's
+// own "no id", the enum's None and the union's empty arm, and rides as the
+// id zero. A reference above the entry count, a reference at an id-table entry
+// of zero, and a reference at a reserved id are each damage the plain read
+// never looked at, and each drops the record.
+inline bool TableRetainInRef( TableRetainIn & s, bool zero_allowed )
+{
+    uint64_t ref = 0;
+    if ( !TableRetainInLebRead( s, ref ) ) { return false; }
+    if ( ref == 0 )
+    {
+        if ( !zero_allowed ) { return false; }
+        TableRetainInId( s, 0 );
+        return true;
+    }
+    if ( s.ids == NULL || ref > (uint64_t) s.ids->count ) { return false; }
+    const uint64_t id = s.ids->at( ref );
+    if ( id == 0 || TableRetainReservedId( id ) ) { return false; }
+    TableRetainInId( s, id );
+    return true;
+}
+
+inline int64_t TableRetainInPayload( TableRetainIn & s, uint8_t kind, int32_t depth );
+inline int64_t TableRetainInContent( TableRetainIn & s, uint8_t kind, int64_t length, int32_t depth );
+
+// ONE FRAMED LENGTH in the resolved form: a pair of fixed u32. The first is
+// the RESOLVED byte count of the content it frames, reserved here and written
+// once the content is out. The second is the SAVE's scratch, left zero by the
+// capture and filled by the walk that emits.
+//
+// The record is the reader's own storage and nothing outside this family ever
+// reads it, so a length may be written after the bytes it measures. That is
+// the whole of what makes the walk one pass.
+static const int64_t kTableRetainSlotBytes = 8;
+
+inline int64_t TableRetainInSlot( TableRetainIn & s )
+{
+    const int64_t at = s.out_at;
+    const uint8_t zero[ kTableRetainSlotBytes ] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+    TableRetainInRaw( s, zero, kTableRetainSlotBytes );
+    return at;
+}
+
+inline void TableRetainInPatch( TableRetainIn & s, int64_t slot, int64_t resolved )
+{
+    if ( s.out != NULL ) { TableRetainWrite32( s.out + slot, (uint32_t) resolved ); }
+}
+
+// one framed CONTENT: the slot, the content, and the slot filled in behind it.
+// The measuring pass takes the same path and reserves the same fixed width, so
+// the size it answers is the size the writing pass lays down.
+inline int64_t TableRetainInFramed( TableRetainIn & s, uint8_t kind, int64_t length, int32_t depth )
+{
+    const int64_t slot = TableRetainInSlot( s );
+    const int64_t resolved = TableRetainInContent( s, kind, length, depth );
+    if ( resolved < 0 || resolved > 0xFFFFFFFFll ) { return -1; }
+    TableRetainInPatch( s, slot, resolved );
+    return resolved;
+}
+
+inline int64_t TableRetainInContent( TableRetainIn & s, uint8_t kind, int64_t length, int32_t depth )
+{
+    if ( depth > kTableRetainWalkDepthMax ) { return -1; }
+    if ( length < 0 || s.at + length > s.size ) { return -1; }
+    const int64_t end = s.at + length;
+    const int64_t began = s.out_at;
+    switch ( kind )
+    {
+        case 13: // a table BODY: fields, then the zero reference
+        {
+            for ( ;; )
+            {
+                uint64_t ref = 0;
+                const int64_t mark = s.at;
+                if ( !TableRetainInLebRead( s, ref ) ) { return -1; }
+                // THE TERMINATOR IS A REFERENCE, and a reference in the
+                // resolved form is a fixed eight-byte id: the zero that ends a
+                // body rides at the width every other one does.
+                if ( ref == 0 ) { TableRetainInId( s, 0 ); break; }
+                s.at = mark;
+                if ( !TableRetainInRef( s, false ) ) { return -1; }
+                if ( s.at >= end ) { return -1; }
+                const uint8_t field_kind = s.in[ s.at++ ];
+                TableRetainInRaw( s, &field_kind, 1 );
+                if ( TableRetainInPayload( s, field_kind, depth ) < 0 ) { return -1; }
+                if ( s.at > end ) { return -1; }
+            }
+            break;
+        }
+        case 14: // an ARRAY body: the element kind, the count, then the elements
+        {
+            if ( s.at >= end ) { return -1; }
+            const uint8_t elem_kind = s.in[ s.at++ ];
+            TableRetainInRaw( s, &elem_kind, 1 );
+            uint64_t n = 0;
+            if ( !TableRetainInLebRead( s, n ) ) { return -1; }
+            TableRetainInLeb( s, n );
+            for ( uint64_t i = 0; i < n; i++ )
+            {
+                if ( TableRetainInPayload( s, elem_kind, depth ) < 0 ) { return -1; }
+                if ( s.at > end ) { return -1; }
+            }
+            break;
+        }
+        case 16: // an ENUM-KEYED body: N triples of a KEY REFERENCE, an L and the element
+        {
+            if ( s.at >= end ) { return -1; }
+            const uint8_t elem_kind = s.in[ s.at++ ];
+            TableRetainInRaw( s, &elem_kind, 1 );
+            uint64_t n = 0;
+            if ( !TableRetainInLebRead( s, n ) ) { return -1; }
+            TableRetainInLeb( s, n );
+            for ( uint64_t i = 0; i < n; i++ )
+            {
+                // A KEYED BODY'S KEYS RESOLVE AT EVERY ELEMENT KIND (§6.6, §3.2)
+                if ( !TableRetainInRef( s, false ) ) { return -1; }
+                uint64_t slot_bytes = 0;
+                if ( !TableRetainInLebRead( s, slot_bytes ) ) { return -1; }
+                if ( slot_bytes > (uint64_t) ( end - s.at ) ) { return -1; }
+                if ( TableRetainInFramed( s, elem_kind, (int64_t) slot_bytes, depth + 1 ) < 0 ) { return -1; }
+            }
+            break;
+        }
+        case 17: return -1; // A NODE INDEX ANYWHERE DROPS THE WHOLE RECORD (§6.6)
+        default:
+            // every other content is bytes: a string, wide text, an escape, a
+            // payload-free kind, a scalar under a keyed slot's own length
+            TableRetainInRaw( s, s.in + s.at, length );
+            s.at += length;
+            break;
+    }
+    if ( s.at != end ) { return -1; }
+    return s.out_at - began;
+}
+
+// the depth a payload carries is its enclosing body's: only a framed CONTENT
+// is a level, and TableRetainInContent is the one place the cap is read.
+inline int64_t TableRetainInPayload( TableRetainIn & s, uint8_t kind, int32_t depth )
+{
+    const int64_t began = s.out_at;
+    switch ( kind )
+    {
+        case 1: case 2: case 6: case 20: case 25: // the fixed-width kinds, by width
+        case 3: case 7: case 21: case 26:
+        case 4: case 8: case 10: case 22: case 27:
+        case 5: case 9: case 11: case 23: case 28:
+        case 18: case 19: case 24: case 29:
+        {
+            int64_t width = 1;
+            switch ( kind )
+            {
+                case 3: case 7: case 21: case 26: width = 2; break;
+                case 4: case 8: case 10: case 22: case 27: width = 4; break;
+                case 5: case 9: case 11: case 23: case 28: width = 8; break;
+                case 18: case 19: case 24: case 29: width = 16; break;
+                default: width = 1; break;
+            }
+            if ( s.at + width > s.size ) { return -1; }
+            TableRetainInRaw( s, s.in + s.at, width );
+            s.at += width;
+            break;
+        }
+        case 12: case 31: case 32: case 33: // L, then L bytes, nothing framed inside
+        {
+            uint64_t length = 0;
+            if ( !TableRetainInLebRead( s, length ) ) { return -1; }
+            if ( length > (uint64_t) ( s.size - s.at ) ) { return -1; }
+            TableRetainInLeb( s, length );
+            TableRetainInRaw( s, s.in + s.at, (int64_t) length );
+            s.at += (int64_t) length;
+            break;
+        }
+        case 13: case 14: case 16: // L, then a body the walk resolves
+        {
+            uint64_t length = 0;
+            if ( !TableRetainInLebRead( s, length ) ) { return -1; }
+            if ( length > (uint64_t) ( s.size - s.at ) ) { return -1; }
+            if ( TableRetainInFramed( s, kind, (int64_t) length, depth + 1 ) < 0 ) { return -1; }
+            break;
+        }
+        case 15: // a UNION: the arm id reference, and when it is not zero its kind, L and payload
+        {
+            const int64_t mark = s.at;
+            uint64_t arm = 0;
+            if ( !TableRetainInLebRead( s, arm ) ) { return -1; }
+            s.at = mark;
+            if ( !TableRetainInRef( s, true ) ) { return -1; }
+            if ( arm == 0 ) { break; }
+            if ( s.at >= s.size ) { return -1; }
+            const uint8_t arm_kind = s.in[ s.at++ ];
+            TableRetainInRaw( s, &arm_kind, 1 );
+            uint64_t length = 0;
+            if ( !TableRetainInLebRead( s, length ) ) { return -1; }
+            if ( length > (uint64_t) ( s.size - s.at ) ) { return -1; }
+            if ( TableRetainInFramed( s, arm_kind, (int64_t) length, depth + 1 ) < 0 ) { return -1; }
+            break;
+        }
+        case 30: // an ENUM's variant reference, zero for None
+        {
+            if ( !TableRetainInRef( s, true ) ) { return -1; }
+            break;
+        }
+        case 17: return -1; // A NODE INDEX (§3.1): the whole record goes with it
+        default: return -1; // a kind this walk cannot frame
+    }
+    return s.out_at - began;
+}
+
+// ---- CAPTURE: the load side (§6.6) ----
+//
+// The field is skipped by its framing exactly as it always was and counted
+// unknown exactly as it always was, so a full buffer degrades to the default
+// behavior one field at a time. False is what r.skip( kind ) answers false
+// for, and nothing else: retention can lose a field, it can never turn a good
+// read into a bad one.
+inline bool TableRetainCapture( TableRetain * retain, TableReader & r, const TableRetainPath & path,
+                                uint64_t field_id, uint8_t kind )
+{
+    const int64_t start = r.offset;
+    if ( !r.skip( kind ) ) { return false; }
+    if ( retain == NULL ) { return true; }
+    const int64_t wire_bytes = r.offset - start;
+
+    TableRetainIn probe;
+    probe.in = r.buffer + start;
+    probe.size = wire_bytes;
+    probe.at = 0;
+    probe.ids = r.ids;
+    probe.out = NULL;
+    probe.out_at = 0;
+    const int64_t payload = TableRetainInPayload( probe, kind, 0 );
+    if ( payload < 0 || probe.at != wire_bytes ) { r.report->retain_lost++; return true; }
+
+    const int64_t need = kTableRetainRecordHeader + 8 * (int64_t) path.depth + payload;
+    if ( need > 0xFFFFFFFFll || retain->used + need > retain->capacity )
+    {
+        // REFUSAL IS PER RECORD AND NEVER PARTIAL: the buffer never holds a
+        // truncated field, and the read continues (§6.6)
+        r.report->retain_lost++;
+        return true;
+    }
+    uint8_t * record = retain->bytes + retain->used;
+    TableRetainWrite32( record, (uint32_t) need );
+    TableRetainWrite32( record + 4, path.node );
+    TableRetainWrite32( record + 8, (uint32_t) path.depth );
+    TableRetainWrite32( record + 12, (uint32_t) payload );
+    TableRetainWrite64( record + 16, field_id );
+    record[24] = kind;
+    record[25] = 0;
+    for ( int32_t i = 0; i < path.depth; i++ )
+    {
+        TableRetainWrite32( record + kTableRetainRecordHeader + 8 * i, path.steps[i].ordinal );
+        TableRetainWrite32( record + kTableRetainRecordHeader + 8 * i + 4, path.steps[i].index );
+    }
+    TableRetainIn write;
+    write.in = r.buffer + start;
+    write.size = wire_bytes;
+    write.at = 0;
+    write.ids = r.ids;
+    write.out = record + kTableRetainRecordHeader + 8 * (int64_t) path.depth;
+    write.out_at = 0;
+    if ( TableRetainInPayload( write, kind, 0 ) < 0 ) { r.report->retain_lost++; return true; }
+    retain->used += need;
+    retain->count++;
+    r.report->retained++;
+    return true;
+}
+
+// LoadRetain RESETS BOTH STORES and writes into neither list (§6.6): a
+// retained record carries its field's identity in the record itself, with
+// every reference resolved.
+inline void TableRetainReset( TableRetain * retain, const TableNodeMap & nodes, const uint8_t * region )
+{
+    if ( retain == NULL ) { return; }
+    retain->used = 0;
+    retain->id_used = 0;
+    retain->count = 0;
+    retain->base = region;
+    retain->directory = nodes.entries;
+    retain->directory_count = nodes.count;
+}
+
+// ---- RECORD LIFETIME (docs/SPEC-TABLES.md §6.6) ----
+//
+// A RETAINED RECORD BELONGS TO THE BODY OCCURRENCE THAT CARRIED IT, AND DIES
+// WITH IT. Legal input can carry a known child body twice, and the later
+// occurrence resets the child and wins whole (§3, §4): the records retained
+// under the earlier occurrence go with the values it held. The discard moves
+// NEITHER counter. The writer superseded the data, so nothing was lost that
+// the load could have kept, and retained counted the record when its bytes
+// were kept and does not fall when they are let go.
+//
+// The occurrences are four, and each is a body the wire lets a writer put down
+// again: a repeated TABLE field, by value or under ?, a UNION whose arm is
+// written again, a MAP's duplicate key, and a KEYED-ARRAY slot written again.
+// The FIELD form covers the three where the field itself is read again, arm
+// switches and shrinking arrays included; the BODY form covers a duplicate key
+// inside one occurrence of a map, where the field is read once and the entry
+// twice.
+inline bool TableRetainUnder( const uint8_t * record, const void * at, const TableRetain & retain,
+                              const TableRetainPath & path, bool field, uint32_t ordinal )
+{
+    if ( TableRetainRecordAt( retain, record ) != at ) { return false; }
+    const int32_t depth = TableRetainRecordDepth( record );
+    if ( field )
+    {
+        if ( depth <= path.depth ) { return false; }
+    }
+    else if ( depth < path.depth ) { return false; }
+    const uint8_t * steps = TableRetainRecordSteps( record );
+    for ( int32_t i = 0; i < path.depth; i++ )
+    {
+        if ( TableRetainRead32( steps + 8 * i ) != path.steps[i].ordinal ) { return false; }
+        if ( TableRetainRead32( steps + 8 * i + 4 ) != path.steps[i].index ) { return false; }
+    }
+    if ( field && TableRetainRead32( steps + 8 * path.depth ) != ordinal ) { return false; }
+    return true;
+}
+
+inline void TableRetainDiscard( TableRetain * retain, const TableRetainPath & path, bool field, uint32_t ordinal )
+{
+    if ( retain == NULL || retain->count == 0 ) { return; }
+    int64_t read = 0, write = 0;
+    int32_t kept = 0;
+    for ( int32_t k = 0; k < retain->count; k++ )
+    {
+        const int64_t bytes = TableRetainRecordBytes( retain->bytes + read );
+        if ( !TableRetainUnder( retain->bytes + read, path.at, *retain, path, field, ordinal ) )
+        {
+            if ( write != read ) { memmove( retain->bytes + write, retain->bytes + read, (size_t) bytes ); }
+            write += bytes;
+            kept++;
+        }
+        read += bytes;
+    }
+    retain->used = write;
+    retain->count = kept;
+}
+
+inline void TableRetainDiscardBody( TableRetain * retain, const TableRetainPath & path )
+{
+    TableRetainDiscard( retain, path, false, 0 );
+}
+
+inline void TableRetainDiscardField( TableRetain * retain, const TableRetainPath & path, uint32_t ordinal )
+{
+    TableRetainDiscard( retain, path, true, ordinal );
+}
+
+// ---- EMIT: the save side (§6.6) ----
+//
+// The record read back the other way: every resolved id becomes the reference
+// the trailer being written gives it, and every length is recomputed against
+// the references' new widths. The walk is the capture's mirror and the same
+// damage rules apply, except that damage cannot be met: these bytes are the
+// reader's own.
+//
+// A WIRE LENGTH IS CANONICAL LEB128 AND RIDES BEFORE ITS CONTENT, so this side
+// cannot fill a slot in behind the bytes the way the capture does. It takes
+// one POST-ORDER pass instead: measuring computes each content's wire size and
+// leaves it in that content's own scratch slot, and the emit reads the size
+// there rather than walking for it. Measuring runs immediately before the
+// emit, on the same record and the same id table, which is what makes the two
+// readings one walk.
+struct TableRetainOut
+{
+    uint8_t * in; // the record: only a framed length's scratch half is written
+    int64_t size;
+    int64_t at;
+    TableRetainIds * ids;
+    TableWriter * w; // NULL: measuring, and the scratch slots are being filled
+    int64_t bytes;
+};
+
+inline void TableRetainOutRaw( TableRetainOut & s, const uint8_t * from, int64_t bytes )
+{
+    if ( s.w != NULL ) { s.w->raw( from, bytes ); }
+    s.bytes += bytes;
+}
+
+inline void TableRetainOutLeb( TableRetainOut & s, uint64_t v )
+{
+    if ( s.w != NULL ) { s.w->putleb( v ); }
+    s.bytes += TableLebBytes( v );
+}
+
+inline bool TableRetainOutLebRead( TableRetainOut & s, uint64_t & value )
+{
+    value = 0;
+    uint32_t shift = 0;
+    for ( int32_t i = 0; i < 10; i++ )
+    {
+        if ( s.at >= s.size ) { return false; }
+        const uint8_t b = s.in[ s.at++ ];
+        value |= uint64_t( b & 0x7F ) << shift;
+        if ( ( b & 0x80 ) == 0 ) { return true; }
+        shift += 7;
+    }
+    return false;
+}
+
+inline bool TableRetainOutRef( TableRetainOut & s )
+{
+    if ( s.at + 8 > s.size ) { return false; }
+    const uint64_t id = TableRetainRead64( s.in + s.at );
+    s.at += 8;
+    if ( id == 0 ) { TableRetainOutLeb( s, 0 ); return true; } // the wire's own no-id
+    const uint64_t ref = s.ids->record_ref( id );
+    if ( s.ids->lost || s.ids->overflow ) { return false; }
+    TableRetainOutLeb( s, ref );
+    return true;
+}
+
+inline bool TableRetainOutPayload( TableRetainOut & s, uint8_t kind, int32_t depth );
+inline bool TableRetainOutContent( TableRetainOut & s, uint8_t kind, int64_t length, int32_t depth );
+
+// ONE FRAMED CONTENT, read out of the record's fixed slot and written with the
+// canonical LEB128 length this wire wants. The ids it names are interned on
+// the way past, which is what makes measure and save one walk in two readings,
+// exactly as every other body on this wire is.
+//
+// MEASURING walks the content, then leaves the wire size it found in the
+// scratch half of the slot. EMITTING reads that size, writes it, and CHECKS
+// the content against it: a size no measure of this save left there is a
+// record refused rather than a length that does not frame what follows.
+inline bool TableRetainOutFramed( TableRetainOut & s, uint8_t kind, int32_t depth )
+{
+    if ( s.at + kTableRetainSlotBytes > s.size ) { return false; }
+    uint8_t * const slot = s.in + s.at;
+    const int64_t resolved = (int64_t) TableRetainRead32( slot );
+    s.at += kTableRetainSlotBytes;
+    if ( s.w == NULL )
+    {
+        const int64_t began = s.bytes;
+        if ( !TableRetainOutContent( s, kind, resolved, depth ) ) { return false; }
+        const int64_t wire = s.bytes - began;
+        if ( wire > 0xFFFFFFFFll ) { return false; }
+        TableRetainWrite32( slot + 4, (uint32_t) wire );
+        s.bytes += TableLebBytes( (uint64_t) wire );
+        return true;
+    }
+    const int64_t wire = (int64_t) TableRetainRead32( slot + 4 );
+    TableRetainOutLeb( s, (uint64_t) wire );
+    const int64_t began = s.bytes;
+    if ( !TableRetainOutContent( s, kind, resolved, depth ) ) { return false; }
+    return s.bytes - began == wire;
+}
+
+inline bool TableRetainOutContent( TableRetainOut & s, uint8_t kind, int64_t length, int32_t depth )
+{
+    if ( depth > kTableRetainWalkDepthMax ) { return false; }
+    if ( length < 0 || s.at + length > s.size ) { return false; }
+    const int64_t end = s.at + length;
+    switch ( kind )
+    {
+        case 13:
+        {
+            for ( ;; )
+            {
+                if ( s.at + 8 > end ) { return false; }
+                const uint64_t id = TableRetainRead64( s.in + s.at );
+                if ( id == 0 ) { s.at += 8; TableRetainOutLeb( s, 0 ); break; }
+                if ( !TableRetainOutRef( s ) ) { return false; }
+                if ( s.at >= end ) { return false; }
+                const uint8_t field_kind = s.in[ s.at++ ];
+                TableRetainOutRaw( s, &field_kind, 1 );
+                if ( !TableRetainOutPayload( s, field_kind, depth ) ) { return false; }
+            }
+            break;
+        }
+        case 14:
+        {
+            if ( s.at >= end ) { return false; }
+            const uint8_t elem_kind = s.in[ s.at++ ];
+            TableRetainOutRaw( s, &elem_kind, 1 );
+            uint64_t n = 0;
+            if ( !TableRetainOutLebRead( s, n ) ) { return false; }
+            TableRetainOutLeb( s, n );
+            for ( uint64_t i = 0; i < n; i++ )
+            {
+                if ( !TableRetainOutPayload( s, elem_kind, depth ) ) { return false; }
+            }
+            break;
+        }
+        case 16:
+        {
+            if ( s.at >= end ) { return false; }
+            const uint8_t elem_kind = s.in[ s.at++ ];
+            TableRetainOutRaw( s, &elem_kind, 1 );
+            uint64_t n = 0;
+            if ( !TableRetainOutLebRead( s, n ) ) { return false; }
+            TableRetainOutLeb( s, n );
+            for ( uint64_t i = 0; i < n; i++ )
+            {
+                if ( !TableRetainOutRef( s ) ) { return false; }
+                if ( !TableRetainOutFramed( s, elem_kind, depth + 1 ) ) { return false; }
+            }
+            break;
+        }
+        default:
+            TableRetainOutRaw( s, s.in + s.at, length );
+            s.at += length;
+            break;
+    }
+    return s.at == end;
+}
+
+// the depth a payload carries is its enclosing body's, exactly as on the
+// capture side: only a framed CONTENT is a level.
+inline bool TableRetainOutPayload( TableRetainOut & s, uint8_t kind, int32_t depth )
+{
+    switch ( kind )
+    {
+        case 1: case 2: case 6: case 20: case 25:
+        case 3: case 7: case 21: case 26:
+        case 4: case 8: case 10: case 22: case 27:
+        case 5: case 9: case 11: case 23: case 28:
+        case 18: case 19: case 24: case 29:
+        {
+            int64_t width = 1;
+            switch ( kind )
+            {
+                case 3: case 7: case 21: case 26: width = 2; break;
+                case 4: case 8: case 10: case 22: case 27: width = 4; break;
+                case 5: case 9: case 11: case 23: case 28: width = 8; break;
+                case 18: case 19: case 24: case 29: width = 16; break;
+                default: width = 1; break;
+            }
+            if ( s.at + width > s.size ) { return false; }
+            TableRetainOutRaw( s, s.in + s.at, width );
+            s.at += width;
+            break;
+        }
+        case 12: case 31: case 32: case 33:
+        {
+            uint64_t length = 0;
+            if ( !TableRetainOutLebRead( s, length ) ) { return false; }
+            if ( length > (uint64_t) ( s.size - s.at ) ) { return false; }
+            TableRetainOutLeb( s, length );
+            TableRetainOutRaw( s, s.in + s.at, (int64_t) length );
+            s.at += (int64_t) length;
+            break;
+        }
+        case 13: case 14: case 16:
+        {
+            if ( !TableRetainOutFramed( s, kind, depth + 1 ) ) { return false; }
+            break;
+        }
+        case 15:
+        {
+            if ( s.at + 8 > s.size ) { return false; }
+            const uint64_t arm = TableRetainRead64( s.in + s.at );
+            if ( !TableRetainOutRef( s ) ) { return false; }
+            if ( arm == 0 ) { break; }
+            if ( s.at >= s.size ) { return false; }
+            const uint8_t arm_kind = s.in[ s.at++ ];
+            TableRetainOutRaw( s, &arm_kind, 1 );
+            if ( !TableRetainOutFramed( s, arm_kind, depth + 1 ) ) { return false; }
+            break;
+        }
+        case 30:
+        {
+            if ( !TableRetainOutRef( s ) ) { return false; }
+            break;
+        }
+        default: return false;
+    }
+    return true;
+}
+
+// ---- THE RETAINED TAIL: where the records go back (§6.6) ----
+//
+// AT THE END OF THEIR OWN BODY, IN THE ORDER RETAINED. Position carries
+// nothing on this wire, so appending is chosen for three properties: it is a
+// write with no splice, the retained order is preserved, and the result is
+// IDEMPOTENT after the first save.
+//
+// A RETAINED ID PAST THE CAPACITY COUNTS ONE retain_lost AND ITS RECORD IS
+// DROPPED, and the save is never refused. MeasureRetain and SaveRetain drop
+// the same records under the same walk, so the measure sees the same overflow
+// and its answer is the size the save writes.
+
+// one record's WIRE bytes under the trailer being written, and -1 for a record
+// this save cannot place: an id the caller's list had no room for, or a
+// resolved form the walk cannot read back. The ids it names are interned on
+// the way past, which is what makes measure and save one rule read twice.
+//
+// THIS IS THE MEASURING PASS, and it leaves every framed content's wire size
+// in that content's own scratch slot. The record is the caller's buffer and
+// the pass writes nothing else into it.
+inline int64_t TableRetainRecordWire( uint8_t * record, TableRetainIds & ids, uint64_t & ref )
+{
+    const int32_t mark = ids.count;
+    ids.lost = false;
+    ref = ids.record_ref( TableRetainRecordId( record ) );
+    if ( !ids.lost && !ids.overflow )
+    {
+        TableRetainOut s;
+        s.in = TableRetainRecordPayload( record );
+        s.size = TableRetainRecordPayloadBytes( record );
+        s.at = 0;
+        s.ids = &ids;
+        s.w = NULL;
+        s.bytes = 0;
+        if ( TableRetainOutPayload( s, TableRetainRecordKind( record ), 0 ) && s.at == s.size )
+        {
+            return TableLebBytes( ref ) + 1 + s.bytes;
+        }
+    }
+    // the record is not written at all, and nothing else about the save
+    // changes: a full id list degrades to the default behavior one record at a
+    // time, and the entries this attempt took are given back
+    ids.truncate( mark );
+    ids.lost = false;
+    return -1;
+}
+
+inline int64_t TableRetainTailMeasure( TableRetain * retain, TableRetainIds & ids, const TableRetainPath & path )
+{
+    if ( retain == NULL || retain->bytes == NULL ) { return 0; }
+    int64_t bytes = 0;
+    int64_t at = 0;
+    for ( int32_t k = 0; k < retain->count; k++ )
+    {
+        uint8_t * record = retain->bytes + at;
+        at += TableRetainRecordBytes( record );
+        if ( !TableRetainRecordHere( *retain, record, path ) ) { continue; }
+        uint64_t ref = 0;
+        const int64_t wire = TableRetainRecordWire( record, ids, ref );
+        if ( wire < 0 ) { continue; }
+        bytes += wire;
+    }
+    return bytes;
+}
+
+inline bool TableRetainTailSave( TableRetain * retain, TableRetainIds & ids, TableWriter & w, const TableRetainPath & path )
+{
+    if ( retain == NULL || retain->bytes == NULL ) { return true; }
+    int64_t at = 0;
+    for ( int32_t k = 0; k < retain->count; k++ )
+    {
+        uint8_t * record = retain->bytes + at;
+        at += TableRetainRecordBytes( record );
+        if ( !TableRetainRecordHere( *retain, record, path ) ) { continue; }
+        uint64_t ref = 0;
+        if ( TableRetainRecordWire( record, ids, ref ) < 0 ) { continue; }
+        w.putleb( ref );
+        w.put8( TableRetainRecordKind( record ) );
+        TableRetainOut s;
+        s.in = TableRetainRecordPayload( record );
+        s.size = TableRetainRecordPayloadBytes( record );
+        s.at = 0;
+        s.ids = &ids;
+        s.w = &w;
+        s.bytes = 0;
+        if ( !TableRetainOutPayload( s, TableRetainRecordKind( record ), 0 ) ) { return false; }
+        record[25] = 1; // PLACED: the one mark the save leaves on the buffer
+    }
+    return !w.overflow;
+}
+
+// THE SAVE'S OWN SHARE OF retain_lost, counted ONCE and read after the save
+// (§6.6): every record the walk did not place. A record whose path no longer
+// names a body, one the caller's id list had no room for, and one the walk
+// could not read back are one number here, because the check a caller reads is
+// one number. A record is marked as it is written, so this cannot double-count
+// a body measured twice.
+inline void TableRetainClearPlaced( TableRetain * retain )
+{
+    if ( retain == NULL || retain->bytes == NULL ) { return; }
+    int64_t at = 0;
+    for ( int32_t k = 0; k < retain->count; k++ )
+    {
+        retain->bytes[ at + 25 ] = 0;
+        at += TableRetainRecordBytes( retain->bytes + at );
+    }
+}
+
+inline void TableRetainCountLost( const TableRetain * retain, TableReport * report )
+{
+    if ( retain == NULL || retain->bytes == NULL || report == NULL ) { return; }
+    int64_t at = 0;
+    for ( int32_t k = 0; k < retain->count; k++ )
+    {
+        const uint8_t * record = retain->bytes + at;
+        at += TableRetainRecordBytes( record );
+        if ( !TableRetainRecordPlaced( record ) ) { report->retain_lost++; }
+    }
+}
+
+// THE NODE TABLE under retention (§3.1, §6.6): the same fill rule the plain
+// pair derives, with the retain family's ids and each record's own body
+// reached through a dispatch the CALL supplies rather than a second pair of
+// thunks on the numbering. A store per node on the PLAIN save path would be a
+// cost this feature is not allowed to have.
+template <typename Ctx, typename Measure>
+inline int64_t TableNodeTablePayloadRetain( const Ctx & ctx, TableRetainIds & ids, const TableNumbering & n,
+                                            TableRetain * retain, Measure measure )
+{
+    int64_t payload = TableLebBytes( (uint64_t) n.count );
+    for ( int64_t k = 0; k < n.count; k++ )
+    {
+        payload += TableLebBytes( ids.ref( n.entries[k].type_id ) );
+        const int64_t body = measure( ctx, n, ids, n.entries[k].type_id, n.entries[k].node, retain );
+        if ( body < 0 ) { return -1; }
+        payload += TableLebBytes( (uint64_t) body ) + body;
+    }
+    return payload;
+}
+
+template <typename Ctx, typename Measure>
+inline int64_t TableNodeTableMeasureRetain( const Ctx & ctx, TableRetainIds & ids, const TableNumbering & n,
+                                            TableRetain * retain, Measure measure )
+{
+    if ( n.count == 0 ) { return 0; }
+    const uint64_t ref = ids.ref( kTableNodeTableFieldId );
+    const int64_t payload = TableNodeTablePayloadRetain( ctx, ids, n, retain, measure );
+    if ( payload < 0 ) { return -1; }
+    return TableLebBytes( ref ) + 1 + TableLebBytes( (uint64_t) payload ) + payload;
+}
+
+template <typename Ctx, typename Measure, typename Save>
+inline bool TableNodeTableSaveRetain( const Ctx & ctx, TableWriter & w, TableRetainIds & ids, const TableNumbering & n,
+                                      TableRetain * retain, Measure measure, Save save )
+{
+    if ( n.count == 0 ) { return true; }
+    const uint64_t ref = ids.ref( kTableNodeTableFieldId );
+    const int64_t payload = TableNodeTablePayloadRetain( ctx, ids, n, retain, measure );
+    if ( payload < 0 ) { return false; }
+    w.putleb( ref );
+    w.put8( 12 ); // kind 12 is the opaque byte payload, exactly as the plain save writes it
+    w.putleb( (uint64_t) payload );
+    w.putleb( (uint64_t) n.count );
+    for ( int64_t k = 0; k < n.count; k++ )
+    {
+        w.putleb( ids.ref( n.entries[k].type_id ) );
+        const int64_t body = measure( ctx, n, ids, n.entries[k].type_id, n.entries[k].node, retain );
+        if ( body < 0 ) { return false; }
+        w.putleb( (uint64_t) body );
+        if ( !save( ctx, n, w, ids, n.entries[k].type_id, n.entries[k].node, retain ) ) { return false; }
+    }
+    return true;
+}
+} // namespace armdemo
+
+#endif // ARMDEMO_SCHEMA_TABLE_RETAIN
+
 #ifndef ARMDEMO_SCHEMA_TABLE_EXTENT
 #define ARMDEMO_SCHEMA_TABLE_EXTENT
 
@@ -4259,6 +5384,28 @@ template <typename Ctx> inline int64_t TableNodeMeasure( const Ctx & ctx, const 
 template <typename Ctx> inline bool TableNodeSave( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const Tray & value ) { return TraySaveBody( ctx, numbering, w, ids, value ); }
 template <typename Ctx> inline int64_t TableNodeMessageMeasure( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, int64_t at, const Tray & value ) { return TrayMeasureMessageBody( ctx, numbering, index_bits, at, value ); }
 template <typename Ctx> inline bool TableNodeMessageSave( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const Tray & value ) { return TraySaveMessageBody( ctx, numbering, index_bits, w, value ); }
+
+// ---- retain-unknown: the second family (docs/SPEC-TABLES.md §6.6) ----
+//
+// The same walks, with the PATH threaded and the unknown arm capturing. The
+// three above are untouched and cost nothing for these being here: a caller
+// that does not ask instantiates none of them.
+
+inline int64_t NodeMeasureBodyRetain( TableRetainIds & ids, const Node & value, TableRetain * retain, const TableRetainPath & path );
+ARMDEMO_TABLE_INLINE bool NodeSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const Node & value, TableRetain * retain, const TableRetainPath & path );
+ARMDEMO_TABLE_INLINE bool NodeLoadBodyRetain( TableReader & r, Node & value, TableRetain * retain, const TableRetainPath & path );
+template <typename Ctx> inline int64_t RingMeasureBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableRetainIds & ids, const Ring & value, TableRetain * retain, const TableRetainPath & path );
+template <typename Ctx> inline bool RingSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const Ring & value, TableRetain * retain, const TableRetainPath & path );
+template <typename Ctx> inline bool RingSaveBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const Ring & value, TableRetain * retain, const TableRetainPath & path );
+inline bool RingLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ring & value, TableRetain * retain, const TableRetainPath & path );
+template <typename Ctx> inline int64_t RackMeasureBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableRetainIds & ids, const Rack & value, TableRetain * retain, const TableRetainPath & path );
+template <typename Ctx> inline bool RackSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const Rack & value, TableRetain * retain, const TableRetainPath & path );
+template <typename Ctx> inline bool RackSaveBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const Rack & value, TableRetain * retain, const TableRetainPath & path );
+inline bool RackLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rack & value, TableRetain * retain, const TableRetainPath & path );
+template <typename Ctx> inline int64_t TrayMeasureBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableRetainIds & ids, const Tray & value, TableRetain * retain, const TableRetainPath & path );
+template <typename Ctx> inline bool TraySaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const Tray & value, TableRetain * retain, const TableRetainPath & path );
+template <typename Ctx> inline bool TraySaveBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const Tray & value, TableRetain * retain, const TableRetainPath & path );
+inline bool TrayLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Tray & value, TableRetain * retain, const TableRetainPath & path );
 
 inline int64_t NodeMeasureBody( TableIds & ids, const Node & value )
 {
@@ -10231,6 +11378,2106 @@ inline bool TrayLoadBuilder( TrayBuilder & builder, const uint8_t * wire_file, i
     allocator.free( allocator.context, directory );
     return ok;
 }
+
+inline int64_t NodeMeasureBodyRetain( TableRetainIds & ids, const Node & value, TableRetain * retain, const TableRetainPath & path )
+{
+    int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    if ( value.v != 0 ) { bytes += TableLebBytes( ids.ref( 0xaf63eb4c86020609ull ) ) + 1 + 4; } // v
+    bytes += TableRetainTailMeasure( retain, ids, path );
+    return bytes;
+}
+
+ARMDEMO_TABLE_INLINE bool NodeSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const Node & value, TableRetain * retain, const TableRetainPath & path )
+{
+    if ( value.v != 0 )
+    {
+        w.putleb( ids.ref( 0xaf63eb4c86020609ull ) ); w.put8( 4 ); // v
+        w.put32( uint32_t( value.v ) );
+    }
+    if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
+    w.put8( 0 ); // the ZERO REFERENCE that ends the body
+    return !w.overflow;
+}
+
+ARMDEMO_TABLE_INLINE bool NodeLoadBodyRetain( TableReader & r, Node & value, TableRetain * retain, const TableRetainPath & path )
+{
+    NodeReset( value ); // prefill declared defaults in place, then overlay
+    // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
+    // (docs/SPEC-TABLES.md §6.6): this body is being established, so
+    // whatever an earlier occurrence of it left is discarded before the
+    // winning one is read. The discard moves neither counter.
+    TableRetainDiscardBody( retain, path );
+    for ( ;; )
+    {
+        uint64_t field_ref = 0;
+        if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
+        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        const uint64_t field_id = r.ids->at( field_ref );
+        if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
+        uint8_t kind = r.get8();
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
+        {
+            // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
+            // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
+            // table's is the ROOT body's alone, on the numbering's own
+            // rule — a second numbering cannot exist — and the BUILD
+            // VERSION's rides in the announcement and nowhere else. That
+            // body stops and the parent reads on past its L.
+            r.report->malformed = true;
+            return false;
+        }
+        switch ( field_id )
+        {
+            case 0xaf63eb4c86020609ull: // v
+            {
+                if ( kind != 4 )
+                {
+                    if ( TableKindWidens( kind, 4 ) )
+                    {
+                        // WIDENED (§4): a kind that grew since the writer decodes
+                        // exactly at its own width, the value lands, one widened counts
+                        int64_t widened_v = 0;
+                        if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
+                        int32_t decoded_v = (int32_t) widened_v;
+                        value.v = decoded_v;
+                        r.report->widened++;
+                        break;
+                    }
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    r.report->kind_mismatch++;
+                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                    break;
+                }
+                if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
+                int32_t decoded_v = int32_t( r.get32( ) );
+                value.v = decoded_v;
+                break;
+            }
+            default:
+            {
+                r.report->unknown++;
+                if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
+                break;
+            }
+        }
+    }
+}
+
+template <typename Ctx>
+inline int64_t RingMeasureBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableRetainIds & ids, const Ring & value, TableRetain * retain, const TableRetainPath & path )
+{
+    int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    {
+        // items: a kind 14 array of kind 15 elements, INDEX order (§2.9)
+        TableListCursor<Slot> cursor_items = TableListElements( ctx, value.items );
+        if ( !cursor_items.ok ) { return -1; } // the slot and the head disagree
+        if ( cursor_items.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
+        {
+            const uint64_t ref_items = ids.ref( 0x3e7884bf4f412c6full );
+            int64_t body_items = 0;
+            body_items += 1 + TableLebBytes( (uint64_t) ( cursor_items.count ) ); // the element kind byte and the count
+            for ( int32_t elem_i_items = 0; elem_i_items < cursor_items.count; elem_i_items++ )
+            {
+                if ( cursor_items[elem_i_items].type == SlotType::None ) { body_items += 1; } // a None element is the zero reference in its place
+                else
+                {
+                    switch ( cursor_items[elem_i_items].type )
+                    {
+                        case SlotType::None: break;
+                        case SlotType::Node:
+                        {
+                            int64_t arm_payload_itemsu = 0;
+                            const uint64_t arm_ref_itemsu = ids.ref( 0x3c2f1bbad18642adull );
+                            {
+                                const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].node );
+                                uint64_t arm_index_itemsu = 0;
+                                if ( arm_pointee_itemsu != NULL && !TableNumberingIndex( numbering, (const void *) arm_pointee_itemsu, arm_index_itemsu ) ) { return -1; }
+                                arm_payload_itemsu += TableLebBytes( arm_index_itemsu ); // a node index, null as 0 (§3.1)
+                            }
+                            body_items += TableLebBytes( arm_ref_itemsu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_itemsu ) ) + ( arm_payload_itemsu );
+                            break;
+                        }
+                        case SlotType::Plain:
+                        {
+                            int64_t arm_payload_itemsu = 0;
+                            const uint64_t arm_ref_itemsu = ids.ref( 0xfd4d194e1652b207ull );
+                            arm_payload_itemsu += 4; // int32
+                            body_items += TableLebBytes( arm_ref_itemsu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_itemsu ) ) + ( arm_payload_itemsu );
+                            break;
+                        }
+                        default: return -1; // invalid tag — the write side refuses it too
+                    }
+                }
+            }
+            bytes += TableLebBytes( ref_items ) + 1 + TableLebBytes( (uint64_t) ( body_items ) ) + ( body_items );
+        }
+    }
+    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref( 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    bytes += TableRetainTailMeasure( retain, ids, path );
+    return bytes;
+}
+
+template <typename Ctx>
+inline bool RingSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const Ring & value, TableRetain * retain, const TableRetainPath & path )
+{
+    {
+        TableListCursor<Slot> cursor_items = TableListElements( ctx, value.items ); // items
+        if ( !cursor_items.ok ) { return false; }
+        if ( cursor_items.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
+        {
+            const uint64_t ref_items = ids.ref( 0x3e7884bf4f412c6full );
+            int64_t body_items = 0;
+            body_items += 1 + TableLebBytes( (uint64_t) ( cursor_items.count ) ); // the element kind byte and the count
+            for ( int32_t elem_i_items = 0; elem_i_items < cursor_items.count; elem_i_items++ )
+            {
+                if ( cursor_items[elem_i_items].type == SlotType::None ) { body_items += 1; } // a None element is the zero reference in its place
+                else
+                {
+                    switch ( cursor_items[elem_i_items].type )
+                    {
+                        case SlotType::None: break;
+                        case SlotType::Node:
+                        {
+                            int64_t arm_payload_itemsu = 0;
+                            const uint64_t arm_ref_itemsu = ids.ref( 0x3c2f1bbad18642adull );
+                            {
+                                const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].node );
+                                uint64_t arm_index_itemsu = 0;
+                                if ( arm_pointee_itemsu != NULL && !TableNumberingIndex( numbering, (const void *) arm_pointee_itemsu, arm_index_itemsu ) ) { return -1; }
+                                arm_payload_itemsu += TableLebBytes( arm_index_itemsu ); // a node index, null as 0 (§3.1)
+                            }
+                            body_items += TableLebBytes( arm_ref_itemsu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_itemsu ) ) + ( arm_payload_itemsu );
+                            break;
+                        }
+                        case SlotType::Plain:
+                        {
+                            int64_t arm_payload_itemsu = 0;
+                            const uint64_t arm_ref_itemsu = ids.ref( 0xfd4d194e1652b207ull );
+                            arm_payload_itemsu += 4; // int32
+                            body_items += TableLebBytes( arm_ref_itemsu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_itemsu ) ) + ( arm_payload_itemsu );
+                            break;
+                        }
+                        default: return -1; // invalid tag — the write side refuses it too
+                    }
+                }
+            }
+            w.putleb( ref_items ); w.put8( 14 ); w.putleb( (uint64_t) body_items ); // items
+            w.put8( 15 ); w.putleb( (uint64_t) ( cursor_items.count ) );
+            for ( int32_t elem_i_items = 0; elem_i_items < cursor_items.count; elem_i_items++ )
+            {
+                if ( cursor_items[elem_i_items].type == SlotType::None ) { w.putleb( 0 ); } // a None element rides in its place
+                else
+                {
+                    switch ( cursor_items[elem_i_items].type )
+                    {
+                        case SlotType::Node:
+                        {
+                            const uint64_t arm_ref_itemsu = ids.ref( 0x3c2f1bbad18642adull );
+                            int64_t arm_payload_itemsu = 0;
+                            {
+                                const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].node );
+                                uint64_t arm_index_itemsu = 0;
+                                if ( arm_pointee_itemsu != NULL && !TableNumberingIndex( numbering, (const void *) arm_pointee_itemsu, arm_index_itemsu ) ) { return false; }
+                                arm_payload_itemsu += TableLebBytes( arm_index_itemsu ); // a node index, null as 0 (§3.1)
+                            }
+                            w.putleb( arm_ref_itemsu ); w.put8( 17 ); w.putleb( (uint64_t) arm_payload_itemsu ); // node
+                            {
+                                const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].node );
+                                uint64_t arm_index_itemsu = 0;
+                                if ( arm_pointee_itemsu != NULL && !TableNumberingIndex( numbering, (const void *) arm_pointee_itemsu, arm_index_itemsu ) ) { return false; }
+                                w.putleb( arm_index_itemsu ); // a node index, null as 0 (§3.1)
+                            }
+                            break;
+                        }
+                        case SlotType::Plain:
+                        {
+                            const uint64_t arm_ref_itemsu = ids.ref( 0xfd4d194e1652b207ull );
+                            int64_t arm_payload_itemsu = 0;
+                            arm_payload_itemsu += 4; // int32
+                            w.putleb( arm_ref_itemsu ); w.put8( 4 ); w.putleb( (uint64_t) arm_payload_itemsu ); // plain
+                            w.put32( uint32_t( cursor_items[elem_i_items].plain ) );
+                            break;
+                        }
+                        default: return false; // write validates the tag before it rides
+                    }
+                }
+            }
+        }
+    }
+    if ( value.after != 0 )
+    {
+        w.putleb( ids.ref( 0xbf82010f6f71eae9ull ) ); w.put8( 4 ); // after
+        w.put32( uint32_t( value.after ) );
+    }
+    if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
+    return !w.overflow;
+}
+
+template <typename Ctx>
+inline bool RingSaveBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const Ring & value, TableRetain * retain, const TableRetainPath & path )
+{
+    if ( !RingSaveBodyFieldsRetain( ctx, numbering, w, ids, value, retain, path ) ) { return false; }
+    w.put8( 0 ); // the ZERO REFERENCE that ends the body
+    return !w.overflow;
+}
+
+inline bool RingLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ring & value, TableRetain * retain, const TableRetainPath & path )
+{
+    RingReset( value ); // prefill declared defaults in place, then overlay
+    // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
+    // (docs/SPEC-TABLES.md §6.6): this body is being established, so
+    // whatever an earlier occurrence of it left is discarded before the
+    // winning one is read. The discard moves neither counter.
+    TableRetainDiscardBody( retain, path );
+    for ( ;; )
+    {
+        uint64_t field_ref = 0;
+        if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
+        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        const uint64_t field_id = r.ids->at( field_ref );
+        if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
+        uint8_t kind = r.get8();
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
+        {
+            // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
+            // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
+            // table's is the ROOT body's alone, on the numbering's own
+            // rule — a second numbering cannot exist — and the BUILD
+            // VERSION's rides in the announcement and nowhere else. That
+            // body stops and the parent reads on past its L.
+            r.report->malformed = true;
+            return false;
+        }
+        switch ( field_id )
+        {
+            case 0x3e7884bf4f412c6full: // items
+            {
+                if ( kind != 14 )
+                {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    r.report->kind_mismatch++;
+                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                    break;
+                }
+                uint64_t body_len = 0;
+                if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
+                int64_t body_end = r.offset + (int64_t) body_len;
+                // A BODY TOO SHORT FOR ITS OWN HEADER is INERT (§4): the field keeps
+                // the value it has, no counter is raised, and the walk continues past L.
+                if ( body_len >= 2 )
+                {
+                    uint8_t elem_kind = r.get8();
+                    uint64_t count = 0;
+                    const bool counted_ok = r.getleb( count );
+                    if ( !counted_ok ) { r.report->malformed = true; }
+                    // AN ELEMENT KIND THAT DISAGREES with the reader's declaration is §3's
+                    // element-kind rule: the field reads EMPTY and one kind_mismatch counts
+                    else if ( elem_kind != 15 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                    else
+                    {
+                        // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
+                        // cannot fire on it. A count above the int32 storage cap is the
+                        // fill's refusal, and it moves no counter.
+                        // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
+                        // records under this field go with the value it is about to lose.
+                        TableRetainDiscardField( retain, path, 0 );
+                        TableListFill<Slot> fill = TableListFillBegin( nodes, value.items, count );
+                        if ( fill.refused ) { nodes.refused = true; return false; }
+                        if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
+                        // elements are BOUNDED by the field body: a count the length cannot
+                        // cover keeps the decoded prefix, flags malformed, and the parent
+                        // continues at the next field
+                        TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        for ( uint64_t i = 0; i < count; i++ )
+                        {
+                            Slot * slot = TableListFillNext( fill );
+                            if ( slot == NULL ) { r.report->malformed = true; break; } // the arena could not carve
+                            bool landed = false;
+                            do
+                            {
+                                {
+                                    uint64_t elem_arm_ref_items = 0;
+                                    if ( !sub.getleb( elem_arm_ref_items ) ) { r.report->malformed = true; break; }
+                                    ( *slot ).type = SlotType::None;
+                                    if ( elem_arm_ref_items != 0 ) // the zero reference is a None element in its place
+                                    {
+                                        if ( elem_arm_ref_items > (uint64_t) r.ids->count ) { r.report->malformed = true; break; }
+                                        const uint64_t elem_arm_id_items = r.ids->at( elem_arm_ref_items );
+                                        if ( !sub.has( 1 ) ) { r.report->malformed = true; break; }
+                                        const uint8_t elem_arm_kind_items = sub.get8();
+                                        uint64_t elem_arm_len_items = 0;
+                                        if ( !sub.getleb( elem_arm_len_items ) || !sub.room( elem_arm_len_items ) ) { r.report->malformed = true; break; }
+                                        TableReader elem_arm_items( sub.buffer + sub.offset, (int64_t) elem_arm_len_items, r.report, r.ids );
+                                        switch ( elem_arm_id_items ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
+                                        {
+                                            case 0x3c2f1bbad18642adull: // node
+                                            {
+                                                if ( elem_arm_kind_items != 17 )
+                                                {
+                                                    ( *slot ).type = SlotType::None; r.report->kind_mismatch++; break;
+                                                }
+                                                ( *slot ).type = SlotType::Node;
+                                                {
+                                                    uint64_t node_index_itemsa = 0;
+                                                    if ( !elem_arm_items.getleb( node_index_itemsa ) ) { ( *slot ).type = SlotType::None; r.report->malformed = true; break; }
+                                                    if ( elem_arm_items.offset != elem_arm_items.size ) { ( *slot ).type = SlotType::None; r.report->malformed = true; break; }
+                                                    TableNodeResolve( nodes, ( *slot ).node, node_index_itemsa, 0x66bd1cc6d2f6b68dull, r.report ); // *Node
+                                                }
+                                                break;
+                                            }
+                                            case 0xfd4d194e1652b207ull: // plain
+                                            {
+                                                if ( elem_arm_kind_items != 4 )
+                                                {
+                                                    if ( TableKindWidens( elem_arm_kind_items, 4 ) )
+                                                    {
+                                                        // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L
+                                                        // that is not that width is the arm's own framing damage (§3)
+                                                        if ( elem_arm_items.size != TableKindWidth( elem_arm_kind_items ) ) { ( *slot ).type = SlotType::None; r.report->malformed = true; break; }
+                                                        memset( (void *) &( *slot ).plain, 0, sizeof( ( *slot ).plain ) ); // selection establishes the arm (§2.6)
+                                                        int64_t widened_v = 0;
+                                                        if ( !TableReadSignedAt( elem_arm_items, elem_arm_kind_items, widened_v ) ) { ( *slot ).type = SlotType::None; r.report->malformed = true; break; }
+                                                        int32_t decoded_v = (int32_t) widened_v;
+                                                        ( *slot ).plain = decoded_v;
+                                                        ( *slot ).type = SlotType::Plain;
+                                                        r.report->widened++;
+                                                        break;
+                                                    }
+                                                    ( *slot ).type = SlotType::None; r.report->kind_mismatch++; break;
+                                                }
+                                                ( *slot ).type = SlotType::Plain;
+                                                if ( elem_arm_items.size != 4 ) { ( *slot ).type = SlotType::None; r.report->malformed = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                                if ( !elem_arm_items.has( 4 ) ) { ( *slot ).type = SlotType::None; r.report->malformed = true; break; }
+                                                int32_t decoded_v = int32_t( elem_arm_items.get32( ) );
+                                                ( *slot ).plain = decoded_v;
+                                                break;
+                                            }
+                                            default: r.report->unknown++; r.report->retain_lost++; break; // an arm this reader cannot name: the element reads None, the body skips by its length
+                                        }
+                                        sub.offset += (int64_t) elem_arm_len_items;
+                                    }
+                                }
+                                landed = true;
+                            } while ( 0 );
+                            if ( !landed ) { TableListFillDrop( fill ); break; } // the element's own framing gave out before it decoded
+                        }
+                        TableListFillEnd( fill );
+                    }
+                }
+                r.offset = body_end; // excess bytes and slack skip via the length
+                break;
+            }
+            case 0xbf82010f6f71eae9ull: // after
+            {
+                if ( kind != 4 )
+                {
+                    if ( TableKindWidens( kind, 4 ) )
+                    {
+                        // WIDENED (§4): a kind that grew since the writer decodes
+                        // exactly at its own width, the value lands, one widened counts
+                        int64_t widened_v = 0;
+                        if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
+                        int32_t decoded_v = (int32_t) widened_v;
+                        value.after = decoded_v;
+                        r.report->widened++;
+                        break;
+                    }
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    r.report->kind_mismatch++;
+                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                    break;
+                }
+                if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
+                int32_t decoded_v = int32_t( r.get32( ) );
+                value.after = decoded_v;
+                break;
+            }
+            case 0xffffffffffffffffull:
+            {
+                if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                break;
+            }
+            default:
+            {
+                r.report->unknown++;
+                if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
+                break;
+            }
+        }
+    }
+}
+
+template <typename Ctx>
+inline int64_t RackMeasureBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableRetainIds & ids, const Rack & value, TableRetain * retain, const TableRetainPath & path )
+{
+    int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    {
+        // items: a kind 14 array of kind 15 elements, INDEX order (§2.9)
+        TableListCursor<Slots> cursor_items = TableListElements( ctx, value.items );
+        if ( !cursor_items.ok ) { return -1; } // the slot and the head disagree
+        if ( cursor_items.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
+        {
+            const uint64_t ref_items = ids.ref( 0x3e7884bf4f412c6full );
+            int64_t body_items = 0;
+            body_items += 1 + TableLebBytes( (uint64_t) ( cursor_items.count ) ); // the element kind byte and the count
+            for ( int32_t elem_i_items = 0; elem_i_items < cursor_items.count; elem_i_items++ )
+            {
+                if ( cursor_items[elem_i_items].type == SlotsType::None ) { body_items += 1; } // a None element is the zero reference in its place
+                else
+                {
+                    switch ( cursor_items[elem_i_items].type )
+                    {
+                        case SlotsType::None: break;
+                        case SlotsType::Many:
+                        {
+                            int64_t arm_payload_itemsu = 0;
+                            const uint64_t arm_ref_itemsu = ids.ref( 0x1f6459a2cea1fc02ull );
+                            if ( cursor_items[elem_i_items].many.value_count < 0 || cursor_items[elem_i_items].many.value_count > 2 ) { return -1; } // storage invariant
+                            arm_payload_itemsu += 1 + TableLebBytes( (uint64_t) ( cursor_items[elem_i_items].many.value_count ) ); // the element kind byte and the count
+                            for ( int32_t elem_i_itemsue = 0; elem_i_itemsue < cursor_items[elem_i_items].many.value_count; elem_i_itemsue++ )
+                            {
+                                {
+                                    const Node * slot_pointee_itemsue = NodeAt( ctx, cursor_items[elem_i_items].many.value[elem_i_itemsue] );
+                                    uint64_t slot_index_itemsue = 0;
+                                    if ( slot_pointee_itemsue != NULL && !TableNumberingIndex( numbering, (const void *) slot_pointee_itemsue, slot_index_itemsue ) ) { return -1; }
+                                    arm_payload_itemsu += TableLebBytes( slot_index_itemsue );
+                                }
+                            }
+                            body_items += TableLebBytes( arm_ref_itemsu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_itemsu ) ) + ( arm_payload_itemsu );
+                            break;
+                        }
+                        case SlotsType::Plain:
+                        {
+                            int64_t arm_payload_itemsu = 0;
+                            const uint64_t arm_ref_itemsu = ids.ref( 0xfd4d194e1652b207ull );
+                            arm_payload_itemsu += 4; // int32
+                            body_items += TableLebBytes( arm_ref_itemsu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_itemsu ) ) + ( arm_payload_itemsu );
+                            break;
+                        }
+                        default: return -1; // invalid tag — the write side refuses it too
+                    }
+                }
+            }
+            bytes += TableLebBytes( ref_items ) + 1 + TableLebBytes( (uint64_t) ( body_items ) ) + ( body_items );
+        }
+    }
+    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref( 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    bytes += TableRetainTailMeasure( retain, ids, path );
+    return bytes;
+}
+
+template <typename Ctx>
+inline bool RackSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const Rack & value, TableRetain * retain, const TableRetainPath & path )
+{
+    {
+        TableListCursor<Slots> cursor_items = TableListElements( ctx, value.items ); // items
+        if ( !cursor_items.ok ) { return false; }
+        if ( cursor_items.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
+        {
+            const uint64_t ref_items = ids.ref( 0x3e7884bf4f412c6full );
+            int64_t body_items = 0;
+            body_items += 1 + TableLebBytes( (uint64_t) ( cursor_items.count ) ); // the element kind byte and the count
+            for ( int32_t elem_i_items = 0; elem_i_items < cursor_items.count; elem_i_items++ )
+            {
+                if ( cursor_items[elem_i_items].type == SlotsType::None ) { body_items += 1; } // a None element is the zero reference in its place
+                else
+                {
+                    switch ( cursor_items[elem_i_items].type )
+                    {
+                        case SlotsType::None: break;
+                        case SlotsType::Many:
+                        {
+                            int64_t arm_payload_itemsu = 0;
+                            const uint64_t arm_ref_itemsu = ids.ref( 0x1f6459a2cea1fc02ull );
+                            if ( cursor_items[elem_i_items].many.value_count < 0 || cursor_items[elem_i_items].many.value_count > 2 ) { return -1; } // storage invariant
+                            arm_payload_itemsu += 1 + TableLebBytes( (uint64_t) ( cursor_items[elem_i_items].many.value_count ) ); // the element kind byte and the count
+                            for ( int32_t elem_i_itemsue = 0; elem_i_itemsue < cursor_items[elem_i_items].many.value_count; elem_i_itemsue++ )
+                            {
+                                {
+                                    const Node * slot_pointee_itemsue = NodeAt( ctx, cursor_items[elem_i_items].many.value[elem_i_itemsue] );
+                                    uint64_t slot_index_itemsue = 0;
+                                    if ( slot_pointee_itemsue != NULL && !TableNumberingIndex( numbering, (const void *) slot_pointee_itemsue, slot_index_itemsue ) ) { return -1; }
+                                    arm_payload_itemsu += TableLebBytes( slot_index_itemsue );
+                                }
+                            }
+                            body_items += TableLebBytes( arm_ref_itemsu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_itemsu ) ) + ( arm_payload_itemsu );
+                            break;
+                        }
+                        case SlotsType::Plain:
+                        {
+                            int64_t arm_payload_itemsu = 0;
+                            const uint64_t arm_ref_itemsu = ids.ref( 0xfd4d194e1652b207ull );
+                            arm_payload_itemsu += 4; // int32
+                            body_items += TableLebBytes( arm_ref_itemsu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_itemsu ) ) + ( arm_payload_itemsu );
+                            break;
+                        }
+                        default: return -1; // invalid tag — the write side refuses it too
+                    }
+                }
+            }
+            w.putleb( ref_items ); w.put8( 14 ); w.putleb( (uint64_t) body_items ); // items
+            w.put8( 15 ); w.putleb( (uint64_t) ( cursor_items.count ) );
+            for ( int32_t elem_i_items = 0; elem_i_items < cursor_items.count; elem_i_items++ )
+            {
+                if ( cursor_items[elem_i_items].type == SlotsType::None ) { w.putleb( 0 ); } // a None element rides in its place
+                else
+                {
+                    switch ( cursor_items[elem_i_items].type )
+                    {
+                        case SlotsType::Many:
+                        {
+                            const uint64_t arm_ref_itemsu = ids.ref( 0x1f6459a2cea1fc02ull );
+                            int64_t arm_payload_itemsu = 0;
+                            if ( cursor_items[elem_i_items].many.value_count < 0 || cursor_items[elem_i_items].many.value_count > 2 ) { return false; } // storage invariant
+                            arm_payload_itemsu += 1 + TableLebBytes( (uint64_t) ( cursor_items[elem_i_items].many.value_count ) ); // the element kind byte and the count
+                            for ( int32_t elem_i_itemsue = 0; elem_i_itemsue < cursor_items[elem_i_items].many.value_count; elem_i_itemsue++ )
+                            {
+                                {
+                                    const Node * slot_pointee_itemsue = NodeAt( ctx, cursor_items[elem_i_items].many.value[elem_i_itemsue] );
+                                    uint64_t slot_index_itemsue = 0;
+                                    if ( slot_pointee_itemsue != NULL && !TableNumberingIndex( numbering, (const void *) slot_pointee_itemsue, slot_index_itemsue ) ) { return false; }
+                                    arm_payload_itemsu += TableLebBytes( slot_index_itemsue );
+                                }
+                            }
+                            w.putleb( arm_ref_itemsu ); w.put8( 14 ); w.putleb( (uint64_t) arm_payload_itemsu ); // many
+                            if ( cursor_items[elem_i_items].many.value_count < 0 || cursor_items[elem_i_items].many.value_count > 2 ) { return false; } // storage invariant
+                            w.put8( 17 ); w.putleb( (uint64_t) ( cursor_items[elem_i_items].many.value_count ) );
+                            for ( int32_t elem_i_itemsue = 0; elem_i_itemsue < cursor_items[elem_i_items].many.value_count; elem_i_itemsue++ )
+                            {
+                                {
+                                    const Node * slot_pointee_itemsue = NodeAt( ctx, cursor_items[elem_i_items].many.value[elem_i_itemsue] );
+                                    uint64_t slot_index_itemsue = 0;
+                                    if ( slot_pointee_itemsue != NULL && !TableNumberingIndex( numbering, (const void *) slot_pointee_itemsue, slot_index_itemsue ) ) { return false; }
+                                    w.putleb( slot_index_itemsue );
+                                }
+                            }
+                            break;
+                        }
+                        case SlotsType::Plain:
+                        {
+                            const uint64_t arm_ref_itemsu = ids.ref( 0xfd4d194e1652b207ull );
+                            int64_t arm_payload_itemsu = 0;
+                            arm_payload_itemsu += 4; // int32
+                            w.putleb( arm_ref_itemsu ); w.put8( 4 ); w.putleb( (uint64_t) arm_payload_itemsu ); // plain
+                            w.put32( uint32_t( cursor_items[elem_i_items].plain ) );
+                            break;
+                        }
+                        default: return false; // write validates the tag before it rides
+                    }
+                }
+            }
+        }
+    }
+    if ( value.after != 0 )
+    {
+        w.putleb( ids.ref( 0xbf82010f6f71eae9ull ) ); w.put8( 4 ); // after
+        w.put32( uint32_t( value.after ) );
+    }
+    if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
+    return !w.overflow;
+}
+
+template <typename Ctx>
+inline bool RackSaveBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const Rack & value, TableRetain * retain, const TableRetainPath & path )
+{
+    if ( !RackSaveBodyFieldsRetain( ctx, numbering, w, ids, value, retain, path ) ) { return false; }
+    w.put8( 0 ); // the ZERO REFERENCE that ends the body
+    return !w.overflow;
+}
+
+inline bool RackLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rack & value, TableRetain * retain, const TableRetainPath & path )
+{
+    RackReset( value ); // prefill declared defaults in place, then overlay
+    // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
+    // (docs/SPEC-TABLES.md §6.6): this body is being established, so
+    // whatever an earlier occurrence of it left is discarded before the
+    // winning one is read. The discard moves neither counter.
+    TableRetainDiscardBody( retain, path );
+    for ( ;; )
+    {
+        uint64_t field_ref = 0;
+        if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
+        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        const uint64_t field_id = r.ids->at( field_ref );
+        if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
+        uint8_t kind = r.get8();
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
+        {
+            // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
+            // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
+            // table's is the ROOT body's alone, on the numbering's own
+            // rule — a second numbering cannot exist — and the BUILD
+            // VERSION's rides in the announcement and nowhere else. That
+            // body stops and the parent reads on past its L.
+            r.report->malformed = true;
+            return false;
+        }
+        switch ( field_id )
+        {
+            case 0x3e7884bf4f412c6full: // items
+            {
+                if ( kind != 14 )
+                {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    r.report->kind_mismatch++;
+                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                    break;
+                }
+                uint64_t body_len = 0;
+                if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
+                int64_t body_end = r.offset + (int64_t) body_len;
+                // A BODY TOO SHORT FOR ITS OWN HEADER is INERT (§4): the field keeps
+                // the value it has, no counter is raised, and the walk continues past L.
+                if ( body_len >= 2 )
+                {
+                    uint8_t elem_kind = r.get8();
+                    uint64_t count = 0;
+                    const bool counted_ok = r.getleb( count );
+                    if ( !counted_ok ) { r.report->malformed = true; }
+                    // AN ELEMENT KIND THAT DISAGREES with the reader's declaration is §3's
+                    // element-kind rule: the field reads EMPTY and one kind_mismatch counts
+                    else if ( elem_kind != 15 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                    else
+                    {
+                        // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
+                        // cannot fire on it. A count above the int32 storage cap is the
+                        // fill's refusal, and it moves no counter.
+                        // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
+                        // records under this field go with the value it is about to lose.
+                        TableRetainDiscardField( retain, path, 0 );
+                        TableListFill<Slots> fill = TableListFillBegin( nodes, value.items, count );
+                        if ( fill.refused ) { nodes.refused = true; return false; }
+                        if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
+                        // elements are BOUNDED by the field body: a count the length cannot
+                        // cover keeps the decoded prefix, flags malformed, and the parent
+                        // continues at the next field
+                        TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        for ( uint64_t i = 0; i < count; i++ )
+                        {
+                            Slots * slot = TableListFillNext( fill );
+                            if ( slot == NULL ) { r.report->malformed = true; break; } // the arena could not carve
+                            bool landed = false;
+                            do
+                            {
+                                {
+                                    uint64_t elem_arm_ref_items = 0;
+                                    if ( !sub.getleb( elem_arm_ref_items ) ) { r.report->malformed = true; break; }
+                                    ( *slot ).type = SlotsType::None;
+                                    if ( elem_arm_ref_items != 0 ) // the zero reference is a None element in its place
+                                    {
+                                        if ( elem_arm_ref_items > (uint64_t) r.ids->count ) { r.report->malformed = true; break; }
+                                        const uint64_t elem_arm_id_items = r.ids->at( elem_arm_ref_items );
+                                        if ( !sub.has( 1 ) ) { r.report->malformed = true; break; }
+                                        const uint8_t elem_arm_kind_items = sub.get8();
+                                        uint64_t elem_arm_len_items = 0;
+                                        if ( !sub.getleb( elem_arm_len_items ) || !sub.room( elem_arm_len_items ) ) { r.report->malformed = true; break; }
+                                        TableReader elem_arm_items( sub.buffer + sub.offset, (int64_t) elem_arm_len_items, r.report, r.ids );
+                                        switch ( elem_arm_id_items ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
+                                        {
+                                            case 0x1f6459a2cea1fc02ull: // many
+                                            {
+                                                if ( elem_arm_kind_items != 14 )
+                                                {
+                                                    ( *slot ).type = SlotsType::None; r.report->kind_mismatch++; break;
+                                                }
+                                                ( *slot ).type = SlotsType::Many;
+                                                memset( (void *) &( *slot ).many, 0, sizeof( ( *slot ).many ) ); // selection establishes the arm (§2.6)
+                                                if ( !elem_arm_items.has( 2 ) ) { break; }
+                                                {
+                                                    uint8_t arm_elem_kind_itemsa = elem_arm_items.get8();
+                                                    uint64_t arm_count_itemsa = 0;
+                                                    if ( !elem_arm_items.getleb( arm_count_itemsa ) ) { ( *slot ).type = SlotsType::None; r.report->malformed = true; break; }
+                                                    if ( arm_elem_kind_itemsa != 17 ) { ( *slot ).type = SlotsType::None; r.report->kind_mismatch++; break; }
+                                                    uint64_t arm_keep_itemsa = arm_count_itemsa;
+                                                    if ( arm_keep_itemsa > 2 ) { arm_keep_itemsa = 2; r.report->clamped++; }
+                                                    const uint8_t * arm_elems_itemsa = elem_arm_items.buffer + elem_arm_items.offset;
+                                                    int64_t arm_left_itemsa = elem_arm_items.size - elem_arm_items.offset;
+                                                    TableReader arm_sub_itemsa( arm_elems_itemsa, arm_left_itemsa, r.report, r.ids );
+                                                    uint64_t arm_decoded_itemsa = 0;
+                                                    for ( uint64_t arm_i_itemsa = 0; arm_i_itemsa < arm_keep_itemsa; arm_i_itemsa++ )
+                                                    {
+                                                        {
+                                                            uint64_t node_index_itemsae = 0;
+                                                            if ( !arm_sub_itemsa.getleb( node_index_itemsae ) ) { r.report->malformed = true; break; }
+                                                            TableNodeResolve( nodes, ( *slot ).many.value[(int32_t) arm_i_itemsa], node_index_itemsae, 0x66bd1cc6d2f6b68dull, r.report ); // *Node
+                                                        }
+                                                        arm_decoded_itemsa = arm_i_itemsa + 1;
+                                                    }
+                                                    ( *slot ).many.value_count = (int32_t) arm_decoded_itemsa;
+                                                }
+                                                break;
+                                            }
+                                            case 0xfd4d194e1652b207ull: // plain
+                                            {
+                                                if ( elem_arm_kind_items != 4 )
+                                                {
+                                                    if ( TableKindWidens( elem_arm_kind_items, 4 ) )
+                                                    {
+                                                        // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L
+                                                        // that is not that width is the arm's own framing damage (§3)
+                                                        if ( elem_arm_items.size != TableKindWidth( elem_arm_kind_items ) ) { ( *slot ).type = SlotsType::None; r.report->malformed = true; break; }
+                                                        memset( (void *) &( *slot ).plain, 0, sizeof( ( *slot ).plain ) ); // selection establishes the arm (§2.6)
+                                                        int64_t widened_v = 0;
+                                                        if ( !TableReadSignedAt( elem_arm_items, elem_arm_kind_items, widened_v ) ) { ( *slot ).type = SlotsType::None; r.report->malformed = true; break; }
+                                                        int32_t decoded_v = (int32_t) widened_v;
+                                                        ( *slot ).plain = decoded_v;
+                                                        ( *slot ).type = SlotsType::Plain;
+                                                        r.report->widened++;
+                                                        break;
+                                                    }
+                                                    ( *slot ).type = SlotsType::None; r.report->kind_mismatch++; break;
+                                                }
+                                                ( *slot ).type = SlotsType::Plain;
+                                                if ( elem_arm_items.size != 4 ) { ( *slot ).type = SlotsType::None; r.report->malformed = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                                if ( !elem_arm_items.has( 4 ) ) { ( *slot ).type = SlotsType::None; r.report->malformed = true; break; }
+                                                int32_t decoded_v = int32_t( elem_arm_items.get32( ) );
+                                                ( *slot ).plain = decoded_v;
+                                                break;
+                                            }
+                                            default: r.report->unknown++; r.report->retain_lost++; break; // an arm this reader cannot name: the element reads None, the body skips by its length
+                                        }
+                                        sub.offset += (int64_t) elem_arm_len_items;
+                                    }
+                                }
+                                landed = true;
+                            } while ( 0 );
+                            if ( !landed ) { TableListFillDrop( fill ); break; } // the element's own framing gave out before it decoded
+                        }
+                        TableListFillEnd( fill );
+                    }
+                }
+                r.offset = body_end; // excess bytes and slack skip via the length
+                break;
+            }
+            case 0xbf82010f6f71eae9ull: // after
+            {
+                if ( kind != 4 )
+                {
+                    if ( TableKindWidens( kind, 4 ) )
+                    {
+                        // WIDENED (§4): a kind that grew since the writer decodes
+                        // exactly at its own width, the value lands, one widened counts
+                        int64_t widened_v = 0;
+                        if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
+                        int32_t decoded_v = (int32_t) widened_v;
+                        value.after = decoded_v;
+                        r.report->widened++;
+                        break;
+                    }
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    r.report->kind_mismatch++;
+                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                    break;
+                }
+                if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
+                int32_t decoded_v = int32_t( r.get32( ) );
+                value.after = decoded_v;
+                break;
+            }
+            case 0xffffffffffffffffull:
+            {
+                if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                break;
+            }
+            default:
+            {
+                r.report->unknown++;
+                if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
+                break;
+            }
+        }
+    }
+}
+
+template <typename Ctx>
+inline int64_t TrayMeasureBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableRetainIds & ids, const Tray & value, TableRetain * retain, const TableRetainPath & path )
+{
+    int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    if ( value.entries_count < 0 || value.entries_count > 2 ) { return -1; } // storage invariant
+    if ( value.entries_count > 0 )
+    {
+        const uint64_t ref_entries = ids.ref( 0xc5b2a72c0845a253ull );
+        int64_t body_entries = 0;
+        body_entries += 1 + TableLebBytes( (uint64_t) ( value.entries_count ) ); // the element kind byte and the count
+        for ( int32_t elem_i = 0; elem_i < value.entries_count; elem_i++ )
+        {
+            if ( value.entries[elem_i].type == SlotsType::None ) { body_entries += 1; } // a None element is the zero reference in its place
+            else
+            {
+                switch ( value.entries[elem_i].type )
+                {
+                    case SlotsType::None: break;
+                    case SlotsType::Many:
+                    {
+                        int64_t arm_payloadu = 0;
+                        const uint64_t arm_refu = ids.ref( 0x1f6459a2cea1fc02ull );
+                        if ( value.entries[elem_i].many.value_count < 0 || value.entries[elem_i].many.value_count > 2 ) { return -1; } // storage invariant
+                        arm_payloadu += 1 + TableLebBytes( (uint64_t) ( value.entries[elem_i].many.value_count ) ); // the element kind byte and the count
+                        for ( int32_t elem_iue = 0; elem_iue < value.entries[elem_i].many.value_count; elem_iue++ )
+                        {
+                            {
+                                const Node * slot_pointeeue = NodeAt( ctx, value.entries[elem_i].many.value[elem_iue] );
+                                uint64_t slot_indexue = 0;
+                                if ( slot_pointeeue != NULL && !TableNumberingIndex( numbering, (const void *) slot_pointeeue, slot_indexue ) ) { return -1; }
+                                arm_payloadu += TableLebBytes( slot_indexue );
+                            }
+                        }
+                        body_entries += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
+                        break;
+                    }
+                    case SlotsType::Plain:
+                    {
+                        int64_t arm_payloadu = 0;
+                        const uint64_t arm_refu = ids.ref( 0xfd4d194e1652b207ull );
+                        arm_payloadu += 4; // int32
+                        body_entries += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
+                        break;
+                    }
+                    default: return -1; // invalid tag — the write side refuses it too
+                }
+            }
+        }
+        bytes += TableLebBytes( ref_entries ) + 1 + TableLebBytes( (uint64_t) ( body_entries ) ) + ( body_entries ); // entries
+    }
+    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref( 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    bytes += TableRetainTailMeasure( retain, ids, path );
+    return bytes;
+}
+
+template <typename Ctx>
+inline bool TraySaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const Tray & value, TableRetain * retain, const TableRetainPath & path )
+{
+    if ( value.entries_count < 0 || value.entries_count > 2 ) { return false; } // storage invariant
+    if ( value.entries_count > 0 )
+    {
+        const uint64_t ref_entries = ids.ref( 0xc5b2a72c0845a253ull );
+        int64_t body_entries = 0;
+        body_entries += 1 + TableLebBytes( (uint64_t) ( value.entries_count ) ); // the element kind byte and the count
+        for ( int32_t elem_i = 0; elem_i < value.entries_count; elem_i++ )
+        {
+            if ( value.entries[elem_i].type == SlotsType::None ) { body_entries += 1; } // a None element is the zero reference in its place
+            else
+            {
+                switch ( value.entries[elem_i].type )
+                {
+                    case SlotsType::None: break;
+                    case SlotsType::Many:
+                    {
+                        int64_t arm_payloadu = 0;
+                        const uint64_t arm_refu = ids.ref( 0x1f6459a2cea1fc02ull );
+                        if ( value.entries[elem_i].many.value_count < 0 || value.entries[elem_i].many.value_count > 2 ) { return -1; } // storage invariant
+                        arm_payloadu += 1 + TableLebBytes( (uint64_t) ( value.entries[elem_i].many.value_count ) ); // the element kind byte and the count
+                        for ( int32_t elem_iue = 0; elem_iue < value.entries[elem_i].many.value_count; elem_iue++ )
+                        {
+                            {
+                                const Node * slot_pointeeue = NodeAt( ctx, value.entries[elem_i].many.value[elem_iue] );
+                                uint64_t slot_indexue = 0;
+                                if ( slot_pointeeue != NULL && !TableNumberingIndex( numbering, (const void *) slot_pointeeue, slot_indexue ) ) { return -1; }
+                                arm_payloadu += TableLebBytes( slot_indexue );
+                            }
+                        }
+                        body_entries += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
+                        break;
+                    }
+                    case SlotsType::Plain:
+                    {
+                        int64_t arm_payloadu = 0;
+                        const uint64_t arm_refu = ids.ref( 0xfd4d194e1652b207ull );
+                        arm_payloadu += 4; // int32
+                        body_entries += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
+                        break;
+                    }
+                    default: return -1; // invalid tag — the write side refuses it too
+                }
+            }
+        }
+        w.putleb( ref_entries ); w.put8( 14 ); w.putleb( (uint64_t) body_entries ); // entries
+        w.put8( 15 ); w.putleb( (uint64_t) ( value.entries_count ) );
+        for ( int32_t elem_i = 0; elem_i < value.entries_count; elem_i++ )
+        {
+            if ( value.entries[elem_i].type == SlotsType::None ) { w.putleb( 0 ); } // a None element rides in its place
+            else
+            {
+                switch ( value.entries[elem_i].type )
+                {
+                    case SlotsType::Many:
+                    {
+                        const uint64_t arm_refu = ids.ref( 0x1f6459a2cea1fc02ull );
+                        int64_t arm_payloadu = 0;
+                        if ( value.entries[elem_i].many.value_count < 0 || value.entries[elem_i].many.value_count > 2 ) { return false; } // storage invariant
+                        arm_payloadu += 1 + TableLebBytes( (uint64_t) ( value.entries[elem_i].many.value_count ) ); // the element kind byte and the count
+                        for ( int32_t elem_iue = 0; elem_iue < value.entries[elem_i].many.value_count; elem_iue++ )
+                        {
+                            {
+                                const Node * slot_pointeeue = NodeAt( ctx, value.entries[elem_i].many.value[elem_iue] );
+                                uint64_t slot_indexue = 0;
+                                if ( slot_pointeeue != NULL && !TableNumberingIndex( numbering, (const void *) slot_pointeeue, slot_indexue ) ) { return false; }
+                                arm_payloadu += TableLebBytes( slot_indexue );
+                            }
+                        }
+                        w.putleb( arm_refu ); w.put8( 14 ); w.putleb( (uint64_t) arm_payloadu ); // many
+                        if ( value.entries[elem_i].many.value_count < 0 || value.entries[elem_i].many.value_count > 2 ) { return false; } // storage invariant
+                        w.put8( 17 ); w.putleb( (uint64_t) ( value.entries[elem_i].many.value_count ) );
+                        for ( int32_t elem_iue = 0; elem_iue < value.entries[elem_i].many.value_count; elem_iue++ )
+                        {
+                            {
+                                const Node * slot_pointeeue = NodeAt( ctx, value.entries[elem_i].many.value[elem_iue] );
+                                uint64_t slot_indexue = 0;
+                                if ( slot_pointeeue != NULL && !TableNumberingIndex( numbering, (const void *) slot_pointeeue, slot_indexue ) ) { return false; }
+                                w.putleb( slot_indexue );
+                            }
+                        }
+                        break;
+                    }
+                    case SlotsType::Plain:
+                    {
+                        const uint64_t arm_refu = ids.ref( 0xfd4d194e1652b207ull );
+                        int64_t arm_payloadu = 0;
+                        arm_payloadu += 4; // int32
+                        w.putleb( arm_refu ); w.put8( 4 ); w.putleb( (uint64_t) arm_payloadu ); // plain
+                        w.put32( uint32_t( value.entries[elem_i].plain ) );
+                        break;
+                    }
+                    default: return false; // write validates the tag before it rides
+                }
+            }
+        }
+    }
+    if ( value.after != 0 )
+    {
+        w.putleb( ids.ref( 0xbf82010f6f71eae9ull ) ); w.put8( 4 ); // after
+        w.put32( uint32_t( value.after ) );
+    }
+    if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
+    return !w.overflow;
+}
+
+template <typename Ctx>
+inline bool TraySaveBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const Tray & value, TableRetain * retain, const TableRetainPath & path )
+{
+    if ( !TraySaveBodyFieldsRetain( ctx, numbering, w, ids, value, retain, path ) ) { return false; }
+    w.put8( 0 ); // the ZERO REFERENCE that ends the body
+    return !w.overflow;
+}
+
+inline bool TrayLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Tray & value, TableRetain * retain, const TableRetainPath & path )
+{
+    TrayReset( value ); // prefill declared defaults in place, then overlay
+    // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
+    // (docs/SPEC-TABLES.md §6.6): this body is being established, so
+    // whatever an earlier occurrence of it left is discarded before the
+    // winning one is read. The discard moves neither counter.
+    TableRetainDiscardBody( retain, path );
+    for ( ;; )
+    {
+        uint64_t field_ref = 0;
+        if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
+        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        const uint64_t field_id = r.ids->at( field_ref );
+        if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
+        uint8_t kind = r.get8();
+        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
+        {
+            // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
+            // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
+            // table's is the ROOT body's alone, on the numbering's own
+            // rule — a second numbering cannot exist — and the BUILD
+            // VERSION's rides in the announcement and nowhere else. That
+            // body stops and the parent reads on past its L.
+            r.report->malformed = true;
+            return false;
+        }
+        switch ( field_id )
+        {
+            case 0xc5b2a72c0845a253ull: // entries
+            {
+                if ( kind != 14 )
+                {
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    r.report->kind_mismatch++;
+                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                    break;
+                }
+                uint64_t body_len = 0;
+                if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
+                int64_t body_end = r.offset + (int64_t) body_len;
+                // A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the
+                // count, so fewer than two bytes — is INERT (§4): the field keeps the
+                // value it has, no counter is raised, and the walk continues past L.
+                if ( body_len >= 2 )
+                {
+                    uint8_t elem_kind = r.get8();
+                    uint64_t count = 0;
+                    const bool counted_ok = r.getleb( count );
+                    // A DAMAGED COUNT stops the elements and nothing else: the field
+                    // RODE, so an optional is still PRESENT (§2.3) — only a foreign
+                    // ELEMENT KIND says the payload is not this array's at all.
+                    if ( !counted_ok ) { r.report->malformed = true; }
+                    else if ( elem_kind != 15 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                    else
+                    {
+                    // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
+                    // records under this field go with the value it is about to lose.
+                    TableRetainDiscardField( retain, path, 0 );
+                    uint64_t keep = count;
+                    if ( keep > 2 ) { keep = 2; r.report->clamped++; }
+                    // elements are BOUNDED by the field body: a count the length
+                    // cannot cover keeps the decoded prefix, flags malformed, and
+                    // the parent continues at the next field — following fields'
+                    // bytes are never fabricated into elements
+                    TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                    uint64_t decoded = 0;
+                    for ( uint64_t i = 0; i < keep; i++ )
+                    {
+                        {
+                            uint64_t elem_arm_ref = 0;
+                            if ( !sub.getleb( elem_arm_ref ) ) { r.report->malformed = true; break; }
+                            value.entries[(int32_t) i].type = SlotsType::None;
+                            if ( elem_arm_ref != 0 ) // the zero reference is a None element in its place
+                            {
+                                if ( elem_arm_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; break; }
+                                const uint64_t elem_arm_id = r.ids->at( elem_arm_ref );
+                                if ( !sub.has( 1 ) ) { r.report->malformed = true; break; }
+                                const uint8_t elem_arm_kind = sub.get8();
+                                uint64_t elem_arm_len = 0;
+                                if ( !sub.getleb( elem_arm_len ) || !sub.room( elem_arm_len ) ) { r.report->malformed = true; break; }
+                                TableReader elem_arm( sub.buffer + sub.offset, (int64_t) elem_arm_len, r.report, r.ids );
+                                switch ( elem_arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
+                                {
+                                    case 0x1f6459a2cea1fc02ull: // many
+                                    {
+                                        if ( elem_arm_kind != 14 )
+                                        {
+                                            value.entries[(int32_t) i].type = SlotsType::None; r.report->kind_mismatch++; break;
+                                        }
+                                        value.entries[(int32_t) i].type = SlotsType::Many;
+                                        memset( (void *) &value.entries[(int32_t) i].many, 0, sizeof( value.entries[(int32_t) i].many ) ); // selection establishes the arm (§2.6)
+                                        if ( !elem_arm.has( 2 ) ) { break; }
+                                        {
+                                            uint8_t arm_elem_kinda = elem_arm.get8();
+                                            uint64_t arm_counta = 0;
+                                            if ( !elem_arm.getleb( arm_counta ) ) { value.entries[(int32_t) i].type = SlotsType::None; r.report->malformed = true; break; }
+                                            if ( arm_elem_kinda != 17 ) { value.entries[(int32_t) i].type = SlotsType::None; r.report->kind_mismatch++; break; }
+                                            uint64_t arm_keepa = arm_counta;
+                                            if ( arm_keepa > 2 ) { arm_keepa = 2; r.report->clamped++; }
+                                            const uint8_t * arm_elemsa = elem_arm.buffer + elem_arm.offset;
+                                            int64_t arm_lefta = elem_arm.size - elem_arm.offset;
+                                            TableReader arm_suba( arm_elemsa, arm_lefta, r.report, r.ids );
+                                            uint64_t arm_decodeda = 0;
+                                            for ( uint64_t arm_ia = 0; arm_ia < arm_keepa; arm_ia++ )
+                                            {
+                                                {
+                                                    uint64_t node_indexae = 0;
+                                                    if ( !arm_suba.getleb( node_indexae ) ) { r.report->malformed = true; break; }
+                                                    TableNodeResolve( nodes, value.entries[(int32_t) i].many.value[(int32_t) arm_ia], node_indexae, 0x66bd1cc6d2f6b68dull, r.report ); // *Node
+                                                }
+                                                arm_decodeda = arm_ia + 1;
+                                            }
+                                            value.entries[(int32_t) i].many.value_count = (int32_t) arm_decodeda;
+                                        }
+                                        break;
+                                    }
+                                    case 0xfd4d194e1652b207ull: // plain
+                                    {
+                                        if ( elem_arm_kind != 4 )
+                                        {
+                                            if ( TableKindWidens( elem_arm_kind, 4 ) )
+                                            {
+                                                // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L
+                                                // that is not that width is the arm's own framing damage (§3)
+                                                if ( elem_arm.size != TableKindWidth( elem_arm_kind ) ) { value.entries[(int32_t) i].type = SlotsType::None; r.report->malformed = true; break; }
+                                                memset( (void *) &value.entries[(int32_t) i].plain, 0, sizeof( value.entries[(int32_t) i].plain ) ); // selection establishes the arm (§2.6)
+                                                int64_t widened_v = 0;
+                                                if ( !TableReadSignedAt( elem_arm, elem_arm_kind, widened_v ) ) { value.entries[(int32_t) i].type = SlotsType::None; r.report->malformed = true; break; }
+                                                int32_t decoded_v = (int32_t) widened_v;
+                                                value.entries[(int32_t) i].plain = decoded_v;
+                                                value.entries[(int32_t) i].type = SlotsType::Plain;
+                                                r.report->widened++;
+                                                break;
+                                            }
+                                            value.entries[(int32_t) i].type = SlotsType::None; r.report->kind_mismatch++; break;
+                                        }
+                                        value.entries[(int32_t) i].type = SlotsType::Plain;
+                                        if ( elem_arm.size != 4 ) { value.entries[(int32_t) i].type = SlotsType::None; r.report->malformed = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                        if ( !elem_arm.has( 4 ) ) { value.entries[(int32_t) i].type = SlotsType::None; r.report->malformed = true; break; }
+                                        int32_t decoded_v = int32_t( elem_arm.get32( ) );
+                                        value.entries[(int32_t) i].plain = decoded_v;
+                                        break;
+                                    }
+                                    default: r.report->unknown++; r.report->retain_lost++; break; // an arm this reader cannot name: the element reads None, the body skips by its length
+                                }
+                                sub.offset += (int64_t) elem_arm_len;
+                            }
+                        }
+                        decoded = i + 1;
+                    }
+                    value.entries_count = (int32_t) decoded;
+                    }
+                }
+                r.offset = body_end; // excess elements and slack skip via the length
+                break;
+            }
+            case 0xbf82010f6f71eae9ull: // after
+            {
+                if ( kind != 4 )
+                {
+                    if ( TableKindWidens( kind, 4 ) )
+                    {
+                        // WIDENED (§4): a kind that grew since the writer decodes
+                        // exactly at its own width, the value lands, one widened counts
+                        int64_t widened_v = 0;
+                        if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
+                        int32_t decoded_v = (int32_t) widened_v;
+                        value.after = decoded_v;
+                        r.report->widened++;
+                        break;
+                    }
+                    // AT A POSITION THE READER DOES NAME, a field under
+                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    r.report->kind_mismatch++;
+                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                    break;
+                }
+                if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
+                int32_t decoded_v = int32_t( r.get32( ) );
+                value.after = decoded_v;
+                break;
+            }
+            case 0xffffffffffffffffull:
+            {
+                if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                break;
+            }
+            default:
+            {
+                r.report->unknown++;
+                if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
+                break;
+            }
+        }
+    }
+}
+
+// RingNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
+// already owns.
+// EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
+// index is the region directory's, which Load fills from the wire's framing
+// and nothing afterwards renumbers.
+inline void RingNodeBodyRetain( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at, TableRetain * retain, uint32_t node )
+{
+    // the node's own EXTENT, where its lists' and maps' arrays are carved
+    // from, PRE-ORDER as the bodies decode (docs/SPEC-TABLES.md §2.8, §2.9).
+    // The tool's path carries a worker instead: there the arrays are the
+    // arena's.
+    TableExtentCarve carve;
+    carve.worker = nodes.worker;
+    if ( carve.worker == NULL )
+    {
+        TableRefuseReason reason = count_over_length; // pass one already refused what this could refuse
+        const int64_t storage = RingNodeStorage( type_id, r.size, reason );
+        const int64_t record = storage > 0 ? RingNodeRecordBytes( type_id ) : 0;
+        carve.at = at + record;
+        carve.left = storage > record ? storage - record : 0;
+    }
+    nodes.carve = &carve;
+    (void) nodes; // every node this root can name is a FIXED table
+    switch ( type_id )
+    {
+        case 0x66bd1cc6d2f6b68dull: NodeLoadBodyRetain( r, *(Node *) at, retain, TableRetainPathRoot( (const void *) at, node ) ); break; // Node
+        default: break;
+    }
+    nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
+}
+
+// RingLoadRetain: decode the tolerant wire into the caller's exact-sized region and
+// return the root. LOAD IS A SCAN, and that is the whole of its bound: it
+// follows no reference, so there is no depth cap, no visited set and no
+// ordering rule on the indices. Partial results are kept, as everywhere on
+// this wire — the report says what happened. NULL means the CALLER's buffer
+// was wrong.
+// UNDER RETENTION it also fills the caller's two stores with the fields
+// this build cannot name, and the report carries what it could not keep
+// (docs/SPEC-TABLES.md §6.6). It is Load's own path and nothing else: the
+// reader's data is exactly what it would have been with retention off.
+inline const Ring * RingLoadRetain( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableRetain * retain, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * out = report != NULL ? report : &ignored;
+    // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:
+    // a file that is both a newer form and damaged is a REFUSAL and never
+    // damage (docs/SPEC-TABLES.md §3).
+    TableIdTable ids_table;
+    int64_t body_bytes = 0;
+    const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
+    if ( verdict != TableOpenOk )
+    {
+        if ( verdict == TableOpenDamaged ) { out->malformed = true; } else { out->refused = true; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }
+        return NULL;
+    }
+    if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) )
+    {
+        out->malformed = true; // a byte no field claims, before the table (§3)
+        return NULL;
+    }
+    const uint8_t * const wire = wire_file + 1;
+    const int64_t wire_bytes = body_bytes;
+    if ( region == NULL || region_bytes < (int64_t) sizeof( Ring ) ) { out->malformed = true; return NULL; }
+    if ( ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) != 0 ) { out->malformed = true; return NULL; }
+    memset( region, 0, (size_t) region_bytes );
+    uint64_t type_id = 0;
+    const uint8_t * body = NULL;
+    int64_t length = 0;
+
+    // the record count and the data bytes, from the FRAMING alone
+    TableRefuseReason reason = count_over_length; // LoadMeasure is where a caller reads it; a Load past a refusal is malformed
+    int64_t root_extent = 0;
+    if ( !RingWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) ) { out->malformed = true; return NULL; }
+    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Ring ) ) + root_extent );
+    int64_t records = 0;
+    {
+        TableReport counting;
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            records++;
+            int64_t storage = RingNodeStorage( type_id, length, reason );
+            if ( storage == kTableNodeRefused ) { out->malformed = true; return NULL; }
+            if ( storage > 0 ) { data += storage; }
+        }
+    }
+    int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
+    if ( data + attribution > region_bytes ) { out->malformed = true; return NULL; }
+
+    TableNodeMap nodes;
+    nodes.base = region;
+    nodes.entries = (const TableNodeDirEntry *) ( region + data );
+    nodes.count = records + 1;
+    TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
+    directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
+    directory[0].type_id = 0xdcea4d2bfa11ceebull;
+    Ring * root = new ( region ) Ring; // lifetime only: LoadBody's first act is RingReset
+    RingReset( *root );
+
+    // LoadRetain RESETS BOTH STORES and writes into neither id list: a
+    // retained record carries its field's identity in the record itself,
+    // with every reference resolved (docs/SPEC-TABLES.md §6.6). The buffer
+    // belongs to this region from here on.
+    TableRetainReset( retain, nodes, region );
+
+    // PASS ONE: fill the numbering from the framing, so that an index
+    // resolves whichever way it points. It reads no body.
+    {
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+        int64_t used = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Ring ) ) + root_extent );
+        int64_t k = 0;
+        int32_t unknown_records = 0; // counted once the scan is known whole
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            int64_t storage = RingNodeStorage( type_id, length, reason );
+            if ( storage <= 0 )
+            {
+                // a record whose type id this build cannot name KEEPS ITS
+                // INDEX, is counted once here and not once per pointer, and
+                // every reference to it reads null (§3.1)
+                unknown_records++;
+                directory[k + 1].offset = kTableNodeAbsent;
+                directory[k + 1].type_id = type_id;
+            }
+            else
+            {
+                directory[k + 1].offset = (uint64_t) used;
+                directory[k + 1].type_id = type_id;
+                RingNodePlace( type_id, region + used, length );
+                used += storage;
+            }
+            k++;
+        }
+        nodes.good = TableNodeScanWhole( scan );
+        // the table is whole or it is nothing: a scan that failed counts
+        // malformed and NOT the unknowns it met on the way, because the
+        // numbering they belonged to does not exist (§3.1)
+        // A NODE RECORD whose type id this reader cannot name is one of the
+        // SIX EXCLUDED CLASSES (§6.6): it is a whole node, and putting one
+        // back means renumbering a graph the writer numbers from its own edges.
+        if ( nodes.good ) { out->unknown += unknown_records; out->retain_lost += unknown_records; } else { out->malformed = true; }
+    }
+
+    // PASS TWO: decode each body into its own storage. A forward index
+    // resolves without scratch, because pass one already placed every node.
+    if ( nodes.good )
+    {
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+        int64_t k = 0;
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            if ( directory[k + 1].offset != kTableNodeAbsent )
+            {
+                TableReader sub( body, length, out, &ids_table );
+                RingNodeBodyRetain( type_id, sub, nodes, region + directory[k + 1].offset, retain, (uint32_t) ( k + 2 ) );
+            }
+            k++;
+        }
+    }
+
+    // and the ROOT's own body last, so every index it carries resolves
+    // against a numbering already known good or already known bad
+    TableReader r( wire, wire_bytes, out, &ids_table );
+    r.nested = false; // the ROOT body, the one that carries the node table
+    TableExtentCarve root_carve;
+    root_carve.at = region + TableAlignUp64( (int64_t) sizeof( Ring ) );
+    root_carve.left = root_extent;
+    nodes.carve = &root_carve; // the ROOT's extent is its own, like every node's
+    RingLoadBodyRetain( r, nodes, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
+    return root;
+}
+
+// RingMeasureRetain and RingSaveRetain: the pair, with the retained tail in
+// every body it belongs to (docs/SPEC-TABLES.md §6.6). They drop the same
+// records under the same walk, so Measure's answer is the size the save
+// writes even where a record could not be placed.
+template <typename Ctx>
+inline int64_t RingMeasureWireRetain( const Ctx & ctx, const Ring & root, TableRetain * retain, TableAllocator allocator )
+{
+    TableNumbering numbering;
+    TableNumberingInit( numbering, allocator );
+    int64_t bytes = -1;
+    auto retain_measure = []( const Ctx & c, const TableNumbering & nn, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> int64_t
+    {
+        const TableRetainPath at = TableRetainPathRoot( node, 0 );
+        (void) c; (void) nn; (void) ii; (void) rt; (void) at;
+        switch ( type_id )
+        {
+            case 0x66bd1cc6d2f6b68dull: return NodeMeasureBodyRetain( ii, *(const Node *) node, rt, at ); // Node
+            default: break;
+        }
+        return -1;
+    };
+    if ( RingNumberFrom( ctx, numbering, root ) )
+    {
+        TableRetainIds ids( retain );
+        if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
+        bytes = RingMeasureBodyRetain( ctx, numbering, ids, root, retain, TableRetainPathRoot( (const void *) &root, 1 ) );
+        if ( bytes >= 0 )
+        {
+            const int64_t table = TableNodeTableMeasureRetain( ctx, ids, numbering, retain, retain_measure );
+            bytes = table < 0 || ids.overflow ? -1 : 1 + bytes + table + TableRetainIdsBytes( ids );
+        }
+    }
+    TableNumberingShutdown( numbering );
+    return bytes;
+}
+
+template <typename Ctx>
+inline int64_t RingSaveWireRetain( const Ctx & ctx, const Ring & root, TableRetain * retain, uint8_t * buffer, int64_t capacity, TableReport * report )
+{
+    TableNumbering numbering;
+    TableNumberingInit( numbering, TableDefaultAllocator() );
+    auto retain_measure = []( const Ctx & c, const TableNumbering & nn, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> int64_t
+    {
+        const TableRetainPath at = TableRetainPathRoot( node, 0 );
+        (void) c; (void) nn; (void) ii; (void) rt; (void) at;
+        switch ( type_id )
+        {
+            case 0x66bd1cc6d2f6b68dull: return NodeMeasureBodyRetain( ii, *(const Node *) node, rt, at ); // Node
+            default: break;
+        }
+        return -1;
+    };
+    auto retain_save = []( const Ctx & c, const TableNumbering & nn, TableWriter & ww, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> bool
+    {
+        const TableRetainPath at = TableRetainPathRoot( node, 0 );
+        (void) c; (void) nn; (void) ww; (void) ii; (void) rt; (void) at;
+        switch ( type_id )
+        {
+            case 0x66bd1cc6d2f6b68dull: return NodeSaveBodyRetain( ww, ii, *(const Node *) node, rt, at ); // Node
+            default: break;
+        }
+        return false;
+    };
+    if ( !RingNumberFrom( ctx, numbering, root ) ) { TableNumberingShutdown( numbering ); return -1; }
+    TableWriter w( buffer, capacity );
+    TableRetainIds ids( retain );
+    if ( retain != NULL ) { retain->id_used = 0; }
+    TableRetainClearPlaced( retain );
+    w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
+    // the root's own fields, then the RETAINED TAIL, then the node table's
+    // field: a retained field is one of the root's own values, and the tail
+    // is pinned before the large and damage-prone part (§6.6, §3.1)
+    bool ok = RingSaveBodyFieldsRetain( ctx, numbering, w, ids, root, retain, TableRetainPathRoot( (const void *) &root, 1 ) ) &&
+              TableNodeTableSaveRetain( ctx, w, ids, numbering, retain, retain_measure, retain_save );
+    TableNumberingShutdown( numbering );
+    if ( !ok || ids.overflow ) { return -1; }
+    w.put8( 0 ); // the ZERO REFERENCE that ends the root body
+    TableRetainIdsWrite( w, ids );
+    if ( w.overflow ) { return -1; } // the caller's buffer was too small
+    // THE SAVE'S OWN SHARE OF retain_lost, read after the save (§6.6): every
+    // record the walk did not place, counted once.
+    TableRetainCountLost( retain, report );
+    return w.offset;
+}
+
+inline int64_t RingMeasureRetain( const Ring * root, TableRetain * retain, TableAllocator allocator = TableDefaultAllocator() )
+{
+    if ( root == NULL ) { return -1; }
+    TableRegionCtx ctx;
+    return RingMeasureWireRetain( ctx, *root, retain, allocator );
+}
+
+// SaveRetain REFUSES A NULL REPORT and returns -1 (docs/SPEC-TABLES.md
+// §6.6): the save is the only place a caller learns that a record was
+// dropped, so the report is required here where it is optional everywhere
+// else. A surface that let a caller retain, save and never find out would
+// be a promise it could not check.
+inline int64_t RingSaveRetain( const Ring * root, TableRetain * retain, uint8_t * buffer, int64_t capacity, TableReport * report )
+{
+    if ( root == NULL || report == NULL ) { return -1; }
+    TableRegionCtx ctx;
+    return RingSaveWireRetain( ctx, *root, retain, buffer, capacity, report );
+}
+
+// RingSaveRetainMessages: RETENTION WRITING FORM 2 IS REFUSED BY NAME
+// (docs/SPEC-TABLES.md §3.3). It is a MISUSE refusal on §6.6's own
+// precedent and never a silent drop, and the two answers are named: a
+// caller that must carry unknowns across a rewrite writes the FILE form,
+// which carries its own table and takes §6.6 unchanged, and a RELAY
+// forwards the sending peer's announcement and its batch bytes verbatim.
+template <typename... Args>
+inline int64_t RingSaveRetainMessages( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "Ring: a form 2 writer names entries through slots of a vocabulary the compiler settled, and a retained id is one this build's closure does not contain, so it has neither a slot nor an announced shape. Retention writing the MESSAGE form is refused by name (docs/SPEC-TABLES.md §3.3). Write the FILE form, which carries its own table and takes §6.6 unchanged, or relay the sender's announcement and batch bytes verbatim." );
+    return -1;
+}
+
+// RackNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
+// already owns.
+// EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
+// index is the region directory's, which Load fills from the wire's framing
+// and nothing afterwards renumbers.
+inline void RackNodeBodyRetain( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at, TableRetain * retain, uint32_t node )
+{
+    // the node's own EXTENT, where its lists' and maps' arrays are carved
+    // from, PRE-ORDER as the bodies decode (docs/SPEC-TABLES.md §2.8, §2.9).
+    // The tool's path carries a worker instead: there the arrays are the
+    // arena's.
+    TableExtentCarve carve;
+    carve.worker = nodes.worker;
+    if ( carve.worker == NULL )
+    {
+        TableRefuseReason reason = count_over_length; // pass one already refused what this could refuse
+        const int64_t storage = RackNodeStorage( type_id, r.size, reason );
+        const int64_t record = storage > 0 ? RackNodeRecordBytes( type_id ) : 0;
+        carve.at = at + record;
+        carve.left = storage > record ? storage - record : 0;
+    }
+    nodes.carve = &carve;
+    (void) nodes; // every node this root can name is a FIXED table
+    switch ( type_id )
+    {
+        case 0x66bd1cc6d2f6b68dull: NodeLoadBodyRetain( r, *(Node *) at, retain, TableRetainPathRoot( (const void *) at, node ) ); break; // Node
+        default: break;
+    }
+    nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
+}
+
+// RackLoadRetain: decode the tolerant wire into the caller's exact-sized region and
+// return the root. LOAD IS A SCAN, and that is the whole of its bound: it
+// follows no reference, so there is no depth cap, no visited set and no
+// ordering rule on the indices. Partial results are kept, as everywhere on
+// this wire — the report says what happened. NULL means the CALLER's buffer
+// was wrong.
+// UNDER RETENTION it also fills the caller's two stores with the fields
+// this build cannot name, and the report carries what it could not keep
+// (docs/SPEC-TABLES.md §6.6). It is Load's own path and nothing else: the
+// reader's data is exactly what it would have been with retention off.
+inline const Rack * RackLoadRetain( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableRetain * retain, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * out = report != NULL ? report : &ignored;
+    // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:
+    // a file that is both a newer form and damaged is a REFUSAL and never
+    // damage (docs/SPEC-TABLES.md §3).
+    TableIdTable ids_table;
+    int64_t body_bytes = 0;
+    const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
+    if ( verdict != TableOpenOk )
+    {
+        if ( verdict == TableOpenDamaged ) { out->malformed = true; } else { out->refused = true; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }
+        return NULL;
+    }
+    if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) )
+    {
+        out->malformed = true; // a byte no field claims, before the table (§3)
+        return NULL;
+    }
+    const uint8_t * const wire = wire_file + 1;
+    const int64_t wire_bytes = body_bytes;
+    if ( region == NULL || region_bytes < (int64_t) sizeof( Rack ) ) { out->malformed = true; return NULL; }
+    if ( ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) != 0 ) { out->malformed = true; return NULL; }
+    memset( region, 0, (size_t) region_bytes );
+    uint64_t type_id = 0;
+    const uint8_t * body = NULL;
+    int64_t length = 0;
+
+    // the record count and the data bytes, from the FRAMING alone
+    TableRefuseReason reason = count_over_length; // LoadMeasure is where a caller reads it; a Load past a refusal is malformed
+    int64_t root_extent = 0;
+    if ( !RackWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) ) { out->malformed = true; return NULL; }
+    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Rack ) ) + root_extent );
+    int64_t records = 0;
+    {
+        TableReport counting;
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            records++;
+            int64_t storage = RackNodeStorage( type_id, length, reason );
+            if ( storage == kTableNodeRefused ) { out->malformed = true; return NULL; }
+            if ( storage > 0 ) { data += storage; }
+        }
+    }
+    int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
+    if ( data + attribution > region_bytes ) { out->malformed = true; return NULL; }
+
+    TableNodeMap nodes;
+    nodes.base = region;
+    nodes.entries = (const TableNodeDirEntry *) ( region + data );
+    nodes.count = records + 1;
+    TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
+    directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
+    directory[0].type_id = 0x986d012bd380b0b2ull;
+    Rack * root = new ( region ) Rack; // lifetime only: LoadBody's first act is RackReset
+    RackReset( *root );
+
+    // LoadRetain RESETS BOTH STORES and writes into neither id list: a
+    // retained record carries its field's identity in the record itself,
+    // with every reference resolved (docs/SPEC-TABLES.md §6.6). The buffer
+    // belongs to this region from here on.
+    TableRetainReset( retain, nodes, region );
+
+    // PASS ONE: fill the numbering from the framing, so that an index
+    // resolves whichever way it points. It reads no body.
+    {
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+        int64_t used = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Rack ) ) + root_extent );
+        int64_t k = 0;
+        int32_t unknown_records = 0; // counted once the scan is known whole
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            int64_t storage = RackNodeStorage( type_id, length, reason );
+            if ( storage <= 0 )
+            {
+                // a record whose type id this build cannot name KEEPS ITS
+                // INDEX, is counted once here and not once per pointer, and
+                // every reference to it reads null (§3.1)
+                unknown_records++;
+                directory[k + 1].offset = kTableNodeAbsent;
+                directory[k + 1].type_id = type_id;
+            }
+            else
+            {
+                directory[k + 1].offset = (uint64_t) used;
+                directory[k + 1].type_id = type_id;
+                RackNodePlace( type_id, region + used, length );
+                used += storage;
+            }
+            k++;
+        }
+        nodes.good = TableNodeScanWhole( scan );
+        // the table is whole or it is nothing: a scan that failed counts
+        // malformed and NOT the unknowns it met on the way, because the
+        // numbering they belonged to does not exist (§3.1)
+        // A NODE RECORD whose type id this reader cannot name is one of the
+        // SIX EXCLUDED CLASSES (§6.6): it is a whole node, and putting one
+        // back means renumbering a graph the writer numbers from its own edges.
+        if ( nodes.good ) { out->unknown += unknown_records; out->retain_lost += unknown_records; } else { out->malformed = true; }
+    }
+
+    // PASS TWO: decode each body into its own storage. A forward index
+    // resolves without scratch, because pass one already placed every node.
+    if ( nodes.good )
+    {
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+        int64_t k = 0;
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            if ( directory[k + 1].offset != kTableNodeAbsent )
+            {
+                TableReader sub( body, length, out, &ids_table );
+                RackNodeBodyRetain( type_id, sub, nodes, region + directory[k + 1].offset, retain, (uint32_t) ( k + 2 ) );
+            }
+            k++;
+        }
+    }
+
+    // and the ROOT's own body last, so every index it carries resolves
+    // against a numbering already known good or already known bad
+    TableReader r( wire, wire_bytes, out, &ids_table );
+    r.nested = false; // the ROOT body, the one that carries the node table
+    TableExtentCarve root_carve;
+    root_carve.at = region + TableAlignUp64( (int64_t) sizeof( Rack ) );
+    root_carve.left = root_extent;
+    nodes.carve = &root_carve; // the ROOT's extent is its own, like every node's
+    RackLoadBodyRetain( r, nodes, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
+    return root;
+}
+
+// RackMeasureRetain and RackSaveRetain: the pair, with the retained tail in
+// every body it belongs to (docs/SPEC-TABLES.md §6.6). They drop the same
+// records under the same walk, so Measure's answer is the size the save
+// writes even where a record could not be placed.
+template <typename Ctx>
+inline int64_t RackMeasureWireRetain( const Ctx & ctx, const Rack & root, TableRetain * retain, TableAllocator allocator )
+{
+    TableNumbering numbering;
+    TableNumberingInit( numbering, allocator );
+    int64_t bytes = -1;
+    auto retain_measure = []( const Ctx & c, const TableNumbering & nn, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> int64_t
+    {
+        const TableRetainPath at = TableRetainPathRoot( node, 0 );
+        (void) c; (void) nn; (void) ii; (void) rt; (void) at;
+        switch ( type_id )
+        {
+            case 0x66bd1cc6d2f6b68dull: return NodeMeasureBodyRetain( ii, *(const Node *) node, rt, at ); // Node
+            default: break;
+        }
+        return -1;
+    };
+    if ( RackNumberFrom( ctx, numbering, root ) )
+    {
+        TableRetainIds ids( retain );
+        if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
+        bytes = RackMeasureBodyRetain( ctx, numbering, ids, root, retain, TableRetainPathRoot( (const void *) &root, 1 ) );
+        if ( bytes >= 0 )
+        {
+            const int64_t table = TableNodeTableMeasureRetain( ctx, ids, numbering, retain, retain_measure );
+            bytes = table < 0 || ids.overflow ? -1 : 1 + bytes + table + TableRetainIdsBytes( ids );
+        }
+    }
+    TableNumberingShutdown( numbering );
+    return bytes;
+}
+
+template <typename Ctx>
+inline int64_t RackSaveWireRetain( const Ctx & ctx, const Rack & root, TableRetain * retain, uint8_t * buffer, int64_t capacity, TableReport * report )
+{
+    TableNumbering numbering;
+    TableNumberingInit( numbering, TableDefaultAllocator() );
+    auto retain_measure = []( const Ctx & c, const TableNumbering & nn, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> int64_t
+    {
+        const TableRetainPath at = TableRetainPathRoot( node, 0 );
+        (void) c; (void) nn; (void) ii; (void) rt; (void) at;
+        switch ( type_id )
+        {
+            case 0x66bd1cc6d2f6b68dull: return NodeMeasureBodyRetain( ii, *(const Node *) node, rt, at ); // Node
+            default: break;
+        }
+        return -1;
+    };
+    auto retain_save = []( const Ctx & c, const TableNumbering & nn, TableWriter & ww, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> bool
+    {
+        const TableRetainPath at = TableRetainPathRoot( node, 0 );
+        (void) c; (void) nn; (void) ww; (void) ii; (void) rt; (void) at;
+        switch ( type_id )
+        {
+            case 0x66bd1cc6d2f6b68dull: return NodeSaveBodyRetain( ww, ii, *(const Node *) node, rt, at ); // Node
+            default: break;
+        }
+        return false;
+    };
+    if ( !RackNumberFrom( ctx, numbering, root ) ) { TableNumberingShutdown( numbering ); return -1; }
+    TableWriter w( buffer, capacity );
+    TableRetainIds ids( retain );
+    if ( retain != NULL ) { retain->id_used = 0; }
+    TableRetainClearPlaced( retain );
+    w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
+    // the root's own fields, then the RETAINED TAIL, then the node table's
+    // field: a retained field is one of the root's own values, and the tail
+    // is pinned before the large and damage-prone part (§6.6, §3.1)
+    bool ok = RackSaveBodyFieldsRetain( ctx, numbering, w, ids, root, retain, TableRetainPathRoot( (const void *) &root, 1 ) ) &&
+              TableNodeTableSaveRetain( ctx, w, ids, numbering, retain, retain_measure, retain_save );
+    TableNumberingShutdown( numbering );
+    if ( !ok || ids.overflow ) { return -1; }
+    w.put8( 0 ); // the ZERO REFERENCE that ends the root body
+    TableRetainIdsWrite( w, ids );
+    if ( w.overflow ) { return -1; } // the caller's buffer was too small
+    // THE SAVE'S OWN SHARE OF retain_lost, read after the save (§6.6): every
+    // record the walk did not place, counted once.
+    TableRetainCountLost( retain, report );
+    return w.offset;
+}
+
+inline int64_t RackMeasureRetain( const Rack * root, TableRetain * retain, TableAllocator allocator = TableDefaultAllocator() )
+{
+    if ( root == NULL ) { return -1; }
+    TableRegionCtx ctx;
+    return RackMeasureWireRetain( ctx, *root, retain, allocator );
+}
+
+// SaveRetain REFUSES A NULL REPORT and returns -1 (docs/SPEC-TABLES.md
+// §6.6): the save is the only place a caller learns that a record was
+// dropped, so the report is required here where it is optional everywhere
+// else. A surface that let a caller retain, save and never find out would
+// be a promise it could not check.
+inline int64_t RackSaveRetain( const Rack * root, TableRetain * retain, uint8_t * buffer, int64_t capacity, TableReport * report )
+{
+    if ( root == NULL || report == NULL ) { return -1; }
+    TableRegionCtx ctx;
+    return RackSaveWireRetain( ctx, *root, retain, buffer, capacity, report );
+}
+
+// RackSaveRetainMessages: RETENTION WRITING FORM 2 IS REFUSED BY NAME
+// (docs/SPEC-TABLES.md §3.3). It is a MISUSE refusal on §6.6's own
+// precedent and never a silent drop, and the two answers are named: a
+// caller that must carry unknowns across a rewrite writes the FILE form,
+// which carries its own table and takes §6.6 unchanged, and a RELAY
+// forwards the sending peer's announcement and its batch bytes verbatim.
+template <typename... Args>
+inline int64_t RackSaveRetainMessages( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "Rack: a form 2 writer names entries through slots of a vocabulary the compiler settled, and a retained id is one this build's closure does not contain, so it has neither a slot nor an announced shape. Retention writing the MESSAGE form is refused by name (docs/SPEC-TABLES.md §3.3). Write the FILE form, which carries its own table and takes §6.6 unchanged, or relay the sender's announcement and batch bytes verbatim." );
+    return -1;
+}
+
+// TrayNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
+// already owns.
+// EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
+// index is the region directory's, which Load fills from the wire's framing
+// and nothing afterwards renumbers.
+inline void TrayNodeBodyRetain( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at, TableRetain * retain, uint32_t node )
+{
+    // the node's own EXTENT, where its lists' and maps' arrays are carved
+    // from, PRE-ORDER as the bodies decode (docs/SPEC-TABLES.md §2.8, §2.9).
+    // The tool's path carries a worker instead: there the arrays are the
+    // arena's.
+    TableExtentCarve carve;
+    carve.worker = nodes.worker;
+    if ( carve.worker == NULL )
+    {
+        TableRefuseReason reason = count_over_length; // pass one already refused what this could refuse
+        const int64_t storage = TrayNodeStorage( type_id, r.size, reason );
+        const int64_t record = storage > 0 ? TrayNodeRecordBytes( type_id ) : 0;
+        carve.at = at + record;
+        carve.left = storage > record ? storage - record : 0;
+    }
+    nodes.carve = &carve;
+    (void) nodes; // every node this root can name is a FIXED table
+    switch ( type_id )
+    {
+        case 0x66bd1cc6d2f6b68dull: NodeLoadBodyRetain( r, *(Node *) at, retain, TableRetainPathRoot( (const void *) at, node ) ); break; // Node
+        default: break;
+    }
+    nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
+}
+
+// TrayLoadRetain: decode the tolerant wire into the caller's exact-sized region and
+// return the root. LOAD IS A SCAN, and that is the whole of its bound: it
+// follows no reference, so there is no depth cap, no visited set and no
+// ordering rule on the indices. Partial results are kept, as everywhere on
+// this wire — the report says what happened. NULL means the CALLER's buffer
+// was wrong.
+// UNDER RETENTION it also fills the caller's two stores with the fields
+// this build cannot name, and the report carries what it could not keep
+// (docs/SPEC-TABLES.md §6.6). It is Load's own path and nothing else: the
+// reader's data is exactly what it would have been with retention off.
+inline const Tray * TrayLoadRetain( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableRetain * retain, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * out = report != NULL ? report : &ignored;
+    // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:
+    // a file that is both a newer form and damaged is a REFUSAL and never
+    // damage (docs/SPEC-TABLES.md §3).
+    TableIdTable ids_table;
+    int64_t body_bytes = 0;
+    const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
+    if ( verdict != TableOpenOk )
+    {
+        if ( verdict == TableOpenDamaged ) { out->malformed = true; } else { out->refused = true; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }
+        return NULL;
+    }
+    if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) )
+    {
+        out->malformed = true; // a byte no field claims, before the table (§3)
+        return NULL;
+    }
+    const uint8_t * const wire = wire_file + 1;
+    const int64_t wire_bytes = body_bytes;
+    if ( region == NULL || region_bytes < (int64_t) sizeof( Tray ) ) { out->malformed = true; return NULL; }
+    if ( ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) != 0 ) { out->malformed = true; return NULL; }
+    memset( region, 0, (size_t) region_bytes );
+    uint64_t type_id = 0;
+    const uint8_t * body = NULL;
+    int64_t length = 0;
+
+    // the record count and the data bytes, from the FRAMING alone
+    TableRefuseReason reason = count_over_length; // LoadMeasure is where a caller reads it; a Load past a refusal is malformed
+    int64_t root_extent = 0;
+    if ( !TrayWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) ) { out->malformed = true; return NULL; }
+    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Tray ) ) + root_extent );
+    int64_t records = 0;
+    {
+        TableReport counting;
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            records++;
+            int64_t storage = TrayNodeStorage( type_id, length, reason );
+            if ( storage == kTableNodeRefused ) { out->malformed = true; return NULL; }
+            if ( storage > 0 ) { data += storage; }
+        }
+    }
+    int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
+    if ( data + attribution > region_bytes ) { out->malformed = true; return NULL; }
+
+    TableNodeMap nodes;
+    nodes.base = region;
+    nodes.entries = (const TableNodeDirEntry *) ( region + data );
+    nodes.count = records + 1;
+    TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
+    directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
+    directory[0].type_id = 0x85a6b5fb5284964dull;
+    Tray * root = new ( region ) Tray; // lifetime only: LoadBody's first act is TrayReset
+    TrayReset( *root );
+
+    // LoadRetain RESETS BOTH STORES and writes into neither id list: a
+    // retained record carries its field's identity in the record itself,
+    // with every reference resolved (docs/SPEC-TABLES.md §6.6). The buffer
+    // belongs to this region from here on.
+    TableRetainReset( retain, nodes, region );
+
+    // PASS ONE: fill the numbering from the framing, so that an index
+    // resolves whichever way it points. It reads no body.
+    {
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+        int64_t used = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Tray ) ) + root_extent );
+        int64_t k = 0;
+        int32_t unknown_records = 0; // counted once the scan is known whole
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            int64_t storage = TrayNodeStorage( type_id, length, reason );
+            if ( storage <= 0 )
+            {
+                // a record whose type id this build cannot name KEEPS ITS
+                // INDEX, is counted once here and not once per pointer, and
+                // every reference to it reads null (§3.1)
+                unknown_records++;
+                directory[k + 1].offset = kTableNodeAbsent;
+                directory[k + 1].type_id = type_id;
+            }
+            else
+            {
+                directory[k + 1].offset = (uint64_t) used;
+                directory[k + 1].type_id = type_id;
+                TrayNodePlace( type_id, region + used, length );
+                used += storage;
+            }
+            k++;
+        }
+        nodes.good = TableNodeScanWhole( scan );
+        // the table is whole or it is nothing: a scan that failed counts
+        // malformed and NOT the unknowns it met on the way, because the
+        // numbering they belonged to does not exist (§3.1)
+        // A NODE RECORD whose type id this reader cannot name is one of the
+        // SIX EXCLUDED CLASSES (§6.6): it is a whole node, and putting one
+        // back means renumbering a graph the writer numbers from its own edges.
+        if ( nodes.good ) { out->unknown += unknown_records; out->retain_lost += unknown_records; } else { out->malformed = true; }
+    }
+
+    // PASS TWO: decode each body into its own storage. A forward index
+    // resolves without scratch, because pass one already placed every node.
+    if ( nodes.good )
+    {
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+        int64_t k = 0;
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            if ( directory[k + 1].offset != kTableNodeAbsent )
+            {
+                TableReader sub( body, length, out, &ids_table );
+                TrayNodeBodyRetain( type_id, sub, nodes, region + directory[k + 1].offset, retain, (uint32_t) ( k + 2 ) );
+            }
+            k++;
+        }
+    }
+
+    // and the ROOT's own body last, so every index it carries resolves
+    // against a numbering already known good or already known bad
+    TableReader r( wire, wire_bytes, out, &ids_table );
+    r.nested = false; // the ROOT body, the one that carries the node table
+    TableExtentCarve root_carve;
+    root_carve.at = region + TableAlignUp64( (int64_t) sizeof( Tray ) );
+    root_carve.left = root_extent;
+    nodes.carve = &root_carve; // the ROOT's extent is its own, like every node's
+    TrayLoadBodyRetain( r, nodes, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
+    return root;
+}
+
+// TrayMeasureRetain and TraySaveRetain: the pair, with the retained tail in
+// every body it belongs to (docs/SPEC-TABLES.md §6.6). They drop the same
+// records under the same walk, so Measure's answer is the size the save
+// writes even where a record could not be placed.
+template <typename Ctx>
+inline int64_t TrayMeasureWireRetain( const Ctx & ctx, const Tray & root, TableRetain * retain, TableAllocator allocator )
+{
+    TableNumbering numbering;
+    TableNumberingInit( numbering, allocator );
+    int64_t bytes = -1;
+    auto retain_measure = []( const Ctx & c, const TableNumbering & nn, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> int64_t
+    {
+        const TableRetainPath at = TableRetainPathRoot( node, 0 );
+        (void) c; (void) nn; (void) ii; (void) rt; (void) at;
+        switch ( type_id )
+        {
+            case 0x66bd1cc6d2f6b68dull: return NodeMeasureBodyRetain( ii, *(const Node *) node, rt, at ); // Node
+            default: break;
+        }
+        return -1;
+    };
+    if ( TrayNumberFrom( ctx, numbering, root ) )
+    {
+        TableRetainIds ids( retain );
+        if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
+        bytes = TrayMeasureBodyRetain( ctx, numbering, ids, root, retain, TableRetainPathRoot( (const void *) &root, 1 ) );
+        if ( bytes >= 0 )
+        {
+            const int64_t table = TableNodeTableMeasureRetain( ctx, ids, numbering, retain, retain_measure );
+            bytes = table < 0 || ids.overflow ? -1 : 1 + bytes + table + TableRetainIdsBytes( ids );
+        }
+    }
+    TableNumberingShutdown( numbering );
+    return bytes;
+}
+
+template <typename Ctx>
+inline int64_t TraySaveWireRetain( const Ctx & ctx, const Tray & root, TableRetain * retain, uint8_t * buffer, int64_t capacity, TableReport * report )
+{
+    TableNumbering numbering;
+    TableNumberingInit( numbering, TableDefaultAllocator() );
+    auto retain_measure = []( const Ctx & c, const TableNumbering & nn, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> int64_t
+    {
+        const TableRetainPath at = TableRetainPathRoot( node, 0 );
+        (void) c; (void) nn; (void) ii; (void) rt; (void) at;
+        switch ( type_id )
+        {
+            case 0x66bd1cc6d2f6b68dull: return NodeMeasureBodyRetain( ii, *(const Node *) node, rt, at ); // Node
+            default: break;
+        }
+        return -1;
+    };
+    auto retain_save = []( const Ctx & c, const TableNumbering & nn, TableWriter & ww, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> bool
+    {
+        const TableRetainPath at = TableRetainPathRoot( node, 0 );
+        (void) c; (void) nn; (void) ww; (void) ii; (void) rt; (void) at;
+        switch ( type_id )
+        {
+            case 0x66bd1cc6d2f6b68dull: return NodeSaveBodyRetain( ww, ii, *(const Node *) node, rt, at ); // Node
+            default: break;
+        }
+        return false;
+    };
+    if ( !TrayNumberFrom( ctx, numbering, root ) ) { TableNumberingShutdown( numbering ); return -1; }
+    TableWriter w( buffer, capacity );
+    TableRetainIds ids( retain );
+    if ( retain != NULL ) { retain->id_used = 0; }
+    TableRetainClearPlaced( retain );
+    w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
+    // the root's own fields, then the RETAINED TAIL, then the node table's
+    // field: a retained field is one of the root's own values, and the tail
+    // is pinned before the large and damage-prone part (§6.6, §3.1)
+    bool ok = TraySaveBodyFieldsRetain( ctx, numbering, w, ids, root, retain, TableRetainPathRoot( (const void *) &root, 1 ) ) &&
+              TableNodeTableSaveRetain( ctx, w, ids, numbering, retain, retain_measure, retain_save );
+    TableNumberingShutdown( numbering );
+    if ( !ok || ids.overflow ) { return -1; }
+    w.put8( 0 ); // the ZERO REFERENCE that ends the root body
+    TableRetainIdsWrite( w, ids );
+    if ( w.overflow ) { return -1; } // the caller's buffer was too small
+    // THE SAVE'S OWN SHARE OF retain_lost, read after the save (§6.6): every
+    // record the walk did not place, counted once.
+    TableRetainCountLost( retain, report );
+    return w.offset;
+}
+
+inline int64_t TrayMeasureRetain( const Tray * root, TableRetain * retain, TableAllocator allocator = TableDefaultAllocator() )
+{
+    if ( root == NULL ) { return -1; }
+    TableRegionCtx ctx;
+    return TrayMeasureWireRetain( ctx, *root, retain, allocator );
+}
+
+// SaveRetain REFUSES A NULL REPORT and returns -1 (docs/SPEC-TABLES.md
+// §6.6): the save is the only place a caller learns that a record was
+// dropped, so the report is required here where it is optional everywhere
+// else. A surface that let a caller retain, save and never find out would
+// be a promise it could not check.
+inline int64_t TraySaveRetain( const Tray * root, TableRetain * retain, uint8_t * buffer, int64_t capacity, TableReport * report )
+{
+    if ( root == NULL || report == NULL ) { return -1; }
+    TableRegionCtx ctx;
+    return TraySaveWireRetain( ctx, *root, retain, buffer, capacity, report );
+}
+
+// TraySaveRetainMessages: RETENTION WRITING FORM 2 IS REFUSED BY NAME
+// (docs/SPEC-TABLES.md §3.3). It is a MISUSE refusal on §6.6's own
+// precedent and never a silent drop, and the two answers are named: a
+// caller that must carry unknowns across a rewrite writes the FILE form,
+// which carries its own table and takes §6.6 unchanged, and a RELAY
+// forwards the sending peer's announcement and its batch bytes verbatim.
+template <typename... Args>
+inline int64_t TraySaveRetainMessages( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "Tray: a form 2 writer names entries through slots of a vocabulary the compiler settled, and a retained id is one this build's closure does not contain, so it has neither a slot nor an announced shape. Retention writing the MESSAGE form is refused by name (docs/SPEC-TABLES.md §3.3). Write the FILE form, which carries its own table and takes §6.6 unchanged, or relay the sender's announcement and batch bytes verbatim." );
+    return -1;
+}
+
+// ---- retain-unknown on a FIXED-class root: refused by name (§6.6) ----
+//
+// A fixed-class root is a VALUE: no region, no node directory, and so no
+// anchor for a retained record's path. The three names are declared here so
+// that naming one is a refusal that says why, rather than a symbol a linker
+// could not find. The suffixes stay claimed on every closure member all the
+// same (§11): a table gains or loses pointers as an edit, and a name that is
+// free today must not become a collision tomorrow.
+//
+// NOTHING BETWEEN THESE TWO MARKERS IS MACHINERY. Each name is a function
+// template that defines nothing and instantiates nothing until it is called,
+// so this block lands in a value-only unit at no cost and §2.2's zero-cost
+// scan reads past it: the markers are what lets that scan say so exactly
+// rather than by the absence of the word "template".
+
+template <typename... Args>
+inline void NodeLoadRetain( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "Node is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void NodeMeasureRetain( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "Node is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void NodeSaveRetain( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "Node is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+// ---- end of the fixed-class retain refusal ----
 
 // ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ----
 

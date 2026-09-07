@@ -86,7 +86,7 @@ what proves them across releases, #463, named in its section below.
     `unknown` class alone, so a load that reported `kind_mismatch`, `clamped`
     or `malformed` still loses what those counters name. It is opt-in, it
     allocates nothing, and every gap counts `retain_lost`. Specified in
-    SPEC-TABLES.md §6.6, owed as #525.
+    SPEC-TABLES.md §6.6. The C++ reference carries it; the eight ports do not.
 11. **This page moves with the facts.** No mechanical gate reads this page
     today; #446 adds one, the evolution table's fixtures, and the rest is
     review.
@@ -364,7 +364,7 @@ checks it before it writes.
 
 **RETAIN-UNKNOWN is the opt-in that answers the case the rule exists for, and
 it strikes ONE counter out of the never-clobber condition** (SPEC-TABLES.md
-§6.6, owed as #525).
+§6.6).
 A caller that hands `LoadRetain` bounded side storage it declares and owns,
 a buffer for the records and a list for their ids,
 keeps every unknown FIELD's bytes, and `SaveRetain` writes them back into the
@@ -920,7 +920,7 @@ still open.
 - **Unknown fields do not survive a rewrite unless the caller asks, and even
   then not all of them.** The default is a drop, with the never-clobber rule
   as the required consequence and no runtime enforcement. Retain-unknown
-  (SPEC-TABLES.md §6.6, #525) is opt-in, is bounded by the buffer and the id
+  (SPEC-TABLES.md §6.6) is opt-in, is bounded by the buffer and the id
   list the caller sizes, and is a REGION round trip only: `LoadRetain` loads
   into a region and `SaveRetain` saves from that region, and the BUILDER path
   carries no retention, because a builder has no node directory to anchor a
@@ -1076,7 +1076,10 @@ repository not yet behind it. The 3.0.0 release holds the list at zero.
   `[N]T` under a `const N` that folds from either still compile there, which
   SPEC-TABLES.md §2.4 and §11 state as refused, so those two spellings reopen
   the class §4.1 closed. The `type`-held case is ruled on #606.
-- #525: retain-unknown, the two report counters, and the conformance rows.
+- #525: retain-unknown in the eight ports, `internal/tablewire`'s own
+  retention and the fuzzer leg that needs it, the MESSAGE form's `LoadRetain`,
+  and the conformance rows. The C++ reference and the two report counters are
+  built.
 - #522: `*wstring`, the unbounded twin of wide text — the blob record is
   specified and no backend emits one (SPEC-TABLES.md §2.5). The BOUNDED
   spelling's table half, kind `33`, has landed in the C++ reference and the
