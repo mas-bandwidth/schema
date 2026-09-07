@@ -829,6 +829,56 @@ through `go build -overlay` and each turning the fuzzer red on its own verdict.
 |---|---|---|---|---|---|---|---|---|
 | ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ❌ #512 | ❌ #518 | ❌ #511 | ❌ #513 | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 |
 
+### M21 — A float crosses two widths by bit surgery, never by conversion
+
+**Method.** A float rides as its IEEE-754 BIT PATTERN with no canonicalisation
+(docs/SPEC-TABLES.md §3, SPEC.md §4.3), so a backend that holds a `float32` in
+a WIDER cell moves the pattern BIT FOR BIT and never through a float
+conversion. The hardware conversion sets the QUIET BIT on a signalling NaN and
+drops a payload the narrower cell would have kept, so a port that models a
+float32 in a float64 rewrites values the wire carried — silently, on the read
+side, where a byte comparison of its own writing catches nothing. Two
+functions, inverse over every float32 NaN: widening takes the sign, an
+all-ones exponent and the 23 payload bits into the TOP of the double's 52;
+narrowing takes them back, and a payload that would round away is forced to
+the quiet bit rather than to an INFINITY. Ordinary values take the ordinary
+conversion, exact in both directions. The rule reaches three places in a port:
+the read of kind `10`, §4's FLOAT RUNG where `10` widens into `11`, and any
+storage between them that is wider than the field — a cook's region slot, a
+text cell.
+
+**Reference.** `internal/codegen/cpptable/widen.go` (`TableWidenF32`, emitted
+into every unit's header) and its use at
+`internal/codegen/cpptable/messageload.go`. The compiler's own engines carry
+the same pair, EXPORTED so nothing mints a second copy:
+`internal/tablewire/encode.go`'s `WidenF32` and `NarrowF32`, read by
+`internal/tablewire/decode.go`'s kind-`10` arm and by
+`internal/tablecook/region.go` and `internal/tablecook/uncook.go`.
+
+**Proven in.** C++ (#480), and the TOOL: the Go oracle and the tool's cook both
+model a float32 in a float64 cell, and both read and write the pinned patterns
+unchanged. The eight ports are a row on #366 — JavaScript holds every number as
+a float64 and Elixir's floats are doubles, so those two owe the technique for
+the field itself; the rest owe it at §4's float rung, where the widened value
+lands in a double however the field is stored.
+
+**Measured effect.** Nothing on the ordinary path: the branch is one mask and
+one compare against an exponent word already loaded, and every finite value
+takes the conversion it took before. What it buys is the byte-identity promise
+holding over a class of values the corpus can now pin.
+
+**Negative control.** `tables-float-nan-negative-control` puts the hardware
+conversion back in `TableWidenF32` through an overlay sabotage (I2),
+regenerates only the F1/F2 pair from the sabotaged emitter, and requires the
+pin to go RED on the payload: the observed failure is `0x7ff0000020000000`
+read back as `0x7ff8000020000000`, which is the quiet bit the conversion set.
+
+**Targets:** tables-float-nan, tables-float-nan-negative-control
+
+| cpp | c | rust | go | cs | java | js | dart | elixir |
+|---|---|---|---|---|---|---|---|---|
+| ✅ `tables-float-nan` `tables-float-nan-negative-control`, and the TOOL's two engines (`TestOracleCarriesTheFloatBitPattern`, `TestOracleWidensTheFloatBitPattern`, `TestACookCarriesAFloatBitPattern`) | ❌ #366 | ❌ #366 | ❌ #366 | ❌ #366 | ❌ #366 | ❌ #366 | ❌ #366 | ❌ #366 |
+
 ### I1 — The independent allocation gate
 
 **Method.** The read path's "allocates nothing" is MEASURED, with an

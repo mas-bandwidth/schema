@@ -2993,7 +2993,7 @@ one document rather than two.
   | `1` bool | 1 byte, `0` or `1` |
   | `2`–`5` i8/i16/i32/i64 | 1/2/4/8 bytes, two's complement |
   | `6`–`9` u8/u16/u32/u64 | 1/2/4/8 bytes |
-  | `10` f32, `11` f64 | 4/8 bytes, the IEEE-754 bit pattern |
+  | `10` f32, `11` f64 | 4/8 bytes, the IEEE-754 bit pattern, with NO CANONICALISATION (below) |
   | `12` string | `L`, then `L` bytes, WELL-FORMED UTF-8 with no zero byte among them. No terminator. Ill-formed content is `malformed` (below) |
   | `13` table | `L`, then `L` bytes of table body (fields, then the zero reference) |
   | `14` array | `L`, then the array body: `element kind (u8)`, `N`, then the elements |
@@ -3007,6 +3007,25 @@ one document rather than two.
   | `31` escape | `L`, then `L` bytes, opaque |
   | `32` no payload | `L`, then `L` bytes, and this form writes `L = 0` |
   | `33` wstring | `L`, then `L` bytes, which are `L / 2` UTF-16 code units, each two bytes little-endian, SURROGATES PAIRED and no zero unit among them. An ODD `L` is malformed, and so is ill-formed content (below). No terminator |
+
+  **A FLOAT RIDES AS ITS IEEE-754 BIT PATTERN, WITH NO CANONICALISATION**
+  (SPEC.md §4.3). Kind `10` is the four bytes the field holds and kind `11`
+  the eight, whatever they spell: a negative zero, an infinity, a quiet NaN, a
+  SIGNALLING NaN, a NaN with any payload. No writer normalizes one and no
+  reader repairs one, so the pattern that goes in is the pattern that comes
+  out. **A BACKEND THAT HOLDS A `float32` IN A WIDER CELL CARRIES THE PATTERN
+  BIT FOR BIT AND NEVER THROUGH A FLOAT CONVERSION** — the hardware conversion
+  between the two widths sets the quiet bit on a signalling NaN and drops a
+  payload the narrower cell would have kept, and the byte identity nine
+  languages hold over one corpus fails on exactly those values. It is a
+  cross-port contract and not one engine's quirk: JavaScript holds every
+  number as a float64, Elixir's floats are doubles, and the Go oracle and the
+  tool's cook both model a float32 in a float64 cell. The technique is a row
+  in docs/PORTING.md; `testdata/wire/tables/floats_nan.bin` pins the patterns
+  a conversion would move, at both widths and as array elements, and
+  `make tables-float-nan-negative-control` puts the conversion back and
+  watches the pin go red. The rule crosses §4's FLOAT RUNG, `10` into `11`,
+  where the 23 payload bits ride in the top of the double's 52.
 
   **The scalars the type wire brought ride as their STORAGE and nothing
   else.** A `fixed(I, F)` value is the integer its storage holds, units ×

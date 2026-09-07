@@ -14,6 +14,7 @@ import (
 	"math"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -199,7 +200,10 @@ func (r *regionReader) element(at int64, f *ir.Field, cell *tabletext.Cell) erro
 		cell.B = r.buf[at] != 0
 		return nil
 	case ir.TFloat32:
-		cell.F = float64(math.Float32frombits(r.ord.Uint32(r.buf[at:])))
+		// the widening half of §3's bit-pattern rule: a float32 NaN's payload
+		// rides in the top of the double's mantissa rather than crossing the
+		// two widths through a conversion (SPEC.md §4.3, schema#480)
+		cell.F = tablewire.WidenF32(r.ord.Uint32(r.buf[at:]))
 		return nil
 	case ir.TFloat64:
 		cell.F = math.Float64frombits(r.ord.Uint64(r.buf[at:]))

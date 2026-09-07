@@ -150,6 +150,11 @@ define tables_generate
 	$(1) generate --lang cpp --out $(2)/w2 test/tables/W2.schema
 	$(1) generate --lang cpp --out $(2)/r1 test/tables/R1.schema
 	$(1) generate --lang cpp --out $(2)/r2 test/tables/R2.schema
+	# THE FLOAT BIT-PATTERN PAIR (docs/SPEC-TABLES.md §3, §4, schema#480): the
+	# root carrying a signalling NaN and a payload NaN, and the same root one
+	# generation on with the float32 fields respelled float64 — the widened rung
+	$(1) generate --lang cpp --out $(2)/f1 test/tables/F1.schema
+	$(1) generate --lang cpp --out $(2)/f2 test/tables/F2.schema
 	$(1) generate --lang cpp --out $(2)/scalars tables/scalars
 	$(1) generate --lang cpp --out $(2)/maps tables/maps
 	$(1) generate --lang cpp --out $(2)/lists tables/lists
@@ -170,9 +175,9 @@ endef
 
 tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome -Itest/tables \
 	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys \
-	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/w1 -I$(1)/w2 -I$(1)/r1 -I$(1)/r2 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/maps -I$(1)/lists -I$(1)/arms -I$(1)/backend -I$(1)/vocab -I$(1)/vocab9 -I$(1)/bases -I$(1)/rt1 -I$(1)/rt2 -I$(1)/rt3 -I$(1)/wide -I$(SERIALIZE)
+	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/w1 -I$(1)/w2 -I$(1)/r1 -I$(1)/r2 -I$(1)/f1 -I$(1)/f2 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/maps -I$(1)/lists -I$(1)/arms -I$(1)/backend -I$(1)/vocab -I$(1)/vocab9 -I$(1)/bases -I$(1)/rt1 -I$(1)/rt2 -I$(1)/rt3 -I$(1)/wide -I$(SERIALIZE)
 
-build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/Scalars2.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema
+build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/Scalars2.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema
 	@mkdir -p build/tables-generated
 	$(call tables_generate,./bin/schema,build/tables-generated)
 	@touch $@
@@ -2931,6 +2936,9 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-lists-negative-controls
 	$(MAKE) tables-arms
 	$(MAKE) tables-arms-negative-controls
+	# A FLOAT RIDES AS ITS BIT PATTERN (docs/SPEC-TABLES.md §3, schema#480)
+	$(MAKE) tables-float-nan
+	$(MAKE) tables-float-nan-negative-control
 	# RETAIN-UNKNOWN (docs/SPEC-TABLES.md §6.6): the round trip, the five
 	# excluded classes a wire can carry to the unknown arm, the two
 	# capacities, and the two refusals, each of which is a compile error that
@@ -3371,6 +3379,53 @@ tables-retain-message-form-negative-control: build/tables-generated/.stamp
 	fi
 	@grep -q "Retention writing the MESSAGE form is refused by name" build/retain-message-form.log || { echo "RETAIN GATE FAILED: the message-form refusal was not by name"; cat build/retain-message-form.log; exit 1; }
 	@echo "retention writing form 2 refuses BY NAME (docs/SPEC-TABLES.md §3.3)"
+
+# ---- A FLOAT RIDES AS ITS BIT PATTERN (docs/SPEC-TABLES.md §3, §4, SPEC.md
+# ---- §4.3, schema#480) -----------------------------------------------------
+#
+# The pin is testdata/wire/tables/floats_nan.bin — a signalling NaN, a NaN with
+# a payload past the quiet bit, both signs, at both widths and as array
+# elements. main.cpp writes it and reads it back with every other golden; this
+# binary carries the CLAIM: the bits come back, and come back through §4's
+# widened rung, where a backend holding a float32 in a wider cell would quiet a
+# signalling NaN through the hardware conversion.
+FLOATNAN_SOURCES = $$(ls build/tables-generated/f1/*Table.cpp build/tables-generated/f2/*Table.cpp)
+
+build/schema_test_floatnan: build/tables-generated/.stamp test/tables/floatnan_main.cpp test/tables/floatnan.h
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/f1 -Ibuild/tables-generated/f2 -Itest/tables \
+		test/tables/floatnan_main.cpp $(FLOATNAN_SOURCES) -o $@
+
+.PHONY: tables-float-nan
+tables-float-nan: build/schema_test_floatnan
+	./build/schema_test_floatnan
+
+# ITS NEGATIVE CONTROL: the reference's widening reads the BITS, and this
+# replaces it with the hardware conversion a port would reach for first. The
+# emitter is sabotaged, ONLY the f1/f2 pair is regenerated from it, and the
+# claim above must go RED — on the payload, not on a compile error.
+.PHONY: tables-float-nan-negative-control
+tables-float-nan-negative-control: bin/schema build/tables-generated/.stamp
+	@rm -rf build/float-nan-control && mkdir -p build/float-nan-control
+	@sed -e 's@    if ( ( bits \& 0x7F800000u ) == 0x7F800000u \&\& ( bits \& 0x007FFFFFu ) != 0 )@    if ( false ) // SABOTAGED: the hardware conversion quiets a signalling NaN@' \
+		internal/codegen/cpptable/widen.go > build/float-nan-control/widen.go.txt
+	@cmp -s internal/codegen/cpptable/widen.go build/float-nan-control/widen.go.txt && \
+		{ echo "NEGATIVE CONTROL FAILED: the float-NaN sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/widen.go":"%s/build/float-nan-control/widen.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/float-nan-control/overlay.json
+	@go build -overlay=build/float-nan-control/overlay.json -o build/schema-float-nan-control ./cmd/schema
+	@./build/schema-float-nan-control generate --lang cpp --out build/float-nan-control/f1 test/tables/F1.schema
+	@./build/schema-float-nan-control generate --lang cpp --out build/float-nan-control/f2 test/tables/F2.schema
+	@$(CXX) $(TABLES_CXXFLAGS) -Ibuild/float-nan-control/f1 -Ibuild/float-nan-control/f2 -Itest/tables \
+		test/tables/floatnan_main.cpp build/float-nan-control/f1/*Table.cpp build/float-nan-control/f2/*Table.cpp \
+		-o build/schema_test_floatnan_control
+	@if ./build/schema_test_floatnan_control > build/float-nan-control/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: widening a float32 NaN through the hardware conversion left the pin GREEN"; exit 1; \
+	fi
+	@grep -q "through a conversion" build/float-nan-control/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the pin went red, but not on the payload"; \
+		  cat build/float-nan-control/log; exit 1; }
+	@echo "negative control: a canonicalising widen turns the float bit-pattern pin RED"
 
 build/schema_test_lists: build/tables-generated/.stamp test/tables/lists_main.cpp
 	@mkdir -p build
@@ -3846,6 +3901,8 @@ check: bin/schema
 	./bin/schema check test/tables/P3.schema
 	./bin/schema check test/tables/M1.schema
 	./bin/schema check test/tables/M2.schema
+	./bin/schema check test/tables/F1.schema
+	./bin/schema check test/tables/F2.schema
 	./bin/schema check bench/corpus/Bench.schema
 	./bin/schema check bench/corpus/RealWorld.schema
 	./bin/schema check bench/corpus/BenchTable.schema
@@ -3876,6 +3933,8 @@ fmt: bin/schema
 	./bin/schema fmt test/tables/P3.schema
 	./bin/schema fmt test/tables/M1.schema
 	./bin/schema fmt test/tables/M2.schema
+	./bin/schema fmt test/tables/F1.schema
+	./bin/schema fmt test/tables/F2.schema
 	./bin/schema fmt bench/corpus/Bench.schema
 	./bin/schema fmt bench/corpus/RealWorld.schema
 	./bin/schema fmt bench/corpus/BenchTable.schema

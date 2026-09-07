@@ -325,7 +325,11 @@ func (w *regionWriter) element(at int64, f *ir.Field, cell *tabletext.Cell) erro
 		w.putBool(at, cell.B)
 		return nil
 	case ir.TFloat32:
-		w.putU32(at, math.Float32bits(float32(cell.F)))
+		// A FLOAT RIDES AS ITS BIT PATTERN, WITH NO CANONICALISATION
+		// (docs/SPEC-TABLES.md §3, SPEC.md §4.3): the cell is a float64, so
+		// the narrowing is BIT SURGERY — the hardware conversion would set the
+		// quiet bit on a signalling NaN and lose its payload (schema#480).
+		w.putU32(at, tablewire.NarrowF32(cell.F))
 		return nil
 	case ir.TFloat64:
 		w.putU64(at, math.Float64bits(cell.F))
