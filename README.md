@@ -5,7 +5,7 @@
 
 **Schema. The data language for games.**
 
-![Schema — a game world taking shape from an architectural blueprint](images/schema.png)
+![Schema — architectural pieces sharing one design](images/schema.png)
 
 Schema is a data language where you define your constants, enums, flags, types and tables for your game. 
 
