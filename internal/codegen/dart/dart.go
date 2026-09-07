@@ -254,6 +254,7 @@ type gen struct {
 	needF64Conv  bool // _float64BitsFromDouble / _doubleFromFloat64Bits
 	needULess    bool // _unsignedLessThan
 	needHex      bool // _hex64 (flagNames high-bit rendering)
+	needUTF8     bool // _schemaUtf8Valid
 	needScratch  bool // the overlaid conversion scratch views
 	usesTypeData bool // dart:typed_data is imported
 }
@@ -372,6 +373,9 @@ func (g *gen) writeImport(h *strings.Builder, base string, syms []string) {
 
 // emitHelpers writes the per-file private helpers the emitted bodies used.
 func (g *gen) emitHelpers(h *strings.Builder) {
+	if g.needUTF8 {
+		h.WriteString(utf8Helper)
+	}
 	if g.needScratch {
 		// One view per conversion actually emitted: `dart analyze` refuses an
 		// unreferenced private declaration, so a file that converts only
@@ -640,7 +644,32 @@ func (g *gen) emitClass(d *ir.Struct) {
 		g.bpf("%s", ir.DocComment(f.Doc, "  ", "///"))
 		g.emitStorageField(f)
 	}
+	var byteDefaults []*ir.Field
+	for _, f := range d.Fields {
+		if f.HasDefault && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) {
+			byteDefaults = append(byteDefaults, f)
+		}
+	}
+	if len(byteDefaults) > 0 {
+		g.bpf("\n  %s() {\n", d.Name)
+		for _, f := range byteDefaults {
+			g.emitByteDefault(f, dartName(f.Name), "    ", g.bpf)
+		}
+		g.bpf("  }\n")
+	}
 	g.bpf("}\n\n")
+}
+
+// Constructor and in-place Init share assignments into zeroed backing storage.
+// No temporary list or encoding conversion is allocated on the read path.
+func (g *gen) emitByteDefault(f *ir.Field, name, ind string, emit func(string, ...any)) {
+	if !f.HasDefault {
+		return
+	}
+	for i, b := range f.DefBytes {
+		emit("%s%s[%d] = 0x%02x;\n", ind, name, i, b)
+	}
+	emit("%s%sLength = %d;\n", ind, name, len(f.DefBytes))
 }
 
 func (g *gen) emitStorageField(f *ir.Field) {
@@ -752,6 +781,9 @@ func (g *gen) scalarStorage(f *ir.Field) (typ, init string) {
 			}
 			return "int", t.Name + ".none"
 		case *ir.Flags:
+			if f.HasDefault {
+				return "int", dartIntLit(f.DefInt)
+			}
 			return "int", "0"
 		case *ir.Struct, *ir.Union:
 			g.addRef(t.Name, t.Name)

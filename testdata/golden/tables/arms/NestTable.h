@@ -5166,8 +5166,21 @@ enum class InnerType : uint8_t {
     None = 0,
     Leaf = 1,
     Plain = 2,
+    Count = 2, // the declared variant count (SPEC §4.2)
     Max = 2, // the exported extent (SPEC §4.2)
 };
+
+// EnumName: debug/log name for any InnerType value, out-of-set included
+inline const char * EnumName( InnerType value )
+{
+    switch ( value )
+    {
+        case InnerType::None: return "None";
+        case InnerType::Leaf: return "Leaf";
+        case InnerType::Plain: return "Plain";
+        default: return "???";
+    }
+}
 
 // union Inner — at most one of the arms; the tag says which. AN ARM IS A FIELD
 // LINE (docs/SPEC-TABLES.md §2.6), so an arm's storage is the field's storage
@@ -5202,8 +5215,21 @@ enum class OuterType : uint8_t {
     None = 0,
     Inner = 1,
     Plain = 2,
+    Count = 2, // the declared variant count (SPEC §4.2)
     Max = 2, // the exported extent (SPEC §4.2)
 };
+
+// EnumName: debug/log name for any OuterType value, out-of-set included
+inline const char * EnumName( OuterType value )
+{
+    switch ( value )
+    {
+        case OuterType::None: return "None";
+        case OuterType::Inner: return "Inner";
+        case OuterType::Plain: return "Plain";
+        default: return "???";
+    }
+}
 
 // union Outer — at most one of the arms; the tag says which. AN ARM IS A FIELD
 // LINE (docs/SPEC-TABLES.md §2.6), so an arm's storage is the field's storage

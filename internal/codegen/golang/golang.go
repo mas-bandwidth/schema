@@ -60,6 +60,7 @@ type gen struct {
 	needsMath      bool // the file emits math.Floor -> import math
 	needsErrors    bool // the file declares ErrValidation -> import errors
 	needsStrconv   bool // the file emits FlagNames* -> import strconv
+	needsUTF8      bool // the file validates string bytes on read
 
 	// bulkBytes marks the current struct's statically byte-aligned [N]uint8
 	// arrays (ir.AlignedFixedByteArrays): these serialize through the
@@ -91,6 +92,9 @@ func (g *gen) assemble() []byte {
 	}
 	if g.needsStrconv {
 		std = append(std, `"strconv"`)
+	}
+	if g.needsUTF8 {
+		std = append(std, `"unicode/utf8"`)
 	}
 	if g.needsSerialize {
 		ext = append(ext, `"github.com/mas-bandwidth/serialize.go"`)
@@ -461,6 +465,8 @@ func (g *gen) emitStorageField(f *ir.Field) {
 	typ := g.goFieldType(f.Type)
 
 	switch {
+	case f.Type.Kind == ir.TWString:
+		g.pf("\t%s [%s]uint16\n\t%sLength int32\n", name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)), name)
 	case f.Type.Kind == ir.TString:
 		g.pf("\t%s [%s]byte // string(%s): max length, used length beside it (SPEC §4.7)\n",
 			name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)), ir.RenderExpr(f.Type.SizeExpr))

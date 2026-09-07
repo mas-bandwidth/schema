@@ -581,6 +581,13 @@ func (g *gen) scalarDefault(f *ir.Field) string {
 		}
 		return "0.0"
 	case ir.TString, ir.TBytes:
+		if f.HasDefault {
+			var bytes []string
+			for _, b := range f.DefBytes {
+				bytes = append(bytes, fmt.Sprintf("0x%02X", b))
+			}
+			return "<<" + strings.Join(bytes, ", ") + ">>"
+		}
 		return "<<>>"
 	case ir.TFixed:
 		// ir.Field.DefInt for a fixed default is ALREADY the raw scaled
@@ -597,6 +604,9 @@ func (g *gen) scalarDefault(f *ir.Field) string {
 			}
 			return "0"
 		case *ir.Flags:
+			if f.HasDefault {
+				return intLit(f.DefInt)
+			}
 			return "0"
 		case *ir.Struct, *ir.Union:
 			return fmt.Sprintf("%%%s{}", g.mod(t.Name))

@@ -304,14 +304,14 @@ jobs:
   # build-time artifact to gate — faking one would be a green light that
   # proves nothing.
   #
-  # THE TIMEOUT COVERS THE `make test` PRECONDITION, not just the legs: that
-  # chain is ~22 minutes on either OS (run 33787248541: 1320 s on ubuntu, and
-  # the macOS test job the same), the selftest and the longest leg add ~5, and
-  # a saturated macOS pool stretches all of it. At 20 minutes four macOS legs
-  # died mid-chain with make still running and read as "cancelled".
+  # The timeout covers the full `make test` precondition, the adversarial
+  # selftest and the inline leg. In run 34080317818, the Ubuntu Go job hit
+  # the 40-minute cap during `make test`, before reaching either inline check.
+  # Match the full test job's 60-minute budget; every precondition and check
+  # remains in place, and the job still has a bounded execution time.
   inline-gate:
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 40
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:

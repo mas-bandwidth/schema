@@ -1182,17 +1182,15 @@ diagnostic does not name the field, the enum and the fix.
   and every row whose bound reaches its enum through a constant compiles
   clean without it.
 
-**CHECKER STATUS: `[E.Max]T` IS REFUSED, THE OTHER SPELLINGS ARE NOT.**
-`schema check` refuses `[E.Max]T` in a table body and in a union arm, naming
-the field, the enum and `[E]T` as the fix. It accepts `[E.Count]T` and `[N]T`
-under a `const N` that folds from either, with no diagnostic and exit 0, so a
-unit that spells the bound either of those ways compiles and carries the
-positional class this rule exists to close. The rule above follows the bound's
-PROVENANCE and the checker still follows its spelling, and closing that gap is
-owed as schema#540. Two sections rest on the refusal being made whole, §4.1's
+**CHECKER STATUS: THE REFUSAL FOLLOWS THE PROVENANCE.** `schema check` refuses
+every spelling above in a table body and in a union arm, reading the bound's
+provenance and not its text: `[E.Max]T`, `[E.Count]T`, and `[N]T` under a
+`const N` that folds from either at any depth of constant arithmetic. The
+diagnostic names the field, the enum, the constant where the bound reaches the
+enum through one, and `[E]T` as the fix; an arm's names the arm and the table
+that reaches the union. Two sections rest on this refusal being whole, §4.1's
 count of the silent class and SPEC.md §3.1's one exception to reachability, and
-each is written from this rule rather than from the tree. This paragraph is
-deleted by the implementation PR that closes the gap.
+both stand on the tree as well as on the rule.
 
 **RULING STATUS: the type-held case is ruled on schema#606.** Until then a
 `type` no table reaches keeps the spelling and a `type` a table reaches is
@@ -1351,7 +1349,7 @@ type a FIELD's is, and an arm may name no type at all:
 ```
 union Value
 {
-    count   int32 | min = 0, max = 100
+    tally   int32 | min = 0, max = 100
     label   string(64)
     blob    bytes(16)
     samples [..8]float32
@@ -1419,7 +1417,7 @@ already spends what it would buy**, and each is refused by name (§11):
 **Selection is presence, so a set arm ALWAYS rides, whatever it holds**
 (§3). A union FIELD holding `None` elides; a union holding a selected arm
 writes the arm id and the arm's payload under its length even when the
-payload is empty or entirely default — a zero `count`, an empty `label`, an
+payload is empty or entirely default — a zero `tally`, an empty `label`, an
 all-default `offset`, a `ping` that has no payload to hold. That is the
 pointer's and the optional's rule
 (§2.3, §3.1) at an arm, and for their reason: otherwise "no arm" and "this
@@ -1440,7 +1438,7 @@ arms, in C++:
 ```
 union
 {
-    int32_t count;
+    int32_t tally;
     struct { char value[65]; int32_t value_length; } label;
     struct { float value[8]; int32_t value_count; } samples;
     Vec3 offset;
@@ -1487,6 +1485,22 @@ reaches (§11). A table holding one has no BLOCK form, by §19's standing rule
 for every union in a block closure. The packet wire's encoding of a general
 arm is stated where the packet union is (SPEC §4.8), and carrying it in the
 nine backends is the named follow-on (§15).
+
+**THE TAG SHAPE IS THE PACKET TAG ENUM'S, MEMBER FOR MEMBER.** A different
+emitter writes it, so it is worth saying what it writes: `<Union>Type` carries
+`None = 0`, then each variant in declared order dense from 1, then `Count` (the
+declared variant count, `None` excluded) and `Max` (the exported extent), and
+beside the enum the DEBUG-NAME function that takes any value, out-of-set
+included, and returns the variant's spelling or the fixed unknown marker
+(SPEC §4.2, §4.8). It is the same construct to a reader: one logging which
+body arrived writes `EnumName( edit.body.type )` whichever union it holds, so
+it presents the same surface. Nothing on the read or write path calls the
+function and no generated code does. The table layer is the C++ reference's
+(§11, §15), so this shape has ONE emitter where the packet shape has nine.
+`Count` is therefore a REFUSED ARM NAME here as it is on a packet union
+(SPEC §4.11): the member exists, so an arm exporting `Count` would define it
+twice, which C++ refuses as a redefinition. The refusal is over the exported
+spelling, so `count` goes with it.
 
 - **A union declared for the TYPE wire keeps refusing table arms.** Types
   are value semantics and their wire is positional; a table arm is a
@@ -9864,12 +9878,10 @@ in build version (§20.5).
   table closure, `| max = K` headroom and variant id collisions, each
   diagnostic naming the keying field that pulled the enum in. A slot value no variant names is a SAVE failure, not a silent `None`
   (§3.2).
-  **CHECKER STATUS: `[E.Max]T` is refused in a table body and in a union arm.
-  `[E.Count]T` and `[N]T` under a `const N` that folds from either are
-  accepted there today with no diagnostic**, because the checker still
-  follows the spelling where the rule follows the provenance, owed as
-  schema#540 (§2.4), and this sentence is deleted by the implementation PR
-  that closes the gap.
+  **CHECKER STATUS: `[E.Max]T`, `[E.Count]T` and `[N]T` under a `const N` that
+  folds from either are all refused in a table body and in a union arm**, on
+  the bound's provenance, and an arm's diagnostic names the arm and the table
+  that reaches the union (§2.4).
   **RULING STATUS: the type-held case is ruled on schema#606**, and until
   then a `type` a table reaches is not refused (§2.4).
 - **Maps** (§2.8): a map in a `type` body; a key that is an enum (the
@@ -9989,6 +10001,12 @@ in build version (§20.5).
   (§2.8) or an UNBOUNDED ARRAY (§2.9)**, whose elements live in the holder's
   NODE EXTENT and would make that extent depend on the union's tag, each
   refusal naming the table wrapper that serves.
+- **An ARM NAMED `Count`** (§2.6), over the EXPORTED spelling, so `count` is
+  refused too. The tag shape a table-closure union gets carries the declared
+  variant count as the member `Count`, exactly as a packet union's tag enum
+  does (SPEC §4.2, §4.8, §4.11), so the arm would define the member twice and
+  C++ refuses that as a redefinition. It is the reservation `None` and `Max`
+  already carry, reaching every union because the member is on every union.
 - **An array of unions** (§2.6): the enum-KEYED spelling `[E]Body`, a named
   follow-on (§15) where the bounded `[..N]Body` and `[N]Body` are not; and
   **an array of unions in a table closure under every backend but C++**,

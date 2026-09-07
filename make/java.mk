@@ -15,6 +15,35 @@
 JAVA  ?= $(CURDIR)/dist/jdk-21.0.12.1/Contents/Home/bin/java
 JAVAC ?= $(CURDIR)/dist/jdk-21.0.12.1/Contents/Home/bin/javac
 
+build/packet-defaults/java/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema make/java.mk
+	./bin/schema generate --lang java --out build/packet-defaults/java/defaults test/packet-defaults/Defaults.schema
+	./bin/schema generate --lang java --out build/packet-defaults/java/plain test/packet-defaults/Plain.schema
+	@touch $@
+
+.PHONY: packet-defaults-java packet-defaults-java-negative-control
+packet-defaults-java: build/packet-defaults/java/.stamp packet-defaults-cpp
+	@mkdir -p build/packet-defaults/java/classes
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-defaults/java/classes build/packet-defaults/java/defaults/*.java build/packet-defaults/java/plain/*.java test/packet-defaults/java/Main.java
+	$(JAVA) -ea -cp build/packet-defaults/java/classes Main testdata/wire/packet-defaults
+	$(JAVA) -cp build/packet-defaults/java/classes Main testdata/wire/packet-defaults
+
+packet-defaults-java-negative-control: packet-defaults-java
+	@mkdir -p build/packet-defaults/java-negative/classes
+	go run ./tools/sabotage -name packet-defaults-java-constructor-bytes \
+		-out build/packet-defaults/java-negative/java.gotext internal/codegen/java/java.go
+	@printf '{"Replace":{"%s/internal/codegen/java/java.go":"%s/build/packet-defaults/java-negative/java.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/packet-defaults/java-negative/overlay.json
+	go build -overlay=build/packet-defaults/java-negative/overlay.json -o build/packet-defaults/java-negative/schema ./cmd/schema
+	./build/packet-defaults/java-negative/schema generate --lang java --out build/packet-defaults/java-negative/generated test/packet-defaults/Defaults.schema
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-defaults/java-negative/classes build/packet-defaults/java-negative/generated/*.java build/packet-defaults/java/plain/*.java test/packet-defaults/java/Main.java
+	@if $(JAVA) -cp build/packet-defaults/java-negative/classes Main testdata/wire/packet-defaults > build/packet-defaults/java-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: missing constructor bytes passed in Java'; exit 1; fi
+	@grep -Fq 'packet-default constructor bytes' build/packet-defaults/java-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: Java failed for another reason'; cat build/packet-defaults/java-negative/log; exit 1; }
+	@echo 'packet defaults Java negative control: missing constructor bytes fail the runtime check'
+
+test-java: packet-defaults-java packet-defaults-java-negative-control
+
 # the Java target: generated classes only, no wiring file at all — generated
 # Java is self-contained (the bitpacker is inlined per issue #156), so there
 # is no runtime checkout and no build file; the test legs compile the
@@ -523,3 +552,53 @@ TEST_LEGS         += test-java
 CONFORMANCE_LEGS  += build-conformance-java
 CONFORMANCE_ENV   += JAVA=$(JAVA)
 BENCH_TABLES_LEGS += generated/bench/tables/java/.stamp
+# Packet UTF-8 content validation, including a compiled mutation control.
+build/packet-text/java/.stamp: bin/schema test/packet-text/Narrow.schema
+	@mkdir -p build/packet-text/java/source
+	cp test/packet-text/Narrow.schema build/packet-text/java/source/Text.schema
+	./bin/schema generate --lang java --out build/packet-text/java build/packet-text/java/source/Text.schema
+	@touch $@
+
+.PHONY: packet-utf8-java packet-utf8-java-negative-control
+packet-utf8-java: build/packet-text/java/.stamp build/packet-text/cpp/driver build/packet-text/harness
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-text/java/classes build/packet-text/java/*.java test/packet-text/java/Main.java
+	./build/packet-text/harness $(JAVA) -ea -cp build/packet-text/java/classes Main
+	./build/packet-text/harness $(JAVA) -cp build/packet-text/java/classes Main
+
+packet-utf8-java-negative-control: packet-utf8-java
+	@mkdir -p build/packet-text/java-negative
+	go run ./tools/sabotage -name packet-utf8-java-read -out build/packet-text/java-negative/utf8.gotext internal/codegen/java/utf8.go
+	@printf '{"Replace":{"%s/internal/codegen/java/utf8.go":"%s/build/packet-text/java-negative/utf8.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-text/java-negative/overlay.json
+	go run -overlay=build/packet-text/java-negative/overlay.json ./cmd/schema generate --lang java --out build/packet-text/java-negative build/packet-text/java/source/Text.schema
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-text/java-negative/classes build/packet-text/java-negative/*.java test/packet-text/java/Main.java
+	@if ./build/packet-text/harness -mutations-only $(JAVA) -cp build/packet-text/java-negative/classes Main > build/packet-text/java-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: Java UTF-8 removal passed'; exit 1; fi
+	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-text/java-negative/log || { cat build/packet-text/java-negative/log; exit 1; }
+	@echo 'packet UTF-8 Java negative control: removed read validation fails bit-flip agreement'
+
+test-java: packet-utf8-java packet-utf8-java-negative-control
+
+
+build/packet-wide/java/.stamp: bin/schema build/packet-wide/source/WideText.schema test/packet-wide/Shapes.schema
+	./bin/schema generate --lang java --out build/packet-wide/java/wide build/packet-wide/source/WideText.schema
+	./bin/schema generate --lang java --out build/packet-wide/java/shapes test/packet-wide/Shapes.schema
+	@touch $@
+
+.PHONY: packet-wide-java packet-wide-java-negative-control
+packet-wide-java: build/packet-wide/java/.stamp build/packet-wide/cpp/driver build/packet-text/harness
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-wide/java/classes build/packet-wide/java/wide/*.java build/packet-wide/java/shapes/*.java test/packet-wide/java/*.java
+	$(JAVA) -ea -cp build/packet-wide/java/classes Main --contracts
+	$(JAVA) -cp build/packet-wide/java/classes Main --contracts
+	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver $(JAVA) -ea -cp build/packet-wide/java/classes Main
+	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver $(JAVA) -cp build/packet-wide/java/classes Main
+
+packet-wide-java-negative-control: packet-wide-java
+	@mkdir -p build/packet-wide/java-negative
+	go run ./tools/sabotage -name packet-wide-java-pairing -out build/packet-wide/java-negative/wstring.gotext internal/codegen/java/wstring.go
+	@printf '{"Replace":{"%s/internal/codegen/java/wstring.go":"%s/build/packet-wide/java-negative/wstring.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-wide/java-negative/overlay.json
+	go run -overlay=build/packet-wide/java-negative/overlay.json ./cmd/schema generate --lang java --out build/packet-wide/java-negative build/packet-wide/source/WideText.schema
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-wide/java-negative/classes build/packet-wide/java-negative/*.java build/packet-wide/java/shapes/*.java test/packet-wide/java/*.java
+	@if ./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver -mutations-only $(JAVA) -cp build/packet-wide/java-negative/classes Main > build/packet-wide/java-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: Java wide pairing removal passed'; exit 1; fi
+	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-wide/java-negative/log || { cat build/packet-wide/java-negative/log; exit 1; }
+	@echo 'packet wide Java negative control: removed pairing fails bit-flip agreement'
+
+test-java: packet-wide-java packet-wide-java-negative-control

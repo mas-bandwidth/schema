@@ -2349,6 +2349,26 @@ export function ReadChatFlat(value, view, numBits) {
     value.Text[i0] = view.getUint8(bi + i0);
   }
   br += value.TextLength * 8;
+  for (let utf8Index = 0; utf8Index < value.TextLength;)
+  {
+    const utf8Lead = value.Text[utf8Index++];
+    if (utf8Lead < 0x80) continue;
+    let utf8Remaining, utf8Point;
+    if ((utf8Lead & 0xE0) === 0xC0) { utf8Remaining = 1; utf8Point = utf8Lead & 0x1F; }
+    else if ((utf8Lead & 0xF0) === 0xE0) { utf8Remaining = 2; utf8Point = utf8Lead & 0x0F; }
+    else if ((utf8Lead & 0xF8) === 0xF0) { utf8Remaining = 3; utf8Point = utf8Lead & 0x07; }
+    else return false; // malformed UTF-8 lead (SPEC §4.7)
+    if (utf8Remaining > value.TextLength - utf8Index) return false;
+    for (let utf8Part = 0; utf8Part < utf8Remaining; utf8Part++)
+    {
+      const utf8Byte = value.Text[utf8Index++];
+      if ((utf8Byte & 0xC0) !== 0x80) return false;
+      utf8Point = (utf8Point << 6) | (utf8Byte & 0x3F);
+    }
+    if (utf8Remaining === 1 && utf8Point < 0x80) return false;
+    if (utf8Remaining === 2 && (utf8Point < 0x800 || (utf8Point >= 0xD800 && utf8Point <= 0xDFFF))) return false;
+    if (utf8Remaining === 3 && (utf8Point < 0x10000 || utf8Point > 0x10FFFF)) return false;
+  }
   for (let i0 = 0; i0 < value.TextLength; i0++) {
     if (value.Text[i0] === 0) { // an interior null is content the read refuses
       return false;
@@ -3365,6 +3385,26 @@ export function ReadTestDataFlat(value, view, numBits) {
     value.Text[i0] = view.getUint8(bi + i0);
   }
   br += value.TextLength * 8;
+  for (let utf8Index = 0; utf8Index < value.TextLength;)
+  {
+    const utf8Lead = value.Text[utf8Index++];
+    if (utf8Lead < 0x80) continue;
+    let utf8Remaining, utf8Point;
+    if ((utf8Lead & 0xE0) === 0xC0) { utf8Remaining = 1; utf8Point = utf8Lead & 0x1F; }
+    else if ((utf8Lead & 0xF0) === 0xE0) { utf8Remaining = 2; utf8Point = utf8Lead & 0x0F; }
+    else if ((utf8Lead & 0xF8) === 0xF0) { utf8Remaining = 3; utf8Point = utf8Lead & 0x07; }
+    else return false; // malformed UTF-8 lead (SPEC §4.7)
+    if (utf8Remaining > value.TextLength - utf8Index) return false;
+    for (let utf8Part = 0; utf8Part < utf8Remaining; utf8Part++)
+    {
+      const utf8Byte = value.Text[utf8Index++];
+      if ((utf8Byte & 0xC0) !== 0x80) return false;
+      utf8Point = (utf8Point << 6) | (utf8Byte & 0x3F);
+    }
+    if (utf8Remaining === 1 && utf8Point < 0x80) return false;
+    if (utf8Remaining === 2 && (utf8Point < 0x800 || (utf8Point >= 0xD800 && utf8Point <= 0xDFFF))) return false;
+    if (utf8Remaining === 3 && (utf8Point < 0x10000 || utf8Point > 0x10FFFF)) return false;
+  }
   for (let i0 = 0; i0 < value.TextLength; i0++) {
     if (value.Text[i0] === 0) { // an interior null is content the read refuses
       return false;

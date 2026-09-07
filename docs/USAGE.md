@@ -154,9 +154,9 @@ excluded — `ShipType::Count` (C++), `ShipType.Count` (C#), `ShipTypeCount`
 `ShipType.count` (Dart and Java), `ShipType.count/0` (Elixir), and
 `E.Count` in schema expressions. Without headroom `Count` and `Max` are the
 same number. Under `| max = 15` they are 3 and 15, and that difference is
-what the two words are for. `Count` is a reserved variant name too, and a
+what the two words are for. `Count` is a reserved variant name too, and every
 union's tag enum carries it beside `Max`, so `Count` is a reserved arm name
-on a packet union for the same reason.
+on every union for the same reason.
 
 A union's tag enum carries the debug-name function too, in the same nine
 spellings the declared enum uses, so logging which arm arrived is the same
@@ -717,9 +717,12 @@ caps Caps = { Jump, Crouch }
 
 On the table wire a field holding its declared default is not written and
 an absent field reads as it, so with the lines above an EMPTY name rides,
-because absence would read back as "untitled". The C++ backend carries the
-three, and every other backend refuses a unit that declares one, naming the
-follow-on.
+because absence would read back as "untitled". C++ carries all three on both
+wires. C and Go carry them on the packet wire and refuse defaults reachable
+from a table; the other six targets refuse a unit declaring these defaults.
+Packet defaults initialize storage and do not omit fields from the wire.
+In C, call the generated `new_<type>()` constructor to apply declared defaults;
+in Go, call `New<Type>()`. Zero-filled storage alone does not apply them.
 
 A fixed default must be **exactly representable** in its format; the
 compiler refuses one that would silently round.
@@ -1938,10 +1941,10 @@ Only the table wire keys the slots.
 **And a positional array whose bound comes from an enum is REFUSED in a table
 body and a union arm, by name**, with `[E]T` named as the fix. The refusal
 follows where the bound comes from and not how it is spelled, so `[E.Max]T`,
-`[E.Count]T` and `[N]T` under a `const N = E.Max` all take it. *The compiler
-refuses `[E.Max]T` today and still reads the other two as plain bounds, so
-`[E.Count]T` and the constant fold still
-compile ([#540](https://github.com/mas-bandwidth/schema/issues/540)).*
+`[E.Count]T` and `[N]T` under a `const N = E.Max` all take it, at any depth of
+constant arithmetic. The diagnostic names the constant where the bound reaches
+the enum through one, and an arm's names the arm and the table that reaches
+the union.
 An ordinal-indexed array is a positional
 vocabulary, and a table has exactly one of those — `flags` — so the refusal is
 what keeps the closed class closed: you cannot reopen it by spelling the bound

@@ -145,7 +145,7 @@ union Effect
 {
     up    Buff
     down  Debuff
-    count int32
+    tally int32
 }
 
 table Row
@@ -199,7 +199,7 @@ table Row
 		// §4.1's FIFTH SILENT MEMBER: an arm retyped under one width moves no
 		// sizeof, no offset and no wire id, and nothing on either wire can see
 		// it — the build version is what does
-		{"an arm retyped under one width", "    count int32", "    count float32"},
+		{"an arm retyped under one width", "    tally int32", "    tally float32"},
 		// A FLAGS FIELD'S REFERENT is a MEANING fact through the block it
 		// reaches (§20.1, §20.2): the field line carries no `flags=` token,
 		// because a slot is a raw u64 copied through — but the declaration it

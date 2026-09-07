@@ -1,0 +1,20 @@
+package ebarmconstmax
+
+// `[N]T` UNDER `const N = E.Max` IN A UNION ARM (docs/SPEC-TABLES.md §2.4,
+// §11): the constant hides the enum from the arm's own spelling, and the
+// refusal follows the fold rather than the spelling.
+
+enum ShipType { Fighter, Bomber, Scout }
+
+const SlotCount = ShipType.Max
+
+union Payload
+{
+    ships [SlotCount]int32
+    plain int32
+}
+
+table Fleet
+{
+    payload Payload
+}

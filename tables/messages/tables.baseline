@@ -67,7 +67,7 @@ flags Capabilities
 union EditBody
     arm insert id=0x7271c68759916228 payload=InsertText
     arm remove id=0xfff83d536a1d457d payload=RemoveText
-    arm count id=0xb1e5e28e4479a274 kind=4 min=0 max=100
+    arm tally id=0xb1e5e28e4479a274 kind=4 min=0 max=100 was=count
     arm marks id=0x9077d4a4e1726e29 kind=14 elem=7 array=bounded bound=3
     arm blob id=0xc573b39bc29148ca kind=14 elem=6 size=4
     arm mode id=0x0d3deba2c41dadb2 kind=7 enum=Mode
@@ -94,3 +94,6 @@ union ToolBody
 
 ### 2026-09-04 — the id-table wire: sixty-four-bit identity, the enum kind, and rendering version 7 (docs/SPEC-TABLES.md §3, §5, §18.1)
 - baseline REGENERATED over an unreadable one (baseline version 6, this compiler writes 7); the projection is this unit as it stands and the history above is preserved, but the previous projection could not be diffed, so no per-edit lines follow
+
+### 2026-09-07 (UTC) — the EditBody arm count is renamed to tally under was: every union's tag enum now carries the member Count, so the name is reserved (#601)
+- no compatibility-affecting edits; the wire absorbs the rest

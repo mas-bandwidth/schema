@@ -3079,6 +3079,26 @@ public final class Wire {
         }
         System.arraycopy(data, bitsRead >>> 3, value.text, 0, value.textLength);
         bitsRead += value.textLength * 8;
+        for (int utf8Index = 0; utf8Index < value.textLength;)
+        {
+            int utf8Lead = value.text[utf8Index++] & 0xFF;
+            if (utf8Lead < 0x80) continue;
+            int utf8Remaining, utf8Point;
+            if ((utf8Lead & 0xE0) == 0xC0) { utf8Remaining = 1; utf8Point = utf8Lead & 0x1F; }
+            else if ((utf8Lead & 0xF0) == 0xE0) { utf8Remaining = 2; utf8Point = utf8Lead & 0x0F; }
+            else if ((utf8Lead & 0xF8) == 0xF0) { utf8Remaining = 3; utf8Point = utf8Lead & 0x07; }
+            else return false; // malformed UTF-8 lead (SPEC §4.7)
+            if (utf8Remaining > value.textLength - utf8Index) return false;
+            for (int utf8Part = 0; utf8Part < utf8Remaining; utf8Part++)
+            {
+                int utf8Byte = value.text[utf8Index++] & 0xFF;
+                if ((utf8Byte & 0xC0) != 0x80) return false;
+                utf8Point = (utf8Point << 6) | (utf8Byte & 0x3F);
+            }
+            if (utf8Remaining == 1 && utf8Point < 0x80) return false;
+            if (utf8Remaining == 2 && (utf8Point < 0x800 || (utf8Point >= 0xD800 && utf8Point <= 0xDFFF))) return false;
+            if (utf8Remaining == 3 && (utf8Point < 0x10000 || utf8Point > 0x10FFFF)) return false;
+        }
         for (int i0 = 0; i0 < value.textLength; i0++) {
             if (value.text[i0] == 0) {
                 return false; // an interior null is content the read refuses (SPEC §4.7)
@@ -4210,6 +4230,26 @@ public final class Wire {
         }
         System.arraycopy(data, bitsRead >>> 3, value.text, 0, value.textLength);
         bitsRead += value.textLength * 8;
+        for (int utf8Index = 0; utf8Index < value.textLength;)
+        {
+            int utf8Lead = value.text[utf8Index++] & 0xFF;
+            if (utf8Lead < 0x80) continue;
+            int utf8Remaining, utf8Point;
+            if ((utf8Lead & 0xE0) == 0xC0) { utf8Remaining = 1; utf8Point = utf8Lead & 0x1F; }
+            else if ((utf8Lead & 0xF0) == 0xE0) { utf8Remaining = 2; utf8Point = utf8Lead & 0x0F; }
+            else if ((utf8Lead & 0xF8) == 0xF0) { utf8Remaining = 3; utf8Point = utf8Lead & 0x07; }
+            else return false; // malformed UTF-8 lead (SPEC §4.7)
+            if (utf8Remaining > value.textLength - utf8Index) return false;
+            for (int utf8Part = 0; utf8Part < utf8Remaining; utf8Part++)
+            {
+                int utf8Byte = value.text[utf8Index++] & 0xFF;
+                if ((utf8Byte & 0xC0) != 0x80) return false;
+                utf8Point = (utf8Point << 6) | (utf8Byte & 0x3F);
+            }
+            if (utf8Remaining == 1 && utf8Point < 0x80) return false;
+            if (utf8Remaining == 2 && (utf8Point < 0x800 || (utf8Point >= 0xD800 && utf8Point <= 0xDFFF))) return false;
+            if (utf8Remaining == 3 && (utf8Point < 0x10000 || utf8Point > 0x10FFFF)) return false;
+        }
         for (int i0 = 0; i0 < value.textLength; i0++) {
             if (value.text[i0] == 0) {
                 return false; // an interior null is content the read refuses (SPEC §4.7)

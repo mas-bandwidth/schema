@@ -5920,8 +5920,21 @@ enum class HitType : uint8_t {
     None = 0,
     Point = 1,
     Damage = 2,
+    Count = 2, // the declared variant count (SPEC §4.2)
     Max = 2, // the exported extent (SPEC §4.2)
 };
+
+// EnumName: debug/log name for any HitType value, out-of-set included
+inline const char * EnumName( HitType value )
+{
+    switch ( value )
+    {
+        case HitType::None: return "None";
+        case HitType::Point: return "Point";
+        case HitType::Damage: return "Damage";
+        default: return "???";
+    }
+}
 
 // union Hit — at most one of the arms; the tag says which. AN ARM IS A FIELD
 // LINE (docs/SPEC-TABLES.md §2.6), so an arm's storage is the field's storage

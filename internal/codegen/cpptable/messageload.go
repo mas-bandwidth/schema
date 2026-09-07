@@ -340,7 +340,10 @@ func (g *tableGen) emitMessageReadUnion(f *ir.Field, dst, ind string) {
 	for _, v := range un.Variants {
 		mine := ir.TableArmEntry(v)
 		g.noteRef(v.Type)
-		g.pf("%s            case 0x%016xull: // %s\n%s            {\n", ind, ir.TableWireId(v.Name), v.Name, ind)
+		// the arm's id is `mine.Id`, the announcement's own entry, which reads
+		// the `was` alias (docs/SPEC-TABLES.md §5): every id derivation does,
+		// so the dispatch names what the writer wrote
+		g.pf("%s            case 0x%016xull: // %s\n%s            {\n", ind, mine.Id, v.Name, ind)
 		g.pf("%s                if ( %s.kind != %d || %s.elem_kind != %d )\n%s                {\n", ind, arm, mine.Kind, arm, mine.Shape.Elem, ind)
 		if !v.Void() && !v.Body() && plainScalar(v.F) {
 			// WIDENED AT AN ARM (§3.3, §4): the arm is SELECTED and its

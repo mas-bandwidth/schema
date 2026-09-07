@@ -316,6 +316,8 @@ func (g *gen) emitZeroItems(items []ir.Item, ind string) {
 func (g *gen) emitZeroField(f *ir.Field, ind string) {
 	name := "value." + ir.GoExportName(f.Name)
 	switch {
+	case f.Type.Kind == ir.TWString:
+		g.pf("%s%s = [%s]uint16{}\n%s%sLength = 0\n", ind, name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)), ind, name)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.pf("%s%s = [%s]byte{}\n%s%sLength = 0\n", ind, name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)), ind, name)
 	case f.Array != ir.ArrayNone:
@@ -781,6 +783,8 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.pf("%sstream.SerializeFloat32(&%s)\n", ind, name)
 	case ir.TFloat64:
 		g.pf("%sstream.SerializeFloat64(&%s)\n", ind, name)
+	case ir.TWString:
+		g.emitWriteWString(f, name, ind)
 	case ir.TString, ir.TBytes:
 		// length in [0, N], align, then the used bytes — the classic
 		// serialize_string framing over a buffer of N + 1 (SPEC §4.7).
@@ -988,6 +992,8 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 		g.pf("%sstream.SerializeFloat32(&%s)\n", ind, name)
 	case ir.TFloat64:
 		g.pf("%sstream.SerializeFloat64(&%s)\n", ind, name)
+	case ir.TWString:
+		g.emitReadWString(f, name, ind)
 	case ir.TString, ir.TBytes:
 		g.emitReadRangedFold32("0", ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)),
 			big.NewInt(f.Type.Size), true, ind, func(ai, expr string) {
@@ -999,6 +1005,8 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 			// a truncated stream must surface as the stream's own error, not
 			// as a content verdict over bytes that never arrived
 			g.pf("%sif stream.Err() != nil {\n%s\treturn stream.Err()\n%s}\n", ind, ind, ind)
+			g.needsUTF8 = true
+			g.pf("%sif !utf8.Valid(%s[:%sLength]) {\n%s\treturn ErrValidation // malformed UTF-8 (SPEC §4.7)\n%s}\n", ind, name, name, ind, ind)
 			g.pf("%sfor i := int32(0); i < %sLength; i++ {\n", ind, name)
 			g.pf("%s\tif %s[i] == 0 {\n%s\t\treturn ErrValidation\n%s\t}\n%s}\n", ind, name, ind, ind, ind)
 		}

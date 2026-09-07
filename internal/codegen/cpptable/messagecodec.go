@@ -1018,7 +1018,10 @@ func (g *tableGen) emitMessageExtentCases(st *ir.Struct) {
 				if ref == nil || !g.hasExtent(ref) {
 					continue
 				}
-				g.pf("                case 0x%016xull: // %s\n", ir.TableWireId(v.Name), v.Name)
+				// the announcement's own entry, which reads the `was` alias
+				// (docs/SPEC-TABLES.md §5), so the dispatch names what the
+				// writer wrote
+				g.pf("                case 0x%016xull: // %s\n", ir.TableArmEntry(v).Id, v.Name)
 				g.pf("                    if ( arm.kind == %d ) { if ( !%sMessageExtent( r, vocabulary, index_bits, at ) ) { return false; } }\n", tkTable, v.Type)
 				g.pf("                    else if ( !TableMessageSkip( r, vocabulary, index_bits, arm ) ) { return false; } // another kind: a mismatch the load counts\n")
 				g.pf("                    break;\n")

@@ -1,0 +1,16 @@
+package ebbodyfolded
+
+// `[N]T` UNDER A CONSTANT THAT FOLDS THROUGH ANOTHER CONSTANT
+// (docs/SPEC-TABLES.md §2.4, §11): the fold runs at any depth of constant
+// arithmetic (SPEC.md §4.2), so a bound two constants and one operator away
+// from the enum is the same bound.
+
+enum ShipType { Fighter, Bomber, Scout }
+
+const Base      = ShipType.Max
+const SlotCount = Base * 2 - Base
+
+table Fleet
+{
+    ships [SlotCount]int32
+}
