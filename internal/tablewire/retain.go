@@ -816,11 +816,21 @@ func (e *encoder) tail(w *buf, inst *tabletext.Instance) {
 	for i := range recs {
 		em := &emitter{e: e, rt: e.rt}
 		inner := &buf{}
+		// ONE MARK, BOTH STORES: a record's ids are appended to the file's
+		// table and to the caller's list as the emit reaches them, so a record
+		// that goes bad PARTWAY has taken entries in either. Undoing only the
+		// file's table would leave the caller's list holding entries for a
+		// field that never rode, and the next record would be refused an entry
+		// the save does not owe: one dropped record would cost more than one
+		// `retain_lost`. The reference undoes both at one mark
+		// (internal/codegen/cpptable/retain.go, `truncate`).
 		mark := e.ids.mark()
+		idMark := len(e.rt.store.ids)
 		em.record(inner, recs[i])
 		recs[i].placed = true // the walk REACHED it, whatever came of the emit
 		if em.bad {
 			e.ids.rollback(mark)
+			e.rt.store.ids = e.rt.store.ids[:idMark]
 			e.retainLost++
 			continue
 		}

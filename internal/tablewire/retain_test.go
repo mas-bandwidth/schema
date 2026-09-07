@@ -397,22 +397,22 @@ func TestRetainCapacities(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// the walk's nesting cap
+// the hand-built wire, and the rows a pinned vector cannot reach
 // ---------------------------------------------------------------------------
 
-// deepBuilder is the subset of the reference's WireBuilder
-// (test/tables/wirebuilder.h) the depth rows need. The framing is built the way
+// wireBuilder is the subset of the reference's WireBuilder
+// (test/tables/wirebuilder.h) the rows below need. The framing is built the way
 // §3 states it rather than spelled in magic bytes: the body names ids by
 // REFERENCE, the builder interns them in first-use order, and `finish` lays out
 // the form byte, the body and the id table the body actually named.
-type deepBuilder struct {
+type wireBuilder struct {
 	body []byte
 	ids  []uint64
 }
 
 // ref is the reference an id takes, appended on first use: reference k is the
 // table's kth entry, counted from 1.
-func (b *deepBuilder) ref(name string) uint64 {
+func (b *wireBuilder) ref(name string) uint64 {
 	id := ir.TableWireId(name)
 	for i, entry := range b.ids {
 		if entry == id {
@@ -423,11 +423,11 @@ func (b *deepBuilder) ref(name string) uint64 {
 	return uint64(len(b.ids))
 }
 
-func (b *deepBuilder) u8(v uint8) { b.body = append(b.body, v) }
+func (b *wireBuilder) u8(v uint8) { b.body = append(b.body, v) }
 
 // leb is one canonical unsigned LEB128: every length, count, index and
 // reference on this wire.
-func (b *deepBuilder) leb(v uint64) {
+func (b *wireBuilder) leb(v uint64) {
 	for v >= 0x80 {
 		b.u8(uint8(v) | 0x80)
 		v >>= 7
@@ -439,13 +439,13 @@ func (b *deepBuilder) leb(v uint64) {
 // place, because a canonical LEB128 has one spelling and its width follows the
 // payload. closeLen moves the payload up when the length needs more room, so
 // what comes out is that one legal spelling.
-func (b *deepBuilder) openLen() int {
+func (b *wireBuilder) openLen() int {
 	at := len(b.body)
 	b.u8(0)
 	return at
 }
 
-func (b *deepBuilder) closeLen(at int) {
+func (b *wireBuilder) closeLen(at int) {
 	payload := len(b.body) - at - 1
 	width := 1
 	for v := uint64(payload); v >= 0x80; v >>= 7 {
@@ -466,17 +466,17 @@ func (b *deepBuilder) closeLen(at int) {
 
 // field is a field header: the id reference and the kind byte, which is the
 // whole of it.
-func (b *deepBuilder) field(name string, kind uint8) {
+func (b *wireBuilder) field(name string, kind uint8) {
 	b.leb(b.ref(name))
 	b.u8(kind)
 }
 
 // end is the body's own ZERO REFERENCE, which is what ends it (§3).
-func (b *deepBuilder) end() { b.u8(0) }
+func (b *wireBuilder) end() { b.u8(0) }
 
 // finish is the whole file: the form byte, the body, then the entries and the
 // fixed u64 count the reader finds them from.
-func (b *deepBuilder) finish() []byte {
+func (b *wireBuilder) finish() []byte {
 	out := []byte{1} // the FORM BYTE is the whole header
 	out = append(out, b.body...)
 	for _, id := range b.ids {
@@ -489,7 +489,7 @@ func (b *deepBuilder) finish() []byte {
 // against the same grammar: one unknown field whose payload is `depth` nested
 // table bodies, with a scalar at the bottom.
 func deepWire(depth int) []byte {
-	b := &deepBuilder{}
+	b := &wireBuilder{}
 	marks := make([]int, depth)
 	b.field("future", ir.TableKindTable)
 	marks[0] = b.openLen()
@@ -556,5 +556,86 @@ func TestRetainWalkDepthCap(t *testing.T) {
 					row.depth, len(out), saveReport.RetainLost)
 			}
 		})
+	}
+}
+
+// A DROPPED RECORD SPENDS NO ENTRY IN EITHER STORE (docs/SPEC-TABLES.md §6.6).
+// A record whose emit goes bad is not written at all: one `retain_lost` counts,
+// NOTHING ELSE ABOUT THE SAVE CHANGES, and the save is never refused. The ids
+// that record reached before the overflow are part of "nothing else": they were
+// taken for a field that never rode, so a later record must find the list
+// exactly as the dropped one found it.
+//
+// The reference undoes both stores at one mark
+// (internal/codegen/cpptable/retain.go, `truncate`), and the expected counts
+// here are its rule read off the page: EXACTLY ONE `retain_lost` for each
+// dropped record, and the later record's id interned once.
+//
+// The wire is a record naming four ids under a list that holds two, so it
+// overflows PARTWAY, and a second record naming one new id behind it. A leaked
+// entry is invisible in the first record's own answer and kills the second.
+func TestRetainDroppedRecordSpendsNoId(t *testing.T) {
+	m := retainModel(t, "RT1.schema")
+
+	b := &wireBuilder{}
+	b.field("future", ir.TableKindTable) // record one: four ids, `future` and its three
+	at := b.openLen()
+	for _, name := range []string{"one", "two", "three"} {
+		b.field(name, ir.TableKindI32)
+		b.body = binary.LittleEndian.AppendUint32(b.body, 7)
+	}
+	b.end()
+	b.closeLen(at)
+	b.field("later", ir.TableKindI32) // record two: one id, and it is new
+	b.body = binary.LittleEndian.AppendUint32(b.body, 11)
+	b.end()
+	wire := b.finish()
+
+	inst := m.New(m.Lookup("Node"))
+	// TWO ENTRIES, which is fewer than the first record's four and more than
+	// the second record's one
+	retain := tablewire.Retain{Capacity: 1 << 16, IdCapacity: 2}
+	var loadReport tabletext.Report
+	ok, err := tablewire.DecodeRetain(m, inst, wire, &retain, &loadReport)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || loadReport.Malformed {
+		t.Fatalf("the load reported damage on a sound wire: %+v", loadReport)
+	}
+	// THE LIST FILLS AS THE SAVE WALK INTERNS, so the load keeps both records
+	// and neither store has been written into yet (§6.6)
+	if loadReport.Retained != 2 || loadReport.RetainLost != 0 {
+		t.Fatalf("retained=%d retain_lost=%d, want 2 / 0", loadReport.Retained, loadReport.RetainLost)
+	}
+
+	var saveReport tabletext.Report
+	out, err := tablewire.EncodeRetain(m, inst, &retain, &saveReport)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out) == 0 {
+		t.Fatal("the save was refused, and an id past the capacity is never a refusal")
+	}
+	// ONE DROPPED RECORD, ONE `retain_lost`: the second record names one id the
+	// list has room for, so it rides.
+	if saveReport.RetainLost != 1 {
+		t.Fatalf("retain_lost=%d, want 1: the first record overflows and the second has room",
+			saveReport.RetainLost)
+	}
+	later := ir.TableWireId("later")
+	if got := retain.Ids(); len(got) != 1 || got[0] != later {
+		t.Fatalf("the caller's list is %#x, want exactly the surviving record's own id %#x", got, later)
+	}
+	// and the file's own trailer says the same: the surviving id is in it, and
+	// no id the dropped record reached took an entry anywhere
+	ids := idsOf(t, out)
+	if !slices.Contains(ids, later) {
+		t.Fatal("the surviving record rode without its id in the file's trailer")
+	}
+	for _, name := range []string{"future", "one", "two", "three"} {
+		if slices.Contains(ids, ir.TableWireId(name)) {
+			t.Fatalf("%q took a trailer entry for a record that was dropped", name)
+		}
 	}
 }
