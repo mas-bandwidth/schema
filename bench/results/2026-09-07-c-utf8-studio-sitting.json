@@ -1,0 +1,175 @@
+{
+  "head": "383d7affcff2cc0481e73d7fa3d5388096a0433e",
+  "cpu": "Apple M3 Ultra",
+  "cpus": "32",
+  "memory_bytes": "549755813888",
+  "snapshots": [
+    {
+      "utc": "2026-09-07T04:12:52.407197+00:00",
+      "load": "{ 17.00 12.52 11.55 }",
+      "swap": "total = 0.00M  used = 0.00M  free = 0.00M  (encrypted)",
+      "bench_processes": [],
+      "foreign_cpu_count": 3
+    },
+    {
+      "utc": "2026-09-07T04:12:53.489467+00:00",
+      "load": "{ 17.00 12.52 11.55 }",
+      "swap": "total = 0.00M  used = 0.00M  free = 0.00M  (encrypted)",
+      "bench_processes": [],
+      "foreign_cpu_count": 10
+    },
+    {
+      "utc": "2026-09-07T04:12:54.549916+00:00",
+      "load": "{ 17.00 12.52 11.55 }",
+      "swap": "total = 0.00M  used = 0.00M  free = 0.00M  (encrypted)",
+      "bench_processes": [
+        "99772  49.5 ./build/bench/schema_bench_c"
+      ],
+      "foreign_cpu_count": 43
+    },
+    {
+      "utc": "2026-09-07T04:12:55.622010+00:00",
+      "load": "{ 16.84 12.56 11.57 }",
+      "swap": "total = 0.00M  used = 0.00M  free = 0.00M  (encrypted)",
+      "bench_processes": [
+        "99772  98.5 ./build/bench/schema_bench_c"
+      ],
+      "foreign_cpu_count": 14
+    },
+    {
+      "utc": "2026-09-07T04:12:56.694187+00:00",
+      "load": "{ 16.84 12.56 11.57 }",
+      "swap": "total = 0.00M  used = 0.00M  free = 0.00M  (encrypted)",
+      "bench_processes": [
+        "99772  98.5 ./build/bench/schema_bench_c"
+      ],
+      "foreign_cpu_count": 10
+    },
+    {
+      "utc": "2026-09-07T04:12:57.755432+00:00",
+      "load": "{ 16.84 12.56 11.57 }",
+      "swap": "total = 0.00M  used = 0.00M  free = 0.00M  (encrypted)",
+      "bench_processes": [
+        "99772 100.0 ./build/bench/schema_bench_c"
+      ],
+      "foreign_cpu_count": 6
+    },
+    {
+      "utc": "2026-09-07T04:12:58.825054+00:00",
+      "load": "{ 16.84 12.56 11.57 }",
+      "swap": "total = 0.00M  used = 0.00M  free = 0.00M  (encrypted)",
+      "bench_processes": [
+        "99772 100.0 ./build/bench/schema_bench_c"
+      ],
+      "foreign_cpu_count": 4
+    },
+    {
+      "utc": "2026-09-07T04:12:59.886299+00:00",
+      "load": "{ 15.81 12.42 11.52 }",
+      "swap": "total = 0.00M  used = 0.00M  free = 0.00M  (encrypted)",
+      "bench_processes": [
+        "99772  99.3 ./build/bench/schema_bench_c"
+      ],
+      "foreign_cpu_count": 5
+    },
+    {
+      "utc": "2026-09-07T04:13:00.956801+00:00",
+      "load": "{ 15.81 12.42 11.52 }",
+      "swap": "total = 0.00M  used = 0.00M  free = 0.00M  (encrypted)",
+      "bench_processes": [
+        "99772 100.0 ./build/bench/schema_bench_c"
+      ],
+      "foreign_cpu_count": 10
+    },
+    {
+      "utc": "2026-09-07T04:13:02.032975+00:00",
+      "load": "{ 15.81 12.42 11.52 }",
+      "swap": "total = 0.00M  used = 0.00M  free = 0.00M  (encrypted)",
+      "bench_processes": [
+        "99772 100.0 ./build/bench/schema_bench_c"
+      ],
+      "foreign_cpu_count": 25
+    },
+    {
+      "utc": "2026-09-07T04:13:03.104553+00:00",
+      "load": "{ 15.81 12.42 11.52 }",
+      "swap": "total = 0.00M  used = 0.00M  free = 0.00M  (encrypted)",
+      "bench_processes": [
+        "99772  99.9 ./build/bench/schema_bench_c"
+      ],
+      "foreign_cpu_count": 15
+    },
+    {
+      "utc": "2026-09-07T04:13:04.178450+00:00",
+      "load": "{ 15.81 12.42 11.52 }",
+      "swap": "total = 0.00M  used = 0.00M  free = 0.00M  (encrypted)",
+      "bench_processes": [
+        "99772 100.0 ./build/bench/schema_bench_c"
+      ],
+      "foreign_cpu_count": 7
+    },
+    {
+      "utc": "2026-09-07T04:13:05.250654+00:00",
+      "load": "{ 15.02 12.31 11.49 }",
+      "swap": "total = 0.00M  used = 0.00M  free = 0.00M  (encrypted)",
+      "bench_processes": [
+        "99772 100.0 ./build/bench/schema_bench_c"
+      ],
+      "foreign_cpu_count": 7
+    },
+    {
+      "utc": "2026-09-07T04:13:06.320945+00:00",
+      "load": "{ 15.02 12.31 11.49 }",
+      "swap": "total = 0.00M  used = 0.00M  free = 0.00M  (encrypted)",
+      "bench_processes": [
+        "99772  99.0 ./build/bench/schema_bench_c"
+      ],
+      "foreign_cpu_count": 6
+    },
+    {
+      "utc": "2026-09-07T04:13:07.393647+00:00",
+      "load": "{ 15.02 12.31 11.49 }",
+      "swap": "total = 0.00M  used = 0.00M  free = 0.00M  (encrypted)",
+      "bench_processes": [
+        "99772 100.0 ./build/bench/schema_bench_c"
+      ],
+      "foreign_cpu_count": 5
+    },
+    {
+      "utc": "2026-09-07T04:13:08.465890+00:00",
+      "load": "{ 15.02 12.31 11.49 }",
+      "swap": "total = 0.00M  used = 0.00M  free = 0.00M  (encrypted)",
+      "bench_processes": [
+        "99772  99.0 ./build/bench/schema_bench_c"
+      ],
+      "foreign_cpu_count": 7
+    },
+    {
+      "utc": "2026-09-07T04:13:09.542537+00:00",
+      "load": "{ 15.02 12.31 11.49 }",
+      "swap": "total = 0.00M  used = 0.00M  free = 0.00M  (encrypted)",
+      "bench_processes": [
+        "99772 100.0 ./build/bench/schema_bench_c"
+      ],
+      "foreign_cpu_count": 10
+    },
+    {
+      "utc": "2026-09-07T04:13:10.621241+00:00",
+      "load": "{ 14.38 12.22 11.46 }",
+      "swap": "total = 0.00M  used = 0.00M  free = 0.00M  (encrypted)",
+      "bench_processes": [
+        "99772 100.0 ./build/bench/schema_bench_c"
+      ],
+      "foreign_cpu_count": 8
+    },
+    {
+      "utc": "2026-09-07T04:13:11.709750+00:00",
+      "load": "{ 14.38 12.22 11.46 }",
+      "swap": "total = 0.00M  used = 0.00M  free = 0.00M  (encrypted)",
+      "bench_processes": [],
+      "foreign_cpu_count": 14
+    }
+  ],
+  "exit_code": 0,
+  "sampling_note": "One-second snapshots across build and run. foreign_cpu_count counts non-benchmark processes over 5% CPU and includes build/provenance work; no command arguments or foreign process identities are recorded."
+}
