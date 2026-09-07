@@ -1,0 +1,56 @@
+#!/bin/sh
+# Prove the restored Go gates detect a changed wire, a missing text event,
+# and a noncanonical integer accepted by the generated wire reader.
+set -eu
+
+mode=$1
+out=build/go-table-control-$mode
+mkdir -p "$out"
+case "$mode" in
+wire)
+    source=test/conformance/go/main.go
+    sed '/if err := spill(out, f\[1\], scratch);/i\
+        if f[1] == "root_full" { scratch[0] ^= 1 }
+    ' "$source" > "$out/source.gotext"
+    ;;
+walk)
+    source=$(grep -l 'func (in \*tableJsonIn) scanString' build/tables-generated-go/examples/*TableJson.go)
+    sed 's/in.report.Clamped++/in.report.Clamped += 0/g' "$source" > "$out/source.gotext"
+    ;;
+leb)
+    source=$(grep -l 'if i > 0 && b == 0' build/tables-generated-go/examples/*Table.go)
+    sed 's/if i > 0 \&\& b == 0/if false/' "$source" > "$out/source.gotext"
+    ;;
+*) echo "unknown control: $mode" >&2; exit 1 ;;
+esac
+if cmp -s "$source" "$out/source.gotext"; then
+    echo "negative control patched nothing: $mode" >&2
+    exit 1
+fi
+root=$(pwd)
+printf '{"Replace":{"%s/%s":"%s/%s/source.gotext"}}\n' "$root" "$source" "$root" "$out" > "$out/overlay.json"
+(cd test/conformance/go && go build -overlay "$root/$out/overlay.json" -o "$root/$out/driver-bin" .)
+
+if [ "$mode" = leb ]; then
+    if build/conformance-harness wire-fuzz --driver "$out/driver-bin wire-fuzz" --n 0 --failed "$out/failed.bin" > "$out/log" 2>&1; then
+        echo 'negative control failed: noncanonical integers were accepted unnoticed' >&2
+        exit 1
+    fi
+    grep -q 'harness: FAILED after' "$out/log"
+else
+    printf '#!/bin/sh\nexec %s/driver-bin "$@"\n' "$out" > "$out/driver"
+    chmod +x "$out/driver"
+    printf 'go %s/driver\n' "$out" > "$out/drivers.txt"
+    if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work" > "$out/log" 2>&1; then
+        echo "negative control failed: $mode left conformance green" >&2
+        exit 1
+    fi
+    if [ "$mode" = wire ]; then
+        grep -q 'go / wire: root_full' "$out/log"
+        grep -q 'json-read     pass' "$out/log"
+    else
+        grep -q 'go / json-hostile:' "$out/log"
+        grep -q 'wire          pass' "$out/log"
+    fi
+fi
+echo "Go table negative control: $mode detected by its gate"

@@ -4,10 +4,10 @@
 // <Base>Block.go (§19) and <Base>Cook.go (§7). One file per unit file,
 // emitted only when the unit declares tables.
 //
-// The C++ backend (internal/codegen/cpptable) is the REFERENCE and the C#
-// backend (internal/codegen/cstable) is the second implementation: this port
-// mirrors their framing, their elision decisions, their clamps and their
-// report events byte for byte, and invents no contract of its own. Where Go
+// The C++ backend (internal/codegen/cpptable) is the REFERENCE: this port
+// follows its framing, elision decisions, clamps and recovery rules. The
+// compiler engine (internal/tablewire) is the independent conformance oracle.
+// The contract is docs/SPEC-TABLES.md, including the id-table file form. Where Go
 // forces a different spelling the reason is stated at the site.
 //
 // Storage follows the Go PACKET emitter's conventions exactly
@@ -70,46 +70,6 @@ const (
 )
 
 func tableScalarKind(f *ir.Field) int { return ir.TableScalarKind(f) }
-
-func tableKindWidth(kind int) int {
-	switch kind {
-	case tkBool, tkI8, tkU8:
-		return 1
-	case tkI16, tkU16:
-		return 2
-	case tkI32, tkU32, tkF32:
-		return 4
-	case tkI64, tkU64, tkF64:
-		return 8
-	}
-	return 0
-}
-
-func tablePut(width int) string { return fmt.Sprintf("Put%d", width*8) }
-func tableGet(width int) string { return fmt.Sprintf("Get%d", width*8) }
-
-// goKindStorage is the Go type one wire kind decodes through.
-func goKindStorage(kind int) string {
-	switch kind {
-	case tkI8:
-		return "int8"
-	case tkI16:
-		return "int16"
-	case tkI32:
-		return "int32"
-	case tkI64:
-		return "int64"
-	case tkU8:
-		return "uint8"
-	case tkU16:
-		return "uint16"
-	case tkU32:
-		return "uint32"
-	case tkU64:
-		return "uint64"
-	}
-	return "uint64"
-}
 
 type tableGen struct {
 	unit     *ir.Unit
@@ -497,12 +457,13 @@ func tableRuntime() string {
 // exactly.
 type TableReport struct {
 	Verdict      TableOpenVerdict // unsupported form is distinct from damage
+	Reason       string // why the form was refused; empty for a file read
 	Widened      int32 // a compatible wider kind preserved the value
 	Unknown      int32 // unknown field ids skipped (newer data)
 	KindMismatch int32 // known id, changed type — skipped, never misdecoded
 	Clamped      int32 // out-of-range values clamped to declared bounds
-	// Duplicate is the TEXT FORM's counter and the WIRE NEVER RAISES IT
-	// (docs/SPEC-TABLES.md §4, §16.2): a body carrying an id twice is legal input
+	// Duplicate counts repeated text keys. Fixed-class wire fields do not raise it.
+	// A body carrying an id twice is legal input
 	// whose last occurrence wins, silently. A wire read always leaves it zero.
 	Duplicate int32
 	Malformed bool // framing damage; decode stopped, partial result kept
@@ -563,7 +524,7 @@ type TableFieldInfo struct {
 	EnumName func(value uint64) string
 	// VariantId is the TABLE-WIRE id of one variant (docs/SPEC-TABLES.md §5): for
 	// an enum, the hash of the variant's name; for a union, the hash of the
-	// arm's name. 0 is the reserved id — an enum's None, a union's empty. nil
+	// arm's name. Hash zero is an ordinary id; ordinal zero is None. nil
 	// for every other kind — a FLAGS field's variants have no per-variant wire
 	// id (§4), so a nil here beside a non-nil EnumName is what says "flags".
 	VariantId func(value uint64) uint64

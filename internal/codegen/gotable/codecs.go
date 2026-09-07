@@ -1,7 +1,5 @@
 // TABLE-wire storage, codec and descriptor emission for Go (docs/SPEC-TABLES.md),
-// mirroring internal/codegen/cpptable — the reference — and following
-// internal/codegen/cstable, the second implementation, wherever a managed
-// language already answered the same question. Readers restore declared
+// following internal/codegen/cpptable, the reference. Readers restore declared
 // defaults then overlay, skip unknown ids, skip kind mismatches, clamp
 // out-of-range values, and count every event.
 package gotable
@@ -503,7 +501,7 @@ func annotationColumns(doc string, tags []string, name string) string {
 func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard string) {
 	name := member(f)
 	id := ir.TableFieldWireId(f)
-	kind := tableScalarKind(f)
+	kind := ir.TableWireScalarKind(f)
 	if f.Type.Kind == ir.TBytes {
 		kind = tkU8
 	}

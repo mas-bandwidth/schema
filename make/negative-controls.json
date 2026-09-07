@@ -71,6 +71,7 @@
         "conformance-negative-control-c-foreign",
         "conformance-negative-control-go",
         "conformance-negative-control-go-walk",
+        "tables-go-wire-fuzz-negative-control",
         "conformance-negative-control-reference-surface"
       ]
     },

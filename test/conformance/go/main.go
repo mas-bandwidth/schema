@@ -429,7 +429,13 @@ func surfaceJsonHostile(lines []line, out string) error {
 }
 
 func main() {
-	if len(os.Args) == 2 && os.Args[1] == "wire-fuzz" { if err := wireFuzz(); err != nil { fmt.Fprintln(os.Stderr, err); os.Exit(1) }; return }
+	if len(os.Args) == 2 && os.Args[1] == "wire-fuzz" {
+		if err := wireFuzz(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	if len(os.Args) < 3 {
 		fmt.Fprintf(os.Stderr, "usage: %s <manifest> list\n       %s <manifest> <surface> <outdir>\n", os.Args[0], os.Args[0])
 		os.Exit(2)

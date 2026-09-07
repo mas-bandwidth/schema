@@ -8,7 +8,7 @@ SERIALIZE_GO ?= ../serialize.go
 
 build/packet-text/go/.stamp: bin/schema test/packet-text/Narrow.schema make/go.mk
 	./bin/schema generate --lang go --out build/packet-text/go test/packet-text/Narrow.schema
-	@printf 'module packettext\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => %s/$(SERIALIZE_GO)\n' "$(CURDIR)" > build/packet-text/go/go.mod
+	@printf 'module packettext\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => "%s/$(SERIALIZE_GO)"\n' "$(CURDIR)" > build/packet-text/go/go.mod
 	@touch $@
 
 .PHONY: packet-utf8-go packet-utf8-go-negative-control
@@ -151,8 +151,8 @@ define go_fuzz_sabotage
 	./build/go-fuzz-$(1)/schema generate --lang go --out build/go-fuzz-$(1)/generated/pointers tables/pointers
 	@printf 'module blockdemo\n\ngo 1.23\n' > build/go-fuzz-$(1)/generated/block/go.mod
 	@printf 'module graphdemo\n\ngo 1.23\n' > build/go-fuzz-$(1)/generated/pointers/go.mod
-	@sed -e 's|=> ../../build/tables-generated-go/block|=> $(CURDIR)/build/go-fuzz-$(1)/generated/block|' \
-	     -e 's|=> ../../build/tables-generated-go/pointers|=> $(CURDIR)/build/go-fuzz-$(1)/generated/pointers|' \
+	@sed -e 's|=> ../../build/tables-generated-go/block|=> "$(CURDIR)/build/go-fuzz-$(1)/generated/block"|' \
+	     -e 's|=> ../../build/tables-generated-go/pointers|=> "$(CURDIR)/build/go-fuzz-$(1)/generated/pointers"|' \
 	     test/go-tables/go.mod > build/go-fuzz-$(1)/go.mod.txt
 	@printf '{"Replace":{"%s/test/go-tables/go.mod":"%s/build/go-fuzz-$(1)/go.mod.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/go-fuzz-$(1)/modoverlay.json
@@ -220,12 +220,12 @@ conformance-big-endian: build/conformance-harness build/conformance-go-be
 # so an interrupt cannot leave a sabotaged working tree — and the matrix must go
 # red, on that surface and on no other.
 .PHONY: conformance-negative-control-go
-conformance-negative-control-go:
-	@echo "conformance-negative-control-go: dormant — the surface it turns red is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#511)"
+conformance-negative-control-go: build/conformance-harness build/conformance-go
+	sh test/conformance/go/negative-control wire
 
 .PHONY: conformance-negative-control-go-walk
-conformance-negative-control-go-walk:
-	@echo "conformance-negative-control-go-walk: dormant — the surface it turns red is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#511)"
+conformance-negative-control-go-walk: build/conformance-harness build/conformance-go
+	sh test/conformance/go/negative-control walk
 
 # THE GO LEG of `make test`: the two conformance negative controls, THE GO
 # PORT's own instruments (docs/SPEC-TABLES.md) — the allocation gate and its
@@ -254,7 +254,7 @@ BENCH_TABLES_LEGS += generated/bench/tables/go/.stamp
 build/packet-wide/go/.stamp: bin/schema build/packet-wide/source/WideText.schema test/packet-wide/Shapes.schema make/go.mk
 	./bin/schema generate --lang go --out build/packet-wide/go build/packet-wide/source/WideText.schema
 	./bin/schema generate --lang go --out build/packet-wide/go/shapes test/packet-wide/Shapes.schema
-	@printf 'module packetwide\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => %s/$(SERIALIZE_GO)\n' "$(CURDIR)" > build/packet-wide/go/go.mod
+	@printf 'module packetwide\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => "%s/$(SERIALIZE_GO)"\n' "$(CURDIR)" > build/packet-wide/go/go.mod
 	@touch $@
 
 .PHONY: packet-wide-go packet-wide-go-negative-control
@@ -275,3 +275,12 @@ packet-wide-go-negative-control: packet-wide-go
 	@echo 'packet wide Go negative control: removed pairing fails bit-flip agreement'
 
 test-go: packet-wide-go packet-wide-go-negative-control
+
+.PHONY: tables-go-wire-fuzz tables-go-wire-fuzz-negative-control
+tables-go-wire-fuzz: build/conformance-harness build/conformance-go
+	./build/conformance-harness wire-fuzz --driver 'build/conformance-go wire-fuzz' --seed $(SEED) --n $(N)
+
+tables-go-wire-fuzz-negative-control: build/conformance-harness build/conformance-go
+	sh test/conformance/go/negative-control leb
+
+test-go: tables-go-wire-fuzz tables-go-wire-fuzz-negative-control

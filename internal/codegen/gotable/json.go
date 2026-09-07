@@ -212,7 +212,7 @@ func tableJsonKeyedSlotKey(slot int32) uint64 { return uint64(slot + 1) }
 
 // A slot whose key names a variant of the keying enum.
 func tableJsonKeyedSlotValid(f *TableFieldInfo, slot int32) bool {
-	return f.KeyId(tableJsonKeyedSlotKey(slot)) != 0
+	return tableJsonNamed(f.KeyName(tableJsonKeyedSlotKey(slot)))
 }
 
 func tableJsonIsFlags(f *TableFieldInfo) bool { return f.EnumName != nil && f.VariantId == nil }
@@ -568,9 +568,6 @@ func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFie
 		// wire identity: the writer REFUSES rather than writing None over it,
 		// the rule measure and save already apply (§5)
 		if int64(value) > f.EnumMax {
-			return false
-		}
-		if value != 0 && f.VariantId(value) == 0 {
 			return false
 		}
 		name := f.EnumName(value)

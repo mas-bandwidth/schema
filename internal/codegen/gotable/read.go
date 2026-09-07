@@ -33,7 +33,8 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("\t\tdefault:\n\t\t\tr.Report.Unknown++; if !r.Skip(kind) { r.Report.Malformed = true; return false }\n\t\t}\n\t}\n}\n\n")
 	g.pf("func %sLoad(value *%s, data []byte, report *TableReport) bool {\n", n, n)
 	g.pf("\tif report == nil { var ignored TableReport; report = &ignored }\n")
-	g.pf("\tr, verdict := tableOpen(data, report); report.Verdict = verdict\n")
+	g.pf("\tr, verdict := tableOpen(data, report); report.Verdict = verdict; report.Reason = \"\"\n")
+	g.pf("\tif verdict == TableOpenRefused { report.Reason = \"unsupported wire form\"; if len(data) > 0 && data[0] == 2 { report.Reason = \"message form requires an announced vocabulary and a message reader\" } }\n")
 	g.pf("\tif verdict != TableOpenOk { %sReset(value); if verdict == TableOpenDamaged { report.Malformed = true }; return false }\n", n)
 	g.pf("\tif !%sLoadBody(&r, value) { report.Verdict = TableOpenBodyStopped; return false }; return true\n}\n\n", n)
 }
@@ -78,7 +79,12 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 	g.pf("%ssub, ok := r.Body(); if !ok { r.Report.Malformed = true; return false }\n", ind)
 	g.pf("%sif len(sub.Buffer) >= 2 {\n", ind)
 	i := ind + "\t"
-	g.pf("%selemKind := sub.Get8(); count, ok := sub.Leb()\n", i)
+	// The reference reads the element kind and count from the enclosing
+	// reader before bounding the elements by L. Preserve its report events
+	// when a damaged count extends beyond L, while Has still bounds every
+	// element read to the declared body.
+	g.pf("%sheader := sub; header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]\n", i)
+	g.pf("%selemKind := header.Get8(); count, ok := header.Leb(); sub.Offset = header.Offset\n", i)
 	g.pf("%sif !ok { r.Report.Malformed = true } else {\n", i)
 	i += "\t"
 	g.pf("%sif elemKind != %d {\n", i, kind)
@@ -130,17 +136,17 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 
 func (g *tableGen) emitReadUnion(un *ir.Union, expr, rdr, ind, stop string) {
 	g.pf("%sarmRef, ok := %s.Leb(); if !ok { r.Report.Malformed = true; %s }\n", ind, rdr, stop)
-	g.pf("%s%s.Type = %sTypeNone\n", ind, expr, un.Name)
-	g.pf("%sif armRef != 0 {\n", ind)
+	g.pf("%sif armRef == 0 { %s.Type = %sTypeNone } else {\n", ind, expr, un.Name)
 	i := ind + "\t"
 	g.pf("%sarmID, ok := %s.Resolve(armRef); if !ok || !%s.Has(1) { r.Report.Malformed = true; %s }\n", i, rdr, rdr, stop)
 	g.pf("%sarmKind := %s.Get8(); arm, ok := %s.Body(); if !ok { r.Report.Malformed = true; %s }\n", i, rdr, rdr, stop)
+	g.pf("%s%s.Type = %sTypeNone\n", i, expr, un.Name)
 	g.pf("%sswitch armID {\n", i)
 	for _, v := range un.Variants {
 		armExpr := expr + "." + ir.GoExportName(v.Name)
 		g.pf("%scase 0x%016x:\n", i, ir.TableWireId(v.WireName()))
 		g.pf("%s\tif armKind != 13 { r.Report.KindMismatch++; break }\n", i)
-		
+
 		g.pf("%s\t%s.Type = %sType%s\n", i, expr, un.Name, ir.GoExportName(v.Name))
 		g.pf("%s\t%sLoadBody(&arm, &%s)\n", i, v.Type, armExpr)
 		g.pf("%s\tif arm.Offset != int64(len(arm.Buffer)) { r.Report.Malformed = true; %s.Type = %sTypeNone }\n", i, expr, un.Name)
