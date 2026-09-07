@@ -1468,6 +1468,22 @@ func orderTables(tables []*ir.Struct) []*ir.Struct {
 // an int128, a uint128, or a fixed of 128 bits — which is what decides whether
 // the Table header includes serialize.h for the storage type.
 func unitHas128(u *ir.Unit, closure map[string]bool) bool {
+	seen := map[*ir.Union]bool{}
+	var wide func(*ir.Field) bool
+	wide = func(f *ir.Field) bool {
+		if f.Type.Width == 128 && (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) {
+			return true
+		}
+		if un, ok := f.Type.Ref.(*ir.Union); ok && !seen[un] {
+			seen[un] = true
+			for _, v := range un.Variants {
+				if v.F != nil && wide(v.F) {
+					return true
+				}
+			}
+		}
+		return false
+	}
 	for name := range closure {
 		st := u.Tables[name]
 		if st == nil {
@@ -1477,7 +1493,7 @@ func unitHas128(u *ir.Unit, closure map[string]bool) bool {
 			continue
 		}
 		for _, f := range st.Fields {
-			if f.Type.Width == 128 && (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) {
+			if wide(f) {
 				return true
 			}
 		}

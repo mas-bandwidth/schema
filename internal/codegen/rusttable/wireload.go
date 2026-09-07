@@ -49,6 +49,9 @@ func (g *gen) takeBody(reader, name, onBad string) {
 
 func (g *gen) emitLoadPayload(f *ir.Field) {
 	switch {
+	case f.Type.Kind == ir.TWString:
+		g.pf("let text = match r.take() { Some(text) => text, None => { %s } };\n", readBad)
+		g.pf("match text.utf16(&mut value.%s) { Some(keep) => { value.%s_length = keep as i32; if text.buffer.len()/2 > %d { report.clamped += 1; } }, None => { report.malformed = true; value.%s_length = 0; } }\n", f.Name, f.Name, f.Type.Size, f.Name)
 	case f.Type.Kind == ir.TString:
 		g.pf("let text = match r.take() { Some(r) => r, None => { %s } };\n", readBad)
 		g.pf("if text.buffer.contains(&0) || core::str::from_utf8(text.buffer).is_err() {\n    report.malformed = true;\n    value.%s_length = 0;\n} else {\n", f.Name)

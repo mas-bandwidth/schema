@@ -281,6 +281,54 @@ fn write_measured(measure: impl Fn() -> i64, write: impl Fn(&mut [u8]) -> i64) -
 fn codecs() -> Vec<Codec> {
     vec![
         codec!(
+            "widedemo",
+            "Caption",
+            widedemo,
+            widedemo::Caption,
+            widedemo::caption_measure,
+            widedemo::caption_save,
+            widedemo::caption_load,
+            widedemo::caption_from_json,
+            widedemo::caption_to_json_measure,
+            widedemo::caption_to_json
+        ),
+        codec!(
+            "widedemo",
+            "Stamp",
+            widedemo,
+            widedemo::Stamp,
+            widedemo::stamp_measure,
+            widedemo::stamp_save,
+            widedemo::stamp_load,
+            widedemo::stamp_from_json,
+            widedemo::stamp_to_json_measure,
+            widedemo::stamp_to_json
+        ),
+        codec!(
+            "scalars",
+            "SimState",
+            scalardemo,
+            scalardemo::SimState,
+            scalardemo::sim_state_measure,
+            scalardemo::sim_state_save,
+            scalardemo::sim_state_load,
+            scalardemo::sim_state_from_json,
+            scalardemo::sim_state_to_json_measure,
+            scalardemo::sim_state_to_json
+        ),
+        codec!(
+            "tblscalars2",
+            "SimState",
+            scalardemo2,
+            scalardemo2::SimState,
+            scalardemo2::sim_state_measure,
+            scalardemo2::sim_state_save,
+            scalardemo2::sim_state_load,
+            scalardemo2::sim_state_from_json,
+            scalardemo2::sim_state_to_json_measure,
+            scalardemo2::sim_state_to_json
+        ),
+        codec!(
             "tblr1",
             "Cfg",
             tblr1,

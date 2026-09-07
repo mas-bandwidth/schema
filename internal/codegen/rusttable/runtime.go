@@ -201,7 +201,7 @@ pub fn table_double_to_bits(value: f64) -> u64 {
     value.to_bits()
 }
 
-` + wireRuntime + `
+` + wireRuntime + wideRuntime + `
 // ---- reflection (tables only, docs/SPEC-TABLES.md §8) ----
 //
 // Static field descriptors for every type in the table closure: name, wire
@@ -249,6 +249,10 @@ pub struct TableUnionInfo {
 pub static TABLE_DOC_NONE: &str = "";
 
 pub struct TableFieldInfo {
+    pub frac_bits: u32,
+    pub wide_range: bool,
+    pub wide_min: u128,
+    pub wide_max: u128,
     /// Restore this field, including its count, presence and declared defaults.
     pub reset: unsafe fn(*mut u8),
     pub name: &'static str,      // schema field name, e.g. "health"
@@ -490,7 +494,7 @@ fn table_json_is_enum(f: &TableFieldInfo) -> bool {
 }
 
 fn table_json_shape(f: &TableFieldInfo) -> u8 {
-    if f.kind == 12 {
+    if f.kind == 12 || f.kind == 33 {
         return b's'; // string
     }
     if table_json_is_bytes(f) {
@@ -721,8 +725,10 @@ fn table_json_utf8(s: &[u8]) -> Option<usize> {
 // not part of a well-formed sequence is written as U+FFFD, one per bad byte,
 // and never raw.
 fn table_json_write_string_bytes(out: &mut TableJsonOut, s: &[u8]) {
+ out.put(b'"'); table_json_write_string_content(out,s); out.put(b'"');
+}
+fn table_json_write_string_content(out: &mut TableJsonOut, s: &[u8]) {
     const HEX: &[u8; 16] = b"0123456789abcdef";
-    out.put(b'"');
     let mut i = 0usize;
     while i < s.len() {
         let c = s[i];
@@ -760,7 +766,6 @@ fn table_json_write_string_bytes(out: &mut TableJsonOut, s: &[u8]) {
         }
         i += 1;
     }
-    out.put(b'"');
 }
 
 #[inline]
@@ -999,6 +1004,7 @@ unsafe fn table_json_write_scalar(
             out.put(b'}');
             return true;
         }
+        if (18..=29).contains(&f.kind) { table_json_write_wide(out, storage, f); return true; }
         if f.kind == 13 {
             let table = match f.table {
                 Some(t) => t,
@@ -1090,6 +1096,12 @@ unsafe fn table_json_write_field(
 ) -> bool {
     unsafe {
         let storage = base.add(f.offset as usize);
+        if f.kind == 33 {
+            let units=core::slice::from_raw_parts(storage as *const u16,table_json_count(base,f) as usize);
+            out.put(b'"');
+            for c in char::decode_utf16(units.iter().copied()) { let mut bytes=[0u8;4]; let c=c.unwrap_or(char::REPLACEMENT_CHARACTER); table_json_write_string_content(out,c.encode_utf8(&mut bytes).as_bytes()); }
+            out.put(b'"'); return true;
+        }
         if f.kind == 12 {
             let used = table_json_count(base, f) as usize;
             table_json_write_string_bytes(out, core::slice::from_raw_parts(storage, used));
@@ -1332,6 +1344,7 @@ enum TableJsonSink {
     Discard,
     // # Safety: the pointer covers capacity writable bytes.
     Storage(*mut u8, usize),
+    WideStorage(*mut u16, usize),
 }
 
 // Scan one JSON string into a caller buffer. Bytes are appended ONE CODE
@@ -1474,7 +1487,7 @@ fn table_json_scan_string(
                 else { table_json_encode_utf8(0xfffd, &mut unit) };
         }
         if let TableJsonSink::Storage(out, capacity) = sink {
-            if placed as usize + unit_length <= capacity {
+            if !clamped && placed as usize + unit_length <= capacity {
                 unsafe {
                     ptr::copy_nonoverlapping(unit.as_ptr(), out.add(placed as usize), unit_length)
                 };
@@ -1482,6 +1495,14 @@ fn table_json_scan_string(
             } else {
                 clamped = true;
             }
+        }
+        if let TableJsonSink::WideStorage(out, capacity) = sink {
+            let c=core::str::from_utf8(&unit[..unit_length]).ok()?.chars().next()?;
+            let mut units=[0u16;2]; let units=c.encode_utf16(&mut units);
+            if !clamped && placed as usize + units.len() <= capacity {
+                unsafe { ptr::copy_nonoverlapping(units.as_ptr(),out.add(placed as usize),units.len()); }
+                placed += units.len() as i32;
+            } else { clamped=true; }
         }
     }
     if clamped {
@@ -1922,6 +1943,7 @@ unsafe fn table_json_read_scalar(
                 return false;
             }
         };
+        if (18..=29).contains(&f.kind) { return table_json_read_wide(&token.bytes[..token.length],storage,f,report); }
         if f.kind == 10 || f.kind == 11 {
             let single = f.kind == 10;
             let mut value = token.to_double(single);
@@ -2059,8 +2081,8 @@ unsafe fn table_json_read_field(
 ) -> bool {
     unsafe {
         let storage = base.add(f.offset as usize);
-        if f.kind == 12 {
-            let sink = TableJsonSink::Storage(storage, f.array_bound as usize);
+        if f.kind == 12 || f.kind == 33 {
+            let sink = if f.kind==33 { TableJsonSink::WideStorage(storage as *mut u16, f.array_bound as usize) } else { TableJsonSink::Storage(storage, f.array_bound as usize) };
             let length = match table_json_scan_string(input, sink, report) {
                 Some(n) => n,
                 None => return false,

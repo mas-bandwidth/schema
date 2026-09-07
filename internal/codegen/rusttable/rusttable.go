@@ -81,9 +81,6 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return nil, nil
 	}
-	if err := ir.RefuseWideTableKinds(u, "Rust"); err != nil {
-		return nil, err
-	}
 	out := map[string][]byte{}
 
 	variable := ir.VariableTables(u)
@@ -251,7 +248,10 @@ func rustUint(bits int) string {
 	case bits <= 32:
 		return "u32"
 	}
-	return "u64"
+	if bits <= 64 {
+		return "u64"
+	}
+	return "u128"
 }
 
 func rustInt(bits int) string {
@@ -263,14 +263,17 @@ func rustInt(bits int) string {
 	case bits <= 32:
 		return "i32"
 	}
-	return "i64"
+	if bits <= 64 {
+		return "i64"
+	}
+	return "i128"
 }
 
 // rustFieldType is a field's Rust ELEMENT storage type, matching the packet
 // emitter's column (SPEC §6.1).
 func rustFieldType(t ir.FieldType) string {
 	switch t.Kind {
-	case ir.TInt:
+	case ir.TInt, ir.TFixed:
 		if t.Signed {
 			return rustInt(t.Width)
 		}
@@ -286,6 +289,8 @@ func rustFieldType(t ir.FieldType) string {
 		return "f32"
 	case ir.TFloat64:
 		return "f64"
+	case ir.TWString:
+		return "u16"
 	case ir.TString, ir.TBytes:
 		// the ELEMENT of a string or a bytes buffer; the buffer itself is
 		// spelled at its declaration site, which knows the extent
@@ -300,19 +305,7 @@ func rustFieldType(t ir.FieldType) string {
 }
 
 // scalarKindWidth is the payload width a table-wire kind carries.
-func tableKindWidth(kind int) int {
-	switch kind {
-	case tkBool, tkI8, tkU8:
-		return 1
-	case tkI16, tkU16:
-		return 2
-	case tkI32, tkU32, tkF32:
-		return 4
-	case tkI64, tkU64, tkF64:
-		return 8
-	}
-	return 0
-}
+func tableKindWidth(kind int) int { return ir.TableKindWidth(kind) }
 
 func putFn(width int) string { return fmt.Sprintf("put%d", width*8) }
 func getFn(width int) string { return fmt.Sprintf("get%d", width*8) }

@@ -159,6 +159,7 @@ pub enum TableCookStorage {
     Signed,
     Unsigned, // an unsigned integer, an enum ordinal, a bits(N), a flags mask
     Float,
+    WideString, // [u16; N + 1], length in code units
     String, // [u8; N + 1] with an i32 used length beside it
     Bytes,  // [u8; N] with an i32 used length beside it
 }

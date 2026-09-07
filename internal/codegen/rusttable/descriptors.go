@@ -135,11 +135,14 @@ func (g *gen) descriptorRowAt(f *ir.Field, guard, reset string, offset func(stri
 	elemSize := fmt.Sprintf("core::mem::size_of::<%s>() as u32", rustFieldType(f.Type))
 
 	switch {
-	case f.Type.Kind == ir.TString:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString:
 		arrayBound = fmt.Sprint(f.Type.Size)
 		counted = "true"
 		countOffset = offset(f.Name + "_length")
 		elemSize = fmt.Sprintf("%d", f.Type.Size)
+		if f.Type.Kind == ir.TWString {
+			elemSize = fmt.Sprint(f.Type.Size * 2)
+		}
 	case f.Type.Kind == ir.TBytes:
 		arrayBound = fmt.Sprint(f.Type.Size)
 		isArray = "true"
@@ -222,6 +225,16 @@ func (g *gen) descriptorRowAt(f *ir.Field, guard, reset string, offset func(stri
 	fmt.Fprintf(&b, "            type_name: %q,\n", tableFieldTypeName(f))
 	fmt.Fprintf(&b, "            id: 0x%016x,\n", ir.TableFieldWireId(f))
 	fmt.Fprintf(&b, "            kind: %d,\n", kind)
+	lo, hi, has := ir.TableRawRange(f)
+	rawlo, rawhi := "0", "0"
+	if has && ir.TableKindWide(kind) {
+		rawlo, rawhi = lo.String(), hi.String()
+		if ir.TableKindSigned(kind) {
+			rawlo = "(" + rawlo + "i128) as u128"
+			rawhi = "(" + rawhi + "i128) as u128"
+		}
+	}
+	fmt.Fprintf(&b, "            frac_bits: %d,\n            wide_range: %v,\n            wide_min: %s,\n            wide_max: %s,\n", f.Type.FracBits, has && ir.TableKindWide(kind), rawlo, rawhi)
 	fmt.Fprintf(&b, "            is_array: %s,\n", isArray)
 	fmt.Fprintf(&b, "            counted: %s,\n", counted)
 	fmt.Fprintf(&b, "            optional: %v,\n", f.Type.Optional)

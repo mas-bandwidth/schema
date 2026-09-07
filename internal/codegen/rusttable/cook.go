@@ -365,6 +365,8 @@ func (g *gen) emitCookRowField(f *ir.Field) {
 	switch {
 	case f.Type.Pointer:
 		g.pf("    pub %s: i64, // *%s: signed self-relative delta, zero is null (§6.3)\n", f.Name, f.Type.Name)
+	case f.Type.Kind == ir.TWString:
+		g.pf("    pub %s: [u16; %d],\n    pub %s_length: i32,\n", f.Name, f.Type.Size+1, f.Name)
 	case f.Type.Kind == ir.TString:
 		g.pf("    pub %s: [u8; %d], // string(%s): buffer, used length beside it\n",
 			f.Name, f.Type.Size+1, ir.RenderExpr(f.Type.SizeExpr))
@@ -401,7 +403,7 @@ func cookElemType(f *ir.Field) string {
 		return "f32"
 	case ir.TFloat64:
 		return "f64"
-	case ir.TInt:
+	case ir.TInt, ir.TFixed:
 		if f.Type.Signed {
 			return rustInt(f.Type.Width)
 		}
@@ -465,7 +467,7 @@ func cookRowMembers(f *ir.Field) []string {
 	names = append(names, f.Name)
 	switch {
 	case f.Type.Pointer:
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes:
 		names = append(names, f.Name+"_length")
 	case f.Array == ir.ArrayCounted && f.KeyEnum == "":
 		names = append(names, f.Name+"_count")
@@ -576,6 +578,7 @@ pub enum TableCookStorage {
     Signed,
     Unsigned, // an unsigned integer, an enum ordinal, a bits(N), a flags mask
     Float,
+    WideString, // [u16; N + 1], length in code units
     String, // [u8; N + 1] with an i32 used length beside it
     Bytes,  // [u8; N] with an i32 used length beside it
 }
@@ -661,6 +664,8 @@ func (g *gen) cookFieldRow(fl ir.FieldLayout) string {
 	case f.Type.Pointer:
 		storage, elemSize = "TableCookStorage::Reference", 8
 		record = fmt.Sprintf("Some(%s)", fn(f.Type.Name, "cook_info"))
+	case f.Type.Kind == ir.TWString:
+		storage, elemSize, arrayBound = "TableCookStorage::WideString", (f.Type.Size+1)*2, f.Type.Size
 	case f.Type.Kind == ir.TString:
 		storage, elemSize, arrayBound = "TableCookStorage::String", f.Type.Size+1, f.Type.Size
 	case f.Type.Kind == ir.TBytes:
@@ -702,7 +707,7 @@ func cookStorageOf(u *ir.Unit, f *ir.Field) (string, int64) {
 		return "TableCookStorage::Float", 4
 	case ir.TFloat64:
 		return "TableCookStorage::Float", 8
-	case ir.TInt:
+	case ir.TInt, ir.TFixed:
 		if f.Type.Signed {
 			return "TableCookStorage::Signed", int64(f.Type.Width) / 8
 		}

@@ -7,7 +7,7 @@ func widenable(f *ir.Field) bool {
 		return false
 	}
 	k := ir.TableWireScalarKind(f)
-	return k >= tkI16 && k <= tkI64 || k >= tkU16 && k <= tkU64 || k == tkF64
+	return k >= tkI16 && k <= tkI64 || k >= tkU16 && k <= tkU64 || k == tkF64 || k == ir.TableKindI128 || k == ir.TableKindU128
 }
 
 func (g *gen) emitWidenedScalar(f *ir.Field, reader, target, kind, onBad string) {
@@ -30,7 +30,11 @@ func (g *gen) emitWidenedScalar(f *ir.Field, reader, target, kind, onBad string)
 				mutable = "mut "
 			}
 		}
-		g.pf("let %sdecoded = bits as %s;\n", mutable, typ)
+		if typ == "i128" {
+			g.pf("let %sdecoded = bits as i64 as i128;\n", mutable)
+		} else {
+			g.pf("let %sdecoded = bits as %s;\n", mutable, typ)
+		}
 		if f.HasIntRange {
 			lo, hi := clampEnds(f, tableKindWidth(ir.TableScalarKind(f)))
 			if lo {

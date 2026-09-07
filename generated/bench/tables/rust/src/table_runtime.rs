@@ -199,6 +199,8 @@ impl<'a> TableWriter<'a> {
     #[inline(always)]
     pub fn put64(&mut self, v: u64) { self.raw(&v.to_le_bytes()); }
     #[inline(always)]
+    pub fn put128(&mut self, value: u128) { self.raw(&value.to_le_bytes()); }
+    #[inline(always)]
     pub fn putleb(&mut self, mut v: u64) {
         while v >= 128 { self.put8((v as u8 & 127) | 128); v >>= 7; }
         self.put8(v as u8);
@@ -275,6 +277,8 @@ impl<'a> TableReader<'a> {
     pub fn get32(&mut self) -> u32 { let v = u32::from_le_bytes(self.buffer[self.offset..self.offset+4].try_into().unwrap()); self.offset += 4; v }
     #[inline(always)]
     pub fn get64(&mut self) -> u64 { let v = u64::from_le_bytes(self.buffer[self.offset..self.offset+8].try_into().unwrap()); self.offset += 8; v }
+    #[inline(always)]
+    pub fn get128(&mut self) -> u128 { let lo = self.get64() as u128; lo | ((self.get64() as u128) << 64) }
     #[inline(always)]
     pub fn getleb(&mut self) -> Option<u64> {
         let at = self.offset;
@@ -356,21 +360,39 @@ impl<'a> TableReader<'a> {
             if !r.skip(kind) { return false; }
         }
     }
+    pub fn utf16(&self, out: &mut [u16]) -> Option<usize> {
+        let bytes = self.buffer;
+        if bytes.len() % 2 != 0 { return None; }
+        let unit = |i: usize| u16::from_le_bytes([bytes[i*2],bytes[i*2+1]]);
+        let n=bytes.len()/2; let mut expect_low=false;
+        for i in 0..n {
+            let u=unit(i); let high=(0xd800..=0xdbff).contains(&u); let low=(0xdc00..=0xdfff).contains(&u);
+            if u==0 || low!=expect_low { return None; } expect_low=high;
+        }
+        if expect_low { return None; }
+        let mut keep=n.min(out.len());
+        if keep<n && keep>0 && (0xd800..=0xdbff).contains(&unit(keep-1)) { keep-=1; }
+        for (i,v) in out[..keep].iter_mut().enumerate() { *v=unit(i); }
+        Some(keep)
+    }
     pub fn width(kind: u8) -> usize {
         match kind { 1|2|6|20|25 => 1, 3|7|21|26 => 2, 4|8|10|22|27 => 4, 5|9|11|23|28 => 8, 18|19|24|29 => 16, _ => 0 }
     }
     pub fn widens(kind: u8, declared: u8) -> bool {
         (kind >= 2 && kind < declared && declared <= 5) ||
         (kind >= 6 && kind < declared && declared <= 9) ||
-        (kind == 10 && declared == 11)
+        (kind == 10 && declared == 11) ||
+        (declared == 18 && (2..=5).contains(&kind)) ||
+        (declared == 19 && (6..=9).contains(&kind))
     }
     pub fn widened(&mut self, kind: u8) -> Option<u64> {
-        let width = match kind { 2|6 => 1, 3|7 => 2, 4|8|10 => 4, _ => return None };
+        let width = match kind { 2|6 => 1, 3|7 => 2, 4|8|10 => 4, 5|9 => 8, _ => return None };
         if !self.has(width) { return None; }
         Some(match kind {
             2 => self.get8() as i8 as i64 as u64,
             3 => self.get16() as i16 as i64 as u64,
             4 => self.get32() as i32 as i64 as u64,
+            5|9 => self.get64(),
             6 => self.get8() as u64,
             7 => self.get16() as u64,
             8 => self.get32() as u64,
@@ -391,6 +413,235 @@ impl<'a> TableReader<'a> {
         // table belongs to the root alone, including on fixed-class readers.
         id == u64::MAX-1 || id == u64::MAX-2 || (self.nested && id == u64::MAX)
     }
+}
+
+fn table_json_wide_signed(kind: u8) -> bool {
+    kind == 18 || (20..=24).contains(&kind)
+}
+unsafe fn table_json_wide_load(storage: *const u8, f: &TableFieldInfo) -> u128 {
+    unsafe {
+        if f.elem_size == 16 {
+            ptr::read_unaligned(storage as *const u128)
+        } else if table_json_wide_signed(f.kind) {
+            table_json_get_signed(storage, f.elem_size) as i128 as u128
+        } else {
+            table_json_get_raw(storage, f.elem_size) as u128
+        }
+    }
+}
+unsafe fn table_json_write_wide(out: &mut TableJsonOut, storage: *const u8, f: &TableFieldInfo) {
+    let mut value = unsafe { table_json_wide_load(storage, f) };
+    if table_json_wide_signed(f.kind) && (value as i128) < 0 {
+        out.put(b'-');
+        value = value.wrapping_neg();
+    }
+    let frac = f.frac_bits;
+    let mut whole = value >> frac;
+    let mut digits = [0u8; 40];
+    let mut at = digits.len();
+    loop {
+        at -= 1;
+        digits[at] = b'0' + (whole % 10) as u8;
+        whole /= 10;
+        if whole == 0 {
+            break;
+        }
+    }
+    out.raw(&digits[at..]);
+    if f.kind < 20 {
+        return;
+    }
+    out.put(b'.');
+    let mask = (1u128 << frac) - 1;
+    let mut fraction = value & mask;
+    if fraction == 0 {
+        out.put(b'0');
+        return;
+    }
+    while fraction != 0 {
+        let carry = (((fraction >> 64) * 10) + (((fraction as u64 as u128) * 10) >> 64)) >> 64;
+        let product = fraction.wrapping_mul(10);
+        let mut digit = product >> frac;
+        if frac > 64 {
+            digit |= carry << (128 - frac);
+        }
+        out.put(b'0' + digit as u8);
+        fraction = product & mask;
+    }
+}
+unsafe fn table_json_read_wide(
+    token: &[u8],
+    storage: *mut u8,
+    f: &TableFieldInfo,
+    report: &mut TableReport,
+) -> bool {
+    let signed = table_json_wide_signed(f.kind);
+    let frac = f.frac_bits;
+    let mut i = 0;
+    let mut negative = false;
+    if matches!(token.first(), Some(b'-' | b'+')) {
+        negative = token[0] == b'-';
+        i += 1;
+    }
+    let int_start = i;
+    while i < token.len() && token[i].is_ascii_digit() {
+        i += 1;
+    }
+    let int_len = i - int_start;
+    let mut frac_start = i;
+    let mut frac_len = 0;
+    if i < token.len() && token[i] == b'.' {
+        i += 1;
+        frac_start = i;
+        while i < token.len() && token[i].is_ascii_digit() {
+            i += 1;
+        }
+        frac_len = i - frac_start;
+    }
+    let mut exponent = 0i64;
+    if i < token.len() && matches!(token[i], b'e' | b'E') {
+        i += 1;
+        let mut neg = false;
+        if i < token.len() && matches!(token[i], b'-' | b'+') {
+            neg = token[i] == b'-';
+            i += 1;
+        }
+        while i < token.len() && token[i].is_ascii_digit() {
+            if exponent < 100000 {
+                exponent = exponent * 10 + i64::from(token[i] - b'0');
+            }
+            i += 1;
+        }
+        if neg {
+            exponent = -exponent;
+        }
+    }
+    let digit = |k: usize| -> u8 {
+        if k < int_len {
+            token[int_start + k] - b'0'
+        } else {
+            token[frac_start + k - int_len] - b'0'
+        }
+    };
+    let mut start = 0;
+    let mut end = int_len + frac_len;
+    let mut point = int_len as i64 + exponent;
+    while start < end && digit(start) == 0 {
+        start += 1;
+        point -= 1;
+    }
+    while end > start && digit(end - 1) == 0 {
+        end -= 1;
+    }
+    let mut raw = 0u128;
+    let mut saturated = false;
+    if start == end {
+    } else if point > 40 {
+        saturated = true;
+        raw = if negative {
+            if signed { 1u128 << 127 } else { 0 }
+        } else if signed {
+            i128::MAX as u128
+        } else {
+            u128::MAX
+        };
+    } else if point < -40 {
+        report.kind_mismatch += 1;
+        return true;
+    } else {
+        let mut digits = [0u8; TABLE_JSON_MAX_NUMBER + 48];
+        let mut count = (-point).max(0) as usize;
+        for k in start + point.max(0) as usize..end {
+            digits[count] = digit(k);
+            count += 1;
+        }
+        let mut fraction = 0u128;
+        for _ in 0..frac {
+            let mut carry = 0;
+            for k in (0..count).rev() {
+                let d = digits[k] * 2 + carry;
+                digits[k] = d % 10;
+                carry = d / 10;
+            }
+            fraction = (fraction << 1) | u128::from(carry);
+        }
+        if digits[..count].iter().any(|v| *v != 0) {
+            report.kind_mismatch += 1;
+            return true;
+        }
+        let mut whole = 0u128;
+        for k in start..start + point.max(0) as usize {
+            let d = if k < end { digit(k) } else { 0 };
+            match whole
+                .checked_mul(10)
+                .and_then(|w| w.checked_add(u128::from(d)))
+            {
+                Some(w) => whole = w,
+                None => {
+                    saturated = true;
+                    break;
+                }
+            }
+        }
+        if !saturated && frac > 0 && (whole >> (128 - frac)) != 0 {
+            saturated = true;
+        }
+        if !saturated {
+            raw = (whole << frac) | fraction;
+        }
+        if signed {
+            if !saturated
+                && ((!negative && raw > i128::MAX as u128) || (negative && raw > (1u128 << 127)))
+            {
+                saturated = true;
+            }
+            if saturated {
+                raw = if negative {
+                    1u128 << 127
+                } else {
+                    i128::MAX as u128
+                };
+            } else if negative {
+                raw = raw.wrapping_neg();
+            }
+        } else {
+            if saturated {
+                raw = u128::MAX;
+            }
+            if negative && raw != 0 {
+                raw = 0;
+                saturated = true;
+            }
+        }
+    }
+    if saturated {
+        report.clamped += 1;
+    }
+    if f.wide_range {
+        if if signed {
+            (raw as i128) < (f.wide_min as i128)
+        } else {
+            raw < f.wide_min
+        } {
+            raw = f.wide_min;
+            report.clamped += 1;
+        } else if if signed {
+            (raw as i128) > (f.wide_max as i128)
+        } else {
+            raw > f.wide_max
+        } {
+            raw = f.wide_max;
+            report.clamped += 1;
+        }
+    }
+    unsafe {
+        if f.elem_size == 16 {
+            ptr::write_unaligned(storage as *mut u128, raw);
+        } else {
+            table_json_set_raw(storage, f.elem_size, raw as u64);
+        }
+    }
+    true
 }
 
 // ---- reflection (tables only, docs/SPEC-TABLES.md §8) ----
@@ -440,6 +691,10 @@ pub struct TableUnionInfo {
 pub static TABLE_DOC_NONE: &str = "";
 
 pub struct TableFieldInfo {
+    pub frac_bits: u32,
+    pub wide_range: bool,
+    pub wide_min: u128,
+    pub wide_max: u128,
     /// Restore this field, including its count, presence and declared defaults.
     pub reset: unsafe fn(*mut u8),
     pub name: &'static str,      // schema field name, e.g. "health"
@@ -681,7 +936,7 @@ fn table_json_is_enum(f: &TableFieldInfo) -> bool {
 }
 
 fn table_json_shape(f: &TableFieldInfo) -> u8 {
-    if f.kind == 12 {
+    if f.kind == 12 || f.kind == 33 {
         return b's'; // string
     }
     if table_json_is_bytes(f) {
@@ -912,8 +1167,10 @@ fn table_json_utf8(s: &[u8]) -> Option<usize> {
 // not part of a well-formed sequence is written as U+FFFD, one per bad byte,
 // and never raw.
 fn table_json_write_string_bytes(out: &mut TableJsonOut, s: &[u8]) {
+ out.put(b'"'); table_json_write_string_content(out,s); out.put(b'"');
+}
+fn table_json_write_string_content(out: &mut TableJsonOut, s: &[u8]) {
     const HEX: &[u8; 16] = b"0123456789abcdef";
-    out.put(b'"');
     let mut i = 0usize;
     while i < s.len() {
         let c = s[i];
@@ -951,7 +1208,6 @@ fn table_json_write_string_bytes(out: &mut TableJsonOut, s: &[u8]) {
         }
         i += 1;
     }
-    out.put(b'"');
 }
 
 #[inline]
@@ -1190,6 +1446,7 @@ unsafe fn table_json_write_scalar(
             out.put(b'}');
             return true;
         }
+        if (18..=29).contains(&f.kind) { table_json_write_wide(out, storage, f); return true; }
         if f.kind == 13 {
             let table = match f.table {
                 Some(t) => t,
@@ -1281,6 +1538,12 @@ unsafe fn table_json_write_field(
 ) -> bool {
     unsafe {
         let storage = base.add(f.offset as usize);
+        if f.kind == 33 {
+            let units=core::slice::from_raw_parts(storage as *const u16,table_json_count(base,f) as usize);
+            out.put(b'"');
+            for c in char::decode_utf16(units.iter().copied()) { let mut bytes=[0u8;4]; let c=c.unwrap_or(char::REPLACEMENT_CHARACTER); table_json_write_string_content(out,c.encode_utf8(&mut bytes).as_bytes()); }
+            out.put(b'"'); return true;
+        }
         if f.kind == 12 {
             let used = table_json_count(base, f) as usize;
             table_json_write_string_bytes(out, core::slice::from_raw_parts(storage, used));
@@ -1523,6 +1786,7 @@ enum TableJsonSink {
     Discard,
     // # Safety: the pointer covers capacity writable bytes.
     Storage(*mut u8, usize),
+    WideStorage(*mut u16, usize),
 }
 
 // Scan one JSON string into a caller buffer. Bytes are appended ONE CODE
@@ -1665,7 +1929,7 @@ fn table_json_scan_string(
                 else { table_json_encode_utf8(0xfffd, &mut unit) };
         }
         if let TableJsonSink::Storage(out, capacity) = sink {
-            if placed as usize + unit_length <= capacity {
+            if !clamped && placed as usize + unit_length <= capacity {
                 unsafe {
                     ptr::copy_nonoverlapping(unit.as_ptr(), out.add(placed as usize), unit_length)
                 };
@@ -1673,6 +1937,14 @@ fn table_json_scan_string(
             } else {
                 clamped = true;
             }
+        }
+        if let TableJsonSink::WideStorage(out, capacity) = sink {
+            let c=core::str::from_utf8(&unit[..unit_length]).ok()?.chars().next()?;
+            let mut units=[0u16;2]; let units=c.encode_utf16(&mut units);
+            if !clamped && placed as usize + units.len() <= capacity {
+                unsafe { ptr::copy_nonoverlapping(units.as_ptr(),out.add(placed as usize),units.len()); }
+                placed += units.len() as i32;
+            } else { clamped=true; }
         }
     }
     if clamped {
@@ -2113,6 +2385,7 @@ unsafe fn table_json_read_scalar(
                 return false;
             }
         };
+        if (18..=29).contains(&f.kind) { return table_json_read_wide(&token.bytes[..token.length],storage,f,report); }
         if f.kind == 10 || f.kind == 11 {
             let single = f.kind == 10;
             let mut value = token.to_double(single);
@@ -2250,8 +2523,8 @@ unsafe fn table_json_read_field(
 ) -> bool {
     unsafe {
         let storage = base.add(f.offset as usize);
-        if f.kind == 12 {
-            let sink = TableJsonSink::Storage(storage, f.array_bound as usize);
+        if f.kind == 12 || f.kind == 33 {
+            let sink = if f.kind==33 { TableJsonSink::WideStorage(storage as *mut u16, f.array_bound as usize) } else { TableJsonSink::Storage(storage, f.array_bound as usize) };
             let length = match table_json_scan_string(input, sink, report) {
                 Some(n) => n,
                 None => return false,

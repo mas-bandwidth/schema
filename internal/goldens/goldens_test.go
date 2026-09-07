@@ -287,9 +287,8 @@ func TestGoldenWideId(t *testing.T) {
 }
 
 // TestGoldenWideSource pins the wide-text unit's generated C++ byte-for-byte
-// (SPEC §7.2 gate 1). ONE target, deliberately: wide text is the C++
-// reference's today and every other backend refuses the unit by name, which
-// TestWideTextIsRefusedByEveryOtherTarget holds.
+// (SPEC §7.2 gate 1). Rust also carries wide text, held by the cross-language
+// wire, text and mutation corpus; the remaining targets refuse it by name.
 func TestGoldenWideSource(t *testing.T) {
 	u := loadCorpusDir(t, corpusWideDir)
 	pinDir(t, filepath.Join(goldenDir, "wide", "cpp"), generate(t, u, "cpp", nil))
@@ -333,7 +332,7 @@ func TestGoldenPacketWideSource(t *testing.T) {
 func TestWideTextIsRefusedByEveryOtherTarget(t *testing.T) {
 	u := loadCorpusDir(t, corpusWideDir)
 	for _, target := range compiler.New().Targets() {
-		if target == "cpp" {
+		if target == "cpp" || target == "rust" {
 			continue
 		}
 		if _, err := schema.Generate(u, target, nil); err == nil {

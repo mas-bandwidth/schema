@@ -314,7 +314,7 @@ generated/bench/rust/.stamp: bin/schema $(SCHEMAS_BENCH)
 # way it is a C++ namespace — its own package, its own protocol id, its own
 # table runtime. The crates carry a generated Cargo.toml each; nothing here is
 # checked in.
-RUST_TABLE_UNITS := tblr1:test/tables/R1.schema tblr2:test/tables/R2.schema tblf1:test/tables/F1.schema tblf2:test/tables/F2.schema tbla1:test/tables/A1.schema tbla2:test/tables/A2.schema tblk1:test/tables/K1.schema tblk2:test/tables/K2.schema tabledemo:tables/examples graphdemo:tables/pointers \
+RUST_TABLE_UNITS := widedemo:examples-wide scalardemo:tables/scalars scalardemo2:test/tables/Scalars2.schema tblr1:test/tables/R1.schema tblr2:test/tables/R2.schema tblf1:test/tables/F1.schema tblf2:test/tables/F2.schema tbla1:test/tables/A1.schema tbla2:test/tables/A2.schema tblk1:test/tables/K1.schema tblk2:test/tables/K2.schema tabledemo:tables/examples graphdemo:tables/pointers \
 	blockdemo:tables/block blockhome:tables/blockhome \
 	tblv1:test/tables/V1.schema tblv2:test/tables/V2.schema \
 	tblp1:test/tables/P1.schema tblp2:test/tables/P2.schema \

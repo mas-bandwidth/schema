@@ -79,7 +79,10 @@ func TestWideTextInATableClosureIsRefusedByTheOtherEight(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load refused a wstring(N) inside a table closure: %v", err)
 	}
-	for _, target := range []string{"c", "cs", "go", "rust", "java", "js", "dart", "elixir"} {
+	if files, err := c.Generate(u, "rust", Options{}); err != nil || len(files["wide_table.rs"]) == 0 {
+		t.Fatalf("Rust wide table: %v", err)
+	}
+	for _, target := range []string{"c", "cs", "go", "java", "js", "dart", "elixir"} {
 		_, err := c.Generate(u, target, Options{})
 		if err == nil {
 			t.Errorf("%s took a wstring(N) it does not carry", target)

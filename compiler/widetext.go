@@ -18,6 +18,11 @@ import (
 // wideTextTargets is the canonical name of every registered target that
 // carries `wstring(N)` on the packet wire.
 var wideTextTargets []string
+var tableWideTextTargets = []string{"cpp"}
+
+func registerTableWideTextCarrier(name string) {
+	tableWideTextTargets = append(tableWideTextTargets, name)
+}
 
 // registerWideTextCarrier is what a carrying target's file calls from its
 // init, beside its registerBuiltin call.
@@ -53,8 +58,9 @@ func refuseWideText(u *ir.Unit, target string) error {
 			tableFields = append(tableFields, field)
 		}
 	}
-	if len(tableFields) > 0 && target != "cpp" {
-		return fmt.Errorf("unit puts a wstring(N) field in a table closure (%s): table wide text is C++ only today, and the %s table codec is a named follow-on; generate with --lang cpp (SPEC §4.12)", englishList(tableFields), target)
+	if len(tableFields) > 0 && !slices.Contains(tableWideTextTargets, target) {
+		carry, flags := carriers(tableWideTextTargets)
+		return fmt.Errorf("unit puts a wstring(N) field in a table closure (%s): table wide text is %s only today, and the %s table codec is a named follow-on; generate with %s (SPEC §4.12)", englishList(tableFields), englishList(carry), target, englishList(flags))
 	}
 	if slices.Contains(wideTextTargets, target) {
 		return nil

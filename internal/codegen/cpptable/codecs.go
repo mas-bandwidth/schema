@@ -2166,6 +2166,13 @@ func (g *tableGen) unionArmsLambda(un *ir.Union, hoisted bool) string {
 			if v.Body() || v.Void() {
 				continue
 			}
+			if ir.TableKindWide(tableScalarKind(v.F)) {
+				if lo, hi, ok := ir.TableRawRange(v.F); ok {
+					lo0, lo1 := wideLanes(lo)
+					hi0, hi1 := wideLanes(hi)
+					g.pf("static const TableWideRange %s_%s_wide = { { %sull, %sull }, { %sull, %sull } };\n", un.Name, v.F.Name, lo0, lo1, hi0, hi1)
+				}
+			}
 			g.emitTagsStatic(fieldSpelling{owner: un.Name}.tagsName(v.F), v.F.Tags, "static const", "")
 		}
 		tags := oneLine(g.body.String())

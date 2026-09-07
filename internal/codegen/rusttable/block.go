@@ -483,6 +483,8 @@ func (b *blockGen) emitProjectionField(bl *ir.BlockLayout, fl ir.FieldLayout) {
 		return
 	}
 	switch {
+	case f.Type.Kind == ir.TWString:
+		b.pf("    pub %s: [u16; %d],\n    pub %s_length: i32,\n", f.Name, f.Type.Size+1, f.Name)
 	case f.Type.Kind == ir.TString:
 		b.pf("    pub %s: [u8; %d], // string(%s): buffer, used length beside it\n",
 			f.Name, f.Type.Size+1, ir.RenderExpr(f.Type.SizeExpr))

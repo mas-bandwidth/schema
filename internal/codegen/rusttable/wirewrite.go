@@ -45,7 +45,7 @@ func (g *gen) emitSave(st *ir.Struct) {
 func (g *gen) emitSaveField(f *ir.Field) {
 	// Validate live counts before slicing, in both the measure and save walks.
 	switch {
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes:
 		g.pf("    if value.%s_length < 0 || value.%s_length > %d { return false; }\n", f.Name, f.Name, f.Type.Size)
 	case f.Array == ir.ArrayCounted:
 		g.pf("    if value.%s_count < 0 || value.%s_count > %d { return false; }\n", f.Name, f.Name, f.ArrayBound)
@@ -54,7 +54,7 @@ func (g *gen) emitSaveField(f *ir.Field) {
 	switch {
 	case f.Type.Optional:
 		cond = "value." + f.Name + "_present"
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes:
 		cond = "value." + f.Name + "_length > 0"
 		if len(f.DefBytes) > 0 {
 			cond = fmt.Sprintf("value.%s_length != %d || value.%s[..value.%s_length as usize] != %s", f.Name, len(f.DefBytes), f.Name, f.Name, rustBytes(f.DefBytes))
@@ -81,6 +81,8 @@ func (g *gen) emitSaveField(f *ir.Field) {
 	g.pf("    if %s {\n", cond)
 	g.pf("        w.putid(0x%016x);\n        w.put8(%d); // %s\n", ir.TableFieldWireId(f), ir.TableWireFieldKind(f), f.Name)
 	switch {
+	case f.Type.Kind == ir.TWString:
+		g.pf("w.putleb(value.%s_length as u64 * 2);\nfor &unit in &value.%s[..value.%s_length as usize] { w.put16(unit); }\n", f.Name, f.Name, f.Name)
 	case f.Type.Kind == ir.TString:
 		g.pf("        w.putleb(value.%s_length as u64);\n        w.raw(&value.%s[..value.%s_length as usize]);\n", f.Name, f.Name, f.Name)
 	case f.KeyEnum != "":

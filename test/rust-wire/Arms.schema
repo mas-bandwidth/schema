@@ -10,6 +10,9 @@ union Plain { body Body
 union Inner { number int32
  empty }
 union Value {
+    big uint128
+    fraction ufixed(1, 127) | min = 0, max = 1
+    wide wstring(4)
     number int64
     text string(8)
     data bytes(8)
@@ -21,6 +24,7 @@ union Value {
     empty
 }
 table Root {
+    title wstring(4)
     label string(16) = "hello"
     tag bytes(4) = "ab"
     caps Caps = { Jump, Fly }

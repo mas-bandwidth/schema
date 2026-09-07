@@ -45,6 +45,8 @@ impl<'a> TableWriter<'a> {
     #[inline(always)]
     pub fn put64(&mut self, v: u64) { self.raw(&v.to_le_bytes()); }
     #[inline(always)]
+    pub fn put128(&mut self, value: u128) { self.raw(&value.to_le_bytes()); }
+    #[inline(always)]
     pub fn putleb(&mut self, mut v: u64) {
         while v >= 128 { self.put8((v as u8 & 127) | 128); v >>= 7; }
         self.put8(v as u8);
@@ -121,6 +123,8 @@ impl<'a> TableReader<'a> {
     pub fn get32(&mut self) -> u32 { let v = u32::from_le_bytes(self.buffer[self.offset..self.offset+4].try_into().unwrap()); self.offset += 4; v }
     #[inline(always)]
     pub fn get64(&mut self) -> u64 { let v = u64::from_le_bytes(self.buffer[self.offset..self.offset+8].try_into().unwrap()); self.offset += 8; v }
+    #[inline(always)]
+    pub fn get128(&mut self) -> u128 { let lo = self.get64() as u128; lo | ((self.get64() as u128) << 64) }
     #[inline(always)]
     pub fn getleb(&mut self) -> Option<u64> {
         let at = self.offset;
@@ -202,21 +206,39 @@ impl<'a> TableReader<'a> {
             if !r.skip(kind) { return false; }
         }
     }
+    pub fn utf16(&self, out: &mut [u16]) -> Option<usize> {
+        let bytes = self.buffer;
+        if bytes.len() % 2 != 0 { return None; }
+        let unit = |i: usize| u16::from_le_bytes([bytes[i*2],bytes[i*2+1]]);
+        let n=bytes.len()/2; let mut expect_low=false;
+        for i in 0..n {
+            let u=unit(i); let high=(0xd800..=0xdbff).contains(&u); let low=(0xdc00..=0xdfff).contains(&u);
+            if u==0 || low!=expect_low { return None; } expect_low=high;
+        }
+        if expect_low { return None; }
+        let mut keep=n.min(out.len());
+        if keep<n && keep>0 && (0xd800..=0xdbff).contains(&unit(keep-1)) { keep-=1; }
+        for (i,v) in out[..keep].iter_mut().enumerate() { *v=unit(i); }
+        Some(keep)
+    }
     pub fn width(kind: u8) -> usize {
         match kind { 1|2|6|20|25 => 1, 3|7|21|26 => 2, 4|8|10|22|27 => 4, 5|9|11|23|28 => 8, 18|19|24|29 => 16, _ => 0 }
     }
     pub fn widens(kind: u8, declared: u8) -> bool {
         (kind >= 2 && kind < declared && declared <= 5) ||
         (kind >= 6 && kind < declared && declared <= 9) ||
-        (kind == 10 && declared == 11)
+        (kind == 10 && declared == 11) ||
+        (declared == 18 && (2..=5).contains(&kind)) ||
+        (declared == 19 && (6..=9).contains(&kind))
     }
     pub fn widened(&mut self, kind: u8) -> Option<u64> {
-        let width = match kind { 2|6 => 1, 3|7 => 2, 4|8|10 => 4, _ => return None };
+        let width = match kind { 2|6 => 1, 3|7 => 2, 4|8|10 => 4, 5|9 => 8, _ => return None };
         if !self.has(width) { return None; }
         Some(match kind {
             2 => self.get8() as i8 as i64 as u64,
             3 => self.get16() as i16 as i64 as u64,
             4 => self.get32() as i32 as i64 as u64,
+            5|9 => self.get64(),
             6 => self.get8() as u64,
             7 => self.get16() as u64,
             8 => self.get32() as u64,

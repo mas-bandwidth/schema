@@ -16,10 +16,6 @@ type rustTarget struct{}
 func (rustTarget) Names() []string { return []string{"rust"} }
 
 func (rustTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
-	// Packet wide text is carried; table kind 33 remains a named refusal.
-	if err := refuseWideText(u, "rust"); err != nil {
-		return nil, err
-	}
 	for _, check := range []func(*ir.Unit, string) error{refuseBlobs} {
 		if err := check(u, "rust"); err != nil {
 			return nil, err
@@ -63,6 +59,7 @@ func (rustTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 
 func init() {
 	registerWideTextCarrier("rust")
+	registerTableWideTextCarrier("rust")
 	registerPacketValueDefaultCarrier("rust")
 	registerOptionalArrayCarrier("rust")
 	valueDefaultTargets = append(valueDefaultTargets, "rust")

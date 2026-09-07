@@ -231,6 +231,8 @@ func (g *gen) emitStorage(st *ir.Struct) {
 func (g *gen) emitStorageField(f *ir.Field) {
 	typ := rustFieldType(f.Type)
 	switch {
+	case f.Type.Kind == ir.TWString:
+		g.pf("    pub %s: [u16; %d],\n    pub %s_length: i32,\n", f.Name, f.Type.Size, f.Name)
 	case f.Type.Kind == ir.TString:
 		g.pf("    pub %s: [u8; %d], // string(%s): max length, used length beside it\n",
 			f.Name, f.Type.Size, ir.RenderExpr(f.Type.SizeExpr))
@@ -261,7 +263,7 @@ func (g *gen) emitStorageField(f *ir.Field) {
 // lays them over.
 func (g *gen) emitZeroInit(f *ir.Field, ind string) {
 	switch {
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes:
 		g.pf("%s%s: [0; %d],\n", ind, f.Name, f.Type.Size)
 		g.pf("%s%s_length: 0,\n", ind, f.Name)
 	case f.KeyEnum != "":
@@ -343,7 +345,7 @@ func (g *gen) emitReset(st *ir.Struct) {
 func (g *gen) emitResetField(f *ir.Field) {
 	name := f.Name
 	switch {
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes:
 		g.pf("    value.%s.fill(0);\n", name)
 		g.pf("    value.%s_length = %d;\n", name, len(f.DefBytes))
 		if len(f.DefBytes) > 0 {
@@ -402,7 +404,7 @@ func (g *gen) defaultValue(f *ir.Field) string {
 			return formatFloat(f.DefFloat, false)
 		}
 		return "0.0"
-	case ir.TInt, ir.TBits:
+	case ir.TInt, ir.TBits, ir.TFixed:
 		if f.HasDefault && f.DefInt != nil {
 			return intLit(f.DefInt, rustFieldType(f.Type))
 		}
@@ -513,6 +515,11 @@ func (g *gen) scalarToWire(f *ir.Field, expr string) string {
 // emitScalarDecode reads one scalar out of `reader` and stores it at `target`,
 // clamping to the field's declared range on the way.
 func (g *gen) emitScalarDecode(f *ir.Field, kind int, reader, target string) {
+	if f.Type.Kind == ir.TFixed {
+		copy := *f
+		copy.IntMin, copy.IntMax, copy.HasIntRange = ir.TableRawRange(f)
+		f = &copy
+	}
 	width := tableKindWidth(kind)
 	switch f.Type.Kind {
 	case ir.TBool:
@@ -592,6 +599,10 @@ func (g *gen) emitRelocatabilityAsserts(members []*ir.Struct) {
 // carry for one field.
 func tableFieldTypeName(f *ir.Field) string {
 	switch f.Type.Kind {
+	case ir.TFixed:
+		return ir.TableTypeSpelling(f)
+	case ir.TWString:
+		return "wstring"
 	case ir.TBool:
 		return "bool"
 	case ir.TFloat32:
@@ -632,7 +643,7 @@ func storageRange(signed bool, bits int) (*big.Int, *big.Int) {
 // emitter drops it (#342, docs/SPEC-TABLES.md §4: an elided end is one that
 // could never have clamped or counted, so no read report moves).
 func clampEnds(f *ir.Field, widthBytes int) (low, high bool) {
-	signed := f.Type.Kind == ir.TInt && f.Type.Signed
+	signed := (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) && f.Type.Signed
 	lo, hi := storageRange(signed, widthBytes*8)
 	return f.IntMin.Cmp(lo) > 0, f.IntMax.Cmp(hi) < 0
 }
