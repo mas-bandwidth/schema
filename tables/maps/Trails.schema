@@ -1,0 +1,15 @@
+package mapdemo
+
+// A map whose VALUE is an UNBOUNDED ARRAY OF POINTERS (docs/SPEC-TABLES.md
+// §2.1, §2.8, §2.9): "A VALUE is anything a table field can hold ... and an
+// unbounded `[]T` (§2.9)", and the element is a pointer, so the value is an
+// ordinary field of the generated entry and its storage is that field's own
+// row, the sixteen-byte list slot over `TableRef` elements (§4.2). That is one
+// member, so the handle is the slot itself and the list's own surface reaches
+// the pointer slots, which ride in the HOLDER'S node extent as any list's do.
+
+table Trails
+{
+    steps map[uint32][]*Item // []*T: an unbounded extent of pointer slots
+    after int32
+}
