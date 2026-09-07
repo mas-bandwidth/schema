@@ -78,7 +78,7 @@ static SCHEMA_UNUSED const char * table_json_variant_name( const TableFieldInfo 
     return f->variants[value].name;
 }
 
-static SCHEMA_UNUSED uint16_t table_json_variant_id( const TableFieldInfo * f, uint64_t value )
+static SCHEMA_UNUSED uint64_t table_json_variant_id( const TableFieldInfo * f, uint64_t value )
 {
     if ( f->variants == NULL || f->enum_max < 0 || value > (uint64_t) f->enum_max ) { return 0; }
     return f->variants[value].id;
@@ -90,7 +90,7 @@ static SCHEMA_UNUSED const char * table_json_key_name( const TableFieldInfo * f,
     return f->keys[key].name;
 }
 
-static SCHEMA_UNUSED uint16_t table_json_key_id( const TableFieldInfo * f, uint64_t key )
+static SCHEMA_UNUSED uint64_t table_json_key_id( const TableFieldInfo * f, uint64_t key )
 {
     if ( f->keys == NULL || f->key_max < 0 || key > (uint64_t) f->key_max ) { return 0; }
     return f->keys[key].id;
@@ -196,11 +196,11 @@ static SCHEMA_UNUSED uint64_t table_json_keyed_slot_key( int64_t slot )
 
 /* A slot whose key names a variant of the keying enum. Every slot in
    [0, array_bound) does, unless the enum carries max-headroom variants outside
-   a table closure, where a reserved value names nothing and its key id is 0 —
-   the reserved id no declared name can fold to (§5). */
+   a table closure. Such headroom has no declared name. A full identity may
+   be zero, so identity alone cannot distinguish a valid key. */
 static SCHEMA_UNUSED int table_json_keyed_slot_valid( const TableFieldInfo * f, int64_t slot )
 {
-    return table_json_key_id( f, table_json_keyed_slot_key( slot ) ) != 0;
+    return table_json_key_name( f, table_json_keyed_slot_key( slot ) ) != NULL;
 }
 
 static SCHEMA_UNUSED int table_json_is_flags( const TableFieldInfo * f )
@@ -372,15 +372,9 @@ static SCHEMA_UNUSED int32_t table_json_utf8( const char * s, int32_t remaining,
     return code;
 }
 
-/* A JSON text MUST be valid UTF-8 (RFC 8259 §8.1). The read path is
-   byte-transparent — the wire imposes no encoding (§3) and a string may hold
-   anything — so the WRITER is where that obligation is met: a byte that is
-   not part of a well-formed sequence is written as U+FFFD, one per bad byte,
-   and never raw. A text this walk writes is therefore readable by any
-   conforming parser, which a raw byte would not be. The cost is stated
-   plainly: for a string holding invalid UTF-8, the round trip is NOT
-   byte-identical, because the alternative is emitting a text that is not
-   JSON. */
+/* A JSON text must be valid UTF-8. Caller-filled storage can still contain
+   invalid bytes; write each such byte as U+FFFD rather than emitting invalid
+   JSON. The text reader also replaces ill-formed sequences before clamping. */
 static SCHEMA_UNUSED void table_json_write_string( TableJsonOut * out, const char * s, int32_t length )
 {
     static const char hex[] = "0123456789abcdef";
@@ -547,7 +541,7 @@ static SCHEMA_UNUSED int table_json_write_scalar( TableJsonOut * out, const void
            wire identity: the writer REFUSES rather than writing None over it,
            the rule measure and save already apply (docs/SPEC-TABLES.md §5) */
         if ( (int64_t) value > f->enum_max ) { return 0; }
-        if ( value != 0 && table_json_variant_id( f, value ) == 0 ) { return 0; }
+        if ( value != 0 && table_json_variant_name( f, value ) == NULL ) { return 0; }
         name = table_json_variant_name( f, value );
         if ( name == NULL ) { return 0; }
         table_json_write_string( out, name, (int32_t) strlen( name ) );
@@ -730,8 +724,21 @@ static SCHEMA_UNUSED void table_json_space( TableJsonIn * in )
     {
         char c = in->text[in->pos];
         if ( c == ' ' || c == '\t' || c == '\n' || c == '\r' ) { in->pos++; continue; }
-        /* comments are not JSON, and a walk that guessed at one would be
-           reading a dialect nobody wrote down */
+        /* SPEC-TABLES 16.2: comments are whitespace on read. */
+        if ( c == '/' && in->pos + 1 < in->size && in->text[in->pos + 1] == '/' )
+        {
+            in->pos += 2;
+            while ( in->pos < in->size && in->text[in->pos] != '\n' ) { in->pos++; }
+            continue;
+        }
+        if ( c == '/' && in->pos + 1 < in->size && in->text[in->pos + 1] == '*' )
+        {
+            int64_t at = in->pos + 2;
+            while ( at + 1 < in->size && !(in->text[at] == '*' && in->text[at + 1] == '/') ) { at++; }
+            if ( at + 1 >= in->size ) { in->bad = 1; in->pos = in->size; return; }
+            in->pos = at + 2;
+            continue;
+        }
         if ( c == '/' ) { in->bad = 1; }
         return;
     }
@@ -890,11 +897,9 @@ static SCHEMA_UNUSED int table_json_scan_string( TableJsonIn * in, char * out, i
         }
         else
         {
-            /* a UTF-8 sequence read WHOLE, so the clamp below can only land
-               between code points. Only bytes that ACTUALLY look like
-               continuations are taken: the wire imposes no encoding (§3), so
-               a string may legitimately hold a stray lead byte, and one at
-               the end of a text must not swallow the closing quote. */
+            /* Read a sequence whole so clamping lands between code points.
+               Take only continuations: a stray lead must not swallow the
+               closing quote. Replace malformed input before applying the bound. */
             unsigned char lead = (unsigned char) c;
             int32_t want = 1;
             if ( ( lead & 0xe0 ) == 0xc0 ) { want = 2; }
@@ -907,6 +912,13 @@ static SCHEMA_UNUSED int table_json_scan_string( TableJsonIn * in, char * out, i
                     ( (unsigned char) in->text[in->pos] & 0xc0 ) == 0x80 )
             {
                 unit[unit_length++] = in->text[in->pos++];
+            }
+            {
+                int32_t checked_width = 0;
+                if ( table_json_utf8( unit, unit_length, &checked_width ) < 0 )
+                {
+                    unit_length = table_json_encode_utf8( 0xfffd, unit );
+                }
             }
         }
         if ( out != NULL )
@@ -1707,22 +1719,22 @@ static SCHEMA_UNUSED int64_t table_json_write( const void * value, const TableTy
 /* ---- json walk: end ---- */
 
 static const TableVariantInfo schema_benchtable_table_entity_weapon_variants_[] = {
-    { "None", 0x0000 },
-    { "Fists", 0x03ed },
-    { "Pistol", 0x54eb },
-    { "Shotgun", 0xdf27 },
-    { "Rifle", 0xaa64 },
-    { "Sniper", 0x5513 },
-    { "Smg", 0x138b },
-    { "Rocket", 0x56fa },
-    { "Grenade", 0xf3ed },
-    { "Plasma", 0xa376 },
-    { "Railgun", 0xeff8 },
-    { "Flamer", 0xfa19 },
-    { "Mine", 0x61bf },
-    { "Turret", 0xf720 },
-    { "Drone", 0xc67e },
-    { "Repair", 0x86cc },
+    { "None", 0x0000000000000000ull },
+    { "Fists", 0xa790eee12766cf0cull },
+    { "Pistol", 0x9fbfefa835da8476ull },
+    { "Shotgun", 0x188bbb1783928a95ull },
+    { "Rifle", 0x2c3667b9c2f272f1ull },
+    { "Sniper", 0x0ca8b41b00d755f6ull },
+    { "Smg", 0x985fc819fab21a4eull },
+    { "Rocket", 0x229d0447c3086a55ull },
+    { "Grenade", 0x011c7b49a7228f9dull },
+    { "Plasma", 0x89f7566e1123e15full },
+    { "Railgun", 0x8d7f25318b3b4469ull },
+    { "Flamer", 0xd9cd0dcc285b7816ull },
+    { "Mine", 0x04dc16aea8ff5276ull },
+    { "Turret", 0x35e53bc341129217ull },
+    { "Drone", 0x2cc8282fb0de8831ull },
+    { "Repair", 0x20bada21bc8cb334ull },
 };
 static const TableVariantInfo schema_benchtable_table_entity_damage_variants_[] = {
     { "Bleeding", 0 },
@@ -1735,36 +1747,36 @@ static const TableVariantInfo schema_benchtable_table_entity_damage_variants_[] 
     { "Downed", 0 },
 };
 static const TableFieldInfo schema_benchtable_table_entity_fields_[] = {
-    { "entity_id", "entity_id", "bits(12)", 0x5a13, 7, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, entity_id ), (uint32_t) sizeof( ( (TableEntity *) 0 )->entity_id ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4095.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "pos_x", "pos_x", "int32", 0xaaa3, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, pos_x ), (uint32_t) sizeof( ( (TableEntity *) 0 )->pos_x ), 0xffffffffu, 0xffffffffu, NULL, 1, -16383.0, 16383.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "pos_y", "pos_y", "int32", 0xa5cc, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, pos_y ), (uint32_t) sizeof( ( (TableEntity *) 0 )->pos_y ), 0xffffffffu, 0xffffffffu, NULL, 1, -16383.0, 16383.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "pos_z", "pos_z", "int32", 0xa985, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, pos_z ), (uint32_t) sizeof( ( (TableEntity *) 0 )->pos_z ), 0xffffffffu, 0xffffffffu, NULL, 1, -16383.0, 16383.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "yaw", "yaw", "bits(9)", 0x80c1, 7, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, yaw ), (uint32_t) sizeof( ( (TableEntity *) 0 )->yaw ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 511.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "pitch", "pitch", "bits(9)", 0xf783, 7, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, pitch ), (uint32_t) sizeof( ( (TableEntity *) 0 )->pitch ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 511.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "vel_x", "vel_x", "int32", 0x03e2, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, vel_x ), (uint32_t) sizeof( ( (TableEntity *) 0 )->vel_x ), 0xffffffffu, 0xffffffffu, NULL, 1, -2048.0, 2047.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "vel_y", "vel_y", "int32", 0x0151, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, vel_y ), (uint32_t) sizeof( ( (TableEntity *) 0 )->vel_y ), 0xffffffffu, 0xffffffffu, NULL, 1, -2048.0, 2047.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "vel_z", "vel_z", "int32", 0x0e88, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, vel_z ), (uint32_t) sizeof( ( (TableEntity *) 0 )->vel_z ), 0xffffffffu, 0xffffffffu, NULL, 1, -2048.0, 2047.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "health", "health", "int32", 0x8617, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, health ), (uint32_t) sizeof( ( (TableEntity *) 0 )->health ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1000.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "weapon", "weapon", "TableWeapon", 0x4f72, 7, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, weapon ), (uint32_t) sizeof( ( (TableEntity *) 0 )->weapon ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, 15, schema_benchtable_table_entity_weapon_variants_, 1, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "damage", "damage", "TableDamage", 0x15a9, 9, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, damage ), (uint32_t) sizeof( ( (TableEntity *) 0 )->damage ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, 7, schema_benchtable_table_entity_damage_variants_, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "moving", "moving", "bool", 0xa4b2, 1, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, moving ), (uint32_t) sizeof( ( (TableEntity *) 0 )->moving ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "firing", "firing", "bool", 0x2302, 1, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, firing ), (uint32_t) sizeof( ( (TableEntity *) 0 )->firing ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "entity_id", "entity_id", "bits(12)", 0x23fcfd6678e36712ull, 7, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, entity_id ), (uint32_t) sizeof( ( (TableEntity *) 0 )->entity_id ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4095.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "pos_x", "pos_x", "int32", 0xcb4b37357667310eull, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, pos_x ), (uint32_t) sizeof( ( (TableEntity *) 0 )->pos_x ), 0xffffffffu, 0xffffffffu, NULL, 1, -16383.0, 16383.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "pos_y", "pos_y", "int32", 0xcb4b3835766732c1ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, pos_y ), (uint32_t) sizeof( ( (TableEntity *) 0 )->pos_y ), 0xffffffffu, 0xffffffffu, NULL, 1, -16383.0, 16383.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "pos_z", "pos_z", "int32", 0xcb4b353576672da8ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, pos_z ), (uint32_t) sizeof( ( (TableEntity *) 0 )->pos_z ), 0xffffffffu, 0xffffffffu, NULL, 1, -16383.0, 16383.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "yaw", "yaw", "bits(9)", 0xb54d8e19798e16e8ull, 7, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, yaw ), (uint32_t) sizeof( ( (TableEntity *) 0 )->yaw ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 511.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "pitch", "pitch", "bits(9)", 0x53a9f665a90cc1b1ull, 7, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, pitch ), (uint32_t) sizeof( ( (TableEntity *) 0 )->pitch ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 511.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "vel_x", "vel_x", "int32", 0x6cede6b6eb60ee67ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, vel_x ), (uint32_t) sizeof( ( (TableEntity *) 0 )->vel_x ), 0xffffffffu, 0xffffffffu, NULL, 1, -2048.0, 2047.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "vel_y", "vel_y", "int32", 0x6cede5b6eb60ecb4ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, vel_y ), (uint32_t) sizeof( ( (TableEntity *) 0 )->vel_y ), 0xffffffffu, 0xffffffffu, NULL, 1, -2048.0, 2047.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "vel_z", "vel_z", "int32", 0x6cede8b6eb60f1cdull, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, vel_z ), (uint32_t) sizeof( ( (TableEntity *) 0 )->vel_z ), 0xffffffffu, 0xffffffffu, NULL, 1, -2048.0, 2047.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "health", "health", "int32", 0x7f69d4b5288ba9cfull, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, health ), (uint32_t) sizeof( ( (TableEntity *) 0 )->health ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1000.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "weapon", "weapon", "TableWeapon", 0xa0b610205f2c6e01ull, 30, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, weapon ), (uint32_t) sizeof( ( (TableEntity *) 0 )->weapon ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, 15, schema_benchtable_table_entity_weapon_variants_, 1, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "damage", "damage", "TableDamage", 0x7f6308be8ab37fc0ull, 9, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, damage ), (uint32_t) sizeof( ( (TableEntity *) 0 )->damage ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, 7, schema_benchtable_table_entity_damage_variants_, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "moving", "moving", "bool", 0x11a44fc1d1243da7ull, 1, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, moving ), (uint32_t) sizeof( ( (TableEntity *) 0 )->moving ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "firing", "firing", "bool", 0x7674cfd19b9031caull, 1, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, firing ), (uint32_t) sizeof( ( (TableEntity *) 0 )->firing ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
 };
 
 const TableTypeInfo schema_benchtable_table_entity_info_ = { "TableEntity", (uint32_t) sizeof( TableEntity ), 14, schema_benchtable_table_entity_fields_, schema_benchtable_table_entity_reset_raw_, TableDocNone, 0, NULL };
 
 static const TableFieldInfo schema_benchtable_table_stat_fields_[] = {
-    { "stat_id", "stat_id", "bits(8)", 0xfb6c, 6, 0, 0, 0, 0, (uint32_t) offsetof( TableStat, stat_id ), (uint32_t) sizeof( ( (TableStat *) 0 )->stat_id ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 255.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "delta", "delta", "int32", 0x1720, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableStat, delta ), (uint32_t) sizeof( ( (TableStat *) 0 )->delta ), 0xffffffffu, 0xffffffffu, NULL, 1, -512.0, 511.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "stat_id", "stat_id", "bits(8)", 0x80ab75f0866dbf65ull, 6, 0, 0, 0, 0, (uint32_t) offsetof( TableStat, stat_id ), (uint32_t) sizeof( ( (TableStat *) 0 )->stat_id ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 255.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "delta", "delta", "int32", 0x52076675ec13a0c1ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableStat, delta ), (uint32_t) sizeof( ( (TableStat *) 0 )->delta ), 0xffffffffu, 0xffffffffu, NULL, 1, -512.0, 511.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
 };
 
 const TableTypeInfo schema_benchtable_table_stat_info_ = { "TableStat", (uint32_t) sizeof( TableStat ), 2, schema_benchtable_table_stat_fields_, schema_benchtable_table_stat_reset_raw_, TableDocNone, 0, NULL };
 
 static const TableVariantInfo schema_benchtable_table_mixed_game_event_variants_[] = {
     { "None", 0 },
-    { "hit", 0xba78 },
-    { "chat", 0x5be0 },
-    { "pickup", 0x99dd },
+    { "hit", 0x33732819300680aaull },
+    { "chat", 0xf2a38d910b5b348bull },
+    { "pickup", 0x9fa3a41c86ecb765ull },
 };
 static const TableUnionArmInfo schema_benchtable_table_mixed_game_event_arms_[] = {
     { 0, NULL },
@@ -1774,57 +1786,57 @@ static const TableUnionArmInfo schema_benchtable_table_mixed_game_event_arms_[] 
 };
 static const TableUnionInfo schema_benchtable_table_mixed_game_event_union_ = { (uint32_t) offsetof( TableEvent, type ), (uint32_t) sizeof( ( (TableEvent *) 0 )->type ), schema_benchtable_table_mixed_game_event_arms_ };
 static const TableFieldInfo schema_benchtable_table_mixed_fields_[] = {
-    { "protocol_magic", "protocol_magic", "uint16", 0xae30, 7, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, protocol_magic ), (uint32_t) sizeof( ( (TableMixed *) 0 )->protocol_magic ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "sequence", "sequence", "bits(16)", 0xd32b, 7, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, sequence ), (uint32_t) sizeof( ( (TableMixed *) 0 )->sequence ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 65535.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "ack_sequence", "ack_sequence", "int32", 0x3363, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, ack_sequence ), (uint32_t) sizeof( ( (TableMixed *) 0 )->ack_sequence ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 65535.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "ack_bits", "ack_bits", "bits(32)", 0xebb9, 8, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, ack_bits ), (uint32_t) sizeof( ( (TableMixed *) 0 )->ack_bits ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4.294967295e+09, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "session_id", "session_id", "uint64", 0x8790, 9, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, session_id ), (uint32_t) sizeof( ( (TableMixed *) 0 )->session_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "client_id", "client_id", "uint32", 0xd443, 8, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, client_id ), (uint32_t) sizeof( ( (TableMixed *) 0 )->client_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "nonce", "nonce", "uint64", 0x80f0, 9, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, nonce ), (uint32_t) sizeof( ( (TableMixed *) 0 )->nonce ), 0xffffffffu, 0xffffffffu, NULL, 1, 1.0, 9.223372036854776e+18, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "world_time", "world_time", "int64", 0x77f2, 5, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, world_time ), (uint32_t) sizeof( ( (TableMixed *) 0 )->world_time ), 0xffffffffu, 0xffffffffu, NULL, 1, -1e+12, 1e+12, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "frame_tick", "frame_tick", "bits(48)", 0xcbc2, 9, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, frame_tick ), (uint32_t) sizeof( ( (TableMixed *) 0 )->frame_tick ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 2.81474976710655e+14, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "server_time", "server_time", "float32", 0x27f9, 10, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, server_time ), (uint32_t) sizeof( ( (TableMixed *) 0 )->server_time ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 65535.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "entities", "entities", "TableEntity", 0x25e3, 13, 1, 1, 0, 8, (uint32_t) offsetof( TableMixed, entities ), (uint32_t) sizeof( ( (TableMixed *) 0 )->entities[0] ), (uint32_t) offsetof( TableMixed, entities_count ), 0xffffffffu, &schema_benchtable_table_entity_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "stats", "stats", "TableStat", 0x76dd, 13, 1, 1, 0, 80, (uint32_t) offsetof( TableMixed, stats ), (uint32_t) sizeof( ( (TableMixed *) 0 )->stats[0] ), (uint32_t) offsetof( TableMixed, stats_count ), 0xffffffffu, &schema_benchtable_table_stat_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "game_event", "game_event", "TableEvent", 0xa17e, 15, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, game_event ), (uint32_t) sizeof( ( (TableMixed *) 0 )->game_event ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, 3, schema_benchtable_table_mixed_game_event_variants_, 1, NULL, NULL, -1, &schema_benchtable_table_mixed_game_event_union_, "", TableDocNone, 0, NULL },
-    { "loadout", "loadout", "uint8", 0x9f78, 6, 1, 0, 0, 4, (uint32_t) offsetof( TableMixed, loadout ), (uint32_t) sizeof( ( (TableMixed *) 0 )->loadout[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "player_name", "player_name", "string", 0x2d3e, 12, 0, 1, 0, 15, (uint32_t) offsetof( TableMixed, player_name ), (uint32_t) sizeof( ( (TableMixed *) 0 )->player_name ), (uint32_t) offsetof( TableMixed, player_name_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "payload", "payload", "bytes", 0x44aa, 6, 1, 1, 0, 16, (uint32_t) offsetof( TableMixed, payload ), (uint32_t) sizeof( ( (TableMixed *) 0 )->payload[0] ), (uint32_t) offsetof( TableMixed, payload_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "aim_x", "aim_x", "float32", 0x84e9, 10, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, aim_x ), (uint32_t) sizeof( ( (TableMixed *) 0 )->aim_x ), 0xffffffffu, 0xffffffffu, NULL, 1, -1.0, 1.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "aim_y", "aim_y", "float32", 0x8d96, 10, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, aim_y ), (uint32_t) sizeof( ( (TableMixed *) 0 )->aim_y ), 0xffffffffu, 0xffffffffu, NULL, 1, -1.0, 1.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "aim_z", "aim_z", "float32", 0x8e03, 10, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, aim_z ), (uint32_t) sizeof( ( (TableMixed *) 0 )->aim_z ), 0xffffffffu, 0xffffffffu, NULL, 1, -1.0, 1.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "recoil", "recoil", "float32", 0x2d04, 10, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, recoil ), (uint32_t) sizeof( ( (TableMixed *) 0 )->recoil ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "drift", "drift", "float64", 0xc023, 11, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, drift ), (uint32_t) sizeof( ( (TableMixed *) 0 )->drift ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "wide_key", "wide_key", "uint64", 0x272f, 9, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, wide_key ), (uint32_t) sizeof( ( (TableMixed *) 0 )->wide_key ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "flux", "flux", "int64", 0x196a, 5, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, flux ), (uint32_t) sizeof( ( (TableMixed *) 0 )->flux ), 0xffffffffu, 0xffffffffu, NULL, 1, -1e+18, 1e+18, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "ping", "ping", "float32", 0xe6d4, 10, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, ping ), (uint32_t) sizeof( ( (TableMixed *) 0 )->ping ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 250.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "crc_hint", "crc_hint", "bits(24)", 0xd3dc, 8, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, crc_hint ), (uint32_t) sizeof( ( (TableMixed *) 0 )->crc_hint ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1.6777215e+07, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "has_extra", "has_extra", "bool", 0xb023, 1, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, has_extra ), (uint32_t) sizeof( ( (TableMixed *) 0 )->has_extra ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "extra", "extra", "int32", 0xb579, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, extra ), (uint32_t) sizeof( ( (TableMixed *) 0 )->extra ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 255.0, -1, NULL, 0, NULL, NULL, -1, NULL, "has_extra", TableDocNone, 0, NULL },
-    { "idle_ticks", "idle_ticks", "int32", 0x9555, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, idle_ticks ), (uint32_t) sizeof( ( (TableMixed *) 0 )->idle_ticks ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 15.0, -1, NULL, 0, NULL, NULL, -1, NULL, "!has_extra", TableDocNone, 0, NULL },
+    { "protocol_magic", "protocol_magic", "uint16", 0x6a5a70d91aa115fdull, 7, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, protocol_magic ), (uint32_t) sizeof( ( (TableMixed *) 0 )->protocol_magic ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "sequence", "sequence", "bits(16)", 0xaa38aca481f528a8ull, 7, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, sequence ), (uint32_t) sizeof( ( (TableMixed *) 0 )->sequence ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 65535.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "ack_sequence", "ack_sequence", "int32", 0x0dbe005c56697c3eull, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, ack_sequence ), (uint32_t) sizeof( ( (TableMixed *) 0 )->ack_sequence ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 65535.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "ack_bits", "ack_bits", "bits(32)", 0x9bae0da8b829ee03ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, ack_bits ), (uint32_t) sizeof( ( (TableMixed *) 0 )->ack_bits ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4.294967295e+09, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "session_id", "session_id", "uint64", 0xb7d7b5650a590b05ull, 9, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, session_id ), (uint32_t) sizeof( ( (TableMixed *) 0 )->session_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "client_id", "client_id", "uint32", 0x6d7b98e2d095967eull, 8, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, client_id ), (uint32_t) sizeof( ( (TableMixed *) 0 )->client_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "nonce", "nonce", "uint64", 0x73a94c71d60dc0d8ull, 9, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, nonce ), (uint32_t) sizeof( ( (TableMixed *) 0 )->nonce ), 0xffffffffu, 0xffffffffu, NULL, 1, 1.0, 9.223372036854776e+18, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "world_time", "world_time", "int64", 0x3eee6b51be54fc85ull, 5, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, world_time ), (uint32_t) sizeof( ( (TableMixed *) 0 )->world_time ), 0xffffffffu, 0xffffffffu, NULL, 1, -1e+12, 1e+12, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "frame_tick", "frame_tick", "bits(48)", 0x7bbc035f7b6d0112ull, 9, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, frame_tick ), (uint32_t) sizeof( ( (TableMixed *) 0 )->frame_tick ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 2.81474976710655e+14, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "server_time", "server_time", "float32", 0x3c460475f9be69c6ull, 10, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, server_time ), (uint32_t) sizeof( ( (TableMixed *) 0 )->server_time ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 65535.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "entities", "entities", "TableEntity", 0x935d0fb07bb3822aull, 13, 1, 1, 0, 8, (uint32_t) offsetof( TableMixed, entities ), (uint32_t) sizeof( ( (TableMixed *) 0 )->entities[0] ), (uint32_t) offsetof( TableMixed, entities_count ), 0xffffffffu, &schema_benchtable_table_entity_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "stats", "stats", "TableStat", 0xee639cad45b1994cull, 13, 1, 1, 0, 80, (uint32_t) offsetof( TableMixed, stats ), (uint32_t) sizeof( ( (TableMixed *) 0 )->stats[0] ), (uint32_t) offsetof( TableMixed, stats_count ), 0xffffffffu, &schema_benchtable_table_stat_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "game_event", "game_event", "TableEvent", 0x2e35dc5321aa5790ull, 15, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, game_event ), (uint32_t) sizeof( ( (TableMixed *) 0 )->game_event ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, 3, schema_benchtable_table_mixed_game_event_variants_, 1, NULL, NULL, -1, &schema_benchtable_table_mixed_game_event_union_, "", TableDocNone, 0, NULL },
+    { "loadout", "loadout", "uint8", 0x5759ce7586bbb5a3ull, 6, 1, 0, 0, 4, (uint32_t) offsetof( TableMixed, loadout ), (uint32_t) sizeof( ( (TableMixed *) 0 )->loadout[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "player_name", "player_name", "string", 0x13a62f542cf8e86eull, 12, 0, 1, 0, 15, (uint32_t) offsetof( TableMixed, player_name ), (uint32_t) sizeof( ( (TableMixed *) 0 )->player_name ), (uint32_t) offsetof( TableMixed, player_name_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "payload", "payload", "bytes", 0xcfb8a9d063b5e9e5ull, 6, 1, 1, 0, 16, (uint32_t) offsetof( TableMixed, payload ), (uint32_t) sizeof( ( (TableMixed *) 0 )->payload[0] ), (uint32_t) offsetof( TableMixed, payload_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "aim_x", "aim_x", "float32", 0xdbaf7be5e24296c9ull, 10, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, aim_x ), (uint32_t) sizeof( ( (TableMixed *) 0 )->aim_x ), 0xffffffffu, 0xffffffffu, NULL, 1, -1.0, 1.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "aim_y", "aim_y", "float32", 0xdbaf7ae5e2429516ull, 10, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, aim_y ), (uint32_t) sizeof( ( (TableMixed *) 0 )->aim_y ), 0xffffffffu, 0xffffffffu, NULL, 1, -1.0, 1.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "aim_z", "aim_z", "float32", 0xdbaf79e5e2429363ull, 10, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, aim_z ), (uint32_t) sizeof( ( (TableMixed *) 0 )->aim_z ), 0xffffffffu, 0xffffffffu, NULL, 1, -1.0, 1.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "recoil", "recoil", "float32", 0x9cef31fff7e2e457ull, 10, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, recoil ), (uint32_t) sizeof( ( (TableMixed *) 0 )->recoil ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "drift", "drift", "float64", 0x5ab3f9c9341f6c04ull, 11, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, drift ), (uint32_t) sizeof( ( (TableMixed *) 0 )->drift ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "wide_key", "wide_key", "uint64", 0xa3348580461faf16ull, 9, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, wide_key ), (uint32_t) sizeof( ( (TableMixed *) 0 )->wide_key ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "flux", "flux", "int64", 0xd61bdd7908af2642ull, 5, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, flux ), (uint32_t) sizeof( ( (TableMixed *) 0 )->flux ), 0xffffffffu, 0xffffffffu, NULL, 1, -1e+18, 1e+18, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "ping", "ping", "float32", 0xbf30e00dc53307a9ull, 10, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, ping ), (uint32_t) sizeof( ( (TableMixed *) 0 )->ping ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 250.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "crc_hint", "crc_hint", "bits(24)", 0x560d6527ccd8515full, 8, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, crc_hint ), (uint32_t) sizeof( ( (TableMixed *) 0 )->crc_hint ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1.6777215e+07, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "has_extra", "has_extra", "bool", 0xc08292176cfd8672ull, 1, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, has_extra ), (uint32_t) sizeof( ( (TableMixed *) 0 )->has_extra ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "extra", "extra", "int32", 0xfd29ee12a979cb69ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, extra ), (uint32_t) sizeof( ( (TableMixed *) 0 )->extra ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 255.0, -1, NULL, 0, NULL, NULL, -1, NULL, "has_extra", TableDocNone, 0, NULL },
+    { "idle_ticks", "idle_ticks", "int32", 0x78101ac0aa8cbcfeull, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, idle_ticks ), (uint32_t) sizeof( ( (TableMixed *) 0 )->idle_ticks ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 15.0, -1, NULL, 0, NULL, NULL, -1, NULL, "!has_extra", TableDocNone, 0, NULL },
 };
 
 const TableTypeInfo schema_benchtable_table_mixed_info_ = { "TableMixed", (uint32_t) sizeof( TableMixed ), 28, schema_benchtable_table_mixed_fields_, schema_benchtable_table_mixed_reset_raw_, TableDocNone, 0, NULL };
 
 static const TableFieldInfo schema_benchtable_table_hit_event_fields_[] = {
-    { "target_id", "target_id", "bits(12)", 0xdf6a, 7, 0, 0, 0, 0, (uint32_t) offsetof( TableHitEvent, target_id ), (uint32_t) sizeof( ( (TableHitEvent *) 0 )->target_id ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4095.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "damage", "damage", "int32", 0x15a9, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableHitEvent, damage ), (uint32_t) sizeof( ( (TableHitEvent *) 0 )->damage ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4095.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "hit_kind", "hit_kind", "int32", 0xaf83, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableHitEvent, hit_kind ), (uint32_t) sizeof( ( (TableHitEvent *) 0 )->hit_kind ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 7.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "crit", "crit", "bool", 0x93d9, 1, 0, 0, 0, 0, (uint32_t) offsetof( TableHitEvent, crit ), (uint32_t) sizeof( ( (TableHitEvent *) 0 )->crit ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "target_id", "target_id", "bits(12)", 0xb7bc9ac015a25050ull, 7, 0, 0, 0, 0, (uint32_t) offsetof( TableHitEvent, target_id ), (uint32_t) sizeof( ( (TableHitEvent *) 0 )->target_id ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4095.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "damage", "damage", "int32", 0x7f6308be8ab37fc0ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableHitEvent, damage ), (uint32_t) sizeof( ( (TableHitEvent *) 0 )->damage ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4095.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "hit_kind", "hit_kind", "int32", 0x01fbc365b059b925ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableHitEvent, hit_kind ), (uint32_t) sizeof( ( (TableHitEvent *) 0 )->hit_kind ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 7.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "crit", "crit", "bool", 0x126167908c9aa52dull, 1, 0, 0, 0, 0, (uint32_t) offsetof( TableHitEvent, crit ), (uint32_t) sizeof( ( (TableHitEvent *) 0 )->crit ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
 };
 
 const TableTypeInfo schema_benchtable_table_hit_event_info_ = { "TableHitEvent", (uint32_t) sizeof( TableHitEvent ), 4, schema_benchtable_table_hit_event_fields_, schema_benchtable_table_hit_event_reset_raw_, TableDocNone, 0, NULL };
 
 static const TableFieldInfo schema_benchtable_table_chat_event_fields_[] = {
-    { "channel", "channel", "int32", 0x7366, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableChatEvent, channel ), (uint32_t) sizeof( ( (TableChatEvent *) 0 )->channel ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 3.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "speaker", "speaker", "bits(12)", 0xce0b, 7, 0, 0, 0, 0, (uint32_t) offsetof( TableChatEvent, speaker ), (uint32_t) sizeof( ( (TableChatEvent *) 0 )->speaker ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4095.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "channel", "channel", "int32", 0xa5013e9ad5caeda4ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableChatEvent, channel ), (uint32_t) sizeof( ( (TableChatEvent *) 0 )->channel ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 3.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "speaker", "speaker", "bits(12)", 0xfbf1ac4d96ebd022ull, 7, 0, 0, 0, 0, (uint32_t) offsetof( TableChatEvent, speaker ), (uint32_t) sizeof( ( (TableChatEvent *) 0 )->speaker ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4095.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
 };
 
 const TableTypeInfo schema_benchtable_table_chat_event_info_ = { "TableChatEvent", (uint32_t) sizeof( TableChatEvent ), 2, schema_benchtable_table_chat_event_fields_, schema_benchtable_table_chat_event_reset_raw_, TableDocNone, 0, NULL };
 
 static const TableFieldInfo schema_benchtable_table_pickup_event_fields_[] = {
-    { "item_id", "item_id", "bits(10)", 0xec67, 7, 0, 0, 0, 0, (uint32_t) offsetof( TablePickupEvent, item_id ), (uint32_t) sizeof( ( (TablePickupEvent *) 0 )->item_id ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1023.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
-    { "amount", "amount", "int32", 0x39cc, 4, 0, 0, 0, 0, (uint32_t) offsetof( TablePickupEvent, amount ), (uint32_t) sizeof( ( (TablePickupEvent *) 0 )->amount ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 255.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "item_id", "item_id", "bits(10)", 0x9e7fd06d864fbd56ull, 7, 0, 0, 0, 0, (uint32_t) offsetof( TablePickupEvent, item_id ), (uint32_t) sizeof( ( (TablePickupEvent *) 0 )->item_id ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1023.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
+    { "amount", "amount", "int32", 0x8113fe7ea2b16969ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( TablePickupEvent, amount ), (uint32_t) sizeof( ( (TablePickupEvent *) 0 )->amount ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 255.0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL },
 };
 
 const TableTypeInfo schema_benchtable_table_pickup_event_info_ = { "TablePickupEvent", (uint32_t) sizeof( TablePickupEvent ), 2, schema_benchtable_table_pickup_event_fields_, schema_benchtable_table_pickup_event_reset_raw_, TableDocNone, 0, NULL };

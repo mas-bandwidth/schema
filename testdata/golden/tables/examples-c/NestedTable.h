@@ -385,7 +385,7 @@ static SCHEMA_UNUSED int table_reader_skip( TableReader * r, uint8_t kind )
             if ( n == 0 ) { return 1; }
             if ( !table_reader_has( r, 1 ) ) { return 0; }
             r->offset++;
-            /* fall through: every nonempty arm is framed, whatever its kind */
+            /* fall through */
         case 12: case 13: case 14: case 16: case 31: case 32: case 33:
             if ( !table_reader_leb( r, &n ) || !table_reader_room( r, n ) ) { return 0; }
             r->offset += (int64_t) n; return 1;

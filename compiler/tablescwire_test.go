@@ -29,7 +29,7 @@ Second
 type Leaf { choice Choice }
 table Root {
 `)
-	for i := 0; i < 127; i++ {
+	for i := range 127 {
 		fmt.Fprintf(&schema, "field%d uint8\n", i)
 		fmt.Fprintf(&fill, "    value.field%d = 1;\n", i)
 	}
@@ -38,7 +38,7 @@ table Root {
 	u := unitFromSource(t, schema.String())
 	model := tabletext.NewModel(u)
 	value := model.New(u.Tables["Root"])
-	for i := 0; i < 127; i++ {
+	for i := range 127 {
 		value.Fields[i].Cell.U = 1
 	}
 	value.Fields[127].Cell.Tab.Fields[0].Cell.U = 1
