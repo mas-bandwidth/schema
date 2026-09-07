@@ -167,7 +167,17 @@ round trip 4,408,928 against 4,636,506. Two passes over identical code earlier t
 differed by 0.4%, and a pass with the refusals compiled out by hand moved C by 0.4% and 0.1%
 against them. By row, C is within 3% of C++ on the packet write and faster on the raw
 bit-packer write, and C++ reads raw bits 1.58 times faster; the remaining C-to-C++ distance is
-the C runtime's read path, not the generated code's checks.
+the C runtime's read path, not the generated code's checks. serialize.c v1.10.0 closed that read path
+later the same day: latching a failed read in the cursor, the way C++'s `ReadStream` does, lets the
+per-read past-end test fold into the caller's remaining-bits guard, and the raw bit read went from
+76,492 to 122,221 messages a second — 61.9% of C++ to 99.2%
+([CSV](../bench/results/2026-09-07-arm64-studio-serialize-c-1-10-0-pass.csv), seven interleaved
+rounds, window OK, control delta 2.2%). The round trip is where it was: 4,226,614 messages a second
+against 4,279,494 on the pass before it, 93.1% of C++ against 94.3%, both moves inside the rows'
+spread — the fix bought the raw-read row and left the packet path alone. So the remaining
+distance is no longer the raw reader, at 99.2%, but the generated packet read, where the round
+trip's seven points now live; at this pass's precision (combined spread 5.8 points against 8.3
+before) that is outside the §2.8 band and no longer a tie, a finding under investigation.
 
 **The two dated `<!-- CAPTION -->` lines above this section are the provenance the
 2026-08-15 passes recorded, and they predate both halves of C's move**: the runtime's own

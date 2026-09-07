@@ -237,7 +237,11 @@ compiled in, not absent. Point C's past-end test at `num_bits` instead of
 changed) and the C leg emits 135 / 2 — C++'s shape exactly. That pins the residual
 C-vs-C++ bitpacker/read gap to one field indirection in serialize.c's failure
 latch, in emitted code; the probe's rate was not measured, and the probe
-breaks the sticky-failure contract, so it is a diagnosis and not a fix.
+breaks the sticky-failure contract, so it is a diagnosis and not a fix. serialize.c **v1.10.0** made
+the fix: the failed-read latch moved into the cursor and the past-end test now reads `num_bits`,
+exactly the shape the probe predicted, and the C leg's bitpacker/read went from **61.9% to 99.2%
+of C++ best** — 76,492 to 122,221 messages a second — on the pass that moved this repo's pin
+(`bench/results/2026-09-07-arm64-studio-serialize-c-1-10-0-pass.csv`).
 
 So the read row now reports how well each runtime's CHECKED read optimizes,
 which is a real difference between the runtimes — not a difference in what the
