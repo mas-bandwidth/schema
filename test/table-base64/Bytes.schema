@@ -1,0 +1,6 @@
+package base64test
+
+table Blob
+{
+    payload bytes(16384)
+}

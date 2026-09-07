@@ -7,24 +7,24 @@
 
 ## 2026-09-07: the Studio's nine-language table, and what moved since the Air's
 
-The README's table is now a sitting on the Apple M3 Ultra Studio taken on the pinned node
-26.7.0 ([CSV](../bench/results/2026-09-07-arm64-studio-ninelang-sitting-node26.csv),
-15:45:27Z), every leg gated on the wire goldens, seven measured runs per leg, rendered by the
+The first table of the day on the new node pin was a sitting on the Apple M3 Ultra Studio
+taken on node 26.7.0 ([CSV](../bench/results/2026-09-07-arm64-studio-ninelang-sitting-node26.csv),
+15:45:27Z; the README's table until the day's last sitting, below), every leg gated on the wire goldens, seven measured runs per leg, rendered by the
 README's own instrument (`bench/render.awk`: round-trip best rate, C++ = 100%). Its preamble
-records schema commit 3d01b479; main's 7622f23b after it changed only `bench/tools`,
-`bench/run.sh`, docs and results, so the generated code and the runtime checkouts this sitting
-measured are the ones on today's main. Five legs ran on the toolchains the repository pins:
+records schema commit 3d01b479 and serialize.c at v1.9.2; main moved past both later the same
+day (the emitter changes of #695 onward, the pin of #701), which is why the day ends with
+another sitting. Five legs ran on the toolchains the repository pins:
 node 26.7.0 (the pin was 20.20.2 until 2026-09-07; the two older Studio sittings below ran on
 it, the Air's already on 26.7.0), OpenJDK 21.0.12.1 (the Temurin build `make/java.mk` names),
 Dart 3.13.2, Erlang/OTP 29.0.5 with Elixir 1.20.4, and .NET SDK 10.0.400 for the `10.0` in
 `.github/dotnet-version`. The other four ran on the machine's compilers, which the repository
 does not pin: Apple clang 21.0.0, go 1.27.1 (CI runs 1.26) and cargo 1.98.0 (CI resolves stable
-at run time); the runtimes were at the tags CI checks out. It is C++ = 100% like the tables
+at run time); the runtimes were at the tags CI checked out that afternoon. It is C++ = 100% like the tables
 below it because the C = 100% form the standard prefers is not producible for these rows: the
 `rel` tool refuses rows without an inline verdict, and none of these carry one. The two node-20
 Studio sittings it replaces, and the Air's table before them, stand beside it:
 
-| language | [Studio, node 26.7.0](../bench/results/2026-09-07-arm64-studio-ninelang-sitting-node26.csv) (the README's) | [Studio, sitting 2](../bench/results/2026-09-07-arm64-studio-ninelang-sitting-2.csv), node 20.20.2 | [Studio, sitting 1](../bench/results/2026-09-07-arm64-studio-ninelang-sitting.csv), node 20.20.2 | [Air (Apple M2), 2026-09-01](../bench/results/2026-09-02-sitting4-arm64-macbook.csv), node 26.7.0 |
+| language | [Studio, node 26.7.0](../bench/results/2026-09-07-arm64-studio-ninelang-sitting-node26.csv) | [Studio, sitting 2](../bench/results/2026-09-07-arm64-studio-ninelang-sitting-2.csv), node 20.20.2 | [Studio, sitting 1](../bench/results/2026-09-07-arm64-studio-ninelang-sitting.csv), node 20.20.2 | [Air (Apple M2), 2026-09-01](../bench/results/2026-09-02-sitting4-arm64-macbook.csv), node 26.7.0 |
 |---|---:|---:|---:|---:|
 | C++ | 100% | 100% | 100% | 100% |
 | C | 107% | 107% | 109% | 100%, a §2.8 tie (measured 98%) |
@@ -93,6 +93,47 @@ These are the first passes the driver has aggregated since 2026-08-31: its `aggr
 refused every pass since then, failing closed, because a parameter shadowed the path-column
 list (#689), and these passes were the ones that found it. The passes' own caveats and the
 rates are in [the note beside the CSVs](../bench/results/2026-09-07-arm64-studio-four-leg-passes.md).
+
+**The table at the end of the day.** One more nine-language `bench/run.sh` sitting on the
+same Studio after everything of 2026-09-07 had landed
+([CSV](../bench/results/2026-09-07-arm64-studio-ninelang-final-sitting.csv), 19:07:43Z; schema
+commit `eb3fe549`, the runtimes at CI's tags — serialize v1.16.2 `93b8ea2`, serialize.c
+v1.10.0 `a742a3d`, serialize.go v1.15.1 `963f6df`, serialize.rs v2.4.0 `5e26a78`,
+serialize.cs v1.9.1 `1bf2b19`, serialize.js v1.4.2 `de0591c`), all nine legs, none skipped,
+every leg gated on the wire goldens, seven measured runs each, rendered by `bench/render.awk`.
+It is the README's table now. Beside it, the node-26 sitting it replaces and the Air's:
+
+| language | [Studio, final sitting](../bench/results/2026-09-07-arm64-studio-ninelang-final-sitting.csv) (the README's) | [Studio, node 26.7.0](../bench/results/2026-09-07-arm64-studio-ninelang-sitting-node26.csv) | [Air (Apple M2), 2026-09-01](../bench/results/2026-09-02-sitting4-arm64-macbook.csv) |
+|---|---:|---:|---:|
+| C++ | 100% | 100% | 100% |
+| C | 100%, a §2.8 tie (measured 99.4%) | 107% | 100%, a §2.8 tie (measured 98%) |
+| Rust | 166% | 173% | 154% |
+| Java | 170% | 169% | 162% |
+| Go | 228% | 231% | 210% |
+| C# | 238% | 253% | 225% |
+| Dart | 266% | 267% | 227% |
+| JavaScript | 288% | 292% | 264% |
+| Elixir | 1479% | 1451% | 1283% |
+
+Three rows moved by more than the usual few points, and each of the three is a change of the
+day rather than variance. **C, 107% to a tie at 100% (measured 99.4%)**: its best round-trip
+rate went 4,378,533 to 4,630,594 messages a second, +5.8% against within-sitting spreads of
+1.40 and 1.79 points, which is the serialize.c v1.10.0 pin (#701) and the fixed-width
+remaining-bits read guard (#702) arriving together — the isolating passes above measure them
+one at a time and this sitting only confirms them side by side. **Rust, 173% to 166%**: its
+write leg went 7,554,548 to 8,430,347 messages a second, +11.6% against spreads of 1.62 and
+1.56, and its `checks` column moved `always` to `removed` — that is #696 compiling every
+write-side check out of a release profile, and it is the whole of the row's move. **C#, 253%
+to 238%**: the same story from #697, write leg 3,768,372 to 4,114,886, +9.2% against spreads
+of 1.93 and 1.02, `checks` likewise `always` to `removed`. Elixir's 1451% to 1479% is the
+largest of the rest and is sitting-to-sitting variance, unexplained: its absolute rate fell
+3.2% against spreads of 4.13 and 2.12 points and nothing landed today in its emitter. Java
+(+1), Dart (-1), Go (-3) and JavaScript (-4) all moved less than 1.8% in absolute rate, inside
+the same variance. C++, the denominator, fell 1.4% (4,665,785 to 4,602,160) inside its own
+spreads of 3.16 and 2.67, so a point or so of Rust's and C#'s improvement is the denominator
+and not them. `go run ./bench/tools ledger --check` is green on this sitting: the newest cpp
+round-trip point on the (arm64 studio, `6b213fbfa1a03a99`) axis is 217.29 ns/msg against the
+previous point's 218.15 (the read-guard pass), an improvement, so nothing approaches the gate.
 
 Generated-code performance as time relative to C++ (100%; higher is slower), medians across
 the corpus on an **Apple M3 Ultra**, the 2026-08-15 five-language pass **at `-O3`**
@@ -211,10 +252,12 @@ the runs they caption and is not true of C now. The C/C++ ratio is no longer a r
 two check models; the pass above is the first rendered without one, and the 2026-08-15 tables
 stand as they were measured.
 
-Rust remains the per-field-checked writer of the set. The older reading of the table — that C
-and Rust, the two then-per-field-checked writers, landing within 5% of each other on every
-round-trip write row was independent confirmation of the cost of that guarantee — describes
-the C that measured, not the C that is here now.
+Since #696 the same day, Rust no longer is the per-field-checked writer of the set either: its
+write-side checks are `debug_assert!`, gone in release, and Go is the one compiled leg whose
+writer validates in every build, by that language's own practice. The older reading of the
+table — that C and Rust, the two then-per-field-checked writers, landing within 5% of each
+other on every round-trip write row was independent confirmation of the cost of that
+guarantee — describes the C and the Rust that measured, not the ones here now.
 
 Relative numbers move with compiler and microarchitecture. Treat the table as a dated
 snapshot, not a verdict. Full tables, the pre-campaign baseline of the same day, and

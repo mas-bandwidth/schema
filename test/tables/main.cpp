@@ -12,6 +12,8 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <string>
+#include <utility>
 #include <thread>
 #include <vector>
 
@@ -8634,6 +8636,33 @@ static void test_blob_json()
         shared.GetRoot()->alias = one;
         CHECK( shared.Lock() );
         CHECK( blobdemo::CatalogToJsonMeasure( shared.AsConst() ) == -1 );
+    }
+
+    // The variable-size reader counts, allocates, then decodes. Exercise both
+    // passes with partial groups, padding and high-bit alphabet indices.
+    for ( const auto & row : { std::pair<const char *, std::string>( "Q=Q=A=A=", std::string( "A\0\0", 3 ) ),
+                              { "//==", std::string( "\xff", 1 ) },
+                              { "Q", "" } } )
+    {
+        std::string input = std::string( "{\"thumb\":\"" ) + row.first + "\"}";
+        blobdemo::CatalogBuilder b;
+        blobdemo::TableReport r;
+        CHECK( blobdemo::CatalogFromJson( b, input.data(), (int64_t) input.size(), &r ) );
+        CHECK( r.kind_mismatch == 0 && !r.malformed );
+        blobdemo::TableArenaCtx ctx = { &b.arena };
+        blobdemo::TableBytesView bytes = blobdemo::TableBytesAt( ctx, b.GetRoot()->thumb );
+        CHECK( bytes.data != NULL && bytes.length == (int64_t) row.second.size() );
+        CHECK( bytes.length == 0 || memcmp( bytes.data, row.second.data(), (size_t) bytes.length ) == 0 );
+    }
+    // Invalid bytes, including the alphabet string's NUL terminator,
+    // default the field and count one kind mismatch.
+    for ( unsigned char c : { (unsigned char) 0, (unsigned char) '!', (unsigned char) 0x80, (unsigned char) 0xff } )
+    {
+        std::string input = std::string( "{\"thumb\":\"QQ" ) + (char) c + "AA\"}";
+        blobdemo::CatalogBuilder b;
+        blobdemo::TableReport r;
+        bool ok = blobdemo::CatalogFromJson( b, input.data(), (int64_t) input.size(), &r );
+        CHECK( ok && !r.malformed && r.kind_mismatch == 1 );
     }
 }
 
