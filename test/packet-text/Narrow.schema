@@ -1,0 +1,6 @@
+package packettext
+
+type Narrow
+{
+    text string(15)
+}
