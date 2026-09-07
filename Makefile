@@ -8,9 +8,9 @@
 # leg and names every one that does not resolve in the same run, with the path
 # each pin looked in, rather than stopping at the first and making a fresh
 # clone a queue, and it stops before the chain spends an hour on the legs that
-# do resolve. A gate that passes while its
-# toolchain is missing is a gate with no blade: that is how a red in the Dart
-# leg once rode a green run, after a merge deleted a clone's dist link.
+# do resolve. A gate that passes while its toolchain is missing is a gate with
+# no blade: that is how a red in the Dart leg once rode a green run, after a
+# merge deleted a clone's dist link.
 #
 # To run the chain without a leg, name the skip ON PURPOSE:
 #
@@ -4570,12 +4570,13 @@ ifneq ($(UNKNOWN_SKIPS),)
 	@exit 1
 endif
 
-# EVERY PROBED LEG IS PROBED, and every one that does not resolve is NAMED, in
-# one run. A leg's probe as a PREREQUISITE stops the gate at the first one that
-# fails, which turns a fresh clone into a queue: install one toolchain, run
-# again, learn the next name. So the legs go through sub-makes here instead,
-# each leg's own refusal passed through as it printed it, and the summary names
-# them together with the skip line that would run the chain without them.
+# EVERY LEG NOT NAMED IN THE SKIP LIST IS PROBED, and every one that does not
+# resolve is NAMED, in one run. A leg's probe as a PREREQUISITE stops the gate
+# at the first one that fails, turning a fresh clone into a queue: install one
+# toolchain, run again, learn the next name. The legs go through sub-makes here
+# instead, each leg's own refusal passed through as it printed it, and the
+# summary names them together with the skip line that runs the chain without
+# them, already carrying the skips in force.
 #
 # The green line says how many of the registered legs were probed, and when
 # that is none it says so as a skip rather than as a claim about toolchains it
