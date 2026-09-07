@@ -400,7 +400,7 @@ func ReadDegenerateProbe(stream *serialize.ReadStream, value *DegenerateProbe) e
 	return stream.Err()
 }
 
-// type FixedVec [vec3] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
+// type FixedVec
 type FixedVec struct {
 	X int64 // wire [-100000, 100000]
 	Y int64 // wire [-100000, 100000]
@@ -426,7 +426,7 @@ func ReadFixedVec(stream *serialize.ReadStream, value *FixedVec) error {
 	return stream.Err()
 }
 
-// type FixedQuat [quat4] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
+// type FixedQuat
 type FixedQuat struct {
 	X int32 // wire [-1, 1]
 	Y int32 // wire [-1, 1]

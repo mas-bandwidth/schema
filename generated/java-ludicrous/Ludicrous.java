@@ -2002,7 +2002,7 @@ public final class Ludicrous {
         return 8;
     }
 
-    // type FixedVec [vec3] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
+    // type FixedVec
     public static final class FixedVec {
         // wire [-100000, 100000]
         public long x;
@@ -2234,7 +2234,7 @@ public final class Ludicrous {
         return 102;
     }
 
-    // type FixedQuat [quat4] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
+    // type FixedQuat
     public static final class FixedQuat {
         // wire [-1, 1]
         public int x;

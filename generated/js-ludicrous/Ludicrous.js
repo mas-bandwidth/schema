@@ -505,7 +505,7 @@ export function ReadDegenerateProbe(stream, value) {
   return true;
 }
 
-// type FixedVec [vec3] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
+// type FixedVec
 export class FixedVec {
   constructor() {
     this.X = 0n; // wire [-100000, 100000]
@@ -565,7 +565,7 @@ export function ReadFixedVec(stream, value) {
   return true;
 }
 
-// type FixedQuat [quat4] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
+// type FixedQuat
 export class FixedQuat {
   constructor() {
     this.X = 0; // wire [-1, 1]

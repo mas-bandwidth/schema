@@ -4,12 +4,12 @@
 # AGPL-3.0, its output is not.
 # package example — protocol id 0x8656ae68c06b97a7
 
-# type Vec3 [vec3] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
+# type Vec3
 defmodule Example.Vec3 do
   defstruct x: 0.0, y: 0.0, z: 0.0
 end
 
-# type Quat [quat4] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
+# type Quat
 defmodule Example.Quat do
   defstruct x: 0.0, y: 0.0, z: 0.0, w: 0.0
 end

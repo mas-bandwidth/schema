@@ -106,7 +106,7 @@ struct DegenerateProbe {
 inline constexpr int64_t DegenerateProbeMaxBits = 8; // longest wire path; align pads at worst case (SPEC §6.1)
 inline constexpr int64_t DegenerateProbeMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
-// type FixedVec [vec3] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
+// type FixedVec
 struct FixedVec {
     int64_t x = 0; // fixed(48, 16) — Q48.16, raw value scaled by 2^16; bounds in whole units; wire [-100000, 100000]
     int64_t y = 0; // fixed(48, 16) — Q48.16, raw value scaled by 2^16; bounds in whole units; wire [-100000, 100000]
@@ -116,7 +116,7 @@ struct FixedVec {
 inline constexpr int64_t FixedVecMaxBits = 102; // longest wire path; align pads at worst case (SPEC §6.1)
 inline constexpr int64_t FixedVecMaxBytes = 16; // 8-byte write granularity; read slack per the contract above
 
-// type FixedQuat [quat4] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
+// type FixedQuat
 struct FixedQuat {
     int32_t x = 0; // fixed(2, 30) — Q2.30, raw value scaled by 2^30; bounds in whole units; wire [-1, 1]
     int32_t y = 0; // fixed(2, 30) — Q2.30, raw value scaled by 2^30; bounds in whole units; wire [-1, 1]

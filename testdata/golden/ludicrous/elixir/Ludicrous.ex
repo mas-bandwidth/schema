@@ -100,7 +100,7 @@ defmodule Ludicrous.DegenerateProbe do
   defstruct locked_fixed: -196_608, locked_int: 7, locked_wide: -12_345_678_901_234, tail: 0
 end
 
-# type FixedVec [vec3] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
+# type FixedVec
 defmodule Ludicrous.FixedVec do
   # x: fixed point Q48.16 — the raw scaled integer; wire [-100000, 100000]
   # y: fixed point Q48.16 — the raw scaled integer; wire [-100000, 100000]
@@ -108,7 +108,7 @@ defmodule Ludicrous.FixedVec do
   defstruct x: 0, y: 0, z: 0
 end
 
-# type FixedQuat [quat4] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
+# type FixedQuat
 defmodule Ludicrous.FixedQuat do
   # x: fixed point Q2.30 — the raw scaled integer; wire [-1, 1]
   # y: fixed point Q2.30 — the raw scaled integer; wire [-1, 1]

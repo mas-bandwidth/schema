@@ -85,7 +85,7 @@ namespace Ludicrous
         public byte Tail;
     }
 
-    // type FixedVec [vec3] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
+    // type FixedVec
     public sealed class FixedVec
     {
         public long X; // wire [-100000, 100000]
@@ -93,7 +93,7 @@ namespace Ludicrous
         public long Z; // wire [-100000, 100000]
     }
 
-    // type FixedQuat [quat4] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
+    // type FixedQuat
     public sealed class FixedQuat
     {
         public int X; // wire [-1, 1]

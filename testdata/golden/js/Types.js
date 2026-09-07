@@ -13,7 +13,7 @@ const NUMBER_SCRATCH = { value: 0 };
 const BIGINT_SCRATCH = { value: 0n };
 const BOOL_SCRATCH = { value: false };
 
-// type Vec3 [vec3] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
+// type Vec3
 export class Vec3 {
   constructor() {
     this.X = 0;
@@ -73,7 +73,7 @@ export function ReadVec3(stream, value) {
   return true;
 }
 
-// type Quat [quat4] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
+// type Quat
 export class Quat {
   constructor() {
     this.X = 0;

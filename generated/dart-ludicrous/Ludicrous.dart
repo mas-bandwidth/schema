@@ -1503,7 +1503,7 @@ bool readDegenerateProbe(DegenerateProbe value, ByteData view, int numBits) {
 // trusted like the writer; static runs fold to literals at generation time.
 int measureDegenerateProbe(DegenerateProbe value) => 8;
 
-// type FixedVec [vec3] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
+// type FixedVec
 final class FixedVec {
   // wire [-100000, 100000]
   int x = 0;
@@ -1648,7 +1648,7 @@ bool readFixedVec(FixedVec value, ByteData view, int numBits) {
 // trusted like the writer; static runs fold to literals at generation time.
 int measureFixedVec(FixedVec value) => 102;
 
-// type FixedQuat [quat4] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
+// type FixedQuat
 final class FixedQuat {
   // wire [-1, 1]
   int x = 0;
