@@ -3,6 +3,7 @@ package tablewire
 import (
 	"encoding/binary"
 	"errors"
+	"slices"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -608,10 +609,8 @@ func (em *emitter) ref(w *buf, id uint64) {
 // is full. A retained id used by two records takes ONE entry, exactly as any
 // repeat does.
 func (em *emitter) intern(id uint64) bool {
-	for _, held := range em.rt.store.ids {
-		if held == id {
-			return true
-		}
+	if slices.Contains(em.rt.store.ids, id) {
+		return true
 	}
 	if len(em.rt.store.ids) >= em.rt.store.IdCapacity {
 		return false
