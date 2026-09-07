@@ -395,3 +395,166 @@ func TestRetainCapacities(t *testing.T) {
 		t.Fatal("an id list one entry short dropped no record")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// the walk's nesting cap
+// ---------------------------------------------------------------------------
+
+// deepBuilder is the subset of the reference's WireBuilder
+// (test/tables/wirebuilder.h) the depth rows need. The framing is built the way
+// §3 states it rather than spelled in magic bytes: the body names ids by
+// REFERENCE, the builder interns them in first-use order, and `finish` lays out
+// the form byte, the body and the id table the body actually named.
+type deepBuilder struct {
+	body []byte
+	ids  []uint64
+}
+
+// ref is the reference an id takes, appended on first use: reference k is the
+// table's kth entry, counted from 1.
+func (b *deepBuilder) ref(name string) uint64 {
+	id := ir.TableWireId(name)
+	for i, entry := range b.ids {
+		if entry == id {
+			return uint64(i) + 1
+		}
+	}
+	b.ids = append(b.ids, id)
+	return uint64(len(b.ids))
+}
+
+func (b *deepBuilder) u8(v uint8) { b.body = append(b.body, v) }
+
+// leb is one canonical unsigned LEB128: every length, count, index and
+// reference on this wire.
+func (b *deepBuilder) leb(v uint64) {
+	for v >= 0x80 {
+		b.u8(uint8(v) | 0x80)
+		v >>= 7
+	}
+	b.u8(uint8(v))
+}
+
+// openLen reserves ONE placeholder byte for a length that cannot be patched in
+// place, because a canonical LEB128 has one spelling and its width follows the
+// payload. closeLen moves the payload up when the length needs more room, so
+// what comes out is that one legal spelling.
+func (b *deepBuilder) openLen() int {
+	at := len(b.body)
+	b.u8(0)
+	return at
+}
+
+func (b *deepBuilder) closeLen(at int) {
+	payload := len(b.body) - at - 1
+	width := 1
+	for v := uint64(payload); v >= 0x80; v >>= 7 {
+		width++
+	}
+	if width > 1 {
+		b.body = append(b.body, make([]byte, width-1)...)
+		copy(b.body[at+width:], b.body[at+1:])
+	}
+	w, v := at, uint64(payload)
+	for v >= 0x80 {
+		b.body[w] = uint8(v) | 0x80
+		w++
+		v >>= 7
+	}
+	b.body[w] = uint8(v)
+}
+
+// field is a field header: the id reference and the kind byte, which is the
+// whole of it.
+func (b *deepBuilder) field(name string, kind uint8) {
+	b.leb(b.ref(name))
+	b.u8(kind)
+}
+
+// end is the body's own ZERO REFERENCE, which is what ends it (§3).
+func (b *deepBuilder) end() { b.u8(0) }
+
+// finish is the whole file: the form byte, the body, then the entries and the
+// fixed u64 count the reader finds them from.
+func (b *deepBuilder) finish() []byte {
+	out := []byte{1} // the FORM BYTE is the whole header
+	out = append(out, b.body...)
+	for _, id := range b.ids {
+		out = binary.LittleEndian.AppendUint64(out, id)
+	}
+	return binary.LittleEndian.AppendUint64(out, uint64(len(b.ids)))
+}
+
+// deepWire is the reference's `deep_wire` (test/tables/retain_main.cpp) written
+// against the same grammar: one unknown field whose payload is `depth` nested
+// table bodies, with a scalar at the bottom.
+func deepWire(depth int) []byte {
+	b := &deepBuilder{}
+	marks := make([]int, depth)
+	b.field("future", ir.TableKindTable)
+	marks[0] = b.openLen()
+	for d := 1; d < depth; d++ {
+		b.field("deeper", ir.TableKindTable)
+		marks[d] = b.openLen()
+	}
+	b.field("hits", ir.TableKindI32)
+	b.body = binary.LittleEndian.AppendUint32(b.body, 9)
+	for d := depth - 1; d >= 0; d-- {
+		b.end()
+		b.closeLen(marks[d])
+	}
+	b.end()
+	return b.finish()
+}
+
+// THE CAP IS A SMALL STATED CONSTANT AND IT COUNTS NESTED BODIES: 64 of them
+// (docs/SPEC-TABLES.md §6.6). A record one past the cap is dropped on the same
+// rule as any other shape the walk cannot take, and the LAST DEPTH THE CAP
+// ADMITS still rides, out as well as in. The reference pins these same two
+// depths in the same words (test/tables/retain_main.cpp, `walk_is_linear`), and
+// a cap that counts from a different floor is a second wire law: the two
+// engines drop different files.
+func TestRetainWalkDepthCap(t *testing.T) {
+	m := retainModel(t, "RT1.schema")
+	rows := []struct {
+		depth    int
+		retained int
+		lost     int
+		what     string
+	}{
+		{depth: 64, retained: 1, lost: 0, what: "the last depth the cap admits"},
+		{depth: 65, retained: 0, lost: 1, what: "one past the cap"},
+	}
+	for _, row := range rows {
+		t.Run(row.what, func(t *testing.T) {
+			inst := m.New(m.Lookup("Node"))
+			retain := tablewire.Retain{Capacity: 1 << 16, IdCapacity: 1024}
+			var report tabletext.Report
+			ok, err := tablewire.DecodeRetain(m, inst, deepWire(row.depth), &retain, &report)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// THE WALK'S VERDICT CHANGES NOTHING ELSE (§6.6): the outer framing
+			// was sound and the reader's own data is what retention off would
+			// have left, so `malformed` does not move either way.
+			if !ok || report.Malformed {
+				t.Fatalf("%d nested bodies: the load reported damage on a sound wire: %+v", row.depth, report)
+			}
+			if report.Retained != row.retained || report.RetainLost != row.lost {
+				t.Fatalf("%d nested bodies: retained=%d retain_lost=%d, want %d / %d",
+					row.depth, report.Retained, report.RetainLost, row.retained, row.lost)
+			}
+			// and the record the cap admits rides back out, which is the save
+			// side's own pass
+			var saveReport tabletext.Report
+			out, err := tablewire.EncodeRetain(m, inst, &retain, &saveReport)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(out) == 0 || saveReport.RetainLost != 0 {
+				t.Fatalf("%d nested bodies: the save wrote %d bytes and lost %d records it had room for",
+					row.depth, len(out), saveReport.RetainLost)
+			}
+		})
+	}
+}

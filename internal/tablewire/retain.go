@@ -544,7 +544,14 @@ func (rt *retainState) capture(inst *tabletext.Instance, id uint64, kind uint8, 
 	}
 	rs := &resolver{ids: ids}
 	c := &cursor{buf: payload}
-	rs.walkPayload(c, kind, 1)
+	// THE CAP COUNTS NESTED BODIES, AND THE FIELD'S OWN PAYLOAD IS NOT ONE
+	// (§6.6): the walk starts at zero, `framed` is the one step that takes a
+	// level, so the first framed content sits at depth 1 and the sixty-fourth
+	// nested body is the last the cap admits. The reference enters its walk at
+	// the same floor (internal/codegen/cpptable/retain.go, `TableRetainIn`
+	// called with depth 0), and a cap read from a different one is a second
+	// wire law: the two engines drop different files.
+	rs.walkPayload(c, kind, 0)
 	if rs.bad || c.off != len(c.buf) {
 		// THE WALK CAN MEET DAMAGE THE READ NEVER LOOKED AT, and its verdict
 		// changes nothing else: the record is dropped, one retain_lost counts,
