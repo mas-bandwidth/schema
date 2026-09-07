@@ -55,9 +55,11 @@ provide, so a change that breaks it is wrong until proven otherwise.
 **`make test` refuses a missing pinned toolchain by name, and runs without a
 leg only when you name the skip on purpose.** A pin the Makefile names
 (`NODE`, `DART`, `JAVA`/`JAVAC`, `ELIXIR`/`MIX`/`ELIXIRC`, `DOTNET`) that does
-not resolve stops the run before it starts, printing the leg it would have
-skipped and the path the pin looked in; to run the chain without that leg,
-name it in `SCHEMA_SKIP_LEGS`, which prints every skip by name:
+not resolve stops the run before it starts. Every registered leg is probed, so
+one run names every leg it would have skipped and the path each pin looked in
+rather than sending you back for the next name; to run the chain without those
+legs, name them in `SCHEMA_SKIP_LEGS`, which prints every skip by name and
+which the refusal spells out ready to paste:
 
 ```bash
 make test SCHEMA_SKIP_LEGS=dart,java
@@ -69,7 +71,9 @@ that is not a hypothetical here: a merge once deleted a clone's `dist` link,
 the green run (issue #599). Nothing under `.github` sets `SCHEMA_SKIP_LEGS`:
 certification installs every toolchain and overrides the pins, which resolve
 and pass the gate. `make toolchain` runs the gate alone, and
-`make toolchain-negative-control` proves it still has its blade.
+`make toolchain-negative-control` proves it still has its blade, on every pin
+of every leg. That control runs inside `make test` and on every pull request,
+in the `go-test` job of `ci.yml`.
 
 The Makefile's `SERIALIZE*` variables override the sibling paths if you keep
 them elsewhere.
