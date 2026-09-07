@@ -82,6 +82,50 @@ merging, not just a green pull request.
 One more gate is not CI at all. A pull request is not merged until its authors
 have signed the [Contributor Assignment Agreement](#the-contributor-assignment-agreement).
 
+## Negative controls
+
+A negative control breaks what a gate watches and requires the gate to go red.
+It is how this repository proves a gate is watching something rather than
+passing over an empty set, and there are 159 of them. Every one refuses when
+its sabotage patches nothing, so a control whose `sed` pattern has drifted off
+the line it aims at says so instead of reading as a pass.
+
+**Every negative control runs on every pull request**, in the `negative
+controls (<group>)` jobs. The groups are mostly toolchain families: `base`
+needs Go, a host C and C++ compiler and the C/C++ serialize siblings, and each
+of `cs`, `js`, `dart`, `java`, `elixir` and `rust` adds the one SDK its
+controls need, with `block-fuzz` and `conformance` for the few controls that
+cross several. Two more, `wire-fuzz` and `message-form`, are base-toolchain
+families split out on cost: together they were half of base's machine time.
+The jobs run in parallel, and a group's controls run in one `make -k`
+invocation so one refusal does not hide the ones behind it.
+
+**The target list is enumerated, not typed.** `tools/negativecontrols` reads
+the Makefile and every file the Makefile includes, collects each explicit
+target whose name carries `negative-control`, and holds that set against
+`make/negative-controls.json`, which is the plan the leg's matrix comes from.
+`go test ./tools/negativecontrols/` fails on any difference in either
+direction: a control the makefiles define and the plan does not carry, and a
+control the plan names and no makefile defines.
+
+So adding a negative control costs one line in `make/negative-controls.json`,
+in the group whose toolchain it needs, and forgetting that line is a red test
+rather than a control that runs nowhere. A control that cannot run on the leg
+goes in the same file's `excluded` list with a reason, which the test requires
+to be non-empty. Nothing leaves the leg silently.
+
+Locally:
+
+```bash
+go run ./tools/negativecontrols list    # every control, and the file that defines it
+go run ./tools/negativecontrols check   # the plan against the makefiles
+make -k $(go run ./tools/negativecontrols targets base)
+```
+
+The whole set is about thirteen minutes of machine time measured one target at
+a time, and no single group is more than six of that, so running the group your
+change touches before opening a pull request is cheap.
+
 ## Changing generated output
 
 Any change to a backend's emitted code will move the goldens, and that is

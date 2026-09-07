@@ -1675,8 +1675,14 @@ tables-json-clamp-prefix-negative-control: bin/schema test/tables/json_clamp_pre
 # It sabotages the C++ driver into claiming absence for every instance whose
 # unit is pointered, which is exactly what a port legitimately does, and
 # requires the harness to go RED on the reference leg.
+# The Go leg is a PREREQUISITE, not an assumption: the second half below runs
+# the harness over a substituted registry naming the Go driver, and that driver
+# execs build/conformance-go. Within `make test` the Go leg is already built by
+# the time this runs, which is why the omission stayed invisible; run this
+# target on its own and it fails on a missing binary rather than on its own
+# question.
 .PHONY: conformance-negative-control-absent
-conformance-negative-control-absent: build/conformance-harness build/tables-generated/.stamp
+conformance-negative-control-absent: build/conformance-harness build/tables-generated/.stamp build/conformance-go
 	@mkdir -p build
 	@sed -e 's|if ( variable != NULL )$$|if ( variable != NULL \&\& !spill( out, f[1] + ".absent", "", 0 ) ) { return 1; } /* SABOTAGED */\n        if ( variable != NULL ) { continue; }\n        if ( false )|' \
 		test/conformance/cpp/main.cpp > build/conformance-cpp-absent.cpp

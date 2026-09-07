@@ -718,3 +718,171 @@ jobs:
             exit 1
           fi
           echo "no locked paths touched — clean"
+
+  # EVERY NEGATIVE CONTROL, ON THE PULL REQUEST (issue #563).
+  #
+  # A negative control proves a gate is watching: it breaks what the gate
+  # watches and requires the gate to go red. Each one already refuses when its
+  # sabotage patches nothing, so a control whose sed pattern has drifted off its
+  # target line says so out loud. That refusal only helps somebody who reads it,
+  # and until this leg the only reader was `make test`, which lives in
+  # certify.yml and runs AFTER a merge. Twice on 2026-09-05 main went red on a
+  # merge whose pull-request run was 20 of 20 green, and one of the two was
+  # exactly this: #562 rewrote the line the maps fit control's pattern aimed at,
+  # the sabotage patched nothing, and the control refused on main.
+  #
+  # THE TARGET LIST IS ENUMERATED, NOT TYPED. `tools/negativecontrols` reads the
+  # Makefile and every file the Makefile includes, and holds what it finds
+  # against make/negative-controls.json. A control this tree defines is in a
+  # group here or in that file's exclusion list with a reason, and the tool's
+  # test, which `go-test` runs as part of `go test ./...` and which the matrix
+  # job below runs again on its own, goes red on any other outcome. So a
+  # control added tomorrow cannot be left out of this leg by forgetting a line
+  # in a workflow.
+  #
+  # GROUPED BY TOOLCHAIN, one job per group. Most controls need Go, a host C
+  # and C++ compiler and the C/C++ serialize siblings and nothing else; the
+  # rest are per-port and need the port's runtime, installed here the same way
+  # the conformance jobs above install it, keyed on the row's field rather than
+  # on a language name.
+  #
+  # MEASURED, 2026-09-06 on the author's machine (arm64 macOS, one target per
+  # make invocation, off one warm build, other builds sharing the box): 159
+  # controls, 792 s of machine time for all of them. Two families then came out
+  # of `base` on cost alone, which is what keeps the longest job short:
+  # `wire-fuzz` was 275 s of it and `message-form` 103 s, both on the base
+  # toolchain, and each rebuilds the compiler under an overlay once per control.
+  # What is left runs base in 355 s, and every other group in under 15 s of its
+  # own work plus its SDK install. The per-group numbers live in
+  # make/negative-controls.json's `why` lines, next to the targets they are
+  # about.
+  negative-controls-matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+
+      # The enumeration gate, first and on its own, so a control that nothing
+      # runs is named here rather than discovered by its absence from a log.
+      - name: every negative control the makefiles define is in the plan
+        run: go run ./tools/negativecontrols check
+
+      - id: plan
+        name: the plan, as a matrix
+        run: |
+          matrix=$(go run ./tools/negativecontrols matrix)
+          echo "$matrix"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  negative-controls:
+    name: negative controls (${{ matrix.name }})
+    needs: negative-controls-matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.negative-controls-matrix.outputs.matrix) }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # All six siblings in every group. A control reaches for a runtime through
+      # the generated code it sabotages, and which one that is belongs to the
+      # control rather than to the group; six shallow clones cost seconds and
+      # remove the whole class of "the group forgot a sibling".
+      - name: Check out the serialize runtimes (pinned releases)
+        run: |
+          cd ..
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"    https://github.com/mas-bandwidth/serialize.git    serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG"  https://github.com/mas-bandwidth/serialize.c.git  serialize.c
+          git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
+          git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+
+      # One step per toolchain, each keyed on the row's field for it, exactly as
+      # the conformance matrix above does. A base row names none of them and
+      # installs none of them.
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head; the SHA freezes the action, not the compiler, and rustup resolves stable at run time
+        if: matrix.rust != ''
+
+      - name: read the .NET SDK pin
+        if: matrix.dotnet != ''
+        run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        if: matrix.dotnet != ''
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_PIN }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: matrix.node != ''
+        with:
+          node-version: ${{ matrix.node }}
+
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        if: matrix.dart != ''
+        with:
+          sdk: ${{ matrix.dart }}
+
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        if: matrix.java != ''
+        with:
+          distribution: 'temurin'
+          java-version: ${{ matrix.java }}
+
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        if: matrix.otp != ''
+        with:
+          otp-version: ${{ matrix.otp }}
+          elixir-version: ${{ matrix.elixir }}
+
+      # The compiler and the generated tree ONCE, in parallel, before any
+      # control runs. Every control in the group hangs off these two, and
+      # building them here keeps the build cost out of the first control's
+      # timing and out of its log.
+      - name: build bin/schema and the generated tree once
+        run: make -j"$(nproc)" bin/schema build/tables-generated/.stamp
+
+      # ONE make invocation for the whole group, with -k so a control that
+      # refuses does not hide the ones behind it: every control in the group
+      # runs, and every failure is in one log. `-k` still exits nonzero.
+      #
+      # The exit status is the first gate. The log scan is the second, and it is
+      # not redundant: a control's own refusal lines are the sentence a reader
+      # needs (a sabotage that patched nothing, a gate that stayed green), and
+      # this pulls them out of a log that is thousands of compiler lines long
+      # and puts them in the run's annotations.
+      #
+      # The overrides are certify.yml's: RUSTUP_BIN defaults to a homebrew keg
+      # on the author's machine, and DART, JAVA/JAVAC, ELIXIR/MIX and NODE
+      # default to the repo-local dist/ toolchains, while on CI the setup steps
+      # above put the pinned versions on PATH. They are harmless in a group that
+      # runs no control needing them.
+      - name: every negative control in the ${{ matrix.name }} group
+        run: |
+          set -o pipefail
+          targets=$(go run ./tools/negativecontrols targets "${{ matrix.name }}")
+          echo "$targets" | tr ' ' '\n'
+          status=0
+          # shellcheck disable=SC2086
+          make -k $targets \
+            RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node \
+            2>&1 | tee controls.log || status=1
+          if grep -qE '^NEGATIVE CONTROL( FAILED)?:' controls.log; then
+            echo "::error::a negative control refused. Either its sabotage no longer patches the line it aims at, or the gate it watches stayed green under the sabotage. Both are stop-the-line: the control is watching nothing until it is repaired."
+            grep -nE '^NEGATIVE CONTROL( FAILED)?:' controls.log
+            status=1
+          fi
+          exit $status
