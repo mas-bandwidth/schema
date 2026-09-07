@@ -174,6 +174,16 @@ static bool run( const char * directory, bool update )
 
     packetdefaults::Sample sample;
     CHECK( sample_defaults( sample ), "sample defaults" );
+    packetdefaults::ZeroCount zero_count;
+    CHECK( zero_count.items_count == 0, "zero-count constructor count" );
+    for ( const auto & item : zero_count.items )
+        CHECK( sample_defaults( item ), "zero-count backing defaults" );
+    packetplain::ZeroCount plain_zero_count;
+    for ( auto & item : plain_zero_count.items )
+        item = plain_sample();
+    CHECK( compare_and_pin( directory, "zero-count", zero_count, plain_zero_count,
+                           packetdefaults::WriteZeroCount, packetplain::WriteZeroCount, update ),
+           "zero-count" );
     auto plain = plain_sample();
     CHECK( compare_and_pin( directory, "sample-defaults", sample, plain,
                            packetdefaults::WriteSample, packetplain::WriteSample, update ),
@@ -239,6 +249,6 @@ int main( int argc, char ** argv )
     }
     if ( !run( argv[1], argc == 3 ) )
         return 1;
-    std::puts( "packet defaults C++: construction, defaultless twins and seven wire goldens OK" );
+    std::puts( "packet defaults C++: construction, defaultless twins and eight wire goldens OK" );
     return 0;
 }

@@ -102,6 +102,12 @@ func (g *gen) emitWriteScalar(f *ir.Field, expr, ind string) {
 			// bits == 0: a degenerate range costs nothing — the value is
 			// recovered from the range alone on read
 		case *ir.Flags:
+			if ref.WireBits > 32 {
+				wide := *f
+				wide.Type.Width = ref.WireBits
+				g.emitWriteBits(&wide, expr, ind)
+				break
+			}
 			g.call(ind, fmt.Sprintf("serialize_write_bits( stream, (serialize_uint32_t) %s, %d )", expr, ref.WireBits))
 		case *ir.Struct:
 			g.call(ind, fmt.Sprintf("write_%s( stream, &%s )", snake(f.Type.Name), expr))
@@ -311,6 +317,12 @@ func (g *gen) emitReadScalar(f *ir.Field, expr, ind string) {
 			g.pf("%s    if ( enum_value > %d )\n%s    {\n%s        return 0; /* not a wire-legal value */\n%s    }\n", ind, ref.Max, ind, ind, ind)
 			g.pf("%s    %s = (%s) enum_value;\n%s}\n", ind, expr, f.Type.Name, ind)
 		case *ir.Flags:
+			if ref.WireBits > 32 {
+				wide := *f
+				wide.Type.Width = ref.WireBits
+				g.emitReadBits(&wide, expr, ind)
+				break
+			}
 			g.pf("%s{\n%s    serialize_uint32_t flags_value = 0;\n", ind, ind)
 			g.call(ind+"    ", fmt.Sprintf("serialize_read_bits( stream, &flags_value, %d )", ref.WireBits))
 			g.pf("%s    %s = (%s) flags_value;\n%s}\n", ind, expr, f.Type.Name, ind)

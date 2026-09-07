@@ -717,9 +717,12 @@ caps Caps = { Jump, Crouch }
 
 On the table wire a field holding its declared default is not written and
 an absent field reads as it, so with the lines above an EMPTY name rides,
-because absence would read back as "untitled". The C++ backend carries the
-three, and every other backend refuses a unit that declares one, naming the
-follow-on.
+because absence would read back as "untitled". C++ carries all three on both
+wires. C and Go carry them on the packet wire and refuse defaults reachable
+from a table; the other six targets refuse a unit declaring these defaults.
+Packet defaults initialize storage and do not omit fields from the wire.
+In C, call the generated `new_<type>()` constructor to apply declared defaults;
+in Go, call `New<Type>()`. Zero-filled storage alone does not apply them.
 
 A fixed default must be **exactly representable** in its format; the
 compiler refuses one that would silently round.
