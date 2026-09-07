@@ -52,6 +52,14 @@ type wireFuzzOptions struct {
 	// against the unit's own announced table rather than a trailer of its
 	// own. A failure on a message seed prints it.
 	message bool
+	// retain is THE RETENTION ARM (docs/SPEC-TABLES.md §6.6, §4.2): the same
+	// mutants through both engines' RETAINING paths, comparing the two
+	// retention counters beside the six and the saved bytes beside them.
+	// RETENTION IS THE VARIABLE CLASS'S, so the arm's roster is the
+	// variable-class FILE roots and nothing else: a fixed-class root's
+	// LoadRetain is refused by name, and a form-2 SaveRetain refuses by name
+	// (§3.3).
+	retain  bool
 	failed  string
 	vectors string
 }
@@ -71,6 +79,9 @@ type wireRoot struct {
 	// the build version, so both sides derive it and neither carries it.
 	message    bool
 	vocabulary *tablewire.Vocabulary
+	// retain says this roster entry is driven through both engines' RETAINING
+	// paths (docs/SPEC-TABLES.md §6.6)
+	retain bool
 	// the C ABI storage each node type commands (docs/SPEC-TABLES.md §6.5,
 	// §20.3), by wire type id, eight-aligned as a reader's LoadMeasure rounds it
 	storage     map[uint64]int64
@@ -88,7 +99,25 @@ const nodeRecordHeaderBytes = int64(12)
 
 func alignUp8(n int64) int64 { return (n + 7) &^ 7 }
 
-func newWireRoot(u *units, unitKey, rootName string, message bool) (*wireRoot, error) {
+// THE RETENTION ARM'S TWO CAPACITIES (docs/SPEC-TABLES.md §6.6), and they are
+// declared LARGE ON PURPOSE.
+//
+// A record's BYTE cost is THE PORT'S OWN: the page fixes what a record must
+// CARRY and leaves the layout inside the buffer to the port, and nothing
+// compares two ports' buffers. Two engines run at one tight byte capacity
+// would therefore drop DIFFERENT records, and the arm would be measuring the
+// two layouts rather than the feature. The ID LIST'S capacity is a COUNT and
+// is comparable, so it is set to the page's own `C / 8` bound, which is what
+// no file can beat.
+//
+// The two capacity-overflow rules are held where one engine answers alone: the
+// reference's own retain gate (test/tables/retain_main.cpp) and the oracle's
+// (internal/tablewire/retain_test.go), each pinning the buffer one byte short
+// of the last record and the id list one entry short.
+const retainFuzzCapacity = 1 << 20
+const retainFuzzIdCapacity = retainFuzzCapacity / 8
+
+func newWireRoot(u *units, unitKey, rootName string, message, retain bool) (*wireRoot, error) {
 	unit, err := u.get(unitKey)
 	if err != nil {
 		return nil, err
@@ -98,7 +127,13 @@ func newWireRoot(u *units, unitKey, rootName string, message bool) (*wireRoot, e
 	if def == nil {
 		return nil, fmt.Errorf("unit %s declares no table %s", unitKey, rootName)
 	}
-	r := &wireRoot{unit: unitKey, root: rootName, model: m, def: def, variable: m.IsVariable(rootName), message: message, storage: map[uint64]int64{}}
+	r := &wireRoot{unit: unitKey, root: rootName, model: m, def: def, variable: m.IsVariable(rootName), message: message, retain: retain, storage: map[uint64]int64{}}
+	if retain && (!r.variable || message) {
+		// RETENTION IS THE VARIABLE CLASS'S AND A FIXED-CLASS ROOT GETS NONE
+		// (docs/SPEC-TABLES.md §6.6), and a form-2 SaveRetain refuses by name
+		// (§3.3): neither is a roster entry this arm can hold.
+		return nil, fmt.Errorf("unit %s root %s: retention is the variable class's file form and nothing else", unitKey, rootName)
+	}
 	if message {
 		r.vocabulary = &tablewire.Vocabulary{}
 		if err := r.vocabulary.AnnounceRead(ir.TableAnnouncement(unit), &tabletext.Report{}); err != nil {
@@ -133,6 +168,12 @@ type legReply struct {
 	measure  int64
 	saved    []byte
 	saveFail bool
+	// RETENTION'S TWO COUNTERS (docs/SPEC-TABLES.md §6.6). They ride beside
+	// Counts rather than inside it, because Counts is the MANIFEST's own
+	// report spelling, which every port's `report` surface prints and which
+	// this feature does not move.
+	retained   int
+	retainLost int
 }
 
 // oracleAnswer is what the engine says the same bytes mean.
@@ -144,6 +185,9 @@ type oracleAnswer struct {
 	// table read whole, else the most the framing could have commanded
 	exact bool
 	bytes int64
+	// the same two counters from the engine
+	retained   int
+	retainLost int
 }
 
 func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
@@ -160,6 +204,23 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 	// nowhere else in this file.
 	decode := func() (bool, error) { return tablewire.Decode(r.model, inst, data, &rep) }
 	encode := func() ([]byte, error) { return tablewire.Encode(r.model, inst) }
+	if r.retain {
+		// THE RETENTION ARM (docs/SPEC-TABLES.md §6.6): the same mutant read
+		// and written back through the retaining pair, with the two stores the
+		// arm declares.
+		retain := tablewire.Retain{Capacity: retainFuzzCapacity, IdCapacity: retainFuzzIdCapacity}
+		decode = func() (bool, error) { return tablewire.DecodeRetain(r.model, inst, data, &retain, &rep) }
+		encode = func() ([]byte, error) {
+			var saved tabletext.Report
+			out, err := tablewire.EncodeRetain(r.model, inst, &retain, &saved)
+			// THE REPORT ACCUMULATES ACROSS THE PAIR (§6.6): the caller zeroes
+			// one report before the load and reads it after the save, and
+			// `retain_lost` at the end is the sum of what the load could not
+			// keep and what the save could not place.
+			rep.RetainLost += saved.RetainLost
+			return out, err
+		}
+	}
 	if r.message {
 		// THE WIRE MAY CARRY UP TO 256 BODIES, and the leg holds room for the
 		// wire's M, so the oracle reads the batch whole and answers body one
@@ -200,6 +261,9 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 	}
 	ans.report = Counts{Unknown: rep.Unknown, KindMismatch: rep.KindMismatch, Widened: rep.Widened, Clamped: rep.Clamped, Duplicate: rep.Duplicate, Malformed: rep.Malformed || !ok}
 	encoded, eerr := encode()
+	// the encode is what runs the SAVE half of the retaining pair, so the two
+	// counters are read after it and not before
+	ans.retained, ans.retainLost = rep.Retained, rep.RetainLost
 	if eerr != nil {
 		ans.encFail = true
 	} else {
@@ -278,6 +342,14 @@ func startWireLeg(command string, roots []*wireRoot) (*wireLeg, error) {
 			form = ir.TableWireMessageForm
 		}
 		roster.WriteByte(form)
+		// AND WHETHER THIS ENTRY RETAINS (docs/SPEC-TABLES.md §6.6): a leg with
+		// no retention for this root answers `0` for the entry, exactly as it
+		// does for a root it cannot name.
+		retain := byte(0)
+		if r.retain {
+			retain = 1
+		}
+		roster.WriteByte(retain)
 	}
 	if _, err := stdin.Write(roster.Bytes()); err != nil {
 		return nil, fmt.Errorf("the leg closed its input during the roster: %w", err)
@@ -308,7 +380,7 @@ func (l *wireLeg) receive() (legReply, error) {
 	var rep legReply
 	// loaded, the five counters, malformed, the REFUSAL VERDICT (§3), the
 	// measure and the saved length
-	var head [1 + 5*4 + 1 + 1 + 8 + 8]byte
+	var head [1 + 5*4 + 1 + 1 + 8 + 8 + 4 + 4]byte
 	if _, err := io.ReadFull(l.stdout, head[:]); err != nil {
 		return rep, err
 	}
@@ -321,7 +393,11 @@ func (l *wireLeg) receive() (legReply, error) {
 	rep.report.Malformed = head[21] != 0
 	rep.report.Refused = head[22] != 0
 	rep.measure = int64(binary.LittleEndian.Uint64(head[23:]))
-	n := int64(binary.LittleEndian.Uint64(head[31:]))
+	// RETENTION'S TWO COUNTERS ride the reply always, and are zero on every
+	// entry that does not retain (docs/SPEC-TABLES.md §6.6)
+	rep.retained = int(int32(binary.LittleEndian.Uint32(head[31:])))
+	rep.retainLost = int(int32(binary.LittleEndian.Uint32(head[35:])))
+	n := int64(binary.LittleEndian.Uint64(head[39:]))
 	if n < 0 {
 		rep.saveFail = true
 		return rep, nil
@@ -383,6 +459,15 @@ func wireVerdict(root *wireRoot, reply legReply, ans oracleAnswer) string {
 	if reply.report != ans.report {
 		return fmt.Sprintf("the report differs: the leg says %s, the oracle says %s", reply.report, ans.report)
 	}
+	if root.retain && (reply.retained != ans.retained || reply.retainLost != ans.retainLost) {
+		// THE RETENTION REPORT (docs/SPEC-TABLES.md §6.6): `retained` counts the
+		// fields whose bytes were kept and `retain_lost` every unknown the load
+		// or the save could not keep. Two engines that keep different fields, or
+		// that count a class differently, differ here before they differ in the
+		// bytes.
+		return fmt.Sprintf("the retention report differs: the leg says retained=%d retain_lost=%d, the oracle says retained=%d retain_lost=%d",
+			reply.retained, reply.retainLost, ans.retained, ans.retainLost)
+	}
 	if reply.saveFail != ans.encFail {
 		if reply.saveFail {
 			return fmt.Sprintf("the leg refused to save the value it loaded; the oracle encoded %d bytes", len(ans.encoded))
@@ -426,15 +511,27 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 		if i, ok := rootIndex[key]; ok {
 			return i, nil
 		}
-		r, err := newWireRoot(u, unit, root, message)
+		r, err := newWireRoot(u, unit, root, message, false)
 		if err != nil {
 			return 0, err
+		}
+		if opts.retain {
+			// THE RETENTION ARM'S ROSTER IS THE VARIABLE-CLASS FILE ROOTS AND
+			// NOTHING ELSE (docs/SPEC-TABLES.md §6.6, §3.3). A root that is not
+			// one is not an error here: it is a seed this arm has nothing to
+			// say about, and the line prints how many were left out.
+			if !r.variable || message {
+				rootIndex[key] = -1
+				return -1, nil
+			}
+			r.retain = true
 		}
 		rootIndex[key] = len(roots)
 		roots = append(roots, r)
 		return len(roots) - 1, nil
 	}
 	seedRoot := map[*wireSeed]int{}
+	skipped := 0
 	addFormSeed := func(name, unit, root, wirePath string, message bool) error {
 		wire, err := os.ReadFile(wirePath)
 		if err != nil {
@@ -443,6 +540,10 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 		ri, err := addRoot(unit, root, message)
 		if err != nil {
 			return err
+		}
+		if ri < 0 {
+			skipped++
+			return nil
 		}
 		s := &wireSeed{name: name, unit: unit, root: root, wire: wire, message: message}
 		if message {
@@ -653,8 +754,17 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 	if absent > 0 {
 		absence = fmt.Sprintf(", %d seeds absent (roots the leg has no codec for)", absent)
 	}
-	fmt.Printf("wire-fuzz: seed %d, %d seeds over %d roots%s, %d enumerated + %d random = %d mutants, 0 divergences, %.1f s, %.0f mutants/s\n",
-		opts.seed, len(live), len(roots), absence, enumeratedCount, total-enumeratedCount, total, elapsed.Seconds(), rate)
+	if skipped > 0 {
+		// the seeds this ARM has nothing to say about: a fixed-class root gets
+		// no retention and a form-2 SaveRetain refuses by name (§6.6, §3.3)
+		absence += fmt.Sprintf(", %d seeds outside the arm", skipped)
+	}
+	arm := "wire-fuzz"
+	if opts.retain {
+		arm = "wire-fuzz retain"
+	}
+	fmt.Printf("%s: seed %d, %d seeds over %d roots%s, %d enumerated + %d random = %d mutants, 0 divergences, %.1f s, %.0f mutants/s\n",
+		arm, opts.seed, len(live), len(roots), absence, enumeratedCount, total-enumeratedCount, total, elapsed.Seconds(), rate)
 	return nil
 }
 

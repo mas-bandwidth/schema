@@ -5,6 +5,29 @@
 # the serialize.c runtime the generated C targets, a sibling checkout
 SERIALIZE_C ?= ../serialize.c
 
+build/packet-text/c/.stamp: bin/schema test/packet-text/Narrow.schema
+	./bin/schema generate --lang c --out build/packet-text/c test/packet-text/Narrow.schema
+	@touch $@
+
+.PHONY: packet-utf8-c packet-utf8-c-negative-control
+packet-utf8-c: build/packet-text/c/.stamp build/packet-text/cpp/driver build/packet-text/harness
+	$(CC) -std=c99 -Wall -Wextra -Werror -I$(SERIALIZE_C) -Ibuild/packet-text/c test/packet-text/driver.c $(SERIALIZE_C)/serialize.c -lm -o build/packet-text/c/debug
+	./build/packet-text/harness ./build/packet-text/c/debug
+	$(CC) -std=c99 -Wall -Wextra -Werror -O2 -DNDEBUG -I$(SERIALIZE_C) -Ibuild/packet-text/c test/packet-text/driver.c $(SERIALIZE_C)/serialize.c -lm -o build/packet-text/c/release
+	./build/packet-text/harness ./build/packet-text/c/release
+
+packet-utf8-c-negative-control: packet-utf8-c
+	@mkdir -p build/packet-text/c-negative
+	go run ./tools/sabotage -name packet-utf8-c-read -out build/packet-text/c-negative/fields.gotext internal/codegen/c/fields.go
+	@printf '{"Replace":{"%s/internal/codegen/c/fields.go":"%s/build/packet-text/c-negative/fields.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-text/c-negative/overlay.json
+	go run -overlay=build/packet-text/c-negative/overlay.json ./cmd/schema generate --lang c --out build/packet-text/c-negative test/packet-text/Narrow.schema
+	$(CC) -std=c99 -Wall -Wextra -Werror -O2 -DNDEBUG -I$(SERIALIZE_C) -Ibuild/packet-text/c-negative test/packet-text/driver.c $(SERIALIZE_C)/serialize.c -lm -o build/packet-text/c-negative/driver
+	@if ./build/packet-text/harness -mutations-only ./build/packet-text/c-negative/driver > build/packet-text/c-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: C UTF-8 removal passed'; exit 1; fi
+	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-text/c-negative/log || { cat build/packet-text/c-negative/log; exit 1; }
+	@echo 'packet UTF-8 C negative control: removed read validation fails bit-flip agreement'
+
+test-c: packet-utf8-c packet-utf8-c-negative-control
+
 generated/c/.stamp: bin/schema $(SCHEMAS)
 	./bin/schema generate --lang c --out generated/c examples
 	@touch $@
@@ -497,3 +520,35 @@ TEST_LEGS         += test-c
 CONFORMANCE_LEGS  += build/conformance-c
 BENCH_TABLES_LEGS += generated/bench/tables/c/.stamp
 GOLDENS_LEGS      += update-goldens-c
+# Wide text on the packet wire, using the shared group's corpus.
+build/packet-wide/c/.stamp: bin/schema build/packet-wide/source/WideText.schema
+	./bin/schema generate --lang c --out build/packet-wide/c build/packet-wide/source/WideText.schema
+	@touch $@
+
+build/packet-wide/c-shapes/.stamp: bin/schema test/packet-wide/Shapes.schema
+	./bin/schema generate --lang c --out build/packet-wide/c-shapes test/packet-wide/Shapes.schema
+	@touch $@
+
+.PHONY: packet-wide-c
+packet-wide-c: build/packet-wide/c/.stamp build/packet-wide/c-shapes/.stamp build/packet-wide/cpp/driver build/packet-text/harness
+	$(CC) -std=c99 -Wall -Wextra -Werror -I$(SERIALIZE_C) -Ibuild/packet-wide/c test/packet-wide/driver.c $(SERIALIZE_C)/serialize.c -lm -o build/packet-wide/c/debug
+	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver ./build/packet-wide/c/debug
+	$(CC) -std=c99 -Wall -Wextra -Werror -O2 -DNDEBUG -I$(SERIALIZE_C) -Ibuild/packet-wide/c test/packet-wide/driver.c $(SERIALIZE_C)/serialize.c -lm -o build/packet-wide/c/release
+	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver ./build/packet-wide/c/release
+	@for mode in '' '-DNDEBUG'; do \
+		$(CC) -std=c99 -Wall -Wextra -Werror $$mode -fsanitize=address,undefined -I$(SERIALIZE_C) -Ibuild/packet-wide/c -Ibuild/packet-wide/c-shapes test/packet-wide/c_contract.c $(SERIALIZE_C)/serialize.c -lm -o build/packet-wide/c/contract || exit 1; \
+		./build/packet-wide/c/contract || exit 1; \
+	done
+
+.PHONY: packet-wide-c-negative-control
+packet-wide-c-negative-control: packet-wide-c
+	@mkdir -p build/packet-wide/c-negative
+	go run ./tools/sabotage -name packet-wide-c-pairing -out build/packet-wide/c-negative/wstring.gotext internal/codegen/c/wstring.go
+	@printf '{"Replace":{"%s/internal/codegen/c/wstring.go":"%s/build/packet-wide/c-negative/wstring.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-wide/c-negative/overlay.json
+	go run -overlay=build/packet-wide/c-negative/overlay.json ./cmd/schema generate --lang c --out build/packet-wide/c-negative build/packet-wide/source/WideText.schema
+	$(CC) -std=c99 -Wall -Wextra -Werror -O2 -DNDEBUG -I$(SERIALIZE_C) -Ibuild/packet-wide/c-negative test/packet-wide/driver.c $(SERIALIZE_C)/serialize.c -lm -o build/packet-wide/c-negative/driver
+	@if ./build/packet-text/harness -wide -mutations-only -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver ./build/packet-wide/c-negative/driver > build/packet-wide/c-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: C wide pairing removal passed'; exit 1; fi
+	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-wide/c-negative/log || { cat build/packet-wide/c-negative/log; exit 1; }
+	@echo 'packet wide C negative control: removed pairing fails bit-flip agreement'
+
+test-c: packet-wide-c packet-wide-c-negative-control

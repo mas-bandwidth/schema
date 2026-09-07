@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>annotations</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <TextDir Condition="'$(TextDir)' == ''">../../../build/packet-text/cs</TextDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(TextDir)/*.cs" />
+    <Compile Include="../../../../serialize.cs/src/Serialize.cs" />
+    <Compile Include="../../../../serialize.cs/src/Int128Pair.cs" />
+  </ItemGroup>
+</Project>

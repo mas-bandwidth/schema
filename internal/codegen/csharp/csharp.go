@@ -379,14 +379,18 @@ func (g *gen) emitClass(d *ir.Struct) {
 // class-typed members are pre-allocated by their field initializers.
 func (g *gen) emitElementConstructor(className string, fields []*ir.Field) {
 	var elems []*ir.Field
+	var byteDefaults []*ir.Field
 	for _, f := range fields {
+		if f.HasDefault && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) {
+			byteDefaults = append(byteDefaults, f)
+		}
 		if f.Array != ir.ArrayNone {
 			if f.Type.Kind == ir.TNamed && isClassRef(f.Type.Ref) {
 				elems = append(elems, f)
 			}
 		}
 	}
-	if len(elems) == 0 {
+	if len(elems) == 0 && len(byteDefaults) == 0 {
 		return
 	}
 	g.tf("\n    public %s()\n    {\n", className)
@@ -395,7 +399,20 @@ func (g *gen) emitElementConstructor(className string, fields []*ir.Field) {
 		g.tf("        for (int i = 0; i < %s.Length; i++)\n        {\n", name)
 		g.tf("            %s[i] = new %s();\n        }\n", name, f.Type.Name)
 	}
+	for _, f := range byteDefaults {
+		name := g.fieldBase(f)
+		g.emitByteDefault(f, name, g.m(name+"Length"), "        ", g.tf)
+	}
 	g.tf("    }\n")
+}
+
+// Both construction and Init copy into existing, zeroed buffers. Literal byte
+// assignments need no temporary array or encoding conversion on a read path.
+func (g *gen) emitByteDefault(f *ir.Field, name, length, ind string, emit func(string, ...any)) {
+	for i, b := range f.DefBytes {
+		emit("%s%s[%d] = 0x%02x;\n", ind, name, i, b)
+	}
+	emit("%s%s = %d;\n", ind, length, len(f.DefBytes))
 }
 
 // isClassRef reports a named reference whose C# storage is a pre-allocated
@@ -430,6 +447,8 @@ func (g *gen) emitStorageField(f *ir.Field) {
 	typ := g.csFieldType(f.Type)
 
 	switch {
+	case f.Type.Kind == ir.TWString:
+		g.tf("    public char[] %s = new char[%s];\n    public int %s;\n", name, g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "", true), g.m(name+"Length"))
 	case f.Type.Kind == ir.TString:
 		g.tf("    public byte[] %s = new byte[%s]; // string(%s): max length, used length beside it (SPEC §4.7)\n",
 			name, g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "", true), ir.RenderExpr(f.Type.SizeExpr))

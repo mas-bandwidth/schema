@@ -20,13 +20,12 @@ func (g *gen) call(ind, expr string) {
 
 func (g *gen) emitWriteField(f *ir.Field, ind string) {
 	switch {
+	case f.Type.Kind == ir.TWString:
+		g.emitWriteWString(f, ind)
 	case f.Type.Kind == ir.TString:
 		// Composed from primitives, NOT serialize_write_string: schema frames
 		// the length over [0, N] where the runtime's string call frames it over
 		// [0, N-1]. One bit of difference, and every following field shifts.
-		// Well-formed UTF-8 by contract, writer-trusted: debug-only assert,
-		// no read-path validation (SPEC §4.7).
-		g.pf("%sserialize_assert( schema_utf8_valid_( (const serialize_uint8_t *) value->%s, value->%s_length ) );\n", ind, f.Name, f.Name)
 		g.call(ind, fmt.Sprintf("serialize_write_int( stream, value->%s_length, 0, %s )", f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size))))
 		g.call(ind, fmt.Sprintf("serialize_write_bytes( stream, (const serialize_uint8_t *) value->%s, (int) value->%s_length )", f.Name, f.Name))
 	case f.Type.Kind == ir.TBytes:
@@ -102,6 +101,12 @@ func (g *gen) emitWriteScalar(f *ir.Field, expr, ind string) {
 			// bits == 0: a degenerate range costs nothing — the value is
 			// recovered from the range alone on read
 		case *ir.Flags:
+			if ref.WireBits > 32 {
+				wide := *f
+				wide.Type.Width = ref.WireBits
+				g.emitWriteBits(&wide, expr, ind)
+				break
+			}
 			g.call(ind, fmt.Sprintf("serialize_write_bits( stream, (serialize_uint32_t) %s, %d )", expr, ref.WireBits))
 		case *ir.Struct:
 			g.call(ind, fmt.Sprintf("write_%s( stream, &%s )", snake(f.Type.Name), expr))
@@ -240,9 +245,13 @@ func (g *gen) emitWriteBits(f *ir.Field, expr, ind string) {
 
 func (g *gen) emitReadField(f *ir.Field, ind string) {
 	switch {
+	case f.Type.Kind == ir.TWString:
+		g.emitReadWString(f, ind)
 	case f.Type.Kind == ir.TString:
 		g.call(ind, fmt.Sprintf("serialize_read_int( stream, &value->%s_length, 0, %s )", f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size))))
 		g.call(ind, fmt.Sprintf("serialize_read_bytes( stream, (serialize_uint8_t *) value->%s, (int) value->%s_length )", f.Name, f.Name))
+		g.pf("%sif ( !schema_utf8_valid_( (const serialize_uint8_t *) value->%s, value->%s_length ) )\n%s{\n", ind, f.Name, f.Name, ind)
+		g.pf("%s    return 0; /* malformed UTF-8 is content the read refuses (SPEC §4.7) */\n%s}\n", ind, ind)
 		// the interior-null rule is generated-code validation (SPEC §4.7);
 		// the word-wise scan lives in schema_interior_null_ (nullscan.go)
 		g.pf("%sif ( schema_interior_null_( (const serialize_uint8_t *) value->%s, value->%s_length ) )\n%s{\n", ind, f.Name, f.Name, ind)
@@ -311,6 +320,12 @@ func (g *gen) emitReadScalar(f *ir.Field, expr, ind string) {
 			g.pf("%s    if ( enum_value > %d )\n%s    {\n%s        return 0; /* not a wire-legal value */\n%s    }\n", ind, ref.Max, ind, ind, ind)
 			g.pf("%s    %s = (%s) enum_value;\n%s}\n", ind, expr, f.Type.Name, ind)
 		case *ir.Flags:
+			if ref.WireBits > 32 {
+				wide := *f
+				wide.Type.Width = ref.WireBits
+				g.emitReadBits(&wide, expr, ind)
+				break
+			}
 			g.pf("%s{\n%s    serialize_uint32_t flags_value = 0;\n", ind, ind)
 			g.call(ind+"    ", fmt.Sprintf("serialize_read_bits( stream, &flags_value, %d )", ref.WireBits))
 			g.pf("%s    %s = (%s) flags_value;\n%s}\n", ind, expr, f.Type.Name, ind)

@@ -1233,10 +1233,6 @@ pub fn write_bench_mixed(stream: &mut WriteStream<'_>, value: &BenchMixed) -> Re
     if value.player_name_length < 0 || value.player_name_length > 15 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    debug_assert!(
-        std::str::from_utf8(&value.player_name[..value.player_name_length as usize]).is_ok(),
-        "string(N) payloads are well-formed UTF-8 by contract (SPEC 4.7)"
-    );
     {
         let mut offset_value = value.player_name_length as u32;
         stream.serialize_bits(&mut offset_value, 4)?; // the length guards the slice (§6.3)
@@ -1389,6 +1385,9 @@ pub fn read_bench_mixed(stream: &mut ReadStream<'_>, value: &mut BenchMixed) -> 
     }
     stream.serialize_int(&mut value.player_name_length, 0, 15)?; // the length guards the slice (§6.3)
     stream.serialize_bytes(&mut value.player_name[..value.player_name_length as usize])?;
+    if std::str::from_utf8(&value.player_name[..value.player_name_length as usize]).is_err() {
+        return Err(Error::Validation); // malformed UTF-8 (SPEC §4.7)
+    }
     for i in 0..value.player_name_length as usize {
         if value.player_name[i] == 0 {
             return Err(Error::Validation);

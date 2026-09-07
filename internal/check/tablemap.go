@@ -318,14 +318,28 @@ func boundSpelling(a *ast.ArrayBound) string {
 	return ""
 }
 
+// exprSpelling renders a bound as the source spells it, so a diagnostic quotes
+// the declaration back rather than a placeholder. Constant ARITHMETIC is part
+// of a bound's spelling (SPEC.md §4.2), and the enum-bound refusal
+// (docs/SPEC-TABLES.md §2.4) reads bounds like `[Grade.Max + 1]` that are
+// nothing but arithmetic, so the operators render too. "N" is left for an
+// expression the grammar admits and nothing here names.
 func exprSpelling(e ast.Expr) string {
 	switch e := e.(type) {
 	case *ast.IntLit:
 		return e.Value.String()
+	case *ast.FloatLit:
+		return "N" // a float is not a bound; the refusal for one is its own
 	case *ast.IdentExpr:
 		return e.Name
 	case *ast.MaxExpr:
 		return e.Enum + "." + e.Sel
+	case *ast.ParenExpr:
+		return "(" + exprSpelling(e.X) + ")"
+	case *ast.UnaryExpr:
+		return e.Op + exprSpelling(e.X)
+	case *ast.BinaryExpr:
+		return exprSpelling(e.X) + " " + e.Op + " " + exprSpelling(e.Y)
 	}
 	return "N"
 }

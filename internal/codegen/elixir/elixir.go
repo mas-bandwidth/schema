@@ -252,10 +252,11 @@ type gen struct {
 	helperOwner string
 
 	// per-file helper needs
-	needRd  bool // rd/3 — the 40-bit window decode
-	needRdw bool // rdw/3 — the 56-bit window decode, for groups past 33 bits
-	needF32 bool // f32_bits/1 + f32_value/1
-	needF64 bool // f64_bits/1 + f64_value/1
+	needWString bool // packet UTF-16 code-unit binary helpers
+	needRd      bool // rd/3 — the 40-bit window decode
+	needRdw     bool // rdw/3 — the 56-bit window decode, for groups past 33 bits
+	needF32     bool // f32_bits/1 + f32_value/1
+	needF64     bool // f64_bits/1 + f64_value/1
 	// the compressed-float helpers are needed in halves: a write always
 	// quantizes, but a read past cfTableMax is what puts cf_decode/4 in the
 	// module — below it the decode is a table lookup and the function would
@@ -493,6 +494,8 @@ func (g *gen) emitFieldComments(d *ir.Struct) {
 func (g *gen) fieldComment(f *ir.Field) string {
 	var parts []string
 	switch f.Type.Kind {
+	case ir.TWString:
+		parts = append(parts, fmt.Sprintf("wstring(%s): a little-endian UTF-16 code-unit binary (SPEC §4.12)", ir.RenderExpr(f.Type.SizeExpr)))
 	case ir.TString:
 		parts = append(parts, fmt.Sprintf("string(%s) — a UTF-8 binary; byte_size is the used length (SPEC §4.7)", ir.RenderExpr(f.Type.SizeExpr)))
 	case ir.TBytes:
@@ -580,7 +583,14 @@ func (g *gen) scalarDefault(f *ir.Field) string {
 			return formatFloat(f.DefFloat)
 		}
 		return "0.0"
-	case ir.TString, ir.TBytes:
+	case ir.TString, ir.TBytes, ir.TWString:
+		if f.HasDefault {
+			var bytes []string
+			for _, b := range f.DefBytes {
+				bytes = append(bytes, fmt.Sprintf("0x%02X", b))
+			}
+			return "<<" + strings.Join(bytes, ", ") + ">>"
+		}
 		return "<<>>"
 	case ir.TFixed:
 		// ir.Field.DefInt for a fixed default is ALREADY the raw scaled
@@ -597,6 +607,9 @@ func (g *gen) scalarDefault(f *ir.Field) string {
 			}
 			return "0"
 		case *ir.Flags:
+			if f.HasDefault {
+				return intLit(f.DefInt)
+			}
 			return "0"
 		case *ir.Struct, *ir.Union:
 			return fmt.Sprintf("%%%s{}", g.mod(t.Name))

@@ -444,10 +444,6 @@ pub fn write_arm_align(stream: &mut WriteStream<'_>, value: &ArmAlign) -> Result
         if value.s_length < 0 || value.s_length > 4 {
             return Err(Error::Stream(serialize::Error::ValueOutOfRange));
         }
-        debug_assert!(
-            std::str::from_utf8(&value.s[..value.s_length as usize]).is_ok(),
-            "string(N) payloads are well-formed UTF-8 by contract (SPEC 4.7)"
-        );
         {
             let mut offset_value = value.s_length as u32;
             stream.serialize_bits(&mut offset_value, 3)?; // the length guards the slice (§6.3)
@@ -484,6 +480,9 @@ pub fn read_arm_align(stream: &mut ReadStream<'_>, value: &mut ArmAlign) -> Resu
     if value.flag {
         stream.serialize_int(&mut value.s_length, 0, 4)?; // the length guards the slice (§6.3)
         stream.serialize_bytes(&mut value.s[..value.s_length as usize])?;
+        if std::str::from_utf8(&value.s[..value.s_length as usize]).is_err() {
+            return Err(Error::Validation); // malformed UTF-8 (SPEC §4.7)
+        }
         for i in 0..value.s_length as usize {
             if value.s[i] == 0 {
                 return Err(Error::Validation);
@@ -951,10 +950,6 @@ pub fn write_regain_after_align(stream: &mut WriteStream<'_>, value: &RegainAfte
     if value.s_length < 0 || value.s_length > 4 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    debug_assert!(
-        std::str::from_utf8(&value.s[..value.s_length as usize]).is_ok(),
-        "string(N) payloads are well-formed UTF-8 by contract (SPEC 4.7)"
-    );
     {
         let mut offset_value = value.s_length as u32;
         stream.serialize_bits(&mut offset_value, 3)?; // the length guards the slice (§6.3)
@@ -995,6 +990,9 @@ pub fn read_regain_after_align(stream: &mut ReadStream<'_>, value: &mut RegainAf
     }
     stream.serialize_int(&mut value.s_length, 0, 4)?; // the length guards the slice (§6.3)
     stream.serialize_bytes(&mut value.s[..value.s_length as usize])?;
+    if std::str::from_utf8(&value.s[..value.s_length as usize]).is_err() {
+        return Err(Error::Validation); // malformed UTF-8 (SPEC §4.7)
+    }
     for i in 0..value.s_length as usize {
         if value.s[i] == 0 {
             return Err(Error::Validation);

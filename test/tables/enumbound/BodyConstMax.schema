@@ -1,0 +1,14 @@
+package ebbodyconstmax
+
+// `[N]T` UNDER `const N = E.Max` IN A TABLE BODY (docs/SPEC-TABLES.md §2.4,
+// §11): the bound reaches the enum through a constant, so nothing about the
+// field's own spelling names the enum and the refusal follows the fold.
+
+enum ShipType { Fighter, Bomber, Scout }
+
+const SlotCount = ShipType.Max
+
+table Fleet
+{
+    ships [SlotCount]int32
+}

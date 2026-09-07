@@ -1,0 +1,19 @@
+package ebarmcount
+
+// `[E.Count]T` IN A UNION ARM (docs/SPEC-TABLES.md §2.4, §11): the second
+// direct spelling, in the scope the table body carries. An arm is a field
+// line, so the bound reaches the enum exactly as a table body's own field
+// does and takes the same refusal.
+
+enum ShipType { Fighter, Bomber, Scout }
+
+union Payload
+{
+    ships [ShipType.Count]int32
+    plain int32
+}
+
+table Fleet
+{
+    payload Payload
+}

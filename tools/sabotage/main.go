@@ -26,6 +26,16 @@ type edit struct{ old, new string }
 // sabotages maps a control's name to what it breaks. Each entry names the
 // rule it removes, so a reader of a red control knows what was taken away.
 var sabotages = map[string][]edit{
+	// Packet defaults: remove only the constructor byte copy.
+	"packet-defaults-c-constructor-bytes": {{
+		old: "\t\t\tg.pf(\" };\\n        memcpy( value.%s, bytes, sizeof( bytes ) );\\n    }\\n\", f.Name)",
+		new: "\t\t\tg.pf(\" };\\n        (void) bytes; /* SABOTAGED: value.%s bytes are not initialized */\\n    }\\n\", f.Name)",
+	}},
+	"packet-defaults-go-constructor-bytes": {{
+		old: "\t\t\tg.pf(\"\\t%s = [%s]byte{\", name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)))",
+		new: "\t\t\tg.pf(\"\\t// SABOTAGED: %s = [%s]byte{\", name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)))",
+	}},
+
 	// SPEC §4.8 / #503: a payload-free arm adds no bits after its tag.
 	// Sabotage one direction at a time; the opposite direction remains an
 	// independent check and no writer-produced bytes feed the reader oracle.

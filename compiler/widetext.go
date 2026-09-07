@@ -8,7 +8,9 @@ package compiler
 
 import (
 	"fmt"
+	"slices"
 	"sort"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -38,6 +40,23 @@ func registerWideTextCarrier(name string) {
 func refuseWideText(u *ir.Unit, target string) error {
 	fields := ir.WideTextFields(u)
 	if len(fields) == 0 {
+		return nil
+	}
+	// Packet storage does not imply support for table kind 33. Include
+	// directly declared union arms as well as nested struct fields. A table
+	// refusal must recommend a table carrier, never just a packet carrier.
+	closure, vocabulary := ir.TableClosure(u), ir.TableClosureVocabulary(u)
+	var tableFields []string
+	for _, field := range fields {
+		owner, _, _ := strings.Cut(field, ".")
+		if closure[owner] || vocabulary[owner] || u.TableUnions[owner] != nil {
+			tableFields = append(tableFields, field)
+		}
+	}
+	if len(tableFields) > 0 && target != "cpp" {
+		return fmt.Errorf("unit puts a wstring(N) field in a table closure (%s): table wide text is C++ only today, and the %s table codec is a named follow-on; generate with --lang cpp (SPEC §4.12)", englishList(tableFields), target)
+	}
+	if slices.Contains(wideTextTargets, target) {
 		return nil
 	}
 	carry, flags := carriers(wideTextTargets)

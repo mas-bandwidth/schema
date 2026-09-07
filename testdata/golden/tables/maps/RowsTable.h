@@ -377,8 +377,8 @@ inline int64_t TableLebBytes( uint64_t v )
 // nothing rides.
 struct TableIds
 {
-    static const int32_t kCapacity = 50;
-    static const int32_t kBuckets = 128;
+    static const int32_t kCapacity = 67;
+    static const int32_t kBuckets = 256;
 
     uint64_t ids[ kCapacity ];
     int32_t chain[ kCapacity ];
@@ -393,7 +393,7 @@ struct TableIds
 
     static MAPDEMO_TABLE_INLINE uint32_t bucket_of( uint64_t id )
     {
-        return uint32_t( ( id * 0x9E3779B97F4A7C15ull ) >> 57 ) & uint32_t( kBuckets - 1 );
+        return uint32_t( ( id * 0x9E3779B97F4A7C15ull ) >> 56 ) & uint32_t( kBuckets - 1 );
     }
 
     // the reference an id takes: the file's own first-use entry, appended on
@@ -871,7 +871,7 @@ static const uint64_t kTableMessageListMax = 0xFFFFFFFFull;
 // THIS UNIT'S OWN REFERENCE WIDTH: the bits a writer spends on every reference
 // of every body it writes, which is a compile-time constant because the
 // vocabulary is. A READER spends the width the SENDER's vocabulary settles.
-static const int64_t kTableMessageRefBitsHere = 6;
+static const int64_t kTableMessageRefBitsHere = 7;
 
 // THIS UNIT'S OWN ENTRY COUNT, which is the CAPACITY a receiver declares for
 // its resolved vocabulary when it talks only to peers of this schema (§3.3).
@@ -879,13 +879,13 @@ static const int64_t kTableMessageRefBitsHere = 6;
 // build announces exactly this many entries; a receiver that means to meet
 // OTHER builds declares more, and an announcement above whatever it declared
 // is refused as vocabulary_too_large.
-static const int64_t kTableMessageEntriesHere = 52;
+static const int64_t kTableMessageEntriesHere = 66;
 
 // The reserved NODE-TABLE id's own slot in this unit's vocabulary (§3.3). A
 // pointered body names the node table through it, and the node table is the
 // ROOT body's FIRST field because a pointer index's width is settled by the
 // node count it carries.
-static const uint64_t kTableNodeTableFieldSlot = 40;
+static const uint64_t kTableNodeTableFieldSlot = 48;
 
 // THE BIT STREAM the bodies ride on (§3.3). It is the packet wire's own
 // layout, bit i of the stream in byte i/8 at bit position i%8 low bit first,
@@ -1407,7 +1407,7 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
     return -1;
 }
 
-// THE UNIT'S ANNOUNCEMENT, byte for byte: 52 entries and 615 bytes. It is an
+// THE UNIT'S ANNOUNCEMENT, byte for byte: 66 entries and 786 bytes. It is an
 // ordinary form 1 FILE: the form byte, a body carrying the BUILD VERSION under
 // the reserved id at kind 9 and the VOCABULARY under the reserved id at kind 14
 // over element kind 6, and a trailer of those two reserved ids.
@@ -1425,60 +1425,74 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
 // the projection's sorted record order. The tail is UNCONDITIONAL, so an
 // ordinary edit only ever grows it at its end and never moves a slot a
 // generated field header carries as a literal.
-static const int64_t kTableAnnounceBytes = 615;
+static const int64_t kTableAnnounceBytes = 786;
 static const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0x39, 0x75, 0x7a, 0x92, 0xf5, 0xc7, 0xab, 0x28, 0x02,
-    0x0e, 0xbf, 0x04, 0x06, 0xbc, 0x04, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a,
-    0xc9, 0x3d, 0x0c, 0x20, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c,
-    0x0d, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9, 0x3d, 0x0c, 0x10, 0xea,
-    0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0e, 0x00, 0xff, 0xff, 0xff,
-    0xff, 0x0f, 0x0d, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9, 0x3d, 0x06,
-    0x00, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9, 0x3d, 0x03, 0x00, 0xec,
-    0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9, 0x3d, 0x08, 0x00, 0xea, 0x0c, 0xe8,
-    0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x11, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a,
-    0xc9, 0x3d, 0x04, 0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c,
-    0x0e, 0x00, 0x0a, 0x06, 0x00, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9,
-    0x3d, 0x07, 0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x21,
-    0x06, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9, 0x3d, 0x0c, 0x08, 0xea,
-    0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0c, 0x10, 0xaf, 0x5c, 0xca,
-    0x21, 0x19, 0xaa, 0x08, 0x1a, 0x0d, 0x02, 0xfc, 0xa1, 0xce, 0xa2, 0x59,
-    0x64, 0x1f, 0x0e, 0x00, 0x03, 0x0d, 0x5d, 0xf1, 0x50, 0x95, 0xf2, 0x1f,
-    0x55, 0x70, 0x10, 0x02, 0x0d, 0xb5, 0xcc, 0x70, 0x05, 0x19, 0xc0, 0x56,
-    0xe7, 0x0f, 0xe9, 0xea, 0x71, 0x6f, 0x0f, 0x01, 0x82, 0xbf, 0x04, 0x00,
-    0x4f, 0x81, 0x68, 0xf2, 0xff, 0x28, 0xb7, 0xaf, 0x0e, 0x00, 0xff, 0xff,
-    0xff, 0xff, 0x0f, 0x0d, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9, 0x3d,
-    0x0c, 0xac, 0x02, 0x29, 0xbe, 0xb7, 0x2b, 0x19, 0xea, 0x7d, 0x2b, 0x0e,
-    0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0xec, 0x10, 0x5b, 0x36, 0x19,
-    0x4a, 0xc9, 0x3d, 0x09, 0x00, 0x44, 0xad, 0xe1, 0x13, 0x49, 0x5c, 0x4a,
-    0x29, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0x04, 0x34, 0x8d,
-    0xe9, 0x46, 0x4c, 0x02, 0x7b, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f,
-    0x0d, 0x5d, 0x81, 0xb3, 0xa4, 0xc4, 0xa0, 0xdf, 0x63, 0x11, 0x70, 0xf0,
-    0xf5, 0xf0, 0xb3, 0xa1, 0x4f, 0x29, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff,
-    0x0f, 0x0d, 0xce, 0xe3, 0xda, 0x5f, 0x6c, 0xdc, 0xd8, 0x6d, 0x0e, 0x00,
-    0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0x74, 0xa2, 0x79, 0x44, 0x8e, 0xe2,
-    0xe5, 0xb1, 0x04, 0x00, 0x53, 0xa2, 0x45, 0x08, 0x2c, 0xa7, 0xb2, 0xc5,
-    0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0x86, 0x1b, 0x63, 0x8e,
-    0xba, 0xad, 0xbc, 0xc4, 0x0c, 0x40, 0xcf, 0xa9, 0x8b, 0x28, 0xb5, 0xd4,
-    0x69, 0x7f, 0x04, 0x00, 0x42, 0x4f, 0x4f, 0x30, 0x0d, 0x39, 0x84, 0x1c,
-    0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0xca, 0x5c, 0x71, 0x55,
-    0xf6, 0xf1, 0x33, 0xa6, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d,
+    0x01, 0x01, 0x09, 0x19, 0x3e, 0x9c, 0x0e, 0x70, 0x2b, 0xae, 0xe4, 0x02,
+    0x0e, 0xea, 0x05, 0x06, 0xe7, 0x05, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a,
+    0xc9, 0x3d, 0x06, 0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c,
+    0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0xec, 0x10, 0x5b, 0x36,
+    0x19, 0x4a, 0xc9, 0x3d, 0x0c, 0x08, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd,
+    0xe4, 0x7c, 0x11, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9, 0x3d, 0x0c,
+    0x20, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0d, 0xec, 0x10,
+    0x5b, 0x36, 0x19, 0x4a, 0xc9, 0x3d, 0x0c, 0x10, 0xec, 0x10, 0x5b, 0x36,
+    0x19, 0x4a, 0xc9, 0x3d, 0x03, 0x00, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a,
+    0xc9, 0x3d, 0x08, 0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c,
+    0x0e, 0x03, 0x03, 0x04, 0x00, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9,
+    0x3d, 0x04, 0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0e,
+    0x00, 0x0a, 0x06, 0x00, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9, 0x3d,
+    0x07, 0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x21, 0x06,
+    0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0c, 0x10, 0x38, 0x81,
+    0x0a, 0xf1, 0x1f, 0x06, 0xa7, 0xa3, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff,
+    0x0f, 0x0d, 0xe9, 0xea, 0x71, 0x6f, 0x0f, 0x01, 0x82, 0xbf, 0x04, 0x00,
     0x5b, 0x92, 0xde, 0x9c, 0xab, 0xea, 0xe2, 0x14, 0x0e, 0x00, 0xff, 0xff,
-    0xff, 0xff, 0x0f, 0x0d, 0x8b, 0xe1, 0x45, 0xc2, 0xcb, 0x04, 0xda, 0x4f,
-    0x00, 0x87, 0x94, 0xb6, 0x96, 0xa7, 0x62, 0xb5, 0xa0, 0x00, 0x31, 0x63,
-    0x3e, 0xd6, 0x95, 0xbb, 0xc2, 0xd5, 0x0d, 0x07, 0xb2, 0x52, 0x16, 0x4e,
-    0x19, 0x4d, 0xfd, 0x04, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-    0xff, 0x00, 0xe4, 0x4f, 0x1c, 0x4f, 0x47, 0xc0, 0x2e, 0x2f, 0x00, 0x58,
-    0xfc, 0xaf, 0xfa, 0xd8, 0xe0, 0x4b, 0x70, 0x00, 0xc7, 0xd4, 0x7b, 0x26,
-    0xb0, 0x9d, 0x29, 0x5f, 0x00, 0x4a, 0x0d, 0xe3, 0x6f, 0xdc, 0xd0, 0x31,
-    0x32, 0x00, 0xf8, 0x36, 0xa0, 0x45, 0xf0, 0x0a, 0x13, 0xe8, 0x00, 0xaf,
+    0xff, 0xff, 0x0f, 0x0d, 0xaf, 0x5c, 0xca, 0x21, 0x19, 0xaa, 0x08, 0x1a,
+    0x0d, 0x02, 0xfc, 0xa1, 0xce, 0xa2, 0x59, 0x64, 0x1f, 0x0e, 0x00, 0x03,
+    0x0d, 0x5d, 0xf1, 0x50, 0x95, 0xf2, 0x1f, 0x55, 0x70, 0x10, 0x02, 0x0d,
+    0xb5, 0xcc, 0x70, 0x05, 0x19, 0xc0, 0x56, 0xe7, 0x0f, 0x9f, 0x76, 0x48,
+    0x6a, 0xa7, 0xda, 0x01, 0xab, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f,
+    0x0d, 0x4f, 0x81, 0x68, 0xf2, 0xff, 0x28, 0xb7, 0xaf, 0x0e, 0x00, 0xff,
+    0xff, 0xff, 0xff, 0x0f, 0x0d, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9,
+    0x3d, 0x0c, 0xac, 0x02, 0x29, 0xbe, 0xb7, 0x2b, 0x19, 0xea, 0x7d, 0x2b,
+    0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0xec, 0x10, 0x5b, 0x36,
+    0x19, 0x4a, 0xc9, 0x3d, 0x09, 0x00, 0x44, 0xad, 0xe1, 0x13, 0x49, 0x5c,
+    0x4a, 0x29, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0x04, 0x34,
+    0x8d, 0xe9, 0x46, 0x4c, 0x02, 0x7b, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff,
+    0x0f, 0x0d, 0x5d, 0x81, 0xb3, 0xa4, 0xc4, 0xa0, 0xdf, 0x63, 0x11, 0x70,
+    0xf0, 0xf5, 0xf0, 0xb3, 0xa1, 0x4f, 0x29, 0x0e, 0x00, 0xff, 0xff, 0xff,
+    0xff, 0x0f, 0x0d, 0xce, 0xe3, 0xda, 0x5f, 0x6c, 0xdc, 0xd8, 0x6d, 0x0e,
+    0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0x74, 0xa2, 0x79, 0x44, 0x8e,
+    0xe2, 0xe5, 0xb1, 0x04, 0x00, 0x53, 0xa2, 0x45, 0x08, 0x2c, 0xa7, 0xb2,
+    0xc5, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0x16, 0x68, 0x56,
+    0xb2, 0x8a, 0xfc, 0x7d, 0x43, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f,
+    0x0d, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0e, 0x00, 0x04,
+    0x0d, 0x86, 0x1b, 0x63, 0x8e, 0xba, 0xad, 0xbc, 0xc4, 0x0c, 0x40, 0xcf,
+    0xa9, 0x8b, 0x28, 0xb5, 0xd4, 0x69, 0x7f, 0x04, 0x00, 0x61, 0xb0, 0x72,
+    0x30, 0x30, 0x48, 0x65, 0x7f, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f,
+    0x0d, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x10, 0x02, 0x04,
+    0x00, 0xbd, 0x0f, 0x47, 0x9c, 0x60, 0x32, 0x53, 0x75, 0x0e, 0x00, 0xff,
+    0xff, 0xff, 0xff, 0x0f, 0x0d, 0x42, 0x4f, 0x4f, 0x30, 0x0d, 0x39, 0x84,
+    0x1c, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0xca, 0x5c, 0x71,
+    0x55, 0xf6, 0xf1, 0x33, 0xa6, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f,
+    0x0d, 0x8b, 0xe1, 0x45, 0xc2, 0xcb, 0x04, 0xda, 0x4f, 0x00, 0x87, 0x94,
+    0xb6, 0x96, 0xa7, 0x62, 0xb5, 0xa0, 0x00, 0x31, 0x63, 0x3e, 0xd6, 0x95,
+    0xbb, 0xc2, 0xd5, 0x0d, 0x07, 0xb2, 0x52, 0x16, 0x4e, 0x19, 0x4d, 0xfd,
+    0x04, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0xe4,
+    0x4f, 0x1c, 0x4f, 0x47, 0xc0, 0x2e, 0x2f, 0x00, 0x58, 0xfc, 0xaf, 0xfa,
+    0xd8, 0xe0, 0x4b, 0x70, 0x00, 0xc7, 0xd4, 0x7b, 0x26, 0xb0, 0x9d, 0x29,
+    0x5f, 0x00, 0x52, 0x51, 0x2b, 0x1a, 0xc0, 0x1d, 0x78, 0x1f, 0x00, 0x83,
+    0x39, 0x21, 0xa6, 0x7b, 0x20, 0x6c, 0x81, 0x00, 0x4a, 0x0d, 0xe3, 0x6f,
+    0xdc, 0xd0, 0x31, 0x32, 0x00, 0x52, 0x68, 0x82, 0x60, 0x73, 0xfe, 0x6f,
+    0x03, 0x00, 0xf8, 0x36, 0xa0, 0x45, 0xf0, 0x0a, 0x13, 0xe8, 0x00, 0xaf,
     0x79, 0xa2, 0xfb, 0x0a, 0xe0, 0x53, 0x0a, 0x00, 0x06, 0x68, 0x47, 0x98,
     0xd1, 0xa1, 0xcf, 0x52, 0x00, 0xfb, 0x06, 0xc9, 0xfe, 0x19, 0xe1, 0x13,
-    0xa0, 0x00, 0x0d, 0x4f, 0xb1, 0xd1, 0xd2, 0x52, 0x82, 0x75, 0x00, 0x91,
-    0x0a, 0x55, 0x60, 0xf7, 0xa2, 0x07, 0xec, 0x00, 0x5e, 0xb4, 0x05, 0x1b,
-    0xfb, 0xf5, 0x92, 0x24, 0x00, 0x16, 0xa3, 0x71, 0x35, 0x4e, 0x96, 0x13,
-    0xb4, 0x00, 0x00, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfd,
-    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x02, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00,
+    0xa0, 0x00, 0xbb, 0xc2, 0xc8, 0x70, 0x2b, 0xdd, 0x7b, 0xea, 0x00, 0x0d,
+    0x4f, 0xb1, 0xd1, 0xd2, 0x52, 0x82, 0x75, 0x00, 0xa6, 0xd4, 0x21, 0x39,
+    0xcd, 0x15, 0x6b, 0xf9, 0x00, 0x76, 0xba, 0x6b, 0x24, 0xf1, 0xe3, 0x3d,
+    0x03, 0x00, 0x91, 0x0a, 0x55, 0x60, 0xf7, 0xa2, 0x07, 0xec, 0x00, 0x5e,
+    0xb4, 0x05, 0x1b, 0xfb, 0xf5, 0x92, 0x24, 0x00, 0x16, 0xa3, 0x71, 0x35,
+    0x4e, 0x96, 0x13, 0xb4, 0x00, 0x00, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0xff, 0xff, 0xfd, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x02, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 
 // TableVocabulary is ONE DIRECTION's announced vocabulary (§3.3): the entries
@@ -3416,21 +3430,25 @@ inline bool TableRetainRecordHere( const TableRetain & retain, const uint8_t * r
 // derived from. An id inside a retained record takes its trailer entry from
 // the GENERATED table when it is here and from the CALLER's list otherwise, so
 // no retained id ever enters the generated table and no id is written twice.
-static const int32_t kTableRetainKnownIds = 50;
+static const int32_t kTableRetainKnownIds = 67;
 static const uint64_t kTableRetainKnown[ kTableRetainKnownIds ] = {
-    0x0a53e00afba279afull, 0x0c2643993e3ece2eull, 0x11e7ec757c03c70aull, 0x14e2eaab9cde925bull,
-    0x1a08aa1921ca5cafull, 0x1c84390d304f4f42ull, 0x1f6459a2cea1fc02ull, 0x2492f5fb1b05b45eull,
+    0x033de3f1246bba76ull, 0x036ffe7360826852ull, 0x0a53e00afba279afull, 0x0c2643993e3ece2eull,
+    0x11e7ec757c03c70aull, 0x14e2eaab9cde925bull, 0x18691a70a0e3fe31ull, 0x1a08aa1921ca5cafull,
+    0x1c84390d304f4f42ull, 0x1f6459a2cea1fc02ull, 0x1f781dc01a2b5152ull, 0x2492f5fb1b05b45eull,
     0x294a5c4913e1ad44ull, 0x294fa1b3f0f5f070ull, 0x29cf72329075c5aaull, 0x2b7dea192bb7be29ull,
-    0x2f2ec0474f1c4fe4ull, 0x3231d0dc6fe30d4aull, 0x3dc94a19365b10ecull, 0x4fda04cbc245e18bull,
-    0x52cfa1d198476806ull, 0x5de00b6a76064442ull, 0x610dcbb318a2e4faull, 0x63dfa0c4a4b3815dull,
-    0x6dd8dc6c5fdae3ceull, 0x704be0d8faaffc58ull, 0x70551ff29550f15dull, 0x758252d2d1b14f0dull,
-    0x7b024c46e98d3404ull, 0x7ce4fd9430e80ceaull, 0x7d015e53d7cb2c7cull, 0x7f69d4b5288ba9cfull,
-    0x8dc5f55c70e0f637ull, 0x9b18b54fbe8e2161ull, 0xa013e119fec906fbull, 0xa0b562a796b69487ull,
-    0xa633f1f655715ccaull, 0xaf05dfb30c5ca3deull, 0xafb728fff268814full, 0xb1e5e28e4479a274ull,
-    0xb413964e3571a316ull, 0xbc08b7f228c93506ull, 0xbf82010f6f71eae9ull, 0xc4bcadba8e631b86ull,
-    0xc5b2a72c0845a253ull, 0xd5c2bb95d63e6331ull, 0xda73c178dfcf57b7ull, 0xdcdbddf89c9310a1ull,
-    0xe756c0190570ccb5ull, 0xe8130af045a036f8ull, 0xec07a2f760550a91ull, 0xfa903574575fc678ull,
-    0xfd4d194e1652b207ull, 0xffffffffffffffffull,
+    0x2f2ec0474f1c4fe4ull, 0x3231d0dc6fe30d4aull, 0x3dc94a19365b10ecull, 0x3e8426f7e349c9dcull,
+    0x437dfc8ab2566816ull, 0x4fda04cbc245e18bull, 0x52cfa1d198476806ull, 0x5de00b6a76064442ull,
+    0x610dcbb318a2e4faull, 0x63dfa0c4a4b3815dull, 0x6dd8dc6c5fdae3ceull, 0x704be0d8faaffc58ull,
+    0x70551ff29550f15dull, 0x755332609c470fbdull, 0x758252d2d1b14f0dull, 0x7b024c46e98d3404ull,
+    0x7ce4fd9430e80ceaull, 0x7d015e53d7cb2c7cull, 0x7f6548303072b061ull, 0x7f69d4b5288ba9cfull,
+    0x8119d921e2250c6aull, 0x816c207ba6213983ull, 0x8dc5f55c70e0f637ull, 0x8ec370bd37dc5e06ull,
+    0x9b18b54fbe8e2161ull, 0xa013e119fec906fbull, 0xa0b562a796b69487ull, 0xa3a7061ff10a8138ull,
+    0xa633f1f655715ccaull, 0xab01daa76a48769full, 0xaf05dfb30c5ca3deull, 0xafb728fff268814full,
+    0xb1e5e28e4479a274ull, 0xb413964e3571a316ull, 0xbc08b7f228c93506ull, 0xbf82010f6f71eae9ull,
+    0xc4bcadba8e631b86ull, 0xc5b2a72c0845a253ull, 0xd5c2bb95d63e6331ull, 0xda73c178dfcf57b7ull,
+    0xdcdbddf89c9310a1ull, 0xe1185043515c812bull, 0xe756c0190570ccb5ull, 0xe8130af045a036f8ull,
+    0xea7bdd2b70c8c2bbull, 0xec07a2f760550a91ull, 0xf96b15cd3921d4a6ull, 0xfa903574575fc678ull,
+    0xfd4d194e1652b207ull, 0xfedcb40b5d600538ull, 0xffffffffffffffffull,
 };
 
 inline bool TableRetainNameable( uint64_t id )
@@ -3735,6 +3753,16 @@ inline int64_t TableRetainInContent( TableRetainIn & s, uint8_t kind, int64_t le
             }
             break;
         }
+        case 15: case 30:
+            // A UNION ARM AND AN ENUM'S VARIANT REFERENCE RESOLVE AS A FRAMED
+            // CONTENT TOO (§6.6): a kind 15 arm whose own payload is a union,
+            // and a kind 16 slot whose element kind is 15 or 30, both arrive
+            // here, and both carry a reference. Copying them as bytes would
+            // re-emit a reference into a permuted trailer, where it names
+            // another id, and would let a kind 17 UNDER A KIND 15 ARM through
+            // a walk whose whole job is to catch it.
+            if ( TableRetainInPayload( s, kind, depth ) < 0 ) { return -1; }
+            break;
         case 17: return -1; // A NODE INDEX ANYWHERE DROPS THE WHOLE RECORD (§6.6)
         default:
             // every other content is bytes: a string, wide text, an escape, a
@@ -4111,6 +4139,11 @@ inline bool TableRetainOutContent( TableRetainOut & s, uint8_t kind, int64_t len
             }
             break;
         }
+        case 15: case 30:
+            // the emit side of the capture's own rule (§6.6): an arm and a
+            // variant reference resolve as a framed content too
+            if ( !TableRetainOutPayload( s, kind, depth ) ) { return false; }
+            break;
         default:
             TableRetainOutRaw( s, s.in + s.at, length );
             s.at += length;
@@ -5126,6 +5159,522 @@ inline int32_t TableMapIndexSlots( int32_t count )
 
 #endif // MAPDEMO_SCHEMA_TABLE_MAP
 
+#ifndef MAPDEMO_SCHEMA_TABLE_LIST
+#define MAPDEMO_SCHEMA_TABLE_LIST
+
+namespace mapdemo {
+
+// ---- an UNBOUNDED ARRAY: a counted array whose count the data decides (§2.9) ----
+//
+// On the wire, in a region and in a cook a list is the kind 14 body a [..N]T
+// writes, its elements by-value records inside the holder's node extent. What
+// this adds is the slot, a builder that appends into segments that never
+// move, and a const surface that indexes and iterates in place. There is no
+// sort, no key and no lookup: the order is INSERTION order, and it is
+// identity the way position is identity in a fixed array.
+
+// elements carved from ONE call to the allocator pair. A new segment is
+// appended when the current one fills, and nothing ever moves (§6.4)
+static const int32_t kTableListSegmentElements = 32;
+
+// THE ELEMENT STORAGE: T itself, and a TableRef slot for a []*T, whose
+// elements are references exactly as a pointer field's slot is (§2.1)
+template <typename T> struct TableListStorage { typedef T Element; };
+template <typename T> struct TableListStorage<T *> { typedef TableRef Element; };
+
+// WHAT THE CONST FORM ANSWERS: the element by reference, and on a []*T the
+// RESOLVED pointer, one add on the self-relative delta, NULL for a null slot,
+// exactly as <T>At answers it (§6.2, §6.3)
+template <typename T> struct TableListConst
+{
+    typedef const T & Result;
+    static Result At( const T * element ) { return *element; }
+};
+template <typename T> struct TableListConst<T *>
+{
+    typedef const T * Result;
+    static Result At( const TableRef * element )
+    {
+        return element->value != 0 ? (const T *) ( (const uint8_t *) element + element->value ) : NULL;
+    }
+};
+
+// ---- the storage: SIXTEEN BYTES in the holder's record (§2.9, §7.2) ----
+//
+// An int64 self-relative reference to the element array and an int32 count,
+// then padding to eight. The reference is a TableRef like a pointer's: in the
+// arena it names the builder's HEAD, in a region it is the delta from the slot
+// to the first element, and 0 is the empty list in both. It is the map's slot
+// exactly, because it is the same two facts.
+template <typename T> struct TableList
+{
+    typedef typename TableListStorage<T>::Element Element;
+
+    TableRef elements;
+    int32_t count = 0;   // the LIVE count, in both forms
+    int32_t padding = 0; // named, so the record has no unwritten byte in it
+
+    // ---- the CONST form: a locked region, a loaded one, an opened cook ----
+    //
+    // One surface over one encoding (§6.3). A region reference resolves from
+    // the slot's own address, so every one of these is a member and needs no
+    // base and no context.
+    const Element * Elements() const
+    {
+        return elements.value != 0 ? (const Element *) ( (const uint8_t *) &elements + elements.value ) : NULL;
+    }
+    int32_t size() const { return count; }
+
+    // INDEXING IS BOUNDS-CHECKED IN EVERY BUILD (§2.4, §2.9): the extent is a
+    // number that CAME FROM A FILE, so an index past it is not a mistake a
+    // release build gets to make cheaply. There is no undefined-behavior path
+    // here in any configuration. The assert carries the message where a
+    // debugger can read it and NDEBUG removes that. The fatal is what stands
+    // after it. Both go through the hooks: define schema_assert and
+    // schema_fatal and this refusal lands in your own handler.
+    void RefuseIndex( int32_t index ) const
+    {
+        if ( (uint32_t) index >= (uint32_t) count )
+        {
+            schema_assert( false && "an unbounded array is indexed inside its count, which came from a file" );
+            schema_fatal();
+        }
+    }
+    typename TableListConst<T>::Result operator[]( int32_t index ) const
+    {
+        RefuseIndex( index );
+        return TableListConst<T>::At( Elements() + index );
+    }
+
+    // ---- iteration: INDEX order, the element and no key ----
+    //
+    // It carries no iterator_traits, for the reason TableKeyed's does not
+    // (§13.9).
+    struct ConstIterator
+    {
+        const Element * at;
+        typename TableListConst<T>::Result operator*() const { return TableListConst<T>::At( at ); }
+        ConstIterator & operator++() { at++; return *this; }
+        bool operator==( const ConstIterator & other ) const { return at == other.at; }
+        bool operator!=( const ConstIterator & other ) const { return at != other.at; }
+    };
+
+    ConstIterator begin() const { return ConstIterator{ Elements() }; }
+    ConstIterator end() const { return ConstIterator{ Elements() + count }; }
+};
+
+// ---- the BUILDER's side: a head, and segments that never move (§2.9, §6.4) ----
+//
+// The head is a small node in the arena holding the segment chain, the live
+// count and the dead count, allocated when the first element is added. Each
+// segment is a fixed number of elements carved from one call to the allocator
+// pair. An element's address is stable for the arena's life, so a T * handed
+// back by Add stays valid while other elements arrive.
+struct TableListHead
+{
+    TableRef first; // the arena offset of the first segment
+    TableRef last;  // and of the one an Add appends into
+    int32_t live;
+    int32_t dead;
+};
+
+template <typename Element> struct TableListSegment
+{
+    TableRef next;
+    int32_t used;                                          // elements carved from this segment
+    int32_t padding;
+    uint32_t dead[ ( kTableListSegmentElements + 31 ) / 32 ]; // Erase marks one bit, never the element
+    Element elements[ kTableListSegmentElements ];
+};
+
+inline bool TableListSegmentDead( const uint32_t * dead, int32_t index )
+{
+    return ( dead[ index / 32 ] & ( 1u << ( index % 32 ) ) ) != 0;
+}
+
+// the head, allocated when the first element is added
+template <typename T>
+inline TableListHead * TableListReach( TableWorker & worker, TableList<T> & list )
+{
+    if ( worker.arena == NULL || worker.arena->locked ) { return NULL; }
+    if ( list.elements.value != 0 ) { return (TableListHead *) TableArenaAt( *worker.arena, (uint32_t) list.elements.value ); }
+    uint32_t at = 0;
+    TableListHead * head = (TableListHead *) worker.AllocRaw( (int64_t) sizeof( TableListHead ), (int64_t) alignof( TableListHead ), at );
+    if ( head == NULL ) { return NULL; }
+    head->first.value = 0;
+    head->last.value = 0;
+    head->live = 0;
+    head->dead = 0;
+    list.elements.value = (int64_t) at;
+    return head;
+}
+
+// one element's storage, appended: the current segment when it has room, a
+// new one carved from one call to the pair when it does not. NULL means NOT
+// ADDED: an arena that cannot carve another segment, or a count at the int32
+// cap (§2.2, §2.9).
+template <typename T>
+inline typename TableList<T>::Element * TableListAppend( TableWorker & worker, TableListHead * head, TableList<T> & list )
+{
+    typedef typename TableList<T>::Element Element;
+    if ( list.count >= INT32_MAX ) { return NULL; } // the int32 storage cap
+    TableListSegment<Element> * segment = NULL;
+    if ( head->last.value != 0 )
+    {
+        segment = (TableListSegment<Element> *) TableArenaAt( *worker.arena, (uint32_t) head->last.value );
+        if ( segment->used >= kTableListSegmentElements ) { segment = NULL; }
+    }
+    if ( segment == NULL )
+    {
+        uint32_t at = 0;
+        segment = (TableListSegment<Element> *) worker.AllocRaw( (int64_t) sizeof( TableListSegment<Element> ), (int64_t) alignof( TableListSegment<Element> ), at );
+        if ( segment == NULL ) { return NULL; } // the arena could not carve another segment
+        segment->next.value = 0;
+        segment->used = 0;
+        segment->padding = 0;
+        for ( int32_t i = 0; i < (int32_t) ( sizeof( segment->dead ) / sizeof( segment->dead[0] ) ); i++ ) { segment->dead[i] = 0; }
+        if ( head->last.value != 0 )
+        {
+            TableListSegment<Element> * previous = (TableListSegment<Element> *) TableArenaAt( *worker.arena, (uint32_t) head->last.value );
+            previous->next.value = (int64_t) at;
+        }
+        else
+        {
+            head->first.value = (int64_t) at;
+        }
+        head->last.value = (int64_t) at;
+    }
+    Element * element = segment->elements + segment->used;
+    segment->used++;
+    head->live++;
+    list.count++;
+    return element;
+}
+
+// ADD, whole: the head, the append, and the element at its declared defaults
+// (§2.9). The text form's placement is this same call, because a list has no
+// key to place under (§16).
+template <typename T>
+inline typename TableList<T>::Element * TableListPlace( TableWorker & worker, TableList<T> & list )
+{
+    typedef typename TableList<T>::Element Element;
+    TableListHead * head = TableListReach( worker, list );
+    if ( head == NULL ) { return NULL; }
+    Element * element = TableListAppend( worker, head, list );
+    if ( element == NULL ) { return NULL; }
+    new ( element ) Element(); // value-init: the declared defaults, and null for a slot
+    return element;
+}
+
+// ERASE, ADDRESSED BY THE POINTER (§2.9): the element Add handed back is the
+// handle, because a list has no key and the address is the one thing the
+// builder promises never moves (§6.4). It marks the element DEAD, one bit in
+// the segment's slot and not in the element storage, and decrements the live
+// count. False when the pointer is not this list's. Its storage is reclaimed
+// at RESET and never reused mid-build, the map's rule for the map's reason.
+template <typename T>
+inline bool TableListErase( TableArena & arena, TableList<T> & list, const typename TableList<T>::Element * element )
+{
+    typedef typename TableList<T>::Element Element;
+    if ( list.elements.value == 0 || element == NULL ) { return false; }
+    TableListHead * head = (TableListHead *) TableArenaAt( arena, (uint32_t) list.elements.value );
+    TableRef segment_ref = head->first;
+    while ( segment_ref.value != 0 )
+    {
+        TableListSegment<Element> * segment = (TableListSegment<Element> *) TableArenaAt( arena, (uint32_t) segment_ref.value );
+        if ( element >= segment->elements && element < segment->elements + segment->used )
+        {
+            const int32_t i = (int32_t) ( element - segment->elements );
+            if ( TableListSegmentDead( segment->dead, i ) ) { return false; } // already erased
+            segment->dead[ i / 32 ] |= 1u << ( i % 32 );
+            head->live--;
+            head->dead++;
+            list.count--;
+            return true;
+        }
+        segment_ref = segment->next;
+    }
+    return false;
+}
+
+// ---- iterate on the BUILDER: INDEX order, live elements only (§2.9) ----
+template <typename T> struct TableListEach
+{
+    typedef typename TableList<T>::Element Element;
+    const TableArena * arena;
+    TableRef first;
+
+    struct Iterator
+    {
+        const TableArena * arena;
+        TableListSegment<Element> * segment;
+        int32_t index;
+
+        void Skip()
+        {
+            for ( ;; )
+            {
+                if ( segment == NULL ) { return; }
+                if ( index >= segment->used )
+                {
+                    segment = segment->next.value != 0 ? (TableListSegment<Element> *) TableArenaAt( *arena, (uint32_t) segment->next.value ) : NULL;
+                    index = 0;
+                    continue;
+                }
+                if ( TableListSegmentDead( segment->dead, index ) ) { index++; continue; }
+                return;
+            }
+        }
+        Element * operator*() const { return segment->elements + index; }
+        Iterator & operator++() { index++; Skip(); return *this; }
+        bool operator==( const Iterator & other ) const { return segment == other.segment && index == other.index; }
+        bool operator!=( const Iterator & other ) const { return !( *this == other ); }
+    };
+
+    Iterator begin() const
+    {
+        Iterator it = { arena, first.value != 0 ? (TableListSegment<Element> *) TableArenaAt( *arena, (uint32_t) first.value ) : NULL, 0 };
+        it.Skip();
+        return it;
+    }
+    Iterator end() const { Iterator it = { arena, NULL, 0 }; return it; }
+};
+
+template <typename T>
+inline TableListEach<T> TableListEachOf( const TableArena & arena, const TableList<T> & list )
+{
+    TableListEach<T> each = { &arena, TableRef() };
+    if ( list.elements.value != 0 )
+    {
+        const TableListHead * head = (const TableListHead *) TableArenaAt( arena, (uint32_t) list.elements.value );
+        each.first = head->first;
+    }
+    return each;
+}
+
+// ---- the INDEX-ORDER CURSOR the four writing walks read (§2.9) ----
+//
+// Measure, Save, Lock and Cook each visit a list's live elements in the order
+// they were added, and they allocate nothing to do it: a region's cursor is
+// the array in place, and the builder's walks the segment chain. Indexing the
+// builder's form is SEQUENTIAL by construction, every walk steps i, i + 1,
+// i + 2, so the cursor remembers where the last access landed and moves one
+// live slot per step. An access behind the memo restarts from the first
+// segment, which no walk here does.
+template <typename Element> struct TableListCursor
+{
+    const Element * elements = NULL; // the region's form: the array in place
+    const TableArena * arena = NULL; // the builder's form: the segments
+    TableRef first;
+    int32_t count = 0;
+    bool ok = false;
+    // the memo: the segment and slot the last access landed on, and the live
+    // index that slot holds
+    mutable const TableListSegment<Element> * segment = NULL;
+    mutable int32_t within = -1;
+    mutable int32_t logical = -1;
+
+    const Element * At( int32_t index ) const
+    {
+        if ( elements != NULL ) { return elements + index; }
+        if ( segment == NULL || index < logical )
+        {
+            segment = first.value != 0 ? (const TableListSegment<Element> *) TableArenaAt( *arena, (uint32_t) first.value ) : NULL;
+            within = -1;
+            logical = -1;
+        }
+        while ( logical < index )
+        {
+            for ( ;; )
+            {
+                within++;
+                while ( segment != NULL && within >= segment->used )
+                {
+                    segment = segment->next.value != 0 ? (const TableListSegment<Element> *) TableArenaAt( *arena, (uint32_t) segment->next.value ) : NULL;
+                    within = 0;
+                }
+                if ( segment == NULL ) { return NULL; } // the slot and the head disagree
+                if ( !TableListSegmentDead( segment->dead, within ) ) { break; }
+            }
+            logical++;
+        }
+        return segment->elements + within;
+    }
+    const Element & operator[]( int32_t index ) const { return *At( index ); }
+};
+
+// the REGION form: the array is the cursor
+template <typename T>
+inline TableListCursor<typename TableList<T>::Element> TableListElements( const TableRegionCtx &, const TableList<T> & list )
+{
+    TableListCursor<typename TableList<T>::Element> cursor;
+    cursor.elements = list.Elements();
+    cursor.count = list.count;
+    cursor.ok = true;
+    return cursor;
+}
+
+// the BUILDER's form: the live elements out of the segment chain, in the
+// order they were added. A dead element costs nothing on any wire (§2.9).
+template <typename T>
+inline TableListCursor<typename TableList<T>::Element> TableListElements( const TableArena & arena, const TableList<T> & list )
+{
+    TableListCursor<typename TableList<T>::Element> cursor;
+    cursor.arena = &arena;
+    cursor.count = list.count;
+    if ( list.elements.value == 0 || list.count <= 0 ) { cursor.ok = list.count == 0; cursor.count = 0; return cursor; }
+    const TableListHead * head = (const TableListHead *) TableArenaAt( arena, (uint32_t) list.elements.value );
+    if ( head->live != list.count ) { return cursor; } // the slot and the head disagree: refused, never guessed
+    cursor.first = head->first;
+    cursor.ok = true;
+    return cursor;
+}
+
+template <typename T>
+inline TableListCursor<typename TableList<T>::Element> TableListElements( const TableArenaCtx & ctx, const TableList<T> & list )
+{
+    return TableListElements( *ctx.arena, list );
+}
+
+// ---- the LOAD side: where a decoded element lands (§2.9) ----
+//
+// The same two shapes the map's fill takes, because the decoder above them
+// cannot tell which it has: a REGION carves the element array out of the
+// holder node's own extent, PRE-ORDER, and the TOOL's path appends into the
+// builder's arena.
+template <typename T> struct TableListFill
+{
+    typedef typename TableList<T>::Element Element;
+    TableList<T> * list = NULL;
+    Element * array = NULL;      // the region path: the carved array
+    int32_t capacity = 0;
+    TableWorker * worker = NULL; // the TOOL's path
+    bool ok = false;
+    bool refused = false;        // a count above the int32 cap on the tool's path: LoadBuilder answers NULL
+};
+
+template <typename T>
+inline TableListFill<T> TableListFillBegin( const TableNodeMap & nodes, TableList<T> & list, uint64_t n )
+{
+    typedef typename TableList<T>::Element Element;
+    TableListFill<T> fill;
+    fill.list = &list;
+    list.elements.value = 0;
+    list.count = 0;
+    if ( nodes.carve == NULL ) { return fill; }
+    if ( n > (uint64_t) INT32_MAX )
+    {
+        // A COUNT ABOVE THE int32 STORAGE CAP (§2.2, §2.9): into a region it was
+        // refused by LoadMeasure before this ran, and into a builder it is the
+        // refusal LoadBuilder answers NULL for, moving no counter
+        fill.refused = nodes.carve->worker != NULL;
+        return fill;
+    }
+    if ( nodes.carve->worker != NULL )
+    {
+        fill.worker = nodes.carve->worker; // the tool's path: the arena carves
+        fill.ok = true;
+        return fill;
+    }
+    const int64_t align = (int64_t) alignof( Element );
+    uint8_t * base = (uint8_t *) ( ( (uintptr_t) nodes.carve->at + (uintptr_t) ( align - 1 ) ) & ~( (uintptr_t) ( align - 1 ) ) );
+    const int64_t bytes = (int64_t) n * (int64_t) sizeof( Element );
+    const int64_t pad = (int64_t) ( base - nodes.carve->at );
+    if ( pad + bytes > nodes.carve->left ) { return fill; } // the measure and the load disagree: refused
+    nodes.carve->at = base + bytes;
+    nodes.carve->left -= pad + bytes;
+    fill.array = (Element *) base;
+    fill.capacity = (int32_t) n;
+    list.elements.value = (int64_t) ( base - (const uint8_t *) &list.elements );
+    fill.ok = true;
+    return fill;
+}
+
+// the next slot, at the element's declared defaults. NULL when the arena
+// could not carve, which the decoder reports as framing damage
+template <typename T> inline typename TableList<T>::Element * TableListFillNext( TableListFill<T> & fill )
+{
+    typedef typename TableList<T>::Element Element;
+    if ( fill.array != NULL )
+    {
+        if ( fill.list->count >= fill.capacity ) { return NULL; }
+        Element * element = fill.array + fill.list->count;
+        new ( element ) Element();
+        fill.list->count++;
+        return element;
+    }
+    return TableListPlace( *fill.worker, *fill.list );
+}
+
+// A SLOT WHOSE ELEMENT NEVER LANDED is given back (§2.9, §4): the array keeps
+// what it decoded, and an element whose own framing gave out before one byte
+// of it decoded was not decoded. The region's form uncounts it, and the builder's
+// marks it dead, which is what the storage rule allows mid-build.
+template <typename T> inline void TableListFillDrop( TableListFill<T> & fill )
+{
+    typedef typename TableList<T>::Element Element;
+    if ( fill.array != NULL )
+    {
+        if ( fill.list->count > 0 ) { fill.list->count--; }
+        return;
+    }
+    if ( fill.list->elements.value == 0 ) { return; }
+    TableListHead * head = (TableListHead *) TableArenaAt( *fill.worker->arena, (uint32_t) fill.list->elements.value );
+    if ( head->last.value == 0 ) { return; }
+    TableListSegment<Element> * segment = (TableListSegment<Element> *) TableArenaAt( *fill.worker->arena, (uint32_t) head->last.value );
+    if ( segment->used <= 0 ) { return; }
+    const int32_t i = segment->used - 1;
+    if ( TableListSegmentDead( segment->dead, i ) ) { return; }
+    segment->dead[ i / 32 ] |= 1u << ( i % 32 );
+    head->live--;
+    head->dead++;
+    fill.list->count--;
+}
+
+// an EMPTY list's reference is null in both encodings, so a load that placed
+// nothing leaves the slot exactly as a Reset does
+template <typename T> inline void TableListFillEnd( TableListFill<T> & fill )
+{
+    if ( fill.array != NULL && fill.list->count == 0 ) { fill.list->elements.value = 0; }
+}
+
+// ---- LoadMeasure's term, from the FRAMING alone (§2.9, §6.5) ----
+//
+// N x sizeof( T ) rounded to alignof( T ), AT EVERY DEPTH. N is framing and
+// not a value, so this reads no field: it walks the list's own header and,
+// where a table element holds a list or a map of its own, the elements'
+// headers under it. Every -1 carries its REASON (§6.5): the int32 cap first,
+// because a count past it cannot fit any body, and then the body's own L.
+inline bool TableListWireExtent( const uint8_t * body, int64_t length, int64_t & at,
+                                 int64_t elem_size, int64_t elem_align, uint8_t elem_kind, int64_t elem_floor,
+                                 TableWireExtentFn inner, const TableIdTable * ids, TableRefuseReason & reason )
+{
+    TableReport scratch;
+    TableReader r( body, length, &scratch, ids );
+    if ( length < 2 ) { return true; }              // no array header: nothing rides
+    if ( r.get8() != elem_kind ) { return true; }  // another element kind: §4's ordinary kind mismatch, the field reads empty
+    uint64_t n = 0;
+    if ( !r.getleb( n ) ) { return true; }
+    if ( n > (uint64_t) INT32_MAX ) { reason = count_over_extent_cap; return false; }
+    const int64_t rest = length - r.offset;
+    if ( n > (uint64_t) ( rest / elem_floor ) ) { reason = count_over_length; return false; } // an N the list's L cannot carry
+    at = ( at + elem_align - 1 ) & ~( elem_align - 1 );
+    at += (int64_t) n * elem_size;
+    if ( inner == NULL ) { return true; } // nothing below an element: one depth is the whole term
+    for ( uint64_t i = 0; i < n; i++ )
+    {
+        uint64_t elem = 0;
+        if ( !r.getleb( elem ) || !r.room( elem ) ) { return true; } // framing damage: the load reports it
+        if ( !inner( r.buffer + r.offset, (int64_t) elem, at, ids, reason ) ) { return false; }
+        r.offset += (int64_t) elem;
+    }
+    return true;
+}
+
+} // namespace mapdemo
+
+#endif // MAPDEMO_SCHEMA_TABLE_LIST
+
 #ifndef MAPDEMO_SCHEMA_BUILD_VERSION
 #define MAPDEMO_SCHEMA_BUILD_VERSION
 
@@ -5143,7 +5692,7 @@ namespace mapdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x28abc7f5927a7539ull;
+static const uint64_t BuildVersion = 0xe4ae2b700e9c3e19ull;
 
 } // namespace mapdemo
 
@@ -6384,7 +6933,7 @@ inline bool RowEntriesEntrySaveMessageBody( TableBitWriter & w, const RowEntries
     if ( value.key_length < 0 || value.key_length > 8 ) { return false; } // storage invariant
     if ( value.key_length > 0 )
     {
-        w.put( 13, kTableMessageRefBitsHere );
+        w.put( 3, kTableMessageRefBitsHere );
         w.put( (uint64_t) value.key_length, 4 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.key, value.key_length );
@@ -6394,7 +6943,7 @@ inline bool RowEntriesEntrySaveMessageBody( TableBitWriter & w, const RowEntries
         if ( body_value < 0 ) { return false; }
         if ( body_value > kTableMessageRefBitsHere ) // an all-default nested table elides
         {
-            w.put( 2, kTableMessageRefBitsHere );
+            w.put( 6, kTableMessageRefBitsHere );
             if ( !ItemSaveMessageBody( w, value.value ) ) { return false; }
         }
     }
@@ -6437,15 +6986,13 @@ inline bool RowEntriesEntryLoadMessageBody( TableBitReader & r, const TableVocab
                 {
                     uint64_t n = 0;
                     if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() || !r.has( (int64_t) n * 8 ) ) { report->malformed = true; return false; }
-                    int32_t kept = 0;
-                    if ( n > (uint64_t) 8 ) { kept = 8; report->clamped++; } else { kept = (int32_t) n; }
-                    for ( uint64_t i = 0; i < n; i++ )
-                    {
-                        uint64_t by = 0;
-                        if ( !r.get( by, 8 ) ) { report->malformed = true; return false; }
-                        if ( (int32_t) i < kept ) { value.key[i] = (char) by; }
-                    }
+                    const uint8_t * text = r.buffer + ( r.offset >> 3 );
+                    if ( !TableUtf8Valid( text, n ) ) { report->malformed = true; return false; }
+                    const int32_t kept = (int32_t) TableUtf8Clamp( text, n, 8 );
+                    if ( (uint64_t) kept < n ) { report->clamped++; }
+                    memcpy( value.key, text, (size_t) kept );
                     value.key[kept] = 0;
+                    r.offset += (int64_t) n * 8;
                     value.key_length = kept;
                 }
                 break;
@@ -6744,7 +7291,7 @@ inline bool RowSaveMessageBody( const Ctx & ctx, const TableNumbering & numberin
         if ( !order_entries.ok ) { return false; } // the sort could not run
         if ( order_entries.count > 0 )
         {
-            w.put( 30, kTableMessageRefBitsHere );
+            w.put( 34, kTableMessageRefBitsHere );
             w.put( (uint64_t) order_entries.count, 32 ); // the count the data decides
             for ( int32_t i = 0; i < order_entries.count; i++ )
             {
@@ -6755,7 +7302,7 @@ inline bool RowSaveMessageBody( const Ctx & ctx, const TableNumbering & numberin
     }
     if ( value.after != 0 )
     {
-        w.put( 19, kTableMessageRefBitsHere );
+        w.put( 17, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.after ), 32 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -7088,7 +7635,7 @@ inline bool WideRowEntriesEntrySaveMessageBody( TableBitWriter & w, const WideRo
 {
     if ( value.key != 0 )
     {
-        w.put( 7, kTableMessageRefBitsHere );
+        w.put( 9, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.key ), 32 );
     }
     {
@@ -7096,7 +7643,7 @@ inline bool WideRowEntriesEntrySaveMessageBody( TableBitWriter & w, const WideRo
         if ( body_value < 0 ) { return false; }
         if ( body_value > kTableMessageRefBitsHere ) // an all-default nested table elides
         {
-            w.put( 2, kTableMessageRefBitsHere );
+            w.put( 6, kTableMessageRefBitsHere );
             if ( !ItemSaveMessageBody( w, value.value ) ) { return false; }
         }
     }
@@ -7457,7 +8004,7 @@ inline bool WideRowSaveMessageBody( const Ctx & ctx, const TableNumbering & numb
         if ( !order_entries.ok ) { return false; } // the sort could not run
         if ( order_entries.count > 0 )
         {
-            w.put( 30, kTableMessageRefBitsHere );
+            w.put( 34, kTableMessageRefBitsHere );
             w.put( (uint64_t) order_entries.count, 32 ); // the count the data decides
             for ( int32_t i = 0; i < order_entries.count; i++ )
             {
@@ -7468,7 +8015,7 @@ inline bool WideRowSaveMessageBody( const Ctx & ctx, const TableNumbering & numb
     }
     if ( value.after != 0 )
     {
-        w.put( 19, kTableMessageRefBitsHere );
+        w.put( 17, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.after ), 32 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -7805,7 +8352,7 @@ inline bool EdgeRowNamesEntrySaveMessageBody( TableBitWriter & w, const EdgeRowN
     if ( value.key_length < 0 || value.key_length > 300 ) { return false; } // storage invariant
     if ( value.key_length > 0 )
     {
-        w.put( 21, kTableMessageRefBitsHere );
+        w.put( 25, kTableMessageRefBitsHere );
         w.put( (uint64_t) value.key_length, 9 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.key, value.key_length );
@@ -7815,7 +8362,7 @@ inline bool EdgeRowNamesEntrySaveMessageBody( TableBitWriter & w, const EdgeRowN
         if ( body_value < 0 ) { return false; }
         if ( body_value > kTableMessageRefBitsHere ) // an all-default nested table elides
         {
-            w.put( 2, kTableMessageRefBitsHere );
+            w.put( 6, kTableMessageRefBitsHere );
             if ( !ItemSaveMessageBody( w, value.value ) ) { return false; }
         }
     }
@@ -7858,15 +8405,13 @@ inline bool EdgeRowNamesEntryLoadMessageBody( TableBitReader & r, const TableVoc
                 {
                     uint64_t n = 0;
                     if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() || !r.has( (int64_t) n * 8 ) ) { report->malformed = true; return false; }
-                    int32_t kept = 0;
-                    if ( n > (uint64_t) 300 ) { kept = 300; report->clamped++; } else { kept = (int32_t) n; }
-                    for ( uint64_t i = 0; i < n; i++ )
-                    {
-                        uint64_t by = 0;
-                        if ( !r.get( by, 8 ) ) { report->malformed = true; return false; }
-                        if ( (int32_t) i < kept ) { value.key[i] = (char) by; }
-                    }
+                    const uint8_t * text = r.buffer + ( r.offset >> 3 );
+                    if ( !TableUtf8Valid( text, n ) ) { report->malformed = true; return false; }
+                    const int32_t kept = (int32_t) TableUtf8Clamp( text, n, 300 );
+                    if ( (uint64_t) kept < n ) { report->clamped++; }
+                    memcpy( value.key, text, (size_t) kept );
                     value.key[kept] = 0;
+                    r.offset += (int64_t) n * 8;
                     value.key_length = kept;
                 }
                 break;
@@ -8048,7 +8593,7 @@ inline bool EdgeRowIdsEntrySaveMessageBody( TableBitWriter & w, const EdgeRowIds
 {
     if ( value.key != 0 )
     {
-        w.put( 23, kTableMessageRefBitsHere );
+        w.put( 27, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.key ), 64 );
     }
     {
@@ -8056,7 +8601,7 @@ inline bool EdgeRowIdsEntrySaveMessageBody( TableBitWriter & w, const EdgeRowIds
         if ( body_value < 0 ) { return false; }
         if ( body_value > kTableMessageRefBitsHere ) // an all-default nested table elides
         {
-            w.put( 2, kTableMessageRefBitsHere );
+            w.put( 6, kTableMessageRefBitsHere );
             if ( !ItemSaveMessageBody( w, value.value ) ) { return false; }
         }
     }
@@ -8561,7 +9106,7 @@ inline bool EdgeRowSaveMessageBody( const Ctx & ctx, const TableNumbering & numb
         if ( !order_names.ok ) { return false; } // the sort could not run
         if ( order_names.count > 0 )
         {
-            w.put( 20, kTableMessageRefBitsHere );
+            w.put( 24, kTableMessageRefBitsHere );
             w.put( (uint64_t) order_names.count, 32 ); // the count the data decides
             for ( int32_t i = 0; i < order_names.count; i++ )
             {
@@ -8575,7 +9120,7 @@ inline bool EdgeRowSaveMessageBody( const Ctx & ctx, const TableNumbering & numb
         if ( !order_ids.ok ) { return false; } // the sort could not run
         if ( order_ids.count > 0 )
         {
-            w.put( 22, kTableMessageRefBitsHere );
+            w.put( 26, kTableMessageRefBitsHere );
             w.put( (uint64_t) order_ids.count, 32 ); // the count the data decides
             for ( int32_t i = 0; i < order_ids.count; i++ )
             {
@@ -8586,7 +9131,7 @@ inline bool EdgeRowSaveMessageBody( const Ctx & ctx, const TableNumbering & numb
     }
     if ( value.after != 0 )
     {
-        w.put( 19, kTableMessageRefBitsHere );
+        w.put( 17, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.after ), 32 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -15473,6 +16018,7 @@ static_assert( alignof( EdgeRow ) == 8, "EdgeRow's alignof moved: the build vers
 static_assert( offsetof( EdgeRow, names ) == 0, "EdgeRow's field names moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( EdgeRow, ids ) == 16, "EdgeRow's field ids moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( EdgeRow, after ) == 32, "EdgeRow's field after moved: the build version was taken over offset 32 (docs/SPEC-TABLES.md §20.3)" );
+
 
 // ---- reflection descriptors (tables only, docs/SPEC-TABLES.md) ----
 

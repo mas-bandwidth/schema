@@ -21,6 +21,34 @@ DOTNET ?= dotnet
 .PHONY: toolchain-cs
 toolchain-cs:
 	@$(call toolchain_probe,cs,DOTNET,$(DOTNET))
+# Packet defaults consume the shared C++ oracle in both build modes.
+build/packet-defaults/cs/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema make/cs.mk
+	./bin/schema generate --lang cs --out build/packet-defaults/cs/defaults test/packet-defaults/Defaults.schema
+	./bin/schema generate --lang cs --out build/packet-defaults/cs/plain test/packet-defaults/Plain.schema
+	@touch $@
+
+.PHONY: packet-defaults-cs packet-defaults-cs-negative-control
+packet-defaults-cs: build/packet-defaults/cs/.stamp packet-defaults-cpp
+	$(DOTNET) run --project test/packet-defaults/cs/packet-defaults.csproj -- testdata/wire/packet-defaults
+	$(DOTNET) run --configuration Release --project test/packet-defaults/cs/packet-defaults.csproj -- testdata/wire/packet-defaults
+
+packet-defaults-cs-negative-control: packet-defaults-cs
+	@mkdir -p build/packet-defaults/cs-negative
+	go run ./tools/sabotage -name packet-defaults-cs-constructor-bytes \
+		-out build/packet-defaults/cs-negative/csharp.gotext internal/codegen/csharp/csharp.go
+	@printf '{"Replace":{"%s/internal/codegen/csharp/csharp.go":"%s/build/packet-defaults/cs-negative/csharp.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/packet-defaults/cs-negative/overlay.json
+	go build -overlay=build/packet-defaults/cs-negative/overlay.json -o build/packet-defaults/cs-negative/schema ./cmd/schema
+	./build/packet-defaults/cs-negative/schema generate --lang cs --out build/packet-defaults/cs-negative/generated test/packet-defaults/Defaults.schema
+	$(DOTNET) build test/packet-defaults/cs/packet-defaults.csproj \
+		-p:DefaultsDir="$(CURDIR)/build/packet-defaults/cs-negative/generated" -o build/packet-defaults/cs-negative/checker
+	@if $(DOTNET) build/packet-defaults/cs-negative/checker/packet-defaults.dll testdata/wire/packet-defaults > build/packet-defaults/cs-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: missing constructor bytes passed in C#'; exit 1; fi
+	@grep -Fq 'FAILED: packet-default constructor bytes' build/packet-defaults/cs-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: C# failed for another reason'; cat build/packet-defaults/cs-negative/log; exit 1; }
+	@echo 'packet defaults C# negative control: missing constructor bytes fail the runtime check'
+
+test-cs: packet-defaults-cs packet-defaults-cs-negative-control
 
 generated/cs-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 	./bin/schema generate --lang cs --out generated/cs-ludicrous examples128
@@ -366,3 +394,53 @@ TOOLCHAIN_PINS_cs  := DOTNET
 CONFORMANCE_LEGS  += $(call unless_skipped,cs,build-conformance-cs build-cs-cook)
 BENCH_TABLES_LEGS += generated/bench/tables/cs/.stamp
 GOLDENS_LEGS      += update-goldens-cs
+# Packet UTF-8 content validation, including a compiled mutation control.
+build/packet-text/cs/.stamp: bin/schema test/packet-text/Narrow.schema
+	./bin/schema generate --lang cs --out build/packet-text/cs test/packet-text/Narrow.schema
+	@touch $@
+
+.PHONY: packet-utf8-cs packet-utf8-cs-negative-control
+packet-utf8-cs: build/packet-text/cs/.stamp build/packet-text/cpp/driver build/packet-text/harness
+	$(DOTNET) build test/packet-text/cs/packet-text.csproj -c Debug -o build/packet-text/cs/debug --nologo
+	./build/packet-text/harness dotnet build/packet-text/cs/debug/packet-text.dll
+	$(DOTNET) build test/packet-text/cs/packet-text.csproj -c Release -o build/packet-text/cs/release --nologo
+	./build/packet-text/harness dotnet build/packet-text/cs/release/packet-text.dll
+
+packet-utf8-cs-negative-control: packet-utf8-cs
+	@mkdir -p build/packet-text/cs-negative
+	go run ./tools/sabotage -name packet-utf8-cs-read -out build/packet-text/cs-negative/utf8.gotext internal/codegen/csharp/utf8.go
+	@printf '{"Replace":{"%s/internal/codegen/csharp/utf8.go":"%s/build/packet-text/cs-negative/utf8.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-text/cs-negative/overlay.json
+	go run -overlay=build/packet-text/cs-negative/overlay.json ./cmd/schema generate --lang cs --out build/packet-text/cs-negative test/packet-text/Narrow.schema
+	$(DOTNET) build test/packet-text/cs/packet-text.csproj -c Release -o build/packet-text/cs-negative/bin -p:TextDir="$(CURDIR)/build/packet-text/cs-negative" --nologo
+	@if ./build/packet-text/harness -mutations-only dotnet build/packet-text/cs-negative/bin/packet-text.dll > build/packet-text/cs-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: C# UTF-8 removal passed'; exit 1; fi
+	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-text/cs-negative/log || { cat build/packet-text/cs-negative/log; exit 1; }
+	@echo 'packet UTF-8 C# negative control: removed read validation fails bit-flip agreement'
+
+test-cs: packet-utf8-cs packet-utf8-cs-negative-control
+
+
+build/packet-wide/cs/.stamp: bin/schema build/packet-wide/source/WideText.schema test/packet-wide/Shapes.schema
+	./bin/schema generate --lang cs --out build/packet-wide/cs/wide build/packet-wide/source/WideText.schema
+	./bin/schema generate --lang cs --out build/packet-wide/cs/shapes test/packet-wide/Shapes.schema
+	@touch $@
+
+.PHONY: packet-wide-cs packet-wide-cs-negative-control
+packet-wide-cs: build/packet-wide/cs/.stamp build/packet-wide/cpp/driver build/packet-text/harness
+	$(DOTNET) build test/packet-wide/cs/packet-wide.csproj -c Debug -o build/packet-wide/cs/debug --nologo
+	$(DOTNET) build/packet-wide/cs/debug/packet-wide.dll --contracts
+	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver dotnet build/packet-wide/cs/debug/packet-wide.dll
+	$(DOTNET) build test/packet-wide/cs/packet-wide.csproj -c Release -o build/packet-wide/cs/release --nologo
+	$(DOTNET) build/packet-wide/cs/release/packet-wide.dll --contracts
+	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver dotnet build/packet-wide/cs/release/packet-wide.dll
+
+packet-wide-cs-negative-control: packet-wide-cs
+	@mkdir -p build/packet-wide/cs-negative
+	go run ./tools/sabotage -name packet-wide-cs-pairing -out build/packet-wide/cs-negative/wstring.gotext internal/codegen/csharp/wstring.go
+	@printf '{"Replace":{"%s/internal/codegen/csharp/wstring.go":"%s/build/packet-wide/cs-negative/wstring.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-wide/cs-negative/overlay.json
+	go run -overlay=build/packet-wide/cs-negative/overlay.json ./cmd/schema generate --lang cs --out build/packet-wide/cs-negative build/packet-wide/source/WideText.schema
+	$(DOTNET) build test/packet-wide/cs/packet-wide.csproj -c Release -o build/packet-wide/cs-negative/bin -p:TextDir="$(CURDIR)/build/packet-wide/cs-negative" --nologo
+	@if ./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver -mutations-only dotnet build/packet-wide/cs-negative/bin/packet-wide.dll > build/packet-wide/cs-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: C# wide pairing removal passed'; exit 1; fi
+	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-wide/cs-negative/log || { cat build/packet-wide/cs-negative/log; exit 1; }
+	@echo 'packet wide C# negative control: removed pairing fails bit-flip agreement'
+
+test-cs: packet-wide-cs packet-wide-cs-negative-control

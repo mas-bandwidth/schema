@@ -1,0 +1,14 @@
+package mapdemo
+
+// A map whose VALUE is a TEXT BUFFER (docs/SPEC-TABLES.md §2.5, §2.8): "A VALUE
+// is anything a table field can hold ... `*string` (§2.5)". A buffer is a NODE,
+// so the value is an ordinary pointer field of the generated entry and its
+// storage is that field's own row, the eight-byte reference (§4.2). The handle
+// is that SLOT, which is what an Emplace fills, and two keys may name one
+// buffer exactly as two pointer fields may.
+
+table Docs
+{
+    pages map[string(8)]*string // *string: a text buffer at its used size
+    after int32
+}

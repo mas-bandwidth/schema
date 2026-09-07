@@ -1182,17 +1182,15 @@ diagnostic does not name the field, the enum and the fix.
   and every row whose bound reaches its enum through a constant compiles
   clean without it.
 
-**CHECKER STATUS: `[E.Max]T` IS REFUSED, THE OTHER SPELLINGS ARE NOT.**
-`schema check` refuses `[E.Max]T` in a table body and in a union arm, naming
-the field, the enum and `[E]T` as the fix. It accepts `[E.Count]T` and `[N]T`
-under a `const N` that folds from either, with no diagnostic and exit 0, so a
-unit that spells the bound either of those ways compiles and carries the
-positional class this rule exists to close. The rule above follows the bound's
-PROVENANCE and the checker still follows its spelling, and closing that gap is
-owed as schema#540. Two sections rest on the refusal being made whole, §4.1's
+**CHECKER STATUS: THE REFUSAL FOLLOWS THE PROVENANCE.** `schema check` refuses
+every spelling above in a table body and in a union arm, reading the bound's
+provenance and not its text: `[E.Max]T`, `[E.Count]T`, and `[N]T` under a
+`const N` that folds from either at any depth of constant arithmetic. The
+diagnostic names the field, the enum, the constant where the bound reaches the
+enum through one, and `[E]T` as the fix; an arm's names the arm and the table
+that reaches the union. Two sections rest on this refusal being whole, §4.1's
 count of the silent class and SPEC.md §3.1's one exception to reachability, and
-each is written from this rule rather than from the tree. This paragraph is
-deleted by the implementation PR that closes the gap.
+both stand on the tree as well as on the rule.
 
 **RULING STATUS: the type-held case is ruled on schema#606.** Until then a
 `type` no table reaches keeps the spelling and a `type` a table reaches is
@@ -1351,7 +1349,7 @@ type a FIELD's is, and an arm may name no type at all:
 ```
 union Value
 {
-    count   int32 | min = 0, max = 100
+    tally   int32 | min = 0, max = 100
     label   string(64)
     blob    bytes(16)
     samples [..8]float32
@@ -1419,7 +1417,7 @@ already spends what it would buy**, and each is refused by name (§11):
 **Selection is presence, so a set arm ALWAYS rides, whatever it holds**
 (§3). A union FIELD holding `None` elides; a union holding a selected arm
 writes the arm id and the arm's payload under its length even when the
-payload is empty or entirely default — a zero `count`, an empty `label`, an
+payload is empty or entirely default — a zero `tally`, an empty `label`, an
 all-default `offset`, a `ping` that has no payload to hold. That is the
 pointer's and the optional's rule
 (§2.3, §3.1) at an arm, and for their reason: otherwise "no arm" and "this
@@ -1440,7 +1438,7 @@ arms, in C++:
 ```
 union
 {
-    int32_t count;
+    int32_t tally;
     struct { char value[65]; int32_t value_length; } label;
     struct { float value[8]; int32_t value_count; } samples;
     Vec3 offset;
@@ -1487,6 +1485,22 @@ reaches (§11). A table holding one has no BLOCK form, by §19's standing rule
 for every union in a block closure. The packet wire's encoding of a general
 arm is stated where the packet union is (SPEC §4.8), and carrying it in the
 nine backends is the named follow-on (§15).
+
+**THE TAG SHAPE IS THE PACKET TAG ENUM'S, MEMBER FOR MEMBER.** A different
+emitter writes it, so it is worth saying what it writes: `<Union>Type` carries
+`None = 0`, then each variant in declared order dense from 1, then `Count` (the
+declared variant count, `None` excluded) and `Max` (the exported extent), and
+beside the enum the DEBUG-NAME function that takes any value, out-of-set
+included, and returns the variant's spelling or the fixed unknown marker
+(SPEC §4.2, §4.8). It is the same construct to a reader: one logging which
+body arrived writes `EnumName( edit.body.type )` whichever union it holds, so
+it presents the same surface. Nothing on the read or write path calls the
+function and no generated code does. The table layer is the C++ reference's
+(§11, §15), so this shape has ONE emitter where the packet shape has nine.
+`Count` is therefore a REFUSED ARM NAME here as it is on a packet union
+(SPEC §4.11): the member exists, so an arm exporting `Count` would define it
+twice, which C++ refuses as a redefinition. The refusal is over the exported
+spelling, so `count` goes with it.
 
 - **A union declared for the TYPE wire keeps refusing table arms.** Types
   are value semantics and their wire is positional; a table arm is a
@@ -1664,6 +1678,37 @@ the ordinary legal recursion through a pointer. **A `*T` value is SHARED
 exactly as a pointer field is**: two keys naming one node hold one node, one
 index on the wire (§3.1), one body in a region (§6.3), one `&node` in the
 text (§16.7).
+
+**THE VALUE'S STORAGE IS THE ROW ITS KIND TAKES AT A FIELD** (§4.2, §7.2).
+The entry is a real table and `value` is an ordinary field of it, so nothing
+about a value's storage is the map's:
+
+- a scalar, an enum, a `flags` mask, a declared `type` and a table by value
+  store the type itself, ONE member;
+- `string(N)`, `wstring(N)` and `bytes(N)` store the buffer beside the `int32`
+  used length every text field carries, TWO members;
+- `[N]T` stores `T value[N]`, one member, complete by construction;
+- `[..N]T` stores `T value[N]` beside its `int32` used count, two members;
+- `[E]T` stores one slot per named variant and no count, one member;
+- `[]T` stores the sixteen-byte list slot, one member, and its elements ride in
+  the holder's node extent as any list's do (§2.9), laid after the entry array
+  by the pre-order rule the memory layout below states;
+- a map stores the sixteen-byte map slot, one member, and its entries ride
+  there too, under that same rule;
+- `*T`, `*string` and `*bytes` store the eight-byte reference every pointer
+  field has (§2.1, §2.5), one member, and the node it names takes its index
+  where the map is reached.
+
+**THE HANDLE FOLLOWS THE STORAGE.** `Insert`, `Find` and `Each` hand back a
+pointer to the `value` member where the storage is ONE member, and the ENTRY
+where it is two, because two members are not one addressable slot and a caller
+that cannot set the length or the count cannot fill the value. A `[N]T` value's
+handle points at the ARRAY rather than at its first element, so the extent
+survives the handoff. A `*T`, `*string` or `*bytes` value's BUILDER handle is
+the SLOT, which is what an `Emplace` fills, and the const `Find` answers the
+RESOLVED node, one add on the self-relative delta. Where the handle is the
+entry, the caller fills `value` and its companion and leaves `key` to the map,
+which owns the order the key carries.
 
 **And a map is a BY-VALUE EDGE of the ONE declaration-order walk** (§3.1,
 schema#438). The numbering, the pack measure and the pack are one walk over
@@ -5362,6 +5407,16 @@ entries announces about 5 KB once.
   SECOND, and the same damage planted inside a NESTED body of the second. Red if
   a leg reads the third body, counts more than one `malformed`, or discards the
   first body.
+- **The one content rule, and its clamp, on a message body.** A `string(N)`
+  payload carrying a truncated sequence, one carrying a zero byte and one
+  carrying an overlong encoding, each damage and terminal for the batch. Beside
+  them a payload longer than the reader's bound whose last code point straddles
+  it, which keeps the last whole code point that fits and counts one `clamped`;
+  one over the bound whose cut already falls on a boundary, which keeps the
+  whole bound; and one at the bound ending in a multi-byte code point, which
+  lands whole and counts nothing. Red if a leg stores text the file form
+  refuses, cuts a clamp inside a code point, keeps fewer bytes than the bound
+  admits, or counts `clamped` on a payload that fits.
 - **The pad, and what follows it.** A batch whose trailing bits to the byte
   boundary are not zero, and a buffer carrying a whole batch and then a byte
   more. Red if a leg reads either clean.
@@ -6098,6 +6153,19 @@ has:
   cleared;
 - **a window spliced in** from another seed of the same unit.
 
+**A MAP'S VALUE IS A FIELD POSITION, and every strategy above reaches it there
+without a rule of its own.** The value is an ordinary field of the generated
+entry and its storage is that field's own row (§2.8), so an entry's body
+carries a field header, a length and a payload of the value's own kind: an
+array's `N` and ELEMENT KIND where the value is `[N]T`, `[..N]T`, `[E]T` or an
+unbounded `[]T`; a kind `17` NODE INDEX where it is `*T`, `*string` or
+`*bytes`, and the blob record it names is a record of the node table like any
+other; and the kind `12` and kind `33` payloads the text strategies above name.
+The strategies are enumerated over field positions, so each lands inside an
+entry as it lands in any body. What stays the MAP'S rather than the value's is
+the KEY: its kind, its widening, its length and its order, each with the map's
+own verdict above.
+
 The enumerated passes run every mutant they name, whatever `N` is, so the
 checks each aims at are exercised on every run; the RANDOM pass stacks one to
 three of the strategies above on a seed the generator picks, `N` times, and
@@ -6122,10 +6190,18 @@ that replays it:
    encodes what it decoded; the bytes must be identical, or both must refuse
    to write. A reader that reports correctly and fabricates a value from a
    neighbor's bytes fails here. **This runs with RETENTION OFF** (§6.6), which
-   is what leaves the requirement the one stated. A retention leg is owed
-   beside it, and its cost lands on the ORACLE first: `internal/tablewire`
-   carries no retention, so there is nothing to compare a retaining leg
-   against until it does.
+   is what leaves the requirement the one stated. **THE RETENTION LEG RUNS
+   BESIDE IT**, `make tables-wire-fuzz-retain`, driving the same mutants
+   through both engines' RETAINING paths and comparing the two retention
+   counters beside the six and the saved bytes beside them. Its arm is the
+   VARIABLE-CLASS FILE ROOTS and nothing else, because a fixed-class root's
+   `LoadRetain` is refused by name and a form-2 `SaveRetain` refuses by name
+   (§6.6, §3.3), and the line says how many seeds it left out. **Both
+   capacities are declared large on both sides**: a record's BYTE cost is the
+   port's own, so two engines at one tight capacity would drop different
+   records and the arm would measure the two layouts rather than the feature.
+   The capacity rule itself is held by each engine's own retain gate, where
+   the buffer is pinned one byte short of the last record.
 4. **`LoadMeasure` never asks past a stated bound.** For a variable root the
    region it asks for is held to the framing. When the node table read whole
    AND the read reports nothing, the answer is EXACT: the root's storage, each
@@ -6170,6 +6246,16 @@ guards:
 Both go red PLAIN, without a sanitizer, which is what says the oracle and not
 the redzone is doing the work. `make tables-wire-fuzz-negative-control` runs
 the pair.
+
+**THE RETENTION LEG HAS ITS OWN PAIR**, on the same rule and for the same
+reason, one control per ENGINE because the leg compares two of them, and each
+blade matches exactly one line of one file.
+`make tables-wire-fuzz-retain-negative-control` runs the pair.
+
+| control | what it removes | what must go red |
+|---|---|---|
+| `tables-wire-fuzz-retain-oracle-negative-control` | the ORACLE's DROP RULE, which is the verdict the resolving walk states (§6.6) | the retention report: the oracle keeps a record the reference drops, and the two counters differ on the mutant that carried it |
+| `tables-wire-fuzz-retain-class-negative-control` | the REFERENCE's `retain_lost` on an EXCLUDED CLASS at the unknown arm | the retention report: the leg under-reports every class a mutant carries there |
 
 **The sweep's naming, so the register can read it off the Makefile.** A port
 carries `tables-<lang>-wire-fuzz` and `tables-<lang>-wire-fuzz-negative-control`;
@@ -7382,22 +7468,25 @@ above), the fixed class's own row excepted:
   produces and what the step pair exists to prevent.
 
 **The wire fuzzer runs with retention OFF** (§4.2), which leaves its round-trip
-requirement the requirement it is today, and it gains one leg that runs with it
-ON: the same six counters, and a save the oracle reproduces. **That leg needs
-the ORACLE to retain too.** `internal/tablewire` is the compiler-side engine
-the fuzzer compares against, a third reading of §3 written from the page rather
-than from a backend, and it carries no retention today. The leg is not
-buildable until it does, and that is part of what the feature costs rather than
-a detail of it.
+requirement the requirement it is today, and it carries one leg that runs with
+it ON: the same six counters, the two retention counters beside them, and a
+save the oracle reproduces. **THAT LEG NEEDS THE ORACLE TO RETAIN TOO**, and it
+does. `internal/tablewire` is the compiler-side engine the fuzzer compares
+against, a third reading of §3 written from the page rather than from a
+backend, and it carries the retention this subsection specifies: the caller's
+two stores, the resolving walk one pass each way, the six excluded classes at
+one `retain_lost` each, the drop rule, the record that dies with the occurrence
+that carried it, the retained tail at the end of its own body and the two
+stores numbered into one trailer in merged first-use order. The leg's own two
+negative controls, one per engine, stand beside the fuzzer's (§4.2).
 
-**Backend status: the C++ REFERENCE carries it, and no port does.** The
-reference emits `TableRetain`, the three verbs on every variable-class root,
-the refusal on every fixed-class one, and a second family of body functions
-beside the three the wire already had, so `Load`, `Measure` and `Save` are
-unchanged. What is still owed is the eight ports, `internal/tablewire`'s own
-retention and the fuzzer leg that needs it (§4.2), and the MESSAGE form's
-`LoadRetain` (§3.3): the form 2 write refuses by name and the form 2 read is
-not built.
+**Backend status: the C++ REFERENCE and the ORACLE carry it, and no port
+does.** The reference emits `TableRetain`, the three verbs on every
+variable-class root, the refusal on every fixed-class one, and a second family
+of body functions beside the three the wire already had, so `Load`, `Measure`
+and `Save` are unchanged. What is still owed is the eight ports and the MESSAGE
+form's `LoadRetain` (§3.3): the form 2 write refuses by name and the form 2
+read is not built.
 
 ## 7. The cooked form
 
@@ -9843,12 +9932,10 @@ in build version (§20.5).
   table closure, `| max = K` headroom and variant id collisions, each
   diagnostic naming the keying field that pulled the enum in. A slot value no variant names is a SAVE failure, not a silent `None`
   (§3.2).
-  **CHECKER STATUS: `[E.Max]T` is refused in a table body and in a union arm.
-  `[E.Count]T` and `[N]T` under a `const N` that folds from either are
-  accepted there today with no diagnostic**, because the checker still
-  follows the spelling where the rule follows the provenance, owed as
-  schema#540 (§2.4), and this sentence is deleted by the implementation PR
-  that closes the gap.
+  **CHECKER STATUS: `[E.Max]T`, `[E.Count]T` and `[N]T` under a `const N` that
+  folds from either are all refused in a table body and in a union arm**, on
+  the bound's provenance, and an arm's diagnostic names the arm and the table
+  that reaches the union (§2.4).
   **RULING STATUS: the type-held case is ruled on schema#606**, and until
   then a `type` a table reaches is not refused (§2.4).
 - **Maps** (§2.8): a map in a `type` body; a key that is an enum (the
@@ -9968,6 +10055,12 @@ in build version (§20.5).
   (§2.8) or an UNBOUNDED ARRAY (§2.9)**, whose elements live in the holder's
   NODE EXTENT and would make that extent depend on the union's tag, each
   refusal naming the table wrapper that serves.
+- **An ARM NAMED `Count`** (§2.6), over the EXPORTED spelling, so `count` is
+  refused too. The tag shape a table-closure union gets carries the declared
+  variant count as the member `Count`, exactly as a packet union's tag enum
+  does (SPEC §4.2, §4.8, §4.11), so the arm would define the member twice and
+  C++ refuses that as a redefinition. It is the reservation `None` and `Max`
+  already carry, reaching every union because the member is on every union.
 - **An array of unions** (§2.6): the enum-KEYED spelling `[E]Body`, a named
   follow-on (§15) where the bounded `[..N]Body` and `[N]Body` are not; and
   **an array of unions in a table closure under every backend but C++**,
@@ -11156,6 +11249,16 @@ inspects everything in the schema built:
 
 ## 15. Named follow-ons
 
+- **AN OPTIONAL MAP VALUE'S PRESENCE COMPANION HAS NO HANDLE** (§2.3, §2.8).
+  `?T` and `?[N]T` store the value beside a `bool` presence companion, which
+  is two members, and §2.8's handle rule answers the ENTRY for two members.
+  The C++ reference answers the value member instead, so a caller can fill a
+  `map[K]?T`'s value and cannot set its presence, and the value is elided on
+  every wire. `?[..N]T` is the exception by accident: its count companion
+  already makes it a pair, so its handle is the entry and its presence bit is
+  reachable. Closing it is the same one-line predicate the pair rule is
+  already spelled as, plus a corpus unit per spelling; the page's rule is
+  already the one above and nothing about it is undecided.
 - **THE UNIT REGISTRY IN THE EIGHT PORTS** (§8.3, §8.7). The C++ reference
   emits `UnitView()` and the eight ports do not, so in those eight an enum
   VARIANT's, a flags BIT's and a record-naming ARM's `doc` and `tags` reach

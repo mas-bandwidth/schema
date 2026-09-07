@@ -3280,15 +3280,13 @@ inline bool PaddedRowLoadMessageBody( TableBitReader & r, const TableVocabulary 
                 {
                     uint64_t n = 0;
                     if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() || !r.has( (int64_t) n * 8 ) ) { report->malformed = true; return false; }
-                    int32_t kept = 0;
-                    if ( n > (uint64_t) 15 ) { kept = 15; report->clamped++; } else { kept = (int32_t) n; }
-                    for ( uint64_t i = 0; i < n; i++ )
-                    {
-                        uint64_t by = 0;
-                        if ( !r.get( by, 8 ) ) { report->malformed = true; return false; }
-                        if ( (int32_t) i < kept ) { value.label[i] = (char) by; }
-                    }
+                    const uint8_t * text = r.buffer + ( r.offset >> 3 );
+                    if ( !TableUtf8Valid( text, n ) ) { report->malformed = true; return false; }
+                    const int32_t kept = (int32_t) TableUtf8Clamp( text, n, 15 );
+                    if ( (uint64_t) kept < n ) { report->clamped++; }
+                    memcpy( value.label, text, (size_t) kept );
                     value.label[kept] = 0;
+                    r.offset += (int64_t) n * 8;
                     value.label_length = kept;
                 }
                 break;

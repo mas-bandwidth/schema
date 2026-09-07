@@ -812,10 +812,6 @@ pub fn write_strs(stream: &mut WriteStream<'_>, value: &Strs) -> Result {
     if value.s_length < 0 || value.s_length > 8 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    debug_assert!(
-        std::str::from_utf8(&value.s[..value.s_length as usize]).is_ok(),
-        "string(N) payloads are well-formed UTF-8 by contract (SPEC 4.7)"
-    );
     {
         let mut offset_value = value.s_length as u32;
         stream.serialize_bits(&mut offset_value, 4)?; // the length guards the slice (§6.3)
@@ -844,6 +840,9 @@ pub fn read_strs(stream: &mut ReadStream<'_>, value: &mut Strs) -> Result {
     stream.serialize_bits(&mut value.lead, 5)?;
     stream.serialize_int(&mut value.s_length, 0, 8)?; // the length guards the slice (§6.3)
     stream.serialize_bytes(&mut value.s[..value.s_length as usize])?;
+    if std::str::from_utf8(&value.s[..value.s_length as usize]).is_err() {
+        return Err(Error::Validation); // malformed UTF-8 (SPEC §4.7)
+    }
     for i in 0..value.s_length as usize {
         if value.s[i] == 0 {
             return Err(Error::Validation);

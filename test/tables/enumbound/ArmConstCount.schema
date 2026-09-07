@@ -1,0 +1,20 @@
+package ebarmconstcount
+
+// THE UNION ARM'S SHAPE, WITH THE BOUND FOLDED THROUGH A CONSTANT
+// (docs/SPEC-TABLES.md §2.4, §11): the provenance walk and the arm scope are
+// one rule, so the arm takes the refusal the constant hides.
+
+enum ShipType { Fighter, Bomber, Scout }
+
+const SlotCount = ShipType.Count
+
+union Payload
+{
+    ships [SlotCount]int32
+    plain int32
+}
+
+table Fleet
+{
+    payload Payload
+}

@@ -1,0 +1,14 @@
+package mapdemo
+
+// A map whose VALUE is an ENUM-KEYED ARRAY (docs/SPEC-TABLES.md §2.4, §2.8):
+// "A VALUE is anything a table field can hold ... `[E]T`". The value is an
+// ordinary field of the generated entry, so its storage is that field's own
+// row, `TableKeyed<T, E>` (§4.2), one slot per named variant and no count. That
+// is ONE member, so the handle is the slot itself and the keyed array's own
+// surface reaches the variants.
+
+table Slots
+{
+    seats map[int32][Slot]int32 // [E]T: one slot per named variant, under a signed key
+    after int32
+}

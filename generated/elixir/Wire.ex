@@ -1810,6 +1810,8 @@ defmodule Example.Wire do
       if bits_read + len * 8 > num_bits, do: throw(:invalid)
       v_text = binary_part(data, bits_read >>> 3, len)
       bits_read = bits_read + len * 8
+      # malformed UTF-8 is content the read refuses (SPEC §4.7)
+      if not String.valid?(v_text), do: throw(:invalid)
       # an interior null is content the read refuses (SPEC §4.7)
       if :binary.match(v_text, <<0>>) != :nomatch, do: throw(:invalid)
       # the final position is unobserved — the verdict and value are the surface
@@ -2436,6 +2438,8 @@ defmodule Example.Wire do
       if bits_read + len * 8 > num_bits, do: throw(:invalid)
       v_text = binary_part(data, bits_read >>> 3, len)
       bits_read = bits_read + len * 8
+      # malformed UTF-8 is content the read refuses (SPEC §4.7)
+      if not String.valid?(v_text), do: throw(:invalid)
       # an interior null is content the read refuses (SPEC §4.7)
       if :binary.match(v_text, <<0>>) != :nomatch, do: throw(:invalid)
       # the final position is unobserved — the verdict and value are the surface

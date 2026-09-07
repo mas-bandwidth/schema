@@ -1,0 +1,28 @@
+package wideprobe
+
+type Text
+{
+    value wstring(4)
+}
+
+type Conditional
+{
+    enabled bool
+    if enabled
+    {
+        text wstring(4)
+    }
+}
+
+union Choice
+{
+    text        Text
+    conditional Conditional
+}
+
+type Box
+{
+    items   [2]Text
+    counted [1..3]Text
+    choice  Choice
+}

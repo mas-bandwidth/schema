@@ -46,8 +46,21 @@ func (g *tableGen) emitTableUnion(un *ir.Union) {
 	for i, v := range un.Variants {
 		g.pf("    %s = %d,\n", ir.GoExportName(v.Name), i+1)
 	}
+	g.pf("    Count = %d, // the declared variant count (SPEC §4.2)\n", len(un.Variants))
 	g.pf("    Max = %d, // the exported extent (SPEC §4.2)\n", len(un.Variants))
 	g.pf("};\n\n")
+	// the tag enum's name surface is a declared enum's, member for member, and
+	// a table arm is no different to a reader: one logging which body arrived
+	// writes EnumName( value ) whichever union it holds. Nothing on the read
+	// or write path calls it.
+	g.pf("// EnumName: debug/log name for any %sType value, out-of-set included\n", un.Name)
+	g.pf("inline const char * EnumName( %sType value )\n{\n", un.Name)
+	g.pf("    switch ( value )\n    {\n")
+	g.pf("        case %sType::None: return \"None\";\n", un.Name)
+	for _, v := range un.Variants {
+		g.pf("        case %sType::%s: return \"%s\";\n", un.Name, ir.GoExportName(v.Name), ir.GoExportName(v.Name))
+	}
+	g.pf("        default: return \"???\";\n    }\n}\n\n")
 
 	arm, typ := "arm", "Arm"
 	if len(un.Variants) > 0 {

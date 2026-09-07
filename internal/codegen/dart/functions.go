@@ -150,7 +150,12 @@ func (g *gen) emitWindowLoad(ind string) {
 		g.pf("%s\n", load)
 	} else {
 		g.pf("%s  window =\n", ind)
-		g.pf("%s      view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);\n", ind)
+		shift := fmt.Sprintf("%s      view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);", ind)
+		if len(shift) <= 80 {
+			g.pf("%s\n", shift)
+		} else {
+			g.pf("%s      view.getUint64(bitsRead >>> 3, Endian.little) >>>\n%s      (bitsRead & 7);\n", ind, ind)
+		}
 	}
 	g.pf("%s} else {\n", ind)
 	g.pf("%s  window = tailWord >>> (bitsRead - tailBase * 8);\n", ind)
@@ -252,7 +257,7 @@ func (g *gen) staticBitsField(f *ir.Field) (int64, bool) {
 
 func (g *gen) staticBitsScalar(f *ir.Field) (int64, bool) {
 	switch f.Type.Kind {
-	case ir.TString, ir.TBytes:
+	case ir.TString, ir.TBytes, ir.TWString:
 		return 0, false
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
@@ -716,6 +721,8 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 	case ir.TFloat64:
 		g.needScratch, g.needF64Conv = true, true
 		g.chunkAdd(fmt.Sprintf("_float64BitsFromDouble(%s)", name), 64, ind)
+	case ir.TWString:
+		g.emitWriteWString(f, name, ind)
 	case ir.TString, ir.TBytes:
 		g.emitWriteBytesField(f, name, ind)
 	case ir.TNamed:
@@ -934,7 +941,12 @@ func (g *gen) emitWriteByteRun(f *ir.Field, name, count string, staticCount int6
 	g.chunkFlush(ind)
 	g.pf("%s{\n", ind)
 	g.pf("%s  var %s = 0;\n", ind, iv)
-	g.pf("%s  for (; %s + 4 <= %s; %s += 4) {\n", ind, iv, count, iv)
+	loop := fmt.Sprintf("%s  for (; %s + 4 <= %s; %s += 4) {", ind, iv, count, iv)
+	if len(loop) <= 80 {
+		g.pf("%s\n", loop)
+	} else {
+		g.pf("%s  for (\n%s    ;\n%s    %s + 4 <= %s;\n%s    %s += 4\n%s  ) {\n", ind, ind, ind, iv, count, ind, iv, ind)
+	}
 	g.chunkAdd(g.byteAt(f, name, iv), 8, ind+"    ")
 	g.chunkAdd(g.byteAt(f, name, iv+" + 1"), 8, ind+"    ")
 	g.chunkAdd(g.byteAt(f, name, iv+" + 2"), 8, ind+"    ")
@@ -1167,6 +1179,8 @@ func (g *gen) emitReadDynamicField(f *ir.Field, path, ind string) {
 		name = path
 	}
 	switch {
+	case f.Type.Kind == ir.TWString:
+		g.emitReadWString(f, name, ind)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.emitReadBytesField(f, name, ind)
 	case f.Array == ir.ArrayCounted:
@@ -1259,25 +1273,54 @@ func (g *gen) emitReadBytesField(f *ir.Field, name, ind string) {
 	}
 	g.pf("%s%s = v;\n", ind, length)
 	g.emitReadAlign(ind)
-	g.pf("%sif (bitsRead + %s * 8 > numBits) {\n%s  return false;\n%s}\n", ind, length, ind, ind)
+	guard := fmt.Sprintf("%sif (bitsRead + %s * 8 > numBits) {", ind, length)
+	if len(guard) <= 80 {
+		g.pf("%s\n", guard)
+	} else {
+		g.pf("%sif (bitsRead + %s * 8 >\n%s    numBits) {\n", ind, length, ind)
+	}
+	g.pf("%s  return false;\n%s}\n", ind, ind)
 	iv := fmt.Sprintf("i%d", g.loopDepth)
 	g.loopDepth++
 	g.pf("%s{\n", ind)
 	g.pf("%s  final base = bitsRead >>> 3;\n", ind)
-	g.pf("%s  for (var %s = 0; %s < %s; %s++) {\n", ind, iv, iv, length, iv)
-	g.pf("%s    %s[%s] = view.getUint8(base + %s);\n", ind, name, iv, iv)
+	g.emitByteReadLoop(ind+"  ", iv, length)
+	load := fmt.Sprintf("%s    %s[%s] = view.getUint8(base + %s);", ind, name, iv, iv)
+	if len(load) <= 80 {
+		g.pf("%s\n", load)
+	} else {
+		g.pf("%s    %s[%s] = view.getUint8(\n%s      base + %s,\n%s    );\n", ind, name, iv, ind, iv, ind)
+	}
 	g.pf("%s  }\n", ind)
 	g.pf("%s}\n", ind)
 	g.pf("%sbitsRead += %s * 8;\n", ind, length)
 	g.invalidateWindow() // bitsRead moved by a dynamic amount
 	if f.Type.Kind == ir.TString {
-		g.pf("%sfor (var %s = 0; %s < %s; %s++) {\n", ind, iv, iv, length, iv)
+		g.needUTF8 = true
+		guard := fmt.Sprintf("%sif (!_schemaUtf8Valid(%s, %s)) {", ind, name, length)
+		if len(guard) <= 80 {
+			g.pf("%s\n", guard)
+		} else {
+			g.pf("%sif (!_schemaUtf8Valid(\n%s  %s,\n%s  %s,\n%s)) {\n", ind, ind, name, ind, length, ind)
+		}
+		g.pf("%s  return false;\n%s}\n", ind, ind)
+		g.emitByteReadLoop(ind, iv, length)
 		g.pf("%s  if (%s[%s] == 0) {\n", ind, name, iv)
 		g.pf("%s    return false; // an interior null is content the read refuses (SPEC §4.7)\n", ind)
 		g.pf("%s  }\n", ind)
 		g.pf("%s}\n", ind)
 	}
 	g.loopDepth--
+}
+
+// Match the formatter when a nested member makes the loop header too long.
+func (g *gen) emitByteReadLoop(ind, iv, length string) {
+	one := fmt.Sprintf("%sfor (var %s = 0; %s < %s; %s++) {", ind, iv, iv, length, iv)
+	if len(one) <= 80 {
+		g.pf("%s\n", one)
+	} else {
+		g.pf("%sfor (\n%s  var %s = 0;\n%s  %s < %s;\n%s  %s++\n%s) {\n", ind, ind, iv, ind, iv, length, ind, iv, ind)
+	}
 }
 
 // emitReadWide64 assembles a 33..64-bit value into lo. Through 57 bits the
@@ -1328,6 +1371,8 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string, bounded bool) {
 		return
 	}
 	switch f.Type.Kind {
+	case ir.TWString:
+		g.emitReadWString(f, name, ind)
 	case ir.TString, ir.TBytes:
 		// only reachable as an array element (never inside a fused run —
 		// staticBitsScalar calls it dynamic)
@@ -1650,9 +1695,17 @@ func (g *gen) emitInitializeField(f *ir.Field, path, ind string, viaCalls, defau
 	}
 	name := path + "." + dartName(f.Name)
 	switch {
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
-		g.pf("%s%s.fillRange(0, %s.length, 0);\n", ind, name, name)
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
+		fill := fmt.Sprintf("%s%s.fillRange(0, %s.length, 0);", ind, name, name)
+		if len(fill) <= 80 {
+			g.pf("%s\n", fill)
+		} else {
+			g.pf("%s%s.fillRange(\n%s  0,\n%s  %s.length,\n%s  0,\n%s);\n", ind, name, ind, ind, name, ind, ind)
+		}
 		g.pf("%s%sLength = 0;\n", ind, name)
+		if defaults {
+			g.emitByteDefault(f, name, ind, g.pf)
+		}
 	case f.Array != ir.ArrayNone:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Struct:
@@ -1835,6 +1888,10 @@ func (g *gen) emitMeasureField(f *ir.Field, path, ind string, pending *int64) {
 		name = path
 	}
 	switch {
+	case f.Type.Kind == ir.TWString:
+		*pending += ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size))
+		g.flushMeasure(pending, ind)
+		g.pf("%sbits += %sLength * 32;\n", ind, name)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		lenBits := ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size))
 		*pending += lenBits

@@ -488,10 +488,8 @@ int main( void )
         }
     }
 
-    /* ---- the string UTF-8 contract's validator can FAIL (SPEC §4.7) ----
-       string(N) payloads are well-formed UTF-8 by contract, writer-trusted,
-       debug-asserted through schema_utf8_valid_. The enforcement predicate
-       is proven able to reject each malformation class. */
+    /* The read-side UTF-8 validator can reject each malformation class.
+       The packet-text gate also proves the generated reader calls it. */
     {
         check( schema_utf8_valid_( (const serialize_uint8_t *) "plain ascii", 11 ), "ascii is well-formed" );
         check( schema_utf8_valid_( (const serialize_uint8_t *) "h\xC3\xA9llo", 6 ), "2-byte sequence" );

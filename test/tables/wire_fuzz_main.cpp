@@ -9,12 +9,14 @@
 // The stream, little-endian throughout:
 //
 //   in:  u32 roster count, then per root: u16 n, unit key, u16 n, root name,
-//        u8 form, the WIRE's own form byte (§3, §3.3): 1 a file, 2 a message
+//        u8 form, the WIRE's own form byte (§3, §3.3): 1 a file, 2 a message,
+//        u8 retain, whether the entry is driven through the RETAIN family (§6.6)
 //   out: one byte per root — 1 when this leg has a codec for it, else 0
 //   in:  per mutant: u32 roster index, u32 length, the bytes; EOF ends it
 //   out: per mutant: u8 loaded; i32 unknown, kind_mismatch, widened, clamped,
-//        duplicate; u8 malformed; u8 refused; i64 measure; i64 saved length (-1 when Save
-//        refused the value), the saved bytes
+//        duplicate; u8 malformed; u8 refused; i64 measure; i32 retained,
+//        retain_lost (§6.6, zero on an entry that does not retain); i64 saved
+//        length (-1 when Save refused the value), the saved bytes
 //
 // A MESSAGE root's mutants resolve against the CONNECTION's announced table
 // (§3.3), and this leg derives that table from its OWN unit's announcement,
@@ -72,6 +74,9 @@ struct Reply
     int64_t measure;
     int64_t saved; // -1: Save refused
     uint8_t * bytes;
+    // RETENTION'S TWO COUNTERS (docs/SPEC-TABLES.md §6.6), zero on every
+    // roster entry that does not retain
+    int32_t retained, retain_lost;
 };
 
 template <typename T>
@@ -84,6 +89,8 @@ static void copy_report( const T & from, Reply & to )
     to.duplicate = from.duplicate;
     to.malformed = from.malformed;
     to.refused = from.refused;
+    to.retained = from.retained;
+    to.retain_lost = from.retain_lost;
 }
 
 typedef void ( *Run )( const uint8_t * wire, int64_t bytes, Reply & reply );
@@ -93,6 +100,9 @@ struct Codec
     const char * unit;
     const char * root;
     uint8_t form; // the wire's own form byte: 1 a file, 2 a message (§3, §3.3)
+    // retain says this entry is driven through the RETAIN family
+    // (docs/SPEC-TABLES.md §6.6) rather than through Load, Measure and Save
+    uint8_t retain;
     Run run;
 };
 
@@ -160,10 +170,73 @@ struct Variable
     }
 };
 
+// one VARIABLE-class root through the RETAIN FAMILY (docs/SPEC-TABLES.md
+// §6.6): LoadRetain into the same region LoadMeasure sized, then MeasureRetain
+// and SaveRetain over the same buffer, with the report read AFTER the save
+// because the report accumulates across the pair.
+//
+// THE TWO CAPACITIES ARE DECLARED LARGE, and the harness declares the same
+// two. A record's BYTE cost is the port's own — the page fixes what a record
+// must CARRY and leaves the layout inside the buffer to the port — so two
+// engines at one tight capacity would drop different records and the arm would
+// be measuring the two layouts rather than the feature. The capacity rules are
+// held by the reference's own retain gate, where one engine answers alone.
+static const int64_t kRetainCapacity = 1 << 20;
+static const int32_t kRetainIdCapacity = (int32_t) ( kRetainCapacity / 8 );
+
+template <typename T, typename Report, typename Retain, typename Allocator, typename Reason>
+struct VariableRetain
+{
+    template <int64_t ( *load_measure )( const uint8_t *, int64_t, int64_t *, Reason * ),
+              const T * ( *load )( uint8_t *, int64_t, const uint8_t *, int64_t, Retain *, Report * ),
+              int64_t ( *measure )( const T *, Retain *, Allocator ),
+              int64_t ( *save )( const T *, Retain *, uint8_t *, int64_t, Report * ),
+              Allocator ( *default_allocator )()>
+    static void run( const uint8_t * wire, int64_t bytes, Reply & reply )
+    {
+        // THE CALLER OWNS BOTH STORES AND SIZES THEM, and the codec never
+        // allocates out of either (§6.6). One buffer for the life of the
+        // process: a retention buffer belongs to one loaded region, and the
+        // next LoadRetain into it resets both stores.
+        static uint8_t * storage = (uint8_t *) malloc( (size_t) kRetainCapacity );
+        static typename Retain::Id * ids = (typename Retain::Id *) malloc( (size_t) kRetainIdCapacity * sizeof( typename Retain::Id ) );
+        Retain retain;
+        retain.bytes = storage;
+        retain.capacity = kRetainCapacity;
+        retain.ids = ids;
+        retain.id_capacity = kRetainIdCapacity;
+
+        int64_t need = load_measure( wire, bytes, NULL, NULL );
+        reply.measure = need;
+        uint8_t * region = (uint8_t *) malloc( need > 0 ? (size_t) need : 1 );
+        Report report;
+        const T * root = load( region, need, wire, bytes, &retain, &report );
+        reply.loaded = root != NULL;
+        reply.saved = -1;
+        if ( root != NULL )
+        {
+            int64_t size = measure( root, &retain, default_allocator() );
+            if ( size >= 0 )
+            {
+                reply.bytes = (uint8_t *) malloc( size > 0 ? (size_t) size : 1 );
+                if ( save( root, &retain, reply.bytes, size, &report ) == size ) { reply.saved = size; }
+                else { free( reply.bytes ); reply.bytes = NULL; }
+            }
+        }
+        // the report is copied AFTER the save, which is where retain_lost's
+        // save half lands (§6.6)
+        copy_report( report, reply );
+        free( region );
+    }
+};
+
 #define FIXED( unit_key, ns, type ) \
-    { unit_key, #type, 1, Fixed<ns::type, ns::TableReport>::run<ns::type##Load, ns::type##Measure, ns::type##Save> }
+    { unit_key, #type, 1, 0, Fixed<ns::type, ns::TableReport>::run<ns::type##Load, ns::type##Measure, ns::type##Save> }
 #define VARIABLE( unit_key, ns, type ) \
-    { unit_key, #type, 1, Variable<ns::type, ns::TableReport, ns::TableAllocator, ns::TableRefuseReason>::run<ns::type##LoadMeasure, ns::type##Load, ns::type##Measure, ns::type##Save, ns::TableDefaultAllocator> }
+    { unit_key, #type, 1, 0, Variable<ns::type, ns::TableReport, ns::TableAllocator, ns::TableRefuseReason>::run<ns::type##LoadMeasure, ns::type##Load, ns::type##Measure, ns::type##Save, ns::TableDefaultAllocator> }
+#define RETAIN( unit_key, ns, type ) \
+    { unit_key, #type, 1, 1, VariableRetain<ns::type, ns::TableReport, ns::TableRetain, ns::TableAllocator, ns::TableRefuseReason>::run< \
+        ns::type##LoadMeasure, ns::type##LoadRetain, ns::type##MeasureRetain, ns::type##SaveRetain, ns::TableDefaultAllocator> }
 
 // THE MESSAGE FORM's roots (docs/SPEC-TABLES.md §3.3). The connection's table
 // is this unit's own announcement, read once through the same AnnounceRead a
@@ -273,11 +346,11 @@ struct VariableMessage
 };
 
 #define MESSAGE( unit_key, ns, type ) \
-    { unit_key, #type, 2, FixedMessage<ns::type, ns::TableReport, ns::TableVocabulary, ns::TableMessageEntry, ns::kTableMessageEntriesHere>::run< \
+    { unit_key, #type, 2, 0, FixedMessage<ns::type, ns::TableReport, ns::TableVocabulary, ns::TableMessageEntry, ns::kTableMessageEntriesHere>::run< \
         ns::AnnounceMeasure, ns::Announce, ns::AnnounceRead, \
         ns::type##LoadMessages, ns::type##MeasureMessages, ns::type##SaveMessages> }
 #define MESSAGE_VARIABLE( unit_key, ns, type ) \
-    { unit_key, #type, 2, VariableMessage<ns::type, ns::TableReport, ns::TableVocabulary, ns::TableMessageEntry, ns::kTableMessageEntriesHere, ns::TableAllocator>::run< \
+    { unit_key, #type, 2, 0, VariableMessage<ns::type, ns::TableReport, ns::TableVocabulary, ns::TableMessageEntry, ns::kTableMessageEntriesHere, ns::TableAllocator>::run< \
         ns::AnnounceMeasure, ns::Announce, ns::AnnounceRead, \
         ns::type##LoadMeasure, ns::type##LoadMessages, ns::type##MeasureMessages, ns::type##SaveMessages, ns::TableDefaultAllocator> }
 
@@ -331,6 +404,15 @@ static const Codec codecs[] = {
     MESSAGE( "vocab9demo", vocab9demo, Wide00 ),
     MESSAGE( "vocab9demo", vocab9demo, Wide19 ),
     MESSAGE_VARIABLE( "graphdemo", graphdemo, Scene ),
+    // AND THE SAME VARIABLE-CLASS FILE ROOTS THROUGH THE RETAIN FAMILY
+    // (docs/SPEC-TABLES.md §6.6). RETENTION IS THE VARIABLE CLASS'S: a
+    // fixed-class root's LoadRetain is refused by name, and a form-2
+    // SaveRetain refuses by name (§3.3), so neither is an entry here.
+    RETAIN( "graphdemo", graphdemo, Scene ),
+    RETAIN( "tblp2", tblp2, Chain ),
+    RETAIN( "streamdemo", streamdemo, Feed ),
+    RETAIN( "tblw1", tblw1, Fleet ),
+    RETAIN( "tblw2", tblw2, Fleet ),
 };
 
 static bool read_exact( void * to, size_t n )
@@ -379,14 +461,15 @@ int main()
     {
         char unit[256], root[256];
         uint8_t form = 0;
-        if ( !read_name( unit, sizeof( unit ) ) || !read_name( root, sizeof( root ) ) || !read_exact( &form, 1 ) )
+        uint8_t retain = 0;
+        if ( !read_name( unit, sizeof( unit ) ) || !read_name( root, sizeof( root ) ) || !read_exact( &form, 1 ) || !read_exact( &retain, 1 ) )
         {
             fprintf( stderr, "wire-fuzz leg: a roster entry is unreadable\n" );
             return 1;
         }
         for ( size_t c = 0; c < sizeof( codecs ) / sizeof( codecs[0] ); c++ )
         {
-            if ( strcmp( codecs[c].unit, unit ) == 0 && strcmp( codecs[c].root, root ) == 0 && codecs[c].form == form ) { roster[i] = &codecs[c]; }
+            if ( strcmp( codecs[c].unit, unit ) == 0 && strcmp( codecs[c].root, root ) == 0 && codecs[c].form == form && codecs[c].retain == retain ) { roster[i] = &codecs[c]; }
         }
         uint8_t known = roster[i] != NULL ? 1 : 0;
         fwrite( &known, 1, 1, stdout );
@@ -426,6 +509,8 @@ int main()
         fwrite( &malformed, 1, 1, stdout );
         fwrite( &refused, 1, 1, stdout );
         write_i64( reply.measure );
+        write_i32( reply.retained );
+        write_i32( reply.retain_lost );
         write_i64( reply.saved );
         if ( reply.saved > 0 ) { fwrite( reply.bytes, 1, (size_t) reply.saved, stdout ); }
         fflush( stdout );

@@ -555,7 +555,7 @@ type Ring {
 
 union Shape {
     ring  Ring
-    count int32 | min = 0, max = 100
+    size  int32 | min = 0, max = 100
 }
 
 table Holder {
@@ -568,11 +568,11 @@ table Holder {
 		name   string
 		source string
 	}{
-		{"a scalar arm added", strings.Replace(tableHeld, "    count int32 | min = 0, max = 100\n",
-			"    count int32 | min = 0, max = 100\n    tally int32 | min = 0, max = 100\n", 1)},
+		{"a scalar arm added", strings.Replace(tableHeld, "    size  int32 | min = 0, max = 100\n",
+			"    size  int32 | min = 0, max = 100\n    tally int32 | min = 0, max = 100\n", 1)},
 		{"an arm's declared maximum moved", strings.Replace(tableHeld, "max = 100", "max = 200", 1)},
 		{"an arm's type moved under one width", strings.Replace(tableHeld,
-			"    count int32 | min = 0, max = 100\n", "    count float32\n", 1)},
+			"    size  int32 | min = 0, max = 100\n", "    size  float32\n", 1)},
 		{"a payload-free arm added", strings.Replace(tableHeld, "    ring  Ring\n", "    ring  Ring\n    idle\n", 1)},
 		{"an arm renamed", strings.Replace(tableHeld, "    ring  Ring\n", "    hoop  Ring\n", 1)},
 	}
