@@ -126,6 +126,7 @@ enum SCHEMA_TABLE_REFUSAL_REASON { SCHEMA_TABLE_NO_REFUSAL, SCHEMA_TABLE_NEWER_F
    no schema files. <name>_table_type() returns <Name>'s descriptor. */
 
 struct TableTypeInfo;
+struct TableFieldInfo;
 
 /* One arm of a union field: where its payload sits inside the union's storage
    and what its payload looks like. The arm's NAME and its table-wire id ride
@@ -135,6 +136,8 @@ typedef struct TableUnionArmInfo
 {
     uint32_t offset;                    /* offsetof the arm's payload within the union storage */
     const struct TableTypeInfo * table; /* the arm payload's descriptor */
+    const struct TableFieldInfo * field; /* non-body arm, relative to union storage */
+    uint32_t size; /* bytes established when this arm is selected */
 } TableUnionArmInfo;
 
 /* A union field's shape: the tag, and the arms indexed by it. Arms run
@@ -171,6 +174,8 @@ typedef struct TableVariantInfo
    are one, so every absent doc compares equal by address. */
 static SCHEMA_UNUSED const char TableDocNone[1] = "";
 
+typedef struct TableWideRange { uint64_t lo[2], hi[2]; } TableWideRange;
+
 typedef struct TableFieldInfo
 {
     const char * name;      /* schema field name, e.g. "health" */
@@ -191,6 +196,8 @@ typedef struct TableFieldInfo
     int has_range;          /* a declared [min, max] (int or float) */
     double range_min;       /* NOTE: int64 ranges beyond 2^53 lose precision here */
     double range_max;
+    const TableWideRange * wide; /* exact raw range for wide/fixed storage */
+    int32_t frac_bits;
     int64_t enum_max;       /* enums: highest valid value (None = 0 always valid);
                                unions: the arm count (tag range [0, enum_max]);
                                flags: the highest declared BIT INDEX; else -1 */
@@ -381,11 +388,11 @@ static SCHEMA_UNUSED int table_reader_skip( TableReader * r, uint8_t kind )
    build. The storage shifts left and holds no slot for None, so a build that
    skipped this compare would index one element BEFORE the array — undefined
    behaviour in the configuration a game ships. */
-static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key )
+static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key, size_t count )
 {
-    if ( key == 0 )
+    if ( key <= 0 || (uint64_t) key > (uint64_t) count )
     {
-        assert( 0 && "None is the null key of an enum-keyed array: it keys no slot" );
+        assert( 0 && "key is outside the enum-keyed array" );
         abort();
     }
     return key - 1;
@@ -394,7 +401,7 @@ static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key )
 /* keyed[key] — the slot a variant owns, as an LVALUE. The key is evaluated
    once. ITERATION is the surface a consumer of the whole array wants: walk
    1..E_MAX and index with the key, so a call site writes no shift. */
-#define SCHEMA_TABLE_KEYED_AT( array, key ) ( (array)[ table_keyed_slot( (int32_t) ( key ) ) ] )
+#define SCHEMA_TABLE_KEYED_AT( array, key ) ( (array)[ table_keyed_slot( (int32_t) ( key ), sizeof( array ) / sizeof( (array)[0] ) ) ] )
 
 
 static SCHEMA_UNUSED float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
@@ -403,6 +410,38 @@ static SCHEMA_UNUSED double table_bits_to_double( uint64_t bits ) { double d; me
 static SCHEMA_UNUSED uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
 
 #endif /* SCHEMA_GRAPHDEMO_TABLE_PRIMITIVES */
+
+#ifndef SCHEMA_TABLE_UTF16_RUNTIME
+#define SCHEMA_TABLE_UTF16_RUNTIME
+static SCHEMA_UNUSED uint16_t table_wire_utf16_unit( const uint8_t * bytes, int64_t index )
+{
+    return (uint16_t) ((uint16_t) bytes[index*2] | ((uint16_t) bytes[index*2+1] << 8));
+}
+static SCHEMA_UNUSED int table_wire_utf16( const uint8_t * bytes, int64_t units )
+{
+    int64_t i = 0;
+    while ( i < units ) {
+        uint16_t unit = table_wire_utf16_unit( bytes, i++ );
+        if ( unit == 0 ) { return 0; }
+        if ( unit >= 0xd800 && unit <= 0xdbff ) {
+            uint16_t low;
+            if ( i == units ) { return 0; }
+            low = table_wire_utf16_unit( bytes, i++ );
+            if ( low < 0xdc00 || low > 0xdfff ) { return 0; }
+        } else if ( unit >= 0xdc00 && unit <= 0xdfff ) { return 0; }
+    }
+    return 1;
+}
+static SCHEMA_UNUSED int64_t table_wire_utf16_clamp( const uint8_t * bytes, int64_t units, int64_t bound )
+{
+    if ( units <= bound ) { return units; }
+    if ( bound > 0 ) {
+        uint16_t last = table_wire_utf16_unit( bytes, bound-1 );
+        if ( last >= 0xd800 && last <= 0xdbff ) { bound--; }
+    }
+    return bound;
+}
+#endif
 
 #ifndef SCHEMA_GRAPHDEMO_TABLE_ARENA
 #define SCHEMA_GRAPHDEMO_TABLE_ARENA

@@ -30,14 +30,16 @@ func (g *tableGen) wireScalarRead(f *ir.Field, dst, rdr, wireKind, ind, onBad st
 	// The caller has already accepted this kind or a precise widening. Keep
 	// each numeric decode at the source width, including its range clamps.
 	g.pf("%sswitch ( %s )\n%s{\n", ind, wireKind, ind)
-	for source := 1; source <= 11; source++ {
+	for source := 1; source <= 29; source++ {
 		if source != kind && !ir.TableKindWidens(source, kind) {
 			continue
 		}
 		g.pf("%s    case %d:\n%s    {\n", ind, source, ind)
 		// onBad can contain break, which must leave the caller's element loop,
 		// not this dispatch switch. A per-field label supplies that boundary.
-		if source == kind {
+		if tableKindWidth(kind) == 16 {
+			g.wireWideRead(f, source, dst, rdr, ind+"        ", onBad)
+		} else if source == kind {
 			g.emitTableReadScalarFrom(f, source, dst, ind+"        ", rdr, onBad)
 		} else {
 			g.wireWidenedScalar(f, source, dst, rdr, ind+"        ", onBad)
@@ -102,7 +104,7 @@ func (g *tableGen) emitWireRead(st *ir.Struct) {
 		if f.Type.Kind == ir.TBytes {
 			kind = tkU8
 		}
-		plain := f.Array == ir.ArrayNone && f.Type.Kind != ir.TBytes && kind <= tkF64
+		plain := f.Array == ir.ArrayNone && f.Type.Kind != ir.TBytes && tableKindWidth(kind) > 0
 		g.pf("            case 0x%016xull: /* %s */\n            {\n", ir.TableFieldWireId(f), f.Name)
 		g.pf("                if ( kind != %d )\n                {\n", wireKind)
 		if plain {
@@ -115,7 +117,7 @@ func (g *tableGen) emitWireRead(st *ir.Struct) {
 			g.pf("                        break;\n                    }\n")
 		}
 		g.pf("                    r->report->kind_mismatch++;\n                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }\n                    break;\n                }\n")
-		g.wireReadField(f, kind)
+		g.wireReadFieldAt(f, kind, "value->"+f.Name)
 		if f.Type.Optional {
 			g.pf("                value->%s_present = 1;\n", f.Name)
 		}
@@ -128,14 +130,26 @@ func (g *tableGen) emitWireRead(st *ir.Struct) {
 	g.pf("    return %s( &r, value );\n}\n\n", g.api(st.Name, "load_body"))
 }
 
-func (g *tableGen) wireReadField(f *ir.Field, kind int) {
+func (g *tableGen) wireReadFieldAt(f *ir.Field, kind int, dst string) {
+	g.wireReadFieldPayload(f, kind, dst, "")
+}
+func (g *tableGen) wireReadFieldPayload(f *ir.Field, kind int, dst, bounded string) {
 	ind := "                "
-	dst := "value->" + f.Name
 	switch {
+	case f.Type.Kind == ir.TWString:
+		g.pf("%sTableReader sub; int64_t keep, i;\n", ind)
+		g.pf("%sif ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }\n", ind)
+		g.pf("%sif ( sub.size %% 2 != 0 || !table_wire_utf16( sub.buffer, sub.size/2 ) ) { r->report->malformed = 1; %s[0] = 0; %s_length = 0; break; }\n", ind, dst, dst)
+		g.pf("%skeep = table_wire_utf16_clamp( sub.buffer, sub.size/2, %d ); if ( keep != sub.size/2 ) { r->report->clamped++; }\n", ind, f.Type.Size)
+		g.pf("%sfor ( i = 0; i < keep; i++ ) { %s[i] = table_wire_utf16_unit( sub.buffer, i ); } %s[keep] = 0; %s_length = (int32_t)keep;\n", ind, dst, dst, dst)
 	case f.Type.Kind == ir.TString:
 		g.pf("%sTableReader sub; uint64_t keep;\n", ind)
 		g.pf("%sif ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }\n", ind)
-		g.pf("%sif ( !table_wire_utf8( sub.buffer, (uint64_t) sub.size ) ) { r->report->malformed = 1; %s[0] = 0; %s_length = 0; break; }\n", ind, dst, dst)
+		g.pf("%sif ( !table_wire_utf8( sub.buffer, (uint64_t) sub.size ) )\n%s{\n", ind, ind)
+		if len(f.DefBytes) != 0 {
+			g.pf("%s    static const uint8_t initial[] = { %s };\n%s    memcpy( %s, initial, sizeof( initial ) );\n", ind, byteLiterals(f.DefBytes), ind, dst)
+		}
+		g.pf("%s    r->report->malformed = 1; %s[%d] = 0; %s_length = %d; break;\n%s}\n", ind, dst, len(f.DefBytes), dst, len(f.DefBytes), ind)
 		g.pf("%skeep = (uint64_t) sub.size;\n%sif ( keep > %d ) { keep = table_wire_utf8_clamp( sub.buffer, keep, %d ); r->report->clamped++; }\n", ind, ind, f.Type.Size, f.Type.Size)
 		g.pf("%smemcpy( %s, sub.buffer, (size_t) keep ); %s[keep] = 0; %s_length = (int32_t) keep;\n", ind, dst, dst, dst)
 	case f.KeyEnum != "":
@@ -150,10 +164,20 @@ func (g *tableGen) wireReadField(f *ir.Field, kind int) {
 			bound = f.Type.Size
 			count = dst + "_length"
 		}
-		g.pf("%sTableReader sub;\n%sif ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }\n", ind, ind)
+		g.pf("%sTableReader sub;\n", ind)
+		if bounded == "" {
+			g.pf("%sif ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }\n", ind)
+		} else {
+			g.pf("%ssub = %s; %s.offset = %s.size;\n", ind, bounded, bounded, bounded)
+		}
 		g.pf("%sif ( sub.size >= 2 )\n%s{\n", ind, ind)
 		g.pf("%s    uint8_t elem_kind; uint64_t count, keep, i;\n", ind)
-		g.pf("%s    if ( !table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->malformed = 1; }\n%s    else\n%s    {\n", ind, ind, ind)
+		if bounded == "" {
+			g.pf("%s    if ( !table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->malformed = 1; }\n%s    else\n%s    {\n", ind, ind, ind)
+		} else {
+			g.pf("%s    elem_kind = table_reader_get8( &sub );\n", ind)
+			g.pf("%s    if ( !table_reader_leb( &sub, &count ) ) { r->report->malformed = 1; break; }\n%s    {\n", ind, ind)
+		}
 		g.pf("%s        if ( elem_kind != %d )\n%s        {\n", ind, kind, ind)
 		g.pf("%s            if ( !table_kind_widens( elem_kind, %d ) ) { r->report->kind_mismatch++; break; }\n%s            r->report->widened++;\n%s        }\n", ind, kind, ind, ind)
 		g.pf("%s        keep = count; if ( keep > %d ) { keep = %d; r->report->clamped++; }\n", ind, bound, bound)
@@ -167,6 +191,8 @@ func (g *tableGen) wireReadField(f *ir.Field, kind int) {
 			g.pf("%s            %s( &elem, &%s[i] );\n", ind, g.api(f.Type.Name, "load_body"), dst)
 			// Array elements retain the decoded prefix, matching the reference
 			// rather than applying a nested field's exact-extent reset.
+		} else if kind == tkUnion {
+			g.pf("%s            if ( !%s( &sub, &%s[i], 1 ) ) { %s }\n", ind, g.unionWireName(f.Type.Ref.(*ir.Union), "load"), dst, bad)
 		} else {
 			g.wireScalarRead(f, dst+"[i]", "sub", "elem_kind", ind+"            ", bad)
 		}
@@ -175,22 +201,8 @@ func (g *tableGen) wireReadField(f *ir.Field, kind int) {
 		}
 		g.pf("%s        }\n%s        end_%s: ;\n%s    }\n%s}\n", ind, ind, f.Name, ind, ind)
 	case kind == tkUnion:
-		un := f.Type.Ref.(*ir.Union)
-		none := enumConst(un.Name+"Type", "None")
-		g.pf("%suint64_t arm_ref, arm_id; uint8_t arm_kind; TableReader sub;\n", ind)
-		g.pf("%sif ( !table_reader_leb( r, &arm_ref ) || arm_ref > r->id_count ) { r->report->malformed = 1; return 0; }\n", ind)
-		g.pf("%sif ( arm_ref == 0 ) { %s.type = %s; break; }\n", ind, dst, none)
-		g.pf("%sarm_id = table_reader_id_at( r, arm_ref );\n%sif ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }\n", ind, ind)
-		g.pf("%sarm_kind = table_reader_get8( r );\n%sif ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }\n", ind, ind)
-		g.pf("%s%s.type = %s;\n%sswitch ( arm_id )\n%s{\n", ind, dst, none, ind, ind)
-		for _, v := range un.Variants {
-			g.pf("%s    case 0x%016xull:\n", ind, ir.TableWireId(v.WireName()))
-			g.pf("%s        if ( arm_kind != %d ) { r->report->kind_mismatch++; break; }\n", ind, tkTable)
-			g.pf("%s        %s.type = %s;\n", ind, dst, enumConst(un.Name+"Type", v.Name))
-			g.pf("%s        %s( &sub, &%s.as.%s );\n", ind, g.api(v.Type, "load_body"), dst, v.Name)
-			g.pf("%s        if ( sub.offset != sub.size ) { r->report->malformed = 1; %s.type = %s; }\n%s        break;\n", ind, dst, none, ind)
-		}
-		g.pf("%s    default: r->report->unknown++; break;\n%s}\n", ind, ind)
+		g.pf("%sif ( !%s( r, &%s, 0 ) ) { return 0; }\n", ind, g.unionWireName(f.Type.Ref.(*ir.Union), "load"), dst)
+
 	case kind == tkTable:
 		g.pf("%sTableReader sub;\n%sif ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }\n", ind, ind)
 		g.pf("%s%s( &sub, &%s );\n", ind, g.api(f.Type.Name, "load_body"), dst)

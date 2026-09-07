@@ -90,8 +90,20 @@ build/schema_test_c_ludicrous: generated/c-ludicrous/.stamp test/c-ludicrous/mai
 # together — the generated externals carry the package (internal/codegen/ctable's
 # `sym`) — but they cannot be INCLUDED into one translation unit, which is what
 # the conformance driver's file-per-unit shape is about.
-build/tables-generated-c/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema
+build/tables-generated-c/.stamp: bin/schema $(wildcard tables/vocab9/*.schema) $(wildcard tables/vocab/*.schema) $(wildcard tables/backend/*.schema) test/tables/R2.schema test/tables/R1.schema test/tables/K2.schema test/tables/K1.schema test/tables/A2.schema test/tables/A1.schema test/tables/M2.schema test/tables/M1.schema $(wildcard tables/messages/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema tables/scalars/Scalars.schema test/tables/Scalars2.schema examples-wide/Caption.schema examples-wide/WideText.schema
 	@mkdir -p build/tables-generated-c
+	./bin/schema generate --lang c --out build/tables-generated-c/vocab9 tables/vocab9
+	./bin/schema generate --lang c --out build/tables-generated-c/vocab tables/vocab
+	./bin/schema generate --lang c --out build/tables-generated-c/backend tables/backend
+	./bin/schema generate --lang c --out build/tables-generated-c/r2 test/tables/R2.schema
+	./bin/schema generate --lang c --out build/tables-generated-c/r1 test/tables/R1.schema
+	./bin/schema generate --lang c --out build/tables-generated-c/k2 test/tables/K2.schema
+	./bin/schema generate --lang c --out build/tables-generated-c/k1 test/tables/K1.schema
+	./bin/schema generate --lang c --out build/tables-generated-c/a2 test/tables/A2.schema
+	./bin/schema generate --lang c --out build/tables-generated-c/a1 test/tables/A1.schema
+	./bin/schema generate --lang c --out build/tables-generated-c/m2 test/tables/M2.schema
+	./bin/schema generate --lang c --out build/tables-generated-c/m1 test/tables/M1.schema
+	./bin/schema generate --lang c --out build/tables-generated-c/messages tables/messages
 	./bin/schema generate --lang c --out build/tables-generated-c/examples tables/examples
 	./bin/schema generate --lang c --out build/tables-generated-c/pointers tables/pointers
 	./bin/schema generate --lang c --out build/tables-generated-c/block tables/block
@@ -101,6 +113,9 @@ build/tables-generated-c/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_P
 	./bin/schema generate --lang c --out build/tables-generated-c/p1 test/tables/P1.schema
 	./bin/schema generate --lang c --out build/tables-generated-c/p2 test/tables/P2.schema
 	./bin/schema generate --lang c --out build/tables-generated-c/p3 test/tables/P3.schema
+	./bin/schema generate --lang c --out build/tables-generated-c/wide examples-wide
+	./bin/schema generate --lang c --out build/tables-generated-c/scalars tables/scalars
+	./bin/schema generate --lang c --out build/tables-generated-c/scalars2 test/tables/Scalars2.schema
 	./bin/schema generate --lang c --out build/tables-generated-c/jsonkeys test/tables/JsonKeys.schema
 	@touch $@
 
@@ -118,6 +133,21 @@ TABLES_CFLAGS := -std=c99 -Wall -Wextra -Werror -Wshadow -Wtype-limits $(C_TAUTO
 TABLES_CFLAGS_CONTROL := $(subst -O2,-O0,$(TABLES_CFLAGS))
 
 C_CONFORMANCE_SOURCES = test/conformance/c/main.c \
+	test/conformance/c/unit_vocab9demo.c build/tables-generated-c/vocab9/Vocab9Table.c \
+	test/conformance/c/unit_vocabdemo.c build/tables-generated-c/vocab/VocabTable.c \
+	test/conformance/c/unit_backenddemo.c build/tables-generated-c/backend/BackendTable.c \
+	test/conformance/c/unit_tblr2.c build/tables-generated-c/r2/R2Table.c \
+	test/conformance/c/unit_tblr1.c build/tables-generated-c/r1/R1Table.c \
+	test/conformance/c/unit_tblk2.c build/tables-generated-c/k2/K2Table.c \
+	test/conformance/c/unit_tblk1.c build/tables-generated-c/k1/K1Table.c \
+	test/conformance/c/unit_tbla2.c build/tables-generated-c/a2/A2Table.c \
+	test/conformance/c/unit_tbla1.c build/tables-generated-c/a1/A1Table.c \
+	test/conformance/c/unit_tblm2.c build/tables-generated-c/m2/M2Table.c \
+	test/conformance/c/unit_tblm1.c build/tables-generated-c/m1/M1Table.c \
+	test/conformance/c/unit_messagedemo.c build/tables-generated-c/messages/MessagesTable.c \
+	test/conformance/c/unit_widedemo.c build/tables-generated-c/wide/CaptionTable.c \
+	test/conformance/c/unit_scalars.c test/conformance/c/unit_tblscalars2.c \
+	build/tables-generated-c/scalars/ScalarsTable.c build/tables-generated-c/scalars2/Scalars2Table.c \
 	test/conformance/c/unit_tabledemo.c test/conformance/c/unit_tblv1.c \
 	test/conformance/c/unit_tblv2.c test/conformance/c/unit_tblp1.c \
 	test/conformance/c/unit_tblp3.c test/conformance/c/unit_blockdemo.c \
@@ -136,7 +166,7 @@ C_CONFORMANCE_SOURCES = test/conformance/c/main.c \
 # Each unit's translation unit gets ONLY its own unit on the include path, which
 # is what keeps two units' identically-named headers from meeting. The driver's
 # own headers come from test/conformance/c.
-C_CONFORMANCE_INCLUDES := -Itest/conformance/c -Ibuild/tables-generated-c/examples \
+C_CONFORMANCE_INCLUDES := -Ibuild/tables-generated-c/vocab9 -Ibuild/tables-generated-c/vocab -Ibuild/tables-generated-c/backend -Ibuild/tables-generated-c/r2 -Ibuild/tables-generated-c/r1 -Ibuild/tables-generated-c/k2 -Ibuild/tables-generated-c/k1 -Ibuild/tables-generated-c/a2 -Ibuild/tables-generated-c/a1 -Ibuild/tables-generated-c/m2 -Ibuild/tables-generated-c/m1 -Ibuild/tables-generated-c/messages -Ibuild/tables-generated-c/wide -I$(SERIALIZE_C) -Ibuild/tables-generated-c/scalars -Ibuild/tables-generated-c/scalars2 -Itest/conformance/c -Ibuild/tables-generated-c/examples \
 	-Ibuild/tables-generated-c/v1 -Ibuild/tables-generated-c/v2 \
 	-Ibuild/tables-generated-c/p1 -Ibuild/tables-generated-c/p3 \
 	-Ibuild/tables-generated-c/block -Ibuild/tables-generated-c/pointers
@@ -275,33 +305,35 @@ conformance-negative-control-c: build/conformance-harness
 	@printf '{"Replace":{"%s/internal/codegen/ctable/json.go":"%s/$(CONFORMANCE_NEGATIVE_C)/ctable-json.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(CONFORMANCE_NEGATIVE_C)/overlay.json
 	go build -overlay $(CONFORMANCE_NEGATIVE_C)/overlay.json -o $(CONFORMANCE_NEGATIVE_C)/schema ./cmd/schema
+	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/vocab9 tables/vocab9
+	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/vocab tables/vocab
+	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/backend tables/backend
+	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/r2 test/tables/R2.schema
+	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/r1 test/tables/R1.schema
+	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/k2 test/tables/K2.schema
+	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/k1 test/tables/K1.schema
+	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/a2 test/tables/A2.schema
+	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/a1 test/tables/A1.schema
+	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/m2 test/tables/M2.schema
+	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/m1 test/tables/M1.schema
+	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/messages tables/messages
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/examples tables/examples
-	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/block tables/block
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/pointers tables/pointers
+	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/block tables/block
+	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/blockhome tables/blockhome
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/v1 test/tables/V1.schema
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/v2 test/tables/V2.schema
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/p1 test/tables/P1.schema
+	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/p2 test/tables/P2.schema
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/p3 test/tables/P3.schema
+	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/wide examples-wide
+	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/scalars tables/scalars
+	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/scalars2 test/tables/Scalars2.schema
+	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/jsonkeys test/tables/JsonKeys.schema
 	@grep -lq SABOTAGED $(CONFORMANCE_NEGATIVE_C)/generated/*/*Table.c || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged walk"; exit 1; }
-	$(CC) $(TABLES_CFLAGS_CONTROL) -Itest/conformance/c \
-		-I$(CONFORMANCE_NEGATIVE_C)/generated/examples -I$(CONFORMANCE_NEGATIVE_C)/generated/v1 \
-		-I$(CONFORMANCE_NEGATIVE_C)/generated/v2 -I$(CONFORMANCE_NEGATIVE_C)/generated/p1 \
-		-I$(CONFORMANCE_NEGATIVE_C)/generated/p3 -I$(CONFORMANCE_NEGATIVE_C)/generated/block \
-		-I$(CONFORMANCE_NEGATIVE_C)/generated/pointers \
-		test/conformance/c/main.c test/conformance/c/unit_tabledemo.c test/conformance/c/unit_tblv1.c \
-		test/conformance/c/unit_tblv2.c test/conformance/c/unit_tblp1.c test/conformance/c/unit_tblp3.c \
-		test/conformance/c/unit_blockdemo.c test/conformance/c/unit_graphdemo.c \
-		$(CONFORMANCE_NEGATIVE_C)/generated/examples/TablesTable.c $(CONFORMANCE_NEGATIVE_C)/generated/examples/WideTable.c \
-		$(CONFORMANCE_NEGATIVE_C)/generated/examples/NestedTable.c $(CONFORMANCE_NEGATIVE_C)/generated/examples/KeyedTable.c \
-		$(CONFORMANCE_NEGATIVE_C)/generated/examples/PackTable.c $(CONFORMANCE_NEGATIVE_C)/generated/examples/GuardedTable.c \
-		$(CONFORMANCE_NEGATIVE_C)/generated/examples/RangesTable.c \
-		$(CONFORMANCE_NEGATIVE_C)/generated/v1/V1Table.c $(CONFORMANCE_NEGATIVE_C)/generated/v2/V2Table.c \
-		$(CONFORMANCE_NEGATIVE_C)/generated/p1/P1Table.c $(CONFORMANCE_NEGATIVE_C)/generated/p3/P3Table.c \
-		$(CONFORMANCE_NEGATIVE_C)/generated/block/RenderBlock.c $(CONFORMANCE_NEGATIVE_C)/generated/block/RenderTable.c \
-		$(CONFORMANCE_NEGATIVE_C)/generated/block/PaddedBlock.c $(CONFORMANCE_NEGATIVE_C)/generated/block/PaddedTable.c \
-		$(CONFORMANCE_NEGATIVE_C)/generated/pointers/GraphTable.c $(CONFORMANCE_NEGATIVE_C)/generated/pointers/MarksTable.c \
-		$(CONFORMANCE_NEGATIVE_C)/generated/pointers/PartsTable.c -o $(CONFORMANCE_NEGATIVE_C)/driver-bin -lm
+	$(CC) $(TABLES_CFLAGS_CONTROL) $(subst build/tables-generated-c,$(CONFORMANCE_NEGATIVE_C)/generated,$(C_CONFORMANCE_INCLUDES)) \
+		$(subst build/tables-generated-c,$(CONFORMANCE_NEGATIVE_C)/generated,$(C_CONFORMANCE_SOURCES)) -o $(CONFORMANCE_NEGATIVE_C)/driver-bin -lm
 	@printf '#!/bin/sh\nexec "%s/driver-bin" "$$@"\n' "$(CURDIR)/$(CONFORMANCE_NEGATIVE_C)" > $(CONFORMANCE_NEGATIVE_C)/driver
 	@chmod +x $(CONFORMANCE_NEGATIVE_C)/driver
 	@printf 'c %s/driver\n' "$(CONFORMANCE_NEGATIVE_C)" > $(CONFORMANCE_NEGATIVE_C)/drivers.txt

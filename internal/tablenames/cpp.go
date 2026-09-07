@@ -57,6 +57,7 @@ func init() {
 		// reason docs/SPEC-TABLES.md:560 gives for an every-unit claim is
 		// this one, and it reaches exactly this far.
 		Name{Name: "TableTypeInfo", What: "a table's reflection descriptor", View: true},
+		Name{Name: "TableWideRange", What: "a wide scalar reflection range", View: true},
 		Name{Name: "TableFieldInfo", What: "a field's reflection descriptor", View: true},
 		// THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1, §8.7): every field row
 		// and every declaration row with no `///` block names this ONE

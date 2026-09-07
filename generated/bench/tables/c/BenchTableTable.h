@@ -122,6 +122,7 @@ enum SCHEMA_TABLE_REFUSAL_REASON { SCHEMA_TABLE_NO_REFUSAL, SCHEMA_TABLE_NEWER_F
    no schema files. <name>_table_type() returns <Name>'s descriptor. */
 
 struct TableTypeInfo;
+struct TableFieldInfo;
 
 /* One arm of a union field: where its payload sits inside the union's storage
    and what its payload looks like. The arm's NAME and its table-wire id ride
@@ -131,6 +132,8 @@ typedef struct TableUnionArmInfo
 {
     uint32_t offset;                    /* offsetof the arm's payload within the union storage */
     const struct TableTypeInfo * table; /* the arm payload's descriptor */
+    const struct TableFieldInfo * field; /* non-body arm, relative to union storage */
+    uint32_t size; /* bytes established when this arm is selected */
 } TableUnionArmInfo;
 
 /* A union field's shape: the tag, and the arms indexed by it. Arms run
@@ -167,6 +170,8 @@ typedef struct TableVariantInfo
    are one, so every absent doc compares equal by address. */
 static SCHEMA_UNUSED const char TableDocNone[1] = "";
 
+typedef struct TableWideRange { uint64_t lo[2], hi[2]; } TableWideRange;
+
 typedef struct TableFieldInfo
 {
     const char * name;      /* schema field name, e.g. "health" */
@@ -186,6 +191,8 @@ typedef struct TableFieldInfo
     int has_range;          /* a declared [min, max] (int or float) */
     double range_min;       /* NOTE: int64 ranges beyond 2^53 lose precision here */
     double range_max;
+    const TableWideRange * wide; /* exact raw range for wide/fixed storage */
+    int32_t frac_bits;
     int64_t enum_max;       /* enums: highest valid value (None = 0 always valid);
                                unions: the arm count (tag range [0, enum_max]);
                                flags: the highest declared BIT INDEX; else -1 */
@@ -241,7 +248,7 @@ typedef struct TableWriter
 {
     uint8_t * buffer;
     int64_t capacity, offset;
-    int overflow, id_count;
+    int overflow, id_count, check_default;
     uint64_t ids[79];
 } TableWriter;
 
@@ -394,6 +401,8 @@ static SCHEMA_UNUSED int table_kind_widens( uint8_t kind, uint8_t declared )
 {
     if ( declared >= 3 && declared <= 5 ) { return kind >= 2 && kind < declared; }
     if ( declared >= 7 && declared <= 9 ) { return kind >= 6 && kind < declared; }
+    if ( declared == 18 ) { return kind >= 2 && kind <= 5; }
+    if ( declared == 19 ) { return kind >= 6 && kind <= 9; }
     return declared == 11 && kind == 10;
 }
 static SCHEMA_UNUSED double table_wire_widen_f32( uint32_t bits )
@@ -462,6 +471,38 @@ static SCHEMA_UNUSED double table_bits_to_double( uint64_t bits ) { double d; me
 static SCHEMA_UNUSED uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
 
 #endif /* SCHEMA_BENCHTABLE_TABLE_PRIMITIVES */
+
+#ifndef SCHEMA_TABLE_UTF16_RUNTIME
+#define SCHEMA_TABLE_UTF16_RUNTIME
+static SCHEMA_UNUSED uint16_t table_wire_utf16_unit( const uint8_t * bytes, int64_t index )
+{
+    return (uint16_t) ((uint16_t) bytes[index*2] | ((uint16_t) bytes[index*2+1] << 8));
+}
+static SCHEMA_UNUSED int table_wire_utf16( const uint8_t * bytes, int64_t units )
+{
+    int64_t i = 0;
+    while ( i < units ) {
+        uint16_t unit = table_wire_utf16_unit( bytes, i++ );
+        if ( unit == 0 ) { return 0; }
+        if ( unit >= 0xd800 && unit <= 0xdbff ) {
+            uint16_t low;
+            if ( i == units ) { return 0; }
+            low = table_wire_utf16_unit( bytes, i++ );
+            if ( low < 0xdc00 || low > 0xdfff ) { return 0; }
+        } else if ( unit >= 0xdc00 && unit <= 0xdfff ) { return 0; }
+    }
+    return 1;
+}
+static SCHEMA_UNUSED int64_t table_wire_utf16_clamp( const uint8_t * bytes, int64_t units, int64_t bound )
+{
+    if ( units <= bound ) { return units; }
+    if ( bound > 0 ) {
+        uint16_t last = table_wire_utf16_unit( bytes, bound-1 );
+        if ( last >= 0xd800 && last <= 0xdbff ) { bound--; }
+    }
+    return bound;
+}
+#endif
 
 #ifndef SCHEMA_BENCHTABLE_BUILD_VERSION
 #define SCHEMA_BENCHTABLE_BUILD_VERSION
@@ -826,8 +867,8 @@ static SCHEMA_UNUSED int64_t table_stat_measure( const TableStat * value );
 static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE int table_stat_save_body( TableWriter * w, const TableStat * value );
 static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE int table_stat_load_body( TableReader * r, TableStat * value );
 static SCHEMA_UNUSED int64_t table_mixed_measure( const TableMixed * value );
-static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE int table_mixed_save_body( TableWriter * w, const TableMixed * value );
-static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE int table_mixed_load_body( TableReader * r, TableMixed * value );
+static SCHEMA_UNUSED  int table_mixed_save_body( TableWriter * w, const TableMixed * value );
+static SCHEMA_UNUSED  int table_mixed_load_body( TableReader * r, TableMixed * value );
 static SCHEMA_UNUSED int64_t table_hit_event_measure( const TableHitEvent * value );
 static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE int table_hit_event_save_body( TableWriter * w, const TableHitEvent * value );
 static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE int table_hit_event_load_body( TableReader * r, TableHitEvent * value );
@@ -838,82 +879,215 @@ static SCHEMA_UNUSED int64_t table_pickup_event_measure( const TablePickupEvent 
 static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE int table_pickup_event_save_body( TableWriter * w, const TablePickupEvent * value );
 static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE int table_pickup_event_load_body( TableReader * r, TablePickupEvent * value );
 
+static SCHEMA_UNUSED int schema_benchtable_table_event_wire_save_( TableWriter * w, const TableEvent * value );
+static SCHEMA_UNUSED int schema_benchtable_table_event_wire_load_( TableReader * r, TableEvent * value, int element );
+static SCHEMA_UNUSED int schema_benchtable_table_event_wire_arm_hit_( TableWriter * w, const TableEvent * value )
+{
+    if ( !table_hit_event_save_body( w, &(*value).as.hit ) ) { return 0; }
+    return !w->overflow;
+}
+
+static SCHEMA_UNUSED int schema_benchtable_table_event_wire_arm_chat_( TableWriter * w, const TableEvent * value )
+{
+    if ( !table_chat_event_save_body( w, &(*value).as.chat ) ) { return 0; }
+    return !w->overflow;
+}
+
+static SCHEMA_UNUSED int schema_benchtable_table_event_wire_arm_pickup_( TableWriter * w, const TableEvent * value )
+{
+    if ( !table_pickup_event_save_body( w, &(*value).as.pickup ) ) { return 0; }
+    return !w->overflow;
+}
+
+static SCHEMA_UNUSED int schema_benchtable_table_event_wire_save_( TableWriter * w, const TableEvent * value )
+{
+    switch ( value->type )
+    {
+        case TABLE_EVENT_TYPE_NONE: table_writer_leb( w, 0 ); break;
+        case TABLE_EVENT_TYPE_HIT:
+            table_writer_id( w, 0x33732819300680aaull ); table_writer_put8( w, 13 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !schema_benchtable_table_event_wire_arm_hit_( w, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !schema_benchtable_table_event_wire_arm_hit_( &probe, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !schema_benchtable_table_event_wire_arm_hit_( w, value ) ) { return 0; }
+            }
+            break;
+        case TABLE_EVENT_TYPE_CHAT:
+            table_writer_id( w, 0xf2a38d910b5b348bull ); table_writer_put8( w, 13 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !schema_benchtable_table_event_wire_arm_chat_( w, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !schema_benchtable_table_event_wire_arm_chat_( &probe, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !schema_benchtable_table_event_wire_arm_chat_( w, value ) ) { return 0; }
+            }
+            break;
+        case TABLE_EVENT_TYPE_PICKUP:
+            table_writer_id( w, 0x9fa3a41c86ecb765ull ); table_writer_put8( w, 13 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !schema_benchtable_table_event_wire_arm_pickup_( w, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !schema_benchtable_table_event_wire_arm_pickup_( &probe, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !schema_benchtable_table_event_wire_arm_pickup_( w, value ) ) { return 0; }
+            }
+            break;
+        default: return 0;
+    }
+    return !w->overflow;
+}
+
+static SCHEMA_UNUSED int schema_benchtable_table_event_wire_load_( TableReader * r, TableEvent * value, int element )
+{
+    uint64_t ref; uint8_t kind; TableReader arm;
+    if ( !table_reader_leb( r, &ref ) || ref > r->id_count ) { r->report->malformed = 1; return 0; }
+    if ( ref == 0 ) { value->type = 0; return 1; }
+    if ( element ) { value->type = 0; }
+    if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+    kind = table_reader_get8( r );
+    if ( !table_reader_span( r, &arm ) ) { r->report->malformed = 1; return 0; }
+    value->type = 0;
+    switch ( table_reader_id_at( r, ref ) )
+    {
+        case 0x33732819300680aaull:
+        {
+            if ( kind != 13 && !table_kind_widens( kind, 13 ) ) { r->report->kind_mismatch++; break; }
+            table_hit_event_load_body( &arm, &(*value).as.hit );
+            if ( arm.offset != arm.size ) { r->report->malformed = 1; break; }
+            if ( kind != 13 ) { r->report->widened++; }
+            value->type = TABLE_EVENT_TYPE_HIT;
+            break;
+        }
+        case 0xf2a38d910b5b348bull:
+        {
+            if ( kind != 13 && !table_kind_widens( kind, 13 ) ) { r->report->kind_mismatch++; break; }
+            table_chat_event_load_body( &arm, &(*value).as.chat );
+            if ( arm.offset != arm.size ) { r->report->malformed = 1; break; }
+            if ( kind != 13 ) { r->report->widened++; }
+            value->type = TABLE_EVENT_TYPE_CHAT;
+            break;
+        }
+        case 0x9fa3a41c86ecb765ull:
+        {
+            if ( kind != 13 && !table_kind_widens( kind, 13 ) ) { r->report->kind_mismatch++; break; }
+            table_pickup_event_load_body( &arm, &(*value).as.pickup );
+            if ( arm.offset != arm.size ) { r->report->malformed = 1; break; }
+            if ( kind != 13 ) { r->report->widened++; }
+            value->type = TABLE_EVENT_TYPE_PICKUP;
+            break;
+        }
+        default: r->report->unknown++; break;
+    }
+    return 1;
+}
+
 static SCHEMA_UNUSED int table_entity_save_body( TableWriter * w, const TableEntity * value )
 {
     (void) value;
     { /* entity_id */
-        if ( value->entity_id != 0 )
+        if ( !( value->entity_id == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x23fcfd6678e36712ull ); table_writer_put8( w, 7 );
             table_writer_put16( w, (uint16_t) ( value->entity_id ) );
         }
     }
     { /* pos_x */
-        if ( value->pos_x != 0 )
+        if ( !( value->pos_x == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xcb4b37357667310eull ); table_writer_put8( w, 4 );
             table_writer_put32( w, (uint32_t) ( value->pos_x ) );
         }
     }
     { /* pos_y */
-        if ( value->pos_y != 0 )
+        if ( !( value->pos_y == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xcb4b3835766732c1ull ); table_writer_put8( w, 4 );
             table_writer_put32( w, (uint32_t) ( value->pos_y ) );
         }
     }
     { /* pos_z */
-        if ( value->pos_z != 0 )
+        if ( !( value->pos_z == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xcb4b353576672da8ull ); table_writer_put8( w, 4 );
             table_writer_put32( w, (uint32_t) ( value->pos_z ) );
         }
     }
     { /* yaw */
-        if ( value->yaw != 0 )
+        if ( !( value->yaw == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xb54d8e19798e16e8ull ); table_writer_put8( w, 7 );
             table_writer_put16( w, (uint16_t) ( value->yaw ) );
         }
     }
     { /* pitch */
-        if ( value->pitch != 0 )
+        if ( !( value->pitch == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x53a9f665a90cc1b1ull ); table_writer_put8( w, 7 );
             table_writer_put16( w, (uint16_t) ( value->pitch ) );
         }
     }
     { /* vel_x */
-        if ( value->vel_x != 0 )
+        if ( !( value->vel_x == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x6cede6b6eb60ee67ull ); table_writer_put8( w, 4 );
             table_writer_put32( w, (uint32_t) ( value->vel_x ) );
         }
     }
     { /* vel_y */
-        if ( value->vel_y != 0 )
+        if ( !( value->vel_y == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x6cede5b6eb60ecb4ull ); table_writer_put8( w, 4 );
             table_writer_put32( w, (uint32_t) ( value->vel_y ) );
         }
     }
     { /* vel_z */
-        if ( value->vel_z != 0 )
+        if ( !( value->vel_z == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x6cede8b6eb60f1cdull ); table_writer_put8( w, 4 );
             table_writer_put32( w, (uint32_t) ( value->vel_z ) );
         }
     }
     { /* health */
-        if ( value->health != 0 )
+        if ( !( value->health == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x7f69d4b5288ba9cfull ); table_writer_put8( w, 4 );
             table_writer_put32( w, (uint32_t) ( value->health ) );
         }
     }
     { /* weapon */
-        if ( value->weapon != TABLE_WEAPON_NONE )
+        if ( !( value->weapon == TABLE_WEAPON_NONE ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xa0b610205f2c6e01ull ); table_writer_put8( w, 30 );
             switch ( value->weapon )
             {
@@ -938,22 +1112,25 @@ static SCHEMA_UNUSED int table_entity_save_body( TableWriter * w, const TableEnt
         }
     }
     { /* damage */
-        if ( value->damage != 0 )
+        if ( !( value->damage == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x7f6308be8ab37fc0ull ); table_writer_put8( w, 9 );
             table_writer_put64( w, (uint64_t) ( value->damage ) );
         }
     }
     { /* moving */
-        if ( value->moving != 0 )
+        if ( !( value->moving == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x11a44fc1d1243da7ull ); table_writer_put8( w, 1 );
             table_writer_put8( w, value->moving ? 1 : 0 );
         }
     }
     { /* firing */
-        if ( value->firing != 0 )
+        if ( !( value->firing == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x7674cfd19b9031caull ); table_writer_put8( w, 1 );
             table_writer_put8( w, value->firing ? 1 : 0 );
         }
@@ -1950,15 +2127,17 @@ static SCHEMA_UNUSED int table_stat_save_body( TableWriter * w, const TableStat 
 {
     (void) value;
     { /* stat_id */
-        if ( value->stat_id != 0 )
+        if ( !( value->stat_id == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x80ab75f0866dbf65ull ); table_writer_put8( w, 6 );
             table_writer_put8( w, (uint8_t) ( value->stat_id ) );
         }
     }
     { /* delta */
-        if ( value->delta != 0 )
+        if ( !( value->delta == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x52076675ec13a0c1ull ); table_writer_put8( w, 4 );
             table_writer_put32( w, (uint32_t) ( value->delta ) );
         }
@@ -2141,10 +2320,18 @@ static SCHEMA_UNUSED int table_stat_load( TableStat * value, const uint8_t * buf
 
 static SCHEMA_UNUSED int schema_benchtable_table_mixed_wire_entities_( TableWriter * w, const TableMixed * value )
 {
+    if ( value->entities_count < 0 || value->entities_count > 8 ) { return 0; }
     int32_t i;
     table_writer_put8( w, 13 ); table_writer_leb( w, (uint64_t) value->entities_count );
     for ( i = 0; i < value->entities_count; i++ )
     {
+        if ( w->buffer == NULL )
+        {
+            int64_t frame_begin = w->offset;
+            if ( !table_entity_save_body( w, &value->entities[i] ) ) { return 0; }
+            table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+        }
+        else
         {
             TableWriter probe = table_writer_probe( w );
             if ( !table_entity_save_body( &probe, &value->entities[i] ) ) { return 0; }
@@ -2157,10 +2344,18 @@ static SCHEMA_UNUSED int schema_benchtable_table_mixed_wire_entities_( TableWrit
 
 static SCHEMA_UNUSED int schema_benchtable_table_mixed_wire_stats_( TableWriter * w, const TableMixed * value )
 {
+    if ( value->stats_count < 0 || value->stats_count > 80 ) { return 0; }
     int32_t i;
     table_writer_put8( w, 13 ); table_writer_leb( w, (uint64_t) value->stats_count );
     for ( i = 0; i < value->stats_count; i++ )
     {
+        if ( w->buffer == NULL )
+        {
+            int64_t frame_begin = w->offset;
+            if ( !table_stat_save_body( w, &value->stats[i] ) ) { return 0; }
+            table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+        }
+        else
         {
             TableWriter probe = table_writer_probe( w );
             if ( !table_stat_save_body( &probe, &value->stats[i] ) ) { return 0; }
@@ -2184,12 +2379,14 @@ static SCHEMA_UNUSED int schema_benchtable_table_mixed_wire_loadout_( TableWrite
 
 static SCHEMA_UNUSED int schema_benchtable_table_mixed_wire_player_name_( TableWriter * w, const TableMixed * value )
 {
+    if ( value->player_name_length < 0 || value->player_name_length > 15 ) { return 0; }
     table_writer_raw( w, value->player_name, value->player_name_length );
     return !w->overflow;
 }
 
 static SCHEMA_UNUSED int schema_benchtable_table_mixed_wire_payload_( TableWriter * w, const TableMixed * value )
 {
+    if ( value->payload_length < 0 || value->payload_length > 16 ) { return 0; }
     table_writer_put8( w, 6 ); table_writer_leb( w, (uint64_t) value->payload_length );
     table_writer_raw( w, value->payload, value->payload_length );
     return !w->overflow;
@@ -2199,71 +2396,81 @@ static SCHEMA_UNUSED int table_mixed_save_body( TableWriter * w, const TableMixe
 {
     (void) value;
     { /* protocol_magic */
-        if ( value->protocol_magic != 0 )
+        if ( !( value->protocol_magic == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x6a5a70d91aa115fdull ); table_writer_put8( w, 7 );
             table_writer_put16( w, (uint16_t) ( value->protocol_magic ) );
         }
     }
     { /* sequence */
-        if ( value->sequence != 0 )
+        if ( !( value->sequence == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xaa38aca481f528a8ull ); table_writer_put8( w, 7 );
             table_writer_put16( w, (uint16_t) ( value->sequence ) );
         }
     }
     { /* ack_sequence */
-        if ( value->ack_sequence != 0 )
+        if ( !( value->ack_sequence == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x0dbe005c56697c3eull ); table_writer_put8( w, 4 );
             table_writer_put32( w, (uint32_t) ( value->ack_sequence ) );
         }
     }
     { /* ack_bits */
-        if ( value->ack_bits != 0 )
+        if ( !( value->ack_bits == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x9bae0da8b829ee03ull ); table_writer_put8( w, 8 );
             table_writer_put32( w, (uint32_t) ( value->ack_bits ) );
         }
     }
     { /* session_id */
-        if ( value->session_id != 0 )
+        if ( !( value->session_id == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xb7d7b5650a590b05ull ); table_writer_put8( w, 9 );
             table_writer_put64( w, (uint64_t) ( value->session_id ) );
         }
     }
     { /* client_id */
-        if ( value->client_id != 0 )
+        if ( !( value->client_id == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x6d7b98e2d095967eull ); table_writer_put8( w, 8 );
             table_writer_put32( w, (uint32_t) ( value->client_id ) );
         }
     }
     { /* nonce */
-        if ( value->nonce != 1ull )
+        if ( !( value->nonce == 1ull ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x73a94c71d60dc0d8ull ); table_writer_put8( w, 9 );
             table_writer_put64( w, (uint64_t) ( value->nonce ) );
         }
     }
     { /* world_time */
-        if ( value->world_time != 0 )
+        if ( !( value->world_time == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x3eee6b51be54fc85ull ); table_writer_put8( w, 5 );
             table_writer_put64( w, (uint64_t) ( value->world_time ) );
         }
     }
     { /* frame_tick */
-        if ( value->frame_tick != 0 )
+        if ( !( value->frame_tick == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x7bbc035f7b6d0112ull ); table_writer_put8( w, 9 );
             table_writer_put64( w, (uint64_t) ( value->frame_tick ) );
         }
     }
     { /* server_time */
-        if ( value->server_time != 0.0f )
+        if ( !( value->server_time == 0.0f ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x3c460475f9be69c6ull ); table_writer_put8( w, 10 );
             table_writer_put32( w, table_float_to_bits( value->server_time ) );
         }
@@ -2272,7 +2479,15 @@ static SCHEMA_UNUSED int table_mixed_save_body( TableWriter * w, const TableMixe
         if ( value->entities_count < 0 || value->entities_count > 8 ) { return 0; }
         if ( value->entities_count > 0 )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x935d0fb07bb3822aull ); table_writer_put8( w, 14 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !schema_benchtable_table_mixed_wire_entities_( w, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !schema_benchtable_table_mixed_wire_entities_( &probe, value ) ) { return 0; }
@@ -2285,7 +2500,15 @@ static SCHEMA_UNUSED int table_mixed_save_body( TableWriter * w, const TableMixe
         if ( value->stats_count < 0 || value->stats_count > 80 ) { return 0; }
         if ( value->stats_count > 0 )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xee639cad45b1994cull ); table_writer_put8( w, 14 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !schema_benchtable_table_mixed_wire_stats_( w, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !schema_benchtable_table_mixed_wire_stats_( &probe, value ) ) { return 0; }
@@ -2297,46 +2520,25 @@ static SCHEMA_UNUSED int table_mixed_save_body( TableWriter * w, const TableMixe
     { /* game_event */
         if ( value->game_event.type != TABLE_EVENT_TYPE_NONE )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x2e35dc5321aa5790ull ); table_writer_put8( w, 15 );
-            switch ( value->game_event.type )
-            {
-                case TABLE_EVENT_TYPE_HIT:
-                    table_writer_id( w, 0x33732819300680aaull ); table_writer_put8( w, 13 );
-                    {
-                        TableWriter probe = table_writer_probe( w );
-                        if ( !table_hit_event_save_body( &probe, &value->game_event.as.hit ) ) { return 0; }
-                        table_writer_leb( w, (uint64_t) probe.offset );
-                        if ( !table_hit_event_save_body( w, &value->game_event.as.hit ) ) { return 0; }
-                    }
-                    break;
-                case TABLE_EVENT_TYPE_CHAT:
-                    table_writer_id( w, 0xf2a38d910b5b348bull ); table_writer_put8( w, 13 );
-                    {
-                        TableWriter probe = table_writer_probe( w );
-                        if ( !table_chat_event_save_body( &probe, &value->game_event.as.chat ) ) { return 0; }
-                        table_writer_leb( w, (uint64_t) probe.offset );
-                        if ( !table_chat_event_save_body( w, &value->game_event.as.chat ) ) { return 0; }
-                    }
-                    break;
-                case TABLE_EVENT_TYPE_PICKUP:
-                    table_writer_id( w, 0x9fa3a41c86ecb765ull ); table_writer_put8( w, 13 );
-                    {
-                        TableWriter probe = table_writer_probe( w );
-                        if ( !table_pickup_event_save_body( &probe, &value->game_event.as.pickup ) ) { return 0; }
-                        table_writer_leb( w, (uint64_t) probe.offset );
-                        if ( !table_pickup_event_save_body( w, &value->game_event.as.pickup ) ) { return 0; }
-                    }
-                    break;
-                default: return 0;
-            }
+            if ( !schema_benchtable_table_event_wire_save_( w, &value->game_event ) ) { return 0; }
         }
     }
     { /* loadout */
         int rides = 0; int32_t i;
-        for ( i = 0; i < 4; i++ ) { if ( value->loadout[i] != 0 ) { rides = 1; break; } }
+        for ( i = 0; i < 4; i++ ) { if ( !( value->loadout[i] == 0 ) ) { rides = 1; break; } }
         if ( rides )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x5759ce7586bbb5a3ull ); table_writer_put8( w, 14 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !schema_benchtable_table_mixed_wire_loadout_( w, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !schema_benchtable_table_mixed_wire_loadout_( &probe, value ) ) { return 0; }
@@ -2347,9 +2549,17 @@ static SCHEMA_UNUSED int table_mixed_save_body( TableWriter * w, const TableMixe
     }
     { /* player_name */
         if ( value->player_name_length < 0 || value->player_name_length > 15 ) { return 0; }
-        if ( value->player_name_length > 0 )
+        if ( value->player_name_length != 0 )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x13a62f542cf8e86eull ); table_writer_put8( w, 12 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !schema_benchtable_table_mixed_wire_player_name_( w, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !schema_benchtable_table_mixed_wire_player_name_( &probe, value ) ) { return 0; }
@@ -2360,9 +2570,17 @@ static SCHEMA_UNUSED int table_mixed_save_body( TableWriter * w, const TableMixe
     }
     { /* payload */
         if ( value->payload_length < 0 || value->payload_length > 16 ) { return 0; }
-        if ( value->payload_length > 0 )
+        if ( value->payload_length != 0 )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xcfb8a9d063b5e9e5ull ); table_writer_put8( w, 14 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !schema_benchtable_table_mixed_wire_payload_( w, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !schema_benchtable_table_mixed_wire_payload_( &probe, value ) ) { return 0; }
@@ -2372,71 +2590,81 @@ static SCHEMA_UNUSED int table_mixed_save_body( TableWriter * w, const TableMixe
         }
     }
     { /* aim_x */
-        if ( value->aim_x != 0.0f )
+        if ( !( value->aim_x == 0.0f ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xdbaf7be5e24296c9ull ); table_writer_put8( w, 10 );
             table_writer_put32( w, table_float_to_bits( value->aim_x ) );
         }
     }
     { /* aim_y */
-        if ( value->aim_y != 0.0f )
+        if ( !( value->aim_y == 0.0f ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xdbaf7ae5e2429516ull ); table_writer_put8( w, 10 );
             table_writer_put32( w, table_float_to_bits( value->aim_y ) );
         }
     }
     { /* aim_z */
-        if ( value->aim_z != 0.0f )
+        if ( !( value->aim_z == 0.0f ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xdbaf79e5e2429363ull ); table_writer_put8( w, 10 );
             table_writer_put32( w, table_float_to_bits( value->aim_z ) );
         }
     }
     { /* recoil */
-        if ( value->recoil != 0.0f )
+        if ( !( value->recoil == 0.0f ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x9cef31fff7e2e457ull ); table_writer_put8( w, 10 );
             table_writer_put32( w, table_float_to_bits( value->recoil ) );
         }
     }
     { /* drift */
-        if ( value->drift != 0.0 )
+        if ( !( value->drift == 0.0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x5ab3f9c9341f6c04ull ); table_writer_put8( w, 11 );
             table_writer_put64( w, table_double_to_bits( value->drift ) );
         }
     }
     { /* wide_key */
-        if ( value->wide_key != 0 )
+        if ( !( value->wide_key == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xa3348580461faf16ull ); table_writer_put8( w, 9 );
             table_writer_put64( w, (uint64_t) ( value->wide_key ) );
         }
     }
     { /* flux */
-        if ( value->flux != 0 )
+        if ( !( value->flux == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xd61bdd7908af2642ull ); table_writer_put8( w, 5 );
             table_writer_put64( w, (uint64_t) ( value->flux ) );
         }
     }
     { /* ping */
-        if ( value->ping != 0.0f )
+        if ( !( value->ping == 0.0f ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xbf30e00dc53307a9ull ); table_writer_put8( w, 10 );
             table_writer_put32( w, table_float_to_bits( value->ping ) );
         }
     }
     { /* crc_hint */
-        if ( value->crc_hint != 0 )
+        if ( !( value->crc_hint == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x560d6527ccd8515full ); table_writer_put8( w, 8 );
             table_writer_put32( w, (uint32_t) ( value->crc_hint ) );
         }
     }
     { /* has_extra */
-        if ( value->has_extra != 0 )
+        if ( !( value->has_extra == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xc08292176cfd8672ull ); table_writer_put8( w, 1 );
             table_writer_put8( w, value->has_extra ? 1 : 0 );
         }
@@ -2444,8 +2672,9 @@ static SCHEMA_UNUSED int table_mixed_save_body( TableWriter * w, const TableMixe
     { /* extra */
     if ( value->has_extra )
     {
-        if ( value->extra != 0 )
+        if ( !( value->extra == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xfd29ee12a979cb69ull ); table_writer_put8( w, 4 );
             table_writer_put32( w, (uint32_t) ( value->extra ) );
         }
@@ -2454,8 +2683,9 @@ static SCHEMA_UNUSED int table_mixed_save_body( TableWriter * w, const TableMixe
     { /* idle_ticks */
     if ( !value->has_extra )
     {
-        if ( value->idle_ticks != 0 )
+        if ( !( value->idle_ticks == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x78101ac0aa8cbcfeull ); table_writer_put8( w, 4 );
             table_writer_put32( w, (uint32_t) ( value->idle_ticks ) );
         }
@@ -3327,36 +3557,7 @@ static SCHEMA_UNUSED int table_mixed_load_body( TableReader * r, TableMixed * va
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint64_t arm_ref, arm_id; uint8_t arm_kind; TableReader sub;
-                if ( !table_reader_leb( r, &arm_ref ) || arm_ref > r->id_count ) { r->report->malformed = 1; return 0; }
-                if ( arm_ref == 0 ) { value->game_event.type = TABLE_EVENT_TYPE_NONE; break; }
-                arm_id = table_reader_id_at( r, arm_ref );
-                if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
-                arm_kind = table_reader_get8( r );
-                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
-                value->game_event.type = TABLE_EVENT_TYPE_NONE;
-                switch ( arm_id )
-                {
-                    case 0x33732819300680aaull:
-                        if ( arm_kind != 13 ) { r->report->kind_mismatch++; break; }
-                        value->game_event.type = TABLE_EVENT_TYPE_HIT;
-                        table_hit_event_load_body( &sub, &value->game_event.as.hit );
-                        if ( sub.offset != sub.size ) { r->report->malformed = 1; value->game_event.type = TABLE_EVENT_TYPE_NONE; }
-                        break;
-                    case 0xf2a38d910b5b348bull:
-                        if ( arm_kind != 13 ) { r->report->kind_mismatch++; break; }
-                        value->game_event.type = TABLE_EVENT_TYPE_CHAT;
-                        table_chat_event_load_body( &sub, &value->game_event.as.chat );
-                        if ( sub.offset != sub.size ) { r->report->malformed = 1; value->game_event.type = TABLE_EVENT_TYPE_NONE; }
-                        break;
-                    case 0x9fa3a41c86ecb765ull:
-                        if ( arm_kind != 13 ) { r->report->kind_mismatch++; break; }
-                        value->game_event.type = TABLE_EVENT_TYPE_PICKUP;
-                        table_pickup_event_load_body( &sub, &value->game_event.as.pickup );
-                        if ( sub.offset != sub.size ) { r->report->malformed = 1; value->game_event.type = TABLE_EVENT_TYPE_NONE; }
-                        break;
-                    default: r->report->unknown++; break;
-                }
+                if ( !schema_benchtable_table_event_wire_load_( r, &value->game_event, 0 ) ) { return 0; }
                 break;
             }
             case 0x5759ce7586bbb5a3ull: /* loadout */
@@ -3412,7 +3613,10 @@ static SCHEMA_UNUSED int table_mixed_load_body( TableReader * r, TableMixed * va
                 }
                 TableReader sub; uint64_t keep;
                 if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
-                if ( !table_wire_utf8( sub.buffer, (uint64_t) sub.size ) ) { r->report->malformed = 1; value->player_name[0] = 0; value->player_name_length = 0; break; }
+                if ( !table_wire_utf8( sub.buffer, (uint64_t) sub.size ) )
+                {
+                    r->report->malformed = 1; value->player_name[0] = 0; value->player_name_length = 0; break;
+                }
                 keep = (uint64_t) sub.size;
                 if ( keep > 15 ) { keep = table_wire_utf8_clamp( sub.buffer, keep, 15 ); r->report->clamped++; }
                 memcpy( value->player_name, sub.buffer, (size_t) keep ); value->player_name[keep] = 0; value->player_name_length = (int32_t) keep;
@@ -4203,29 +4407,33 @@ static SCHEMA_UNUSED int table_hit_event_save_body( TableWriter * w, const Table
 {
     (void) value;
     { /* target_id */
-        if ( value->target_id != 0 )
+        if ( !( value->target_id == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xb7bc9ac015a25050ull ); table_writer_put8( w, 7 );
             table_writer_put16( w, (uint16_t) ( value->target_id ) );
         }
     }
     { /* damage */
-        if ( value->damage != 0 )
+        if ( !( value->damage == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x7f6308be8ab37fc0ull ); table_writer_put8( w, 4 );
             table_writer_put32( w, (uint32_t) ( value->damage ) );
         }
     }
     { /* hit_kind */
-        if ( value->hit_kind != 0 )
+        if ( !( value->hit_kind == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x01fbc365b059b925ull ); table_writer_put8( w, 4 );
             table_writer_put32( w, (uint32_t) ( value->hit_kind ) );
         }
     }
     { /* crit */
-        if ( value->crit != 0 )
+        if ( !( value->crit == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x126167908c9aa52dull ); table_writer_put8( w, 1 );
             table_writer_put8( w, value->crit ? 1 : 0 );
         }
@@ -4544,15 +4752,17 @@ static SCHEMA_UNUSED int table_chat_event_save_body( TableWriter * w, const Tabl
 {
     (void) value;
     { /* channel */
-        if ( value->channel != 0 )
+        if ( !( value->channel == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xa5013e9ad5caeda4ull ); table_writer_put8( w, 4 );
             table_writer_put32( w, (uint32_t) ( value->channel ) );
         }
     }
     { /* speaker */
-        if ( value->speaker != 0 )
+        if ( !( value->speaker == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xfbf1ac4d96ebd022ull ); table_writer_put8( w, 7 );
             table_writer_put16( w, (uint16_t) ( value->speaker ) );
         }
@@ -4755,15 +4965,17 @@ static SCHEMA_UNUSED int table_pickup_event_save_body( TableWriter * w, const Ta
 {
     (void) value;
     { /* item_id */
-        if ( value->item_id != 0 )
+        if ( !( value->item_id == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x9e7fd06d864fbd56ull ); table_writer_put8( w, 7 );
             table_writer_put16( w, (uint16_t) ( value->item_id ) );
         }
     }
     { /* amount */
-        if ( value->amount != 0 )
+        if ( !( value->amount == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x8113fe7ea2b16969ull ); table_writer_put8( w, 4 );
             table_writer_put32( w, (uint32_t) ( value->amount ) );
         }

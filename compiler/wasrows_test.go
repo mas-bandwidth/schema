@@ -1,5 +1,5 @@
 // A `was` on an enum variant, a union arm or a type's field (docs/SPEC-TABLES.md
-// §5) is C++'s today: the reference carries it, and every other target refuses
+// §5) is carried by C++ and C; other targets refuse
 // the unit by name.
 package compiler
 
@@ -45,14 +45,14 @@ table Cfg
 }
 `
 
-func TestWasRowsAreCppOnly(t *testing.T) {
+func TestWasRowsCarriers(t *testing.T) {
 	u := unitFromSource(t, wasRowsUnit)
 	c := New()
 	for _, target := range c.Targets() {
 		out, err := c.Generate(u, target, Options{})
-		if target == "cpp" {
+		if target == "cpp" || target == "c" {
 			if err != nil {
-				t.Fatalf("cpp carries the was rows and refused: %v", err)
+				t.Fatalf("carrier refused the was rows: %v", err)
 			}
 			var all strings.Builder
 			for _, b := range out {
@@ -62,7 +62,7 @@ func TestWasRowsAreCppOnly(t *testing.T) {
 			for _, old := range []string{"Silver", "ward", "ping", "multiplier"} {
 				want := fmt.Sprintf("0x%016xull", ir.TableWireId(old))
 				if !strings.Contains(all.String(), want) {
-					t.Errorf("cpp output lacks the id of %q, %s", old, want)
+					t.Errorf("carrier output lacks the id of %q, %s", old, want)
 				}
 			}
 			continue

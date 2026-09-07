@@ -124,6 +124,7 @@ enum SCHEMA_TABLE_REFUSAL_REASON { SCHEMA_TABLE_NO_REFUSAL, SCHEMA_TABLE_NEWER_F
    no schema files. <name>_table_type() returns <Name>'s descriptor. */
 
 struct TableTypeInfo;
+struct TableFieldInfo;
 
 /* One arm of a union field: where its payload sits inside the union's storage
    and what its payload looks like. The arm's NAME and its table-wire id ride
@@ -133,6 +134,8 @@ typedef struct TableUnionArmInfo
 {
     uint32_t offset;                    /* offsetof the arm's payload within the union storage */
     const struct TableTypeInfo * table; /* the arm payload's descriptor */
+    const struct TableFieldInfo * field; /* non-body arm, relative to union storage */
+    uint32_t size; /* bytes established when this arm is selected */
 } TableUnionArmInfo;
 
 /* A union field's shape: the tag, and the arms indexed by it. Arms run
@@ -169,6 +172,8 @@ typedef struct TableVariantInfo
    are one, so every absent doc compares equal by address. */
 static SCHEMA_UNUSED const char TableDocNone[1] = "";
 
+typedef struct TableWideRange { uint64_t lo[2], hi[2]; } TableWideRange;
+
 typedef struct TableFieldInfo
 {
     const char * name;      /* schema field name, e.g. "health" */
@@ -188,6 +193,8 @@ typedef struct TableFieldInfo
     int has_range;          /* a declared [min, max] (int or float) */
     double range_min;       /* NOTE: int64 ranges beyond 2^53 lose precision here */
     double range_max;
+    const TableWideRange * wide; /* exact raw range for wide/fixed storage */
+    int32_t frac_bits;
     int64_t enum_max;       /* enums: highest valid value (None = 0 always valid);
                                unions: the arm count (tag range [0, enum_max]);
                                flags: the highest declared BIT INDEX; else -1 */
@@ -243,7 +250,7 @@ typedef struct TableWriter
 {
     uint8_t * buffer;
     int64_t capacity, offset;
-    int overflow, id_count;
+    int overflow, id_count, check_default;
     uint64_t ids[156];
 } TableWriter;
 
@@ -396,6 +403,8 @@ static SCHEMA_UNUSED int table_kind_widens( uint8_t kind, uint8_t declared )
 {
     if ( declared >= 3 && declared <= 5 ) { return kind >= 2 && kind < declared; }
     if ( declared >= 7 && declared <= 9 ) { return kind >= 6 && kind < declared; }
+    if ( declared == 18 ) { return kind >= 2 && kind <= 5; }
+    if ( declared == 19 ) { return kind >= 6 && kind <= 9; }
     return declared == 11 && kind == 10;
 }
 static SCHEMA_UNUSED double table_wire_widen_f32( uint32_t bits )
@@ -462,11 +471,11 @@ static SCHEMA_UNUSED uint64_t table_wire_utf8_clamp( const uint8_t * p, uint64_t
    build. The storage shifts left and holds no slot for None, so a build that
    skipped this compare would index one element BEFORE the array — undefined
    behaviour in the configuration a game ships. */
-static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key )
+static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key, size_t count )
 {
-    if ( key == 0 )
+    if ( key <= 0 || (uint64_t) key > (uint64_t) count )
     {
-        assert( 0 && "None is the null key of an enum-keyed array: it keys no slot" );
+        assert( 0 && "key is outside the enum-keyed array" );
         abort();
     }
     return key - 1;
@@ -475,7 +484,7 @@ static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key )
 /* keyed[key] — the slot a variant owns, as an LVALUE. The key is evaluated
    once. ITERATION is the surface a consumer of the whole array wants: walk
    1..E_MAX and index with the key, so a call site writes no shift. */
-#define SCHEMA_TABLE_KEYED_AT( array, key ) ( (array)[ table_keyed_slot( (int32_t) ( key ) ) ] )
+#define SCHEMA_TABLE_KEYED_AT( array, key ) ( (array)[ table_keyed_slot( (int32_t) ( key ), sizeof( array ) / sizeof( (array)[0] ) ) ] )
 
 
 static SCHEMA_UNUSED float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
@@ -484,6 +493,38 @@ static SCHEMA_UNUSED double table_bits_to_double( uint64_t bits ) { double d; me
 static SCHEMA_UNUSED uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
 
 #endif /* SCHEMA_TABLEDEMO_TABLE_PRIMITIVES */
+
+#ifndef SCHEMA_TABLE_UTF16_RUNTIME
+#define SCHEMA_TABLE_UTF16_RUNTIME
+static SCHEMA_UNUSED uint16_t table_wire_utf16_unit( const uint8_t * bytes, int64_t index )
+{
+    return (uint16_t) ((uint16_t) bytes[index*2] | ((uint16_t) bytes[index*2+1] << 8));
+}
+static SCHEMA_UNUSED int table_wire_utf16( const uint8_t * bytes, int64_t units )
+{
+    int64_t i = 0;
+    while ( i < units ) {
+        uint16_t unit = table_wire_utf16_unit( bytes, i++ );
+        if ( unit == 0 ) { return 0; }
+        if ( unit >= 0xd800 && unit <= 0xdbff ) {
+            uint16_t low;
+            if ( i == units ) { return 0; }
+            low = table_wire_utf16_unit( bytes, i++ );
+            if ( low < 0xdc00 || low > 0xdfff ) { return 0; }
+        } else if ( unit >= 0xdc00 && unit <= 0xdfff ) { return 0; }
+    }
+    return 1;
+}
+static SCHEMA_UNUSED int64_t table_wire_utf16_clamp( const uint8_t * bytes, int64_t units, int64_t bound )
+{
+    if ( units <= bound ) { return units; }
+    if ( bound > 0 ) {
+        uint16_t last = table_wire_utf16_unit( bytes, bound-1 );
+        if ( last >= 0xd800 && last <= 0xdbff ) { bound--; }
+    }
+    return bound;
+}
+#endif
 
 #ifndef SCHEMA_TABLEDEMO_BUILD_VERSION
 #define SCHEMA_TABLEDEMO_BUILD_VERSION
@@ -695,12 +736,14 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int wide_blob_load_body( Tabl
 
 static SCHEMA_UNUSED int schema_tabledemo_wide_blob_wire_label_( TableWriter * w, const WideBlob * value )
 {
+    if ( value->label_length < 0 || value->label_length > 70000 ) { return 0; }
     table_writer_raw( w, value->label, value->label_length );
     return !w->overflow;
 }
 
 static SCHEMA_UNUSED int schema_tabledemo_wide_blob_wire_payload_( TableWriter * w, const WideBlob * value )
 {
+    if ( value->payload_length < 0 || value->payload_length > 70000 ) { return 0; }
     table_writer_put8( w, 6 ); table_writer_leb( w, (uint64_t) value->payload_length );
     table_writer_raw( w, value->payload, value->payload_length );
     return !w->overflow;
@@ -708,6 +751,7 @@ static SCHEMA_UNUSED int schema_tabledemo_wide_blob_wire_payload_( TableWriter *
 
 static SCHEMA_UNUSED int schema_tabledemo_wide_blob_wire_samples_( TableWriter * w, const WideBlob * value )
 {
+    if ( value->samples_count < 0 || value->samples_count > 70000 ) { return 0; }
     int32_t i;
     table_writer_put8( w, 7 ); table_writer_leb( w, (uint64_t) value->samples_count );
     for ( i = 0; i < value->samples_count; i++ )
@@ -722,9 +766,17 @@ static SCHEMA_UNUSED int wide_blob_save_body( TableWriter * w, const WideBlob * 
     (void) value;
     { /* label */
         if ( value->label_length < 0 || value->label_length > 70000 ) { return 0; }
-        if ( value->label_length > 0 )
+        if ( value->label_length != 0 )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x39f7fcec8fcb623dull ); table_writer_put8( w, 12 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !schema_tabledemo_wide_blob_wire_label_( w, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !schema_tabledemo_wide_blob_wire_label_( &probe, value ) ) { return 0; }
@@ -735,9 +787,17 @@ static SCHEMA_UNUSED int wide_blob_save_body( TableWriter * w, const WideBlob * 
     }
     { /* payload */
         if ( value->payload_length < 0 || value->payload_length > 70000 ) { return 0; }
-        if ( value->payload_length > 0 )
+        if ( value->payload_length != 0 )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xcfb8a9d063b5e9e5ull ); table_writer_put8( w, 14 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !schema_tabledemo_wide_blob_wire_payload_( w, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !schema_tabledemo_wide_blob_wire_payload_( &probe, value ) ) { return 0; }
@@ -750,7 +810,15 @@ static SCHEMA_UNUSED int wide_blob_save_body( TableWriter * w, const WideBlob * 
         if ( value->samples_count < 0 || value->samples_count > 70000 ) { return 0; }
         if ( value->samples_count > 0 )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xe3b1ca6a3b48dddcull ); table_writer_put8( w, 14 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !schema_tabledemo_wide_blob_wire_samples_( w, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !schema_tabledemo_wide_blob_wire_samples_( &probe, value ) ) { return 0; }
@@ -805,7 +873,10 @@ static SCHEMA_UNUSED int wide_blob_load_body( TableReader * r, WideBlob * value 
                 }
                 TableReader sub; uint64_t keep;
                 if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
-                if ( !table_wire_utf8( sub.buffer, (uint64_t) sub.size ) ) { r->report->malformed = 1; value->label[0] = 0; value->label_length = 0; break; }
+                if ( !table_wire_utf8( sub.buffer, (uint64_t) sub.size ) )
+                {
+                    r->report->malformed = 1; value->label[0] = 0; value->label_length = 0; break;
+                }
                 keep = (uint64_t) sub.size;
                 if ( keep > 70000 ) { keep = table_wire_utf8_clamp( sub.buffer, keep, 70000 ); r->report->clamped++; }
                 memcpy( value->label, sub.buffer, (size_t) keep ); value->label[keep] = 0; value->label_length = (int32_t) keep;

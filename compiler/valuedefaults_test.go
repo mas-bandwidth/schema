@@ -1,5 +1,5 @@
 // A string, bytes or flags default (SPEC §4.2) has separate packet and table
-// carriers. C++ carries both; C and Go carry packet-only defaults.
+// carriers. C++ and C carry both; other targets carry packet-only defaults.
 package compiler
 
 import (
@@ -31,11 +31,23 @@ table Fleet
 }
 `
 
-func TestTableValueDefaultsAreCppOnly(t *testing.T) {
+func TestTableValueDefaultsCarriers(t *testing.T) {
 	u := unitFromSource(t, valueDefaultsUnit)
 	c := New()
 	for _, target := range c.Targets() {
 		out, err := c.Generate(u, target, Options{})
+		if target == "c" {
+			if err != nil {
+				t.Fatalf("C refused table defaults: %v", err)
+			}
+			header := string(out["ProbeTable.h"])
+			for _, want := range []string{"value->name_length = 8;", "value->tag_length = 2;", "value->caps = 3ull;"} {
+				if !strings.Contains(header, want) {
+					t.Errorf("C output lacks %q", want)
+				}
+			}
+			continue
+		}
 		if target == "cpp" {
 			if err != nil {
 				t.Fatalf("cpp carries the defaults and refused: %v", err)

@@ -188,3 +188,100 @@ func TestCTableWireWidening(t *testing.T) {
     }
     `, octets(wire), octets(saved)))
 }
+
+// A damaged later occurrence resets text to its declared default; an explicit
+// empty value remains an edit and survives a save/load cycle.
+func TestCTableWireDefaultRecovery(t *testing.T) {
+	u := unitFromSource(t, `package probe
+flags Caps { Jump, Crouch }
+table Root {
+ name string(8) = "new"
+ data bytes(4) = "ab"
+ caps Caps = { Jump }
+}
+`)
+	wire := []byte{1, 1, 12, 2, 'o', 'k', 1, 12, 1, 0xff, 0}
+	wire = binary.LittleEndian.AppendUint64(wire, ir.TableFieldWireId(u.Tables["Root"].Fields[0]))
+	wire = binary.LittleEndian.AppendUint64(wire, 1)
+	var octets strings.Builder
+	for _, b := range wire {
+		fmt.Fprintf(&octets, "0x%02x,", b)
+	}
+	runCTableWireProbe(t, u, fmt.Sprintf(`#include "ProbeTable.h"
+#include <stdio.h>
+#define CHECK(x) do { if (!(x)) { fprintf(stderr,"line %%d: %%s\n",__LINE__,#x); return 1; } } while(0)
+static const uint8_t damaged[] = {%s};
+int main(void) {
+ Root value, copy; TableReport report; uint8_t out[256]; int64_t n;
+ root_reset(&value);
+ CHECK(value.name_length == 3 && !memcmp(value.name,"new",4));
+ CHECK(value.data_length == 2 && !memcmp(value.data,"ab",2));
+ CHECK(value.caps == CAPS_JUMP && root_measure(&value) == 10);
+ memset(&report,0,sizeof(report));
+ CHECK(root_load(&value,damaged,sizeof(damaged),&report));
+ CHECK(report.malformed && value.name_length == 3 && !memcmp(value.name,"new",4));
+ value.name_length = 0; value.name[0] = 0; value.data_length = 0; value.caps = 0;
+ n=root_save(&value,out,sizeof(out)); CHECK(n > 10);
+ memset(&report,0,sizeof(report));
+ CHECK(root_load(&copy,out,n,&report));
+ CHECK(!report.malformed && copy.name_length == 0 && copy.data_length == 0 && copy.caps == 0);
+ return 0;
+}
+`, octets.String()))
+}
+
+// Integer JSON conversion keeps a magnitude unsigned until its domain is
+// established. Large unsigned tokens and negative exponents must never pass
+// through an out-of-range float-to-integer conversion or wrap to zero.
+func TestCTableWireJsonIntegerDomain(t *testing.T) {
+	u := unitFromSource(t, `package probe
+table Root {
+ small uint8
+ bounded uint64 | min = 0, max = 18446744073709551615
+ debt int64
+}
+`)
+	runCTableWireProbe(t, u, `#include "ProbeTable.h"
+#include <stdio.h>
+#define CHECK(x) do { if (!(x)) { fprintf(stderr,"line %d: %s\n",__LINE__,#x); return 1; } } while(0)
+int main(void) {
+ Root value; TableReport report;
+ const char * first="{\"small\":18446744073709551615,\"bounded\":18446744073709551615,\"debt\":-9223372036854775808}";
+ const char * second="{\"small\":-1e30,\"bounded\":-1e30}";
+ memset(&report,0,sizeof(report));
+ CHECK(root_from_json(&value,first,(int64_t)strlen(first),&report));
+ CHECK(value.small == 255 && value.bounded == UINT64_MAX && value.debt == INT64_MIN);
+ CHECK(report.clamped == 1 && !report.kind_mismatch && !report.malformed);
+ memset(&report,0,sizeof(report));
+ CHECK(root_from_json(&value,second,(int64_t)strlen(second),&report));
+ CHECK(value.small == 0 && value.bounded == 0 && report.clamped == 4);
+ CHECK(!report.kind_mismatch && !report.malformed);
+ return 0;
+}
+`)
+}
+
+// A deep by-value closure must not cause exponential frame remeasurement.
+// Only the leaf rides, so checking each ancestor for elision should stop at
+// that first field and measuring its frame must walk the payload once.
+func TestCTableWireDeepFrames(t *testing.T) {
+	var schema, member strings.Builder
+	schema.WriteString("package probe\ntable Layer0 { value uint8 }\n")
+	for i := 1; i <= 24; i++ {
+		fmt.Fprintf(&schema, "table Layer%d { child Layer%d }\n", i, i-1)
+		member.WriteString(".child")
+	}
+	schema.WriteString("table Root { child Layer24 }\n")
+	u := unitFromSource(t, schema.String())
+	runCTableWireProbe(t, u, fmt.Sprintf(`#include "ProbeTable.h"
+int main(void) {
+ Root value, copy; uint8_t out[1024]; int64_t n; TableReport report;
+ root_reset(&value); value.child%s.value=1;
+ n=root_measure(&value);
+ if(n<=10 || n>1024 || root_save(&value,out,n)!=n) return 1;
+ memset(&report,0,sizeof(report));
+ if(!root_load(&copy,out,n,&report) || report.malformed || copy.child%s.value!=1) return 2;
+ return 0;
+}
+`, member.String(), member.String()))
+}

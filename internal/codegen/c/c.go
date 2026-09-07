@@ -40,6 +40,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/ccommon"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -150,6 +151,9 @@ func (g *gen) assembleHeader() []byte {
 	}
 	if strings.Contains(body, "floor") {
 		h.WriteString("#include <math.h>     /* floor — the quantize pair */\n")
+	}
+	if strings.Contains(body, "SCHEMA_C_ALIGN16") {
+		h.WriteString(ccommon.Align16)
 	}
 	if g.needs128 {
 		// serialize_int128_t / serialize_uint128_t are STORAGE here, so the
@@ -401,6 +405,9 @@ func (g *gen) emitStruct(d *ir.Struct) {
 	g.pf("typedef struct %s {\n", d.Name)
 	for _, f := range d.Fields {
 		g.pf("%s", ir.DocComment(f.Doc, "    ", "//"))
+		if f.Type.Width == 128 && ir.TableClosure(g.unit)[d.Name] {
+			g.pf("    SCHEMA_C_ALIGN16 ")
+		}
 		g.emitField(f)
 	}
 	g.pf("} %s;\n\n", d.Name)

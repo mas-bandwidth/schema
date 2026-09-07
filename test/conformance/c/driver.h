@@ -81,11 +81,26 @@ SCHEMA_CONFORMANCE_UNUSED static void conformance_text_add( ConformanceText * ou
 }
 
 /* the per-unit entry points, each defined in that unit's own translation unit */
+const ConformanceCodec * conformance_codecs_messagedemo( int * count );
+const ConformanceCodec * conformance_codecs_tblm1( int * count );
+const ConformanceCodec * conformance_codecs_tblm2( int * count );
+const ConformanceCodec * conformance_codecs_tbla1( int * count );
+const ConformanceCodec * conformance_codecs_tbla2( int * count );
+const ConformanceCodec * conformance_codecs_tblk1( int * count );
+const ConformanceCodec * conformance_codecs_tblk2( int * count );
+const ConformanceCodec * conformance_codecs_tblr1( int * count );
+const ConformanceCodec * conformance_codecs_tblr2( int * count );
+const ConformanceCodec * conformance_codecs_backenddemo( int * count );
+const ConformanceCodec * conformance_codecs_vocabdemo( int * count );
+const ConformanceCodec * conformance_codecs_vocab9demo( int * count );
 const ConformanceCodec * conformance_codecs_tabledemo( int * count );
 const ConformanceCodec * conformance_codecs_tblv1( int * count );
 const ConformanceCodec * conformance_codecs_tblv2( int * count );
 const ConformanceCodec * conformance_codecs_tblp1( int * count );
 const ConformanceCodec * conformance_codecs_tblp3( int * count );
+const ConformanceCodec * conformance_codecs_widedemo( int * count );
+const ConformanceCodec * conformance_codecs_scalars( int * count );
+const ConformanceCodec * conformance_codecs_tblscalars2( int * count );
 
 /* the BLOCK unit (blockdemo): open one image at the extent and pointer the
  * caller claims, and read every row out of the descriptors */

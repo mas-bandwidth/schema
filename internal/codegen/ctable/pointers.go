@@ -134,8 +134,21 @@ func (g *tableGen) emitCodecDeclarations(members []*ir.Struct) {
 			continue
 		}
 		g.pf("static SCHEMA_UNUSED int64_t %s( const %s * value );\n", g.api(st.Name, "measure"), st.Name)
-		g.pf("static SCHEMA_UNUSED %s int %s( TableWriter * w, const %s * value );\n", tableInlineMacro(g.unit.Package), g.api(st.Name, "save_body"), st.Name)
-		g.pf("static SCHEMA_UNUSED %s int %s( TableReader * r, %s * value );\n", tableInlineMacro(g.unit.Package), g.api(st.Name, "load_body"), st.Name)
+		inline := tableInlineMacro(g.unit.Package)
+		// Composite file bodies have several measurement and default-check
+		// calls to each child. Forcing all of those inline expands the C
+		// compiler's work exponentially with schema depth; leave that choice
+		// to its optimizer while keeping primitive leaf codecs forced inline.
+		if g.fileWire() {
+			for _, f := range st.Fields {
+				switch f.Type.Ref.(type) {
+				case *ir.Struct, *ir.Union:
+					inline = ""
+				}
+			}
+		}
+		g.pf("static SCHEMA_UNUSED %s int %s( TableWriter * w, const %s * value );\n", inline, g.api(st.Name, "save_body"), st.Name)
+		g.pf("static SCHEMA_UNUSED %s int %s( TableReader * r, %s * value );\n", inline, g.api(st.Name, "load_body"), st.Name)
 	}
 	g.pf("\n")
 	if vars := g.varMembers(members); len(vars) > 0 {

@@ -31,6 +31,12 @@ func TestPacketWideTextRefusesTableClosure(t *testing.T) {
 		u := unitFromSource(t, "package wide\n"+decl+edge+"\n")
 		for _, target := range packetWidePorts {
 			_, err := New().Generate(u, target, nil)
+			if target == "c" {
+				if err != nil {
+					t.Errorf("C refused table wide text: %v", err)
+				}
+				continue
+			}
 			if err == nil || !strings.Contains(err.Error(), "table closure") || !strings.Contains(err.Error(), "wstring(N)") {
 				t.Errorf("%s failed to refuse the table-wide closure: %v", target, err)
 			}

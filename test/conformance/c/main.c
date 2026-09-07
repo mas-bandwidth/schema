@@ -149,11 +149,26 @@ static int spill( const char * dir, const char * name, const void * data, size_t
 typedef const ConformanceCodec * ( *UnitFn )( int * count );
 
 static const UnitFn units[] = {
+    conformance_codecs_messagedemo,
+    conformance_codecs_tblm1,
+    conformance_codecs_tblm2,
+    conformance_codecs_tbla1,
+    conformance_codecs_tbla2,
+    conformance_codecs_tblk1,
+    conformance_codecs_tblk2,
+    conformance_codecs_tblr1,
+    conformance_codecs_tblr2,
+    conformance_codecs_backenddemo,
+    conformance_codecs_vocabdemo,
+    conformance_codecs_vocab9demo,
     conformance_codecs_tabledemo,
     conformance_codecs_tblv1,
     conformance_codecs_tblv2,
     conformance_codecs_tblp1,
-    conformance_codecs_tblp3
+    conformance_codecs_tblp3,
+    conformance_codecs_widedemo,
+    conformance_codecs_scalars,
+    conformance_codecs_tblscalars2
 };
 
 static const ConformanceCodec * find_codec( const char * unit, const char * root )

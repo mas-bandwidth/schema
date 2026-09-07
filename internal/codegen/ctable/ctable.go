@@ -67,6 +67,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/ccommon"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -97,28 +98,17 @@ const (
 
 func tableScalarKind(f *ir.Field) int { return ir.TableScalarKind(f) }
 
-func tableKindWidth(kind int) int {
-	switch kind {
-	case tkBool, tkI8, tkU8:
-		return 1
-	case tkI16, tkU16:
-		return 2
-	case tkI32, tkU32, tkF32:
-		return 4
-	case tkI64, tkU64, tkF64:
-		return 8
-	}
-	return 0
-}
+func tableKindWidth(kind int) int { return ir.TableKindWidth(kind) }
 
 func tablePut(width int) string { return fmt.Sprintf("table_writer_put%d", width*8) }
 func tableGet(width int) string { return fmt.Sprintf("table_reader_get%d", width*8) }
 
 type tableGen struct {
-	unit        *ir.Unit
-	file        *ir.File
-	anyVariable bool // the unit declares at least one variable-length table
-	anyKeyed    bool // the unit declares at least one enum-keyed array
+	descriptorUnions map[string]bool
+	unit             *ir.Unit
+	file             *ir.File
+	anyVariable      bool // the unit declares at least one variable-length table
+	anyKeyed         bool // the unit declares at least one enum-keyed array
 	// blocks is the unit's BLOCK FORM surface (docs/SPEC-TABLES.md §19), nil when
 	// no table is marked `| block`. Nil is what makes the zero-cost gate
 	// answerable by asking one question (§2.2).
@@ -210,11 +200,11 @@ const tableKeyedAccessor = `
    build. The storage shifts left and holds no slot for None, so a build that
    skipped this compare would index one element BEFORE the array — undefined
    behaviour in the configuration a game ships. */
-static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key )
+static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key, size_t count )
 {
-    if ( key == 0 )
+    if ( key <= 0 || (uint64_t) key > (uint64_t) count )
     {
-        assert( 0 && "None is the null key of an enum-keyed array: it keys no slot" );
+        assert( 0 && "key is outside the enum-keyed array" );
         abort();
     }
     return key - 1;
@@ -223,7 +213,7 @@ static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key )
 /* keyed[key] — the slot a variant owns, as an LVALUE. The key is evaluated
    once. ITERATION is the surface a consumer of the whole array wants: walk
    1..E_MAX and index with the key, so a call site writes no shift. */
-#define SCHEMA_TABLE_KEYED_AT( array, key ) ( (array)[ table_keyed_slot( (int32_t) ( key ) ) ] )
+#define SCHEMA_TABLE_KEYED_AT( array, key ) ( (array)[ table_keyed_slot( (int32_t) ( key ), sizeof( array ) / sizeof( (array)[0] ) ) ] )
 
 `
 
@@ -347,6 +337,7 @@ enum SCHEMA_TABLE_REFUSAL_REASON { SCHEMA_TABLE_NO_REFUSAL, SCHEMA_TABLE_NEWER_F
    no schema files. <name>_table_type() returns <Name>'s descriptor. */
 
 struct TableTypeInfo;
+struct TableFieldInfo;
 
 /* One arm of a union field: where its payload sits inside the union's storage
    and what its payload looks like. The arm's NAME and its table-wire id ride
@@ -356,6 +347,8 @@ typedef struct TableUnionArmInfo
 {
     uint32_t offset;                    /* offsetof the arm's payload within the union storage */
     const struct TableTypeInfo * table; /* the arm payload's descriptor */
+    const struct TableFieldInfo * field; /* non-body arm, relative to union storage */
+    uint32_t size; /* bytes established when this arm is selected */
 } TableUnionArmInfo;
 
 /* A union field's shape: the tag, and the arms indexed by it. Arms run
@@ -392,6 +385,8 @@ typedef struct TableVariantInfo
    are one, so every absent doc compares equal by address. */
 static SCHEMA_UNUSED const char TableDocNone[1] = "";
 
+typedef struct TableWideRange { uint64_t lo[2], hi[2]; } TableWideRange;
+
 typedef struct TableFieldInfo
 {
     const char * name;      /* schema field name, e.g. "health" */
@@ -411,6 +406,8 @@ typedef struct TableFieldInfo
     int has_range;          /* a declared [min, max] (int or float) */
     double range_min;       /* NOTE: int64 ranges beyond 2^53 lose precision here */
     double range_max;
+    const TableWideRange * wide; /* exact raw range for wide/fixed storage */
+    int32_t frac_bits;
     int64_t enum_max;       /* enums: highest valid value (None = 0 always valid);
                                unions: the arm count (tag range [0, enum_max]);
                                flags: the highest declared BIT INDEX; else -1 */
@@ -614,9 +611,6 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
-	if err := ir.RefuseWideTableKinds(u, "C"); err != nil {
-		return nil, err
-	}
 	bases := map[string]bool{}
 	for _, f := range u.Files {
 		bases[f.Base] = true
@@ -650,17 +644,20 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		}
 		cg := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyKeyed: anyKeyed, blocks: blocks, variable: variable, targets: targets,
 			includes: map[string]bool{}}
+		g.emitTableShapes(members)
 		if len(members) > 0 {
-			for _, st := range members {
-				if st.IsTable {
-					g.emitTableStruct(st)
-				}
-			}
 			g.emitTableResetDeclarations(members)
 			for _, st := range members {
 				g.emitTableReset(st)
 			}
 			g.emitCodecDeclarations(members)
+			unions := g.fileWireUnions()
+			if g.fileWire() {
+				g.emitUnionWireDeclarations(unions)
+				for _, un := range unions {
+					g.emitUnionWire(un)
+				}
+			}
 			for _, st := range members {
 				g.owner = st
 				if g.fileWire() {
@@ -706,6 +703,12 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 				cg.emitJsonDefinitions(st)
 			}
 		} else {
+			if unions := g.fileWireUnions(); g.fileWire() && len(unions) > 0 {
+				g.emitUnionWireDeclarations(unions)
+				for _, un := range unions {
+					g.emitUnionWire(un)
+				}
+			}
 			g.pf("/* no tables declared or referenced in this file — codecs are emitted\n")
 			g.pf("   for the table closure only (`table` declarations and what they reach) */\n")
 		}
@@ -744,6 +747,10 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 		}
 	}
 	fmt.Fprintf(&h, "\n#include \"%s.h\"\n", f.Base)
+	if unitHasWideStorage(u) {
+		h.WriteString(ccommon.Align16)
+		h.WriteString("#include \"serialize.h\" /* 128-bit storage, shared with the packet header */\n")
+	}
 	names := make([]string, 0, len(g.includes))
 	for n := range g.includes {
 		names = append(names, n)

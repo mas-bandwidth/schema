@@ -18,7 +18,13 @@ import (
 // this header read as one family.
 func (g *tableGen) cFieldType(t ir.FieldType) string {
 	switch t.Kind {
-	case ir.TInt:
+	case ir.TInt, ir.TFixed:
+		if t.Width == 128 {
+			if t.Signed {
+				return "serialize_int128_t"
+			}
+			return "serialize_uint128_t"
+		}
 		if t.Signed {
 			return fmt.Sprintf("int%d_t", t.Width)
 		}
@@ -60,6 +66,9 @@ func cSelfInit(t ir.FieldType) bool {
 // tableIntLit renders an integer literal safely at 64-bit width: unsigned
 // values past INT64_MAX need ull, and INT64_MIN has no single-literal form.
 func tableIntLit(v *big.Int, signed bool, widthBytes int) string {
+	if widthBytes == 16 {
+		return tableWideLit(v, signed)
+	}
 	s := v.String()
 	if widthBytes < 8 {
 		return s
@@ -96,9 +105,13 @@ func tableStorageRange(signed bool, bits int) (*big.Int, *big.Int) {
 // (-Wtautological-type-limit-compare), neither catching the other's
 // (issue #342, `make tables-clamp-limits`).
 func tableClampEnds(f *ir.Field, widthBytes int) (low, high bool) {
-	signed := f.Type.Kind == ir.TInt && f.Type.Signed
+	signed := ir.TableKindSigned(ir.TableScalarKind(f))
 	lo, hi := tableStorageRange(signed, widthBytes*8)
-	return f.IntMin.Cmp(lo) > 0, f.IntMax.Cmp(hi) < 0
+	rlo, rhi, ok := ir.TableRawRange(f)
+	if !ok {
+		return false, false
+	}
+	return rlo.Cmp(lo) > 0, rhi.Cmp(hi) < 0
 }
 
 // enumConst renders an enum variant's C spelling, the flat #define family the
@@ -130,14 +143,20 @@ func (g *tableGen) fieldDefaultExpr(f *ir.Field) string {
 			return formatFloat(f.DefFloat, false)
 		}
 		return "0.0"
-	case ir.TInt, ir.TBits:
+	case ir.TInt, ir.TBits, ir.TFixed:
 		if f.HasDefault && f.DefInt != nil {
-			signed := f.Type.Kind == ir.TInt && f.Type.Signed
+			signed := ir.TableKindSigned(ir.TableScalarKind(f))
 			width := 4
 			if f.Type.Width > 32 {
 				width = 8
 			}
+			if f.Type.Width == 128 {
+				width = 16
+			}
 			return tableIntLit(f.DefInt, signed, width)
+		}
+		if f.Type.Width == 128 {
+			return tableWideLit(big.NewInt(0), f.Type.Signed)
 		}
 		return "0"
 	case ir.TNamed:
@@ -148,6 +167,9 @@ func (g *tableGen) fieldDefaultExpr(f *ir.Field) string {
 			}
 			return enumNoneConst(f.Type.Name)
 		case *ir.Flags:
+			if f.HasDefault && f.DefInt != nil {
+				return tableIntLit(f.DefInt, false, 8)
+			}
 			return "0"
 		}
 	}
@@ -192,7 +214,12 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 		return
 	}
 	typ := g.cFieldType(f.Type)
+	if f.Type.Width == 128 {
+		typ = "SCHEMA_C_ALIGN16 " + typ
+	}
 	switch {
+	case f.Type.Kind == ir.TWString:
+		g.pf("    uint16_t %s[%d + 1];\n    int32_t %s_length;\n", f.Name, f.Type.Size, f.Name)
 	case f.Type.Kind == ir.TString:
 		g.pf("    char %s[%d + 1]; /* string(%d): N + 1 for the terminator the wire does not carry */\n", f.Name, f.Type.Size, f.Type.Size)
 		g.pf("    int32_t %s_length;\n", f.Name)
@@ -262,9 +289,12 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 	typ := g.cFieldType(f.Type)
 	selfInit := cSelfInit(f.Type)
 	switch {
-	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString, f.Type.Kind == ir.TBytes:
 		g.pf("    memset( value->%s, 0, sizeof( value->%s ) );\n", f.Name, f.Name)
-		g.pf("    value->%s_length = 0;\n", f.Name)
+		if f.HasDefault && len(f.DefBytes) != 0 {
+			g.pf("    { static const uint8_t initial[] = { %s }; memcpy( value->%s, initial, sizeof( initial ) ); }\n", byteLiterals(f.DefBytes), f.Name)
+		}
+		g.pf("    value->%s_length = %d;\n", f.Name, len(f.DefBytes))
 	case f.KeyEnum != "":
 		g.emitTableResetArray("value->"+f.Name, enumMaxConst(f.KeyEnum), typ, selfInit, f)
 	case f.Array == ir.ArrayFixed:
@@ -1154,20 +1184,20 @@ func (g *tableGen) emitTableReadScalarFrom(f *ir.Field, kind int, lvalue, ind, r
 	case tkF64:
 		g.pf("%s%s = table_bits_to_double( table_reader_get64( &%s ) );\n", ind, lvalue, rdr)
 	default:
-		signed := f.Type.Kind == ir.TInt && f.Type.Signed
+		signed := ir.TableKindSigned(ir.TableScalarKind(f))
 		storage := fmt.Sprintf("uint%d_t", width*8)
 		if signed {
 			storage = fmt.Sprintf("int%d_t", width*8)
 		}
 		g.pf("%s{\n%s    %s decoded_v = (%s) %s( &%s );\n", ind, ind, storage, storage, tableGet(width), rdr)
-		if f.HasIntRange {
+		if rlo, rhi, ok := ir.TableRawRange(f); ok {
 			low, high := tableClampEnds(f, width)
 			if low {
-				lo := tableIntLit(f.IntMin, signed, width)
+				lo := tableIntLit(rlo, signed, width)
 				g.pf("%s    if ( decoded_v < %s ) { decoded_v = %s; r->report->clamped++; }\n", ind, lo, lo)
 			}
 			if high {
-				hi := tableIntLit(f.IntMax, signed, width)
+				hi := tableIntLit(rhi, signed, width)
 				lead := "if"
 				if low {
 					lead = "else if"
@@ -1197,12 +1227,20 @@ func tableFieldTypeName(f *ir.Field) string {
 			prefix = "uint"
 		}
 		return fmt.Sprintf("%s%d", prefix, f.Type.Width)
+	case ir.TFixed:
+		prefix := "fixed"
+		if !f.Type.Signed {
+			prefix = "ufixed"
+		}
+		return fmt.Sprintf("%s(%d,%d)", prefix, f.Type.Width-f.Type.FracBits, f.Type.FracBits)
 	case ir.TBits:
 		return fmt.Sprintf("bits(%d)", f.Type.Width)
 	case ir.TFloat32:
 		return "float32"
 	case ir.TFloat64:
 		return "float64"
+	case ir.TWString:
+		return "wstring"
 	case ir.TString:
 		return "string"
 	case ir.TBytes:
@@ -1296,6 +1334,16 @@ func annotationColumns(doc string, tags []string, tagsName string) string {
 // emitFieldVocabulary emits one field's variant table, its key table and its
 // union arm table where it has them.
 func (g *tableGen) emitFieldVocabulary(st *ir.Struct, f *ir.Field) {
+	if ir.TableScalarKind(f) >= 18 && ir.TableScalarKind(f) <= 29 {
+		lo, hi, ok := ir.TableRawRange(f)
+		if !ok {
+			lo, hi = tableStorageRange(f.Type.Signed, f.Type.Width)
+		}
+		llo, lhi := wideLanes(lo)
+		hlo, hhi := wideLanes(hi)
+		g.pf("static const TableWideRange %s = { { %sull, %sull }, { %sull, %sull } };\n", g.vocabularySymbol(st.Name, f.Name, "range"), llo, lhi, hlo, hhi)
+	}
+
 	switch ref := f.Type.Ref.(type) {
 	case *ir.Enum:
 		if f.Type.Kind != ir.TNamed {
@@ -1336,9 +1384,10 @@ func (g *tableGen) emitFieldVocabulary(st *ir.Struct, f *ir.Field) {
 		}
 		g.pf("};\n")
 	case *ir.Union:
-		if f.Type.Kind != ir.TNamed || f.Array != ir.ArrayNone {
+		if f.Type.Kind != ir.TNamed {
 			break
 		}
+		g.emitUnionArmDescriptors(ref)
 		g.pf("static const TableVariantInfo %s[] = {\n", g.vocabularySymbol(st.Name, f.Name, "variants"))
 		g.pf("    { \"None\", 0 },\n")
 		for _, v := range ref.Variants {
@@ -1350,10 +1399,20 @@ func (g *tableGen) emitFieldVocabulary(st *ir.Struct, f *ir.Field) {
 		}
 		g.pf("};\n")
 		g.pf("static const TableUnionArmInfo %s[] = {\n", g.vocabularySymbol(st.Name, f.Name, "arms"))
-		g.pf("    { 0, NULL },\n")
+		g.pf("    { 0, NULL, NULL, 0 },\n")
 		for _, v := range ref.Variants {
-			g.noteRef(v.Type)
-			g.pf("    { (uint32_t) offsetof( %s, as.%s ), &%s },\n", ref.Name, v.Name, g.sym(v.Type, "info"))
+			if v.Void() {
+				g.pf("    { 0, NULL, NULL, 0 },\n")
+				continue
+			}
+			target, field := "NULL", "NULL"
+			if v.Body() {
+				g.noteRef(v.Type)
+				target = "&" + g.sym(v.Type, "info")
+			} else {
+				field = g.sym(ref.Name, "arm_field_"+v.Name)
+			}
+			g.pf("    { (uint32_t)offsetof( %s, as.%s ), %s, %s, (uint32_t)sizeof( ((%s *)0)->as.%s ) },\n", ref.Name, v.Name, target, field, ref.Name, v.Name)
 		}
 		g.pf("};\n")
 		g.pf("static const TableUnionInfo %s = { (uint32_t) offsetof( %s, type ), (uint32_t) sizeof( ( (%s *) 0 )->type ), %s };\n",
@@ -1388,6 +1447,9 @@ func (g *tableGen) emitFieldVocabulary(st *ir.Struct, f *ir.Field) {
 }
 
 func (g *tableGen) emitFieldDescriptor(st *ir.Struct, f *ir.Field, guard string) {
+	g.emitFieldDescriptorAt(st, f, guard, f.Name)
+}
+func (g *tableGen) emitFieldDescriptorAt(st *ir.Struct, f *ir.Field, guard, member string) {
 	id := uint64(ir.TableFieldId(f))
 	if g.fileWire() {
 		id = ir.TableFieldWireId(f)
@@ -1403,7 +1465,7 @@ func (g *tableGen) emitFieldDescriptor(st *ir.Struct, f *ir.Field, guard string)
 	if f.Type.Pointer {
 		kind = tkTable
 	}
-	counted := f.Array == ir.ArrayCounted || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString
+	counted := f.Array == ir.ArrayCounted || f.Type.Kind == ir.TBytes || (f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString)
 
 	// the count column, spelled the way the storage spells its own extent: a
 	// keyed array DERIVES it from the key enum, so nothing outside the array
@@ -1414,23 +1476,23 @@ func (g *tableGen) emitFieldDescriptor(st *ir.Struct, f *ir.Field, guard string)
 		bound = "(int32_t) " + enumMaxConst(f.KeyEnum)
 	case f.Array != ir.ArrayNone:
 		bound = strconv.FormatInt(f.ArrayBound, 10)
-	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString:
+	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString:
 		bound = strconv.FormatInt(f.Type.Size, 10)
 	}
 
 	// `( (T *) 0 )->field`, never a materialised value: an unevaluated member
 	// access names the type without an object, where a braced temporary makes
 	// the compiler build a whole value of T to take the size of one member.
-	elemSize := fmt.Sprintf("(uint32_t) sizeof( ( (%s *) 0 )->%s )", st.Name, f.Name)
+	elemSize := fmt.Sprintf("(uint32_t) sizeof( ( (%s *) 0 )->%s )", st.Name, member)
 	if isArray {
-		elemSize = fmt.Sprintf("(uint32_t) sizeof( ( (%s *) 0 )->%s[0] )", st.Name, f.Name)
+		elemSize = fmt.Sprintf("(uint32_t) sizeof( ( (%s *) 0 )->%s[0] )", st.Name, member)
 	}
 
 	countOffset := "0xffffffffu"
 	if counted {
-		companion := f.Name + "_count"
-		if f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString {
-			companion = f.Name + "_length"
+		companion := member + "_count"
+		if f.Type.Kind == ir.TBytes || (f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString) {
+			companion = member + "_length"
 		}
 		countOffset = fmt.Sprintf("(uint32_t) offsetof( %s, %s )", st.Name, companion)
 	}
@@ -1485,7 +1547,7 @@ func (g *tableGen) emitFieldDescriptor(st *ir.Struct, f *ir.Field, guard string)
 			variants = g.vocabularySymbol(st.Name, f.Name, "variants")
 		}
 	case *ir.Union:
-		if f.Type.Kind == ir.TNamed && f.Array == ir.ArrayNone {
+		if f.Type.Kind == ir.TNamed {
 			enumMax = fmt.Sprintf("%d", len(ref.Variants))
 			variants = g.vocabularySymbol(st.Name, f.Name, "variants")
 			hasIds = "1"
@@ -1495,7 +1557,7 @@ func (g *tableGen) emitFieldDescriptor(st *ir.Struct, f *ir.Field, guard string)
 
 	presentOffset := "0xffffffffu"
 	if f.Type.Optional {
-		presentOffset = fmt.Sprintf("(uint32_t) offsetof( %s, %s_present )", st.Name, f.Name)
+		presentOffset = fmt.Sprintf("(uint32_t) offsetof( %s, %s_present )", st.Name, member)
 	}
 
 	keyTypeName, keys, keyMax := "NULL", "NULL", "-1"
@@ -1506,6 +1568,14 @@ func (g *tableGen) emitFieldDescriptor(st *ir.Struct, f *ir.Field, guard string)
 		g.noteRef(f.KeyEnum)
 	}
 
+	wide := "NULL"
+	frac := 0
+	if ir.TableScalarKind(f) >= 18 && ir.TableScalarKind(f) <= 29 {
+		wide = "&" + g.vocabularySymbol(st.Name, f.Name, "range")
+	}
+	if f.Type.Kind == ir.TFixed {
+		frac = f.Type.FracBits
+	}
 	pointerColumn := ""
 	if g.anyVariable {
 		pointerColumn = fmt.Sprintf("%s, ", boolC(f.Type.Pointer))
@@ -1513,8 +1583,8 @@ func (g *tableGen) emitFieldDescriptor(st *ir.Struct, f *ir.Field, guard string)
 	g.pf("    { \"%s\", \"%s\", \"%s\", 0x%016xull, %d, %s, %s%s, %s, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, \"%s\", %s },\n",
 		f.Name, ir.TableFieldJsonKey(f), tableFieldTypeName(f), id, kind, boolC(isArray), pointerColumn,
 		boolC(counted), boolC(f.Type.Optional), bound,
-		st.Name, f.Name, elemSize, countOffset, presentOffset, table,
-		hasRange, rangeMin, rangeMax, enumMax, variants, hasIds,
+		st.Name, member, elemSize, countOffset, presentOffset, table,
+		hasRange, rangeMin, fmt.Sprintf("%s, %s, %d", rangeMax, wide, frac), enumMax, variants, hasIds,
 		keyTypeName, keys, keyMax, arms, guard,
 		annotationColumns(f.Doc, f.Tags, g.vocabularySymbol(st.Name, f.Name, "tags")))
 }

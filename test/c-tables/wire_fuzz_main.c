@@ -25,8 +25,8 @@ static int read_name( char * name, size_t capacity )
 typedef const ConformanceCodec * (*Unit)( int * count );
 static const ConformanceCodec * find_codec( const char * unit, const char * root )
 {
-    const Unit units[] = { conformance_codecs_tabledemo, conformance_codecs_tblv1,
-        conformance_codecs_tblv2, conformance_codecs_tblp1, conformance_codecs_tblp3 };
+    const Unit units[] = { conformance_codecs_vocab9demo, conformance_codecs_vocabdemo, conformance_codecs_backenddemo, conformance_codecs_tblr2, conformance_codecs_tblr1, conformance_codecs_tblk2, conformance_codecs_tblk1, conformance_codecs_tbla2, conformance_codecs_tbla1, conformance_codecs_tblm2, conformance_codecs_tblm1, conformance_codecs_messagedemo, conformance_codecs_tabledemo, conformance_codecs_tblv1,
+        conformance_codecs_tblv2, conformance_codecs_tblp1, conformance_codecs_tblp3, conformance_codecs_widedemo, conformance_codecs_scalars, conformance_codecs_tblscalars2 };
     size_t u;
     for ( u = 0; u < sizeof( units ) / sizeof( units[0] ); u++ ) {
         int i, count; const ConformanceCodec * codecs = units[u]( &count );

@@ -14,6 +14,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -56,12 +57,16 @@ func newFakeCorpus(t *testing.T) fakeCorpus {
 	c.json = filepath.Join(c.jsonDir, "alpha.json")
 	writeFile(t, c.wire, "\x01\x02\x03\x04")
 	writeFile(t, c.json, "{\"alpha\":1}\n")
-	writeFile(t, c.manifest, "unit u tables/examples\ninstance alpha u Root "+c.wire+"\n")
+	writeFile(t, c.manifest, "unit u tables/examples\ninstance alpha u Root alpha.bin\n")
 	writeFile(t, c.reports, "")
 	m, err := ReadManifest(c.manifest, c.jsonDir)
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Manifest tokens are whitespace-delimited; this fake driver ignores
+	// their paths. Attach the fixture's actual host path after parsing so a
+	// temporary directory with spaces does not change the fixture grammar.
+	m.Instances[0].Wire = c.wire
 	c.m = m
 	return c
 }
@@ -123,7 +128,15 @@ func (c fakeCorpus) substituted(t *testing.T, lang string, leg fakeLeg) string {
 	script := filepath.Join(dir, "driver")
 	c.driverScript(t, script, leg)
 	path := filepath.Join(dir, "drivers.txt")
-	writeFile(t, path, lang+" "+script+"\n")
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	command, err := filepath.Rel(cwd, script)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, path, lang+" "+command+"\n")
 	return path
 }
 

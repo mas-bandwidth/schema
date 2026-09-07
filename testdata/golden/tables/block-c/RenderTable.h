@@ -124,6 +124,7 @@ enum SCHEMA_TABLE_REFUSAL_REASON { SCHEMA_TABLE_NO_REFUSAL, SCHEMA_TABLE_NEWER_F
    no schema files. <name>_table_type() returns <Name>'s descriptor. */
 
 struct TableTypeInfo;
+struct TableFieldInfo;
 
 /* One arm of a union field: where its payload sits inside the union's storage
    and what its payload looks like. The arm's NAME and its table-wire id ride
@@ -133,6 +134,8 @@ typedef struct TableUnionArmInfo
 {
     uint32_t offset;                    /* offsetof the arm's payload within the union storage */
     const struct TableTypeInfo * table; /* the arm payload's descriptor */
+    const struct TableFieldInfo * field; /* non-body arm, relative to union storage */
+    uint32_t size; /* bytes established when this arm is selected */
 } TableUnionArmInfo;
 
 /* A union field's shape: the tag, and the arms indexed by it. Arms run
@@ -169,6 +172,8 @@ typedef struct TableVariantInfo
    are one, so every absent doc compares equal by address. */
 static SCHEMA_UNUSED const char TableDocNone[1] = "";
 
+typedef struct TableWideRange { uint64_t lo[2], hi[2]; } TableWideRange;
+
 typedef struct TableFieldInfo
 {
     const char * name;      /* schema field name, e.g. "health" */
@@ -188,6 +193,8 @@ typedef struct TableFieldInfo
     int has_range;          /* a declared [min, max] (int or float) */
     double range_min;       /* NOTE: int64 ranges beyond 2^53 lose precision here */
     double range_max;
+    const TableWideRange * wide; /* exact raw range for wide/fixed storage */
+    int32_t frac_bits;
     int64_t enum_max;       /* enums: highest valid value (None = 0 always valid);
                                unions: the arm count (tag range [0, enum_max]);
                                flags: the highest declared BIT INDEX; else -1 */
@@ -243,7 +250,7 @@ typedef struct TableWriter
 {
     uint8_t * buffer;
     int64_t capacity, offset;
-    int overflow, id_count;
+    int overflow, id_count, check_default;
     uint64_t ids[89];
 } TableWriter;
 
@@ -396,6 +403,8 @@ static SCHEMA_UNUSED int table_kind_widens( uint8_t kind, uint8_t declared )
 {
     if ( declared >= 3 && declared <= 5 ) { return kind >= 2 && kind < declared; }
     if ( declared >= 7 && declared <= 9 ) { return kind >= 6 && kind < declared; }
+    if ( declared == 18 ) { return kind >= 2 && kind <= 5; }
+    if ( declared == 19 ) { return kind >= 6 && kind <= 9; }
     return declared == 11 && kind == 10;
 }
 static SCHEMA_UNUSED double table_wire_widen_f32( uint32_t bits )
@@ -462,11 +471,11 @@ static SCHEMA_UNUSED uint64_t table_wire_utf8_clamp( const uint8_t * p, uint64_t
    build. The storage shifts left and holds no slot for None, so a build that
    skipped this compare would index one element BEFORE the array — undefined
    behaviour in the configuration a game ships. */
-static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key )
+static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key, size_t count )
 {
-    if ( key == 0 )
+    if ( key <= 0 || (uint64_t) key > (uint64_t) count )
     {
-        assert( 0 && "None is the null key of an enum-keyed array: it keys no slot" );
+        assert( 0 && "key is outside the enum-keyed array" );
         abort();
     }
     return key - 1;
@@ -475,7 +484,7 @@ static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key )
 /* keyed[key] — the slot a variant owns, as an LVALUE. The key is evaluated
    once. ITERATION is the surface a consumer of the whole array wants: walk
    1..E_MAX and index with the key, so a call site writes no shift. */
-#define SCHEMA_TABLE_KEYED_AT( array, key ) ( (array)[ table_keyed_slot( (int32_t) ( key ) ) ] )
+#define SCHEMA_TABLE_KEYED_AT( array, key ) ( (array)[ table_keyed_slot( (int32_t) ( key ), sizeof( array ) / sizeof( (array)[0] ) ) ] )
 
 
 static SCHEMA_UNUSED float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
@@ -484,6 +493,38 @@ static SCHEMA_UNUSED double table_bits_to_double( uint64_t bits ) { double d; me
 static SCHEMA_UNUSED uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
 
 #endif /* SCHEMA_BLOCKDEMO_TABLE_PRIMITIVES */
+
+#ifndef SCHEMA_TABLE_UTF16_RUNTIME
+#define SCHEMA_TABLE_UTF16_RUNTIME
+static SCHEMA_UNUSED uint16_t table_wire_utf16_unit( const uint8_t * bytes, int64_t index )
+{
+    return (uint16_t) ((uint16_t) bytes[index*2] | ((uint16_t) bytes[index*2+1] << 8));
+}
+static SCHEMA_UNUSED int table_wire_utf16( const uint8_t * bytes, int64_t units )
+{
+    int64_t i = 0;
+    while ( i < units ) {
+        uint16_t unit = table_wire_utf16_unit( bytes, i++ );
+        if ( unit == 0 ) { return 0; }
+        if ( unit >= 0xd800 && unit <= 0xdbff ) {
+            uint16_t low;
+            if ( i == units ) { return 0; }
+            low = table_wire_utf16_unit( bytes, i++ );
+            if ( low < 0xdc00 || low > 0xdfff ) { return 0; }
+        } else if ( unit >= 0xdc00 && unit <= 0xdfff ) { return 0; }
+    }
+    return 1;
+}
+static SCHEMA_UNUSED int64_t table_wire_utf16_clamp( const uint8_t * bytes, int64_t units, int64_t bound )
+{
+    if ( units <= bound ) { return units; }
+    if ( bound > 0 ) {
+        uint16_t last = table_wire_utf16_unit( bytes, bound-1 );
+        if ( last >= 0xd800 && last <= 0xdbff ) { bound--; }
+    }
+    return bound;
+}
+#endif
 
 #ifndef SCHEMA_BLOCKDEMO_BUILD_VERSION
 #define SCHEMA_BLOCKDEMO_BUILD_VERSION
@@ -1010,35 +1051,35 @@ static SCHEMA_UNUSED void schema_blockdemo_render_quaternion_reset_raw_( void * 
 /* ---- codecs: measure/save/load per closure member ---- */
 
 static SCHEMA_UNUSED int64_t render_camera_measure( const RenderCamera * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_camera_save_body( TableWriter * w, const RenderCamera * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_camera_load_body( TableReader * r, RenderCamera * value );
+static SCHEMA_UNUSED  int render_camera_save_body( TableWriter * w, const RenderCamera * value );
+static SCHEMA_UNUSED  int render_camera_load_body( TableReader * r, RenderCamera * value );
 static SCHEMA_UNUSED int64_t render_ship_measure( const RenderShip * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_ship_save_body( TableWriter * w, const RenderShip * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_ship_load_body( TableReader * r, RenderShip * value );
+static SCHEMA_UNUSED  int render_ship_save_body( TableWriter * w, const RenderShip * value );
+static SCHEMA_UNUSED  int render_ship_load_body( TableReader * r, RenderShip * value );
 static SCHEMA_UNUSED int64_t render_turret_measure( const RenderTurret * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_turret_save_body( TableWriter * w, const RenderTurret * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_turret_load_body( TableReader * r, RenderTurret * value );
+static SCHEMA_UNUSED  int render_turret_save_body( TableWriter * w, const RenderTurret * value );
+static SCHEMA_UNUSED  int render_turret_load_body( TableReader * r, RenderTurret * value );
 static SCHEMA_UNUSED int64_t render_missile_measure( const RenderMissile * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_missile_save_body( TableWriter * w, const RenderMissile * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_missile_load_body( TableReader * r, RenderMissile * value );
+static SCHEMA_UNUSED  int render_missile_save_body( TableWriter * w, const RenderMissile * value );
+static SCHEMA_UNUSED  int render_missile_load_body( TableReader * r, RenderMissile * value );
 static SCHEMA_UNUSED int64_t render_dynamic_prop_measure( const RenderDynamicProp * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_dynamic_prop_save_body( TableWriter * w, const RenderDynamicProp * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_dynamic_prop_load_body( TableReader * r, RenderDynamicProp * value );
+static SCHEMA_UNUSED  int render_dynamic_prop_save_body( TableWriter * w, const RenderDynamicProp * value );
+static SCHEMA_UNUSED  int render_dynamic_prop_load_body( TableReader * r, RenderDynamicProp * value );
 static SCHEMA_UNUSED int64_t render_static_prop_measure( const RenderStaticProp * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_static_prop_save_body( TableWriter * w, const RenderStaticProp * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_static_prop_load_body( TableReader * r, RenderStaticProp * value );
+static SCHEMA_UNUSED  int render_static_prop_save_body( TableWriter * w, const RenderStaticProp * value );
+static SCHEMA_UNUSED  int render_static_prop_load_body( TableReader * r, RenderStaticProp * value );
 static SCHEMA_UNUSED int64_t render_cosmetic_prop_measure( const RenderCosmeticProp * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_cosmetic_prop_save_body( TableWriter * w, const RenderCosmeticProp * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_cosmetic_prop_load_body( TableReader * r, RenderCosmeticProp * value );
+static SCHEMA_UNUSED  int render_cosmetic_prop_save_body( TableWriter * w, const RenderCosmeticProp * value );
+static SCHEMA_UNUSED  int render_cosmetic_prop_load_body( TableReader * r, RenderCosmeticProp * value );
 static SCHEMA_UNUSED int64_t render_laser_measure( const RenderLaser * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_laser_save_body( TableWriter * w, const RenderLaser * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_laser_load_body( TableReader * r, RenderLaser * value );
+static SCHEMA_UNUSED  int render_laser_save_body( TableWriter * w, const RenderLaser * value );
+static SCHEMA_UNUSED  int render_laser_load_body( TableReader * r, RenderLaser * value );
 static SCHEMA_UNUSED int64_t render_explosion_measure( const RenderExplosion * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_explosion_save_body( TableWriter * w, const RenderExplosion * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_explosion_load_body( TableReader * r, RenderExplosion * value );
+static SCHEMA_UNUSED  int render_explosion_save_body( TableWriter * w, const RenderExplosion * value );
+static SCHEMA_UNUSED  int render_explosion_load_body( TableReader * r, RenderExplosion * value );
 static SCHEMA_UNUSED int64_t render_frame_measure( const RenderFrame * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_frame_save_body( TableWriter * w, const RenderFrame * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_frame_load_body( TableReader * r, RenderFrame * value );
+static SCHEMA_UNUSED  int render_frame_save_body( TableWriter * w, const RenderFrame * value );
+static SCHEMA_UNUSED  int render_frame_load_body( TableReader * r, RenderFrame * value );
 static SCHEMA_UNUSED int64_t render_vector3_measure( const RenderVector3 * value );
 static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_vector3_save_body( TableWriter * w, const RenderVector3 * value );
 static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_vector3_load_body( TableReader * r, RenderVector3 * value );
@@ -1050,11 +1091,19 @@ static SCHEMA_UNUSED int render_camera_save_body( TableWriter * w, const RenderC
 {
     (void) value;
     { /* position */
-        TableWriter default_probe = table_writer_probe( w );
+        TableWriter default_probe = table_writer_probe( w ); default_probe.check_default = 1;
         if ( !render_vector3_save_body( &default_probe, &value->position ) ) { return 0; }
         if ( default_probe.offset > 1 )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x4cbf3a26fca1d74aull ); table_writer_put8( w, 13 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !render_vector3_save_body( w, &value->position ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !render_vector3_save_body( &probe, &value->position ) ) { return 0; }
@@ -1064,11 +1113,19 @@ static SCHEMA_UNUSED int render_camera_save_body( TableWriter * w, const RenderC
         }
     }
     { /* rotation */
-        TableWriter default_probe = table_writer_probe( w );
+        TableWriter default_probe = table_writer_probe( w ); default_probe.check_default = 1;
         if ( !render_quaternion_save_body( &default_probe, &value->rotation ) ) { return 0; }
         if ( default_probe.offset > 1 )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xb51afb05cd34709full ); table_writer_put8( w, 13 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !render_quaternion_save_body( w, &value->rotation ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !render_quaternion_save_body( &probe, &value->rotation ) ) { return 0; }
@@ -1078,29 +1135,33 @@ static SCHEMA_UNUSED int render_camera_save_body( TableWriter * w, const RenderC
         }
     }
     { /* camera_id */
-        if ( value->camera_id != 0 )
+        if ( !( value->camera_id == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x9f61700f084ab92eull ); table_writer_put8( w, 8 );
             table_writer_put32( w, (uint32_t) ( value->camera_id ) );
         }
     }
     { /* camera_type */
-        if ( value->camera_type != 0 )
+        if ( !( value->camera_type == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x336d3dc7fffd0c9bull ); table_writer_put8( w, 8 );
             table_writer_put32( w, (uint32_t) ( value->camera_type ) );
         }
     }
     { /* target_object_id */
-        if ( value->target_object_id != 0 )
+        if ( !( value->target_object_id == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x6a0c6a156952b9c2ull ); table_writer_put8( w, 8 );
             table_writer_put32( w, (uint32_t) ( value->target_object_id ) );
         }
     }
     { /* fov */
-        if ( value->fov != 0.0f )
+        if ( !( value->fov == 0.0f ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xdcb27c18fed9e15cull ); table_writer_put8( w, 10 );
             table_writer_put32( w, table_float_to_bits( value->fov ) );
         }
@@ -1433,11 +1494,19 @@ static SCHEMA_UNUSED int render_ship_save_body( TableWriter * w, const RenderShi
 {
     (void) value;
     { /* position */
-        TableWriter default_probe = table_writer_probe( w );
+        TableWriter default_probe = table_writer_probe( w ); default_probe.check_default = 1;
         if ( !render_vector3_save_body( &default_probe, &value->position ) ) { return 0; }
         if ( default_probe.offset > 1 )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x4cbf3a26fca1d74aull ); table_writer_put8( w, 13 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !render_vector3_save_body( w, &value->position ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !render_vector3_save_body( &probe, &value->position ) ) { return 0; }
@@ -1447,11 +1516,19 @@ static SCHEMA_UNUSED int render_ship_save_body( TableWriter * w, const RenderShi
         }
     }
     { /* rotation */
-        TableWriter default_probe = table_writer_probe( w );
+        TableWriter default_probe = table_writer_probe( w ); default_probe.check_default = 1;
         if ( !render_quaternion_save_body( &default_probe, &value->rotation ) ) { return 0; }
         if ( default_probe.offset > 1 )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xb51afb05cd34709full ); table_writer_put8( w, 13 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !render_quaternion_save_body( w, &value->rotation ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !render_quaternion_save_body( &probe, &value->rotation ) ) { return 0; }
@@ -1461,43 +1538,49 @@ static SCHEMA_UNUSED int render_ship_save_body( TableWriter * w, const RenderShi
         }
     }
     { /* flags */
-        if ( value->flags != 0 )
+        if ( !( value->flags == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x17a3a1a985f75aecull ); table_writer_put8( w, 9 );
             table_writer_put64( w, (uint64_t) ( value->flags ) );
         }
     }
     { /* object_id */
-        if ( value->object_id != 0 )
+        if ( !( value->object_id == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x0bdab42c07f19812ull ); table_writer_put8( w, 8 );
             table_writer_put32( w, (uint32_t) ( value->object_id ) );
         }
     }
     { /* target_object_id */
-        if ( value->target_object_id != 0 )
+        if ( !( value->target_object_id == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x6a0c6a156952b9c2ull ); table_writer_put8( w, 8 );
             table_writer_put32( w, (uint32_t) ( value->target_object_id ) );
         }
     }
     { /* thrust */
-        if ( value->thrust != 0.0f )
+        if ( !( value->thrust == 0.0f ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xcfd587cb3100cd73ull ); table_writer_put8( w, 10 );
             table_writer_put32( w, table_float_to_bits( value->thrust ) );
         }
     }
     { /* object_sequence */
-        if ( value->object_sequence != 0 )
+        if ( !( value->object_sequence == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x5de0015285763c46ull ); table_writer_put8( w, 6 );
             table_writer_put8( w, (uint8_t) ( value->object_sequence ) );
         }
     }
     { /* ship_type */
-        if ( value->ship_type != SHIP_TYPE_NONE )
+        if ( !( value->ship_type == SHIP_TYPE_NONE ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x1f7d2e86a2e77268ull ); table_writer_put8( w, 30 );
             switch ( value->ship_type )
             {
@@ -1510,8 +1593,9 @@ static SCHEMA_UNUSED int render_ship_save_body( TableWriter * w, const RenderShi
         }
     }
     { /* team */
-        if ( value->team != TEAM_NONE )
+        if ( !( value->team == TEAM_NONE ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xfa23d9ef19afc32cull ); table_writer_put8( w, 30 );
             switch ( value->team )
             {
@@ -1525,15 +1609,17 @@ static SCHEMA_UNUSED int render_ship_save_body( TableWriter * w, const RenderShi
         }
     }
     { /* has_target_lock */
-        if ( value->has_target_lock != 0 )
+        if ( !( value->has_target_lock == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x1554fa45a1220171ull ); table_writer_put8( w, 1 );
             table_writer_put8( w, value->has_target_lock ? 1 : 0 );
         }
     }
     { /* predicted_explode */
-        if ( value->predicted_explode != 0 )
+        if ( !( value->predicted_explode == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x4d5be97ba1b9cb81ull ); table_writer_put8( w, 1 );
             table_writer_put8( w, value->predicted_explode ? 1 : 0 );
         }
@@ -2042,11 +2128,19 @@ static SCHEMA_UNUSED int render_turret_save_body( TableWriter * w, const RenderT
 {
     (void) value;
     { /* rotation */
-        TableWriter default_probe = table_writer_probe( w );
+        TableWriter default_probe = table_writer_probe( w ); default_probe.check_default = 1;
         if ( !render_quaternion_save_body( &default_probe, &value->rotation ) ) { return 0; }
         if ( default_probe.offset > 1 )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xb51afb05cd34709full ); table_writer_put8( w, 13 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !render_quaternion_save_body( w, &value->rotation ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !render_quaternion_save_body( &probe, &value->rotation ) ) { return 0; }
@@ -2056,50 +2150,57 @@ static SCHEMA_UNUSED int render_turret_save_body( TableWriter * w, const RenderT
         }
     }
     { /* flags */
-        if ( value->flags != 0 )
+        if ( !( value->flags == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x17a3a1a985f75aecull ); table_writer_put8( w, 9 );
             table_writer_put64( w, (uint64_t) ( value->flags ) );
         }
     }
     { /* object_id */
-        if ( value->object_id != 0 )
+        if ( !( value->object_id == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x0bdab42c07f19812ull ); table_writer_put8( w, 8 );
             table_writer_put32( w, (uint32_t) ( value->object_id ) );
         }
     }
     { /* parent_object_id */
-        if ( value->parent_object_id != 0 )
+        if ( !( value->parent_object_id == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x0bee7b3cb4046c93ull ); table_writer_put8( w, 8 );
             table_writer_put32( w, (uint32_t) ( value->parent_object_id ) );
         }
     }
     { /* turret_index */
-        if ( value->turret_index != 0 )
+        if ( !( value->turret_index == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x88a11a6aed541f54ull ); table_writer_put8( w, 8 );
             table_writer_put32( w, (uint32_t) ( value->turret_index ) );
         }
     }
     { /* target_object_id */
-        if ( value->target_object_id != 0 )
+        if ( !( value->target_object_id == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x6a0c6a156952b9c2ull ); table_writer_put8( w, 8 );
             table_writer_put32( w, (uint32_t) ( value->target_object_id ) );
         }
     }
     { /* object_sequence */
-        if ( value->object_sequence != 0 )
+        if ( !( value->object_sequence == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x5de0015285763c46ull ); table_writer_put8( w, 6 );
             table_writer_put8( w, (uint8_t) ( value->object_sequence ) );
         }
     }
     { /* team */
-        if ( value->team != TEAM_NONE )
+        if ( !( value->team == TEAM_NONE ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xfa23d9ef19afc32cull ); table_writer_put8( w, 30 );
             switch ( value->team )
             {
@@ -2113,8 +2214,9 @@ static SCHEMA_UNUSED int render_turret_save_body( TableWriter * w, const RenderT
         }
     }
     { /* has_target_lock */
-        if ( value->has_target_lock != 0 )
+        if ( !( value->has_target_lock == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x1554fa45a1220171ull ); table_writer_put8( w, 1 );
             table_writer_put8( w, value->has_target_lock ? 1 : 0 );
         }
@@ -2652,11 +2754,19 @@ static SCHEMA_UNUSED int render_missile_save_body( TableWriter * w, const Render
 {
     (void) value;
     { /* position */
-        TableWriter default_probe = table_writer_probe( w );
+        TableWriter default_probe = table_writer_probe( w ); default_probe.check_default = 1;
         if ( !render_vector3_save_body( &default_probe, &value->position ) ) { return 0; }
         if ( default_probe.offset > 1 )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x4cbf3a26fca1d74aull ); table_writer_put8( w, 13 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !render_vector3_save_body( w, &value->position ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !render_vector3_save_body( &probe, &value->position ) ) { return 0; }
@@ -2666,11 +2776,19 @@ static SCHEMA_UNUSED int render_missile_save_body( TableWriter * w, const Render
         }
     }
     { /* rotation */
-        TableWriter default_probe = table_writer_probe( w );
+        TableWriter default_probe = table_writer_probe( w ); default_probe.check_default = 1;
         if ( !render_quaternion_save_body( &default_probe, &value->rotation ) ) { return 0; }
         if ( default_probe.offset > 1 )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xb51afb05cd34709full ); table_writer_put8( w, 13 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !render_quaternion_save_body( w, &value->rotation ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !render_quaternion_save_body( &probe, &value->rotation ) ) { return 0; }
@@ -2680,29 +2798,33 @@ static SCHEMA_UNUSED int render_missile_save_body( TableWriter * w, const Render
         }
     }
     { /* flags */
-        if ( value->flags != 0 )
+        if ( !( value->flags == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x17a3a1a985f75aecull ); table_writer_put8( w, 9 );
             table_writer_put64( w, (uint64_t) ( value->flags ) );
         }
     }
     { /* object_id */
-        if ( value->object_id != 0 )
+        if ( !( value->object_id == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x0bdab42c07f19812ull ); table_writer_put8( w, 8 );
             table_writer_put32( w, (uint32_t) ( value->object_id ) );
         }
     }
     { /* object_sequence */
-        if ( value->object_sequence != 0 )
+        if ( !( value->object_sequence == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x5de0015285763c46ull ); table_writer_put8( w, 6 );
             table_writer_put8( w, (uint8_t) ( value->object_sequence ) );
         }
     }
     { /* missile_type */
-        if ( value->missile_type != MISSILE_TYPE_NONE )
+        if ( !( value->missile_type == MISSILE_TYPE_NONE ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x151b2a0e2c07b4bcull ); table_writer_put8( w, 30 );
             switch ( value->missile_type )
             {
@@ -2714,8 +2836,9 @@ static SCHEMA_UNUSED int render_missile_save_body( TableWriter * w, const Render
         }
     }
     { /* team */
-        if ( value->team != TEAM_NONE )
+        if ( !( value->team == TEAM_NONE ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xfa23d9ef19afc32cull ); table_writer_put8( w, 30 );
             switch ( value->team )
             {
@@ -3057,11 +3180,19 @@ static SCHEMA_UNUSED int render_dynamic_prop_save_body( TableWriter * w, const R
 {
     (void) value;
     { /* position */
-        TableWriter default_probe = table_writer_probe( w );
+        TableWriter default_probe = table_writer_probe( w ); default_probe.check_default = 1;
         if ( !render_vector3_save_body( &default_probe, &value->position ) ) { return 0; }
         if ( default_probe.offset > 1 )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x4cbf3a26fca1d74aull ); table_writer_put8( w, 13 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !render_vector3_save_body( w, &value->position ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !render_vector3_save_body( &probe, &value->position ) ) { return 0; }
@@ -3071,11 +3202,19 @@ static SCHEMA_UNUSED int render_dynamic_prop_save_body( TableWriter * w, const R
         }
     }
     { /* rotation */
-        TableWriter default_probe = table_writer_probe( w );
+        TableWriter default_probe = table_writer_probe( w ); default_probe.check_default = 1;
         if ( !render_quaternion_save_body( &default_probe, &value->rotation ) ) { return 0; }
         if ( default_probe.offset > 1 )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xb51afb05cd34709full ); table_writer_put8( w, 13 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !render_quaternion_save_body( w, &value->rotation ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !render_quaternion_save_body( &probe, &value->rotation ) ) { return 0; }
@@ -3085,29 +3224,33 @@ static SCHEMA_UNUSED int render_dynamic_prop_save_body( TableWriter * w, const R
         }
     }
     { /* flags */
-        if ( value->flags != 0 )
+        if ( !( value->flags == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x17a3a1a985f75aecull ); table_writer_put8( w, 9 );
             table_writer_put64( w, (uint64_t) ( value->flags ) );
         }
     }
     { /* object_id */
-        if ( value->object_id != 0 )
+        if ( !( value->object_id == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x0bdab42c07f19812ull ); table_writer_put8( w, 8 );
             table_writer_put32( w, (uint32_t) ( value->object_id ) );
         }
     }
     { /* object_sequence */
-        if ( value->object_sequence != 0 )
+        if ( !( value->object_sequence == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x5de0015285763c46ull ); table_writer_put8( w, 6 );
             table_writer_put8( w, (uint8_t) ( value->object_sequence ) );
         }
     }
     { /* prop_type */
-        if ( value->prop_type != PROP_TYPE_NONE )
+        if ( !( value->prop_type == PROP_TYPE_NONE ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xe5626f155e4c5dadull ); table_writer_put8( w, 30 );
             switch ( value->prop_type )
             {
@@ -3120,8 +3263,9 @@ static SCHEMA_UNUSED int render_dynamic_prop_save_body( TableWriter * w, const R
         }
     }
     { /* team */
-        if ( value->team != TEAM_NONE )
+        if ( !( value->team == TEAM_NONE ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xfa23d9ef19afc32cull ); table_writer_put8( w, 30 );
             switch ( value->team )
             {
@@ -3464,11 +3608,19 @@ static SCHEMA_UNUSED int render_static_prop_save_body( TableWriter * w, const Re
 {
     (void) value;
     { /* position */
-        TableWriter default_probe = table_writer_probe( w );
+        TableWriter default_probe = table_writer_probe( w ); default_probe.check_default = 1;
         if ( !render_vector3_save_body( &default_probe, &value->position ) ) { return 0; }
         if ( default_probe.offset > 1 )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x4cbf3a26fca1d74aull ); table_writer_put8( w, 13 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !render_vector3_save_body( w, &value->position ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !render_vector3_save_body( &probe, &value->position ) ) { return 0; }
@@ -3478,11 +3630,19 @@ static SCHEMA_UNUSED int render_static_prop_save_body( TableWriter * w, const Re
         }
     }
     { /* rotation */
-        TableWriter default_probe = table_writer_probe( w );
+        TableWriter default_probe = table_writer_probe( w ); default_probe.check_default = 1;
         if ( !render_quaternion_save_body( &default_probe, &value->rotation ) ) { return 0; }
         if ( default_probe.offset > 1 )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xb51afb05cd34709full ); table_writer_put8( w, 13 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !render_quaternion_save_body( w, &value->rotation ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !render_quaternion_save_body( &probe, &value->rotation ) ) { return 0; }
@@ -3492,29 +3652,33 @@ static SCHEMA_UNUSED int render_static_prop_save_body( TableWriter * w, const Re
         }
     }
     { /* scale */
-        if ( value->scale != 0.0 )
+        if ( !( value->scale == 0.0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x6aacb9fbb71a1d91ull ); table_writer_put8( w, 11 );
             table_writer_put64( w, table_double_to_bits( value->scale ) );
         }
     }
     { /* flags */
-        if ( value->flags != 0 )
+        if ( !( value->flags == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x17a3a1a985f75aecull ); table_writer_put8( w, 9 );
             table_writer_put64( w, (uint64_t) ( value->flags ) );
         }
     }
     { /* static_prop_id */
-        if ( value->static_prop_id != 0 )
+        if ( !( value->static_prop_id == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xd23da7ab574b95c3ull ); table_writer_put8( w, 8 );
             table_writer_put32( w, (uint32_t) ( value->static_prop_id ) );
         }
     }
     { /* prop_type */
-        if ( value->prop_type != PROP_TYPE_NONE )
+        if ( !( value->prop_type == PROP_TYPE_NONE ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xe5626f155e4c5dadull ); table_writer_put8( w, 30 );
             switch ( value->prop_type )
             {
@@ -3527,8 +3691,9 @@ static SCHEMA_UNUSED int render_static_prop_save_body( TableWriter * w, const Re
         }
     }
     { /* team */
-        if ( value->team != TEAM_NONE )
+        if ( !( value->team == TEAM_NONE ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xfa23d9ef19afc32cull ); table_writer_put8( w, 30 );
             switch ( value->team )
             {
@@ -3879,11 +4044,19 @@ static SCHEMA_UNUSED int render_cosmetic_prop_save_body( TableWriter * w, const 
 {
     (void) value;
     { /* position */
-        TableWriter default_probe = table_writer_probe( w );
+        TableWriter default_probe = table_writer_probe( w ); default_probe.check_default = 1;
         if ( !render_vector3_save_body( &default_probe, &value->position ) ) { return 0; }
         if ( default_probe.offset > 1 )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x4cbf3a26fca1d74aull ); table_writer_put8( w, 13 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !render_vector3_save_body( w, &value->position ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !render_vector3_save_body( &probe, &value->position ) ) { return 0; }
@@ -3893,11 +4066,19 @@ static SCHEMA_UNUSED int render_cosmetic_prop_save_body( TableWriter * w, const 
         }
     }
     { /* rotation */
-        TableWriter default_probe = table_writer_probe( w );
+        TableWriter default_probe = table_writer_probe( w ); default_probe.check_default = 1;
         if ( !render_quaternion_save_body( &default_probe, &value->rotation ) ) { return 0; }
         if ( default_probe.offset > 1 )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xb51afb05cd34709full ); table_writer_put8( w, 13 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !render_quaternion_save_body( w, &value->rotation ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !render_quaternion_save_body( &probe, &value->rotation ) ) { return 0; }
@@ -3907,36 +4088,41 @@ static SCHEMA_UNUSED int render_cosmetic_prop_save_body( TableWriter * w, const 
         }
     }
     { /* scale */
-        if ( value->scale != 0.0 )
+        if ( !( value->scale == 0.0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x6aacb9fbb71a1d91ull ); table_writer_put8( w, 11 );
             table_writer_put64( w, table_double_to_bits( value->scale ) );
         }
     }
     { /* flags */
-        if ( value->flags != 0 )
+        if ( !( value->flags == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x17a3a1a985f75aecull ); table_writer_put8( w, 9 );
             table_writer_put64( w, (uint64_t) ( value->flags ) );
         }
     }
     { /* cosmetic_prop_id */
-        if ( value->cosmetic_prop_id != 0 )
+        if ( !( value->cosmetic_prop_id == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xb66e4449e56b2e26ull ); table_writer_put8( w, 8 );
             table_writer_put32( w, (uint32_t) ( value->cosmetic_prop_id ) );
         }
     }
     { /* prop_sequence */
-        if ( value->prop_sequence != 0 )
+        if ( !( value->prop_sequence == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x4d7bf73bcbddc228ull ); table_writer_put8( w, 6 );
             table_writer_put8( w, (uint8_t) ( value->prop_sequence ) );
         }
     }
     { /* prop_type */
-        if ( value->prop_type != PROP_TYPE_NONE )
+        if ( !( value->prop_type == PROP_TYPE_NONE ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xe5626f155e4c5dadull ); table_writer_put8( w, 30 );
             switch ( value->prop_type )
             {
@@ -3949,8 +4135,9 @@ static SCHEMA_UNUSED int render_cosmetic_prop_save_body( TableWriter * w, const 
         }
     }
     { /* team */
-        if ( value->team != TEAM_NONE )
+        if ( !( value->team == TEAM_NONE ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xfa23d9ef19afc32cull ); table_writer_put8( w, 30 );
             switch ( value->team )
             {
@@ -4342,11 +4529,19 @@ static SCHEMA_UNUSED int render_laser_save_body( TableWriter * w, const RenderLa
 {
     (void) value;
     { /* start */
-        TableWriter default_probe = table_writer_probe( w );
+        TableWriter default_probe = table_writer_probe( w ); default_probe.check_default = 1;
         if ( !render_vector3_save_body( &default_probe, &value->start ) ) { return 0; }
         if ( default_probe.offset > 1 )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xee5d97ad45ad251full ); table_writer_put8( w, 13 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !render_vector3_save_body( w, &value->start ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !render_vector3_save_body( &probe, &value->start ) ) { return 0; }
@@ -4356,11 +4551,19 @@ static SCHEMA_UNUSED int render_laser_save_body( TableWriter * w, const RenderLa
         }
     }
     { /* finish */
-        TableWriter default_probe = table_writer_probe( w );
+        TableWriter default_probe = table_writer_probe( w ); default_probe.check_default = 1;
         if ( !render_vector3_save_body( &default_probe, &value->finish ) ) { return 0; }
         if ( default_probe.offset > 1 )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x6917a5bab91540f2ull ); table_writer_put8( w, 13 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !render_vector3_save_body( w, &value->finish ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !render_vector3_save_body( &probe, &value->finish ) ) { return 0; }
@@ -4370,22 +4573,25 @@ static SCHEMA_UNUSED int render_laser_save_body( TableWriter * w, const RenderLa
         }
     }
     { /* t */
-        if ( value->t != 0.0 )
+        if ( !( value->t == 0.0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xaf63e94c860202a3ull ); table_writer_put8( w, 11 );
             table_writer_put64( w, table_double_to_bits( value->t ) );
         }
     }
     { /* laser_id */
-        if ( value->laser_id != 0 )
+        if ( !( value->laser_id == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xcd29c05f390294ecull ); table_writer_put8( w, 8 );
             table_writer_put32( w, (uint32_t) ( value->laser_id ) );
         }
     }
     { /* laser_type */
-        if ( value->laser_type != LASER_TYPE_NONE )
+        if ( !( value->laser_type == LASER_TYPE_NONE ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x96b593c242133841ull ); table_writer_put8( w, 30 );
             switch ( value->laser_type )
             {
@@ -4397,8 +4603,9 @@ static SCHEMA_UNUSED int render_laser_save_body( TableWriter * w, const RenderLa
         }
     }
     { /* team */
-        if ( value->team != TEAM_NONE )
+        if ( !( value->team == TEAM_NONE ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xfa23d9ef19afc32cull ); table_writer_put8( w, 30 );
             switch ( value->team )
             {
@@ -4665,11 +4872,19 @@ static SCHEMA_UNUSED int render_explosion_save_body( TableWriter * w, const Rend
 {
     (void) value;
     { /* position */
-        TableWriter default_probe = table_writer_probe( w );
+        TableWriter default_probe = table_writer_probe( w ); default_probe.check_default = 1;
         if ( !render_vector3_save_body( &default_probe, &value->position ) ) { return 0; }
         if ( default_probe.offset > 1 )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x4cbf3a26fca1d74aull ); table_writer_put8( w, 13 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !render_vector3_save_body( w, &value->position ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !render_vector3_save_body( &probe, &value->position ) ) { return 0; }
@@ -4679,11 +4894,19 @@ static SCHEMA_UNUSED int render_explosion_save_body( TableWriter * w, const Rend
         }
     }
     { /* rotation */
-        TableWriter default_probe = table_writer_probe( w );
+        TableWriter default_probe = table_writer_probe( w ); default_probe.check_default = 1;
         if ( !render_quaternion_save_body( &default_probe, &value->rotation ) ) { return 0; }
         if ( default_probe.offset > 1 )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xb51afb05cd34709full ); table_writer_put8( w, 13 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !render_quaternion_save_body( w, &value->rotation ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !render_quaternion_save_body( &probe, &value->rotation ) ) { return 0; }
@@ -4693,29 +4916,33 @@ static SCHEMA_UNUSED int render_explosion_save_body( TableWriter * w, const Rend
         }
     }
     { /* t */
-        if ( value->t != 0.0 )
+        if ( !( value->t == 0.0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xaf63e94c860202a3ull ); table_writer_put8( w, 11 );
             table_writer_put64( w, table_double_to_bits( value->t ) );
         }
     }
     { /* explosion_id */
-        if ( value->explosion_id != 0 )
+        if ( !( value->explosion_id == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xfd7f3fa0b16ed778ull ); table_writer_put8( w, 8 );
             table_writer_put32( w, (uint32_t) ( value->explosion_id ) );
         }
     }
     { /* parent_object_id */
-        if ( value->parent_object_id != 0 )
+        if ( !( value->parent_object_id == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x0bee7b3cb4046c93ull ); table_writer_put8( w, 8 );
             table_writer_put32( w, (uint32_t) ( value->parent_object_id ) );
         }
     }
     { /* explosion_type */
-        if ( value->explosion_type != EXPLOSION_TYPE_NONE )
+        if ( !( value->explosion_type == EXPLOSION_TYPE_NONE ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xdc89eb9cd3393be5ull ); table_writer_put8( w, 30 );
             switch ( value->explosion_type )
             {
@@ -4727,8 +4954,9 @@ static SCHEMA_UNUSED int render_explosion_save_body( TableWriter * w, const Rend
         }
     }
     { /* team */
-        if ( value->team != TEAM_NONE )
+        if ( !( value->team == TEAM_NONE ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xfa23d9ef19afc32cull ); table_writer_put8( w, 30 );
             switch ( value->team )
             {
@@ -5062,10 +5290,18 @@ static SCHEMA_UNUSED int render_explosion_load( RenderExplosion * value, const u
 
 static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_cameras_( TableWriter * w, const RenderFrame * value )
 {
+    if ( value->cameras_count < 0 || value->cameras_count > 1 ) { return 0; }
     int32_t i;
     table_writer_put8( w, 13 ); table_writer_leb( w, (uint64_t) value->cameras_count );
     for ( i = 0; i < value->cameras_count; i++ )
     {
+        if ( w->buffer == NULL )
+        {
+            int64_t frame_begin = w->offset;
+            if ( !render_camera_save_body( w, &value->cameras[i] ) ) { return 0; }
+            table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+        }
+        else
         {
             TableWriter probe = table_writer_probe( w );
             if ( !render_camera_save_body( &probe, &value->cameras[i] ) ) { return 0; }
@@ -5078,10 +5314,18 @@ static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_cameras_( TableWrite
 
 static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_ships_( TableWriter * w, const RenderFrame * value )
 {
+    if ( value->ships_count < 0 || value->ships_count > 4096 ) { return 0; }
     int32_t i;
     table_writer_put8( w, 13 ); table_writer_leb( w, (uint64_t) value->ships_count );
     for ( i = 0; i < value->ships_count; i++ )
     {
+        if ( w->buffer == NULL )
+        {
+            int64_t frame_begin = w->offset;
+            if ( !render_ship_save_body( w, &value->ships[i] ) ) { return 0; }
+            table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+        }
+        else
         {
             TableWriter probe = table_writer_probe( w );
             if ( !render_ship_save_body( &probe, &value->ships[i] ) ) { return 0; }
@@ -5094,10 +5338,18 @@ static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_ships_( TableWriter 
 
 static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_turrets_( TableWriter * w, const RenderFrame * value )
 {
+    if ( value->turrets_count < 0 || value->turrets_count > 1024 ) { return 0; }
     int32_t i;
     table_writer_put8( w, 13 ); table_writer_leb( w, (uint64_t) value->turrets_count );
     for ( i = 0; i < value->turrets_count; i++ )
     {
+        if ( w->buffer == NULL )
+        {
+            int64_t frame_begin = w->offset;
+            if ( !render_turret_save_body( w, &value->turrets[i] ) ) { return 0; }
+            table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+        }
+        else
         {
             TableWriter probe = table_writer_probe( w );
             if ( !render_turret_save_body( &probe, &value->turrets[i] ) ) { return 0; }
@@ -5110,10 +5362,18 @@ static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_turrets_( TableWrite
 
 static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_missiles_( TableWriter * w, const RenderFrame * value )
 {
+    if ( value->missiles_count < 0 || value->missiles_count > 4096 ) { return 0; }
     int32_t i;
     table_writer_put8( w, 13 ); table_writer_leb( w, (uint64_t) value->missiles_count );
     for ( i = 0; i < value->missiles_count; i++ )
     {
+        if ( w->buffer == NULL )
+        {
+            int64_t frame_begin = w->offset;
+            if ( !render_missile_save_body( w, &value->missiles[i] ) ) { return 0; }
+            table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+        }
+        else
         {
             TableWriter probe = table_writer_probe( w );
             if ( !render_missile_save_body( &probe, &value->missiles[i] ) ) { return 0; }
@@ -5126,10 +5386,18 @@ static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_missiles_( TableWrit
 
 static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_dynamic_props_( TableWriter * w, const RenderFrame * value )
 {
+    if ( value->dynamic_props_count < 0 || value->dynamic_props_count > 4096 ) { return 0; }
     int32_t i;
     table_writer_put8( w, 13 ); table_writer_leb( w, (uint64_t) value->dynamic_props_count );
     for ( i = 0; i < value->dynamic_props_count; i++ )
     {
+        if ( w->buffer == NULL )
+        {
+            int64_t frame_begin = w->offset;
+            if ( !render_dynamic_prop_save_body( w, &value->dynamic_props[i] ) ) { return 0; }
+            table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+        }
+        else
         {
             TableWriter probe = table_writer_probe( w );
             if ( !render_dynamic_prop_save_body( &probe, &value->dynamic_props[i] ) ) { return 0; }
@@ -5142,10 +5410,18 @@ static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_dynamic_props_( Tabl
 
 static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_static_props_( TableWriter * w, const RenderFrame * value )
 {
+    if ( value->static_props_count < 0 || value->static_props_count > 20000 ) { return 0; }
     int32_t i;
     table_writer_put8( w, 13 ); table_writer_leb( w, (uint64_t) value->static_props_count );
     for ( i = 0; i < value->static_props_count; i++ )
     {
+        if ( w->buffer == NULL )
+        {
+            int64_t frame_begin = w->offset;
+            if ( !render_static_prop_save_body( w, &value->static_props[i] ) ) { return 0; }
+            table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+        }
+        else
         {
             TableWriter probe = table_writer_probe( w );
             if ( !render_static_prop_save_body( &probe, &value->static_props[i] ) ) { return 0; }
@@ -5158,10 +5434,18 @@ static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_static_props_( Table
 
 static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_cosmetic_props_( TableWriter * w, const RenderFrame * value )
 {
+    if ( value->cosmetic_props_count < 0 || value->cosmetic_props_count > 8192 ) { return 0; }
     int32_t i;
     table_writer_put8( w, 13 ); table_writer_leb( w, (uint64_t) value->cosmetic_props_count );
     for ( i = 0; i < value->cosmetic_props_count; i++ )
     {
+        if ( w->buffer == NULL )
+        {
+            int64_t frame_begin = w->offset;
+            if ( !render_cosmetic_prop_save_body( w, &value->cosmetic_props[i] ) ) { return 0; }
+            table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+        }
+        else
         {
             TableWriter probe = table_writer_probe( w );
             if ( !render_cosmetic_prop_save_body( &probe, &value->cosmetic_props[i] ) ) { return 0; }
@@ -5174,10 +5458,18 @@ static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_cosmetic_props_( Tab
 
 static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_lasers_( TableWriter * w, const RenderFrame * value )
 {
+    if ( value->lasers_count < 0 || value->lasers_count > 32000 ) { return 0; }
     int32_t i;
     table_writer_put8( w, 13 ); table_writer_leb( w, (uint64_t) value->lasers_count );
     for ( i = 0; i < value->lasers_count; i++ )
     {
+        if ( w->buffer == NULL )
+        {
+            int64_t frame_begin = w->offset;
+            if ( !render_laser_save_body( w, &value->lasers[i] ) ) { return 0; }
+            table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+        }
+        else
         {
             TableWriter probe = table_writer_probe( w );
             if ( !render_laser_save_body( &probe, &value->lasers[i] ) ) { return 0; }
@@ -5190,10 +5482,18 @@ static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_lasers_( TableWriter
 
 static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_explosions_( TableWriter * w, const RenderFrame * value )
 {
+    if ( value->explosions_count < 0 || value->explosions_count > 32000 ) { return 0; }
     int32_t i;
     table_writer_put8( w, 13 ); table_writer_leb( w, (uint64_t) value->explosions_count );
     for ( i = 0; i < value->explosions_count; i++ )
     {
+        if ( w->buffer == NULL )
+        {
+            int64_t frame_begin = w->offset;
+            if ( !render_explosion_save_body( w, &value->explosions[i] ) ) { return 0; }
+            table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+        }
+        else
         {
             TableWriter probe = table_writer_probe( w );
             if ( !render_explosion_save_body( &probe, &value->explosions[i] ) ) { return 0; }
@@ -5208,8 +5508,9 @@ static SCHEMA_UNUSED int render_frame_save_body( TableWriter * w, const RenderFr
 {
     (void) value;
     { /* version */
-        if ( value->version != 0 )
+        if ( !( value->version == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xbb62c62c9808ea37ull ); table_writer_put8( w, 9 );
             table_writer_put64( w, (uint64_t) ( value->version ) );
         }
@@ -5218,7 +5519,15 @@ static SCHEMA_UNUSED int render_frame_save_body( TableWriter * w, const RenderFr
         if ( value->cameras_count < 0 || value->cameras_count > 1 ) { return 0; }
         if ( value->cameras_count > 0 )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x0f9222d2ba7aa2a7ull ); table_writer_put8( w, 14 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !schema_blockdemo_render_frame_wire_cameras_( w, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !schema_blockdemo_render_frame_wire_cameras_( &probe, value ) ) { return 0; }
@@ -5231,7 +5540,15 @@ static SCHEMA_UNUSED int render_frame_save_body( TableWriter * w, const RenderFr
         if ( value->ships_count < 0 || value->ships_count > 4096 ) { return 0; }
         if ( value->ships_count > 0 )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x294a5c4913e1ad44ull ); table_writer_put8( w, 14 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !schema_blockdemo_render_frame_wire_ships_( w, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !schema_blockdemo_render_frame_wire_ships_( &probe, value ) ) { return 0; }
@@ -5244,7 +5561,15 @@ static SCHEMA_UNUSED int render_frame_save_body( TableWriter * w, const RenderFr
         if ( value->turrets_count < 0 || value->turrets_count > 1024 ) { return 0; }
         if ( value->turrets_count > 0 )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x84f8260bc283608cull ); table_writer_put8( w, 14 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !schema_blockdemo_render_frame_wire_turrets_( w, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !schema_blockdemo_render_frame_wire_turrets_( &probe, value ) ) { return 0; }
@@ -5257,7 +5582,15 @@ static SCHEMA_UNUSED int render_frame_save_body( TableWriter * w, const RenderFr
         if ( value->missiles_count < 0 || value->missiles_count > 4096 ) { return 0; }
         if ( value->missiles_count > 0 )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x1c3027194b1ba4d0ull ); table_writer_put8( w, 14 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !schema_blockdemo_render_frame_wire_missiles_( w, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !schema_blockdemo_render_frame_wire_missiles_( &probe, value ) ) { return 0; }
@@ -5270,7 +5603,15 @@ static SCHEMA_UNUSED int render_frame_save_body( TableWriter * w, const RenderFr
         if ( value->dynamic_props_count < 0 || value->dynamic_props_count > 4096 ) { return 0; }
         if ( value->dynamic_props_count > 0 )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x43125398a9903d27ull ); table_writer_put8( w, 14 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !schema_blockdemo_render_frame_wire_dynamic_props_( w, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !schema_blockdemo_render_frame_wire_dynamic_props_( &probe, value ) ) { return 0; }
@@ -5283,7 +5624,15 @@ static SCHEMA_UNUSED int render_frame_save_body( TableWriter * w, const RenderFr
         if ( value->static_props_count < 0 || value->static_props_count > 20000 ) { return 0; }
         if ( value->static_props_count > 0 )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xc1f8d7edff7fcfd2ull ); table_writer_put8( w, 14 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !schema_blockdemo_render_frame_wire_static_props_( w, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !schema_blockdemo_render_frame_wire_static_props_( &probe, value ) ) { return 0; }
@@ -5296,7 +5645,15 @@ static SCHEMA_UNUSED int render_frame_save_body( TableWriter * w, const RenderFr
         if ( value->cosmetic_props_count < 0 || value->cosmetic_props_count > 8192 ) { return 0; }
         if ( value->cosmetic_props_count > 0 )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x33408e39f5f480ffull ); table_writer_put8( w, 14 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !schema_blockdemo_render_frame_wire_cosmetic_props_( w, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !schema_blockdemo_render_frame_wire_cosmetic_props_( &probe, value ) ) { return 0; }
@@ -5309,7 +5666,15 @@ static SCHEMA_UNUSED int render_frame_save_body( TableWriter * w, const RenderFr
         if ( value->lasers_count < 0 || value->lasers_count > 32000 ) { return 0; }
         if ( value->lasers_count > 0 )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xd982b77b3e92d16dull ); table_writer_put8( w, 14 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !schema_blockdemo_render_frame_wire_lasers_( w, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !schema_blockdemo_render_frame_wire_lasers_( &probe, value ) ) { return 0; }
@@ -5322,7 +5687,15 @@ static SCHEMA_UNUSED int render_frame_save_body( TableWriter * w, const RenderFr
         if ( value->explosions_count < 0 || value->explosions_count > 32000 ) { return 0; }
         if ( value->explosions_count > 0 )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x876a8c1a85806a69ull ); table_writer_put8( w, 14 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !schema_blockdemo_render_frame_wire_explosions_( w, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !schema_blockdemo_render_frame_wire_explosions_( &probe, value ) ) { return 0; }
@@ -5787,22 +6160,25 @@ static SCHEMA_UNUSED int render_vector3_save_body( TableWriter * w, const Render
 {
     (void) value;
     { /* x */
-        if ( value->x != 0.0 )
+        if ( !( value->x == 0.0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xaf63f54c86021707ull ); table_writer_put8( w, 11 );
             table_writer_put64( w, table_double_to_bits( value->x ) );
         }
     }
     { /* y */
-        if ( value->y != 0.0 )
+        if ( !( value->y == 0.0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xaf63f44c86021554ull ); table_writer_put8( w, 11 );
             table_writer_put64( w, table_double_to_bits( value->y ) );
         }
     }
     { /* z */
-        if ( value->z != 0.0 )
+        if ( !( value->z == 0.0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xaf63f74c86021a6dull ); table_writer_put8( w, 11 );
             table_writer_put64( w, table_double_to_bits( value->z ) );
         }
@@ -6012,29 +6388,33 @@ static SCHEMA_UNUSED int render_quaternion_save_body( TableWriter * w, const Ren
 {
     (void) value;
     { /* x */
-        if ( value->x != 0.0 )
+        if ( !( value->x == 0.0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xaf63f54c86021707ull ); table_writer_put8( w, 11 );
             table_writer_put64( w, table_double_to_bits( value->x ) );
         }
     }
     { /* y */
-        if ( value->y != 0.0 )
+        if ( !( value->y == 0.0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xaf63f44c86021554ull ); table_writer_put8( w, 11 );
             table_writer_put64( w, table_double_to_bits( value->y ) );
         }
     }
     { /* z */
-        if ( value->z != 0.0 )
+        if ( !( value->z == 0.0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xaf63f74c86021a6dull ); table_writer_put8( w, 11 );
             table_writer_put64( w, table_double_to_bits( value->z ) );
         }
     }
     { /* w */
-        if ( value->w != 1.0 )
+        if ( !( value->w == 1.0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xaf63ea4c86020456ull ); table_writer_put8( w, 11 );
             table_writer_put64( w, table_double_to_bits( value->w ) );
         }

@@ -1,5 +1,5 @@
 // The cross-target gate on OPTIONAL ARRAYS (docs/SPEC-TABLES.md §2.3, §11):
-// the C++ reference carries `?[N]T` and `?[..N]T`, and every other target
+// the C++ reference and C port carry `?[N]T` and `?[..N]T`, and targets without the construct
 // refuses a table closure holding one BY NAME, pointing at the carrier. In
 // its own file so the construct's gate adds a file and edits no shared one.
 package compiler
@@ -81,23 +81,25 @@ func TestOptionalArraysAreLegal(t *testing.T) {
 	}
 }
 
-// TestOptionalArraysAreCppOnly: --lang cpp emits the table sources for a unit
+// TestOptionalArraysCarriers: --lang cpp emits the table sources for a unit
 // whose closure holds an optional array; every other registered target
 // refuses the UNIT, naming the fields, the carrier and the flag that selects
 // it — a fixed-class codec that never met the presence companion beside an
 // array must not be emitted.
-func TestOptionalArraysAreCppOnly(t *testing.T) {
+func TestOptionalArraysCarriers(t *testing.T) {
 	u := unitFromSource(t, optionalArraySrc)
 	c := New()
-	files, err := c.Generate(u, "cpp", Options{})
-	if err != nil {
-		t.Fatalf("--lang cpp refused an optional array: %v", err)
-	}
-	if _, ok := files["ProbeTable.h"]; !ok {
-		t.Fatalf("--lang cpp emitted no ProbeTable.h for a unit with an optional array; got %d files", len(files))
+	for _, carrier := range []string{"cpp", "c"} {
+		files, err := c.Generate(u, carrier, Options{})
+		if err != nil {
+			t.Fatalf("--lang cpp refused an optional array: %v", err)
+		}
+		if _, ok := files["ProbeTable.h"]; !ok {
+			t.Fatalf("--lang cpp emitted no ProbeTable.h for a unit with an optional array; got %d files", len(files))
+		}
 	}
 	for _, target := range c.Targets() {
-		if target == "cpp" {
+		if target == "cpp" || target == "c" {
 			continue
 		}
 		t.Run(target, func(t *testing.T) {

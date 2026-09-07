@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -91,6 +92,9 @@ func refuseTables(u *ir.Unit, target string) error {
 // union naming a type it never declares. The targets that carry the form are
 // named, and each remaining port's is a named follow-on.
 func refuseTableArms(u *ir.Unit, target string) error {
+	if slices.Contains(tableArmTargets, target) {
+		return nil
+	}
 	if len(u.TableUnions) == 0 {
 		return nil
 	}
@@ -110,6 +114,9 @@ func refuseTableArms(u *ir.Unit, target string) error {
 // is a named follow-on — refused loudly here rather than emitted as a
 // fixed-class codec that never met the element.
 func refuseUnionArrays(u *ir.Unit, target string) error {
+	if slices.Contains(unionArrayTargets, target) {
+		return nil
+	}
 	fields := ir.TableUnionArrays(u)
 	if len(fields) == 0 {
 		return nil
@@ -140,6 +147,9 @@ func refuseBlobs(u *ir.Unit, target string) error {
 // id with L = 0, and a port whose table codecs have not met one would emit a
 // member for an arm that has none. The PACKET wire carries it in every target.
 func refuseVoidArms(u *ir.Unit, target string) error {
+	if slices.Contains(tableArmTargets, target) {
+		return nil
+	}
 	names := ir.TableVoidArmUnions(u)
 	if len(names) == 0 {
 		return nil

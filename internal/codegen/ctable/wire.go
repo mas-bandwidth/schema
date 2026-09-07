@@ -18,7 +18,7 @@ func (g *tableGen) wirePrimitives() string {
 		runtime = strings.ReplaceAll(fileWireRuntime, "@CAPACITY@", strconv.Itoa(len(ir.TableWireIds(g.unit))+1))
 		runtime = strings.ReplaceAll(runtime, "@INLINE@", tableInlineMacro(g.unit.Package))
 	}
-	return tablePrimitives(g.unit.Package, g.anyVariable, g.anyKeyed, runtime)
+	return tablePrimitives(g.unit.Package, g.anyVariable, g.anyKeyed, runtime) + tableTextRuntime
 }
 
 const fileWireRuntime = `
@@ -28,7 +28,7 @@ typedef struct TableWriter
 {
     uint8_t * buffer;
     int64_t capacity, offset;
-    int overflow, id_count;
+    int overflow, id_count, check_default;
     uint64_t ids[@CAPACITY@];
 } TableWriter;
 
@@ -181,6 +181,8 @@ static SCHEMA_UNUSED int table_kind_widens( uint8_t kind, uint8_t declared )
 {
     if ( declared >= 3 && declared <= 5 ) { return kind >= 2 && kind < declared; }
     if ( declared >= 7 && declared <= 9 ) { return kind >= 6 && kind < declared; }
+    if ( declared == 18 ) { return kind >= 2 && kind <= 5; }
+    if ( declared == 19 ) { return kind >= 6 && kind <= 9; }
     return declared == 11 && kind == 10;
 }
 static SCHEMA_UNUSED double table_wire_widen_f32( uint32_t bits )
@@ -258,13 +260,22 @@ func (g *tableGen) wireScalarWrite(f *ir.Field, expr, ind string) {
 		g.wireEnumWrite(e, expr, ind)
 		return
 	}
+	if tableKindWidth(ir.TableWireScalarKind(f)) == 16 {
+		g.pf("%stable_writer_put64( w, (%s).lo ); table_writer_put64( w, (%s).hi );\n", ind, expr, expr)
+		return
+	}
 	g.emitTableWriteElement(f, ir.TableWireScalarKind(f), expr, ind)
 }
 
-// Measure from a copy of the current vocabulary: lengths can cross a LEB128
-// width boundary when a nested value first introduces the 128th identity.
+// Measurement visits a frame once and adds the length prefix afterwards: no
+// bytes are emitted in this mode. Save probes with that same measure
+// before writing the prefix, so recursive frames never double recursively.
 func (g *tableGen) wireFrame(call, ind string) {
-	g.pf("%s{\n%s    TableWriter probe = table_writer_probe( w );\n", ind, ind)
+	g.pf("%sif ( w->buffer == NULL )\n%s{\n", ind, ind)
+	g.pf("%s    int64_t frame_begin = w->offset;\n", ind)
+	g.pf("%s    if ( !%s ) { return 0; }\n", ind, call)
+	g.pf("%s    table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );\n%s}\n%selse\n%s{\n", ind, ind, ind, ind)
+	g.pf("%s    TableWriter probe = table_writer_probe( w );\n", ind)
 	g.pf("%s    if ( !%s ) { return 0; }\n", ind, strings.ReplaceAll(call, "( w,", "( &probe,"))
 	g.pf("%s    table_writer_leb( w, (uint64_t) probe.offset );\n", ind)
 	g.pf("%s    if ( !%s ) { return 0; }\n%s}\n", ind, call, ind)
@@ -274,6 +285,8 @@ func (g *tableGen) wirePayload(f *ir.Field, expr, ind string) {
 	kind := ir.TableWireScalarKind(f)
 	if kind == tkTable {
 		g.wireFrame(fmt.Sprintf("%s( w, &%s )", g.api(f.Type.Name, "save_body"), expr), ind)
+	} else if kind == tkUnion {
+		g.pf("%sif ( !%s( w, &%s ) ) { return 0; }\n", ind, g.unionWireName(f.Type.Ref.(*ir.Union), "save"), expr)
 	} else {
 		g.wireScalarWrite(f, expr, ind)
 	}
@@ -287,7 +300,14 @@ func (g *tableGen) emitWireFieldHelper(st *ir.Struct, f *ir.Field) {
 	expr := "value->" + f.Name
 	kind := ir.TableWireScalarKind(f)
 	g.pf("static SCHEMA_UNUSED int %s( TableWriter * w, const %s * value )\n{\n", g.wireFieldHelper(st, f), st.Name)
+	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes {
+		g.pf("    if ( %s_length < 0 || %s_length > %d ) { return 0; }\n", expr, expr, f.Type.Size)
+	} else if f.Array == ir.ArrayCounted {
+		g.pf("    if ( %s_count < 0 || %s_count > %d ) { return 0; }\n", expr, expr, f.ArrayBound)
+	}
 	switch {
+	case f.Type.Kind == ir.TWString:
+		g.pf("    int32_t i; for ( i = 0; i < %s_length; i++ ) { table_writer_put16( w, %s[i] ); }\n", expr, expr)
 	case f.Type.Kind == ir.TString:
 		g.pf("    table_writer_raw( w, %s, %s_length );\n", expr, expr)
 	case f.Type.Kind == ir.TBytes:
@@ -329,17 +349,17 @@ func (g *tableGen) emitWireFieldHelper(st *ir.Struct, f *ir.Field) {
 func (g *tableGen) wireKeyedRides(f *ir.Field, ind string) {
 	expr := "value->" + f.Name + "[i]"
 	if ir.TableWireScalarKind(f) == tkTable {
-		g.pf("%sTableWriter slot_probe = table_writer_probe( w );\n", ind)
+		g.pf("%sTableWriter slot_probe = table_writer_probe( w ); slot_probe.check_default = 1;\n", ind)
 		g.pf("%sif ( !%s( &slot_probe, &%s ) ) { return 0; }\n", ind, g.api(f.Type.Name, "save_body"), expr)
 		g.pf("%sif ( slot_probe.offset == 1 ) { continue; }\n", ind)
 	} else {
-		g.pf("%sif ( %s == %s ) { continue; }\n", ind, expr, g.fieldDefaultExpr(f))
+		g.pf("%sif ( %s ) { continue; }\n", ind, g.wireDefaultEquals(f, expr))
 	}
 }
 
 func (g *tableGen) emitWireWrite(st *ir.Struct) {
 	for _, f := range st.Fields {
-		if f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString {
+		if f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes || (f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString) {
 			g.emitWireFieldHelper(st, f)
 		}
 	}
@@ -350,7 +370,7 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 		expr := "value->" + f.Name
 		kind := ir.TableWireScalarKind(f)
 		wireKind := kind
-		framed := f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString
+		framed := f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes || (f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString)
 		if f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes {
 			wireKind = tkArray
 		}
@@ -361,11 +381,13 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 		if guard := guards[f.Name]; guard != "" {
 			g.pf("    if ( %s )\n    {\n", guard)
 		}
-		condition := expr + " != " + g.fieldDefaultExpr(f)
+		condition := "!( " + g.wireDefaultEquals(f, expr) + " )"
 		switch {
-		case f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString:
+		case f.Type.Optional:
+			condition = expr + "_present"
+		case f.Type.Kind == ir.TBytes || (f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString):
 			g.pf("        if ( %s_length < 0 || %s_length > %d ) { return 0; }\n", expr, expr, f.Type.Size)
-			condition = expr + "_length > 0"
+			condition = g.wireBytesDiffer(f, expr)
 		case f.Array == ir.ArrayCounted:
 			g.pf("        if ( %s_count < 0 || %s_count > %d ) { return 0; }\n", expr, expr, f.ArrayBound)
 			condition = expr + "_count > 0"
@@ -378,11 +400,11 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 			if kind == tkTable {
 				condition = "1"
 			} else {
-				g.pf("        int rides = 0; int32_t i;\n        for ( i = 0; i < %d; i++ ) { if ( %s[i] != %s ) { rides = 1; break; } }\n", f.ArrayBound, expr, g.fieldDefaultExpr(f))
+				g.pf("        int rides = 0; int32_t i;\n        for ( i = 0; i < %d; i++ ) { if ( !( %s ) ) { rides = 1; break; } }\n", f.ArrayBound, g.wireDefaultEquals(f, expr+"[i]"))
 				condition = "rides"
 			}
 		case kind == tkTable:
-			g.pf("        TableWriter default_probe = table_writer_probe( w );\n        if ( !%s( &default_probe, &%s ) ) { return 0; }\n", g.api(f.Type.Name, "save_body"), expr)
+			g.pf("        TableWriter default_probe = table_writer_probe( w ); default_probe.check_default = 1;\n        if ( !%s( &default_probe, &%s ) ) { return 0; }\n", g.api(f.Type.Name, "save_body"), expr)
 			condition = "default_probe.offset > 1"
 		case kind == tkUnion:
 			condition = expr + ".type != " + enumConst(f.Type.Name+"Type", "None")
@@ -391,20 +413,12 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 			condition = expr + "_present"
 		}
 		g.pf("        if ( %s )\n        {\n", condition)
+		g.pf("            if ( w->check_default ) { w->offset = 2; return 1; }\n")
 		g.pf("            table_writer_id( w, 0x%016xull ); table_writer_put8( w, %d );\n", ir.TableFieldWireId(f), wireKind)
 		switch {
 		case framed:
 			g.wireFrame(fmt.Sprintf("%s( w, value )", g.wireFieldHelper(st, f)), "            ")
-		case kind == tkUnion:
-			un := f.Type.Ref.(*ir.Union)
-			g.pf("            switch ( %s.type )\n            {\n", expr)
-			for _, v := range un.Variants {
-				g.pf("                case %s:\n", enumConst(un.Name+"Type", v.Name))
-				g.pf("                    table_writer_id( w, 0x%016xull ); table_writer_put8( w, %d );\n", ir.TableWireId(v.WireName()), tkTable)
-				g.wireFrame(fmt.Sprintf("%s( w, &%s.as.%s )", g.api(v.Type, "save_body"), expr, v.Name), "                    ")
-				g.pf("                    break;\n")
-			}
-			g.pf("                default: return 0;\n            }\n")
+
 		default:
 			g.wirePayload(f, expr, "            ")
 		}
