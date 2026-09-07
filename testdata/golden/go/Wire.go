@@ -9,6 +9,7 @@ package example
 import (
 	"math"
 	"strconv"
+	"unicode/utf8"
 
 	"github.com/mas-bandwidth/serialize.go"
 )
@@ -893,6 +894,9 @@ func ReadChat(stream *serialize.ReadStream, value *Chat) error {
 	if stream.Err() != nil {
 		return stream.Err()
 	}
+	if !utf8.Valid(value.Text[:value.TextLength]) {
+		return ErrValidation // malformed UTF-8 (SPEC §4.7)
+	}
 	for i := int32(0); i < value.TextLength; i++ {
 		if value.Text[i] == 0 {
 			return ErrValidation
@@ -1230,6 +1234,9 @@ func ReadTestData(stream *serialize.ReadStream, value *TestData) error {
 	stream.SerializeBytes(value.Text[:value.TextLength])
 	if stream.Err() != nil {
 		return stream.Err()
+	}
+	if !utf8.Valid(value.Text[:value.TextLength]) {
+		return ErrValidation // malformed UTF-8 (SPEC §4.7)
 	}
 	for i := int32(0); i < value.TextLength; i++ {
 		if value.Text[i] == 0 {

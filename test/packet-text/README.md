@@ -29,3 +29,8 @@ nothing. A malformed payload returns `Error::Validation` in both modes;
 the former writer-only debug assertion is removed. The compiled release
 negative control must fail mutation agreement, and both checks ride
 `test-rust`.
+
+`make packet-utf8-go` checks the same corpus and mutations. `utf8.Valid`
+validates the used byte slice without allocation; malformed content returns
+`ErrValidation` after any stream error has been surfaced. Its compiled
+negative control must fail mutation agreement. Both checks ride `test-go`.

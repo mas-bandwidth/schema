@@ -999,6 +999,8 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 			// a truncated stream must surface as the stream's own error, not
 			// as a content verdict over bytes that never arrived
 			g.pf("%sif stream.Err() != nil {\n%s\treturn stream.Err()\n%s}\n", ind, ind, ind)
+			g.needsUTF8 = true
+			g.pf("%sif !utf8.Valid(%s[:%sLength]) {\n%s\treturn ErrValidation // malformed UTF-8 (SPEC §4.7)\n%s}\n", ind, name, name, ind, ind)
 			g.pf("%sfor i := int32(0); i < %sLength; i++ {\n", ind, name)
 			g.pf("%s\tif %s[i] == 0 {\n%s\t\treturn ErrValidation\n%s\t}\n%s}\n", ind, name, ind, ind, ind)
 		}
