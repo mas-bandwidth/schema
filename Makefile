@@ -164,7 +164,7 @@ define tables_generate
 	$(1) generate --lang cpp --out $(2)/rt3 test/tables/RT3.schema
 	# the WIDE TEXT unit (docs/SPEC-TABLES.md §3, kind 33): its own directory,
 	# because examples/ pins gate 1 for all nine targets and eight of them
-	# refuse wide text on either wire (SPEC.md §4.12)
+	# refuse the table-wide unit; all nine carry its isolated packet file (SPEC.md §4.12)
 	$(1) generate --lang cpp --out $(2)/wide examples-wide
 endef
 
