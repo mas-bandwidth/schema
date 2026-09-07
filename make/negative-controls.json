@@ -3,7 +3,7 @@
     {
       "name": "base",
       "when": "pull-request",
-      "why": "the front-end and projection checks, the doc, view and rename controls, the JSON and block refusers: Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. Measured 26 s over 23 controls.",
+      "why": "the front-end and projection checks, the doc, view and rename controls, the JSON and block refusers, and the float-NaN widening control beside them: Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. Measured 28 s over 24 controls.",
       "targets": [
         "check-enum-bound-negative-control",
         "check-zero-range-negative-control",
@@ -15,6 +15,7 @@
         "tables-block-race-negative-control",
         "tables-clamp-limits-negative-control",
         "tables-doctags-negative-controls",
+        "tables-float-nan-negative-control",
         "tables-json-clamp-prefix-negative-control",
         "tables-json-keyed-dup-negative-control",
         "tables-json-list-walk-negative-controls",
@@ -84,11 +85,12 @@
     {
       "name": "base-maps",
       "when": "pull-request",
-      "why": "the map gate's builder and shape controls. The family is 17 controls and ran as two jobs at 80 s and 74 s of control time on run 34115675206, which is inside the rule and too close to it, so it runs as four. Measured 18 s over 4 controls.",
+      "why": "the map gate's builder and shape controls, and the cook checker's walk over a map. The family ran as two jobs at 80 s and 74 s of control time on run 34115675206, which is inside the rule and too close to it, so it runs as four. Measured 20 s over 5 controls.",
       "targets": [
         "tables-maps-ascending-negative-control",
         "tables-maps-cap-negative-control",
         "tables-maps-clamp-negative-control",
+        "tables-maps-cook-check-negative-control",
         "tables-maps-dead-entry-negative-control"
       ]
     },
@@ -129,7 +131,7 @@
     {
       "name": "base-lists",
       "when": "pull-request",
-      "why": "the list gate, whole, with the umbrella target that names every leaf: make builds each of them once in one invocation, so the umbrella costs this group nothing and stays on the leg. Measured 35 s over 13 controls.",
+      "why": "the list gate, whole, with the umbrella target that names every leaf: make builds each of them once in one invocation, so the umbrella costs this group nothing and stays on the leg. The cook tool's list control rides here for the same corpus. Measured 35 s over 14 controls.",
       "targets": [
         "tables-lists-allocation-negative-control",
         "tables-lists-clamp-negative-control",
@@ -142,6 +144,7 @@
         "tables-lists-order-negative-control",
         "tables-lists-preorder-negative-control",
         "tables-lists-shared-negative-control",
+        "tables-lists-tool-cook-negative-control",
         "tables-lists-unreached-negative-control",
         "tables-lists-walk-order-negative-control"
       ]
@@ -211,7 +214,7 @@
     {
       "name": "base-pack",
       "when": "pull-request",
-      "why": "the pack golden's framing control and the JSON number grammar's hostile-value control: one pack corpus, one JSON engine, and a `go build -overlay` each. Measured 19 s over 2 controls in one invocation, on a cold Go build cache with bin/schema and the generated tree already built, which is the shape this job runs them in.",
+      "why": "the pack golden's framing control and the JSON number grammar's hostile-value control: one pack corpus, one JSON engine, and a `go build -overlay` each. Measured 20 s over 2 controls in one invocation, off one warm build, most of it the sanitized build of the hostile-value driver.",
       "targets": [
         "tables-hostile-negative-control",
         "tables-pack-negative-control"
@@ -220,11 +223,12 @@
     {
       "name": "message-form",
       "when": "pull-request",
-      "why": "the message form's four blades: the count, the emitter, the text content rule and the blob one. The fifth control in this family drives 49 sabotage rows one submake each and does not fit the owner's rule alone, so it runs nightly. Measured 13 s over 4 controls.",
+      "why": "the message form's blades: the count, the emitter, the text content rule, the blob one, and the form-2 retain capture. The one control of this family that drives 49 sabotage rows one submake each does not fit the owner's rule alone, so it runs nightly. Measured 16 s over 5 controls.",
       "targets": [
         "tables-message-form-blob-negative-control",
         "tables-message-form-count-negative-control",
         "tables-message-form-emitter-negative-control",
+        "tables-message-form-retain-negative-control",
         "tables-message-form-text-negative-control"
       ]
     },
