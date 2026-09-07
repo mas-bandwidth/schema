@@ -316,6 +316,8 @@ decides nothing about what a mutant means.
 ```
 make tables-wire-fuzz                      the C++ reference, plain and sanitized
 make tables-wire-fuzz-negative-control     both controls: a check removed, the fuzzer red
+make tables-wire-fuzz-retain               the same mutants through the RETAINING paths
+make tables-wire-fuzz-retain-negative-control   its own pair, one control per engine
 ./build/conformance-harness wire-fuzz --driver <cmd> [--seed S] [--n N]
 ./build/conformance-harness wire-fuzz --driver <cmd> --replay <file> --unit <key> --root <table>
 ```
@@ -326,10 +328,10 @@ driver is.
 
 | direction | what | when |
 |---|---|---|
-| in | `u32` roster count, then per root: `u16 n`, the unit key, `u16 n`, the root table's name, `u8` the FORM | once, first |
+| in | `u32` roster count, then per root: `u16 n`, the unit key, `u16 n`, the root table's name, `u8` the FORM, `u8` RETAIN | once, first |
 | out | one byte per roster entry: `1` when this leg has a codec for it, else `0` | once, in reply |
 | in | per mutant: `u32` roster index, `u32` length, the bytes | until EOF |
-| out | per mutant: `u8 loaded`; `i32 unknown, kind_mismatch, widened, clamped, duplicate`; `u8 malformed`; `u8 refused`; `i64 measure`; `i64 saved`, then that many bytes | one reply per mutant, flushed before the next is read |
+| out | per mutant: `u8 loaded`; `i32 unknown, kind_mismatch, widened, clamped, duplicate`; `u8 malformed`; `u8 refused`; `i64 measure`; `i32 retained, retain_lost`; `i64 saved`, then that many bytes | one reply per mutant, flushed before the next is read |
 
 - **`loaded`** is whether a root came back. A FIXED root always loads — its
   `Load` fills a value and reports — so the byte is `1` and the report says the
@@ -359,6 +361,24 @@ driver is.
   form's primitive and a mutant of one body is a batch of one. A leg with no
   message codec answers `0` for that entry, exactly as it does for a root it
   cannot name.
+- **The RETAIN byte says which path this entry is driven through**
+  (docs/SPEC-TABLES.md §6.6). `0` is the ordinary run: `Load` and `Save`, with
+  retention off, which is what leaves the round-trip requirement the one §4.2
+  states. `1` is the retention arm: `LoadRetain`, `MeasureRetain` and
+  `SaveRetain` over one `TableRetain` the leg owns, with **both capacities
+  declared large**, because a record's byte cost is the port's own and two
+  engines at one tight capacity would drop different records. The arm's roster
+  is the VARIABLE-CLASS FILE ROOTS and nothing else: a fixed-class root's
+  `LoadRetain` is refused by name and a form-2 `SaveRetain` refuses by name
+  (§6.6, §3.3), so those entries never carry a `1`, and the line says how many
+  seeds sat outside the arm.
+- **`retained` and `retain_lost` ride EVERY reply**, and are zero on every
+  entry the roster did not mark. They are the two counters the retention arm
+  compares beside the six, and `retain_lost` at the end is the sum of what the
+  load could not keep and what the save could not place, so the leg zeroes one
+  report before `LoadRetain` and reads it after `SaveRetain` (§6.6). A leg with
+  no retention at all answers `0` in the roster for those entries and writes
+  two zeroes here.
 - **A root the leg cannot name is a `0` in the roster and nothing more**: the
   harness never sends it a mutant, and the line it prints says how many seeds
   were absent. A port with no variable class registers its fixed roots and is

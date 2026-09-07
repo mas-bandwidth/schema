@@ -2908,6 +2908,12 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	# is `make tables-cpp-release`.
 	$(MAKE) tables-wire-fuzz N=20000
 	$(MAKE) tables-wire-fuzz-negative-control N=0
+	# THE RETENTION LEG (docs/SPEC-TABLES.md §6.6): the same mutants through
+	# both engines' RETAINING paths, comparing the two retention counters
+	# beside the six and the saved bytes beside them, and its own two controls
+	# at N=0, one per engine.
+	$(MAKE) tables-wire-fuzz-retain N=20000
+	$(MAKE) tables-wire-fuzz-retain-negative-control N=0
 	# THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): its rules are refusals and an
 	# ORDER, and a green run cannot be read for either, so each control removes
 	# one and names the gate that must go red.
@@ -3704,7 +3710,7 @@ tables-arms-negative-controls: tables-arms-list-edge-negative-control \
 # Re-pin the goldens DELIBERATELY (SPEC §7.2 gates 1, 2, 7). A wire golden
 # breaking under an unchanged schema is stop-the-line, never a quiet re-pin
 # (SPEC §3.1) — this target is for intentional emitter/schema changes only.
-update-goldens: build/schema_test build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/schema_test_tables build/schema_test_block build/schema_test_maps build/schema_test_lists build/schema_test_arms build/schema_test_wide_table build/conformance-harness
+update-goldens: build/schema_test_retain build/schema_test build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/schema_test_tables build/schema_test_block build/schema_test_maps build/schema_test_lists build/schema_test_arms build/schema_test_wide_table build/conformance-harness
 	@mkdir -p testdata/golden testdata/wire testdata/wire/tables
 	go test ./internal/goldens -update -run 'TestGolden'
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test
@@ -3714,6 +3720,7 @@ update-goldens: build/schema_test build/schema_test_ludicrous build/schema_test_
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_lists
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_arms
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_wide_table
+	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_retain
 	@for d in examples pointers block blockhome messages stream blobs scalars maps lists arms wide; do \
 		mkdir -p testdata/golden/tables/$$d; \
 		cp build/tables-generated/$$d/*Table.h build/tables-generated/$$d/*Table.cpp testdata/golden/tables/$$d/ 2>/dev/null || true; \
@@ -3978,12 +3985,15 @@ define wire_fuzz_control
 	@echo "negative control: removing the $(1) check from the emitter turns the wire fuzzer RED"
 endef
 
-# THE C++ RELEASE GATE: the wire fuzzer at a long random pass, both builds.
-# certify.yml runs every `tables-<lang>-release` target by name.
+# THE C++ RELEASE GATE: the wire fuzzer at a long random pass, both builds,
+# and the retention leg beside it at the same length (docs/SPEC-TABLES.md
+# §6.6). certify.yml runs every `tables-<lang>-release` target by name.
 .PHONY: tables-cpp-release
 tables-cpp-release:
 	$(MAKE) tables-wire-fuzz N=500000
 	$(MAKE) tables-wire-fuzz SEED=2 N=500000
+	$(MAKE) tables-wire-fuzz-retain N=500000
+	$(MAKE) tables-wire-fuzz-retain SEED=2 N=500000
 
 .PHONY: tables-wire-fuzz-negative-control tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-node-type-negative-control tables-wire-fuzz-blob-node-negative-control
 tables-wire-fuzz-negative-control: tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-node-type-negative-control tables-wire-fuzz-blob-node-negative-control tables-wire-fuzz-wide-text-negative-control tables-wire-fuzz-message-text-oracle-negative-control tables-wire-fuzz-message-text-leg-negative-control
@@ -4068,6 +4078,93 @@ tables-wire-fuzz-oracle-negative-control: build/conformance-harness build/wire-f
 		  cat $(ORACLE_NC)/log; exit 1; }
 	@grep -m1 "FAILED" $(ORACLE_NC)/log
 	@echo "negative control: removing the oracle's body-span clamp turns the pinned vector RED"
+
+# ---- THE RETENTION LEG (docs/SPEC-TABLES.md §6.6, §4.2) ---------------------
+#
+# The same mutants through both engines' RETAINING paths, comparing the two
+# retention counters beside the six and the saved bytes beside them. The arm's
+# roster is the VARIABLE-CLASS FILE ROOTS and nothing else: a fixed-class
+# root's LoadRetain is refused by name, and a form-2 SaveRetain refuses by
+# name (§3.3).
+.PHONY: tables-wire-fuzz-retain
+tables-wire-fuzz-retain: build/conformance-harness build/wire-fuzz-cpp build/wire-fuzz-cpp-asan
+	./build/conformance-harness wire-fuzz --retain --driver ./build/wire-fuzz-cpp --seed $(SEED) --n $(N)
+	./build/conformance-harness wire-fuzz --retain --driver ./build/wire-fuzz-cpp-asan --seed $(SEED) --n $(N) \
+		--failed build/wire-fuzz/failed-retain-asan.bin
+
+# TWO NEGATIVE CONTROLS STAND BEHIND THE RETENTION LEG, one per engine,
+# because a leg that has never gone red proves nothing about either. Each
+# removes ONE check — through `go build -overlay`, so no tracked file moves —
+# and requires the leg to go red on the verdict that check guards.
+#
+# THE ORACLE'S DROP RULE. THE WALK IS AN INTERPRETATION AND ITS VERDICT IS
+# STATED (§6.6): a reference above the entry count, a reference at an entry of
+# zero, a reference at one of the three reserved ids, a non-canonical length,
+# an inner body whose terminator falls short, a nested `L` past its parent, and
+# a kind 17 at any depth all DROP THE RECORD. Without the verdict the oracle
+# keeps a record the reference drops, and the two retention reports differ on
+# the mutant that carried it.
+RETAIN_ORACLE_NC := build/wire-fuzz-nc-retain-oracle
+.PHONY: tables-wire-fuzz-retain-oracle-negative-control
+tables-wire-fuzz-retain-oracle-negative-control: build/conformance-harness build/wire-fuzz-cpp
+	@rm -rf $(RETAIN_ORACLE_NC) && mkdir -p $(RETAIN_ORACLE_NC)
+	@sed -e 's|if rs.bad \|\| c.off != len(c.buf) {|if c.off != len(c.buf) { // NEGATIVE CONTROL: the walk'"'"'s verdict is ignored|' \
+		internal/tablewire/retain.go > $(RETAIN_ORACLE_NC)/retain.go.txt
+	@cmp -s internal/tablewire/retain.go $(RETAIN_ORACLE_NC)/retain.go.txt && \
+		{ echo "NEGATIVE CONTROL: the retain-oracle sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/tablewire/retain.go":"%s/$(RETAIN_ORACLE_NC)/retain.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(RETAIN_ORACLE_NC)/overlay.json
+	go build -overlay $(RETAIN_ORACLE_NC)/overlay.json -o $(RETAIN_ORACLE_NC)/harness ./test/conformance/harness
+	@if $(RETAIN_ORACLE_NC)/harness wire-fuzz --retain --driver ./build/wire-fuzz-cpp --seed $(SEED) --n $(N) \
+			--failed $(RETAIN_ORACLE_NC)/failed.bin > $(RETAIN_ORACLE_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the oracle's drop rule is gone and the retention leg stayed green"; \
+		cat $(RETAIN_ORACLE_NC)/log; exit 1; \
+	fi
+	@grep -q "the retention report differs" $(RETAIN_ORACLE_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the retention leg went red, but not on the two counters"; \
+		  cat $(RETAIN_ORACLE_NC)/log; exit 1; }
+	@grep -m1 "FAILED" $(RETAIN_ORACLE_NC)/log
+	@echo "negative control: removing the oracle's drop rule turns the retention leg RED"
+
+# THE REFERENCE'S `retain_lost` ON AN EXCLUDED CLASS. EVERY EXCLUSION COUNTS
+# (§6.6), so a caller that needs to know retention held reads ONE NUMBER and
+# never has to reason about the list. `retainLostInline` is the count the
+# emitter puts beside `unknown` at every class a wire can carry to the unknown
+# arm — an unknown enum variant, an unknown union arm, an unknown keyed slot —
+# and without it the reference under-reports every one of them.
+.PHONY: tables-wire-fuzz-retain-class-negative-control
+tables-wire-fuzz-retain-class-negative-control: build/conformance-harness
+	$(call retain_fuzz_control,retain-class,internal/codegen/cpptable/codecs.go,s|return " r.report->retain_lost++;"|return "" // NEGATIVE CONTROL: the class is not counted|,the retention report differs)
+
+# $(1) the control's name  $(2) the emitter file  $(3) the sed program
+# $(4) the verdict the leg must print
+define retain_fuzz_control
+	@rm -rf build/wire-fuzz-nc-$(1) && mkdir -p build/wire-fuzz-nc-$(1)
+	@sed -e '$(3)' $(2) > build/wire-fuzz-nc-$(1)/emitter.go.txt
+	@cmp -s $(2) build/wire-fuzz-nc-$(1)/emitter.go.txt && \
+		{ echo "NEGATIVE CONTROL: the $(1) sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/$(2)":"%s/build/wire-fuzz-nc-$(1)/emitter.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/wire-fuzz-nc-$(1)/overlay.json
+	go build -overlay build/wire-fuzz-nc-$(1)/overlay.json -o build/wire-fuzz-nc-$(1)/schema ./cmd/schema
+	$(call tables_generate,./build/wire-fuzz-nc-$(1)/schema,build/wire-fuzz-nc-$(1)/generated)
+	$(CXX) $(TABLES_CXXFLAGS) -O1 $(call tables_includes,build/wire-fuzz-nc-$(1)/generated) \
+		test/tables/wire_fuzz_main.cpp \
+		$(subst build/tables-generated/,build/wire-fuzz-nc-$(1)/generated/,$(CONFORMANCE_SOURCES)) \
+		-o build/wire-fuzz-nc-$(1)/leg
+	@if ./build/conformance-harness wire-fuzz --retain --driver ./build/wire-fuzz-nc-$(1)/leg --seed $(SEED) --n $(N) \
+			--failed build/wire-fuzz-nc-$(1)/failed.bin > build/wire-fuzz-nc-$(1)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the $(1) check is gone and the retention leg stayed green"; \
+		cat build/wire-fuzz-nc-$(1)/log; exit 1; \
+	fi
+	@grep -q "$(4)" build/wire-fuzz-nc-$(1)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the retention leg went red, but not on the $(1) check"; \
+		  cat build/wire-fuzz-nc-$(1)/log; exit 1; }
+	@grep -m1 "FAILED" build/wire-fuzz-nc-$(1)/log
+	@echo "negative control: removing the $(1) check from the emitter turns the retention leg RED"
+endef
+
+.PHONY: tables-wire-fuzz-retain-negative-control
+tables-wire-fuzz-retain-negative-control: tables-wire-fuzz-retain-oracle-negative-control tables-wire-fuzz-retain-class-negative-control
 
 # THE WIDE-VOCABULARY UNIT IS GENERATED AND COMMITTED (docs/SPEC-TABLES.md
 # §3.3): a hundred and thirty distinct field names typed by hand is a file
