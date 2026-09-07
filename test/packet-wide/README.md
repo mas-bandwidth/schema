@@ -27,3 +27,8 @@ unaligned conditionals and zeroing, fixed/counted arrays, born counts and
 repeated union tags. `packet-wide-rust-negative-control` removes pairing and
 requires the compiled release reader to fail mutation agreement. Both ride
 `test-rust`; storage remains a fixed `[u16; N]` with a used length.
+
+`make packet-wide-go` uses fixed uint16 storage and runs the corpus plus native
+composition contracts. The reused reader also measures zero allocations. Its
+pairing-removal negative control compiles and must fail mutation agreement.
+Both targets ride `test-go`.
