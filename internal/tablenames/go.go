@@ -74,6 +74,7 @@ func init() {
 		Name{Name: "tableCookNativeOrder", What: "this machine's byte order, read once at package initialisation"},
 		Name{Name: "tableCookRecords", What: "the unit's whole cooked-record descriptor graph, one slice"},
 		Name{Name: "tableJsonBase64Alphabet", What: "the base64 alphabet a `bytes` field rides under"},
+		Name{Name: "tableJsonBase64Decode", What: "the base64 decode lookup for a `bytes` field"},
 		Name{Name: "tableJsonBytes", What: "one step of the text form's generic walk (§16)"},
 		Name{Name: "tableJsonCount", What: "one step of the text form's generic walk (§16)"},
 		Name{Name: "tableJsonElementShape", What: "one step of the text form's generic walk (§16)"},

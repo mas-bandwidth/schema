@@ -82,3 +82,7 @@ erl_crash.dump
 
 /test/rust-wire/target/
 /test/rust-wire/Cargo.lock
+
+# Table JSON Base64 test driver
+/test/table-base64/cs/bin/
+/test/table-base64/cs/obj/
