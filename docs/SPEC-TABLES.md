@@ -166,13 +166,16 @@ language schema generates for carries the table wire, and what a fixed-class
 port refuses is a pointer in the closure, by name, with this document cited
 (§11) — never the `table` declaration itself.
 
-**THE FORM THE EIGHT PORTS CARRY IS THE ONE THAT PRECEDED §3.** §3's id-table
-form is the C++ reference and the compiler's own engine (`internal/tablewire`),
-held together by the conformance lock; C, C#, Dart, Go, Rust, Java, JavaScript
-and Elixir write the earlier form, and the id table, the enum kind and the
-escape kind reach none of them yet. Each port's move to §3 is a row of its own
-(schema#511 to schema#518), and ROADMAP.md's first table-wire line says which
-form a cell means.
+**C# carries §3 form 1 for its supported fixed class.** Its generated wire
+uses the full 64-bit id table, canonical LEB128 references, enum kind 30 and
+unknown escape-kind skipping. `tables-cs-leg`, `tables-cs-wire-fuzz` and
+`conformance-negative-control-cs` hold that slice against the pinned corpus
+and the independent engine. Its message form, variable class and the still
+refused constructs remain follow-ons; this is not a complete C# column.
+C, Dart, Go, Rust, Java, JavaScript and Elixir still carry the previous wire
+form at this checkpoint. The reference remains C++ and the compiler's engine
+(`internal/tablewire`); schema#511 to schema#518 track each port's carry, and
+ROADMAP.md records the remaining scope.
 
 **ELIXIR IS THE READING TIER, and the tier is a property of the LANGUAGE rather
 than of the port.** A BEAM term has no layout a producer could write, so this

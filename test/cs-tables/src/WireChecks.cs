@@ -37,6 +37,25 @@ static partial class Program
         Check(Demo.Schema.TableDoubleToBits(profile.Precision) == (0x7ff0000000000000ul | ((ulong)(raw & 0x7fffff) << 29)) &&
             floatReport.Widened == 1, "float widening: sign and signalling payload preserved");
 
+        // Ref zero terminates a body; identity zero in the vocabulary is just
+        // an unknown name. Escape, no-payload and enum values remain skippable.
+        byte[] zeroId = Fixture(new byte[] { 1,31,2,99,100,2,32,0,3,30,127,4,4,42,0,0,0,0 },
+            "zero", "future-void", "future-enum", "a");
+        zeroId.AsSpan(zeroId.Length - 40, 8).Clear();
+        report = new V1.TableReport();
+        Check(V1.Schema.CfgLoad(cfg, zeroId, report) && cfg.A == 42 && report.Unknown == 3 && !report.Malformed,
+            "zero identity and unknown future kinds skip without swallowing the next field");
+
+        // C++ reads a fixed array's count at the enclosing cursor before
+        // bounding elements by L. The next field reference completes count 128;
+        // its bool kind mismatches the same array field. No element may be
+        // fabricated from that following field.
+        report = new V1.TableReport();
+        byte[] headerSpill = Fixture(new byte[] { 1,14,2,4,128,1,1,1,0 }, "items");
+        Check(V1.Schema.CfgLoadVerdict(cfg, headerSpill, report) == V1.Schema.TableWire.Verdict.Ok &&
+            report.Malformed && report.Clamped == 1 && report.KindMismatch == 1 && cfg.ItemsCount == 0,
+            "array header spill matches reference events while elements stay bounded");
+
         // The report and all typed storage belong to the caller. Warm metadata
         // and the JIT, then measure only repeated loads and saves.
         for (int i = 0; i < 1000; i++) { Csids.Schema.WideIdsLoad(decoded, expected, wideReport); Csids.Schema.WideIdsSave(wide, actual); }

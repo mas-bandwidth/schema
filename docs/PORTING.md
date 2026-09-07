@@ -837,6 +837,10 @@ through `go build -overlay` and each turning the fuzzer red on its own verdict.
 |---|---|---|---|---|---|---|---|---|
 | ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ❌ #512 | ❌ #518 | ❌ #511 | ❌ #513 | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 |
 
+C# carries the fixed-class **file** form through `tables-cs-wire-fuzz` and
+`conformance-negative-control-cs`. The message form and unsupported constructs
+remain under #513, so the combined M20 cell stays open.
+
 ### M21 — A float crosses two widths by bit surgery, never by conversion
 
 **Method.** A float rides as its IEEE-754 BIT PATTERN with no canonicalisation
@@ -1309,7 +1313,7 @@ check removed reds on the report.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 |
+| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ❌ #492 | ❌ #492 | ❌ #492 | ✅ `tables-cs-wire-fuzz` `conformance-negative-control-cs` (supported fixed roots) | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 |
 
 ### J1 — Accessor and descriptor agreement
 

@@ -94,9 +94,9 @@ namespace Benchtable
         // an ENUM-KEYED array (docs/SPEC-TABLES.md §2.4, §8): the array has one slot
         // per variant of KeyTypeName, indexed by the variant's value, and its
         // slots ride under variant ids rather than positions. KeyName and KeyId
-        // are the key's vocabulary — walk [0, ArrayBound) to print slots by name.
-        // SLOT 0 IS NONE'S AND IS NEVER VALID: KeyId(0) is 0, the one reserved id
-        // no declared name can hold, and KeyName(0) is "None", so a walker
+        // are the key's vocabulary — walk [1, ArrayBound] to print slots by name.
+        // SLOT 0 IS NONE'S AND IS NEVER VALID: KeyId(0) is a reflection sentinel,
+        // while a named variant may have any identity. KeyName(0) is "None", so a walker
         // enumerating slots skips it rather than printing a None row. All three
         // are null on every other field.
         public string KeyTypeName;

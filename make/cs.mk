@@ -330,7 +330,7 @@ build-conformance-cs: build/tables-generated-cs/.stamp
 # controls are (block_fuzz_sabotage above), because the walker IS emitter
 # source — one constant in internal/codegen/cstable/json.go — so patching the
 # emitter is patching the walk itself rather than an artifact of it. No tracked
-# file is written to: the sed lands in build/, a Go build overlay points the
+# file is written to: the sabotage lands in build/, a Go build overlay points the
 # compiler at it, and the csproj's TablesGeneratedDir points the leg at what
 # that compiler generated.
 #
@@ -343,12 +343,12 @@ build-conformance-cs: build/tables-generated-cs/.stamp
 # and it touches the READ path only.
 #
 # The second half is the point, as it is for every control here: json-read must
-# go RED and every other surface must stay GREEN. A matrix whose every cell went
-# red would be saying "something broke" rather than "the C# text form broke" —
+# go RED and the wire, report and write surfaces must stay GREEN. A matrix
+# whose every cell went red would be saying "something broke" rather than "the C# text form broke" —
 # and json-write staying green is what says the break is the READER's.
 .PHONY: conformance-negative-control-cs
-conformance-negative-control-cs:
-	@echo "conformance-negative-control-cs: dormant — the surface it turns red is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#513)"
+conformance-negative-control-cs: build-conformance-cs build/conformance-harness
+	sh test/conformance/cs/negative-control "$(DOTNET)"
 
 # The C# half of `make update-goldens`: the committed generated table sources
 # (testdata/golden/tables/*-cs).

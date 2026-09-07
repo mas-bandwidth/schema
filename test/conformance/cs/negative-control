@@ -1,0 +1,55 @@
+#!/bin/sh
+# Generate from sabotaged emitter copies. Build failures never count as detection.
+# Run from the repository root; no tracked source or normal build is modified.
+set -eu
+dotnet=${1:-dotnet}
+for mode in wire json; do
+    dir=build/conformance-cs-negative-$mode
+    mkdir -p "$dir"
+    case "$mode" in
+        wire) source=internal/codegen/cstable/wire.go; sabotage=table-cs-duplicate-ids ;;
+        json) source=internal/codegen/cstable/json.go; sabotage=table-cs-json-field ;;
+    esac
+    go run ./tools/sabotage -name "$sabotage" -out "$dir/source.gotext" "$source"
+    printf '{"Replace":{"%s/%s":"%s/%s/source.gotext"}}\n' "$PWD" "$source" "$PWD" "$dir" > "$dir/overlay.json"
+    go build -overlay="$dir/overlay.json" -o "$dir/schema" ./cmd/schema
+    for unit in examples block v1 v2 p1 p3 k1 k2; do
+        case "$unit" in
+            examples|block) input=tables/$unit ;;
+            v1) input=test/tables/V1.schema ;; v2) input=test/tables/V2.schema ;;
+            p1) input=test/tables/P1.schema ;; p3) input=test/tables/P3.schema ;;
+            k1) input=test/tables/K1.schema ;; k2) input=test/tables/K2.schema ;;
+        esac
+        "$dir/schema" generate --lang cs --out "$dir/generated/$unit" "$input"
+    done
+    "$dotnet" build test/conformance/cs --nologo -v quiet \
+        -p:TablesGeneratedDir="$PWD/$dir/generated" \
+        -p:BaseIntermediateOutputPath="$PWD/$dir/obj/" -o "$dir/checker"
+    if [ "$mode" = wire ]; then
+        if ./build/conformance-harness wire-fuzz \
+            --driver "$dotnet $dir/checker/schemaconformance.dll wire-fuzz" \
+            --seed 24845619678 --n 0 > "$dir/log" 2>&1; then
+            echo 'NEGATIVE CONTROL FAILED: duplicate identities accepted'; exit 1
+        fi
+        grep -Fq 'report differs' "$dir/log" || { cat "$dir/log"; exit 1; }
+        echo 'C# wire negative control: duplicate identity rejection is observed'
+    else
+        printf 'cs %s %s/checker/schemaconformance.dll\n' "$dotnet" "$dir" > "$dir/drivers"
+        if ./build/conformance-harness run --drivers "$dir/drivers" --work "$dir/run" > "$dir/log" 2>&1; then
+            echo 'NEGATIVE CONTROL FAILED: shifted JSON field accepted'; exit 1
+        fi
+        grep -Eq '^json-read +FAIL ' "$dir/log" || { cat "$dir/log"; exit 1; }
+        for surface in wire report json-write block block-foreign block-dump forgery; do
+            grep -Eq "^$surface +pass " "$dir/log" || { cat "$dir/log"; exit 1; }
+        done
+        # Hostile JSON exercises the same reader, so it may also fail. Every
+        # unrelated surface must remain green and the failure must be a value.
+        if grep '^  cs / ' "$dir/log" | grep -Ev '^  cs / json-(read|hostile):' >/dev/null; then
+            cat "$dir/log"; exit 1
+        fi
+        if grep -Eq 'driver exited|driver wrote nothing' "$dir/log"; then
+            cat "$dir/log"; exit 1
+        fi
+        echo 'C# JSON negative control: shifted reads fail; wire, report and writes pass'
+    fi
+done
