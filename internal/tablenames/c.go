@@ -147,6 +147,7 @@ func init() {
 		// them: a scan that has to recognise a prefix is a scan that goes blind the
 		// day a name leaves the family.
 		Name{Name: "table_json_base64_alphabet", What: "the text form's walk"},
+		Name{Name: "table_json_base64_value", What: "the text form's base64 decode lookup"},
 		Name{Name: "table_json_count", What: "the text form's walk"},
 		Name{Name: "table_json_decimal_point", What: "the text form's walk"},
 		Name{Name: "table_json_element_shape", What: "the text form's walk"},

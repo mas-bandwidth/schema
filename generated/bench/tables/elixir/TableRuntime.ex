@@ -268,6 +268,13 @@ defmodule Benchtable.TableRuntime do
 
   @base64 ~c"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 
+  # Resolve an input byte without walking the alphabet for each character.
+  @decode64_lookup Enum.reduce(
+                     Enum.with_index(@base64),
+                     Tuple.duplicate(nil, 256),
+                     fn {c, n}, acc -> put_elem(acc, c, n) end
+                   )
+
   # ---- writing ----
 
   @doc """
@@ -508,46 +515,7 @@ defmodule Benchtable.TableRuntime do
 
   defp utf8_sequence(_), do: 0
 
-  defp write_base64(data), do: [?", base64(data, []), ?"]
-
-  defp base64(<<a, b, c, rest::binary>>, acc) do
-    triple = a <<< 16 ||| b <<< 8 ||| c
-
-    base64(rest, [
-      [
-        Enum.at(@base64, triple >>> 18 &&& 0x3F),
-        Enum.at(@base64, triple >>> 12 &&& 0x3F),
-        Enum.at(@base64, triple >>> 6 &&& 0x3F),
-        Enum.at(@base64, triple &&& 0x3F)
-      ]
-      | acc
-    ])
-  end
-
-  defp base64(<<a, b>>, acc) do
-    triple = a <<< 16 ||| b <<< 8
-
-    Enum.reverse([
-      [
-        Enum.at(@base64, triple >>> 18 &&& 0x3F),
-        Enum.at(@base64, triple >>> 12 &&& 0x3F),
-        Enum.at(@base64, triple >>> 6 &&& 0x3F),
-        ?=
-      ]
-      | acc
-    ])
-  end
-
-  defp base64(<<a>>, acc) do
-    triple = a <<< 16
-
-    Enum.reverse([
-      [Enum.at(@base64, triple >>> 18 &&& 0x3F), Enum.at(@base64, triple >>> 12 &&& 0x3F), ?=, ?=]
-      | acc
-    ])
-  end
-
-  defp base64(<<>>, acc), do: Enum.reverse(acc)
+  defp write_base64(data), do: [?", Base.encode64(data), ?"]
 
   # A float writes at the SHORTEST precision that reads back as the same value
   # at the field's own width, so a round trip is exact and a text stays
@@ -1098,7 +1066,7 @@ defmodule Benchtable.TableRuntime do
             decode64(value, f, text, pos + 1, acc, held, out, used, clamped, malformed, report)
 
           true ->
-            case Enum.find_index(@base64, fn a -> a == c end) do
+            case elem(@decode64_lookup, c) do
               nil ->
                 decode64(value, f, text, pos + 1, acc, held, out, used, clamped, true, report)
 
@@ -1109,6 +1077,9 @@ defmodule Benchtable.TableRuntime do
                 if held2 >= 8 do
                   held3 = held2 - 8
                   byte = acc2 >>> held3 &&& 0xFF
+                  # Only the unconsumed bits belong to the next byte. Keeping
+                  # consumed bits grows a bignum with every input character.
+                  acc2 = acc2 &&& ((1 <<< held3) - 1)
 
                   if used < f.bound do
                     decode64(value, f, text, pos + 1, acc2, held3, [byte | out], used + 1, clamped, false, report)

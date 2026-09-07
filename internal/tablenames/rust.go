@@ -49,6 +49,7 @@ func init() {
 		Name{Name: "TableJsonNumber", What: "a scanned numeric token", Scoped: true},
 		Name{Name: "TableJsonSink", What: "where a scanned string goes, or nowhere", Scoped: true},
 		Name{Name: "TableJsonBase64", What: "the base64 alphabet a bytes(N) rides under", Scoped: true},
+		Name{Name: "TableJsonBase64Decode", What: "the base64 decode lookup for bytes(N)", Scoped: true},
 		Name{Name: "TableJsonDigits", What: "the float writer's stack sink, so the text form allocates nothing", Scoped: true},
 		// SCOPED, Rust: the runtime's snake_case CRATE ITEMS. A schema declaration
 		// produces a type (its own spelling) or a SCREAMING_SNAKE constant, and

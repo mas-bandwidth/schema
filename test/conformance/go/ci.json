@@ -1,2 +1,2 @@
-{"targets": "build/conformance-harness build/conformance-go",
+{"targets": "build/conformance-harness build/conformance-go table-base64-go",
  "runtime": "serialize.go", "runtime_tag": "SERIALIZE_GO_TAG"}

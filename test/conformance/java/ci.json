@@ -1,2 +1,2 @@
-{"targets": "build/conformance-harness build-conformance-java",
+{"targets": "build/conformance-harness build-conformance-java table-base64-java",
  "java": "21", "env": "JAVA=java JAVAC=javac"}

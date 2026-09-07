@@ -113,7 +113,7 @@ func TestExternalModuleBuildsTheCLI(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(clientDir, "main.go"), main, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	gomod := fmt.Sprintf("module schemacli\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/schema/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/schema/v2 => %s\n", root)
+	gomod := fmt.Sprintf("module schemacli\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/schema/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/schema/v2 => %q\n", root)
 	if err := os.WriteFile(filepath.Join(clientDir, "go.mod"), []byte(gomod), 0o644); err != nil {
 		t.Fatal(err)
 	}
