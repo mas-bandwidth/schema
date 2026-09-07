@@ -16,12 +16,6 @@ type cppTarget struct{}
 func (cppTarget) Names() []string { return []string{"cpp"} }
 
 func (cppTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
-	// the TABLE side of a payload-free arm is this target's (§2.6); the PACKET
-	// side is a named follow-on, so a union with one outside a table closure
-	// is refused here
-	if err := refusePacketVoidArms(u, "cpp"); err != nil {
-		return nil, err
-	}
 	files, err := cpp.Generate(u)
 	if err != nil {
 		return nil, err

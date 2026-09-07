@@ -75,6 +75,10 @@ func (g *gen) emitUnionWire(d *ir.Union) {
 		for i, v := range d.Variants {
 			g.pf("        case %s::%s:\n", tag, ir.GoExportName(v.Name))
 			g.pf("            write_bits( stream, %du, %d );\n", i+1, bits)
+			if v.Void() {
+				g.pf("            return true; // payload-free arm — the tag is the whole wire (SPEC §4.8)\n")
+				continue
+			}
 			g.pf("            return Write%s( stream, value.%s );\n", v.Type, v.Name)
 		}
 		g.pf("        default:\n")
@@ -96,6 +100,10 @@ func (g *gen) emitUnionWire(d *ir.Union) {
 	g.pf("        case %s::None:\n            return true;\n", tag)
 	for _, v := range d.Variants {
 		g.pf("        case %s::%s:\n", tag, ir.GoExportName(v.Name))
+		if v.Void() {
+			g.pf("            return true; // payload-free arm — the tag is the whole wire (SPEC §4.8)\n")
+			continue
+		}
 		g.needsNew = true
 		g.pf("            ::new ( (void*) &value.%s ) %s{};\n", v.Name, v.Type)
 		g.pf("            return Read%s( stream, value.%s );\n", v.Type, v.Name)

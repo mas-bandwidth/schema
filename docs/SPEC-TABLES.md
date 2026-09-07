@@ -1477,9 +1477,11 @@ field. The enum-KEYED spelling `[E]Body` is a named follow-on (§15): a keyed
 body elides slots by name (§3.2), and a `None` slot there wants its rule
 stated before it is wire, as `[E]*T` does.
 
-**A union whose arms do not all name declared `type`s is a TABLE-CLOSURE
-construct.** It is emitted beside the tables, in C++ in the Table header
-after the tables its arms name and never in the packet header, and a `type`
+**A union with a payload that is not a declared `type` is a TABLE-CLOSURE
+construct.** Payload-free arms are outside that class and ride the packet
+wire in all nine backends (SPEC §4.8). A table-closure union is emitted beside
+the tables, in C++ in the Table header after the tables its arms name and
+never in the packet header, and a `type`
 body that holds one is refused by name, as is such a union that no table
 reaches (§11). A table holding one has no BLOCK form, by §19's standing rule
 for every union in a block closure. The packet wire's encoding of a general
@@ -9957,18 +9959,20 @@ in build version (§20.5).
   one file-name collision, and nothing else.
 - **A TABLE-CLOSURE union outside a table closure** (§2.6), from both sides:
   a `type` body holding one, and one that no table reaches. A union
-  declared for the type wire takes `type` payloads only, because types are
-  value semantics and the general arms wait on the ports (SPEC §4.8, §15).
+  declared for the type wire takes `type` payloads or payload-free arms,
+  because types are value semantics and the general arms wait on the ports
+  (SPEC §4.8, §15).
   The class is a union with a `table` arm, and a union with any arm whose
   PAYLOAD is not a declared `type` — a pointer, a scalar, an enum, a flags
   mask, a string, a `bytes`, an array — each refusal naming the arm that
   makes it one. **A payload-free arm is outside the class**: it has no
   payload, so it rides the packet wire as its tag alone and a `type` body
-  takes it (SPEC §4.8). What that arm meets instead is the per-target
-  refusal below. And **such a union under every backend but C++**, refused naming
-  the union and the target: the ports are a named follow-on (§15), and a
-  port that emitted the union would name a table it never declares, or
-  overlay storage its fixed-class codecs never met.
+  takes it in all nine backends (SPEC §4.8). **A payload-free arm reached by
+  a table closure remains C++ only**, and the other eight targets refuse it
+  naming the union and the target. And **a TABLE-CLOSURE union under every
+  backend but C++** is refused naming the union and the target: the ports are
+  a named follow-on (§15), and a port that emitted the union would name a
+  table it never declares, or overlay storage its fixed-class codecs never met.
 - **On an ARM** (§2.6, which states each reason): a specified default; `?`;
   `was`; `json`; an enum-keyed array `[E]T`; an `if` guard; and **a MAP
   (§2.8) or an UNBOUNDED ARRAY (§2.9)**, whose elements live in the holder's
@@ -11512,14 +11516,14 @@ inspects everything in the schema built:
   element's body ends, and that is schema#579.
 - **GENERAL ARMS ON THE PACKET WIRE** (SPEC §4.8, §2.6): the encoding is
   stated where the packet union is, and what waits is the nine backends'
-  packet codecs. Until they land, a union whose arms do not all name
-  declared `type`s is a table-closure construct, refused by name outside
-  one (§11).
-- **A UNION WITH GENERAL ARMS IN EVERY OTHER BACKEND** (§2.6): C++ and the
-  tool carry the scalar, enum, `flags`, string, `bytes`, array, pointer,
-  nested-union and payload-free arms, and every other backend refuses a
-  unit that declares one, by name (§11). What a port needs is the arm
-  payload framing in its union paths — measure, save, load, the
+  packet codecs. Until they land, a union with a payload that is not a
+  declared `type` is a table-closure construct, refused by name outside
+  one (§11). Payload-free arms already ride as the tag alone in all nine.
+- **A UNION WITH GENERAL ARMS ON THE TABLE WIRE IN EVERY OTHER BACKEND**
+  (§2.6): C++ and the tool carry the scalar, enum, `flags`, string, `bytes`,
+  array, pointer, nested-union and payload-free arms, and every other backend
+  refuses a unit whose table closure reaches one, by name (§11). What a port needs is
+  the arm payload framing in its union paths — measure, save, load, the
   descriptors' per-arm field column, the text form's arm-value row, and the
   walks that descend a pointer arm — held to the corpus instances and
   hostile rows the harness carries.
