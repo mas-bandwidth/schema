@@ -1182,17 +1182,15 @@ diagnostic does not name the field, the enum and the fix.
   and every row whose bound reaches its enum through a constant compiles
   clean without it.
 
-**CHECKER STATUS: `[E.Max]T` IS REFUSED, THE OTHER SPELLINGS ARE NOT.**
-`schema check` refuses `[E.Max]T` in a table body and in a union arm, naming
-the field, the enum and `[E]T` as the fix. It accepts `[E.Count]T` and `[N]T`
-under a `const N` that folds from either, with no diagnostic and exit 0, so a
-unit that spells the bound either of those ways compiles and carries the
-positional class this rule exists to close. The rule above follows the bound's
-PROVENANCE and the checker still follows its spelling, and closing that gap is
-owed as schema#540. Two sections rest on the refusal being made whole, §4.1's
+**CHECKER STATUS: THE REFUSAL FOLLOWS THE PROVENANCE.** `schema check` refuses
+every spelling above in a table body and in a union arm, reading the bound's
+provenance and not its text: `[E.Max]T`, `[E.Count]T`, and `[N]T` under a
+`const N` that folds from either at any depth of constant arithmetic. The
+diagnostic names the field, the enum, the constant where the bound reaches the
+enum through one, and `[E]T` as the fix; an arm's names the arm and the table
+that reaches the union. Two sections rest on this refusal being whole, §4.1's
 count of the silent class and SPEC.md §3.1's one exception to reachability, and
-each is written from this rule rather than from the tree. This paragraph is
-deleted by the implementation PR that closes the gap.
+both stand on the tree as well as on the rule.
 
 **RULING STATUS: the type-held case is ruled on schema#606.** Until then a
 `type` no table reaches keeps the spelling and a `type` a table reaches is
@@ -9843,12 +9841,10 @@ in build version (§20.5).
   table closure, `| max = K` headroom and variant id collisions, each
   diagnostic naming the keying field that pulled the enum in. A slot value no variant names is a SAVE failure, not a silent `None`
   (§3.2).
-  **CHECKER STATUS: `[E.Max]T` is refused in a table body and in a union arm.
-  `[E.Count]T` and `[N]T` under a `const N` that folds from either are
-  accepted there today with no diagnostic**, because the checker still
-  follows the spelling where the rule follows the provenance, owed as
-  schema#540 (§2.4), and this sentence is deleted by the implementation PR
-  that closes the gap.
+  **CHECKER STATUS: `[E.Max]T`, `[E.Count]T` and `[N]T` under a `const N` that
+  folds from either are all refused in a table body and in a union arm**, on
+  the bound's provenance, and an arm's diagnostic names the arm and the table
+  that reaches the union (§2.4).
   **RULING STATUS: the type-held case is ruled on schema#606**, and until
   then a `type` a table reaches is not refused (§2.4).
 - **Maps** (§2.8): a map in a `type` body; a key that is an enum (the
