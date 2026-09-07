@@ -249,3 +249,29 @@ test-go: generated/bench/tables/go/.stamp generated/go/.stamp generated/go-ludic
 TEST_LEGS         += test-go
 CONFORMANCE_LEGS  += build/conformance-go
 BENCH_TABLES_LEGS += generated/bench/tables/go/.stamp
+
+
+build/packet-wide/go/.stamp: bin/schema build/packet-wide/source/WideText.schema test/packet-wide/Shapes.schema make/go.mk
+	./bin/schema generate --lang go --out build/packet-wide/go build/packet-wide/source/WideText.schema
+	./bin/schema generate --lang go --out build/packet-wide/go/shapes test/packet-wide/Shapes.schema
+	@printf 'module packetwide\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => %s/$(SERIALIZE_GO)\n' "$(CURDIR)" > build/packet-wide/go/go.mod
+	@touch $@
+
+.PHONY: packet-wide-go packet-wide-go-negative-control
+packet-wide-go: build/packet-wide/go/.stamp build/packet-wide/cpp/driver build/packet-text/harness
+	cd test/packet-wide/go && go test -count=1 . && go build -o ../../../build/packet-wide/go/driver .
+	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver ./build/packet-wide/go/driver
+
+packet-wide-go-negative-control: packet-wide-go
+	@mkdir -p build/packet-wide/go-negative/checker
+	go run ./tools/sabotage -name packet-wide-go-pairing -out build/packet-wide/go-negative/wstring.gotext internal/codegen/golang/wstring.go
+	@printf '{"Replace":{"%s/internal/codegen/golang/wstring.go":"%s/build/packet-wide/go-negative/wstring.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-wide/go-negative/overlay.json
+	go run -overlay=build/packet-wide/go-negative/overlay.json ./cmd/schema generate --lang go --out build/packet-wide/go-negative build/packet-wide/source/WideText.schema
+	cp build/packet-wide/go/go.mod build/packet-wide/go-negative/go.mod
+	cp test/packet-wide/go/main.go build/packet-wide/go-negative/checker/main.go
+	cd build/packet-wide/go-negative/checker && go build -o ../driver .
+	@if ./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver -mutations-only ./build/packet-wide/go-negative/driver > build/packet-wide/go-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: Go wide pairing removal passed'; exit 1; fi
+	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-wide/go-negative/log || { cat build/packet-wide/go-negative/log; exit 1; }
+	@echo 'packet wide Go negative control: removed pairing fails bit-flip agreement'
+
+test-go: packet-wide-go packet-wide-go-negative-control

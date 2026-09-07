@@ -465,6 +465,8 @@ func (g *gen) emitStorageField(f *ir.Field) {
 	typ := g.goFieldType(f.Type)
 
 	switch {
+	case f.Type.Kind == ir.TWString:
+		g.pf("\t%s [%s]uint16\n\t%sLength int32\n", name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)), name)
 	case f.Type.Kind == ir.TString:
 		g.pf("\t%s [%s]byte // string(%s): max length, used length beside it (SPEC §4.7)\n",
 			name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)), ir.RenderExpr(f.Type.SizeExpr))

@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-var packetWidePorts = []string{"c", "rust"}
+var packetWidePorts = []string{"c", "rust", "go"}
 
 func TestPacketWideTextBesideUnrelatedTable(t *testing.T) {
 	u := unitFromSource(t, "package wide\ntype Text { name wstring(4) }\ntable Counter { number int32 }\n")
