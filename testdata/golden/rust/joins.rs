@@ -45,33 +45,25 @@ pub const ARMS_AGREE_MAX_BYTES: usize = 8;
 
 #[inline(always)]
 pub fn write_arms_agree(stream: &mut WriteStream<'_>, value: &ArmsAgree) -> Result {
-    if value.lead >= 1 << 5 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.lead < 1 << 5, "lead above the bits(5) wire width");
     let f0: u64 = u64::from(value.lead);
     let f1: u64 = u64::from(value.flag);
     let mut w0 = (f0 | (f1 << 5)) as u32;
     stream.serialize_bits(&mut w0, 6)?;
     if value.flag {
-        if value.a >= 1 << 11 {
-            return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-        }
+        debug_assert!(value.a < 1 << 11, "a above the bits(11) wire width");
         {
             let mut raw_value = value.a;
             stream.serialize_bits(&mut raw_value, 11)?;
         }
     } else {
-        if value.b >= 1 << 11 {
-            return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-        }
+        debug_assert!(value.b < 1 << 11, "b above the bits(11) wire width");
         {
             let mut raw_value = value.b;
             stream.serialize_bits(&mut raw_value, 11)?;
         }
     }
-    if value.tail >= 1 << 7 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.tail < 1 << 7, "tail above the bits(7) wire width");
     {
         let mut raw_value = value.tail;
         stream.serialize_bits(&mut raw_value, 7)?;
@@ -137,33 +129,25 @@ pub const ARMS_DISAGREE_MAX_BYTES: usize = 8;
 
 #[inline(always)]
 pub fn write_arms_disagree(stream: &mut WriteStream<'_>, value: &ArmsDisagree) -> Result {
-    if value.lead >= 1 << 5 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.lead < 1 << 5, "lead above the bits(5) wire width");
     let f0: u64 = u64::from(value.lead);
     let f1: u64 = u64::from(value.flag);
     let mut w0 = (f0 | (f1 << 5)) as u32;
     stream.serialize_bits(&mut w0, 6)?;
     if value.flag {
-        if value.a >= 1 << 11 {
-            return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-        }
+        debug_assert!(value.a < 1 << 11, "a above the bits(11) wire width");
         {
             let mut raw_value = value.a;
             stream.serialize_bits(&mut raw_value, 11)?;
         }
     } else {
-        if value.b >= 1 << 3 {
-            return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-        }
+        debug_assert!(value.b < 1 << 3, "b above the bits(3) wire width");
         {
             let mut raw_value = value.b;
             stream.serialize_bits(&mut raw_value, 3)?;
         }
     }
-    if value.tail >= 1 << 7 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.tail < 1 << 7, "tail above the bits(7) wire width");
     {
         let mut raw_value = value.tail;
         stream.serialize_bits(&mut raw_value, 7)?;
@@ -224,25 +208,19 @@ pub const ARM_EMPTY_MAX_BYTES: usize = 8;
 
 #[inline(always)]
 pub fn write_arm_empty(stream: &mut WriteStream<'_>, value: &ArmEmpty) -> Result {
-    if value.lead >= 1 << 5 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.lead < 1 << 5, "lead above the bits(5) wire width");
     let f0: u64 = u64::from(value.lead);
     let f1: u64 = u64::from(value.flag);
     let mut w0 = (f0 | (f1 << 5)) as u32;
     stream.serialize_bits(&mut w0, 6)?;
     if value.flag {
-        if value.a >= 1 << 19 {
-            return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-        }
+        debug_assert!(value.a < 1 << 19, "a above the bits(19) wire width");
         {
             let mut raw_value = value.a;
             stream.serialize_bits(&mut raw_value, 19)?;
         }
     }
-    if value.tail >= 1 << 7 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.tail < 1 << 7, "tail above the bits(7) wire width");
     {
         let mut raw_value = value.tail;
         stream.serialize_bits(&mut raw_value, 7)?;
@@ -316,9 +294,7 @@ pub const ARMS_NESTED_MAX_BYTES: usize = 8;
 
 #[inline(always)]
 pub fn write_arms_nested(stream: &mut WriteStream<'_>, value: &ArmsNested) -> Result {
-    if value.lead >= 1 << 3 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.lead < 1 << 3, "lead above the bits(3) wire width");
     let f0: u64 = u64::from(value.lead);
     let f1: u64 = u64::from(value.outer);
     let mut w0 = (f0 | (f1 << 3)) as u32;
@@ -329,34 +305,26 @@ pub fn write_arms_nested(stream: &mut WriteStream<'_>, value: &ArmsNested) -> Re
             stream.serialize_bool(&mut bool_value)?;
         }
         if value.inner {
-            if value.x >= 1 << 29 {
-                return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-            }
+            debug_assert!(value.x < 1 << 29, "x above the bits(29) wire width");
             {
                 let mut raw_value = value.x;
                 stream.serialize_bits(&mut raw_value, 29)?;
             }
         } else {
-            if value.y >= 1 << 5 {
-                return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-            }
+            debug_assert!(value.y < 1 << 5, "y above the bits(5) wire width");
             {
                 let mut raw_value = value.y;
                 stream.serialize_bits(&mut raw_value, 5)?;
             }
         }
     } else {
-        if value.z >= 1 << 13 {
-            return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-        }
+        debug_assert!(value.z < 1 << 13, "z above the bits(13) wire width");
         {
             let mut raw_value = value.z;
             stream.serialize_bits(&mut raw_value, 13)?;
         }
     }
-    if value.tail >= 1 << 6 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.tail < 1 << 6, "tail above the bits(6) wire width");
     {
         let mut raw_value = value.tail;
         stream.serialize_bits(&mut raw_value, 6)?;
@@ -433,34 +401,26 @@ pub const ARM_ALIGN_MAX_BYTES: usize = 8;
 
 #[inline(always)]
 pub fn write_arm_align(stream: &mut WriteStream<'_>, value: &ArmAlign) -> Result {
-    if value.lead >= 1 << 5 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.lead < 1 << 5, "lead above the bits(5) wire width");
     let f0: u64 = u64::from(value.lead);
     let f1: u64 = u64::from(value.flag);
     let mut w0 = (f0 | (f1 << 5)) as u32;
     stream.serialize_bits(&mut w0, 6)?;
     if value.flag {
-        if value.s_length < 0 || value.s_length > 4 {
-            return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-        }
+        debug_assert!(value.s_length >= 0 && value.s_length <= 4, "s_length out of range [0, 4]");
         {
             let mut offset_value = value.s_length as u32;
             stream.serialize_bits(&mut offset_value, 3)?; // the length guards the slice (§6.3)
         }
         stream.write_bytes(&value.s[..value.s_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
     } else {
-        if value.b >= 1 << 10 {
-            return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-        }
+        debug_assert!(value.b < 1 << 10, "b above the bits(10) wire width");
         {
             let mut raw_value = value.b;
             stream.serialize_bits(&mut raw_value, 10)?;
         }
     }
-    if value.tail >= 1 << 7 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.tail < 1 << 7, "tail above the bits(7) wire width");
     {
         let mut raw_value = value.tail;
         stream.serialize_bits(&mut raw_value, 7)?;
@@ -538,42 +498,32 @@ pub const ARM_ARRAY_MAX_BYTES: usize = 8;
 
 #[inline(always)]
 pub fn write_arm_array(stream: &mut WriteStream<'_>, value: &ArmArray) -> Result {
-    if value.lead >= 1 << 5 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.lead < 1 << 5, "lead above the bits(5) wire width");
     let f0: u64 = u64::from(value.lead);
     let f1: u64 = u64::from(value.flag);
     let mut w0 = (f0 | (f1 << 5)) as u32;
     stream.serialize_bits(&mut w0, 6)?;
     if value.flag {
-        if value.items_count < 0 || value.items_count > 3 {
-            return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-        }
+        debug_assert!(value.items_count >= 0 && value.items_count <= 3, "items_count out of range [0, 3]");
         {
             let mut offset_value = value.items_count as u32;
             stream.serialize_bits(&mut offset_value, 2)?; // the count guards the loop (§6.3)
         }
         for i in 0..value.items_count as usize {
-            if value.items[i] > 8191 {
-                return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-            }
+            debug_assert!(value.items[i] <= 8191, "items[i] out of range [0, 8191]");
             {
                 let mut offset_value = value.items[i] as u32;
                 stream.serialize_bits(&mut offset_value, 13)?;
             }
         }
     } else {
-        if value.b >= 1 << 9 {
-            return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-        }
+        debug_assert!(value.b < 1 << 9, "b above the bits(9) wire width");
         {
             let mut raw_value = value.b;
             stream.serialize_bits(&mut raw_value, 9)?;
         }
     }
-    if value.tail >= 1 << 7 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.tail < 1 << 7, "tail above the bits(7) wire width");
     {
         let mut raw_value = value.tail;
         stream.serialize_bits(&mut raw_value, 7)?;
@@ -632,9 +582,7 @@ pub const NARROW_MAX_BYTES: usize = 8;
 
 #[inline(always)]
 pub fn write_narrow(stream: &mut WriteStream<'_>, value: &Narrow) -> Result {
-    if value.n >= 1 << 3 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.n < 1 << 3, "n above the bits(3) wire width");
     {
         let mut raw_value = value.n;
         stream.serialize_bits(&mut raw_value, 3)?;
@@ -671,9 +619,7 @@ pub const WIDE_MAX_BYTES: usize = 8;
 
 #[inline(always)]
 pub fn write_wide(stream: &mut WriteStream<'_>, value: &Wide) -> Result {
-    if value.w >= 1 << 37 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.w < 1 << 37, "w above the bits(37) wire width");
     {
         let mut raw_value = value.w;
         stream.serialize_bits64(&mut raw_value, 37)?;
@@ -792,17 +738,13 @@ pub const HOLDS_UNEVEN_MAX_BYTES: usize = 8;
 
 #[inline(always)]
 pub fn write_holds_uneven(stream: &mut WriteStream<'_>, value: &HoldsUneven) -> Result {
-    if value.lead >= 1 << 5 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.lead < 1 << 5, "lead above the bits(5) wire width");
     {
         let mut raw_value = value.lead;
         stream.serialize_bits(&mut raw_value, 5)?;
     }
     write_uneven(stream, &value.u)?;
-    if value.tail >= 1 << 11 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.tail < 1 << 11, "tail above the bits(11) wire width");
     {
         let mut raw_value = value.tail;
         stream.serialize_bits(&mut raw_value, 11)?;
@@ -847,16 +789,12 @@ pub const ARR_UNEVEN_MAX_BYTES: usize = 16;
 
 #[inline(always)]
 pub fn write_arr_uneven(stream: &mut WriteStream<'_>, value: &ArrUneven) -> Result {
-    if value.lead >= 1 << 5 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.lead < 1 << 5, "lead above the bits(5) wire width");
     {
         let mut raw_value = value.lead;
         stream.serialize_bits(&mut raw_value, 5)?;
     }
-    if value.items_count < 0 || value.items_count > 3 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.items_count >= 0 && value.items_count <= 3, "items_count out of range [0, 3]");
     {
         let mut offset_value = value.items_count as u32;
         stream.serialize_bits(&mut offset_value, 2)?; // the count guards the loop (§6.3)
@@ -864,9 +802,7 @@ pub fn write_arr_uneven(stream: &mut WriteStream<'_>, value: &ArrUneven) -> Resu
     for i in 0..value.items_count as usize {
         write_uneven(stream, &value.items[i])?;
     }
-    if value.tail >= 1 << 3 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.tail < 1 << 3, "tail above the bits(3) wire width");
     {
         let mut raw_value = value.tail;
         stream.serialize_bits(&mut raw_value, 3)?;
@@ -924,46 +860,32 @@ pub const REGAIN_AFTER_ALIGN_MAX_BYTES: usize = 24;
 
 #[inline(always)]
 pub fn write_regain_after_align(stream: &mut WriteStream<'_>, value: &RegainAfterAlign) -> Result {
-    if value.lead >= 1 << 5 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.lead < 1 << 5, "lead above the bits(5) wire width");
     {
         let mut raw_value = value.lead;
         stream.serialize_bits(&mut raw_value, 5)?;
     }
-    if value.items_count < 0 || value.items_count > 3 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.items_count >= 0 && value.items_count <= 3, "items_count out of range [0, 3]");
     {
         let mut offset_value = value.items_count as u32;
         stream.serialize_bits(&mut offset_value, 2)?; // the count guards the loop (§6.3)
     }
     for i in 0..value.items_count as usize {
-        if value.items[i] > 8191 {
-            return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-        }
+        debug_assert!(value.items[i] <= 8191, "items[i] out of range [0, 8191]");
         {
             let mut offset_value = value.items[i] as u32;
             stream.serialize_bits(&mut offset_value, 13)?;
         }
     }
-    if value.s_length < 0 || value.s_length > 4 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.s_length >= 0 && value.s_length <= 4, "s_length out of range [0, 4]");
     {
         let mut offset_value = value.s_length as u32;
         stream.serialize_bits(&mut offset_value, 3)?; // the length guards the slice (§6.3)
     }
     stream.write_bytes(&value.s[..value.s_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
-    if value.q >= 1 << 29 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.r >= 1 << 19 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.tail >= 1 << 4 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.q < 1 << 29, "q above the bits(29) wire width");
+    debug_assert!(value.r < 1 << 19, "r above the bits(19) wire width");
+    debug_assert!(value.tail < 1 << 4, "tail above the bits(4) wire width");
     let f0: u64 = u64::from(value.p);
     let f1: u64 = u64::from(value.q);
     let f2: u64 = u64::from(value.r);

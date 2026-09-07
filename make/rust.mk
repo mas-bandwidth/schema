@@ -354,7 +354,8 @@ build/conformance-rust: build/tables-generated-rust/.stamp test/conformance/rust
 
 # THE RUST LEG of `make test`: the walk, clippy and feature gates, the names
 # control, the allocation audit and its control, the big-endian check, the
-# bench crates' compile gates, and the packet tests.
+# bench crates' compile gates, and the packet tests — the corpus binaries in
+# BOTH build modes (see below).
 .PHONY: test-rust
 test-rust: generated/rust/.stamp generated/rust-ludicrous/.stamp generated/bench/rust/.stamp
 	$(MAKE) tables-rust-walk
@@ -369,8 +370,15 @@ test-rust: generated/rust/.stamp generated/rust-ludicrous/.stamp generated/bench
 	$(MAKE) tables-rust-big-endian
 	cd generated/bench/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet
 	cd generated/bench/rust-realworld && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet
+	# BOTH BUILD MODES. The generated writer holds its caller contracts with
+	# `debug_assert!` (the 2026-09-07 ruling: "checks are *DEBUG ONLY*"), so
+	# the debug run is the one that proves the contracts FIRE and the release
+	# run is the one that proves they are GONE and the corpus still writes the
+	# pinned wire. Java, Dart and the packet-wide Rust leg already run both.
 	cd test/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet
+	cd test/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release
 	cd test/rust-ludicrous && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet
+	cd test/rust-ludicrous && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release
 
 TEST_LEGS         += test-rust
 CONFORMANCE_LEGS  += build/conformance-rust

@@ -378,12 +378,8 @@ pub const REAL_PACKET_MAX_BYTES: usize = 232;
 
 #[inline(always)]
 pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Result {
-    if value.f001_int < -805495 || value.f001_int > 805495 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.f003_int < -835897 || value.f003_int > 835897 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.f001_int >= -805495 && value.f001_int <= 805495, "f001_int out of range [-805495, 805495]");
+    debug_assert!(value.f003_int >= -835897 && value.f003_int <= 835897, "f003_int out of range [-835897, 835897]");
     let f0: u64 = u64::from((value.f001_int as u32).wrapping_sub((-805495_i32) as u32));
     let f1: u64 = value.f002_f64.to_bits();
     let f2: u64 = u64::from((value.f003_int as u32).wrapping_sub((-835897_i32) as u32));
@@ -399,18 +395,10 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
         let mut compressed_value = value.f004_cf32;
         stream.serialize_compressed_float_precomputed(&mut compressed_value, 20000, 15, 2000.0_f32, 0.0_f32)?; // compressed float [0.0, 2000.0] @ 0.1, constants folded at generation
     }
-    if value.f005_uint > 7316 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.f006_int < -1513 || value.f006_int > 1513 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.f009_int < -22 || value.f009_int > 22 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.f011_bits >= 1 << 10 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.f005_uint <= 7316, "f005_uint out of range [0, 7316]");
+    debug_assert!(value.f006_int >= -1513 && value.f006_int <= 1513, "f006_int out of range [-1513, 1513]");
+    debug_assert!(value.f009_int >= -22 && value.f009_int <= 22, "f009_int out of range [-22, 22]");
+    debug_assert!(value.f011_bits < 1 << 10, "f011_bits above the bits(10) wire width");
     let f0: u64 = u64::from(value.f005_uint as u32);
     let f1: u64 = u64::from((value.f006_int as u32).wrapping_sub((-1513_i32) as u32));
     let f2: u64 = u64::from(value.f007_f32.to_bits());
@@ -432,12 +420,8 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
     let mut w5 = ((f6 >> 1) | (f7 << 9)) as u32;
     stream.serialize_bits(&mut w5, 10)?;
     if value.f012_bool {
-        if value.f014_uint > 775 {
-            return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-        }
-        if value.f015_int < -21 || value.f015_int > 21 {
-            return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-        }
+        debug_assert!(value.f014_uint <= 775, "f014_uint out of range [0, 775]");
+        debug_assert!(value.f015_int >= -21 && value.f015_int <= 21, "f015_int out of range [-21, 21]");
         let f0: u64 = u64::from(value.f013_f32.to_bits());
         let f1: u64 = u64::from(value.f014_uint as u32);
         let f2: u64 = u64::from((value.f015_int as u32).wrapping_sub((-21_i32) as u32));
@@ -445,24 +429,18 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
         stream.serialize_bits(&mut w0, 32)?;
         let mut w1 = (f1 | (f2 << 10)) as u32;
         stream.serialize_bits(&mut w1, 16)?;
-        if value.f016_fixed < -37748736 || value.f016_fixed > 37748736 {
-            return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-        }
+        debug_assert!(value.f016_fixed >= -37748736 && value.f016_fixed <= 37748736, "f016_fixed raw value out of range [-37748736, 37748736]");
         {
             let mut fixed_value = value.f016_fixed;
             stream.serialize_fixed(&mut fixed_value, 12, 20, -36, 36)?;
         }
-        if value.f017_uint > 4606 {
-            return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-        }
+        debug_assert!(value.f017_uint <= 4606, "f017_uint out of range [0, 4606]");
         {
             let mut offset_value = value.f017_uint as u32;
             stream.serialize_bits(&mut offset_value, 13)?;
         }
     }
-    if value.f018_int < -834 || value.f018_int > 834 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.f018_int >= -834 && value.f018_int <= 834, "f018_int out of range [-834, 834]");
     let f0: u64 = u64::from((value.f018_int as u32).wrapping_sub((-834_i32) as u32));
     let f1: u64 = value.f019_f64.to_bits();
     let f2: u64 = u64::from(value.f020_f32.to_bits());
@@ -474,16 +452,12 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
     stream.serialize_bits(&mut w2, 32)?;
     let mut w3 = (f2 >> 21) as u32;
     stream.serialize_bits(&mut w3, 11)?;
-    if value.f021_ufixed > 102977536 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.f021_ufixed <= 102977536, "f021_ufixed raw value out of range [0, 102977536]");
     {
         let mut fixed_value = value.f021_ufixed;
         stream.serialize_fixed(&mut fixed_value, 20, 12, 0, 25141)?;
     }
-    if value.f023_bits >= 1 << 25 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.f023_bits < 1 << 25, "f023_bits above the bits(25) wire width");
     let f0: u64 = u64::from(value.f022_f32.to_bits());
     let f1: u64 = u64::from(value.f023_bits);
     let f2: u64 = u64::from(value.f024_f32.to_bits());
@@ -493,16 +467,12 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
     stream.serialize_bits(&mut w1, 32)?;
     let mut w2 = (f2 >> 7) as u32;
     stream.serialize_bits(&mut w2, 25)?;
-    if value.f025_fixed < -30464 || value.f025_fixed > 30464 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.f025_fixed >= -30464 && value.f025_fixed <= 30464, "f025_fixed raw value out of range [-30464, 30464]");
     {
         let mut fixed_value = value.f025_fixed;
         stream.serialize_fixed(&mut fixed_value, 8, 8, -119, 119)?;
     }
-    if value.f026_bits >= 1 << 9 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.f026_bits < 1 << 9, "f026_bits above the bits(9) wire width");
     {
         let mut raw_value = value.f026_bits;
         stream.serialize_bits(&mut raw_value, 9)?;
@@ -511,30 +481,14 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
         let mut compressed_value = value.f027_cf32;
         stream.serialize_compressed_float_precomputed(&mut compressed_value, 16, 5, 4.0_f32, -2.0_f32)?; // compressed float [-2.0, 2.0] @ 0.25, constants folded at generation
     }
-    if value.f028_bits >= 1 << 4 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.f031_bits >= 1 << 1 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.f032_int < -3 || value.f032_int > 3 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.f033_uint > 142780 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.f034_uint > 14149 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.f035_bits >= 1 << 9 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.f036_enum.0 > 5 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.f039_bits >= 1 << 19 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.f028_bits < 1 << 4, "f028_bits above the bits(4) wire width");
+    debug_assert!(value.f031_bits < 1 << 1, "f031_bits above the bits(1) wire width");
+    debug_assert!(value.f032_int >= -3 && value.f032_int <= 3, "f032_int out of range [-3, 3]");
+    debug_assert!(value.f033_uint <= 142780, "f033_uint out of range [0, 142780]");
+    debug_assert!(value.f034_uint <= 14149, "f034_uint out of range [0, 14149]");
+    debug_assert!(value.f035_bits < 1 << 9, "f035_bits above the bits(9) wire width");
+    debug_assert!(value.f036_enum.0 <= 5, "f036_enum above the PacketMode wire range [0, 5]");
+    debug_assert!(value.f039_bits < 1 << 19, "f039_bits above the bits(19) wire width");
     let f0: u64 = u64::from(value.f028_bits);
     let f1: u64 = value.f029_i64 as u64;
     let f2: u64 = u64::from(value.f030_f32.to_bits());
@@ -559,19 +513,13 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
     stream.serialize_bits(&mut w4, 32)?;
     let mut w5 = (f11 >> 10) as u32;
     stream.serialize_bits(&mut w5, 9)?;
-    if value.f040_fixed < -20480 || value.f040_fixed > 20480 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.f040_fixed >= -20480 && value.f040_fixed <= 20480, "f040_fixed raw value out of range [-20480, 20480]");
     {
         let mut fixed_value = value.f040_fixed;
         stream.serialize_fixed(&mut fixed_value, 4, 12, -5, 5)?;
     }
-    if value.f041_int < -55 || value.f041_int > 55 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.f042_bits >= 1 << 30 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.f041_int >= -55 && value.f041_int <= 55, "f041_int out of range [-55, 55]");
+    debug_assert!(value.f042_bits < 1 << 30, "f042_bits above the bits(30) wire width");
     let f0: u64 = u64::from((value.f041_int as u32).wrapping_sub((-55_i32) as u32));
     let f1: u64 = u64::from(value.f042_bits);
     let f2: u64 = u64::from(value.f043_bool);
@@ -580,15 +528,9 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
     let mut w1 = ((f1 >> 25) | (f2 << 5)) as u32;
     stream.serialize_bits(&mut w1, 6)?;
     if value.f043_bool {
-        if value.f045_bits >= 1 << 12 {
-            return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-        }
-        if value.f046_uint > 76063 {
-            return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-        }
-        if value.f047_int < -430976 || value.f047_int > 430976 {
-            return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-        }
+        debug_assert!(value.f045_bits < 1 << 12, "f045_bits above the bits(12) wire width");
+        debug_assert!(value.f046_uint <= 76063, "f046_uint out of range [0, 76063]");
+        debug_assert!(value.f047_int >= -430976 && value.f047_int <= 430976, "f047_int out of range [-430976, 430976]");
         let f0: u64 = u64::from(value.f044_f32.to_bits());
         let f1: u64 = u64::from(value.f045_bits);
         let f2: u64 = u64::from(value.f046_uint);
@@ -604,9 +546,7 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
         let mut float_value = value.f048_f64;
         stream.serialize_f64(&mut float_value)?;
     }
-    if value.f049_ufixed > 49152 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.f049_ufixed <= 49152, "f049_ufixed raw value out of range [0, 49152]");
     {
         let mut fixed_value = value.f049_ufixed;
         stream.serialize_fixed(&mut fixed_value, 2, 14, 0, 3)?;
@@ -616,12 +556,8 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
         stream.serialize_bool(&mut bool_value)?;
     }
     if value.f050_bool {
-        if value.f052_int < -57 || value.f052_int > 57 {
-            return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-        }
-        if value.f054_int < -35 || value.f054_int > 35 {
-            return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-        }
+        debug_assert!(value.f052_int >= -57 && value.f052_int <= 57, "f052_int out of range [-57, 57]");
+        debug_assert!(value.f054_int >= -35 && value.f054_int <= 35, "f054_int out of range [-35, 35]");
         let f0: u64 = u64::from(value.f051_bool);
         let f1: u64 = u64::from((value.f052_int as u32).wrapping_sub((-57_i32) as u32));
         let f2: u64 = u64::from(value.f053_f32.to_bits());
@@ -631,15 +567,9 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
         let mut w1 = ((f2 >> 24) | (f3 << 8)) as u32;
         stream.serialize_bits(&mut w1, 15)?;
     }
-    if value.f056_int < -13 || value.f056_int > 13 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.f057_int < -15 || value.f057_int > 15 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.f060_bits >= 1 << 8 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.f056_int >= -13 && value.f056_int <= 13, "f056_int out of range [-13, 13]");
+    debug_assert!(value.f057_int >= -15 && value.f057_int <= 15, "f057_int out of range [-15, 15]");
+    debug_assert!(value.f060_bits < 1 << 8, "f060_bits above the bits(8) wire width");
     let f0: u64 = u64::from(value.f055_bool);
     let f1: u64 = u64::from((value.f056_int as u32).wrapping_sub((-13_i32) as u32));
     let f2: u64 = u64::from((value.f057_int as u32).wrapping_sub((-15_i32) as u32));
@@ -658,12 +588,8 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
         let mut compressed_value = value.f061_cf32;
         stream.serialize_compressed_float_precomputed(&mut compressed_value, 360, 9, 180.0_f32, -90.0_f32)?; // compressed float [-90.0, 90.0] @ 0.5, constants folded at generation
     }
-    if value.f062_uint > 503 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.f064_uint > 299 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.f062_uint <= 503, "f062_uint out of range [0, 503]");
+    debug_assert!(value.f064_uint <= 299, "f064_uint out of range [0, 299]");
     let f0: u64 = u64::from(value.f062_uint as u32);
     let f1: u64 = value.f063_i64 as u64;
     let f2: u64 = u64::from(value.f064_uint as u32);
@@ -677,9 +603,7 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
         let mut compressed_value = value.f065_cf32;
         stream.serialize_compressed_float_precomputed(&mut compressed_value, 60, 6, 30.0_f32, 0.0_f32)?; // compressed float [0.0, 30.0] @ 0.5, constants folded at generation
     }
-    if value.f066_ufixed > 32768 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.f066_ufixed <= 32768, "f066_ufixed raw value out of range [0, 32768]");
     {
         let mut fixed_value = value.f066_ufixed;
         stream.serialize_fixed(&mut fixed_value, 2, 14, 0, 2)?;
@@ -692,12 +616,8 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
         let mut compressed_value = value.f068_cf32;
         stream.serialize_compressed_float_precomputed(&mut compressed_value, 2000, 11, 2000.0_f32, 0.0_f32)?; // compressed float [0.0, 2000.0] @ 1.0, constants folded at generation
     }
-    if value.f069_bits >= 1 << 11 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.f070_uint > 2 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.f069_bits < 1 << 11, "f069_bits above the bits(11) wire width");
+    debug_assert!(value.f070_uint <= 2, "f070_uint out of range [0, 2]");
     let f0: u64 = u64::from(value.f069_bits);
     let f1: u64 = u64::from(value.f070_uint as u32);
     let mut w0 = (f0 | (f1 << 11)) as u32;
@@ -710,26 +630,16 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
         let mut compressed_value = value.f072_cf32;
         stream.serialize_compressed_float_precomputed(&mut compressed_value, 10000, 14, 100.0_f32, 0.0_f32)?; // compressed float [0.0, 100.0] @ 0.01, constants folded at generation
     }
-    if value.f073_int < -4 || value.f073_int > 4 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.f073_int >= -4 && value.f073_int <= 4, "f073_int out of range [-4, 4]");
     let f0: u64 = u64::from((value.f073_int as u32).wrapping_sub((-4_i32) as u32));
     let f1: u64 = u64::from(value.f074_bool);
     let mut w0 = (f0 | (f1 << 4)) as u32;
     stream.serialize_bits(&mut w0, 5)?;
     if value.f074_bool {
-        if value.f076_int < -26218 || value.f076_int > 26218 {
-            return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-        }
-        if value.f077_int < -17 || value.f077_int > 17 {
-            return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-        }
-        if value.f078_bits >= 1 << 9 {
-            return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-        }
-        if value.f079_uint > 17 {
-            return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-        }
+        debug_assert!(value.f076_int >= -26218 && value.f076_int <= 26218, "f076_int out of range [-26218, 26218]");
+        debug_assert!(value.f077_int >= -17 && value.f077_int <= 17, "f077_int out of range [-17, 17]");
+        debug_assert!(value.f078_bits < 1 << 9, "f078_bits above the bits(9) wire width");
+        debug_assert!(value.f079_uint <= 17, "f079_uint out of range [0, 17]");
         let f0: u64 = value.f075_u64;
         let f1: u64 = u64::from((value.f076_int as u32).wrapping_sub((-26218_i32) as u32));
         let f2: u64 = u64::from((value.f077_int as u32).wrapping_sub((-17_i32) as u32));
@@ -744,15 +654,9 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
         let mut w3 = (f4 >> 1) as u32;
         stream.serialize_bits(&mut w3, 4)?;
     }
-    if value.f081_bits >= 1 << 29 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.f082_bits >= 1 << 25 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.f083_enum.0 > 5 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.f081_bits < 1 << 29, "f081_bits above the bits(29) wire width");
+    debug_assert!(value.f082_bits < 1 << 25, "f082_bits above the bits(25) wire width");
+    debug_assert!(value.f083_enum.0 <= 5, "f083_enum above the PacketMode wire range [0, 5]");
     let f0: u64 = u64::from(value.f080_bool);
     let f1: u64 = u64::from(value.f081_bits);
     let f2: u64 = u64::from(value.f082_bits);
@@ -761,32 +665,17 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
     stream.serialize_bits(&mut w0, 32)?;
     let mut w1 = ((f2 >> 2) | (f3 << 23)) as u32;
     stream.serialize_bits(&mut w1, 26)?;
-    if value.f084_ufixed > 128 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.f084_ufixed <= 128, "f084_ufixed raw value out of range [0, 128]");
     {
         let mut fixed_value = value.f084_ufixed;
         stream.serialize_fixed(&mut fixed_value, 1, 7, 0, 1)?;
     }
-    if value.f085_bits >= 1 << 21 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.f086_uint > 399 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.f088_int < -694 || value.f088_int > 694 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.f089_bits >= 1 << 48 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.f090_uint > 214 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.f091_flags >= 1 << 5 {
-        // a mask bit above the wire width cannot ride
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.f085_bits < 1 << 21, "f085_bits above the bits(21) wire width");
+    debug_assert!(value.f086_uint <= 399, "f086_uint out of range [0, 399]");
+    debug_assert!(value.f088_int >= -694 && value.f088_int <= 694, "f088_int out of range [-694, 694]");
+    debug_assert!(value.f089_bits < 1 << 48, "f089_bits above the bits(48) wire width");
+    debug_assert!(value.f090_uint <= 214, "f090_uint out of range [0, 214]");
+    debug_assert!(value.f091_flags < 1 << 5, "f091_flags has a mask bit above the 5-bit wire width");
     let f0: u64 = u64::from(value.f085_bits);
     let f1: u64 = u64::from(value.f086_uint as u32);
     let f2: u64 = value.f087_f64.to_bits();
@@ -813,19 +702,13 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
     stream.serialize_bits(&mut w6, 32)?;
     let mut w7 = ((f8 >> 57) | (f9 << 7)) as u32;
     stream.serialize_bits(&mut w7, 8)?;
-    if value.f095_fixed < -103350272 || value.f095_fixed > 103350272 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.f095_fixed >= -103350272 && value.f095_fixed <= 103350272, "f095_fixed raw value out of range [-103350272, 103350272]");
     {
         let mut fixed_value = value.f095_fixed;
         stream.serialize_fixed(&mut fixed_value, 16, 16, -1577, 1577)?;
     }
-    if value.f096_bits >= 1 << 18 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.f097_bits >= 1 << 12 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.f096_bits < 1 << 18, "f096_bits above the bits(18) wire width");
+    debug_assert!(value.f097_bits < 1 << 12, "f097_bits above the bits(12) wire width");
     let f0: u64 = u64::from(value.f096_bits);
     let f1: u64 = u64::from(value.f097_bits);
     let mut w0 = (f0 | (f1 << 18)) as u32;

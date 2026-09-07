@@ -35,11 +35,28 @@ const NUM_VARIANTS: usize = 64; // read-path variant buffers
 // in sorted basename order, the basename bytes, a 0x00 byte, the contents.
 // The per-runner constants: family gen (these are the generated-code
 // benchmarks), linkage crate (the serialize.rs runtime compiles into the one
-// crate graph the bench monomorphizes over), checks always (the runtime is
-// unsafe_code = "forbid" — every load is bounds-checked in every build, plus
-// range validation and the sticky error check by contract), opt O3 (the cargo
-// release profile, opt-level 3), inline unknown until the verdict pass (§4.2)
-// backfills it.
+// crate graph the bench monomorphizes over), checks REMOVED (§3.4), opt O3
+// (the cargo release profile, opt-level 3), inline unknown until the verdict
+// pass (§4.2) backfills it.
+//
+// THE CHECKS COLUMN SAID `always` UNTIL 2026-09-07, when the maintainer ruled
+// the write side debug-only across the estate — "No runtime should ever
+// promise to keep checks in writing packets (asserts) in release build.
+// Removing them is the whole point" — and the Rust backend's generated
+// per-field write guards, which were `if ... { return Err(...) }` and ran in
+// THIS release binary, became `debug_assert!`. serialize.rs's own API-misuse
+// checks were already `debug_assert!` (src/stream.rs, `misuse_check!`). The
+// release profile sets `debug-assertions = false`, so this binary's write path
+// now carries NO caller-error check at all — the same model as the C and C++
+// legs under -DNDEBUG, which is why it takes their word.
+//
+// The residual this word does NOT cover, named rather than laundered: safe
+// Rust's own slice bounds checks survive `--release` and the C and C++ legs
+// have no equivalent. They are the LANGUAGE's, not the library's, and the read
+// path — where they mostly live — validates in every build in all three legs.
+// A ratio against C or C++ is still a ratio across the same library check
+// model; if the owner wants the language residual priced separately it needs a
+// fourth column value, not a different word in this one (#175).
 // family is per ROW now (gen | bits — §5.1); linkage/checks/inline stay
 // per-runner constants, and OPT IS READ FROM THE BUILD rather than asserted.
 //
@@ -64,7 +81,7 @@ const BENCH_OPT: &str = match option_env!("BENCH_OPT") {
 };
 
 fn csv_suffix() -> String {
-    format!("crate,always,{BENCH_OPT},unknown")
+    format!("crate,removed,{BENCH_OPT},unknown")
 }
 
 fn fnv1a64(mut h: u64, data: &[u8]) -> u64 {

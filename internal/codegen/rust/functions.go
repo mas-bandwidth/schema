@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/ast"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -483,30 +484,48 @@ func storageMax(t ir.FieldType) *big.Int {
 	return new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(t.Width)), big.NewInt(1))
 }
 
-// emitWriteRangeGuard refuses an out-of-contract caller value BEFORE it
-// reaches the runtime. serialize.rs's write side only debug_asserts — in a
-// release build an out-of-range value wraps and ORs stray bits over
-// NEIGHBORING fields, and the reader can accept the corrupt packet — so the
-// generated code supplies the refusal the Go runtime provides natively.
-// Halves vacuous against the storage domain are elided.
+// assertLabel names a field in an assert message the way a Rust programmer
+// reads it: the field path without the `value.` receiver prefix.
+func assertLabel(name string) string {
+	return strings.TrimPrefix(name, "value.")
+}
+
+// writeAssert emits one write-side contract assertion.
+//
+// THE WRITE SIDE IS THE CALLER'S RESPONSIBILITY (SPEC §5). A value outside its
+// declared bounds is a bug in the calling program, not packet data, and Rust's
+// idiom for a caller contract is `debug_assert!`: it fires loudly in a debug
+// build and compiles out of release, where the caller has taken responsibility
+// for correctness. serialize.rs states the same posture for the runtime half
+// (src/stream.rs, `misuse_check!` — "the caller is responsible for well formed
+// calls; release carries minimal runtime checking"), so the generated code and
+// the runtime it calls now hold ONE contract instead of two.
+//
+// READ-SIDE VALIDATION IS UNTOUCHED AND UNCONDITIONAL: the network is the
+// world, and every read still bounds checks and range validates in every build.
+func (g *gen) writeAssert(ind, cond, msg string) {
+	g.pf("%sdebug_assert!(%s, \"%s\");\n", ind, cond, msg)
+}
+
+// emitWriteRangeGuard states the caller's contract for a ranged field. Halves
+// vacuous against the storage domain are elided, and the message names the
+// declared range whichever half survives.
 func (g *gen) emitWriteRangeGuard(name string, f *ir.Field, ind string) {
 	loVacuous := f.IntMin.Cmp(storageMin(f.Type)) <= 0
 	hiVacuous := f.IntMax.Cmp(storageMax(f.Type)) >= 0
+	msg := fmt.Sprintf("%s out of range [%s, %s]", assertLabel(name), f.IntMin.String(), f.IntMax.String())
 	switch {
 	case !loVacuous && !hiVacuous:
-		g.pf("%sif %s < %s || %s > %s {\n", ind, name, f.IntMin.String(), name, f.IntMax.String())
-		g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
+		g.writeAssert(ind, fmt.Sprintf("%s >= %s && %s <= %s", name, f.IntMin.String(), name, f.IntMax.String()), msg)
 	case !loVacuous:
-		g.pf("%sif %s < %s {\n", ind, name, f.IntMin.String())
-		g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
+		g.writeAssert(ind, fmt.Sprintf("%s >= %s", name, f.IntMin.String()), msg)
 	case !hiVacuous:
-		g.pf("%sif %s > %s {\n", ind, name, f.IntMax.String())
-		g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
+		g.writeAssert(ind, fmt.Sprintf("%s <= %s", name, f.IntMax.String()), msg)
 	}
 }
 
 // emitWriteFixedRawGuard is emitWriteRangeGuard for a fixed(I, F) field: the
-// storage holds the RAW (scaled) value, so the refusal compares against the
+// storage holds the RAW (scaled) value, so the assertion compares against the
 // whole-unit bounds shifted into the raw domain — the exact range
 // serialize_fixed debug_asserts on write and rejects on read. Halves vacuous
 // against the I+F-bit signed storage domain are elided.
@@ -526,16 +545,14 @@ func (g *gen) emitWriteFixedRawGuard(name string, f *ir.Field, ind string) {
 	}
 	loVacuous := rawMin.Cmp(smin) <= 0
 	hiVacuous := rawMax.Cmp(smax) >= 0
+	msg := fmt.Sprintf("%s raw value out of range [%s, %s]", assertLabel(name), rawMin.String(), rawMax.String())
 	switch {
 	case !loVacuous && !hiVacuous:
-		g.pf("%sif %s < %s || %s > %s {\n", ind, name, rawMin.String(), name, rawMax.String())
-		g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
+		g.writeAssert(ind, fmt.Sprintf("%s >= %s && %s <= %s", name, rawMin.String(), name, rawMax.String()), msg)
 	case !loVacuous:
-		g.pf("%sif %s < %s {\n", ind, name, rawMin.String())
-		g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
+		g.writeAssert(ind, fmt.Sprintf("%s >= %s", name, rawMin.String()), msg)
 	case !hiVacuous:
-		g.pf("%sif %s > %s {\n", ind, name, rawMax.String())
-		g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
+		g.writeAssert(ind, fmt.Sprintf("%s <= %s", name, rawMax.String()), msg)
 	}
 }
 
@@ -552,8 +569,13 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 			return
 		}
 		if f.Array == ir.ArrayCounted {
-			g.pf("%sif %s_count < %d || %s_count > %d {\n", ind, name, f.ArrayMin, name, f.ArrayBound)
-			g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
+			// the count is the caller's contract like every other bound, and
+			// the maintainer ruled it "debug only" on 2026-09-07 with the rest
+			// of the write side: a count outside [A, B] is a bug in the calling
+			// program. The READ still refuses one in every build (SPEC §4.6).
+			g.writeAssert(ind,
+				fmt.Sprintf("%s_count >= %d && %s_count <= %d", name, f.ArrayMin, name, f.ArrayBound),
+				fmt.Sprintf("%s_count out of range [%d, %d]", assertLabel(name), f.ArrayMin, f.ArrayBound))
 			g.emitWriteRangedFold32(name+"_count", false, fmt.Sprintf("%d_i32", f.ArrayMin), f.ArrayMin == 0,
 				ir.BitsRequired(big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound)), " // the count guards the loop (§6.3)", ind)
 			g.pf("%sfor i in 0..%s_count as usize {\n", ind, name)
@@ -573,18 +595,18 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.emitWriteWString(f, name, ind)
 	case ir.TFixed:
 		if f.IntMin.Cmp(f.IntMax) == 0 {
-			// degenerate range: ZERO bits — the generated raw-domain refusal
-			// and no wire call at all, so no runtime degenerate support is
-			// needed (SPEC §4.6)
+			// degenerate range: ZERO bits — the raw-domain assertion and no
+			// wire call at all, so no runtime degenerate support is needed
+			// (SPEC §4.6)
 			g.emitWriteFixedRawGuard(name, f, ind)
 			return
 		}
 		// the Q format and the whole-unit bounds are compile-time constants
 		// of the call site — part of the wire format, exactly like a ranged
-		// integer's bounds (STANDARD.md, fixed). serialize.rs's write side
-		// only debug_asserts, so the raw-domain refusal is generated, like
-		// every bounded write path in this target; the call goes through a
-		// temp — the write functions borrow value immutably
+		// integer's bounds (STANDARD.md, fixed). The raw-domain contract is
+		// a debug assertion, like every bounded write path in this target;
+		// the call goes through a temp — the write functions borrow value
+		// immutably
 		g.emitWriteFixedRawGuard(name, f, ind)
 		lo, hi := g.rangeArgs(f, "i64")
 		g.pf("%s{\n%s    let mut fixed_value = %s;\n", ind, ind, name)
@@ -594,14 +616,15 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		if f.Type.Width == 128 {
 			if f.HasIntRange {
 				if f.IntMin.Cmp(f.IntMax) == 0 {
-					// degenerate range: ZERO bits — refusal only (SPEC §4.6)
+					// degenerate range: ZERO bits — the assertion only
+					// (SPEC §4.6)
 					g.emitWriteRangeGuard(name, f, ind)
 					return
 				}
 				// int128 is ALWAYS ranged (SPEC §4.3): offset from min —
 				// identical bytes to serialize_int64 wherever the range fits.
-				// The runtime's write side only debug_asserts, so the range
-				// refusal is generated (the target's family rule)
+				// The range is the caller's contract, asserted in debug and
+				// trusted in release (the target's family rule)
 				g.emitWriteRangeGuard(name, f, ind)
 				lo, hi := g.rangeArgs(f, "i128")
 				g.pf("%s{\n%s    let mut range_value = %s;\n", ind, ind, name)
@@ -628,23 +651,19 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			default:
 				// full-range unsigned: raw offset bits (u64 storage only — no
 				// narrower storage can hold a range past i64). Like every
-				// bounded write path in this target, the range refusal is
-				// generated: serialize.rs's write side only debug_asserts,
-				// so a misuse value must be refused here or it wraps into
-				// valid-looking wire; vacuous halves are elided
+				// bounded write path in this target, the range contract is a
+				// debug assertion; vacuous halves are elided
 				lo, _ := g.rangeArgs(f, "u64")
 				loVacuous := f.IntMin.Sign() == 0
 				hiVacuous := f.IntMax.Cmp(maxUint64) == 0
+				msg := fmt.Sprintf("%s out of range [%s, %s]", assertLabel(name), f.IntMin.String(), f.IntMax.String())
 				switch {
 				case !loVacuous && !hiVacuous:
-					g.pf("%sif %s < %s || %s > %s {\n", ind, name, lo, name, f.IntMax.String())
-					g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
+					g.writeAssert(ind, fmt.Sprintf("%s >= %s && %s <= %s", name, lo, name, f.IntMax.String()), msg)
 				case !loVacuous:
-					g.pf("%sif %s < %s {\n", ind, name, lo)
-					g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
+					g.writeAssert(ind, fmt.Sprintf("%s >= %s", name, lo), msg)
 				case !hiVacuous:
-					g.pf("%sif %s > %s {\n", ind, name, f.IntMax.String())
-					g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
+					g.writeAssert(ind, fmt.Sprintf("%s <= %s", name, f.IntMax.String()), msg)
 				}
 				if loVacuous {
 					g.pf("%s{\n%s    let mut offset_value = %s;\n", ind, ind, name)
@@ -658,11 +677,10 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.emitWriteBareInt(f, name, ind)
 	case ir.TBits:
 		if f.Type.Width != 32 && f.Type.Width != 64 {
-			// storage is the wider unsigned type: bits above the wire width
-			// are refused, not wrapped (the runtime's write side only
-			// debug_asserts)
-			g.pf("%sif %s >= 1 << %d {\n", ind, name, f.Type.Width)
-			g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
+			// storage is the wider unsigned type: a bit above the wire width
+			// is caller error, asserted in debug and trusted in release
+			g.writeAssert(ind, fmt.Sprintf("%s < 1 << %d", name, f.Type.Width),
+				fmt.Sprintf("%s above the bits(%d) wire width", assertLabel(name), f.Type.Width))
 		}
 		g.pf("%s{\n%s    let mut raw_value = %s;\n", ind, ind, name)
 		if f.Type.Width <= 32 {
@@ -690,8 +708,8 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		// length in [0, N], align, then the used bytes — the classic
 		// serialize_string framing over a buffer of N + 1 (SPEC §4.7).
 		// Interior nulls are writer misuse; the read side rejects them (§4.7).
-		g.pf("%sif %s_length < 0 || %s_length > %d {\n", ind, name, name, f.Type.Size)
-		g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
+		g.writeAssert(ind, fmt.Sprintf("%s_length >= 0 && %s_length <= %d", name, name, f.Type.Size),
+			fmt.Sprintf("%s_length out of range [0, %d]", assertLabel(name), f.Type.Size))
 		g.emitWriteRangedFold32(name+"_length", false, "0", true,
 			ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)), " // the length guards the slice (§6.3)", ind)
 		// the write side borrows the used bytes in place: WriteStream::write_bytes
@@ -703,10 +721,10 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:
 			if ref.Max < (int64(1)<<uint(ref.StorageBits))-1 {
-				// headroom storage can exceed the wire range: refused, not
-				// wrapped (the runtime's write side only debug_asserts)
-				g.pf("%sif %s.0 > %d {\n", ind, name, ref.Max)
-				g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
+				// headroom storage can exceed the wire range: caller error,
+				// asserted in debug and trusted in release
+				g.writeAssert(ind, fmt.Sprintf("%s.0 <= %d", name, ref.Max),
+					fmt.Sprintf("%s above the %s wire range [0, %d]", assertLabel(name), f.Type.Name, ref.Max))
 			}
 			g.emitWriteRangedFold32(name+".0", ref.StorageBits == 32, "0", true,
 				ir.BitsRequired(big.NewInt(0), big.NewInt(ref.Max)), "", ind)
@@ -966,12 +984,11 @@ func (g *gen) emitReadFlags(name, typeName string, wireBits int, ind string) {
 
 // emitWriteFlagsValue is the write half used by emitWriteScalar. Storage is
 // wider than the wire wherever WireBits < 64, so a mask bit above the wire
-// width is refused rather than silently truncated.
+// width is a caller contract: asserted in debug, trusted in release.
 func (g *gen) emitWriteFlagsValue(name string, wireBits int, ind string) {
 	if wireBits < 64 {
-		g.pf("%sif %s >= 1 << %d {\n", ind, name, wireBits)
-		g.pf("%s    // a mask bit above the wire width cannot ride\n", ind)
-		g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
+		g.writeAssert(ind, fmt.Sprintf("%s < 1 << %d", name, wireBits),
+			fmt.Sprintf("%s has a mask bit above the %d-bit wire width", assertLabel(name), wireBits))
 	}
 	if wireBits <= 32 {
 		g.pf("%s{\n%s    let mut flags_value = %s as u32;\n", ind, ind, name)

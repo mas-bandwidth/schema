@@ -1,6 +1,7 @@
 package rust
 
 import (
+	"fmt"
 	"math/big"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -9,10 +10,11 @@ import (
 func (g *gen) emitWriteWString(f *ir.Field, name, ind string) {
 	bound := g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "i32")
 	g.pf("%s{\n%s    let mut length = %s_length;\n", ind, ind, name)
-	g.pf("%s    if length < 0 || length > %s {\n%s        return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s    }\n", ind, bound, ind, ind)
+	g.writeAssert(ind+"    ", fmt.Sprintf("length >= 0 && length <= %s", bound),
+		fmt.Sprintf("%s_length out of range [0, %s]", assertLabel(name), bound))
 	g.pf("%s    stream.serialize_int(&mut length, 0, %s)?;\n", ind, bound)
 	g.pf("%s    for &unit in &%s[..length as usize] {\n", ind, name)
-	g.pf("%s        if unit == 0 { return Err(Error::Validation); }\n", ind)
+	g.writeAssert(ind+"        ", "unit != 0", fmt.Sprintf("%s carries an interior null within its used length", assertLabel(name)))
 	g.pf("%s        let mut group = u32::from(unit);\n%s        stream.serialize_bits(&mut group, 32)?;\n%s    }\n%s}\n", ind, ind, ind, ind)
 }
 

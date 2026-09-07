@@ -206,15 +206,9 @@ pub const TABLE_HIT_EVENT_MAX_BYTES: usize = 8;
 
 #[inline(always)]
 pub fn write_table_hit_event(stream: &mut WriteStream<'_>, value: &TableHitEvent) -> Result {
-    if value.target_id >= 1 << 12 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.damage < 0 || value.damage > 4095 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.hit_kind < 0 || value.hit_kind > 7 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.target_id < 1 << 12, "target_id above the bits(12) wire width");
+    debug_assert!(value.damage >= 0 && value.damage <= 4095, "damage out of range [0, 4095]");
+    debug_assert!(value.hit_kind >= 0 && value.hit_kind <= 7, "hit_kind out of range [0, 7]");
     let f0: u64 = u64::from(value.target_id);
     let f1: u64 = u64::from(value.damage as u32);
     let f2: u64 = u64::from(value.hit_kind as u32);
@@ -265,12 +259,8 @@ pub const TABLE_CHAT_EVENT_MAX_BYTES: usize = 8;
 
 #[inline(always)]
 pub fn write_table_chat_event(stream: &mut WriteStream<'_>, value: &TableChatEvent) -> Result {
-    if value.channel < 0 || value.channel > 3 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.speaker >= 1 << 12 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.channel >= 0 && value.channel <= 3, "channel out of range [0, 3]");
+    debug_assert!(value.speaker < 1 << 12, "speaker above the bits(12) wire width");
     let f0: u64 = u64::from(value.channel as u32);
     let f1: u64 = u64::from(value.speaker);
     let mut w0 = (f0 | (f1 << 2)) as u32;
@@ -315,12 +305,8 @@ pub const TABLE_PICKUP_EVENT_MAX_BYTES: usize = 8;
 
 #[inline(always)]
 pub fn write_table_pickup_event(stream: &mut WriteStream<'_>, value: &TablePickupEvent) -> Result {
-    if value.item_id >= 1 << 10 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.amount < 0 || value.amount > 255 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.item_id < 1 << 10, "item_id above the bits(10) wire width");
+    debug_assert!(value.amount >= 0 && value.amount <= 255, "amount out of range [0, 255]");
     let f0: u64 = u64::from(value.item_id);
     let f1: u64 = u64::from(value.amount as u32);
     let mut w0 = (f0 | (f1 << 10)) as u32;

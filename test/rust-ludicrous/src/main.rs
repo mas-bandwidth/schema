@@ -41,6 +41,27 @@ fn check_err(result: ludicrous::Result, what: &str) {
     }
 }
 
+// asserts on = the debug build (the checked twin); off = the release shape.
+// The generated writer holds its caller contracts with `debug_assert!` — the
+// Rust idiom, and what serialize.rs does for its own API misuse (src/stream.rs,
+// `misuse_check!`) — so a violation panics in debug and is compiled out of
+// release. The same shape as test/rust, test/java and test/dart.
+const ASSERTS_ENABLED: bool = cfg!(debug_assertions);
+
+// expect_assert runs a writer-contract violation and demands the assertion
+// fires (checked twin only — the release writer trusts by design). The panic
+// hook is silenced for the duration: the panic IS the pass.
+fn expect_assert<F: FnOnce()>(f: F, what: &str) {
+    if !ASSERTS_ENABLED {
+        return;
+    }
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+    std::panic::set_hook(previous);
+    check(outcome.is_err(), what);
+}
+
 // golden_wire byte-compares written wire against the C++-pinned golden.
 fn golden_wire(name: &str, data: &[u8]) {
     match std::fs::read(format!("../../testdata/wire/{name}.bin")) {
@@ -268,15 +289,18 @@ fn main() {
         check_err(read_unsigned_probe(&mut rs, &mut out), "read UnsignedProbe");
         check(out == input, "UnsignedProbe round-trips — the u64 high half bit-exact");
 
-        // the write-side degenerate refusal: any raw but 3 * 2^16 is refused
-        // before a single bit is written
-        let mut bad = input;
-        bad.locked = 196609;
-        let mut bad_buffer = [0u8; 64];
-        let mut bad_ws = WriteStream::new(&mut bad_buffer);
-        check(
-            write_unsigned_probe(&mut bad_ws, &bad).is_err(),
-            "a wrong degenerate ufixed raw is REFUSED on write",
+        // the write-side degenerate contract: any raw but 3 * 2^16 asserts
+        // before a single bit is written (debug only — the release writer
+        // trusts its caller, SPEC §5)
+        expect_assert(
+            || {
+                let mut bad = input;
+                bad.locked = 196609;
+                let mut bad_buffer = [0u8; 64];
+                let mut bad_ws = WriteStream::new(&mut bad_buffer);
+                let _ = write_unsigned_probe(&mut bad_ws, &bad);
+            },
+            "a wrong degenerate ufixed raw ASSERTS on write",
         );
 
         // hostile: span's 64 offset bits (starting at bit 25) all-ones =

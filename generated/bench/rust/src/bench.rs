@@ -79,24 +79,12 @@ pub const BENCH_PACKET_MAX_BYTES: usize = 56;
 
 #[inline(always)]
 pub fn write_bench_packet(stream: &mut WriteStream<'_>, value: &BenchPacket) -> Result {
-    if value.a < -100 || value.a > 100 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.b < 0 || value.b > 65535 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.c < -1000000 || value.c > 1000000 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.bits7 >= 1 << 7 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.bits13 >= 1 << 13 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.bits23 >= 1 << 23 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.a >= -100 && value.a <= 100, "a out of range [-100, 100]");
+    debug_assert!(value.b >= 0 && value.b <= 65535, "b out of range [0, 65535]");
+    debug_assert!(value.c >= -1000000 && value.c <= 1000000, "c out of range [-1000000, 1000000]");
+    debug_assert!(value.bits7 < 1 << 7, "bits7 above the bits(7) wire width");
+    debug_assert!(value.bits13 < 1 << 13, "bits13 above the bits(13) wire width");
+    debug_assert!(value.bits23 < 1 << 23, "bits23 above the bits(23) wire width");
     let f0: u64 = u64::from((value.a as u32).wrapping_sub((-100_i32) as u32));
     let f1: u64 = u64::from(value.b as u32);
     let f2: u64 = u64::from((value.c as u32).wrapping_sub((-1000000_i32) as u32));
@@ -222,36 +210,16 @@ pub const BENCH_INTS_MAX_BYTES: usize = 16;
 
 #[inline(always)]
 pub fn write_bench_ints(stream: &mut WriteStream<'_>, value: &BenchInts) -> Result {
-    if value.f0 < -100 || value.f0 > 100 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.f1 < 0 || value.f1 > 65535 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.f2 < -1000000 || value.f2 > 1000000 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.f3 < 0 || value.f3 > 3 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.f4 < -15 || value.f4 > 15 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.f5 < 0 || value.f5 > 1000 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.f6 < -2048 || value.f6 > 2047 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.f7 < 0 || value.f7 > 255 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.f8 < -600000 || value.f8 > 600000 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.f9 < 0 || value.f9 > 100 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.f0 >= -100 && value.f0 <= 100, "f0 out of range [-100, 100]");
+    debug_assert!(value.f1 >= 0 && value.f1 <= 65535, "f1 out of range [0, 65535]");
+    debug_assert!(value.f2 >= -1000000 && value.f2 <= 1000000, "f2 out of range [-1000000, 1000000]");
+    debug_assert!(value.f3 >= 0 && value.f3 <= 3, "f3 out of range [0, 3]");
+    debug_assert!(value.f4 >= -15 && value.f4 <= 15, "f4 out of range [-15, 15]");
+    debug_assert!(value.f5 >= 0 && value.f5 <= 1000, "f5 out of range [0, 1000]");
+    debug_assert!(value.f6 >= -2048 && value.f6 <= 2047, "f6 out of range [-2048, 2047]");
+    debug_assert!(value.f7 >= 0 && value.f7 <= 255, "f7 out of range [0, 255]");
+    debug_assert!(value.f8 >= -600000 && value.f8 <= 600000, "f8 out of range [-600000, 600000]");
+    debug_assert!(value.f9 >= 0 && value.f9 <= 100, "f9 out of range [0, 100]");
     let f0: u64 = u64::from((value.f0 as u32).wrapping_sub((-100_i32) as u32));
     let f1: u64 = u64::from(value.f1 as u32);
     let f2: u64 = u64::from((value.f2 as u32).wrapping_sub((-1000000_i32) as u32));
@@ -362,27 +330,13 @@ pub const BENCH_BITS_MAX_BYTES: usize = 24;
 
 #[inline(always)]
 pub fn write_bench_bits(stream: &mut WriteStream<'_>, value: &BenchBits) -> Result {
-    if value.b7 >= 1 << 7 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.b13 >= 1 << 13 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.b23 >= 1 << 23 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.b3 >= 1 << 3 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.b11 >= 1 << 11 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.b19 >= 1 << 19 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.b48 >= 1 << 48 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.b7 < 1 << 7, "b7 above the bits(7) wire width");
+    debug_assert!(value.b13 < 1 << 13, "b13 above the bits(13) wire width");
+    debug_assert!(value.b23 < 1 << 23, "b23 above the bits(23) wire width");
+    debug_assert!(value.b3 < 1 << 3, "b3 above the bits(3) wire width");
+    debug_assert!(value.b11 < 1 << 11, "b11 above the bits(11) wire width");
+    debug_assert!(value.b19 < 1 << 19, "b19 above the bits(19) wire width");
+    debug_assert!(value.b48 < 1 << 48, "b48 above the bits(48) wire width");
     let f0: u64 = u64::from(value.b7);
     let f1: u64 = u64::from(value.b13);
     let f2: u64 = u64::from(value.b23);
@@ -628,43 +582,18 @@ pub const MIXED_ENTITY_MAX_BYTES: usize = 24;
 
 #[inline(always)]
 pub fn write_mixed_entity(stream: &mut WriteStream<'_>, value: &MixedEntity) -> Result {
-    if value.entity_id >= 1 << 12 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.pos_x < -16383 || value.pos_x > 16383 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.pos_y < -16383 || value.pos_y > 16383 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.pos_z < -16383 || value.pos_z > 16383 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.yaw >= 1 << 9 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.pitch >= 1 << 9 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.vel_x < -2048 || value.vel_x > 2047 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.vel_y < -2048 || value.vel_y > 2047 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.vel_z < -2048 || value.vel_z > 2047 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.health < 0 || value.health > 1000 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.weapon.0 > 15 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.damage >= 1 << 8 {
-        // a mask bit above the wire width cannot ride
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.entity_id < 1 << 12, "entity_id above the bits(12) wire width");
+    debug_assert!(value.pos_x >= -16383 && value.pos_x <= 16383, "pos_x out of range [-16383, 16383]");
+    debug_assert!(value.pos_y >= -16383 && value.pos_y <= 16383, "pos_y out of range [-16383, 16383]");
+    debug_assert!(value.pos_z >= -16383 && value.pos_z <= 16383, "pos_z out of range [-16383, 16383]");
+    debug_assert!(value.yaw < 1 << 9, "yaw above the bits(9) wire width");
+    debug_assert!(value.pitch < 1 << 9, "pitch above the bits(9) wire width");
+    debug_assert!(value.vel_x >= -2048 && value.vel_x <= 2047, "vel_x out of range [-2048, 2047]");
+    debug_assert!(value.vel_y >= -2048 && value.vel_y <= 2047, "vel_y out of range [-2048, 2047]");
+    debug_assert!(value.vel_z >= -2048 && value.vel_z <= 2047, "vel_z out of range [-2048, 2047]");
+    debug_assert!(value.health >= 0 && value.health <= 1000, "health out of range [0, 1000]");
+    debug_assert!(value.weapon.0 <= 15, "weapon above the MixedWeapon wire range [0, 15]");
+    debug_assert!(value.damage < 1 << 8, "damage has a mask bit above the 8-bit wire width");
     let f0: u64 = u64::from(value.entity_id);
     let f1: u64 = u64::from((value.pos_x as u32).wrapping_sub((-16383_i32) as u32));
     let f2: u64 = u64::from((value.pos_y as u32).wrapping_sub((-16383_i32) as u32));
@@ -773,12 +702,8 @@ pub const MIXED_STAT_MAX_BYTES: usize = 8;
 
 #[inline(always)]
 pub fn write_mixed_stat(stream: &mut WriteStream<'_>, value: &MixedStat) -> Result {
-    if value.stat_id >= 1 << 8 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.delta < -512 || value.delta > 511 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.stat_id < 1 << 8, "stat_id above the bits(8) wire width");
+    debug_assert!(value.delta >= -512 && value.delta <= 511, "delta out of range [-512, 511]");
     let f0: u64 = u64::from(value.stat_id);
     let f1: u64 = u64::from((value.delta as u32).wrapping_sub((-512_i32) as u32));
     let mut w0 = (f0 | (f1 << 8)) as u32;
@@ -827,15 +752,9 @@ pub const MIXED_HIT_EVENT_MAX_BYTES: usize = 8;
 
 #[inline(always)]
 pub fn write_mixed_hit_event(stream: &mut WriteStream<'_>, value: &MixedHitEvent) -> Result {
-    if value.target_id >= 1 << 12 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.damage < 0 || value.damage > 4095 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.hit_kind < 0 || value.hit_kind > 7 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.target_id < 1 << 12, "target_id above the bits(12) wire width");
+    debug_assert!(value.damage >= 0 && value.damage <= 4095, "damage out of range [0, 4095]");
+    debug_assert!(value.hit_kind >= 0 && value.hit_kind <= 7, "hit_kind out of range [0, 7]");
     let f0: u64 = u64::from(value.target_id);
     let f1: u64 = u64::from(value.damage as u32);
     let f2: u64 = u64::from(value.hit_kind as u32);
@@ -886,12 +805,8 @@ pub const MIXED_CHAT_EVENT_MAX_BYTES: usize = 8;
 
 #[inline(always)]
 pub fn write_mixed_chat_event(stream: &mut WriteStream<'_>, value: &MixedChatEvent) -> Result {
-    if value.channel < 0 || value.channel > 3 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.speaker >= 1 << 12 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.channel >= 0 && value.channel <= 3, "channel out of range [0, 3]");
+    debug_assert!(value.speaker < 1 << 12, "speaker above the bits(12) wire width");
     let f0: u64 = u64::from(value.channel as u32);
     let f1: u64 = u64::from(value.speaker);
     let mut w0 = (f0 | (f1 << 2)) as u32;
@@ -936,12 +851,8 @@ pub const MIXED_PICKUP_EVENT_MAX_BYTES: usize = 8;
 
 #[inline(always)]
 pub fn write_mixed_pickup_event(stream: &mut WriteStream<'_>, value: &MixedPickupEvent) -> Result {
-    if value.item_id >= 1 << 10 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.amount < 0 || value.amount > 255 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.item_id < 1 << 10, "item_id above the bits(10) wire width");
+    debug_assert!(value.amount >= 0 && value.amount <= 255, "amount out of range [0, 255]");
     let f0: u64 = u64::from(value.item_id);
     let f1: u64 = u64::from(value.amount as u32);
     let mut w0 = (f0 | (f1 << 10)) as u32;
@@ -1153,12 +1064,8 @@ pub const BENCH_MIXED_MAX_BYTES: usize = 456;
 
 #[inline(always)]
 pub fn write_bench_mixed(stream: &mut WriteStream<'_>, value: &BenchMixed) -> Result {
-    if value.sequence >= 1 << 16 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.ack_sequence < 0 || value.ack_sequence > 65535 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.sequence < 1 << 16, "sequence above the bits(16) wire width");
+    debug_assert!(value.ack_sequence >= 0 && value.ack_sequence <= 65535, "ack_sequence out of range [0, 65535]");
     let f0: u64 = 49374_u64; // const(49374, 16) — SPEC §4.3
     let f1: u64 = u64::from(value.sequence);
     let f2: u64 = u64::from(value.ack_sequence as u32);
@@ -1182,12 +1089,8 @@ pub fn write_bench_mixed(stream: &mut WriteStream<'_>, value: &BenchMixed) -> Re
     stream.serialize_bits(&mut w6, 32)?;
     let mut w7 = (f6 >> 48) as u32;
     stream.serialize_bits(&mut w7, 16)?;
-    if value.world_time < -1000000000000 || value.world_time > 1000000000000 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
-    if value.frame_tick >= 1 << 48 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.world_time >= -1000000000000 && value.world_time <= 1000000000000, "world_time out of range [-1000000000000, 1000000000000]");
+    debug_assert!(value.frame_tick < 1 << 48, "frame_tick above the bits(48) wire width");
     let f0: u64 = (value.world_time as u64).wrapping_sub((-1000000000000_i64) as u64);
     let f1: u64 = value.frame_tick;
     let mut w0 = f0 as u32;
@@ -1196,16 +1099,12 @@ pub fn write_bench_mixed(stream: &mut WriteStream<'_>, value: &BenchMixed) -> Re
     stream.serialize_bits(&mut w1, 32)?;
     let mut w2 = (f1 >> 23) as u32;
     stream.serialize_bits(&mut w2, 25)?;
-    if value.server_time < 0 || value.server_time > 16776960 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.server_time >= 0 && value.server_time <= 16776960, "server_time raw value out of range [0, 16776960]");
     {
         let mut fixed_value = value.server_time;
         stream.serialize_fixed(&mut fixed_value, 24, 8, 0, 65535)?;
     }
-    if value.entities_count < 1 || value.entities_count > 8 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.entities_count >= 1 && value.entities_count <= 8, "entities_count out of range [1, 8]");
     {
         let mut offset_value = (value.entities_count as u32).wrapping_sub((1_i32) as u32);
         stream.serialize_bits(&mut offset_value, 3)?; // the count guards the loop (§6.3)
@@ -1213,9 +1112,7 @@ pub fn write_bench_mixed(stream: &mut WriteStream<'_>, value: &BenchMixed) -> Re
     for i in 0..value.entities_count as usize {
         write_mixed_entity(stream, &value.entities[i])?;
     }
-    if value.stats_count < 0 || value.stats_count > 80 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.stats_count >= 0 && value.stats_count <= 80, "stats_count out of range [0, 80]");
     {
         let mut offset_value = value.stats_count as u32;
         stream.serialize_bits(&mut offset_value, 7)?; // the count guards the loop (§6.3)
@@ -1230,17 +1127,13 @@ pub fn write_bench_mixed(stream: &mut WriteStream<'_>, value: &BenchMixed) -> Re
             stream.serialize_bits(&mut raw_value, 8)?;
         }
     }
-    if value.player_name_length < 0 || value.player_name_length > 15 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.player_name_length >= 0 && value.player_name_length <= 15, "player_name_length out of range [0, 15]");
     {
         let mut offset_value = value.player_name_length as u32;
         stream.serialize_bits(&mut offset_value, 4)?; // the length guards the slice (§6.3)
     }
     stream.write_bytes(&value.player_name[..value.player_name_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
-    if value.payload_length < 0 || value.payload_length > 16 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.payload_length >= 0 && value.payload_length <= 16, "payload_length out of range [0, 16]");
     {
         let mut offset_value = value.payload_length as u32;
         stream.serialize_bits(&mut offset_value, 5)?; // the length guards the slice (§6.3)
@@ -1270,16 +1163,12 @@ pub fn write_bench_mixed(stream: &mut WriteStream<'_>, value: &BenchMixed) -> Re
         let mut raw_value = value.wide_key;
         stream.serialize_u128(&mut raw_value)?;
     }
-    if value.flux < -1267650600228229401496703205376 || value.flux > 1267650600228229401496703205376 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.flux >= -1267650600228229401496703205376 && value.flux <= 1267650600228229401496703205376, "flux out of range [-1267650600228229401496703205376, 1267650600228229401496703205376]");
     {
         let mut range_value = value.flux;
         stream.serialize_int128(&mut range_value, -1267650600228229401496703205376, 1267650600228229401496703205376)?;
     }
-    if value.ping > 64000 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.ping <= 64000, "ping raw value out of range [0, 64000]");
     {
         let mut fixed_value = value.ping;
         stream.serialize_fixed(&mut fixed_value, 8, 8, 0, 250)?;
@@ -1289,25 +1178,19 @@ pub fn write_bench_mixed(stream: &mut WriteStream<'_>, value: &BenchMixed) -> Re
         stream.serialize_bits(&mut reserved_value, 4)?; // reserved(4) — zeros on the wire
     }
     stream.serialize_align()?;
-    if value.crc_hint >= 1 << 24 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.crc_hint < 1 << 24, "crc_hint above the bits(24) wire width");
     let f0: u64 = u64::from(value.crc_hint);
     let f1: u64 = u64::from(value.has_extra);
     let mut w0 = (f0 | (f1 << 24)) as u32;
     stream.serialize_bits(&mut w0, 25)?;
     if value.has_extra {
-        if value.extra < 0 || value.extra > 255 {
-            return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-        }
+        debug_assert!(value.extra >= 0 && value.extra <= 255, "extra out of range [0, 255]");
         {
             let mut offset_value = value.extra as u32;
             stream.serialize_bits(&mut offset_value, 8)?;
         }
     } else {
-        if value.idle_ticks < 0 || value.idle_ticks > 15 {
-            return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-        }
+        debug_assert!(value.idle_ticks >= 0 && value.idle_ticks <= 15, "idle_ticks out of range [0, 15]");
         {
             let mut offset_value = value.idle_ticks as u32;
             stream.serialize_bits(&mut offset_value, 4)?;

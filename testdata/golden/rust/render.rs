@@ -40,9 +40,7 @@ pub const RENDER_SPRITE_MAX_BYTES: usize = 24;
 
 #[inline(always)]
 pub fn write_render_sprite(stream: &mut WriteStream<'_>, value: &RenderSprite) -> Result {
-    if value.team.0 > 2 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.team.0 <= 2, "team above the Team wire range [0, 2]");
     let f0: u64 = value.sort_key;
     let f1: u64 = u64::from(value.mesh_id);
     let f2: u64 = u64::from(value.material_id);
@@ -125,9 +123,7 @@ pub fn write_render_block(stream: &mut WriteStream<'_>, value: &RenderBlock) -> 
     stream.serialize_bits(&mut w0, 32)?;
     let mut w1 = f1 as u32;
     stream.serialize_bits(&mut w1, 32)?;
-    if value.sprites_count < 0 || value.sprites_count > 64 {
-        return Err(Error::Stream(serialize::Error::ValueOutOfRange));
-    }
+    debug_assert!(value.sprites_count >= 0 && value.sprites_count <= 64, "sprites_count out of range [0, 64]");
     {
         let mut offset_value = value.sprites_count as u32;
         stream.serialize_bits(&mut offset_value, 7)?; // the count guards the loop (§6.3)

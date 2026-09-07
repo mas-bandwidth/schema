@@ -73,14 +73,13 @@ var bornAtMinimum = map[string]string{
 // targets that still hold the count that way. Go and Elixir are here by the
 // ruling — "For each language, do not force this in. If the language simply
 // doesn't have this concept (Golang) then it is not something we can do" — an
-// error-returning runtime in Go, an always-on raise in Elixir. Rust and C# are
-// here only until their own emitter changes land; they move to
-// assertsInDebug then, alongside every other write check in those backends.
+// error-returning runtime in Go, an always-on raise in Elixir. C# is here only
+// until its own emitter change lands; it moves to assertsInDebug then,
+// alongside every other write check in that backend.
 var refusesEveryBuild = map[string][]string{
 	"cs":     {"if (value.WindowCount < 2 || value.WindowCount > 8)"},
 	"elixir": {"if n < 2 do", "if n > 8 do", "raise ArgumentError"},
 	"go":     {"if value.WindowCount < 2 || value.WindowCount > 8 {", "return serialize.ErrValueOutOfRange"},
-	"rust":   {"if value.window_count < 2 || value.window_count > 8 {", "return Err("},
 }
 
 // assertsInDebug is the count's DEBUG-ONLY form in each target that has one:
@@ -92,6 +91,7 @@ var assertsInDebug = map[string][]string{
 	"java": {"assert value.windowCount >= 2;", "assert value.windowCount <= 8;"},
 	// js is not here: its debug-only idiom is not an assert statement but the
 	// PRODUCTION/checked fork of the flat writer, checked separately below.
+	"rust": {`debug_assert!(value.window_count >= 2 && value.window_count <= 8, "window_count out of range [2, 8]");`},
 }
 
 // goneFromRelease is the every-build refusal each assert target used to carry.
@@ -103,6 +103,7 @@ var goneFromRelease = map[string][]string{
 	},
 	"dart": {"if (value.windowCount < 2 || value.windowCount > 8) {"},
 	"java": {"if (value.windowCount < 2 || value.windowCount > 8) {"},
+	"rust": {"if value.window_count < 2 || value.window_count > 8 {"},
 }
 
 // assertToken is the build-removable predicate each target spells its writer
@@ -112,7 +113,6 @@ var assertToken = map[string][]string{
 	"cs":     {"Debug.Assert"},
 	"elixir": nil, // the BEAM has no compile-out assert, so the raise is always on
 	"go":     nil, // the runtime returns an error, in every build
-	"rust":   {"debug_assert", "assert!"},
 }
 
 // generatedText renders every file the target emits for the unit, joined, so a
