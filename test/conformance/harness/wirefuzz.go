@@ -84,9 +84,10 @@ type wireRoot struct {
 	retain bool
 	// the C ABI storage each node type commands (docs/SPEC-TABLES.md §6.5,
 	// §20.3), by wire type id, eight-aligned as a reader's LoadMeasure rounds it
-	storage     map[uint64]int64
-	rootStorage int64
-	maxStorage  int64
+	storage               map[uint64]int64
+	rootStorage           int64
+	maxStorage            int64
+	bytesEdge, stringEdge bool
 }
 
 // nodeDirEntryBytes is one attribution entry (§6.3): a u64 offset and a u64
@@ -140,6 +141,7 @@ func newWireRoot(u *units, unitKey, rootName string, message, retain bool) (*wir
 			return nil, fmt.Errorf("unit %s: its own announcement was refused: %w", unitKey, err)
 		}
 	}
+	r.bytesEdge, r.stringEdge = ir.PointerReachableBlobs(def)
 	r.rootStorage = alignUp8(ir.RecordLayout(unit, def).Size)
 	// THE STORAGE A RECORD COMMANDS is its type's, and only for a type THIS
 	// ROOT can place: a table no pointer below the root targets is a node the
@@ -274,16 +276,28 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 			r.sizeBatch(&ans, data)
 			return ans, nil
 		}
-		types, whole := tablewire.NodeRecordTypes(data)
+		records, whole := tablewire.FileNodeRecords(data)
 		if whole {
 			ans.exact = true
-			ans.bytes = r.rootStorage + (int64(len(types))+1)*nodeDirEntryBytes
-			for _, t := range types {
-				ans.bytes += r.storage[t] // a type id this build cannot name commands none
+			ans.bytes = r.rootStorage + (int64(len(records))+1)*nodeDirEntryBytes
+			for _, record := range records {
+				if (r.bytesEdge && record.TypeId == ir.BytesWireTypeId) || (r.stringEdge && record.TypeId == ir.StringWireTypeId) {
+					terminator := int64(0)
+					if record.TypeId == ir.StringWireTypeId {
+						terminator = 1
+					}
+					ans.bytes += alignUp8(8 + record.Length + terminator)
+					continue
+				}
+				ans.bytes += r.storage[record.TypeId] // a type id this build cannot name commands none
 			}
 		} else {
 			records := int64(len(data))/nodeRecordHeaderBytes + 1
-			ans.bytes = r.rootStorage + records*(r.maxStorage+nodeDirEntryBytes)
+			storage := r.maxStorage
+			if r.bytesEdge || r.stringEdge {
+				storage += alignUp8(int64(len(data)) + 9)
+			}
+			ans.bytes = r.rootStorage + records*(storage+nodeDirEntryBytes)
 		}
 	}
 	return ans, nil

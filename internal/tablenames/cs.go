@@ -5,6 +5,17 @@ const Cs Backend = 1 << 1
 
 func init() {
 	define(Cs,
+		Name{Name: "TableRefuseReason", What: "the first failing clause of a file refusal"},
+		Name{Name: "TableBlockStorage", What: "owned aligned block allocation"},
+		Name{Name: "TableBlockAllocator", What: "block allocation callbacks"},
+		Name{Name: "TableBlockRefusal", What: "block count refusal"},
+		Name{Name: "TableCookList", What: "native dynamic extent slot"},
+		Name{Name: "TableMessageEntry", What: "announced entry"},
+		Name{Name: "TableMessageShape", What: "announced payload shape"},
+		Name{Name: "TableVocabulary", What: "connection vocabulary"},
+		Name{Name: "TableByteOrder", What: "runtime cook byte order"},
+		Name{Name: "Tables", What: "the registry table set", Scoped: true},
+		Name{Name: "TableBlob", What: "identity-bearing byte storage for a variable table graph"},
 		Name{Name: "TableWire", What: "the form-1 descriptor wire walk, nested in Schema"},
 		Name{Name: "TableReport", What: "the read report — the permissive contract's ledger"},
 		Name{Name: "TableTypeInfo", What: "a table's reflection descriptor"},

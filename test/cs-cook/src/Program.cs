@@ -106,6 +106,22 @@ static unsafe class Program
     static IntPtr OpenSettings(IntPtr p, long n) { SettingsCook c; return SettingsCook.Open(out c, p, n) ? (IntPtr)c.Region : IntPtr.Zero; }
     static IntPtr OpenStamp(IntPtr p, long n) { StampCook c; return StampCook.Open(out c, p, n) ? (IntPtr)c.Region : IntPtr.Zero; }
 
+    static TableRefuseReason OpenReason(string name, IntPtr p, long n)
+    {
+        TableRefuseReason reason;
+        switch (name) {
+            case "Scene": SceneCook.Open(out _,p,n,out reason); return reason;
+            case "Depot": DepotCook.Open(out _,p,n,out reason); return reason;
+            case "Album": AlbumCook.Open(out _,p,n,out reason); return reason;
+            case "TreeNode": TreeNodeCook.Open(out _,p,n,out reason); return reason;
+            case "ListNode": ListNodeCook.Open(out _,p,n,out reason); return reason;
+            case "Marker": MarkerCook.Open(out _,p,n,out reason); return reason;
+            case "Settings": SettingsCook.Open(out _,p,n,out reason); return reason;
+            case "Stamp": StampCook.Open(out _,p,n,out reason); return reason;
+            default: throw new ArgumentException(name);
+        }
+    }
+
     static readonly Root[] roots =
     {
         new Root { Name = "Scene",    Open = OpenScene,    Type = SceneCook.Type,    Size = SceneCook.RootSize },
@@ -1005,7 +1021,7 @@ static unsafe class Program
         return 0;
     }
 
-    static unsafe int ModeConformance(string manifestPath, string outDir)
+    static unsafe int ModeConformance(string manifestPath, string outDir, bool reasons = false)
     {
         foreach (string raw in File.ReadAllLines(manifestPath))
         {
@@ -1019,6 +1035,7 @@ static unsafe class Program
             {
                 continue;
             }
+            if (reasons && !Array.Exists(File.ReadAllLines(manifestPath), x => { var words = x.Split((char[])null, StringSplitOptions.RemoveEmptyEntries); return words.Length >= 3 && words[0] == "refusal" && words[1] == f[1] && words[2] == "cook"; })) { continue; }
             Root root = RootNamed(f[3]);
             byte[] source = WholeFile(f[4]);
             long claim = long.Parse(f[5], CultureInfo.InvariantCulture);
@@ -1033,7 +1050,7 @@ static unsafe class Program
             {
                 IntPtr opened = nullBuffer ? root.Open(IntPtr.Zero, claim)
                                            : root.Open((IntPtr)file.Base, file.Length);
-                File.WriteAllText(Path.Combine(outDir, f[1]), opened != IntPtr.Zero ? "open\n" : "refuse\n");
+                File.WriteAllText(Path.Combine(outDir, f[1]), reasons ? OpenReason(root.Name, nullBuffer ? IntPtr.Zero : (IntPtr)file.Base, file.Length).ToString() + "\n" : opened != IntPtr.Zero ? "open\n" : "refuse\n");
             }
             finally
             {
@@ -1058,6 +1075,7 @@ static unsafe class Program
         }
         // the harness's `cook-forgery` surface: its second argument is a
         // MANIFEST and not a root, so it is dispatched before the root lookup
+        if (mode == "reason") { return ModeConformance(args[1],args[2],true); }
         if (mode == "conformance")
         {
             if (args.Length < 3)

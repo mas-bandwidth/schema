@@ -32,18 +32,8 @@ func TestCsEmitsTableSources(t *testing.T) {
 	}
 }
 
-// TestCsRefusesPointeredTables: the C# variable-class refusal is a refusal of
-// the WIRE SURFACE and of nothing else (docs/SPEC-TABLES.md §11). The wire codec is
-// the half the variable class is missing — the arena, the builder, the region,
-// the node table — and the two ACCELERATORS need none of it: a block and a cook
-// are POINTED AT, not parsed, so both are emitted and the cook's <Root>Open
-// opens this unit's cooked assets in full.
-//
-// NAMED, NEVER SILENT is what this holds: no Table source at all, and every
-// source the unit does emit opening with a banner that names each refused table
-// and the follow-on. A consumer reaching for Save or Load gets a missing name
-// from its own compiler, beside a file that says why.
-func TestCsRefusesPointeredTables(t *testing.T) {
+// Recursive pointers use nullable storage and the flat node-table wire.
+func TestCsEmitsPointeredTables(t *testing.T) {
 	c := New()
 	u := unitFromSource(t, packetSrc+`
 table Node
@@ -56,11 +46,14 @@ table Node
 	if err != nil {
 		t.Fatalf("--lang cs refused a pointered unit outright — the accelerators need no codec: %v", err)
 	}
+	wire := string(files["ProbeTable.cs"])
+	for _, want := range []string{"public Node Next;", "NodeLoadMeasure", "NodeSave", "NodeLoad"} {
+		if !strings.Contains(wire, want) {
+			t.Errorf("variable source lacks %q", want)
+		}
+	}
 	var cooks int
 	for name, data := range files {
-		if strings.HasSuffix(name, "Table.cs") {
-			t.Errorf("--lang cs emitted the WIRE surface %s for a pointered unit", name)
-		}
 		if !strings.HasSuffix(name, "Cook.cs") && !strings.HasSuffix(name, "Block.cs") {
 			continue
 		}
@@ -68,11 +61,8 @@ table Node
 			cooks++
 		}
 		text := string(data)
-		if !strings.Contains(text, "THE C# WIRE SURFACE OF THIS UNIT IS REFUSED, BY NAME") {
-			t.Errorf("%s carries no refusal banner", name)
-		}
-		if !strings.Contains(text, "Node") || !strings.Contains(text, "is a named follow-on") {
-			t.Errorf("%s does not name the table and the follow-on", name)
+		if strings.Contains(text, "WIRE SURFACE OF THIS UNIT IS REFUSED") {
+			t.Errorf("%s refuses implemented variable wire", name)
 		}
 	}
 	if cooks == 0 {

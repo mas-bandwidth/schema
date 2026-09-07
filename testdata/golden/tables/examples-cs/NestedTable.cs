@@ -54,6 +54,13 @@ namespace Tabledemo
             return ArchiveConfigLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
+        public static long ArchiveConfigMeasureMessages(ArchiveConfig[] values) { return TableWire.MessageSave(values, ArchiveConfigTableType(), Span<byte>.Empty, true); }
+        public static long ArchiveConfigSaveMessages(ArchiveConfig[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, ArchiveConfigTableType(), bytes, false); }
+        public static TableWire.Verdict ArchiveConfigLoadMessages(ArchiveConfig[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, ArchiveConfigTableType(), bytes, vocabulary, report, out count); }
+
+        public static long ArchiveConfigCookMeasure(ArchiveConfig value) { return TableWire.Cook(value, ArchiveConfigTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
+        public static bool ArchiveConfigCook(ArchiveConfig value, Span<byte> bytes, TableByteOrder order = TableByteOrder.Little) { return TableWire.Cook(value, ArchiveConfigTableType(), bytes, order, false) >= 0; }
+
         // ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----
 
         private static TableTypeInfo ArchiveConfigTableInfo;
@@ -65,10 +72,16 @@ namespace Tabledemo
             info.Name = "ArchiveConfig";
             info.Id = 0x413e7bcf261bc3c7ul;
             info.NumFields = 2;
+            info.Create = delegate { return new ArchiveConfig(); };
+            info.StorageSize = 1488; info.StorageAlign = 8; info.RegionAlign = 8;
+            info.Variable = false;
+            info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+            info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+            info.BytesEdge = false; info.StringEdge = false;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "root", Json = "root", TypeName = "RootConfig", Id = 0xa354fd1ff0c467c5, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RootConfigTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((ArchiveConfig)o).Root; }, ResetField = delegate(object o) { var value = (ArchiveConfig)o; TableReset(value.Root); } },
-                new TableFieldInfo { Name = "count", Json = "count", TypeName = "int32", Id = 0xb1e5e28e4479a274, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 100.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((ArchiveConfig)o).Count; }, SetRaw = delegate(object o, int i, ulong r) { ((ArchiveConfig)o).Count = unchecked((int)(long)r); }, ResetField = delegate(object o) { var value = (ArchiveConfig)o; value.Count = 1; }, DefaultRaw = (ulong)(long)1, ClampRaw = delegate(ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { r.Clamped++; v = 0; } if (v > 100) { r.Clamped++; v = 100; } return (ulong)(long)v; } },
+                new TableFieldInfo { Name = "root", Json = "root", TypeName = "RootConfig", Id = 0xa354fd1ff0c467c5, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RootConfigTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((ArchiveConfig)o).Root; }, MessageSlot = 1, NativeOffset = 0, NativeElementSize = 1480, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (ArchiveConfig)o; TableReset(value.Root); } },
+                new TableFieldInfo { Name = "count", Json = "count", TypeName = "int32", Id = 0xb1e5e28e4479a274, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 100.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((ArchiveConfig)o).Count; }, SetRaw = delegate(object o, int i, ulong r) { ((ArchiveConfig)o).Count = unchecked((int)(long)r); }, MessageSlot = 2, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x64ul)), NativeOffset = 1480, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (ArchiveConfig)o; value.Count = 1; }, DefaultRaw = (ulong)(long)1, ClampRaw = delegate(ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { r.Clamped++; v = 0; } if (v > 100) { r.Clamped++; v = 100; } return (ulong)(long)v; } },
             };
             info.Reset = delegate(object o) { TableReset((ArchiveConfig)o); };
             info.Doc = TableDocNone;

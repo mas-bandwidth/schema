@@ -190,6 +190,13 @@ namespace Tabledemo
             return TeamConfigLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
+        public static long TeamConfigMeasureMessages(TeamConfig[] values) { return TableWire.MessageSave(values, TeamConfigTableType(), Span<byte>.Empty, true); }
+        public static long TeamConfigSaveMessages(TeamConfig[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, TeamConfigTableType(), bytes, false); }
+        public static TableWire.Verdict TeamConfigLoadMessages(TeamConfig[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, TeamConfigTableType(), bytes, vocabulary, report, out count); }
+
+        public static long TeamConfigCookMeasure(TeamConfig value) { return TableWire.Cook(value, TeamConfigTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
+        public static bool TeamConfigCook(TeamConfig value, Span<byte> bytes, TableByteOrder order = TableByteOrder.Little) { return TableWire.Cook(value, TeamConfigTableType(), bytes, order, false) >= 0; }
+
         // TableReset(GunnerConfig) restores GunnerConfig's declared defaults in place, reusing every
         // buffer the value already owns. The reader calls it before overlaying.
         public static void TableReset(GunnerConfig value)
@@ -219,6 +226,13 @@ namespace Tabledemo
         {
             return GunnerConfigLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
+
+        public static long GunnerConfigMeasureMessages(GunnerConfig[] values) { return TableWire.MessageSave(values, GunnerConfigTableType(), Span<byte>.Empty, true); }
+        public static long GunnerConfigSaveMessages(GunnerConfig[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, GunnerConfigTableType(), bytes, false); }
+        public static TableWire.Verdict GunnerConfigLoadMessages(GunnerConfig[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, GunnerConfigTableType(), bytes, vocabulary, report, out count); }
+
+        public static long GunnerConfigCookMeasure(GunnerConfig value) { return TableWire.Cook(value, GunnerConfigTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
+        public static bool GunnerConfigCook(GunnerConfig value, Span<byte> bytes, TableByteOrder order = TableByteOrder.Little) { return TableWire.Cook(value, GunnerConfigTableType(), bytes, order, false) >= 0; }
 
         // TableReset(TurretConfig) restores TurretConfig's declared defaults in place, reusing every
         // buffer the value already owns. The reader calls it before overlaying.
@@ -251,6 +265,13 @@ namespace Tabledemo
         {
             return TurretConfigLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
+
+        public static long TurretConfigMeasureMessages(TurretConfig[] values) { return TableWire.MessageSave(values, TurretConfigTableType(), Span<byte>.Empty, true); }
+        public static long TurretConfigSaveMessages(TurretConfig[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, TurretConfigTableType(), bytes, false); }
+        public static TableWire.Verdict TurretConfigLoadMessages(TurretConfig[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, TurretConfigTableType(), bytes, vocabulary, report, out count); }
+
+        public static long TurretConfigCookMeasure(TurretConfig value) { return TableWire.Cook(value, TurretConfigTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
+        public static bool TurretConfigCook(TurretConfig value, Span<byte> bytes, TableByteOrder order = TableByteOrder.Little) { return TableWire.Cook(value, TurretConfigTableType(), bytes, order, false) >= 0; }
 
         // TableReset(HullConfig) restores HullConfig's declared defaults in place, reusing every
         // buffer the value already owns. The reader calls it before overlaying.
@@ -285,6 +306,13 @@ namespace Tabledemo
         {
             return HullConfigLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
+
+        public static long HullConfigMeasureMessages(HullConfig[] values) { return TableWire.MessageSave(values, HullConfigTableType(), Span<byte>.Empty, true); }
+        public static long HullConfigSaveMessages(HullConfig[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, HullConfigTableType(), bytes, false); }
+        public static TableWire.Verdict HullConfigLoadMessages(HullConfig[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, HullConfigTableType(), bytes, vocabulary, report, out count); }
+
+        public static long HullConfigCookMeasure(HullConfig value) { return TableWire.Cook(value, HullConfigTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
+        public static bool HullConfigCook(HullConfig value, Span<byte> bytes, TableByteOrder order = TableByteOrder.Little) { return TableWire.Cook(value, HullConfigTableType(), bytes, order, false) >= 0; }
 
         // TableReset(KeyedConfig) restores KeyedConfig's declared defaults in place, reusing every
         // buffer the value already owns. The reader calls it before overlaying.
@@ -323,6 +351,13 @@ namespace Tabledemo
             return KeyedConfigLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
+        public static long KeyedConfigMeasureMessages(KeyedConfig[] values) { return TableWire.MessageSave(values, KeyedConfigTableType(), Span<byte>.Empty, true); }
+        public static long KeyedConfigSaveMessages(KeyedConfig[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, KeyedConfigTableType(), bytes, false); }
+        public static TableWire.Verdict KeyedConfigLoadMessages(KeyedConfig[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, KeyedConfigTableType(), bytes, vocabulary, report, out count); }
+
+        public static long KeyedConfigCookMeasure(KeyedConfig value) { return TableWire.Cook(value, KeyedConfigTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
+        public static bool KeyedConfigCook(KeyedConfig value, Span<byte> bytes, TableByteOrder order = TableByteOrder.Little) { return TableWire.Cook(value, KeyedConfigTableType(), bytes, order, false) >= 0; }
+
         // TableReset(ScoreBoard) restores ScoreBoard's declared defaults in place, reusing every
         // buffer the value already owns. The reader calls it before overlaying.
         public static void TableReset(ScoreBoard value)
@@ -352,6 +387,13 @@ namespace Tabledemo
             return ScoreBoardLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
+        public static long ScoreBoardMeasureMessages(ScoreBoard[] values) { return TableWire.MessageSave(values, ScoreBoardTableType(), Span<byte>.Empty, true); }
+        public static long ScoreBoardSaveMessages(ScoreBoard[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, ScoreBoardTableType(), bytes, false); }
+        public static TableWire.Verdict ScoreBoardLoadMessages(ScoreBoard[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, ScoreBoardTableType(), bytes, vocabulary, report, out count); }
+
+        public static long ScoreBoardCookMeasure(ScoreBoard value) { return TableWire.Cook(value, ScoreBoardTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
+        public static bool ScoreBoardCook(ScoreBoard value, Span<byte> bytes, TableByteOrder order = TableByteOrder.Little) { return TableWire.Cook(value, ScoreBoardTableType(), bytes, order, false) >= 0; }
+
         // ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----
 
         private static TableTypeInfo TeamConfigTableInfo;
@@ -363,10 +405,16 @@ namespace Tabledemo
             info.Name = "TeamConfig";
             info.Id = 0x1cf8555d11fb113aul;
             info.NumFields = 2;
+            info.Create = delegate { return new TeamConfig(); };
+            info.StorageSize = 28; info.StorageAlign = 4; info.RegionAlign = 8;
+            info.Variable = false;
+            info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+            info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+            info.BytesEdge = false; info.StringEdge = false;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "spawn_count", Json = "spawn_count", TypeName = "int32", Id = 0xceec99e2d65db674, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 64.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((TeamConfig)o).SpawnCount; }, SetRaw = delegate(object o, int i, ulong r) { ((TeamConfig)o).SpawnCount = unchecked((int)(long)r); }, ResetField = delegate(object o) { var value = (TeamConfig)o; value.SpawnCount = 4; }, DefaultRaw = (ulong)(long)4, ClampRaw = delegate(ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { r.Clamped++; v = 0; } if (v > 64) { r.Clamped++; v = 64; } return (ulong)(long)v; } },
-                new TableFieldInfo { Name = "banner", Json = "banner", TypeName = "string", Id = 0xbca0dab1c7a00ccf, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 16, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate(object o) { return ((TeamConfig)o).Banner; }, GetCount = delegate(object o) { return ((TeamConfig)o).BannerLength; }, SetCount = delegate(object o, int n) { ((TeamConfig)o).BannerLength = n; }, ResetField = delegate(object o) { var value = (TeamConfig)o; Array.Clear(value.Banner, 0, value.Banner.Length); value.BannerLength = 0; } },
+                new TableFieldInfo { Name = "spawn_count", Json = "spawn_count", TypeName = "int32", Id = 0xceec99e2d65db674, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 64.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((TeamConfig)o).SpawnCount; }, SetRaw = delegate(object o, int i, ulong r) { ((TeamConfig)o).SpawnCount = unchecked((int)(long)r); }, MessageSlot = 98, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x40ul)), NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (TeamConfig)o; value.SpawnCount = 4; }, DefaultRaw = (ulong)(long)4, ClampRaw = delegate(ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { r.Clamped++; v = 0; } if (v > 64) { r.Clamped++; v = 64; } return (ulong)(long)v; } },
+                new TableFieldInfo { Name = "banner", Json = "banner", TypeName = "string", Id = 0xbca0dab1c7a00ccf, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 16, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate(object o) { return ((TeamConfig)o).Banner; }, GetCount = delegate(object o) { return ((TeamConfig)o).BannerLength; }, SetCount = delegate(object o, int n) { ((TeamConfig)o).BannerLength = n; }, MessageSlot = 99, NativeOffset = 4, NativeElementSize = 17, NativeCountOffset = 24, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (TeamConfig)o; Array.Clear(value.Banner, 0, value.Banner.Length); value.BannerLength = 0; } },
             };
             info.Reset = delegate(object o) { TableReset((TeamConfig)o); };
             info.Doc = TableDocNone;
@@ -385,10 +433,16 @@ namespace Tabledemo
             info.Name = "GunnerConfig";
             info.Id = 0x5fcbe04615411b64ul;
             info.NumFields = 2;
+            info.Create = delegate { return new GunnerConfig(); };
+            info.StorageSize = 8; info.StorageAlign = 4; info.RegionAlign = 8;
+            info.Variable = false;
+            info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+            info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+            info.BytesEdge = false; info.StringEdge = false;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "reaction", Json = "reaction", TypeName = "float32", Id = 0xb75aa3662201646a, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((GunnerConfig)o).Reaction); }, SetRaw = delegate(object o, int i, ulong r) { ((GunnerConfig)o).Reaction = TableBitsToFloat(unchecked((uint)r)); }, ResetField = delegate(object o) { var value = (GunnerConfig)o; value.Reaction = 0.2f; }, DefaultRaw = (ulong)TableFloatToBits(0.2f), ClampRaw = delegate(ulong raw, TableReport r) { float v = TableBitsToFloat(unchecked((uint)raw)); return (ulong)TableFloatToBits(v); } },
-                new TableFieldInfo { Name = "tracking", Json = "tracking", TypeName = "bool", Id = 0xa6bf719a4602b0bc, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return ((GunnerConfig)o).Tracking ? 1ul : 0ul; }, SetRaw = delegate(object o, int i, ulong r) { ((GunnerConfig)o).Tracking = r != 0; }, ResetField = delegate(object o) { var value = (GunnerConfig)o; value.Tracking = false; }, DefaultRaw = false ? 1ul : 0ul },
+                new TableFieldInfo { Name = "reaction", Json = "reaction", TypeName = "float32", Id = 0xb75aa3662201646a, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((GunnerConfig)o).Reaction); }, SetRaw = delegate(object o, int i, ulong r) { ((GunnerConfig)o).Reaction = TableBitsToFloat(unchecked((uint)r)); }, MessageSlot = 11, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (GunnerConfig)o; value.Reaction = 0.2f; }, DefaultRaw = (ulong)TableFloatToBits(0.2f), ClampRaw = delegate(ulong raw, TableReport r) { float v = TableBitsToFloat(unchecked((uint)raw)); return (ulong)TableFloatToBits(v); } },
+                new TableFieldInfo { Name = "tracking", Json = "tracking", TypeName = "bool", Id = 0xa6bf719a4602b0bc, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return ((GunnerConfig)o).Tracking ? 1ul : 0ul; }, SetRaw = delegate(object o, int i, ulong r) { ((GunnerConfig)o).Tracking = r != 0; }, MessageSlot = 12, NativeOffset = 4, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (GunnerConfig)o; value.Tracking = false; }, DefaultRaw = false ? 1ul : 0ul },
             };
             info.Reset = delegate(object o) { TableReset((GunnerConfig)o); };
             info.Doc = TableDocNone;
@@ -407,11 +461,17 @@ namespace Tabledemo
             info.Name = "TurretConfig";
             info.Id = 0x469dba0c16b2ad15ul;
             info.NumFields = 3;
+            info.Create = delegate { return new TurretConfig(); };
+            info.StorageSize = 20; info.StorageAlign = 4; info.RegionAlign = 8;
+            info.Variable = false;
+            info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+            info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+            info.BytesEdge = false; info.StringEdge = false;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "damage", Json = "damage", TypeName = "float32", Id = 0x7f6308be8ab37fc0, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((TurretConfig)o).Damage); }, SetRaw = delegate(object o, int i, ulong r) { ((TurretConfig)o).Damage = TableBitsToFloat(unchecked((uint)r)); }, ResetField = delegate(object o) { var value = (TurretConfig)o; value.Damage = 10.0f; }, DefaultRaw = (ulong)TableFloatToBits(10.0f), ClampRaw = delegate(ulong raw, TableReport r) { float v = TableBitsToFloat(unchecked((uint)raw)); return (ulong)TableFloatToBits(v); } },
-                new TableFieldInfo { Name = "cooldown", Json = "cooldown", TypeName = "float32", Id = 0xdc2cbe6953343d48, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((TurretConfig)o).Cooldown); }, SetRaw = delegate(object o, int i, ulong r) { ((TurretConfig)o).Cooldown = TableBitsToFloat(unchecked((uint)r)); }, ResetField = delegate(object o) { var value = (TurretConfig)o; value.Cooldown = 0.5f; }, DefaultRaw = (ulong)TableFloatToBits(0.5f), ClampRaw = delegate(ulong raw, TableReport r) { float v = TableBitsToFloat(unchecked((uint)raw)); return (ulong)TableFloatToBits(v); } },
-                new TableFieldInfo { Name = "gunner", Json = "gunner", TypeName = "GunnerConfig", Id = 0x40dbb648c0cd44aa, Kind = 13, IsArray = false, Counted = false, Optional = true, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return GunnerConfigTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((TurretConfig)o).Gunner; }, GetPresent = delegate(object o) { return ((TurretConfig)o).GunnerPresent; }, SetPresent = delegate(object o, bool p) { ((TurretConfig)o).GunnerPresent = p; }, ResetField = delegate(object o) { var value = (TurretConfig)o; TableReset(value.Gunner); } },
+                new TableFieldInfo { Name = "damage", Json = "damage", TypeName = "float32", Id = 0x7f6308be8ab37fc0, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((TurretConfig)o).Damage); }, SetRaw = delegate(object o, int i, ulong r) { ((TurretConfig)o).Damage = TableBitsToFloat(unchecked((uint)r)); }, MessageSlot = 100, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (TurretConfig)o; value.Damage = 10.0f; }, DefaultRaw = (ulong)TableFloatToBits(10.0f), ClampRaw = delegate(ulong raw, TableReport r) { float v = TableBitsToFloat(unchecked((uint)raw)); return (ulong)TableFloatToBits(v); } },
+                new TableFieldInfo { Name = "cooldown", Json = "cooldown", TypeName = "float32", Id = 0xdc2cbe6953343d48, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((TurretConfig)o).Cooldown); }, SetRaw = delegate(object o, int i, ulong r) { ((TurretConfig)o).Cooldown = TableBitsToFloat(unchecked((uint)r)); }, MessageSlot = 101, NativeOffset = 4, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (TurretConfig)o; value.Cooldown = 0.5f; }, DefaultRaw = (ulong)TableFloatToBits(0.5f), ClampRaw = delegate(ulong raw, TableReport r) { float v = TableBitsToFloat(unchecked((uint)raw)); return (ulong)TableFloatToBits(v); } },
+                new TableFieldInfo { Name = "gunner", Json = "gunner", TypeName = "GunnerConfig", Id = 0x40dbb648c0cd44aa, Kind = 13, IsArray = false, Counted = false, Optional = true, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return GunnerConfigTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((TurretConfig)o).Gunner; }, GetPresent = delegate(object o) { return ((TurretConfig)o).GunnerPresent; }, SetPresent = delegate(object o, bool p) { ((TurretConfig)o).GunnerPresent = p; }, MessageSlot = 97, NativeOffset = 8, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = 16, ResetField = delegate(object o) { var value = (TurretConfig)o; TableReset(value.Gunner); } },
             };
             info.Reset = delegate(object o) { TableReset((TurretConfig)o); };
             info.Doc = TableDocNone;
@@ -430,11 +490,17 @@ namespace Tabledemo
             info.Name = "HullConfig";
             info.Id = 0x3066b130dfbd7890ul;
             info.NumFields = 3;
+            info.Create = delegate { return new HullConfig(); };
+            info.StorageSize = 68; info.StorageAlign = 4; info.RegionAlign = 8;
+            info.Variable = false;
+            info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+            info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+            info.BytesEdge = false; info.StringEdge = false;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "health", Json = "health", TypeName = "float32", Id = 0x7f69d4b5288ba9cf, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((HullConfig)o).Health); }, SetRaw = delegate(object o, int i, ulong r) { ((HullConfig)o).Health = TableBitsToFloat(unchecked((uint)r)); }, ResetField = delegate(object o) { var value = (HullConfig)o; value.Health = 100.0f; }, DefaultRaw = (ulong)TableFloatToBits(100.0f), ClampRaw = delegate(ulong raw, TableReport r) { float v = TableBitsToFloat(unchecked((uint)raw)); return (ulong)TableFloatToBits(v); } },
-                new TableFieldInfo { Name = "mass", Json = "mass", TypeName = "float32", Id = 0x1f3757a2ce7b0ab1, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((HullConfig)o).Mass); }, SetRaw = delegate(object o, int i, ulong r) { ((HullConfig)o).Mass = TableBitsToFloat(unchecked((uint)r)); }, ResetField = delegate(object o) { var value = (HullConfig)o; value.Mass = 1.0f; }, DefaultRaw = (ulong)TableFloatToBits(1.0f), ClampRaw = delegate(ulong raw, TableReport r) { float v = TableBitsToFloat(unchecked((uint)raw)); return (ulong)TableFloatToBits(v); } },
-                new TableFieldInfo { Name = "turrets", Json = "turrets", TypeName = "TurretConfig", Id = 0x84f8260bc283608c, Kind = 13, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)Weapon.Max, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Weapon", KeyName = delegate(ulong v) { return EnumNameWeapon(v); }, KeyId = delegate(ulong v) { ulong id; TableEnumId((Weapon)v, out id); return id; }, Guard = "", TableRef = delegate { return TurretConfigTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((HullConfig)o).Turrets.Slots[i]; }, ResetField = delegate(object o) { var value = (HullConfig)o; for (int i = 0; i < value.Turrets.Slots.Length; i++) { TableReset(value.Turrets.Slots[i]); } } },
+                new TableFieldInfo { Name = "health", Json = "health", TypeName = "float32", Id = 0x7f69d4b5288ba9cf, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((HullConfig)o).Health); }, SetRaw = delegate(object o, int i, ulong r) { ((HullConfig)o).Health = TableBitsToFloat(unchecked((uint)r)); }, MessageSlot = 14, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (HullConfig)o; value.Health = 100.0f; }, DefaultRaw = (ulong)TableFloatToBits(100.0f), ClampRaw = delegate(ulong raw, TableReport r) { float v = TableBitsToFloat(unchecked((uint)raw)); return (ulong)TableFloatToBits(v); } },
+                new TableFieldInfo { Name = "mass", Json = "mass", TypeName = "float32", Id = 0x1f3757a2ce7b0ab1, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((HullConfig)o).Mass); }, SetRaw = delegate(object o, int i, ulong r) { ((HullConfig)o).Mass = TableBitsToFloat(unchecked((uint)r)); }, MessageSlot = 15, NativeOffset = 4, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (HullConfig)o; value.Mass = 1.0f; }, DefaultRaw = (ulong)TableFloatToBits(1.0f), ClampRaw = delegate(ulong raw, TableReport r) { float v = TableBitsToFloat(unchecked((uint)raw)); return (ulong)TableFloatToBits(v); } },
+                new TableFieldInfo { Name = "turrets", Json = "turrets", TypeName = "TurretConfig", Id = 0x84f8260bc283608c, Kind = 13, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)Weapon.Max, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Weapon", KeyName = delegate(ulong v) { return EnumNameWeapon(v); }, KeyId = delegate(ulong v) { ulong id; TableEnumId((Weapon)v, out id); return id; }, Guard = "", TableRef = delegate { return TurretConfigTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((HullConfig)o).Turrets.Slots[i]; }, MessageSlot = 16, NativeOffset = 8, NativeElementSize = 20, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (HullConfig)o; for (int i = 0; i < value.Turrets.Slots.Length; i++) { TableReset(value.Turrets.Slots[i]); } } },
             };
             info.Reset = delegate(object o) { TableReset((HullConfig)o); };
             info.Doc = TableDocNone;
@@ -453,11 +519,17 @@ namespace Tabledemo
             info.Name = "KeyedConfig";
             info.Id = 0xd6633ae4e94deecful;
             info.NumFields = 3;
+            info.Create = delegate { return new KeyedConfig(); };
+            info.StorageSize = 300; info.StorageAlign = 4; info.RegionAlign = 8;
+            info.Variable = false;
+            info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+            info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+            info.BytesEdge = false; info.StringEdge = false;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "teams", Json = "teams", TypeName = "TeamConfig", Id = 0xbaaeb048a5a8fa6d, Kind = 13, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)Team.Max, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Team", KeyName = delegate(ulong v) { return EnumNameTeam(v); }, KeyId = delegate(ulong v) { ulong id; TableEnumId((Team)v, out id); return id; }, Guard = "", TableRef = delegate { return TeamConfigTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((KeyedConfig)o).Teams.Slots[i]; }, ResetField = delegate(object o) { var value = (KeyedConfig)o; for (int i = 0; i < value.Teams.Slots.Length; i++) { TableReset(value.Teams.Slots[i]); } } },
-                new TableFieldInfo { Name = "hulls", Json = "hulls", TypeName = "HullConfig", Id = 0xce0ac3c25694d8ff, Kind = 13, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)Hull.Max, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Hull", KeyName = delegate(ulong v) { return EnumNameHull(v); }, KeyId = delegate(ulong v) { ulong id; TableEnumId((Hull)v, out id); return id; }, Guard = "", TableRef = delegate { return HullConfigTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((KeyedConfig)o).Hulls.Slots[i]; }, ResetField = delegate(object o) { var value = (KeyedConfig)o; for (int i = 0; i < value.Hulls.Slots.Length; i++) { TableReset(value.Hulls.Slots[i]); } } },
-                new TableFieldInfo { Name = "scores", Json = "scores", TypeName = "ScoreBoard", Id = 0x01986b0b27400fb2, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return ScoreBoardTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((KeyedConfig)o).Scores; }, ResetField = delegate(object o) { var value = (KeyedConfig)o; TableReset(value.Scores); } },
+                new TableFieldInfo { Name = "teams", Json = "teams", TypeName = "TeamConfig", Id = 0xbaaeb048a5a8fa6d, Kind = 13, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)Team.Max, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Team", KeyName = delegate(ulong v) { return EnumNameTeam(v); }, KeyId = delegate(ulong v) { ulong id; TableEnumId((Team)v, out id); return id; }, Guard = "", TableRef = delegate { return TeamConfigTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((KeyedConfig)o).Teams.Slots[i]; }, MessageSlot = 17, NativeOffset = 0, NativeElementSize = 28, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (KeyedConfig)o; for (int i = 0; i < value.Teams.Slots.Length; i++) { TableReset(value.Teams.Slots[i]); } } },
+                new TableFieldInfo { Name = "hulls", Json = "hulls", TypeName = "HullConfig", Id = 0xce0ac3c25694d8ff, Kind = 13, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)Hull.Max, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Hull", KeyName = delegate(ulong v) { return EnumNameHull(v); }, KeyId = delegate(ulong v) { ulong id; TableEnumId((Hull)v, out id); return id; }, Guard = "", TableRef = delegate { return HullConfigTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((KeyedConfig)o).Hulls.Slots[i]; }, MessageSlot = 18, NativeOffset = 84, NativeElementSize = 68, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (KeyedConfig)o; for (int i = 0; i < value.Hulls.Slots.Length; i++) { TableReset(value.Hulls.Slots[i]); } } },
+                new TableFieldInfo { Name = "scores", Json = "scores", TypeName = "ScoreBoard", Id = 0x01986b0b27400fb2, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return ScoreBoardTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((KeyedConfig)o).Scores; }, MessageSlot = 19, NativeOffset = 288, NativeElementSize = 12, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (KeyedConfig)o; TableReset(value.Scores); } },
             };
             info.Reset = delegate(object o) { TableReset((KeyedConfig)o); };
             info.Doc = TableDocNone;
@@ -476,9 +548,15 @@ namespace Tabledemo
             info.Name = "ScoreBoard";
             info.Id = 0x38b429bf239b38dbul;
             info.NumFields = 1;
+            info.Create = delegate { return new ScoreBoard(); };
+            info.StorageSize = 12; info.StorageAlign = 4; info.RegionAlign = 8;
+            info.Variable = false;
+            info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+            info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+            info.BytesEdge = false; info.StringEdge = false;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "per_team", Json = "per_team", TypeName = "int32", Id = 0xf10fad739a0e1660, Kind = 4, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)Team.Max, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 100000.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Team", KeyName = delegate(ulong v) { return EnumNameTeam(v); }, KeyId = delegate(ulong v) { ulong id; TableEnumId((Team)v, out id); return id; }, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((ScoreBoard)o).PerTeam[i]; }, SetRaw = delegate(object o, int i, ulong r) { ((ScoreBoard)o).PerTeam[i] = unchecked((int)(long)r); }, ResetField = delegate(object o) { var value = (ScoreBoard)o; Array.Clear(value.PerTeam, 0, value.PerTeam.Length); }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate(ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { r.Clamped++; v = 0; } if (v > 100000) { r.Clamped++; v = 100000; } return (ulong)(long)v; } },
+                new TableFieldInfo { Name = "per_team", Json = "per_team", TypeName = "int32", Id = 0xf10fad739a0e1660, Kind = 4, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)Team.Max, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 100000.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Team", KeyName = delegate(ulong v) { return EnumNameTeam(v); }, KeyId = delegate(ulong v) { ulong id; TableEnumId((Team)v, out id); return id; }, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((ScoreBoard)o).PerTeam[i]; }, SetRaw = delegate(object o, int i, ulong r) { ((ScoreBoard)o).PerTeam[i] = unchecked((int)(long)r); }, MessageSlot = 94, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x186a0ul)), NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (ScoreBoard)o; Array.Clear(value.PerTeam, 0, value.PerTeam.Length); }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate(ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { r.Clamped++; v = 0; } if (v > 100000) { r.Clamped++; v = 100000; } return (ulong)(long)v; } },
             };
             info.Reset = delegate(object o) { TableReset((ScoreBoard)o); };
             info.Doc = TableDocNone;

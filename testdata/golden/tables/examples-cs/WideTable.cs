@@ -19,7 +19,7 @@ namespace Tabledemo
         public int LabelLength;
         public byte[] Payload = new byte[70000]; // bytes(MaxBlobBytes): fixed buffer, used length beside it
         public int PayloadLength;
-        public ulong[] Samples = new ulong[70000]; // used count beside it; count in [0, 70000]
+        public ushort[] Samples = new ushort[70000]; // used count beside it; count in [0, 70000]
         public int SamplesCount;
     }
 
@@ -62,6 +62,13 @@ namespace Tabledemo
             return WideBlobLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
+        public static long WideBlobMeasureMessages(WideBlob[] values) { return TableWire.MessageSave(values, WideBlobTableType(), Span<byte>.Empty, true); }
+        public static long WideBlobSaveMessages(WideBlob[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, WideBlobTableType(), bytes, false); }
+        public static TableWire.Verdict WideBlobLoadMessages(WideBlob[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, WideBlobTableType(), bytes, vocabulary, report, out count); }
+
+        public static long WideBlobCookMeasure(WideBlob value) { return TableWire.Cook(value, WideBlobTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
+        public static bool WideBlobCook(WideBlob value, Span<byte> bytes, TableByteOrder order = TableByteOrder.Little) { return TableWire.Cook(value, WideBlobTableType(), bytes, order, false) >= 0; }
+
         // ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----
 
         private static TableTypeInfo WideBlobTableInfo;
@@ -73,11 +80,17 @@ namespace Tabledemo
             info.Name = "WideBlob";
             info.Id = 0xab6a6961d3366451ul;
             info.NumFields = 3;
+            info.Create = delegate { return new WideBlob(); };
+            info.StorageSize = 280016; info.StorageAlign = 4; info.RegionAlign = 8;
+            info.Variable = false;
+            info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+            info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+            info.BytesEdge = false; info.StringEdge = false;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "label", Json = "label", TypeName = "string", Id = 0x39f7fcec8fcb623d, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 70000, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate(object o) { return ((WideBlob)o).Label; }, GetCount = delegate(object o) { return ((WideBlob)o).LabelLength; }, SetCount = delegate(object o, int n) { ((WideBlob)o).LabelLength = n; }, ResetField = delegate(object o) { var value = (WideBlob)o; Array.Clear(value.Label, 0, value.Label.Length); value.LabelLength = 0; } },
-                new TableFieldInfo { Name = "payload", Json = "payload", TypeName = "bytes", Id = 0xcfb8a9d063b5e9e5, Kind = 6, IsArray = true, Counted = true, Optional = false, ArrayBound = 70000, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate(object o) { return ((WideBlob)o).Payload; }, GetCount = delegate(object o) { return ((WideBlob)o).PayloadLength; }, SetCount = delegate(object o, int n) { ((WideBlob)o).PayloadLength = n; }, ResetField = delegate(object o) { var value = (WideBlob)o; Array.Clear(value.Payload, 0, value.Payload.Length); value.PayloadLength = 0; } },
-                new TableFieldInfo { Name = "samples", Json = "samples", TypeName = "uint16", Id = 0xe3b1ca6a3b48dddc, Kind = 7, IsArray = true, Counted = true, Optional = false, ArrayBound = 70000, ElemWidth = 2, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((WideBlob)o).Samples[i]; }, SetRaw = delegate(object o, int i, ulong r) { ((WideBlob)o).Samples[i] = unchecked((ulong)r); }, GetCount = delegate(object o) { return ((WideBlob)o).SamplesCount; }, SetCount = delegate(object o, int n) { ((WideBlob)o).SamplesCount = n; }, ResetField = delegate(object o) { var value = (WideBlob)o; Array.Clear(value.Samples, 0, value.Samples.Length); value.SamplesCount = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { ulong v = unchecked((ulong)raw); return (ulong)v; } },
+                new TableFieldInfo { Name = "label", Json = "label", TypeName = "string", Id = 0x39f7fcec8fcb623d, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 70000, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate(object o) { return ((WideBlob)o).Label; }, GetCount = delegate(object o) { return ((WideBlob)o).LabelLength; }, SetCount = delegate(object o, int n) { ((WideBlob)o).LabelLength = n; }, MessageSlot = 107, NativeOffset = 0, NativeElementSize = 70001, NativeCountOffset = 70004, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (WideBlob)o; Array.Clear(value.Label, 0, value.Label.Length); value.LabelLength = 0; } },
+                new TableFieldInfo { Name = "payload", Json = "payload", TypeName = "bytes", Id = 0xcfb8a9d063b5e9e5, Kind = 6, IsArray = true, Counted = true, Optional = false, ArrayBound = 70000, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate(object o) { return ((WideBlob)o).Payload; }, GetCount = delegate(object o) { return ((WideBlob)o).PayloadLength; }, SetCount = delegate(object o, int n) { ((WideBlob)o).PayloadLength = n; }, MessageSlot = 108, NativeOffset = 70008, NativeElementSize = 70000, NativeCountOffset = 140008, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (WideBlob)o; Array.Clear(value.Payload, 0, value.Payload.Length); value.PayloadLength = 0; } },
+                new TableFieldInfo { Name = "samples", Json = "samples", TypeName = "uint16", Id = 0xe3b1ca6a3b48dddc, Kind = 7, IsArray = true, Counted = true, Optional = false, ArrayBound = 70000, ElemWidth = 2, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((WideBlob)o).Samples[i]; }, SetRaw = delegate(object o, int i, ulong r) { ((WideBlob)o).Samples[i] = unchecked((ushort)r); }, GetCount = delegate(object o) { return ((WideBlob)o).SamplesCount; }, SetCount = delegate(object o, int n) { ((WideBlob)o).SamplesCount = n; }, MessageSlot = 109, NativeOffset = 140012, NativeElementSize = 2, NativeCountOffset = 280012, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (WideBlob)o; Array.Clear(value.Samples, 0, value.Samples.Length); value.SamplesCount = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { ushort v = unchecked((ushort)raw); return (ulong)v; } },
             };
             info.Reset = delegate(object o) { TableReset((WideBlob)o); };
             info.Doc = TableDocNone;

@@ -391,6 +391,7 @@ static const Codec codecs[] = {
     FIXED( "widedemo", wide, Caption ),
     FIXED( "widedemo", wide, Stamp ),
     VARIABLE( "graphdemo", graphdemo, Scene ),
+    VARIABLE( "blobdemo", blobdemo, Catalog ),
     VARIABLE( "tblp2", tblp2, Chain ),
     VARIABLE( "streamdemo", streamdemo, Feed ),
     VARIABLE( "tblw1", tblw1, Fleet ),

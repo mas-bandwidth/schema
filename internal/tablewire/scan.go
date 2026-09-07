@@ -42,3 +42,36 @@ func nodeRecordTypes(body []byte, ids []uint64) (types []uint64, whole bool) {
 	}
 	return types, true
 }
+
+// FileNodeRecord is a framed record before decoding its body. Length is needed
+// to account for blob storage; a type ID alone does not determine that storage.
+type FileNodeRecord struct {
+	TypeId uint64
+	Length int64
+}
+
+// FileNodeRecords returns the authoritative file node-table scan. It allocates
+// from records actually framed, never from the untrusted declared count.
+func FileNodeRecords(data []byte) ([]FileNodeRecord, bool) {
+	body, ids, ok := trailer(data)
+	if len(data) == 0 || data[0] != ir.TableWireForm || !ok {
+		return nil, false
+	}
+	var report tabletext.Report
+	payload, present, framed := nodeTableBytes(body, ids, &report)
+	if !present {
+		return nil, true
+	}
+	if !framed {
+		return nil, false
+	}
+	records, scanned := scanNodeRecords(payload, ids)
+	if !scanned {
+		return nil, false
+	}
+	out := make([]FileNodeRecord, len(records))
+	for i, record := range records {
+		out[i] = FileNodeRecord{TypeId: record.TypeId, Length: int64(len(record.Body))}
+	}
+	return out, true
+}

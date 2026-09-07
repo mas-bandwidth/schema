@@ -47,12 +47,16 @@ func (g *tableGen) emitTableUnion(un *ir.Union) {
 func (g *tableGen) unionArmsValue(un *ir.Union) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "new TableUnionInfo { GetTag = delegate(object o) { return (ulong)((%s)o).Type; }", un.Name)
+	fmt.Fprintf(&b, ", Create = delegate { return new %s(); }", un.Name)
+	_, _, tagSize, armOffset := ir.UnionLayout(g.unit, un)
+	fmt.Fprintf(&b, ", NativeTagSize = %d, NativeArmOffset = %d", tagSize, armOffset)
 	fmt.Fprintf(&b, ", SetTag = delegate(object o, ulong t) { ((%s)o).Type = unchecked((%sType)t); }", un.Name, un.Name)
 	b.WriteString(", Arms = new TableUnionArmInfo[] { new TableUnionArmInfo()")
 	for _, v := range un.Variants {
 		b.WriteString(", new TableUnionArmInfo { ")
+		fmt.Fprintf(&b, "MessageSlot = %d, ", ir.TableVocabularySlots(g.unit)[ir.TableArmEntry(v).Key()])
 		if !v.Void() {
-			row := &tableGen{unit: g.unit, owner: unionOwner(un), arm: true}
+			row := &tableGen{unit: g.unit, owner: unionOwner(un), arm: true, outside: g.outside}
 			row.emitTableFieldDescriptor(v.F, "")
 			field := strings.TrimSuffix(strings.TrimSpace(row.schema.String()), ",")
 			fmt.Fprintf(&b, "Field = %s", field)

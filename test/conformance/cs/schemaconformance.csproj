@@ -33,6 +33,23 @@
 
   <ItemGroup>
     <Compile Include="src/*.cs" />
+    <Compile Include="$(TablesGeneratedDir)/r2/*.cs" Exclude="$(TablesGeneratedDir)/r2/*Block.cs;$(TablesGeneratedDir)/r2/*Cook.cs" />
+    <Compile Include="$(TablesGeneratedDir)/r1/*.cs" Exclude="$(TablesGeneratedDir)/r1/*Block.cs;$(TablesGeneratedDir)/r1/*Cook.cs" />
+    <Compile Include="$(TablesGeneratedDir)/vocab9/*.cs" Exclude="$(TablesGeneratedDir)/vocab9/*Block.cs;$(TablesGeneratedDir)/vocab9/*Cook.cs" />
+    <Compile Include="$(TablesGeneratedDir)/vocab/*.cs" Exclude="$(TablesGeneratedDir)/vocab/*Block.cs;$(TablesGeneratedDir)/vocab/*Cook.cs" />
+    <Compile Include="$(TablesGeneratedDir)/backend/*.cs" Exclude="$(TablesGeneratedDir)/backend/*Block.cs;$(TablesGeneratedDir)/backend/*Cook.cs" />
+    <Compile Include="$(TablesGeneratedDir)/g1/*.cs" Exclude="$(TablesGeneratedDir)/g1/*Block.cs;$(TablesGeneratedDir)/g1/*Cook.cs" />
+    <Compile Include="$(TablesGeneratedDir)/stream/*.cs" Exclude="$(TablesGeneratedDir)/stream/*Block.cs;$(TablesGeneratedDir)/stream/*Cook.cs" />
+    <Compile Include="$(TablesGeneratedDir)/maps/*.cs" Exclude="$(TablesGeneratedDir)/maps/*Block.cs;$(TablesGeneratedDir)/maps/*Cook.cs" />
+    <Compile Include="$(TablesGeneratedDir)/lists/*.cs" Exclude="$(TablesGeneratedDir)/lists/*Block.cs;$(TablesGeneratedDir)/lists/*Cook.cs" />
+    <Compile Include="$(TablesGeneratedDir)/w2/*.cs" Exclude="$(TablesGeneratedDir)/w2/*Block.cs;$(TablesGeneratedDir)/w2/*Cook.cs" />
+    <Compile Include="$(TablesGeneratedDir)/w1/*.cs" Exclude="$(TablesGeneratedDir)/w1/*Block.cs;$(TablesGeneratedDir)/w1/*Cook.cs" />
+    <Compile Include="$(TablesGeneratedDir)/p2/*.cs" Exclude="$(TablesGeneratedDir)/p2/*Block.cs;$(TablesGeneratedDir)/p2/*Cook.cs" />
+    <Compile Include="$(TablesGeneratedDir)/blobs/*.cs" Exclude="$(TablesGeneratedDir)/blobs/*Block.cs;$(TablesGeneratedDir)/blobs/*Cook.cs" />
+    <Compile Include="$(TablesGeneratedDir)/pointers/*.cs" Exclude="$(TablesGeneratedDir)/pointers/*Block.cs;$(TablesGeneratedDir)/pointers/*Cook.cs" />
+    <Compile Include="$(TablesGeneratedDir)/caption/*.cs" Exclude="$(TablesGeneratedDir)/caption/*Block.cs;$(TablesGeneratedDir)/caption/*Cook.cs" />
+    <Compile Include="$(TablesGeneratedDir)/scalars2/*.cs" Exclude="$(TablesGeneratedDir)/scalars2/*Block.cs;$(TablesGeneratedDir)/scalars2/*Cook.cs" />
+    <Compile Include="$(TablesGeneratedDir)/scalars/*.cs" Exclude="$(TablesGeneratedDir)/scalars/*Block.cs;$(TablesGeneratedDir)/scalars/*Cook.cs" />
     <Compile Include="$(TablesGeneratedDir)/messages/*.cs" Exclude="$(TablesGeneratedDir)/messages/*Block.cs;$(TablesGeneratedDir)/messages/*Cook.cs" />
     <Compile Include="$(TablesGeneratedDir)/m1/*.cs" Exclude="$(TablesGeneratedDir)/m1/*Block.cs;$(TablesGeneratedDir)/m1/*Cook.cs" />
     <Compile Include="$(TablesGeneratedDir)/m2/*.cs" Exclude="$(TablesGeneratedDir)/m2/*Block.cs;$(TablesGeneratedDir)/m2/*Cook.cs" />

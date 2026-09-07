@@ -1,48 +1,12 @@
-// Package cstable emits a unit's C# table surface (docs/SPEC-TABLES.md): the
-// TABLE-wire codecs in <Base>Table.cs, and the two ACCELERATORS on the side in
-// <Base>Block.cs (§19) and <Base>Cook.cs (§7). One file per unit file, emitted
-// only when the unit declares tables — plus the unit's ONE RUNTIME HOME per
-// surface, <Package>Table.cs / <Package>Block.cs / <Package>Cook.cs, where
-// everything shared lands (runtimeHome, below).
-//
-// The WIRE half is the FIXED class only: storage classes for the `table`
-// declarations, then measure/save/load codecs and reflection descriptors for
-// the whole TABLE CLOSURE (every table plus everything one references,
-// transitively).
-//
-// The two ACCELERATORS reach further, because neither needs a codec: a block
-// and a cook are POINTED AT, not parsed. They are blittable records plus a
-// header match, so they cover the VARIABLE class too — a pointered unit's cooks
-// open in full while its wire codecs do not exist.
-//
-// The C++ backend (internal/codegen/cpptable) is the REFERENCE: this port
-// mirrors its framing, its elision decisions, its clamps and its report
-// events byte for byte, and invents no contract of its own. Where C# forces
-// a different spelling the reason is stated at the site.
-//
-// Storage follows the C# PACKET emitter's conventions exactly
-// (internal/codegen/csharp): sealed classes with public fields, string(N)
-// and bytes(N) as a pre-allocated byte[N] beside an int used length, arrays
-// as a pre-allocated T[N] beside an int used count, unions as a tag beside
-// one pre-allocated arm per variant. That is not a free choice — a table's
-// closure contains plain `type` declarations whose storage the packet
-// emitter already wrote, and the table codecs decode into those very
-// classes. One unit, one spelling.
-//
-// Nothing on the read path allocates: every buffer exists at construction,
-// the caller owns the wire span and the report, and Load overlays a value in
-// place after restoring its declared defaults.
-//
-// The VARIABLE class ON THE WIRE — the arena, the builder, the region and the
-// node-table codec — is a named follow-on: a unit whose closure declares a
-// pointer gets no <Base>Table.cs, and the refusal is NAMED in every source the
-// unit does emit rather than left as a missing symbol (§11).
+// Package cstable emits the C# table wire, descriptors and JSON runtime, plus
+// the block and cook accelerators. C++ and SPEC-TABLES define the wire law.
+// Fixed tables reuse preallocated buffers; variable tables use managed object
+// identity and growable collections. Both use the same typed descriptor walk.
 package cstable
 
 import (
 	"fmt"
 	"maps"
-	"sort"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -72,66 +36,12 @@ const (
 )
 
 func tableScalarKind(f *ir.Field) int {
-	switch f.Type.Kind {
-	case ir.TBool:
-		return tkBool
-	case ir.TInt:
-		if f.Type.Signed {
-			switch f.Type.Width {
-			case 8:
-				return tkI8
-			case 16:
-				return tkI16
-			case 32:
-				return tkI32
-			default:
-				return tkI64
-			}
-		}
-		switch f.Type.Width {
-		case 8:
-			return tkU8
-		case 16:
-			return tkU16
-		case 32:
-			return tkU32
-		default:
-			return tkU64
-		}
-	case ir.TBits:
-		switch {
-		case f.Type.Width <= 8:
-			return tkU8
-		case f.Type.Width <= 16:
-			return tkU16
-		case f.Type.Width <= 32:
-			return tkU32
-		default:
-			return tkU64
-		}
-	case ir.TFloat32:
-		return tkF32
-	case ir.TFloat64:
-		return tkF64
-	case ir.TString:
-		return tkString
-	case ir.TBytes:
-		return tkArray
-	case ir.TNamed:
-		switch f.Type.Ref.(type) {
-		case *ir.Enum:
-			// an enum value rides as a reference to its variant name identity
-			// (docs/SPEC-TABLES.md §5), whatever the declaration-side width
+	if f.Type.Kind == ir.TNamed {
+		if _, ok := f.Type.Ref.(*ir.Enum); ok {
 			return 30
-		case *ir.Flags:
-			return tkU64
-		case *ir.Struct:
-			return tkTable
-		case *ir.Union:
-			return tkUnion
 		}
 	}
-	return 0
+	return ir.TableScalarKind(f)
 }
 
 func tableKindWidth(kind int) int {
@@ -200,6 +110,7 @@ func generatedFrom(f *ir.File, u *ir.Unit) string {
 type tableGen struct {
 	unit     *ir.Unit
 	file     *ir.File   // nil in the emitted-for-the-unit runtime file
+	outside  bool       // a view-only type has no checked wire identity
 	arm      bool       // descriptor rows inside a union
 	home     bool       // this file carries the unit's shared table runtime
 	anyKeyed bool       // the unit declares at least one enum-keyed array
@@ -238,9 +149,6 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
-	if err := ir.RefuseWideTableKinds(u, "C#"); err != nil {
-		return nil, err
-	}
 	// The two ACCELERATORS are emitted ON THE SIDE and neither needs a wire
 	// codec: the BLOCK form (§19) points at bytes a producer wrote, and the
 	// COOK (§7) points at a region the tooling wrote. Both are pure readers
@@ -257,19 +165,6 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		return nil, err
 	}
 	maps.Copy(out, cooks)
-	// The VARIABLE-CLASS refusal (docs/SPEC-TABLES.md §2.2, §11) is a refusal of the
-	// WIRE SURFACE, which is the half the variable class is missing: no arena,
-	// no builder, no region and no node-table codec. It is named rather than
-	// silent — every generated Cook file of the unit opens with the banner
-	// below, naming each table and the follow-on — and no <Base>Table.cs is
-	// emitted, so a consumer that reaches for Save or Load gets a missing name
-	// from its own compiler beside a file that says why.
-	if names := variableTableNames(u); len(names) > 0 {
-		for name, data := range out {
-			out[name] = append([]byte(variableClassBanner(names)), data...)
-		}
-		return out, nil
-	}
 	closure := ir.TableClosure(u)
 	home := runtimeHome(u)
 	anyKeyed := unitHasKeyedArray(u, closure)
@@ -308,6 +203,8 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			g.owner = st
 			g.emitTableReset(st)
 			g.emitWireSurface(st)
+			g.emitMessageSurface(st)
+			g.emitNativeSurface(st)
 		}
 		if len(members) > 0 {
 			g.pf("// ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----\n\n")
@@ -334,6 +231,10 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		g.emitRuntime()
 		out[home+"Table.cs"] = g.assemble()
 	}
+	out[capitalize(u.Package)+"View.cs"] = generateView(u, closure)
+	common := &tableGen{unit: u}
+	common.tf("public enum TableRefuseReason { ok, not_a_cook, foreign_order, wrong_build_version, reserved_not_zero, bad_alignment, truncated, unaligned_base, bad_layout, unknown_form, count_over_length, count_over_extent_cap, blob_over_size_cap, data_cycle }\n")
+	out[capitalize(u.Package)+"Refuse.cs"] = common.assemble()
 	return out, nil
 }
 
@@ -345,56 +246,11 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 // the unit, which is the generic-walk gate (`make tables-cs-json-walk`).
 func (g *tableGen) emitRuntime() {
 	g.tf("%s", tableRuntime(g.anyKeyed))
+	g.emitMessages()
 	g.pf("%s", tableDocNone())
 	g.pf("%s", tableBitHelpers())
 	g.pf("%s", tableJsonWalkSource)
 	g.pf("%s", tableWireSource)
-}
-
-// variableTableNames is the unit's variable-length tables, sorted — the tables
-// whose WIRE surface this backend does not emit.
-func variableTableNames(u *ir.Unit) []string {
-	variable := ir.VariableTables(u)
-	if len(variable) == 0 {
-		return nil
-	}
-	names := make([]string, 0, len(variable))
-	for name := range variable {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
-}
-
-// variableClassBanner is the VARIABLE-class refusal, written where a consumer
-// meets it (docs/SPEC-TABLES.md §2.2, §11). The refusal is of the WIRE half and of
-// nothing else: the accelerators below are pure readers over blittable records
-// and need no codec, so they are emitted. What is absent is Measure, Save,
-// Load, the arena and the builder — named here rather than left as a missing
-// symbol with no explanation.
-func variableClassBanner(names []string) string {
-	return "// THE C# WIRE SURFACE OF THIS UNIT IS REFUSED, BY NAME (docs/SPEC-TABLES.md §11).\n" +
-		"//\n" +
-		"// It declares variable-length tables (" + englishList(names) + "), and the C# table\n" +
-		"// backend's VARIABLE CLASS — the arena, the builder, the region and the node-table\n" +
-		"// codec — is a named follow-on (§15). No <Base>Table.cs is emitted for this unit,\n" +
-		"// so a consumer reaching for Measure, Save or Load gets a missing name from its own\n" +
-		"// compiler, beside this file, which says why.\n" +
-		"//\n" +
-		"// What IS emitted is the two ACCELERATORS, because neither needs a codec: a block\n" +
-		"// (§19) and a cook (§7) are pointed at, not parsed. A build that loads this unit's\n" +
-		"// cooked assets is served in full; one that wants the tolerant wire is not, and\n" +
-		"// runs the tool or the C++ backend for it.\n\n"
-}
-
-func englishList(names []string) string {
-	switch len(names) {
-	case 0:
-		return ""
-	case 1:
-		return names[0]
-	}
-	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
 }
 
 // closureEnums is every enum whose values ride in the unit's table closure.
@@ -777,6 +633,11 @@ public sealed class TableReport
 
 public sealed class TableFieldInfo
 {
+    internal bool MapKey = false;
+    internal int NativeOffset, NativeElementSize, NativeCountOffset, NativePresentOffset;
+    internal int MessageSlot = 0;
+    internal bool MessageBounded = false, MessageSigned = false;
+    internal UInt128 MessageMin = 0, MessageMax = 0;
     public string Name;         // schema field name, e.g. "health"
     public string Json;         // the TEXT form's key: the json = "key" attribute, else Name (§16.4)
     public string TypeName;     // schema type name, e.g. "float32", "Grade"
@@ -819,6 +680,14 @@ public sealed class TableFieldInfo
     public ulong DefaultRaw;
     public Func<object, bool> WireGuard;
     public Func<ulong, TableReport, ulong> ClampRaw;
+    public UInt128 DefaultWide;
+    public int FracBits;
+    public bool WideSigned;
+    public Func<UInt128, TableReport, UInt128> ClampWide;
+    public Func<object, int, UInt128> GetWide;
+    public Action<object, int, UInt128> SetWide;
+    public Func<object, char[]> GetChars;
+    public byte[] DefaultBytes;
     public Action<object> ResetField;
     public string Guard;        // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
 
@@ -862,6 +731,12 @@ public sealed class TableFieldInfo
     public Func<object, int, ulong> GetRaw;
     public Action<object, int, ulong> SetRaw;
     public Func<object, int, object> GetChild;
+    public Action<object, int, object> SetChild;
+    public Action<object, int> EnsureCount;
+    public bool Dynamic, Map;
+    public int StorageSize, StorageAlign;
+    public ulong PointerTypeId;
+    public byte BlobKind;
     public Func<object, byte[]> GetBuffer;
     // the counted companion (a string's length, a bytes' length, a counted
     // array's count), and the optional's presence bool. null where the field
@@ -876,6 +751,7 @@ public sealed class TableFieldInfo
 // 0 is the EMPTY arm and carries neither payload nor descriptor.
 public sealed class TableUnionArmInfo
 {
+    internal int MessageSlot = 0;
     public TableFieldInfo Field; // null for a payload-free arm; accessors take the union
     public Func<TableTypeInfo> TableRef;
     public TableTypeInfo Table
@@ -890,13 +766,29 @@ public sealed class TableUnionArmInfo
 // reason the field accessors above exist.
 public sealed class TableUnionInfo
 {
+    internal int NativeTagSize = 0, NativeArmOffset = 0;
+    public Func<object> Create;
     public Func<object, ulong> GetTag;
     public Action<object, ulong> SetTag;
     public TableUnionArmInfo[] Arms;
 }
 
+public sealed class TableBlob
+{
+    public byte[] Data;
+    public TableBlob(byte[] data) { Data = data; }
+}
+
+public enum TableByteOrder { Little = 1, Big = 2 }
+
 public sealed class TableTypeInfo
 {
+    public Func<object> Create;
+    public int StorageSize, StorageAlign, RegionAlign;
+    public bool Variable;
+    public Func<TableTypeInfo[]> PointerTypes;
+    public Func<ulong,TableTypeInfo> PointerType;
+    public bool BytesEdge, StringEdge;
     public string Name;         // schema type name
     public ulong Id;            // full wire identity of the table name
     public int NumFields;

@@ -19,8 +19,17 @@ import (
 // packet emitter's conventions so closure classes from <Base>.cs and table
 // classes from this file read as one family.
 func csFieldType(t ir.FieldType) string {
+	if t.Blob() {
+		return "TableBlob"
+	}
 	switch t.Kind {
-	case ir.TInt:
+	case ir.TInt, ir.TFixed:
+		if t.Width == 128 {
+			if t.Signed {
+				return "System.Int128"
+			}
+			return "System.UInt128"
+		}
 		if t.Signed {
 			return csInt(t.Width)
 		}
@@ -64,7 +73,7 @@ func csUint(width int) string {
 	case 8:
 		return "byte"
 	case 16:
-		return "ulong"
+		return "ushort"
 	case 32:
 		return "uint"
 	}
@@ -154,9 +163,12 @@ func fieldDefaultExpr(f *ir.Field) string {
 			return formatFloat64(f.DefFloat)
 		}
 		return "0.0"
-	case ir.TInt, ir.TBits:
+	case ir.TInt, ir.TBits, ir.TFixed:
 		if f.HasDefault && f.DefInt != nil {
-			signed := f.Type.Kind == ir.TInt && f.Type.Signed
+			signed := f.Type.Signed
+			if f.Type.Width == 128 {
+				return wideLiteral(f.DefInt, signed)
+			}
 			width := 4
 			if f.Type.Width > 32 {
 				width = 8
@@ -172,6 +184,9 @@ func fieldDefaultExpr(f *ir.Field) string {
 			}
 			return f.Type.Name + ".None"
 		case *ir.Flags:
+			if f.HasDefault && f.DefInt != nil {
+				return f.DefInt.String() + "ul"
+			}
 			return "0"
 		}
 	}
@@ -210,7 +225,16 @@ func (g *tableGen) emitTableClass(st *ir.Struct) {
 func (g *tableGen) emitTableStorageField(f *ir.Field) {
 	name := member(f)
 	typ := csFieldType(f.Type)
+	if f.IsMap() {
+		typ = f.MapEntry.Name
+	}
 	switch {
+	case f.IsList(), f.IsMap():
+		g.tf("    public %s[] %s = Array.Empty<%s>();\n    public int %sCount;\n", typ, name, typ, name)
+	case f.Type.Pointer && f.Array == ir.ArrayNone:
+		g.tf("    public %s %s;\n", typ, name)
+	case f.Type.Kind == ir.TWString:
+		g.tf("    public char[] %s = new char[%d];\n    public int %sLength;\n", name, f.Type.Size, name)
 	case f.Type.Kind == ir.TString:
 		g.tf("    public byte[] %s = new byte[%d]; // string(%s): max length, used length beside it\n",
 			name, f.Type.Size, ir.RenderExpr(f.Type.SizeExpr))
@@ -280,13 +304,16 @@ func (g *tableGen) keyedSlots(access string, f *ir.Field) string {
 // arrays: every buffer exists at construction, so the read path allocates
 // nothing.
 func (g *tableGen) emitElementConstructor(st *ir.Struct) {
-	var elems []*ir.Field
+	var elems, defaults []*ir.Field
 	for _, f := range st.Fields {
-		if f.Array != ir.ArrayNone && isClassRef(f.Type) {
+		if len(f.DefBytes) != 0 {
+			defaults = append(defaults, f)
+		}
+		if f.Array != ir.ArrayNone && isClassRef(f.Type) && !f.Type.Pointer {
 			elems = append(elems, f)
 		}
 	}
-	if len(elems) == 0 {
+	if len(elems) == 0 && len(defaults) == 0 {
 		return
 	}
 	g.tf("\n    public %s()\n    {\n", st.Name)
@@ -296,6 +323,9 @@ func (g *tableGen) emitElementConstructor(st *ir.Struct) {
 		base := g.keyedSlots("", f)
 		g.tf("        for (int i = 0; i < %s.Length; i++)\n        {\n", base)
 		g.tf("            %s[i] = new %s();\n        }\n", base, f.Type.Name)
+	}
+	for _, f := range defaults {
+		g.emitBufferDefault(f, "", g.tf)
 	}
 	g.tf("    }\n")
 }
@@ -427,10 +457,15 @@ func (g *tableGen) emitTableReset(st *ir.Struct) {
 func (g *tableGen) emitTableResetField(f *ir.Field) {
 	name := member(f)
 	switch {
-	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
+	case f.IsMap(), f.IsList():
+		g.pf("    Array.Clear(value.%s, 0, value.%s.Length); value.%sCount = 0;\n", name, name, name)
+	case f.Type.Pointer && f.Array == ir.ArrayNone:
+		g.pf("    value.%s = null;\n", name)
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TWString:
 		g.pf("    Array.Clear(value.%s, 0, value.%s.Length);\n", name, name)
 		g.pf("    value.%sLength = 0;\n", name)
-	case f.Array != ir.ArrayNone && isClassRef(f.Type):
+		g.emitBufferDefault(f, "value.", g.pf)
+	case f.Array != ir.ArrayNone && isClassRef(f.Type) && !f.Type.Pointer:
 		g.pf("    for (int i = 0; i < %s.Length; i++)\n    {\n", g.keyedSlots("value.", f))
 		if _, isUnion := f.Type.Ref.(*ir.Union); isUnion {
 			g.pf("        %s[i].Type = %sType.None;\n", g.keyedSlots("value.", f), f.Type.Name)
@@ -484,6 +519,10 @@ func tableFieldTypeName(f *ir.Field) string {
 		return "float64"
 	case ir.TString:
 		return "string"
+	case ir.TWString:
+		return "wstring"
+	case ir.TFixed:
+		return ir.TableTypeSpelling(f)
 	case ir.TBytes:
 		return "bytes"
 	case ir.TNamed:
@@ -528,8 +567,34 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	g.pf("    if (info != null) { return info; }\n")
 	g.pf("    info = new TableTypeInfo();\n")
 	g.pf("    info.Name = \"%s\";\n", st.Name)
-	g.pf("    info.Id = 0x%016xul;\n", ir.TableWireId(st.WireName()))
+	identity := ir.TableWireId(st.WireName())
+	if g.outside {
+		identity = 0
+	}
+	g.pf("    info.Id = 0x%016xul;\n", identity)
 	g.pf("    info.NumFields = %d;\n", len(st.Fields))
+	g.pf("    info.Create = delegate { return new %s(); };\n", st.Name)
+	layout := ir.RecordLayout(g.unit, st)
+	align := int64(8)
+	for _, table := range g.unit.Tables {
+		if a := ir.RecordLayout(g.unit, table).Align; a > align {
+			align = a
+		}
+	}
+	g.pf("    info.StorageSize = %d; info.StorageAlign = %d; info.RegionAlign = %d;\n", layout.Size, layout.Align, align)
+	g.pf("    info.Variable = %t;\n", ir.VariableTables(g.unit)[st.Name])
+	g.pf("    info.PointerType = delegate(ulong id) { switch(id) { ")
+	for _, target := range ir.PointerReachable(st) {
+		g.pf("case 0x%016xul: return %sTableType(); ", ir.TableWireId(target.WireName()), target.Name)
+	}
+	g.pf("default: return null; } };\n")
+	g.pf("    info.PointerTypes = delegate { return new TableTypeInfo[] { ")
+	for _, target := range ir.PointerReachable(st) {
+		g.pf("%sTableType(), ", target.Name)
+	}
+	g.pf("}; };\n")
+	bytesEdge, stringEdge := ir.PointerReachableBlobs(st)
+	g.pf("    info.BytesEdge = %t; info.StringEdge = %t;\n", bytesEdge, stringEdge)
 	if len(st.Fields) == 0 {
 		g.pf("    info.Fields = new TableFieldInfo[0];\n")
 	} else {
@@ -601,7 +666,7 @@ func (g *tableGen) storageExpr(f *ir.Field) string {
 // elementExpr is storageExpr indexed where the field is an array, and
 // storageExpr itself where it is not — the walker passes 0 for a scalar.
 func (g *tableGen) elementExpr(f *ir.Field) string {
-	if f.Array != ir.ArrayNone {
+	if f.Array != ir.ArrayNone || f.IsMap() {
 		return g.storageExpr(f) + "[i]"
 	}
 	return g.storageExpr(f)
@@ -675,7 +740,7 @@ func csElemWidth(t ir.FieldType) int {
 		return 4
 	case ir.TFloat64:
 		return 8
-	case ir.TInt:
+	case ir.TInt, ir.TFixed:
 		return t.Width / 8
 	case ir.TBits:
 		if t.Width <= 32 {
@@ -695,6 +760,16 @@ func (g *tableGen) tableStorageColumns(f *ir.Field) string {
 	name := member(f)
 	cast := fmt.Sprintf("((%s)o).", g.owner.Name)
 	switch {
+	case f.Type.Pointer, f.IsMap():
+		typ := csFieldType(f.Type)
+		if f.IsMap() {
+			typ = f.MapEntry.Name
+		}
+		fmt.Fprintf(&b, ", GetChild = delegate(object o, int i) { return %s; }, SetChild = delegate(object o, int i, object v) { %s = (%s)v; }", g.elementExpr(f), g.elementExpr(f), typ)
+	case f.Type.Kind == ir.TWString:
+		fmt.Fprintf(&b, ", GetChars = delegate(object o) { return %s; }, GetCount = delegate(object o) { return %s%sLength; }, SetCount = delegate(object o, int n) { %s%sLength = n; }", g.storageExpr(f), cast, name, cast, name)
+	case ir.TableKindWide(tableScalarKind(f)):
+		fmt.Fprintf(&b, ", GetWide = delegate(object o, int i) { return unchecked((UInt128)(%s)%s); }, SetWide = delegate(object o, int i, UInt128 r) { %s = unchecked((%s)r); }", csFieldType(f.Type), g.elementExpr(f), g.elementExpr(f), csFieldType(f.Type))
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		fmt.Fprintf(&b, ", GetBuffer = delegate(object o) { return %s; }", g.storageExpr(f))
 		fmt.Fprintf(&b, ", GetCount = delegate(object o) { return %s%sLength; }", cast, name)
@@ -705,9 +780,22 @@ func (g *tableGen) tableStorageColumns(f *ir.Field) string {
 		fmt.Fprintf(&b, ", GetRaw = delegate(object o, int i) { return %s; }", csRawGet(g.elementExpr(f), f.Type))
 		fmt.Fprintf(&b, ", SetRaw = delegate(object o, int i, ulong r) { %s }", csRawSet(g.elementExpr(f), "r", f.Type))
 	}
-	if f.Array == ir.ArrayCounted {
+	if f.CountedOnWire() || f.IsMap() {
 		fmt.Fprintf(&b, ", GetCount = delegate(object o) { return %s%sCount; }", cast, name)
 		fmt.Fprintf(&b, ", SetCount = delegate(object o, int n) { %s%sCount = n; }", cast, name)
+	}
+	if f.IsMap() || f.IsList() {
+		typ := csFieldType(f.Type)
+		class := isClassRef(f.Type) && !f.Type.Pointer
+		if f.IsMap() {
+			typ = f.MapEntry.Name
+			class = true
+		}
+		fmt.Fprintf(&b, ", EnsureCount = delegate(object o, int n) { var value = (%s)o; if (value.%s.Length < n) { Array.Resize(ref value.%s, Math.Max(n, Math.Max(4, value.%s.Length * 2))); }", g.owner.Name, name, name, name)
+		if class {
+			fmt.Fprintf(&b, " for (int i = 0; i < n; i++) { if (value.%s[i] == null) { value.%s[i] = new %s(); } }", name, name, typ)
+		}
+		b.WriteString(" }")
 	}
 	if f.Type.Optional {
 		fmt.Fprintf(&b, ", GetPresent = delegate(object o) { return %s%sPresent; }", cast, name)
@@ -718,27 +806,36 @@ func (g *tableGen) tableStorageColumns(f *ir.Field) string {
 
 func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 	id := ir.TableFieldWireId(f)
+	if g.outside {
+		id = 0
+	}
 	kind := tableScalarKind(f)
-	if f.Type.Kind == ir.TBytes {
+	if f.Type.Kind == ir.TBytes && !f.Type.Pointer {
 		kind = tkU8
 	}
-	isArray := f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes
-	counted := f.Array == ir.ArrayCounted || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString
+	isArray := f.Array != ir.ArrayNone || f.IsMap() || (f.Type.Kind == ir.TBytes && !f.Type.Pointer)
+	counted := f.CountedOnWire() || f.IsMap() || (!f.Type.Pointer && (f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString))
 
 	// the count column, spelled the way the storage spells its own extent: a
 	// keyed array DERIVES it from the key enum, so nothing outside the array
 	// names its size (docs/SPEC-TABLES.md §2.4, §8.1)
 	bound := "0"
 	switch {
+	case f.IsMap(), f.IsList():
+		bound = "int.MaxValue"
 	case f.KeyEnum != "":
 		bound = fmt.Sprintf("(int)%s.Max", f.KeyEnum)
 	case f.Array != ir.ArrayNone:
 		bound = strconv.FormatInt(f.ArrayBound, 10)
-	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString:
+	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString:
 		bound = strconv.FormatInt(f.Type.Size, 10)
 	}
 
 	tableRef := "null"
+	if f.IsMap() {
+		tableRef = fmt.Sprintf("delegate { return %sTableType(); }", f.MapEntry.Name)
+		kind = 13
+	}
 	if _, isStruct := f.Type.Ref.(*ir.Struct); f.Type.Kind == ir.TNamed && isStruct {
 		tableRef = fmt.Sprintf("delegate { return %sTableType(); }", f.Type.Name)
 	}
@@ -811,6 +908,15 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 		}
 	}
 
+	if g.outside {
+		if variantId != "null" {
+			variantId = "delegate(ulong v) { return 0; }"
+		}
+		if keyId != "null" {
+			keyId = "delegate(ulong v) { return 0; }"
+		}
+	}
+
 	// what a PERSON wrote about the field (docs/SPEC-TABLES.md §8.1): its ///
 	// block and its tags, the shared empty doc and a null list where it
 	// carries none.
@@ -819,8 +925,12 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 		tags = armTags(f.Tags)
 	}
 
-	g.pf("        new TableFieldInfo { Name = \"%s\", Json = \"%s\", TypeName = \"%s\", Id = 0x%016x, Kind = %d, IsArray = %v, Counted = %v, Optional = %v, ArrayBound = %s, ElemWidth = %d, HasRange = %s, RangeMin = %s, RangeMax = %s, EnumMax = %s, EnumName = %s, VariantId = %s, KeyTypeName = %s, KeyName = %s, KeyId = %s, Guard = \"%s\", TableRef = %s, Arms = %s, Doc = %s, NumTags = %s, Tags = %s%s },\n",
-		f.Name, ir.TableFieldJsonKey(f), tableFieldTypeName(f), id, kind, isArray, counted, f.Type.Optional, bound,
+	jsonName := fmt.Sprintf("%q", ir.TableFieldJsonKey(f))
+	if g.outside {
+		jsonName = "null"
+	}
+	g.pf("        new TableFieldInfo { Name = \"%s\", Json = %s, TypeName = \"%s\", Id = 0x%016x, Kind = %d, IsArray = %v, Counted = %v, Optional = %v, ArrayBound = %s, ElemWidth = %d, HasRange = %s, RangeMin = %s, RangeMax = %s, EnumMax = %s, EnumName = %s, VariantId = %s, KeyTypeName = %s, KeyName = %s, KeyId = %s, Guard = \"%s\", TableRef = %s, Arms = %s, Doc = %s, NumTags = %s, Tags = %s%s },\n",
+		f.Name, jsonName, tableFieldTypeName(f), id, kind, isArray, counted, f.Type.Optional, bound,
 		csElemWidth(f.Type), hasRange, rangeMin, rangeMax, enumMax, enumName, variantId,
 		keyTypeName, keyName, keyId, guard, tableRef, arms, doc, numTags, tags, g.tableStorageColumns(f)+g.wireColumns(f))
 }

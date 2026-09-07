@@ -1701,6 +1701,9 @@ static partial class Program
 
         TestWireContracts();
         TestUnionContracts();
+        TestCollections();
+        TestSurfaces();
+        TestCollectionMessages();
         TestGoldenWireWrite();
         TestGoldenWireRead();
         TestGoldenSeamsWrite();

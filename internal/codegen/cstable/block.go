@@ -116,6 +116,7 @@ func (g *blockGen) sf(format string, args ...any) { fmt.Fprintf(&g.structs, form
 func (g *blockGen) emit() {
 	if g.home {
 		g.rf("%s", blockRuntime(ir.BuildVersion(g.unit)))
+		g.rf("%s", tableBlockBuildRuntime)
 		g.emitLayoutCheck()
 		// EVERY blittable record of the unit, here and nowhere else. Not the
 		// file that DECLARES the type: a record a block form reaches is often
@@ -138,6 +139,7 @@ func (g *blockGen) emit() {
 	}
 	for _, st := range g.file.Tables {
 		if bl := g.blocks.Block(st.Name); bl != nil {
+			g.emitBlockStorage(bl)
 			g.emitBlockHandle(bl)
 			continue
 		}
@@ -298,6 +300,11 @@ func (g *blockGen) emitBlittableField(f *ir.Field, projection bool, w *blockWrit
 		return
 	}
 	switch {
+	case f.Type.Kind == ir.TWString:
+		next()
+		g.sf("    public fixed char %s[%d];\n", name, f.Type.Size+1)
+		next()
+		g.sf("    public int %sLength;\n", name)
 	case f.Type.Kind == ir.TString:
 		next()
 		g.sf("    public fixed byte %s[%d]; // string(%d): max length, used length beside it\n", name, f.Type.Size+1, f.Type.Size)
@@ -335,6 +342,14 @@ func (g *blockGen) emitBlittableArray(f *ir.Field, name string) {
 		g.sf("    public fixed %s %s[%d];\n", typ, name, f.ArrayBound)
 		return
 	}
+	// CLR metadata caps a type's field count. Keep a typed first element for
+	// the span accessor and represent the remaining identical slots as bytes.
+	if f.ArrayBound > 128 {
+		size := ir.FieldPieces(g.unit, f, 0)[0].Size / f.ArrayBound
+		g.sf("    public %s %s0;\n", typ, name)
+		g.sf("    private fixed byte %sStorage[%d];\n", name, (f.ArrayBound-1)*size)
+		return
+	}
 	g.sf("    // [%d]%s: a fixed-size buffer takes primitives only, so the elements are\n", f.ArrayBound, typ)
 	g.sf("    // generated one per slot — the same bytes at the same offsets.\n")
 	for i := int64(0); i < f.ArrayBound; i++ {
@@ -366,7 +381,13 @@ func csBlittableType(u *ir.Unit, t ir.FieldType) string {
 		return "float"
 	case ir.TFloat64:
 		return "double"
-	case ir.TInt:
+	case ir.TInt, ir.TFixed:
+		if t.Width == 128 {
+			if t.Signed {
+				return "System.Int128"
+			}
+			return "System.UInt128"
+		}
 		if t.Signed {
 			switch t.Width {
 			case 8:
@@ -404,6 +425,8 @@ func csBlittableType(u *ir.Unit, t ir.FieldType) string {
 		case *ir.Flags:
 			return "ulong"
 		case *ir.Struct:
+			return t.Name + "Row"
+		case *ir.Union:
 			return t.Name + "Row"
 		}
 	}
@@ -501,7 +524,7 @@ func (g *blockGen) emitRecordCheck(name string, ml *ir.MemberLayout, projection 
 // the two have different addresses to take (docs/SPEC-TABLES.md §2.7).
 func (g *blockGen) blockFieldAddress(f *ir.Field, projection bool) string {
 	name := ir.GoExportName(f.Name)
-	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
+	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString {
 		return "probe." + name // a fixed-size buffer IS a pointer in unsafe context
 	}
 	inline := !projection || !ir.BlockOutOfLine(f)
@@ -525,6 +548,7 @@ func (g *blockGen) emitBlockHandle(bl *ir.BlockLayout) {
 	g.hf("// The bytes belong to the CONSUMER — a managed array it pinned, a NativeArray,\n")
 	g.hf("// or memory the producer handed across. Nothing here allocates.\n")
 	g.hf("public unsafe readonly struct %sBlock\n{\n", name)
+	g.emitBlockBuild(bl)
 	g.hf("    private readonly byte* basePointer;\n")
 	g.hf("    private readonly long bytes;\n\n")
 	g.hf("    private %sBlock(byte* basePointer, long bytes)\n    {\n", name)
@@ -590,16 +614,16 @@ func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	g.hf("    // at one build — so a consumer older than its producer is not a case. A\n")
 	g.hf("    // mismatch is a refusal; regenerate both sides. Data that must outlive the\n")
 	g.hf("    // build that wrote it takes the wire, which this same table still has.\n")
-	g.hf("    public static bool Open(out %sBlock block, IntPtr pointer, long bytes)\n    {\n", name)
-	g.hf("        block = default;\n")
+	g.hf("    public static bool Open(out %sBlock block, IntPtr pointer, long bytes) { return Open(out block, pointer, bytes, out _); }\n", name)
+	g.hf("    public static bool Open(out %sBlock block, IntPtr pointer, long bytes, out TableRefuseReason reason)\n    {\n", name)
+	g.hf("        block = default; reason = TableRefuseReason.ok;\n")
 	g.hf("        TableBlockLayout.Verify();\n")
-	g.hf("        if (pointer == IntPtr.Zero || bytes < %d) { return false; }\n", bl.Projection.Size)
+	g.hf("        if (pointer == IntPtr.Zero) { reason = TableRefuseReason.unaligned_base; return false; }\n        if (bytes < %d) { reason = TableRefuseReason.truncated; return false; }\n", bl.Projection.Size)
 	g.hf("        byte* at = (byte*) pointer;\n")
-	g.hf("        if ((((ulong) pointer) %% %d) != 0) { return false; } // the base's alignment\n", ir.BlockAlign)
-	g.hf("        if (Schema.TableBlockRead64(at) != Schema.TableBlockMagic) { return false; }\n")
-	g.hf("        if (Schema.TableBlockRead64(at + 8) != Schema.BuildVersion) { return false; }\n")
-	g.hf("        if (Schema.TableBlockRead64(at + 16) != Schema.TableBlockByteOrder) { return false; }\n")
-	g.hf("        %sBlockProjection* projection = (%sBlockProjection*) at;\n", name, name)
+	g.hf("        if (Schema.TableBlockRead64(at) != Schema.TableBlockMagic) { reason = Schema.TableBlockRead64(at) == System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(Schema.TableBlockMagic) ? TableRefuseReason.foreign_order : TableRefuseReason.not_a_cook; return false; }\n")
+	g.hf("        if (Schema.TableBlockRead64(at + 16) != Schema.TableBlockByteOrder) { reason = TableRefuseReason.not_a_cook; return false; }\n")
+	g.hf("        if (Schema.TableBlockRead64(at + 8) != Schema.BuildVersion) { reason = TableRefuseReason.wrong_build_version; return false; }\n")
+
 	g.hf("        long used = %d;\n", bl.Projection.Size)
 	for _, a := range bl.Arrays {
 		field := ir.GoExportName(a.Field.Name)
@@ -613,19 +637,19 @@ func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 		g.hf("            // OffsetOf near 2^63 must refuse, and an addition that wrapped past\n")
 		g.hf("            // the top of the type would be what the check after it was supposed\n")
 		g.hf("            // to catch. The C++ side holds the same shape for the same reason.\n")
-		g.hf("            ulong offsetOf = projection->%s.OffsetOf;\n", field)
-		g.hf("            ulong count = projection->%s.Count;\n", field)
-		g.hf("            ulong stride = projection->%s.Stride;\n", field)
-		g.hf("            if (stride != (ulong) Unsafe.SizeOf<%sRow>()) { return false; }\n", a.ElemName)
+		g.hf("            ulong offsetOf = Schema.TableBlockRead64(at + %d);\n", a.OffsetOfOffset)
+		g.hf("            ulong count = Schema.TableBlockRead64(at + %d) & uint.MaxValue;\n", a.CountOffset)
+		g.hf("            ulong stride = Schema.TableBlockRead64(at + %d) >> 32;\n", a.CountOffset)
+		g.hf("            if (stride != (ulong) Unsafe.SizeOf<%sRow>()) { reason = TableRefuseReason.bad_layout; return false; }\n", a.ElemName)
 		g.hf("            // past the DECLARED MAXIMUM: Begin refuses this on the producer\n")
 		g.hf("            // side and Open refuses it here, because a consumer that sizes\n")
 		g.hf("            // anything by the maximum would overflow on a count the maximum\n")
 		g.hf("            // does not bound\n")
-		g.hf("            if (count > (ulong) %sMax) { return false; }\n", field)
-		g.hf("            if (offsetOf < %d || (offsetOf %% %d) != 0) { return false; }\n", bl.Projection.Size, alignment)
-		g.hf("            if (offsetOf > (ulong) bytes) { return false; }\n")
+		g.hf("            if (count > (ulong) %sMax) { reason = TableRefuseReason.bad_layout; return false; }\n", field)
+		g.hf("            if (offsetOf < %d || (offsetOf %% %d) != 0) { reason = TableRefuseReason.bad_layout; return false; }\n", bl.Projection.Size, alignment)
+		g.hf("            if (offsetOf > (ulong) bytes) { reason = TableRefuseReason.bad_layout; return false; }\n")
 		g.hf("            ulong rows = count * stride; // both bounded above: this cannot carry\n")
-		g.hf("            if (rows > (ulong) bytes - offsetOf) { return false; }\n")
+		g.hf("            if (rows > (ulong) bytes - offsetOf) { reason = TableRefuseReason.bad_layout; return false; }\n")
 		g.hf("            long end = (long) (offsetOf + rows);\n")
 		g.hf("            if (end > used) { used = end; }\n")
 		g.hf("        }\n")
@@ -634,10 +658,12 @@ func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	g.hf("        // used is already inside bytes, and the padding is paid out of the slack\n")
 	g.hf("        // that is left rather than added and compared after.\n")
 	g.hf("        long padding = (%d - (used %% %d)) %% %d;\n", ir.BlockAlign, ir.BlockAlign, ir.BlockAlign)
-	g.hf("        if (padding > bytes - used) { return false; }\n")
+	g.hf("        if (padding > bytes - used) { reason = TableRefuseReason.truncated; return false; }\n")
 	g.hf("        used += padding;\n")
+	g.hf("        if (((ulong)pointer & 63) != 0) { reason = TableRefuseReason.unaligned_base; return false; }\n")
 	g.hf("        block = new %sBlock(at, used);\n", name)
 	g.hf("        return true;\n    }\n\n")
+
 }
 
 // emitBlockDescriptors is the REFLECTIVE half (docs/SPEC-TABLES.md §8, §19.2): the

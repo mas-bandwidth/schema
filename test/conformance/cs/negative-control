@@ -13,7 +13,7 @@ for mode in wire json; do
     go run ./tools/sabotage -name "$sabotage" -out "$dir/source.gotext" "$source"
     printf '{"Replace":{"%s/%s":"%s/%s/source.gotext"}}\n' "$PWD" "$source" "$PWD" "$dir" > "$dir/overlay.json"
     go build -overlay="$dir/overlay.json" -o "$dir/schema" ./cmd/schema
-    for unit in examples block v1 v2 p1 p3 k1 k2 messages m1 m2 a1 a2; do
+    for unit in examples block v1 v2 p1 p3 k1 k2 messages m1 m2 a1 a2 scalars scalars2 caption pointers blobs p2 w1 w2 lists maps stream g1 backend vocab vocab9 r1 r2; do
         case "$unit" in
             examples|block|messages) input=tables/$unit ;;
             v1) input=test/tables/V1.schema ;; v2) input=test/tables/V2.schema ;;
@@ -21,6 +21,23 @@ for mode in wire json; do
             k1) input=test/tables/K1.schema ;; k2) input=test/tables/K2.schema ;;
             m1) input=test/tables/M1.schema ;; m2) input=test/tables/M2.schema ;;
             a1) input=test/tables/A1.schema ;; a2) input=test/tables/A2.schema ;;
+            scalars) input=tables/scalars ;;
+            scalars2) input=test/tables/Scalars2.schema ;;
+            caption) input=examples-wide/Caption.schema ;;
+            pointers) input=tables/pointers ;;
+            blobs) input=tables/blobs ;;
+            p2) input=test/tables/P2.schema ;;
+            w1) input=test/tables/W1.schema ;;
+            w2) input=test/tables/W2.schema ;;
+            lists) input=tables/lists ;;
+            maps) input=tables/maps ;;
+            stream) input=tables/stream ;;
+            g1) input=test/tables/G1.schema ;;
+            backend) input=tables/backend ;;
+            vocab) input=tables/vocab ;;
+            vocab9) input=tables/vocab9 ;;
+            r1) input=test/tables/R1.schema ;;
+            r2) input=test/tables/R2.schema ;;
         esac
         "$dir/schema" generate --lang cs --out "$dir/generated/$unit" "$input"
     done

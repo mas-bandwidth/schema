@@ -92,12 +92,10 @@ tables-cs-json-walk: build/tables-generated-cs/.stamp
 	done
 	@echo "tables C# generic-walk gate: one walker per unit, byte-identical across $$(ls build/json-walk-cs | wc -l | tr -d ' ') units"
 
-build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/K1.schema test/tables/K2.schema test/tables/CsIds.schema test/tables/CsUnions.schema $(SCHEMAS_TABLES_MESSAGES) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema
+build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/K1.schema test/tables/K2.schema test/tables/CsIds.schema test/tables/CsUnions.schema test/tables/CsView.schema $(SCHEMAS_TABLES_MESSAGES) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema tables/scalars test/tables/Scalars2.schema examples-wide/Caption.schema tables/pointers tables/blobs test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema tables/lists tables/maps tables/stream test/tables/G1.schema tables/backend tables/vocab tables/vocab9 test/tables/R1.schema test/tables/R2.schema
 	@mkdir -p build/tables-generated-cs
 	./bin/schema generate --lang cs --out build/tables-generated-cs/examples tables/examples
-	# the POINTERED unit: its C# WIRE surface is refused by name (§11) and its
-	# two ACCELERATORS are emitted all the same, because neither needs a codec
-	# (§7, §19). This is where the cook's C# read side comes from.
+	# The pointered unit carries managed wire storage and native cooked readers.
 	./bin/schema generate --lang cs --out build/tables-generated-cs/pointers tables/pointers
 	./bin/schema generate --lang cs --out build/tables-generated-cs/block tables/block
 	./bin/schema generate --lang cs --out build/tables-generated-cs/blockhome tables/blockhome
@@ -109,11 +107,28 @@ build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_
 	./bin/schema generate --lang cs --out build/tables-generated-cs/k2 test/tables/K2.schema
 	./bin/schema generate --lang cs --out build/tables-generated-cs/csids test/tables/CsIds.schema
 	./bin/schema generate --lang cs --out build/tables-generated-cs/csunions test/tables/CsUnions.schema
+	./bin/schema generate --lang cs --out build/tables-generated-cs/csview test/tables/CsView.schema
 	./bin/schema generate --lang cs --out build/tables-generated-cs/messages tables/messages
 	./bin/schema generate --lang cs --out build/tables-generated-cs/m1 test/tables/M1.schema
 	./bin/schema generate --lang cs --out build/tables-generated-cs/m2 test/tables/M2.schema
 	./bin/schema generate --lang cs --out build/tables-generated-cs/a1 test/tables/A1.schema
 	./bin/schema generate --lang cs --out build/tables-generated-cs/a2 test/tables/A2.schema
+	./bin/schema generate --lang cs --out build/tables-generated-cs/scalars tables/scalars
+	./bin/schema generate --lang cs --out build/tables-generated-cs/scalars2 test/tables/Scalars2.schema
+	./bin/schema generate --lang cs --out build/tables-generated-cs/caption examples-wide/Caption.schema
+	./bin/schema generate --lang cs --out build/tables-generated-cs/blobs tables/blobs
+	./bin/schema generate --lang cs --out build/tables-generated-cs/p2 test/tables/P2.schema
+	./bin/schema generate --lang cs --out build/tables-generated-cs/w1 test/tables/W1.schema
+	./bin/schema generate --lang cs --out build/tables-generated-cs/w2 test/tables/W2.schema
+	./bin/schema generate --lang cs --out build/tables-generated-cs/lists tables/lists
+	./bin/schema generate --lang cs --out build/tables-generated-cs/maps tables/maps
+	./bin/schema generate --lang cs --out build/tables-generated-cs/stream tables/stream
+	./bin/schema generate --lang cs --out build/tables-generated-cs/g1 test/tables/G1.schema
+	./bin/schema generate --lang cs --out build/tables-generated-cs/backend tables/backend
+	./bin/schema generate --lang cs --out build/tables-generated-cs/vocab tables/vocab
+	./bin/schema generate --lang cs --out build/tables-generated-cs/vocab9 tables/vocab9
+	./bin/schema generate --lang cs --out build/tables-generated-cs/r1 test/tables/R1.schema
+	./bin/schema generate --lang cs --out build/tables-generated-cs/r2 test/tables/R2.schema
 	@touch $@
 
 # The C# twin of the C++ "no serialize include path" build: a generated
@@ -133,26 +148,13 @@ tables-cs-standalone: build/tables-generated-cs/.stamp
 	done
 	@echo "tables C# standalone gate: generated Table sources name no runtime"
 
-.PHONY: tables-cs-refuses-pointers
-tables-cs-refuses-pointers: bin/schema
-	@rm -rf build/tables-cs-refusal && mkdir -p build
-	./bin/schema generate --lang cs --out build/tables-cs-refusal tables/pointers
-	@if ls build/tables-cs-refusal/*Table.cs >/dev/null 2>&1; then \
-		echo "REFUSAL GATE FAILED: the C# backend emitted a wire surface for a pointered unit"; exit 1; \
-	fi
-	@for f in build/tables-cs-refusal/*Cook.cs build/tables-cs-refusal/*Block.cs; do \
-		grep -q "THE C# WIRE SURFACE OF THIS UNIT IS REFUSED, BY NAME" $$f || \
-			{ echo "REFUSAL GATE FAILED: $$f does not carry the refusal banner"; exit 1; }; \
-		grep -q "is a named follow-on" $$f || \
-			{ echo "REFUSAL GATE FAILED: $$f does not name the follow-on"; exit 1; }; \
-		grep -q "Album, Depot, Layer, ListNode, Marker, Scene and TreeNode" $$f || \
-			{ echo "REFUSAL GATE FAILED: $$f does not name every refused table"; exit 1; }; \
+.PHONY: tables-cs-variable-surface
+tables-cs-variable-surface: build/tables-generated-cs/.stamp
+	@for verb in LoadMeasure Load Save Measure LoadMessages SaveMessages Cook CookMeasure; do \
+		rg -Fq "Scene$$verb(" build/tables-generated-cs/pointers/*Table.cs || \
+			{ echo "VARIABLE SURFACE GATE FAILED: Scene$$verb is absent"; exit 1; }; \
 	done
-	@n=$$(ls build/tables-cs-refusal/*Cook.cs | wc -l | tr -d ' '); \
-		if [ "$$n" -lt 3 ]; then \
-			echo "REFUSAL GATE FAILED: found $$n Cook sources for the pointered unit, expected 3 — the glob, not the property, is what broke"; exit 1; \
-		fi
-	@echo "tables C# refusal gate: a pointered unit's WIRE half is refused by name, in every source it does emit, and its cooks still open"
+	@echo "tables C# variable surface: pointered roots carry file, message and cook verbs"
 
 # ---------------------------------------------------------------------------
 # THE COOK's C# READ SIDE (docs/SPEC-TABLES.md §7) --------------------------------
@@ -385,7 +387,7 @@ tables-cs-wire-fuzz: build-conformance-cs build/conformance-harness
 test-cs: toolchain-cs build/tables-generated-cs/.stamp generated/bench/tables/cs/.stamp generated/cs/.stamp generated/cs-ludicrous/.stamp generated/bench/cs/.stamp
 	$(MAKE) tables-cs-json-walk
 	$(MAKE) tables-cs-standalone
-	$(MAKE) tables-cs-refuses-pointers
+	$(MAKE) tables-cs-variable-surface
 	$(MAKE) tables-cs-leg
 	$(MAKE) tables-cs-wire-fuzz
 	$(MAKE) conformance-negative-control-cs
