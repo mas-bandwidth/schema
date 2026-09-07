@@ -377,3 +377,26 @@ TEST_LEGS         += test-cs
 CONFORMANCE_LEGS  += build-conformance-cs build-cs-cook
 BENCH_TABLES_LEGS += generated/bench/tables/cs/.stamp
 GOLDENS_LEGS      += update-goldens-cs
+# Packet UTF-8 content validation, including a compiled mutation control.
+build/packet-text/cs/.stamp: bin/schema test/packet-text/Narrow.schema
+	./bin/schema generate --lang cs --out build/packet-text/cs test/packet-text/Narrow.schema
+	@touch $@
+
+.PHONY: packet-utf8-cs packet-utf8-cs-negative-control
+packet-utf8-cs: build/packet-text/cs/.stamp build/packet-text/cpp/driver build/packet-text/harness
+	dotnet build test/packet-text/cs/packet-text.csproj -c Debug -o build/packet-text/cs/debug --nologo
+	./build/packet-text/harness dotnet build/packet-text/cs/debug/packet-text.dll
+	dotnet build test/packet-text/cs/packet-text.csproj -c Release -o build/packet-text/cs/release --nologo
+	./build/packet-text/harness dotnet build/packet-text/cs/release/packet-text.dll
+
+packet-utf8-cs-negative-control: packet-utf8-cs
+	@mkdir -p build/packet-text/cs-negative
+	go run ./tools/sabotage -name packet-utf8-cs-read -out build/packet-text/cs-negative/utf8.gotext internal/codegen/csharp/utf8.go
+	@printf '{"Replace":{"%s/internal/codegen/csharp/utf8.go":"%s/build/packet-text/cs-negative/utf8.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-text/cs-negative/overlay.json
+	go run -overlay=build/packet-text/cs-negative/overlay.json ./cmd/schema generate --lang cs --out build/packet-text/cs-negative test/packet-text/Narrow.schema
+	dotnet build test/packet-text/cs/packet-text.csproj -c Release -o build/packet-text/cs-negative/bin -p:TextDir="$(CURDIR)/build/packet-text/cs-negative" --nologo
+	@if ./build/packet-text/harness -mutations-only dotnet build/packet-text/cs-negative/bin/packet-text.dll > build/packet-text/cs-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: C# UTF-8 removal passed'; exit 1; fi
+	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-text/cs-negative/log || { cat build/packet-text/cs-negative/log; exit 1; }
+	@echo 'packet UTF-8 C# negative control: removed read validation fails bit-flip agreement'
+
+test-cs: packet-utf8-cs packet-utf8-cs-negative-control
