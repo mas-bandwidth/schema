@@ -5,6 +5,18 @@ const Go Backend = 1 << 3
 
 func init() {
 	define(Go,
+		Name{Name: "tableUtf16Valid", What: "wide text conversion"},
+		Name{Name: "tableUtf16Clamp", What: "wide text conversion"},
+		Name{Name: "tableJsonWriteWString", What: "wide text conversion"},
+		Name{Name: "tableJsonWriteStringBody", What: "wide text conversion"},
+
+		Name{Name: "tableJsonWide", What: "exact wide scalar text conversion"},
+		Name{Name: "tableJsonWideSigned", What: "exact wide scalar text conversion"},
+		Name{Name: "tableJsonWideLoad", What: "exact wide scalar text conversion"},
+		Name{Name: "tableJsonWideStore", What: "exact wide scalar text conversion"},
+		Name{Name: "tableJsonReadWide", What: "exact wide scalar text conversion"},
+		Name{Name: "tableJsonWriteWide", What: "exact wide scalar text conversion"},
+
 		Name{Name: "tableIdCapacity", What: "the form-1 wire runtime"},
 		Name{Name: "tableIdBuckets", What: "the form-1 wire runtime"},
 		Name{Name: "TableIds", What: "the form-1 wire runtime"},

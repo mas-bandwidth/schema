@@ -6,127 +6,151 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// Measurement uses the same elision and validation walk as writing. A nested
-// payload is measured with its parent's first-use vocabulary; writing restores
-// that vocabulary to the payload's start, never patches a variable-width L.
 func (g *tableGen) emitTableMeasure(st *ir.Struct) {
 	n := st.Name
-	g.pf("func %sMeasureBody(value *%s, ids *TableIds) int64 {\n", n, n)
-	g.pf("\tw := TableWriter{Measuring:true, Ids:ids}\n")
-	g.pf("\tif !%sSaveBody(&w, value) { return -1 }; return w.Offset\n}\n\n", n)
-	g.pf("// %sMeasure returns the exact file size, or -1 for invalid storage.\n", n)
-	g.pf("func %sMeasure(value *%s) int64 {\n", n, n)
-	g.pf("\tvar ids TableIds\n\tw := TableWriter{Measuring:true, Ids:&ids}\n\tw.Put8(1)\n")
-	g.pf("\tif !%sSaveBody(&w, value) { return -1 }; w.Trailer()\n", n)
-	g.pf("\tif w.Overflow || ids.Overflow { return -1 }; return w.Offset\n}\n\n")
+	g.pf("func %sMeasureBody(value *%s, ids *TableIds) int64 {\n w := TableWriter{Measuring:true, Ids:ids}\n if !%sSaveBody(&w,value) { return -1 }; return w.Offset\n}\n\n", n, n, n)
+	g.pf("func %sMeasure(value *%s) int64 {\n var ids TableIds\n w := TableWriter{Measuring:true, Ids:&ids}\n w.Put8(1)\n if !%sSaveBody(&w,value) { return -1 }; w.Trailer()\n if w.Overflow || ids.Overflow { return -1 }; return w.Offset\n}\n\n", n, n, n)
+}
+
+func (g *tableGen) emitTableSave(st *ir.Struct) {
+	g.pf("func %sSave(value *%s, buffer []byte) int64 {\n var ids TableIds\n w := TableWriter{Buffer:buffer, Ids:&ids}\n w.Put8(1)\n if !%sSaveBody(&w,value) { return -1 }; w.Trailer()\n if w.Overflow || ids.Overflow { return -1 }; return w.Offset\n}\n\n", st.Name, st.Name, st.Name)
 }
 
 func (g *tableGen) emitTableWrite(st *ir.Struct) {
-	g.pf("// %sSaveBody writes a body under the writer's shared id vocabulary.\n", st.Name)
 	g.pf("func %sSaveBody(w *TableWriter, value *%s) bool {\n", st.Name, st.Name)
 	guards := tableGuardExprs(st)
 	for _, f := range st.Fields {
 		cond := guards[f.Name]
 		if f.Type.Optional {
-			present := "value." + member(f) + "Present"
-			if cond == "" {
-				cond = present
-			} else {
-				cond = "(" + cond + ") && " + present
+			if cond != "" {
+				cond = "(" + cond + ") && "
 			}
+			cond += "value." + member(f) + "Present"
 		}
+		ind := "\t"
 		if cond != "" {
-			g.pf("\tif %s {\n", cond)
-			g.indent = "\t"
+			g.pf("%sif %s {\n", ind, cond)
+			ind += "\t"
 		}
-		g.emitWireField(f, f.Type.Optional)
+		g.emitWireField(f, "value."+member(f), ind)
 		if cond != "" {
-			g.indent = ""
 			g.pf("\t}\n")
 		}
 	}
-	g.pf("\tw.Put8(0)\n\treturn !w.Overflow && !w.Ids.Overflow\n}\n\n")
+	g.pf(" w.Put8(0)\n return !w.Overflow && !w.Ids.Overflow\n}\n\n")
 }
 
-func (g *tableGen) emitTableSave(st *ir.Struct) {
-	g.pf("// %sSave writes a form-1 file, returning -1 if storage or capacity is invalid.\n", st.Name)
-	g.pf("func %sSave(value *%s, buffer []byte) int64 {\n", st.Name, st.Name)
-	g.pf("\tvar ids TableIds\n\tw := TableWriter{Buffer:buffer, Ids:&ids}\n\tw.Put8(1)\n")
-	g.pf("\tif !%sSaveBody(&w, value) { return -1 }; w.Trailer()\n", st.Name)
-	g.pf("\tif w.Overflow || ids.Overflow { return -1 }; return w.Offset\n}\n\n")
+// A field's vocabulary is speculative until its value is known to ride. The
+// payload walk is the same for fields, elements and union arms; only their
+// framing and the field's elision differ.
+func (g *tableGen) emitWireField(f *ir.Field, expr, ind string) {
+	kind := ir.TableWireFieldKind(f)
+	if f.KeyEnum == "" && kind != tkTable {
+		g.pf("%s{\n", ind)
+		i := ind + "\t"
+		g.emitStorageCheck(f, expr, i)
+		cond := "true"
+		if !f.Type.Optional {
+			cond = g.emitFieldRides(f, expr, i)
+		}
+		g.pf("%sif %s {\n%s w.Id(0x%016x); w.Put8(%d)\n", i, cond, i, ir.TableFieldWireId(f), kind)
+		g.emitWireValue(f, expr, "w", i+"\t", true)
+		g.pf("%s}\n%s}\n", i, ind)
+		return
+	}
+	g.pf("%s{\n", ind)
+	i := ind + "\t"
+	g.pf("%smark := w.Ids.Count; ref := w.Ids.Ref(0x%016x); start := w.Ids.Count\n", i, ir.TableFieldWireId(f))
+	g.pf("%spayload := TableWriter{Measuring:true, Ids:w.Ids}\n", i)
+	g.emitWireValue(f, expr, "payload", i, true)
+	g.pf("%sif payload.Overflow || w.Ids.Overflow { return false }\n", i)
+	empty := 2
+	if f.KeyEnum != "" {
+		empty = 3
+	}
+	cond := fmt.Sprintf("payload.Offset > %d", empty)
+	if f.Type.Optional {
+		cond = "true"
+	}
+	g.pf("%sif %s {\n%s if w.Measuring { w.Advance(tableLebBytes(ref)+1+payload.Offset) } else {\n%s  w.Ids.Truncate(start); w.PutLeb(ref); w.Put8(%d)\n", i, cond, i, i, kind)
+	g.emitWireValue(f, expr, "w", i+"\t\t", true)
+	g.pf("%s }\n%s} else { w.Ids.Truncate(mark) }\n%s}\n", i, i, ind)
 }
 
-func (g *tableGen) emitWireHeader(f *ir.Field, kind int, ind string) {
-	g.pf("%sw.Id(0x%016x); w.Put8(%d) // %s\n", ind, ir.TableFieldWireId(f), kind, f.Name)
-}
-
-func (g *tableGen) emitWireField(f *ir.Field, force bool) {
-	name, kind := member(f), ir.TableWireScalarKind(f)
-	expr := "value." + name
-	switch {
-	case f.KeyEnum != "":
-		g.emitWireArray(f, force, true)
-	case f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes:
-		g.emitWireArray(f, force, false)
-	case f.Type.Kind == ir.TString:
-		g.pf("\tif %sLength < 0 || %sLength > %d { return false }\n", expr, expr, f.Type.Size)
-		cond := expr + "Length > 0"
-		if force {
-			cond = "true"
-		}
-		g.pf("\tif %s {\n", cond)
-		g.emitWireHeader(f, tkString, "\t\t")
-		g.pf("\t\tw.PutLeb(uint64(%sLength)); w.Raw(%s[:%sLength])\n\t}\n", expr, expr, expr)
-	case kind == tkTable:
-		g.pf("\t{\n\t\tmark := w.Ids.Count\n\t\tref := w.Ids.Ref(0x%016x)\n\t\tstart := w.Ids.Count\n", ir.TableFieldWireId(f))
-		g.pf("\t\tbody := %sMeasureBody(&%s, w.Ids)\n\t\tif body < 0 { return false }\n", f.Type.Name, expr)
-		cond := "body > 1"
-		if force {
-			cond = "true"
-		}
-		g.pf("\t\tif %s {\n", cond)
-		g.emitMeasuredFrame("ref", "13", "body", "\t\t\t", func(ind string) {
-			g.pf("%sif !%sSaveBody(w, &%s) { return false }\n", ind, f.Type.Name, expr)
-		})
-		g.pf("\t\t} else { w.Ids.Truncate(mark) }\n\t}\n")
-	case kind == tkUnion:
-		un := f.Type.Ref.(*ir.Union)
-		g.pf("\tswitch %s.Type {\n\tcase %sTypeNone:\n", expr, un.Name)
-		for _, v := range un.Variants {
-			arm := expr + "." + ir.GoExportName(v.Name)
-			g.pf("\tcase %sType%s:\n", un.Name, ir.GoExportName(v.Name))
-			g.emitWireHeader(f, tkUnion, "\t\t")
-			g.pf("\t\tref := w.Ids.Ref(0x%016x)\n\t\tstart := w.Ids.Count\n", ir.TableWireId(v.WireName()))
-			g.pf("\t\tbody := %sMeasureBody(&%s, w.Ids)\n\t\tif body < 0 { return false }\n", v.Type, arm)
-			g.emitMeasuredFrame("ref", "13", "body", "\t\t", func(ind string) {
-				g.pf("%sif !%sSaveBody(w, &%s) { return false }\n", ind, v.Type, arm)
-			})
-		}
-		g.pf("\tdefault: return false\n\t}\n")
-	default:
-		cond := expr + " != " + fieldDefaultExpr(f)
-		if force {
-			cond = "true"
-		}
-		g.pf("\tif %s {\n", cond)
-		g.emitWireHeader(f, kind, "\t\t")
-		g.emitWireElement(f, expr, "w", "\t\t", false)
-		g.pf("\t}\n")
+func (g *tableGen) emitStorageCheck(f *ir.Field, expr, ind string) {
+	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString {
+		g.pf("%sif %sLength < 0 || %sLength > %d { return false }\n", ind, expr, expr, f.Type.Size)
+	} else if f.Array == ir.ArrayCounted {
+		g.pf("%sif %sCount < 0 || %sCount > %d { return false }\n", ind, expr, expr, f.ArrayBound)
 	}
 }
 
-// start is the vocabulary count just before the measured payload, whose ids
-// now stand in the vocabulary. Measuring keeps them; saving replays them.
-func (g *tableGen) emitMeasuredFrame(ref, kind, size, ind string, write func(string)) {
-	g.pf("%sif w.Measuring {\n%s\tw.Advance(tableLebBytes(%s)+1+tableLebBytes(uint64(%s))+%s)\n", ind, ind, ref, size, size)
-	g.pf("%s} else {\n%s\tw.Ids.Truncate(start)\n%s\tw.PutLeb(%s); w.Put8(%s); w.PutLeb(uint64(%s))\n", ind, ind, ind, ref, kind, size)
-	write(ind + "\t")
-	g.pf("%s}\n", ind)
+func (g *tableGen) emitFieldRides(f *ir.Field, expr, ind string) string {
+	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
+		return byteValueRides(f, expr)
+	}
+	if f.Type.Kind == ir.TWString {
+		return expr + "Length > 0"
+	}
+	if f.Array == ir.ArrayCounted {
+		return expr + "Count > 0"
+	}
+	if f.Array == ir.ArrayFixed {
+		if isStructRef(f.Type) {
+			return "true"
+		}
+		lhs, def := expr+"[i]", fieldDefaultExpr(f)
+		if isUnionRef(f.Type) {
+			lhs += ".Type"
+			def = f.Type.Name + "TypeNone"
+		}
+		g.pf("%sallDefault := true; for i := range %s { if %s != %s { allDefault = false; break } }\n", ind, expr, lhs, def)
+		return "!allDefault"
+	}
+	if isUnionRef(f.Type) {
+		return expr + ".Type != " + f.Type.Name + "TypeNone"
+	}
+	return expr + " != " + fieldDefaultExpr(f)
 }
 
-func (g *tableGen) emitWireArray(f *ir.Field, force, keyed bool) {
-	name := member(f)
-	expr := "value." + name
+// framed adds the ordinary value's L. A union arm already supplies its own
+// L, so its value is emitted bare. Union values themselves have no L.
+func (g *tableGen) emitWireValue(f *ir.Field, expr, writer, ind string, framed bool) {
+	g.emitStorageCheck(f, expr, ind)
+	switch {
+	case f.KeyEnum != "" || f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes:
+		g.emitWireArray(f, expr, writer, ind, framed)
+	case f.Type.Kind == ir.TString:
+		if framed {
+			g.pf("%s%s.PutLeb(uint64(%sLength))\n", ind, writer, expr)
+		}
+		g.pf("%s%s.Raw(%s[:%sLength])\n", ind, writer, expr, expr)
+	case f.Type.Kind == ir.TWString:
+		if framed {
+			g.pf("%s%s.PutLeb(uint64(%sLength)*2)\n", ind, writer, expr)
+		}
+		g.pf("%sfor i := int32(0); i < %sLength; i++ { %s.Put16(%s[i]) }\n", ind, expr, writer, expr)
+	case isStructRef(f.Type):
+		if !framed {
+			g.pf("%sif !%sSaveBody(%s,&%s) { return false }\n", ind, f.Type.Name, writerPointer(writer), expr)
+			return
+		}
+		g.pf("%s{\n%s mark := %s.Ids.Count\n%s n := %sMeasureBody(&%s,%s.Ids); if n < 0 { return false }\n", ind, ind, writer, ind, f.Type.Name, expr, writer)
+		g.pf("%s %s.PutLeb(uint64(n))\n%s if %s.Measuring { %s.Advance(n) } else {\n%s  %s.Ids.Truncate(mark)\n%s  if !%sSaveBody(%s,&%s) { return false }\n%s }\n%s}\n", ind, writer, ind, writer, writer, ind, writer, ind, f.Type.Name, writerPointer(writer), expr, ind, ind)
+	case isUnionRef(f.Type):
+		g.emitWireUnion(f.Type.Ref.(*ir.Union), expr, writer, ind)
+	default:
+		g.emitWireScalar(f, expr, writer, ind)
+	}
+}
+
+func (g *tableGen) nextWireWriter() string {
+	g.wireSerial++
+	return fmt.Sprintf("payload%d", g.wireSerial)
+}
+
+func (g *tableGen) emitWireArray(f *ir.Field, expr, writer, ind string, framed bool) {
+	body := g.nextWireWriter()
 	kind := ir.TableWireScalarKind(f)
 	count := fmt.Sprint(f.ArrayBound)
 	if f.Type.Kind == ir.TBytes {
@@ -135,104 +159,89 @@ func (g *tableGen) emitWireArray(f *ir.Field, force, keyed bool) {
 	} else if f.Array == ir.ArrayCounted {
 		count = expr + "Count"
 	}
-	if keyed {
+	if f.KeyEnum != "" {
 		count = keyedLoopBound(f)
 	}
-	if f.Type.Kind == ir.TBytes || f.Array == ir.ArrayCounted {
-		bound := f.ArrayBound
-		if f.Type.Kind == ir.TBytes {
-			bound = f.Type.Size
-		}
-		g.pf("\tif %s < 0 || %s > %d { return false }\n", count, count, bound)
+	g.pf("%s{\n", ind)
+	i := ind + "\t"
+	g.pf("%smark := %s.Ids.Count\n%s%s := TableWriter{Measuring:true, Ids:%s.Ids}; pairs := uint64(0)\n", i, writer, i, body, writer)
+	g.pf("%sfor i := 0; i < int(%s); i++ {\n", i, count)
+	g.emitWireArrayElement(f, expr+"[i]", body, i+"\t")
+	g.pf("%s pairs++\n%s}\n", i, i)
+	g.pf("%sif %s.Overflow { return false }; n := int64(1)+tableLebBytes(pairs)+%s.Offset\n", i, body, body)
+	if framed {
+		g.pf("%s%s.PutLeb(uint64(n))\n", i, writer)
 	}
-	g.pf("\t{\n")
-	// A scalar fixed array elides only when all elements have their defaults.
-	cond := count + " > 0"
-	if f.Array == ir.ArrayFixed && kind != tkTable && !keyed {
-		g.pf("\t\tallDefault := true\n\t\tfor i := 0; i < int(%s); i++ { if %s[i] != %s { allDefault = false; break } }\n", count, expr, fieldDefaultExpr(f))
-		cond = "!allDefault"
-	}
-	if force || f.Array == ir.ArrayFixed && kind == tkTable {
-		cond = "true"
-	}
-	g.pf("\t\tif %s {\n", cond)
-	g.pf("\t\t\tmark := w.Ids.Count\n\t\t\tref := w.Ids.Ref(0x%016x)\n\t\t\tstart := w.Ids.Count\n", ir.TableFieldWireId(f))
-	g.pf("\t\t\tbody := TableWriter{Measuring:true, Ids:w.Ids}\n\t\t\tpairs := uint64(0)\n")
-	g.pf("\t\t\tfor i := 0; i < int(%s); i++ {\n", count)
-	g.emitWireArrayElement(f, expr, kind, keyed, "body", "\t\t\t\t")
-	g.pf("\t\t\t\tpairs++\n\t\t\t}\n")
-	wireKind := tkArray
-	if keyed {
-		wireKind = tkKeyed
-	}
-	if keyed && !force {
-		g.pf("\t\t\tif pairs == 0 { w.Ids.Truncate(mark) } else {\n")
-	} else {
-		g.pf("\t\t\t_ = mark\n\t\t\t{\n")
-	}
-	g.pf("\t\t\t\tif body.Overflow { return false }\n\t\t\t\tsize := int64(1)+tableLebBytes(pairs)+body.Offset\n")
-	g.emitMeasuredFrame("ref", fmt.Sprint(wireKind), "size", "\t\t\t\t", func(ind string) {
-		g.pf("%sw.Put8(%d); w.PutLeb(pairs)\n", ind, kind)
-		g.pf("%sfor i := 0; i < int(%s); i++ {\n", ind, count)
-		g.emitWireArrayElement(f, expr, kind, keyed, "w", ind+"\t")
-		g.pf("%s}\n", ind)
-	})
-	g.pf("\t\t\t}\n\t\t}\n\t}\n")
+	g.pf("%sif %s.Measuring { %s.Advance(n) } else {\n%s %s.Ids.Truncate(mark); %s.Put8(%d); %s.PutLeb(pairs)\n", i, writer, writer, i, writer, writer, kind, writer)
+	g.pf("%s for i := 0; i < int(%s); i++ {\n", i, count)
+	g.emitWireArrayElement(f, expr+"[i]", writer, i+"\t\t")
+	g.pf("%s }\n%s}\n%s}\n", i, i, ind)
 }
 
-func writerPointer(name string) string {
-	if name == "w" {
-		return name
+func (g *tableGen) emitWireArrayElement(f *ir.Field, expr, writer, ind string) {
+	element := g.nextWireWriter()
+	elem := *f
+	elem.Array = ir.ArrayNone
+	elem.KeyEnum = ""
+	elem.Type.Optional = false
+	if f.Type.Kind == ir.TBytes {
+		elem.Type = ir.FieldType{Kind: ir.TInt, Width: 8}
 	}
-	return "&" + name
+	if f.KeyEnum == "" {
+		g.emitWireValue(&elem, expr, writer, ind, true)
+		return
+	}
+	g.pf("%s{\n", ind)
+	i := ind + "\t"
+	// Keyed entries each have their own L around the bare value.
+	g.pf("%smark := %s.Ids.Count\n%sid, named := %s(i+1).TableEnumId(); if !named { return false }; ref := %s.Ids.Ref(id); start := %s.Ids.Count\n", i, writer, i, f.KeyEnum, writer, writer)
+	g.pf("%s%s := TableWriter{Measuring:true, Ids:%s.Ids}\n", i, element, writer)
+	g.emitWireValue(&elem, expr, element, i, false)
+	cond := expr + " != " + fieldDefaultExpr(&elem)
+	if isStructRef(elem.Type) {
+		cond = element + ".Offset > 1"
+	} else if isUnionRef(elem.Type) {
+		cond = expr + ".Type != " + elem.Type.Name + "TypeNone"
+	}
+	g.pf("%sif !(%s) { %s.Ids.Truncate(mark); continue }\n%sif %s.Overflow { return false }\n", i, cond, writer, i, element)
+	g.pf("%s%s.PutLeb(ref); %s.PutLeb(uint64(%s.Offset))\n%sif %s.Measuring { %s.Advance(%s.Offset) } else {\n%s %s.Ids.Truncate(start)\n", i, writer, writer, element, i, writer, writer, element, i, writer)
+	g.emitWireValue(&elem, expr, writer, i+"\t", false)
+	g.pf("%s}\n%s}\n", i, ind)
 }
 
-func (g *tableGen) emitWireArrayElement(f *ir.Field, expr string, kind int, keyed bool, writer, ind string) {
-	if keyed {
-		if kind == tkTable {
-			g.pf("%selementMark := %s.Ids.Count\n", ind, writer)
-			g.pf("%skeyID, named := %s(i+1).TableEnumId(); if !named { return false }\n", ind, f.KeyEnum)
-			g.pf("%skeyRef := %s.Ids.Ref(keyID)\n", ind, writer)
-			g.pf("%selementStart := %s.Ids.Count\n", ind, writer)
-			g.pf("%sn := %sMeasureBody(&%s[i], %s.Ids); if n < 0 { return false }\n", ind, f.Type.Name, expr, writer)
-			g.pf("%sif n == 1 { %s.Ids.Truncate(elementMark); continue }\n", ind, writer)
-			g.pf("%s%s.PutLeb(keyRef); %s.PutLeb(uint64(n))\n", ind, writer, writer)
-			g.pf("%sif %s.Measuring { %s.Advance(n) } else {\n", ind, writer, writer)
-			g.pf("%s\t%s.Ids.Truncate(elementStart)\n%s\tif !%sSaveBody(%s, &%s[i]) { return false }\n%s}\n", ind, writer, ind, f.Type.Name, writerPointer(writer), expr, ind)
-			return
+func (g *tableGen) emitWireUnion(un *ir.Union, expr, writer, ind string) {
+	g.pf("%sswitch %s.Type {\n%scase %sTypeNone: %s.PutLeb(0)\n", ind, expr, ind, un.Name, writer)
+	for _, v := range un.Variants {
+		g.pf("%scase %sType%s:\n", ind, un.Name, ir.GoExportName(v.Name))
+		i := ind + "\t"
+		kind := ir.TableKindNoPayload
+		if !v.Void() {
+			kind = ir.TableWireFieldKind(v.F)
 		}
-		g.pf("%sif %s[i] == %s { continue }\n", ind, expr, fieldDefaultExpr(f))
-		g.pf("%skeyID, named := %s(i+1).TableEnumId(); if !named { return false }; %s.Id(keyID)\n", ind, f.KeyEnum, writer)
-		if enumRef(f) != nil {
-			g.pf("%selementID, named := %s[i].TableEnumId(); if !named { return false }\n", ind, expr)
-			g.pf("%selementRef := uint64(0); if %s[i] != %sNone { elementRef = %s.Ids.Ref(elementID) }\n", ind, expr, f.Type.Name, writer)
-			g.pf("%s%s.PutLeb(uint64(tableLebBytes(elementRef))); %s.PutLeb(elementRef)\n", ind, writer, writer)
-			return
+		g.pf("%sref := %s.Ids.Ref(0x%016x)\n", i, writer, ir.TableWireId(v.WireName()))
+		if v.Void() {
+			g.pf("%s%s.PutLeb(ref); %s.Put8(32); %s.PutLeb(0)\n", i, writer, writer, writer)
+			continue
 		}
-		g.pf("%s%s.PutLeb(%d)\n", ind, writer, ir.TableKindWidth(kind))
+		payload := g.nextWireWriter()
+		arm := expr + "." + ir.GoExportName(v.Name)
+		g.pf("%sstart := %s.Ids.Count; %s := TableWriter{Measuring:true, Ids:%s.Ids}\n", i, writer, payload, writer)
+		g.emitWireValue(v.F, arm, payload, i, false)
+		g.pf("%sif %s.Overflow { return false }; %s.PutLeb(ref); %s.Put8(%d); %s.PutLeb(uint64(%s.Offset))\n", i, payload, writer, writer, kind, writer, payload)
+		g.pf("%sif %s.Measuring { %s.Advance(%s.Offset) } else {\n%s %s.Ids.Truncate(start)\n", i, writer, writer, payload, i, writer)
+		g.emitWireValue(v.F, arm, writer, i+"\t", false)
+		g.pf("%s}\n", i)
 	}
-	g.emitWireElement(f, expr+"[i]", writer, ind, kind == tkTable)
+	g.pf("%sdefault: return false\n%s}\n", ind, ind)
 }
 
-func (g *tableGen) emitWireElement(f *ir.Field, expr, writer, ind string, framed bool) {
+func (g *tableGen) emitWireScalar(f *ir.Field, expr, writer, ind string) {
 	if enumRef(f) != nil {
-		g.pf("%s{\n%s\tid, named := %s.TableEnumId(); if !named { return false }\n", ind, ind, expr)
-		g.pf("%s\tif %s == %sNone { %s.PutLeb(0) } else { %s.Id(id) }\n%s}\n", ind, expr, f.Type.Name, writer, writer, ind)
+		g.pf("%s{ id, named := %s.TableEnumId(); if !named { return false }; if %s == %sNone { %s.PutLeb(0) } else { %s.Id(id) } }\n", ind, expr, expr, f.Type.Name, writer, writer)
 		return
 	}
 	kind := ir.TableWireScalarKind(f)
-	if f.Type.Kind == ir.TBytes {
-		kind = tkU8
-	}
 	switch kind {
-	case tkTable:
-		g.pf("%s{\n%s\tmark := %s.Ids.Count\n", ind, ind, writer)
-		g.pf("%s\tn := %sMeasureBody(&%s, %s.Ids); if n < 0 { return false }\n", ind, f.Type.Name, expr, writer)
-		if framed {
-			g.pf("%s\t%s.PutLeb(uint64(n))\n", ind, writer)
-		}
-		g.pf("%s\tif %s.Measuring { %s.Advance(n) } else {\n", ind, writer, writer)
-		g.pf("%s\t\t%s.Ids.Truncate(mark)\n%s\t\tif !%sSaveBody(%s, &%s) { return false }\n%s\t}\n%s}\n", ind, writer, ind, f.Type.Name, writerPointer(writer), expr, ind, ind)
 	case tkBool:
 		g.pf("%sif %s { %s.Put8(1) } else { %s.Put8(0) }\n", ind, expr, writer, writer)
 	case tkF32, tkF64:
@@ -244,6 +253,24 @@ func (g *tableGen) emitWireElement(f *ir.Field, expr, writer, ind string, framed
 		g.pf("%s%s.Put%d(math.Float%dbits(%s))\n", ind, writer, bits, bits, expr)
 	default:
 		width := ir.TableKindWidth(kind) * 8
-		g.pf("%s%s.Put%d(uint%d(%s))\n", ind, writer, width, width, expr)
+		if width == 128 {
+			g.pf("%s%s.Put64(%s.Lo); %s.Put64(%s.Hi)\n", ind, writer, expr, writer, expr)
+		} else {
+			g.pf("%s%s.Put%d(uint%d(%s))\n", ind, writer, width, width, expr)
+		}
 	}
+}
+
+func writerPointer(name string) string {
+	if name == "w" {
+		return name
+	}
+	return "&" + name
+}
+
+func byteValueRides(f *ir.Field, expr string) string {
+	if len(f.DefBytes) == 0 {
+		return expr + "Length > 0"
+	}
+	return fmt.Sprintf("%sLength != %d || string(%s[:%sLength]) != %q", expr, len(f.DefBytes), expr, expr, string(f.DefBytes))
 }

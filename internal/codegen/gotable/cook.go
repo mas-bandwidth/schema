@@ -405,6 +405,11 @@ func (g *cookGen) emitBlittableField(f *ir.Field, w *cookWriter) {
 		// <T>At is the one add that resolves it.
 		next()
 		g.sf("\t%s int64 // *%s: signed self-relative delta, zero is null (§6.3)\n", name, f.Type.Name)
+	case f.Type.Kind == ir.TWString:
+		next()
+		g.sf("\t%s [%d]uint16\n", name, f.Type.Size+1)
+		next()
+		g.sf("\t%sLength int32\n", name)
 	case f.Type.Kind == ir.TString:
 		next()
 		g.sf("\t%s [%d]byte // string(%d): buffer, used length beside it\n", name, f.Type.Size+1, f.Type.Size)
@@ -486,7 +491,10 @@ func (g *cookGen) emitRecordCheck(name string) {
 	}
 	spelled := name + "Row"
 	g.hf("\ttableCookLayoutSize(%q, unsafe.Sizeof(%s{}), %d)\n", spelled, spelled, ml.Size)
-	g.hf("\ttableCookLayoutSize(%q, unsafe.Alignof(%s{}), %d)\n", spelled+" alignment", spelled, ml.Align)
+	// Go caps native struct alignment at eight. Explicit padding preserves
+	// every model offset and stride; Open enforces the model's stronger
+	// alignment on the caller-owned byte region before exposing any row.
+	g.hf("\ttableCookLayoutSize(%q, unsafe.Alignof(%s{}), %d)\n", spelled+" alignment", spelled, min(ml.Align, 8))
 	for _, fl := range ml.Fields {
 		g.hf("\ttableCookLayoutOffset(%q, unsafe.Offsetof(%s{}.%s), %d)\n",
 			spelled+"."+ir.GoExportName(fl.Field.Name), spelled, ir.GoExportName(fl.Field.Name), fl.Offset)

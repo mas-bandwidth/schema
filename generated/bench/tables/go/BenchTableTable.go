@@ -3,7 +3,7 @@
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
 // package benchtable — the TABLE wire (docs/SPEC-TABLES.md): evolution-tolerant, neutral
-// bytes, no serialize dependency. Tables version by field id, never by the
+// bytes. Wide values use serialize.go storage. Tables version by field id, never by the
 // unit's protocol id.
 //
 // Measure/Save/Load are NAME-FIRST free functions over a *T: <Name>Measure
@@ -148,9 +148,12 @@ type TableFieldInfo struct {
 	CountOffset   uint32 // unsafe.Offsetof the count/length companion, or 0xffffffff
 	PresentOffset uint32 // unsafe.Offsetof the Present companion, or 0xffffffff
 
-	HasRange bool    // a declared [min, max] (int or float)
-	RangeMin float64 // NOTE: int64 ranges beyond 2^53 lose precision here
-	RangeMax float64
+	FracBits         uint8 // fixed-point binary scale
+	WideRange        bool
+	WideMin, WideMax [2]uint64 // exact two-complement raw bounds, low lane first
+	HasRange         bool      // a declared [min, max] (int or float)
+	RangeMin         float64   // NOTE: int64 ranges beyond 2^53 lose precision here
+	RangeMax         float64
 
 	// EnumMax bounds the vocabulary: enums, the highest valid value (None = 0
 	// is always valid); unions, the arm count (tag range [0, EnumMax]); a
@@ -204,8 +207,11 @@ type TableFieldInfo struct {
 // table-wire id come from the field's EnumName/VariantId functions at the same
 // tag, so nothing is spelled twice (docs/SPEC-TABLES.md §8).
 type TableUnionArmInfo struct {
-	Offset uint32                // unsafe.Offsetof the arm's payload within the union storage
-	Table  func() *TableTypeInfo // the arm payload's descriptor
+	Field  TableFieldInfo               // arm shape; offsets are relative to union storage
+	Void   bool                         // a selected payload-free arm
+	Reset  func(storage unsafe.Pointer) // establish selected payload defaults
+	Offset uint32                       // unsafe.Offsetof the arm's payload within the union storage
+	Table  func() *TableTypeInfo        // the arm payload's descriptor
 }
 
 // TableUnionInfo is a union field's shape: the tag, and the arms indexed by
@@ -552,8 +558,8 @@ func tableOpen(data []byte, report *TableReport) (TableReader, TableOpenVerdict)
 }
 
 func tableKindWidens(from, to uint8) bool {
-	return (from >= 2 && from <= 5 && to > from && to <= 5) ||
-		(from >= 6 && from <= 9 && to > from && to <= 9) || from == 10 && to == 11
+	return (from >= 2 && from <= 5 && (to > from && to <= 5 || to == 18)) ||
+		(from >= 6 && from <= 9 && (to > from && to <= 9 || to == 19)) || from == 10 && to == 11
 }
 
 func (r *TableReader) Unsigned(kind uint8) uint64 {
@@ -608,11 +614,39 @@ func tableUtf8Clamp(data []byte, n int64) int64 {
 	return n
 }
 
-// tableUnionArms is the unit's ONE arms table: one slot per union
-// FIELD, filled by the init() beside the descriptors that point into
-// it. One fixed name for the whole unit rather than one derived from
-// each declaration's own spelling, because a derived name is a name a
-// declaration can collide with (docs/SPEC-TABLES.md §11).
+func tableUtf16Valid(data []byte) bool {
+	if len(data)&1 != 0 {
+		return false
+	}
+	for i := 0; i < len(data); i += 2 {
+		u := binary.LittleEndian.Uint16(data[i:])
+		if u == 0 || u >= 0xdc00 && u <= 0xdfff {
+			return false
+		}
+		if u >= 0xd800 && u <= 0xdbff {
+			i += 2
+			if i >= len(data) {
+				return false
+			}
+			v := binary.LittleEndian.Uint16(data[i:])
+			if v < 0xdc00 || v > 0xdfff {
+				return false
+			}
+		}
+	}
+	return true
+}
+func tableUtf16Clamp(data []byte, keep int) int {
+	if keep > 0 && keep < len(data)/2 {
+		u := binary.LittleEndian.Uint16(data[(keep-1)*2:])
+		if u >= 0xd800 && u <= 0xdbff {
+			keep--
+		}
+	}
+	return keep
+}
+
+// One descriptor per union declaration, initialized after package data.
 var tableUnionArms = make([]TableUnionInfo, 1)
 
 // TableEnumId: TableWeapon on the TABLE wire rides as the 64-bit hash of its VARIANT
@@ -739,7 +773,6 @@ func TableEntityMeasureBody(value *TableEntity, ids *TableIds) int64 {
 	return w.Offset
 }
 
-// TableEntityMeasure returns the exact file size, or -1 for invalid storage.
 func TableEntityMeasure(value *TableEntity) int64 {
 	var ids TableIds
 	w := TableWriter{Measuring: true, Ids: &ids}
@@ -754,101 +787,127 @@ func TableEntityMeasure(value *TableEntity) int64 {
 	return w.Offset
 }
 
-// TableEntitySaveBody writes a body under the writer's shared id vocabulary.
 func TableEntitySaveBody(w *TableWriter, value *TableEntity) bool {
-	if value.EntityId != 0 {
-		w.Id(0x23fcfd6678e36712)
-		w.Put8(7) // entity_id
-		w.Put16(uint16(value.EntityId))
+	{
+		if value.EntityId != 0 {
+			w.Id(0x23fcfd6678e36712)
+			w.Put8(7)
+			w.Put16(uint16(value.EntityId))
+		}
 	}
-	if value.PosX != 0 {
-		w.Id(0xcb4b37357667310e)
-		w.Put8(4) // pos_x
-		w.Put32(uint32(value.PosX))
+	{
+		if value.PosX != 0 {
+			w.Id(0xcb4b37357667310e)
+			w.Put8(4)
+			w.Put32(uint32(value.PosX))
+		}
 	}
-	if value.PosY != 0 {
-		w.Id(0xcb4b3835766732c1)
-		w.Put8(4) // pos_y
-		w.Put32(uint32(value.PosY))
+	{
+		if value.PosY != 0 {
+			w.Id(0xcb4b3835766732c1)
+			w.Put8(4)
+			w.Put32(uint32(value.PosY))
+		}
 	}
-	if value.PosZ != 0 {
-		w.Id(0xcb4b353576672da8)
-		w.Put8(4) // pos_z
-		w.Put32(uint32(value.PosZ))
+	{
+		if value.PosZ != 0 {
+			w.Id(0xcb4b353576672da8)
+			w.Put8(4)
+			w.Put32(uint32(value.PosZ))
+		}
 	}
-	if value.Yaw != 0 {
-		w.Id(0xb54d8e19798e16e8)
-		w.Put8(7) // yaw
-		w.Put16(uint16(value.Yaw))
+	{
+		if value.Yaw != 0 {
+			w.Id(0xb54d8e19798e16e8)
+			w.Put8(7)
+			w.Put16(uint16(value.Yaw))
+		}
 	}
-	if value.Pitch != 0 {
-		w.Id(0x53a9f665a90cc1b1)
-		w.Put8(7) // pitch
-		w.Put16(uint16(value.Pitch))
+	{
+		if value.Pitch != 0 {
+			w.Id(0x53a9f665a90cc1b1)
+			w.Put8(7)
+			w.Put16(uint16(value.Pitch))
+		}
 	}
-	if value.VelX != 0 {
-		w.Id(0x6cede6b6eb60ee67)
-		w.Put8(4) // vel_x
-		w.Put32(uint32(value.VelX))
+	{
+		if value.VelX != 0 {
+			w.Id(0x6cede6b6eb60ee67)
+			w.Put8(4)
+			w.Put32(uint32(value.VelX))
+		}
 	}
-	if value.VelY != 0 {
-		w.Id(0x6cede5b6eb60ecb4)
-		w.Put8(4) // vel_y
-		w.Put32(uint32(value.VelY))
+	{
+		if value.VelY != 0 {
+			w.Id(0x6cede5b6eb60ecb4)
+			w.Put8(4)
+			w.Put32(uint32(value.VelY))
+		}
 	}
-	if value.VelZ != 0 {
-		w.Id(0x6cede8b6eb60f1cd)
-		w.Put8(4) // vel_z
-		w.Put32(uint32(value.VelZ))
+	{
+		if value.VelZ != 0 {
+			w.Id(0x6cede8b6eb60f1cd)
+			w.Put8(4)
+			w.Put32(uint32(value.VelZ))
+		}
 	}
-	if value.Health != 0 {
-		w.Id(0x7f69d4b5288ba9cf)
-		w.Put8(4) // health
-		w.Put32(uint32(value.Health))
+	{
+		if value.Health != 0 {
+			w.Id(0x7f69d4b5288ba9cf)
+			w.Put8(4)
+			w.Put32(uint32(value.Health))
+		}
 	}
-	if value.Weapon != TableWeaponNone {
-		w.Id(0xa0b610205f2c6e01)
-		w.Put8(30) // weapon
-		{
-			id, named := value.Weapon.TableEnumId()
-			if !named {
-				return false
+	{
+		if value.Weapon != TableWeaponNone {
+			w.Id(0xa0b610205f2c6e01)
+			w.Put8(30)
+			{
+				id, named := value.Weapon.TableEnumId()
+				if !named {
+					return false
+				}
+				if value.Weapon == TableWeaponNone {
+					w.PutLeb(0)
+				} else {
+					w.Id(id)
+				}
 			}
-			if value.Weapon == TableWeaponNone {
-				w.PutLeb(0)
+		}
+	}
+	{
+		if value.Damage != 0 {
+			w.Id(0x7f6308be8ab37fc0)
+			w.Put8(9)
+			w.Put64(uint64(value.Damage))
+		}
+	}
+	{
+		if value.Moving != false {
+			w.Id(0x11a44fc1d1243da7)
+			w.Put8(1)
+			if value.Moving {
+				w.Put8(1)
 			} else {
-				w.Id(id)
+				w.Put8(0)
 			}
 		}
 	}
-	if value.Damage != 0 {
-		w.Id(0x7f6308be8ab37fc0)
-		w.Put8(9) // damage
-		w.Put64(uint64(value.Damage))
-	}
-	if value.Moving != false {
-		w.Id(0x11a44fc1d1243da7)
-		w.Put8(1) // moving
-		if value.Moving {
+	{
+		if value.Firing != false {
+			w.Id(0x7674cfd19b9031ca)
 			w.Put8(1)
-		} else {
-			w.Put8(0)
-		}
-	}
-	if value.Firing != false {
-		w.Id(0x7674cfd19b9031ca)
-		w.Put8(1) // firing
-		if value.Firing {
-			w.Put8(1)
-		} else {
-			w.Put8(0)
+			if value.Firing {
+				w.Put8(1)
+			} else {
+				w.Put8(0)
+			}
 		}
 	}
 	w.Put8(0)
 	return !w.Overflow && !w.Ids.Overflow
 }
 
-// TableEntitySave writes a form-1 file, returning -1 if storage or capacity is invalid.
 func TableEntitySave(value *TableEntity, buffer []byte) int64 {
 	var ids TableIds
 	w := TableWriter{Buffer: buffer, Ids: &ids}
@@ -1286,7 +1345,6 @@ func TableStatMeasureBody(value *TableStat, ids *TableIds) int64 {
 	return w.Offset
 }
 
-// TableStatMeasure returns the exact file size, or -1 for invalid storage.
 func TableStatMeasure(value *TableStat) int64 {
 	var ids TableIds
 	w := TableWriter{Measuring: true, Ids: &ids}
@@ -1301,23 +1359,25 @@ func TableStatMeasure(value *TableStat) int64 {
 	return w.Offset
 }
 
-// TableStatSaveBody writes a body under the writer's shared id vocabulary.
 func TableStatSaveBody(w *TableWriter, value *TableStat) bool {
-	if value.StatId != 0 {
-		w.Id(0x80ab75f0866dbf65)
-		w.Put8(6) // stat_id
-		w.Put8(uint8(value.StatId))
+	{
+		if value.StatId != 0 {
+			w.Id(0x80ab75f0866dbf65)
+			w.Put8(6)
+			w.Put8(uint8(value.StatId))
+		}
 	}
-	if value.Delta != 0 {
-		w.Id(0x52076675ec13a0c1)
-		w.Put8(4) // delta
-		w.Put32(uint32(value.Delta))
+	{
+		if value.Delta != 0 {
+			w.Id(0x52076675ec13a0c1)
+			w.Put8(4)
+			w.Put32(uint32(value.Delta))
+		}
 	}
 	w.Put8(0)
 	return !w.Overflow && !w.Ids.Overflow
 }
 
-// TableStatSave writes a form-1 file, returning -1 if storage or capacity is invalid.
 func TableStatSave(value *TableStat, buffer []byte) int64 {
 	var ids TableIds
 	w := TableWriter{Buffer: buffer, Ids: &ids}
@@ -1490,7 +1550,6 @@ func TableMixedMeasureBody(value *TableMixed, ids *TableIds) int64 {
 	return w.Offset
 }
 
-// TableMixedMeasure returns the exact file size, or -1 for invalid storage.
 func TableMixedMeasure(value *TableMixed) int64 {
 	var ids TableIds
 	w := TableWriter{Measuring: true, Ids: &ids}
@@ -1505,100 +1564,119 @@ func TableMixedMeasure(value *TableMixed) int64 {
 	return w.Offset
 }
 
-// TableMixedSaveBody writes a body under the writer's shared id vocabulary.
 func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
-	if value.ProtocolMagic != 0 {
-		w.Id(0x6a5a70d91aa115fd)
-		w.Put8(7) // protocol_magic
-		w.Put16(uint16(value.ProtocolMagic))
-	}
-	if value.Sequence != 0 {
-		w.Id(0xaa38aca481f528a8)
-		w.Put8(7) // sequence
-		w.Put16(uint16(value.Sequence))
-	}
-	if value.AckSequence != 0 {
-		w.Id(0x0dbe005c56697c3e)
-		w.Put8(4) // ack_sequence
-		w.Put32(uint32(value.AckSequence))
-	}
-	if value.AckBits != 0 {
-		w.Id(0x9bae0da8b829ee03)
-		w.Put8(8) // ack_bits
-		w.Put32(uint32(value.AckBits))
-	}
-	if value.SessionId != 0 {
-		w.Id(0xb7d7b5650a590b05)
-		w.Put8(9) // session_id
-		w.Put64(uint64(value.SessionId))
-	}
-	if value.ClientId != 0 {
-		w.Id(0x6d7b98e2d095967e)
-		w.Put8(8) // client_id
-		w.Put32(uint32(value.ClientId))
-	}
-	if value.Nonce != 1 {
-		w.Id(0x73a94c71d60dc0d8)
-		w.Put8(9) // nonce
-		w.Put64(uint64(value.Nonce))
-	}
-	if value.WorldTime != 0 {
-		w.Id(0x3eee6b51be54fc85)
-		w.Put8(5) // world_time
-		w.Put64(uint64(value.WorldTime))
-	}
-	if value.FrameTick != 0 {
-		w.Id(0x7bbc035f7b6d0112)
-		w.Put8(9) // frame_tick
-		w.Put64(uint64(value.FrameTick))
-	}
-	if value.ServerTime != 0.0 {
-		w.Id(0x3c460475f9be69c6)
-		w.Put8(10) // server_time
-		w.Put32(math.Float32bits(value.ServerTime))
-	}
-	if value.EntitiesCount < 0 || value.EntitiesCount > 8 {
-		return false
+	{
+		if value.ProtocolMagic != 0 {
+			w.Id(0x6a5a70d91aa115fd)
+			w.Put8(7)
+			w.Put16(uint16(value.ProtocolMagic))
+		}
 	}
 	{
+		if value.Sequence != 0 {
+			w.Id(0xaa38aca481f528a8)
+			w.Put8(7)
+			w.Put16(uint16(value.Sequence))
+		}
+	}
+	{
+		if value.AckSequence != 0 {
+			w.Id(0x0dbe005c56697c3e)
+			w.Put8(4)
+			w.Put32(uint32(value.AckSequence))
+		}
+	}
+	{
+		if value.AckBits != 0 {
+			w.Id(0x9bae0da8b829ee03)
+			w.Put8(8)
+			w.Put32(uint32(value.AckBits))
+		}
+	}
+	{
+		if value.SessionId != 0 {
+			w.Id(0xb7d7b5650a590b05)
+			w.Put8(9)
+			w.Put64(uint64(value.SessionId))
+		}
+	}
+	{
+		if value.ClientId != 0 {
+			w.Id(0x6d7b98e2d095967e)
+			w.Put8(8)
+			w.Put32(uint32(value.ClientId))
+		}
+	}
+	{
+		if value.Nonce != 1 {
+			w.Id(0x73a94c71d60dc0d8)
+			w.Put8(9)
+			w.Put64(uint64(value.Nonce))
+		}
+	}
+	{
+		if value.WorldTime != 0 {
+			w.Id(0x3eee6b51be54fc85)
+			w.Put8(5)
+			w.Put64(uint64(value.WorldTime))
+		}
+	}
+	{
+		if value.FrameTick != 0 {
+			w.Id(0x7bbc035f7b6d0112)
+			w.Put8(9)
+			w.Put64(uint64(value.FrameTick))
+		}
+	}
+	{
+		if value.ServerTime != 0.0 {
+			w.Id(0x3c460475f9be69c6)
+			w.Put8(10)
+			w.Put32(math.Float32bits(value.ServerTime))
+		}
+	}
+	{
+		if value.EntitiesCount < 0 || value.EntitiesCount > 8 {
+			return false
+		}
 		if value.EntitiesCount > 0 {
-			mark := w.Ids.Count
-			ref := w.Ids.Ref(0x935d0fb07bb3822a)
-			start := w.Ids.Count
-			body := TableWriter{Measuring: true, Ids: w.Ids}
-			pairs := uint64(0)
-			for i := 0; i < int(value.EntitiesCount); i++ {
-				{
-					mark := body.Ids.Count
-					n := TableEntityMeasureBody(&value.Entities[i], body.Ids)
-					if n < 0 {
-						return false
-					}
-					body.PutLeb(uint64(n))
-					if body.Measuring {
-						body.Advance(n)
-					} else {
-						body.Ids.Truncate(mark)
-						if !TableEntitySaveBody(&body, &value.Entities[i]) {
+			w.Id(0x935d0fb07bb3822a)
+			w.Put8(14)
+			if value.EntitiesCount < 0 || value.EntitiesCount > 8 {
+				return false
+			}
+			{
+				mark := w.Ids.Count
+				payload1 := TableWriter{Measuring: true, Ids: w.Ids}
+				pairs := uint64(0)
+				for i := 0; i < int(value.EntitiesCount); i++ {
+					{
+						mark := payload1.Ids.Count
+						n := TableEntityMeasureBody(&value.Entities[i], payload1.Ids)
+						if n < 0 {
 							return false
 						}
+						payload1.PutLeb(uint64(n))
+						if payload1.Measuring {
+							payload1.Advance(n)
+						} else {
+							payload1.Ids.Truncate(mark)
+							if !TableEntitySaveBody(&payload1, &value.Entities[i]) {
+								return false
+							}
+						}
 					}
+					pairs++
 				}
-				pairs++
-			}
-			_ = mark
-			{
-				if body.Overflow {
+				if payload1.Overflow {
 					return false
 				}
-				size := int64(1) + tableLebBytes(pairs) + body.Offset
+				n := int64(1) + tableLebBytes(pairs) + payload1.Offset
+				w.PutLeb(uint64(n))
 				if w.Measuring {
-					w.Advance(tableLebBytes(ref) + 1 + tableLebBytes(uint64(size)) + size)
+					w.Advance(n)
 				} else {
-					w.Ids.Truncate(start)
-					w.PutLeb(ref)
-					w.Put8(14)
-					w.PutLeb(uint64(size))
+					w.Ids.Truncate(mark)
 					w.Put8(13)
 					w.PutLeb(pairs)
 					for i := 0; i < int(value.EntitiesCount); i++ {
@@ -1623,48 +1701,48 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 			}
 		}
 	}
-	if value.StatsCount < 0 || value.StatsCount > 80 {
-		return false
-	}
 	{
+		if value.StatsCount < 0 || value.StatsCount > 80 {
+			return false
+		}
 		if value.StatsCount > 0 {
-			mark := w.Ids.Count
-			ref := w.Ids.Ref(0xee639cad45b1994c)
-			start := w.Ids.Count
-			body := TableWriter{Measuring: true, Ids: w.Ids}
-			pairs := uint64(0)
-			for i := 0; i < int(value.StatsCount); i++ {
-				{
-					mark := body.Ids.Count
-					n := TableStatMeasureBody(&value.Stats[i], body.Ids)
-					if n < 0 {
-						return false
-					}
-					body.PutLeb(uint64(n))
-					if body.Measuring {
-						body.Advance(n)
-					} else {
-						body.Ids.Truncate(mark)
-						if !TableStatSaveBody(&body, &value.Stats[i]) {
+			w.Id(0xee639cad45b1994c)
+			w.Put8(14)
+			if value.StatsCount < 0 || value.StatsCount > 80 {
+				return false
+			}
+			{
+				mark := w.Ids.Count
+				payload4 := TableWriter{Measuring: true, Ids: w.Ids}
+				pairs := uint64(0)
+				for i := 0; i < int(value.StatsCount); i++ {
+					{
+						mark := payload4.Ids.Count
+						n := TableStatMeasureBody(&value.Stats[i], payload4.Ids)
+						if n < 0 {
 							return false
 						}
+						payload4.PutLeb(uint64(n))
+						if payload4.Measuring {
+							payload4.Advance(n)
+						} else {
+							payload4.Ids.Truncate(mark)
+							if !TableStatSaveBody(&payload4, &value.Stats[i]) {
+								return false
+							}
+						}
 					}
+					pairs++
 				}
-				pairs++
-			}
-			_ = mark
-			{
-				if body.Overflow {
+				if payload4.Overflow {
 					return false
 				}
-				size := int64(1) + tableLebBytes(pairs) + body.Offset
+				n := int64(1) + tableLebBytes(pairs) + payload4.Offset
+				w.PutLeb(uint64(n))
 				if w.Measuring {
-					w.Advance(tableLebBytes(ref) + 1 + tableLebBytes(uint64(size)) + size)
+					w.Advance(n)
 				} else {
-					w.Ids.Truncate(start)
-					w.PutLeb(ref)
-					w.Put8(14)
-					w.PutLeb(uint64(size))
+					w.Ids.Truncate(mark)
 					w.Put8(13)
 					w.PutLeb(pairs)
 					for i := 0; i < int(value.StatsCount); i++ {
@@ -1689,102 +1767,109 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 			}
 		}
 	}
-	switch value.GameEvent.Type {
-	case TableEventTypeNone:
-	case TableEventTypeHit:
-		w.Id(0x2e35dc5321aa5790)
-		w.Put8(15) // game_event
-		ref := w.Ids.Ref(0x33732819300680aa)
-		start := w.Ids.Count
-		body := TableHitEventMeasureBody(&value.GameEvent.Hit, w.Ids)
-		if body < 0 {
-			return false
-		}
-		if w.Measuring {
-			w.Advance(tableLebBytes(ref) + 1 + tableLebBytes(uint64(body)) + body)
-		} else {
-			w.Ids.Truncate(start)
-			w.PutLeb(ref)
-			w.Put8(13)
-			w.PutLeb(uint64(body))
-			if !TableHitEventSaveBody(w, &value.GameEvent.Hit) {
+	{
+		if value.GameEvent.Type != TableEventTypeNone {
+			w.Id(0x2e35dc5321aa5790)
+			w.Put8(15)
+			switch value.GameEvent.Type {
+			case TableEventTypeNone:
+				w.PutLeb(0)
+			case TableEventTypeHit:
+				ref := w.Ids.Ref(0x33732819300680aa)
+				start := w.Ids.Count
+				payload7 := TableWriter{Measuring: true, Ids: w.Ids}
+				if !TableHitEventSaveBody(&payload7, &value.GameEvent.Hit) {
+					return false
+				}
+				if payload7.Overflow {
+					return false
+				}
+				w.PutLeb(ref)
+				w.Put8(13)
+				w.PutLeb(uint64(payload7.Offset))
+				if w.Measuring {
+					w.Advance(payload7.Offset)
+				} else {
+					w.Ids.Truncate(start)
+					if !TableHitEventSaveBody(w, &value.GameEvent.Hit) {
+						return false
+					}
+				}
+			case TableEventTypeChat:
+				ref := w.Ids.Ref(0xf2a38d910b5b348b)
+				start := w.Ids.Count
+				payload8 := TableWriter{Measuring: true, Ids: w.Ids}
+				if !TableChatEventSaveBody(&payload8, &value.GameEvent.Chat) {
+					return false
+				}
+				if payload8.Overflow {
+					return false
+				}
+				w.PutLeb(ref)
+				w.Put8(13)
+				w.PutLeb(uint64(payload8.Offset))
+				if w.Measuring {
+					w.Advance(payload8.Offset)
+				} else {
+					w.Ids.Truncate(start)
+					if !TableChatEventSaveBody(w, &value.GameEvent.Chat) {
+						return false
+					}
+				}
+			case TableEventTypePickup:
+				ref := w.Ids.Ref(0x9fa3a41c86ecb765)
+				start := w.Ids.Count
+				payload9 := TableWriter{Measuring: true, Ids: w.Ids}
+				if !TablePickupEventSaveBody(&payload9, &value.GameEvent.Pickup) {
+					return false
+				}
+				if payload9.Overflow {
+					return false
+				}
+				w.PutLeb(ref)
+				w.Put8(13)
+				w.PutLeb(uint64(payload9.Offset))
+				if w.Measuring {
+					w.Advance(payload9.Offset)
+				} else {
+					w.Ids.Truncate(start)
+					if !TablePickupEventSaveBody(w, &value.GameEvent.Pickup) {
+						return false
+					}
+				}
+			default:
 				return false
 			}
 		}
-	case TableEventTypeChat:
-		w.Id(0x2e35dc5321aa5790)
-		w.Put8(15) // game_event
-		ref := w.Ids.Ref(0xf2a38d910b5b348b)
-		start := w.Ids.Count
-		body := TableChatEventMeasureBody(&value.GameEvent.Chat, w.Ids)
-		if body < 0 {
-			return false
-		}
-		if w.Measuring {
-			w.Advance(tableLebBytes(ref) + 1 + tableLebBytes(uint64(body)) + body)
-		} else {
-			w.Ids.Truncate(start)
-			w.PutLeb(ref)
-			w.Put8(13)
-			w.PutLeb(uint64(body))
-			if !TableChatEventSaveBody(w, &value.GameEvent.Chat) {
-				return false
-			}
-		}
-	case TableEventTypePickup:
-		w.Id(0x2e35dc5321aa5790)
-		w.Put8(15) // game_event
-		ref := w.Ids.Ref(0x9fa3a41c86ecb765)
-		start := w.Ids.Count
-		body := TablePickupEventMeasureBody(&value.GameEvent.Pickup, w.Ids)
-		if body < 0 {
-			return false
-		}
-		if w.Measuring {
-			w.Advance(tableLebBytes(ref) + 1 + tableLebBytes(uint64(body)) + body)
-		} else {
-			w.Ids.Truncate(start)
-			w.PutLeb(ref)
-			w.Put8(13)
-			w.PutLeb(uint64(body))
-			if !TablePickupEventSaveBody(w, &value.GameEvent.Pickup) {
-				return false
-			}
-		}
-	default:
-		return false
 	}
 	{
 		allDefault := true
-		for i := 0; i < int(4); i++ {
+		for i := range value.Loadout {
 			if value.Loadout[i] != 0 {
 				allDefault = false
 				break
 			}
 		}
 		if !allDefault {
-			mark := w.Ids.Count
-			ref := w.Ids.Ref(0x5759ce7586bbb5a3)
-			start := w.Ids.Count
-			body := TableWriter{Measuring: true, Ids: w.Ids}
-			pairs := uint64(0)
-			for i := 0; i < int(4); i++ {
-				body.Put8(uint8(value.Loadout[i]))
-				pairs++
-			}
-			_ = mark
+			w.Id(0x5759ce7586bbb5a3)
+			w.Put8(14)
 			{
-				if body.Overflow {
+				mark := w.Ids.Count
+				payload10 := TableWriter{Measuring: true, Ids: w.Ids}
+				pairs := uint64(0)
+				for i := 0; i < int(4); i++ {
+					payload10.Put8(uint8(value.Loadout[i]))
+					pairs++
+				}
+				if payload10.Overflow {
 					return false
 				}
-				size := int64(1) + tableLebBytes(pairs) + body.Offset
+				n := int64(1) + tableLebBytes(pairs) + payload10.Offset
+				w.PutLeb(uint64(n))
 				if w.Measuring {
-					w.Advance(tableLebBytes(ref) + 1 + tableLebBytes(uint64(size)) + size)
+					w.Advance(n)
 				} else {
-					w.Ids.Truncate(start)
-					w.PutLeb(ref)
-					w.Put8(14)
-					w.PutLeb(uint64(size))
+					w.Ids.Truncate(mark)
 					w.Put8(6)
 					w.PutLeb(pairs)
 					for i := 0; i < int(4); i++ {
@@ -1794,42 +1879,47 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 			}
 		}
 	}
-	if value.PlayerNameLength < 0 || value.PlayerNameLength > 15 {
-		return false
-	}
-	if value.PlayerNameLength > 0 {
-		w.Id(0x13a62f542cf8e86e)
-		w.Put8(12) // player_name
-		w.PutLeb(uint64(value.PlayerNameLength))
-		w.Raw(value.PlayerName[:value.PlayerNameLength])
-	}
-	if value.PayloadLength < 0 || value.PayloadLength > 16 {
-		return false
+	{
+		if value.PlayerNameLength < 0 || value.PlayerNameLength > 15 {
+			return false
+		}
+		if value.PlayerNameLength > 0 {
+			w.Id(0x13a62f542cf8e86e)
+			w.Put8(12)
+			if value.PlayerNameLength < 0 || value.PlayerNameLength > 15 {
+				return false
+			}
+			w.PutLeb(uint64(value.PlayerNameLength))
+			w.Raw(value.PlayerName[:value.PlayerNameLength])
+		}
 	}
 	{
+		if value.PayloadLength < 0 || value.PayloadLength > 16 {
+			return false
+		}
 		if value.PayloadLength > 0 {
-			mark := w.Ids.Count
-			ref := w.Ids.Ref(0xcfb8a9d063b5e9e5)
-			start := w.Ids.Count
-			body := TableWriter{Measuring: true, Ids: w.Ids}
-			pairs := uint64(0)
-			for i := 0; i < int(value.PayloadLength); i++ {
-				body.Put8(uint8(value.Payload[i]))
-				pairs++
+			w.Id(0xcfb8a9d063b5e9e5)
+			w.Put8(14)
+			if value.PayloadLength < 0 || value.PayloadLength > 16 {
+				return false
 			}
-			_ = mark
 			{
-				if body.Overflow {
+				mark := w.Ids.Count
+				payload13 := TableWriter{Measuring: true, Ids: w.Ids}
+				pairs := uint64(0)
+				for i := 0; i < int(value.PayloadLength); i++ {
+					payload13.Put8(uint8(value.Payload[i]))
+					pairs++
+				}
+				if payload13.Overflow {
 					return false
 				}
-				size := int64(1) + tableLebBytes(pairs) + body.Offset
+				n := int64(1) + tableLebBytes(pairs) + payload13.Offset
+				w.PutLeb(uint64(n))
 				if w.Measuring {
-					w.Advance(tableLebBytes(ref) + 1 + tableLebBytes(uint64(size)) + size)
+					w.Advance(n)
 				} else {
-					w.Ids.Truncate(start)
-					w.PutLeb(ref)
-					w.Put8(14)
-					w.PutLeb(uint64(size))
+					w.Ids.Truncate(mark)
 					w.Put8(6)
 					w.PutLeb(pairs)
 					for i := 0; i < int(value.PayloadLength); i++ {
@@ -1839,79 +1929,102 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 			}
 		}
 	}
-	if value.AimX != 0.0 {
-		w.Id(0xdbaf7be5e24296c9)
-		w.Put8(10) // aim_x
-		w.Put32(math.Float32bits(value.AimX))
+	{
+		if value.AimX != 0.0 {
+			w.Id(0xdbaf7be5e24296c9)
+			w.Put8(10)
+			w.Put32(math.Float32bits(value.AimX))
+		}
 	}
-	if value.AimY != 0.0 {
-		w.Id(0xdbaf7ae5e2429516)
-		w.Put8(10) // aim_y
-		w.Put32(math.Float32bits(value.AimY))
+	{
+		if value.AimY != 0.0 {
+			w.Id(0xdbaf7ae5e2429516)
+			w.Put8(10)
+			w.Put32(math.Float32bits(value.AimY))
+		}
 	}
-	if value.AimZ != 0.0 {
-		w.Id(0xdbaf79e5e2429363)
-		w.Put8(10) // aim_z
-		w.Put32(math.Float32bits(value.AimZ))
+	{
+		if value.AimZ != 0.0 {
+			w.Id(0xdbaf79e5e2429363)
+			w.Put8(10)
+			w.Put32(math.Float32bits(value.AimZ))
+		}
 	}
-	if value.Recoil != 0.0 {
-		w.Id(0x9cef31fff7e2e457)
-		w.Put8(10) // recoil
-		w.Put32(math.Float32bits(value.Recoil))
+	{
+		if value.Recoil != 0.0 {
+			w.Id(0x9cef31fff7e2e457)
+			w.Put8(10)
+			w.Put32(math.Float32bits(value.Recoil))
+		}
 	}
-	if value.Drift != 0.0 {
-		w.Id(0x5ab3f9c9341f6c04)
-		w.Put8(11) // drift
-		w.Put64(math.Float64bits(value.Drift))
+	{
+		if value.Drift != 0.0 {
+			w.Id(0x5ab3f9c9341f6c04)
+			w.Put8(11)
+			w.Put64(math.Float64bits(value.Drift))
+		}
 	}
-	if value.WideKey != 0 {
-		w.Id(0xa3348580461faf16)
-		w.Put8(9) // wide_key
-		w.Put64(uint64(value.WideKey))
+	{
+		if value.WideKey != 0 {
+			w.Id(0xa3348580461faf16)
+			w.Put8(9)
+			w.Put64(uint64(value.WideKey))
+		}
 	}
-	if value.Flux != 0 {
-		w.Id(0xd61bdd7908af2642)
-		w.Put8(5) // flux
-		w.Put64(uint64(value.Flux))
+	{
+		if value.Flux != 0 {
+			w.Id(0xd61bdd7908af2642)
+			w.Put8(5)
+			w.Put64(uint64(value.Flux))
+		}
 	}
-	if value.Ping != 0.0 {
-		w.Id(0xbf30e00dc53307a9)
-		w.Put8(10) // ping
-		w.Put32(math.Float32bits(value.Ping))
+	{
+		if value.Ping != 0.0 {
+			w.Id(0xbf30e00dc53307a9)
+			w.Put8(10)
+			w.Put32(math.Float32bits(value.Ping))
+		}
 	}
-	if value.CrcHint != 0 {
-		w.Id(0x560d6527ccd8515f)
-		w.Put8(8) // crc_hint
-		w.Put32(uint32(value.CrcHint))
+	{
+		if value.CrcHint != 0 {
+			w.Id(0x560d6527ccd8515f)
+			w.Put8(8)
+			w.Put32(uint32(value.CrcHint))
+		}
 	}
-	if value.HasExtra != false {
-		w.Id(0xc08292176cfd8672)
-		w.Put8(1) // has_extra
-		if value.HasExtra {
+	{
+		if value.HasExtra != false {
+			w.Id(0xc08292176cfd8672)
 			w.Put8(1)
-		} else {
-			w.Put8(0)
+			if value.HasExtra {
+				w.Put8(1)
+			} else {
+				w.Put8(0)
+			}
 		}
 	}
 	if value.HasExtra {
-		if value.Extra != 0 {
-			w.Id(0xfd29ee12a979cb69)
-			w.Put8(4) // extra
-			w.Put32(uint32(value.Extra))
+		{
+			if value.Extra != 0 {
+				w.Id(0xfd29ee12a979cb69)
+				w.Put8(4)
+				w.Put32(uint32(value.Extra))
+			}
 		}
 	}
 	if !value.HasExtra {
-		if value.IdleTicks != 0 {
-			w.Id(0x78101ac0aa8cbcfe)
-			w.Put8(4) // idle_ticks
-			w.Put32(uint32(value.IdleTicks))
+		{
+			if value.IdleTicks != 0 {
+				w.Id(0x78101ac0aa8cbcfe)
+				w.Put8(4)
+				w.Put32(uint32(value.IdleTicks))
+			}
 		}
 	}
 	w.Put8(0)
 	return !w.Overflow && !w.Ids.Overflow
 }
 
-// TableMixedSave writes a form-1 file, returning -1 if storage or capacity is invalid.
 func TableMixedSave(value *TableMixed, buffer []byte) int64 {
 	var ids TableIds
 	w := TableWriter{Buffer: buffer, Ids: &ids}
@@ -2293,62 +2406,67 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				}
 				break
 			}
-			armRef, ok := r.Leb()
-			if !ok {
-				r.Report.Malformed = true
-				return false
-			}
-			if armRef == 0 {
-				value.GameEvent.Type = TableEventTypeNone
-			} else {
-				armID, ok := r.Resolve(armRef)
-				if !ok || !r.Has(1) {
-					r.Report.Malformed = true
-					return false
-				}
-				armKind := r.Get8()
-				arm, ok := r.Body()
+			{
+				armRef, ok := r.Leb()
 				if !ok {
 					r.Report.Malformed = true
 					return false
 				}
-				value.GameEvent.Type = TableEventTypeNone
-				switch armID {
-				case 0x33732819300680aa:
-					if armKind != 13 {
-						r.Report.KindMismatch++
-						break
-					}
-					value.GameEvent.Type = TableEventTypeHit
-					TableHitEventLoadBody(&arm, &value.GameEvent.Hit)
-					if arm.Offset != int64(len(arm.Buffer)) {
+				if armRef == 0 {
+					value.GameEvent.Type = TableEventTypeNone
+				} else {
+					armID, ok := r.Resolve(armRef)
+					if !ok || !r.Has(1) {
 						r.Report.Malformed = true
-						value.GameEvent.Type = TableEventTypeNone
+						return false
 					}
-				case 0xf2a38d910b5b348b:
-					if armKind != 13 {
-						r.Report.KindMismatch++
-						break
-					}
-					value.GameEvent.Type = TableEventTypeChat
-					TableChatEventLoadBody(&arm, &value.GameEvent.Chat)
-					if arm.Offset != int64(len(arm.Buffer)) {
+					armKind := r.Get8()
+					payload16, ok := r.Body()
+					if !ok {
 						r.Report.Malformed = true
-						value.GameEvent.Type = TableEventTypeNone
+						return false
 					}
-				case 0x9fa3a41c86ecb765:
-					if armKind != 13 {
-						r.Report.KindMismatch++
-						break
+					value.GameEvent.Type = TableEventTypeNone
+					switch armID {
+					case 0x33732819300680aa:
+						if armKind != 13 {
+							r.Report.KindMismatch++
+							break
+						}
+						value.GameEvent.Type = TableEventTypeHit
+						TableHitEventLoadBody(&payload16, &value.GameEvent.Hit)
+						if payload16.Offset != int64(len(payload16.Buffer)) {
+							value.GameEvent.Type = TableEventTypeNone
+							r.Report.Malformed = true
+							break
+						}
+					case 0xf2a38d910b5b348b:
+						if armKind != 13 {
+							r.Report.KindMismatch++
+							break
+						}
+						value.GameEvent.Type = TableEventTypeChat
+						TableChatEventLoadBody(&payload16, &value.GameEvent.Chat)
+						if payload16.Offset != int64(len(payload16.Buffer)) {
+							value.GameEvent.Type = TableEventTypeNone
+							r.Report.Malformed = true
+							break
+						}
+					case 0x9fa3a41c86ecb765:
+						if armKind != 13 {
+							r.Report.KindMismatch++
+							break
+						}
+						value.GameEvent.Type = TableEventTypePickup
+						TablePickupEventLoadBody(&payload16, &value.GameEvent.Pickup)
+						if payload16.Offset != int64(len(payload16.Buffer)) {
+							value.GameEvent.Type = TableEventTypeNone
+							r.Report.Malformed = true
+							break
+						}
+					default:
+						r.Report.Unknown++
 					}
-					value.GameEvent.Type = TableEventTypePickup
-					TablePickupEventLoadBody(&arm, &value.GameEvent.Pickup)
-					if arm.Offset != int64(len(arm.Buffer)) {
-						r.Report.Malformed = true
-						value.GameEvent.Type = TableEventTypeNone
-					}
-				default:
-					r.Report.Unknown++
 				}
 			}
 		case 0x5759ce7586bbb5a3: // loadout
@@ -2808,7 +2926,6 @@ func TableHitEventMeasureBody(value *TableHitEvent, ids *TableIds) int64 {
 	return w.Offset
 }
 
-// TableHitEventMeasure returns the exact file size, or -1 for invalid storage.
 func TableHitEventMeasure(value *TableHitEvent) int64 {
 	var ids TableIds
 	w := TableWriter{Measuring: true, Ids: &ids}
@@ -2823,37 +2940,43 @@ func TableHitEventMeasure(value *TableHitEvent) int64 {
 	return w.Offset
 }
 
-// TableHitEventSaveBody writes a body under the writer's shared id vocabulary.
 func TableHitEventSaveBody(w *TableWriter, value *TableHitEvent) bool {
-	if value.TargetId != 0 {
-		w.Id(0xb7bc9ac015a25050)
-		w.Put8(7) // target_id
-		w.Put16(uint16(value.TargetId))
+	{
+		if value.TargetId != 0 {
+			w.Id(0xb7bc9ac015a25050)
+			w.Put8(7)
+			w.Put16(uint16(value.TargetId))
+		}
 	}
-	if value.Damage != 0 {
-		w.Id(0x7f6308be8ab37fc0)
-		w.Put8(4) // damage
-		w.Put32(uint32(value.Damage))
+	{
+		if value.Damage != 0 {
+			w.Id(0x7f6308be8ab37fc0)
+			w.Put8(4)
+			w.Put32(uint32(value.Damage))
+		}
 	}
-	if value.HitKind != 0 {
-		w.Id(0x01fbc365b059b925)
-		w.Put8(4) // hit_kind
-		w.Put32(uint32(value.HitKind))
+	{
+		if value.HitKind != 0 {
+			w.Id(0x01fbc365b059b925)
+			w.Put8(4)
+			w.Put32(uint32(value.HitKind))
+		}
 	}
-	if value.Crit != false {
-		w.Id(0x126167908c9aa52d)
-		w.Put8(1) // crit
-		if value.Crit {
+	{
+		if value.Crit != false {
+			w.Id(0x126167908c9aa52d)
 			w.Put8(1)
-		} else {
-			w.Put8(0)
+			if value.Crit {
+				w.Put8(1)
+			} else {
+				w.Put8(0)
+			}
 		}
 	}
 	w.Put8(0)
 	return !w.Overflow && !w.Ids.Overflow
 }
 
-// TableHitEventSave writes a form-1 file, returning -1 if storage or capacity is invalid.
 func TableHitEventSave(value *TableHitEvent, buffer []byte) int64 {
 	var ids TableIds
 	w := TableWriter{Buffer: buffer, Ids: &ids}
@@ -3038,7 +3161,6 @@ func TableChatEventMeasureBody(value *TableChatEvent, ids *TableIds) int64 {
 	return w.Offset
 }
 
-// TableChatEventMeasure returns the exact file size, or -1 for invalid storage.
 func TableChatEventMeasure(value *TableChatEvent) int64 {
 	var ids TableIds
 	w := TableWriter{Measuring: true, Ids: &ids}
@@ -3053,23 +3175,25 @@ func TableChatEventMeasure(value *TableChatEvent) int64 {
 	return w.Offset
 }
 
-// TableChatEventSaveBody writes a body under the writer's shared id vocabulary.
 func TableChatEventSaveBody(w *TableWriter, value *TableChatEvent) bool {
-	if value.Channel != 0 {
-		w.Id(0xa5013e9ad5caeda4)
-		w.Put8(4) // channel
-		w.Put32(uint32(value.Channel))
+	{
+		if value.Channel != 0 {
+			w.Id(0xa5013e9ad5caeda4)
+			w.Put8(4)
+			w.Put32(uint32(value.Channel))
+		}
 	}
-	if value.Speaker != 0 {
-		w.Id(0xfbf1ac4d96ebd022)
-		w.Put8(7) // speaker
-		w.Put16(uint16(value.Speaker))
+	{
+		if value.Speaker != 0 {
+			w.Id(0xfbf1ac4d96ebd022)
+			w.Put8(7)
+			w.Put16(uint16(value.Speaker))
+		}
 	}
 	w.Put8(0)
 	return !w.Overflow && !w.Ids.Overflow
 }
 
-// TableChatEventSave writes a form-1 file, returning -1 if storage or capacity is invalid.
 func TableChatEventSave(value *TableChatEvent, buffer []byte) int64 {
 	var ids TableIds
 	w := TableWriter{Buffer: buffer, Ids: &ids}
@@ -3212,7 +3336,6 @@ func TablePickupEventMeasureBody(value *TablePickupEvent, ids *TableIds) int64 {
 	return w.Offset
 }
 
-// TablePickupEventMeasure returns the exact file size, or -1 for invalid storage.
 func TablePickupEventMeasure(value *TablePickupEvent) int64 {
 	var ids TableIds
 	w := TableWriter{Measuring: true, Ids: &ids}
@@ -3227,23 +3350,25 @@ func TablePickupEventMeasure(value *TablePickupEvent) int64 {
 	return w.Offset
 }
 
-// TablePickupEventSaveBody writes a body under the writer's shared id vocabulary.
 func TablePickupEventSaveBody(w *TableWriter, value *TablePickupEvent) bool {
-	if value.ItemId != 0 {
-		w.Id(0x9e7fd06d864fbd56)
-		w.Put8(7) // item_id
-		w.Put16(uint16(value.ItemId))
+	{
+		if value.ItemId != 0 {
+			w.Id(0x9e7fd06d864fbd56)
+			w.Put8(7)
+			w.Put16(uint16(value.ItemId))
+		}
 	}
-	if value.Amount != 0 {
-		w.Id(0x8113fe7ea2b16969)
-		w.Put8(4) // amount
-		w.Put32(uint32(value.Amount))
+	{
+		if value.Amount != 0 {
+			w.Id(0x8113fe7ea2b16969)
+			w.Put8(4)
+			w.Put32(uint32(value.Amount))
+		}
 	}
 	w.Put8(0)
 	return !w.Overflow && !w.Ids.Overflow
 }
 
-// TablePickupEventSave writes a form-1 file, returning -1 if storage or capacity is invalid.
 func TablePickupEventSave(value *TablePickupEvent, buffer []byte) int64 {
 	var ids TableIds
 	w := TableWriter{Buffer: buffer, Ids: &ids}
@@ -3378,6 +3503,7 @@ var TableEntityTableFields = []TableFieldInfo{
 	{Name: "entity_id", Json: "entity_id", TypeName: "bits(12)", Id: 0x23fcfd6678e36712, Kind: 7, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.EntityId)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.EntityId)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: true, RangeMin: 0.0, RangeMax: 4095.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3387,6 +3513,7 @@ var TableEntityTableFields = []TableFieldInfo{
 	{Name: "pos_x", Json: "pos_x", TypeName: "int32", Id: 0xcb4b37357667310e, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.PosX)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.PosX)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: true, RangeMin: -16383.0, RangeMax: 16383.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3396,6 +3523,7 @@ var TableEntityTableFields = []TableFieldInfo{
 	{Name: "pos_y", Json: "pos_y", TypeName: "int32", Id: 0xcb4b3835766732c1, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.PosY)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.PosY)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: true, RangeMin: -16383.0, RangeMax: 16383.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3405,6 +3533,7 @@ var TableEntityTableFields = []TableFieldInfo{
 	{Name: "pos_z", Json: "pos_z", TypeName: "int32", Id: 0xcb4b353576672da8, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.PosZ)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.PosZ)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: true, RangeMin: -16383.0, RangeMax: 16383.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3414,6 +3543,7 @@ var TableEntityTableFields = []TableFieldInfo{
 	{Name: "yaw", Json: "yaw", TypeName: "bits(9)", Id: 0xb54d8e19798e16e8, Kind: 7, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.Yaw)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.Yaw)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: true, RangeMin: 0.0, RangeMax: 511.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3423,6 +3553,7 @@ var TableEntityTableFields = []TableFieldInfo{
 	{Name: "pitch", Json: "pitch", TypeName: "bits(9)", Id: 0x53a9f665a90cc1b1, Kind: 7, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.Pitch)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.Pitch)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: true, RangeMin: 0.0, RangeMax: 511.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3432,6 +3563,7 @@ var TableEntityTableFields = []TableFieldInfo{
 	{Name: "vel_x", Json: "vel_x", TypeName: "int32", Id: 0x6cede6b6eb60ee67, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.VelX)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.VelX)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: true, RangeMin: -2048.0, RangeMax: 2047.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3441,6 +3573,7 @@ var TableEntityTableFields = []TableFieldInfo{
 	{Name: "vel_y", Json: "vel_y", TypeName: "int32", Id: 0x6cede5b6eb60ecb4, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.VelY)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.VelY)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: true, RangeMin: -2048.0, RangeMax: 2047.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3450,6 +3583,7 @@ var TableEntityTableFields = []TableFieldInfo{
 	{Name: "vel_z", Json: "vel_z", TypeName: "int32", Id: 0x6cede8b6eb60f1cd, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.VelZ)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.VelZ)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: true, RangeMin: -2048.0, RangeMax: 2047.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3459,6 +3593,7 @@ var TableEntityTableFields = []TableFieldInfo{
 	{Name: "health", Json: "health", TypeName: "int32", Id: 0x7f69d4b5288ba9cf, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.Health)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.Health)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: true, RangeMin: 0.0, RangeMax: 1000.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3468,6 +3603,7 @@ var TableEntityTableFields = []TableFieldInfo{
 	{Name: "weapon", Json: "weapon", TypeName: "TableWeapon", Id: 0xa0b610205f2c6e01, Kind: 30, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.Weapon)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.Weapon)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 15,
+		FracBits:    0,
 		EnumName:    EnumNameTableWeapon,
 		VariantId:   func(v uint64) uint64 { id, _ := TableWeapon(v).TableEnumId(); return id },
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3477,6 +3613,7 @@ var TableEntityTableFields = []TableFieldInfo{
 	{Name: "damage", Json: "damage", TypeName: "TableDamage", Id: 0x7f6308be8ab37fc0, Kind: 9, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.Damage)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.Damage)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 7,
+		FracBits:    0,
 		EnumName:    func(v uint64) string { return FlagNameTableDamage(int(v)) },
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3486,6 +3623,7 @@ var TableEntityTableFields = []TableFieldInfo{
 	{Name: "moving", Json: "moving", TypeName: "bool", Id: 0x11a44fc1d1243da7, Kind: 1, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.Moving)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.Moving)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3495,6 +3633,7 @@ var TableEntityTableFields = []TableFieldInfo{
 	{Name: "firing", Json: "firing", TypeName: "bool", Id: 0x7674cfd19b9031ca, Kind: 1, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.Firing)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.Firing)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3514,6 +3653,7 @@ var TableStatTableFields = []TableFieldInfo{
 	{Name: "stat_id", Json: "stat_id", TypeName: "bits(8)", Id: 0x80ab75f0866dbf65, Kind: 6, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableStat{}.StatId)), ElemSize: uint32(unsafe.Sizeof(TableStat{}.StatId)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: true, RangeMin: 0.0, RangeMax: 255.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3523,6 +3663,7 @@ var TableStatTableFields = []TableFieldInfo{
 	{Name: "delta", Json: "delta", TypeName: "int32", Id: 0x52076675ec13a0c1, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableStat{}.Delta)), ElemSize: uint32(unsafe.Sizeof(TableStat{}.Delta)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: true, RangeMin: -512.0, RangeMax: 511.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3542,6 +3683,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "protocol_magic", Json: "protocol_magic", TypeName: "uint16", Id: 0x6a5a70d91aa115fd, Kind: 7, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.ProtocolMagic)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.ProtocolMagic)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3551,6 +3693,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "sequence", Json: "sequence", TypeName: "bits(16)", Id: 0xaa38aca481f528a8, Kind: 7, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.Sequence)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Sequence)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: true, RangeMin: 0.0, RangeMax: 65535.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3560,6 +3703,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "ack_sequence", Json: "ack_sequence", TypeName: "int32", Id: 0xdbe005c56697c3e, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.AckSequence)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.AckSequence)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: true, RangeMin: 0.0, RangeMax: 65535.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3569,6 +3713,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "ack_bits", Json: "ack_bits", TypeName: "bits(32)", Id: 0x9bae0da8b829ee03, Kind: 8, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.AckBits)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.AckBits)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: true, RangeMin: 0.0, RangeMax: 4.294967295e+09, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3578,6 +3723,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "session_id", Json: "session_id", TypeName: "uint64", Id: 0xb7d7b5650a590b05, Kind: 9, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.SessionId)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.SessionId)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3587,6 +3733,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "client_id", Json: "client_id", TypeName: "uint32", Id: 0x6d7b98e2d095967e, Kind: 8, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.ClientId)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.ClientId)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3596,6 +3743,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "nonce", Json: "nonce", TypeName: "uint64", Id: 0x73a94c71d60dc0d8, Kind: 9, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.Nonce)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Nonce)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: true, RangeMin: 1.0, RangeMax: 9.223372036854776e+18, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3605,6 +3753,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "world_time", Json: "world_time", TypeName: "int64", Id: 0x3eee6b51be54fc85, Kind: 5, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.WorldTime)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.WorldTime)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: true, RangeMin: -1e+12, RangeMax: 1e+12, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3614,6 +3763,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "frame_tick", Json: "frame_tick", TypeName: "bits(48)", Id: 0x7bbc035f7b6d0112, Kind: 9, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.FrameTick)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.FrameTick)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: true, RangeMin: 0.0, RangeMax: 2.81474976710655e+14, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3623,6 +3773,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "server_time", Json: "server_time", TypeName: "float32", Id: 0x3c460475f9be69c6, Kind: 10, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.ServerTime)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.ServerTime)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: true, RangeMin: 0.0, RangeMax: 65535.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3632,6 +3783,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "entities", Json: "entities", TypeName: "TableEntity", Id: 0x935d0fb07bb3822a, Kind: 13, IsArray: true, Counted: true, Optional: false,
 		ArrayBound: 8, Offset: uint32(unsafe.Offsetof(TableMixed{}.Entities)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Entities[0])), CountOffset: uint32(unsafe.Offsetof(TableMixed{}.EntitiesCount)), PresentOffset: 0xffffffff,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3641,6 +3793,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "stats", Json: "stats", TypeName: "TableStat", Id: 0xee639cad45b1994c, Kind: 13, IsArray: true, Counted: true, Optional: false,
 		ArrayBound: 80, Offset: uint32(unsafe.Offsetof(TableMixed{}.Stats)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Stats[0])), CountOffset: uint32(unsafe.Offsetof(TableMixed{}.StatsCount)), PresentOffset: 0xffffffff,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3650,6 +3803,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "game_event", Json: "game_event", TypeName: "TableEvent", Id: 0x2e35dc5321aa5790, Kind: 15, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.GameEvent)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.GameEvent)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 3,
+		FracBits: 0,
 		EnumName: func(v uint64) string {
 			switch v {
 			case 0:
@@ -3683,6 +3837,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "loadout", Json: "loadout", TypeName: "uint8", Id: 0x5759ce7586bbb5a3, Kind: 6, IsArray: true, Counted: false, Optional: false,
 		ArrayBound: 4, Offset: uint32(unsafe.Offsetof(TableMixed{}.Loadout)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Loadout[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3692,6 +3847,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "player_name", Json: "player_name", TypeName: "string", Id: 0x13a62f542cf8e86e, Kind: 12, IsArray: false, Counted: true, Optional: false,
 		ArrayBound: 15, Offset: uint32(unsafe.Offsetof(TableMixed{}.PlayerName)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.PlayerName)), CountOffset: uint32(unsafe.Offsetof(TableMixed{}.PlayerNameLength)), PresentOffset: 0xffffffff,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3701,6 +3857,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "payload", Json: "payload", TypeName: "bytes", Id: 0xcfb8a9d063b5e9e5, Kind: 6, IsArray: true, Counted: true, Optional: false,
 		ArrayBound: 16, Offset: uint32(unsafe.Offsetof(TableMixed{}.Payload)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Payload[0])), CountOffset: uint32(unsafe.Offsetof(TableMixed{}.PayloadLength)), PresentOffset: 0xffffffff,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3710,6 +3867,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "aim_x", Json: "aim_x", TypeName: "float32", Id: 0xdbaf7be5e24296c9, Kind: 10, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.AimX)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.AimX)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: true, RangeMin: -1.0, RangeMax: 1.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3719,6 +3877,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "aim_y", Json: "aim_y", TypeName: "float32", Id: 0xdbaf7ae5e2429516, Kind: 10, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.AimY)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.AimY)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: true, RangeMin: -1.0, RangeMax: 1.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3728,6 +3887,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "aim_z", Json: "aim_z", TypeName: "float32", Id: 0xdbaf79e5e2429363, Kind: 10, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.AimZ)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.AimZ)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: true, RangeMin: -1.0, RangeMax: 1.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3737,6 +3897,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "recoil", Json: "recoil", TypeName: "float32", Id: 0x9cef31fff7e2e457, Kind: 10, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.Recoil)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Recoil)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3746,6 +3907,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "drift", Json: "drift", TypeName: "float64", Id: 0x5ab3f9c9341f6c04, Kind: 11, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.Drift)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Drift)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3755,6 +3917,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "wide_key", Json: "wide_key", TypeName: "uint64", Id: 0xa3348580461faf16, Kind: 9, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.WideKey)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.WideKey)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3764,6 +3927,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "flux", Json: "flux", TypeName: "int64", Id: 0xd61bdd7908af2642, Kind: 5, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.Flux)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Flux)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: true, RangeMin: -1e+18, RangeMax: 1e+18, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3773,6 +3937,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "ping", Json: "ping", TypeName: "float32", Id: 0xbf30e00dc53307a9, Kind: 10, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.Ping)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Ping)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: true, RangeMin: 0.0, RangeMax: 250.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3782,6 +3947,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "crc_hint", Json: "crc_hint", TypeName: "bits(24)", Id: 0x560d6527ccd8515f, Kind: 8, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.CrcHint)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.CrcHint)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: true, RangeMin: 0.0, RangeMax: 1.6777215e+07, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3791,6 +3957,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "has_extra", Json: "has_extra", TypeName: "bool", Id: 0xc08292176cfd8672, Kind: 1, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.HasExtra)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.HasExtra)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3800,6 +3967,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "extra", Json: "extra", TypeName: "int32", Id: 0xfd29ee12a979cb69, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.Extra)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Extra)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: true, RangeMin: 0.0, RangeMax: 255.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3809,6 +3977,7 @@ var TableMixedTableFields = []TableFieldInfo{
 	{Name: "idle_ticks", Json: "idle_ticks", TypeName: "int32", Id: 0x78101ac0aa8cbcfe, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.IdleTicks)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.IdleTicks)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: true, RangeMin: 0.0, RangeMax: 15.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3828,6 +3997,7 @@ var TableHitEventTableFields = []TableFieldInfo{
 	{Name: "target_id", Json: "target_id", TypeName: "bits(12)", Id: 0xb7bc9ac015a25050, Kind: 7, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableHitEvent{}.TargetId)), ElemSize: uint32(unsafe.Sizeof(TableHitEvent{}.TargetId)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: true, RangeMin: 0.0, RangeMax: 4095.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3837,6 +4007,7 @@ var TableHitEventTableFields = []TableFieldInfo{
 	{Name: "damage", Json: "damage", TypeName: "int32", Id: 0x7f6308be8ab37fc0, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableHitEvent{}.Damage)), ElemSize: uint32(unsafe.Sizeof(TableHitEvent{}.Damage)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: true, RangeMin: 0.0, RangeMax: 4095.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3846,6 +4017,7 @@ var TableHitEventTableFields = []TableFieldInfo{
 	{Name: "hit_kind", Json: "hit_kind", TypeName: "int32", Id: 0x1fbc365b059b925, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableHitEvent{}.HitKind)), ElemSize: uint32(unsafe.Sizeof(TableHitEvent{}.HitKind)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: true, RangeMin: 0.0, RangeMax: 7.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3855,6 +4027,7 @@ var TableHitEventTableFields = []TableFieldInfo{
 	{Name: "crit", Json: "crit", TypeName: "bool", Id: 0x126167908c9aa52d, Kind: 1, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableHitEvent{}.Crit)), ElemSize: uint32(unsafe.Sizeof(TableHitEvent{}.Crit)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3874,6 +4047,7 @@ var TableChatEventTableFields = []TableFieldInfo{
 	{Name: "channel", Json: "channel", TypeName: "int32", Id: 0xa5013e9ad5caeda4, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableChatEvent{}.Channel)), ElemSize: uint32(unsafe.Sizeof(TableChatEvent{}.Channel)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: true, RangeMin: 0.0, RangeMax: 3.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3883,6 +4057,7 @@ var TableChatEventTableFields = []TableFieldInfo{
 	{Name: "speaker", Json: "speaker", TypeName: "bits(12)", Id: 0xfbf1ac4d96ebd022, Kind: 7, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableChatEvent{}.Speaker)), ElemSize: uint32(unsafe.Sizeof(TableChatEvent{}.Speaker)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: true, RangeMin: 0.0, RangeMax: 4095.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3902,6 +4077,7 @@ var TablePickupEventTableFields = []TableFieldInfo{
 	{Name: "item_id", Json: "item_id", TypeName: "bits(10)", Id: 0x9e7fd06d864fbd56, Kind: 7, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TablePickupEvent{}.ItemId)), ElemSize: uint32(unsafe.Sizeof(TablePickupEvent{}.ItemId)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: true, RangeMin: 0.0, RangeMax: 1023.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3911,6 +4087,7 @@ var TablePickupEventTableFields = []TableFieldInfo{
 	{Name: "amount", Json: "amount", TypeName: "int32", Id: 0x8113fe7ea2b16969, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TablePickupEvent{}.Amount)), ElemSize: uint32(unsafe.Sizeof(TablePickupEvent{}.Amount)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		HasRange: true, RangeMin: 0.0, RangeMax: 255.0, EnumMax: -1,
+		FracBits:    0,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -3925,19 +4102,49 @@ var TablePickupEventTableInfo = TableTypeInfo{Name: "TablePickupEvent", Size: ui
 // TablePickupEventTableType returns TablePickupEvent's reflection descriptor.
 func TablePickupEventTableType() *TableTypeInfo { return &TablePickupEventTableInfo }
 
-// The UNION FIELD SHAPES the descriptors above point at: the tag, and the
-// arms indexed by it (docs/SPEC-TABLES.md §8.1). They are FILLED HERE rather
-// than in the table's own initializer: an arm's Table column names a
-// descriptor, a descriptor may name the union back, and Go refuses an
-// initialization cycle among package-level variables. An init body is not
-// part of that analysis, so the graph is expressible whatever a schema
-// declares. Nothing mutates them afterwards: the surface is immutable from
-// here on, readable from any goroutine with no synchronisation.
 func init() {
-	tableUnionArms[0] = TableUnionInfo{TagOffset: uint32(unsafe.Offsetof(TableEvent{}.Type)), TagSize: uint32(unsafe.Sizeof(TableEvent{}.Type)), Arms: []TableUnionArmInfo{
-		{Offset: 0, Table: nil},
-		{Offset: uint32(unsafe.Offsetof(TableEvent{}.Hit)), Table: TableHitEventTableType},
-		{Offset: uint32(unsafe.Offsetof(TableEvent{}.Chat)), Table: TableChatEventTableType},
-		{Offset: uint32(unsafe.Offsetof(TableEvent{}.Pickup)), Table: TablePickupEventTableType},
+	tableUnionArms[0] = TableUnionInfo{TagOffset: uint32(unsafe.Offsetof(TableEvent{}.Type)), TagSize: uint32(unsafe.Sizeof(TableEvent{}.Type)), Arms: []TableUnionArmInfo{{Void: true},
+		{Offset: uint32(unsafe.Offsetof(TableEvent{}.Hit)), Table: TableHitEventTableType, Reset: func(storage unsafe.Pointer) {
+			value := (*TableEvent)(storage)
+			TableHitEventReset(&value.Hit)
+		}, Field: TableFieldInfo{Name: "hit", Json: "hit", TypeName: "TableHitEvent", Id: 0x33732819300680aa, Kind: 13, IsArray: false, Counted: false, Optional: false,
+			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEvent{}.Hit)), ElemSize: uint32(unsafe.Sizeof(TableEvent{}.Hit)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+			HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
+			FracBits:    0,
+			EnumName:    nil,
+			VariantId:   nil,
+			KeyTypeName: "", KeyName: nil, KeyId: nil,
+			Arms:  nil,
+			Guard: "", Table: TableHitEventTableType,
+			Doc: TableDocNone, NumTags: 0, Tags: nil},
+		},
+		{Offset: uint32(unsafe.Offsetof(TableEvent{}.Chat)), Table: TableChatEventTableType, Reset: func(storage unsafe.Pointer) {
+			value := (*TableEvent)(storage)
+			TableChatEventReset(&value.Chat)
+		}, Field: TableFieldInfo{Name: "chat", Json: "chat", TypeName: "TableChatEvent", Id: 0xf2a38d910b5b348b, Kind: 13, IsArray: false, Counted: false, Optional: false,
+			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEvent{}.Chat)), ElemSize: uint32(unsafe.Sizeof(TableEvent{}.Chat)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+			HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
+			FracBits:    0,
+			EnumName:    nil,
+			VariantId:   nil,
+			KeyTypeName: "", KeyName: nil, KeyId: nil,
+			Arms:  nil,
+			Guard: "", Table: TableChatEventTableType,
+			Doc: TableDocNone, NumTags: 0, Tags: nil},
+		},
+		{Offset: uint32(unsafe.Offsetof(TableEvent{}.Pickup)), Table: TablePickupEventTableType, Reset: func(storage unsafe.Pointer) {
+			value := (*TableEvent)(storage)
+			TablePickupEventReset(&value.Pickup)
+		}, Field: TableFieldInfo{Name: "pickup", Json: "pickup", TypeName: "TablePickupEvent", Id: 0x9fa3a41c86ecb765, Kind: 13, IsArray: false, Counted: false, Optional: false,
+			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEvent{}.Pickup)), ElemSize: uint32(unsafe.Sizeof(TableEvent{}.Pickup)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+			HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
+			FracBits:    0,
+			EnumName:    nil,
+			VariantId:   nil,
+			KeyTypeName: "", KeyName: nil, KeyId: nil,
+			Arms:  nil,
+			Guard: "", Table: TablePickupEventTableType,
+			Doc: TableDocNone, NumTags: 0, Tags: nil},
+		},
 	}}
 }

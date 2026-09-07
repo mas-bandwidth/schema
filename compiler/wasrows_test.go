@@ -45,12 +45,12 @@ table Cfg
 }
 `
 
-func TestWasRowsAreCppOnly(t *testing.T) {
+func TestWasRowCarriers(t *testing.T) {
 	u := unitFromSource(t, wasRowsUnit)
 	c := New()
 	for _, target := range c.Targets() {
 		out, err := c.Generate(u, target, Options{})
-		if target == "cpp" {
+		if target == "cpp" || target == "go" {
 			if err != nil {
 				t.Fatalf("cpp carries the was rows and refused: %v", err)
 			}
@@ -60,7 +60,7 @@ func TestWasRowsAreCppOnly(t *testing.T) {
 			}
 			// every id the renamed things ride under is the OLD name's hash
 			for _, old := range []string{"Silver", "ward", "ping", "multiplier"} {
-				want := fmt.Sprintf("0x%016xull", ir.TableWireId(old))
+				want := fmt.Sprintf("0x%016x", ir.TableWireId(old))
 				if !strings.Contains(all.String(), want) {
 					t.Errorf("cpp output lacks the id of %q, %s", old, want)
 				}

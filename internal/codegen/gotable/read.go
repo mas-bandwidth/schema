@@ -1,6 +1,7 @@
 package gotable
 
 import (
+	"fmt"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -40,7 +41,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 }
 
 func wireWidenable(kind int) bool {
-	return kind >= 3 && kind <= 5 || kind >= 7 && kind <= 9 || kind == tkF64
+	return kind >= 3 && kind <= 5 || kind >= 7 && kind <= 9 || kind == tkF64 || kind == 18 || kind == 19
 }
 
 func (g *tableGen) emitReadField(f *ir.Field, ind string) {
@@ -51,6 +52,9 @@ func (g *tableGen) emitReadField(f *ir.Field, ind string) {
 		g.emitReadArray(f, ind, true)
 	case f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes:
 		g.emitReadArray(f, ind, false)
+	case f.Type.Kind == ir.TWString:
+		g.pf("%ssub,ok:=r.Body();if !ok {r.Report.Malformed=true;return false}\n", ind)
+		g.emitReadWString(f, expr, "sub", ind, "r.Report.Malformed=true;break")
 	case f.Type.Kind == ir.TString:
 		g.pf("%ssub, ok := r.Body(); if !ok { r.Report.Malformed = true; return false }\n", ind)
 		g.pf("%sif !tableUtf8Valid(sub.Buffer) { r.Report.Malformed = true; %sLength = 0; clear(%s[:]); break }\n", ind, expr, expr)
@@ -103,6 +107,8 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 		g.pf("%svar slot %s; if !slot.TableEnumValue(key) { r.Report.Unknown++; continue }\n", j, f.KeyEnum)
 		if kind == tkTable {
 			g.pf("%s%sLoadBody(&elem, &%s[int(slot)-1])\n", j, f.Type.Name, expr)
+		} else if kind == tkUnion {
+			g.emitReadUnion(f.Type.Ref.(*ir.Union), expr+"[int(slot)-1]", "elem", j, "continue", true)
 		} else {
 			g.emitReadScalar(f, expr+"[int(slot)-1]", "elem", "elemKind", j, "r.Report.Malformed = true; continue")
 		}
@@ -118,6 +124,8 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 		if kind == tkTable {
 			g.pf("%selem, ok := sub.Body(); if !ok { r.Report.Malformed = true; break }\n", j)
 			g.pf("%s%sLoadBody(&elem, &%s[i])\n", j, f.Type.Name, expr)
+		} else if kind == tkUnion {
+			g.emitReadUnion(f.Type.Ref.(*ir.Union), expr+"[i]", "sub", j, "break", true)
 		} else {
 			g.emitReadScalar(f, expr+"[i]", "sub", "elemKind", j, "r.Report.Malformed = true; break")
 		}
@@ -134,24 +142,116 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 	g.pf("%s\t}\n%s}\n", ind, ind)
 }
 
-func (g *tableGen) emitReadUnion(un *ir.Union, expr, rdr, ind, stop string) {
-	g.pf("%sarmRef, ok := %s.Leb(); if !ok { r.Report.Malformed = true; %s }\n", ind, rdr, stop)
-	g.pf("%sif armRef == 0 { %s.Type = %sTypeNone } else {\n", ind, expr, un.Name)
+func (g *tableGen) emitReadUnion(un *ir.Union, expr, rdr, ind, stop string, element ...bool) {
+	arm := g.nextWireWriter()
+	g.pf("%s{\n", ind)
 	i := ind + "\t"
-	g.pf("%sarmID, ok := %s.Resolve(armRef); if !ok || !%s.Has(1) { r.Report.Malformed = true; %s }\n", i, rdr, rdr, stop)
-	g.pf("%sarmKind := %s.Get8(); arm, ok := %s.Body(); if !ok { r.Report.Malformed = true; %s }\n", i, rdr, rdr, stop)
-	g.pf("%s%s.Type = %sTypeNone\n", i, expr, un.Name)
-	g.pf("%sswitch armID {\n", i)
-	for _, v := range un.Variants {
-		armExpr := expr + "." + ir.GoExportName(v.Name)
-		g.pf("%scase 0x%016x:\n", i, ir.TableWireId(v.WireName()))
-		g.pf("%s\tif armKind != 13 { r.Report.KindMismatch++; break }\n", i)
-
-		g.pf("%s\t%s.Type = %sType%s\n", i, expr, un.Name, ir.GoExportName(v.Name))
-		g.pf("%s\t%sLoadBody(&arm, &%s)\n", i, v.Type, armExpr)
-		g.pf("%s\tif arm.Offset != int64(len(arm.Buffer)) { r.Report.Malformed = true; %s.Type = %sTypeNone }\n", i, expr, un.Name)
+	g.pf("%sarmRef, ok := %s.Leb(); if !ok { r.Report.Malformed = true; %s }\n", i, rdr, stop)
+	if len(element) > 0 && element[0] {
+		g.pf("%s%s.Type = %sTypeNone\n", i, expr, un.Name)
 	}
-	g.pf("%sdefault: r.Report.Unknown++\n%s}\n%s}\n", i, i, ind)
+	g.pf("%sif armRef == 0 { %s.Type = %sTypeNone } else {\n", i, expr, un.Name)
+	i += "\t"
+	g.pf("%sarmID, ok := %s.Resolve(armRef); if !ok || !%s.Has(1) { r.Report.Malformed = true; %s }\n", i, rdr, rdr, stop)
+	g.pf("%sarmKind := %s.Get8(); %s, ok := %s.Body(); if !ok { r.Report.Malformed = true; %s }\n", i, rdr, arm, rdr, stop)
+	g.pf("%s%s.Type = %sTypeNone\n%sswitch armID {\n", i, expr, un.Name, i)
+	for _, v := range un.Variants {
+		g.pf("%scase 0x%016x:\n", i, ir.TableWireId(v.WireName()))
+		j := i + "\t"
+		kind := ir.TableKindNoPayload
+		if !v.Void() {
+			kind = ir.TableWireFieldKind(v.F)
+		}
+		g.pf("%sif armKind != %d {\n", j, kind)
+		if wireWidenable(kind) {
+			g.pf("%s if tableKindWidens(armKind,%d) { if int64(len(%s.Buffer)) != tableKindBytes(armKind) { r.Report.Malformed=true; break }; r.Report.Widened++ } else { r.Report.KindMismatch++; break }\n", j, kind, arm)
+		} else {
+			g.pf("%s r.Report.KindMismatch++; break\n", j)
+		}
+		g.pf("%s}\n", j)
+		none := fmt.Sprintf("%s.Type = %sTypeNone", expr, un.Name)
+		g.pf("%s%s.Type = %sType%s\n", j, expr, un.Name, ir.GoExportName(v.Name))
+		g.emitReadArm(v, expr+"."+ir.GoExportName(v.Name), arm, "armKind", j, none)
+	}
+	g.pf("%sdefault:r.Report.Unknown++\n%s}\n%s}\n%s}\n", i, i, ind+"\t", ind)
+}
+
+func (g *tableGen) emitReadArm(v ir.UnionVariant, expr, rdr, kind, ind, none string) {
+	bad := none + "; r.Report.Malformed = true; break"
+	if v.Void() {
+		g.pf("%sif len(%s.Buffer) != 0 { %s }\n", ind, rdr, bad)
+		return
+	}
+	f := v.F
+	if v.Body() {
+		g.pf("%s%sLoadBody(&%s,&%s)\n%sif %s.Offset != int64(len(%s.Buffer)) { %s }\n", ind, v.Type, rdr, expr, ind, rdr, rdr, bad)
+		return
+	}
+	if f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes {
+		g.emitReadArmArray(f, expr, rdr, ind, none)
+		return
+	}
+	if f.Type.Kind == ir.TWString {
+		g.emitReadWString(f, expr, rdr, ind, bad)
+		return
+	}
+	if f.Type.Kind == ir.TString {
+		g.pf("%sclear(%s[:]); %sLength = 0\n", ind, expr, expr)
+		g.pf("%sif !tableUtf8Valid(%s.Buffer) { %s }\n", ind, rdr, bad)
+		g.pf("%skeep := int64(len(%s.Buffer)); if keep > %d { keep = tableUtf8Clamp(%s.Buffer,%d); r.Report.Clamped++ }; copy(%s[:],%s.Buffer[:keep]); %sLength=int32(keep)\n", ind, rdr, f.Type.Size, rdr, f.Type.Size, expr, rdr, expr)
+		return
+	}
+	if isUnionRef(f.Type) {
+		g.pf("%s%s.Type = %sTypeNone\n", ind, expr, f.Type.Name)
+		g.emitReadUnion(f.Type.Ref.(*ir.Union), expr, rdr, ind, bad)
+		return
+	}
+	if ir.TableKindWidth(ir.TableWireScalarKind(f)) > 0 {
+		g.pf("%sif int64(len(%s.Buffer)) != tableKindBytes(%s) { %s }\n", ind, rdr, kind, bad)
+	}
+	g.emitReadScalar(f, expr, rdr, kind, ind, bad)
+	if enumRef(f) != nil {
+		g.pf("%sif %s.Offset != int64(len(%s.Buffer)) { %s }\n", ind, rdr, rdr, bad)
+	}
+}
+
+// Array arms have a bare array body bounded by the arm's L. A short header
+// is inert; a damaged count or mismatched element kind deselects the arm.
+func (g *tableGen) emitReadArmArray(f *ir.Field, expr, rdr, ind, none string) {
+	kind, bound := ir.TableWireScalarKind(f), f.ArrayBound
+	counted := f.Array == ir.ArrayCounted || f.Type.Kind == ir.TBytes
+	companion := expr + "Count"
+	if f.Type.Kind == ir.TBytes {
+		kind, bound = tkU8, f.Type.Size
+		companion = expr + "Length"
+	}
+	g.pf("%sclear(%s[:])\n", ind, expr)
+	if counted {
+		g.pf("%s%s=0\n", ind, companion)
+	}
+	g.pf("%sif !%s.Has(2) { break }\n", ind, rdr)
+	g.pf("%selemKind := %s.Get8(); count,ok := %s.Leb(); if !ok { %s; r.Report.Malformed=true; break }\n", ind, rdr, rdr, none)
+	g.pf("%sif elemKind != %d {\n", ind, kind)
+	if wireWidenable(kind) {
+		g.pf("%s if tableKindWidens(elemKind,%d) { r.Report.Widened++ } else { %s; r.Report.KindMismatch++; break }\n", ind, kind, none)
+	} else {
+		g.pf("%s %s; r.Report.KindMismatch++; break\n", ind, none)
+	}
+	g.pf("%s}\n%skeep:=count;if keep > %d {keep=%d;r.Report.Clamped++}\n", ind, ind, bound, bound)
+	g.pf("%sfor i:=uint64(0); i<keep; i++ {\n", ind)
+	j := ind + "\t"
+	if isStructRef(f.Type) {
+		elem := g.nextWireWriter()
+		g.pf("%s%s,ok:=%s.Body();if !ok {r.Report.Malformed=true;break};%sLoadBody(&%s,&%s[i])\n", j, elem, rdr, f.Type.Name, elem, expr)
+	} else if isUnionRef(f.Type) {
+		g.emitReadUnion(f.Type.Ref.(*ir.Union), expr+"[i]", rdr, j, "break", true)
+	} else {
+		g.emitReadScalar(f, expr+"[i]", rdr, "elemKind", j, "r.Report.Malformed=true;break")
+	}
+	if counted {
+		g.pf("%s%s=int32(i+1)\n", j, companion)
+	}
+	g.pf("%s}\n", ind)
 }
 
 func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad string) {
@@ -164,6 +264,10 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 		g.pf("%s\tif variantRef == 0 { %s = %sNone } else {\n", ind, expr, f.Type.Name)
 		g.pf("%s\t\tid, ok := %s.Resolve(variantRef); if !ok { %s }\n", ind, rdr, onBad)
 		g.pf("%s\t\tif !%s.TableEnumValue(id) { r.Report.Unknown++ }\n%s\t}\n%s}\n", ind, expr, ind, ind)
+		return
+	}
+	if f.Type.Width == 128 && (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) {
+		g.emitReadWide(f, expr, rdr, wireKind, ind, onBad)
 		return
 	}
 	g.pf("%sif !%s.Has(tableKindBytes(%s)) { %s }\n", ind, rdr, wireKind, onBad)
@@ -186,14 +290,15 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 		}
 		g.pf("%s\t%s = v\n%s}\n", ind, expr, ind)
 	default:
-		signed := f.Type.Kind == ir.TInt && f.Type.Signed
+		signed := (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) && f.Type.Signed
 		method := "Unsigned"
 		if signed {
 			method = "Signed"
 		}
 		g.pf("%s{\n%s\tv := %s.%s(%s)\n", ind, ind, rdr, method, wireKind)
 		if f.HasIntRange {
-			lo, hi := goIntLit(f.IntMin, signed, 8), goIntLit(f.IntMax, signed, 8)
+			rlo, rhi, _ := ir.TableRawRange(f)
+			lo, hi := goIntLit(rlo, signed, 8), goIntLit(rhi, signed, 8)
 			g.pf("%s\tif v < %s { v = %s; r.Report.Clamped++ } else if v > %s { v = %s; r.Report.Clamped++ }\n", ind, lo, lo, hi, hi)
 		}
 		if f.Type.Kind == ir.TBits && f.Type.Width < 64 {

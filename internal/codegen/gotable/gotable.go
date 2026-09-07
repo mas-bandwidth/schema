@@ -84,39 +84,26 @@ type tableGen struct {
 
 	needsMath  bool
 	unsafeUsed bool
+	wireSerial int
 
-	// the assignments that fill this file's slots of the unit's arms table,
-	// emitted in an init() below the descriptors so a cyclic descriptor graph
-	// stays expressible
-	unionArms []string
-	// every union FIELD of the unit, by (owner, field), to the slot it takes
-	// in the one arms table — computed for the whole unit before any file is
-	// emitted, so the slice is one name and not one per declaration
-	unionArmSlot map[armKey]int
+	// Every union declaration reached by this unit's table closure has one
+	// immutable descriptor slot, shared by fields, arrays and nested arms.
+	unionArmSlot map[string]int
 }
 
-// armKey names one union FIELD: the closure member that carries it and the
-// field's own name. A union's arm offsets are the union's, but a descriptor
-// column belongs to the field that carries it.
-type armKey struct {
-	owner string
-	field string
-}
-
-// unionArmSlots numbers every union field in the unit, in the order the files
-// and their members declare them, so the emitted text is deterministic.
-func unionArmSlots(u *ir.Unit, closure map[string]bool) map[armKey]int {
-	slots := map[armKey]int{}
+// unionArmSlots assigns one immutable descriptor slot per union definition.
+func unionArmSlots(u *ir.Unit, _ map[string]bool) map[string]int {
+	slots := map[string]int{}
+	closure := ir.TableClosureVocabulary(u)
 	for _, f := range u.Files {
-		for _, st := range fileMembers(f, closure) {
-			for _, field := range st.Fields {
-				if field.Type.Kind != ir.TNamed || field.Array != ir.ArrayNone {
-					continue
-				}
-				if _, isUnion := field.Type.Ref.(*ir.Union); !isUnion {
-					continue
-				}
-				slots[armKey{owner: st.Name, field: field.Name}] = len(slots)
+		for _, d := range f.Decls {
+			if un, ok := d.(*ir.Union); ok && closure[un.Name] {
+				slots[un.Name] = len(slots)
+			}
+		}
+		for _, un := range f.TableUnions {
+			if closure[un.Name] {
+				slots[un.Name] = len(slots)
 			}
 		}
 	}
@@ -154,9 +141,6 @@ func (g *tableGen) pf(format string, args ...any) {
 func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
-	}
-	if err := ir.RefuseWideTableKinds(u, "Go"); err != nil {
-		return nil, err
 	}
 	blocks := ir.Blocks(u)
 	out, err := generateBlockFiles(u, blocks)
@@ -204,13 +188,12 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 				g.pf("%s", tableKeyedAccessor)
 			}
 			if len(armSlots) > 0 {
-				g.pf("// tableUnionArms is the unit's ONE arms table: one slot per union\n")
-				g.pf("// FIELD, filled by the init() beside the descriptors that point into\n")
-				g.pf("// it. One fixed name for the whole unit rather than one derived from\n")
-				g.pf("// each declaration's own spelling, because a derived name is a name a\n")
-				g.pf("// declaration can collide with (docs/SPEC-TABLES.md §11).\n")
+				g.pf("// One descriptor per union declaration, initialized after package data.\n")
 				g.pf("var tableUnionArms = make([]TableUnionInfo, %d)\n\n", len(armSlots))
 			}
+		}
+		for _, un := range f.TableUnions {
+			g.emitTableUnion(un)
 		}
 		for _, st := range members {
 			if st.IsTable {
@@ -275,7 +258,7 @@ func (g *tableGen) assemble() ([]byte, error) {
 	h.WriteString("// your choice. See the LICENSE exception in the schema compiler; the compiler is\n")
 	h.WriteString("// AGPL-3.0, its output is not.\n")
 	fmt.Fprintf(&h, "// package %s — the TABLE wire (docs/SPEC-TABLES.md): evolution-tolerant, neutral\n", g.unit.Package)
-	h.WriteString("// bytes, no serialize dependency. Tables version by field id, never by the\n")
+	h.WriteString("// bytes. Wide values use serialize.go storage. Tables version by field id, never by the\n")
 	h.WriteString("// unit's protocol id.\n")
 	if g.home {
 		h.WriteString("//\n")
@@ -296,6 +279,9 @@ func (g *tableGen) assemble() ([]byte, error) {
 	}
 	if g.unsafeUsed {
 		std = append(std, `"unsafe"`)
+	}
+	if strings.Contains(g.types.String()+g.body.String(), "serialize.") {
+		std = append(std, `"github.com/mas-bandwidth/serialize.go"`)
 	}
 	h.WriteString(goImports(std))
 	h.WriteString(g.types.String())
@@ -411,6 +397,21 @@ func closureEnums(u *ir.Unit, closure map[string]bool) map[string]*ir.Enum {
 			}
 		}
 	}
+	for name := range ir.TableClosureVocabulary(u) {
+		un := u.Unions[name]
+		if un == nil {
+			un = u.TableUnions[name]
+		}
+		if un != nil {
+			for _, v := range un.Variants {
+				if v.F != nil {
+					if e := enumRef(v.F); e != nil {
+						used[e.Name] = e
+					}
+				}
+			}
+		}
+	}
 	return used
 }
 
@@ -510,7 +511,10 @@ type TableFieldInfo struct {
 	CountOffset   uint32 // unsafe.Offsetof the count/length companion, or 0xffffffff
 	PresentOffset uint32 // unsafe.Offsetof the Present companion, or 0xffffffff
 
-	HasRange bool    // a declared [min, max] (int or float)
+	FracBits uint8 // fixed-point binary scale
+ WideRange bool
+ WideMin, WideMax [2]uint64 // exact two-complement raw bounds, low lane first
+ HasRange bool    // a declared [min, max] (int or float)
 	RangeMin float64 // NOTE: int64 ranges beyond 2^53 lose precision here
 	RangeMax float64
 
@@ -566,6 +570,9 @@ type TableFieldInfo struct {
 // table-wire id come from the field's EnumName/VariantId functions at the same
 // tag, so nothing is spelled twice (docs/SPEC-TABLES.md §8).
 type TableUnionArmInfo struct {
+ Field TableFieldInfo // arm shape; offsets are relative to union storage
+ Void bool // a selected payload-free arm
+ Reset func(storage unsafe.Pointer) // establish selected payload defaults
 	Offset uint32               // unsafe.Offsetof the arm's payload within the union storage
 	Table  func() *TableTypeInfo // the arm payload's descriptor
 }

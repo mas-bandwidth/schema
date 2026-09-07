@@ -16,14 +16,11 @@ type goTarget struct{}
 func (goTarget) Names() []string { return []string{"go"} }
 
 func (goTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
-	// Packet wide text is carried; table kind 33 remains refused.
+	// Wide text is carried by both packet and table surfaces.
 	if err := refuseWideText(u, "go"); err != nil {
 		return nil, err
 	}
 	if err := refuseUnported(u, "go"); err != nil {
-		return nil, err
-	}
-	if err := refuseOptionalArrays(u, "go"); err != nil {
 		return nil, err
 	}
 	if err := refuseMaps(u, "go"); err != nil {
@@ -54,7 +51,10 @@ func (goTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 }
 
 func init() {
-	registerBuiltin(goTarget{}, true, false, false, false)
+	registerBuiltin(goTarget{}, true, true, true, false)
+	registerOptionalArrayCarrier("go")
+	valueDefaultTargets = append(valueDefaultTargets, "go")
+	wasRowTargets = append(wasRowTargets, "go")
 	registerPacketValueDefaultCarrier("go")
 	registerWideTextCarrier("go")
 }

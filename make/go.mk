@@ -83,7 +83,7 @@ tables-go-json-walk: build/tables-generated-go/.stamp
 # a generated package names its schema's `package` and Go resolves an import by
 # module path — so the conformance leg's go.mod replaces one path per unit,
 # exactly as test/go/go.mod already does for the packet corpus.
-build/tables-generated-go/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema
+build/tables-generated-go/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema $(wildcard test/tables/[MAKR][12].schema) tables/scalars/Scalars.schema test/tables/Scalars2.schema $(wildcard examples-wide/*.schema) tables/messages/Messages.schema
 	@mkdir -p build/tables-generated-go
 	./bin/schema generate --lang go --out build/tables-generated-go/examples tables/examples
 	# the POINTERED unit: its Go WIRE surface is refused by name (§11) and its
@@ -96,6 +96,20 @@ build/tables-generated-go/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_
 	./bin/schema generate --lang go --out build/tables-generated-go/v2 test/tables/V2.schema
 	./bin/schema generate --lang go --out build/tables-generated-go/p1 test/tables/P1.schema
 	./bin/schema generate --lang go --out build/tables-generated-go/p3 test/tables/P3.schema
+	./bin/schema generate --lang go --out build/tables-generated-go/m1 test/tables/M1.schema
+	./bin/schema generate --lang go --out build/tables-generated-go/m2 test/tables/M2.schema
+	./bin/schema generate --lang go --out build/tables-generated-go/a1 test/tables/A1.schema
+	./bin/schema generate --lang go --out build/tables-generated-go/a2 test/tables/A2.schema
+	./bin/schema generate --lang go --out build/tables-generated-go/k1 test/tables/K1.schema
+	./bin/schema generate --lang go --out build/tables-generated-go/k2 test/tables/K2.schema
+	./bin/schema generate --lang go --out build/tables-generated-go/r1 test/tables/R1.schema
+	./bin/schema generate --lang go --out build/tables-generated-go/r2 test/tables/R2.schema
+	./bin/schema generate --lang go --out build/tables-generated-go/scalars tables/scalars
+	./bin/schema generate --lang go --out build/tables-generated-go/scalars2 test/tables/Scalars2.schema
+	./bin/schema generate --lang go --out build/tables-generated-go/wide examples-wide
+	$(call go_table_module,wide,widedemo)
+	./bin/schema generate --lang go --out build/tables-generated-go/messages tables/messages
+	$(call go_table_module,messages,messagedemo)
 	$(call go_table_module,examples,tabledemo)
 	$(call go_table_module,pointers,graphdemo)
 	$(call go_table_module,block,blockdemo)
@@ -104,6 +118,16 @@ build/tables-generated-go/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_
 	$(call go_table_module,v2,tblv2)
 	$(call go_table_module,p1,tblp1)
 	$(call go_table_module,p3,tblp3)
+	$(call go_table_module,scalars,scalardemo)
+	$(call go_table_module,scalars2,tblscalars2)
+	$(call go_table_module,m1,tblm1)
+	$(call go_table_module,m2,tblm2)
+	$(call go_table_module,a1,tbla1)
+	$(call go_table_module,a2,tbla2)
+	$(call go_table_module,k1,tblk1)
+	$(call go_table_module,k2,tblk2)
+	$(call go_table_module,r1,tblr1)
+	$(call go_table_module,r2,tblr2)
 	@touch $@
 
 # one generated unit's module wiring (build wiring, not schema output — the

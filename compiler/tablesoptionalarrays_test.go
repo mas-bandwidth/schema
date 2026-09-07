@@ -97,7 +97,7 @@ func TestOptionalArraysAreCppOnly(t *testing.T) {
 		t.Fatalf("--lang cpp emitted no ProbeTable.h for a unit with an optional array; got %d files", len(files))
 	}
 	for _, target := range c.Targets() {
-		if target == "cpp" {
+		if target == "cpp" || target == "go" {
 			continue
 		}
 		t.Run(target, func(t *testing.T) {

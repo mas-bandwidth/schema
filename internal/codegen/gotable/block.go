@@ -411,6 +411,11 @@ func (g *blockGen) emitBlittableField(f *ir.Field, projection bool, w *blockWrit
 		return
 	}
 	switch {
+	case f.Type.Kind == ir.TWString:
+		next()
+		g.sf("\t%s [%d]uint16\n", name, f.Type.Size+1)
+		next()
+		g.sf("\t%sLength int32\n", name)
 	case f.Type.Kind == ir.TString:
 		next()
 		g.sf("\t%s [%d]byte // string(%d): max length, used length beside it\n", name, f.Type.Size+1, f.Type.Size)
@@ -453,7 +458,10 @@ func goBlittableType(u *ir.Unit, t ir.FieldType) string {
 		return "float32"
 	case ir.TFloat64:
 		return "float64"
-	case ir.TInt:
+	case ir.TInt, ir.TFixed:
+		if t.Width == 128 {
+			return "[2]uint64"
+		}
 		if t.Signed {
 			return fmt.Sprintf("int%d", t.Width)
 		}
@@ -526,7 +534,10 @@ func (g *blockGen) emitRecordCheck(name string, ml *ir.MemberLayout, projection 
 		spelled = name + "BlockProjection"
 	}
 	g.hf("\ttableBlockLayoutSize(%q, unsafe.Sizeof(%s{}), %d)\n", spelled, spelled, ml.Size)
-	g.hf("\ttableBlockLayoutSize(%q, unsafe.Alignof(%s{}), %d)\n", spelled+" alignment", spelled, ml.Align)
+	// Go caps native struct alignment at eight. Explicit padding preserves
+	// every model offset and stride; Open enforces the model's stronger
+	// alignment on the caller-owned byte region before exposing any row.
+	g.hf("\ttableBlockLayoutSize(%q, unsafe.Alignof(%s{}), %d)\n", spelled+" alignment", spelled, min(ml.Align, 8))
 	if projection {
 		g.hf("\ttableBlockLayoutOffset(%q, unsafe.Offsetof(%s{}.Magic), 0)\n", spelled+".Magic", spelled)
 		g.hf("\ttableBlockLayoutOffset(%q, unsafe.Offsetof(%s{}.BuildVersion), 8)\n", spelled+".BuildVersion", spelled)

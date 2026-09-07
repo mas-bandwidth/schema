@@ -18,7 +18,13 @@ import (
 // structs from this file read as one family.
 func goFieldType(t ir.FieldType) string {
 	switch t.Kind {
-	case ir.TInt:
+	case ir.TInt, ir.TFixed:
+		if t.Width == 128 {
+			if t.Signed {
+				return "serialize.Int128"
+			}
+			return "serialize.Uint128"
+		}
 		if t.Signed {
 			return fmt.Sprintf("int%d", t.Width)
 		}
@@ -93,9 +99,16 @@ func fieldDefaultExpr(f *ir.Field) string {
 			return formatFloat64(f.DefFloat)
 		}
 		return "0.0"
-	case ir.TInt, ir.TBits:
+	case ir.TInt, ir.TBits, ir.TFixed:
+		if f.Type.Width == 128 {
+			v := f.DefInt
+			if v == nil {
+				v = new(big.Int)
+			}
+			return wideLiteral(v, f.Type.Signed)
+		}
 		if f.HasDefault && f.DefInt != nil {
-			signed := f.Type.Kind == ir.TInt && f.Type.Signed
+			signed := (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) && f.Type.Signed
 			width := 4
 			if f.Type.Width > 32 {
 				width = 8
@@ -111,6 +124,9 @@ func fieldDefaultExpr(f *ir.Field) string {
 			}
 			return f.Type.Name + "None"
 		case *ir.Flags:
+			if f.HasDefault && f.DefInt != nil {
+				return f.DefInt.String()
+			}
 			return "0"
 		}
 	}
@@ -185,6 +201,8 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 	name := member(f)
 	typ := goFieldType(f.Type)
 	switch {
+	case f.Type.Kind == ir.TWString:
+		g.tf("\t%s [%d]uint16\n\t%sLength int32\n", name, f.Type.Size, name)
 	case f.Type.Kind == ir.TString:
 		g.tf("\t%s [%d]byte // string(%s): max length, used length beside it\n",
 			name, f.Type.Size, ir.RenderExpr(f.Type.SizeExpr))
@@ -332,9 +350,14 @@ func (g *tableGen) emitTableReset(st *ir.Struct) {
 func (g *tableGen) emitTableResetField(f *ir.Field) {
 	name := member(f)
 	switch {
+	case f.Type.Kind == ir.TWString:
+		g.pf("clear(value.%s[:]);value.%sLength=0\n", name, name)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		g.pf("\tclear(value.%s[:])\n", name)
-		g.pf("\tvalue.%sLength = 0\n", name)
+		g.pf("\tvalue.%sLength = %d\n", name, len(f.DefBytes))
+		if len(f.DefBytes) > 0 {
+			g.pf("\tcopy(value.%s[:], %q)\n", name, string(f.DefBytes))
+		}
 	case f.Array != ir.ArrayNone && isStructRef(f.Type):
 		base := arrayBase("value.", f)
 		g.pf("\tfor i := range %s {\n\t\t%sReset(&%s[i])\n\t}\n", base, f.Type.Name, base)
@@ -389,6 +412,10 @@ func tableFieldTypeName(f *ir.Field) string {
 		return "float32"
 	case ir.TFloat64:
 		return "float64"
+	case ir.TFixed:
+		return ir.FieldTypeSpelling(f)
+	case ir.TWString:
+		return "wstring"
 	case ir.TString:
 		return "string"
 	case ir.TBytes:
@@ -506,7 +533,7 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 		kind = tkU8
 	}
 	isArray := f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes || f.KeyEnum != ""
-	counted := f.Array == ir.ArrayCounted || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString
+	counted := f.Array == ir.ArrayCounted || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString
 
 	// the count column, spelled the way the storage spells its own extent: a
 	// keyed array DERIVES it from the key enum, so nothing outside the array
@@ -517,7 +544,7 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 		bound = "int32(" + keyedExtent(f) + ")"
 	case f.Array != ir.ArrayNone:
 		bound = strconv.FormatInt(f.ArrayBound, 10)
-	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString:
+	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString:
 		bound = strconv.FormatInt(f.Type.Size, 10)
 	}
 
@@ -529,7 +556,7 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	countOffset := "0xffffffff"
 	if counted {
 		companion := name + "Count"
-		if f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString {
+		if f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString {
 			companion = name + "Length"
 		}
 		countOffset = fmt.Sprintf("uint32(unsafe.Offsetof(%s{}.%s))", st.Name, companion)
@@ -588,7 +615,7 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 			enumName = fmt.Sprintf("func(v uint64) string { return FlagName%s(int(v)) }", f.Type.Name)
 		}
 	case *ir.Union:
-		if f.Type.Kind == ir.TNamed && f.Array == ir.ArrayNone {
+		if f.Type.Kind == ir.TNamed {
 			enumMax = fmt.Sprintf("%d", len(ref.Variants))
 			enumName = unionArmFunc(ref, "string", func(v ir.UnionVariant) string {
 				return fmt.Sprintf("%q", v.Name)
@@ -596,7 +623,7 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 			variantId = unionArmFunc(ref, "uint64", func(v ir.UnionVariant) string {
 				return fmt.Sprintf("0x%04x", ir.TableWireId(v.WireName()))
 			}, "0", "0")
-			arms = g.unionArmsFunc(ref, st, f)
+			arms = g.unionArmsFunc(ref)
 		}
 	}
 
@@ -612,6 +639,15 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	g.pf("\t\tArrayBound: %s, Offset: uint32(unsafe.Offsetof(%s{}.%s)), ElemSize: %s, CountOffset: %s, PresentOffset: %s,\n",
 		bound, st.Name, name, elemSize, countOffset, presentOffset)
 	g.pf("\t\tHasRange: %s, RangeMin: %s, RangeMax: %s, EnumMax: %s,\n", hasRange, rangeMin, rangeMax, enumMax)
+	g.pf("\t\tFracBits:%d,\n", f.Type.FracBits)
+	if ir.TableKindWide(kind) {
+		if lo, hi, ok := ir.TableRawRange(f); ok {
+			l0, l1 := wideLanes(lo)
+			h0, h1 := wideLanes(hi)
+			g.pf("WideRange:true, WideMin:[2]uint64{%s,%s}, WideMax:[2]uint64{%s,%s},\n", l0, l1, h0, h1)
+		}
+	}
+
 	g.pf("\t\tEnumName: %s,\n\t\tVariantId: %s,\n", enumName, variantId)
 	g.pf("\t\tKeyTypeName: %s, KeyName: %s, KeyId: %s,\n", keyTypeName, keyName, keyId)
 	g.pf("\t\tArms: %s,\n", arms)
@@ -635,38 +671,58 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 // for the reason the cook's descriptors already carry: Go refuses an
 // initialization cycle among package-level variables, an arm's Table column
 // names a descriptor, and a descriptor can name the union back.
-func (g *tableGen) unionArmsFunc(un *ir.Union, owner *ir.Struct, f *ir.Field) string {
-	slot := g.unionArmSlot[armKey{owner: owner.Name, field: f.Name}]
-	var b strings.Builder
-	fmt.Fprintf(&b, "tableUnionArms[%d] = TableUnionInfo{TagOffset: uint32(unsafe.Offsetof(%s{}.Type)), TagSize: uint32(unsafe.Sizeof(%s{}.Type)), Arms: []TableUnionArmInfo{\n{Offset: 0, Table: nil},\n",
-		slot, un.Name, un.Name)
-	for _, v := range un.Variants {
-		fmt.Fprintf(&b, "{Offset: uint32(unsafe.Offsetof(%s{}.%s)), Table: %sTableType},\n",
-			un.Name, ir.GoExportName(v.Name), v.Type)
-	}
-	b.WriteString("}}")
-	g.unionArms = append(g.unionArms, b.String())
-	return fmt.Sprintf("func() *TableUnionInfo { return &tableUnionArms[%d] }", slot)
+func (g *tableGen) unionArmsFunc(un *ir.Union) string {
+	return fmt.Sprintf("func() *TableUnionInfo { return &tableUnionArms[%d] }", g.unionArmSlot[un.Name])
 }
 
-// emitUnionArms fills this file's slots of the unit's arms table in an init().
-// The table itself is declared once, in the wire home, because it is one name
-// for the whole unit (docs/SPEC-TABLES.md §11).
+// emitUnionArms fills immutable descriptor slots after package initialization.
 func (g *tableGen) emitUnionArms() {
-	if len(g.unionArms) == 0 {
+	var unions []*ir.Union
+	for _, d := range g.file.Decls {
+		if un, ok := d.(*ir.Union); ok {
+			if _, used := g.unionArmSlot[un.Name]; used {
+				unions = append(unions, un)
+			}
+		}
+	}
+	for _, un := range g.file.TableUnions {
+		if _, used := g.unionArmSlot[un.Name]; used {
+			unions = append(unions, un)
+		}
+	}
+	if len(unions) == 0 {
 		return
 	}
-	g.pf("// The UNION FIELD SHAPES the descriptors above point at: the tag, and the\n")
-	g.pf("// arms indexed by it (docs/SPEC-TABLES.md §8.1). They are FILLED HERE rather\n")
-	g.pf("// than in the table's own initializer: an arm's Table column names a\n")
-	g.pf("// descriptor, a descriptor may name the union back, and Go refuses an\n")
-	g.pf("// initialization cycle among package-level variables. An init body is not\n")
-	g.pf("// part of that analysis, so the graph is expressible whatever a schema\n")
-	g.pf("// declares. Nothing mutates them afterwards: the surface is immutable from\n")
-	g.pf("// here on, readable from any goroutine with no synchronisation.\n")
-	g.pf("func init() {\n")
-	for _, a := range g.unionArms {
-		g.pf("\t%s\n", a)
+	for _, un := range unions {
+		for _, v := range un.Variants {
+			if !v.Void() {
+				g.emitTagsStatic(tagsName(un.Name, ir.GoExportName(v.Name)), v.F.Tags)
+			}
+		}
 	}
-	g.pf("}\n\n")
+	g.pf("func init() {\n")
+	for _, un := range unions {
+		g.pf("tableUnionArms[%d] = TableUnionInfo{TagOffset:uint32(unsafe.Offsetof(%s{}.Type)), TagSize:uint32(unsafe.Sizeof(%s{}.Type)), Arms: []TableUnionArmInfo{{Void:true},\n", g.unionArmSlot[un.Name], un.Name, un.Name)
+		for _, v := range un.Variants {
+			if v.Void() {
+				g.pf("{Void:true},\n")
+				continue
+			}
+			f := *v.F
+			f.Name = v.Name
+			table := "nil"
+			if v.Body() {
+				table = v.Type + "TableType"
+			}
+			g.pf("{Offset:uint32(unsafe.Offsetof(%s{}.%s)), Table:%s, Reset:func(storage unsafe.Pointer) { value := (*%s)(storage);\n", un.Name, member(&f), table, un.Name)
+			g.emitTableResetField(&f)
+			g.pf("}, Field: TableFieldInfo")
+			// Field emits a composite's trailing comma, which is also the final
+			// member of the enclosing arm descriptor.
+			g.emitTableFieldDescriptor(&ir.Struct{Name: un.Name}, &f, "")
+			g.pf("},\n")
+		}
+		g.pf("}}\n")
+	}
+	g.pf("}\n")
 }

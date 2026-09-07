@@ -37,11 +37,11 @@ table Log
 }
 `
 
-// TestUnionArraysAreCppOnly: --lang cpp emits the table sources for a unit
+// TestUnionArrayCarriers: --lang cpp emits the table sources for a unit
 // whose closure holds an array of unions; every other registered target
 // refuses the UNIT, naming the fields, the carrier and the flag that selects
 // it — a fixed-class codec that never met the element must not be emitted.
-func TestUnionArraysAreCppOnly(t *testing.T) {
+func TestUnionArrayCarriers(t *testing.T) {
 	u := unitFromSource(t, unionArraySrc)
 	c := New()
 	files, err := c.Generate(u, "cpp", Options{})
@@ -52,6 +52,16 @@ func TestUnionArraysAreCppOnly(t *testing.T) {
 		t.Fatalf("--lang cpp emitted no ProbeTable.h for a unit with an array of unions; got %d files", len(files))
 	}
 	for _, target := range c.Targets() {
+		if target == "go" {
+			files, err := c.Generate(u, target, Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, ok := files["ProbeTable.go"]; !ok {
+				t.Fatal("Go union-array wire source missing")
+			}
+			continue
+		}
 		if target == "cpp" {
 			continue
 		}

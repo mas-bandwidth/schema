@@ -5,6 +5,20 @@
 package main
 
 import (
+	"messagedemo"
+	"scalardemo"
+	tblscalars2 "tblscalars2"
+	widedemo "widedemo"
+
+	"tbla1"
+	"tbla2"
+	"tblk1"
+	"tblk2"
+	"tblm1"
+	"tblm2"
+	"tblr1"
+	"tblr2"
+
 	"tabledemo"
 	"tblp1"
 	"tblp3"
@@ -36,6 +50,49 @@ func snapP3(r *tblp3.TableReport) report {
 }
 
 var codecTable = []codec{
+	row("messagedemo", "ToolMessage", messagedemo.ToolMessageReset, messagedemo.ToolMessageLoad, messagedemo.ToolMessageMeasure, messagedemo.ToolMessageSave, messagedemo.ToolMessageFromJson, messagedemo.ToolMessageToJsonMeasure, messagedemo.ToolMessageToJson, func(r *messagedemo.TableReport) report {
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == messagedemo.TableOpenRefused}
+	}),
+
+	row("widedemo", "Caption", widedemo.CaptionReset, widedemo.CaptionLoad, widedemo.CaptionMeasure, widedemo.CaptionSave, widedemo.CaptionFromJson, widedemo.CaptionToJsonMeasure, widedemo.CaptionToJson, func(r *widedemo.TableReport) report {
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == widedemo.TableOpenRefused}
+	}),
+	row("widedemo", "Stamp", widedemo.StampReset, widedemo.StampLoad, widedemo.StampMeasure, widedemo.StampSave, widedemo.StampFromJson, widedemo.StampToJsonMeasure, widedemo.StampToJson, func(r *widedemo.TableReport) report {
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == widedemo.TableOpenRefused}
+	}),
+
+	row("scalars", "SimState", scalardemo.SimStateReset, scalardemo.SimStateLoad, scalardemo.SimStateMeasure, scalardemo.SimStateSave, scalardemo.SimStateFromJson, scalardemo.SimStateToJsonMeasure, scalardemo.SimStateToJson, func(r *scalardemo.TableReport) report {
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == scalardemo.TableOpenRefused}
+	}),
+	row("tblscalars2", "SimState", tblscalars2.SimStateReset, tblscalars2.SimStateLoad, tblscalars2.SimStateMeasure, tblscalars2.SimStateSave, tblscalars2.SimStateFromJson, tblscalars2.SimStateToJsonMeasure, tblscalars2.SimStateToJson, func(r *tblscalars2.TableReport) report {
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblscalars2.TableOpenRefused}
+	}),
+
+	row("tblm1", "Msg", tblm1.MsgReset, tblm1.MsgLoad, tblm1.MsgMeasure, tblm1.MsgSave, tblm1.MsgFromJson, tblm1.MsgToJsonMeasure, tblm1.MsgToJson, func(r *tblm1.TableReport) report {
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblm1.TableOpenRefused}
+	}),
+	row("tblm2", "Msg", tblm2.MsgReset, tblm2.MsgLoad, tblm2.MsgMeasure, tblm2.MsgSave, tblm2.MsgFromJson, tblm2.MsgToJsonMeasure, tblm2.MsgToJson, func(r *tblm2.TableReport) report {
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblm2.TableOpenRefused}
+	}),
+	row("tbla1", "Root", tbla1.RootReset, tbla1.RootLoad, tbla1.RootMeasure, tbla1.RootSave, tbla1.RootFromJson, tbla1.RootToJsonMeasure, tbla1.RootToJson, func(r *tbla1.TableReport) report {
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tbla1.TableOpenRefused}
+	}),
+	row("tbla2", "Root", tbla2.RootReset, tbla2.RootLoad, tbla2.RootMeasure, tbla2.RootSave, tbla2.RootFromJson, tbla2.RootToJsonMeasure, tbla2.RootToJson, func(r *tbla2.TableReport) report {
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tbla2.TableOpenRefused}
+	}),
+	row("tblk1", "Root", tblk1.RootReset, tblk1.RootLoad, tblk1.RootMeasure, tblk1.RootSave, tblk1.RootFromJson, tblk1.RootToJsonMeasure, tblk1.RootToJson, func(r *tblk1.TableReport) report {
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblk1.TableOpenRefused}
+	}),
+	row("tblk2", "Root", tblk2.RootReset, tblk2.RootLoad, tblk2.RootMeasure, tblk2.RootSave, tblk2.RootFromJson, tblk2.RootToJsonMeasure, tblk2.RootToJson, func(r *tblk2.TableReport) report {
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblk2.TableOpenRefused}
+	}),
+	row("tblr1", "Cfg", tblr1.CfgReset, tblr1.CfgLoad, tblr1.CfgMeasure, tblr1.CfgSave, tblr1.CfgFromJson, tblr1.CfgToJsonMeasure, tblr1.CfgToJson, func(r *tblr1.TableReport) report {
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblr1.TableOpenRefused}
+	}),
+	row("tblr2", "Cfg", tblr2.CfgReset, tblr2.CfgLoad, tblr2.CfgMeasure, tblr2.CfgSave, tblr2.CfgFromJson, tblr2.CfgToJsonMeasure, tblr2.CfgToJson, func(r *tblr2.TableReport) report {
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblr2.TableOpenRefused}
+	}),
+
 	row("tabledemo", "RootConfig", tabledemo.RootConfigReset, tabledemo.RootConfigLoad,
 		tabledemo.RootConfigMeasure, tabledemo.RootConfigSave,
 		tabledemo.RootConfigFromJson, tabledemo.RootConfigToJsonMeasure, tabledemo.RootConfigToJson, snapDemo),

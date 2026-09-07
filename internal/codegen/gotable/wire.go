@@ -16,7 +16,7 @@ func tableWireRuntime(u *ir.Unit) string {
 	return fmt.Sprintf(`
 const tableIdCapacity = %d
 const tableIdBuckets = %d
-`, n, buckets) + tableWireSource
+`, n, buckets) + tableWireSource + tableWStringSource
 }
 
 const tableWireSource = `
@@ -250,8 +250,8 @@ func tableOpen(data []byte, report *TableReport) (TableReader, TableOpenVerdict)
 }
 
 func tableKindWidens(from, to uint8) bool {
-	return (from >= 2 && from <= 5 && to > from && to <= 5) ||
-		(from >= 6 && from <= 9 && to > from && to <= 9) || from == 10 && to == 11
+	return (from >= 2 && from <= 5 && (to > from && to <= 5 || to == 18)) ||
+		(from >= 6 && from <= 9 && (to > from && to <= 9 || to == 19)) || from == 10 && to == 11
 }
 
 func (r *TableReader) Unsigned(kind uint8) uint64 {

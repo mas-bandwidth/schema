@@ -171,7 +171,7 @@ func tableJsonIsEnum(f *TableFieldInfo) bool { return f.VariantId != nil && f.Ar
 
 func tableJsonShape(f *TableFieldInfo) byte {
 	switch {
-	case f.Kind == 12: // string
+	case f.Kind == 12 || f.Kind == 33: // string
 		return 's'
 	case tableJsonIsBytes(f): // base64
 		return 's'
@@ -196,6 +196,8 @@ func tableJsonShape(f *TableFieldInfo) byte {
 // the ELEMENT shape of an array field — the same classifier one level down
 func tableJsonElementShape(f *TableFieldInfo) byte {
 	switch {
+	case f.Arms != nil:
+		return 'o'
 	case f.Kind == 13:
 		return 'o'
 	case tableJsonIsEnum(f):
@@ -384,8 +386,13 @@ func tableJsonUtf8(s []byte) (code int32, width int32) {
 // string holding invalid UTF-8, the round trip is NOT byte-identical, because
 // the alternative is emitting a text that is not JSON.
 func tableJsonWriteString(out *tableJsonOut, s []byte) {
-	const hex = "0123456789abcdef"
 	out.put('"')
+	tableJsonWriteStringBody(out, s)
+	out.put('"')
+}
+
+func tableJsonWriteStringBody(out *tableJsonOut, s []byte) {
+	const hex = "0123456789abcdef"
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		switch c {
@@ -423,7 +430,6 @@ func tableJsonWriteString(out *tableJsonOut, s []byte) {
 			}
 		}
 	}
-	out.put('"')
 }
 
 func tableJsonWriteUnsigned(out *tableJsonOut, value uint64) {
@@ -479,6 +485,10 @@ func tableJsonWriteFloat(out *tableJsonOut, value float64, single bool) bool {
 // tableJsonWriteScalar writes one scalar at one storage address: a nested
 // object, a union, a vocabulary, or a number.
 func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
+	if f.Kind >= 18 && f.Kind <= 29 {
+		tableJsonWriteWide(out, storage, f)
+		return true
+	}
 	if f.Arms != nil {
 		// a union is an object with ONE key, the arm's name; None is {}
 		arms := f.Arms()
@@ -502,7 +512,9 @@ func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFie
 		out.line(depth + 1)
 		tableJsonWriteString(out, tableJsonText(arm))
 		out.text(": ")
-		if !tableJsonWriteValue(out, unsafe.Add(storage, uintptr(arms.Arms[tag].Offset)), arms.Arms[tag].Table(), depth+1) {
+		if arms.Arms[tag].Void {
+			out.text("null")
+		} else if !tableJsonWriteField(out, storage, &arms.Arms[tag].Field, depth+1) {
 			return false
 		}
 		out.line(depth)
@@ -579,6 +591,10 @@ func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFie
 
 func tableJsonWriteField(out *tableJsonOut, base unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
 	storage := unsafe.Add(base, uintptr(f.Offset))
+	if f.Kind == 33 {
+		tableJsonWriteWString(out, unsafe.Slice((*uint16)(storage), tableJsonCount(base, f)))
+		return true
+	}
 	if f.Kind == 12 {
 		tableJsonWriteString(out, tableJsonBytes(storage, tableJsonCount(base, f)))
 		return true
@@ -808,7 +824,9 @@ func tableJsonEncodeUtf8(code uint32, unit []byte) int32 {
 // never cut through a multi-byte character. Clamping is counted, never fatal,
 // exactly as it is on the wire (§4). A nil destination scans past a string
 // without keeping it.
-func (in *tableJsonIn) scanString(out []byte) (int32, bool) {
+func (in *tableJsonIn) scanString(out []byte) (int32, bool) { return in.scanText(out, nil) }
+
+func (in *tableJsonIn) scanText(out []byte, wide []uint16) (int32, bool) {
 	if in.peek() != '"' {
 		in.bad = true
 		return 0, false
@@ -897,7 +915,25 @@ func (in *tableJsonIn) scanString(out []byte) (int32, bool) {
 			}
 			in.pos += n
 		}
-		if out != nil {
+		if wide != nil {
+			code, _ := utf8.DecodeRune(unit[:unitLength])
+			n := int32(1)
+			if code >= 0x10000 {
+				n = 2
+			}
+			if !clamped && placed+n <= int32(len(wide)) {
+				if n == 1 {
+					wide[placed] = uint16(code)
+				} else {
+					code -= 0x10000
+					wide[placed] = 0xd800 + uint16(code>>10)
+					wide[placed+1] = 0xdc00 + uint16(code&0x3ff)
+				}
+				placed += n
+			} else {
+				clamped = true
+			}
+		} else if out != nil {
 			if !clamped && placed+unitLength <= int32(len(out)) {
 				copy(out[placed:], unit[:unitLength])
 				placed += unitLength
@@ -1177,13 +1213,29 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 				return false
 			}
 		} else {
-			payload := unsafe.Add(storage, uintptr(arms.Arms[tag].Offset))
-			armType := arms.Arms[tag].Table()
-			armType.Reset(payload)
-			if !tableJsonReadTable(in, payload, armType, depth+1) {
-				return false
+			arm := &arms.Arms[tag]
+			want := byte('z')
+			if !arm.Void {
+				want = tableJsonShape(&arm.Field)
 			}
-			tableJsonSetRaw(unsafe.Add(storage, uintptr(arms.TagOffset)), arms.TagSize, uint64(tag))
+			if in.valueShape() != want {
+				in.report.KindMismatch++
+				if !in.skipValue(depth + 1) {
+					return false
+				}
+			} else {
+				if arm.Void {
+					if !in.literal("null") {
+						return false
+					}
+				} else {
+					arm.Reset(storage)
+					if !tableJsonReadField(in, storage, &arm.Field, depth+1) {
+						return false
+					}
+				}
+				tableJsonSetRaw(unsafe.Add(storage, uintptr(arms.TagOffset)), arms.TagSize, uint64(tag))
+			}
 		}
 		c := in.peek()
 		if c == ',' {
@@ -1296,6 +1348,9 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 		return false
 	}
 	token := scratch[:length]
+	if f.Kind >= 18 && f.Kind <= 29 {
+		return tableJsonReadWide(in, token, storage, f)
+	}
 	if f.Kind == 10 || f.Kind == 11 {
 		single := f.Kind == 10
 		value := tableJsonTokenDouble(token, single)
@@ -1424,6 +1479,16 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 
 func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
 	storage := unsafe.Add(base, uintptr(f.Offset))
+	if f.Kind == 33 {
+		units := unsafe.Slice((*uint16)(storage), f.ArrayBound)
+		clear(units)
+		n, ok := in.scanText(nil, units)
+		if !ok {
+			return false
+		}
+		tableJsonSetCount(base, f, n)
+		return true
+	}
 	if f.Kind == 12 {
 		length, ok := in.scanString(tableJsonBytes(storage, f.ArrayBound))
 		if !ok {
@@ -1811,6 +1876,337 @@ func tableJsonWrite(value unsafe.Pointer, info *TableTypeInfo, buffer []byte) in
 		return -1
 	}
 	return out.offset
+}
+
+type tableJsonWide [2]uint64
+
+func tableJsonWideSigned(kind uint8) bool { return kind == 18 || kind >= 20 && kind <= 24 }
+func (v tableJsonWide) negative() bool    { return v[1]>>63 != 0 }
+func (v tableJsonWide) zero() bool        { return v[0] == 0 && v[1] == 0 }
+func (v tableJsonWide) cmp(b tableJsonWide, signed bool) int {
+	if signed && v.negative() != b.negative() {
+		if v.negative() {
+			return -1
+		}
+		return 1
+	}
+	if v[1] < b[1] || v[1] == b[1] && v[0] < b[0] {
+		return -1
+	}
+	if v != b {
+		return 1
+	}
+	return 0
+}
+func (v tableJsonWide) shl(n int) tableJsonWide {
+	if n <= 0 {
+		return v
+	}
+	if n >= 128 {
+		return tableJsonWide{}
+	}
+	if n >= 64 {
+		return tableJsonWide{0, v[0] << (n - 64)}
+	}
+	return tableJsonWide{v[0] << n, v[1]<<n | v[0]>>(64-n)}
+}
+func (v tableJsonWide) shr(n int) tableJsonWide {
+	if n <= 0 {
+		return v
+	}
+	if n >= 128 {
+		return tableJsonWide{}
+	}
+	if n >= 64 {
+		return tableJsonWide{v[1] >> (n - 64), 0}
+	}
+	return tableJsonWide{v[0]>>n | v[1]<<(64-n), v[1] >> n}
+}
+func (v tableJsonWide) neg() tableJsonWide {
+	v[0] = ^v[0] + 1
+	v[1] = ^v[1]
+	if v[0] == 0 {
+		v[1]++
+	}
+	return v
+}
+func (v *tableJsonWide) mulAdd(m, a uint32) uint32 {
+	limbs := [4]uint64{v[0] & 0xffffffff, v[0] >> 32, v[1] & 0xffffffff, v[1] >> 32}
+	carry := uint64(a)
+	for i := range limbs {
+		p := limbs[i]*uint64(m) + carry
+		limbs[i] = p & 0xffffffff
+		carry = p >> 32
+	}
+	v[0] = limbs[0] | limbs[1]<<32
+	v[1] = limbs[2] | limbs[3]<<32
+	return uint32(carry)
+}
+func (v *tableJsonWide) div(d uint32) uint32 {
+	limbs := [4]uint64{v[0] & 0xffffffff, v[0] >> 32, v[1] & 0xffffffff, v[1] >> 32}
+	rem := uint64(0)
+	for i := 3; i >= 0; i-- {
+		cur := rem<<32 | limbs[i]
+		limbs[i] = cur / uint64(d)
+		rem = cur % uint64(d)
+	}
+	v[0] = limbs[0] | limbs[1]<<32
+	v[1] = limbs[2] | limbs[3]<<32
+	return uint32(rem)
+}
+func tableJsonWideLoad(storage unsafe.Pointer, width uint32, signed bool) tableJsonWide {
+	if width == 16 {
+		return *(*tableJsonWide)(storage)
+	}
+	if signed {
+		n := tableJsonGetSigned(storage, width)
+		v := tableJsonWide{uint64(n), 0}
+		if n < 0 {
+			v[1] = ^uint64(0)
+		}
+		return v
+	}
+	return tableJsonWide{tableJsonGetRaw(storage, width), 0}
+}
+func tableJsonWideStore(storage unsafe.Pointer, width uint32, v tableJsonWide) {
+	if width == 16 {
+		*(*tableJsonWide)(storage) = v
+	} else {
+		tableJsonSetRaw(storage, width, v[0])
+	}
+}
+func (v tableJsonWide) fraction(n int) tableJsonWide {
+	if n < 64 {
+		v[1] = 0
+		v[0] &= uint64(1)<<n - 1
+	} else {
+		v[1] &= uint64(1)<<(n-64) - 1
+	}
+	return v
+}
+func tableJsonWriteWide(out *tableJsonOut, storage unsafe.Pointer, f *TableFieldInfo) {
+	signed := tableJsonWideSigned(f.Kind)
+	v := tableJsonWideLoad(storage, f.ElemSize, signed)
+	if signed && v.negative() {
+		out.put('-')
+		v = v.neg()
+	}
+	frac := int(f.FracBits)
+	whole := v.shr(frac)
+	var digits [40]byte
+	n := 0
+	for {
+		digits[n] = '0' + byte(whole.div(10))
+		n++
+		if whole.zero() {
+			break
+		}
+	}
+	for i := n - 1; i >= 0; i-- {
+		out.put(digits[i])
+	}
+	if f.Kind < 20 {
+		return
+	}
+	out.put('.')
+	fraction := v.fraction(frac)
+	if fraction.zero() {
+		out.put('0')
+		return
+	}
+	for !fraction.zero() {
+		carry := fraction.mulAdd(10, 0)
+		digit := fraction.shr(frac)[0]
+		if frac > 64 {
+			digit |= uint64(carry) << (128 - frac)
+		}
+		out.put('0' + byte(digit))
+		fraction = fraction.fraction(frac)
+	}
+}
+
+func tableJsonReadWide(in *tableJsonIn, token []byte, storage unsafe.Pointer, f *TableFieldInfo) bool {
+	signed := tableJsonWideSigned(f.Kind)
+	frac := int(f.FracBits)
+	i := 0
+	negative := false
+	if len(token) > 0 && (token[0] == '-' || token[0] == '+') {
+		negative = token[0] == '-'
+		i++
+	}
+	intStart := i
+	for i < len(token) && token[i] >= '0' && token[i] <= '9' {
+		i++
+	}
+	intLen := i - intStart
+	fracStart := i
+	fracLen := 0
+	if i < len(token) && token[i] == '.' {
+		i++
+		fracStart = i
+		for i < len(token) && token[i] >= '0' && token[i] <= '9' {
+			i++
+		}
+		fracLen = i - fracStart
+	}
+	exp := 0
+	if i < len(token) && (token[i] == 'e' || token[i] == 'E') {
+		i++
+		neg := false
+		if i < len(token) && (token[i] == '-' || token[i] == '+') {
+			neg = token[i] == '-'
+			i++
+		}
+		for i < len(token) && token[i] >= '0' && token[i] <= '9' {
+			if exp < 100000 {
+				exp = exp*10 + int(token[i]-'0')
+			}
+			i++
+		}
+		if neg {
+			exp = -exp
+		}
+	}
+	digit := func(k int) byte {
+		if k < intLen {
+			return token[intStart+k]
+		}
+		return token[fracStart+k-intLen]
+	}
+	start, end, point := 0, intLen+fracLen, intLen+exp
+	for start < end && digit(start) == '0' {
+		start++
+		point--
+	}
+	for end > start && digit(end-1) == '0' {
+		end--
+	}
+	var raw tableJsonWide
+	saturated := false
+	signedMax := tableJsonWide{^uint64(0), ^uint64(0) >> 1}
+	signedMin := tableJsonWide{0, uint64(1) << 63}
+	unsignedMax := tableJsonWide{^uint64(0), ^uint64(0)}
+	switch {
+	case start == end:
+	case point > 40:
+		saturated = true
+		if !negative {
+			if signed {
+				raw = signedMax
+			} else {
+				raw = unsignedMax
+			}
+		} else if signed {
+			raw = signedMin
+		}
+	case point < -40:
+		in.report.KindMismatch++
+		return true
+	default:
+		var fd [tableJsonMaxNumber + 48]byte
+		fn := 0
+		for z := point; z < 0; z++ {
+			fd[fn] = 0
+			fn++
+		}
+		for k := max(point, 0) + start; k < end; k++ {
+			fd[fn] = digit(k) - '0'
+			fn++
+		}
+		var fraction tableJsonWide
+		for b := 0; b < frac; b++ {
+			carry := byte(0)
+			for k := fn - 1; k >= 0; k-- {
+				d := fd[k]*2 + carry
+				fd[k] = d % 10
+				carry = d / 10
+			}
+			fraction = fraction.shl(1)
+			fraction[0] |= uint64(carry)
+		}
+		for k := 0; k < fn; k++ {
+			if fd[k] != 0 {
+				in.report.KindMismatch++
+				return true
+			}
+		}
+		var whole tableJsonWide
+		for k := start; k < start+point && !saturated; k++ {
+			d := uint32(0)
+			if k < end {
+				d = uint32(digit(k) - '0')
+			}
+			if whole.mulAdd(10, d) != 0 {
+				saturated = true
+			}
+		}
+		if !saturated && frac > 0 && !whole.shr(128-frac).zero() {
+			saturated = true
+		}
+		if !saturated {
+			raw = whole.shl(frac)
+			raw[0] |= fraction[0]
+			raw[1] |= fraction[1]
+		}
+		if signed {
+			if !saturated && !negative && raw.negative() {
+				saturated = true
+			}
+			if !saturated && negative && raw.cmp(signedMin, false) > 0 {
+				saturated = true
+			}
+			if saturated {
+				if negative {
+					raw = signedMin
+				} else {
+					raw = signedMax
+				}
+			} else if negative {
+				raw = raw.neg()
+			}
+		} else {
+			if saturated {
+				raw = unsignedMax
+			}
+			if negative && !raw.zero() {
+				raw = tableJsonWide{}
+				saturated = true
+			}
+		}
+	}
+	if saturated {
+		in.report.Clamped++
+	}
+	if f.WideRange {
+		lo, hi := tableJsonWide(f.WideMin), tableJsonWide(f.WideMax)
+		if raw.cmp(lo, signed) < 0 {
+			raw = lo
+			in.report.Clamped++
+		} else if raw.cmp(hi, signed) > 0 {
+			raw = hi
+			in.report.Clamped++
+		}
+	}
+	tableJsonWideStore(storage, f.ElemSize, raw)
+	return true
+}
+
+func tableJsonWriteWString(out *tableJsonOut, units []uint16) {
+	out.put('"')
+	for i := 0; i < len(units); i++ {
+		code := uint32(units[i])
+		if code >= 0xd800 && code <= 0xdbff && i+1 < len(units) && units[i+1] >= 0xdc00 && units[i+1] <= 0xdfff {
+			code = 0x10000 + (code-0xd800)<<10 + (uint32(units[i+1]) - 0xdc00)
+			i++
+		}
+		if code >= 0xd800 && code <= 0xdfff {
+			code = 0xfffd
+		}
+		var encoded [4]byte
+		n := tableJsonEncodeUtf8(code, encoded[:])
+		tableJsonWriteStringBody(out, encoded[:n])
+	}
+	out.put('"')
 }
 
 // ---- json walk: end ----
