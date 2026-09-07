@@ -21,7 +21,8 @@ make table-base64-cpp table-base64-c table-base64-go table-base64-rust \
      table-base64-elixir
 ```
 
-These checks also run under `make test` / each corresponding `test-<lang>`.
+These checks run in each language's pull-request conformance job and under
+`make test` / each corresponding `test-<lang>`.
 No runtime repository supplies Base64; these codecs belong to the schema
 emitters. The lookup tables replace per-character alphabet searches. Elixir
 also discards consumed accumulator bits (avoiding a growing bignum) and uses

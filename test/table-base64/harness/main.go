@@ -63,7 +63,7 @@ func corpus() []vector {
 	// deliberately uses the standard decoder rather than a copied lookup.
 	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 	for i := range alphabet {
-		for pos := 0; pos < 4; pos++ {
+		for pos := range 4 {
 			quad := []byte("AAAA")
 			quad[pos] = alphabet[i]
 			want, err := base64.StdEncoding.DecodeString(string(quad))
@@ -75,7 +75,7 @@ func corpus() []vector {
 	// None is a Base64 symbol. They must report a kind mismatch (or JSON
 	// damage for the closing quote), never index
 	// outside the table or turn the NUL alphabet terminator into a symbol.
-	for c := 0; c < 256; c++ {
+	for c := range 256 {
 		if strings.IndexByte(alphabet, byte(c)) >= 0 || c == '=' {
 			continue
 		}
