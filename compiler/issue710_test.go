@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -307,8 +308,21 @@ func TestIssue710ListRefusal(t *testing.T) {
 		v := m.New(u.Tables[tc.root])
 		var r tabletext.Report
 		ok, err := tablewire.Decode(m, v, wire, &r)
-		if ok || !tablewire.Refused(err) || r.Malformed || r.Unknown != 0 || r.KindMismatch != 0 || v.Fields[1].Cell.I != 0 {
+		_, countRefused := errors.AsType[*tablewire.CountRefusal](err)
+		if ok || !countRefused || r.Malformed || r.Unknown != 0 || r.KindMismatch != 0 || v.Fields[1].Cell.I != 0 {
 			t.Fatalf("%s refusal: ok=%v err=%v report=%+v", tc.root, ok, err, r)
+		}
+		// Count refusal is distinct from a pre-decode form refusal: public
+		// tools must return it as an error, not report a successful empty read.
+		if _, err := New().ReadReport(u, tc.root, wire); err == nil {
+			t.Fatal("ReadReport hid the storage-cap refusal")
+		}
+		out := filepath.Join(t.TempDir(), "not-written")
+		if _, err := New().Unpack(u, tc.root, wire, out); err == nil {
+			t.Fatal("Unpack hid the storage-cap refusal")
+		}
+		if _, err := os.Stat(out); !os.IsNotExist(err) {
+			t.Fatalf("refused unpack touched the output directory: %v", err)
 		}
 		cpp.WriteString("{const uint8_t wire[]={")
 		for _, b := range wire {
