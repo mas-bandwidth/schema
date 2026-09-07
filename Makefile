@@ -4064,10 +4064,12 @@ MESSAGE_FORM_CONTROLS := \
 	message-strict-check-refuses:internal/tablewire/message.go:TestTheAnnouncementsTwoStrictChecksAndItsTolerance \
 	message-duplicate-entry-accepted:internal/tablewire/message.go:TestAHostileShape \
 	message-array-of-text-accepted:ir/tablemessage.go:TestAHostileShape \
-	message-skipped-variant-unresolved:internal/tablewire/messagedecode.go:TestAReferenceOfTheWrongSort
+	message-skipped-variant-unresolved:internal/tablewire/messagedecode.go:TestAReferenceOfTheWrongSort \
+	message-text-accepts-ill-formed:internal/tablewire/messagedecode.go:TestTheMessageFormsTextContentRuleAndClamp \
+	message-text-clamp-off-boundary:internal/tablewire/messagedecode.go:TestTheMessageFormsTextContentRuleAndClamp
 
 .PHONY: tables-message-form-negative-control
-tables-message-form-negative-control: tables-message-form-emitter-negative-control tables-message-form-count-negative-control
+tables-message-form-negative-control: tables-message-form-emitter-negative-control tables-message-form-count-negative-control tables-message-form-text-negative-control
 	@for row in $(MESSAGE_FORM_CONTROLS); do \
 		name=$${row%%:*}; rest=$${row#*:}; file=$${rest%%:*}; test=$${rest#*:}; \
 		$(MAKE) --no-print-directory tables-message-form-one-negative-control \
@@ -4145,6 +4147,44 @@ tables-message-form-count-negative-control: bin/schema test/tables/message_count
 		-o build/message-nc/count-true
 	./build/message-nc/count-true
 	$(call message_form_count_control,message-emitter-narrow-count-before-clamp,internal/codegen/cpptable/messageload.go)
+
+# AND THE ONE CONTENT RULE ON A MESSAGE BODY (docs/SPEC-TABLES.md §3.3,
+# schema#620): a kind 12 payload that is not well-formed UTF-8, or that carries
+# a zero byte, is damage and terminal for the batch, and a clamp cuts at a code
+# point boundary. Neither is reachable from a corpus value, because a writer
+# produces neither, so the instrument is a batch forged over backenddemo's
+# `sku` and a program that reads the report and the stored bytes back. The
+# emitter's own copy of each rule is what the two sabotages remove; the ORACLE's
+# two ride in MESSAGE_FORM_CONTROLS above. $(1) the sabotage, $(2) the emitter file.
+define message_form_text_control
+	@mkdir -p build/message-nc
+	@go run ./tools/sabotage -name $(1) -out build/message-nc/$(1).gotext $(2)
+	@printf '{"Replace":{"%s/$(2)":"%s/build/message-nc/$(1).gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/message-nc/$(1)-overlay.json
+	go build -overlay build/message-nc/$(1)-overlay.json -o build/message-nc/$(1)-schema ./cmd/schema
+	@rm -rf build/message-nc/$(1)-backend && mkdir -p build/message-nc/$(1)-backend
+	./build/message-nc/$(1)-schema generate --lang cpp --out build/message-nc/$(1)-backend tables/backend
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/message-nc/$(1)-backend -Itest/tables -I$(SERIALIZE) \
+		test/tables/message_text_main.cpp build/message-nc/$(1)-backend/BackendTable.cpp \
+		-o build/message-nc/$(1)-control
+	@if ./build/message-nc/$(1)-control > build/message-nc/$(1).log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the $(1) sabotage landed and the message text rows stayed green"; \
+		cat build/message-nc/$(1).log; exit 1; \
+	fi
+	@cat build/message-nc/$(1).log
+	@echo "negative control ($(1)): the message form's text rows go red"
+endef
+
+.PHONY: tables-message-form-text-negative-control
+tables-message-form-text-negative-control: bin/schema test/tables/message_text_main.cpp build/tables-generated/.stamp
+	@mkdir -p build/message-nc
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/backend -Itest/tables -I$(SERIALIZE) \
+		test/tables/message_text_main.cpp build/tables-generated/backend/BackendTable.cpp \
+		-o build/message-nc/text-true
+	./build/message-nc/text-true
+	$(call message_form_text_control,message-emitter-text-accepts-ill-formed,internal/codegen/cpptable/messageload.go)
+	$(call message_form_text_control,message-emitter-text-clamp-off-boundary,internal/codegen/cpptable/messageload.go)
+
 # THE NODE TYPE A ROOT CANNOT PLACE (docs/SPEC-TABLES.md §3.1, §6.5, §3.3), and
 # the vector message_node_type_unpointed is the red it closed. A node record is
 # a pointer's pointee, so a table no pointer below the root targets is a node
