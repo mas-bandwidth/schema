@@ -150,7 +150,12 @@ func (g *gen) emitWindowLoad(ind string) {
 		g.pf("%s\n", load)
 	} else {
 		g.pf("%s  window =\n", ind)
-		g.pf("%s      view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);\n", ind)
+		shift := fmt.Sprintf("%s      view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);", ind)
+		if len(shift) <= 80 {
+			g.pf("%s\n", shift)
+		} else {
+			g.pf("%s      view.getUint64(bitsRead >>> 3, Endian.little) >>>\n%s      (bitsRead & 7);\n", ind, ind)
+		}
 	}
 	g.pf("%s} else {\n", ind)
 	g.pf("%s  window = tailWord >>> (bitsRead - tailBase * 8);\n", ind)
@@ -252,7 +257,7 @@ func (g *gen) staticBitsField(f *ir.Field) (int64, bool) {
 
 func (g *gen) staticBitsScalar(f *ir.Field) (int64, bool) {
 	switch f.Type.Kind {
-	case ir.TString, ir.TBytes:
+	case ir.TString, ir.TBytes, ir.TWString:
 		return 0, false
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
@@ -716,6 +721,8 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 	case ir.TFloat64:
 		g.needScratch, g.needF64Conv = true, true
 		g.chunkAdd(fmt.Sprintf("_float64BitsFromDouble(%s)", name), 64, ind)
+	case ir.TWString:
+		g.emitWriteWString(f, name, ind)
 	case ir.TString, ir.TBytes:
 		g.emitWriteBytesField(f, name, ind)
 	case ir.TNamed:
@@ -1172,6 +1179,8 @@ func (g *gen) emitReadDynamicField(f *ir.Field, path, ind string) {
 		name = path
 	}
 	switch {
+	case f.Type.Kind == ir.TWString:
+		g.emitReadWString(f, name, ind)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.emitReadBytesField(f, name, ind)
 	case f.Array == ir.ArrayCounted:
@@ -1362,6 +1371,8 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string, bounded bool) {
 		return
 	}
 	switch f.Type.Kind {
+	case ir.TWString:
+		g.emitReadWString(f, name, ind)
 	case ir.TString, ir.TBytes:
 		// only reachable as an array element (never inside a fused run —
 		// staticBitsScalar calls it dynamic)
@@ -1684,7 +1695,7 @@ func (g *gen) emitInitializeField(f *ir.Field, path, ind string, viaCalls, defau
 	}
 	name := path + "." + dartName(f.Name)
 	switch {
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
 		fill := fmt.Sprintf("%s%s.fillRange(0, %s.length, 0);", ind, name, name)
 		if len(fill) <= 80 {
 			g.pf("%s\n", fill)
@@ -1877,6 +1888,10 @@ func (g *gen) emitMeasureField(f *ir.Field, path, ind string, pending *int64) {
 		name = path
 	}
 	switch {
+	case f.Type.Kind == ir.TWString:
+		*pending += ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size))
+		g.flushMeasure(pending, ind)
+		g.pf("%sbits += %sLength * 32;\n", ind, name)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		lenBits := ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size))
 		*pending += lenBits
