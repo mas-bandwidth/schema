@@ -1769,7 +1769,8 @@ static void test_unbounded_values()
     CHECK_EQ( measured, n );
     pin_golden( "map_spans", wire, n );
 
-    // the region: the entry array first, then EACH ENTRY'S list elements
+    // the region: the entry array first, then EACH ENTRY'S list elements, the
+    // pre-order placement §2.8 states
     const int64_t need = SpansLoadMeasure( wire, n );
     CHECK( need > 0 );
     uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
@@ -1783,12 +1784,21 @@ static void test_unbounded_values()
         // key 1 was inserted SECOND and carries THREE elements, key 8 first and
         // carries two, so a walk that placed the lists in insertion order
         // rather than in key order would read one list's elements as another's
+        // A LIST WHOSE ELEMENTS WERE NOT PLACED HAS A NULL ELEMENT POINTER, so
+        // the count is checked and the elements are read only under it: a walk
+        // that never laid the extent must report on a CHECK and not on a fault.
         const TableList<Item> * one = loaded->tracks.Find( (uint8_t) 1 );
         CHECK( one != NULL && one->count == 3 );
-        CHECK( one != NULL && one->Elements()[0].count == 10 && one->Elements()[2].count == 12 );
+        if ( one != NULL && one->count == 3 )
+        {
+            CHECK( one->Elements()[0].count == 10 && one->Elements()[2].count == 12 );
+        }
         const TableList<Item> * eight = loaded->tracks.Find( (uint8_t) 8 );
         CHECK( eight != NULL && eight->count == 2 );
-        CHECK( eight != NULL && eight->Elements()[0].count == 80 && eight->Elements()[1].count == 81 );
+        if ( eight != NULL && eight->count == 2 )
+        {
+            CHECK( eight->Elements()[0].count == 80 && eight->Elements()[1].count == 81 );
+        }
         CHECK_EQ( loaded->after, 4 );
         static uint8_t again[1u << 16];
         CHECK_EQ( SpansSave( loaded, again, sizeof( again ) ), n );
@@ -1916,8 +1926,13 @@ static void test_blob_values()
     CHECK( repeat == first );
     CHECK( repeat != NULL && repeat->value == 0 ); // null, the pointer's default
     CHECK_EQ( dd->pages.count, 1 );
+}
 
-    // *bytes under a SIGNED key: an opaque buffer holding bytes text cannot
+static void test_byte_blob_values()
+{
+    // *bytes under a SIGNED key: an opaque buffer holding bytes text cannot.
+    // Its own function rather than the tail of the one above, so a sabotage
+    // that refuses one unit's save leaves the other unit reporting.
     ChunksBuilder cb;
     Chunks * c = cb.GetRoot();
     static const int32_t byte_keys[2] = { 2, -3 };
@@ -2076,6 +2091,7 @@ int main( int argc, char ** argv )
     test_enum_extent_values();
     test_unbounded_values();
     test_blob_values();
+    test_byte_blob_values();
     test_message_form();
 
     if ( failures != 0 )
