@@ -1342,6 +1342,7 @@ func (g *gen) emitReadBytesField(f *ir.Field, name, ind string) {
 	g.pf("%sSystem.arraycopy(data, bitsRead >>> 3, %s, 0, %s);\n", ind, name, length)
 	g.pf("%sbitsRead += %s * 8;\n", ind, length)
 	if f.Type.Kind == ir.TString {
+		g.emitReadUTF8(name, length, ind)
 		iv := fmt.Sprintf("i%d", g.loopDepth)
 		g.loopDepth++
 		g.pf("%sfor (int %s = 0; %s < %s; %s++) {\n", ind, iv, iv, length, iv)

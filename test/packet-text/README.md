@@ -42,3 +42,12 @@ returns `false`, following the existing schema-verdict convention; stream
 failures retain the runtime's latched error. A compiled release control skips
 only the UTF-8 scan and must fail mutation agreement. Both checks ride
 `test-cs`.
+
+`make packet-utf8-java` checks the same cases with assertions enabled and
+disabled. The Java byte loads are unsigned before scalar validation. Since
+its API returns a verdict without a cursor, accepted values must read at
+their measured exact bit bound and refuse one bit less. Both positive and
+negative consumers compile with Java 17 warnings treated as errors. The
+fixture bytes are copied to `Text.schema` at build time because Java's outer
+file class cannot share the inner `Narrow` type's name. The declaration and
+wire stay identical. Both checks ride `test-java`.
