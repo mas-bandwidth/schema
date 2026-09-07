@@ -92,7 +92,7 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype T {\n    on bool\n    if on {\n        if on { x int32 } else { y int32 }\n    }\n}\n"},
 		{name: "a self-negating guard two blocks down", want: "can never ride",
 			src: "package t\ntype T {\n    on bool\n    other bool\n    if on {\n        if other {\n            if !on { x int32 }\n        }\n    }\n}\n"},
-		{name: "a negated guard renegated under itself", want: "can never ride",
+		{name: "a negated guard taken the other way under itself", want: "can never ride",
 			src: "package t\ntype T {\n    on bool\n    if !on {\n        if on { x int32 }\n    }\n}\n"},
 
 		// ---- ranges and storage ----
