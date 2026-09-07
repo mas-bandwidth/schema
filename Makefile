@@ -3966,6 +3966,93 @@ tables-wire-fuzz-oracle-negative-control: build/conformance-harness build/wire-f
 	@grep -m1 "FAILED" $(ORACLE_NC)/log
 	@echo "negative control: removing the oracle's body-span clamp turns the pinned vector RED"
 
+# ---- THE RETENTION LEG (docs/SPEC-TABLES.md §6.6, §4.2) ---------------------
+#
+# The same mutants through both engines' RETAINING paths, comparing the two
+# retention counters beside the six and the saved bytes beside them. The arm's
+# roster is the VARIABLE-CLASS FILE ROOTS and nothing else: a fixed-class
+# root's LoadRetain is refused by name, and a form-2 SaveRetain refuses by
+# name (§3.3).
+.PHONY: tables-wire-fuzz-retain
+tables-wire-fuzz-retain: build/conformance-harness build/wire-fuzz-cpp build/wire-fuzz-cpp-asan
+	./build/conformance-harness wire-fuzz --retain --driver ./build/wire-fuzz-cpp --seed $(SEED) --n $(N)
+	./build/conformance-harness wire-fuzz --retain --driver ./build/wire-fuzz-cpp-asan --seed $(SEED) --n $(N) \
+		--failed build/wire-fuzz/failed-retain-asan.bin
+
+# TWO NEGATIVE CONTROLS STAND BEHIND THE RETENTION LEG, one per engine,
+# because a leg that has never gone red proves nothing about either. Each
+# removes ONE check — through `go build -overlay`, so no tracked file moves —
+# and requires the leg to go red on the verdict that check guards.
+#
+# THE ORACLE'S DROP RULE. THE WALK IS AN INTERPRETATION AND ITS VERDICT IS
+# STATED (§6.6): a reference above the entry count, a reference at an entry of
+# zero, a reference at one of the three reserved ids, a non-canonical length,
+# an inner body whose terminator falls short, a nested `L` past its parent, and
+# a kind 17 at any depth all DROP THE RECORD. Without the verdict the oracle
+# keeps a record the reference drops, and the two retention reports differ on
+# the mutant that carried it.
+RETAIN_ORACLE_NC := build/wire-fuzz-nc-retain-oracle
+.PHONY: tables-wire-fuzz-retain-oracle-negative-control
+tables-wire-fuzz-retain-oracle-negative-control: build/conformance-harness build/wire-fuzz-cpp
+	@rm -rf $(RETAIN_ORACLE_NC) && mkdir -p $(RETAIN_ORACLE_NC)
+	@sed -e 's|if rs.bad \|\| c.off != len(c.buf) {|if c.off != len(c.buf) { // NEGATIVE CONTROL: the walk'"'"'s verdict is ignored|' \
+		internal/tablewire/retain.go > $(RETAIN_ORACLE_NC)/retain.go.txt
+	@cmp -s internal/tablewire/retain.go $(RETAIN_ORACLE_NC)/retain.go.txt && \
+		{ echo "NEGATIVE CONTROL: the retain-oracle sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/tablewire/retain.go":"%s/$(RETAIN_ORACLE_NC)/retain.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(RETAIN_ORACLE_NC)/overlay.json
+	go build -overlay $(RETAIN_ORACLE_NC)/overlay.json -o $(RETAIN_ORACLE_NC)/harness ./test/conformance/harness
+	@if $(RETAIN_ORACLE_NC)/harness wire-fuzz --retain --driver ./build/wire-fuzz-cpp --seed $(SEED) --n $(N) \
+			--failed $(RETAIN_ORACLE_NC)/failed.bin > $(RETAIN_ORACLE_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the oracle's drop rule is gone and the retention leg stayed green"; \
+		cat $(RETAIN_ORACLE_NC)/log; exit 1; \
+	fi
+	@grep -q "the retention report differs" $(RETAIN_ORACLE_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the retention leg went red, but not on the two counters"; \
+		  cat $(RETAIN_ORACLE_NC)/log; exit 1; }
+	@grep -m1 "FAILED" $(RETAIN_ORACLE_NC)/log
+	@echo "negative control: removing the oracle's drop rule turns the retention leg RED"
+
+# THE REFERENCE'S `retain_lost` ON AN EXCLUDED CLASS. EVERY EXCLUSION COUNTS
+# (§6.6), so a caller that needs to know retention held reads ONE NUMBER and
+# never has to reason about the list. `retainLostInline` is the count the
+# emitter puts beside `unknown` at every class a wire can carry to the unknown
+# arm — an unknown enum variant, an unknown union arm, an unknown keyed slot —
+# and without it the reference under-reports every one of them.
+.PHONY: tables-wire-fuzz-retain-class-negative-control
+tables-wire-fuzz-retain-class-negative-control: build/conformance-harness
+	$(call retain_fuzz_control,retain-class,internal/codegen/cpptable/codecs.go,s|return " r.report->retain_lost++;"|return "" // NEGATIVE CONTROL: the class is not counted|,the retention report differs)
+
+# $(1) the control's name  $(2) the emitter file  $(3) the sed program
+# $(4) the verdict the leg must print
+define retain_fuzz_control
+	@rm -rf build/wire-fuzz-nc-$(1) && mkdir -p build/wire-fuzz-nc-$(1)
+	@sed -e '$(3)' $(2) > build/wire-fuzz-nc-$(1)/emitter.go.txt
+	@cmp -s $(2) build/wire-fuzz-nc-$(1)/emitter.go.txt && \
+		{ echo "NEGATIVE CONTROL: the $(1) sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/$(2)":"%s/build/wire-fuzz-nc-$(1)/emitter.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/wire-fuzz-nc-$(1)/overlay.json
+	go build -overlay build/wire-fuzz-nc-$(1)/overlay.json -o build/wire-fuzz-nc-$(1)/schema ./cmd/schema
+	$(call tables_generate,./build/wire-fuzz-nc-$(1)/schema,build/wire-fuzz-nc-$(1)/generated)
+	$(CXX) $(TABLES_CXXFLAGS) -O1 $(call tables_includes,build/wire-fuzz-nc-$(1)/generated) \
+		test/tables/wire_fuzz_main.cpp \
+		$(subst build/tables-generated/,build/wire-fuzz-nc-$(1)/generated/,$(CONFORMANCE_SOURCES)) \
+		-o build/wire-fuzz-nc-$(1)/leg
+	@if ./build/conformance-harness wire-fuzz --retain --driver ./build/wire-fuzz-nc-$(1)/leg --seed $(SEED) --n $(N) \
+			--failed build/wire-fuzz-nc-$(1)/failed.bin > build/wire-fuzz-nc-$(1)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the $(1) check is gone and the retention leg stayed green"; \
+		cat build/wire-fuzz-nc-$(1)/log; exit 1; \
+	fi
+	@grep -q "$(4)" build/wire-fuzz-nc-$(1)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the retention leg went red, but not on the $(1) check"; \
+		  cat build/wire-fuzz-nc-$(1)/log; exit 1; }
+	@grep -m1 "FAILED" build/wire-fuzz-nc-$(1)/log
+	@echo "negative control: removing the $(1) check from the emitter turns the retention leg RED"
+endef
+
+.PHONY: tables-wire-fuzz-retain-negative-control
+tables-wire-fuzz-retain-negative-control: tables-wire-fuzz-retain-oracle-negative-control tables-wire-fuzz-retain-class-negative-control
+
 # THE WIDE-VOCABULARY UNIT IS GENERATED AND COMMITTED (docs/SPEC-TABLES.md
 # §3.3): a hundred and thirty distinct field names typed by hand is a file
 # nobody would review, and a golden a generator has to re-derive is not a
