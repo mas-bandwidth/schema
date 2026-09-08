@@ -7,10 +7,10 @@ package tablewire
 
 import "math/big"
 
-// bitWriter accumulates a body's bits. Nothing here allocates per field: a
-// nested body is built in a writer of its own and spliced, exactly as the file
-// form's encoder builds a nested body in a byte buffer and copies it, and the
-// splice is what a length would otherwise have framed.
+// bitWriter accumulates the enclosing message stream. Nested bodies write
+// into it directly so their byte alignment uses the final stream position.
+// A separate probe can decide elision, but its bits cannot be spliced at an
+// arbitrary offset: strings and byte arrays contain alignment boundaries.
 type bitWriter struct {
 	b []byte
 	n int // bits written
@@ -45,14 +45,6 @@ func (w *bitWriter) putBig(v *big.Int, n int) {
 func (w *bitWriter) bytes(p []byte) {
 	for _, by := range p {
 		w.put(uint64(by), 8)
-	}
-}
-
-// splice appends another writer's bits, whole. A nested body has no length to
-// frame it on this wire, so this is the whole of how one body joins another.
-func (w *bitWriter) splice(other *bitWriter) {
-	for i := 0; i < other.n; i++ {
-		w.put(uint64(other.b[i/8]>>uint(i%8))&1, 1)
 	}
 }
 

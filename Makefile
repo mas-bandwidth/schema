@@ -1412,12 +1412,14 @@ tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/
 # (docs/SPEC-TABLES.md §20.6), and every C++ Table header carries it because every
 # table cooks (§7). What holds the block form to zero cost is the line above —
 # no Table source carries one BLOCK symbol — and the byte comparison below.
+# C# message and cook writers read the announcement's BuildVersion property;
+# the accelerator constant itself still belongs in the Block/Cook runtime.
 	@for f in build/tables-generated-cs/*/*Table.cs; do \
-		if grep -n "BuildVersion" $$f; then \
-			echo "BLOCK ZERO-COST GATE FAILED: the C# Table sources carry BuildVersion, which is the BLOCK file's there: $$f"; exit 1; \
+		if grep -nE "(^|[[:space:]])(const|readonly)([[:space:]]+static)?[[:space:]]+ulong[[:space:]]+BuildVersion([[:space:]]|=|;)" $$f; then \
+			echo "BLOCK ZERO-COST GATE FAILED: the C# Table sources declare the accelerator BuildVersion constant: $$f"; exit 1; \
 		fi; \
 	done
-	@echo "block zero-cost gate: the C# Table sources still carry no build version — it is their Block file's"
+	@echo "block zero-cost gate: the C# Table sources declare no accelerator build-version constant"
 	@n=0; d=0; \
 	for f in testdata/golden/tables/examples/*Table.* testdata/golden/tables/pointers/*Table.* \
 	         testdata/golden/tables/block/*Table.* testdata/golden/tables/blockhome/*Table.* \
@@ -1674,9 +1676,9 @@ endif
 #
 # The gate adds exactly such a file to a COPY of tables/examples — Aaa.schema,
 # ahead of Guarded.schema — and requires the homes not to move. The table
-# runtime is byte-identical across the two trees as well as same-named: it
-# carries no build version (the zero-cost gate above), so a unit gaining a table
-# cannot move it. The block and cook runtimes DO carry the build version, so
+# runtime is byte-identical across the two trees as well as same-named:
+# unit-specific announcement bytes live in the Region metadata file, so a unit
+# gaining a table cannot move the shared runtime. The block and cook runtimes DO carry the build version, so
 # their names are what is checked.
 .PHONY: tables-runtime-home
 tables-runtime-home: bin/schema
@@ -3296,6 +3298,15 @@ define map_negative_control
 	@echo "negative control: $(1) turns the MAP GATE red on $$(grep -c '^FAIL' build/map-$(1).log) failures"
 endef
 
+.PHONY: tables-maps-builder-cap-negative-control
+tables-maps-builder-cap-negative-control: bin/schema build/tables-generated/.stamp
+	$(call map_negative_control,builder-cap,'s@fill.refused = nodes.carve->worker != NULL;@fill.refused = false;@',internal/codegen/cpptable/maps.go,a builder count refusal became damage without turning the map gate red)
+	@grep -Fq '!report.malformed' build/map-builder-cap.log
+	go run ./tools/sabotage -name map-builder-count-oracle -out build/map-builder-oracle.gotext internal/tablewire/decode.go
+	@printf '{"Replace":{"%s/internal/tablewire/decode.go":"%s/build/map-builder-oracle.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/map-builder-oracle.json
+	@if go test -overlay=build/map-builder-oracle.json ./internal/tablewire -run '^TestMapBuilderCountCap$$' -count=1 > build/map-builder-oracle.log 2>&1; then echo 'map builder oracle control stayed green'; exit 1; fi
+	@grep -Fq 'must refuse before entries without adding damage' build/map-builder-oracle.log
+
 # THE WRITER EMITS INSERTION ORDER instead of sorted. The instance built OUT OF
 # KEY ORDER meets it: the byte compare against its pinned wire goes red while
 # measure == save still holds, which says the sabotage is the sort and not the
@@ -4360,12 +4371,12 @@ clean:
 # of the two minutes, and sharding per language leg, the way the type wire's
 # nine legs already are, is what the numbers say to do if that stops holding;
 # it is not needed at this size.
-CONFORMANCE_INCLUDES := -Ibuild/tables-generated/examples -Ibuild/tables-generated/v1 \
+CONFORMANCE_INCLUDES := -Ibuild/tables-generated/maps -Ibuild/tables-generated/lists -Ibuild/tables-generated/examples -Ibuild/tables-generated/v1 \
 	-Ibuild/tables-generated/v2 -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	-Ibuild/tables-generated/block -Ibuild/tables-generated/pointers \
 	-Ibuild/tables-generated/p2 -Ibuild/tables-generated/messages -Ibuild/tables-generated/stream \
 	-Ibuild/tables-generated/m1 -Ibuild/tables-generated/m2 -Ibuild/tables-generated/a1 -Ibuild/tables-generated/a2 -Ibuild/tables-generated/g1 -Ibuild/tables-generated/k1 -Ibuild/tables-generated/k2 -Ibuild/tables-generated/w1 -Ibuild/tables-generated/w2 -Ibuild/tables-generated/r1 -Ibuild/tables-generated/r2 -Ibuild/tables-generated/blobs -Itest/tables -Ibuild/tables-generated/scalars -Ibuild/tables-generated/scalars2 -Ibuild/tables-generated/backend -Ibuild/tables-generated/vocab -Ibuild/tables-generated/vocab9 -Ibuild/tables-generated/arms -Ibuild/tables-generated/rt1 -Ibuild/tables-generated/wide -I$(SERIALIZE)
-CONFORMANCE_SOURCES = build/tables-generated/examples/TablesTable.cpp \
+CONFORMANCE_SOURCES = $(wildcard build/tables-generated/maps/*Table.cpp) $(wildcard build/tables-generated/lists/*Table.cpp) build/tables-generated/examples/TablesTable.cpp \
 	build/tables-generated/w1/W1Table.cpp build/tables-generated/w2/W2Table.cpp \
 	build/tables-generated/r1/R1Table.cpp build/tables-generated/r2/R2Table.cpp \
 	build/tables-generated/scalars/ScalarsTable.cpp build/tables-generated/scalars2/Scalars2Table.cpp \
@@ -5458,3 +5469,5 @@ tables-wasrows-negative-control: build/tables-generated/.stamp test/tables/wasro
 	@grep -q '^unknown=5 kind_mismatch=0 malformed=0 grade=None effect=None charge=0 mult=1 tally_argent=0$$' build/tables-wasrows-nc/without-was.log || \
 		{ echo "NEGATIVE CONTROL FAILED: without was, the R1 config did not read as unknown names under R2"; exit 1; }
 	@echo "negative control: stripping was from the variant, the arms and the type's field turns the cross read RED (unknown counted, the value at its default)"
+
+include make/checks/reference-review.mk

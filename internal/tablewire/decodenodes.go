@@ -86,7 +86,7 @@ func (r *wireReader) resolveCell(cell *tabletext.Cell, f *ir.Field, index uint64
 // decodeVariable reads a pointered root: the node table first, because a reader
 // has already read `head = 2` before it learns whether the table can be read at
 // all, then the records, then every body.
-func decodeVariable(m *tabletext.Model, inst *tabletext.Instance, data []byte, ids []uint64, report *tabletext.Report, rt *retainState) (bool, error) {
+func decodeVariable(m *tabletext.Model, inst *tabletext.Instance, data []byte, ids []uint64, report *tabletext.Report, rt *retainState, region bool) (bool, error) {
 	st := &decodeState{root: inst}
 	countRefusal := false
 
@@ -181,14 +181,14 @@ func decodeVariable(m *tabletext.Model, inst *tabletext.Instance, data []byte, i
 		if st.nodes[i].Inst == nil {
 			continue
 		}
-		sub := &wireReader{buf: rec.Body, report: report, m: m, ids: ids, st: st, rt: rt, countRefusal: &countRefusal}
+		sub := &wireReader{buf: rec.Body, report: report, m: m, ids: ids, st: st, rt: rt, countRefusal: &countRefusal, region: region}
 		sub.bodyAt(st.nodes[i].Inst, true)
 		if countRefusal {
 			return false, &CountRefusal{}
 		}
 	}
 
-	r := &wireReader{buf: data, report: report, m: m, ids: ids, st: st, rt: rt, countRefusal: &countRefusal}
+	r := &wireReader{buf: data, report: report, m: m, ids: ids, st: st, rt: rt, countRefusal: &countRefusal, region: region}
 	ok := r.body(inst)
 	if countRefusal {
 		return false, &CountRefusal{}

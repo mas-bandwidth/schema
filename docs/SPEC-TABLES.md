@@ -144,7 +144,8 @@ reach.
   is allocation with the caller holding the pointer. The BLOCK form (§19.1) is
   the one surface that takes a caller-provided allocator with malloc semantics,
   and there it is real: C++ takes an alloc/free pair with a context, C the same
-  three as a struct, used once at build time and never on the fill path. Other
+  three as a struct, used once at build time and never on the fill path. C# also threads a zeroed native allocation/free pair through arena, packing
+  and native numbering scratch; its managed authoring classes use the CLR. Other
   backends allocate inside their runtime and say so. No port contorts itself
   toward zero allocation for a variable-length table.
 - **EVERY READ PATH ALLOCATES NOTHING**, in every class, on every form. A
@@ -153,26 +154,32 @@ reach.
   reads in place. The allocation in this document is a BUILDING cost, and
   building is TOOLING's path — the game points at the cook (§7).
 
-**Backend status: C++ and C, and C#, Dart, Go, Rust, Java, JavaScript and
-Elixir for the FIXED class.** C++ is the reference, and its generated text is
-the C-like dialect of `serialize.h` — C header spellings, no STL, every call
-into the C library behind a hook the program can define (§13.9). C++ and C
-carry both classes; C#, Dart, Go, Rust, Java, JavaScript and Elixir carry the
-fixed class (§6.1) — optionals, enum-keyed arrays, the text form (§16) and all
-— and each refuses a unit whose closure declares a pointer, naming its
-variable class as a
-follow-on. **There is no tenth target and no backend left out**: every
-language schema generates for carries the table wire, and what a fixed-class
-port refuses is a pointer in the closure, by name, with this document cited
-(§11) — never the `table` declaration itself.
+**Backend status.** C++ is the reference; its generated text follows the
+C-like dialect of `serialize.h`, with library calls behind hooks (§13.9).
+C++ and C carry both storage classes. C# carries both classes and the current
+id-table file and bitpacked message forms, JSON, runtime cook writing, block
+construction, native regions, builders, retain-unknown and UnitView. C, Dart,
+Go, Rust, Java, JavaScript and Elixir still carry their previously recorded
+wire surface at this checkpoint; their current-form work is tracked separately.
+Dart, Go, Rust, Java, JavaScript and Elixir's fixed-class ports refuse pointers
+by name until their variable-class carry lands. Every generated language has
+a table backend; refusal is scoped to a construct, never the table declaration.
 
-**THE FORM THE EIGHT PORTS CARRY IS THE ONE THAT PRECEDED §3.** §3's id-table
-form is the C++ reference and the compiler's own engine (`internal/tablewire`),
-held together by the conformance lock; C, C#, Dart, Go, Rust, Java, JavaScript
-and Elixir write the earlier form, and the id table, the enum kind and the
-escape kind reach none of them yet. Each port's move to §3 is a row of its own
-(schema#511 to schema#518), and ROADMAP.md's first table-wire line says which
-form a cell means.
+**The C# storage surfaces are explicit.** Managed classes are authoring values;
+their variable reads allocate managed storage. Native loads fill caller-owned
+regions, with separable attribution for retention. Native builders own stable
+worker slabs, accept a zeroed allocation/free pair and context, and pack on
+one-way `Lock`. Their collection capacity is authoring state and is never read
+from a loaded region's padding. Native file/message/cook numbering uses the
+same caller hooks for scratch. The block builder has its own paired allocator.
+[C# tables](CS-TABLES.md) describes the ownership and refusal contracts.
+
+`tables-cs-leg`, `tables-cs-view`, the managed/native/builder/retaining fuzzer
+arms and `conformance-negative-control-cs` hold these paths against the shared
+corpus and independent engine. Runtime cook output is checked against managed
+output, whose two byte orders are compared to the tool's canonical files.
+`ROADMAP.md` records feature status; the porting register records techniques
+and any remaining optimization or instrumentation carry-across issues.
 
 **ELIXIR IS THE READING TIER, and the tier is a property of the LANGUAGE rather
 than of the port.** A BEAM term has no layout a producer could write, so this
@@ -2498,8 +2505,9 @@ not a decode, and that difference is the two rows below. Two decoding events
 first, each the one an array already raises:
 
 - **AN ELEMENT KIND THAT DISAGREES** with the reader's declaration is §3's
-  element-kind rule: the field is skipped whole by its `L`, the array reads
-  empty, and one `kind_mismatch` counts. `[]int32` read into a `[]float32`
+  element-kind rule: the field is skipped whole by its `L`, and one
+  `kind_mismatch` counts. A first occurrence leaves the default empty array;
+  an incompatible repeat preserves the value an earlier occurrence placed. `[]int32` read into a `[]float32`
   field, `[]T` read into a `[]*T` field and the reverse are all this event.
 - **A DAMAGED ELEMENT** inside a good count is that element's own framing
   damage, and the array keeps what it decoded, exactly as a bounded array's
@@ -2532,6 +2540,16 @@ of adding a bound.
 
 **A body TOO SHORT TO CARRY ITS OWN HEADER is INERT**, §4's rule unchanged: no
 element is decoded, no counter fires, and the field keeps the value it has.
+This includes an earlier successfully decoded occurrence of the same field.
+The extent scan bounds the count header by the field's `L`; a header incomplete
+within that bound reserves no elements. The decoding cursor reads the count
+against the enclosing value buffer, so a continuation byte beyond `L` can
+complete that header. This does not extend the element body: element reads
+remain bounded by `L`. The pinned `list_count_cross_length.bin` exercises this
+boundary: region measurement succeeds, the region decode reports damage, and
+the builder refuses the completed count if it exceeds the storage cap, keeping
+its prior counters. A count header incomplete even in the enclosing buffer
+remains inert.
 
 **How a reader without the field skips it**: by `L`, under §3's second skip
 rule, counting `unknown`. **How a FIXED-class reader meets one**: it does not

@@ -94,6 +94,14 @@ namespace Benchtable
         public TableCookFieldInfo[] Fields;
     }
 
+    [StructLayout(LayoutKind.Sequential, Size = 16)]
+    public struct TableCookList
+    {
+        public long Reference;
+        public int Count;
+        internal int Capacity; // mutable arena only; zero in regions and cooks
+    }
+
     // Schema carries every generated function and constant of the unit — C# has no
     // namespace-level functions — and this is the cook's slice of it.
     public static partial class Schema
@@ -127,7 +135,7 @@ namespace Benchtable
         // the 64 every unit this language can declare produces.
         public const long TableCookMaxAlign = 64;
 
-        public static unsafe ulong TableCookRead64(byte* p) { return *(ulong*) p; }
+        public static unsafe ulong TableCookRead64(byte* p) { return System.Runtime.CompilerServices.Unsafe.ReadUnaligned<ulong>(p); }
     }
 
     // THE LAYOUT CONTRACT for the cook closure (docs/SPEC-TABLES.md §20.3), run ONCE:
@@ -150,6 +158,13 @@ namespace Benchtable
             // cooked region holds both sets
             TableBlockLayout.Verify();
             {
+                TableChatEventRow probe = default;
+                byte* at = (byte*) &probe;
+                Size("TableChatEventRow", Unsafe.SizeOf<TableChatEventRow>(), 8);
+                Offset("TableChatEventRow.Channel", (byte*) &probe.Channel - at, 0);
+                Offset("TableChatEventRow.Speaker", (byte*) &probe.Speaker - at, 4);
+            }
+            {
                 TableEntityRow probe = default;
                 byte* at = (byte*) &probe;
                 Size("TableEntityRow", Unsafe.SizeOf<TableEntityRow>(), 64);
@@ -169,12 +184,63 @@ namespace Benchtable
                 Offset("TableEntityRow.Firing", (byte*) &probe.Firing - at, 57);
             }
             {
+                TableHitEventRow probe = default;
+                byte* at = (byte*) &probe;
+                Size("TableHitEventRow", Unsafe.SizeOf<TableHitEventRow>(), 16);
+                Offset("TableHitEventRow.TargetId", (byte*) &probe.TargetId - at, 0);
+                Offset("TableHitEventRow.Damage", (byte*) &probe.Damage - at, 4);
+                Offset("TableHitEventRow.HitKind", (byte*) &probe.HitKind - at, 8);
+                Offset("TableHitEventRow.Crit", (byte*) &probe.Crit - at, 12);
+            }
+            {
+                TableMixedRow probe = default;
+                byte* at = (byte*) &probe;
+                Size("TableMixedRow", Unsafe.SizeOf<TableMixedRow>(), 1352);
+                Offset("TableMixedRow.ProtocolMagic", (byte*) &probe.ProtocolMagic - at, 0);
+                Offset("TableMixedRow.Sequence", (byte*) &probe.Sequence - at, 4);
+                Offset("TableMixedRow.AckSequence", (byte*) &probe.AckSequence - at, 8);
+                Offset("TableMixedRow.AckBits", (byte*) &probe.AckBits - at, 12);
+                Offset("TableMixedRow.SessionId", (byte*) &probe.SessionId - at, 16);
+                Offset("TableMixedRow.ClientId", (byte*) &probe.ClientId - at, 24);
+                Offset("TableMixedRow.Nonce", (byte*) &probe.Nonce - at, 32);
+                Offset("TableMixedRow.WorldTime", (byte*) &probe.WorldTime - at, 40);
+                Offset("TableMixedRow.FrameTick", (byte*) &probe.FrameTick - at, 48);
+                Offset("TableMixedRow.ServerTime", (byte*) &probe.ServerTime - at, 56);
+                Offset("TableMixedRow.Entities", (byte*) &probe.Entities0 - at, 64);
+                Offset("TableMixedRow.Stats", (byte*) &probe.Stats0 - at, 580);
+                Offset("TableMixedRow.GameEvent", (byte*) &probe.GameEvent - at, 1224);
+                Offset("TableMixedRow.Loadout", (byte*) probe.Loadout - at, 1244);
+                Offset("TableMixedRow.PlayerName", (byte*) probe.PlayerName - at, 1248);
+                Offset("TableMixedRow.Payload", (byte*) probe.Payload - at, 1268);
+                Offset("TableMixedRow.AimX", (byte*) &probe.AimX - at, 1288);
+                Offset("TableMixedRow.AimY", (byte*) &probe.AimY - at, 1292);
+                Offset("TableMixedRow.AimZ", (byte*) &probe.AimZ - at, 1296);
+                Offset("TableMixedRow.Recoil", (byte*) &probe.Recoil - at, 1300);
+                Offset("TableMixedRow.Drift", (byte*) &probe.Drift - at, 1304);
+                Offset("TableMixedRow.WideKey", (byte*) &probe.WideKey - at, 1312);
+                Offset("TableMixedRow.Flux", (byte*) &probe.Flux - at, 1320);
+                Offset("TableMixedRow.Ping", (byte*) &probe.Ping - at, 1328);
+                Offset("TableMixedRow.CrcHint", (byte*) &probe.CrcHint - at, 1332);
+                Offset("TableMixedRow.HasExtra", (byte*) &probe.HasExtra - at, 1336);
+                Offset("TableMixedRow.Extra", (byte*) &probe.Extra - at, 1340);
+                Offset("TableMixedRow.IdleTicks", (byte*) &probe.IdleTicks - at, 1344);
+            }
+            {
+                TablePickupEventRow probe = default;
+                byte* at = (byte*) &probe;
+                Size("TablePickupEventRow", Unsafe.SizeOf<TablePickupEventRow>(), 8);
+                Offset("TablePickupEventRow.ItemId", (byte*) &probe.ItemId - at, 0);
+                Offset("TablePickupEventRow.Amount", (byte*) &probe.Amount - at, 4);
+            }
+            {
                 TableStatRow probe = default;
                 byte* at = (byte*) &probe;
                 Size("TableStatRow", Unsafe.SizeOf<TableStatRow>(), 8);
                 Offset("TableStatRow.StatId", (byte*) &probe.StatId - at, 0);
                 Offset("TableStatRow.Delta", (byte*) &probe.Delta - at, 4);
             }
+            Size("TableEventRow", Unsafe.SizeOf<TableEventRow>(), 20);
+            { TableEventRow probe = default; byte* at = (byte*)&probe; Offset("TableEventRow.Type", (byte*)&probe.Type - at, 0); Offset("TableEventRow.Hit", (byte*)&probe.Hit - at, 4); Offset("TableEventRow.Chat", (byte*)&probe.Chat - at, 4); Offset("TableEventRow.Pickup", (byte*)&probe.Pickup - at, 4); }
         }
 
         internal static void Size(string what, int got, int want)
@@ -203,6 +269,15 @@ namespace Benchtable
     // (docs/SPEC-TABLES.md §19.3). A cooked record IS the blittable row, so these are
     // the same <Name>Row structs the block form spells, from the same model; a
     // record the block form already emits is emitted THERE and not again here.
+    // TableChatEvent — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md §11), so no
+    // declaration in the unit can take it.
+    [StructLayout(LayoutKind.Sequential, Pack = 1, Size = 8)]
+    public unsafe struct TableChatEventRow
+    {
+        public int Channel;
+        public uint Speaker;
+    }
+
     // TableEntity — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md §11), so no
     // declaration in the unit can take it.
     [StructLayout(LayoutKind.Sequential, Pack = 1, Size = 64)]
@@ -237,6 +312,175 @@ namespace Benchtable
         private byte _pad63;
     }
 
+    // TableHitEvent — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md §11), so no
+    // declaration in the unit can take it.
+    [StructLayout(LayoutKind.Sequential, Pack = 1, Size = 16)]
+    public unsafe struct TableHitEventRow
+    {
+        public uint TargetId;
+        public int Damage;
+        public int HitKind;
+        public bool Crit;
+        private byte _pad13;
+        private byte _pad14;
+        private byte _pad15;
+    }
+
+    // TableMixed — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md §11), so no
+    // declaration in the unit can take it.
+    [StructLayout(LayoutKind.Sequential, Pack = 1, Size = 1352)]
+    public unsafe struct TableMixedRow
+    {
+        public ushort ProtocolMagic;
+        private byte _pad2;
+        private byte _pad3;
+        public uint Sequence;
+        public int AckSequence;
+        public uint AckBits;
+        public ulong SessionId;
+        public uint ClientId;
+        private byte _pad28;
+        private byte _pad29;
+        private byte _pad30;
+        private byte _pad31;
+        public ulong Nonce;
+        public long WorldTime;
+        public ulong FrameTick;
+        public float ServerTime;
+        private byte _pad60;
+        private byte _pad61;
+        private byte _pad62;
+        private byte _pad63;
+        // [8]TableEntityRow: a fixed-size buffer takes primitives only, so the elements are
+        // generated one per slot — the same bytes at the same offsets.
+        public TableEntityRow Entities0;
+        public TableEntityRow Entities1;
+        public TableEntityRow Entities2;
+        public TableEntityRow Entities3;
+        public TableEntityRow Entities4;
+        public TableEntityRow Entities5;
+        public TableEntityRow Entities6;
+        public TableEntityRow Entities7;
+        public int EntitiesCount;
+        // [80]TableStatRow: a fixed-size buffer takes primitives only, so the elements are
+        // generated one per slot — the same bytes at the same offsets.
+        public TableStatRow Stats0;
+        public TableStatRow Stats1;
+        public TableStatRow Stats2;
+        public TableStatRow Stats3;
+        public TableStatRow Stats4;
+        public TableStatRow Stats5;
+        public TableStatRow Stats6;
+        public TableStatRow Stats7;
+        public TableStatRow Stats8;
+        public TableStatRow Stats9;
+        public TableStatRow Stats10;
+        public TableStatRow Stats11;
+        public TableStatRow Stats12;
+        public TableStatRow Stats13;
+        public TableStatRow Stats14;
+        public TableStatRow Stats15;
+        public TableStatRow Stats16;
+        public TableStatRow Stats17;
+        public TableStatRow Stats18;
+        public TableStatRow Stats19;
+        public TableStatRow Stats20;
+        public TableStatRow Stats21;
+        public TableStatRow Stats22;
+        public TableStatRow Stats23;
+        public TableStatRow Stats24;
+        public TableStatRow Stats25;
+        public TableStatRow Stats26;
+        public TableStatRow Stats27;
+        public TableStatRow Stats28;
+        public TableStatRow Stats29;
+        public TableStatRow Stats30;
+        public TableStatRow Stats31;
+        public TableStatRow Stats32;
+        public TableStatRow Stats33;
+        public TableStatRow Stats34;
+        public TableStatRow Stats35;
+        public TableStatRow Stats36;
+        public TableStatRow Stats37;
+        public TableStatRow Stats38;
+        public TableStatRow Stats39;
+        public TableStatRow Stats40;
+        public TableStatRow Stats41;
+        public TableStatRow Stats42;
+        public TableStatRow Stats43;
+        public TableStatRow Stats44;
+        public TableStatRow Stats45;
+        public TableStatRow Stats46;
+        public TableStatRow Stats47;
+        public TableStatRow Stats48;
+        public TableStatRow Stats49;
+        public TableStatRow Stats50;
+        public TableStatRow Stats51;
+        public TableStatRow Stats52;
+        public TableStatRow Stats53;
+        public TableStatRow Stats54;
+        public TableStatRow Stats55;
+        public TableStatRow Stats56;
+        public TableStatRow Stats57;
+        public TableStatRow Stats58;
+        public TableStatRow Stats59;
+        public TableStatRow Stats60;
+        public TableStatRow Stats61;
+        public TableStatRow Stats62;
+        public TableStatRow Stats63;
+        public TableStatRow Stats64;
+        public TableStatRow Stats65;
+        public TableStatRow Stats66;
+        public TableStatRow Stats67;
+        public TableStatRow Stats68;
+        public TableStatRow Stats69;
+        public TableStatRow Stats70;
+        public TableStatRow Stats71;
+        public TableStatRow Stats72;
+        public TableStatRow Stats73;
+        public TableStatRow Stats74;
+        public TableStatRow Stats75;
+        public TableStatRow Stats76;
+        public TableStatRow Stats77;
+        public TableStatRow Stats78;
+        public TableStatRow Stats79;
+        public int StatsCount;
+        public TableEventRow GameEvent;
+        public fixed byte Loadout[4];
+        public fixed byte PlayerName[16]; // string(15): buffer, used length beside it
+        public int PlayerNameLength;
+        public fixed byte Payload[16]; // bytes(16): buffer, used length beside it
+        public int PayloadLength;
+        public float AimX;
+        public float AimY;
+        public float AimZ;
+        public float Recoil;
+        public double Drift;
+        public ulong WideKey;
+        public long Flux;
+        public float Ping;
+        public uint CrcHint;
+        public bool HasExtra;
+        private byte _pad1337;
+        private byte _pad1338;
+        private byte _pad1339;
+        public int Extra;
+        public int IdleTicks;
+        private byte _pad1348;
+        private byte _pad1349;
+        private byte _pad1350;
+        private byte _pad1351;
+    }
+
+    // TablePickupEvent — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md §11), so no
+    // declaration in the unit can take it.
+    [StructLayout(LayoutKind.Sequential, Pack = 1, Size = 8)]
+    public unsafe struct TablePickupEventRow
+    {
+        public uint ItemId;
+        public int Amount;
+    }
+
     // TableStat — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md §11), so no
     // declaration in the unit can take it.
     [StructLayout(LayoutKind.Sequential, Pack = 1, Size = 8)]
@@ -244,6 +488,15 @@ namespace Benchtable
     {
         public uint StatId;
         public int Delta;
+    }
+
+    [StructLayout(LayoutKind.Explicit, Size = 20)]
+    public unsafe struct TableEventRow
+    {
+        [FieldOffset(0)] public Benchtable.TableEventType Type;
+        [FieldOffset(4)] public TableHitEventRow Hit;
+        [FieldOffset(4)] public TableChatEventRow Chat;
+        [FieldOffset(4)] public TablePickupEventRow Pickup;
     }
     // TableEntity's cook: a pointer and a length, and then the root where it lies. Opening
     // one is a HEADER MATCH and no copy; a reference is one add (docs/SPEC-TABLES.md §7).
@@ -304,11 +557,13 @@ namespace Benchtable
         // would put one signed value into that arithmetic and one negative case
         // into every comparison; a caller holding a length from a stat casts once,
         // at the call site, where the sign is still its own business.
-        public static bool Open(out TableEntityCook cook, IntPtr pointer, long length)
+        public static bool Open(out TableEntityCook cook, IntPtr pointer, long length) { return Open(out cook, pointer, length, out _); }
+        public static bool Open(out TableEntityCook cook, IntPtr pointer, long length, out TableRefuseReason reason)
         {
-            cook = default;
+            cook = default; reason = TableRefuseReason.ok;
             TableCookLayout.Verify();
-            if (pointer == IntPtr.Zero || length < 64) { return false; }
+            if (pointer == IntPtr.Zero) { reason = TableRefuseReason.unaligned_base; return false; }
+            if (length < 64) { reason = TableRefuseReason.truncated; return false; }
             byte* at = (byte*) pointer;
             ulong bytes = (ulong) length;
 
@@ -316,20 +571,20 @@ namespace Benchtable
             // the byte order every other header word is written in. A cook of the
             // other order reads back this constant byte-reversed and refuses HERE,
             // rather than reaching a fix-up pass this design does not have.
-            if (Schema.TableCookRead64(at + 0) != Schema.TableCookMagic) { return false; }
+            if (Schema.TableCookRead64(at + 0) != Schema.TableCookMagic) { reason = Schema.TableCookRead64(at) == System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(Schema.TableCookMagic) ? TableRefuseReason.foreign_order : TableRefuseReason.not_a_cook; return false; }
             // and the ORDER WORD does the other job: it RECORDS which order wrote the
             // file, so a refusal names the order rather than inferring it. A file
             // whose magic matched and whose order word did not is corrupt, and there
             // is no reading that recovers it.
-            if (Schema.TableCookRead64(at + 16) != Schema.TableCookByteOrder) { return false; }
+            if (Schema.TableCookRead64(at + 16) != Schema.TableCookByteOrder) { reason = TableRefuseReason.not_a_cook; return false; }
             // THE BUILD VERSION: under the match-and-point rule a matching id means
             // Open checks nothing further, so it is the sole guard between this
             // runtime and a foreign region (§20).
-            if (Schema.TableCookRead64(at + 8) != Schema.BuildVersion) { return false; }
+            if (Schema.TableCookRead64(at + 8) != Schema.BuildVersion) { reason = TableRefuseReason.wrong_build_version; return false; }
             // THE RESERVED WORDS: a non-zero one means a writer used a form this
             // build does not understand, and Open refuses rather than ignoring it.
-            if (Schema.TableCookRead64(at + 48) != 0) { return false; }
-            if (Schema.TableCookRead64(at + 56) != 0) { return false; }
+            if (Schema.TableCookRead64(at + 48) != 0) { reason = TableRefuseReason.reserved_not_zero; return false; }
+            if (Schema.TableCookRead64(at + 56) != 0) { reason = TableRefuseReason.reserved_not_zero; return false; }
 
             // THE ALIGNMENT WORD is the one field the check COMPUTES WITH rather than
             // only compares against — the data part begins at align_up(64, alignment)
@@ -337,9 +592,9 @@ namespace Benchtable
             // alignment rounds nothing and aligns nothing. A zero there is a division
             // by zero inside the check, which is the defect the check prevents.
             ulong alignment = Schema.TableCookRead64(at + 40);
-            if (alignment < 8 || alignment > 64) { return false; }
-            if ((alignment & (alignment - 1)) != 0) { return false; } // a power of two
-            if ((alignment % 8) != 0) { return false; }             // and a multiple of the ROOT's own alignof
+            if (alignment < 8 || alignment > 64) { reason = TableRefuseReason.bad_alignment; return false; }
+            if ((alignment & (alignment - 1)) != 0) { reason = TableRefuseReason.bad_alignment; return false; } // a power of two
+            if ((alignment % 8) != 0) { reason = TableRefuseReason.bad_alignment; return false; }             // and a multiple of the ROOT's own alignof
 
             // THE DATA OFFSET IS DERIVED, never a header field: a fact a reader
             // computes is a fact two writers cannot disagree about, and it is 64 for
@@ -353,23 +608,23 @@ namespace Benchtable
             // can wrap past the top of the type and land back inside the buffer.
             ulong dataLength = Schema.TableCookRead64(at + 24);
             ulong attribution = Schema.TableCookRead64(at + 32);
-            if (dataLength > bytes || attribution > bytes - dataLength) { return false; }
-            if (dataOffset > bytes - dataLength - attribution) { return false; }
-            if (dataOffset + dataLength + attribution != bytes) { return false; }
+            if (dataLength > bytes || attribution > bytes - dataLength) { reason = TableRefuseReason.truncated; return false; }
+            if (dataOffset > bytes - dataLength - attribution) { reason = TableRefuseReason.truncated; return false; }
+            if (dataOffset + dataLength + attribution != bytes) { reason = TableRefuseReason.truncated; return false; }
 
             // THE DATA PART MUST HOLD THE ROOT. The part lengths frame the FILE; they
             // do not say the region is at least sizeof(root). Without this a forged
             // short data part describes a root partly outside the file, and a
             // match-and-point reader would hand back storage the caller never gave
             // it — the one way this design could read past the length it was passed.
-            if (dataLength < 64) { return false; }
+            if (dataLength < 64) { reason = TableRefuseReason.truncated; return false; }
 
             // THE ALIGNMENT OF THE BASE. The header pads the data part to the
             // region's alignment, so a base an allocator or mmap gave you is already
             // aligned; one that is not is a caller's buffer this form cannot be read
             // out of. The alignment divides 64, so the derived data offset carries
             // the property from the file's base to the region's.
-            if ((((ulong) at) % alignment) != 0) { return false; }
+            if ((((ulong) at) % alignment) != 0) { reason = TableRefuseReason.unaligned_base; return false; }
 
             cook = new TableEntityCook(at + dataOffset, (long) dataLength);
             return true;
@@ -499,11 +754,13 @@ namespace Benchtable
         // would put one signed value into that arithmetic and one negative case
         // into every comparison; a caller holding a length from a stat casts once,
         // at the call site, where the sign is still its own business.
-        public static bool Open(out TableStatCook cook, IntPtr pointer, long length)
+        public static bool Open(out TableStatCook cook, IntPtr pointer, long length) { return Open(out cook, pointer, length, out _); }
+        public static bool Open(out TableStatCook cook, IntPtr pointer, long length, out TableRefuseReason reason)
         {
-            cook = default;
+            cook = default; reason = TableRefuseReason.ok;
             TableCookLayout.Verify();
-            if (pointer == IntPtr.Zero || length < 64) { return false; }
+            if (pointer == IntPtr.Zero) { reason = TableRefuseReason.unaligned_base; return false; }
+            if (length < 64) { reason = TableRefuseReason.truncated; return false; }
             byte* at = (byte*) pointer;
             ulong bytes = (ulong) length;
 
@@ -511,20 +768,20 @@ namespace Benchtable
             // the byte order every other header word is written in. A cook of the
             // other order reads back this constant byte-reversed and refuses HERE,
             // rather than reaching a fix-up pass this design does not have.
-            if (Schema.TableCookRead64(at + 0) != Schema.TableCookMagic) { return false; }
+            if (Schema.TableCookRead64(at + 0) != Schema.TableCookMagic) { reason = Schema.TableCookRead64(at) == System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(Schema.TableCookMagic) ? TableRefuseReason.foreign_order : TableRefuseReason.not_a_cook; return false; }
             // and the ORDER WORD does the other job: it RECORDS which order wrote the
             // file, so a refusal names the order rather than inferring it. A file
             // whose magic matched and whose order word did not is corrupt, and there
             // is no reading that recovers it.
-            if (Schema.TableCookRead64(at + 16) != Schema.TableCookByteOrder) { return false; }
+            if (Schema.TableCookRead64(at + 16) != Schema.TableCookByteOrder) { reason = TableRefuseReason.not_a_cook; return false; }
             // THE BUILD VERSION: under the match-and-point rule a matching id means
             // Open checks nothing further, so it is the sole guard between this
             // runtime and a foreign region (§20).
-            if (Schema.TableCookRead64(at + 8) != Schema.BuildVersion) { return false; }
+            if (Schema.TableCookRead64(at + 8) != Schema.BuildVersion) { reason = TableRefuseReason.wrong_build_version; return false; }
             // THE RESERVED WORDS: a non-zero one means a writer used a form this
             // build does not understand, and Open refuses rather than ignoring it.
-            if (Schema.TableCookRead64(at + 48) != 0) { return false; }
-            if (Schema.TableCookRead64(at + 56) != 0) { return false; }
+            if (Schema.TableCookRead64(at + 48) != 0) { reason = TableRefuseReason.reserved_not_zero; return false; }
+            if (Schema.TableCookRead64(at + 56) != 0) { reason = TableRefuseReason.reserved_not_zero; return false; }
 
             // THE ALIGNMENT WORD is the one field the check COMPUTES WITH rather than
             // only compares against — the data part begins at align_up(64, alignment)
@@ -532,9 +789,9 @@ namespace Benchtable
             // alignment rounds nothing and aligns nothing. A zero there is a division
             // by zero inside the check, which is the defect the check prevents.
             ulong alignment = Schema.TableCookRead64(at + 40);
-            if (alignment < 8 || alignment > 64) { return false; }
-            if ((alignment & (alignment - 1)) != 0) { return false; } // a power of two
-            if ((alignment % 4) != 0) { return false; }             // and a multiple of the ROOT's own alignof
+            if (alignment < 8 || alignment > 64) { reason = TableRefuseReason.bad_alignment; return false; }
+            if ((alignment & (alignment - 1)) != 0) { reason = TableRefuseReason.bad_alignment; return false; } // a power of two
+            if ((alignment % 4) != 0) { reason = TableRefuseReason.bad_alignment; return false; }             // and a multiple of the ROOT's own alignof
 
             // THE DATA OFFSET IS DERIVED, never a header field: a fact a reader
             // computes is a fact two writers cannot disagree about, and it is 64 for
@@ -548,23 +805,23 @@ namespace Benchtable
             // can wrap past the top of the type and land back inside the buffer.
             ulong dataLength = Schema.TableCookRead64(at + 24);
             ulong attribution = Schema.TableCookRead64(at + 32);
-            if (dataLength > bytes || attribution > bytes - dataLength) { return false; }
-            if (dataOffset > bytes - dataLength - attribution) { return false; }
-            if (dataOffset + dataLength + attribution != bytes) { return false; }
+            if (dataLength > bytes || attribution > bytes - dataLength) { reason = TableRefuseReason.truncated; return false; }
+            if (dataOffset > bytes - dataLength - attribution) { reason = TableRefuseReason.truncated; return false; }
+            if (dataOffset + dataLength + attribution != bytes) { reason = TableRefuseReason.truncated; return false; }
 
             // THE DATA PART MUST HOLD THE ROOT. The part lengths frame the FILE; they
             // do not say the region is at least sizeof(root). Without this a forged
             // short data part describes a root partly outside the file, and a
             // match-and-point reader would hand back storage the caller never gave
             // it — the one way this design could read past the length it was passed.
-            if (dataLength < 8) { return false; }
+            if (dataLength < 8) { reason = TableRefuseReason.truncated; return false; }
 
             // THE ALIGNMENT OF THE BASE. The header pads the data part to the
             // region's alignment, so a base an allocator or mmap gave you is already
             // aligned; one that is not is a caller's buffer this form cannot be read
             // out of. The alignment divides 64, so the derived data offset carries
             // the property from the file's base to the region's.
-            if ((((ulong) at) % alignment) != 0) { return false; }
+            if ((((ulong) at) % alignment) != 0) { reason = TableRefuseReason.unaligned_base; return false; }
 
             cook = new TableStatCook(at + dataOffset, (long) dataLength);
             return true;
@@ -623,8 +880,315 @@ namespace Benchtable
         public static TableCookInfo Type { get { return cookRecordTableStat; } }
     }
 
-    // table TableMixed has NO C# cook Open: TableMixed.game_event is a union, and a cooked record's C# form is Sequential with generated padding, which cannot overlay arms (docs/SPEC-TABLES.md §7, §19.3).
-    // Its wire (§3) and its cook are unaffected — only this backend's reader is
-    // absent, and it is absent by construction rather than by refusal.
+    // TableMixed's cook: a pointer and a length, and then the root where it lies. Opening
+    // one is a HEADER MATCH and no copy; a reference is one add (docs/SPEC-TABLES.md §7).
+    //
+    // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
+    // functions — TableMixedOpen, TableMixedAt — and C# spells them as MEMBERS of this type, which
+    // is the rule the block form already follows for its accessors.
+    //
+    // THE MEMORY IS THE CONSUMER'S. Nothing here allocates, nothing here copies and
+    // nothing here pins: the region must stay put and stay aligned for as long as
+    // this handle or anything reached through it is used.
+    public unsafe readonly struct TableMixedCook
+    {
+        private readonly byte* region;      // the DATA part's base: the root sits at offset zero
+        private readonly long regionLength; // data_length, as the header framed it
+
+        private TableMixedCook(byte* region, long regionLength)
+        {
+            this.region = region;
+            this.regionLength = regionLength;
+        }
+
+        static TableMixedCook()
+        {
+            // the layout contract, run once before any static member of this type
+            TableCookLayout.Verify();
+        }
+
+        // §7.1's constants, so a consumer reading this file has the facts and not a
+        // description of them.
+        public const long RegionAlignment = 8; // the greatest alignof in the region, floor eight
+        public const long RootSize = 1352;
+        public const long RootAlign = 8;
+
+        // The region, and the root at its base. Both are POINTERS and not managed
+        // references: a cooked graph is walked by adding deltas to slot addresses,
+        // which is what a `ref` cannot carry across a field access.
+        public byte* Region { get { return region; } }
+        public long RegionLength { get { return regionLength; } }
+        public TableMixedRow* RootPointer { get { return (TableMixedRow*) region; } }
+        public ref readonly TableMixedRow Root { get { return ref *(TableMixedRow*) region; } }
+
+        // Open checks the header and POINTS, and this is the WHOLE check
+        // (docs/SPEC-TABLES.md §7): the magic read bytewise, the byte order it
+        // establishes, the build version, every RESERVED word zero, the region
+        // ALIGNMENT the header names, the two part lengths against the length the
+        // caller passed — a truncated file refuses — the ROOT's own storage inside
+        // the data part, and the alignment of the base. Nothing per node, ever:
+        // that is what makes this O(1) in the file's size.
+        //
+        // On a match the bytes ARE what this build wrote, in this build's layout and
+        // this build's byte order, so there is nothing to validate and nothing to fix
+        // up. On any failure it returns false and points at nothing, and the caller
+        // falls back to a wire load — the path that carries every version.
+        //
+        // EVERY NUMBER BELOW COMES OUT OF THE FILE, so all of the arithmetic is
+        // UNSIGNED and each term is BOUNDED BEFORE IT IS ADDED. A signed length
+        // would put one signed value into that arithmetic and one negative case
+        // into every comparison; a caller holding a length from a stat casts once,
+        // at the call site, where the sign is still its own business.
+        public static bool Open(out TableMixedCook cook, IntPtr pointer, long length) { return Open(out cook, pointer, length, out _); }
+        public static bool Open(out TableMixedCook cook, IntPtr pointer, long length, out TableRefuseReason reason)
+        {
+            cook = default; reason = TableRefuseReason.ok;
+            TableCookLayout.Verify();
+            if (pointer == IntPtr.Zero) { reason = TableRefuseReason.unaligned_base; return false; }
+            if (length < 64) { reason = TableRefuseReason.truncated; return false; }
+            byte* at = (byte*) pointer;
+            ulong bytes = (ulong) length;
+
+            // THE MAGIC, read BYTEWISE before anything else: it is what establishes
+            // the byte order every other header word is written in. A cook of the
+            // other order reads back this constant byte-reversed and refuses HERE,
+            // rather than reaching a fix-up pass this design does not have.
+            if (Schema.TableCookRead64(at + 0) != Schema.TableCookMagic) { reason = Schema.TableCookRead64(at) == System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(Schema.TableCookMagic) ? TableRefuseReason.foreign_order : TableRefuseReason.not_a_cook; return false; }
+            // and the ORDER WORD does the other job: it RECORDS which order wrote the
+            // file, so a refusal names the order rather than inferring it. A file
+            // whose magic matched and whose order word did not is corrupt, and there
+            // is no reading that recovers it.
+            if (Schema.TableCookRead64(at + 16) != Schema.TableCookByteOrder) { reason = TableRefuseReason.not_a_cook; return false; }
+            // THE BUILD VERSION: under the match-and-point rule a matching id means
+            // Open checks nothing further, so it is the sole guard between this
+            // runtime and a foreign region (§20).
+            if (Schema.TableCookRead64(at + 8) != Schema.BuildVersion) { reason = TableRefuseReason.wrong_build_version; return false; }
+            // THE RESERVED WORDS: a non-zero one means a writer used a form this
+            // build does not understand, and Open refuses rather than ignoring it.
+            if (Schema.TableCookRead64(at + 48) != 0) { reason = TableRefuseReason.reserved_not_zero; return false; }
+            if (Schema.TableCookRead64(at + 56) != 0) { reason = TableRefuseReason.reserved_not_zero; return false; }
+
+            // THE ALIGNMENT WORD is the one field the check COMPUTES WITH rather than
+            // only compares against — the data part begins at align_up(64, alignment)
+            // and the base is measured against it — so a word that is not an
+            // alignment rounds nothing and aligns nothing. A zero there is a division
+            // by zero inside the check, which is the defect the check prevents.
+            ulong alignment = Schema.TableCookRead64(at + 40);
+            if (alignment < 8 || alignment > 64) { reason = TableRefuseReason.bad_alignment; return false; }
+            if ((alignment & (alignment - 1)) != 0) { reason = TableRefuseReason.bad_alignment; return false; } // a power of two
+            if ((alignment % 8) != 0) { reason = TableRefuseReason.bad_alignment; return false; }             // and a multiple of the ROOT's own alignof
+
+            // THE DATA OFFSET IS DERIVED, never a header field: a fact a reader
+            // computes is a fact two writers cannot disagree about, and it is 64 for
+            // every unit this language can declare.
+            ulong dataOffset = ((ulong) 64 + alignment - 1) & ~(alignment - 1);
+
+            // THE TWO PART LENGTHS against the length the caller passed. The whole
+            // file is dataOffset + data + attribution, and a size that is not exactly
+            // that refuses: a truncated file and a file with trailing bytes are the
+            // same refusal. Each term is bounded before it is added, so nothing here
+            // can wrap past the top of the type and land back inside the buffer.
+            ulong dataLength = Schema.TableCookRead64(at + 24);
+            ulong attribution = Schema.TableCookRead64(at + 32);
+            if (dataLength > bytes || attribution > bytes - dataLength) { reason = TableRefuseReason.truncated; return false; }
+            if (dataOffset > bytes - dataLength - attribution) { reason = TableRefuseReason.truncated; return false; }
+            if (dataOffset + dataLength + attribution != bytes) { reason = TableRefuseReason.truncated; return false; }
+
+            // THE DATA PART MUST HOLD THE ROOT. The part lengths frame the FILE; they
+            // do not say the region is at least sizeof(root). Without this a forged
+            // short data part describes a root partly outside the file, and a
+            // match-and-point reader would hand back storage the caller never gave
+            // it — the one way this design could read past the length it was passed.
+            if (dataLength < 1352) { reason = TableRefuseReason.truncated; return false; }
+
+            // THE ALIGNMENT OF THE BASE. The header pads the data part to the
+            // region's alignment, so a base an allocator or mmap gave you is already
+            // aligned; one that is not is a caller's buffer this form cannot be read
+            // out of. The alignment divides 64, so the derived data offset carries
+            // the property from the file's base to the region's.
+            if ((((ulong) at) % alignment) != 0) { reason = TableRefuseReason.unaligned_base; return false; }
+
+            cook = new TableMixedCook(at + dataOffset, (long) dataLength);
+            return true;
+        }
+
+        // The same open over a SPAN, which is how a consumer that already has the
+        // bytes in hand spells it. The contract is the pointer form's and is not
+        // softened by the spelling: the span must be over memory the CONSUMER keeps
+        // fixed — native memory, a pinned array, or a `fixed` block that encloses
+        // every use of the handle — because the handle outlives this call and the
+        // pin below does not.
+        //
+        // A span's length is an int, so this overload reaches 2 GiB and the POINTER
+        // FORM is the one with the reach the cook is built for (§6.3): a catalog
+        // past that ceiling is opened through the pointer form, never through this.
+        public static bool Open(out TableMixedCook cook, ReadOnlySpan<byte> bytes)
+        {
+            fixed (byte* p = bytes)
+            {
+                return Open(out cook, (IntPtr) p, bytes.Length);
+            }
+        }
+
+        // A REFERENCE IS DEREFERENCED THROUGH At, and it is the same call in a locked
+        // region and an opened cook because they are the same encoding (§6.3): the
+        // slot is eight bytes, SIGNED, self-relative from the SLOT'S OWN ADDRESS, so
+        // a deref needs no base pointer and no bounds test, and NULL IS A DELTA OF
+        // ZERO. Nothing about this call is the cook's: it is what a region reference
+        // is, and a cook is a region written verbatim.
+        //
+        // It takes the SLOT and not its value, because a self-relative delta means
+        // nothing without the address it is relative to.
+        public static TableMixedRow* At(long* slot)
+        {
+            long delta = *slot;
+            if (delta == 0) { return null; }
+            return (TableMixedRow*) ((byte*) slot + delta);
+        }
+
+        // The pieces a consumer reads THROUGH rather than at: each is a SPAN over
+        // the region itself, so reading one copies nothing and allocates nothing.
+        // A span's lifetime is the REGION's, which is the consumer's to keep.
+        public static ReadOnlySpan<TableEntityRow> Entities(TableMixedRow* row)
+        {
+            int used = row->EntitiesCount;
+            if (used < 0 || used > 8) { used = 0; }
+            return new ReadOnlySpan<TableEntityRow>(&row->Entities0, used);
+        }
+
+        public static ReadOnlySpan<TableStatRow> Stats(TableMixedRow* row)
+        {
+            int used = row->StatsCount;
+            if (used < 0 || used > 80) { used = 0; }
+            return new ReadOnlySpan<TableStatRow>(&row->Stats0, used);
+        }
+
+        public static ReadOnlySpan<byte> Loadout(TableMixedRow* row)
+        {
+            int used = 4;
+            return new ReadOnlySpan<byte>(row->Loadout, used);
+        }
+
+        // string(15): the used bytes, without the zero tail (§7.2).
+        public static ReadOnlySpan<byte> PlayerName(TableMixedRow* row)
+        {
+            int used = row->PlayerNameLength;
+            if (used < 0 || used > 15) { used = 0; } // a companion outside its bound is cook-check's refusal, not a read
+            return new ReadOnlySpan<byte>(row->PlayerName, used);
+        }
+
+        // bytes(16): the used bytes.
+        public static ReadOnlySpan<byte> Payload(TableMixedRow* row)
+        {
+            int used = row->PayloadLength;
+            if (used < 0 || used > 16) { used = 0; }
+            return new ReadOnlySpan<byte>(row->Payload, used);
+        }
+
+        // this root's cook descriptors: constant data, so a reflective walk costs a
+        // lookup and not a parse. Every record the region can hold hangs off the
+        // field column, so a walker reaches the whole graph from the root.
+        private static readonly TableCookInfo cookRecordTableChatEvent = new TableCookInfo
+        {
+            Name = "TableChatEvent", Size = 8, Align = 4, NumFields = 2,
+            Fields = new TableCookFieldInfo[]
+            {
+                new TableCookFieldInfo { Name = "channel", Offset = 0, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
+                new TableCookFieldInfo { Name = "speaker", Offset = 4, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+            },
+        };
+
+        private static readonly TableCookInfo cookRecordTableEntity = new TableCookInfo
+        {
+            Name = "TableEntity", Size = 64, Align = 8, NumFields = 14,
+            Fields = new TableCookFieldInfo[]
+            {
+                new TableCookFieldInfo { Name = "entity_id", Offset = 0, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "pos_x", Offset = 4, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
+                new TableCookFieldInfo { Name = "pos_y", Offset = 8, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
+                new TableCookFieldInfo { Name = "pos_z", Offset = 12, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
+                new TableCookFieldInfo { Name = "yaw", Offset = 16, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "pitch", Offset = 20, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "vel_x", Offset = 24, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
+                new TableCookFieldInfo { Name = "vel_y", Offset = 28, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
+                new TableCookFieldInfo { Name = "vel_z", Offset = 32, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
+                new TableCookFieldInfo { Name = "health", Offset = 36, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
+                new TableCookFieldInfo { Name = "weapon", Offset = 40, Size = 1, ElemSize = 1, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "damage", Offset = 48, Size = 8, ElemSize = 8, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "moving", Offset = 56, Size = 1, ElemSize = 1, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Bool, RecordRef = null },
+                new TableCookFieldInfo { Name = "firing", Offset = 57, Size = 1, ElemSize = 1, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Bool, RecordRef = null },
+            },
+        };
+
+        private static readonly TableCookInfo cookRecordTableHitEvent = new TableCookInfo
+        {
+            Name = "TableHitEvent", Size = 16, Align = 4, NumFields = 4,
+            Fields = new TableCookFieldInfo[]
+            {
+                new TableCookFieldInfo { Name = "target_id", Offset = 0, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "damage", Offset = 4, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
+                new TableCookFieldInfo { Name = "hit_kind", Offset = 8, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
+                new TableCookFieldInfo { Name = "crit", Offset = 12, Size = 1, ElemSize = 1, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Bool, RecordRef = null },
+            },
+        };
+
+        private static readonly TableCookInfo cookRecordTableMixed = new TableCookInfo
+        {
+            Name = "TableMixed", Size = 1352, Align = 8, NumFields = 28,
+            Fields = new TableCookFieldInfo[]
+            {
+                new TableCookFieldInfo { Name = "protocol_magic", Offset = 0, Size = 2, ElemSize = 2, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "sequence", Offset = 4, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "ack_sequence", Offset = 8, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
+                new TableCookFieldInfo { Name = "ack_bits", Offset = 12, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "session_id", Offset = 16, Size = 8, ElemSize = 8, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "client_id", Offset = 24, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "nonce", Offset = 32, Size = 8, ElemSize = 8, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "world_time", Offset = 40, Size = 8, ElemSize = 8, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
+                new TableCookFieldInfo { Name = "frame_tick", Offset = 48, Size = 8, ElemSize = 8, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "server_time", Offset = 56, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Float, RecordRef = null },
+                new TableCookFieldInfo { Name = "entities", Offset = 64, Size = 516, ElemSize = 64, IsArray = true, ArrayBound = 8, IsPointer = false, CountOffset = 576, PresentOffset = -1, Storage = TableCookStorage.Record, RecordRef = delegate { return cookRecordTableEntity; } },
+                new TableCookFieldInfo { Name = "stats", Offset = 580, Size = 644, ElemSize = 8, IsArray = true, ArrayBound = 80, IsPointer = false, CountOffset = 1220, PresentOffset = -1, Storage = TableCookStorage.Record, RecordRef = delegate { return cookRecordTableStat; } },
+                new TableCookFieldInfo { Name = "game_event", Offset = 1224, Size = 20, ElemSize = 20, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Record, RecordRef = null },
+                new TableCookFieldInfo { Name = "loadout", Offset = 1244, Size = 4, ElemSize = 1, IsArray = true, ArrayBound = 4, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "player_name", Offset = 1248, Size = 20, ElemSize = 20, IsArray = false, ArrayBound = 15, IsPointer = false, CountOffset = 1264, PresentOffset = -1, Storage = TableCookStorage.String, RecordRef = null },
+                new TableCookFieldInfo { Name = "payload", Offset = 1268, Size = 20, ElemSize = 20, IsArray = false, ArrayBound = 16, IsPointer = false, CountOffset = 1284, PresentOffset = -1, Storage = TableCookStorage.Bytes, RecordRef = null },
+                new TableCookFieldInfo { Name = "aim_x", Offset = 1288, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Float, RecordRef = null },
+                new TableCookFieldInfo { Name = "aim_y", Offset = 1292, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Float, RecordRef = null },
+                new TableCookFieldInfo { Name = "aim_z", Offset = 1296, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Float, RecordRef = null },
+                new TableCookFieldInfo { Name = "recoil", Offset = 1300, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Float, RecordRef = null },
+                new TableCookFieldInfo { Name = "drift", Offset = 1304, Size = 8, ElemSize = 8, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Float, RecordRef = null },
+                new TableCookFieldInfo { Name = "wide_key", Offset = 1312, Size = 8, ElemSize = 8, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "flux", Offset = 1320, Size = 8, ElemSize = 8, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
+                new TableCookFieldInfo { Name = "ping", Offset = 1328, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Float, RecordRef = null },
+                new TableCookFieldInfo { Name = "crc_hint", Offset = 1332, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "has_extra", Offset = 1336, Size = 1, ElemSize = 1, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Bool, RecordRef = null },
+                new TableCookFieldInfo { Name = "extra", Offset = 1340, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
+                new TableCookFieldInfo { Name = "idle_ticks", Offset = 1344, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
+            },
+        };
+
+        private static readonly TableCookInfo cookRecordTablePickupEvent = new TableCookInfo
+        {
+            Name = "TablePickupEvent", Size = 8, Align = 4, NumFields = 2,
+            Fields = new TableCookFieldInfo[]
+            {
+                new TableCookFieldInfo { Name = "item_id", Offset = 0, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "amount", Offset = 4, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
+            },
+        };
+
+        private static readonly TableCookInfo cookRecordTableStat = new TableCookInfo
+        {
+            Name = "TableStat", Size = 8, Align = 4, NumFields = 2,
+            Fields = new TableCookFieldInfo[]
+            {
+                new TableCookFieldInfo { Name = "stat_id", Offset = 0, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "delta", Offset = 4, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
+            },
+        };
+
+        public static TableCookInfo Type { get { return cookRecordTableMixed; } }
+    }
 
 }

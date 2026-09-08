@@ -964,3 +964,34 @@ retain retain_node_record  tblrt1 Node testdata/wire/tables/retain_rt3.bin      
 # over it by its length, and the field inside it that RT1 cannot name counts
 # there.
 retain-message retain_message_tail retain_conn tblrt1 Node testdata/wire/tables/retain_message.bin full full 10,6,17 0 testdata/wire/tables/retain_message_save_0.bin,testdata/wire/tables/retain_message_save_1.bin
+
+# Unbounded arrays: existing C++ wire pins now shared by every port.
+unit listdemo tables/lists
+instance list_tables listdemo Save testdata/wire/tables/list_tables.bin
+instance list_scalars listdemo Save testdata/wire/tables/list_scalars.bin
+instance list_empty listdemo Save testdata/wire/tables/list_empty.bin
+instance list_erased listdemo Save testdata/wire/tables/list_erased.bin
+instance list_mixed listdemo Mixed testdata/wire/tables/list_mixed.bin
+instance list_shared listdemo Album testdata/wire/tables/list_shared.bin
+instance list_before_pointer listdemo Album testdata/wire/tables/list_before_pointer.bin
+instance list_nested listdemo Sheet testdata/wire/tables/list_nested.bin
+instance list_of_maps listdemo Army testdata/wire/tables/list_of_maps.bin
+instance list_migrates listdemo Unbounded testdata/wire/tables/list_migrates.bin
+report list_scalar_widen listdemo Save testdata/wire/tables/fuzz-vectors/list_scalar_widen.bin
+
+# Map storage and ordering pins shared by the reference and every port.
+unit mapdemo tables/maps
+instance map_cells mapdemo Cells testdata/wire/tables/map_cells.bin
+instance map_chunks mapdemo Chunks testdata/wire/tables/map_chunks.bin
+instance map_crews mapdemo Crews testdata/wire/tables/map_crews.bin
+instance map_depth mapdemo Depth testdata/wire/tables/map_depth.bin
+instance map_docs mapdemo Docs testdata/wire/tables/map_docs.bin
+instance map_empty mapdemo Fleet testdata/wire/tables/map_empty.bin
+instance map_full mapdemo Fleet testdata/wire/tables/map_full.bin
+instance map_pairs mapdemo Pairs testdata/wire/tables/map_pairs.bin
+instance map_slots mapdemo Slots testdata/wire/tables/map_slots.bin
+instance map_spans mapdemo Spans testdata/wire/tables/map_spans.bin
+instance map_text mapdemo Text testdata/wire/tables/map_text.bin
+instance map_trails mapdemo Trails testdata/wire/tables/map_trails.bin
+instance map_runs mapdemo Runs testdata/wire/tables/map_runs.bin
+report map_key_widen mapdemo Chunks testdata/wire/tables/fuzz-vectors/map_key_widen.bin

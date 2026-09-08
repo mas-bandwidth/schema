@@ -1,0 +1,23 @@
+package csretain2
+
+table Child
+{
+    known int32
+    future int32
+}
+
+table Group { rows [2]Child }
+
+union Choice
+{
+    rows Group
+    one Child
+}
+
+table Root
+{
+    choice Choice
+    choices [2]Choice
+    anchor *Child
+    future_list []int32 | min = 0, max = 0
+}

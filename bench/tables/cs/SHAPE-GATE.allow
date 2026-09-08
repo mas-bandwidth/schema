@@ -3,3 +3,5 @@
 # Paths are repository-relative.
 
 names bench/tables/cs/src/Program.cs 2 shape-blind leg: `Benchtable.TableMixed` as the BenchTable type argument and its constructor (callsite)
+timing test/cs-tables/src/RetainContractChecks.cs 1 hostile retention depth regression: absolute completion deadline, no throughput or benchmark result
+timing test/cs-tables/src/RetainPathChecks.cs 1 hostile zero-bit count regression: absolute completion deadline, no throughput or benchmark result

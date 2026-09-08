@@ -293,6 +293,7 @@ func TestGoldenWideId(t *testing.T) {
 func TestGoldenWideSource(t *testing.T) {
 	u := loadCorpusDir(t, corpusWideDir)
 	pinDir(t, filepath.Join(goldenDir, "wide", "cpp"), generate(t, u, "cpp", nil))
+	pinDir(t, filepath.Join(goldenDir, "wide", "cs"), generate(t, u, "cs", nil))
 }
 
 // The packet file is isolated from examples-wide's table kind 33 and its
@@ -333,7 +334,7 @@ func TestGoldenPacketWideSource(t *testing.T) {
 func TestWideTextIsRefusedByEveryOtherTarget(t *testing.T) {
 	u := loadCorpusDir(t, corpusWideDir)
 	for _, target := range compiler.New().Targets() {
-		if target == "cpp" {
+		if target == "cpp" || target == "cs" {
 			continue
 		}
 		if _, err := schema.Generate(u, target, nil); err == nil {

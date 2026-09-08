@@ -179,9 +179,49 @@ namespace Benchtable
             get { return BitConverter.IsLittleEndian ? 1UL : 2UL; }
         }
 
-        public static unsafe ulong TableBlockRead64(byte* p) { return *(ulong*) p; }
+        public static unsafe ulong TableBlockRead64(byte* p) { return System.Runtime.CompilerServices.Unsafe.ReadUnaligned<ulong>(p); }
     }
 
+
+    public struct TableBlockRefusal
+    {
+        public string Array;
+        public long Count, Maximum;
+    }
+    public sealed class TableBlockAllocator
+    {
+        public Func<long, IntPtr> Allocate;
+        public Action<IntPtr> Free;
+    }
+    // One allocation at construction. Begin and worker access allocate nothing.
+    // Borrowed blocks and spans must not outlive this storage or its next Begin.
+    public unsafe class TableBlockStorage : IDisposable
+    {
+        IntPtr allocation;
+        readonly TableBlockAllocator allocator;
+        public IntPtr Pointer { get; private set; }
+        public long Capacity { get; private set; }
+        protected TableBlockStorage(long capacity, TableBlockAllocator allocator)
+        {
+            if (capacity <= 0 || capacity > long.MaxValue - 63) { throw new ArgumentOutOfRangeException(nameof(capacity)); }
+            if (allocator != null && (allocator.Allocate == null || allocator.Free == null)) { throw new ArgumentException("allocator requires both callbacks"); }
+            this.allocator = allocator;
+            allocation = allocator == null ? Marshal.AllocHGlobal(checked((nint)(capacity + 63))) : allocator.Allocate(capacity + 63);
+            if (allocation == IntPtr.Zero) { throw new OutOfMemoryException(); }
+            Pointer = (IntPtr)(((ulong)allocation + 63) & ~63ul); Capacity = capacity;
+        }
+        public void Clear()
+        {
+            if (Pointer == IntPtr.Zero) { throw new ObjectDisposedException(nameof(TableBlockStorage)); }
+            NativeMemory.Clear((void*)Pointer, checked((nuint)Capacity));
+        }
+        public void Dispose()
+        {
+            if (allocation == IntPtr.Zero) { return; }
+            if (allocator == null) { Marshal.FreeHGlobal(allocation); } else { allocator.Free(allocation); }
+            allocation = IntPtr.Zero; Pointer = IntPtr.Zero; Capacity = 0;
+        }
+    }
     // The LAYOUT CONTRACT's C# half (docs/SPEC-TABLES.md §19.3), run ONCE: every size
     // and offset the C++ side static_asserts, asserted here against the MANAGED
     // model — Unsafe.SizeOf and address arithmetic on a stack instance, never
@@ -324,6 +364,15 @@ namespace Benchtable
         public uint StatId;
         public int Delta;
     }
+    public struct TableEntityCounts
+    {
+    }
+
+    public sealed class TableEntityBlockStorage : TableBlockStorage
+    {
+        public TableEntityBlockStorage(TableBlockAllocator allocator = null) : base(TableEntityBlock.BlockMaxBytes, allocator) {}
+    }
+
     // TableEntity's block: a pointer and a length, and then rows in place. Opening one
     // is ONE check and no copy; reading a row is one add (docs/SPEC-TABLES.md §19.2).
     //
@@ -331,6 +380,21 @@ namespace Benchtable
     // or memory the producer handed across. Nothing here allocates.
     public unsafe readonly struct TableEntityBlock
     {
+        // Begin settles the layout before workers fill disjoint rows. It touches
+        // the prologue and triples only; use Clear on storage when byte stability matters.
+        public static bool Begin(out TableEntityBlock block, IntPtr pointer, long capacity, in TableEntityCounts counts, out TableBlockRefusal refusal)
+        {
+            block = default; refusal = default;
+            if (pointer == IntPtr.Zero || ((ulong)pointer & 63) != 0) { return false; }
+            long at = 88;
+            at = (at + 63) & ~63L; if (at > capacity) { return false; }
+            TableEntityBlockProjection* p = (TableEntityBlockProjection*)pointer;
+            p->Magic = Schema.TableBlockMagic; p->BuildVersion = Schema.BuildVersion; p->ByteOrder = Schema.TableBlockByteOrder;
+            block = new TableEntityBlock((byte*)pointer, at); return true;
+        }
+
+        public static bool Begin(out TableEntityBlock block, TableEntityBlockStorage storage, in TableEntityCounts counts, out TableBlockRefusal refusal) { return Begin(out block, storage.Pointer, storage.Capacity, counts, out refusal); }
+        public ref TableEntityBlockProjection WritableProjection { get { return ref *(TableEntityBlockProjection*)basePointer; } }
         private readonly byte* basePointer;
         private readonly long bytes;
 
@@ -374,24 +438,25 @@ namespace Benchtable
         // at one build — so a consumer older than its producer is not a case. A
         // mismatch is a refusal; regenerate both sides. Data that must outlive the
         // build that wrote it takes the wire, which this same table still has.
-        public static bool Open(out TableEntityBlock block, IntPtr pointer, long bytes)
+        public static bool Open(out TableEntityBlock block, IntPtr pointer, long bytes) { return Open(out block, pointer, bytes, out _); }
+        public static bool Open(out TableEntityBlock block, IntPtr pointer, long bytes, out TableRefuseReason reason)
         {
-            block = default;
+            block = default; reason = TableRefuseReason.ok;
             TableBlockLayout.Verify();
-            if (pointer == IntPtr.Zero || bytes < 88) { return false; }
+            if (pointer == IntPtr.Zero) { reason = TableRefuseReason.unaligned_base; return false; }
+            if (bytes < 88) { reason = TableRefuseReason.truncated; return false; }
             byte* at = (byte*) pointer;
-            if ((((ulong) pointer) % 64) != 0) { return false; } // the base's alignment
-            if (Schema.TableBlockRead64(at) != Schema.TableBlockMagic) { return false; }
-            if (Schema.TableBlockRead64(at + 8) != Schema.BuildVersion) { return false; }
-            if (Schema.TableBlockRead64(at + 16) != Schema.TableBlockByteOrder) { return false; }
-            TableEntityBlockProjection* projection = (TableEntityBlockProjection*) at;
+            if (Schema.TableBlockRead64(at) != Schema.TableBlockMagic) { reason = Schema.TableBlockRead64(at) == System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(Schema.TableBlockMagic) ? TableRefuseReason.foreign_order : TableRefuseReason.not_a_cook; return false; }
+            if (Schema.TableBlockRead64(at + 16) != Schema.TableBlockByteOrder) { reason = TableRefuseReason.not_a_cook; return false; }
+            if (Schema.TableBlockRead64(at + 8) != Schema.BuildVersion) { reason = TableRefuseReason.wrong_build_version; return false; }
             long used = 88;
             // the used extent, rounded to 64 WITHOUT the rounding itself wrapping:
             // used is already inside bytes, and the padding is paid out of the slack
             // that is left rather than added and compared after.
             long padding = (64 - (used % 64)) % 64;
-            if (padding > bytes - used) { return false; }
+            if (padding > bytes - used) { reason = TableRefuseReason.truncated; return false; }
             used += padding;
+            if (((ulong)pointer & 63) != 0) { reason = TableRefuseReason.unaligned_base; return false; }
             block = new TableEntityBlock(at, used);
             return true;
         }
@@ -415,7 +480,7 @@ namespace Benchtable
                 new TableBlockFieldInfo { Name = "vel_y", Offset = 52, Size = 4, Kind = 4, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemSize = 4, PresentOffset = -1, ElementRef = null },
                 new TableBlockFieldInfo { Name = "vel_z", Offset = 56, Size = 4, Kind = 4, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemSize = 4, PresentOffset = -1, ElementRef = null },
                 new TableBlockFieldInfo { Name = "health", Offset = 60, Size = 4, Kind = 4, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemSize = 4, PresentOffset = -1, ElementRef = null },
-                new TableBlockFieldInfo { Name = "weapon", Offset = 64, Size = 1, Kind = 7, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemSize = 1, PresentOffset = -1, ElementRef = null },
+                new TableBlockFieldInfo { Name = "weapon", Offset = 64, Size = 1, Kind = 30, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemSize = 1, PresentOffset = -1, ElementRef = null },
                 new TableBlockFieldInfo { Name = "damage", Offset = 72, Size = 8, Kind = 9, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemSize = 8, PresentOffset = -1, ElementRef = null },
                 new TableBlockFieldInfo { Name = "moving", Offset = 80, Size = 1, Kind = 1, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemSize = 1, PresentOffset = -1, ElementRef = null },
                 new TableBlockFieldInfo { Name = "firing", Offset = 81, Size = 1, Kind = 1, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemSize = 1, PresentOffset = -1, ElementRef = null },
@@ -425,6 +490,15 @@ namespace Benchtable
         public static TableBlockInfo Type { get { return blockProjection; } }
     }
 
+    public struct TableStatCounts
+    {
+    }
+
+    public sealed class TableStatBlockStorage : TableBlockStorage
+    {
+        public TableStatBlockStorage(TableBlockAllocator allocator = null) : base(TableStatBlock.BlockMaxBytes, allocator) {}
+    }
+
     // TableStat's block: a pointer and a length, and then rows in place. Opening one
     // is ONE check and no copy; reading a row is one add (docs/SPEC-TABLES.md §19.2).
     //
@@ -432,6 +506,21 @@ namespace Benchtable
     // or memory the producer handed across. Nothing here allocates.
     public unsafe readonly struct TableStatBlock
     {
+        // Begin settles the layout before workers fill disjoint rows. It touches
+        // the prologue and triples only; use Clear on storage when byte stability matters.
+        public static bool Begin(out TableStatBlock block, IntPtr pointer, long capacity, in TableStatCounts counts, out TableBlockRefusal refusal)
+        {
+            block = default; refusal = default;
+            if (pointer == IntPtr.Zero || ((ulong)pointer & 63) != 0) { return false; }
+            long at = 32;
+            at = (at + 63) & ~63L; if (at > capacity) { return false; }
+            TableStatBlockProjection* p = (TableStatBlockProjection*)pointer;
+            p->Magic = Schema.TableBlockMagic; p->BuildVersion = Schema.BuildVersion; p->ByteOrder = Schema.TableBlockByteOrder;
+            block = new TableStatBlock((byte*)pointer, at); return true;
+        }
+
+        public static bool Begin(out TableStatBlock block, TableStatBlockStorage storage, in TableStatCounts counts, out TableBlockRefusal refusal) { return Begin(out block, storage.Pointer, storage.Capacity, counts, out refusal); }
+        public ref TableStatBlockProjection WritableProjection { get { return ref *(TableStatBlockProjection*)basePointer; } }
         private readonly byte* basePointer;
         private readonly long bytes;
 
@@ -475,24 +564,25 @@ namespace Benchtable
         // at one build — so a consumer older than its producer is not a case. A
         // mismatch is a refusal; regenerate both sides. Data that must outlive the
         // build that wrote it takes the wire, which this same table still has.
-        public static bool Open(out TableStatBlock block, IntPtr pointer, long bytes)
+        public static bool Open(out TableStatBlock block, IntPtr pointer, long bytes) { return Open(out block, pointer, bytes, out _); }
+        public static bool Open(out TableStatBlock block, IntPtr pointer, long bytes, out TableRefuseReason reason)
         {
-            block = default;
+            block = default; reason = TableRefuseReason.ok;
             TableBlockLayout.Verify();
-            if (pointer == IntPtr.Zero || bytes < 32) { return false; }
+            if (pointer == IntPtr.Zero) { reason = TableRefuseReason.unaligned_base; return false; }
+            if (bytes < 32) { reason = TableRefuseReason.truncated; return false; }
             byte* at = (byte*) pointer;
-            if ((((ulong) pointer) % 64) != 0) { return false; } // the base's alignment
-            if (Schema.TableBlockRead64(at) != Schema.TableBlockMagic) { return false; }
-            if (Schema.TableBlockRead64(at + 8) != Schema.BuildVersion) { return false; }
-            if (Schema.TableBlockRead64(at + 16) != Schema.TableBlockByteOrder) { return false; }
-            TableStatBlockProjection* projection = (TableStatBlockProjection*) at;
+            if (Schema.TableBlockRead64(at) != Schema.TableBlockMagic) { reason = Schema.TableBlockRead64(at) == System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(Schema.TableBlockMagic) ? TableRefuseReason.foreign_order : TableRefuseReason.not_a_cook; return false; }
+            if (Schema.TableBlockRead64(at + 16) != Schema.TableBlockByteOrder) { reason = TableRefuseReason.not_a_cook; return false; }
+            if (Schema.TableBlockRead64(at + 8) != Schema.BuildVersion) { reason = TableRefuseReason.wrong_build_version; return false; }
             long used = 32;
             // the used extent, rounded to 64 WITHOUT the rounding itself wrapping:
             // used is already inside bytes, and the padding is paid out of the slack
             // that is left rather than added and compared after.
             long padding = (64 - (used % 64)) % 64;
-            if (padding > bytes - used) { return false; }
+            if (padding > bytes - used) { reason = TableRefuseReason.truncated; return false; }
             used += padding;
+            if (((ulong)pointer & 63) != 0) { reason = TableRefuseReason.unaligned_base; return false; }
             block = new TableStatBlock(at, used);
             return true;
         }

@@ -5379,16 +5379,22 @@ template <typename Entry> struct TableMapFill
     int32_t capacity = 0;
     TableWorker * worker = NULL; // the TOOL's path
     bool ok = false;
+    bool refused = false; // builder count refusal, with no report event
 };
 
 template <typename Entry>
-inline TableMapFill<Entry> TableMapFillBegin( const TableNodeMap & nodes, TableMap<Entry> & map, uint32_t n )
+inline TableMapFill<Entry> TableMapFillBegin( const TableNodeMap & nodes, TableMap<Entry> & map, uint64_t n )
 {
     TableMapFill<Entry> fill;
     fill.map = &map;
     map.entries.value = 0;
     map.count = 0;
     if ( nodes.carve == NULL ) { return fill; }
+    if ( n > (uint64_t) INT32_MAX )
+    {
+        fill.refused = nodes.carve->worker != NULL;
+        return fill;
+    }
     if ( nodes.carve->worker != NULL )
     {
         fill.worker = nodes.carve->worker; // the tool's path: the arena carves
@@ -6095,7 +6101,14 @@ inline bool TableListWireExtent( const uint8_t * body, int64_t length, int64_t &
     TableReport scratch;
     TableReader r( body, length, &scratch, ids );
     if ( length < 2 ) { return true; }              // no array header: nothing rides
-    if ( r.get8() != elem_kind ) { return true; }  // another element kind: §4's ordinary kind mismatch, the field reads empty
+    const uint8_t wire_kind = r.get8();
+    if ( wire_kind != elem_kind )
+    {
+        if ( !TableKindWidens( wire_kind, elem_kind ) ) { return true; }
+        // Load accepts the widening ladder. Its extent still stores the
+        // declared element width, while L is bounded by the wire width.
+        elem_floor = TableKindWidth( wire_kind );
+    }
     uint64_t n = 0;
     if ( !r.getleb( n ) ) { return true; }
     if ( n > (uint64_t) INT32_MAX ) { reason = count_over_extent_cap; return false; }
@@ -8538,7 +8551,6 @@ inline bool FleetByIdEntryLoadBody( TableReader & r, const TableNodeMap & nodes,
                         if ( !TableReadUnsignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         uint32_t decoded_v = (uint32_t) widened_v;
                         value.key = decoded_v;
-                        r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -9105,7 +9117,8 @@ inline bool FleetLoadoutsEntryLoadBody( TableReader & r, const TableNodeMap & no
                     // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
                     // kind mismatch of §4, and nothing about a map is special-cased
                     if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
-                    TableMapFill<FleetLoadoutsEntryValueEntry> fill = TableMapFillBegin( nodes, value.value, (uint32_t) count );
+                    TableMapFill<FleetLoadoutsEntryValueEntry> fill = TableMapFillBegin( nodes, value.value, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     uint8_t last_key = 0;
@@ -9477,7 +9490,6 @@ MAPDEMO_TABLE_INLINE bool FleetTiersEntryLoadBody( TableReader & r, FleetTiersEn
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int16_t decoded_v = (int16_t) widened_v;
                         value.key = decoded_v;
-                        r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -9930,7 +9942,8 @@ inline bool FleetLoadBody( TableReader & r, const TableNodeMap & nodes, Fleet & 
                     // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
                     // kind mismatch of §4, and nothing about a map is special-cased
                     if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
-                    TableMapFill<FleetShipsEntry> fill = TableMapFillBegin( nodes, value.ships, (uint32_t) count );
+                    TableMapFill<FleetShipsEntry> fill = TableMapFillBegin( nodes, value.ships, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     const char * last_key = NULL; int32_t last_length = 0;
@@ -10017,7 +10030,8 @@ inline bool FleetLoadBody( TableReader & r, const TableNodeMap & nodes, Fleet & 
                     // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
                     // kind mismatch of §4, and nothing about a map is special-cased
                     if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
-                    TableMapFill<FleetByIdEntry> fill = TableMapFillBegin( nodes, value.by_id, (uint32_t) count );
+                    TableMapFill<FleetByIdEntry> fill = TableMapFillBegin( nodes, value.by_id, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     uint32_t last_key = 0;
@@ -10125,7 +10139,8 @@ inline bool FleetLoadBody( TableReader & r, const TableNodeMap & nodes, Fleet & 
                     // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
                     // kind mismatch of §4, and nothing about a map is special-cased
                     if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
-                    TableMapFill<FleetLoadoutsEntry> fill = TableMapFillBegin( nodes, value.loadouts, (uint32_t) count );
+                    TableMapFill<FleetLoadoutsEntry> fill = TableMapFillBegin( nodes, value.loadouts, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     const char * last_key = NULL; int32_t last_length = 0;
@@ -10213,7 +10228,8 @@ inline bool FleetLoadBody( TableReader & r, const TableNodeMap & nodes, Fleet & 
                     // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
                     // kind mismatch of §4, and nothing about a map is special-cased
                     if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
-                    TableMapFill<FleetTiersEntry> fill = TableMapFillBegin( nodes, value.tiers, (uint32_t) count );
+                    TableMapFill<FleetTiersEntry> fill = TableMapFillBegin( nodes, value.tiers, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     int16_t last_key = 0;
@@ -13741,7 +13757,6 @@ inline bool FleetByIdEntryLoadBodyRetain( TableReader & r, const TableNodeMap & 
                         if ( !TableReadUnsignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         uint32_t decoded_v = (uint32_t) widened_v;
                         value.key = decoded_v;
-                        r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -14251,7 +14266,8 @@ inline bool FleetLoadoutsEntryLoadBodyRetain( TableReader & r, const TableNodeMa
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
                     TableRetainDiscardField( retain, path, 1 );
-                    TableMapFill<FleetLoadoutsEntryValueEntry> fill = TableMapFillBegin( nodes, value.value, (uint32_t) count );
+                    TableMapFill<FleetLoadoutsEntryValueEntry> fill = TableMapFillBegin( nodes, value.value, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     uint8_t last_key = 0;
@@ -14547,7 +14563,6 @@ MAPDEMO_TABLE_INLINE bool FleetTiersEntryLoadBodyRetain( TableReader & r, FleetT
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int16_t decoded_v = (int16_t) widened_v;
                         value.key = decoded_v;
-                        r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -14977,7 +14992,8 @@ inline bool FleetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fl
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
                     TableRetainDiscardField( retain, path, 0 );
-                    TableMapFill<FleetShipsEntry> fill = TableMapFillBegin( nodes, value.ships, (uint32_t) count );
+                    TableMapFill<FleetShipsEntry> fill = TableMapFillBegin( nodes, value.ships, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     const char * last_key = NULL; int32_t last_length = 0;
@@ -15067,7 +15083,8 @@ inline bool FleetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fl
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
                     TableRetainDiscardField( retain, path, 1 );
-                    TableMapFill<FleetByIdEntry> fill = TableMapFillBegin( nodes, value.by_id, (uint32_t) count );
+                    TableMapFill<FleetByIdEntry> fill = TableMapFillBegin( nodes, value.by_id, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     uint32_t last_key = 0;
@@ -15178,7 +15195,8 @@ inline bool FleetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fl
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
                     TableRetainDiscardField( retain, path, 3 );
-                    TableMapFill<FleetLoadoutsEntry> fill = TableMapFillBegin( nodes, value.loadouts, (uint32_t) count );
+                    TableMapFill<FleetLoadoutsEntry> fill = TableMapFillBegin( nodes, value.loadouts, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     const char * last_key = NULL; int32_t last_length = 0;
@@ -15269,7 +15287,8 @@ inline bool FleetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fl
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
                     TableRetainDiscardField( retain, path, 4 );
-                    TableMapFill<FleetTiersEntry> fill = TableMapFillBegin( nodes, value.tiers, (uint32_t) count );
+                    TableMapFill<FleetTiersEntry> fill = TableMapFillBegin( nodes, value.tiers, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     int16_t last_key = 0;

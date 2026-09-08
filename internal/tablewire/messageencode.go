@@ -265,8 +265,9 @@ func encodeBitField(e *bitEncoder, w *bitWriter, fv *tabletext.Field) error {
 			return nil // an all-default nested table elides: its body is its terminator alone
 		}
 		e.ref(w, entry)
-		w.splice(body)
-		return nil
+		// The probe decides elision only. Alignment belongs to the enclosing
+		// stream, so a nested string must be written at its final bit offset.
+		return encodeBitBody(e, w, subInstanceOf(e.m, f, &fv.Cell), false)
 
 	case kind == ir.TableKindEnum:
 		if cellIsDefaultIn(e.m, f, &fv.Cell) {
@@ -492,11 +493,10 @@ func encodeBitArm(e *bitEncoder, w *bitWriter, arm ir.UnionVariant, cell *tablet
 func encodeBitKeyed(e *bitEncoder, w *bitWriter, fv *tabletext.Field, entry ir.TableVocabularyEntry) error {
 	f := fv.Def
 	shape := entry.Shape
-	pairs := &bitWriter{}
-	n := uint64(0)
+	var present []int
 	for slot := tabletext.KeyedFirstSlot(); slot < tabletext.KeyedSlotCount(f); slot++ {
 		cell := &fv.Elems[slot]
-		keyID, none, err := variantWireId(f.KeyEnumRef, uint64(tabletext.KeyedSlotValue(f, slot)), f.Name)
+		_, none, err := variantWireId(f.KeyEnumRef, uint64(tabletext.KeyedSlotValue(f, slot)), f.Name)
 		if err != nil {
 			return err
 		}
@@ -521,16 +521,22 @@ func encodeBitKeyed(e *bitEncoder, w *bitWriter, fv *tabletext.Field, entry ir.T
 				return err
 			}
 		}
-		e.name(pairs, keyID)
-		pairs.splice(elem)
-		n++
+		present = append(present, slot)
 	}
-	if n == 0 {
+	if len(present) == 0 {
 		return nil
 	}
 	e.ref(w, entry)
-	w.put(n, ir.TableMessageBitsRequired(0, shape.Max))
-	w.splice(pairs)
+	w.put(uint64(len(present)), ir.TableMessageBitsRequired(0, shape.Max))
+	// Count first, then emit each key and value in place. Splicing a body
+	// measured at bit zero would move every byte-alignment boundary in it.
+	for _, slot := range present {
+		keyID, _, _ := variantWireId(f.KeyEnumRef, uint64(tabletext.KeyedSlotValue(f, slot)), f.Name)
+		e.name(w, keyID)
+		if err := encodeBitElement(e, w, f, shape, &fv.Elems[slot]); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

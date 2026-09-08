@@ -620,16 +620,22 @@ template <typename Entry> struct TableMapFill
     int32_t capacity = 0;
     TableWorker * worker = NULL; // the TOOL's path
     bool ok = false;
+    bool refused = false; // builder count refusal, with no report event
 };
 
 template <typename Entry>
-inline TableMapFill<Entry> TableMapFillBegin( const TableNodeMap & nodes, TableMap<Entry> & map, uint32_t n )
+inline TableMapFill<Entry> TableMapFillBegin( const TableNodeMap & nodes, TableMap<Entry> & map, uint64_t n )
 {
     TableMapFill<Entry> fill;
     fill.map = &map;
     map.entries.value = 0;
     map.count = 0;
     if ( nodes.carve == NULL ) { return fill; }
+    if ( n > (uint64_t) INT32_MAX )
+    {
+        fill.refused = nodes.carve->worker != NULL;
+        return fill;
+    }
     if ( nodes.carve->worker != NULL )
     {
         fill.worker = nodes.carve->worker; // the tool's path: the arena carves
@@ -1204,7 +1210,8 @@ func (g *tableGen) emitMapReadField(f *ir.Field) {
 	g.pf("%s    // kind mismatch of §4, and nothing about a map is special-cased\n", ind)
 	g.pf("%s    if ( elem_kind != %d ) { r.report->kind_mismatch++; r.offset = body_end; break; }\n", ind, tkTable)
 	g.emitRetainReplaced(f, ind+"    ")
-	g.pf("%s    TableMapFill<%s> fill = TableMapFillBegin( nodes, value.%s, (uint32_t) count );\n", ind, n, f.Name)
+	g.pf("%s    TableMapFill<%s> fill = TableMapFillBegin( nodes, value.%s, count );\n", ind, n, f.Name)
+	g.pf("%s    if ( fill.refused ) { nodes.refused = true; return false; }\n", ind)
 	g.pf("%s    if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }\n", ind)
 	g.pf("%s    TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );\n", ind)
 	if mapKeyIsString(f) {

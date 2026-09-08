@@ -53,7 +53,7 @@ func refuseWideText(u *ir.Unit, target string) error {
 			tableFields = append(tableFields, field)
 		}
 	}
-	if len(tableFields) > 0 && target != "cpp" {
+	if len(tableFields) > 0 && target != "cpp" && target != "cs" {
 		return fmt.Errorf("unit puts a wstring(N) field in a table closure (%s): table wide text is C++ only today, and the %s table codec is a named follow-on; generate with --lang cpp (SPEC §4.12)", englishList(tableFields), target)
 	}
 	if slices.Contains(wideTextTargets, target) {

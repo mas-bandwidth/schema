@@ -5258,16 +5258,22 @@ template <typename Entry> struct TableMapFill
     int32_t capacity = 0;
     TableWorker * worker = NULL; // the TOOL's path
     bool ok = false;
+    bool refused = false; // builder count refusal, with no report event
 };
 
 template <typename Entry>
-inline TableMapFill<Entry> TableMapFillBegin( const TableNodeMap & nodes, TableMap<Entry> & map, uint32_t n )
+inline TableMapFill<Entry> TableMapFillBegin( const TableNodeMap & nodes, TableMap<Entry> & map, uint64_t n )
 {
     TableMapFill<Entry> fill;
     fill.map = &map;
     map.entries.value = 0;
     map.count = 0;
     if ( nodes.carve == NULL ) { return fill; }
+    if ( n > (uint64_t) INT32_MAX )
+    {
+        fill.refused = nodes.carve->worker != NULL;
+        return fill;
+    }
     if ( nodes.carve->worker != NULL )
     {
         fill.worker = nodes.carve->worker; // the tool's path: the arena carves
@@ -5974,7 +5980,14 @@ inline bool TableListWireExtent( const uint8_t * body, int64_t length, int64_t &
     TableReport scratch;
     TableReader r( body, length, &scratch, ids );
     if ( length < 2 ) { return true; }              // no array header: nothing rides
-    if ( r.get8() != elem_kind ) { return true; }  // another element kind: §4's ordinary kind mismatch, the field reads empty
+    const uint8_t wire_kind = r.get8();
+    if ( wire_kind != elem_kind )
+    {
+        if ( !TableKindWidens( wire_kind, elem_kind ) ) { return true; }
+        // Load accepts the widening ladder. Its extent still stores the
+        // declared element width, while L is bounded by the wire width.
+        elem_floor = TableKindWidth( wire_kind );
+    }
     uint64_t n = 0;
     if ( !r.getleb( n ) ) { return true; }
     if ( n > (uint64_t) INT32_MAX ) { reason = count_over_extent_cap; return false; }
@@ -8897,7 +8910,37 @@ inline bool MixedLoadBody( TableReader & r, const TableNodeMap & nodes, Mixed & 
                     if ( !counted_ok ) { r.report->malformed = true; }
                     // AN ELEMENT KIND THAT DISAGREES with the reader's declaration is §3's
                     // element-kind rule: the field reads EMPTY and one kind_mismatch counts
-                    else if ( elem_kind != 9 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                    else if ( elem_kind != 9 )
+                    {
+                        if ( !TableKindWidens( elem_kind, 9 ) ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                        r.report->widened++;
+                        // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
+                        // cannot fire on it. A count above the int32 storage cap is the
+                        // fill's refusal, and it moves no counter.
+                        TableListFill<Perm> fill = TableListFillBegin( nodes, value.perms, count );
+                        if ( fill.refused ) { nodes.refused = true; return false; }
+                        if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
+                        // elements are BOUNDED by the field body: a count the length cannot
+                        // cover keeps the decoded prefix, flags malformed, and the parent
+                        // continues at the next field
+                        TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        for ( uint64_t i = 0; i < count; i++ )
+                        {
+                            Perm * slot = TableListFillNext( fill );
+                            if ( slot == NULL ) { r.report->malformed = true; break; } // the arena could not carve
+                            bool landed = false;
+                            do
+                            {
+                                uint64_t widened_v = 0;
+                                if ( !TableReadUnsignedAt( sub, elem_kind, widened_v ) ) { r.report->malformed = true; break; }
+                                uint64_t decoded_v = (uint64_t) widened_v;
+                                ( *slot ) = decoded_v;
+                                landed = true;
+                            } while ( 0 );
+                            if ( !landed ) { TableListFillDrop( fill ); break; } // the element's own framing gave out before it decoded
+                        }
+                        TableListFillEnd( fill );
+                    }
                     else
                     {
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
@@ -13851,7 +13894,37 @@ inline bool MixedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Mi
                     if ( !counted_ok ) { r.report->malformed = true; }
                     // AN ELEMENT KIND THAT DISAGREES with the reader's declaration is §3's
                     // element-kind rule: the field reads EMPTY and one kind_mismatch counts
-                    else if ( elem_kind != 9 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                    else if ( elem_kind != 9 )
+                    {
+                        if ( !TableKindWidens( elem_kind, 9 ) ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                        r.report->widened++;
+                        // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
+                        // cannot fire on it. A count above the int32 storage cap is the
+                        // fill's refusal, and it moves no counter.
+                        TableListFill<Perm> fill = TableListFillBegin( nodes, value.perms, count );
+                        if ( fill.refused ) { nodes.refused = true; return false; }
+                        if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
+                        // elements are BOUNDED by the field body: a count the length cannot
+                        // cover keeps the decoded prefix, flags malformed, and the parent
+                        // continues at the next field
+                        TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        for ( uint64_t i = 0; i < count; i++ )
+                        {
+                            Perm * slot = TableListFillNext( fill );
+                            if ( slot == NULL ) { r.report->malformed = true; break; } // the arena could not carve
+                            bool landed = false;
+                            do
+                            {
+                                uint64_t widened_v = 0;
+                                if ( !TableReadUnsignedAt( sub, elem_kind, widened_v ) ) { r.report->malformed = true; break; }
+                                uint64_t decoded_v = (uint64_t) widened_v;
+                                ( *slot ) = decoded_v;
+                                landed = true;
+                            } while ( 0 );
+                            if ( !landed ) { TableListFillDrop( fill ); break; } // the element's own framing gave out before it decoded
+                        }
+                        TableListFillEnd( fill );
+                    }
                     else
                     {
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped

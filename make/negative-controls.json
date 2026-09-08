@@ -91,7 +91,8 @@
         "tables-maps-cap-negative-control",
         "tables-maps-clamp-negative-control",
         "tables-maps-cook-check-negative-control",
-        "tables-maps-dead-entry-negative-control"
+        "tables-maps-dead-entry-negative-control",
+        "tables-maps-builder-cap-negative-control"
       ]
     },
     {
@@ -356,6 +357,9 @@
       "why": "the C# port's conformance leg and its four packet families. Measured 13 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached.",
       "targets": [
         "conformance-negative-control-cs",
+        "tables-cs-retain-negative-control",
+        "tables-cs-pack-negative-control",
+        "tables-cs-message-blob-endian-negative-control",
         "packet-arm-defaults-cs-negative-control",
         "packet-defaults-cs-negative-control",
         "packet-utf8-cs-negative-control",
@@ -497,6 +501,18 @@
       "why": "the one control that does not fit the owner's rule for CI that runs per commit, on its own, at any group size: tables-message-form-negative-control drives 49 sabotage rows one submake each, 124 s on the runner where the rule is 120. The message form's four blades run on the pull request, so what moves nightly is this one pass and nothing else. The group stays a group even at one target, because it is the place a control lands the day it outgrows the rule. certify.yml runs this tier on the schedule it already carries.",
       "targets": [
         "tables-message-form-negative-control"
+      ]
+    },
+    {
+      "name": "base-reference-review",
+      "when": "pull-request",
+      "why": "compiled native and sanitizer regressions for variable wide closure, list extent and flags/map widening accounting; five bounded emitter controls",
+      "targets": [
+        "tables-reference-list-negative-control",
+        "tables-reference-map-negative-control",
+        "tables-reference-flags-negative-control",
+        "tables-reference-alignment-negative-control",
+        "tables-reference-include-negative-control"
       ]
     }
   ],

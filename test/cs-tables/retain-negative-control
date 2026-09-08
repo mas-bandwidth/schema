@@ -1,0 +1,76 @@
+#!/bin/sh
+# Named refusals must compile-fail for their stated reason; removing capture
+# must compile successfully and then fail the live retention fixture.
+set -eu
+dotnet=$1
+control=build/cs-retain-control
+mkdir -p "$control"
+./bin/schema generate --lang cs --out "$control/generated" test/tables/RT1.schema
+cat > "$control/control.csproj" <<'PROJECT'
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks><EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <Nullable>annotations</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs"/><Compile Include="generated/*.cs"/>
+    <Compile Include="../../../serialize.cs/src/Serialize.cs"/><Compile Include="../../../serialize.cs/src/Int128Pair.cs"/>
+  </ItemGroup>
+</Project>
+PROJECT
+cat > "$control/Program.cs" <<'CS'
+using System;
+using Tblrt1;
+class Program { static void Main() { TableRetain retain=default; Schema.InnerLoadRetain(IntPtr.Zero,0,ReadOnlySpan<byte>.Empty,ref retain,new TableReport()); } }
+CS
+if "$dotnet" build "$control/control.csproj" -v q > "$control/fixed.log" 2>&1; then
+    echo 'NEGATIVE CONTROL FAILED: fixed-class retention compiled'; exit 1
+fi
+grep -q 'FIXED-class root' "$control/fixed.log" || { cat "$control/fixed.log"; exit 1; }
+cat > "$control/Program.cs" <<'CS'
+using System;
+using Tblrt1;
+class Program { static void Main() { Schema.NodeSaveRetainMessages(ReadOnlySpan<IntPtr>.Empty,Span<TableRetain>.Empty,Span<byte>.Empty,new TableReport()); } }
+CS
+if "$dotnet" build "$control/control.csproj" -v q > "$control/message.log" 2>&1; then
+    echo 'NEGATIVE CONTROL FAILED: retained message writing compiled'; exit 1
+fi
+grep -q 'Retention writing the MESSAGE form is refused by name' "$control/message.log" || { cat "$control/message.log"; exit 1; }
+cat > "$control/Program.cs" <<'CS'
+using System;
+using System.IO;
+using System.Runtime.InteropServices;
+using Tblrt1;
+unsafe class Program
+{
+    static int Main()
+    {
+        byte[] wire=File.ReadAllBytes("testdata/wire/tables/retain_rt2.bin");
+        long need=Schema.NodeLoadMeasure(wire);
+        byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)need,64);
+        byte* storage=stackalloc byte[16384]; TableRetain.Id* ids=stackalloc TableRetain.Id[1024];
+        var retain=new TableRetain { Bytes=storage,Capacity=16384,Ids=ids,IdCapacity=1024 };
+        var report=new TableReport();
+        try
+        {
+            Schema.NodeLoadRetain((IntPtr)region,need,wire,ref retain,report);
+            if(report.Retained!=9 || report.RetainLost!=2 || report.Malformed)
+            { Console.WriteLine("FAILED RETAIN: framed fields were not captured"); return 1; }
+            return 0;
+        }
+        finally { NativeMemory.AlignedFree(region); }
+    }
+}
+CS
+"$dotnet" run --project "$control/control.csproj" > "$control/positive.log" 2>&1
+go run ./tools/sabotage -name table-cs-retain-capture -out "$control/retain.gotext" internal/codegen/cstable/retain.go
+printf '{"Replace":{"%s/internal/codegen/cstable/retain.go":"%s/%s/retain.gotext"}}\n' "$PWD" "$PWD" "$control" > "$control/overlay.json"
+go build -overlay="$control/overlay.json" -o "$control/schema" ./cmd/schema
+"$control/schema" generate --lang cs --out "$control/generated" test/tables/RT1.schema
+"$dotnet" build "$control/control.csproj" -v q > "$control/sabotaged-build.log" 2>&1
+if "$dotnet" run --project "$control/control.csproj" --no-build > "$control/sabotaged.log" 2>&1; then
+    echo 'NEGATIVE CONTROL FAILED: missing retained capture stayed green'; exit 1
+fi
+grep -q 'FAILED RETAIN: framed fields were not captured' "$control/sabotaged.log" || { cat "$control/sabotaged.log"; exit 1; }
+echo 'C# retention controls: fixed and message refusals are named; missing capture turns the fixture red'
