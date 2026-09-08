@@ -5900,7 +5900,13 @@ tolerance is the versioning model:
   checked, so a repeat under the field id leaves no arm an earlier
   occurrence decoded standing: the last occurrence wins whole even when its
   own framing is damaged, and the element reads `None`. An element the body
-  cannot reach at all, with no byte left for an arm id, is not touched.
+  cannot reach at all, with no byte left for an arm id, is not touched while
+  it remains inside the live range (or belongs to a fixed array). After an
+  accepted counted-array occurrence, slots beyond its recovered live count
+  are restored to the value-initialized element (§7.2). An implementation
+  need only reset the previously live slots: entry reset already established
+  the unused tail, so a short repeated field does not require a walk over the
+  declared maximum.
   An ARRAY body too short to carry its own header, which is the element kind
   byte and the count and so fewer than two bytes, is **INERT**: no element is
   decoded, no counter fires, and the field keeps the value it has. On a first
