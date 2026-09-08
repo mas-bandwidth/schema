@@ -206,9 +206,13 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_arms_agree( serialize_read_st
         }
         value->lead = (uint32_t) raw;
     }
-    if ( !serialize_read_bool( stream, &value->flag ) )
     {
-        return 0;
+        int bool_value = 0;
+        if ( !serialize_read_bool( stream, &bool_value ) )
+        {
+            return 0;
+        }
+        value->flag = (uint8_t) bool_value;
     }
     if ( value->flag )
     {
@@ -288,9 +292,13 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_arms_disagree( serialize_read
         }
         value->lead = (uint32_t) raw;
     }
-    if ( !serialize_read_bool( stream, &value->flag ) )
     {
-        return 0;
+        int bool_value = 0;
+        if ( !serialize_read_bool( stream, &bool_value ) )
+        {
+            return 0;
+        }
+        value->flag = (uint8_t) bool_value;
     }
     if ( value->flag )
     {
@@ -363,9 +371,13 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_arm_empty( serialize_read_str
         }
         value->lead = (uint32_t) raw;
     }
-    if ( !serialize_read_bool( stream, &value->flag ) )
     {
-        return 0;
+        int bool_value = 0;
+        if ( !serialize_read_bool( stream, &bool_value ) )
+        {
+            return 0;
+        }
+        value->flag = (uint8_t) bool_value;
     }
     if ( value->flag )
     {
@@ -450,15 +462,23 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_arms_nested( serialize_read_s
         }
         value->lead = (uint32_t) raw;
     }
-    if ( !serialize_read_bool( stream, &value->outer ) )
     {
-        return 0;
+        int bool_value = 0;
+        if ( !serialize_read_bool( stream, &bool_value ) )
+        {
+            return 0;
+        }
+        value->outer = (uint8_t) bool_value;
     }
     if ( value->outer )
     {
-        if ( !serialize_read_bool( stream, &value->inner ) )
         {
-            return 0;
+            int bool_value = 0;
+            if ( !serialize_read_bool( stream, &bool_value ) )
+            {
+                return 0;
+            }
+            value->inner = (uint8_t) bool_value;
         }
         if ( value->inner )
         {
@@ -565,9 +585,13 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_arm_align( serialize_read_str
         }
         value->lead = (uint32_t) raw;
     }
-    if ( !serialize_read_bool( stream, &value->flag ) )
     {
-        return 0;
+        int bool_value = 0;
+        if ( !serialize_read_bool( stream, &bool_value ) )
+        {
+            return 0;
+        }
+        value->flag = (uint8_t) bool_value;
     }
     if ( value->flag )
     {
@@ -669,9 +693,13 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_arm_array( serialize_read_str
         }
         value->lead = (uint32_t) raw;
     }
-    if ( !serialize_read_bool( stream, &value->flag ) )
     {
-        return 0;
+        int bool_value = 0;
+        if ( !serialize_read_bool( stream, &bool_value ) )
+        {
+            return 0;
+        }
+        value->flag = (uint8_t) bool_value;
     }
     if ( value->flag )
     {

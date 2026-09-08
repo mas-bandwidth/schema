@@ -632,9 +632,13 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
         }
         value->f011_bits = (uint32_t) raw;
     }
-    if ( !serialize_read_bool( stream, &value->f012_bool ) )
     {
-        return 0;
+        int bool_value = 0;
+        if ( !serialize_read_bool( stream, &bool_value ) )
+        {
+            return 0;
+        }
+        value->f012_bool = (uint8_t) bool_value;
     }
     if ( value->f012_bool )
     {
@@ -859,13 +863,21 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
         }
         value->f036_enum = (PacketMode) enum_value;
     }
-    if ( !serialize_read_bool( stream, &value->f037_bool ) )
     {
-        return 0;
+        int bool_value = 0;
+        if ( !serialize_read_bool( stream, &bool_value ) )
+        {
+            return 0;
+        }
+        value->f037_bool = (uint8_t) bool_value;
     }
-    if ( !serialize_read_bool( stream, &value->f038_bool ) )
     {
-        return 0;
+        int bool_value = 0;
+        if ( !serialize_read_bool( stream, &bool_value ) )
+        {
+            return 0;
+        }
+        value->f038_bool = (uint8_t) bool_value;
     }
     {
         serialize_uint32_t raw = 0;
@@ -906,9 +918,13 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
         }
         value->f042_bits = (uint32_t) raw;
     }
-    if ( !serialize_read_bool( stream, &value->f043_bool ) )
     {
-        return 0;
+        int bool_value = 0;
+        if ( !serialize_read_bool( stream, &bool_value ) )
+        {
+            return 0;
+        }
+        value->f043_bool = (uint8_t) bool_value;
     }
     if ( value->f043_bool )
     {
@@ -972,15 +988,23 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
         }
         value->f049_ufixed = (uint16_t) fixed_value;
     }
-    if ( !serialize_read_bool( stream, &value->f050_bool ) )
     {
-        return 0;
+        int bool_value = 0;
+        if ( !serialize_read_bool( stream, &bool_value ) )
+        {
+            return 0;
+        }
+        value->f050_bool = (uint8_t) bool_value;
     }
     if ( value->f050_bool )
     {
-        if ( !serialize_read_bool( stream, &value->f051_bool ) )
         {
-            return 0;
+            int bool_value = 0;
+            if ( !serialize_read_bool( stream, &bool_value ) )
+            {
+                return 0;
+            }
+            value->f051_bool = (uint8_t) bool_value;
         }
         {
             serialize_uint64_t offset_value = 0;
@@ -1022,9 +1046,13 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
         value->f053_f32 = 0;
         value->f054_int = 0;
     }
-    if ( !serialize_read_bool( stream, &value->f055_bool ) )
     {
-        return 0;
+        int bool_value = 0;
+        if ( !serialize_read_bool( stream, &bool_value ) )
+        {
+            return 0;
+        }
+        value->f055_bool = (uint8_t) bool_value;
     }
     {
         serialize_uint64_t offset_value = 0;
@@ -1174,9 +1202,13 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
         }
         value->f073_int = (int8_t) ( offset_value + (-4) );
     }
-    if ( !serialize_read_bool( stream, &value->f074_bool ) )
     {
-        return 0;
+        int bool_value = 0;
+        if ( !serialize_read_bool( stream, &bool_value ) )
+        {
+            return 0;
+        }
+        value->f074_bool = (uint8_t) bool_value;
     }
     if ( value->f074_bool )
     {
@@ -1247,9 +1279,13 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
         value->f078_bits = 0;
         value->f079_uint = 0;
     }
-    if ( !serialize_read_bool( stream, &value->f080_bool ) )
     {
-        return 0;
+        int bool_value = 0;
+        if ( !serialize_read_bool( stream, &bool_value ) )
+        {
+            return 0;
+        }
+        value->f080_bool = (uint8_t) bool_value;
     }
     {
         serialize_uint32_t raw = 0;
@@ -1362,9 +1398,13 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
         }
         value->f091_flags = (PacketFlags) flags_value;
     }
-    if ( !serialize_read_bool( stream, &value->f092_bool ) )
     {
-        return 0;
+        int bool_value = 0;
+        if ( !serialize_read_bool( stream, &bool_value ) )
+        {
+            return 0;
+        }
+        value->f092_bool = (uint8_t) bool_value;
     }
     {
         serialize_uint32_t lo = 0;
@@ -1379,9 +1419,13 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
         }
         value->f093_bits = (uint64_t) ( (serialize_uint64_t) lo | ( ( (serialize_uint64_t) hi ) << 32 ) );
     }
-    if ( !serialize_read_bool( stream, &value->f094_bool ) )
     {
-        return 0;
+        int bool_value = 0;
+        if ( !serialize_read_bool( stream, &bool_value ) )
+        {
+            return 0;
+        }
+        value->f094_bool = (uint8_t) bool_value;
     }
     {
         serialize_int32_t fixed_value;

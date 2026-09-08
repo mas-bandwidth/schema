@@ -168,12 +168,12 @@ typedef struct ProbeBits {
 
 /* type ProbeSample */
 typedef struct ProbeSample {
-    int active;
+    uint8_t active;
     float orientation;
     int32_t raw_delta;
     int64_t big_delta;
     Weapon weapon;
-    int has_target;
+    uint8_t has_target;
     uint16_t target_id;
     uint32_t idle_ticks;
     uint16_t samples[8];
@@ -368,7 +368,7 @@ typedef struct TestData {
     uint32_t d;
     uint32_t e;
     uint32_t f;
-    int g;
+    uint8_t g;
     int32_t items[16];
     int32_t items_count;
     float float_value;

@@ -421,9 +421,13 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_ludicrous_state( serialize_re
             }
         }
     }
-    if ( !serialize_read_bool( stream, &value->has_target ) )
     {
-        return 0;
+        int bool_value = 0;
+        if ( !serialize_read_bool( stream, &bool_value ) )
+        {
+            return 0;
+        }
+        value->has_target = (uint8_t) bool_value;
     }
     if ( value->has_target )
     {
