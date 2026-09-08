@@ -48,7 +48,7 @@ leaves the builder available for correction or disposal.
 
 `Load` on a builder fills its mutable graph directly. Check the returned bool;
 a failed builder read requires discarding the partial value. In particular,
-exceeding the list's int32 storage cap adds no report event of its own.
+exceeding a list or map's int32 storage cap adds no report event of its own.
 
 `TableAllocator` accepts a matched `Allocate`/`Free` function-pointer pair and
 `Context`. Custom allocation must return zeroed, at least 16-aligned storage,

@@ -5379,16 +5379,22 @@ template <typename Entry> struct TableMapFill
     int32_t capacity = 0;
     TableWorker * worker = NULL; // the TOOL's path
     bool ok = false;
+    bool refused = false; // builder count refusal, with no report event
 };
 
 template <typename Entry>
-inline TableMapFill<Entry> TableMapFillBegin( const TableNodeMap & nodes, TableMap<Entry> & map, uint32_t n )
+inline TableMapFill<Entry> TableMapFillBegin( const TableNodeMap & nodes, TableMap<Entry> & map, uint64_t n )
 {
     TableMapFill<Entry> fill;
     fill.map = &map;
     map.entries.value = 0;
     map.count = 0;
     if ( nodes.carve == NULL ) { return fill; }
+    if ( n > (uint64_t) INT32_MAX )
+    {
+        fill.refused = nodes.carve->worker != NULL;
+        return fill;
+    }
     if ( nodes.carve->worker != NULL )
     {
         fill.worker = nodes.carve->worker; // the tool's path: the arena carves
@@ -7092,7 +7098,8 @@ inline bool ChunksLoadBody( TableReader & r, const TableNodeMap & nodes, Chunks 
                     // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
                     // kind mismatch of §4, and nothing about a map is special-cased
                     if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
-                    TableMapFill<ChunksBlobsEntry> fill = TableMapFillBegin( nodes, value.blobs, (uint32_t) count );
+                    TableMapFill<ChunksBlobsEntry> fill = TableMapFillBegin( nodes, value.blobs, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     int32_t last_key = 0;
@@ -9121,7 +9128,8 @@ inline bool ChunksLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, C
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
                     TableRetainDiscardField( retain, path, 0 );
-                    TableMapFill<ChunksBlobsEntry> fill = TableMapFillBegin( nodes, value.blobs, (uint32_t) count );
+                    TableMapFill<ChunksBlobsEntry> fill = TableMapFillBegin( nodes, value.blobs, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     int32_t last_key = 0;

@@ -238,7 +238,7 @@ const tableRegionSource = `
         a.Offset=Math.Min(a.Buffer.Length,header.Offset);
         if(kind!=13) { report.KindMismatch++; return true; }
         NativeResetField(value,f,true);
-        if(state.Worker==null && !NativeReserve(ref state,value,f,count,report)) { return false; }
+        if(!NativeReserve(ref state,value,f,count,report)) { return false; }
         int landed=0; bool widened=false; NativeMapKey last=default;
         TableFieldInfo keyField=f.Table.Fields[0];
         for(ulong i=0;i<count;i++)

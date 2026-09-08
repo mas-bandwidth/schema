@@ -128,6 +128,18 @@ static partial class Program
             var report=new L.TableReport();
             Check(!L.Schema.SaveLoadBuilder(builder,cappedList,report) && report.Unknown==1 && !report.Malformed && !report.Refused && report.Clamped==0,"builder count-cap refusal preserves exactly the preceding report");
         }
+        byte[] cappedMap=Fixture(Join(new byte[] {1,6,5,2,14,6,13},Var((ulong)int.MaxValue+1),new byte[] {3,6,7,0}),"before","tiers","after");
+        using(var builder=new M.FleetBuilder())
+        {
+            var report=new M.TableReport();
+            Check(!M.Schema.FleetLoadBuilder(builder,cappedMap,report) && report.Unknown==1 && !report.Malformed && !report.Refused && report.Clamped==0,"builder map count-cap refusal preserves exactly the preceding report");
+        }
+        byte[] shortMap=Fixture(Join(new byte[] {1,14,6,13},Var(int.MaxValue),new byte[] {0}),"tiers");
+        using(var builder=new M.FleetBuilder())
+        {
+            var report=new M.TableReport();
+            Check(M.Schema.FleetLoadBuilder(builder,shortMap,report) && report.Malformed && !report.Refused && report.Clamped==0 && builder.GetRoot()->Tiers.Count==0,"builder map at the count cap decodes only the available prefix");
+        }
         byte[] loaded=ReadGolden("list_scalars"); long size=L.Schema.SaveLoadMeasure(loaded);
         byte* source=(byte*)NativeMemory.AlignedAlloc((nuint)(size+64),64);
         try

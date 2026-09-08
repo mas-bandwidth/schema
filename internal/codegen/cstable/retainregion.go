@@ -43,7 +43,7 @@ func tableRetainRegionSource() string {
         { RetainDiscard(Store,IsArm && f.IsArray?Path.Step(ArmOrdinal,ArmIndex):Path,IsArm && !f.IsArray?ArmOrdinal:f.Ordinal); }`)
 	// NativeMemory is a BCL API, not a member of the family.
 	s = tableReplace(s, "InteropServices.RetainMemory", "InteropServices.NativeMemory")
-	s = tableReplace(s, "        RetainResetField(value,f,true);\n        if(state.Worker==null", "        value.DiscardField(f);\n        RetainResetField(value,f,true);\n        if(state.Worker==null")
+	s = tableReplace(s, "        RetainResetField(value,f,true);\n        if(!RetainReserve", "        value.DiscardField(f);\n        RetainResetField(value,f,true);\n        if(!RetainReserve")
 	s = tableReplace(s, "        RetainReset(value,type);\n        for (;;)", "        RetainDiscard(value.Store,value.Path);\n        RetainReset(value,type);\n        for (;;)")
 	// A damaged body resets its known value. Its own captured unknown fields
 	// survive; damage is not a later occurrence that replaces them.
