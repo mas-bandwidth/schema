@@ -16,6 +16,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -1015,6 +1017,88 @@ table ShipConfig
 		if !found {
 			t.Errorf("%s emits no BuildVersion constant at all (docs/SPEC-TABLES.md §20.7)", target)
 		}
+	}
+}
+
+// THE RESOLVING WALK'S CAP COUNTS NESTED FRAMED VALUES IN BOTH FORMS
+// (docs/SPEC-TABLES.md §6.6): a message body resolved against the connection's
+// vocabulary takes the same bound the file form's own walk takes, so the last
+// depth the cap admits rides and one past it is dropped, whichever form the
+// record arrived in. The C target pins the same pair in
+// TestCTableRetainFramedDepth. CONTROL: a message chain that passes its depth
+// through a framed value unchanged keeps the 65 row.
+func TestCppTableRetainFramedDepth(t *testing.T) {
+	old := unitFromSource(t, "package probe\ntable Root { next *Root }\n")
+	files, err := New().Generate(old, "cpp", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, depth := range []int{64, 65} {
+		t.Run(fmt.Sprint(depth), func(t *testing.T) {
+			var schema, fixture strings.Builder
+			schema.WriteString("package probe\ntable Root { next *Root\nextra T0 }\n")
+			fixture.WriteString(`{"extra":`)
+			for i := range depth {
+				if i+1 < depth {
+					fmt.Fprintf(&schema, "table T%d { nested T%d }\n", i, i+1)
+					fixture.WriteString(`{"nested":`)
+				} else {
+					fmt.Fprintf(&schema, "table T%d { x uint8 }\n", i)
+					fixture.WriteString(`{"x":7}`)
+				}
+			}
+			fixture.WriteString(strings.Repeat("}", depth))
+			future := unitFromSource(t, schema.String())
+			m := tabletext.NewModel(future)
+			value := m.New(m.Lookup("Root"))
+			var report tabletext.Report
+			if !m.Read(value, []byte(fixture.String()), &report) || !report.Silent() {
+				t.Fatalf("fixture: %+v", report)
+			}
+			wire, err := tablewire.Encode(m, value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			batch, err := tablewire.EncodeMessages(m, []*tabletext.Instance{value})
+			if err != nil {
+				t.Fatal(err)
+			}
+			announcement := tablewire.Announce(future)
+			kept := 0
+			if depth == 64 {
+				kept = 1
+			}
+			referenceCompileRun(t, files, fmt.Sprintf(`#include "ProbeTable.h"
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+using namespace probe;
+#define CHECK(x) do { if (!(x)) { fprintf(stderr,"framed depth failed at line %%d: %%s\n",__LINE__,#x); return 1; } } while(0)
+static const uint8_t wire[]={%s};
+static const uint8_t batch[]={%s};
+static const uint8_t announcement[]={%s};
+int main(){
+ // THE FILE FORM, whose walk resolves against the wire's own trailer
+ {TableRetain retain;TableRetain::Id ids[256];TableReport report;uint8_t store[8192],out[8192];
+  retain.bytes=store;retain.capacity=sizeof(store);retain.ids=ids;retain.id_capacity=256;
+  const int64_t need=RootLoadMeasure(wire,sizeof(wire));CHECK(need>0);uint8_t * region=(uint8_t *)malloc((size_t)need);CHECK(region);
+  const Root * root=RootLoadRetain(region,need,wire,sizeof(wire),&retain,&report);
+  CHECK(root!=NULL&&!report.malformed&&!report.refused&&report.unknown==1&&report.retained==%d&&report.retain_lost==%d);
+  const int64_t bytes=RootMeasureRetain(root,&retain);CHECK(bytes>=0);CHECK(RootSaveRetain(root,&retain,out,sizeof(out),&report)==bytes);
+  free(region);}
+ // THE MESSAGE FORM, whose walk resolves against the announced vocabulary
+ {TableMessageEntry entries[256];TableVocabulary vocabulary(entries,256);TableReport report;TableRetain retain;TableRetain::Id ids[256];uint8_t store[8192],out[8192];const Root * roots[1];int64_t count=1;
+  CHECK(AnnounceRead(vocabulary,announcement,sizeof(announcement),&report));
+  const int64_t need=RootLoadMeasure(vocabulary,batch,sizeof(batch));CHECK(need>0);uint8_t * region=(uint8_t *)malloc((size_t)need);CHECK(region);
+  retain.bytes=store;retain.capacity=sizeof(store);retain.ids=ids;retain.id_capacity=256;
+  CHECK(RootLoadRetainMessages(roots,&count,region,need,vocabulary,batch,sizeof(batch),&retain,&report));
+  CHECK(count==1&&!report.malformed&&!report.refused&&report.unknown==1&&report.retained==%d&&report.retain_lost==%d);
+  const int64_t bytes=RootMeasureRetain(roots[0],&retain);CHECK(bytes>0);CHECK(RootSaveRetain(roots[0],&retain,out,sizeof(out),&report)==bytes);
+  if(report.retained){CHECK(bytes==(int64_t)sizeof(wire));CHECK(memcmp(wire,out,sizeof(wire))==0);}
+  free(region);}
+ return 0;}
+`, cppWire(wire), cppWire(batch), cppWire(announcement), kept, 1-kept, kept, 1-kept))
+		})
 	}
 }
 
