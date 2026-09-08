@@ -1,0 +1,139 @@
+{
+  "accepted_pass": "csharp-hash-pair-clean",
+  "source_metadata_sha256": "81b77bf461819f0501616d735d62a9957e34601159976e5b53115b2a3dc1db79",
+  "source_summary_sha256": "d77fd7c5deaf6bfa9a8d09d97648f91f76d40d8a55718a674a096b49ffe060bf",
+  "source_runner_sha256": "bb2ffd4584e044b87312e2026cb369fe8f40047927d96677f6008efd0604df7e",
+  "corpus": {
+    "id": "b51387f36d9b59c4",
+    "records": 64,
+    "bytes_per_record": 2147,
+    "variant_bytes": 137408,
+    "record_0_is_golden": true,
+    "all_records_distinct": true,
+    "hash_rule": "FNV-1a-64, offset 0xcbf29ce484222325, prime 0x100000001b3. For bench_table.bin and bench_table.variants.bin in sorted basename order: hash ASCII basename, one zero byte, then the complete file bytes."
+  },
+  "unchanged_inputs_sha256": {
+    "bench/corpus/BenchTable.schema": "9e13067d68fd1151dacf7d8891839eb7d8edb52607b79f8cbb7c48c22afe88d1",
+    "testdata/wire/bench_table.bin": "9f6389211f6e1fe4f1ce2abc55027d2bb7e14b9ca8956bede2fcffa2480faf83",
+    "bench/corpus/variants/bench_table.variants.bin": "dcedd42ea983db8e4893c84af2bf41441a5617f1a3a323c96d8079db8537ef38",
+    "bench/tables/cs/src/Program.cs": "800ec36146f94c0a8b96ee43f28ba535957366f84a701faf946984bf3d4d9551",
+    "bench/tables/cs/schematablesbench.csproj": "7eab613c9d77e49124348c69b4c283dedc4acc37a71eda7d4062397f8626ff71"
+  },
+  "generated_table_source_sha256": {
+    "before": "7efaf3bb55e777ea9d107f376659411a727fbfc886cf7e50a5980ecd42697528",
+    "hash": "70f9b55661bb98549363aeb26d96229e52a9d207202dc4d09ac6ab2f6b3f1b5a"
+  },
+  "binary_files_sha256": {
+    "before": {
+      "schematablesbench.dll": "97352355e6f470b031713e3ba8966358dd123ac34a949976175e57df70709dfe",
+      "schematablesbench.deps.json": "75399aa963495bb4dfbe9f99119bebf99b6b20d48e440252538d4d5dcf551451",
+      "schematablesbench.runtimeconfig.json": "52eccff0b97c55480c64b3a6d8dcb244f5fd098d0645dba8581d3e2190d4ea4a"
+    },
+    "hash": {
+      "schematablesbench.dll": "5602d75d45048765a48837ca831dd251a6fd4f05760dd408b2992532a6d09c28",
+      "schematablesbench.deps.json": "75399aa963495bb4dfbe9f99119bebf99b6b20d48e440252538d4d5dcf551451",
+      "schematablesbench.runtimeconfig.json": "52eccff0b97c55480c64b3a6d8dcb244f5fd098d0645dba8581d3e2190d4ea4a"
+    }
+  },
+  "binary_verification": "Both DLL files matched the SHA-256 values captured at the start of the accepted pass. Companion deps/runtimeconfig files were hashed during evidence export and are identical between variants; they were not hashed by the timing driver.",
+  "build": {
+    "configuration": "Release",
+    "target_framework": "net10.0",
+    "sdk": "10.0.400",
+    "sdk_evidence": "retained project.assets.json SdkAnalysisLevel",
+    "shared_compilation": false,
+    "invariant_globalization": true,
+    "runtime_patch_at_measurement": "not captured",
+    "tiering": "runtime default; no tiering override in the recorded process environment"
+  },
+  "machine": {
+    "cpu": "Apple M3 Ultra",
+    "architecture": "arm64",
+    "darwin": "25.6.0",
+    "macos": "26.6.2",
+    "macos_build": "25G83",
+    "detail_capture": "CPU and macOS product/build verified at evidence export on the same host; accepted metadata records host, architecture and Darwin release."
+  },
+  "prediction": {
+    "recorded_utc": "2026-09-08T21:52:21Z",
+    "text": "Same bytes and allocation behavior, materially lower BodySize/Collect cost if inlined reference scans account for the attributed time; reject if paired gain does not exceed noise.",
+    "magnitude": "No numerical gain was predicted."
+  },
+  "gate_receipts": {
+    "round-0-before.stderr": {
+      "sha256": "1f0ccdef7d93430aa73307f303356cc528da1296756751524f40d39ed58f3c46",
+      "final_status": "OK (corpus_id b51387f36d9b59c4)"
+    },
+    "round-0-hash.stderr": {
+      "sha256": "ab6f9ffb786bf2fa8ffabe0f334873ead81cfb0dadbf7162da82d2b54aac6af8",
+      "final_status": "OK (corpus_id b51387f36d9b59c4)"
+    },
+    "round-1-before.stderr": {
+      "sha256": "d865ccb251415a860119547b79b58026353e52fd0a888e67886eec4ee3f5dbed",
+      "final_status": "OK (corpus_id b51387f36d9b59c4)"
+    },
+    "round-1-hash.stderr": {
+      "sha256": "ad3f321245aefffcaea05e42e89d092ad4441b31f2d1ca3bd249e2983966000a",
+      "final_status": "OK (corpus_id b51387f36d9b59c4)"
+    },
+    "round-2-before.stderr": {
+      "sha256": "c547cff1364e088d36d7876a727491eaef3b57c8e1c0b216dbd1e02d4bf9786a",
+      "final_status": "OK (corpus_id b51387f36d9b59c4)"
+    },
+    "round-2-hash.stderr": {
+      "sha256": "75e338a08af519d2811b35cf2bd537e332a410ca36003c847186847e3f1bfcb2",
+      "final_status": "OK (corpus_id b51387f36d9b59c4)"
+    },
+    "round-3-before.stderr": {
+      "sha256": "eb32076c155fb3f3182af080078eead03370baa7e76db7ced33a139f95bdff88",
+      "final_status": "OK (corpus_id b51387f36d9b59c4)"
+    },
+    "round-3-hash.stderr": {
+      "sha256": "6b97f11b2ea9caa0d63ed9e7007c8e6d2e6b050bb998e2fbdf44887dd30c509e",
+      "final_status": "OK (corpus_id b51387f36d9b59c4)"
+    },
+    "round-4-before.stderr": {
+      "sha256": "2d17547ce15a9cea01a3fed73f38096a49dc300de3e576f9d269c4639cef7812",
+      "final_status": "OK (corpus_id b51387f36d9b59c4)"
+    },
+    "round-4-hash.stderr": {
+      "sha256": "fc30e0d07c8e9584ac39b652289ef4057e5e752b6513b8f6984f8a32eba75439",
+      "final_status": "OK (corpus_id b51387f36d9b59c4)"
+    },
+    "round-5-before.stderr": {
+      "sha256": "ef44baca5cafafe61627525a7104b96fd1dba1d51ba2544118db0be9fca9773b",
+      "final_status": "OK (corpus_id b51387f36d9b59c4)"
+    },
+    "round-5-hash.stderr": {
+      "sha256": "a105bff9819488c19eee8e3f6aa908a6413944c55d51ea8effbc2aece3052724",
+      "final_status": "OK (corpus_id b51387f36d9b59c4)"
+    },
+    "round-6-before.stderr": {
+      "sha256": "e1c85352c271effcdb06383bdcc8190b5cc4ae22799a0b39e4a58aa1baec4784",
+      "final_status": "OK (corpus_id b51387f36d9b59c4)"
+    },
+    "round-6-hash.stderr": {
+      "sha256": "d726a81d7453dfc35b777fcdc9707b940d32ac6e011d76741bde1030d77826cd",
+      "final_status": "OK (corpus_id b51387f36d9b59c4)"
+    }
+  },
+  "evidence_files_sha256": {
+    "load.json": "31e164d3782fccc79cbc344eae3a33d74617120af30c0f35910ea6ac4221ecae",
+    "metadata.json": "0f1b7324358105ec01d0c021aca9cecf061906214034f9bed56bc30903dbaa7b",
+    "round-0-before.csv": "a9d1500428e163bdc588caf9c5e4552a0e56ce67601ae8b5f671c642a668ec3d",
+    "round-0-hash.csv": "da6b2fe83a4f970d46dfa25966c6d34d5231656fdc6cca56187a5383fac600b9",
+    "round-1-before.csv": "f2d798cb8a9fcf3592ca8f680c467dd7fc5b44e4c67a1faf64ef0163d410edb0",
+    "round-1-hash.csv": "c5f5650076ab09a3352e6022d81d4c75b9712d77a89528e4e8319294ee2d551a",
+    "round-2-before.csv": "75407498705f7b8885ba5d9fd9508b0dba3cc763481fc93dd52442a95069d3c8",
+    "round-2-hash.csv": "bd4843d25b629a5cb8dde06fc973a30a7646384458ea0737f10da20bded641fc",
+    "round-3-before.csv": "8913514e0a8f83e2d8f6649c040e0a756479a82f8d07d887094c3973ea7f634d",
+    "round-3-hash.csv": "d81ab6120c288523569535902193b2e0f0c3ff24ac704e196dc2c6f7269e9db8",
+    "round-4-before.csv": "bd6e6684c4b02e2d8097f2ea23eaefdfade19af2a82ff808f09602d5f98137b0",
+    "round-4-hash.csv": "3e8b0e5598c85e043150ce38c67163434a0494c43b3363c8e5c027cff25c8d17",
+    "round-5-before.csv": "411244aee5da2bdf1f40750983c61a8590ee1b9bf33207cbfef4281a7fd1bebd",
+    "round-5-hash.csv": "63140d303565e71d4d0506a064a37a9a011032219cfbf1e37b91c2e41aff241d",
+    "round-6-before.csv": "eb957b1b1599519f327457cc6e433f93a3e083f358d7a6df72811b62395cff85",
+    "round-6-hash.csv": "4cfc6bf930ef09cef07eb111b591218fe40971eaa91f5796a01d4f03c4d20505",
+    "summary.json": "d77fd7c5deaf6bfa9a8d09d97648f91f76d40d8a55718a674a096b49ffe060bf"
+  }
+}

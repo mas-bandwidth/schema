@@ -7,7 +7,9 @@ import (
 
 // Issue #714: Table JSON Base64 writer wraps signed 32-bit integer at INT32_MAX.
 //
-// In cpptable, ctable, cstable, javatable, and gotable, the Base64 writer loop previously tested:
+// In cpptable, ctable, cstable and gotable, the Base64 writer loop previously tested:
+// (javatable carried the same fix until its previous-form text form was removed;
+// schema#517 brings the id-table wire to Java.)
 //
 //	for ( ; i + 3 <= length; i += 3 )  [or i+3 <= len(data) in Go]
 //
@@ -18,7 +20,7 @@ import (
 //
 // The loop condition must be structured as remaining-length subtraction:
 //
-//	cpp / c / java: length - i >= 3
+//	cpp / c:        length - i >= 3
 //	cs:             data.Length - i >= 3
 //	go:             len(data)-i >= 3
 //
@@ -42,7 +44,6 @@ func TestIssue714Base64WriterIntegerWrap(t *testing.T) {
 		{"cpp", "i + 3 <= length", "length - i >= 3"},
 		{"c", "i + 3 <= length", "length - i >= 3"},
 		{"cs", "i + 3 <= data.Length", "data.Length - i >= 3"},
-		{"java", "i + 3 <= length", "length - i >= 3"},
 		{"go", "i+3 <= len(data)", "len(data)-i >= 3"},
 	}
 

@@ -1,0 +1,23 @@
+{
+  "start": "2026-09-08T22:42:11.001730+00:00",
+  "before_revision": "46052fc9d6b7ba8fcc2abf4279c54414667f7e4a",
+  "candidate_revision": "eb3a9f7be2989ebb1fe05ee17bc975e7342a0c5d",
+  "host": "studio.local",
+  "arch": "arm64",
+  "os": "25.6.0",
+  "affinity": "none",
+  "iterations": 400000,
+  "rounds": 7,
+  "env": {
+    "DOTNET_CLI_HOME": "<TASK_CACHE>/dotnet",
+    "DOTNET_NOLOGO": "1",
+    "DOTNET_CLI_TELEMETRY_OPTOUT": "1",
+    "DOTNET_SKIP_FIRST_TIME_EXPERIENCE": "1"
+  },
+  "binaries": {
+    "before": "97352355e6f470b031713e3ba8966358dd123ac34a949976175e57df70709dfe",
+    "hash": "5602d75d45048765a48837ca831dd251a6fd4f05760dd408b2992532a6d09c28"
+  },
+  "end": "2026-09-08T22:51:35.290900+00:00",
+  "normalization": "DOTNET_CLI_HOME is replaced with <TASK_CACHE>/dotnet to omit the local user path. All other accepted metadata values are unchanged; the original metadata remains private in ignored build output."
+}

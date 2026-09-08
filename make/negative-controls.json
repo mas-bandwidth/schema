@@ -475,18 +475,15 @@
     {
       "name": "java",
       "when": "pull-request",
-      "why": "the Java port's controls and its four packet families. Measured 6 s over 10 controls, on a host carrying no such SDK, so that is a floor and not the job's cost.",
+      "why": "the Java port's controls and its four packet families: seven controls after the previous-form table legs were removed. Measured 6 s over 10 controls before that, on a host carrying no such SDK, so that is a floor and not the job's cost.",
       "targets": [
-        "conformance-negative-control-java",
         "conformance-negative-control-java-block",
         "packet-arm-defaults-java-negative-control",
         "packet-defaults-java-negative-control",
         "packet-utf8-java-negative-control",
         "packet-wide-java-negative-control",
-        "tables-java-alloc-negative-control",
         "tables-java-cook-extent-negative-control",
-        "tables-java-fuzz-negative-control",
-        "tables-java-soak-negative-control"
+        "tables-java-fuzz-negative-control"
       ],
       "java": "21"
     },
