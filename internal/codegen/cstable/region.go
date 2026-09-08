@@ -152,6 +152,21 @@ const tableRegionSource = `
         }
         if(f.Optional) { value.SetPresent(f,false); }
     }
+    static unsafe void NativeResetElement(NativeValue value, TableFieldInfo f, int i)
+    {
+        if (value.Base == null) { return; }
+        if (f.Kind == 13) { NativeReset(value.Child(f, i), f.Table); }
+        else if (f.Kind == 15) { System.Runtime.InteropServices.NativeMemory.Clear(value.Slot(f, i), (nuint)f.NativeElementSize); }
+        else if (f.GetWide != null) { value.SetWide(f, i, f.DefaultWide); }
+        else { value.SetRaw(f, i, f.DefaultRaw); }
+    }
+    static unsafe void NativeResetCountedTail(NativeValue value, TableFieldInfo f, int previous, int decoded)
+    {
+        int end = previous;
+        if (end > f.ArrayBound) { end = f.ArrayBound; }
+        for (int i = decoded; i < end; i++) { NativeResetElement(value, f, i); }
+        value.SetCount(f, decoded);
+    }
     static unsafe bool NativeReserve(ref NativeState state,NativeValue value,TableFieldInfo f,ulong count,TableReport report)
     {
         if(state.Worker!=null)
@@ -493,6 +508,7 @@ const tableRegionSource = `
                 int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
                 if (!f.Dynamic && count > (ulong)f.ArrayBound) { report.Clamped++; }
                 if (f.Dynamic && !NativeReserve(ref state,value,f,count,report)) { return false; }
+                int previous = f.Counted ? value.Count(f) : 0;
                 int decoded = 0;
                 for (int i = 0; i < keep; i++)
                 {
@@ -500,7 +516,7 @@ const tableRegionSource = `
                     if (!NativeReadElement(ref state, ref array, value, f, i, elementKind, report, true)) { break; }
                     decoded++;
                 }
-                if (f.Counted) { value.SetCount(f,decoded); }
+                if (f.Counted) { NativeResetCountedTail(value, f, previous, decoded); }
             }
             return true;
         }

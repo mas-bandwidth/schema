@@ -3396,6 +3396,7 @@ namespace Blockhome
                     if (f.Dynamic && (n > int.MaxValue || run!=0 && n > (ulong)((r.End - r.At) / Math.Max(1, run)))) { return false; }
                     int kept = (int)Math.Min(n, (ulong)f.ArrayBound);
                     if (n > (ulong)f.ArrayBound) { d.Report.Clamped++; }
+                    int previous = f.Counted && value != null && f.GetCount != null ? f.GetCount(value) : 0;
                     ulong walk = run >= 0 ? (ulong)kept : n;
                     for (ulong i = 0; i < walk; i++)
                     {
@@ -3403,7 +3404,7 @@ namespace Blockhome
                         if (!MessageReadElement(ref r, d, value, f, (int)i, shape.Elem, shape.Inner, i < (ulong)kept)) { return false; }
                     }
                     if (walk < n && !r.Skip((long)(n - walk) * run)) { return false; }
-                    if (f.Counted && value!=null) { f.SetCount(value, kept); }
+                    if (f.Counted && value!=null) { ResetCountedTail(value, f, previous, kept); }
                     if (f.Optional && value!=null) { f.SetPresent(value, true); }
                     return true;
                 }
@@ -4265,6 +4266,24 @@ namespace Blockhome
                 if (f.Counted) { f.SetCount(value, 0); }
                 if (f.Optional) { f.SetPresent(value, false); }
             }
+            // A shorter replacement, including a damaged one, must restore slots above
+            // the new count to the value-initialized element (#725).
+            static void ResetElement(object value, TableFieldInfo f, int i)
+            {
+                if (f.Kind == 13 && f.Table != null) { object child = f.GetChild(value, i); if (child != null) { f.Table.Reset(child); } }
+                else if (f.Kind == 15 && f.Arms != null) { f.Arms.SetTag(f.GetChild(value, i), 0); }
+                else if (f.Kind == 17) { f.SetChild(value, i, null); }
+                else if (f.SetWide != null) { f.SetWide(value, i, 0); }
+                else if (f.SetRaw != null) { f.SetRaw(value, i, f.DefaultRaw); }
+            }
+            static void ResetCountedTail(object value, TableFieldInfo f, int previous, int decoded)
+            {
+                if (value == null || f.SetCount == null) { return; }
+                int end = previous;
+                if (end > f.ArrayBound) { end = f.ArrayBound; }
+                for (int i = decoded; i < end; i++) { ResetElement(value, f, i); }
+                f.SetCount(value, decoded);
+            }
             static bool ReadArm(ref Reader r, object value, TableFieldInfo f, byte kind, TableReport report)
             {
                 if (f == null) { return r.Buffer.Length == 0 || Damage(report); }
@@ -4399,6 +4418,7 @@ namespace Blockhome
                     {
                         int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
                         if (!f.Dynamic && count > (ulong)f.ArrayBound) { report.Clamped++; }
+                        int previous = f.Counted && f.GetCount != null ? f.GetCount(value) : 0;
                         int decoded = 0;
                         for (int i = 0; i < keep; i++)
                         {
@@ -4406,7 +4426,7 @@ namespace Blockhome
                             if (!ReadElement(ref array, value, f, i, elementKind, report, true)) { break; }
                             decoded++;
                         }
-                        if (f.Counted) { f.SetCount(value, decoded); }
+                        if (f.Counted) { ResetCountedTail(value, f, previous, decoded); }
                     }
                     return true;
                 }
