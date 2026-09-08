@@ -7250,11 +7250,12 @@ and wins whole (§3, §4). The records retained under the earlier occurrence go
 with the values it held: **when a known ancestor body is reset or replaced by
 a later legal occurrence on the same wire, every record retained under the
 earlier occurrence is discarded before the later one is read, and only the
-winning occurrence's records survive to the save.** The occurrences are four,
+winning occurrence's records survive to the save.** The occurrences are five,
 and each is a body the wire lets a writer put down again: a repeated TABLE
 field, by value or under `?`, a UNION whose arm is written again, the same arm
-or another, a MAP's duplicate key (§2.8), and a KEYED-ARRAY slot written again
-(§3.2). The path is the reader's own address for the body (below), so both
+or another, a repeated MAP field, a MAP's duplicate key (§2.8), and a
+KEYED-ARRAY slot written again (§3.2). The path is the reader's own address
+for the body (below), so both
 occurrences of `child` name one path, and a record that outlived its occurrence
 would be appended into the winner's body at save as if the winner had carried
 it. It did not, and a save that resurrected `future = 7` beside `known = 2`
