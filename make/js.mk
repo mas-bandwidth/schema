@@ -113,11 +113,6 @@ tables-js-standalone: build/tables-generated-js/.stamp
 	done
 	@echo "tables JS standalone gate: generated accelerator modules import nothing but their own unit"
 
-# The JAVASCRIPT generic-walk gate (docs/SPEC-TABLES.md §16): dormant while the wire is removed.
-.PHONY: tables-js-json-walk
-tables-js-json-walk:
-	@echo "tables-js-json-walk: dormant — the surface it gates is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#516)"
-
 # The C# VARIABLE-CLASS REFUSAL (docs/SPEC-TABLES.md §2.2, §11), and it is a refusal
 # of the WIRE SURFACE — which is the half the variable class is missing: the
 # arena, the builder, the region and the node-table codec. The two ACCELERATORS
@@ -166,11 +161,6 @@ tables-js-accessor-negative-control: bin/schema build/tables-generated-js/.stamp
 		{ echo "NEGATIVE CONTROL FAILED: the leg went red, but not on the accessor/descriptor disagreement"; \
 		  cat build/js-accessor-sabotage/log; exit 1; }
 	@echo "negative control: one generated accessor four bytes off turns the JavaScript leg RED on the accessor/descriptor agreement"
-
-# THE KEYED GUARD's NEGATIVE CONTROL (docs/SPEC-TABLES.md §2.4): dormant while the wire is removed.
-.PHONY: tables-js-keyed-negative-control
-tables-js-keyed-negative-control:
-	@echo "tables-js-keyed-negative-control: dormant — the surface it turns red is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#516)"
 
 # And the POINTER half of the same gate, which the scalar sabotage cannot reach:
 # move a pointer SLOT's own offset — the position a self-relative delta is
@@ -257,22 +247,6 @@ tables-js-fuzz-negative-control: bin/schema build/tables-generated-js/.stamp bui
 # The rule it holds that eighteen instances cannot: a float32 such as
 # -266744.625 renders as an eight-digit TIE, both candidates round-trip back to
 # the same float32 so the shortest-precision search cannot step past it, and C
-# breaks the tie to EVEN where JavaScript's own formatters break it by
-# magnitude — so the walk spells the tie-break itself, and this is where a
-# drift in it shows.
-# N from the command line overrides the count; the Makefile's own N (the block
-# fuzzer's) is defined before this include and must not.
-JS_DIFFERENTIAL_N := $(if $(filter command line environment,$(origin N)),$(N),60)
-.PHONY: tables-js-json-differential
-tables-js-json-differential:
-	@echo "tables-js-json-differential: dormant — the corpus it gates against is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#516)"
-
-# Its NEGATIVE CONTROL: put the tie-break back the way JavaScript's own
-# formatters do it — by MAGNITUDE rather than to EVEN — and the differential
-# must go red. That is the exact bug this gate found, on demand.
-.PHONY: tables-js-json-differential-negative-control
-tables-js-json-differential-negative-control:
-	@echo "tables-js-json-differential-negative-control: dormant — the surface it turns red is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#516)"
 
 # WHAT ALLOCATES, as a RATE (test/js-tables/main.mjs's fourth property). A flat
 # heap is a LEAK instrument and nothing more — an allocation made and collected
@@ -299,39 +273,22 @@ tables-js-alloc-negative-control: build/tables-generated-js/.stamp build/js-fuzz
 	@grep -m1 "FAILED: RenderFrame ships walk" build/js-alloc-control.log
 	@echo "negative control: one extra allocation per iteration turns every zero-floor path RED"
 
-# THE SOAK: dormant while the wire is removed.
-.PHONY: tables-js-soak
-tables-js-soak:
-	@echo "tables-js-soak: dormant — the corpus it gates against is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#516)"
-
 # THE JAVASCRIPT PORT'S RELEASE GATE (certify.yml derives the target list from
 # this file, so landing one is adding it here and nothing else). What sits
-# behind it is the expensive half of this port's own instruments — the half
-# that answers a question about the RUNTIME UNDER LOAD rather than about the
-# diff, and that `make test` therefore runs at a fraction of its scale:
+# behind it is the expensive half of this port's own instruments:
 #
 #   the FUZZ ORACLE at ten times the PR scale, because a forged block or cook
 #   that escapes is found by depth of search and by nothing else;
 #
 #   the ALLOCATION GATE at seven times the iterations, which is the one that
 #   matters most here: the floor it measures is a property of OPTIMIZED code,
-#   so a longer run is a run that has spent more of itself at the top tier;
-#
-#   and the SOAK, ten minutes of the measured paths in one process, gated on
-#   the allocation RATE rather than on heap drift — a heap that stays flat
-#   proves only that nothing LEAKED, and an allocation made and collected every
-#   iteration leaves it exactly as flat as no allocation at all.
-#
-# The hour-long soak is `make tables-js-soak SECONDS=3600` and belongs on a
-# quiet box; ten minutes is what fits beside every other port in one job.
+#   so a longer run is a run that has spent more of itself at the top tier.
 .PHONY: tables-js-release
 tables-js-release: build/tables-generated-js/.stamp build/js-fuzz-scene.cook
 	$(MAKE) tables-js-fuzz N=200000
 	$(MAKE) tables-js-alloc ITERS=2000000
 	$(MAKE) tables-js-alloc-negative-control
-	$(MAKE) tables-js-json-differential JS_DIFFERENTIAL_N=400
-	$(MAKE) tables-js-soak SECONDS=600
-	@echo "tables JS release gate: the fuzzer at depth, the allocation floor at scale, and ten minutes of load"
+	@echo "tables JS release gate: the fuzzer at depth, and the allocation floor at scale"
 
 .PHONY: tables-js-refuses-pointers
 tables-js-refuses-pointers: bin/schema
@@ -402,12 +359,6 @@ generated/bench/js/.stamp: bin/schema $(SCHEMAS_BENCH)
 	./bin/schema generate --lang js --out generated/bench/js/realworld bench/corpus/RealWorld.schema
 	@touch $@
 
-# THE JAVASCRIPT LEG's negative control: one field index off in the generic
-# walk's READER, and the harness must go red on json-read alone — the same
-# sabotage the C# control applies, at the same place, in the other language.
-.PHONY: conformance-negative-control-js
-conformance-negative-control-js:
-	@echo "conformance-negative-control-js: dormant — the surface it turns red is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#516)"
 
 # THE JAVASCRIPT LEG of `make test`: the table accelerator gates and their
 # negative controls, the runtime-home gate, and the packet tests in both node modes.
