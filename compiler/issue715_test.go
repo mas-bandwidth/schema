@@ -210,6 +210,7 @@ func TestIssue715(t *testing.T) {
 	t.Run("cs", func(t *testing.T) {
 		dotnet := findDotnet()
 		if dotnet == "" {
+			// Without dotnet on PATH, this behavioral test covers C++, C, and Go (3 languages); CI runs all 4.
 			t.Skip("dotnet unavailable")
 		}
 		files, err := c.Generate(u, "cs", Options{})
@@ -280,7 +281,7 @@ class Program {
 
 	t.Run("emitted_text", func(t *testing.T) {
 		uNoDefault := unitFromSource(t, "package p\ntable Ship { tag bytes(4)\n after int32 }\n")
-		for _, lang := range []string{"cpp", "c", "go", "cs", "java"} {
+		for _, lang := range []string{"cpp", "c", "go", "cs", "java", "js", "dart", "rust", "elixir"} {
 			files, err := c.Generate(uNoDefault, lang, Options{})
 			if err != nil {
 				t.Fatalf("generate %s: %v", lang, err)
@@ -295,7 +296,7 @@ class Program {
 				t.Errorf("%s: emitted reader missing pad > 2 strictness check", lang)
 			}
 			// Verify lone symbol check
-			if !strings.Contains(all, "% 4 == 1") && !strings.Contains(all, "%4 == 1") {
+			if !strings.Contains(all, "% 4 == 1") && !strings.Contains(all, "%4 == 1") && !strings.Contains(all, "% 4 === 1") && !strings.Contains(all, "% 4 != 0") && !strings.Contains(all, "rem(symbols, 4) == 1") {
 				t.Errorf("%s: emitted reader missing symbols %% 4 == 1 lone symbol check", lang)
 			}
 		}

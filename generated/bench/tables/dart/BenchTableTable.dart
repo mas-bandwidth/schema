@@ -2495,6 +2495,38 @@ abstract final class TableJson {
         return false;
       }
       _pos++;
+      var pos = _pos;
+      var pad = 0;
+      var symbols = 0;
+      var malformed = false;
+      for (;;) {
+        if (pos >= _text.length) {
+          _bad = true;
+          return false;
+        }
+        final c = _text[pos++];
+        if (c == 0x22) {
+          break;
+        }
+        if (c == 0x3d) {
+          pad++;
+          continue;
+        }
+        if (pad > 0) {
+          malformed = true;
+          continue;
+        }
+        if (c >= 128 || base64Decode[c] < 0) {
+          malformed = true;
+          continue;
+        }
+        symbols++;
+      }
+      if (malformed || (pad > 0 && ((symbols + pad) % 4 != 0 || symbols % 4 < 2 || pad > 2)) || (pad == 0 && symbols % 4 == 1)) {
+        _pos = pos;
+        _report.kindMismatch++;
+        return true;
+      }
       final storage = info.buffer(value, field);
       storage.fillRange(0, f.arrayBound, 0);
       putCount(value, info, field, 0);
@@ -2502,24 +2534,12 @@ abstract final class TableJson {
       var accumulator = 0;
       var held = 0;
       var clamped = false;
-      var malformed = false;
-      for (;;) {
-        if (_pos >= _text.length) {
-          _bad = true;
-          return false;
-        }
+      while (_pos < pos) {
         final c = _text[_pos++];
-        if (c == 0x22) {
+        if (c == 0x22 || c == 0x3d) {
           break;
         }
-        if (c == 0x3d || malformed) {
-          continue;
-        }
         final at = base64Decode[c];
-        if (at < 0) {
-          malformed = true;
-          continue;
-        }
         accumulator = (accumulator << 6) | at;
         held += 6;
         if (held >= 8) {
@@ -2531,12 +2551,7 @@ abstract final class TableJson {
           }
         }
       }
-      if (malformed) {
-        // a body that is not base64 is the wrong shape for the kind: the field
-        // keeps its default and the event is counted
-        _report.kindMismatch++;
-        return true;
-      }
+      _pos = pos;
       if (clamped) {
         _report.clamped++;
       }

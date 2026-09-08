@@ -1657,6 +1657,27 @@ export const TableJson = (() => {
       // is simply not an alphabet character.
       if (peek(text, input) !== 0x22) { input.bad = true; return false; }
       input.pos++;
+      let pos = input.pos;
+      let pad = 0;
+      let symbols = 0;
+      let malformed = false;
+      for (;;) {
+        if (pos >= text.length) { input.bad = true; return false; }
+        const c = text[pos++];
+        if (c === 0x22) { break; }
+        if (c === 0x3d) {
+          pad++;
+          continue;
+        }
+        if (pad > 0) { malformed = true; continue; }
+        if (c >= 128 || Base64Decode[c] < 0) { malformed = true; continue; }
+        symbols++;
+      }
+      if (malformed || (pad > 0 && ((symbols + pad) % 4 !== 0 || symbols % 4 < 2 || pad > 2)) || (pad === 0 && symbols % 4 === 1)) {
+        input.pos = pos;
+        input.Report.KindMismatch++;
+        return true;
+      }
       const storage = f.GetBuffer(value);
       storage.fill(0, 0, f.ArrayBound);
       putCount(value, f, 0);
@@ -1664,14 +1685,10 @@ export const TableJson = (() => {
       let accumulator = 0;
       let held = 0;
       let clamped = false;
-      let malformed = false;
-      for (;;) {
-        if (input.pos >= text.length) { input.bad = true; return false; }
+      while (input.pos < pos) {
         const c = text[input.pos++];
-        if (c === 0x22) { break; }
-        if (c === 0x3d || malformed) { continue; }
+        if (c === 0x22 || c === 0x3d) { break; }
         const at = Base64Decode[c];
-        if (at < 0) { malformed = true; continue; }
         accumulator = ((accumulator << 6) | at) >>> 0;
         held += 6;
         if (held >= 8) {
@@ -1683,12 +1700,7 @@ export const TableJson = (() => {
           }
         }
       }
-      if (malformed) {
-        // a body that is not base64 is the wrong shape for the kind: the field
-        // keeps its default and the event is counted
-        input.Report.KindMismatch++;
-        return true;
-      }
+      input.pos = pos;
       if (clamped) { input.Report.Clamped++; }
       putCount(value, f, placed);
       return true;
