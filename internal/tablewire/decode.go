@@ -940,6 +940,13 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 			}
 		}
 		if counted {
+			// Entry reset initializes the unused tail. A replacement need only
+			// restore slots that the previous occurrence made live (§7.2).
+			if f.Array == ir.ArrayCounted {
+				for i := decoded; i < fv.Count; i++ {
+					fv.Elems[i] = r.m.ElementZero(f)
+				}
+			}
 			fv.Count = decoded
 		}
 	}
@@ -962,7 +969,8 @@ func (r *wireReader) element(fv *tabletext.Field, i int, ek int) bool {
 		// length that follow are checked, so a repeat under the field id leaves
 		// no arm an earlier occurrence decoded standing — the last occurrence
 		// wins whole, even when its own framing is damaged (§3, §4). An element
-		// the body cannot even reach is not touched.
+		// the body cannot even reach is untouched unless it falls beyond an
+		// accepted counted array's recovered live count (arrayBody, §7.2).
 		if !r.has(1) {
 			r.report.Malformed = true
 			return false
