@@ -49,10 +49,10 @@ func TestFlagsElementWidening(t *testing.T) {
 		}
 	}
 	var probe strings.Builder
-	probe.WriteString("#include <cstdlib>\n#include \"ProbeTable.h\"\nusing namespace p;\nint main(){const uint8_t wire[]={")
+	probe.WriteString("#include <cstdio>\n#include <cstdlib>\n#include \"ProbeTable.h\"\nusing namespace p;\nint main(){const uint8_t wire[]={")
 	for _, b := range wire {
 		fmt.Fprintf(&probe, "%d,", b)
 	}
-	probe.WriteString("};auto n=RootLoadMeasure(wire,sizeof(wire));if(n<0)return 1;auto region=(uint8_t*)malloc(n);TableReport report;auto root=RootLoad(region,n,wire,sizeof(wire),&report);if(!root||report.widened!=3||report.kind_mismatch||report.malformed)return 2;if(root->arrays[1]!=3||root->list.count!=2||root->list[1]!=7||root->keyed[Key::Second]!=2)return 3;free(region);return 0;}\n")
+	probe.WriteString("};auto n=RootLoadMeasure(wire,sizeof(wire));if(n<0)return 1;auto region=(uint8_t*)malloc(n);TableReport report;auto root=RootLoad(region,n,wire,sizeof(wire),&report);if(!root||report.widened!=3||report.kind_mismatch||report.malformed){fprintf(stderr,\"flags widening report failed\");return 2;}if(root->arrays[1]!=3||root->list.count!=2||root->list[1]!=7||root->keyed[Key::Second]!=2)return 3;free(region);return 0;}\n")
 	issue710CompileRun(t, dir, "c++", ".cpp", probe.String())
 }
