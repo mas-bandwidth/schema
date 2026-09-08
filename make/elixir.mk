@@ -71,11 +71,6 @@ generated/elixir-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 	./bin/schema generate --lang elixir --out generated/elixir-ludicrous examples128
 	@touch $@
 
-generated/bench/tables/elixir/.stamp: bin/schema bench/corpus/BenchTable.schema
-	@mkdir -p generated/bench/tables/elixir
-	./bin/schema generate --lang elixir --out generated/bench/tables/elixir bench/corpus/BenchTable.schema
-	@touch $@
-
 generated/bench/elixir/.stamp: bin/schema $(SCHEMAS_BENCH)
 	./bin/schema generate --lang elixir --out generated/bench/elixir bench/corpus/Bench.schema
 	./bin/schema generate --lang elixir --out generated/bench/elixir/realworld bench/corpus/RealWorld.schema
@@ -237,7 +232,7 @@ tables-elixir-release:
 # text-form control, no allocation audit and no soak here: each measured the
 # wire's previous form and went with it.
 .PHONY: test-elixir
-test-elixir: toolchain-elixir generated/bench/tables/elixir/.stamp generated/elixir/.stamp generated/elixir-ludicrous/.stamp generated/bench/elixir/.stamp
+test-elixir: toolchain-elixir generated/elixir/.stamp generated/elixir-ludicrous/.stamp generated/bench/elixir/.stamp
 	$(MAKE) tables-elixir-fuzz
 	$(MAKE) tables-elixir-block-lead
 	$(MIX) format --check-formatted generated/elixir/*.ex generated/elixir-ludicrous/*.ex generated/bench/elixir/*.ex generated/bench/elixir/realworld/*.ex
@@ -248,7 +243,6 @@ TEST_LEGS            += test-elixir
 TOOLCHAIN_LEGS       += elixir
 TOOLCHAIN_PINS_elixir := ELIXIR ELIXIRC MIX
 CONFORMANCE_LEGS     += $(call unless_skipped,elixir,build-conformance-elixir)
-BENCH_TABLES_LEGS += generated/bench/tables/elixir/.stamp
 # Packet UTF-8 content validation, including a compiled mutation control.
 build/packet-text/elixir/.stamp: bin/schema test/packet-text/Narrow.schema
 	@mkdir -p build/packet-text/elixir/source

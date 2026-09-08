@@ -233,11 +233,6 @@ tables-dart-fuzz-negative-control: build/cook-fuzz/.stamp
 	@grep -m1 "past the declared" build/dart-fuzz-nc/log
 	@echo "negative control: one check removed from the Dart block Open turns the fuzzer RED"
 
-generated/bench/tables/dart/.stamp: bin/schema bench/corpus/BenchTable.schema
-	@mkdir -p generated/bench/tables/dart
-	./bin/schema generate --lang dart --out generated/bench/tables/dart bench/corpus/BenchTable.schema
-	@touch $@
-
 # The DART leg's driver: one AOT executable, because `dart run` would pay a JIT
 # start-up per surface and the two-minute rule is measured across every leg.
 build/conformance-dart: build/tables-generated-dart/.stamp test/conformance/dart/main.dart
@@ -251,14 +246,14 @@ build/conformance-dart: build/tables-generated-dart/.stamp test/conformance/dart
 # long fuzz is `make tables-dart-release` — then the analyzer and the formatter
 # over every generated tree, and the packet tests, checked and compiled.
 .PHONY: test-dart
-test-dart: toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp generated/bench/dart/.stamp generated/bench/tables/dart/.stamp
+test-dart: toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp generated/bench/dart/.stamp
 	$(MAKE) tables-dart-clean
 	$(MAKE) tables-dart-names-negative-control
 	$(MAKE) tables-dart-standalone
 	$(MAKE) tables-dart-standalone-negative-control
 	$(MAKE) tables-dart-fuzz DART_FUZZ_MUTANTS=1500
 	$(MAKE) tables-dart-fuzz-negative-control
-	$(DART) analyze generated/dart generated/dart-ludicrous generated/bench/dart test/dart test/dart-ludicrous bench/dart bench/tables/dart
+	$(DART) analyze generated/dart generated/dart-ludicrous generated/bench/dart test/dart test/dart-ludicrous bench/dart
 	$(DART) format --set-exit-if-changed --output=none generated/dart generated/dart-ludicrous generated/bench/dart
 	cd test/dart && $(DART) --enable-asserts main.dart
 	@mkdir -p build
@@ -270,7 +265,6 @@ TEST_LEGS         += test-dart
 TOOLCHAIN_LEGS    += dart
 TOOLCHAIN_PINS_dart := DART
 CONFORMANCE_LEGS  += $(call unless_skipped,dart,build/conformance-dart)
-BENCH_TABLES_LEGS += generated/bench/tables/dart/.stamp
 # Packet UTF-8 content validation, including a compiled mutation control.
 build/packet-text/dart/.stamp: bin/schema test/packet-text/Narrow.schema
 	./bin/schema generate --lang dart --out build/packet-text/dart test/packet-text/Narrow.schema

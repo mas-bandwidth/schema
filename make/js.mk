@@ -336,11 +336,6 @@ tables-js-runtime-home-negative-control: bin/schema tables-js-runtime-home
 	 fi; \
 	 echo "runtime home negative control (JS): the file-order rule moves the runtime from $$base to $$added"
 
-generated/bench/tables/js/.stamp: bin/schema bench/corpus/BenchTable.schema
-	@mkdir -p generated/bench/tables/js
-	./bin/schema generate --lang js --out generated/bench/tables/js bench/corpus/BenchTable.schema
-	@touch $@
-
 # the realworld unit sits in its own subdirectory like go/cs, so the two
 # units' outputs never collide
 generated/bench/js/.stamp: bin/schema $(SCHEMAS_BENCH)
@@ -352,7 +347,7 @@ generated/bench/js/.stamp: bin/schema $(SCHEMAS_BENCH)
 # THE JAVASCRIPT LEG of `make test`: the table accelerator gates and their
 # negative controls, the runtime-home gate, and the packet tests in both node modes.
 .PHONY: test-js
-test-js: toolchain-js generated/js/.stamp generated/js-ludicrous/.stamp generated/bench/js/.stamp generated/bench/tables/js/.stamp
+test-js: toolchain-js generated/js/.stamp generated/js-ludicrous/.stamp generated/bench/js/.stamp
 	$(MAKE) tables-js-standalone
 	$(MAKE) tables-js-refuses-pointers
 	$(MAKE) tables-js-leg
@@ -371,7 +366,6 @@ TEST_LEGS         += test-js
 TOOLCHAIN_LEGS    += js
 TOOLCHAIN_PINS_js  := NODE
 CONFORMANCE_LEGS  += $(call unless_skipped,js,build/tables-generated-js/.stamp)
-BENCH_TABLES_LEGS += generated/bench/tables/js/.stamp
 # Both JavaScript packet tiers share the UTF-8 rule and mutation corpus.
 build/packet-text/js/.stamp: bin/schema test/packet-text/Narrow.schema
 	./bin/schema generate --lang js --out build/packet-text/js test/packet-text/Narrow.schema
