@@ -460,17 +460,14 @@
     {
       "name": "dart",
       "when": "pull-request",
-      "why": "the Dart port's controls and its four packet families. Measured 5 s over 10 controls, on a host carrying no such SDK, so that is a floor and not the job's cost.",
+      "why": "the Dart port's controls and its four packet families: seven controls after the previous-form table legs were removed. Measured 5 s over 10 controls before that, on a host carrying no such SDK, so that is a floor and not the job's cost.",
       "targets": [
-        "conformance-negative-control-dart",
         "packet-arm-defaults-dart-negative-control",
         "packet-defaults-dart-negative-control",
         "packet-utf8-dart-negative-control",
         "packet-wide-dart-negative-control",
-        "tables-dart-alloc-negative-control",
         "tables-dart-fuzz-negative-control",
         "tables-dart-names-negative-control",
-        "tables-dart-soak-negative-control",
         "tables-dart-standalone-negative-control"
       ],
       "dart": "3.13.2"
