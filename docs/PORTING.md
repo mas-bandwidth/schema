@@ -1457,4 +1457,4 @@ reproduce the corpus refuses to time it rather than posting a number.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #425 | ❌ #425 | — no table-wire bench | ✅ `tables-go-bench-gate` | ❌ #425 | ❌ #425 | ❌ #425 | — no table-wire bench | ✅ `tables-elixir-bench-gate` |
+| ❌ #425 | ❌ #425 | — no table-wire bench | ✅ `tables-go-bench-gate` | ❌ #425 | ❌ #425 | — no table-wire bench | — no table-wire bench | ✅ `tables-elixir-bench-gate` |
