@@ -15,9 +15,7 @@ package rusttable
 import (
 	"fmt"
 	"maps"
-	"math/big"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -170,126 +168,12 @@ func rustInt(bits int) string {
 	return "i64"
 }
 
-// rustFieldType is a field's Rust ELEMENT storage type, matching the packet
-// emitter's column (SPEC §6.1).
-func rustFieldType(t ir.FieldType) string {
-	switch t.Kind {
-	case ir.TInt:
-		if t.Signed {
-			return rustInt(t.Width)
-		}
-		return rustUint(t.Width)
-	case ir.TBits:
-		if t.Width <= 32 {
-			return "u32"
-		}
-		return "u64"
-	case ir.TBool:
-		return "bool"
-	case ir.TFloat32:
-		return "f32"
-	case ir.TFloat64:
-		return "f64"
-	case ir.TString, ir.TBytes:
-		// the ELEMENT of a string or a bytes buffer; the buffer itself is
-		// spelled at its declaration site, which knows the extent
-		return "u8"
-	case ir.TNamed:
-		if _, isFlags := t.Ref.(*ir.Flags); isFlags {
-			return "u64"
-		}
-		return t.Name
-	}
-	return "u8"
-}
-
-// ---- literals ----
-
-// formatFloat renders a float literal at the storage type's own precision, so
-// the emitted clamp bounds and defaults are exactly the values the runtime
-// compares against. Rust needs an explicit decimal point on every float
-// literal.
-func formatFloat(v float64, single bool) string {
-	bitSize := 64
-	if single {
-		bitSize = 32
-	}
-	s := strconv.FormatFloat(v, 'g', -1, bitSize)
-	if strings.ContainsAny(s, "eE") {
-		// 1e-05 is a valid Rust float literal only with a point before the e
-		if !strings.Contains(s, ".") {
-			i := strings.IndexAny(s, "eE")
-			s = s[:i] + ".0" + s[i:]
-		}
-		return s
-	}
-	if !strings.Contains(s, ".") {
-		s += ".0"
-	}
-	return s
-}
-
-// intLit renders an integer literal at a Rust storage type: i64::MIN has no
-// negative literal form (the token would be an unsigned literal negated).
-func intLit(v *big.Int, typ string) string {
-	s := v.String()
-	if typ == "i64" && s == "-9223372036854775808" {
-		return "i64::MIN"
-	}
-	return s
-}
-
-// arrayLen renders a field's array extent as a Rust expression — parenthesised,
-// never braced, because a braced block in a for-range position is the loop's
-// own body.
-func arrayLen(f *ir.Field) string {
-	if f.KeyEnum != "" {
-		return fmt.Sprintf("(%s::MAX.0 as usize)", f.KeyEnum)
-	}
-	return strconv.FormatInt(f.ArrayBound, 10)
-}
-
-// isEnum / isFlags / isUnion / isStruct classify a TNamed field.
-func isEnum(f *ir.Field) bool {
-	if f.Type.Kind != ir.TNamed {
-		return false
-	}
-	_, ok := f.Type.Ref.(*ir.Enum)
-	return ok
-}
-
-func isFlags(f *ir.Field) bool {
-	if f.Type.Kind != ir.TNamed {
-		return false
-	}
-	_, ok := f.Type.Ref.(*ir.Flags)
-	return ok
-}
-
-func isUnion(f *ir.Field) bool {
-	if f.Type.Kind != ir.TNamed {
-		return false
-	}
-	_, ok := f.Type.Ref.(*ir.Union)
-	return ok
-}
-
 func isStruct(f *ir.Field) bool {
 	if f.Type.Kind != ir.TNamed {
 		return false
 	}
 	_, ok := f.Type.Ref.(*ir.Struct)
 	return ok
-}
-
-func enumOf(f *ir.Field) *ir.Enum {
-	e, _ := f.Type.Ref.(*ir.Enum)
-	return e
-}
-
-func unionOf(f *ir.Field) *ir.Union {
-	un, _ := f.Type.Ref.(*ir.Union)
-	return un
 }
 
 func orderTables(tables []*ir.Struct) []*ir.Struct {
