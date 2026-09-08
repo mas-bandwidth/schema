@@ -362,6 +362,17 @@ test-go: tables-go-retain
 tables-go-allocator:
 	@if [ "$${SCHEMA_GO_ALLOC_ANY_GO:-}" = 1 ]; then echo "Go allocation observation mode: NOT CERTIFIED"; fi
 	GOTOOLCHAIN=go1.26.0 go test ./internal/codegen/gotable -run '^TestAllocatorOwnershipAndStandaloneWriters$$' -count=1
+
+# THE SPAN, on its own (docs/SPEC-TABLES.md §2.5, M17). A blob larger than a
+# slab takes a span of the arena's address space. The negative control makes
+# grab() never span, so the blob is bump-allocated in a slab it does not fit
+# and later allocations overwrite it.
+.PHONY: tables-go-blob-span tables-go-blob-span-negative-control
+tables-go-blob-span:
+	go test ./internal/codegen/gotable -run '^TestBlobSpanHoldsAfterLaterAllocations$$' -count=1
+tables-go-blob-span-negative-control:
+	go test ./internal/codegen/gotable -run '^TestBlobSpanNegativeControl$$' -count=1
+test-go: tables-go-blob-span tables-go-blob-span-negative-control
 tables-go-allocator-negative-controls:
 	@set -e; for mode in original-slice pair frame; do sh test/conformance/go/ownership-negative-control $$mode; done
 tables-go-allocator-runtime-negative-control:
