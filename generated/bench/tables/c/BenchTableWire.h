@@ -121,9 +121,13 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_table_hit_event( serialize_re
         }
         value->hit_kind = (int32_t) offset_value;
     }
-    if ( !serialize_read_bool( stream, &value->crit ) )
     {
-        return 0;
+        int bool_value = 0;
+        if ( !serialize_read_bool( stream, &bool_value ) )
+        {
+            return 0;
+        }
+        value->crit = (uint8_t) bool_value;
     }
     return 1;
 }

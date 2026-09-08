@@ -25,7 +25,7 @@ extern "C" {
 /* type ArmsAgree */
 typedef struct ArmsAgree {
     uint32_t lead;
-    int flag;
+    uint8_t flag;
     uint32_t a;
     uint32_t b;
     uint32_t tail;
@@ -38,7 +38,7 @@ typedef struct ArmsAgree {
 /* type ArmsDisagree */
 typedef struct ArmsDisagree {
     uint32_t lead;
-    int flag;
+    uint8_t flag;
     uint32_t a;
     uint32_t b;
     uint32_t tail;
@@ -51,7 +51,7 @@ typedef struct ArmsDisagree {
 /* type ArmEmpty */
 typedef struct ArmEmpty {
     uint32_t lead;
-    int flag;
+    uint8_t flag;
     uint32_t a;
     uint32_t tail;
 } ArmEmpty;
@@ -63,8 +63,8 @@ typedef struct ArmEmpty {
 /* type ArmsNested */
 typedef struct ArmsNested {
     uint32_t lead;
-    int outer;
-    int inner;
+    uint8_t outer;
+    uint8_t inner;
     uint32_t x;
     uint32_t y;
     uint32_t z;
@@ -78,7 +78,7 @@ typedef struct ArmsNested {
 /* type ArmAlign */
 typedef struct ArmAlign {
     uint32_t lead;
-    int flag;
+    uint8_t flag;
     char s[4 + 1]; /* string(4): N + 1 for the terminator the wire does not carry */
     int32_t s_length;
     uint32_t b;
@@ -92,7 +92,7 @@ typedef struct ArmAlign {
 /* type ArmArray */
 typedef struct ArmArray {
     uint32_t lead;
-    int flag;
+    uint8_t flag;
     uint16_t items[3];
     int32_t items_count;
     uint32_t b;

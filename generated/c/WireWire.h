@@ -426,9 +426,13 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_sample( serialize_wri
 /* Reads ProbeSample. */
 static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_sample( serialize_read_stream_t * stream, ProbeSample * value )
 {
-    if ( !serialize_read_bool( stream, &value->active ) )
     {
-        return 0;
+        int bool_value = 0;
+        if ( !serialize_read_bool( stream, &bool_value ) )
+        {
+            return 0;
+        }
+        value->active = (uint8_t) bool_value;
     }
     if ( !serialize_read_compressed_float_precomputed( stream, &value->orientation, 36000u, 16, 360.0f, -180.0f ) )
     {
@@ -464,9 +468,13 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_sample( serialize_read_
             }
             value->weapon = (Weapon) enum_value;
         }
-        if ( !serialize_read_bool( stream, &value->has_target ) )
         {
-            return 0;
+            int bool_value = 0;
+            if ( !serialize_read_bool( stream, &bool_value ) )
+            {
+                return 0;
+            }
+            value->has_target = (uint8_t) bool_value;
         }
         if ( value->has_target )
         {
@@ -1215,9 +1223,13 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_test_data( serialize_read_str
         }
         value->f = (uint32_t) raw;
     }
-    if ( !serialize_read_bool( stream, &value->g ) )
     {
-        return 0;
+        int bool_value = 0;
+        if ( !serialize_read_bool( stream, &bool_value ) )
+        {
+            return 0;
+        }
+        value->g = (uint8_t) bool_value;
     }
     if ( !serialize_read_int( stream, &value->items_count, 0, 16 ) )
     {
