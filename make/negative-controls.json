@@ -359,6 +359,7 @@
         "conformance-negative-control-cs",
         "tables-cs-retain-negative-control",
         "tables-cs-pack-negative-control",
+        "tables-cs-message-blob-endian-negative-control",
         "packet-arm-defaults-cs-negative-control",
         "packet-defaults-cs-negative-control",
         "packet-utf8-cs-negative-control",

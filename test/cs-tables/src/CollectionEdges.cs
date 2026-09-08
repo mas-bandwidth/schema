@@ -19,7 +19,7 @@ static partial class Program
         }
         byte[] large=Message(int.MaxValue);
         long need=B.Schema.RowLoadMeasure(vocabulary,large,out long data,out long attribution);
-        Check(need==data+attribution && data>=8L*int.MaxValue && attribution==16,"known zero-bit list measures its declared storage without allocating it");
+        Check(need==17179869232L && data==17179869216L && attribution==16,"known zero-bit list measures its declared storage without allocating it");
         Check(MeasureCalls(()=>B.Schema.RowLoadMeasure(vocabulary,large))==0,"large known zero-bit measure allocates no GC storage");
         byte* region=(byte*)NativeMemory.AlignedAlloc(128,64);
         try
@@ -28,14 +28,14 @@ static partial class Program
             var report=new B.TableReport();
             var verdict=B.Schema.RowLoadMessages((IntPtr)region,128,roots,large,vocabulary,report,out int count);
             Check(verdict==B.Schema.TableWire.Verdict.Refused && count==0 && roots[0]==IntPtr.Zero,"insufficient capacity refuses before expanding a known zero-bit list");
-            for(int i=0;i<128;i++) { Check(region[i]==0xa5,"capacity refusal preserves the entire caller buffer"); }
+            Check(new ReadOnlySpan<byte>(region,128).IndexOfAnyExcept((byte)0xa5)<0,"capacity refusal preserves the entire caller buffer");
         }
         finally { NativeMemory.AlignedFree(region); }
         // As in the C++ message batch scanner, root-body damage sizes only
         // the bounded prefix so earlier complete bodies can still be delivered.
         byte[] over=Message((uint)int.MaxValue+1);
         long prefix=B.Schema.RowLoadMeasure(vocabulary,over);
-        Check(prefix>0 && prefix<128,"count above the int32 cap reserves no list storage");
+        Check(prefix==48,"count above the int32 cap reserves no list storage");
         region=(byte*)NativeMemory.AlignedAlloc(128,64);
         try
         {

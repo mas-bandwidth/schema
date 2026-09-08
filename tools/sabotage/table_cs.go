@@ -1,6 +1,10 @@
 package main
 
 func init() {
+	sabotages["table-cs-message-blob-header"] = []edit{{
+		old: `NativePut(body+offset,length,4);`,
+		new: `NativePut(body+offset,length,8); /* SABOTAGED: length consumes the reserved word */`,
+	}}
 	sabotages["table-cs-pack-short"] = []edit{{
 		old: `extent=checked(extent+(long)count*f.NativeElementSize);`,
 		new: `extent=checked(extent+(long)count*f.NativeElementSize); if(w.Bytes==null && count>0) { extent--; } // SABOTAGED: the probe consumes one byte too few`,

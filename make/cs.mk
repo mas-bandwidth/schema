@@ -423,6 +423,10 @@ tables-cs-retain-negative-control: bin/schema
 tables-cs-pack-negative-control: bin/schema
 	sh test/cs-tables/pack-negative-control "$(DOTNET)"
 
+.PHONY: tables-cs-message-blob-endian-negative-control
+tables-cs-message-blob-endian-negative-control: bin/schema
+	sh test/cs-tables/message-blob-endian-control "$(DOTNET)"
+
 # THE C# LEG of `make test`: the table gates and the C# conformance negative
 # control, the cook-open gates on the C# side, the bench units' compile gates
 # (a unit that generates but does not compile is issue #80's lesson), and the
@@ -440,6 +444,7 @@ test-cs: toolchain-cs build/tables-generated-cs/.stamp generated/bench/tables/cs
 	$(MAKE) tables-cs-retain-fuzz
 	$(MAKE) tables-cs-retain-negative-control
 	$(MAKE) tables-cs-pack-negative-control
+	$(MAKE) tables-cs-message-blob-endian-negative-control
 	$(MAKE) conformance-negative-control-cs
 	$(MAKE) tables-cook-open-cs
 	$(MAKE) tables-cook-open-cs-lengths-negative-control
