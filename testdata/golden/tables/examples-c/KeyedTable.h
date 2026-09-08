@@ -1174,6 +1174,9 @@ typedef struct TableMessageReader {
  TableBitReader bits; const TableVocabulary * vocabulary; TableReport * report;
  int64_t index_bits; int extent_refused;
 } TableMessageReader;
+/* Framing scans skip by announced shape, including a reserved transport id
+   (kind 0, no extra bits). A NAME reference still refuses reserved ids.
+   Typed body reads diagnose reserved as malformed after resolving the entry. */
 static SCHEMA_UNUSED int table_message_ref(TableMessageReader * r,const TableMessageEntry ** entry,int name)
 {
  uint64_t ref=0;
@@ -1182,7 +1185,8 @@ static SCHEMA_UNUSED int table_message_ref(TableMessageReader * r,const TableMes
  if(ref==0)return 1;
  if(ref>(uint64_t)r->vocabulary->count)return 0;
  *entry=r->vocabulary->entries+ref-1;
- return (*entry)->id<UINT64_C(0xfffffffffffffffd) && (!name || (*entry)->kind==0);
+ if(name) return (*entry)->id<UINT64_C(0xfffffffffffffffd) && (*entry)->kind==0;
+ return 1;
 }
 static SCHEMA_UNUSED TableMessageEntry table_message_element(const TableMessageEntry * e)
 {
@@ -1753,6 +1757,7 @@ static SCHEMA_UNUSED int team_config_load_message_body(TableMessageReader * r,Te
  for(;;){const TableMessageEntry * entry;
  if(!table_message_ref(r,&entry,0))goto malformed;
  if(entry==NULL)return 1;
+ if(entry->id>=UINT64_C(0xfffffffffffffffd))goto malformed;
  switch(entry->id){
  case UINT64_C(0xceec99e2d65db674): {
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,4)){r->report->widened++;
@@ -2009,6 +2014,7 @@ static SCHEMA_UNUSED int gunner_config_load_message_body(TableMessageReader * r,
  for(;;){const TableMessageEntry * entry;
  if(!table_message_ref(r,&entry,0))goto malformed;
  if(entry==NULL)return 1;
+ if(entry->id>=UINT64_C(0xfffffffffffffffd))goto malformed;
  switch(entry->id){
  case UINT64_C(0xb75aa3662201646a): {
  if(!(entry->kind==10 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,10)){r->report->widened++;
@@ -2297,6 +2303,7 @@ static SCHEMA_UNUSED int turret_config_load_message_body(TableMessageReader * r,
  for(;;){const TableMessageEntry * entry;
  if(!table_message_ref(r,&entry,0))goto malformed;
  if(entry==NULL)return 1;
+ if(entry->id>=UINT64_C(0xfffffffffffffffd))goto malformed;
  switch(entry->id){
  case UINT64_C(0x7f6308be8ab37fc0): {
  if(!(entry->kind==10 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,10)){r->report->widened++;
@@ -2719,6 +2726,7 @@ static SCHEMA_UNUSED int hull_config_load_message_body(TableMessageReader * r,Hu
  for(;;){const TableMessageEntry * entry;
  if(!table_message_ref(r,&entry,0))goto malformed;
  if(entry==NULL)return 1;
+ if(entry->id>=UINT64_C(0xfffffffffffffffd))goto malformed;
  switch(entry->id){
  case UINT64_C(0x7f69d4b5288ba9cf): {
  if(!(entry->kind==10 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,10)){r->report->widened++;
@@ -3303,6 +3311,7 @@ static SCHEMA_UNUSED int keyed_config_load_message_body(TableMessageReader * r,K
  for(;;){const TableMessageEntry * entry;
  if(!table_message_ref(r,&entry,0))goto malformed;
  if(entry==NULL)return 1;
+ if(entry->id>=UINT64_C(0xfffffffffffffffd))goto malformed;
  switch(entry->id){
  case UINT64_C(0xbaaeb048a5a8fa6d): {
  if(!(entry->kind==16 && entry->elem_kind==13)){if(0){r->report->widened++;
@@ -3678,6 +3687,7 @@ static SCHEMA_UNUSED int score_board_load_message_body(TableMessageReader * r,Sc
  for(;;){const TableMessageEntry * entry;
  if(!table_message_ref(r,&entry,0))goto malformed;
  if(entry==NULL)return 1;
+ if(entry->id>=UINT64_C(0xfffffffffffffffd))goto malformed;
  switch(entry->id){
  case UINT64_C(0xf10fad739a0e1660): {
  if(!(entry->kind==16 && entry->elem_kind==4)){if(0){r->report->widened++;
