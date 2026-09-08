@@ -1166,9 +1166,10 @@ runtime lines that already did). The failure it closes is the twin of the one
 below: a sweep that silently measured the wrong tree, and a CSV that could not
 have said so. A bare SHA also stops resolving the moment it is rebased away,
 which is how a published result came to carry a dead SHA; the branch name
-survives the rebase and says which tree was on the bench. A CSV's commit
-stamp is resolved on origin after its rebase, so the SHA it names is one that
-exists on the remote and not one the rebase left behind.
+survives the rebase and says which tree was on the bench. Before a CSV is
+published, its commit stamp must name a SHA that exists on origin: re-derive
+it after the rebase, or stamp the branch head at push time. The tooling does
+not do this for you yet.
 
 This clause was earned on **2026-08-15**: `bench/rust/Cargo.toml`,
 `bench/go/go.mod` and `bench/cs/schemabench.csproj` hardcoded their runtime

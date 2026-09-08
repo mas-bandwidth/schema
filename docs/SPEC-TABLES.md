@@ -6867,7 +6867,7 @@ alignment is the unit's and its extent runs to the next entry as every node's
 does; its directory entry carries the reserved type id of §3.1. A `*bytes`
 slot is the same eight-byte self-relative delta every pointer slot is, and it
 resolves to the header: `data` is the header plus eight, and `length` is the
-header's first word. Nothing about the encoding changes for a blob — a deref
+header's first four bytes. Nothing about the encoding changes for a blob — a deref
 is one add, a region relocates by `memcpy`, and null is zero.
 
 **The directory is ATTRIBUTION, and attribution is separable.** Nothing
