@@ -29,8 +29,9 @@ namespace Blockdemo
     // out of step with.
     //
     // NONE IS THE NULL KEY: it names no slot, it never rides on the wire, a stored
-    // key of 0 is malformed, and INDEXING BY IT IS AN ERROR — a throw from the
-    // indexer, which stands in every build exactly as the C++ abort does.
+    // key of 0 is malformed, and INDEXING BY IT IS AN ERROR. A key past Max is
+    // the same error. The throw stands in every build exactly as the C++ abort
+    // does, and one unsigned compare covers both ends.
     //
     // ITERATION is the surface a consumer of the WHOLE array wants: foreach walks
     // every stored slot and yields the KEY, 1..E.Max, beside the element, so no
@@ -43,8 +44,8 @@ namespace Blockdemo
     // indexer is how they are written.
     //
     // Slots is public and is what the generated codecs walk, by STORAGE INDEX; the
-    // indexer is for callers and takes the KEY, and it is the one place the None
-    // key can be caught in C#.
+    // indexer is for callers and takes the KEY, and it is the one place None and
+    // past Max are caught in C#.
     public sealed class TableKeyed<T, E> where E : struct, System.Enum
     {
         // the extent is the enum's, derived here and named nowhere else. C# has no
@@ -64,22 +65,25 @@ namespace Blockdemo
         {
             get
             {
-                RefuseNone(key);
+                RefuseKey(key);
                 return Slots[key - 1];
             }
             set
             {
-                RefuseNone(key);
+                RefuseKey(key);
                 Slots[key - 1] = value;
             }
         }
 
-        static void RefuseNone(int key)
+        // Storage index is key-1: None wraps above SlotCount, a key past Max is
+        // >= SlotCount. The CLR would still throw past Max, naming an index;
+        // this names the key.
+        static void RefuseKey(int key)
         {
-            if (key == 0)
+            if ((uint)(key - 1) >= (uint)SlotCount)
             {
                 throw new ArgumentOutOfRangeException("key",
-                    "None is the null key of an enum-keyed array: it keys no slot");
+                    "an enum-keyed array holds one slot per named variant: None keys none, and neither does a key past Max");
             }
         }
 

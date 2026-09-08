@@ -3211,7 +3211,7 @@ inline void TableJsonGraphMapInit( TableJsonGraphMap & map, TableAllocator alloc
 
 inline void TableJsonGraphMapShutdown( TableJsonGraphMap & map )
 {
-    map.allocator.free( map.allocator.context, map.entries );
+    table_release( map.allocator, map.entries );
     TableJsonGraphMapInit( map, map.allocator );
 }
 
@@ -3241,7 +3241,7 @@ inline bool TableJsonGraphMapGrow( TableJsonGraphMap & map )
     grown.allocator = map.allocator;
     grown.capacity = map.capacity != 0 ? map.capacity * 4 : 64;
     grown.count = 0;
-    grown.entries = (TableJsonGraphEntry *) map.allocator.alloc( map.allocator.context, grown.capacity * (int64_t) sizeof( TableJsonGraphEntry ) ); // zeroed, by the pair's contract
+    grown.entries = (TableJsonGraphEntry *) table_allocate( map.allocator, grown.capacity * (int64_t) sizeof( TableJsonGraphEntry ) ); // zeroed, by the pair's contract
     if ( grown.entries == NULL ) { return false; }
     for ( int64_t i = 0; i < map.capacity; i++ )
     {
@@ -3249,7 +3249,7 @@ inline bool TableJsonGraphMapGrow( TableJsonGraphMap & map )
         grown.entries[ TableJsonGraphMapSlot( grown, map.entries[i].key ) ] = map.entries[i];
         grown.count++;
     }
-    map.allocator.free( map.allocator.context, map.entries );
+    table_release( map.allocator, map.entries );
     map = grown;
     return true;
 }
