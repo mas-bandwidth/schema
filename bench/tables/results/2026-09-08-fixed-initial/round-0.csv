@@ -1,0 +1,10 @@
+# round: 0
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+c,bench_table,write,400000,2147,1,265961,265961,265961,544.56,0.00,b51387f36d9b59c4,table,hdr,contract,O3,unknown
+c,bench_table,round_trip,400000,2147,1,170426,170426,170426,348.95,0.00,b51387f36d9b59c4,table,hdr,contract,O3,unknown
+cpp,bench_table,write,400000,2147,1,980255,980255,980255,2007.11,0.00,b51387f36d9b59c4,table,hdr,contract,O3,unknown
+cpp,bench_table,round_trip,400000,2147,1,312482,312482,312482,639.82,0.00,b51387f36d9b59c4,table,hdr,contract,O3,unknown
+cs,bench_table,write,400000,2147,1,36341,36341,36341,74.41,0.00,b51387f36d9b59c4,table,asm,contract,default,unknown
+cs,bench_table,round_trip,400000,2147,1,25562,25562,25562,52.34,0.00,b51387f36d9b59c4,table,asm,contract,default,unknown
+go,bench_table,write,400000,2147,1,140276,140276,140276,287.22,0.00,b51387f36d9b59c4,table,pkg,contract,default,unknown
+go,bench_table,round_trip,400000,2147,1,85598,85598,85598,175.27,0.00,b51387f36d9b59c4,table,pkg,contract,default,unknown
