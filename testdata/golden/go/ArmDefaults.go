@@ -114,13 +114,13 @@ const (
 
 // EnumNameDefaultChoiceType: debug/log/tooling name for any DefaultChoiceType wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
-func EnumNameDefaultChoiceType(value uint64) string {
+func EnumNameDefaultChoiceType(value DefaultChoiceType) string {
 	switch value {
-	case uint64(DefaultChoiceTypeNone):
+	case DefaultChoiceTypeNone:
 		return "None"
-	case uint64(DefaultChoiceTypeFirst):
+	case DefaultChoiceTypeFirst:
 		return "First"
-	case uint64(DefaultChoiceTypeSecond):
+	case DefaultChoiceTypeSecond:
 		return "Second"
 	}
 	return "???"
@@ -277,13 +277,13 @@ const (
 
 // EnumNameDefaultBulkChoiceType: debug/log/tooling name for any DefaultBulkChoiceType wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
-func EnumNameDefaultBulkChoiceType(value uint64) string {
+func EnumNameDefaultBulkChoiceType(value DefaultBulkChoiceType) string {
 	switch value {
-	case uint64(DefaultBulkChoiceTypeNone):
+	case DefaultBulkChoiceTypeNone:
 		return "None"
-	case uint64(DefaultBulkChoiceTypeFirst):
+	case DefaultBulkChoiceTypeFirst:
 		return "First"
-	case uint64(DefaultBulkChoiceTypeSecond):
+	case DefaultBulkChoiceTypeSecond:
 		return "Second"
 	}
 	return "???"

@@ -2,6 +2,9 @@ package golang
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -536,5 +539,39 @@ func TestFlatFallbackReEmitsItemsNotPieces(t *testing.T) {
 	if got := countAcross(files, "math."); got != 0 {
 		t.Errorf("a bare two-float unit referenced math %d times — its runs fall back "+
 			"to serialize's own float calls", got)
+	}
+}
+
+// EnumName<E> takes E itself (#457): a log site passes the typed field as it
+// is, the way C++'s overload takes the enum. The gate compiles a probe that
+// does so for a declared enum's field and a union's tag, against the
+// serialize runtime beside this repository; a uint64 parameter refuses both
+// calls.
+func TestEnumNameTakesTheEnumType(t *testing.T) {
+	files := generateGo(t, "Typed", "package typed\n\n"+
+		"enum ShipType { Fighter, Bomber, Scout }\n\n"+
+		"type Ship\n{\n    ship_type ShipType\n}\n\n"+
+		"type LaserFire\n{\n    target_id uint16\n}\n\n"+
+		"union WeaponFire\n{\n    laser LaserFire\n}\n\n"+
+		"type FireCommand\n{\n    fire WeaponFire\n}\n")
+	runtime, err := filepath.Abs("../../../../serialize.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
+	files["probe.go"] = []byte("package typed\n\n" +
+		"func probe(ship *Ship, command *FireCommand) (string, string) {\n" +
+		"\treturn EnumNameShipType(ship.ShipType), EnumNameWeaponFireType(command.Fire.Type)\n" +
+		"}\n")
+	dir := t.TempDir()
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cmd := exec.Command("go", "build", ".")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("a typed EnumName call does not compile: %v\n%s", err, out)
 	}
 }

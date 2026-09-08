@@ -166,14 +166,15 @@ func (g *gen) emitTagEnum(name string, members []string, docs []string, comment 
 	// the tag enum's name surface is a declared enum's, member for member: a
 	// reader logging which message arrived writes EnumName<Tag>( value )
 	// whichever enum it is. Nothing on the read or write path calls it. The
-	// uint64 parameter (not the tag type) keeps out-of-set values exact.
+	// parameter is the tag type itself, so the typed field is passed as it
+	// is; every wire-legal value fits the storage, so nothing truncates.
 	g.pf("// EnumName%s: debug/log/tooling name for any %s wire value —\n", name, name)
 	g.pf("// out-of-set values (wire-legal up to the declared max) name as \"???\"\n")
-	g.pf("func EnumName%s(value uint64) string {\n", name)
+	g.pf("func EnumName%s(value %s) string {\n", name, name)
 	g.pf("\tswitch value {\n")
-	g.pf("\tcase uint64(%sNone):\n\t\treturn \"None\"\n", name)
+	g.pf("\tcase %sNone:\n\t\treturn \"None\"\n", name)
 	for _, m := range members {
-		g.pf("\tcase uint64(%s%s):\n\t\treturn \"%s\"\n", name, m, m)
+		g.pf("\tcase %s%s:\n\t\treturn \"%s\"\n", name, m, m)
 	}
 	g.pf("\t}\n\treturn \"???\"\n}\n\n")
 }
@@ -249,15 +250,16 @@ func (g *gen) emitEnum(d *ir.Enum) {
 	g.pf("\t%sCount %s = %d // the declared variant count (SPEC §4.2)\n", d.Name, d.Name, len(d.Variants))
 	g.pf("\t%sMax %s = %d // the exported extent (SPEC §4.2)\n", d.Name, d.Name, d.Max)
 	g.pf(")\n\n")
-	// the uint64 parameter (not the enum type) keeps out-of-set values exact:
-	// a narrower named type would truncate 256 -> 0 -> "None" for an 8-bit enum
+	// the parameter is the enum type itself, so a log site passes the typed
+	// field as it is (#457); the storage is sized to the declared max, so
+	// every wire-legal value fits and nothing truncates
 	g.pf("// EnumName%s: debug/log/tooling name for any %s wire value —\n", d.Name, d.Name)
 	g.pf("// out-of-set values (wire-legal up to the declared max) name as \"???\"\n")
-	g.pf("func EnumName%s(value uint64) string {\n", d.Name)
+	g.pf("func EnumName%s(value %s) string {\n", d.Name, d.Name)
 	g.pf("\tswitch value {\n")
-	g.pf("\tcase uint64(%sNone):\n\t\treturn \"None\"\n", d.Name)
+	g.pf("\tcase %sNone:\n\t\treturn \"None\"\n", d.Name)
 	for _, v := range d.Variants {
-		g.pf("\tcase uint64(%s%s):\n\t\treturn \"%s\"\n", d.Name, v, v)
+		g.pf("\tcase %s%s:\n\t\treturn \"%s\"\n", d.Name, v, v)
 	}
 	g.pf("\t}\n\treturn \"???\"\n}\n\n")
 }

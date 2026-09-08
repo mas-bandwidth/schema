@@ -36,15 +36,15 @@ const (
 
 // EnumNameDriveMode: debug/log/tooling name for any DriveMode wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
-func EnumNameDriveMode(value uint64) string {
+func EnumNameDriveMode(value DriveMode) string {
 	switch value {
-	case uint64(DriveModeNone):
+	case DriveModeNone:
 		return "None"
-	case uint64(DriveModeCruise):
+	case DriveModeCruise:
 		return "Cruise"
-	case uint64(DriveModeWarp):
+	case DriveModeWarp:
 		return "Warp"
-	case uint64(DriveModeLudicrous):
+	case DriveModeLudicrous:
 		return "Ludicrous"
 	}
 	return "???"

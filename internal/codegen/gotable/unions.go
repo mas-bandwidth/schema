@@ -30,7 +30,7 @@ func (g *tableGen) emitTableUnion(un *ir.Union) {
 		}
 		g.tf("}\n")
 	}
-	g.pf("func EnumName%sType(value uint64) string { switch value { case 0:return \"None\"\n", un.Name)
+	g.pf("func EnumName%sType(value %sType) string { switch value { case 0:return \"None\"\n", un.Name, un.Name)
 	for i, v := range un.Variants {
 		g.pf("case %d:return %q\n", i+1, ir.GoExportName(v.Name))
 	}

@@ -38,19 +38,19 @@ const (
 
 // EnumNamePacketMode: debug/log/tooling name for any PacketMode wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
-func EnumNamePacketMode(value uint64) string {
+func EnumNamePacketMode(value PacketMode) string {
 	switch value {
-	case uint64(PacketModeNone):
+	case PacketModeNone:
 		return "None"
-	case uint64(PacketModeIdle):
+	case PacketModeIdle:
 		return "Idle"
-	case uint64(PacketModeActive):
+	case PacketModeActive:
 		return "Active"
-	case uint64(PacketModeCombat):
+	case PacketModeCombat:
 		return "Combat"
-	case uint64(PacketModeDocked):
+	case PacketModeDocked:
 		return "Docked"
-	case uint64(PacketModeWarping):
+	case PacketModeWarping:
 		return "Warping"
 	}
 	return "???"
