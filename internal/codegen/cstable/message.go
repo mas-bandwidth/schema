@@ -9,9 +9,14 @@ import (
 
 func (g *tableGen) emitMessages() {
 	g.tf("%s", tableMessageTypes)
-	g.pf("static readonly byte[] tableAnnouncement = new byte[] { %s };\n", byteLiterals(ir.TableAnnouncement(g.unit)))
 	g.pf("public static int AnnounceMeasure() { return tableAnnouncement.Length; }\npublic static ReadOnlySpan<byte> Announce() { return tableAnnouncement; }\n")
 	g.pf("public static TableWire.Verdict AnnounceRead(TableVocabulary vocabulary, ReadOnlySpan<byte> bytes, TableReport report) { return TableWire.AnnounceRead(vocabulary, bytes, report); }\n")
+}
+
+// Unit-specific announcement bytes live beside region metadata; the shared
+// table runtime stays byte-identical when another source file joins the unit.
+func (g *tableGen) emitMessageVocabulary() {
+	g.pf("static readonly byte[] tableAnnouncement = new byte[] { %s };\n", byteLiterals(ir.TableAnnouncement(g.unit)))
 	g.pf("static readonly TableVocabulary tableOwnVocabulary = TableWire.OwnVocabulary(tableAnnouncement);\n\n")
 }
 

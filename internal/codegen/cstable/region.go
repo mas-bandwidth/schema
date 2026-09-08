@@ -6,9 +6,11 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// Region loading is optional source beside the managed wire and native rows.
+// Region metadata accompanies the managed wire; variable units also carry
+// native loading and mutable ownership here.
 func generateRegion(u *ir.Unit) []byte {
 	g := &tableGen{unit: u}
+	g.emitMessageVocabulary()
 	var names []string
 	variable := ir.VariableTables(u)
 	for name := range u.Tables {

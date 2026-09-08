@@ -1412,12 +1412,14 @@ tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/
 # (docs/SPEC-TABLES.md §20.6), and every C++ Table header carries it because every
 # table cooks (§7). What holds the block form to zero cost is the line above —
 # no Table source carries one BLOCK symbol — and the byte comparison below.
+# C# message and cook writers read the announcement's BuildVersion property;
+# the accelerator constant itself still belongs in the Block/Cook runtime.
 	@for f in build/tables-generated-cs/*/*Table.cs; do \
-		if grep -n "BuildVersion" $$f; then \
-			echo "BLOCK ZERO-COST GATE FAILED: the C# Table sources carry BuildVersion, which is the BLOCK file's there: $$f"; exit 1; \
+		if grep -nE "public const ulong BuildVersion" $$f; then \
+			echo "BLOCK ZERO-COST GATE FAILED: the C# Table sources declare the accelerator BuildVersion constant: $$f"; exit 1; \
 		fi; \
 	done
-	@echo "block zero-cost gate: the C# Table sources still carry no build version — it is their Block file's"
+	@echo "block zero-cost gate: the C# Table sources declare no accelerator build-version constant"
 	@n=0; d=0; \
 	for f in testdata/golden/tables/examples/*Table.* testdata/golden/tables/pointers/*Table.* \
 	         testdata/golden/tables/block/*Table.* testdata/golden/tables/blockhome/*Table.* \
@@ -1674,9 +1676,9 @@ endif
 #
 # The gate adds exactly such a file to a COPY of tables/examples — Aaa.schema,
 # ahead of Guarded.schema — and requires the homes not to move. The table
-# runtime is byte-identical across the two trees as well as same-named: it
-# carries no build version (the zero-cost gate above), so a unit gaining a table
-# cannot move it. The block and cook runtimes DO carry the build version, so
+# runtime is byte-identical across the two trees as well as same-named:
+# unit-specific announcement bytes live in the Region metadata file, so a unit
+# gaining a table cannot move the shared runtime. The block and cook runtimes DO carry the build version, so
 # their names are what is checked.
 .PHONY: tables-runtime-home
 tables-runtime-home: bin/schema

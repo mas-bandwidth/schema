@@ -287,7 +287,7 @@ tables-cook-open-cs-lengths-negative-control: build/cook-open/.stamp
 
 .PHONY: tables-cook-open-cs-root-negative-control
 tables-cook-open-cs-root-negative-control: build/cook-open/.stamp
-	$(call cook_open_cs_sabotage,root,if (dataLength < %d) { return false; },if (dataLength == ulong.MaxValue) { return false; } // NEGATIVE CONTROL)
+	$(call cook_open_cs_sabotage,root,if (dataLength < %d),if (dataLength == ulong.MaxValue) { return false; } // NEGATIVE CONTROL)
 
 # THE WALK CONTROL, the C# half of the Makefile's tables-cook-open-walk-negative-control:
 # the sabotage (tools/sabotage, cook-open-walk-cs) leaves every check in place

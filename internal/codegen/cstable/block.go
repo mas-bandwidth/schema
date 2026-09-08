@@ -626,7 +626,6 @@ func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 
 	g.hf("        long used = %d;\n", bl.Projection.Size)
 	for _, a := range bl.Arrays {
-		field := ir.GoExportName(a.Field.Name)
 		alignment := ir.BlockAlign
 		if a.ElemAlign() > int64(alignment) {
 			alignment = int(a.ElemAlign())
@@ -645,7 +644,7 @@ func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 		g.hf("            // side and Open refuses it here, because a consumer that sizes\n")
 		g.hf("            // anything by the maximum would overflow on a count the maximum\n")
 		g.hf("            // does not bound\n")
-		g.hf("            if (count > (ulong) %sMax) { reason = TableRefuseReason.bad_layout; return false; }\n", field)
+		g.hf("            if (count > (ulong) %sMax) { reason = TableRefuseReason.bad_layout; return false; }\n", ir.GoExportName(a.Field.Name))
 		g.hf("            if (offsetOf < %d || (offsetOf %% %d) != 0) { reason = TableRefuseReason.bad_layout; return false; }\n", bl.Projection.Size, alignment)
 		g.hf("            if (offsetOf > (ulong) bytes) { reason = TableRefuseReason.bad_layout; return false; }\n")
 		g.hf("            ulong rows = count * stride; // both bounded above: this cannot carry\n")
