@@ -5,6 +5,9 @@ const Go Backend = 1 << 3
 
 func init() {
 	define(Go,
+		Name{Name: "TableBlockAllocator", What: "the block storage allocation pair"},
+		Name{Name: "TableBlockDefaultAllocator", What: "the explicit default block allocation pair"},
+		Name{Name: "TableBlockRefusal", What: "the producer count refusal"},
 		Name{Name: "tableMessageRegionWrite", What: "the message region scan"},
 		Name{Name: "tableMessageRegionMeasure", What: "the message region scan"},
 		Name{Name: "tableMessageRegionInto", What: "the message region scan"},

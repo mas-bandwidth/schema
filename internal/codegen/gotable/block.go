@@ -108,6 +108,7 @@ func (g *blockGen) emit() {
 	if g.home {
 		g.needsUnsafe = true
 		g.rf("%s", blockRuntime(ir.BuildVersion(g.unit)))
+		g.rf("%s", blockBuildRuntime)
 		// EVERY blittable record of the unit, here and nowhere else. Not the
 		// file that DECLARES the type: a record a block form reaches is often
 		// declared in a file of `type`s alone, which gets no Block.go of its
@@ -617,6 +618,7 @@ func (g *blockGen) emitBlockHandle(bl *ir.BlockLayout) {
 	}
 
 	g.emitBlockOpen(bl)
+	g.emitBlockBuild(bl)
 	g.hf("// Type is this block's descriptors: constant data, so a reflective read costs\n")
 	g.hf("// a lookup and not a parse. The row layouts hang off the element column\n")
 	g.hf("// rather than taking names of their own, so a walker reaches every record\n")
