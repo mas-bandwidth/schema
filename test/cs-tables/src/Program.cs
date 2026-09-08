@@ -557,6 +557,54 @@ static partial class Program
         }
     }
 
+    // #725: a later counted-array occurrence that is shorter must restore
+    // slots above the new count to the declared default, not leave the first
+    // occurrence standing. Two RootConfig saves of the same fields share a
+    // vocabulary suffix; splicing the field streams yields two occurrences.
+    static byte[] SharedVocabSplice(byte[] first, byte[] second)
+    {
+        int suffix = 0;
+        int n = Math.Min(first.Length, second.Length);
+        while (suffix < n && first[first.Length - 1 - suffix] == second[second.Length - 1 - suffix])
+        {
+            suffix++;
+        }
+        Check(suffix > 8, "counted tail: files share a vocabulary suffix");
+        Check(first[first.Length - suffix - 1] == 0, "counted tail: first field stream ends at 0");
+        byte[] spliced = new byte[first.Length - suffix - 1 + second.Length];
+        Buffer.BlockCopy(first, 0, spliced, 0, first.Length - suffix - 1);
+        Buffer.BlockCopy(second, 0, spliced, first.Length - suffix - 1, second.Length);
+        return spliced;
+    }
+
+    static void TestCountedArrayShorterReplacement()
+    {
+        Demo.RootConfig three = new Demo.RootConfig();
+        three.WeaponsCount = 3;
+        three.Weapons[0].Damage = 5.0f;
+        three.Weapons[1].Damage = 99.0f;
+        three.Weapons[2].Damage = 88.0f;
+        long n = Demo.Schema.RootConfigMeasure(three);
+        byte[] a = new byte[n];
+        Check(Demo.Schema.RootConfigSave(three, a) == n, "counted tail: save three");
+
+        Demo.RootConfig one = new Demo.RootConfig();
+        one.WeaponsCount = 1;
+        one.Weapons[0].Damage = 5.0f;
+        long m = Demo.Schema.RootConfigMeasure(one);
+        byte[] b = new byte[m];
+        Check(Demo.Schema.RootConfigSave(one, b) == m, "counted tail: save one");
+
+        byte[] spliced = SharedVocabSplice(a, b);
+        Demo.RootConfig got = new Demo.RootConfig();
+        Demo.TableReport report = new Demo.TableReport();
+        Check(Demo.Schema.RootConfigLoad(got, spliced, report), "counted tail: load two occurrences");
+        Check(got.WeaponsCount == 1, "counted tail: later count wins");
+        Check(got.Weapons[0].Damage == 5.0f, "counted tail: live prefix kept");
+        Check(got.Weapons[1].Damage == 21.0f, "counted tail: slot 1 restored to default");
+        Check(got.Weapons[2].Damage == 21.0f, "counted tail: slot 2 restored to default");
+    }
+
     // ---- all-default: everything elides, decode restores every default ----
 
     static void TestAllDefault()
@@ -1727,6 +1775,7 @@ static partial class Program
         TestExactCapacity();
         TestStorageInvariants();
         TestBoundedElements();
+        TestCountedArrayShorterReplacement();
         TestAllDefault();
         TestGuard();
         TestEvolutionOldReaderNewData();
