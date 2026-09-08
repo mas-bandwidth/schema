@@ -385,7 +385,8 @@ tables-cs-view: build/tables-generated-cs/.stamp
 	@set -e; for entry in $(VIEW_CORPUS); do \
 		dir=$${entry%%:*}; pkg=$${entry##*:}; \
 		cap=$$(printf '%s' "$$pkg" | cut -c1 | tr 'a-z' 'A-Z')$$(printf '%s' "$$pkg" | cut -c2-); \
-		./bin/schema generate --lang cs --out build/view-cs/generated/$$dir tables/$$dir; \
+		source=tables/$$dir; [ "$$dir" != wide ] || source=examples-wide; \
+		./bin/schema generate --lang cs --out build/view-cs/generated/$$dir "$$source"; \
 		printf 'global using U = %s;\n' "$$cap" > build/view-cs/Unit.cs; \
 		$(DOTNET) build test/cs-view -v q --nologo \
 			-p:ViewAliasFile="$$PWD/build/view-cs/Unit.cs" -p:ViewGeneratedDir="$$PWD/build/view-cs/generated/$$dir" > build/view-cs/$$pkg.log 2>&1 || { cat build/view-cs/$$pkg.log; exit 1; }; \
