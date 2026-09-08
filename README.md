@@ -71,8 +71,9 @@ Write your data types once and generate bit-packed serialization code to read an
 
 ## Performance
 
-Cost to serialize a representative game packet, relative to generated C++ at
-100%. Lower is faster.
+### Bitpacked Type
+
+Cost to serialize a representative game packet, relative to generated C++ at 100%. Lower is faster.
 
 | Language | % |
 |---|---:|
@@ -86,11 +87,9 @@ Cost to serialize a representative game packet, relative to generated C++ at
 | JavaScript | 288% |
 | Elixir | 1479% |
 
-Measured by [the benchmark](bench/) on an Apple M3 Ultra, 2026-09-07, the runtimes at
-their release tags; [PERFORMANCE.md](docs/PERFORMANCE.md) has every toolchain, the earlier
-Apple M2 table and what moved between them. One 438-byte packet exercising every construct.
-
 ### Fixed Table
+
+Cost to serialize an equivalent table with versioning.
 
 | Language | % |
 |---|---:|
@@ -98,8 +97,6 @@ Apple M2 table and what moved between them. One 438-byte packet exercising every
 | C | 193% |
 | Go | 357% |
 | C# | 1265% |
-
-Fastest = 100%. Lower is better.
 
 ## Install and build
 
