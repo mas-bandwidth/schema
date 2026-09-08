@@ -295,11 +295,6 @@ tables-java-release:
 	$(MAKE) tables-java-fuzz-negative-control
 	$(MAKE) tables-java-cook-extent-negative-control
 
-generated/bench/tables/java/.stamp: bin/schema bench/corpus/BenchTable.schema
-	@mkdir -p generated/bench/tables/java
-	./bin/schema generate --lang java --out generated/bench/tables/java bench/corpus/BenchTable.schema
-	@touch $@
-
 generated/bench/java/.stamp: bin/schema $(SCHEMAS_BENCH)
 	./bin/schema generate --lang java --out generated/bench/java bench/corpus/Bench.schema
 	./bin/schema generate --lang java --out generated/bench/java/realworld bench/corpus/RealWorld.schema
@@ -421,7 +416,6 @@ TOOLCHAIN_LEGS     += java
 TOOLCHAIN_PINS_java := JAVA JAVAC
 CONFORMANCE_LEGS   += $(call unless_skipped,java,build-conformance-java)
 CONFORMANCE_ENV    += JAVA=$(JAVA)
-BENCH_TABLES_LEGS += generated/bench/tables/java/.stamp
 # Packet UTF-8 content validation, including a compiled mutation control.
 build/packet-text/java/.stamp: bin/schema test/packet-text/Narrow.schema
 	@mkdir -p build/packet-text/java/source

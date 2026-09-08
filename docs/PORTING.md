@@ -1455,4 +1455,4 @@ technique in and lost the leg with its table wire (#515).
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #425 | ❌ #425 | — no table-wire bench | ✅ `tables-go-bench-gate` | ❌ #425 | ❌ #425 | — no table-wire bench | — no table-wire bench | — no table-wire bench |
+| ❌ #425 | ❌ #425 | — no table-wire bench | ✅ `tables-go-bench-gate` | ❌ #425 | — no table-wire bench | — no table-wire bench | — no table-wire bench | — no table-wire bench |
