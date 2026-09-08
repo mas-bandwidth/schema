@@ -1522,7 +1522,7 @@ static partial class Program
             "reflection: a positional array carries no key vocabulary");
     }
 
-    // ---- the keyed indexer refuses the None key at runtime (§2.4) ----
+    // ---- the keyed indexer refuses None and past Max at runtime (§2.4) ----
 
     static void TestKeyedIndexerRefusesNone()
     {
@@ -1538,6 +1538,30 @@ static partial class Program
             threw = true;
         }
         Check(threw, "keyed indexer: None is the null key and indexing it is an error");
+
+        threw = false;
+        try
+        {
+            Demo.TeamConfig ignored = cfg.Teams[(int)Demo.Team.Max + 1];
+            Check(ignored == null, "unreachable");
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            threw = true;
+        }
+        Check(threw, "keyed indexer: a key past Max is an error, named as a key");
+
+        threw = false;
+        try
+        {
+            Demo.TeamConfig ignored = cfg.Teams[-1];
+            Check(ignored == null, "unreachable");
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            threw = true;
+        }
+        Check(threw, "keyed indexer: a negative key is an error, named as a key");
 
         // and a real slot is reachable through the same indexer
         Check(cfg.Teams[(int)Demo.Team.Blue] != null, "keyed indexer: a named slot reads");

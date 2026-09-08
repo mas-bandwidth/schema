@@ -88,3 +88,55 @@ table Node
 		t.Errorf("--lang cpp refused a pointered unit: %v", err)
 	}
 }
+
+// TestCsKeyedAccessorCoversBothEnds: C# used to refuse only key 0 and let
+// Slots[key-1] throw IndexOutOfRangeException past Max, naming an index.
+// M5 is one unsigned compare covering None and past Max, naming the key.
+func TestCsKeyedAccessorCoversBothEnds(t *testing.T) {
+	u := unitFromSource(t, `package probe
+enum Slot { Alpha, Beta, Gamma }
+table Root { tokens [Slot]int32 }
+`)
+	files, err := New().Generate(u, "cs", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(files["ProbeTable.cs"])
+	if strings.Contains(src, "RefuseNone") {
+		t.Error("TableKeyed still has RefuseNone — past Max would be a CLR index exception")
+	}
+	for _, want := range []string{
+		"static void RefuseKey(int key)",
+		"(uint)(key - 1) >= (uint)SlotCount",
+		"neither does a key past Max",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("TableKeyed lacks %q", want)
+		}
+	}
+}
+
+// TestCsCarriesBlobs: #723 emits *bytes/*string; registerBuiltin must name
+// C# as a carrier so a non-carrier's refusal lists --lang cs beside c/cpp/go.
+func TestCsCarriesBlobs(t *testing.T) {
+	u := unitFromSource(t, "package probe\ntable Root { data *bytes\n text *string }\n")
+	files, err := New().Generate(u, "cs", Options{})
+	if err != nil {
+		t.Fatalf("--lang cs refused blobs: %v", err)
+	}
+	src := string(files["ProbeTable.cs"])
+	for _, want := range []string{"data", "text"} {
+		if !strings.Contains(src, want) {
+			t.Errorf("blob field %q missing from generated C#", want)
+		}
+	}
+	err = refuseBlobs(u, "rust")
+	if err == nil {
+		t.Fatal("refuseBlobs accepted a blob-bearing unit for rust")
+	}
+	for _, want := range []string{"*bytes and *string are c, cpp, cs and go only today", "--lang cs"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("blob-carrier refusal does not name %q: %v", want, err)
+		}
+	}
+}
