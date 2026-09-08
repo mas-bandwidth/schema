@@ -649,7 +649,7 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 	g.pf("    TableCookRegion region;\n")
 	g.pf("    bool ok = %sNumberFrom( ctx, numbering, root );\n", n)
 	g.pf("    if ( ok )\n    {\n")
-	g.pf("        region.offsets = (int64_t *) allocator.alloc( allocator.context, ( numbering.count + 1 ) * (int64_t) sizeof( int64_t ) );\n")
+	g.pf("        region.offsets = (int64_t *) table_allocate( allocator, ( numbering.count + 1 ) * (int64_t) sizeof( int64_t ) );\n")
 	if g.anyExtent {
 		g.pf("        ok = region.offsets != NULL && %sCookLayout( ctx, root, numbering, region );\n", n)
 	} else {
@@ -728,7 +728,7 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 	g.pf("            }\n")
 	g.pf("        }\n")
 	g.pf("    }\n")
-	g.pf("    allocator.free( allocator.context, region.offsets );\n")
+	g.pf("    table_release( allocator, region.offsets );\n")
 	g.pf("    TableNumberingShutdown( numbering );\n")
 	g.pf("    return ok;\n}\n\n")
 

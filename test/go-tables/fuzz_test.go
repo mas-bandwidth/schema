@@ -198,6 +198,29 @@ func TestBlockForgeryFuzz(t *testing.T) {
 		}
 		checkWhole(t, unit.name, "clean", 0, base, extent, facts, used, intact)
 
+		// pass "lead": every residue. Random leads cannot see the %64 check
+		// go missing — unaligned loads succeed on this host — so 1..63 must
+		// refuse by name. Lead 64 is aligned again and must open. Cook lead
+		// is the harness; this is the block's (docs/PORTING.md I5).
+		for lead := 1; lead < 64; lead++ {
+			base, extent, intact := place(image, int64(len(image)), lead)
+			opened, _, _ := unit.open(base, extent)
+			if opened {
+				t.Fatalf("%s: lead %d opened, wanted refuse — an unaligned base", unit.name, lead)
+			}
+			if !intact() {
+				t.Fatalf("%s: lead %d wrote past the extent", unit.name, lead)
+			}
+		}
+		{
+			base, extent, intact := place(image, int64(len(image)), 64)
+			opened, facts, used := unit.open(base, extent)
+			if !opened {
+				t.Fatalf("%s: lead 64 refused, wanted open", unit.name)
+			}
+			checkWhole(t, unit.name, "lead 64", 64, base, extent, facts, used, intact)
+		}
+
 		r := rand.New(rand.NewPCG(seed, uint64(len(unit.name))))
 		for i := 0; i < n; i++ {
 			mutant := make([]byte, len(image))
