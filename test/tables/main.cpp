@@ -8640,9 +8640,8 @@ static void test_blob_json()
 
     // The variable-size reader counts, allocates, then decodes. Exercise both
     // passes with partial groups, padding and high-bit alphabet indices.
-    for ( const auto & row : { std::pair<const char *, std::string>( "Q=Q=A=A=", std::string( "A\0\0", 3 ) ),
-                              { "//==", std::string( "\xff", 1 ) },
-                              { "Q", "" } } )
+    for ( const auto & row : { std::pair<const char *, std::string>( "//==", std::string( "\xff", 1 ) ),
+                              { "/w==", std::string( "\xff", 1 ) } } )
     {
         std::string input = std::string( "{\"thumb\":\"" ) + row.first + "\"}";
         blobdemo::CatalogBuilder b;
@@ -8653,6 +8652,16 @@ static void test_blob_json()
         blobdemo::TableBytesView bytes = blobdemo::TableBytesAt( ctx, b.GetRoot()->thumb );
         CHECK( bytes.data != NULL && bytes.length == (int64_t) row.second.size() );
         CHECK( bytes.length == 0 || memcmp( bytes.data, row.second.data(), (size_t) bytes.length ) == 0 );
+    }
+    // Invalid Base64 (including mid-string padding, lone symbols, and lone '=')
+    // defaults the field and counts one kind mismatch (#715).
+    for ( const char * invalid : { "Q=Q=A=A=", "Q", "=" } )
+    {
+        std::string input = std::string( "{\"thumb\":\"" ) + invalid + "\"}";
+        blobdemo::CatalogBuilder b;
+        blobdemo::TableReport r;
+        bool ok = blobdemo::CatalogFromJson( b, input.data(), (int64_t) input.size(), &r );
+        CHECK( ok && !r.malformed && r.kind_mismatch == 1 );
     }
     // Invalid bytes, including the alphabet string's NUL terminator,
     // default the field and count one kind mismatch.

@@ -1201,12 +1201,39 @@ public final class TableJson {
             return true;
         }
         if (isBytes(f)) {
-            // base64 decodes STRAIGHT INTO the field's storage, six bits at a
-            // time — no window, no temporary, so a bytes(N) of any declared extent
-            // reads the same way. A base64 body carries no escapes, so a backslash
-            // in one is simply not an alphabet character.
+            // A base64 body carries no escapes, so a backslash in one is simply
+            // not an alphabet character. Validate the stream and its padding before
+            // touching storage, so a malformed body leaves the declared default.
             if (peek(in) != '"') { in.bad = true; return false; }
             in.pos++;
+            int mark = in.pos;
+            int symbols = 0;
+            int pad = 0;
+            boolean malformed = false;
+            for (;;) {
+                if (in.pos >= in.end) { in.bad = true; return false; }
+                int c = in.text[in.pos++] & 0xff;
+                if (c == '"') { break; }
+                if (malformed) { continue; }
+                if (c == '=') { pad++; continue; }
+                if (pad > 0) { malformed = true; continue; }
+                int at = BASE64_DECODE[c];
+                if (at < 0) { malformed = true; continue; }
+                symbols++;
+            }
+            if (!malformed) {
+                if (pad > 0) {
+                    if (pad > 2 || (symbols + pad) % 4 != 0 || symbols % 4 < 2) { malformed = true; }
+                } else if (symbols % 4 == 1) {
+                    malformed = true;
+                }
+            }
+            if (malformed) {
+                // a body that is not base64 is the wrong shape for the kind: the
+                // field keeps its default and the event is counted
+                in.report.kindMismatch++;
+                return true;
+            }
             byte[] storage = f.getBuffer.get(value);
             java.util.Arrays.fill(storage, 0, f.arrayBound, (byte) 0);
             putCount(value, f, 0);
@@ -1214,15 +1241,11 @@ public final class TableJson {
             int accumulator = 0;
             int held = 0;
             boolean clamped = false;
-            boolean malformed = false;
-            for (;;) {
-                if (in.pos >= in.end) { in.bad = true; return false; }
-                int c = in.text[in.pos++] & 0xff;
-                if (c == '"') { break; }
-                if (c == '=' || malformed) { continue; }
-                int at = BASE64_DECODE[c];
-                if (at < 0) { malformed = true; continue; }
-                accumulator = (accumulator << 6) | at;
+            for (int at = mark; ; at++) {
+                int c = in.text[at] & 0xff;
+                if (c == '"' || c == '=') { break; }
+                int symbol = BASE64_DECODE[c];
+                accumulator = (accumulator << 6) | symbol;
                 held += 6;
                 if (held >= 8) {
                     held -= 8;
@@ -1232,12 +1255,6 @@ public final class TableJson {
                         clamped = true;
                     }
                 }
-            }
-            if (malformed) {
-                // a body that is not base64 is the wrong shape for the kind: the
-                // field keeps its default and the event is counted
-                in.report.kindMismatch++;
-                return true;
             }
             if (clamped) { in.report.clamped++; }
             putCount(value, f, placed);

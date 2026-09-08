@@ -1601,12 +1601,45 @@ public static class TableJson
         }
         if (IsBytes(f))
         {
-            // base64 decodes STRAIGHT INTO the field's storage, six bits at a
-            // time — no window, no temporary, so a bytes(N) of any declared
-            // extent reads the same way. A base64 body carries no escapes, so a
-            // backslash in one is simply not an alphabet character.
+            // A base64 body carries no escapes, so a backslash in one is simply
+            // not an alphabet character. Validate the stream and its padding before
+            // touching storage, so a malformed body leaves the declared default.
             if (Peek(text, ref input) != '"') { input.Bad = true; return false; }
             input.Pos++;
+            int mark = input.Pos;
+            int symbols = 0;
+            int pad = 0;
+            bool malformed = false;
+            for (;;)
+            {
+                if (input.Pos >= text.Length) { input.Bad = true; return false; }
+                byte c = text[input.Pos++];
+                if (c == '"') { break; }
+                if (malformed) { continue; }
+                if (c == '=') { pad++; continue; }
+                if (pad > 0) { malformed = true; continue; }
+                int at = Base64Decode[c];
+                if (at < 0) { malformed = true; continue; }
+                symbols++;
+            }
+            if (!malformed)
+            {
+                if (pad > 0)
+                {
+                    if (pad > 2 || (symbols + pad) % 4 != 0 || symbols % 4 < 2) { malformed = true; }
+                }
+                else if (symbols % 4 == 1)
+                {
+                    malformed = true;
+                }
+            }
+            if (malformed)
+            {
+                // a body that is not base64 is the wrong shape for the kind:
+                // the field keeps its default and the event is counted
+                input.Report.KindMismatch++;
+                return true;
+            }
             byte[] storage = f.GetBuffer(value);
             Array.Clear(storage, 0, f.ArrayBound);
             PutCount(value, f, 0);
@@ -1614,16 +1647,12 @@ public static class TableJson
             uint accumulator = 0;
             int held = 0;
             bool clamped = false;
-            bool malformed = false;
-            for (;;)
+            for (int at = mark; ; at++)
             {
-                if (input.Pos >= text.Length) { input.Bad = true; return false; }
-                byte c = text[input.Pos++];
-                if (c == '"') { break; }
-                if (c == '=' || malformed) { continue; }
-                int at = Base64Decode[c];
-                if (at < 0) { malformed = true; continue; }
-                accumulator = (accumulator << 6) | (uint)at;
+                byte c = text[at];
+                if (c == '"' || c == '=') { break; }
+                int symbol = Base64Decode[c];
+                accumulator = (accumulator << 6) | (uint)symbol;
                 held += 6;
                 if (held >= 8)
                 {
@@ -1637,13 +1666,6 @@ public static class TableJson
                         clamped = true;
                     }
                 }
-            }
-            if (malformed)
-            {
-                // a body that is not base64 is the wrong shape for the kind:
-                // the field keeps its default and the event is counted
-                input.Report.KindMismatch++;
-                return true;
             }
             if (clamped) { input.Report.Clamped++; }
             PutCount(value, f, placed);

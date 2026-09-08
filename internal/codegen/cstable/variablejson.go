@@ -73,21 +73,52 @@ const tableVariableJsonSource = `
         }
         if (Peek(text, ref input) != '"') { input.Bad = true; return false; }
         input.Pos++;
-        int tokenBytes=text.Slice(input.Pos).IndexOf((byte)'"');
-        if(tokenBytes<0) { input.Bad=true; return false; }
-        byte[] bytes=new byte[(int)((long)tokenBytes*3/4)]; int count = 0, held = 0; uint accumulator = 0;
+        int mark = input.Pos;
+        int symbols = 0;
+        int pad = 0;
         bool malformed = false;
         for (;;)
         {
             if (input.Pos >= text.Length) { input.Bad = true; return false; }
-            byte c = text[input.Pos++]; if (c == '"') { break; }
-            if (c == '=' || malformed) { continue; }
-            int at = Base64Decode[c]; if (at < 0) { malformed = true; continue; }
-            accumulator = (accumulator << 6) | (uint)at; held += 6;
-            if (held >= 8) { held -= 8; bytes[count++] = (byte)(accumulator >> held); }
+            byte c = text[input.Pos++];
+            if (c == '"') { break; }
+            if (malformed) { continue; }
+            if (c == '=') { pad++; continue; }
+            if (pad > 0) { malformed = true; continue; }
+            int at = Base64Decode[c];
+            if (at < 0) { malformed = true; continue; }
+            symbols++;
+        }
+        if (!malformed)
+        {
+            if (pad > 0)
+            {
+                if (pad > 2 || (symbols + pad) % 4 != 0 || symbols % 4 < 2) { malformed = true; }
+            }
+            else if (symbols % 4 == 1)
+            {
+                malformed = true;
+            }
         }
         if (malformed) { input.Report.KindMismatch++; return true; }
-        Array.Resize(ref bytes, count); f.SetChild(owner, index, new TableBlob(bytes)); return true;
+        byte[] bytes = new byte[symbols * 6 / 8];
+        int count = 0, held = 0;
+        uint accumulator = 0;
+        for (int at = mark; ; at++)
+        {
+            byte c = text[at];
+            if (c == '"' || c == '=') { break; }
+            int symbol = Base64Decode[c];
+            accumulator = (accumulator << 6) | (uint)symbol;
+            held += 6;
+            if (held >= 8)
+            {
+                held -= 8;
+                if (count < bytes.Length) { bytes[count++] = (byte)(accumulator >> held); }
+            }
+        }
+        f.SetChild(owner, index, new TableBlob(bytes));
+        return true;
     }
     static bool WritePointer(ref Out o, object owner, TableFieldInfo f, int index, int depth)
     {

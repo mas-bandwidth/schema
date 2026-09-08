@@ -1983,30 +1983,62 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
     }
     if ( table_json_is_bytes( f ) )
     {
-        /* base64 decodes STRAIGHT INTO the field's storage, six bits at a
-           time — no window, no temporary, so a bytes(N) of any declared
-           extent reads the same way. A base64 body carries no escapes, so a
-           backslash in one is simply not an alphabet character. */
+        /* A base64 body carries no escapes, so a backslash in one is simply
+           not an alphabet character. Validate the stream and its padding before
+           touching storage, so a malformed body leaves the declared default. */
+        int64_t mark;
+        int64_t symbols = 0;
+        int64_t pad = 0;
+        int malformed = 0;
+        int64_t at;
         int32_t placed = 0;
         uint32_t accumulator = 0;
         int32_t held = 0;
         int clamped = 0;
-        int malformed = 0;
         if ( table_json_peek( in ) != '"' ) { in->bad = 1; return 0; }
         in->pos++;
-        memset( storage, 0, (size_t) f->array_bound );
-        table_json_set_count( base, f, 0 );
+        mark = in->pos;
         for ( ;; )
         {
             char c;
-            int32_t at;
+            int32_t val;
             if ( in->pos >= in->size ) { in->bad = 1; return 0; }
             c = in->text[in->pos++];
             if ( c == '"' ) { break; }
-            if ( c == '=' || malformed ) { continue; }
-            at = table_json_base64_value( (uint8_t) c );
-            if ( at < 0 ) { malformed = 1; continue; }
-            accumulator = ( accumulator << 6 ) | (uint32_t) at;
+            if ( malformed ) { continue; }
+            if ( c == '=' ) { pad++; continue; }
+            if ( pad > 0 ) { malformed = 1; continue; }
+            val = table_json_base64_value( (uint8_t) c );
+            if ( val < 0 ) { malformed = 1; continue; }
+            symbols++;
+        }
+        if ( !malformed )
+        {
+            if ( pad > 0 )
+            {
+                if ( pad > 2 || ( symbols + pad ) % 4 != 0 || symbols % 4 < 2 ) { malformed = 1; }
+            }
+            else if ( symbols % 4 == 1 )
+            {
+                malformed = 1;
+            }
+        }
+        if ( malformed )
+        {
+            /* a body that is not base64 is the wrong shape for the kind: the
+               field keeps its default and the event is counted */
+            in->report->kind_mismatch++;
+            return 1;
+        }
+        memset( storage, 0, (size_t) f->array_bound );
+        table_json_set_count( base, f, 0 );
+        for ( at = mark; ; at++ )
+        {
+            char c = in->text[at];
+            int32_t symbol;
+            if ( c == '"' || c == '=' ) { break; }
+            symbol = table_json_base64_value( (uint8_t) c );
+            accumulator = ( accumulator << 6 ) | (uint32_t) symbol;
             held += 6;
             if ( held >= 8 )
             {
@@ -2020,13 +2052,6 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
                     clamped = 1;
                 }
             }
-        }
-        if ( malformed )
-        {
-            /* a body that is not base64 is the wrong shape for the kind: the
-               field keeps its default and the event is counted */
-            in->report->kind_mismatch++;
-            return 1;
         }
         if ( clamped ) { in->report->clamped++; }
         table_json_set_count( base, f, placed );
