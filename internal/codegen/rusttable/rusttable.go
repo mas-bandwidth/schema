@@ -132,12 +132,13 @@ func Modules(out map[string][]byte) []string {
 }
 
 type gen struct {
-	unit     *ir.Unit
-	file     *ir.File
-	variable map[string]bool
-	closure  map[string]bool
-	blocks   *ir.BlockUnit
-	banner   string
+	messageSlots map[string]uint64
+	unit         *ir.Unit
+	file         *ir.File
+	variable     map[string]bool
+	closure      map[string]bool
+	blocks       *ir.BlockUnit
+	banner       string
 
 	// owner is the closure member whose codec is being emitted. It decides
 	// how an enum-keyed array is REACHED: a `table` declaration's storage is

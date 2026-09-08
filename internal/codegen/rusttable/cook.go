@@ -793,6 +793,7 @@ func buildVersionModule(u *ir.Unit) []byte {
 		fmt.Fprintf(&b, "if core::mem::align_of::<%s>()>alignment {alignment=core::mem::align_of::<%s>();}\n", name, name)
 	}
 	b.WriteString("alignment };\n")
+	emitAnnouncement(&b, u)
 
 	return []byte(b.String())
 }

@@ -341,6 +341,7 @@ impl<'a> TableContext<'a> {
 }
 #[allow(clippy::type_complexity)]
 pub struct TableSequenceInfo {
+ pub message_save:unsafe fn(&mut TableMessageWriter,*const u8)->bool,
     pub map_entry: Option<fn() -> &'static TableTypeInfo>,
     pub type_id: fn() -> core::any::TypeId,
     pub size: usize,

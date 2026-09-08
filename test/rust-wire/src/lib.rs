@@ -1568,3 +1568,189 @@ mod worker_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod message_foundation_tests {
+    use rustgraph::*;
+
+    fn announcement(words: &[u8], version: u64) -> Vec<u8> {
+        let mut bytes = vec![0; words.len() + 100];
+        let mut ids = [0; 8];
+        let mut w = TableWriter::new(Some(&mut bytes), &mut ids);
+        w.put8(1);
+        w.putid(u64::MAX - 1);
+        w.put8(9);
+        w.put64(version);
+        w.putid(u64::MAX - 2);
+        w.put8(14);
+        assert!(w.framed(|w| {
+            w.put8(6);
+            w.putleb(words.len() as u64);
+            w.raw(words);
+            true
+        }));
+        w.putleb(0);
+        let n = w.finish();
+        assert!(n >= 0);
+        bytes.truncate(n as usize);
+        bytes
+    }
+    #[test]
+    fn announcement_is_caller_owned_once_and_terminal() {
+        let mut storage = [TableMessageEntry::default(); TABLE_MESSAGE_ENTRIES];
+        let mut vocabulary = TableVocabulary::new(&mut storage);
+        let mut bytes = vec![0; announce_measure()];
+        assert_eq!(announce(&mut bytes), Ok(bytes.len()));
+        let mut report = TableReport::default();
+        assert_eq!(announce_read(&mut vocabulary, &bytes, &mut report), Ok(()));
+        assert_eq!(report, TableReport::default());
+        bytes.fill(0);
+        drop(bytes);
+        assert!(vocabulary.is_announced());
+        assert_eq!(vocabulary.build_version(), BUILD_VERSION);
+        assert_eq!(vocabulary.entries().len(), TABLE_MESSAGE_ENTRIES);
+        assert_eq!(vocabulary.reference_bits(), TABLE_MESSAGE_REF_BITS);
+        assert_eq!(
+            announce_read(&mut vocabulary, &[], &mut report),
+            Err(TableMessageError::Refused(
+                TableMessageReason::SecondAnnouncement
+            ))
+        );
+        assert!(vocabulary.is_announced());
+        assert!(!report.malformed);
+        let mut empty = [];
+        let mut refused = TableVocabulary::new(&mut empty);
+        let mut report = TableReport::default();
+        assert_eq!(
+            announce_read(&mut refused, TABLE_ANNOUNCEMENT, &mut report),
+            Err(TableMessageError::Refused(
+                TableMessageReason::VocabularyTooLarge
+            ))
+        );
+        assert_eq!(refused.build_version(), BUILD_VERSION);
+        assert!(!refused.is_announced());
+        assert!(!report.malformed);
+        assert_eq!(
+            announce_read(&mut refused, &[], &mut report),
+            Err(TableMessageError::Refused(
+                TableMessageReason::SecondAnnouncement
+            ))
+        );
+    }
+    #[test]
+    fn every_committed_peer_announcement_resolves() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let manifest =
+            std::fs::read_to_string(root.join("testdata/conformance/tables/MANIFEST.txt")).unwrap();
+        let mut checked = 0;
+        for row in manifest.lines().filter(|s| s.starts_with("connection ")) {
+            let fields: Vec<_> = row.split_whitespace().collect();
+            let wire = std::fs::read(root.join(fields[4])).unwrap();
+            let mut entries = vec![TableMessageEntry::default(); 4096];
+            let mut vocabulary = TableVocabulary::new(&mut entries);
+            let mut report = TableReport::default();
+            assert_eq!(
+                announce_read(&mut vocabulary, &wire, &mut report),
+                Ok(()),
+                "{}: {:?}",
+                fields[1],
+                report
+            );
+            assert_eq!(
+                vocabulary.build_version(),
+                u64::from_str_radix(fields[3].trim_start_matches("0x"), 16).unwrap()
+            );
+            assert_eq!(report, TableReport::default());
+            checked += 1;
+        }
+        assert!(checked >= 5);
+    }
+    #[test]
+    fn malformed_shapes_are_terminal_and_capacity_precedes_entry_parse() {
+        let mut bad = Vec::new();
+        for shape in [
+            vec![6, 1, 9, 0],
+            vec![14, 2, 1, 6, 0],
+            vec![14, 0, 1, 12, 1],
+            vec![34],
+            vec![6, 1, 128, 0],
+        ] {
+            let mut entry = 123u64.to_le_bytes().to_vec();
+            entry.extend(shape);
+            bad.push(entry);
+        }
+        let entry = [123u64.to_le_bytes().as_slice(), &[0]].concat();
+        bad.push([entry.as_slice(), entry.as_slice()].concat());
+        bad.push(
+            [
+                u64::MAX.to_le_bytes().as_slice(),
+                &[0],
+                u64::MAX.to_le_bytes().as_slice(),
+                &[32],
+            ]
+            .concat(),
+        );
+        for words in bad {
+            let bytes = announcement(&words, 77);
+            let mut entries = [TableMessageEntry::default(); 8];
+            let mut vocabulary = TableVocabulary::new(&mut entries);
+            let mut report = TableReport::default();
+            assert_eq!(
+                announce_read(&mut vocabulary, &bytes, &mut report),
+                Err(TableMessageError::Damaged),
+                "{words:?}"
+            );
+            assert_eq!(vocabulary.build_version(), 77);
+            assert!(!vocabulary.is_announced());
+            assert!(report.malformed);
+            assert_eq!(
+                announce_read(&mut vocabulary, TABLE_ANNOUNCEMENT, &mut report),
+                Err(TableMessageError::Refused(
+                    TableMessageReason::SecondAnnouncement
+                ))
+            );
+        }
+    }
+    #[test]
+    fn bit_stream_matches_literal_bit_order_for_every_width_and_tail() {
+        let value = 0xfedcba98765432100123456789abcdefu128;
+        for lead in 0..8 {
+            for width in 0..=128 {
+                let n = (lead + width + 7) / 8;
+                for capacity in [n, n + 12] {
+                    let mut bytes = vec![0xff; capacity];
+                    let mut expected = vec![0; capacity];
+                    for i in 0..width {
+                        if value >> i & 1 != 0 {
+                            expected[(lead + i) / 8] |= 1 << ((lead + i) % 8);
+                        }
+                    }
+                    let mut w = TableBitWriter::new(Some(&mut bytes));
+                    w.put(0, lead);
+                    w.put128(value, width);
+                    assert_eq!(w.finish(), Ok(n));
+                    assert_eq!(&bytes[..n], &expected[..n]);
+                    let mut r = TableBitReader::new(&bytes[..n]);
+                    assert_eq!(r.get(lead), Some(0));
+                    let mask = if width == 128 {
+                        u128::MAX
+                    } else {
+                        (1u128 << width) - 1
+                    };
+                    assert_eq!(r.get128(width), Some(value & mask));
+                    assert!(r.finish());
+                }
+                if n > 0 {
+                    let mut short = vec![0; n - 1];
+                    let mut w = TableBitWriter::new(Some(&mut short));
+                    w.put(0, lead);
+                    w.put128(value, width);
+                    assert_eq!(w.finish(), Err(TableMessageError::BufferTooSmall));
+                }
+            }
+        }
+        let mut r = TableBitReader::new(&[0x80]);
+        assert_eq!(r.get(1), Some(0));
+        assert!(!r.finish());
+    }
+}

@@ -29,6 +29,7 @@ func runtimeModule(u *ir.Unit, closure map[string]bool) []byte {
 	b.WriteString(mapRuntime)
 	b.WriteString(packRuntime)
 	b.WriteString(graphJsonRuntime)
+	b.WriteString(messageRuntime)
 	return []byte(b.String())
 }
 
@@ -88,6 +89,7 @@ pub struct TableReport {
     // Repeated ordinary wire fields replace silently.
     pub duplicate: i32,
     pub verdict: TableOpenVerdict,
+    pub reason: TableMessageReason,
     pub malformed: bool, // framing damage; decode stopped, partial result kept
 }
 
@@ -315,6 +317,8 @@ pub struct TableFieldInfo {
 
 #[allow(clippy::type_complexity)] // type-erased visitors retain their borrow lifetimes
 pub struct TableTypeInfo {
+    pub message_slot:u64,
+    pub message_save:unsafe fn(&mut TableMessageWriter,*const u8)->bool,
     pub wire_extent: Option<fn(TableReader,&mut usize)->Result<(),TableRefuseReason>>,
     pub blob: u8, // 0 record, 1 bytes, 2 UTF-8 string
     pub id: u64,

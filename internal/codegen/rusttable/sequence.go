@@ -80,6 +80,10 @@ func (g *gen) emitSequences(st *ir.Struct) {
 		}
 		g.emitSaveElement(&element, expr, true)
 		g.pf("!w.overflow }}\n")
+		g.pf("unsafe fn message_save(w:&mut TableMessageWriter,p:*const u8)->bool {unsafe{let value=&*(p as *const %s);\n", typ)
+		entry := ir.TableFieldEntry(f)
+		g.emitMessageElement(&element, entry.Shape.Elem, *entry.Shape.Inner, "(*value)")
+		g.pf("!w.bits.is_overflow()}}\n")
 		g.pf("unsafe fn load(r:&mut TableReader,report:&mut TableReport,p:*mut u8,kind:u8)->bool {unsafe{let value=&mut*(p as *mut %s);let _=kind;\n", typ)
 		if widenable(&element) {
 			g.pf("if kind!=%d {\n", ir.TableWireElemKind(f))
@@ -123,7 +127,7 @@ func (g *gen) emitSequences(st *ir.Struct) {
 		if f.IsMap() {
 			mapEntry = "Some(" + fn(f.MapEntry.Name, "table_type") + ")"
 		}
-		g.pf("static INFO:TableSequenceInfo=TableSequenceInfo {map_entry:%s,type_id:core::any::TypeId::of::<%s>,size:table_sequence_size::<%s>(),align:core::mem::align_of::<%s>(),kind:%d,floor:%d,initialize:|p|unsafe{(p as *mut %s).write(<%s>::default());},save,load,visit:visit_refs,rewrite,extent:%s}; &INFO }\n", mapEntry, typ, typ, typ, ir.TableWireElemKind(f), floor, typ, typ, extent)
+		g.pf("static INFO:TableSequenceInfo=TableSequenceInfo {message_save,map_entry:%s,type_id:core::any::TypeId::of::<%s>,size:table_sequence_size::<%s>(),align:core::mem::align_of::<%s>(),kind:%d,floor:%d,initialize:|p|unsafe{(p as *mut %s).write(<%s>::default());},save,load,visit:visit_refs,rewrite,extent:%s}; &INFO }\n", mapEntry, typ, typ, typ, ir.TableWireElemKind(f), floor, typ, typ, extent)
 		if f.IsMap() {
 			g.emitMapEntryAPI(f)
 		}

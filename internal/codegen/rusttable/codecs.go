@@ -33,6 +33,7 @@ func (g *gen) tableModule() []byte {
 			g.emitUnionStorage(u)
 		}
 		g.emitUnionWire(u)
+		g.emitMessageUnion(u)
 	}
 	for _, e := range enums {
 		g.emitEnumIdentity(e)
@@ -50,6 +51,7 @@ func (g *gen) tableModule() []byte {
 		}
 		g.emitRecordRuntime(st)
 		g.emitSave(st)
+		g.emitMessageSave(st)
 		g.emitLoad(st)
 	}
 	g.owner = nil

@@ -53,6 +53,8 @@ macro_rules! table_blob_info {
     ($function:ident,$name:literal,$blob:literal) => {
         pub fn $function() -> &'static TableTypeInfo {
             static INFO: TableTypeInfo = TableTypeInfo {
+ message_slot:crate::TABLE_MESSAGE_BLOB_SLOTS[$blob-1],
+ message_save:|w,p|unsafe{let n=(p as *const u32).read() as usize;w.bits.put(n as u64,32);w.bits.align();w.bits.raw(core::slice::from_raw_parts(p.add(8),n));!w.bits.overflow},
                 wire_extent: None,
                 name: $name,
                 id: table_blob_id($name.as_bytes()),

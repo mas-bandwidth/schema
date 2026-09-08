@@ -58,6 +58,11 @@ func (g *gen) emitDescriptor(st *ir.Struct) {
 		extent = "Some(" + fn(st.Name, "wire_extent") + ")"
 	}
 	g.pf("wire_extent:%s,\n", extent)
+	slot := uint64(0)
+	if st.IsTable && st.MapEntryOf == "" {
+		slot = g.messageName(ir.TableWireId(st.WireName()))
+	}
+	g.pf("message_slot:%d,message_save:|w,p|unsafe{%s(w,&*(p as *const %s))},\n", slot, fn(st.Name, "save_message_body"), st.Name)
 	g.pf("        name: %q, blob: 0,\n", st.Name)
 	g.pf("id: 0x%016x, align: core::mem::align_of::<%s>() as u32,\n initialize: |p| unsafe { (p as *mut %s).write(%s::default()); },\n save_body: |w,p| unsafe { %s(w,&*(p as *const %s)) },\n load_body: |r,report,p| unsafe { %s(r,report,&mut *(p as *mut %s)) },\n visit_refs: %s, rewrite_refs: %s,\n", ir.TableWireId(st.WireName()), st.Name, st.Name, st.Name, fn(st.Name, "save_body"), st.Name, fn(st.Name, "load_body"), st.Name, fn(st.Name, "visit_refs"), fn(st.Name, "rewrite_refs"))
 	g.pf("        size: core::mem::size_of::<%s>() as u32,\n", st.Name)
