@@ -23,6 +23,12 @@ import (
 //
 // Because i <= length is guaranteed, length - i never underflows or overflows,
 // eliminating the integer wrap completely without requiring 64-bit promotion.
+//
+// NOTE: This test pins the emitted loop condition text across generated outputs.
+// A full behavioral reproduction at INT32_MAX requires allocating a 2 GiB input buffer
+// and writing ~2.87 GiB of Base64 text, taking minutes of execution time and exceeding
+// the two-second per-commit unit test budget. The behavioral reproduction under Clang
+// UBSan (-fsanitize=undefined) is tracked as a certify-tier suite item in #746.
 func TestIssue714Base64WriterIntegerWrap(t *testing.T) {
 	u := unitFromSource(t, "package p\ntable Blob { payload bytes(16) }\n")
 	c := New()
