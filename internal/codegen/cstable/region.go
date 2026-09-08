@@ -403,7 +403,12 @@ const tableRegionSource = `
             return r.Offset == r.Buffer.Length || Damage(report);
         }
         if (kind == 15) { return NativeReadElement(ref state, ref r, value, f, 0, kind, report, true); }
-        if (kind == 17) { if (!NativeReadElement(ref state, ref r, value, f, 0, kind, report, true)) { return false; } return r.Offset == r.Buffer.Length || Damage(report); }
+        if (kind == 17)
+        {
+            if (!r.Var(out ulong indexValue) || r.Offset != r.Buffer.Length) { return Damage(report); }
+            NativePointer(ref state, value, f, 0, indexValue, report);
+            return true;
+        }
         if (kind == 12 || kind == 33)
         {
             NativeResetArm(value, f);
