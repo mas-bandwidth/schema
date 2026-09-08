@@ -912,7 +912,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("        TableSlot<%s> slot = main.Alloc<%s>();\n", n, n)
 	g.pf("        root_ref = slot.ref;\n")
 	g.pf("    }\n")
-	g.pf("    ~%sBuilder() { TableArenaShutdown( arena ); arena.allocator.free( arena.allocator.context, region ); }\n", n)
+	g.pf("    ~%sBuilder() { TableArenaShutdown( arena ); table_release( arena.allocator, region ); }\n", n)
 	g.pf("    %sBuilder( const %sBuilder & ) = delete;\n", n, n)
 	g.pf("    %sBuilder & operator=( const %sBuilder & ) = delete;\n\n", n, n)
 	g.pf("    // Alloc a node in THIS thread's slab: no lock, no atomic per node.\n")
@@ -969,7 +969,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    // the AUTHORING path may allocate (§6.5), and it does so through the\n")
 	g.pf("    // builder's own pair. The region comes back ZEROED, which is the\n")
 	g.pf("    // allocator's contract: a packed region carries node padding.\n")
-	g.pf("    uint8_t * packed = (uint8_t *) arena.allocator.alloc( arena.allocator.context, total );\n")
+	g.pf("    uint8_t * packed = (uint8_t *) table_allocate( arena.allocator, total );\n")
 	g.pf("    if ( packed == NULL ) { TablePackMapShutdown( seen ); return false; }\n")
 	if g.anyExtent {
 		g.pf("    int64_t used = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( %s ) ) + root_extent );\n", n)
@@ -986,7 +986,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    if ( TablePackMapReach( seen, (const void *) &root, 0, root_taken, root_slot ) == NULL ||\n")
 	g.pf("         !%sPack( ctx, seen, root, *destination, packed, total, used ) || used != total )\n    {\n", n)
 	g.pf("        TablePackMapShutdown( seen );\n")
-	g.pf("        arena.allocator.free( arena.allocator.context, packed );\n        return false;\n    }\n")
+	g.pf("        table_release( arena.allocator, packed );\n        return false;\n    }\n")
 	g.pf("    TablePackMapShutdown( seen );\n")
 	g.pf("    region = packed;\n")
 	g.pf("    region_bytes = total;\n")
@@ -1113,7 +1113,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    // It goes through the builder's own pair, like everything else the\n")
 	g.pf("    // builder reaches, and the entries come back zeroed.\n")
 	g.pf("    const TableAllocator allocator = builder.arena.allocator;\n")
-	g.pf("    TableNodeDirEntry * directory = (TableNodeDirEntry *) allocator.alloc( allocator.context, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) );\n")
+	g.pf("    TableNodeDirEntry * directory = (TableNodeDirEntry *) table_allocate( allocator, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) );\n")
 	g.pf("    if ( directory == NULL ) { out->malformed = true; return false; }\n")
 	g.pf("    directory[0].offset = (uint64_t) builder.root_ref.value;\n")
 	g.pf("    directory[0].type_id = 0x%016xull;\n", ir.TableWireId(st.WireName()))
@@ -1178,7 +1178,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 		g.pf("    // holds what it held when the count was met\n")
 		g.pf("    ok = ok && !nodes.refused;\n")
 	}
-	g.pf("    allocator.free( allocator.context, directory );\n")
+	g.pf("    table_release( allocator, directory );\n")
 	g.pf("    return ok;\n}\n\n")
 }
 
