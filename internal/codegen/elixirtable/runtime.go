@@ -1082,56 +1082,78 @@ const runtimeSource = `  @moduledoc """
   defp read_base64(value, f, text, pos, report) do
     {c, pos} = peek(text, pos)
     if c != ?", do: bad(value, report)
-    decode64(value, f, text, pos + 1, 0, 0, [], 0, false, false, report)
+
+    case validate_base64(text, pos + 1, 0, 0, false, value, report) do
+      {:ok, end_pos} ->
+        decode64(value, f, text, pos + 1, end_pos, 0, 0, [], 0, false, report)
+
+      {:mismatch, end_pos} ->
+        {value, end_pos, kind_mismatch(report)}
+    end
   end
 
-  defp decode64(value, f, text, pos, acc, held, out, used, clamped, malformed, report) do
-    cond do
-      pos >= byte_size(text) ->
-        bad(value, report)
+  defp validate_base64(text, pos, symbols, pad, malformed, value, report) do
+    if pos >= byte_size(text), do: bad(value, report)
 
-      :binary.at(text, pos) == ?" ->
+    case :binary.at(text, pos) do
+      ?" ->
         cond do
           malformed ->
-            {value, pos + 1, kind_mismatch(report)}
+            {:mismatch, pos + 1}
+
+          pad > 0 and (rem(symbols + pad, 4) != 0 or rem(symbols, 4) < 2 or pad > 2) ->
+            {:mismatch, pos + 1}
+
+          pad == 0 and rem(symbols, 4) == 1 ->
+            {:mismatch, pos + 1}
 
           true ->
-            report = if clamped, do: clamped(report), else: report
-            {Map.put(value, f.key, IO.iodata_to_binary(Enum.reverse(out))), pos + 1, report}
+            {:ok, pos + 1}
         end
 
+      ?= ->
+        validate_base64(text, pos + 1, symbols, pad + 1, malformed, value, report)
+
+      c ->
+        if pad > 0 do
+          validate_base64(text, pos + 1, symbols, pad, true, value, report)
+        else
+          case elem(@decode64_lookup, c) do
+            nil ->
+              validate_base64(text, pos + 1, symbols, 0, true, value, report)
+
+            _at ->
+              validate_base64(text, pos + 1, symbols + 1, 0, malformed, value, report)
+          end
+        end
+    end
+  end
+
+  defp decode64(value, f, text, pos, end_pos, acc, held, out, used, clamped, report) do
+    c = :binary.at(text, pos)
+
+    cond do
+      c == ?" or c == ?= ->
+        report = if clamped, do: clamped(report), else: report
+        {Map.put(value, f.key, IO.iodata_to_binary(Enum.reverse(out))), end_pos, report}
+
       true ->
-        c = :binary.at(text, pos)
+        at = elem(@decode64_lookup, c)
+        acc2 = (acc <<< 6) ||| at
+        held2 = held + 6
 
-        cond do
-          c == ?= or malformed ->
-            decode64(value, f, text, pos + 1, acc, held, out, used, clamped, malformed, report)
+        if held2 >= 8 do
+          held3 = held2 - 8
+          byte = acc2 >>> held3 &&& 0xFF
+          acc2 = acc2 &&& ((1 <<< held3) - 1)
 
-          true ->
-            case elem(@decode64_lookup, c) do
-              nil ->
-                decode64(value, f, text, pos + 1, acc, held, out, used, clamped, true, report)
-
-              at ->
-                acc2 = (acc <<< 6) ||| at
-                held2 = held + 6
-
-                if held2 >= 8 do
-                  held3 = held2 - 8
-                  byte = acc2 >>> held3 &&& 0xFF
-                  # Only the unconsumed bits belong to the next byte. Keeping
-                  # consumed bits grows a bignum with every input character.
-                  acc2 = acc2 &&& ((1 <<< held3) - 1)
-
-                  if used < f.bound do
-                    decode64(value, f, text, pos + 1, acc2, held3, [byte | out], used + 1, clamped, false, report)
-                  else
-                    decode64(value, f, text, pos + 1, acc2, held3, out, used, true, false, report)
-                  end
-                else
-                  decode64(value, f, text, pos + 1, acc2, held2, out, used, clamped, false, report)
-                end
-            end
+          if used < f.bound do
+            decode64(value, f, text, pos + 1, end_pos, acc2, held3, [byte | out], used + 1, clamped, report)
+          else
+            decode64(value, f, text, pos + 1, end_pos, acc2, held3, out, used, true, report)
+          end
+        else
+          decode64(value, f, text, pos + 1, end_pos, acc2, held2, out, used, clamped, report)
         end
     end
   end

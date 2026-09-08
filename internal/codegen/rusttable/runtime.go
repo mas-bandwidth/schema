@@ -2283,31 +2283,55 @@ unsafe fn table_json_read_field(
                 return false;
             }
             input.pos += 1;
+            let mut pos = input.pos;
+            let mut pad = 0i32;
+            let mut symbols = 0i32;
+            let mut malformed = false;
+            loop {
+                if pos >= input.text.len() {
+                    input.bad = true;
+                    return false;
+                }
+                let c = input.text[pos];
+                pos += 1;
+                if c == b'"' {
+                    break;
+                }
+                if c == b'=' {
+                    pad += 1;
+                    continue;
+                }
+                if pad > 0 {
+                    malformed = true;
+                    continue;
+                }
+                if c >= 128 || TABLE_JSON_BASE64_DECODE[c as usize] < 0 {
+                    malformed = true;
+                    continue;
+                }
+                symbols += 1;
+            }
+            if malformed
+                || (pad > 0 && ((symbols + pad) % 4 != 0 || symbols % 4 < 2 || pad > 2))
+                || (pad == 0 && symbols % 4 == 1)
+            {
+                input.pos = pos;
+                report.kind_mismatch += 1;
+                return true;
+            }
             ptr::write_bytes(storage, 0, f.array_bound as usize);
             table_json_set_count(base, f, 0);
             let mut placed = 0i32;
             let mut accumulator = 0u32;
             let mut held = 0i32;
             let mut clamped = false;
-            let mut malformed = false;
-            loop {
-                if input.pos >= input.text.len() {
-                    input.bad = true;
-                    return false;
-                }
+            while input.pos < pos {
                 let c = input.text[input.pos];
                 input.pos += 1;
-                if c == b'"' {
+                if c == b'"' || c == b'=' {
                     break;
                 }
-                if c == b'=' || malformed {
-                    continue;
-                }
                 let at = TABLE_JSON_BASE64_DECODE[c as usize];
-                if at < 0 {
-                    malformed = true;
-                    continue;
-                }
                 accumulator = (accumulator << 6) | at as u32;
                 held += 6;
                 if held >= 8 {
@@ -2323,12 +2347,7 @@ unsafe fn table_json_read_field(
                     }
                 }
             }
-            if malformed {
-                // a body that is not base64 is the wrong shape for the kind:
-                // the field keeps its default and the event is counted
-                report.kind_mismatch += 1;
-                return true;
-            }
+            input.pos = pos;
             if clamped {
                 report.clamped += 1;
             }

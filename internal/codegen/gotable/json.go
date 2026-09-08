@@ -1545,22 +1545,17 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 		return true
 	}
 	if tableJsonIsBytes(f) {
-		// base64 decodes STRAIGHT INTO the field's storage, six bits at a time
-		// — no window, no temporary, so a bytes(N) of any declared extent reads
-		// the same way. A base64 body carries no escapes, so a backslash in one
-		// is simply not an alphabet character.
+		// A base64 body carries no escapes, so a backslash in one is simply
+		// not an alphabet character. Validate the stream and its padding before
+		// touching storage, so a malformed body leaves the declared default.
 		if in.peek() != '"' {
 			in.bad = true
 			return false
 		}
 		in.pos++
-		buffer := tableJsonBytes(storage, f.ArrayBound)
-		clear(buffer)
-		tableJsonSetCount(base, f, 0)
-		placed := int32(0)
-		accumulator := uint32(0)
-		held := int32(0)
-		clamped := false
+		mark := in.pos
+		symbols := 0
+		pad := 0
 		malformed := false
 		for {
 			if in.pos >= len(in.text) {
@@ -1572,7 +1567,15 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 			if c == '"' {
 				break
 			}
-			if c == '=' || malformed {
+			if malformed {
+				continue
+			}
+			if c == '=' {
+				pad++
+				continue
+			}
+			if pad > 0 {
+				malformed = true
 				continue
 			}
 			at := tableJsonBase64Decode[c]
@@ -1580,7 +1583,37 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 				malformed = true
 				continue
 			}
-			accumulator = accumulator<<6 | uint32(at)
+			symbols++
+		}
+		if !malformed {
+			if pad > 0 {
+				if pad > 2 || (symbols+pad)%4 != 0 || symbols%4 < 2 {
+					malformed = true
+				}
+			} else if symbols%4 == 1 {
+				malformed = true
+			}
+		}
+		if malformed {
+			// a body that is not base64 is the wrong shape for the kind: the
+			// field keeps its default and the event is counted
+			in.report.KindMismatch++
+			return true
+		}
+		buffer := tableJsonBytes(storage, f.ArrayBound)
+		clear(buffer)
+		tableJsonSetCount(base, f, 0)
+		placed := int32(0)
+		accumulator := uint32(0)
+		held := int32(0)
+		clamped := false
+		for at := mark; ; at++ {
+			c := in.text[at]
+			if c == '"' || c == '=' {
+				break
+			}
+			symbol := tableJsonBase64Decode[c]
+			accumulator = accumulator<<6 | uint32(symbol)
 			held += 6
 			if held >= 8 {
 				held -= 8
@@ -1591,12 +1624,6 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 					clamped = true
 				}
 			}
-		}
-		if malformed {
-			// a body that is not base64 is the wrong shape for the kind: the
-			// field keeps its default and the event is counted
-			in.report.KindMismatch++
-			return true
 		}
 		if clamped {
 			in.report.Clamped++

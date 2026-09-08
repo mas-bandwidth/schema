@@ -2770,28 +2770,57 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
     }
     if ( TableJsonIsBytes( f ) )
     {
-        // base64 decodes STRAIGHT INTO the field's storage, six bits at a
-        // time — no window, no temporary, so a bytes(N) of any declared
-        // extent reads the same way. A base64 body carries no escapes, so a
-        // backslash in one is simply not an alphabet character.
+        // A base64 body carries no escapes, so a backslash in one is simply
+        // not an alphabet character. Validate the stream and its padding before
+        // touching storage, so a malformed body leaves the declared default.
         if ( TableJsonPeek( in ) != '"' ) { in.bad = true; return false; }
         in.pos++;
-        memset( storage, 0, (size_t) f->array_bound );
-        TableJsonSetCount( base, f, 0 );
-        int32_t placed = 0;
-        uint32_t accumulator = 0;
-        int32_t held = 0;
-        bool clamped = false;
+        const int64_t mark = in.pos;
+        int64_t symbols = 0;
+        int64_t pad = 0;
         bool malformed = false;
         for ( ;; )
         {
             if ( in.pos >= in.size ) { in.bad = true; return false; }
             char c = in.text[in.pos++];
             if ( c == '"' ) { break; }
-            if ( c == '=' || malformed ) { continue; }
+            if ( malformed ) { continue; }
+            if ( c == '=' ) { pad++; continue; }
+            if ( pad > 0 ) { malformed = true; continue; }
             const int32_t at = TableJsonBase64Value( (uint8_t) c );
             if ( at < 0 ) { malformed = true; continue; }
-            accumulator = ( accumulator << 6 ) | (uint32_t) at;
+            symbols++;
+        }
+        if ( !malformed )
+        {
+            if ( pad > 0 )
+            {
+                if ( pad > 2 || ( symbols + pad ) % 4 != 0 || symbols % 4 < 2 ) { malformed = true; }
+            }
+            else if ( symbols % 4 == 1 )
+            {
+                malformed = true;
+            }
+        }
+        if ( malformed )
+        {
+            // a body that is not base64 is the wrong shape for the kind: the
+            // field keeps its default and the event is counted
+            in.report->kind_mismatch++;
+            return true;
+        }
+        memset( storage, 0, (size_t) f->array_bound );
+        TableJsonSetCount( base, f, 0 );
+        int32_t placed = 0;
+        uint32_t accumulator = 0;
+        int32_t held = 0;
+        bool clamped = false;
+        for ( int64_t at = mark; ; at++ )
+        {
+            char c = in.text[at];
+            if ( c == '"' || c == '=' ) { break; }
+            const int32_t symbol = TableJsonBase64Value( (uint8_t) c );
+            accumulator = ( accumulator << 6 ) | (uint32_t) symbol;
             held += 6;
             if ( held >= 8 )
             {
@@ -2805,13 +2834,6 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
                     clamped = true;
                 }
             }
-        }
-        if ( malformed )
-        {
-            // a body that is not base64 is the wrong shape for the kind: the
-            // field keeps its default and the event is counted
-            in.report->kind_mismatch++;
-            return true;
         }
         if ( clamped ) { in.report->clamped++; }
         TableJsonSetCount( base, f, placed );
@@ -3336,6 +3358,7 @@ inline bool TableJsonReadBlob( TableJsonIn & in, void * slot, const TableFieldIn
     // base64: the alphabet characters decide the length, six bits apiece
     const int64_t mark = in.pos + 1;
     int64_t symbols = 0;
+    int64_t pad = 0;
     bool malformed = false;
     in.pos++;
     for ( ;; )
@@ -3343,9 +3366,22 @@ inline bool TableJsonReadBlob( TableJsonIn & in, void * slot, const TableFieldIn
         if ( in.pos >= in.size ) { in.bad = true; return false; }
         char c = in.text[in.pos++];
         if ( c == '"' ) { break; }
-        if ( c == '=' || malformed ) { continue; }
+        if ( malformed ) { continue; }
+        if ( c == '=' ) { pad++; continue; }
+        if ( pad > 0 ) { malformed = true; continue; }
         if ( TableJsonBase64Value( (uint8_t) c ) < 0 ) { malformed = true; continue; }
         symbols++;
+    }
+    if ( !malformed )
+    {
+        if ( pad > 0 )
+        {
+            if ( pad > 2 || ( symbols + pad ) % 4 != 0 || symbols % 4 < 2 ) { malformed = true; }
+        }
+        else if ( symbols % 4 == 1 )
+        {
+            malformed = true;
+        }
     }
     if ( malformed )
     {
@@ -3361,9 +3397,8 @@ inline bool TableJsonReadBlob( TableJsonIn & in, void * slot, const TableFieldIn
     for ( int64_t at = mark; ; at++ )
     {
         char c = in.text[at];
-        if ( c == '"' ) { break; }
+        if ( c == '"' || c == '=' ) { break; }
         const int32_t symbol = TableJsonBase64Value( (uint8_t) c );
-        if ( symbol < 0 ) { continue; }
         accumulator = ( accumulator << 6 ) | (uint32_t) symbol;
         held += 6;
         if ( held >= 8 )

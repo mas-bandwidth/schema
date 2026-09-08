@@ -54,10 +54,17 @@ func corpus() []vector {
 		add(fmt.Sprintf("unpadded-%d", n), strings.TrimRight(encoded, "="), payload, false)
 	}
 	for _, v := range []struct{ text, want string }{
-		{"=", ""}, {"Q", ""}, {"Q=Q==", "A"}, {"Q=Q=A=A=", "A\x00\x00"},
-		{"QQ==Q", "A\x04"}, {"/w==", "\xff"}, {"//==", "\xff"},
+		{"/w==", "\xff"}, {"//==", "\xff"},
 	} {
 		add("padding-"+v.text, v.text, []byte(v.want), false)
+	}
+	// Under SPEC-TABLES §16.2 and Issue #715, mid-string padding, lone padding,
+	// and lone symbols cannot form valid bytes and must report kind_mismatch.
+	for _, text := range []string{
+		"=", "Q", "Q=Q==", "Q=Q=A=A=", "QQ==Q",
+	} {
+		add("invalid-padding-"+text, text, nil, false)
+		cases[len(cases)-1].mismatch = 1
 	}
 	// Every alphabet symbol occupies each of the four positions; the oracle
 	// deliberately uses the standard decoder rather than a copied lookup.

@@ -94,7 +94,7 @@ static SCHEMA_UNUSED int table_json_read_blob( TableJsonIn * in, void * slot, co
 {
     TableJsonGraphIn * graph=(TableJsonGraphIn *)in->graph;
     TableRef * ref=(TableRef *)slot;
-    int64_t mark, symbols=0, length, placed=0, at;
+    int64_t mark, symbols=0, pad=0, length, placed=0, at;
     int malformed=0, held=0;
     uint32_t accumulator=0;
     uint8_t * data;
@@ -117,18 +117,33 @@ static SCHEMA_UNUSED int table_json_read_blob( TableJsonIn * in, void * slot, co
         if(in->pos>=in->size) { in->bad=1; return 0; }
         c=in->text[in->pos++];
         if(c=='"') { break; }
-        if(c=='=' || malformed) { continue; }
+        if(malformed) { continue; }
+        if(c=='=') { pad++; continue; }
+        if(pad>0) { malformed=1; continue; }
         if(table_json_base64_value((uint8_t)c)<0) { malformed=1; continue; }
         symbols++;
+    }
+    if(!malformed)
+    {
+        if(pad>0)
+        {
+            if(pad>2 || (symbols+pad)%4!=0 || symbols%4<2) { malformed=1; }
+        }
+        else if(symbols%4==1)
+        {
+            malformed=1;
+        }
     }
     if(malformed) { in->report->kind_mismatch++; return 1; }
     length=symbols*6/8;
     data=table_bytes_emplace(graph->worker,ref,length);
     if(data==NULL) { in->bad=1; return 0; }
-    for(at=mark; in->text[at]!='"'; at++)
+    for(at=mark; ; at++)
     {
-        int32_t symbol=table_json_base64_value((uint8_t)in->text[at]);
-        if(symbol<0) { continue; }
+        char c = in->text[at];
+        int32_t symbol;
+        if(c=='"' || c=='=') { break; }
+        symbol=table_json_base64_value((uint8_t)c);
         accumulator=(accumulator<<6)|(uint32_t)symbol; held+=6;
         if(held>=8) { held-=8; if(placed<length) { data[placed++]=(uint8_t)((accumulator>>held)&0xff); } }
     }
