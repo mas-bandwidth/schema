@@ -681,6 +681,9 @@ Recorded automatically, per round, into the preamble:
 
 `BENCH_NOISE` survives as a free-text *supplement*, never as the only load record.
 
+Every sweep preamble names the branch and the HEAD it ran against (§3.5), so
+the sweep can be reproduced and two sweeps on one day can be told apart.
+
 ### §2.6 Control legs — certifying the window
 
 > **A pass MUST begin and end with the same control leg: the C++ family `gen` runner,
@@ -1163,7 +1166,9 @@ runtime lines that already did). The failure it closes is the twin of the one
 below: a sweep that silently measured the wrong tree, and a CSV that could not
 have said so. A bare SHA also stops resolving the moment it is rebased away,
 which is how a published result came to carry a dead SHA; the branch name
-survives the rebase and says which tree was on the bench.
+survives the rebase and says which tree was on the bench. A CSV's commit
+stamp is resolved on origin after its rebase, so the SHA it names is one that
+exists on the remote and not one the rebase left behind.
 
 This clause was earned on **2026-08-15**: `bench/rust/Cargo.toml`,
 `bench/go/go.mod` and `bench/cs/schemabench.csproj` hardcoded their runtime

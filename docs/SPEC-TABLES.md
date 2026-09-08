@@ -1184,7 +1184,9 @@ the whole page:
   below).
 - **The DIAGNOSTIC names the field, the enum the bound folds from, and the
   fix**, which is `[E]T`, the name-keyed form. Where the bound reaches the
-  enum through a constant it names the constant.
+  enum through a constant it names the constant. In arm position `[E]T` is
+  not itself admitted (§2.6, §15), so the arm's repair is a table holding
+  the keyed array, made the arm.
 
 **The reason is that an ordinal-indexed array is a POSITIONAL vocabulary and
 a table may have only one.** Such a field carries its elements by position, so
@@ -1251,7 +1253,9 @@ provenance and not its text: `[E.Max]T`, `[E.Count]T`, and `[N]T` under a
 `const N` that folds from either at any depth of constant arithmetic. The
 diagnostic names the field, the enum, the constant where the bound reaches the
 enum through one, and `[E]T` as the fix; an arm's names the arm and the table
-that reaches the union. Two sections rest on this refusal being whole, §4.1's
+that reaches the union. `[E]T` is not itself admitted as an arm (§2.6, §15),
+so the arm's repair is a table holding the keyed array, made the arm. Two
+sections rest on this refusal being whole, §4.1's
 count of the silent class and SPEC.md §3.1's one exception to reachability, and
 both stand on the tree as well as on the rule.
 
@@ -6847,9 +6851,10 @@ are those padded starts, so "is a directory entry" and "is aligned" are
 one check rather than two.
 
 **A BLOB NODE in a region** (§2.5) is an eight-byte header and then the
-bytes: `length (u64)`, then `length` bytes of data at offset eight, so the
-data itself is eight-aligned and the header expresses every length the wire
-can carry (§3). A `*string` blob carries one more
+bytes: `length (u32)` in the cook's byte order, then four pad bytes written
+as zero, then `length` bytes of data at offset eight, so the data itself is
+eight-aligned and the header expresses every length the wire can carry (§3).
+A reader does not inspect the four pad bytes. A `*string` blob carries one more
 zero byte after its data, which is the terminator `string(N)`'s storage
 carries and the reason a region hands back a C string with no copy. **A
 `*wstring` blob is that same header and two more zero bytes**: its `length` is
@@ -8403,11 +8408,13 @@ fields would get wrong:
   delta of §6.3, and **NULL IS ZERO**. It is as wide as the offsets it is the
   difference of, so a region of any size expresses every reference it holds and
   a cook has no reach to refuse.
-- **A BLOB NODE is `length (u64)`, then `length` bytes**, and
+- **A BLOB NODE is `length (u32)` in the cook's byte order, then four zero
+  bytes, then `length` bytes**, and
   a `*string` blob's one more zero byte or a `*wstring` blob's two (§6.3, its
   terminating zero UNIT) — a node whose extent is `8 + length`, `9 + length`
   or `10 + length`, at alignment eight, laid out in the numbering like every
-  node and named in the directory under its reserved type id (§3.1). Every
+  node and named in the directory under its reserved type id (§3.1). The four
+  pad bytes are written as zero and a reader does not inspect them. Every
   byte of it is written, so a blob costs its bytes and eight,
   and a mapped cook's `TableBytesAt` is a pointer into the data part at the
   header plus eight. **A `*wstring` blob's `length` is EVEN**, on kind `33`'s
@@ -10241,10 +10248,12 @@ in build version (§20.5).
   a named follow-on (§15), and a port that emitted the union would name a
   table it never declares, or overlay storage its fixed-class codecs never met.
 - **On an ARM** (§2.6, which states each reason): a specified default; `?`;
-  `was`; `json`; an enum-keyed array `[E]T`; an `if` guard; and **a MAP
+  `json`; an enum-keyed array `[E]T`; an `if` guard; and **a MAP
   (§2.8) or an UNBOUNDED ARRAY (§2.9)**, whose elements live in the holder's
   NODE EXTENT and would make that extent depend on the union's tag, each
-  refusal naming the table wrapper that serves.
+  refusal naming the table wrapper that serves. `was` on an arm takes, a
+  payload-free arm included (§2.6, §5); it is refused only where no table
+  reaches the union, like `was` on an enum variant.
 - **An ARM NAMED `Count`** (§2.6), over the EXPORTED spelling, so `count` is
   refused too. The tag shape a table-closure union gets carries the declared
   variant count as the member `Count`, exactly as a packet union's tag enum
