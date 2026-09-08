@@ -479,9 +479,13 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_rigid_body( serialize_read_st
     {
         return 0;
     }
-    if ( !serialize_read_bool( stream, &value->at_rest ) )
     {
-        return 0;
+        int bool_value = 0;
+        if ( !serialize_read_bool( stream, &bool_value ) )
+        {
+            return 0;
+        }
+        value->at_rest = (uint8_t) bool_value;
     }
     if ( !value->at_rest )
     {
@@ -589,37 +593,69 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_input( serialize_read_stream_
     {
         return 0;
     }
-    if ( !serialize_read_bool( stream, &value->fire ) )
     {
-        return 0;
+        int bool_value = 0;
+        if ( !serialize_read_bool( stream, &bool_value ) )
+        {
+            return 0;
+        }
+        value->fire = (uint8_t) bool_value;
     }
-    if ( !serialize_read_bool( stream, &value->alt_fire ) )
     {
-        return 0;
+        int bool_value = 0;
+        if ( !serialize_read_bool( stream, &bool_value ) )
+        {
+            return 0;
+        }
+        value->alt_fire = (uint8_t) bool_value;
     }
-    if ( !serialize_read_bool( stream, &value->boost ) )
     {
-        return 0;
+        int bool_value = 0;
+        if ( !serialize_read_bool( stream, &bool_value ) )
+        {
+            return 0;
+        }
+        value->boost = (uint8_t) bool_value;
     }
-    if ( !serialize_read_bool( stream, &value->brake ) )
     {
-        return 0;
+        int bool_value = 0;
+        if ( !serialize_read_bool( stream, &bool_value ) )
+        {
+            return 0;
+        }
+        value->brake = (uint8_t) bool_value;
     }
-    if ( !serialize_read_bool( stream, &value->aim ) )
     {
-        return 0;
+        int bool_value = 0;
+        if ( !serialize_read_bool( stream, &bool_value ) )
+        {
+            return 0;
+        }
+        value->aim = (uint8_t) bool_value;
     }
-    if ( !serialize_read_bool( stream, &value->lock_on ) )
     {
-        return 0;
+        int bool_value = 0;
+        if ( !serialize_read_bool( stream, &bool_value ) )
+        {
+            return 0;
+        }
+        value->lock_on = (uint8_t) bool_value;
     }
-    if ( !serialize_read_bool( stream, &value->zoom ) )
     {
-        return 0;
+        int bool_value = 0;
+        if ( !serialize_read_bool( stream, &bool_value ) )
+        {
+            return 0;
+        }
+        value->zoom = (uint8_t) bool_value;
     }
-    if ( !serialize_read_bool( stream, &value->ping ) )
     {
-        return 0;
+        int bool_value = 0;
+        if ( !serialize_read_bool( stream, &bool_value ) )
+        {
+            return 0;
+        }
+        value->ping = (uint8_t) bool_value;
     }
     return 1;
 }
@@ -779,9 +815,13 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_ship_create( serialize_read_s
     {
         return 0;
     }
-    if ( !serialize_read_bool( stream, &value->has_flags ) )
     {
-        return 0;
+        int bool_value = 0;
+        if ( !serialize_read_bool( stream, &bool_value ) )
+        {
+            return 0;
+        }
+        value->has_flags = (uint8_t) bool_value;
     }
     if ( value->has_flags )
     {

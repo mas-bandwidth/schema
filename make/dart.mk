@@ -73,14 +73,13 @@ generated/bench/dart/.stamp: bin/schema $(SCHEMAS_BENCH)
 # The same corpus through the DART table backend (docs/SPEC-TABLES.md): the tables
 # corpus plus the evolution pair, generated at build time into build/ —
 # test-only, never part of the committed generated/ tree. The full unit is
-# generated (packet .dart + <Base>Table.dart), because a table's closure decodes
-# into the packet emitter's own classes.
+# generated (packet .dart + <Base>Block.dart + <Base>Cook.dart); Dart emits no
+# table wire (the previous-form port was removed; schema#514 brings the
+# id-table form), so only the two accelerators ride here.
 build/tables-generated-dart/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema
 	@mkdir -p build/tables-generated-dart
 	./bin/schema generate --lang dart --out build/tables-generated-dart/examples tables/examples
-	# the POINTERED unit: its Dart surface is refused BY NAME (§11) — the
-	# reading tier has no arena, no builder and no node-table codec, so one
-	# file remains and it carries the reason.
+	# the POINTERED unit: its cook readers are the reason it is here.
 	./bin/schema generate --lang dart --out build/tables-generated-dart/pointers tables/pointers
 	./bin/schema generate --lang dart --out build/tables-generated-dart/block tables/block
 	./bin/schema generate --lang dart --out build/tables-generated-dart/blockhome tables/blockhome
@@ -92,7 +91,7 @@ build/tables-generated-dart/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLE
 
 # THE DART TABLE SOURCES ARE FORMAT-CANONICAL. `dart format` is the language's
 # one formatting authority, so an emitter that has to be hand-reflowed is an
-# emitter that drifts; this gate holds the <Base>Table.dart half of the corpus
+# emitter that drifts; this gate holds the block and cook libraries of the corpus
 # to what the formatter would write, and the analyzer holds it to what the
 # language accepts.
 .PHONY: tables-dart-clean
@@ -101,94 +100,13 @@ tables-dart-clean: build/tables-generated-dart/.stamp
 	@rm -rf build/tables-dart-fmt && cp -r build/tables-generated-dart build/tables-dart-fmt
 	@rm -f build/tables-dart-fmt/.stamp
 	@$(DART) format build/tables-dart-fmt >/dev/null
-	@for f in build/tables-generated-dart/*/*Table.dart \
-		  build/tables-generated-dart/*/*Block.dart \
+	@for f in build/tables-generated-dart/*/*Block.dart \
 		  build/tables-generated-dart/*/*Cook.dart; do \
 		test -e $$f || continue; \
 		cmp -s $$f build/tables-dart-fmt/$${f#build/tables-generated-dart/} || \
 			{ echo "dart format drift in $$f"; exit 1; }; \
 	done
 	@echo "tables Dart: analyzer clean and format-canonical"
-
-# THE HARNESS'S DART CONTROL, on the EMITTER: the §16 READ walk is sabotaged
-# in a copy of internal/codegen/darttable/jsonruntime.go — an enum token lands
-# as the wrong variant — the compiler is rebuilt over it with `go build
-# -overlay`, the Dart units are regenerated from that compiler, the driver is
-# compiled against them, and the harness must go RED on `json-read` while
-# `json-write` and `wire` stay GREEN: the break is the reader's and nothing
-# else's. No tracked file is written to.
-CONFORMANCE_NEGATIVE_DART = build/conformance-negative-dart
-.PHONY: conformance-negative-control-dart
-conformance-negative-control-dart:
-	@echo "conformance-negative-control-dart: dormant — the surface it turns red is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#514)"
-
-# ---- THE DART TABLES GATES beside the conformance matrix ----
-#
-# THE SOAK gates on CORRECTNESS under reuse: every record round-tripped through
-# the wire and through the text for the whole run, byte-compared, into storage
-# reused every iteration. The allocation floor is the gate below it.
-.PHONY: tables-dart-soak
-tables-dart-soak:
-	@echo "tables-dart-soak: dormant — the corpus it gates against is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#514)"
-
-DART_SOAK_SECONDS ?= 20
-
-# THE SOAK'S NEGATIVE CONTROL. A gate that has never gone red is watching
-# nothing: SOAK_SABOTAGE=1 corrupts ONE BYTE of one re-saved record, and the
-# byte comparison must refuse it.
-.PHONY: tables-dart-soak-negative-control
-tables-dart-soak-negative-control:
-	@echo "tables-dart-soak-negative-control: dormant — the surface it turns red is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#514)"
-
-# THE ALLOCATION GATE (test/dart-tables/gcgate.dart). The claim is that the
-# wire path — loadBody, measure, saveBody through a caller-owned reader, writer
-# and report — allocates NOTHING per record, and the gate is a MEASUREMENT: the
-# VM's own new-space scavenge count over a steady phase, read from --verbose_gc
-# between two marker lines. A loop that allocates nothing triggers no scavenge
-# however long it runs, so the floor is a true zero; a planted allocation per
-# record turns it red (tables-dart-alloc-negative-control). The semi-space is
-# pinned at ONE MEGABYTE for the measurement, because the VM grows it on its
-# own — under the JIT to 32 MB — and a plant has to fill it to be seen: with it
-# pinned, one small object per record is a scavenge every ~30,000 records, so
-# a plant is loud at `make test`'s DART_ALLOC_ITERATIONS=20000 (160,000
-# records) and a zero is a zero at any length.
-#
-# THE GATE IS AOT's — `dart compile`, the language's release configuration and
-# the one a shipping consumer runs — and the JIT's count is PRINTED beside it,
-# not gated, because what the JIT boxes is the inliner's decision and not the
-# codec's: a double crossing a conversion call the inlining budget left out of
-# line is boxed, and the budget runs out at different places depending on what
-# the loop around the codec looks like (one boxed double per pass of the eight
-# records on the wire phase here; up to three per record with one codec inlined
-# into a monomorphic caller). AOT inlines every one of them and reads zero.
-#
-# `text` is measured and printed, never gated: the §16 walk's floor is not zero
-# and the page prices it. It runs DART_ALLOC_TEXT_ITERATIONS passes, its own
-# count, because a text round trip is a hundred times a wire one — 200 passes
-# is seconds, and the number is a price per record either way.
-DART_ALLOC_ITERATIONS ?= 400000
-DART_ALLOC_TEXT_ITERATIONS ?= 200
-
-.PHONY: tables-dart-alloc
-tables-dart-alloc:
-	@echo "tables-dart-alloc: dormant — the corpus it gates against is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#514)"
-
-# THE ALLOCATION GATE'S NEGATIVE CONTROL: two plants, one object per record
-# each — a TableReport, the class the code under test could most plausibly
-# construct, and a Uint8List(8) — and the same count must go RED on both,
-# under AOT and under the JIT, so the instrument is shown to see a plant in
-# both builds. The plants live in gcgate.dart as phases, so the control runs
-# the very instrument the gate runs. The gate holds AOT's count at exactly
-# zero, so the control asks for its complement — any count at all — which a
-# plant is at every length over the pinned one-megabyte semi-space: dozens of
-# scavenges at the release length, a handful at `make test`'s tenth of it.
-#
-# The `make test` length is a tenth of the release length for the loop's sake:
-# one record of the corpus is 210 KB, so a phase over it is seconds, not
-# milliseconds, and ten phases run here.
-.PHONY: tables-dart-alloc-negative-control
-tables-dart-alloc-negative-control:
-	@echo "tables-dart-alloc-negative-control: dormant — the surface it turns red is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#514)"
 
 # THE DART NAME-CLAIM NEGATIVE CONTROL (docs/SPEC-TABLES.md §11). Every
 # library-scope spelling of the Dart table runtime is registered in
@@ -199,11 +117,11 @@ tables-dart-alloc-negative-control:
 .PHONY: tables-dart-names-negative-control
 tables-dart-names-negative-control:
 	@rm -rf build/dart-names-nc && mkdir -p build/dart-names-nc
-	@sed 's|^final class TableReport {$$|final class TableBogusUnregistered {}\n\nfinal class TableReport {|' \
-		internal/codegen/darttable/runtime.go > build/dart-names-nc/runtime.go.txt
-	@cmp -s internal/codegen/darttable/runtime.go build/dart-names-nc/runtime.go.txt && \
+	@sed 's|^final class TableBlockInfo {$$|final class TableBogusUnregistered {}\n\nfinal class TableBlockInfo {|' \
+		internal/codegen/darttable/blockruntime.go > build/dart-names-nc/runtime.go.txt
+	@cmp -s internal/codegen/darttable/blockruntime.go build/dart-names-nc/runtime.go.txt && \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the runtime moved"; exit 1; } || true
-	@printf '{"Replace":{"%s/internal/codegen/darttable/runtime.go":"%s/build/dart-names-nc/runtime.go.txt"}}\n' \
+	@printf '{"Replace":{"%s/internal/codegen/darttable/blockruntime.go":"%s/build/dart-names-nc/runtime.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/dart-names-nc/overlay.json
 	@if go test -count=1 -overlay build/dart-names-nc/overlay.json -run TestDartTableRuntimeNamesAreClaimed \
 			./compiler > build/dart-names-nc/log 2>&1; then \
@@ -215,44 +133,6 @@ tables-dart-names-negative-control:
 		  cat build/dart-names-nc/log; exit 1; }
 	@grep -m1 "TableBogusUnregistered" build/dart-names-nc/log
 	@echo "negative control: one unregistered runtime class turns the Dart name-claim test RED"
-
-# THE DOCUMENTED SURFACE RUNS. docs/USAGE.md's Dart table examples are
-# extracted VERBATIM from the page — every ```dart block of its table section —
-# wrapped in a main() and run over the corpus, so the page goes red with the
-# code. test/dart-tables/usage-prelude.dart is the wrapper's head.
-.PHONY: tables-dart-usage
-tables-dart-usage:
-	@echo "tables-dart-usage: dormant — the corpus it gates against is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#514)"
-
-# THE GENERIC-WALK GATE, Dart: the §16 walker is emitted ONCE per unit, into
-# <Package>Table.dart, between two marker comments — and it is the SAME walker
-# in every unit, byte for byte, because a walker that varied with the unit
-# would be a per-type codec wearing a walker's name. A pointered unit carries
-# none, since its wire is refused (§11) and the walk is the wire's. Go's gate,
-# in Dart's spelling.
-.PHONY: tables-dart-json-walk
-tables-dart-json-walk: build/tables-generated-dart/.stamp
-	@rm -rf build/json-walk-dart && mkdir -p build/json-walk-dart
-	@for d in build/tables-generated-dart/*/; do \
-		unit=$$(basename $$d); n=0; \
-		for f in $$d*Table.dart; do \
-			[ -e "$$f" ] || continue; \
-			out=build/json-walk-dart/$$unit.$$(basename $$f).txt; \
-			awk '/---- json walk: begin ----/,/---- json walk: end ----/' $$f > $$out; \
-			if [ -s $$out ]; then n=$$((n+1)); else rm -f $$out; fi; \
-		done; \
-		if [ $$n -gt 1 ]; then \
-			echo "GENERIC-WALK GATE FAILED: unit $$unit carries $$n walkers, not one"; exit 1; \
-		fi; \
-	done
-	@if [ -z "$$(ls build/json-walk-dart 2>/dev/null)" ]; then \
-		echo "GENERIC-WALK GATE FAILED: no walker in any generated .dart"; exit 1; fi
-	@first=""; for f in build/json-walk-dart/*; do \
-		if [ -z "$$first" ]; then first=$$f; else \
-			cmp -s $$first $$f || { echo "GENERIC-WALK GATE FAILED: the walker in $$f is not the walker in $$first"; exit 1; }; \
-		fi; \
-	done
-	@echo "tables Dart generic-walk gate: one walker per unit, byte-identical across $$(ls build/json-walk-dart | wc -l | tr -d ' ') units"
 
 # THE STANDALONE GATE, Dart: a generated table library imports dart:* and its
 # own unit's sibling files, and NOTHING ELSE — no package, no path, no runtime
@@ -279,14 +159,14 @@ tables-dart-standalone: build/tables-generated-dart/.stamp
 tables-dart-standalone-negative-control:
 	@rm -rf build/dart-standalone-nc && mkdir -p build/dart-standalone-nc
 	@sed 's|h.WriteString("import '"'"'dart:typed_data'"'"';\\n\\n")|h.WriteString("import '"'"'dart:typed_data'"'"';\\nimport '"'"'package:collection/collection.dart'"'"'; // SABOTAGED\\n\\n")|' \
-		internal/codegen/darttable/darttable.go > build/dart-standalone-nc/darttable.go.txt
-	@cmp -s internal/codegen/darttable/darttable.go build/dart-standalone-nc/darttable.go.txt && \
+		internal/codegen/darttable/block.go > build/dart-standalone-nc/darttable.go.txt
+	@cmp -s internal/codegen/darttable/block.go build/dart-standalone-nc/darttable.go.txt && \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || true
-	@printf '{"Replace":{"%s/internal/codegen/darttable/darttable.go":"%s/build/dart-standalone-nc/darttable.go.txt"}}\n' \
+	@printf '{"Replace":{"%s/internal/codegen/darttable/block.go":"%s/build/dart-standalone-nc/darttable.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/dart-standalone-nc/overlay.json
 	go build -overlay build/dart-standalone-nc/overlay.json -o build/dart-standalone-nc/schema ./cmd/schema
-	./build/dart-standalone-nc/schema generate --lang dart --out build/dart-standalone-nc/generated/examples tables/examples
-	@grep -lq SABOTAGED build/dart-standalone-nc/generated/examples/*.dart || \
+	./build/dart-standalone-nc/schema generate --lang dart --out build/dart-standalone-nc/generated/block tables/block
+	@grep -lq SABOTAGED build/dart-standalone-nc/generated/block/*.dart || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted no package import"; exit 1; }
 	@if $(MAKE) -s tables-dart-standalone STANDALONE_DART_DIR=build/dart-standalone-nc/generated > build/dart-standalone-nc/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the standalone gate stayed green with a package import planted"; exit 1; \
@@ -297,24 +177,19 @@ tables-dart-standalone-negative-control:
 	@echo "negative control: one planted package import turns the Dart standalone gate RED"
 
 # THE DART PORT'S RELEASE GATE. certify.yml DERIVES this target by name, so a
-# port lands its expensive half by adding the target and nothing else: ten
-# minutes of the soak — every record through the wire and the text, byte-
-# compared, into storage reused for the whole run — and two hundred and eighty
-# thousand fuzz mutants under two seeds (20,000 per fixture, seven fixtures,
-# two seeds). Both are measured in minutes and both answer a question about
-# the runtime under load rather than about the diff, which is what makes them
-# certification instruments and not iteration ones.
+# port lands its expensive half by adding the target and nothing else: two
+# hundred and eighty thousand forgery-fuzz mutants over the block and cook
+# readers under two seeds (20,000 per fixture, seven fixtures, two seeds), and
+# the three planted controls. The fuzz is measured in minutes and answers a
+# question about the runtime under hostile input rather than about the diff,
+# which is what makes it a certification instrument and not an iteration one.
 .PHONY: tables-dart-release
 tables-dart-release:
-	$(MAKE) tables-dart-soak DART_SOAK_SECONDS=600
 	$(MAKE) tables-dart-fuzz SEED=1 DART_FUZZ_MUTANTS=20000
 	$(MAKE) tables-dart-fuzz SEED=2 DART_FUZZ_MUTANTS=20000
-	$(MAKE) tables-dart-soak-negative-control DART_SOAK_SECONDS=5
 	$(MAKE) tables-dart-fuzz-negative-control
-	$(MAKE) tables-dart-alloc-negative-control
 	$(MAKE) tables-dart-names-negative-control
 	$(MAKE) tables-dart-standalone-negative-control
-	$(MAKE) conformance-negative-control-dart
 
 # THE FORGERY FUZZER over the Dart accelerators: valid images from the corpus,
 # mutated, and one oracle over every mutant — refuse, or open and be WHOLE, and
@@ -333,7 +208,7 @@ DART_FUZZ_MUTANTS ?= 4000
 # maximum — in a COPY of the emitter, the corpus is regenerated from the
 # sabotaged compiler, and the oracle must find it. No tracked file is written
 # to, so an interrupt cannot leave a sabotaged working tree.
-.PHONY: tables-dart-fuzz-negative-control tables-dart-release conformance-negative-control-dart
+.PHONY: tables-dart-fuzz-negative-control tables-dart-release
 tables-dart-fuzz-negative-control: build/cook-fuzz/.stamp
 	@rm -rf build/dart-fuzz-nc && mkdir -p build/dart-fuzz-nc
 	@sed 's|g.pf("      if (count > %sMax) {\\n        return null;\\n      }\\n", field)|_ = field // SABOTAGED: the count bound is gone|' \
@@ -369,43 +244,20 @@ build/conformance-dart: build/tables-generated-dart/.stamp test/conformance/dart
 	@mkdir -p build
 	$(DART) compile exe -o $@ test/conformance/dart/main.dart >/dev/null
 
-# The Dart half of the block zero-cost gate (docs/SPEC-TABLES.md): a Table
-# library of a unit with no block or cook carries no symbol of either
-# accelerator.
-.PHONY: tables-dart-zero-cost
-tables-dart-zero-cost: build/tables-generated-dart/.stamp
-	@for f in build/tables-generated-dart/*/*Table.dart; do \
-		if grep -nE "TableBlock|TableCook|tableBuildVersion|[A-Za-z0-9_]Block\\b" $$f; then \
-			echo "BLOCK ZERO-COST GATE FAILED: an accelerator leaked into $$f"; exit 1; \
-		fi; \
-	done
-	@echo "block zero-cost gate: no Dart Table library carries one symbol of either accelerator"
-
 # THE DART LEG of `make test`. THE DART PORT's own instruments
-# (docs/SPEC-TABLES.md): the emitted sources held to what `dart format` writes
-# and what the analyzer accepts, the allocation gate at a tenth of its release
-# length and its two planted controls, the name-claim control, the page's own
-# example run verbatim, the forgery fuzzer, a few seconds of the soak and the
-# byte its control corrupts, and the harness's own Dart control — the long
-# soak and the full-length allocation gate are `make tables-dart-release` —
-# then the analyzer and the formatter over every generated tree, and the
-# packet tests, checked and compiled.
+# (docs/SPEC-TABLES.md): the emitted block and cook sources held to what `dart
+# format` writes and what the analyzer accepts, the name-claim control, the
+# standalone gate and its control, the forgery fuzzer and its control — the
+# long fuzz is `make tables-dart-release` — then the analyzer and the formatter
+# over every generated tree, and the packet tests, checked and compiled.
 .PHONY: test-dart
 test-dart: toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp generated/bench/dart/.stamp generated/bench/tables/dart/.stamp
 	$(MAKE) tables-dart-clean
-	$(MAKE) tables-dart-zero-cost
-	$(MAKE) tables-dart-alloc DART_ALLOC_ITERATIONS=20000
-	$(MAKE) tables-dart-alloc-negative-control DART_ALLOC_ITERATIONS=20000
 	$(MAKE) tables-dart-names-negative-control
-	$(MAKE) tables-dart-usage
-	$(MAKE) tables-dart-json-walk
 	$(MAKE) tables-dart-standalone
 	$(MAKE) tables-dart-standalone-negative-control
 	$(MAKE) tables-dart-fuzz DART_FUZZ_MUTANTS=1500
 	$(MAKE) tables-dart-fuzz-negative-control
-	$(MAKE) tables-dart-soak DART_SOAK_SECONDS=3 DART_ALLOC_ITERATIONS=20000
-	$(MAKE) tables-dart-soak-negative-control DART_SOAK_SECONDS=3
-	$(MAKE) conformance-negative-control-dart
 	$(DART) analyze generated/dart generated/dart-ludicrous generated/bench/dart test/dart test/dart-ludicrous bench/dart bench/tables/dart
 	$(DART) format --set-exit-if-changed --output=none generated/dart generated/dart-ludicrous generated/bench/dart
 	cd test/dart && $(DART) --enable-asserts main.dart

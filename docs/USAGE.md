@@ -898,10 +898,11 @@ that has no native union, and a variable-length table allocates by nature —
 in C++ the caller owns it.
 
 A table lives on its own wire — self-describing and evolution-tolerant,
-carried by **all nine targets**: C++ and C take both classes, and C#, Dart,
-Elixir, Go, Java, JavaScript and Rust take the fixed class, wire and
-text form both; the pointer surface ON THE WIRE is a follow-on in those seven,
-whose cook and block accelerators read a pointered unit today.
+carried by **eight of the nine targets**: C++ and C take both classes, and C#,
+Dart, Go, Java, JavaScript and Rust take the fixed class, wire and text form
+both; the pointer surface ON THE WIRE is a follow-on in those six, whose cook
+and block accelerators read a pointered unit today. Elixir emits no table
+wire: it carries the two accelerators' read side only (schema#515).
 
 **Each field is a reference, a kind byte and a payload**, and the file carries
 every id it used once each in a trailer at the end, so a field header spends
@@ -1550,101 +1551,31 @@ is not stable before 22. The `long length` on both `open`s is the seat that
 overload takes when the floor moves — it is a named follow-on, not an oversight,
 and until it lands a cook past 2 GiB has no Java reader.
 
-**The Elixir surface is the same three functions again**, module functions
-on the declaring file's `<Base>Table`, over a struct the caller owns. There is no
-buffer to pass and no instance to reset: `save` returns the binary and `load`
-starts from the declared defaults, because a BEAM term is immutable and there is
-nothing to clear.
+**Elixir carries the two accelerators and no table wire.** A unit that
+declares tables grows `<Base>Block.ex` and `<Base>Cook.ex` beside its packet
+modules, with `BlockRuntime.ex`, `CookRuntime.ex` and `BuildVersion.ex` once
+per unit, and nothing else: there is no `<Base>Table.ex` and no `measure`,
+`save`, `load`, `from_json` or `to_json`. The Elixir port of the table wire
+wrote the form that preceded the id-table wire, which the current
+specification does not describe, and it was removed rather than carried;
+schema#515 is the row that brings the id-table wire to Elixir, and ROADMAP.md
+marks the cells.
 
-```elixir
-alias Example.ShipConfig
-alias Example.ShipTable
-
-ship = %ShipConfig{health: 250.0, settings: %Example.Settings{}}
-#                                 ^ ?T: a value is presence, nil is absence
-
-size = ShipTable.measure_ship_config!(ship)  # exact, writes nothing
-wire = ShipTable.save_ship_config!(ship)     # byte_size(wire) == size
-
-{loaded, report} = ShipTable.load_ship_config(wire)
-
-if report.malformed do
-  # framing damage: the good prefix is in `loaded`
-end
-
-if not Example.TableRuntime.silent?(report) do
-  # unknown, kind_mismatch, clamped: the data did not match this build exactly
-end
-
-case ShipTable.save_ship_config(ship) do  # the plain form, for a value you did not build
-  {:ok, wire} -> store(wire)
-  :error -> :unspellable                   # an enum or key outside its named variants,
-end                                        # or a storage invariant violated (§5)
-```
-
-**ONE REFUSAL SPELLING over the whole surface.** Everything that can refuse
-answers `{:ok, result}` or `:error`, which is the packet emitter's own reader
-verdict: `measure`, `save`, `to_json` and `to_json_measure` refuse a value with
-no spelling — an enum, key or union tag outside its named variants, a storage
-invariant violated, a non-finite float in the text form — and `block_open` and
-`cook_open` refuse bytes that are not this build's. Each of the four writers has
-a bang form beside it that answers the result or raises `ArgumentError`, which
-is the packet emitter's writer contract; `_at` and `_put` raise the same way,
-because a key no slot answers is misuse rather than data.
-
-**THE REPORT IS A VALUE THE CALLER OWNS**, threaded rather than pointed at: the
-BEAM has no mutable struct, so `load` hands it back beside the instance. One
-report, one caller, the same six counters as everywhere else.
-
-**Storage is SPEC §6.1's Elixir column and nothing new.** A `string(N)` and a
-`bytes(N)` are binaries whose `byte_size` IS the used length; a `[..N]T` is a
-list whose `length` IS the count; an enum is its ordinal and a `flags` its mask.
-There is no `_length` and no `_count` companion, because there is nothing to
-keep one in step with — the value cannot disagree with itself.
-
-**An enum-keyed array's slots are a TUPLE on a `table`**, one per named variant,
-so a slot is reached in constant time. **On a `type` they are the packet
-emitter's LIST**, because a type's struct is the packet emitter's — it builds
-the array with `List.duplicate/2` — and the table wire changes nothing about a
-type's storage; `_at` is `Enum.at` there, a walk over the slots rather than a
-reach, and the generated accessor says so at its site. In both, `None` keys no
-slot and the storage shifts left, which is the same rule every backend follows.
-**The shift is never written at a call site** — three generated functions are
-the only place it appears, and they take the KEY:
-
-```elixir
-ship  = ShipTable.fleet_ships_at(fleet, Example.ShipType.bomber())
-fleet = ShipTable.fleet_ships_put(fleet, Example.ShipType.bomber(), ship)
-
-for {ship_type, ship} <- ShipTable.fleet_ships_each(fleet) do
-  # ship_type is the KEY, never an index
-end
-```
-
-`_at` and `_put` refuse `None` and a key past `E.Max` with an `ArgumentError`,
-**in every build** — the BEAM has no compile-out assert, so the guard the other
-ports have to argue for costs nothing to keep here. Iteration reads and `_put`
-places, because a BEAM value is immutable.
-
-**What Elixir does NOT do, and it is the language rather than the port:** it
-never PRODUCES a block or a cook. A BEAM term has no layout a producer could
-write. It OPENS one another build wrote and reads every slot at its offset —
-`ExampleBlock.block_open_render_frame(bytes)` and
+**What Elixir does with the two forms it has, and it is the language rather
+than the port:** it never PRODUCES a block or a cook. A BEAM term has no layout
+a producer could write. It OPENS one another build wrote and reads every slot
+at its offset — `ExampleBlock.block_open_render_frame(bytes)` and
 `ExampleCook.cook_open_scene(bytes)` — with a row handed back as a SUB-BINARY
-the runtime shares rather than copies. Both take an optional `lead` beside the
+the runtime shares rather than copies. Both answer `{:ok, handle}` or `:error`,
+the packet emitter's own reader verdict, and refuse a forged image rather than
+raising on it (`make tables-elixir-fuzz` is that oracle over mutated corpus
+images, with its planted control). Both take an optional `lead` beside the
 bytes, which is how many bytes past an aligned base the caller's buffer begins:
 §7 and §19 check the alignment of the BASE, and a BEAM binary has no address a
 caller can observe or place, so the caller states it and the check stays a real
 one — a block refuses any `lead` that is not a multiple of 64, a cook any that
 is not a multiple of its own alignment word, and `make tables-elixir-block-lead`
 holds the rule over every lead in 0..64.
-
-**And what it cannot claim: "the read path allocates nothing."** There is no
-caller-owned buffer and no mutable struct, so a decoded value IS an allocation.
-What the backend holds instead is that the COUNT does not move — the heap words
-and the reductions one iteration costs are pinned per case and re-pinned
-deliberately, with a negative control that sabotages the emitter so every
-generated load allocates more, and reds every case on both memory columns.
 
 **Which makes a default part of the wire contract.** An absent field means
 "the reader's declared default", so changing a default changes what every
@@ -3855,69 +3786,17 @@ if (!ok) {
 }
 ```
 
-Dart also carries the **TABLE wire** (docs/SPEC-TABLES.md): a unit that
-declares tables grows `<Base>Table.dart` beside its packet library, plus
-`<Base>Block.dart` and `<Base>Cook.dart` for the two accelerators, and one
-runtime home per unit and per surface. The verbs are **methods on the value**
-— `measure()`, `save(out)`, `load(bytes, report)`, `fromJson`, `toJson` — on
-a table's own class, and as extension methods on a `type`'s packet class —
-and the caller owns everything: the value, the bytes, the report. The example
-below is the conformance corpus's own `RootConfig` (`tables/examples`), and
-`make tables-dart-usage` runs it verbatim off this page.
-
-```dart
-import 'TablesTable.dart';      // the file's own table library
-import 'TabledemoTable.dart';   // the unit's runtime home, named for the package
-
-final config = RootConfig();
-final report = TableReport();
-
-// read some bytes another build wrote
-if (!config.load(wire, report)) {
-  // framing damage; the instance holds what was placed before the stop
-}
-if (report.unknown > 0) {
-  // newer data: fields this build does not know, skipped and counted
-}
-
-// and write it back
-final size = config.measure(); // exact bytes, writes nothing
-final out = Uint8List(size);
-config.save(out); // returns size; -1 = refused
-```
-
-**A hot loop owns its reader and writer.** `config.load` allocates exactly one
-`TableReader`; a caller that reads thousands of records a frame attaches its
-own instead, and then the read path allocates NOTHING — no per-field object,
-no sub-view, no temporary. The reader's one currency is the `Uint8List`: a
-multi-byte scalar is assembled from bytes rather than read through a
-`ByteData`, so there is no second object describing the same memory to lend,
-to check, or to allocate:
-
-```dart
-final reader = TableReader(wire, report); // once
-
-for (final record in records) {
-  report.clear();
-  reader.attach(record.bytes, report);
-  config.loadBody(reader);
-  // ... use config ...
-}
-```
-
-That property is MEASURED rather than claimed: `make tables-dart-alloc` counts
-the VM's own new-space scavenges over a steady phase of that loop — load,
-measure and save through a caller-owned reader, writer and report, over the
-conformance corpus — and holds the count at zero under `dart compile`'s AOT
-snapshot, the configuration a shipping consumer runs; a planted allocation per
-record turns it red (`make tables-dart-alloc-negative-control`). Under the
-JIT the same instrument prints its count and does not gate on it: a `double`
-crossing a conversion call the JIT's inlining budget left out of line is
-boxed, and where that budget runs out is the optimizer's decision rather than
-the codec's — one boxed double per pass of the eight-record corpus on the wire
-phase, as measured. Two further costs are the JIT's and never AOT's: a
-`float32` carrying a NaN with a payload costs one boxed double, and a 64-bit
-integer field holding a value outside ±2⁶² costs one boxed integer per read.
+Dart carries the two **table accelerators** (docs/SPEC-TABLES.md §19 and §7)
+and not the table wire: a unit that declares tables grows `<Base>Block.dart`
+and `<Base>Cook.dart` beside its packet library, plus one runtime home per
+unit and per surface, `<Package>Block.dart` and `<Package>Cook.dart`. A block
+is pointed at and a cook is opened; neither parses a wire, both are read-only,
+and both refuse a forged image rather than throwing on it (`make
+tables-dart-fuzz` is that oracle over mutated corpus images, with its planted
+control). There is no `<Base>Table.dart`: the Dart port of the table wire wrote
+the form that preceded the id-table wire, which the current specification does
+not describe, and it was removed rather than carried; schema#514 is the row that
+brings the id-table wire to Dart, and ROADMAP.md marks the cells.
 
 **Go** — accessors, file/message loads and block fill avoid allocation and
 operate on caller-owned buffers. Variable table builders own a `TableArena`;

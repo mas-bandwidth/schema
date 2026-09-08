@@ -59,7 +59,6 @@ func (g *gen) cookModule() []byte {
 	g.pf("end\n")
 
 	var b strings.Builder
-	b.WriteString(g.banner)
 	b.WriteString(header(g.file.Base, g.unit.Package, "the COOKED FORM (docs/SPEC-TABLES.md §7): the READ half"))
 	b.WriteString("\n")
 	b.WriteString(g.body.String())

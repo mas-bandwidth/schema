@@ -2521,12 +2521,13 @@ or a file per declaration where the language demands one.
   `<Package>View.cs`, on the same terms as the C++ pair above.
 - **Dart:** one library per schema file, cross-file `import`s derived from
   actual references, with `show` clauses naming exactly the symbols used. A
-  unit that declares TABLES grows three further libraries per schema file —
-  `<Base>Table.dart` (the table wire's codecs, its reflection descriptors and
-  its TEXT FORM, SPEC-TABLES.md §16), `<Base>Block.dart` and
-  `<Base>Cook.dart` (the two accelerators, §19 and §7) — plus one RUNTIME HOME
-  per unit and per surface, `<Package>Table.dart`, `<Package>Block.dart` and
-  `<Package>Cook.dart`, which the per-file libraries import. **A Dart library
+  unit that declares TABLES grows two further libraries per schema file —
+  `<Base>Block.dart` and `<Base>Cook.dart` (the two accelerators,
+  SPEC-TABLES.md §19 and §7) — plus one RUNTIME HOME per unit and per surface,
+  `<Package>Block.dart` and `<Package>Cook.dart`, which the per-file libraries
+  import. Dart emits no table-wire library (`<Base>Table.dart`): its port of
+  the table wire wrote the form that preceded the id-table wire and was
+  removed; schema#514 brings the current wire to Dart. **A Dart library
   IS a file**, so a runtime shared across a unit's files must be public, and
   the home is named for the PACKAGE on §19.2's rule for every port: a runtime
   that lived in whichever file sorted first would relocate whole the day a
@@ -2553,14 +2554,15 @@ or a file per declaration where the language demands one.
 - **Elixir:** one `.ex` file per schema file, carrying one `defmodule` per
   declaration under the unit's own namespace plus the file-scope module
   `<Ns>.<Base>` for constants, flags masks and the file's codecs. A unit that
-  declares TABLES grows one further file per schema file — `<Base>Table.ex`
-  with the table wire's codecs, its reflection descriptors and its TEXT FORM
-  (SPEC-TABLES.md §16) — the two ACCELERATORS' READ side beside it,
-  `<Base>Block.ex` (§19) and `<Base>Cook.ex` (§7), and three per-UNIT runtimes:
-  `TableRuntime.ex` with the shared wire runtime and the text form's one
-  generic walk, `BlockRuntime.ex` and `CookRuntime.ex`. `BuildVersion.ex`
-  (SPEC-TABLES.md §20) is always emitted and belongs to neither accelerator,
-  because a build version answers "which build?" and not "which form?". Each
+  declares TABLES grows the two ACCELERATORS' READ side per schema file —
+  `<Base>Block.ex` (SPEC-TABLES.md §19) and `<Base>Cook.ex` (§7) — and two
+  per-UNIT runtimes, `BlockRuntime.ex` and `CookRuntime.ex`. It emits no
+  table-wire module (`<Base>Table.ex`, `TableRuntime.ex`): the Elixir port of
+  the table wire wrote the form that preceded the id-table wire and was
+  removed rather than carried; schema#515 brings the current wire to Elixir.
+  `BuildVersion.ex` (SPEC-TABLES.md §20) is always emitted and belongs to
+  neither accelerator, because a build version answers "which build?" and not
+  "which form?". Each
   runtime is named for the PACKAGE and not for a file, on the rule §19.2 states
   for every port: a unit's modules compile into one application, so a second
   copy would be a duplicate module rather than C++'s harmless re-inclusion

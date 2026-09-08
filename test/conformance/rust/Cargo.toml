@@ -13,13 +13,8 @@ name = "conformance-rust"
 path = "src/main.rs"
 
 [dependencies]
-tabledemo = { path = "../../../build/tables-generated-rust/tabledemo" }
 graphdemo = { path = "../../../build/tables-generated-rust/graphdemo" }
 blockdemo = { path = "../../../build/tables-generated-rust/blockdemo" }
-tblv1 = { path = "../../../build/tables-generated-rust/tblv1" }
-tblv2 = { path = "../../../build/tables-generated-rust/tblv2" }
-tblp1 = { path = "../../../build/tables-generated-rust/tblp1" }
-tblp3 = { path = "../../../build/tables-generated-rust/tblp3" }
 
 [profile.dev]
 # the conformance corpus is small and the driver runs seven times per matrix;

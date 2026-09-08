@@ -511,8 +511,10 @@ func (g *gen) emitField(f *ir.Field) {
 func (g *gen) storageType(f *ir.Field) string {
 	switch f.Type.Kind {
 	case ir.TBool:
-		// no <stdbool.h>: the floor is C89, where bool does not exist
-		return "int"
+		// C has no bool in C99 without <stdbool.h>, and the layout
+		// contract pins a bool to ONE byte. uint8_t is that byte,
+		// spelled the way every other width in this family is.
+		return "uint8_t"
 	case ir.TInt:
 		if f.Type.Width == 128 {
 			// C has no int128_t. serialize.c models it as two 64-bit lanes,

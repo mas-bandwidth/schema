@@ -1,2 +1,2 @@
-{"targets": "build/conformance-harness build/conformance-dart table-base64-dart",
+{"targets": "build/conformance-harness build/conformance-dart",
  "dart": "3.13.2", "env": "DART=dart"}

@@ -200,7 +200,7 @@ typedef struct TableHitEvent {
     uint32_t target_id;
     int32_t damage;
     int32_t hit_kind;
-    int crit;
+    uint8_t crit;
 } TableHitEvent;
 
 #define TABLE_HIT_EVENT_MAX_BITS 28   /* longest wire path; align pads at worst case (SPEC §6.1) */

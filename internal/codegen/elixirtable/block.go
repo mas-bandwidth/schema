@@ -34,13 +34,12 @@ import (
 // gets no table runtime at all (§11) and still has both accelerators.
 const BlockRuntimeModule = "BlockRuntime"
 
-func generateBlocks(u *ir.Unit, ns string, blocks *ir.BlockUnit, banner string) (map[string][]byte, error) {
+func generateBlocks(u *ir.Unit, ns string, blocks *ir.BlockUnit) (map[string][]byte, error) {
 	if len(blocks.Tables) == 0 {
 		return nil, nil
 	}
 	out := map[string][]byte{}
-	out[BlockRuntimeModule+".ex"] = []byte(banner +
-		header(BlockRuntimeModule, u.Package, "the BLOCK FORM's shared runtime (docs/SPEC-TABLES.md §19)") +
+	out[BlockRuntimeModule+".ex"] = []byte(header(BlockRuntimeModule, u.Package, "the BLOCK FORM's shared runtime (docs/SPEC-TABLES.md §19)") +
 		"\n" + fmt.Sprintf("defmodule %s.BlockRuntime do\n", ns) + blockRuntimeSource + "end\n")
 
 	byFile := map[string][]*ir.BlockLayout{}
@@ -69,7 +68,6 @@ func generateBlocks(u *ir.Unit, ns string, blocks *ir.BlockUnit, banner string) 
 		b.pf("end\n")
 
 		var text strings.Builder
-		text.WriteString(banner)
 		text.WriteString(header(base, u.Package, "the BLOCK FORM (docs/SPEC-TABLES.md §19)"))
 		text.WriteString("\n")
 		text.WriteString(b.body.String())
