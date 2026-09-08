@@ -159,7 +159,7 @@ tables-cs-standalone: build/tables-generated-cs/.stamp
 .PHONY: tables-cs-variable-surface
 tables-cs-variable-surface: build/tables-generated-cs/.stamp
 	@for verb in LoadMeasure Load Save Measure LoadMessages SaveMessages Cook CookMeasure; do \
-		rg -Fq "Scene$$verb(" build/tables-generated-cs/pointers/*Table.cs || \
+		grep -Fq "Scene$$verb(" build/tables-generated-cs/pointers/*Table.cs || \
 			{ echo "VARIABLE SURFACE GATE FAILED: Scene$$verb is absent"; exit 1; }; \
 	done
 	@echo "tables C# variable surface: pointered roots carry file, message and cook verbs"
