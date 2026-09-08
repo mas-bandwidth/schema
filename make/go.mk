@@ -83,7 +83,7 @@ tables-go-json-walk: build/tables-generated-go/.stamp
 # a generated package names its schema's `package` and Go resolves an import by
 # module path — so the conformance leg's go.mod replaces one path per unit,
 # exactly as test/go/go.mod already does for the packet corpus.
-build/tables-generated-go/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema $(wildcard test/tables/[MAKR][12].schema) tables/scalars/Scalars.schema test/tables/Scalars2.schema $(wildcard examples-wide/*.schema) tables/messages/Messages.schema tables/backend/Backend.schema tables/vocab/Vocab.schema tables/vocab9/Vocab9.schema $(wildcard tables/stream/*.schema tables/blobs/*.schema tables/lists/*.schema tables/maps/*.schema)
+build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema $(wildcard test/tables/[MAKR][12].schema) tables/scalars/Scalars.schema test/tables/Scalars2.schema $(wildcard examples-wide/*.schema) tables/messages/Messages.schema tables/backend/Backend.schema tables/vocab/Vocab.schema tables/vocab9/Vocab9.schema $(wildcard tables/stream/*.schema tables/blobs/*.schema tables/lists/*.schema tables/maps/*.schema)
 	@mkdir -p build/tables-generated-go
 	./bin/schema generate --lang go --out build/tables-generated-go/examples tables/examples
 	# The pointer corpus exercises the wire, region and cook read surfaces.
@@ -121,6 +121,8 @@ build/tables-generated-go/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_
 	$(call go_table_module,vocab,vocabdemo)
 	./bin/schema generate --lang go --out build/tables-generated-go/vocab9 tables/vocab9
 	$(call go_table_module,vocab9,vocab9demo)
+	./bin/schema generate --lang go --out build/tables-generated-go/rt1 test/tables/RT1.schema
+	$(call go_table_module,rt1,tblrt1)
 	$(call go_table_module,messages,messagedemo)
 	$(call go_table_module,examples,tabledemo)
 	$(call go_table_module,pointers,graphdemo)
@@ -328,3 +330,22 @@ tables-go-containers-negative-controls:
 	@set -e; for mode in sort ascending duplicate key-domain dead cap; do sh test/conformance/go/container-negative-control $$mode; done
 
 test-go: tables-go-containers
+
+# The disjoint fill is held under Go's thread sanitizer. Its control makes
+# every worker fill the whole array; byte identity alone cannot see that race.
+.PHONY: tables-go-block-build tables-go-block-race-negative-control tables-go-block-fill-refuser tables-go-block-fill-refuser-negative-control
+tables-go-block-build:
+	go test ./internal/codegen/gotable -run '^TestBlockBuilderStorageAndParallelFill$$' -count=1
+tables-go-block-race-negative-control:
+	go test ./internal/codegen/gotable -run '^TestBlockBuilderRaceNegativeControl$$' -count=1
+tables-go-block-fill-refuser:
+	go test ./internal/codegen/gotable -run '^TestBlockFillRefuser$$' -count=1
+tables-go-block-fill-refuser-negative-control:
+	go test ./internal/codegen/gotable -run '^TestBlockFillRefuserNegativeControl$$' -count=1
+
+test-go: tables-go-block-build tables-go-block-fill-refuser
+
+.PHONY: tables-go-retain
+tables-go-retain:
+	go test ./internal/codegen/gotable -run '^TestRetain' -count=1
+test-go: tables-go-retain

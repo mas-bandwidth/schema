@@ -146,10 +146,10 @@ func (g *blockGen) assemble() ([]byte, error) {
 	h.WriteString("// SPDX-License-Identifier: NONE — this generated output is yours, under terms of\n")
 	h.WriteString("// your choice. See the LICENSE exception in the schema compiler; the compiler is\n")
 	h.WriteString("// AGPL-3.0, its output is not.\n")
-	fmt.Fprintf(&h, "// package %s — the BLOCK FORM (docs/SPEC-TABLES.md §19): the READ half.\n", g.unit.Package)
+	fmt.Fprintf(&h, "// package %s — the BLOCK FORM (docs/SPEC-TABLES.md §19): producer and consumer.\n", g.unit.Package)
 	h.WriteString("//\n")
 	h.WriteString("// NOTHING DECLARES THIS FORM. Every fixed table has one, and it is emitted on\n")
-	h.WriteString("// the side: compile this file only if you read a block. The unit's\n")
+	h.WriteString("// the side: compile this file when you build or read a block. The unit's\n")
 	h.WriteString("// <Base>Table.go carries not one symbol of it.\n")
 	h.WriteString("//\n")
 	h.WriteString("// It is UNSAFE by nature, not by taste: a block is memory another language\n")
@@ -250,6 +250,7 @@ type TableBlockRows[T any] struct {
 	Stride int32
 }
 
+// ---- block fill path: begin ----
 // Len is the row count the instance carries.
 func (r TableBlockRows[T]) Len() int32 { return r.Count }
 
@@ -258,6 +259,7 @@ func (r TableBlockRows[T]) Len() int32 { return r.Count }
 func (r TableBlockRows[T]) At(i int32) *T {
 	return (*T)(unsafe.Add(r.Base, uintptr(i)*uintptr(r.Stride)))
 }
+// ---- block fill path: end ----
 
 // ---- reflection over a block (docs/SPEC-TABLES.md §8, §19.2) ----
 //
@@ -589,6 +591,7 @@ func (g *blockGen) emitBlockHandle(bl *ir.BlockLayout) {
 	g.hf("\tBytes      int64 // the extent in use\n")
 	g.hf("}\n\n")
 
+	g.hf("// ---- block fill path: begin ----\n")
 	for _, a := range bl.Arrays {
 		field := ir.GoExportName(a.Field.Name)
 		g.hf("// %sStride, %sMax and %sProjectionOffset are the constants this build\n", field, field, field)
@@ -617,6 +620,7 @@ func (g *blockGen) emitBlockHandle(bl *ir.BlockLayout) {
 		g.hf("}\n\n")
 	}
 
+	g.hf("// ---- block fill path: end ----\n")
 	g.emitBlockOpen(bl)
 	g.emitBlockBuild(bl)
 	g.hf("// Type is this block's descriptors: constant data, so a reflective read costs\n")

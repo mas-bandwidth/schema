@@ -2289,6 +2289,7 @@ type tableJsonGraphNode struct {
 	written bool
 }
 type tableJsonLabel struct {
+	key    uint64
 	ref    int64
 	target uint64
 	open   bool
@@ -2297,11 +2298,85 @@ type tableJsonGraph struct {
 	alloc    func(int64) (unsafe.Pointer, int64)
 	listAdd  func(unsafe.Pointer, int64) unsafe.Pointer
 	mapPlace func(unsafe.Pointer, *TableFieldInfo, tableMapKey) (unsafe.Pointer, bool)
-	nodes    map[unsafe.Pointer]*tableJsonGraphNode
-	labels   map[uint64]tableJsonLabel
+	node     func(unsafe.Pointer) *tableJsonGraphNode
+	allocate func(int64) []byte
+	release  func([]byte)
+	labels   []tableJsonLabel
+	memory   []byte
+	count    int
 	next     uint64
 }
 
+func (g *tableJsonGraph) findLabel(key uint64) (int, bool) {
+	if len(g.labels) == 0 {
+		return 0, false
+	}
+	h := key * 0x9e3779b97f4a7c15
+	h ^= h >> 32
+	mask := uint64(len(g.labels) - 1)
+	for slot := h & mask; ; slot = (slot + 1) & mask {
+		entry := g.labels[slot]
+		if entry.key == 0 {
+			return int(slot), false
+		}
+		if entry.key == key {
+			return int(slot), true
+		}
+	}
+}
+func (g *tableJsonGraph) getLabel(key uint64) (tableJsonLabel, bool) {
+	i, ok := g.findLabel(key)
+	if !ok {
+		return tableJsonLabel{}, false
+	}
+	return g.labels[i], true
+}
+func (g *tableJsonGraph) setLabel(key uint64, entry tableJsonLabel) bool {
+	if key == 0 {
+		return false
+	}
+	i, exists := g.findLabel(key)
+	if !exists && g.count*2 >= len(g.labels) {
+		capacity := len(g.labels) * 2
+		if capacity < 16 {
+			capacity = 16
+		}
+		if g.allocate == nil {
+			return false
+		}
+		memory := g.allocate(int64(capacity) * int64(unsafe.Sizeof(tableJsonLabel{})))
+		if memory == nil {
+			return false
+		}
+		clear(memory)
+		old, oldMemory := g.labels, g.memory
+		g.memory = memory
+		g.labels = unsafe.Slice((*tableJsonLabel)(unsafe.Pointer(&memory[0])), capacity)
+		for _, e := range old {
+			if e.key != 0 {
+				slot, _ := g.findLabel(e.key)
+				g.labels[slot] = e
+			}
+		}
+		if oldMemory != nil {
+			g.release(oldMemory)
+		}
+		i, _ = g.findLabel(key)
+	}
+	if !exists {
+		g.count++
+	}
+	entry.key = key
+	g.labels[i] = entry
+	return true
+}
+func (g *tableJsonGraph) close() {
+	if g.memory != nil {
+		g.release(g.memory)
+		g.memory = nil
+		g.labels = nil
+	}
+}
 func tableJsonPointerAt(slot *int64) unsafe.Pointer {
 	if *slot == 0 {
 		return nil
@@ -2320,7 +2395,10 @@ func tableJsonWritePointer(out *tableJsonOut, slot *int64, f *TableFieldInfo, de
 	if out.graph == nil {
 		return false
 	}
-	entry := out.graph.nodes[p]
+	if out.graph.node == nil {
+		return false
+	}
+	entry := out.graph.node(p)
 	if entry == nil {
 		return false
 	}
@@ -2328,7 +2406,7 @@ func tableJsonWritePointer(out *tableJsonOut, slot *int64, f *TableFieldInfo, de
 		if entry.refs > 1 {
 			return false
 		}
-		size := *(*uint64)(p)
+		size := *(*uint32)(p)
 		data := unsafe.Slice((*byte)(unsafe.Add(p, 8)), int(size))
 		if f.TypeName == "bytes" {
 			tableJsonWriteBase64(out, data)
@@ -2427,7 +2505,7 @@ func tableJsonReadPointer(in *tableJsonIn, slot *int64, f *TableFieldInfo, depth
 		}
 	}
 	if hasLabel {
-		entry, exists := in.graph.labels[label]
+		entry, exists := in.graph.getLabel(label)
 		if exists && entry.open {
 			in.bad = true
 			return false
@@ -2466,13 +2544,19 @@ func tableJsonReadPointer(in *tableJsonIn, slot *int64, f *TableFieldInfo, depth
 	*slot = ref
 	f.Table().Reset(p)
 	if hasLabel {
-		in.graph.labels[label] = tableJsonLabel{ref: ref, target: f.TargetId, open: true}
+		if !in.graph.setLabel(label, tableJsonLabel{ref: ref, target: f.TargetId, open: true}) {
+			in.bad = true
+			return false
+		}
 		in.pos = probe.pos
 		ok := tableJsonReadTableFields(in, p, f.Table(), depth, false)
 		if ok {
-			entry := in.graph.labels[label]
+			entry, _ := in.graph.getLabel(label)
 			entry.open = false
-			in.graph.labels[label] = entry
+			if !in.graph.setLabel(label, entry) {
+				in.bad = true
+				return false
+			}
 		}
 		return ok
 	}
@@ -2506,8 +2590,7 @@ func tableJsonReadBlob(in *tableJsonIn, slot *int64, f *TableFieldInfo) bool {
 		if in.report.KindMismatch != before {
 			return true
 		}
-		length := uint64(*(*int32)(p))
-		*(*uint64)(p) = length
+		*(*uint32)(unsafe.Add(p, 4)) = 0
 		*slot = ref
 		return true
 	}
@@ -2521,7 +2604,8 @@ func tableJsonReadBlob(in *tableJsonIn, slot *int64, f *TableFieldInfo) bool {
 	if !ok {
 		return false
 	}
-	*(*uint64)(p) = uint64(length)
+	*(*uint32)(p) = uint32(length)
+	*(*uint32)(unsafe.Add(p, 4)) = 0
 	*slot = ref
 	return true
 }
@@ -2544,8 +2628,10 @@ func tableJsonDropLabel(in *tableJsonIn) {
 	if !ok || probe.peek() != ',' {
 		return
 	}
-	if _, exists := in.graph.labels[label]; !exists {
-		in.graph.labels[label] = tableJsonLabel{}
+	if _, exists := in.graph.getLabel(label); !exists {
+		if !in.graph.setLabel(label, tableJsonLabel{}) {
+			in.bad = true
+		}
 	}
 }
 

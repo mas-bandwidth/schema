@@ -134,6 +134,13 @@ type TableCookInfo struct {
 // from the same model; a record the block form already emits is emitted THERE
 // and not again here.
 
+// TableChatEventRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type TableChatEventRow struct {
+	Channel int32
+	Speaker uint32
+}
+
 // TableEntityRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type TableEntityRow struct {
@@ -155,6 +162,65 @@ type TableEntityRow struct {
 	_        [6]byte // generated padding
 }
 
+// TableHitEventRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type TableHitEventRow struct {
+	TargetId uint32
+	Damage   int32
+	HitKind  int32
+	Crit     bool
+	_        [3]byte // generated padding
+}
+
+// TableMixedRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type TableMixedRow struct {
+	ProtocolMagic    uint16
+	_                [2]byte // generated padding
+	Sequence         uint32
+	AckSequence      int32
+	AckBits          uint32
+	SessionId        uint64
+	ClientId         uint32
+	_                [4]byte // generated padding
+	Nonce            uint64
+	WorldTime        int64
+	FrameTick        uint64
+	ServerTime       float32
+	_                [4]byte // generated padding
+	Entities         [8]TableEntityRow
+	EntitiesCount    int32
+	Stats            [80]TableStatRow
+	StatsCount       int32
+	GameEvent        TableEventRow
+	Loadout          [4]uint8
+	PlayerName       [16]byte // string(15): buffer, used length beside it
+	PlayerNameLength int32
+	Payload          [16]byte // bytes(16): buffer, used length beside it
+	PayloadLength    int32
+	AimX             float32
+	AimY             float32
+	AimZ             float32
+	Recoil           float32
+	Drift            float64
+	WideKey          uint64
+	Flux             int64
+	Ping             float32
+	CrcHint          uint32
+	HasExtra         bool
+	_                [3]byte // generated padding
+	Extra            int32
+	IdleTicks        int32
+	_                [4]byte // generated padding
+}
+
+// TablePickupEventRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type TablePickupEventRow struct {
+	ItemId uint32
+	Amount int32
+}
+
 // TableStatRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type TableStatRow struct {
@@ -167,6 +233,10 @@ type TableStatRow struct {
 // compiler's C ABI model, so a runtime that lays one of these records out
 // differently would read a cook at the wrong offsets and never know.
 func init() {
+	tableCookLayoutSize("TableChatEventRow", unsafe.Sizeof(TableChatEventRow{}), 8)
+	tableCookLayoutSize("TableChatEventRow alignment", unsafe.Alignof(TableChatEventRow{}), 4)
+	tableCookLayoutOffset("TableChatEventRow.Channel", unsafe.Offsetof(TableChatEventRow{}.Channel), 0)
+	tableCookLayoutOffset("TableChatEventRow.Speaker", unsafe.Offsetof(TableChatEventRow{}.Speaker), 4)
 	tableCookLayoutSize("TableEntityRow", unsafe.Sizeof(TableEntityRow{}), 64)
 	tableCookLayoutSize("TableEntityRow alignment", unsafe.Alignof(TableEntityRow{}), 8)
 	tableCookLayoutOffset("TableEntityRow.EntityId", unsafe.Offsetof(TableEntityRow{}.EntityId), 0)
@@ -183,6 +253,46 @@ func init() {
 	tableCookLayoutOffset("TableEntityRow.Damage", unsafe.Offsetof(TableEntityRow{}.Damage), 48)
 	tableCookLayoutOffset("TableEntityRow.Moving", unsafe.Offsetof(TableEntityRow{}.Moving), 56)
 	tableCookLayoutOffset("TableEntityRow.Firing", unsafe.Offsetof(TableEntityRow{}.Firing), 57)
+	tableCookLayoutSize("TableHitEventRow", unsafe.Sizeof(TableHitEventRow{}), 16)
+	tableCookLayoutSize("TableHitEventRow alignment", unsafe.Alignof(TableHitEventRow{}), 4)
+	tableCookLayoutOffset("TableHitEventRow.TargetId", unsafe.Offsetof(TableHitEventRow{}.TargetId), 0)
+	tableCookLayoutOffset("TableHitEventRow.Damage", unsafe.Offsetof(TableHitEventRow{}.Damage), 4)
+	tableCookLayoutOffset("TableHitEventRow.HitKind", unsafe.Offsetof(TableHitEventRow{}.HitKind), 8)
+	tableCookLayoutOffset("TableHitEventRow.Crit", unsafe.Offsetof(TableHitEventRow{}.Crit), 12)
+	tableCookLayoutSize("TableMixedRow", unsafe.Sizeof(TableMixedRow{}), 1352)
+	tableCookLayoutSize("TableMixedRow alignment", unsafe.Alignof(TableMixedRow{}), 8)
+	tableCookLayoutOffset("TableMixedRow.ProtocolMagic", unsafe.Offsetof(TableMixedRow{}.ProtocolMagic), 0)
+	tableCookLayoutOffset("TableMixedRow.Sequence", unsafe.Offsetof(TableMixedRow{}.Sequence), 4)
+	tableCookLayoutOffset("TableMixedRow.AckSequence", unsafe.Offsetof(TableMixedRow{}.AckSequence), 8)
+	tableCookLayoutOffset("TableMixedRow.AckBits", unsafe.Offsetof(TableMixedRow{}.AckBits), 12)
+	tableCookLayoutOffset("TableMixedRow.SessionId", unsafe.Offsetof(TableMixedRow{}.SessionId), 16)
+	tableCookLayoutOffset("TableMixedRow.ClientId", unsafe.Offsetof(TableMixedRow{}.ClientId), 24)
+	tableCookLayoutOffset("TableMixedRow.Nonce", unsafe.Offsetof(TableMixedRow{}.Nonce), 32)
+	tableCookLayoutOffset("TableMixedRow.WorldTime", unsafe.Offsetof(TableMixedRow{}.WorldTime), 40)
+	tableCookLayoutOffset("TableMixedRow.FrameTick", unsafe.Offsetof(TableMixedRow{}.FrameTick), 48)
+	tableCookLayoutOffset("TableMixedRow.ServerTime", unsafe.Offsetof(TableMixedRow{}.ServerTime), 56)
+	tableCookLayoutOffset("TableMixedRow.Entities", unsafe.Offsetof(TableMixedRow{}.Entities), 64)
+	tableCookLayoutOffset("TableMixedRow.Stats", unsafe.Offsetof(TableMixedRow{}.Stats), 580)
+	tableCookLayoutOffset("TableMixedRow.GameEvent", unsafe.Offsetof(TableMixedRow{}.GameEvent), 1224)
+	tableCookLayoutOffset("TableMixedRow.Loadout", unsafe.Offsetof(TableMixedRow{}.Loadout), 1244)
+	tableCookLayoutOffset("TableMixedRow.PlayerName", unsafe.Offsetof(TableMixedRow{}.PlayerName), 1248)
+	tableCookLayoutOffset("TableMixedRow.Payload", unsafe.Offsetof(TableMixedRow{}.Payload), 1268)
+	tableCookLayoutOffset("TableMixedRow.AimX", unsafe.Offsetof(TableMixedRow{}.AimX), 1288)
+	tableCookLayoutOffset("TableMixedRow.AimY", unsafe.Offsetof(TableMixedRow{}.AimY), 1292)
+	tableCookLayoutOffset("TableMixedRow.AimZ", unsafe.Offsetof(TableMixedRow{}.AimZ), 1296)
+	tableCookLayoutOffset("TableMixedRow.Recoil", unsafe.Offsetof(TableMixedRow{}.Recoil), 1300)
+	tableCookLayoutOffset("TableMixedRow.Drift", unsafe.Offsetof(TableMixedRow{}.Drift), 1304)
+	tableCookLayoutOffset("TableMixedRow.WideKey", unsafe.Offsetof(TableMixedRow{}.WideKey), 1312)
+	tableCookLayoutOffset("TableMixedRow.Flux", unsafe.Offsetof(TableMixedRow{}.Flux), 1320)
+	tableCookLayoutOffset("TableMixedRow.Ping", unsafe.Offsetof(TableMixedRow{}.Ping), 1328)
+	tableCookLayoutOffset("TableMixedRow.CrcHint", unsafe.Offsetof(TableMixedRow{}.CrcHint), 1332)
+	tableCookLayoutOffset("TableMixedRow.HasExtra", unsafe.Offsetof(TableMixedRow{}.HasExtra), 1336)
+	tableCookLayoutOffset("TableMixedRow.Extra", unsafe.Offsetof(TableMixedRow{}.Extra), 1340)
+	tableCookLayoutOffset("TableMixedRow.IdleTicks", unsafe.Offsetof(TableMixedRow{}.IdleTicks), 1344)
+	tableCookLayoutSize("TablePickupEventRow", unsafe.Sizeof(TablePickupEventRow{}), 8)
+	tableCookLayoutSize("TablePickupEventRow alignment", unsafe.Alignof(TablePickupEventRow{}), 4)
+	tableCookLayoutOffset("TablePickupEventRow.ItemId", unsafe.Offsetof(TablePickupEventRow{}.ItemId), 0)
+	tableCookLayoutOffset("TablePickupEventRow.Amount", unsafe.Offsetof(TablePickupEventRow{}.Amount), 4)
 	tableCookLayoutSize("TableStatRow", unsafe.Sizeof(TableStatRow{}), 8)
 	tableCookLayoutSize("TableStatRow alignment", unsafe.Alignof(TableStatRow{}), 4)
 	tableCookLayoutOffset("TableStatRow.StatId", unsafe.Offsetof(TableStatRow{}.StatId), 0)
@@ -212,7 +322,7 @@ func tableCookLayoutOffset(what string, got, want uintptr) {
 // §11 fact rather than a taste: a name derived from a DECLARATION's own
 // spelling is a name a declaration can collide with, and the checker has no
 // machinery for a prefix-and-name product. One fixed name is one claim.
-var tableCookRecords = make([]TableCookInfo, 2)
+var tableCookRecords = make([]TableCookInfo, 6)
 
 // THE GRAPH IS FILLED HERE rather than in the slice's own initializer, and
 // the reason is a language fact rather than a taste: the DESCRIPTOR GRAPH is
@@ -225,6 +335,13 @@ var tableCookRecords = make([]TableCookInfo, 2)
 // any goroutine at any time with no synchronisation.
 func init() {
 	tableCookRecords[0] = TableCookInfo{
+		Name: "TableChatEvent", Size: 8, Align: 4, NumFields: 2,
+		Fields: []TableCookFieldInfo{
+			{Name: "channel", Offset: 0, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
+			{Name: "speaker", Offset: 4, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
+		},
+	}
+	tableCookRecords[1] = TableCookInfo{
 		Name: "TableEntity", Size: 64, Align: 8, NumFields: 14,
 		Fields: []TableCookFieldInfo{
 			{Name: "entity_id", Offset: 0, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
@@ -243,13 +360,64 @@ func init() {
 			{Name: "firing", Offset: 57, Size: 1, ElemSize: 1, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageBool},
 		},
 	}
-	tableCookRecords[1] = TableCookInfo{
+	tableCookRecords[2] = TableCookInfo{
+		Name: "TableHitEvent", Size: 16, Align: 4, NumFields: 4,
+		Fields: []TableCookFieldInfo{
+			{Name: "target_id", Offset: 0, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
+			{Name: "damage", Offset: 4, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
+			{Name: "hit_kind", Offset: 8, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
+			{Name: "crit", Offset: 12, Size: 1, ElemSize: 1, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageBool},
+		},
+	}
+	tableCookRecords[3] = TableCookInfo{
+		Name: "TableMixed", Size: 1352, Align: 8, NumFields: 28,
+		Fields: []TableCookFieldInfo{
+			{Name: "protocol_magic", Offset: 0, Size: 2, ElemSize: 2, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
+			{Name: "sequence", Offset: 4, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
+			{Name: "ack_sequence", Offset: 8, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
+			{Name: "ack_bits", Offset: 12, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
+			{Name: "session_id", Offset: 16, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
+			{Name: "client_id", Offset: 24, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
+			{Name: "nonce", Offset: 32, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
+			{Name: "world_time", Offset: 40, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
+			{Name: "frame_tick", Offset: 48, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
+			{Name: "server_time", Offset: 56, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageFloat},
+			{Name: "entities", Offset: 64, Size: 516, ElemSize: 64, IsArray: true, ArrayBound: 8, IsPointer: false, CountOffset: 576, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "stats", Offset: 580, Size: 644, ElemSize: 8, IsArray: true, ArrayBound: 80, IsPointer: false, CountOffset: 1220, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "game_event", Offset: 1224, Size: 20, ElemSize: 20, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "loadout", Offset: 1244, Size: 4, ElemSize: 1, IsArray: true, ArrayBound: 4, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
+			{Name: "player_name", Offset: 1248, Size: 20, ElemSize: 20, IsArray: false, ArrayBound: 15, IsPointer: false, CountOffset: 1264, PresentOffset: -1, Storage: TableCookStorageString},
+			{Name: "payload", Offset: 1268, Size: 20, ElemSize: 20, IsArray: false, ArrayBound: 16, IsPointer: false, CountOffset: 1284, PresentOffset: -1, Storage: TableCookStorageBytes},
+			{Name: "aim_x", Offset: 1288, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageFloat},
+			{Name: "aim_y", Offset: 1292, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageFloat},
+			{Name: "aim_z", Offset: 1296, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageFloat},
+			{Name: "recoil", Offset: 1300, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageFloat},
+			{Name: "drift", Offset: 1304, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageFloat},
+			{Name: "wide_key", Offset: 1312, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
+			{Name: "flux", Offset: 1320, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
+			{Name: "ping", Offset: 1328, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageFloat},
+			{Name: "crc_hint", Offset: 1332, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
+			{Name: "has_extra", Offset: 1336, Size: 1, ElemSize: 1, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageBool},
+			{Name: "extra", Offset: 1340, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
+			{Name: "idle_ticks", Offset: 1344, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
+		},
+	}
+	tableCookRecords[4] = TableCookInfo{
+		Name: "TablePickupEvent", Size: 8, Align: 4, NumFields: 2,
+		Fields: []TableCookFieldInfo{
+			{Name: "item_id", Offset: 0, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
+			{Name: "amount", Offset: 4, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
+		},
+	}
+	tableCookRecords[5] = TableCookInfo{
 		Name: "TableStat", Size: 8, Align: 4, NumFields: 2,
 		Fields: []TableCookFieldInfo{
 			{Name: "stat_id", Offset: 0, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
 			{Name: "delta", Offset: 4, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
 		},
 	}
+	tableCookRecords[3].Fields[10].Record = func() *TableCookInfo { return &tableCookRecords[1] }
+	tableCookRecords[3].Fields[11].Record = func() *TableCookInfo { return &tableCookRecords[5] }
 }
 
 // TableEntityCook is TableEntity's cook: a pointer and a length, and then the root where it
@@ -419,7 +587,7 @@ func TableEntityAt(slot *int64) *TableEntityRow {
 
 // Type is TableEntity's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c TableEntityCook) Type() *TableCookInfo { return &tableCookRecords[0] }
+func (c TableEntityCook) Type() *TableCookInfo { return &tableCookRecords[1] }
 
 // TableStatCook is TableStat's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -588,8 +756,173 @@ func TableStatAt(slot *int64) *TableStatRow {
 
 // Type is TableStat's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c TableStatCook) Type() *TableCookInfo { return &tableCookRecords[1] }
+func (c TableStatCook) Type() *TableCookInfo { return &tableCookRecords[5] }
 
-// table TableMixed has NO Go cook Open: TableMixed.game_event is a union, and a cooked record's blittable form is a C ABI record with generated padding, which cannot overlay arms (docs/SPEC-TABLES.md §7, §19.3).
-// Its wire (§3) and its cook are unaffected — only this backend's reader is
-// absent, and it is absent by construction rather than by refusal.
+// TableMixedCook is TableMixed's cook: a pointer and a length, and then the root where it
+// lies. Opening one is a HEADER MATCH and no copy; a reference is one add
+// (docs/SPEC-TABLES.md §7).
+//
+// `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
+// functions — TableMixedOpen, TableMixedAt — and so does Go, because Go has free functions;
+// what is a MEMBER here is only what §11 leaves a language free to make one.
+//
+// THE MEMORY IS THE CONSUMER'S. Nothing here allocates, nothing here copies and
+// nothing here pins: the region must stay put and stay aligned for as long as
+// this handle or anything reached through it is used.
+type TableMixedCook struct {
+	Region       unsafe.Pointer // the DATA part's base: the root sits at offset zero
+	RegionLength int64          // data_length, as the header framed it
+}
+
+// §7.1's constants, so a consumer reading this file has the facts and not a
+// description of them. They are METHODS because §11 leaves a language whose
+// accessors are members free to spell them that way, and a package constant
+// per table per fact would claim names §11 does not.
+func (c TableMixedCook) RegionAlignment() int64 { return 8 } // the greatest alignof in the region, floor eight
+func (c TableMixedCook) RootSize() int64        { return 1352 }
+func (c TableMixedCook) RootAlign() int64       { return 8 }
+
+// Root is the root record at the region's base. It is a POINTER and not a
+// copy: a cooked graph is walked by adding deltas to slot addresses.
+func (c TableMixedCook) Root() *TableMixedRow { return (*TableMixedRow)(c.Region) }
+
+// TableMixedOpen checks the header and POINTS, and this is the WHOLE check
+// (docs/SPEC-TABLES.md §7): the magic read in the machine's own order, the byte
+// order it establishes, the build version, every RESERVED word zero, the region
+// ALIGNMENT the header names, the two part lengths against the length the
+// caller passed — a truncated file refuses — the ROOT's own storage inside the
+// data part, and the alignment of the base. Nothing per node, ever: that is
+// what makes this O(1) in the file's size.
+//
+// On a match the bytes ARE what this build wrote, in this build's layout and
+// this build's byte order, so there is nothing to validate and nothing to fix
+// up. On any failure it returns false and points at nothing, and the caller
+// falls back to a wire load — the path that carries every version.
+//
+// EVERY NUMBER BELOW COMES OUT OF THE FILE, so all of the arithmetic is
+// UNSIGNED and each term is BOUNDED BEFORE IT IS ADDED. A signed length would
+// put one signed value into that arithmetic and one negative case into every
+// comparison; a caller holding a length from a stat casts once, at the call
+// site, where the sign is still its own business.
+func TableMixedOpen(cook *TableMixedCook, base unsafe.Pointer, length int64) bool {
+	*cook = TableMixedCook{}
+	if base == nil || length < 64 {
+		return false
+	}
+	bytes := uint64(length)
+
+	// THE MAGIC, read before anything else: it is what establishes the byte
+	// order every other header word is written in. A cook of the other order
+	// reads back this constant byte-reversed and refuses HERE, rather than
+	// reaching a fix-up pass this design does not have.
+	//
+	// The header is read through encoding/binary's NATIVE order — the memcpy
+	// the C++ side reads it with — and not through a typed load, because the
+	// BASE's own alignment is not checked until further down: a typed load
+	// before that check is an unaligned load on a target that does not allow
+	// one, and the caller's buffer is the thing under test.
+	header := unsafe.Slice((*byte)(base), 64)
+	if binary.NativeEndian.Uint64(header) != TableCookMagic {
+		return false
+	}
+	// and the ORDER WORD does the other job: it RECORDS which order wrote the
+	// file, so a refusal names the order rather than inferring it.
+	if binary.NativeEndian.Uint64(header[16:]) != TableCookByteOrder {
+		return false
+	}
+	// THE BUILD VERSION: under the match-and-point rule a matching id means Open
+	// checks nothing further, so it is the sole guard between this runtime and a
+	// foreign region (§20).
+	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
+		return false
+	}
+	// THE RESERVED WORDS: a non-zero one means a writer used a form this build
+	// does not understand, and Open refuses rather than ignoring it.
+	if binary.NativeEndian.Uint64(header[48:]) != 0 {
+		return false
+	}
+	if binary.NativeEndian.Uint64(header[56:]) != 0 {
+		return false
+	}
+
+	// THE ALIGNMENT WORD is the one field the check COMPUTES WITH rather than
+	// only compares against — the data part begins at align_up(64, alignment)
+	// and the base is measured against it — so a word that is not an alignment
+	// rounds nothing and aligns nothing. A zero there is a division by zero
+	// inside the check, which is the defect the check prevents.
+	alignment := binary.NativeEndian.Uint64(header[40:])
+	if alignment < 8 || alignment > 64 {
+		return false
+	}
+	if alignment&(alignment-1) != 0 {
+		return false // a power of two
+	}
+	if alignment%8 != 0 {
+		return false // and a multiple of the ROOT's own alignof
+	}
+
+	// THE DATA OFFSET IS DERIVED, never a header field: a fact a reader computes
+	// is a fact two writers cannot disagree about, and it is 64 for every unit
+	// this language can declare.
+	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1)
+
+	// THE TWO PART LENGTHS against the length the caller passed. The whole file
+	// is dataOffset + data + attribution, and a size that is not exactly that
+	// refuses: a truncated file and a file with trailing bytes are the same
+	// refusal. Each term is bounded before it is added, so nothing here can wrap
+	// past the top of the type and land back inside the buffer.
+	dataLength := binary.NativeEndian.Uint64(header[24:])
+	attribution := binary.NativeEndian.Uint64(header[32:])
+	if dataLength > bytes || attribution > bytes-dataLength {
+		return false
+	}
+	if dataOffset > bytes-dataLength-attribution {
+		return false
+	}
+	if dataOffset+dataLength+attribution != bytes {
+		return false
+	}
+
+	// THE DATA PART MUST HOLD THE ROOT. The part lengths frame the FILE; they do
+	// not say the region is at least sizeof(root). Without this a forged short
+	// data part describes a root partly outside the file, and a match-and-point
+	// reader would hand back storage the caller never gave it — the one way this
+	// design could read past the length it was passed.
+	if dataLength < 1352 {
+		return false
+	}
+
+	// THE ALIGNMENT OF THE BASE. The header pads the data part to the region's
+	// alignment, so a base an allocator or mmap gave you is already aligned; one
+	// that is not is a caller's buffer this form cannot be read out of. The
+	// alignment divides 64, so the derived data offset carries the property from
+	// the file's base to the region's.
+	if uint64(uintptr(base))%alignment != 0 {
+		return false
+	}
+
+	cook.Region = unsafe.Add(base, uintptr(dataOffset))
+	cook.RegionLength = int64(dataLength)
+	return true
+}
+
+// TableMixedAt dereferences a reference, and it is the same call in a locked region
+// and an opened cook because they are the same encoding (§6.3): the slot is
+// eight bytes, SIGNED, self-relative from the SLOT'S OWN ADDRESS, so a deref
+// needs no base pointer and no bounds test, and NULL IS A DELTA OF ZERO.
+// Nothing about this call is the cook's: it is what a region reference is, and
+// a cook is a region written verbatim.
+//
+// It takes the SLOT and not its value, because a self-relative delta means
+// nothing without the address it is relative to.
+func TableMixedAt(slot *int64) *TableMixedRow {
+	delta := *slot
+	if delta == 0 {
+		return nil
+	}
+	return (*TableMixedRow)(unsafe.Add(unsafe.Pointer(slot), uintptr(delta)))
+}
+
+// Type is TableMixed's cooked-record descriptor, the head of the graph a reflective
+// walk follows (docs/SPEC-TABLES.md §8).
+func (c TableMixedCook) Type() *TableCookInfo { return &tableCookRecords[3] }

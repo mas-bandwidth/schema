@@ -472,6 +472,10 @@ func main() {
 	out := os.Args[3]
 	var run func([]line, string) error
 	switch surface {
+	case "retain":
+		run = surfaceRetain
+	case "retain-save":
+		run = surfaceRetainSave
 	case "message":
 		run = surfaceMessage
 	case "wire":

@@ -1,15 +1,20 @@
 package gotable
 
-import "testing"
+import (
+	"fmt"
+	"regexp"
+	"strings"
+	"testing"
+)
 
-func TestBlockBuilderStorageAndParallelFill(t *testing.T) {
-	runGenerated(t, `package probe
+const blockBuilderSchema = `package probe
 table Row { value uint64
  flag bool }
 table Root { stamp uint64
  rows [..65]Row
  other [..3]Row }
-`, `package probe
+`
+const blockBuilderProbe = `package probe
 import("testing";"bytes";"unsafe";"sync")
 func TestBuild(t *testing.T) {
  allocs,frees:=0,0
@@ -25,8 +30,8 @@ func TestBuild(t *testing.T) {
  if block.Rows().At(0).Value!=0xa5a5a5a5a5a5a5a5||block.Projection.Stamp!=0xa5a5a5a5a5a5a5a5 {t.Fatal("begin touched caller fields")}
  snapshot:=append([]byte(nil),original...)
  previous:=block
- if RootBlockBegin(&block,&storage,RootCounts{Rows:66},&refusal)||block!=previous||refusal.Field!="rows"||refusal.Count!=66||refusal.Maximum!=65||!bytes.Equal(snapshot,original) {t.Fatal("maximum refusal changed storage")}
- if RootBlockBegin(&block,&storage,RootCounts{Other:-1},&refusal)||refusal.Field!="other"||refusal.Count!=-1 {t.Fatal("negative count")}
+ if RootBlockBegin(&block,&storage,RootCounts{Rows:66},&refusal)||block!=previous||refusal.Array!="rows"||refusal.Count!=66||refusal.Maximum!=65||!bytes.Equal(snapshot,original) {t.Fatal("maximum refusal changed storage")}
+ if RootBlockBegin(&block,&storage,RootCounts{Other:-1},&refusal)||refusal.Array!="other"||refusal.Count!=-1 {t.Fatal("negative count")}
  clear(original)
  if !RootBlockBegin(&block,&storage,counts,nil){t.Fatal("begin again")}
  fill:=func(start,end int){rows:=block.RowsSpan();for i:=start;i<end;i++{rows[i].Value=uint64(i*i+7);rows[i].Flag=i%2==0}}
@@ -52,5 +57,76 @@ func TestBadAllocator(t *testing.T){
  if storage.Create(a)||calls!=1||frees!=1||storage.base!=nil{t.Fatal("short allocation")}
  a.Free=nil;if storage.Create(a)||calls!=1{t.Fatal("unpaired allocator")}
 }
-`)
+`
+
+func TestBlockBuilderStorageAndParallelFill(t *testing.T) {
+	if out, err := runGeneratedResult(t, blockBuilderSchema, blockBuilderProbe, "-race"); err != nil {
+		t.Fatalf("block builder under race detector: %v\n%s", err, out)
+	}
+}
+func TestBlockBuilderRaceNegativeControl(t *testing.T) {
+	mutant := strings.Replace(blockBuilderProbe, "worker*17/4,(worker+1)*17/4", "0,17", 1)
+	if mutant == blockBuilderProbe {
+		t.Fatal("race sabotage did not apply")
+	}
+	out, err := runGeneratedResult(t, blockBuilderSchema, mutant, "-race", "-run=TestBuild$")
+	if err == nil || !strings.Contains(string(out), "WARNING: DATA RACE") {
+		t.Fatalf("overlapping fill must fail the race detector: %v\n%s", err, out)
+	}
+}
+
+func blockFillGate(source string) error {
+	const begin = "// ---- block fill path: begin ----"
+	const end = "// ---- block fill path: end ----"
+	regions := strings.Count(source, begin)
+	if regions == 0 || regions != strings.Count(source, end) {
+		return fmt.Errorf("missing or unbalanced fill markers")
+	}
+	forbidden := regexp.MustCompile(`\b(make|new|append)\s*\(|\b(sync|atomic)\s*\.`)
+	for _, part := range strings.Split(source, begin)[1:] {
+		finish := strings.Index(part, end)
+		if finish < 0 {
+			return fmt.Errorf("missing end marker")
+		}
+		if token := forbidden.FindString(part[:finish]); token != "" {
+			return fmt.Errorf("fill path contains %s", token)
+		}
+	}
+	return nil
+}
+func TestBlockFillRefuser(t *testing.T) {
+	files, err := Generate(unitFrom(t, blockBuilderSchema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	checked := 0
+	for name, source := range files {
+		if !strings.HasSuffix(name, "Block.go") {
+			continue
+		}
+		checked++
+		if err := blockFillGate(string(source)); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no block source")
+	}
+}
+func TestBlockFillRefuserNegativeControl(t *testing.T) {
+	files, err := Generate(unitFrom(t, blockBuilderSchema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, source := range files {
+		if !strings.HasSuffix(name, "Block.go") {
+			continue
+		}
+		for _, token := range []string{"make([]byte,1)", "new(int)", "append(rows,row)", "sync.Mutex{}", "atomic.AddInt64(&count,1)"} {
+			mutant := strings.Replace(string(source), "// ---- block fill path: begin ----", "// ---- block fill path: begin ----\n"+token, 1)
+			if err := blockFillGate(mutant); err == nil {
+				t.Fatalf("%s accepted %s", name, token)
+			}
+		}
+	}
 }

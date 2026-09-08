@@ -36,15 +36,19 @@ func (g *tableGen) emitListRead(f *ir.Field, ind string) {
 	i := ind + "\t"
 	g.pf("%sheader:=sub;header.Buffer=r.Buffer[r.Offset-int64(len(sub.Buffer)):];elemKind:=header.Get8();count,ok:=header.Leb();sub.Offset=header.Offset\n", i)
 	g.pf("%sif !ok {r.Report.Malformed=true;break};if elemKind!=%d { if !tableKindWidens(elemKind,%d) {r.Report.KindMismatch++;break};r.Report.Widened++ }\n", i, kind, kind)
+	g.retainDiscard("r")
 	g.pf("%sslot:=(*tableContainer)(unsafe.Pointer(&%s));if !tableContainerFill(&sub.Nodes.Carve,slot,count,int64(unsafe.Sizeof(*new(%s))),%d) {if sub.Nodes.Carve.Refused {r.Take(sub);return false};r.Report.Malformed=true;break};slot.Count=0\n", i, expr, typ, align)
 	g.pf("%sfor i:=uint64(0);i<count;i++ { p:=(*%s)(tableContainerFillAt(&sub.Nodes.Carve,slot,int32(i),int64(unsafe.Sizeof(*new(%s)))));if p==nil {r.Report.Malformed=true;break};landed:=false;for once:=true;once;once=false {\n", i, typ, typ)
 	j := i + "\t"
 	switch kind {
 	case tkTable:
-		g.pf("%selem,ok:=sub.Body();if !ok {r.Report.Malformed=true;break};%sLoadBody(&elem,p);\n", j, f.Type.Name)
+		g.pf("%selem,ok:=sub.Body();if !ok {r.Report.Malformed=true;break};\n", j)
+		g.retainReadPath("elem", "r", "i")
+		g.pf("%sLoadBody(&elem,p);\n", f.Type.Name)
 		g.emitCarveReturn("sub", "elem", j)
 		g.pf("%sif elem.Offset!=int64(len(elem.Buffer)) {r.Report.Malformed=true;%sReset(p)}\n", j, f.Type.Name)
 	case tkUnion:
+		g.retainReadPath("sub", "r", "i")
 		g.emitReadUnion(f.Type.Ref.(*ir.Union), "(*p)", "sub", j, "break", true)
 	default:
 		g.emitReadScalar(f, "(*p)", "sub", "elemKind", j, "r.Report.Malformed=true;break")

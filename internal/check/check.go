@@ -3850,8 +3850,8 @@ var tableGeneratedVerbs = []string{
 	// retains against the connection's vocabulary, and the form 2 WRITE, which
 	// is refused by name (§3.3).
 	// Every one is emitted, so every one is claimed on this list's own rule.
-	"LoadRetain", "MeasureRetain", "SaveRetain", "LoadRetainMessages", "SaveRetainMessages",
-	"LoadBodyRetain", "MeasureBodyRetain", "SaveBodyRetain", "SaveBodyFieldsRetain",
+	"LoadRetain", "LoadRetainBuilder", "MeasureRetain", "SaveRetain", "LoadRetainMessages", "SaveRetainMessages",
+	"LoadBodyRetain", "LoadMessageBodyRetain", "MeasureBodyRetain", "SaveBodyRetain", "SaveBodyFieldsRetain",
 	"MeasureWireRetain", "SaveWireRetain", "NodeBodyRetain",
 	"FromJson", "ToJson", "ToJsonMeasure",
 	"Block", "BlockStorage", "BlockBegin", "BlockBytes", "BlockMaxBytes", "BlockOpen", "Counts",

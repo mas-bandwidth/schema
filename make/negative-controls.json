@@ -505,7 +505,9 @@
       "when": "pull-request",
       "why": "Go generated container runtime controls: sorting, ascending recovery, duplicate replacement, exact key domains, erased list elements and count-cap refusal.",
       "targets": [
-        "tables-go-containers-negative-controls"
+        "tables-go-containers-negative-controls",
+        "tables-go-block-race-negative-control",
+        "tables-go-block-fill-refuser-negative-control"
       ]
     }
   ],

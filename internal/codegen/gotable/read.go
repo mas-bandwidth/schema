@@ -9,12 +9,16 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	n := st.Name
 	g.pf("func %sLoadBody(r *TableReader, value *%s) bool {\n", n, g.storageName(n))
 	g.pf("\t%sReset(value)\n", n)
+	if g.retain {
+		g.pf("r.Retain.discard(r.Path,false,0)\n")
+	}
 	g.pf("\tfor {\n\t\tref, ok := r.Leb(); if !ok { r.Report.Malformed = true; return false }\n")
 	g.pf("\t\tif ref == 0 { return true }\n")
 	g.pf("\t\tfieldID, ok := r.Resolve(ref); if !ok || !r.Has(1) { r.Report.Malformed = true; return false }\n")
 	g.pf("\t\tif fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff { r.Report.Malformed = true; return false }\n")
 	g.pf("\t\tkind := r.Get8()\n\t\tswitch fieldID {\n")
-	for _, f := range st.Fields {
+	for ordinal, f := range st.Fields {
+		g.retainOrdinal = ordinal
 		kind := ir.TableWireFieldKind(f)
 		g.pf("\t\tcase 0x%016x: // %s\n", ir.TableFieldWireId(f), f.Name)
 		g.pf("\t\t\tif kind != %d {\n", kind)
@@ -39,8 +43,12 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	if g.regional {
 		g.pf("case 0xffffffffffffffff: if !r.Skip(kind) { r.Report.Malformed=true;return false }\n")
 	}
-	g.pf("\t\tdefault:\n\t\t\tr.Report.Unknown++; if !r.Skip(kind) { r.Report.Malformed = true; return false }\n\t\t}\n\t}\n}\n\n")
-	if st.IsMapEntry() || g.regional && ir.VariableTables(g.unit)[st.Name] {
+	if g.retain {
+		g.pf("default:r.Report.Unknown++;if !r.capture(fieldID,kind){r.Report.Malformed=true;return false}\n}\n}\n}\n")
+	} else {
+		g.pf("\t\tdefault:\n\t\t\tr.Report.Unknown++; if !r.Skip(kind) { r.Report.Malformed = true; return false }\n\t\t}\n\t}\n}\n\n")
+	}
+	if g.retain || st.IsMapEntry() || g.regional && ir.VariableTables(g.unit)[st.Name] {
 		return
 	}
 	g.pf("func %sLoad(value *%s, data []byte, report *TableReport) bool {\n", n, g.storageName(n))
@@ -83,6 +91,7 @@ func (g *tableGen) emitReadField(f *ir.Field, ind string) {
 		g.pf("%ssub, ok := r.Body(); if !ok { r.Report.Malformed = true; return false }\n", ind)
 		g.emitReadNested(f.Type.Name, expr, "sub", ind)
 	case kind == tkUnion:
+		g.retainDiscard("r")
 		g.emitReadUnion(f.Type.Ref.(*ir.Union), expr, "r", ind, "return false")
 	default:
 		g.emitReadScalar(f, expr, "r", "kind", ind, "r.Report.Malformed = true; return false")
@@ -90,6 +99,7 @@ func (g *tableGen) emitReadField(f *ir.Field, ind string) {
 }
 
 func (g *tableGen) emitReadNested(typ, expr, rdr, ind string) {
+	g.retainReadPath(rdr, "r", "0")
 	g.pf("%s%sLoadBody(&%s, &%s)\n", ind, typ, rdr, expr)
 	g.emitCarveReturn("r", rdr, ind)
 	g.pf("%sif %s.Offset != int64(len(%s.Buffer)) { r.Report.Malformed = true; %sReset(&%s) }\n", ind, rdr, rdr, typ, expr)
@@ -119,13 +129,21 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 		g.pf("%s\tr.Report.KindMismatch++; break\n", i)
 	}
 	g.pf("%s}\n", i)
+	if !keyed {
+		g.retainDiscard("r")
+	}
 	if keyed {
 		g.pf("%sfor i := uint64(0); i < count; i++ {\n", i)
 		j := i + "\t"
 		g.pf("%skeyRef, ok := sub.Leb(); if !ok { r.Report.Malformed = true; break }\n", j)
 		g.pf("%skey, ok := sub.Resolve(keyRef); if !ok { r.Report.Malformed = true; break }\n", j)
 		g.pf("%selem, ok := sub.Body(); if !ok { r.Report.Malformed = true; break }\n", j)
-		g.pf("%svar slot %s; if !slot.TableEnumValue(key) { r.Report.Unknown++; continue }\n", j, f.KeyEnum)
+		g.pf("%svar slot %s; if !slot.TableEnumValue(key) { r.Report.Unknown++;", j, f.KeyEnum)
+		if g.retain {
+			g.pf("if r.Retain!=nil{r.Report.RetainLost++};")
+		}
+		g.pf("continue }\n")
+		g.retainReadPath("elem", "r", "int(slot)-1")
 		switch kind {
 		case tkTable:
 			g.pf("%s%sLoadBody(&elem, &%s[int(slot)-1])\n", j, f.Type.Name, expr)
@@ -149,10 +167,12 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 		switch kind {
 		case tkTable:
 			g.pf("%selem, ok := sub.Body(); if !ok { r.Report.Malformed = true; break }\n", j)
+			g.retainReadPath("elem", "r", "i")
 			g.pf("%s%sLoadBody(&elem, &%s[i])\n", j, f.Type.Name, expr)
 			g.emitCarveReturn("sub", "elem", j)
 			g.pf("%sif elem.Offset!=int64(len(elem.Buffer)) {r.Report.Malformed=true;%sReset(&%s[i])}\n", j, f.Type.Name, expr)
 		case tkUnion:
+			g.retainReadPath("sub", "r", "i")
 			g.emitReadUnion(f.Type.Ref.(*ir.Union), expr+"[i]", "sub", j, "break", true)
 		default:
 			g.emitReadScalar(f, expr+"[i]", "sub", "elemKind", j, "r.Report.Malformed = true; break")
@@ -188,7 +208,7 @@ func (g *tableGen) emitReadUnion(un *ir.Union, expr, rdr, ind, stop string, elem
 	g.pf("%sarmID, ok := %s.Resolve(armRef); if !ok || !%s.Has(1) { r.Report.Malformed = true; %s }\n", i, rdr, rdr, stop)
 	g.pf("%sarmKind := %s.Get8(); %s, ok := %s.Body(); if !ok { r.Report.Malformed = true; %s }\n", i, rdr, arm, rdr, stop)
 	g.pf("%s%s.Type = %sTypeNone\n%sswitch armID {\n", i, expr, un.Name, i)
-	for _, v := range un.Variants {
+	for ordinal, v := range un.Variants {
 		g.pf("%scase 0x%016x:\n", i, ir.TableWireId(v.WireName()))
 		j := i + "\t"
 		kind := ir.TableKindNoPayload
@@ -204,9 +224,14 @@ func (g *tableGen) emitReadUnion(un *ir.Union, expr, rdr, ind, stop string, elem
 		g.pf("%s}\n", j)
 		none := fmt.Sprintf("%s.Type = %sTypeNone", expr, un.Name)
 		g.pf("%s%s.Type = %sType%s\n", j, expr, un.Name, ir.GoExportName(v.Name))
+		g.retainReadPath(arm, rdr, fmt.Sprint(ordinal+1))
 		g.emitReadArm(v, g.unionArmExpr(un, v, expr), arm, "armKind", j, none)
 	}
-	g.pf("%sdefault:r.Report.Unknown++\n%s}\n", i, i)
+	g.pf("%sdefault:r.Report.Unknown++\n", i)
+	if g.retain {
+		g.pf("if r.Retain!=nil{r.Report.RetainLost++}\n")
+	}
+	g.pf("%s}\n", i)
 	g.emitCarveReturn(rdr, arm, i)
 	g.pf("%s}\n%s}\n", ind+"\t", ind)
 }
@@ -283,10 +308,18 @@ func (g *tableGen) emitReadArmArray(f *ir.Field, expr, rdr, ind, none string) {
 	switch {
 	case isStructRef(f.Type):
 		elem := g.nextWireWriter()
-		g.pf("%s%s,ok:=%s.Body();if !ok {r.Report.Malformed=true;break};%sLoadBody(&%s,&%s[i])\n", j, elem, rdr, f.Type.Name, elem, expr)
+		g.pf("%s%s,ok:=%s.Body();if !ok {r.Report.Malformed=true;break}\n", j, elem, rdr)
+		g.retainReadPath(elem, rdr, "i")
+		g.pf("%s%sLoadBody(&%s,&%s[i])\n", j, f.Type.Name, elem, expr)
 		g.emitCarveReturn(rdr, elem, j)
 	case isUnionRef(f.Type):
+		if g.retain {
+			g.pf("savedPath:=%s.Path; %s.Path=%s.Path.step(%d,uint32(i))\n", rdr, rdr, rdr, g.retainOrdinal)
+		}
 		g.emitReadUnion(f.Type.Ref.(*ir.Union), expr+"[i]", rdr, j, "break", true)
+		if g.retain {
+			g.pf("%s.Path=savedPath\n", rdr)
+		}
 	default:
 		g.emitReadScalar(f, expr+"[i]", rdr, "elemKind", j, "r.Report.Malformed=true;break")
 	}
@@ -309,7 +342,11 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 		g.pf("%s{\n%s\tvariantRef, ok := %s.Leb(); if !ok { %s }\n", ind, ind, rdr, onBad)
 		g.pf("%s\tif variantRef == 0 { %s = %sNone } else {\n", ind, expr, f.Type.Name)
 		g.pf("%s\t\tid, ok := %s.Resolve(variantRef); if !ok { %s }\n", ind, rdr, onBad)
-		g.pf("%s\t\tif !%s.TableEnumValue(id) { r.Report.Unknown++ }\n%s\t}\n%s}\n", ind, expr, ind, ind)
+		g.pf("%s\t\tif !%s.TableEnumValue(id) { r.Report.Unknown++;", ind, expr)
+		if g.retain {
+			g.pf("if r.Retain!=nil{r.Report.RetainLost++}")
+		}
+		g.pf(" }\n%s\t}\n%s}\n", ind, ind)
 		return
 	}
 	if f.Type.Width == 128 && (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) {

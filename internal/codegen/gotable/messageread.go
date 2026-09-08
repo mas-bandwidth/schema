@@ -6,8 +6,14 @@ import (
 )
 
 func (g *tableGen) emitMessageRead(st *ir.Struct) {
-	g.pf("func %sLoadMessageBody(r *TableMessageReader,value *%s)bool {\n%sReset(value);for {ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok {r.Report.Malformed=true;return false};if ref==0{return true};entry,ok:=r.Vocabulary.Entry(ref);if !ok||entry.Id>=0xfffffffffffffffd {r.Report.Malformed=true;return false};switch entry.Id {\n", st.Name, g.storageName(st.Name), st.Name)
-	for _, f := range st.Fields {
+	g.pf("func %sLoadMessageBody(r *TableMessageReader,value *%s)bool {\n%sReset(value);\n", st.Name, g.storageName(st.Name), st.Name)
+	if g.retain {
+		g.pf("r.Retain.discard(r.Path,false,0);\n")
+	}
+	g.pf("for {ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok {r.Report.Malformed=true;return false};if ref==0{return true};entry,ok:=r.Vocabulary.Entry(ref);if !ok||entry.Id>=0xfffffffffffffffd {r.Report.Malformed=true;return false};switch entry.Id {\n")
+	for ordinal, f := range st.Fields {
+		g.retainOrdinal = ordinal
+		g.retainIndex = ""
 		mine := ir.TableFieldEntry(f)
 		g.pf("case 0x%016x:{\n", mine.Id)
 		g.emitMessageCompatibility(f, mine, "entry", "", "\t")
@@ -22,8 +28,12 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 		}
 		g.pf("}\n")
 	}
-	g.pf("default:r.Report.Unknown++;if !tableMessageSkip(&r.Bits,r.Vocabulary,r.IndexBits,entry,0){r.Report.Malformed=true;return false}\n}}}\n")
-	if st.IsMapEntry() || ir.VariableTables(g.unit)[st.Name] {
+	if g.retain {
+		g.pf("default:r.Report.Unknown++;if !r.capture(entry){r.Report.Malformed=true;return false}\n}}}\n")
+	} else {
+		g.pf("default:r.Report.Unknown++;if !tableMessageSkip(&r.Bits,r.Vocabulary,r.IndexBits,entry,0){r.Report.Malformed=true;return false}\n}}}\n")
+	}
+	if g.retain || st.IsMapEntry() || ir.VariableTables(g.unit)[st.Name] {
 		return
 	}
 	g.pf("func %sLoadMessages(values []%s,vocabulary *TableVocabulary,data []byte,report *TableReport)(int64,bool) {if report==nil {var ignored TableReport;report=&ignored};r,count:=tableMessageBatchOpen(vocabulary,data,report);defer func(){*report=r.Report}();if count<0{return 0,false};if count>int64(len(values)){return count,tableMessageRefuse(&r.Report,\"batch_too_large\")};for i:=int64(0);i<count;i++ {if !%sLoadMessageBody(&r,&values[i]){return i,false}};return count,tableMessageBatchClose(&r)}\n", st.Name, g.storageName(st.Name), st.Name)
@@ -57,25 +67,65 @@ func (g *tableGen) emitMessageReadValue(f *ir.Field, expr, entry, ind string) {
 	case f.KeyEnum != "" || f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes:
 		g.emitMessageReadArray(f, expr, entry, ind)
 	case isStructRef(f.Type):
+		restore := ""
+		if g.retain && !g.retainArm {
+			restore = g.retainMessagePush(g.retainIndex)
+		}
 		g.pf("%sif !%sLoadMessageBody(r,&%s){return false}\n", ind, f.Type.Name, expr)
+		if restore != "" {
+			g.retainMessagePop(restore)
+		}
 	case isUnionRef(f.Type):
+		target := g.nextWireWriter()
+		g.pf("{ %s:=&%s\n", target, expr)
+		expr = "(*" + target + ")"
+		outer := ""
+		if g.retain {
+			if g.retainIndex != "" {
+				outer = g.retainMessagePush(g.retainIndex)
+			}
+			rdr := "r"
+			g.retainDiscard(rdr)
+		}
 		un := f.Type.Ref.(*ir.Union)
 		arm := g.nextWireWriter()
 		g.pf("%s{ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok{%s};if ref==0{%s.Type=%sTypeNone}else{%s,ok:=r.Vocabulary.Entry(ref);if !ok||%s.Id>=0xfffffffffffffffd||%s.Shape.Kind==0{%s};switch %s.Id{\n", ind, bad, expr, un.Name, arm, arm, arm, bad, arm)
-		for _, v := range un.Variants {
+		for ordinal, v := range un.Variants {
 			mine := ir.TableArmEntry(v)
 			g.pf("case 0x%016x:{\n", mine.Id)
 			g.emitMessageCompatibility(v.F, mine, arm, expr+".Type="+un.Name+"TypeNone", ind+"\t")
 			g.pf("%s.Type=%sType%s\n", expr, un.Name, ir.GoExportName(v.Name))
 			if !v.Void() {
+				savedIndex, savedArm := g.retainIndex, g.retainArm
+				g.retainIndex, g.retainArm = "", true
+				restore := ""
+				if g.retain {
+					restore = g.retainMessagePush(fmt.Sprint(ordinal + 1))
+				}
 				g.emitMessageArmReset(un, v, expr)
 				g.emitMessageReadValue(v.F, g.unionArmExpr(un, v, expr), arm, ind+"\t")
+				if restore != "" {
+					g.retainMessagePop(restore)
+				}
+				g.retainIndex, g.retainArm = savedIndex, savedArm
 			}
 			g.pf("if widened {r.Report.Widened++}\n}\n")
 		}
-		g.pf("default:%s.Type=%sTypeNone;r.Report.Unknown++;if !tableMessageSkip(&r.Bits,r.Vocabulary,r.IndexBits,%s,0){%s}\n}}}\n", expr, un.Name, arm, bad)
+		extra := ""
+		if g.retain {
+			extra = "if r.Retain!=nil{r.Report.RetainLost++};"
+		}
+		g.pf("default:%s.Type=%sTypeNone;r.Report.Unknown++;%sif !tableMessageSkip(&r.Bits,r.Vocabulary,r.IndexBits,%s,0){%s}\n}}}\n", expr, un.Name, extra, arm, bad)
+		if outer != "" {
+			g.retainMessagePop(outer)
+		}
+		g.pf("}\n")
 	case enumRef(f) != nil:
-		g.pf("%s{ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok{%s};if ref==0{%s=%sNone}else{id,ok:=r.Vocabulary.Name(ref);if !ok{%s};if !%s.TableEnumValue(id){r.Report.Unknown++}}}\n", ind, bad, expr, f.Type.Name, bad, expr)
+		extra := ""
+		if g.retain {
+			extra = "if r.Retain!=nil{r.Report.RetainLost++}"
+		}
+		g.pf("%s{ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok{%s};if ref==0{%s=%sNone}else{id,ok:=r.Vocabulary.Name(ref);if !ok{%s};if !%s.TableEnumValue(id){r.Report.Unknown++;%s}}}\n", ind, bad, expr, f.Type.Name, bad, expr, extra)
 	default:
 		scalar := g.nextWireWriter()
 		g.pf("%s{var raw [16]byte;if !tableMessageReadScalar(&r.Bits,%s.Shape,&raw){%s};%s:=TableReader{Buffer:raw[:],Report:&r.Report}\n", ind, entry, bad, scalar)
@@ -84,6 +134,10 @@ func (g *tableGen) emitMessageReadValue(f *ir.Field, expr, entry, ind string) {
 	}
 }
 func (g *tableGen) emitMessageReadArray(f *ir.Field, expr, entry, ind string) {
+	oldIndex, oldArm := g.retainIndex, g.retainArm
+	g.retainIndex = "i"
+	g.retainArm = false
+	defer func() { g.retainIndex = oldIndex; g.retainArm = oldArm }()
 	bad := "r.Report.Malformed=true;return false"
 	bound := f.ArrayBound
 	counted := f.Array == ir.ArrayCounted || f.Type.Kind == ir.TBytes
@@ -99,11 +153,25 @@ func (g *tableGen) emitMessageReadArray(f *ir.Field, expr, entry, ind string) {
 	g.pf("element:=TableMessageEntry{Shape:%s.Element};_ = element;\n", entry)
 	if f.KeyEnum != "" {
 		g.pf("for i:=uint64(0);i<n;i++ {ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok{%s};id,ok:=r.Vocabulary.Name(ref);if !ok{%s};var key %s;known:=key.TableEnumValue(id);var scratch %s;p:=&scratch;if known {p=&base[int(key)-1]}else{r.Report.Unknown++}\n", bad, bad, f.KeyEnum, g.storageElementName(f))
+		if g.retain {
+			g.pf("store:=r.Retain;if !known&&store!=nil{r.Report.RetainLost++;r.Retain=nil}\n")
+			g.retainIndex = "int(key)-1"
+		}
 		g.emitMessageReadValue(messageElement(f), "(*p)", "element", ind+"\t")
+		if g.retain {
+			g.pf("r.Retain=store\n")
+		}
 		g.pf("}\n")
 	} else {
+		g.retainDiscard("r")
 		g.pf("keep:=min(n,uint64(%d));if keep<n{r.Report.Clamped++};walk:=n;if element.Shape.Bits>=0{walk=keep};for i:=uint64(0);i<walk;i++ {var scratch %s;p:=&scratch;if i<keep{p=&base[i]}\n", bound, g.storageElementName(f))
+		if g.retain {
+			g.pf("store:=r.Retain;if i>=keep{r.Retain=nil}\n")
+		}
 		g.emitMessageReadValue(messageElement(f), "(*p)", "element", ind+"\t")
+		if g.retain {
+			g.pf("r.Retain=store\n")
+		}
 		g.pf("};if walk<n&&!r.Bits.Skip(int64(n-walk)*element.Shape.Bits){%s}\n", bad)
 		if counted {
 			g.pf("%s=int32(keep)\n", companion)

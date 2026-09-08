@@ -9,14 +9,14 @@ import (
 func (g *tableGen) emitTableMeasure(st *ir.Struct) {
 	n := st.Name
 	g.pf("func %sMeasureBody(value *%s, ids *TableIds) int64 {\n w := TableWriter{Measuring:true, Ids:ids}\n if !%sSaveBody(&w,value) { return -1 }; return w.Offset\n}\n\n", n, g.storageName(n), n)
-	if st.IsMapEntry() || g.regional && ir.VariableTables(g.unit)[st.Name] {
+	if g.retain || st.IsMapEntry() || g.regional && ir.VariableTables(g.unit)[st.Name] {
 		return
 	}
 	g.pf("func %sMeasure(value *%s) int64 {\n var ids TableIds\n w := TableWriter{Measuring:true, Ids:&ids}\n w.Put8(1)\n if !%sSaveBody(&w,value) { return -1 }; w.Trailer()\n if w.Overflow || ids.Overflow { return -1 }; return w.Offset\n}\n\n", n, g.storageName(n), n)
 }
 
 func (g *tableGen) emitTableSave(st *ir.Struct) {
-	if st.IsMapEntry() || g.regional && ir.VariableTables(g.unit)[st.Name] {
+	if g.retain || st.IsMapEntry() || g.regional && ir.VariableTables(g.unit)[st.Name] {
 		return
 	}
 	g.pf("func %sSave(value *%s, buffer []byte) int64 {\n var ids TableIds\n w := TableWriter{Buffer:buffer, Ids:&ids}\n w.Put8(1)\n if !%sSaveBody(&w,value) { return -1 }; w.Trailer()\n if w.Overflow || ids.Overflow { return -1 }; return w.Offset\n}\n\n", st.Name, g.storageName(st.Name), st.Name)
@@ -28,7 +28,8 @@ func (g *tableGen) emitTableWrite(st *ir.Struct) {
 		g.pf("if !%sSaveBodyFields(w,value) { return false }; w.Put8(0); return !w.Overflow && !w.Ids.Overflow\n}\nfunc %sSaveBodyFields(w *TableWriter,value *%s) bool {\n", st.Name, st.Name, g.storageName(st.Name))
 	}
 	guards := tableGuardExprs(st)
-	for _, f := range st.Fields {
+	for ordinal, f := range st.Fields {
+		g.retainOrdinal = ordinal
 		cond := guards[f.Name]
 		if f.Type.Optional {
 			if cond != "" {
@@ -45,6 +46,9 @@ func (g *tableGen) emitTableWrite(st *ir.Struct) {
 		if cond != "" {
 			g.pf("\t}\n")
 		}
+	}
+	if g.retain {
+		g.pf("if !tableRetainTail(w){return false}\n")
 	}
 	if !g.regional {
 		g.pf("w.Put8(0)\n")
@@ -165,12 +169,22 @@ func (g *tableGen) emitWireValue(f *ir.Field, expr, writer, ind string, framed b
 		}
 		g.pf("%sfor i := int32(0); i < %sLength; i++ { %s.Put16(%s[i]) }\n", ind, expr, writer, expr)
 	case isStructRef(f.Type):
+		restore := ""
+		if g.retain && !g.retainArm {
+			restore = g.retainWritePush(writer, g.retainIndex)
+		}
 		if !framed {
 			g.pf("%sif !%sSaveBody(%s,&%s) { return false }\n", ind, f.Type.Name, writerPointer(writer), expr)
+			if restore != "" {
+				g.retainWritePop(writer, restore)
+			}
 			return
 		}
 		g.pf("%s{\n%s mark := %s.Ids.Count\n%s n := %sMeasureBody(&%s,%s.Ids); if n < 0 { return false }\n", ind, ind, writer, ind, f.Type.Name, expr, writer)
 		g.pf("%s %s.PutLeb(uint64(n))\n%s if %s.Measuring { %s.Advance(n) } else {\n%s  %s.Ids.Truncate(mark)\n%s  if !%sSaveBody(%s,&%s) { return false }\n%s }\n%s}\n", ind, writer, ind, writer, writer, ind, writer, ind, f.Type.Name, writerPointer(writer), expr, ind, ind)
+		if restore != "" {
+			g.retainWritePop(writer, restore)
+		}
 	case isUnionRef(f.Type):
 		g.emitWireUnion(f.Type.Ref.(*ir.Union), expr, writer, ind)
 	default:
@@ -213,6 +227,10 @@ func (g *tableGen) emitWireArray(f *ir.Field, expr, writer, ind string, framed b
 }
 
 func (g *tableGen) emitWireArrayElement(f *ir.Field, expr, writer, ind string) {
+	oldIndex, oldArm := g.retainIndex, g.retainArm
+	g.retainIndex = "i"
+	g.retainArm = false
+	defer func() { g.retainIndex = oldIndex; g.retainArm = oldArm }()
 	element := g.nextWireWriter()
 	elem := *f
 	elem.Array = ir.ArrayNone
@@ -247,8 +265,12 @@ func (g *tableGen) emitWireUnion(un *ir.Union, expr, writer, ind string) {
 	target := g.nextWireWriter()
 	g.pf("%s{ %s := &%s\n", ind, target, expr)
 	expr = target
+	outer := ""
+	if g.retain && g.retainIndex != "" && g.retainIndex != "0" {
+		outer = g.retainWritePush(writer, g.retainIndex)
+	}
 	g.pf("%sswitch %s.Type {\n%scase %sTypeNone: %s.PutLeb(0)\n", ind, expr, ind, un.Name, writer)
-	for _, v := range un.Variants {
+	for ordinal, v := range un.Variants {
 		g.pf("%scase %sType%s:\n", ind, un.Name, ir.GoExportName(v.Name))
 		i := ind + "\t"
 		kind := ir.TableKindNoPayload
@@ -260,6 +282,13 @@ func (g *tableGen) emitWireUnion(un *ir.Union, expr, writer, ind string) {
 			g.pf("%s%s.PutLeb(ref); %s.Put8(32); %s.PutLeb(0)\n", i, writer, writer, writer)
 			continue
 		}
+		savedIndex, savedArm := g.retainIndex, g.retainArm
+		g.retainIndex = ""
+		g.retainArm = true
+		restore := ""
+		if g.retain {
+			restore = g.retainWritePush(writer, fmt.Sprint(ordinal+1))
+		}
 		payload := g.nextWireWriter()
 		arm := g.unionArmExpr(un, v, expr)
 		g.pf("%sstart := %s.Ids.Count; %s := TableWriter{Measuring:true, Ids:%s.Ids}\n", i, writer, payload, writer)
@@ -268,8 +297,17 @@ func (g *tableGen) emitWireUnion(un *ir.Union, expr, writer, ind string) {
 		g.pf("%sif %s.Measuring { %s.Advance(%s.Offset) } else {\n%s %s.Ids.Truncate(start)\n", i, writer, writer, payload, i, writer)
 		g.emitWireValue(v.F, arm, writer, i+"\t", false)
 		g.pf("%s}\n", i)
+		if restore != "" {
+			g.retainWritePop(writer, restore)
+		}
+		g.retainIndex = savedIndex
+		g.retainArm = savedArm
 	}
-	g.pf("%sdefault: return false\n%s}\n%s}\n", ind, ind, ind)
+	g.pf("%sdefault: return false\n%s}\n", ind, ind)
+	if outer != "" {
+		g.retainWritePop(writer, outer)
+	}
+	g.pf("%s}\n", ind)
 }
 
 func (g *tableGen) emitWireScalar(f *ir.Field, expr, writer, ind string) {

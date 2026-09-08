@@ -152,8 +152,7 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 func cookWalk(u *ir.Unit, name string, visit func(string, *ir.MemberLayout)) {
 	seen := map[string]bool{}
 	var walk func(string)
-	var field func(*ir.Field)
-	field = func(f *ir.Field) {
+	field := func(f *ir.Field) {
 		if f.IsMap() {
 			walk(f.MapEntry.Name)
 			return

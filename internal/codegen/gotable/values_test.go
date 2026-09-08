@@ -13,6 +13,13 @@ import (
 
 func runGenerated(t *testing.T, schema, testSource string) {
 	t.Helper()
+	if out, err := runGeneratedResult(t, schema, testSource); err != nil {
+		t.Fatalf("generated runtime: %v\n%s", err, out)
+	}
+}
+
+func runGeneratedResult(t *testing.T, schema, testSource string, flags ...string) ([]byte, error) {
+	t.Helper()
 	u := unitFrom(t, schema)
 	files, err := golang.Generate(u)
 	if err != nil {
@@ -35,11 +42,10 @@ func runGenerated(t *testing.T, schema, testSource string) {
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("go", "test", "-count=1", ".")
+	args := append([]string{"test", "-count=1"}, flags...)
+	cmd := exec.Command("go", append(args, ".")...)
 	cmd.Dir = dir
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("generated runtime: %v\n%s", err, out)
-	}
+	return cmd.CombinedOutput()
 }
 
 func TestDefaultsAndOptionalArrays(t *testing.T) {

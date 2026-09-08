@@ -77,3 +77,6 @@ require vocabdemo v0.0.0
 replace vocabdemo => ../../../build/tables-generated-go/vocab
 require vocab9demo v0.0.0
 replace vocab9demo => ../../../build/tables-generated-go/vocab9
+
+require tblrt1 v0.0.0
+replace tblrt1 => ../../../build/tables-generated-go/rt1

@@ -75,11 +75,15 @@ type tableGen struct {
 	body   strings.Builder // everything else
 	indent string          // extra per-line indent while emitting inside a branch guard
 
-	needsMath  bool
-	unsafeUsed bool
-	wireSerial int
-	regional   bool
-	armOffset  *int64
+	needsMath     bool
+	unsafeUsed    bool
+	wireSerial    int
+	retain        bool
+	retainOrdinal int
+	retainIndex   string
+	retainArm     bool
+	regional      bool
+	armOffset     *int64
 
 	// Every union declaration reached by this unit's table closure has one
 	// immutable descriptor slot, shared by fields, arrays and nested arms.
@@ -165,10 +169,11 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		if g.home {
 			g.needsMath = true
 			g.needsUnsafe() // the descriptor surface's reset column takes an unsafe.Pointer
-			g.pf("%s", tableRuntime()+tableWireRuntime(u)+tableMessageRuntime(u))
+			g.pf("%s", tableRuntimeForUnit(regional)+tableWireRuntime(u)+tableMessageRuntime(u))
 			g.pf("%s", tableCookWriteSource(u))
 			if regional {
 				g.emitRegionRuntime(blocks)
+				g.emitRetainRuntime()
 			}
 			if anyKeyed {
 				g.pf("%s", tableKeyedAccessor)
@@ -213,6 +218,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			g.emitTableWrite(st)
 			g.emitTableSave(st)
 			g.emitTableRead(st)
+			g.emitRetainMember(st)
 			g.emitCookWriteSurface(st)
 			g.emitMessageWrite(st)
 			g.emitMessageRead(st)
@@ -442,6 +448,7 @@ func tableRuntime() string {
 // ledger. Silence (all zero) means the data matched this reader's schema
 // exactly.
 type TableReport struct {
+ Retained, RetainLost int32
 	Verdict      TableOpenVerdict // unsupported form is distinct from damage
 	Reason       string // why the form was refused; empty for a file read
 	Widened      int32 // a compatible wider kind preserved the value
