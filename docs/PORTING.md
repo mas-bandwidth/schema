@@ -122,7 +122,7 @@ red on the one row it was planted in.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/codecs.go:1113` | ✅ `internal/codegen/ctable/codecs.go:1074` | ✅ `internal/codegen/rusttable/runtime.go:364` | ✅ `internal/codegen/gotable/gotable.go:717` | ✅ `internal/codegen/cstable/cstable.go:958` (a `ref struct`) | ✅ `internal/codegen/javatable/codecs.go:1016` (the limit) | ✅ `internal/codegen/jstable/jstable.go:960` (the limit) | ✅ `internal/codegen/darttable/codecs.go:762` (the limit) | — a decoded BEAM term is an allocation and no buffer is caller-owned; the leg pins the per-case COUNT instead (`tables-elixir-alloc-audit`, docs/SPEC-TABLES.md) |
+| ✅ `internal/codegen/cpptable/codecs.go:1113` | ✅ `internal/codegen/ctable/codecs.go:1074` | ✅ `internal/codegen/rusttable/runtime.go:364` | ✅ `internal/codegen/gotable/wire.go:178-187` | ✅ `internal/codegen/cstable/cstable.go:958` (a `ref struct`) | ✅ `internal/codegen/javatable/codecs.go:1016` (the limit) | ✅ `internal/codegen/jstable/jstable.go:960` (the limit) | ✅ `internal/codegen/darttable/codecs.go:762` (the limit) | — a decoded BEAM term is an allocation and no buffer is caller-owned; the leg pins the per-case COUNT instead (`tables-elixir-alloc-audit`, docs/SPEC-TABLES.md) |
 
 ### M2 — 64-bit values without boxing
 
@@ -151,7 +151,7 @@ per edge to 0.7 bytes per iteration (ceiling 8) once the delta was composed.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/cpptable.go:513` | ✅ `internal/codegen/ctable/ctable.go:514-518` | ✅ `internal/codegen/rusttable/runtime.go:352-356` (one `from_le_bytes`; nothing boxes) | ✅ `internal/codegen/gotable/gotable.go:710-714` | ✅ `internal/codegen/cstable/cstable.go:986-991` | ✅ `internal/codegen/javatable/runtime.go:206-210` | — the accelerator paths compose (`internal/codegen/jstable/block.go:384`, `cook.go:513`); a 64-bit wire FIELD's value is a BigInt or loses precision, so those rows read one under a stated ceiling (`test/js-tables/main.mjs`, the RootConfig rows) | — an `int` is a 64-bit machine word and nothing boxes (`internal/codegen/darttable/block.go:213`) | ❌ #403 |
+| ✅ `internal/codegen/cpptable/cpptable.go:513` | ✅ `internal/codegen/ctable/ctable.go:514-518` | ✅ `internal/codegen/rusttable/runtime.go:352-356` (one `from_le_bytes`; nothing boxes) | ✅ `internal/codegen/gotable/wire.go:152` | ✅ `internal/codegen/cstable/cstable.go:986-991` | ✅ `internal/codegen/javatable/runtime.go:206-210` | — the accelerator paths compose (`internal/codegen/jstable/block.go:384`, `cook.go:513`); a 64-bit wire FIELD's value is a BigInt or loses precision, so those rows read one under a stated ceiling (`test/js-tables/main.mjs`, the RootConfig rows) | — an `int` is a 64-bit machine word and nothing boxes (`internal/codegen/darttable/block.go:213`) | ❌ #403 |
 
 ### M3 — A float never crosses a call
 
@@ -179,7 +179,7 @@ reads as bytes per iteration on the pinned runtime.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/cpptable.go:572-573` | ✅ `internal/codegen/ctable/ctable.go:565-568` | ✅ `internal/codegen/rusttable/runtime.go:181-199` | ✅ `internal/codegen/gotable/codecs.go:781-786` | ❌ #404 | ✅ `internal/codegen/javatable/codecs.go:919-921` | ✅ `internal/codegen/jstable/codecs.go:1209-1219` | ❌ #404 | — a BEAM float is a boxed term whatever the call shape; `R.f32_bits` costs what the term costs |
+| ✅ `internal/codegen/cpptable/cpptable.go:572-573` | ✅ `internal/codegen/ctable/ctable.go:565-568` | ✅ `internal/codegen/rusttable/runtime.go:181-199` | ✅ `internal/codegen/gotable/read.go` (`emitReadScalar`) | ❌ #404 | ✅ `internal/codegen/javatable/codecs.go:919-921` | ✅ `internal/codegen/jstable/codecs.go:1209-1219` | ❌ #404 | — a BEAM float is a boxed term whatever the call shape; `R.f32_bits` costs what the term costs |
 
 ### M4 — The codec is shaped for the optimizer
 
@@ -306,7 +306,7 @@ in post-order in the emitter and requires the lock red;
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-flat-wire` `tables-flat-wire-negative-control` | ✅ `TestCTableWireGraphIdentity` `tables-c-wire-fuzz` `tables-c-wire-fuzz-negative-control` | ❌ #349 | ❌ #349 | ✅ `tables-cs-leg` `tables-cs-region-fuzz` (flat native and managed graphs) | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 |
+| ✅ `tables-flat-wire` `tables-flat-wire-negative-control` | ✅ `TestCTableWireGraphIdentity` `tables-c-wire-fuzz` `tables-c-wire-fuzz-negative-control` | ❌ #349 | ✅ `TestRegionGraphs` `tables-go-wire-fuzz` `tables-go-wire-fuzz-negative-control` | ✅ `tables-cs-leg` `tables-cs-region-fuzz` (flat native and managed graphs) | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 |
 
 ### M7 — A block row is reached by stride, with no per-row object
 
@@ -413,9 +413,29 @@ a managed backend allocates inside its runtime and says so.
 
 **Targets:** hooks
 
+Go uses one optional final writer argument, `TableWriteContext`: a
+`*TableArena` carries the authoring address space and its pair, while a
+`*TableAllocator` supplies scratch for a loaded/locked root. An allocator never
+supplies an address space. JSON and retaining file writers take the pair
+directly. C++ takes `root, out, capacity, order, allocator` for cook writing
+and `root, allocator` for its measure; the builder overload takes ownership
+from the builder. These are argument-order adaptations of the same contract.
+The Go ownership gate returns exact original slices, including oversized ones,
+injects failure at each request, and checks that packing performs two independent
+numbering passes with the measurement storage released between them. Arena
+segment descriptors are embedded in the arena. With caller-backed scratch on
+Go 1.26.0, wire, message and retaining file measure/save each use one managed,
+typed activation frame; JSON and cook measure/save use zero. Node-proportional
+storage all goes through the pair. On a 64-bit target the arena occupies
+163,888 bytes, including 4096 embedded segment descriptors; Shutdown requires
+all readers and workers to have stopped. A typed frame contains a unit-sized
+id table: 2,240 bytes for the lists unit, rather than a fixed byte cost per
+object. The three ownership controls remove the
+original-slice guarantee, bypass the pair, and add a managed allocation.
+
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-hooks` | ✅ `TestCTableWireAllocatorFailures` `tables-c-soak` | — no allocating path exists: a pointered unit's wire is refused and the fixed class allocates nothing (`tables-rust-alloc-audit`) | — the runtime allocates inside itself and says so (docs/SPEC-TABLES.md, "who calls the allocator is per form") | ✅ `tables-cs-leg` (`TableAllocator` pairs, growth failures and native scratch ownership) | — the runtime allocates inside itself and says so; where it does is named per path at `tables-java-alloc` | — the runtime allocates inside itself and says so; every unavoidable allocation is named in the floor (docs/SPEC-TABLES.md) | — the runtime allocates inside itself and says so (docs/SPEC-TABLES.md) | — the BEAM allocates every term; the count is pinned instead (docs/SPEC-TABLES.md) |
+| ✅ `tables-hooks` | ✅ `TestCTableWireAllocatorFailures` `tables-c-soak` | — no allocating path exists: a pointered unit's wire is refused and the fixed class allocates nothing (`tables-rust-alloc-audit`) | ✅ `tables-go-allocator` `tables-go-allocator-negative-controls` (typed activation frames stated below) | ✅ `tables-cs-leg` (`TableAllocator` pairs, growth failures and native scratch ownership) | — the runtime allocates inside itself and says so; where it does is named per path at `tables-java-alloc` | — the runtime allocates inside itself and says so; every unavoidable allocation is named in the floor (docs/SPEC-TABLES.md) | — the runtime allocates inside itself and says so (docs/SPEC-TABLES.md) | — the BEAM allocates every term; the count is pinned instead (docs/SPEC-TABLES.md) |
 
 ### M11 — The layout contract is asserted in generated code
 
@@ -467,7 +487,7 @@ host order and requires red on the target while green on the host.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/cpptable.go:513-538` | ✅ `internal/codegen/ctable/ctable.go:503-518` | ✅ `internal/codegen/rusttable/runtime.go:334-354` | ✅ `internal/codegen/gotable/gotable.go:698-714` | ✅ `internal/codegen/cstable/cstable.go:971-991` | ✅ `internal/codegen/javatable/block.go:101-117` | ✅ `internal/codegen/jstable/jstable.go` (every DataView read passes `true`) | ✅ `internal/codegen/darttable/block.go` `internal/codegen/darttable/cook.go` (`Endian.little` on every read) | ✅ `internal/codegen/elixirtable/block.go:242` (every segment names `little`) |
+| ✅ `internal/codegen/cpptable/cpptable.go:513-538` | ✅ `internal/codegen/ctable/ctable.go:503-518` | ✅ `internal/codegen/rusttable/runtime.go:334-354` | ✅ `internal/codegen/gotable/wire.go:149-152` | ✅ `internal/codegen/cstable/cstable.go:971-991` | ✅ `internal/codegen/javatable/block.go:101-117` | ✅ `internal/codegen/jstable/jstable.go` (every DataView read passes `true`) | ✅ `internal/codegen/darttable/block.go` `internal/codegen/darttable/cook.go` (`Endian.little` on every read) | ✅ `internal/codegen/elixirtable/block.go:242` (every segment names `little`) |
 
 ### M13 — Descriptors are constants
 
@@ -495,7 +515,7 @@ plain-cache line.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `testdata/golden/tables/examples/KeyedTable.h:2245-2249` | ✅ `internal/codegen/ctable/ctable.go:45-50` (defined in `<Base>Table.c`) | ✅ `internal/codegen/rusttable/descriptors.go` (`&'static`) | ✅ `internal/codegen/gotable/codecs.go:1116-1138` | ❌ #411 (the plain-cache idiom) | ✅ `TestJavaDescriptorsAreSafelyPublished` | ✅ `internal/codegen/jstable/codecs.go:1301-1324` (built once on first use, frozen; one thread) | ✅ `internal/codegen/darttable/descriptors.go:75` (`const` descriptors, static tear-offs in the constant pool) | ✅ `internal/codegen/elixirtable/descriptors.go:4-12` (module attributes) |
+| ✅ `testdata/golden/tables/examples/KeyedTable.h:2245-2249` | ✅ `internal/codegen/ctable/ctable.go:45-50` (defined in `<Base>Table.c`) | ✅ `internal/codegen/rusttable/descriptors.go` (`&'static`) | ✅ `internal/codegen/gotable/codecs.go` (`emitTableDescriptor`) | ❌ #411 (the plain-cache idiom) | ✅ `TestJavaDescriptorsAreSafelyPublished` | ✅ `internal/codegen/jstable/codecs.go:1301-1324` (built once on first use, frozen; one thread) | ✅ `internal/codegen/darttable/descriptors.go:75` (`const` descriptors, static tear-offs in the constant pool) | ✅ `internal/codegen/elixirtable/descriptors.go:4-12` (module attributes) |
 
 ### M14 — The `&node` label in the text form
 
@@ -517,7 +537,7 @@ adapters; `tables-json-graph-walk`.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-json-graph-walk` | ✅ `TestCTableWireGraphIdentity` `TestCTableWireBlobIdentity` | ❌ #349 | ❌ #349 | ✅ `tables-cs-leg` (shared graph labels and forward references) | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 |
+| ✅ `tables-json-graph-walk` | ✅ `TestCTableWireGraphIdentity` `TestCTableWireBlobIdentity` | ❌ #349 | ✅ `TestRegionGraphs` `tables-go-json-walk` | ✅ `tables-cs-leg` (shared graph labels and forward references) | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 |
 
 ### M15 — One walk for the numbering, the pack measure and the pack
 
@@ -558,7 +578,7 @@ post-order numbering the same way.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/pointers.go:150` `conformance` | ✅ `internal/codegen/ctable/graph.go:24` `TestCTableCookCanonical` `tables-c-wire-fuzz` | ❌ #349 | ❌ #349 | ✅ `tables-cs-pack-negative-control` `tables-cs-leg` (root and node extent equality) | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 |
+| ✅ `internal/codegen/cpptable/pointers.go:150` `conformance` | ✅ `internal/codegen/ctable/graph.go:24` `TestCTableCookCanonical` `tables-c-wire-fuzz` | ❌ #349 | ✅ `internal/codegen/gotable/regions.go` (`tableRegionEdges`, `tableNumber`) `TestAllocatorOwnershipAndStandaloneWriters` `tables-go-builders` | ✅ `tables-cs-pack-negative-control` `tables-cs-leg` (root and node extent equality) | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 |
 
 ### M16 — The presence companion rides beside the array walks
 
@@ -599,7 +619,7 @@ on the corpus rows that carry it.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/codecs.go:588` `test/tables/main.cpp:6814` `TestReportRowsDecodeThroughTheEngine` | ✅ `TestCTableWireDefaultRecovery` `tables-c-wire-fuzz` | ❌ #392 | ❌ #392 | ✅ `tables-cs-leg` (optional arrays across file, message and cook walks) | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 |
+| ✅ `internal/codegen/cpptable/codecs.go:588` `test/tables/main.cpp:6814` `TestReportRowsDecodeThroughTheEngine` | ✅ `TestCTableWireDefaultRecovery` `tables-c-wire-fuzz` | ❌ #392 | ✅ `TestDefaultsAndOptionalArrays` `conformance` | ✅ `tables-cs-leg` (optional arrays across file, message and cook walks) | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 |
 ### M17 — A node larger than a slab takes a span of the address space
 
 **Method.** An arena hands out nodes by bumping inside a fixed-size slab, and a
@@ -689,7 +709,7 @@ payload's last byte, decodes a body that ends inside its own length.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/arms.go` `tables-wire-fuzz-arm-width-negative-control` `tables-wire-fuzz-arm-terminator-negative-control` | ✅ `tables-c-collections-fuzz` `tables-c-wire-fuzz` | ❌ #392 | ❌ #392 | ✅ `tables-cs-leg` `conformance-negative-control-cs` (all field-shaped arms) | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 |
+| ✅ `internal/codegen/cpptable/arms.go` `tables-wire-fuzz-arm-width-negative-control` `tables-wire-fuzz-arm-terminator-negative-control` | ✅ `tables-c-collections-fuzz` `tables-c-wire-fuzz` | ❌ #392 | ✅ `TestRegionUnionAndBlobValues` `TestUnionPointerArrayReaders` `tables-go-measure-negative-controls` `tables-go-wire-fuzz` | ✅ `tables-cs-leg` `conformance-negative-control-cs` (all field-shaped arms) | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 |
 
 C# carries the same field-shaped arm descriptors through file, message, JSON,
 native region and cook walks. `tables-cs-leg` and the three ordinary read
@@ -763,7 +783,7 @@ shared control.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-maps` `tables-json-map-walk` `tables-maps-negative-controls` `tables-maps-cook-check-negative-control`, and the TOOL's wire and text halves and its cook-check clause (`TestTheToolWritesTheReferencesMapBytes`, `TestCookCheckMapSlot`) | ✅ `TestCTableWireMaps` `TestCTableMapWideningCount` `tables-c-collections-fuzz` | ❌ #502 | ❌ #502 | ✅ `tables-cs-leg` `tables-cs-wire-fuzz` `tables-cs-builder-fuzz` (stable sorted entries and native holder extents) | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 |
+| ✅ `tables-maps` `tables-json-map-walk` `tables-maps-negative-controls` `tables-maps-cook-check-negative-control`, and the TOOL's wire and text halves and its cook-check clause (`TestTheToolWritesTheReferencesMapBytes`, `TestCookCheckMapSlot`) | ✅ `TestCTableWireMaps` `TestCTableMapWideningCount` `tables-c-collections-fuzz` | ❌ #502 | ✅ `tables-go-containers` `tables-go-containers-negative-controls` `tables-go-wire-fuzz` | ✅ `tables-cs-leg` `tables-cs-wire-fuzz` `tables-cs-builder-fuzz` (stable sorted entries and native holder extents) | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 |
 
 ### M20 — The id-table wire
 
@@ -844,7 +864,7 @@ through `go build -overlay` and each turning the fuzzer red on its own verdict.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ✅ file and message forms: `tables-c-wire-fuzz`, `tables-c-wire-fuzz-negative-control`, `tables-c-message-negative-control` | ❌ #518 | ❌ #511 | ✅ `tables-cs-wire-fuzz` `tables-cs-region-fuzz` `tables-cs-retain-fuzz` `conformance-negative-control-cs` | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 |
+| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ✅ file and message forms: `tables-c-wire-fuzz`, `tables-c-wire-fuzz-negative-control`, `tables-c-message-negative-control` | ❌ #518 | ✅ `tables-go-wire-fuzz` `tables-go-wire-fuzz-negative-control` `tables-go-retain-wire-fuzz` (fixed and variable file/message forms) | ✅ `tables-cs-wire-fuzz` `tables-cs-region-fuzz` `tables-cs-retain-fuzz` `conformance-negative-control-cs` | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 |
 
 C# carries the complete id-table file and message surface, native regions,
 mutable builders and retaining reads. Its storage choices and allocator
@@ -902,7 +922,7 @@ read back as `0x7ff8000020000000`, which is the quiet bit the conversion set.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-float-nan` `tables-float-nan-negative-control`, and the TOOL's two engines (`TestOracleCarriesTheFloatBitPattern`, `TestOracleWidensTheFloatBitPattern`, `TestACookCarriesAFloatBitPattern`) | ✅ `TestCTableWireWidening` `tables-c-wire-fuzz` | ❌ #366 | ❌ #366 | ✅ `tables-cs-leg` (integer-only float widening preserves NaN payload bits) | ❌ #366 | ❌ #366 | ❌ #366 | ❌ #366 |
+| ✅ `tables-float-nan` `tables-float-nan-negative-control`, and the TOOL's two engines (`TestOracleCarriesTheFloatBitPattern`, `TestOracleWidensTheFloatBitPattern`, `TestACookCarriesAFloatBitPattern`) | ✅ `TestCTableWireWidening` `tables-c-wire-fuzz` | ❌ #366 | ✅ `internal/codegen/gotable/wire.go` (`tableWidenFloat`), `TestWireSignalingNaNWideningAndLEBOverflow`; hardware-conversion and tenth-byte-guard overlays both fail the regression | ✅ `tables-cs-leg` (integer-only float widening preserves NaN payload bits) | ❌ #366 | ❌ #366 | ❌ #366 | ❌ #366 |
 
 ### I1 — The independent allocation gate
 
@@ -1237,7 +1257,7 @@ found a module name the packet emitter refuses — the drift a gate catches.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-cook-open` | ❌ #418 | ❌ #418 | ❌ #418 | ✅ `tables-cook-open-cs` | ❌ #418 | ❌ #418 | ✅ `tables-dart-usage` | ❌ #418 |
+| ✅ `tables-cook-open` | ❌ #418 | ❌ #418 | ✅ `tables-go-usage` | ✅ `tables-cook-open-cs` | ❌ #418 | ❌ #418 | ✅ `tables-dart-usage` | ❌ #418 |
 
 ### I13 — The text differential against a third implementation
 
@@ -1282,13 +1302,15 @@ refusal, `SCHEMA_JS_ALLOC_ANY_NODE`).
 **Measured effect.** The allocation the gate exists to catch is invisible on
 one V8 major and steady at sixteen bytes a call on another.
 
-**Negative control.** Running the gate on another major must refuse.
+**Negative control.** Running the gate on another major must refuse. Go uses
+`tables-go-allocator-runtime-negative-control`; `SCHEMA_GO_ALLOC_ANY_GO=1`
+prints observations without certification. The default requires Go 1.26.0.
 
 **Targets:** none
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| — a native codec's allocations are in its source; the counting allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the interposed allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the counting global allocator sees the same calls under any toolchain | ❌ #420 (escape analysis moves between compiler versions; nothing pins it) | ❌ #420 | ❌ #420 (pinned JDK; the gate SKIPS rather than refuses without the counter) | ✅ `test/js-tables/main.mjs:1412` | ❌ #420 (pinned SDK; nothing refuses off it) | ❌ #420 (pinned OTP; the audit does not read it) |
+| — a native codec's allocations are in its source; the counting allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the interposed allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the counting global allocator sees the same calls under any toolchain | ✅ `tables-go-allocator` `tables-go-allocator-runtime-negative-control` (Go 1.26.0) | ❌ #420 | ❌ #420 (pinned JDK; the gate SKIPS rather than refuses without the counter) | ✅ `test/js-tables/main.mjs:1412` | ❌ #420 (pinned SDK; nothing refuses off it) | ❌ #420 (pinned OTP; the audit does not read it) |
 
 ### I15 — The tolerant wire's differential fuzzer with an independent oracle
 
@@ -1322,7 +1344,7 @@ check removed reds on the report.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ✅ `tables-c-wire-fuzz` `tables-c-wire-fuzz-negative-control` | ❌ #492 | ❌ #492 | ✅ `tables-cs-wire-fuzz` `tables-cs-region-fuzz` `tables-cs-builder-fuzz` `tables-cs-retain-fuzz` `conformance-negative-control-cs` | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 |
+| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ✅ `tables-c-wire-fuzz` `tables-c-wire-fuzz-negative-control` | ❌ #492 | ✅ `tables-go-wire-fuzz` `tables-go-wire-fuzz-negative-control` `tables-go-builders` `tables-go-retain-wire-fuzz` | ✅ `tables-cs-wire-fuzz` `tables-cs-region-fuzz` `tables-cs-builder-fuzz` `tables-cs-retain-fuzz` `conformance-negative-control-cs` | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 |
 
 ### J1 — Accessor and descriptor agreement
 
@@ -1398,7 +1420,7 @@ so and passes.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #423 | ❌ #423 | ❌ #423 | ❌ #423 | ❌ #423 | ✅ `tables-java-release` | ✅ `tables-js-release` | ✅ `tables-dart-release` | ✅ `tables-elixir-release` |
+| ❌ #423 | ❌ #423 | ❌ #423 | ✅ `tables-go-release` | ❌ #423 | ✅ `tables-java-release` | ✅ `tables-js-release` | ✅ `tables-dart-release` | ✅ `tables-elixir-release` |
 
 ### J4 — Emitted text is analyzer-clean and format-canonical
 
@@ -1420,7 +1442,7 @@ diff rather than on a reviewer.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #424 | ❌ #424 | ✅ `tables-rust-clippy` | ❌ #424 | ❌ #424 | ❌ #424 | ❌ #424 | ✅ `tables-dart-clean` | ❌ #424 (the packet units are format-checked; the table units are not) |
+| ❌ #424 | ❌ #424 | ✅ `tables-rust-clippy` | ✅ `tables-go-clean` (`gofmt`, `go vet`) | ❌ #424 | ❌ #424 | ❌ #424 | ✅ `tables-dart-clean` | ❌ #424 (the packet units are format-checked; the table units are not) |
 
 ### J5 — The bench leg's golden gate runs before the clock
 
@@ -1441,4 +1463,4 @@ the Dart leg's `WIRE GOLDEN MISMATCH` in `bench/tables/dart/leg`.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #425 | ❌ #425 | ❌ #425 | ❌ #425 | ❌ #425 | ❌ #425 | ❌ #425 | ✅ `bench/tables/dart/leg` | ✅ `tables-elixir-bench-gate` |
+| ❌ #425 | ❌ #425 | ❌ #425 | ✅ `tables-go-bench-gate` | ❌ #425 | ❌ #425 | ❌ #425 | ✅ `bench/tables/dart/leg` | ✅ `tables-elixir-bench-gate` |

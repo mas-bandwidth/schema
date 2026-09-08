@@ -161,8 +161,8 @@ func TestMapsAreRefusedByNonCarriers(t *testing.T) {
 
 // TestMapCarriers keeps the advertised targets in step with their codecs.
 func TestMapCarriers(t *testing.T) {
-	if !slices.Equal(mapTargets, []string{"c", "cpp", "cs"}) {
-		t.Fatalf("mapTargets = %v, want [c cpp cs]", mapTargets)
+	if !slices.Equal(mapTargets, []string{"c", "cpp", "cs", "go"}) {
+		t.Fatalf("mapTargets = %v, want [c cpp cs go]", mapTargets)
 	}
 }
 
@@ -187,11 +187,11 @@ func TestMapFreeUnitIsUntouched(t *testing.T) {
 // the fields an author wrote.
 func TestMapRefusalNamesTheCarrier(t *testing.T) {
 	u := unitFromSource(t, mapSrc)
-	err := refuseMaps(u, "go")
+	err := refuseMaps(u, "rust")
 	if err == nil {
 		t.Fatalf("refuseMaps accepted a map-bearing unit for a non-carrier")
 	}
-	for _, want := range []string{"a map is c, cpp and cs only today", "Fleet.ships", "--lang cpp"} {
+	for _, want := range []string{"a map is c, cpp, cs and go only today", "Fleet.ships", "--lang cpp"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the carrier-form refusal does not name %q: %v", want, err)
 		}

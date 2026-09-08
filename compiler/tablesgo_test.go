@@ -3,6 +3,10 @@
 package compiler
 
 import (
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"regexp"
 	"sort"
 	"strings"
@@ -35,42 +39,22 @@ func TestGoEmitsTableSources(t *testing.T) {
 	}
 }
 
-// TestGoRefusesPointeredTables: the Go variable-class refusal is a refusal of
-// the WIRE SURFACE and of nothing else (docs/SPEC-TABLES.md §11), exactly as
-// the C# one is. The two ACCELERATORS need no codec — a block and a cook are
-// POINTED AT, not parsed — so both are emitted, the cook's <Root>Open opens
-// this unit's cooked assets in full, and every source the unit does emit opens
-// with a banner naming each refused table and the follow-on.
-func TestGoRefusesPointeredTables(t *testing.T) {
-	u := unitFromSource(t, packetSrc+`
-table Node
-{
-    value int32
-    next  *Node
-}
-`)
+// A variable Go unit carries wire codecs, canonical rows and the builder.
+func TestGoEmitsPointeredTables(t *testing.T) {
+	u := unitFromSource(t, packetSrc+"\ntable Node { value int32\nnext *Node\n}\n")
 	files, err := New().Generate(u, "go", Options{})
 	if err != nil {
-		t.Fatalf("--lang go refused a pointered unit outright: %v", err)
+		t.Fatal(err)
 	}
-	for name := range files {
-		if strings.HasSuffix(name, "Table.go") {
-			t.Errorf("--lang go emitted %s for a pointered unit — the wire surface is refused by name", name)
-		}
-	}
-	cook, ok := files["ProbeCook.go"]
-	if !ok {
-		t.Fatal("--lang go emitted no ProbeCook.go: the COOK needs no wire codec and must still be emitted")
-	}
-	if !strings.Contains(string(cook), "NodeOpen") {
-		t.Error("ProbeCook.go carries no NodeOpen — a root is any table, and a pointered unit's cooks open in full")
-	}
-	for name, data := range files {
-		if !strings.HasSuffix(name, "Block.go") && !strings.HasSuffix(name, "Cook.go") {
-			continue
-		}
-		if !strings.Contains(string(data), "REFUSED, BY NAME") || !strings.Contains(string(data), "Node") {
-			t.Errorf("%s does not carry the variable-class banner naming Node", name)
+	for file, need := range map[string][]string{
+		"ProbeTable.go":     {"type Node = NodeRow", "NodeLoadMeasure", "NodeLoad(", "NodeBuilder", "type TableArena struct"},
+		"ProbeCook.go":      {"NodeOpen", "type NodeRow struct"},
+		"ProbeTableJson.go": {"NodeFromJson", "&node"},
+	} {
+		for _, name := range need {
+			if !strings.Contains(string(files[file]), name) {
+				t.Errorf("%s missing %s", file, name)
+			}
 		}
 	}
 }
@@ -104,7 +88,7 @@ func TestTablesMoveNoGeneratedGoByte(t *testing.T) {
 			continue
 		}
 		if !strings.HasSuffix(name, "Table.go") && !strings.HasSuffix(name, "Block.go") &&
-			!strings.HasSuffix(name, "Cook.go") && !strings.HasSuffix(name, "TableJson.go") {
+			!strings.HasSuffix(name, "Cook.go") && !strings.HasSuffix(name, "TableJson.go") && !strings.HasSuffix(name, "View.go") {
 			t.Errorf("adding a table grew unexpected non-table file %s", name)
 		}
 	}
@@ -138,10 +122,9 @@ table Effected
 // against tablenames.Go, so a name the Go emitter defines and nobody registered
 // fails here, and a name registered for Go that nothing emits fails here too.
 //
-// The scan is the C# one's, shape-independent for the same reason: it collects
-// every table-prefixed identifier in the emitted text, declaration or use, and
-// requires the whole set to be registered. Line comments are stripped first —
-// prose is not an identifier.
+// The forward scan claims package declarations, since methods and fields do
+// not consume schema names. The reverse scan requires an actual declaration,
+// including scoped members recorded by DefinedBy; a selector use is not one.
 //
 // IT MATCHES BOTH CASES, and that is the whole reason this scan is not the C#
 // one copied. Go is the first backend whose runtime puts UNEXPORTED names at
@@ -150,22 +133,64 @@ table Effected
 // does not compile. A PascalCase-only scan is blind to exactly what this port
 // adds, which is how the hole reached a reviewer.
 func TestTableRuntimeNamesAreClaimedGo(t *testing.T) {
-	files, err := New().Generate(unitFromSource(t, goRuntimeSrc), "go", Options{})
-	if err != nil {
-		t.Fatal(err)
+	files := map[string][]byte{}
+	for i, source := range []string{goRuntimeSrc, goRuntimeSrc + "\ntable Graph {head *Graph\ndata *bytes\ncaption *string\n}\n", goRuntimeSrc + "\ntable Lists {rows []int32}\n"} {
+		generated, err := New().Generate(unitFromSource(t, source), "go", Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for name, data := range generated {
+			files[fmt.Sprintf("%d/%s", i, name)] = data
+		}
 	}
-	// BuildVersion rides in the alternation because it is the one registered
-	// name that is not a table spelling, and the Go backend defines it
-	// (docs/SPEC-TABLES.md §20).
-	ident := regexp.MustCompile(`\b(?:[Tt]able[A-Za-z0-9_]*|BuildVersion)\b`)
+	// The build version and announcement verbs are the registered runtime
+	// names without a Table prefix (docs/SPEC-TABLES.md §20 and §3.3).
+	ident := regexp.MustCompile(`\b(?:[Tt]able[A-Za-z0-9_]*|BuildVersion|Announce(?:Measure|Read)?)\b`)
 	emitted := map[string]bool{}
-	for _, data := range files {
-		for line := range strings.SplitSeq(string(data), "\n") {
-			if i := strings.Index(line, "//"); i >= 0 {
-				line = line[:i]
+	declared := map[string]bool{}
+	for name, data := range files {
+		file, err := parser.ParseFile(token.NewFileSet(), name, data, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		record := func(name string) {
+			declared[name] = true
+			if ident.MatchString(name) && ident.FindString(name) == name {
+				emitted[name] = true
 			}
-			for _, m := range ident.FindAllString(line, -1) {
-				emitted[m] = true
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			switch n := node.(type) {
+			case *ast.FuncDecl:
+				if n.Recv != nil {
+					declared[n.Name.Name] = true
+				}
+			case *ast.StructType:
+				for _, field := range n.Fields.List {
+					for _, name := range field.Names {
+						declared[name.Name] = true
+					}
+				}
+			}
+			return true
+		})
+		for _, decl := range file.Decls {
+			switch d := decl.(type) {
+			case *ast.FuncDecl:
+				if d.Recv == nil {
+					record(d.Name.Name)
+				}
+			case *ast.GenDecl:
+				for _, spec := range d.Specs {
+					switch v := spec.(type) {
+					case *ast.TypeSpec:
+						record(v.Name.Name)
+					case *ast.ValueSpec:
+						for _, n := range v.Names {
+							record(n.Name)
+						}
+					}
+				}
 			}
 		}
 	}
@@ -185,9 +210,9 @@ func TestTableRuntimeNamesAreClaimedGo(t *testing.T) {
 		}
 	}
 	for _, name := range tablenames.DefinedBy(tablenames.Go) {
-		if !emitted[name] {
+		if !declared[name] {
 			t.Errorf("internal/tablenames says the Go backend defines %s, but nothing in the emitted "+
-				"Go names it — drop the registration or fix the backend; a claim nothing needs takes "+
+				"Go declares it — drop the registration or fix the backend; a claim nothing needs takes "+
 				"a name away from every schema for free", name)
 		}
 	}

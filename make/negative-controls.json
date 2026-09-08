@@ -69,6 +69,7 @@
         "conformance-negative-control-block-dump",
         "conformance-negative-control-go",
         "conformance-negative-control-go-walk",
+        "tables-go-wire-fuzz-negative-control",
         "conformance-negative-control-reference-surface"
       ]
     },
@@ -528,6 +529,21 @@
       ]
     },
     {
+      "name": "go-containers",
+      "when": "pull-request",
+      "why": "Go generated runtime controls: containers, block fill races, caller allocation ownership and the pinned managed allocation floor, and bounded retention.",
+      "targets": [
+        "tables-go-containers-negative-controls",
+        "tables-go-block-race-negative-control",
+        "tables-go-block-fill-refuser-negative-control",
+        "tables-go-allocator-negative-controls",
+        "tables-go-allocator-runtime-negative-control",
+        "tables-go-retain-negative-controls",
+        "tables-go-builders-negative-control",
+        "tables-go-measure-negative-controls"
+      ]
+    },
+    {
       "name": "base-reference-review",
       "when": "pull-request",
       "why": "compiled native and sanitizer regressions for variable wide closure, list extent and flags/map widening accounting; seven bounded emitter controls",
@@ -539,6 +555,14 @@
         "tables-reference-include-negative-control",
         "tables-reference-hidden-union-negative-control",
         "tables-reference-counted-tail-negative-control"
+      ]
+    },
+    {
+      "name": "go-view",
+      "when": "pull-request",
+      "why": "the compiled Go unit registry and packet descriptor boundary controls",
+      "targets": [
+        "tables-go-view-negative-controls"
       ]
     }
   ],

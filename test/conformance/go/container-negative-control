@@ -1,0 +1,28 @@
+#!/bin/sh
+# Each altered compiler must still compile and fail the behavior it removed.
+set -eu
+mode=$1
+out=build/go-container-control-$mode
+mkdir -p "$out"
+source=internal/codegen/gotable/maps.go
+case "$mode" in
+sort) sed '/^ slices.SortFunc(order,/s/^/if false { /; /^if false { /s/$/ }/' "$source" > "$out/source.gotext"; test=TestRegionMaps ;;
+ascending) sed 's/if order>0 {/if false {/' "$source" > "$out/source.gotext"; test=TestMapReadReports ;;
+duplicate) sed 's/if order==0 {/if false {/' "$source" > "$out/source.gotext"; test=TestMapReadReports ;;
+key-domain) sed 's/if value>(limit-d)\/10/if value>(limit-d)\/10 \&\& false/' "$source" > "$out/source.gotext"; test=TestMapJsonKeyDomains ;;
+dead) source=internal/codegen/gotable/lists.go; sed 's/chunk.Dead|=bit/chunk.Dead|=0/' "$source" > "$out/source.gotext"; test=TestRegionLists ;;
+cap) source=internal/codegen/gotable/lists.go; sed 's/if count>math.MaxInt32 {if c.Worker/if false {if c.Worker/' "$source" > "$out/source.gotext"; test=TestBuilderCountRecovery ;;
+*) echo "unknown container control: $mode" >&2; exit 1 ;;
+esac
+if cmp -s "$source" "$out/source.gotext"; then
+    echo "container control changed no source: $mode" >&2; exit 1
+fi
+root=$(pwd)
+printf '{"Replace":{"%s/%s":"%s/%s/source.gotext"}}\n' "$root" "$source" "$root" "$out" > "$out/overlay.json"
+if go test -overlay "$out/overlay.json" ./internal/codegen/gotable -run "^$test\$" -count=1 > "$out/log" 2>&1; then
+    echo "container control stayed green: $mode" >&2; exit 1
+fi
+if grep -q '\[build failed\]' "$out/log"; then cat "$out/log"; exit 1; fi
+grep -q "FAIL: $test" "$out/log"
+grep -q 'generated runtime: exit status 1' "$out/log"
+echo "Go container control: $mode detected by $test"

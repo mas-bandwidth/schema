@@ -30,7 +30,7 @@ func TestPacketWideTextRefusesTableClosure(t *testing.T) {
 		}
 		u := unitFromSource(t, "package wide\n"+decl+edge+"\n")
 		for _, target := range packetWidePorts {
-			if target == "cs" {
+			if target == "go" || target == "cs" {
 				continue
 			}
 			_, err := New().Generate(u, target, nil)

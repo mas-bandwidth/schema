@@ -32,6 +32,7 @@ package gotable
 import (
 	"fmt"
 	"go/format"
+	"math/bits"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -108,6 +109,7 @@ func (g *blockGen) emit() {
 	if g.home {
 		g.needsUnsafe = true
 		g.rf("%s", blockRuntime(ir.BuildVersion(g.unit)))
+		g.rf("%s", blockBuildRuntime)
 		// EVERY blittable record of the unit, here and nowhere else. Not the
 		// file that DECLARES the type: a record a block form reaches is often
 		// declared in a file of `type`s alone, which gets no Block.go of its
@@ -145,10 +147,10 @@ func (g *blockGen) assemble() ([]byte, error) {
 	h.WriteString("// SPDX-License-Identifier: NONE — this generated output is yours, under terms of\n")
 	h.WriteString("// your choice. See the LICENSE exception in the schema compiler; the compiler is\n")
 	h.WriteString("// AGPL-3.0, its output is not.\n")
-	fmt.Fprintf(&h, "// package %s — the BLOCK FORM (docs/SPEC-TABLES.md §19): the READ half.\n", g.unit.Package)
+	fmt.Fprintf(&h, "// package %s — the BLOCK FORM (docs/SPEC-TABLES.md §19): producer and consumer.\n", g.unit.Package)
 	h.WriteString("//\n")
 	h.WriteString("// NOTHING DECLARES THIS FORM. Every fixed table has one, and it is emitted on\n")
-	h.WriteString("// the side: compile this file only if you read a block. The unit's\n")
+	h.WriteString("// the side: compile this file when you build or read a block. The unit's\n")
 	h.WriteString("// <Base>Table.go carries not one symbol of it.\n")
 	h.WriteString("//\n")
 	h.WriteString("// It is UNSAFE by nature, not by taste: a block is memory another language\n")
@@ -165,7 +167,10 @@ func (g *blockGen) assemble() ([]byte, error) {
 		imports = append(imports, `"fmt"`)
 	}
 	if g.needsUnsafe {
-		imports = append(imports, `"unsafe"`)
+		imports = append(imports, `"unsafe"`, `"encoding/binary"`)
+	}
+	if strings.Contains(g.structs.String(), "serialize.") {
+		imports = append(imports, `"github.com/mas-bandwidth/serialize.go"`)
 	}
 	h.WriteString(goImports(imports))
 	h.WriteString(g.runtime.String())
@@ -246,6 +251,7 @@ type TableBlockRows[T any] struct {
 	Stride int32
 }
 
+// ---- block fill path: begin ----
 // Len is the row count the instance carries.
 func (r TableBlockRows[T]) Len() int32 { return r.Count }
 
@@ -254,6 +260,7 @@ func (r TableBlockRows[T]) Len() int32 { return r.Count }
 func (r TableBlockRows[T]) At(i int32) *T {
 	return (*T)(unsafe.Add(r.Base, uintptr(i)*uintptr(r.Stride)))
 }
+// ---- block fill path: end ----
 
 // ---- reflection over a block (docs/SPEC-TABLES.md §8, §19.2) ----
 //
@@ -411,6 +418,11 @@ func (g *blockGen) emitBlittableField(f *ir.Field, projection bool, w *blockWrit
 		return
 	}
 	switch {
+	case f.Type.Kind == ir.TWString:
+		next()
+		g.sf("\t%s [%d]uint16\n", name, f.Type.Size+1)
+		next()
+		g.sf("\t%sLength int32\n", name)
 	case f.Type.Kind == ir.TString:
 		next()
 		g.sf("\t%s [%d]byte // string(%d): max length, used length beside it\n", name, f.Type.Size+1, f.Type.Size)
@@ -453,7 +465,10 @@ func goBlittableType(u *ir.Unit, t ir.FieldType) string {
 		return "float32"
 	case ir.TFloat64:
 		return "float64"
-	case ir.TInt:
+	case ir.TInt, ir.TFixed:
+		if t.Width == 128 {
+			return goFieldType(t)
+		}
 		if t.Signed {
 			return fmt.Sprintf("int%d", t.Width)
 		}
@@ -469,7 +484,7 @@ func goBlittableType(u *ir.Unit, t ir.FieldType) string {
 			return t.Name
 		case *ir.Flags:
 			return "uint64"
-		case *ir.Struct:
+		case *ir.Struct, *ir.Union:
 			return t.Name + "Row"
 		}
 	}
@@ -526,7 +541,10 @@ func (g *blockGen) emitRecordCheck(name string, ml *ir.MemberLayout, projection 
 		spelled = name + "BlockProjection"
 	}
 	g.hf("\ttableBlockLayoutSize(%q, unsafe.Sizeof(%s{}), %d)\n", spelled, spelled, ml.Size)
-	g.hf("\ttableBlockLayoutSize(%q, unsafe.Alignof(%s{}), %d)\n", spelled+" alignment", spelled, ml.Align)
+	// Go caps native struct alignment at eight. Explicit padding preserves
+	// every model offset and stride; Open enforces the model's stronger
+	// alignment on the caller-owned byte region before exposing any row.
+	g.hf("\ttableBlockLayoutSize(%q, unsafe.Alignof(%s{}), %d)\n", spelled+" alignment", spelled, min(ml.Align, 8))
 	if projection {
 		g.hf("\ttableBlockLayoutOffset(%q, unsafe.Offsetof(%s{}.Magic), 0)\n", spelled+".Magic", spelled)
 		g.hf("\ttableBlockLayoutOffset(%q, unsafe.Offsetof(%s{}.BuildVersion), 8)\n", spelled+".BuildVersion", spelled)
@@ -574,6 +592,7 @@ func (g *blockGen) emitBlockHandle(bl *ir.BlockLayout) {
 	g.hf("\tBytes      int64 // the extent in use\n")
 	g.hf("}\n\n")
 
+	g.hf("// ---- block fill path: begin ----\n")
 	for _, a := range bl.Arrays {
 		field := ir.GoExportName(a.Field.Name)
 		g.hf("// %sStride, %sMax and %sProjectionOffset are the constants this build\n", field, field, field)
@@ -602,7 +621,9 @@ func (g *blockGen) emitBlockHandle(bl *ir.BlockLayout) {
 		g.hf("}\n\n")
 	}
 
+	g.hf("// ---- block fill path: end ----\n")
 	g.emitBlockOpen(bl)
+	g.emitBlockBuild(bl)
 	g.hf("// Type is this block's descriptors: constant data, so a reflective read costs\n")
 	g.hf("// a lookup and not a parse. The row layouts hang off the element column\n")
 	g.hf("// rather than taking names of their own, so a walker reaches every record\n")
@@ -613,33 +634,21 @@ func (g *blockGen) emitBlockHandle(bl *ir.BlockLayout) {
 
 func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	name := bl.Table.Name
-	g.hf("// %sBlockOpen checks once and points, and this is the WHOLE check\n", name)
-	g.hf("// (docs/SPEC-TABLES.md §19.2): the magic read in the machine's own order, the\n")
-	g.hf("// BYTE ORDER the prologue carries against this build's own, the BUILD VERSION\n")
-	g.hf("// against this build's own, each array's pitch, its offset, its COUNT against\n")
-	g.hf("// the declared maximum and its extent inside the block, the used extent\n")
-	g.hf("// against the bytes the caller passed, and the base's alignment. On a match\n")
-	g.hf("// the bytes are what a build with this layout wrote, so there is nothing to\n")
-	g.hf("// validate and nothing to fix up. On any failure it returns false and points\n")
-	g.hf("// at nothing.\n")
-	g.hf("//\n")
-	g.hf("// There is ONE entry point and no tolerant twin: the block form is same-build\n")
-	g.hf("// by construction — both sides generated from one declaration at one build —\n")
-	g.hf("// so a consumer older than its producer is not a case. A mismatch is a\n")
-	g.hf("// refusal; regenerate both sides. Data that must outlive the build that wrote\n")
-	g.hf("// it takes the wire (§3), which this same table still has.\n")
-	g.hf("func %sBlockOpen(block *%sBlock, base unsafe.Pointer, bytes int64) bool {\n", name, name)
-	g.hf("\t*block = %sBlock{}\n", name)
-	g.hf("\tif base == nil || bytes < %d {\n\t\treturn false\n\t}\n", bl.Projection.Size)
-	g.hf("\tif uintptr(base)%%%d != 0 {\n\t\treturn false // the base's alignment\n\t}\n", ir.BlockAlign)
-	g.hf("\t// the prologue read in the machine's own order: a byte-swapped magic is a\n")
-	g.hf("\t// FOREIGN BYTE ORDER, and anything else is not a block at all. Both refuse.\n")
-	g.hf("\tif *(*uint64)(base) != TableBlockMagic {\n\t\treturn false\n\t}\n")
-	g.hf("\tif *(*uint64)(unsafe.Add(base, 8)) != BuildVersion {\n\t\treturn false\n\t}\n")
-	g.hf("\tif *(*uint64)(unsafe.Add(base, 16)) != TableBlockByteOrder {\n")
-	g.hf("\t\treturn false // a block of the other byte order: the fix-up path is a named obligation\n\t}\n")
-	g.hf("\tprojection := (*%sBlockProjection)(base)\n", name)
-	g.hf("\tused := int64(%d)\n", bl.Projection.Size)
+	g.hf(`// %sBlockOpen is the bool convenience for the handle's typed Open error.
+func %sBlockOpen(block *%sBlock,base unsafe.Pointer,bytes int64)bool{return block.Open(base,bytes)==nil}
+// Open reads all prologue and layout words bytewise before the final base
+// alignment check. Every refusal names the first failed clause in SPEC §19.2.
+func(block *%sBlock)Open(base unsafe.Pointer,bytes int64)error{
+ *block=%sBlock{}
+ if base==nil{return TableRefuseUnalignedBase}
+ if bytes<%d{return TableRefuseTruncated}
+ header:=unsafe.Slice((*byte)(base),%d)
+ magic:=binary.NativeEndian.Uint64(header)
+ if magic!=TableBlockMagic {if magic==0x%016x{return TableRefuseForeignOrder};return TableRefuseNotACook}
+ if binary.NativeEndian.Uint64(header[16:])!=TableBlockByteOrder{return TableRefuseNotACook}
+ if binary.NativeEndian.Uint64(header[8:])!=BuildVersion{return TableRefuseWrongBuildVersion}
+ used:=int64(%d)
+`, name, name, name, name, name, bl.Projection.Size, bl.Projection.Size, bits.ReverseBytes64(ir.BlockMagic), bl.Projection.Size)
 	for _, a := range bl.Arrays {
 		field := ir.GoExportName(a.Field.Name)
 		g.hf("\t{\n")
@@ -648,31 +657,30 @@ func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 		g.hf("\t\t// OffsetOf near 2^63 must refuse, and an addition that wrapped past the\n")
 		g.hf("\t\t// top of the type would be what the check after it was supposed to\n")
 		g.hf("\t\t// catch. The C++ side holds the same shape for the same reason.\n")
-		g.hf("\t\toffsetOf := projection.%s.OffsetOf\n", field)
-		g.hf("\t\tcount := uint64(projection.%s.Count)\n", field)
-		g.hf("\t\tstride := uint64(projection.%s.Stride)\n", field)
-		g.hf("\t\tif stride != uint64(unsafe.Sizeof(%sRow{})) {\n\t\t\treturn false\n\t\t}\n", a.ElemName)
+		g.hf("\t\ttriple:=header[unsafe.Offsetof(%sBlockProjection{}.%s):]\n", name, field)
+		g.hf("\t\toffsetOf := binary.NativeEndian.Uint64(triple)\n")
+		g.hf("\t\tcount := uint64(binary.NativeEndian.Uint32(triple[8:]))\n")
+		g.hf("\t\tstride := uint64(binary.NativeEndian.Uint32(triple[12:]))\n")
+		g.hf("\t\tif stride != uint64(unsafe.Sizeof(%sRow{})) {\n\t\t\treturn TableRefuseBadLayout\n\t\t}\n", a.ElemName)
 		g.hf("\t\t// past the DECLARED MAXIMUM: the producer side refuses this too, because\n")
 		g.hf("\t\t// a consumer that sizes anything by the maximum would overflow on a\n")
 		g.hf("\t\t// count the maximum does not bound\n")
-		g.hf("\t\tif count > %d {\n\t\t\treturn false\n\t\t}\n", a.Max)
-		g.hf("\t\tif offsetOf < %d || offsetOf%%%d != 0 {\n\t\t\treturn false\n\t\t}\n", bl.Projection.Size, blockStartAlign(a))
-		g.hf("\t\tif offsetOf > uint64(bytes) {\n\t\t\treturn false\n\t\t}\n")
+		g.hf("\t\tif count > %d {\n\t\t\treturn TableRefuseBadLayout\n\t\t}\n", a.Max)
+		g.hf("\t\tif offsetOf < %d || offsetOf%%%d != 0 {\n\t\t\treturn TableRefuseBadLayout\n\t\t}\n", bl.Projection.Size, blockStartAlign(a))
+		g.hf("\t\tif offsetOf > uint64(bytes) {\n\t\t\treturn TableRefuseBadLayout\n\t\t}\n")
 		g.hf("\t\trows := count * stride // both bounded above: this cannot carry\n")
-		g.hf("\t\tif rows > uint64(bytes)-offsetOf {\n\t\t\treturn false\n\t\t}\n")
+		g.hf("\t\tif rows > uint64(bytes)-offsetOf {\n\t\t\treturn TableRefuseBadLayout\n\t\t}\n")
 		g.hf("\t\tif end := int64(offsetOf + rows); end > used {\n\t\t\tused = end\n\t\t}\n")
 		g.hf("\t}\n")
 	}
-	g.hf("\t// the used extent, rounded to %d WITHOUT the rounding itself wrapping: used\n", ir.BlockAlign)
-	g.hf("\t// is already inside bytes, and the padding is paid out of the slack that is\n")
-	g.hf("\t// left rather than added and compared after.\n")
-	g.hf("\tpadding := (%d - (used %% %d)) %% %d\n", ir.BlockAlign, ir.BlockAlign, ir.BlockAlign)
-	g.hf("\tif padding > bytes-used {\n\t\treturn false\n\t}\n")
-	g.hf("\tused += padding\n")
-	g.hf("\tblock.Base = base\n")
-	g.hf("\tblock.Projection = projection\n")
-	g.hf("\tblock.Bytes = used\n")
-	g.hf("\treturn true\n}\n\n")
+	g.hf(` padding := (64 - (used %% 64)) %% 64
+ if padding > bytes-used {return TableRefuseTruncated}
+ used+=padding
+ if uintptr(base)%%64!=0{return TableRefuseUnalignedBase}
+ block.Base=base;block.Projection=(*%sBlockProjection)(base);block.Bytes=used
+ return nil
+}
+`, name)
 }
 
 // blockStartAlign is where one out-of-line array begins: aligned to

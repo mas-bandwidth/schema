@@ -33,29 +33,35 @@ func TestCppVariableWideAlignment(t *testing.T) {
 			if got := ir.TableRegionAlign(u); got != tc.align {
 				t.Fatalf("alignment %d, want %d", got, tc.align)
 			}
-			files, err := New().Generate(u, "cpp", Options{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			needle := fmt.Sprintf("kTableAlign       = %d;", tc.align)
-			suffix := "Table.h"
-			found := false
-			for name, content := range files {
-				if strings.HasSuffix(name, suffix) && strings.Contains(string(content), needle) {
-					found = true
+			for _, lang := range []string{"cpp", "go"} {
+				files, err := New().Generate(u, lang, Options{})
+				if err != nil {
+					t.Fatal(err)
 				}
-			}
-			model := tabletext.NewModel(u)
-			value := model.New(u.Tables["Root"])
-			var report tabletext.Report
-			if !model.Read(value, []byte(tc.text), &report) || !report.Silent() {
-				t.Fatalf("text: %+v", report)
-			}
-			wire, err := tablewire.Encode(model, value)
-			if err != nil {
-				t.Fatal(err)
-			}
-			probe := fmt.Sprintf(`#include "ProbeTable.h"
+				needle := fmt.Sprintf("kTableAlign       = %d;", tc.align)
+				suffix := "Table.h"
+				if lang == "go" {
+					needle = fmt.Sprintf("tableRegionAlign int64 = %d", tc.align)
+					suffix = "Table.go"
+				}
+				found := false
+				for name, content := range files {
+					if strings.HasSuffix(name, suffix) && strings.Contains(string(content), needle) {
+						found = true
+					}
+				}
+				if lang == "cpp" {
+					model := tabletext.NewModel(u)
+					value := model.New(u.Tables["Root"])
+					var report tabletext.Report
+					if !model.Read(value, []byte(tc.text), &report) || !report.Silent() {
+						t.Fatalf("text: %+v", report)
+					}
+					wire, err := tablewire.Encode(model, value)
+					if err != nil {
+						t.Fatal(err)
+					}
+					probe := fmt.Sprintf(`#include "ProbeTable.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -72,9 +78,11 @@ auto regionBytes=RootLoadMeasure(wire,sizeof(wire)); REQUIRE(regionBytes>0);auto
 REQUIRE(RootLoad(region,regionBytes,wire,sizeof(wire),&report)!=nullptr); REQUIRE(!report.malformed);
 free(region); free(output); return 0;}
 `, cppWire(wire))
-			referenceCompileRun(t, files, probe)
-			if !found {
-				t.Fatalf("cpp arena missing %q", needle)
+					referenceCompileRun(t, files, probe)
+				}
+				if !found {
+					t.Fatalf("%s arena missing %q", lang, needle)
+				}
 			}
 		})
 	}

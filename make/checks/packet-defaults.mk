@@ -50,7 +50,7 @@ packet-defaults-go-negative-control: packet-defaults-go
 	go build -overlay build/packet-defaults/go-negative/overlay.json -o build/packet-defaults/go-negative/schema ./cmd/schema
 	./build/packet-defaults/go-negative/schema generate --lang go --out build/packet-defaults/go-negative/generated test/packet-defaults/Defaults.schema
 	@printf 'module packetdefaults\n\ngo 1.23\n' > build/packet-defaults/go-negative/generated/go.mod
-	@sed 's|=> ../../../build/packet-defaults/go/defaults|=> $(CURDIR)/build/packet-defaults/go-negative/generated|' test/packet-defaults/go/go.mod > build/packet-defaults/go-negative/go.mod.txt
+	@sed 's|=> ../../../build/packet-defaults/go/defaults|=> "$(CURDIR)/build/packet-defaults/go-negative/generated"|' test/packet-defaults/go/go.mod > build/packet-defaults/go-negative/go.mod.txt
 	@printf '{"Replace":{"%s/test/packet-defaults/go/go.mod":"%s/build/packet-defaults/go-negative/go.mod.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/packet-defaults/go-negative/modoverlay.json
 	cd test/packet-defaults/go && go build -overlay ../../../build/packet-defaults/go-negative/modoverlay.json -o ../../../build/packet-defaults/go-negative/checker .

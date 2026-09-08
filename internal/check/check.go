@@ -3833,8 +3833,8 @@ var tableGeneratedVerbs = []string{
 	// of bodies of one root and a single message is the batch of one, and the
 	// singular verbs are not claimed beside them: a surface with both would let
 	// a caller write one message a call and never learn where the bandwidth is
-	"MeasureMessages", "SaveMessages", "LoadMessages",
-	"Reset", "LoadMeasure", "LoadBuilder", "TableType", "Builder",
+	"MeasureMessages", "SaveMessages", "LoadMessages", "LoadMessagesMeasure", "SaveMessageBody", "LoadMessageBody",
+	"Reset", "LoadMeasure", "LoadMeasureReason", "MeasureReason", "CookMeasureReason", "LoadBuilder", "TableType", "Builder",
 	"At", "Emplace", "Pack", "PackMeasure",
 	// the FLAT NODE TABLE's own spellings (docs/SPEC-TABLES.md §3.1): the
 	// numbering walk, the two wire entries it feeds, and the four answers a
@@ -3855,8 +3855,8 @@ var tableGeneratedVerbs = []string{
 	// retains against the connection's vocabulary, and the form 2 WRITE, which
 	// is refused by name (§3.3).
 	// Every one is emitted, so every one is claimed on this list's own rule.
-	"LoadRetain", "MeasureRetain", "SaveRetain", "LoadRetainMessages", "SaveRetainMessages",
-	"LoadBodyRetain", "MeasureBodyRetain", "SaveBodyRetain", "SaveBodyFieldsRetain",
+	"LoadRetain", "LoadRetainBuilder", "MeasureRetain", "SaveRetain", "LoadRetainMessages", "SaveRetainMessages",
+	"LoadBodyRetain", "LoadMessageBodyRetain", "MeasureBodyRetain", "SaveBodyRetain", "SaveBodyFieldsRetain",
 	"MeasureWireRetain", "SaveWireRetain", "NodeBodyRetain",
 	"FromJson", "ToJson", "ToJsonMeasure",
 	"Block", "BlockStorage", "BlockBegin", "BlockBytes", "BlockMaxBytes", "BlockOpen", "Counts",
@@ -3869,8 +3869,8 @@ var tableGeneratedVerbs = []string{
 	"BuilderInit", "BuilderInitWithAllocator", "BuilderShutdown", "BuilderLock", "BuilderRoot",
 	"OpenEx", "BlockOpenEx", "BlockOpenConst", "BlockOpenConstEx", "BlockOpenCheck", "BlockConst", "BlockBytesConst",
 	"CookWithAllocator", "CookMeasureWithAllocator", "CookExtent",
-	"LoadMessageBodyRetain", "MeasureRetainWithAllocator", "SaveRetainWithAllocator",
-	"LoadMeasureMessages", "LoadMeasureMessagesEx", "SaveMessageBody", "LoadMessageBody", "MeasureMessagesWithAllocator", "SaveMessagesWithAllocator",
+	"MeasureRetainWithAllocator", "SaveRetainWithAllocator",
+	"LoadMeasureMessages", "LoadMeasureMessagesEx", "MeasureMessagesWithAllocator", "SaveMessagesWithAllocator",
 	"LoadMeasureEx", "MeasureWithAllocator", "SaveWithAllocator", "ToJsonWithAllocator", "ToJsonMeasureWithAllocator",
 	"BlockStorageCreate", "BlockStorageDestroy", "BlockType",
 	// the C# BLITTABLE records take claimed suffixes in the package namespace

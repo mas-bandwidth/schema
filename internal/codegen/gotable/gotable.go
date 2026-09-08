@@ -4,10 +4,10 @@
 // <Base>Block.go (§19) and <Base>Cook.go (§7). One file per unit file,
 // emitted only when the unit declares tables.
 //
-// The C++ backend (internal/codegen/cpptable) is the REFERENCE and the C#
-// backend (internal/codegen/cstable) is the second implementation: this port
-// mirrors their framing, their elision decisions, their clamps and their
-// report events byte for byte, and invents no contract of its own. Where Go
+// The C++ backend (internal/codegen/cpptable) is the REFERENCE: this port
+// follows its framing, elision decisions, clamps and recovery rules. The
+// compiler engine (internal/tablewire) is the independent conformance oracle.
+// The contract is docs/SPEC-TABLES.md, including the id-table file form. Where Go
 // forces a different spelling the reason is stated at the site.
 //
 // Storage follows the Go PACKET emitter's conventions exactly
@@ -24,12 +24,9 @@
 // is inside the value the caller owns, sub-readers are stack values, and Load
 // overlays in place after restoring the declared defaults.
 //
-// The VARIABLE class ON THE WIRE — the arena, the builder, the region and the
-// node-table codec — is a named follow-on, exactly as it is under C# (§11): a
-// unit whose closure declares a pointer gets no <Base>Table.go, and the
-// refusal is NAMED in every source the unit does emit rather than left as a
-// missing symbol. The two ACCELERATORS reach further, because neither needs a
-// codec: a block and a cook are POINTED AT, not parsed.
+// Variable units use canonical POD Row storage, a segmented builder arena,
+// and caller-owned regions with self-relative references. LoadMeasure derives
+// the exact region size from framing; Load fills it without allocation.
 package gotable
 
 import (
@@ -63,53 +60,9 @@ const (
 	tkTable  = 13
 	tkArray  = 14
 	tkUnion  = 15
-	// an ENUM-KEYED array body is its OWN kind (docs/SPEC-TABLES.md §3.2): the
-	// positional array body and the keyed one are incompatible, so a reader
-	// meeting the other must see a KIND MISMATCH and skip, never misdecode.
-	tkKeyed = 16
 )
 
 func tableScalarKind(f *ir.Field) int { return ir.TableScalarKind(f) }
-
-func tableKindWidth(kind int) int {
-	switch kind {
-	case tkBool, tkI8, tkU8:
-		return 1
-	case tkI16, tkU16:
-		return 2
-	case tkI32, tkU32, tkF32:
-		return 4
-	case tkI64, tkU64, tkF64:
-		return 8
-	}
-	return 0
-}
-
-func tablePut(width int) string { return fmt.Sprintf("Put%d", width*8) }
-func tableGet(width int) string { return fmt.Sprintf("Get%d", width*8) }
-
-// goKindStorage is the Go type one wire kind decodes through.
-func goKindStorage(kind int) string {
-	switch kind {
-	case tkI8:
-		return "int8"
-	case tkI16:
-		return "int16"
-	case tkI32:
-		return "int32"
-	case tkI64:
-		return "int64"
-	case tkU8:
-		return "uint8"
-	case tkU16:
-		return "uint16"
-	case tkU32:
-		return "uint32"
-	case tkU64:
-		return "uint64"
-	}
-	return "uint64"
-}
 
 type tableGen struct {
 	unit     *ir.Unit
@@ -122,41 +75,37 @@ type tableGen struct {
 	body   strings.Builder // everything else
 	indent string          // extra per-line indent while emitting inside a branch guard
 
-	needsMath  bool
-	unsafeUsed bool
+	needsMath     bool
+	unsafeUsed    bool
+	wireSerial    int
+	retain        bool
+	retainOrdinal int
+	retainIndex   string
+	retainArm     bool
+	regional      bool
+	armOffset     *int64
+	viewPacket    map[string]int
+	viewUnions    map[string]int
+	viewNoIds     bool
 
-	// the assignments that fill this file's slots of the unit's arms table,
-	// emitted in an init() below the descriptors so a cyclic descriptor graph
-	// stays expressible
-	unionArms []string
-	// every union FIELD of the unit, by (owner, field), to the slot it takes
-	// in the one arms table — computed for the whole unit before any file is
-	// emitted, so the slice is one name and not one per declaration
-	unionArmSlot map[armKey]int
+	// Every union declaration reached by this unit's table closure has one
+	// immutable descriptor slot, shared by fields, arrays and nested arms.
+	unionArmSlot map[string]int
 }
 
-// armKey names one union FIELD: the closure member that carries it and the
-// field's own name. A union's arm offsets are the union's, but a descriptor
-// column belongs to the field that carries it.
-type armKey struct {
-	owner string
-	field string
-}
-
-// unionArmSlots numbers every union field in the unit, in the order the files
-// and their members declare them, so the emitted text is deterministic.
-func unionArmSlots(u *ir.Unit, closure map[string]bool) map[armKey]int {
-	slots := map[armKey]int{}
+// unionArmSlots assigns one immutable descriptor slot per union definition.
+func unionArmSlots(u *ir.Unit, _ map[string]bool) map[string]int {
+	slots := map[string]int{}
+	closure := ir.TableClosureVocabulary(u)
 	for _, f := range u.Files {
-		for _, st := range fileMembers(f, closure) {
-			for _, field := range st.Fields {
-				if field.Type.Kind != ir.TNamed || field.Array != ir.ArrayNone {
-					continue
-				}
-				if _, isUnion := field.Type.Ref.(*ir.Union); !isUnion {
-					continue
-				}
-				slots[armKey{owner: st.Name, field: field.Name}] = len(slots)
+		for _, d := range f.Decls {
+			if un, ok := d.(*ir.Union); ok && closure[un.Name] {
+				slots[un.Name] = len(slots)
+			}
+		}
+		for _, un := range f.TableUnions {
+			if closure[un.Name] {
+				slots[un.Name] = len(slots)
 			}
 		}
 	}
@@ -195,9 +144,6 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
-	if err := ir.RefuseWideTableKinds(u, "Go"); err != nil {
-		return nil, err
-	}
 	blocks := ir.Blocks(u)
 	out, err := generateBlockFiles(u, blocks)
 	if err != nil {
@@ -209,20 +155,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	}
 	maps.Copy(out, cooks)
 
-	// The VARIABLE-CLASS refusal (docs/SPEC-TABLES.md §2.2, §11) is a refusal of
-	// the WIRE SURFACE, which is the half the variable class is missing: no
-	// arena, no builder, no region and no node-table codec. It is named rather
-	// than silent — every generated source of the unit opens with the banner
-	// below — and no <Base>Table.go is emitted, so a consumer that reaches for
-	// Save or Load gets a missing name from its own compiler beside a file
-	// that says why.
-	if names := variableTableNames(u); len(names) > 0 {
-		banner := variableClassBanner(names)
-		for name, data := range out {
-			out[name] = withBanner(banner, data)
-		}
-		return out, nil
-	}
+	regional := len(variableTableNames(u)) > 0
 
 	closure := ir.TableClosure(u)
 	home := ir.ProtocolIdHome(u)
@@ -234,22 +167,43 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	usedEnums := closureEnums(u, closure)
 	armSlots := unionArmSlots(u, closure)
 	for _, f := range u.Files {
-		g := &tableGen{unit: u, file: f, home: f.Base == home, anyKeyed: anyKeyed, unionArmSlot: armSlots}
+		g := &tableGen{unit: u, file: f, home: f.Base == home, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional}
 		members := fileMembers(f, closure)
 		if g.home {
+			g.needsMath = true
 			g.needsUnsafe() // the descriptor surface's reset column takes an unsafe.Pointer
-			g.pf("%s", tableRuntime())
+			g.pf("%s", tableRuntimeForUnit(regional)+tableRefusalSource+tableWireRuntime(u)+tableMessageRuntime(u))
+			g.pf("%s", tableCookWriteSource(u))
+			if regional {
+				g.emitRegionRuntime(blocks)
+				g.emitRetainRuntime()
+			}
 			if anyKeyed {
 				g.pf("%s", tableKeyedAccessor)
 			}
 			if len(armSlots) > 0 {
-				g.pf("// tableUnionArms is the unit's ONE arms table: one slot per union\n")
-				g.pf("// FIELD, filled by the init() beside the descriptors that point into\n")
-				g.pf("// it. One fixed name for the whole unit rather than one derived from\n")
-				g.pf("// each declaration's own spelling, because a derived name is a name a\n")
-				g.pf("// declaration can collide with (docs/SPEC-TABLES.md §11).\n")
+				g.pf("// One descriptor per union declaration, initialized after package data.\n")
 				g.pf("var tableUnionArms = make([]TableUnionInfo, %d)\n\n", len(armSlots))
+				if !regional {
+					for _, file := range u.Files {
+						for _, decl := range file.Decls {
+							if un, ok := decl.(*ir.Union); ok {
+								if _, used := armSlots[un.Name]; used {
+									g.emitUnionRow(un)
+								}
+							}
+						}
+						for _, un := range file.TableUnions {
+							if _, used := armSlots[un.Name]; used {
+								g.emitUnionRow(un)
+							}
+						}
+					}
+				}
 			}
+		}
+		for _, un := range f.TableUnions {
+			g.emitTableUnion(un)
 		}
 		for _, st := range members {
 			if st.IsTable {
@@ -267,6 +221,23 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			g.emitTableWrite(st)
 			g.emitTableSave(st)
 			g.emitTableRead(st)
+			g.emitRetainMember(st)
+			g.emitCookWriteSurface(st)
+			g.emitMessageWrite(st)
+			g.emitMessageRead(st)
+			if regional {
+				g.emitRegionMessage(st)
+			}
+			if regional {
+				g.emitRegionMember(st)
+				for _, f := range st.Fields {
+					if f.IsList() {
+						g.emitListSurface(st, f)
+					} else if f.IsMap() {
+						g.emitMapSurface(st, f)
+					}
+				}
+			}
 		}
 		if len(members) > 0 {
 			g.pf("// ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----\n\n")
@@ -291,6 +262,11 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		return nil, err
 	}
 	maps.Copy(out, texts)
+	view, err := generateViewFile(u, closure, armSlots)
+	if err != nil {
+		return nil, err
+	}
+	maps.Copy(out, view)
 	return out, nil
 }
 
@@ -314,7 +290,7 @@ func (g *tableGen) assemble() ([]byte, error) {
 	h.WriteString("// your choice. See the LICENSE exception in the schema compiler; the compiler is\n")
 	h.WriteString("// AGPL-3.0, its output is not.\n")
 	fmt.Fprintf(&h, "// package %s — the TABLE wire (docs/SPEC-TABLES.md): evolution-tolerant, neutral\n", g.unit.Package)
-	h.WriteString("// bytes, no serialize dependency. Tables version by field id, never by the\n")
+	h.WriteString("// bytes. Wide values use serialize.go storage. Tables version by field id, never by the\n")
 	h.WriteString("// unit's protocol id.\n")
 	if g.home {
 		h.WriteString("//\n")
@@ -327,11 +303,23 @@ func (g *tableGen) assemble() ([]byte, error) {
 	h.WriteString("\n")
 	fmt.Fprintf(&h, "package %s\n\n", g.unit.Package)
 	var std []string
+	if g.home {
+		std = append(std, `"encoding/binary"`, `"unicode/utf8"`)
+	}
+	if g.home && g.regional {
+		std = append(std, `"sync"`, `"sync/atomic"`)
+		if unitHasContainers(g.unit) {
+			std = append(std, `"slices"`)
+		}
+	}
 	if g.needsMath {
 		std = append(std, `"math"`)
 	}
 	if g.unsafeUsed {
 		std = append(std, `"unsafe"`)
+	}
+	if strings.Contains(g.types.String()+g.body.String(), "serialize.") {
+		std = append(std, `"github.com/mas-bandwidth/serialize.go"`)
 	}
 	h.WriteString(goImports(std))
 	h.WriteString(g.types.String())
@@ -363,16 +351,8 @@ func goImports(paths []string) string {
 	return b.String()
 }
 
-// withBanner puts the variable-class refusal above a generated file's own
-// header comment. The banner must not land before the `// Code generated by`
-// line, which tooling reads, so it rides after the package clause's comment
-// block — practically, prepended to the file and re-formatted.
-func withBanner(banner string, data []byte) []byte {
-	return append([]byte(banner), data...)
-}
-
 // variableTableNames is the unit's variable-length tables, sorted — the tables
-// whose WIRE surface this backend does not emit.
+// whose table surface uses canonical region storage.
 func variableTableNames(u *ir.Unit) []string {
 	variable := ir.VariableTables(u)
 	if len(variable) == 0 {
@@ -384,37 +364,6 @@ func variableTableNames(u *ir.Unit) []string {
 	}
 	sort.Strings(names)
 	return names
-}
-
-// variableClassBanner is the VARIABLE-class refusal, written where a consumer
-// meets it (docs/SPEC-TABLES.md §2.2, §11). The refusal is of the WIRE half and of
-// nothing else: the accelerators below are pure readers over blittable records
-// and need no codec, so they are emitted. What is absent is Measure, Save,
-// Load, the arena and the builder — named here rather than left as a missing
-// symbol with no explanation.
-func variableClassBanner(names []string) string {
-	return "// THE GO WIRE SURFACE OF THIS UNIT IS REFUSED, BY NAME (docs/SPEC-TABLES.md §11).\n" +
-		"//\n" +
-		"// It declares variable-length tables (" + englishList(names) + "), and the Go table\n" +
-		"// backend's VARIABLE CLASS — the arena, the builder, the region and the node-table\n" +
-		"// codec — is a named follow-on (§15). No <Base>Table.go is emitted for this unit,\n" +
-		"// so a consumer reaching for Measure, Save or Load gets a missing name from its own\n" +
-		"// compiler, beside this file, which says why.\n" +
-		"//\n" +
-		"// What IS emitted is the two ACCELERATORS, because neither needs a codec: a block\n" +
-		"// (§19) and a cook (§7) are pointed at, not parsed. A build that loads this unit's\n" +
-		"// cooked assets is served in full; one that wants the tolerant wire is not, and\n" +
-		"// runs the tool or the C++ backend for it.\n\n"
-}
-
-func englishList(names []string) string {
-	switch len(names) {
-	case 0:
-		return ""
-	case 1:
-		return names[0]
-	}
-	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
 }
 
 // closureEnums is every enum whose values ride in the unit's table closure.
@@ -444,6 +393,21 @@ func closureEnums(u *ir.Unit, closure map[string]bool) map[string]*ir.Enum {
 			}
 			if e, isEnum := f.Type.Ref.(*ir.Enum); isEnum {
 				used[e.Name] = e
+			}
+		}
+	}
+	for name := range ir.TableClosureVocabulary(u) {
+		un := u.Unions[name]
+		if un == nil {
+			un = u.TableUnions[name]
+		}
+		if un != nil {
+			for _, v := range un.Variants {
+				if v.F != nil {
+					if e := enumRef(v.F); e != nil {
+						used[e.Name] = e
+					}
+				}
 			}
 		}
 	}
@@ -492,11 +456,15 @@ func tableRuntime() string {
 // ledger. Silence (all zero) means the data matched this reader's schema
 // exactly.
 type TableReport struct {
+ Retained, RetainLost int32
+	Verdict      TableOpenVerdict // unsupported form is distinct from damage
+	Reason       string // why the form was refused; empty for a file read
+	Widened      int32 // a compatible wider kind preserved the value
 	Unknown      int32 // unknown field ids skipped (newer data)
 	KindMismatch int32 // known id, changed type — skipped, never misdecoded
 	Clamped      int32 // out-of-range values clamped to declared bounds
-	// Duplicate is the TEXT FORM's counter and the WIRE NEVER RAISES IT
-	// (docs/SPEC-TABLES.md §4, §16.2): a body carrying an id twice is legal input
+	// Duplicate counts repeated text keys. Fixed-class wire fields do not raise it.
+	// A body carrying an id twice is legal input
 	// whose last occurrence wins, silently. A wire read always leaves it zero.
 	Duplicate int32
 	Malformed bool // framing damage; decode stopped, partial result kept
@@ -528,11 +496,17 @@ const TableDocNone = ""
 
 // TableFieldInfo is one field's descriptor.
 type TableFieldInfo struct {
+ CookOffset, CookElemSize, CookCountOffset, CookPresentOffset uint32
+ List, Map bool // unbounded by-value containers
+ ElemAlign uint32
 	Name     string // schema field name, e.g. "health"
 	Json     string // the TEXT form's key: the json = "key" attribute, else Name (§16.3)
-	TypeName string // schema type name, e.g. "float32", "Grade"
-	Id       uint16 // table-wire field id (name hash; the was alias's hash after a rename)
-	Kind     uint8  // table-wire kind; for arrays/strings/bytes, the ELEMENT kind
+	TypeName string // schema element type, e.g. "float32", "Grade"
+	DeclaredTypeName string // complete schema spelling including arrays, bounds and pointers
+	Id       uint64 // table-wire field id (name hash; the was alias's hash after a rename)
+	Pointer bool
+ TargetId uint64
+ Kind     uint8  // table-wire kind; for arrays/strings/bytes, the ELEMENT kind
 	IsArray  bool   // fixed or counted array (bytes included)
 	Counted  bool   // a <Name>Count/<Name>Length int32 companion exists
 	Optional bool   // a ?T field: a <Name>Present bool decides whether it rides
@@ -543,7 +517,10 @@ type TableFieldInfo struct {
 	CountOffset   uint32 // unsafe.Offsetof the count/length companion, or 0xffffffff
 	PresentOffset uint32 // unsafe.Offsetof the Present companion, or 0xffffffff
 
-	HasRange bool    // a declared [min, max] (int or float)
+	FracBits uint8 // fixed-point binary scale
+ WideRange bool
+ WideMin, WideMax [2]uint64 // exact two-complement raw bounds, low lane first
+ HasRange bool    // a declared [min, max] (int or float)
 	RangeMin float64 // NOTE: int64 ranges beyond 2^53 lose precision here
 	RangeMax float64
 
@@ -557,10 +534,10 @@ type TableFieldInfo struct {
 	EnumName func(value uint64) string
 	// VariantId is the TABLE-WIRE id of one variant (docs/SPEC-TABLES.md §5): for
 	// an enum, the hash of the variant's name; for a union, the hash of the
-	// arm's name. 0 is the reserved id — an enum's None, a union's empty. nil
+	// arm's name. Hash zero is an ordinary id; ordinal zero is None. nil
 	// for every other kind — a FLAGS field's variants have no per-variant wire
 	// id (§4), so a nil here beside a non-nil EnumName is what says "flags".
-	VariantId func(value uint64) uint16
+	VariantId func(value uint64) uint64
 
 	// an ENUM-KEYED array (docs/SPEC-TABLES.md §2.4, §8): the array has one slot
 	// per variant of KeyTypeName, indexed by the variant's value, and its
@@ -569,7 +546,7 @@ type TableFieldInfo struct {
 	// All three are nil/"" on every other field.
 	KeyTypeName string
 	KeyName     func(value uint64) string
-	KeyId       func(value uint64) uint16
+	KeyId       func(value uint64) uint64
 
 	// Arms is a union field's shape: the tag and the arms indexed by it, behind
 	// a function so a descriptor graph needs no initialization order. nil for
@@ -599,6 +576,9 @@ type TableFieldInfo struct {
 // table-wire id come from the field's EnumName/VariantId functions at the same
 // tag, so nothing is spelled twice (docs/SPEC-TABLES.md §8).
 type TableUnionArmInfo struct {
+ Field TableFieldInfo // arm shape; offsets are relative to union storage
+ Void bool // a selected payload-free arm
+ Reset func(storage unsafe.Pointer) // establish selected payload defaults
 	Offset uint32               // unsafe.Offsetof the arm's payload within the union storage
 	Table  func() *TableTypeInfo // the arm payload's descriptor
 }
@@ -606,6 +586,7 @@ type TableUnionArmInfo struct {
 // TableUnionInfo is a union field's shape: the tag, and the arms indexed by
 // it. Arms run [0, EnumMax]; index 0 is the EMPTY arm and carries no payload.
 type TableUnionInfo struct {
+	CookTagSize uint32
 	TagOffset uint32 // unsafe.Offsetof the tag within the union storage
 	TagSize   uint32 // unsafe.Sizeof the tag
 	Arms      []TableUnionArmInfo
@@ -613,8 +594,16 @@ type TableUnionInfo struct {
 
 // TableTypeInfo is one type's descriptor.
 type TableTypeInfo struct {
+	CookSize, CookAlign uint32
 	Name      string // schema type name
 	Size      uint32 // unsafe.Sizeof the storage struct
+ Id uint64
+ Variable bool
+ NodeType func(uint64)*TableTypeInfo
+ SaveBody func(*TableWriter, unsafe.Pointer) bool
+ LoadBody func(TableReader, unsafe.Pointer) bool
+ SaveMessageBody func(*TableMessageWriter,unsafe.Pointer) bool
+ LoadMessageBody func(TableMessageReader,unsafe.Pointer)(TableMessageReader,bool)
 	NumFields int32
 	Fields    []TableFieldInfo
 	// Reset puts one instance back at its declared defaults, in place. A
@@ -630,179 +619,6 @@ type TableTypeInfo struct {
 	Tags    []string
 }
 
-// TableWriter writes the wire into the caller's slice. Nothing here allocates.
-type TableWriter struct {
-	Buffer   []byte
-	Offset   int64
-	Overflow bool
-}
-
-// Raw copies bytes in place.
-func (w *TableWriter) Raw(data []byte) {
-	if w.Offset+int64(len(data)) > int64(len(w.Buffer)) {
-		w.Overflow = true
-		return
-	}
-	copy(w.Buffer[w.Offset:], data)
-	w.Offset += int64(len(data))
-}
-
-// Put8 writes one byte.
-func (w *TableWriter) Put8(v uint8) {
-	if w.Offset+1 > int64(len(w.Buffer)) {
-		w.Overflow = true
-		return
-	}
-	w.Buffer[w.Offset] = v
-	w.Offset++
-}
-
-// Put16 writes a little-endian u16.
-func (w *TableWriter) Put16(v uint16) {
-	if w.Offset+2 > int64(len(w.Buffer)) {
-		w.Overflow = true
-		return
-	}
-	w.Buffer[w.Offset] = uint8(v)
-	w.Buffer[w.Offset+1] = uint8(v >> 8)
-	w.Offset += 2
-}
-
-// Put32 writes a little-endian u32.
-func (w *TableWriter) Put32(v uint32) {
-	if w.Offset+4 > int64(len(w.Buffer)) {
-		w.Overflow = true
-		return
-	}
-	w.Buffer[w.Offset] = uint8(v)
-	w.Buffer[w.Offset+1] = uint8(v >> 8)
-	w.Buffer[w.Offset+2] = uint8(v >> 16)
-	w.Buffer[w.Offset+3] = uint8(v >> 24)
-	w.Offset += 4
-}
-
-// Put64 writes a little-endian u64.
-func (w *TableWriter) Put64(v uint64) {
-	w.Put32(uint32(v))
-	w.Put32(uint32(v >> 32))
-}
-
-// Patch32 rewrites a length prefix already reserved.
-func (w *TableWriter) Patch32(at int64, v uint32) {
-	if at+4 > int64(len(w.Buffer)) {
-		w.Overflow = true
-		return
-	}
-	w.Buffer[at] = uint8(v)
-	w.Buffer[at+1] = uint8(v >> 8)
-	w.Buffer[at+2] = uint8(v >> 16)
-	w.Buffer[at+3] = uint8(v >> 24)
-}
-
-// TableReader reads the wire out of the caller's slice. A nested body is read
-// through a sub-reader sliced out of this one, so an inner decode can never
-// reach past its own framing.
-type TableReader struct {
-	Buffer []byte
-	Offset int64
-	Report *TableReport
-}
-
-// Has reports whether the reader still holds that many bytes.
-func (r *TableReader) Has(bytes int64) bool { return r.Offset+bytes <= int64(len(r.Buffer)) }
-
-// Get8 reads one byte.
-func (r *TableReader) Get8() uint8 {
-	v := r.Buffer[r.Offset]
-	r.Offset++
-	return v
-}
-
-// Get16 reads a little-endian u16.
-func (r *TableReader) Get16() uint16 {
-	v := uint16(r.Buffer[r.Offset]) | uint16(r.Buffer[r.Offset+1])<<8
-	r.Offset += 2
-	return v
-}
-
-// Get32 reads a little-endian u32.
-func (r *TableReader) Get32() uint32 {
-	v := uint32(r.Buffer[r.Offset]) | uint32(r.Buffer[r.Offset+1])<<8 |
-		uint32(r.Buffer[r.Offset+2])<<16 | uint32(r.Buffer[r.Offset+3])<<24
-	r.Offset += 4
-	return v
-}
-
-// Get64 reads a little-endian u64.
-func (r *TableReader) Get64() uint64 {
-	lo := uint64(r.Get32())
-	hi := uint64(r.Get32())
-	return lo | hi<<32
-}
-
-// Sub slices a nested body out of this reader, sharing the report.
-func (r *TableReader) Sub(bytes int64) TableReader {
-	return TableReader{Buffer: r.Buffer[r.Offset : r.Offset+bytes], Report: r.Report}
-}
-
-// Skip steps over one payload by kind; false = framing damage.
-func (r *TableReader) Skip(kind uint8) bool {
-	switch kind {
-	case 1, 2, 6:
-		if !r.Has(1) {
-			return false
-		}
-		r.Offset++
-		return true
-	case 3, 7:
-		if !r.Has(2) {
-			return false
-		}
-		r.Offset += 2
-		return true
-	// 17 is a NODE INDEX (docs/SPEC-TABLES.md §3.1): four bytes, so it costs one
-	// row here and a reader without the kind still skips a pointer field
-	case 4, 8, 10, 17:
-		if !r.Has(4) {
-			return false
-		}
-		r.Offset += 4
-		return true
-	case 5, 9, 11:
-		if !r.Has(8) {
-			return false
-		}
-		r.Offset += 8
-		return true
-	case 12, 13, 14, 16:
-		if !r.Has(4) {
-			return false
-		}
-		n := int64(r.Get32())
-		if !r.Has(n) {
-			return false
-		}
-		r.Offset += n
-		return true
-	case 15: // union: u16 arm id, then the arm length-prefixed (id 0 = empty, no body)
-		if !r.Has(2) {
-			return false
-		}
-		if r.Get16() == 0 {
-			return true
-		}
-		if !r.Has(4) {
-			return false
-		}
-		n := int64(r.Get32())
-		if !r.Has(n) {
-			return false
-		}
-		r.Offset += n
-		return true
-	}
-	return false
-}
 
 `
 }
