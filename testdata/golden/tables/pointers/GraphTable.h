@@ -7867,6 +7867,9 @@ inline bool SceneLoadBody( TableReader & r, const TableNodeMap & nodes, Scene & 
                         decoded = i + 1;
                     }
                     value.layers_count = (int32_t) decoded;
+                    for ( int32_t tail = value.layers_count; tail < 4; tail++ ) {
+                        LayerReset( value.layers[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -17444,6 +17447,9 @@ inline bool SceneLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sc
                         decoded = i + 1;
                     }
                     value.layers_count = (int32_t) decoded;
+                    for ( int32_t tail = value.layers_count; tail < 4; tail++ ) {
+                        LayerReset( value.layers[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length

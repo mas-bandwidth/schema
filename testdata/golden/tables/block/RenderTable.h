@@ -10680,6 +10680,9 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                         decoded = i + 1;
                     }
                     value.cameras_count = (int32_t) decoded;
+                    for ( int32_t tail = value.cameras_count; tail < 1; tail++ ) {
+                        RenderCameraReset( value.cameras[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -10734,6 +10737,9 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                         decoded = i + 1;
                     }
                     value.ships_count = (int32_t) decoded;
+                    for ( int32_t tail = value.ships_count; tail < 4096; tail++ ) {
+                        RenderShipReset( value.ships[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -10788,6 +10794,9 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                         decoded = i + 1;
                     }
                     value.turrets_count = (int32_t) decoded;
+                    for ( int32_t tail = value.turrets_count; tail < 1024; tail++ ) {
+                        RenderTurretReset( value.turrets[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -10842,6 +10851,9 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                         decoded = i + 1;
                     }
                     value.missiles_count = (int32_t) decoded;
+                    for ( int32_t tail = value.missiles_count; tail < 4096; tail++ ) {
+                        RenderMissileReset( value.missiles[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -10896,6 +10908,9 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                         decoded = i + 1;
                     }
                     value.dynamic_props_count = (int32_t) decoded;
+                    for ( int32_t tail = value.dynamic_props_count; tail < 4096; tail++ ) {
+                        RenderDynamicPropReset( value.dynamic_props[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -10950,6 +10965,9 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                         decoded = i + 1;
                     }
                     value.static_props_count = (int32_t) decoded;
+                    for ( int32_t tail = value.static_props_count; tail < 20000; tail++ ) {
+                        RenderStaticPropReset( value.static_props[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -11004,6 +11022,9 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                         decoded = i + 1;
                     }
                     value.cosmetic_props_count = (int32_t) decoded;
+                    for ( int32_t tail = value.cosmetic_props_count; tail < 8192; tail++ ) {
+                        RenderCosmeticPropReset( value.cosmetic_props[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -11058,6 +11079,9 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                         decoded = i + 1;
                     }
                     value.lasers_count = (int32_t) decoded;
+                    for ( int32_t tail = value.lasers_count; tail < 32000; tail++ ) {
+                        RenderLaserReset( value.lasers[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -11112,6 +11136,9 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                         decoded = i + 1;
                     }
                     value.explosions_count = (int32_t) decoded;
+                    for ( int32_t tail = value.explosions_count; tail < 32000; tail++ ) {
+                        RenderExplosionReset( value.explosions[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length

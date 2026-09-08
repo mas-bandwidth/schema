@@ -3766,6 +3766,9 @@ BLOCKDEMO_TABLE_INLINE bool PaddedFrameLoadBody( TableReader & r, PaddedFrame & 
                         decoded = i + 1;
                     }
                     value.rows_count = (int32_t) decoded;
+                    for ( int32_t tail = value.rows_count; tail < 64; tail++ ) {
+                        PaddedRowReset( value.rows[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length

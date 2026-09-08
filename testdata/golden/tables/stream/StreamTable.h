@@ -5691,6 +5691,9 @@ inline bool ChunkLoadBody( TableReader & r, const TableNodeMap & nodes, Chunk & 
                         decoded = i + 1;
                     }
                     value.links_count = (int32_t) decoded;
+                    for ( int32_t tail = value.links_count; tail < 2; tail++ ) {
+                        value.links[tail] = TableRef();
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -6354,6 +6357,9 @@ inline bool FeedLoadBody( TableReader & r, const TableNodeMap & nodes, Feed & va
                         decoded = i + 1;
                     }
                     value.parts_count = (int32_t) decoded;
+                    for ( int32_t tail = value.parts_count; tail < 4; tail++ ) {
+                        value.parts[tail] = TableRef();
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -9423,6 +9429,9 @@ inline bool ChunkLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ch
                         decoded = i + 1;
                     }
                     value.links_count = (int32_t) decoded;
+                    for ( int32_t tail = value.links_count; tail < 2; tail++ ) {
+                        value.links[tail] = TableRef();
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -10027,6 +10036,9 @@ inline bool FeedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fee
                         decoded = i + 1;
                     }
                     value.parts_count = (int32_t) decoded;
+                    for ( int32_t tail = value.parts_count; tail < 4; tail++ ) {
+                        value.parts[tail] = TableRef();
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length

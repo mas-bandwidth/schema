@@ -3175,6 +3175,9 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
                             widened_decoded = widened_i + 1;
                         }
                         value.edges_count = (int32_t) widened_decoded;
+                        for ( int32_t tail = value.edges_count; tail < 4; tail++ ) {
+                            value.edges[tail] = int16_t();
+                        }
                     }
                     else
                     {
@@ -3194,6 +3197,9 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
                         decoded = i + 1;
                     }
                     value.edges_count = (int32_t) decoded;
+                    for ( int32_t tail = value.edges_count; tail < 4; tail++ ) {
+                        value.edges[tail] = int16_t();
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -4982,6 +4988,9 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
                             widened_decoded = widened_i + 1;
                         }
                         value.counts_count = (int32_t) widened_decoded;
+                        for ( int32_t tail = value.counts_count; tail < 4; tail++ ) {
+                            value.counts[tail] = uint64_t();
+                        }
                     }
                     else
                     {
@@ -5001,6 +5010,9 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
                         decoded = i + 1;
                     }
                     value.counts_count = (int32_t) decoded;
+                    for ( int32_t tail = value.counts_count; tail < 4; tail++ ) {
+                        value.counts[tail] = uint64_t();
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length

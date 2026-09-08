@@ -5258,16 +5258,22 @@ template <typename Entry> struct TableMapFill
     int32_t capacity = 0;
     TableWorker * worker = NULL; // the TOOL's path
     bool ok = false;
+    bool refused = false; // builder count refusal, with no report event
 };
 
 template <typename Entry>
-inline TableMapFill<Entry> TableMapFillBegin( const TableNodeMap & nodes, TableMap<Entry> & map, uint32_t n )
+inline TableMapFill<Entry> TableMapFillBegin( const TableNodeMap & nodes, TableMap<Entry> & map, uint64_t n )
 {
     TableMapFill<Entry> fill;
     fill.map = &map;
     map.entries.value = 0;
     map.count = 0;
     if ( nodes.carve == NULL ) { return fill; }
+    if ( n > (uint64_t) INT32_MAX )
+    {
+        fill.refused = nodes.carve->worker != NULL;
+        return fill;
+    }
     if ( nodes.carve->worker != NULL )
     {
         fill.worker = nodes.carve->worker; // the tool's path: the arena carves
@@ -5974,7 +5980,14 @@ inline bool TableListWireExtent( const uint8_t * body, int64_t length, int64_t &
     TableReport scratch;
     TableReader r( body, length, &scratch, ids );
     if ( length < 2 ) { return true; }              // no array header: nothing rides
-    if ( r.get8() != elem_kind ) { return true; }  // another element kind: §4's ordinary kind mismatch, the field reads empty
+    const uint8_t wire_kind = r.get8();
+    if ( wire_kind != elem_kind )
+    {
+        if ( !TableKindWidens( wire_kind, elem_kind ) ) { return true; }
+        // Load accepts the widening ladder. Its extent still stores the
+        // declared element width, while L is bounded by the wire width.
+        elem_floor = TableKindWidth( wire_kind );
+    }
     uint64_t n = 0;
     if ( !r.getleb( n ) ) { return true; }
     if ( n > (uint64_t) INT32_MAX ) { reason = count_over_extent_cap; return false; }
@@ -6920,6 +6933,9 @@ LISTDEMO_TABLE_INLINE bool BoundedLoadBody( TableReader & r, Bounded & value )
                         decoded = i + 1;
                     }
                     value.items_count = (int32_t) decoded;
+                    for ( int32_t tail = value.items_count; tail < 8; tail++ ) {
+                        UnitReset( value.items[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -9029,6 +9045,9 @@ LISTDEMO_TABLE_INLINE bool BoundedLoadBodyRetain( TableReader & r, Bounded & val
                         decoded = i + 1;
                     }
                     value.items_count = (int32_t) decoded;
+                    for ( int32_t tail = value.items_count; tail < 8; tail++ ) {
+                        UnitReset( value.items[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length

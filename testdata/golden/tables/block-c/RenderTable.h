@@ -7740,6 +7740,9 @@ static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * 
                             value->cameras_count = (int32_t) i + 1;
                         }
                         end_cameras: ;
+                        { int32_t tail; for (tail=value->cameras_count;tail<1;tail++) {
+                         render_camera_reset(&value->cameras[tail]);
+                        } }
                     }
                 }
                 break;
@@ -7776,6 +7779,9 @@ static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * 
                             value->ships_count = (int32_t) i + 1;
                         }
                         end_ships: ;
+                        { int32_t tail; for (tail=value->ships_count;tail<4096;tail++) {
+                         render_ship_reset(&value->ships[tail]);
+                        } }
                     }
                 }
                 break;
@@ -7812,6 +7818,9 @@ static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * 
                             value->turrets_count = (int32_t) i + 1;
                         }
                         end_turrets: ;
+                        { int32_t tail; for (tail=value->turrets_count;tail<1024;tail++) {
+                         render_turret_reset(&value->turrets[tail]);
+                        } }
                     }
                 }
                 break;
@@ -7848,6 +7857,9 @@ static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * 
                             value->missiles_count = (int32_t) i + 1;
                         }
                         end_missiles: ;
+                        { int32_t tail; for (tail=value->missiles_count;tail<4096;tail++) {
+                         render_missile_reset(&value->missiles[tail]);
+                        } }
                     }
                 }
                 break;
@@ -7884,6 +7896,9 @@ static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * 
                             value->dynamic_props_count = (int32_t) i + 1;
                         }
                         end_dynamic_props: ;
+                        { int32_t tail; for (tail=value->dynamic_props_count;tail<4096;tail++) {
+                         render_dynamic_prop_reset(&value->dynamic_props[tail]);
+                        } }
                     }
                 }
                 break;
@@ -7920,6 +7935,9 @@ static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * 
                             value->static_props_count = (int32_t) i + 1;
                         }
                         end_static_props: ;
+                        { int32_t tail; for (tail=value->static_props_count;tail<20000;tail++) {
+                         render_static_prop_reset(&value->static_props[tail]);
+                        } }
                     }
                 }
                 break;
@@ -7956,6 +7974,9 @@ static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * 
                             value->cosmetic_props_count = (int32_t) i + 1;
                         }
                         end_cosmetic_props: ;
+                        { int32_t tail; for (tail=value->cosmetic_props_count;tail<8192;tail++) {
+                         render_cosmetic_prop_reset(&value->cosmetic_props[tail]);
+                        } }
                     }
                 }
                 break;
@@ -7992,6 +8013,9 @@ static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * 
                             value->lasers_count = (int32_t) i + 1;
                         }
                         end_lasers: ;
+                        { int32_t tail; for (tail=value->lasers_count;tail<32000;tail++) {
+                         render_laser_reset(&value->lasers[tail]);
+                        } }
                     }
                 }
                 break;
@@ -8028,6 +8052,9 @@ static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * 
                             value->explosions_count = (int32_t) i + 1;
                         }
                         end_explosions: ;
+                        { int32_t tail; for (tail=value->explosions_count;tail<32000;tail++) {
+                         render_explosion_reset(&value->explosions[tail]);
+                        } }
                     }
                 }
                 break;

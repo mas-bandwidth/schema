@@ -2677,6 +2677,9 @@ TABLEDEMO_TABLE_INLINE bool WideBlobLoadBody( TableReader & r, WideBlob & value 
                             widened_decoded = widened_i + 1;
                         }
                         value.samples_count = (int32_t) widened_decoded;
+                        for ( int32_t tail = value.samples_count; tail < 70000; tail++ ) {
+                            value.samples[tail] = uint16_t();
+                        }
                     }
                     else
                     {
@@ -2696,6 +2699,9 @@ TABLEDEMO_TABLE_INLINE bool WideBlobLoadBody( TableReader & r, WideBlob & value 
                         decoded = i + 1;
                     }
                     value.samples_count = (int32_t) decoded;
+                    for ( int32_t tail = value.samples_count; tail < 70000; tail++ ) {
+                        value.samples[tail] = uint16_t();
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length

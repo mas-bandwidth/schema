@@ -3743,6 +3743,9 @@ BLOCKHOME_TABLE_INLINE bool GunnerSettingsLoadBody( TableReader & r, GunnerSetti
                         decoded = i + 1;
                     }
                     value.firing_groups_count = (int32_t) decoded;
+                    for ( int32_t tail = value.firing_groups_count; tail < 32; tail++ ) {
+                        FiringGroupReset( value.firing_groups[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -3797,6 +3800,9 @@ BLOCKHOME_TABLE_INLINE bool GunnerSettingsLoadBody( TableReader & r, GunnerSetti
                         decoded = i + 1;
                     }
                     value.missile_groups_count = (int32_t) decoded;
+                    for ( int32_t tail = value.missile_groups_count; tail < 4; tail++ ) {
+                        FiringGroupReset( value.missile_groups[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length

@@ -2628,6 +2628,9 @@ static SCHEMA_UNUSED int ranged_signed_load_body( TableReader * r, RangedSigned 
                             value->edges_count = (int32_t) i + 1;
                         }
                         end_edges: ;
+                        { int32_t tail; for (tail=value->edges_count;tail<4;tail++) {
+                         memset(&value->edges[tail],0,sizeof(value->edges[tail]));
+                        } }
                     }
                 }
                 break;
@@ -4229,6 +4232,9 @@ static SCHEMA_UNUSED int ranged_unsigned_load_body( TableReader * r, RangedUnsig
                             value->counts_count = (int32_t) i + 1;
                         }
                         end_counts: ;
+                        { int32_t tail; for (tail=value->counts_count;tail<4;tail++) {
+                         memset(&value->counts[tail],0,sizeof(value->counts[tail]));
+                        } }
                     }
                 }
                 break;

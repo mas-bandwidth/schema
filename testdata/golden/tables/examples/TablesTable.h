@@ -3778,6 +3778,9 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigLoadBody( TableReader & r, LoadoutConfi
                         decoded = i + 1;
                     }
                     value.grades_count = (int32_t) decoded;
+                    for ( int32_t tail = value.grades_count; tail < 4; tail++ ) {
+                        value.grades[tail] = Grade();
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -3987,6 +3990,9 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigLoadBody( TableReader & r, LoadoutConfi
                         decoded = i + 1;
                     }
                     value.attachments_count = (int32_t) decoded;
+                    for ( int32_t tail = value.attachments_count; tail < 8; tail++ ) {
+                        AttachmentReset( value.attachments[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -6072,6 +6078,9 @@ TABLEDEMO_TABLE_INLINE bool RootConfigLoadBody( TableReader & r, RootConfig & va
                         decoded = i + 1;
                     }
                     value.weapons_count = (int32_t) decoded;
+                    for ( int32_t tail = value.weapons_count; tail < 8; tail++ ) {
+                        WeaponConfigReset( value.weapons[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -6126,6 +6135,9 @@ TABLEDEMO_TABLE_INLINE bool RootConfigLoadBody( TableReader & r, RootConfig & va
                         decoded = i + 1;
                     }
                     value.profiles_count = (int32_t) decoded;
+                    for ( int32_t tail = value.profiles_count; tail < 4; tail++ ) {
+                        ProfileConfigReset( value.profiles[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length

@@ -5380,16 +5380,22 @@ template <typename Entry> struct TableMapFill
     int32_t capacity = 0;
     TableWorker * worker = NULL; // the TOOL's path
     bool ok = false;
+    bool refused = false; // builder count refusal, with no report event
 };
 
 template <typename Entry>
-inline TableMapFill<Entry> TableMapFillBegin( const TableNodeMap & nodes, TableMap<Entry> & map, uint32_t n )
+inline TableMapFill<Entry> TableMapFillBegin( const TableNodeMap & nodes, TableMap<Entry> & map, uint64_t n )
 {
     TableMapFill<Entry> fill;
     fill.map = &map;
     map.entries.value = 0;
     map.count = 0;
     if ( nodes.carve == NULL ) { return fill; }
+    if ( n > (uint64_t) INT32_MAX )
+    {
+        fill.refused = nodes.carve->worker != NULL;
+        return fill;
+    }
     if ( nodes.carve->worker != NULL )
     {
         fill.worker = nodes.carve->worker; // the tool's path: the arena carves
@@ -6096,7 +6102,14 @@ inline bool TableListWireExtent( const uint8_t * body, int64_t length, int64_t &
     TableReport scratch;
     TableReader r( body, length, &scratch, ids );
     if ( length < 2 ) { return true; }              // no array header: nothing rides
-    if ( r.get8() != elem_kind ) { return true; }  // another element kind: §4's ordinary kind mismatch, the field reads empty
+    const uint8_t wire_kind = r.get8();
+    if ( wire_kind != elem_kind )
+    {
+        if ( !TableKindWidens( wire_kind, elem_kind ) ) { return true; }
+        // Load accepts the widening ladder. Its extent still stores the
+        // declared element width, while L is bounded by the wire width.
+        elem_floor = TableKindWidth( wire_kind );
+    }
     uint64_t n = 0;
     if ( !r.getleb( n ) ) { return true; }
     if ( n > (uint64_t) INT32_MAX ) { reason = count_over_extent_cap; return false; }
@@ -7596,7 +7609,8 @@ inline bool RowLoadBody( TableReader & r, const TableNodeMap & nodes, Row & valu
                     // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
                     // kind mismatch of §4, and nothing about a map is special-cased
                     if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
-                    TableMapFill<RowEntriesEntry> fill = TableMapFillBegin( nodes, value.entries, (uint32_t) count );
+                    TableMapFill<RowEntriesEntry> fill = TableMapFillBegin( nodes, value.entries, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     const char * last_key = NULL; int32_t last_length = 0;
@@ -7833,7 +7847,8 @@ inline bool RowLoadMessageBody( TableBitReader & r, const TableVocabulary & voca
                     uint64_t count = 0;
                     if ( !r.get( count, TableBitsRequired( entry.min, entry.max ) ) ) { report->malformed = true; return false; }
                     count += (uint64_t) entry.min;
-                    TableMapFill<RowEntriesEntry> fill = TableMapFillBegin( nodes, value.entries, (uint32_t) count );
+                    TableMapFill<RowEntriesEntry> fill = TableMapFillBegin( nodes, value.entries, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     const char * last_key = NULL; int32_t last_length = 0;
                     bool landed = false;
@@ -8013,7 +8028,6 @@ MAPDEMO_TABLE_INLINE bool WideRowEntriesEntryLoadBody( TableReader & r, WideRowE
                         if ( !TableReadUnsignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         uint32_t decoded_v = (uint32_t) widened_v;
                         value.key = decoded_v;
-                        r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -8310,7 +8324,8 @@ inline bool WideRowLoadBody( TableReader & r, const TableNodeMap & nodes, WideRo
                     // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
                     // kind mismatch of §4, and nothing about a map is special-cased
                     if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
-                    TableMapFill<WideRowEntriesEntry> fill = TableMapFillBegin( nodes, value.entries, (uint32_t) count );
+                    TableMapFill<WideRowEntriesEntry> fill = TableMapFillBegin( nodes, value.entries, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     uint32_t last_key = 0;
@@ -8547,7 +8562,8 @@ inline bool WideRowLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                     uint64_t count = 0;
                     if ( !r.get( count, TableBitsRequired( entry.min, entry.max ) ) ) { report->malformed = true; return false; }
                     count += (uint64_t) entry.min;
-                    TableMapFill<WideRowEntriesEntry> fill = TableMapFillBegin( nodes, value.entries, (uint32_t) count );
+                    TableMapFill<WideRowEntriesEntry> fill = TableMapFillBegin( nodes, value.entries, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     uint32_t last_key = 0;
                     bool landed = false;
@@ -8978,7 +8994,6 @@ MAPDEMO_TABLE_INLINE bool EdgeRowIdsEntryLoadBody( TableReader & r, EdgeRowIdsEn
                         if ( !TableReadUnsignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         uint64_t decoded_v = (uint64_t) widened_v;
                         value.key = decoded_v;
-                        r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -9316,7 +9331,8 @@ inline bool EdgeRowLoadBody( TableReader & r, const TableNodeMap & nodes, EdgeRo
                     // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
                     // kind mismatch of §4, and nothing about a map is special-cased
                     if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
-                    TableMapFill<EdgeRowNamesEntry> fill = TableMapFillBegin( nodes, value.names, (uint32_t) count );
+                    TableMapFill<EdgeRowNamesEntry> fill = TableMapFillBegin( nodes, value.names, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     const char * last_key = NULL; int32_t last_length = 0;
@@ -9403,7 +9419,8 @@ inline bool EdgeRowLoadBody( TableReader & r, const TableNodeMap & nodes, EdgeRo
                     // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
                     // kind mismatch of §4, and nothing about a map is special-cased
                     if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
-                    TableMapFill<EdgeRowIdsEntry> fill = TableMapFillBegin( nodes, value.ids, (uint32_t) count );
+                    TableMapFill<EdgeRowIdsEntry> fill = TableMapFillBegin( nodes, value.ids, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     uint64_t last_key = 0;
@@ -9683,7 +9700,8 @@ inline bool EdgeRowLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                     uint64_t count = 0;
                     if ( !r.get( count, TableBitsRequired( entry.min, entry.max ) ) ) { report->malformed = true; return false; }
                     count += (uint64_t) entry.min;
-                    TableMapFill<EdgeRowNamesEntry> fill = TableMapFillBegin( nodes, value.names, (uint32_t) count );
+                    TableMapFill<EdgeRowNamesEntry> fill = TableMapFillBegin( nodes, value.names, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     const char * last_key = NULL; int32_t last_length = 0;
                     bool landed = false;
@@ -9745,7 +9763,8 @@ inline bool EdgeRowLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                     uint64_t count = 0;
                     if ( !r.get( count, TableBitsRequired( entry.min, entry.max ) ) ) { report->malformed = true; return false; }
                     count += (uint64_t) entry.min;
-                    TableMapFill<EdgeRowIdsEntry> fill = TableMapFillBegin( nodes, value.ids, (uint32_t) count );
+                    TableMapFill<EdgeRowIdsEntry> fill = TableMapFillBegin( nodes, value.ids, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     uint64_t last_key = 0;
                     bool landed = false;
@@ -13698,7 +13717,8 @@ inline bool RowLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Row 
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
                     TableRetainDiscardField( retain, path, 0 );
-                    TableMapFill<RowEntriesEntry> fill = TableMapFillBegin( nodes, value.entries, (uint32_t) count );
+                    TableMapFill<RowEntriesEntry> fill = TableMapFillBegin( nodes, value.entries, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     const char * last_key = NULL; int32_t last_length = 0;
@@ -13854,7 +13874,8 @@ inline bool RowLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary 
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
                     TableRetainDiscardField( retain, path, 0 );
-                    TableMapFill<RowEntriesEntry> fill = TableMapFillBegin( nodes, value.entries, (uint32_t) count );
+                    TableMapFill<RowEntriesEntry> fill = TableMapFillBegin( nodes, value.entries, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     const char * last_key = NULL; int32_t last_length = 0;
                     bool landed = false;
@@ -14045,7 +14066,6 @@ MAPDEMO_TABLE_INLINE bool WideRowEntriesEntryLoadBodyRetain( TableReader & r, Wi
                         if ( !TableReadUnsignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         uint32_t decoded_v = (uint32_t) widened_v;
                         value.key = decoded_v;
-                        r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -14319,7 +14339,8 @@ inline bool WideRowLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, 
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
                     TableRetainDiscardField( retain, path, 0 );
-                    TableMapFill<WideRowEntriesEntry> fill = TableMapFillBegin( nodes, value.entries, (uint32_t) count );
+                    TableMapFill<WideRowEntriesEntry> fill = TableMapFillBegin( nodes, value.entries, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     uint32_t last_key = 0;
@@ -14475,7 +14496,8 @@ inline bool WideRowLoadMessageBodyRetain( TableBitReader & r, const TableVocabul
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
                     TableRetainDiscardField( retain, path, 0 );
-                    TableMapFill<WideRowEntriesEntry> fill = TableMapFillBegin( nodes, value.entries, (uint32_t) count );
+                    TableMapFill<WideRowEntriesEntry> fill = TableMapFillBegin( nodes, value.entries, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     uint32_t last_key = 0;
                     bool landed = false;
@@ -14885,7 +14907,6 @@ MAPDEMO_TABLE_INLINE bool EdgeRowIdsEntryLoadBodyRetain( TableReader & r, EdgeRo
                         if ( !TableReadUnsignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         uint64_t decoded_v = (uint64_t) widened_v;
                         value.key = decoded_v;
-                        r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -15200,7 +15221,8 @@ inline bool EdgeRowLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, 
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
                     TableRetainDiscardField( retain, path, 0 );
-                    TableMapFill<EdgeRowNamesEntry> fill = TableMapFillBegin( nodes, value.names, (uint32_t) count );
+                    TableMapFill<EdgeRowNamesEntry> fill = TableMapFillBegin( nodes, value.names, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     const char * last_key = NULL; int32_t last_length = 0;
@@ -15290,7 +15312,8 @@ inline bool EdgeRowLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, 
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
                     TableRetainDiscardField( retain, path, 1 );
-                    TableMapFill<EdgeRowIdsEntry> fill = TableMapFillBegin( nodes, value.ids, (uint32_t) count );
+                    TableMapFill<EdgeRowIdsEntry> fill = TableMapFillBegin( nodes, value.ids, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     uint64_t last_key = 0;
@@ -15446,7 +15469,8 @@ inline bool EdgeRowLoadMessageBodyRetain( TableBitReader & r, const TableVocabul
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
                     TableRetainDiscardField( retain, path, 0 );
-                    TableMapFill<EdgeRowNamesEntry> fill = TableMapFillBegin( nodes, value.names, (uint32_t) count );
+                    TableMapFill<EdgeRowNamesEntry> fill = TableMapFillBegin( nodes, value.names, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     const char * last_key = NULL; int32_t last_length = 0;
                     bool landed = false;
@@ -15511,7 +15535,8 @@ inline bool EdgeRowLoadMessageBodyRetain( TableBitReader & r, const TableVocabul
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
                     TableRetainDiscardField( retain, path, 1 );
-                    TableMapFill<EdgeRowIdsEntry> fill = TableMapFillBegin( nodes, value.ids, (uint32_t) count );
+                    TableMapFill<EdgeRowIdsEntry> fill = TableMapFillBegin( nodes, value.ids, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     uint64_t last_key = 0;
                     bool landed = false;

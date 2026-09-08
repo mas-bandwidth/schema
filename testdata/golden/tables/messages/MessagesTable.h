@@ -4531,6 +4531,9 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                         decoded = i + 1;
                     }
                     value.origins_count = (int32_t) decoded;
+                    for ( int32_t tail = value.origins_count; tail < 2; tail++ ) {
+                        value.origins[tail] = Origin();
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -4588,6 +4591,9 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                         decoded = i + 1;
                     }
                     value.modes_count = (int32_t) decoded;
+                    for ( int32_t tail = value.modes_count; tail < 2; tail++ ) {
+                        value.modes[tail] = Mode();
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -7987,6 +7993,9 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                         decoded = i + 1;
                     }
                     value.edits_count = (int32_t) decoded;
+                    for ( int32_t tail = value.edits_count; tail < 3; tail++ ) {
+                        EditReset( value.edits[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -10701,6 +10710,9 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                         decoded = i + 1;
                     }
                     value.history_count = (int32_t) decoded;
+                    for ( int32_t tail = value.history_count; tail < 2; tail++ ) {
+                        value.history[tail] = ToolBody();
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -10755,6 +10767,9 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                         decoded = i + 1;
                     }
                     value.trace_count = (int32_t) decoded;
+                    for ( int32_t tail = value.trace_count; tail < 3; tail++ ) {
+                        ScriptReset( value.trace[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length

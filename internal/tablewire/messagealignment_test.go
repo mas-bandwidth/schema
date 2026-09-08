@@ -78,7 +78,7 @@ func TestMessageNestedEncodingWork(t *testing.T) {
 		})
 	}
 	shallow, deep := allocations(6), allocations(12)
-	if deep > 4*shallow {
+	if shallow <= 0 || deep > 4*shallow {
 		t.Fatalf("doubling nesting grew allocations from %.0f to %.0f", shallow, deep)
 	}
 }

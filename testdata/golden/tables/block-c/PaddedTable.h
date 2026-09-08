@@ -2326,6 +2326,9 @@ static SCHEMA_UNUSED int padded_frame_load_body( TableReader * r, PaddedFrame * 
                             value->rows_count = (int32_t) i + 1;
                         }
                         end_rows: ;
+                        { int32_t tail; for (tail=value->rows_count;tail<64;tail++) {
+                         padded_row_reset(&value->rows[tail]);
+                        } }
                     }
                 }
                 break;

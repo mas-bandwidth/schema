@@ -2932,6 +2932,9 @@ BLOCKHOME_TABLE_INLINE bool PartFrameLoadBody( TableReader & r, PartFrame & valu
                         decoded = i + 1;
                     }
                     value.parts_count = (int32_t) decoded;
+                    for ( int32_t tail = value.parts_count; tail < 32; tail++ ) {
+                        PartRowReset( value.parts[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length

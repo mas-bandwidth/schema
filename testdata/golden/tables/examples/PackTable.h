@@ -3302,6 +3302,9 @@ TABLEDEMO_TABLE_INLINE bool ShipEntryLoadBody( TableReader & r, ShipEntry & valu
                             widened_decoded = widened_i + 1;
                         }
                         value.hardpoints_count = (int32_t) widened_decoded;
+                        for ( int32_t tail = value.hardpoints_count; tail < 4; tail++ ) {
+                            value.hardpoints[tail] = int32_t();
+                        }
                     }
                     else
                     {
@@ -3323,6 +3326,9 @@ TABLEDEMO_TABLE_INLINE bool ShipEntryLoadBody( TableReader & r, ShipEntry & valu
                         decoded = i + 1;
                     }
                     value.hardpoints_count = (int32_t) decoded;
+                    for ( int32_t tail = value.hardpoints_count; tail < 4; tail++ ) {
+                        value.hardpoints[tail] = int32_t();
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -4912,6 +4918,9 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBody( TableReader & r, PackConfig & va
                         decoded = i + 1;
                     }
                     value.reserves_count = (int32_t) decoded;
+                    for ( int32_t tail = value.reserves_count; tail < 3; tail++ ) {
+                        ShipEntryReset( value.reserves[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length

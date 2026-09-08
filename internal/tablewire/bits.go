@@ -18,6 +18,7 @@ func (w *bitWriter) bits() int { return w.n }
 
 // truncate removes an elided body and clears its bits so later writes at a
 // partial byte cannot inherit the discarded reference or terminator.
+// n must be a previously captured position, between zero and w.n.
 func (w *bitWriter) truncate(n int) {
 	w.n = n
 	w.b = w.b[:(n+7)/8]

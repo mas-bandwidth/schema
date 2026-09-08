@@ -5248,7 +5248,14 @@ inline bool TableListWireExtent( const uint8_t * body, int64_t length, int64_t &
     TableReport scratch;
     TableReader r( body, length, &scratch, ids );
     if ( length < 2 ) { return true; }              // no array header: nothing rides
-    if ( r.get8() != elem_kind ) { return true; }  // another element kind: §4's ordinary kind mismatch, the field reads empty
+    const uint8_t wire_kind = r.get8();
+    if ( wire_kind != elem_kind )
+    {
+        if ( !TableKindWidens( wire_kind, elem_kind ) ) { return true; }
+        // Load accepts the widening ladder. Its extent still stores the
+        // declared element width, while L is bounded by the wire width.
+        elem_floor = TableKindWidth( wire_kind );
+    }
     uint64_t n = 0;
     if ( !r.getleb( n ) ) { return true; }
     if ( n > (uint64_t) INT32_MAX ) { reason = count_over_extent_cap; return false; }
@@ -7036,6 +7043,9 @@ inline bool HandLoadBody( TableReader & r, const TableNodeMap & nodes, Hand & va
                         decoded = i + 1;
                     }
                     value.entries_count = (int32_t) decoded;
+                    for ( int32_t tail = value.entries_count; tail < 2; tail++ ) {
+                        value.entries[tail] = Carry();
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -8287,6 +8297,19 @@ inline bool HandExtentAt( const Ctx & ctx, const Hand & value, int64_t & at )
         default: break;
     }
     }
+    if (value.entries_count < 0 || value.entries_count > 2) { return false; }
+    for (int32_t i = value.entries_count; i < 2; i++) // hidden union slots have no extent placement
+    {
+        switch ( value.entries[i].type ) // entries: the set arm is the edge
+        {
+            case CarryType::Leaf:
+            {
+                if (!TableExtentUnreachedEmpty(LeafExtent(ctx,value.entries[i].leaf))) { return false; }
+                break;
+            }
+            default: break;
+        }
+    }
     return true;
 }
 
@@ -8317,6 +8340,19 @@ inline bool HandExtentPack( const Ctx & ctx, const Hand & src, Hand & dst, uint8
         }
         default: break;
     }
+    }
+    if (src.entries_count < 0 || src.entries_count > 2) { return false; }
+    for (int32_t i = src.entries_count; i < 2; i++) // hidden union slots have no extent placement
+    {
+        switch ( src.entries[i].type ) // entries: the set arm is the edge
+        {
+            case CarryType::Leaf:
+            {
+                if (!TableExtentUnreachedEmpty(LeafExtent(ctx,src.entries[i].leaf))) { return false; }
+                break;
+            }
+            default: break;
+        }
     }
     return true;
 }
@@ -13522,6 +13558,9 @@ inline bool HandLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Han
                         decoded = i + 1;
                     }
                     value.entries_count = (int32_t) decoded;
+                    for ( int32_t tail = value.entries_count; tail < 2; tail++ ) {
+                        value.entries[tail] = Carry();
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -16445,6 +16484,19 @@ template <typename Ctx> inline bool HandCookExtent( const Ctx & ctx, const Table
         }
         default: break;
     }
+    }
+    if (value.entries_count < 0 || value.entries_count > 2) { return false; }
+    for (int32_t i = value.entries_count; i < 2; i++) // hidden union slots have no extent placement
+    {
+        switch ( value.entries[i].type ) // entries: the set arm is the edge
+        {
+            case CarryType::Leaf:
+            {
+                if (!TableExtentUnreachedEmpty(LeafExtent(ctx,value.entries[i].leaf))) { return false; }
+                break;
+            }
+            default: break;
+        }
     }
     return true;
 }

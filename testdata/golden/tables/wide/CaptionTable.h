@@ -2581,6 +2581,9 @@ WIDE_TABLE_INLINE bool CaptionLoadBody( TableReader & r, Caption & value )
                         decoded = i + 1;
                     }
                     value.lines_count = (int32_t) decoded;
+                    for ( int32_t tail = value.lines_count; tail < 3; tail++ ) {
+                        LineReset( value.lines[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length

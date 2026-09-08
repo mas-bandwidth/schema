@@ -578,7 +578,8 @@ func (g *tableGen) emitMessageReadMap(f *ir.Field, ind string) {
 	g.pf("%s    if ( !r.get( count%s, TableBitsRequired( entry.min, entry.max ) ) ) { report->malformed = true; return false; }\n", ind, sfx)
 	g.pf("%s    count%s += (uint64_t) entry.min;\n", ind, sfx)
 	g.emitRetainReplaced(f, ind+"    ")
-	g.pf("%s    TableMapFill<%s> fill%s = TableMapFillBegin( nodes, value.%s, (uint32_t) count%s );\n", ind, n, sfx, f.Name, sfx)
+	g.pf("%s    TableMapFill<%s> fill%s = TableMapFillBegin( nodes, value.%s, count%s );\n", ind, n, sfx, f.Name, sfx)
+	g.pf("%s    if ( fill%s.refused ) { nodes.refused = true; return false; }\n", ind, sfx)
 	g.pf("%s    if ( !fill%s.ok ) { report->malformed = true; return false; } // the measure and the load disagree\n", ind, sfx)
 	if stringKey {
 		g.pf("%s    const char * last_key%s = NULL; int32_t last_length%s = 0;\n", ind, sfx, sfx)
