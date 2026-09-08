@@ -2114,7 +2114,7 @@ namespace Wide
                 for (int i = 0; i < f.ArrayBound; i++)
                 {
                     if (f.Kind == 13) { f.Table.Reset(f.GetChild(value, i)); }
-                    else if (f.Kind == 15) { f.Arms.SetTag(f.GetChild(value, i), 0); }
+                    else if (f.Kind == 15) { ResetUnion(f.GetChild(value, i), f.Arms); }
                     else if (f.Kind == 17) { f.SetChild(value, i, null); }
                     else if (f.SetWide != null) { f.SetWide(value, i, 0); }
                     else { f.SetRaw(value, i, 0); }
@@ -4263,7 +4263,7 @@ namespace Wide
                             object child = f.GetChild(value, i);
                             foreach (TableFieldInfo field in f.Table.Fields) { ZeroField(child, field); }
                         }
-                        else if (f.Kind == 15) { f.Arms.SetTag(f.GetChild(value, i), 0); }
+                        else if (f.Kind == 15) { ResetUnion(f.GetChild(value, i), f.Arms); }
                         else if (f.Kind == 17) { f.SetChild(value, i, null); }
                         else if (f.SetWide != null) { f.SetWide(value, i, 0); }
                         else { f.SetRaw(value, i, 0); }
@@ -4514,6 +4514,16 @@ namespace Wide
             }
         }
         // ---- form-1 table wire: end ----
+        // TableReset(Body) restores None and every arm in place, reusing buffers.
+        public static void TableReset(Body value)
+        {
+            value.Type = BodyType.None;
+            Array.Clear(value.Wide, 0, value.Wide.Length);
+            value.WideLength = 0;
+            Array.Clear(value.Narrow, 0, value.Narrow.Length);
+            value.NarrowLength = 0;
+            value.Tally = 0;
+        }
     }
 
 }
