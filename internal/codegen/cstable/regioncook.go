@@ -101,6 +101,7 @@ const tableRegionCookSource = `
     {
         alignment=Math.Max(8,type.StorageAlign); long extent=0;
         if(!RegionExtentSize(value,type,ref extent)) { return -1; }
+        long rootExtent=extent;
         long at=checked(NativeRecordBytes(type)+extent);
         for(int i=0;i<graph.Count;i++)
         {
@@ -111,16 +112,17 @@ const tableRegionCookSource = `
             else
             {
                 extent=0; if(!RegionExtentSize(node.Value,child,ref extent)) { return -1; }
+                node.NativeExtent=extent;
                 at=checked(at+NativeRecordBytes(child)+extent);
             }
         }
         RegionPackWriter probe=new RegionPackWriter { Graph=graph }; extent=0;
-        if(!RegionPackRecord(ref probe,0,value,type,NativeRecordBytes(type),ref extent)) { return -1; }
+        if(!RegionPackRecord(ref probe,0,value,type,NativeRecordBytes(type),ref extent) || extent!=rootExtent) { return -1; }
         foreach(RegionNode node in graph.Nodes)
         {
             if(node.BlobKind!=0) { continue; }
             TableTypeInfo child=type.PointerType(node.TypeId); extent=0;
-            if(!RegionPackRecord(ref probe,node.NativeOffset,node.Value,child,node.NativeOffset+NativeRecordBytes(child),ref extent)) { return -1; }
+            if(!RegionPackRecord(ref probe,node.NativeOffset,node.Value,child,node.NativeOffset+NativeRecordBytes(child),ref extent) || extent!=node.NativeExtent) { return -1; }
         }
         return Align(at,alignment);
     }

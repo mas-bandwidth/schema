@@ -7,8 +7,33 @@ using M = Mapdemo;
 
 static partial class Program
 {
+    unsafe struct DescendingStorage { public byte* Base; public long Next; }
+    static unsafe IntPtr AllocateDescending(IntPtr context,long bytes)
+    {
+        var storage=(DescendingStorage*)context; long n=(bytes+15)&~15L;
+        if(n>storage->Next) { return IntPtr.Zero; }
+        storage->Next-=n; return (IntPtr)(storage->Base+storage->Next);
+    }
+    static void FreeDescending(IntPtr context,IntPtr pointer) { }
     static unsafe void TestBuilders()
     {
+        DescendingStorage descending=new DescendingStorage { Base=(byte*)NativeMemory.AlignedAlloc(32*1024*1024,16),Next=32*1024*1024 };
+        NativeMemory.Clear(descending.Base,32*1024*1024);
+        try
+        {
+            using var builder=new Blobdemo.CatalogBuilder(new Blobdemo.TableAllocator { Allocate=&AllocateDescending,Free=&FreeDescending,Context=(IntPtr)(&descending) });
+            byte[] large=ReadGolden("blob_large");
+            Check(builder.Load(large,new Blobdemo.TableReport()) && builder.GetRoot()->Thumb<0,"later blob slab may precede its root address");
+            byte[] saved=new byte[builder.Measure()]; Check(builder.Save(saved)==large.Length && saved.AsSpan().SequenceEqual(large),"negative slab displacement preserves exact wire");
+            byte* blob=Blobdemo.TableArena.At<byte>(ref builder.GetRoot()->Thumb);
+            *(uint*)(blob+4)=0xdeadbeef;
+            Check(builder.Measure()==large.Length,"native blob length ignores its reserved word");
+            byte[] cooked=new byte[builder.CookMeasure()];
+            Check(builder.Cook(cooked) && builder.Lock(),"negative slab displacement cooks and locks without checked-pointer overflow");
+            byte[] locked=new byte[builder.CookMeasure()];
+            Check(builder.Cook(locked) && locked.AsSpan().SequenceEqual(cooked),"negative slab displacement preserves canonical cook after lock");
+        }
+        finally { NativeMemory.AlignedFree(descending.Base); }
         AllocationCounts counts=default;
         G.TableAllocator allocator=new G.TableAllocator { Allocate=&CountAllocate,Free=&CountFree,Context=(IntPtr)(&counts) };
         using(var builder=new G.SceneBuilder(allocator))
@@ -71,7 +96,8 @@ static partial class Program
             byte[] before=new byte[builder.Measure()]; builder.Save(before);
             Check(builder.Lock(),"list builder locks"); byte[] after=new byte[builder.Measure()]; builder.Save(after);
             Check(before.AsSpan().SequenceEqual(after),"list lock preserves insertion order");
-            Check(scores.Add()==null,"old list handle refuses after lock");
+            Check(scores.Add()==null && !scores.Erase(0) && !scores.Reserve(1) && scores.At(0)==null && scores.Count==0,"old list handle refuses every access after lock");
+            builder.Dispose(); Check(!scores.Erase(0),"old list erase refuses after disposal");
         }
         using(var builder=new M.FleetBuilder())
         {
@@ -112,6 +138,14 @@ static partial class Program
             ((L.SaveRow*)source)->Scores.Capacity=0x12345678;
             byte[] padded=new byte[L.Schema.SaveMeasure((IntPtr)source)];
             Check(L.Schema.SaveSave((IntPtr)source,padded)==loaded.Length && padded.AsSpan().SequenceEqual(loaded),"region read ignores collection padding");
+            byte[] paddedCook=new byte[L.Schema.SaveCookMeasure((IntPtr)source)];
+            Check(L.Schema.SaveCook((IntPtr)source,paddedCook),"native cook ignores collection padding");
+            ((L.SaveRow*)source)->Scores.Capacity=0; byte[] cleanCook=new byte[L.Schema.SaveCookMeasure((IntPtr)source)];
+            Check(L.Schema.SaveCook((IntPtr)source,cleanCook) && cleanCook.AsSpan().SequenceEqual(paddedCook),"native cook canonical bytes exclude collection padding");
+            ((L.SaveRow*)source)->Scores.Capacity=0x12345678;
+            L.TableRetain emptyRetain=default;
+            byte[] retained=new byte[L.Schema.SaveMeasureRetain((IntPtr)source,ref emptyRetain)];
+            Check(L.Schema.SaveSaveRetain((IntPtr)source,ref emptyRetain,retained,new L.TableReport())==loaded.Length && retained.AsSpan().SequenceEqual(loaded),"retained save ignores collection padding");
             using(var builder=new L.SaveBuilder())
             {
                 Check(builder.CopyFrom((IntPtr)source),"builder copies loaded collections");

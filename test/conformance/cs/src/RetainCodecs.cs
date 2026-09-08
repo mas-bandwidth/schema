@@ -122,6 +122,106 @@ static partial class Program
             }
             finally { NativeMemory.AlignedFree(region); }
         };
+        Find("listdemo","Unbounded").Retain=wire=>
+        {
+            long need=Listdemo.Schema.UnboundedLoadMeasure(wire);
+            byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)(Math.Max(0,need)+64),64);
+            try
+            {
+                new Span<byte>(region+Math.Max(0,need),64).Fill(0xa5);
+                var retain=new Listdemo.TableRetain { Bytes=scratch.Bytes,Capacity=1<<20,Ids=(Listdemo.TableRetain.Id*)scratch.Ids,IdCapacity=1<<17 };
+                var report=new Listdemo.TableReport();
+                var root=Listdemo.Schema.UnboundedLoadRetain((IntPtr)region,need,wire,ref retain,report);
+                var answer=new RetainAnswer { Need=need,Loaded=root!=null };
+                if(root!=null)
+                {
+                    long size=Listdemo.Schema.UnboundedMeasureRetain((IntPtr)root,ref retain);
+                    if(size>=0)
+                    {
+                        answer.Saved=new byte[checked((int)size)];
+                        answer.Written=Listdemo.Schema.UnboundedSaveRetain((IntPtr)root,ref retain,answer.Saved,report);
+                    }
+                }
+                for(int i=0;i<64;i++) { if(region[Math.Max(0,need)+i]!=0xa5) { throw new InvalidOperationException("Retaining load overran its measured region"); } }
+                answer.Report=Copy(report); answer.Kept=report.Retained; answer.Lost=report.RetainLost; return answer;
+            }
+            finally { NativeMemory.AlignedFree(region); }
+        };
+        Find("listdemo","Ints").Retain=wire=>
+        {
+            long need=Listdemo.Schema.IntsLoadMeasure(wire);
+            byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)(Math.Max(0,need)+64),64);
+            try
+            {
+                new Span<byte>(region+Math.Max(0,need),64).Fill(0xa5);
+                var retain=new Listdemo.TableRetain { Bytes=scratch.Bytes,Capacity=1<<20,Ids=(Listdemo.TableRetain.Id*)scratch.Ids,IdCapacity=1<<17 };
+                var report=new Listdemo.TableReport();
+                var root=Listdemo.Schema.IntsLoadRetain((IntPtr)region,need,wire,ref retain,report);
+                var answer=new RetainAnswer { Need=need,Loaded=root!=null };
+                if(root!=null)
+                {
+                    long size=Listdemo.Schema.IntsMeasureRetain((IntPtr)root,ref retain);
+                    if(size>=0)
+                    {
+                        answer.Saved=new byte[checked((int)size)];
+                        answer.Written=Listdemo.Schema.IntsSaveRetain((IntPtr)root,ref retain,answer.Saved,report);
+                    }
+                }
+                for(int i=0;i<64;i++) { if(region[Math.Max(0,need)+i]!=0xa5) { throw new InvalidOperationException("Retaining load overran its measured region"); } }
+                answer.Report=Copy(report); answer.Kept=report.Retained; answer.Lost=report.RetainLost; return answer;
+            }
+            finally { NativeMemory.AlignedFree(region); }
+        };
+        Find("listdemo","Floats").Retain=wire=>
+        {
+            long need=Listdemo.Schema.FloatsLoadMeasure(wire);
+            byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)(Math.Max(0,need)+64),64);
+            try
+            {
+                new Span<byte>(region+Math.Max(0,need),64).Fill(0xa5);
+                var retain=new Listdemo.TableRetain { Bytes=scratch.Bytes,Capacity=1<<20,Ids=(Listdemo.TableRetain.Id*)scratch.Ids,IdCapacity=1<<17 };
+                var report=new Listdemo.TableReport();
+                var root=Listdemo.Schema.FloatsLoadRetain((IntPtr)region,need,wire,ref retain,report);
+                var answer=new RetainAnswer { Need=need,Loaded=root!=null };
+                if(root!=null)
+                {
+                    long size=Listdemo.Schema.FloatsMeasureRetain((IntPtr)root,ref retain);
+                    if(size>=0)
+                    {
+                        answer.Saved=new byte[checked((int)size)];
+                        answer.Written=Listdemo.Schema.FloatsSaveRetain((IntPtr)root,ref retain,answer.Saved,report);
+                    }
+                }
+                for(int i=0;i<64;i++) { if(region[Math.Max(0,need)+i]!=0xa5) { throw new InvalidOperationException("Retaining load overran its measured region"); } }
+                answer.Report=Copy(report); answer.Kept=report.Retained; answer.Lost=report.RetainLost; return answer;
+            }
+            finally { NativeMemory.AlignedFree(region); }
+        };
+        Find("listdemo","Bytes").Retain=wire=>
+        {
+            long need=Listdemo.Schema.BytesLoadMeasure(wire);
+            byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)(Math.Max(0,need)+64),64);
+            try
+            {
+                new Span<byte>(region+Math.Max(0,need),64).Fill(0xa5);
+                var retain=new Listdemo.TableRetain { Bytes=scratch.Bytes,Capacity=1<<20,Ids=(Listdemo.TableRetain.Id*)scratch.Ids,IdCapacity=1<<17 };
+                var report=new Listdemo.TableReport();
+                var root=Listdemo.Schema.BytesLoadRetain((IntPtr)region,need,wire,ref retain,report);
+                var answer=new RetainAnswer { Need=need,Loaded=root!=null };
+                if(root!=null)
+                {
+                    long size=Listdemo.Schema.BytesMeasureRetain((IntPtr)root,ref retain);
+                    if(size>=0)
+                    {
+                        answer.Saved=new byte[checked((int)size)];
+                        answer.Written=Listdemo.Schema.BytesSaveRetain((IntPtr)root,ref retain,answer.Saved,report);
+                    }
+                }
+                for(int i=0;i<64;i++) { if(region[Math.Max(0,need)+i]!=0xa5) { throw new InvalidOperationException("Retaining load overran its measured region"); } }
+                answer.Report=Copy(report); answer.Kept=report.Retained; answer.Lost=report.RetainLost; return answer;
+            }
+            finally { NativeMemory.AlignedFree(region); }
+        };
         Find("listdemo","Album").Retain=wire=>
         {
             long need=Listdemo.Schema.AlbumLoadMeasure(wire);

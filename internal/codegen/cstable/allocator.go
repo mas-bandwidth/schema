@@ -2,8 +2,8 @@ package cstable
 
 const tableAllocatorSource = `
 // Caller context and a zeroed allocation/free pair (§6.5). The default value
-// uses NativeMemory. Custom callbacks must return at least 16-aligned storage,
-// and must return null on failure. No runtime allocation bypasses this pair.
+// uses NativeMemory. Custom callbacks must return ZEROED, at least 16-aligned storage,
+// and must return null on failure. Native builder and region scratch use this pair.
 public unsafe struct TableAllocator
 {
     public delegate*<IntPtr,long,IntPtr> Allocate;

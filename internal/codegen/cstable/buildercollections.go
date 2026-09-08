@@ -38,7 +38,7 @@ internal static unsafe class TableListStorage
     }
     internal static bool Erase(TableWorker worker,TableCookList* slot,TableFieldInfo field,int index)
     {
-        if(index<0 || index>=slot->Count || !Reserve(worker,slot,field,slot->Count)) { return false; }
+        if(worker.Arena.Closed || index<0 || index>=slot->Count || !Reserve(worker,slot,field,slot->Count)) { return false; }
         Head* head=(Head*)((byte*)slot+slot->Reference); byte* removed=head->Items[index];
         for(int i=index;i<slot->Count-1;i++) { head->Items[i]=head->Items[i+1]; }
         head->Items[--slot->Count]=removed; return true;

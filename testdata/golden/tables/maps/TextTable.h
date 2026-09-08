@@ -6095,7 +6095,14 @@ inline bool TableListWireExtent( const uint8_t * body, int64_t length, int64_t &
     TableReport scratch;
     TableReader r( body, length, &scratch, ids );
     if ( length < 2 ) { return true; }              // no array header: nothing rides
-    if ( r.get8() != elem_kind ) { return true; }  // another element kind: §4's ordinary kind mismatch, the field reads empty
+    const uint8_t wire_kind = r.get8();
+    if ( wire_kind != elem_kind )
+    {
+        if ( !TableKindWidens( wire_kind, elem_kind ) ) { return true; }
+        // Load accepts the widening ladder. Its extent still stores the
+        // declared element width, while L is bounded by the wire width.
+        elem_floor = TableKindWidth( wire_kind );
+    }
     uint64_t n = 0;
     if ( !r.getleb( n ) ) { return true; }
     if ( n > (uint64_t) INT32_MAX ) { reason = count_over_extent_cap; return false; }
@@ -7330,7 +7337,6 @@ MAPDEMO_TABLE_INLINE bool TextWideEntryLoadBody( TableReader & r, TextWideEntry 
                         if ( !TableReadUnsignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         uint16_t decoded_v = (uint16_t) widened_v;
                         value.key = decoded_v;
-                        r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -7602,7 +7608,6 @@ MAPDEMO_TABLE_INLINE bool TextBlobsEntryLoadBody( TableReader & r, TextBlobsEntr
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
                         value.key = decoded_v;
-                        r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -10425,7 +10430,6 @@ MAPDEMO_TABLE_INLINE bool TextWideEntryLoadBodyRetain( TableReader & r, TextWide
                         if ( !TableReadUnsignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         uint16_t decoded_v = (uint16_t) widened_v;
                         value.key = decoded_v;
-                        r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -10674,7 +10678,6 @@ MAPDEMO_TABLE_INLINE bool TextBlobsEntryLoadBodyRetain( TableReader & r, TextBlo
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
                         value.key = decoded_v;
-                        r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under

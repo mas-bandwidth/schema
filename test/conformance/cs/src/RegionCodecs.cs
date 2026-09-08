@@ -6,6 +6,82 @@ static partial class Program
     static unsafe void RegisterRegions()
     {
         {
+            Codec c=Find("listdemo","Unbounded"); var refused=c.PartialLoad;
+            c.PartialLoad=(bytes,report)=>
+            {
+                long need=Listdemo.Schema.UnboundedLoadMeasure(bytes);
+                if(need<0) { return refused(bytes,report); }
+                byte* data=(byte*)NativeMemory.AlignedAlloc(checked((nuint)(need+64)),64);
+                try
+                {
+                    new Span<byte>(data+need,64).Fill(0xa5);
+                    var inner=new Listdemo.TableReport();
+                    var root=Listdemo.Schema.UnboundedLoad((IntPtr)data,need,bytes,inner);
+                    for(int i=0;i<64;i++) { if(data[need+i]!=0xa5) { throw new InvalidOperationException("native load overran its measured region"); } }
+                    Fill(report,Copy(inner));
+                    return root==null?new Listdemo.Unbounded():Listdemo.Schema.UnboundedLoadBuilder((IntPtr)data);
+                }
+                finally { NativeMemory.AlignedFree(data); }
+            };
+        }
+        {
+            Codec c=Find("listdemo","Ints"); var refused=c.PartialLoad;
+            c.PartialLoad=(bytes,report)=>
+            {
+                long need=Listdemo.Schema.IntsLoadMeasure(bytes);
+                if(need<0) { return refused(bytes,report); }
+                byte* data=(byte*)NativeMemory.AlignedAlloc(checked((nuint)(need+64)),64);
+                try
+                {
+                    new Span<byte>(data+need,64).Fill(0xa5);
+                    var inner=new Listdemo.TableReport();
+                    var root=Listdemo.Schema.IntsLoad((IntPtr)data,need,bytes,inner);
+                    for(int i=0;i<64;i++) { if(data[need+i]!=0xa5) { throw new InvalidOperationException("native load overran its measured region"); } }
+                    Fill(report,Copy(inner));
+                    return root==null?new Listdemo.Ints():Listdemo.Schema.IntsLoadBuilder((IntPtr)data);
+                }
+                finally { NativeMemory.AlignedFree(data); }
+            };
+        }
+        {
+            Codec c=Find("listdemo","Floats"); var refused=c.PartialLoad;
+            c.PartialLoad=(bytes,report)=>
+            {
+                long need=Listdemo.Schema.FloatsLoadMeasure(bytes);
+                if(need<0) { return refused(bytes,report); }
+                byte* data=(byte*)NativeMemory.AlignedAlloc(checked((nuint)(need+64)),64);
+                try
+                {
+                    new Span<byte>(data+need,64).Fill(0xa5);
+                    var inner=new Listdemo.TableReport();
+                    var root=Listdemo.Schema.FloatsLoad((IntPtr)data,need,bytes,inner);
+                    for(int i=0;i<64;i++) { if(data[need+i]!=0xa5) { throw new InvalidOperationException("native load overran its measured region"); } }
+                    Fill(report,Copy(inner));
+                    return root==null?new Listdemo.Floats():Listdemo.Schema.FloatsLoadBuilder((IntPtr)data);
+                }
+                finally { NativeMemory.AlignedFree(data); }
+            };
+        }
+        {
+            Codec c=Find("listdemo","Bytes"); var refused=c.PartialLoad;
+            c.PartialLoad=(bytes,report)=>
+            {
+                long need=Listdemo.Schema.BytesLoadMeasure(bytes);
+                if(need<0) { return refused(bytes,report); }
+                byte* data=(byte*)NativeMemory.AlignedAlloc(checked((nuint)(need+64)),64);
+                try
+                {
+                    new Span<byte>(data+need,64).Fill(0xa5);
+                    var inner=new Listdemo.TableReport();
+                    var root=Listdemo.Schema.BytesLoad((IntPtr)data,need,bytes,inner);
+                    for(int i=0;i<64;i++) { if(data[need+i]!=0xa5) { throw new InvalidOperationException("native load overran its measured region"); } }
+                    Fill(report,Copy(inner));
+                    return root==null?new Listdemo.Bytes():Listdemo.Schema.BytesLoadBuilder((IntPtr)data);
+                }
+                finally { NativeMemory.AlignedFree(data); }
+            };
+        }
+        {
             Codec c=Find("blobdemo","Catalog"); var refused=c.PartialLoad;
             c.PartialLoad=(bytes,report)=>
             {
@@ -1214,7 +1290,9 @@ static partial class Program
                     using(var builder=new Blobdemo.CatalogBuilder())
                     {
                         if(!Blobdemo.Schema.CatalogLoadBuilder(builder,bytes,new Blobdemo.TableReport())) { throw new InvalidOperationException("builder load: Blobdemo.Catalog"); }
-                        byte[] built=new byte[builder.CookMeasure()];
+                        long builderSize=builder.CookMeasure();
+                        if(builderSize<0) { throw new InvalidOperationException("builder cook measure: Blobdemo.Catalog"); }
+                        byte[] built=new byte[builderSize];
                         if(!builder.Cook(built,big?Blobdemo.TableByteOrder.Big:Blobdemo.TableByteOrder.Little) || !built.AsSpan().SequenceEqual(result)) { throw new InvalidOperationException("mutable builder cook: Blobdemo.Catalog"); }
                         if(!builder.Lock() || !builder.Cook(built,big?Blobdemo.TableByteOrder.Big:Blobdemo.TableByteOrder.Little) || !built.AsSpan().SequenceEqual(result)) { throw new InvalidOperationException("locked builder cook: Blobdemo.Catalog"); }
                     }

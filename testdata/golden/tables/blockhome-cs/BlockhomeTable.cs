@@ -2769,11 +2769,13 @@ namespace Blockhome
                 {
                     Reader a = r;
                     if (framed && !r.Slice(out a)) { return true; }
-                    if (!a.Has(2) || a.Byte() != f.Kind || !a.Var(out ulong n)) { return true; }
+                    if (!a.Has(2)) { return true; }
+                    byte sourceKind=a.Byte();
+                    if (sourceKind!=f.Kind && !Widen(sourceKind,f.Kind) || !a.Var(out ulong n)) { return true; }
                     if (f.Dynamic)
                     {
                         if (n > int.MaxValue) { reason = "count_over_extent_cap"; return false; }
-                        int floor = f.Kind == 13 ? 2 : f.Kind == 15 || f.Kind == 17 || f.Kind == 30 ? 1 : Width(f.Kind);
+                        int floor = sourceKind == 13 ? 2 : sourceKind == 15 || sourceKind == 17 || sourceKind == 30 ? 1 : Width(sourceKind);
                         if (floor < 1 || n > (ulong)((a.Buffer.Length - a.Offset) / floor)) { reason = "count_over_length"; return false; }
                         at = Align(at, f.StorageAlign) + (long)n * f.StorageSize;
                     }
@@ -2811,12 +2813,12 @@ namespace Blockhome
             static bool ExtentUnion(ref Reader r, TableFieldInfo f, ref long at, ref string reason)
             {
                 if (!r.Ref(out ulong reference, out ulong id) || reference == 0 || !r.Has(1)) { return true; }
-                byte kind = r.Byte();
+                r.Byte(); // the framing scan follows a named arm even if its value kind mismatches
                 if (!r.Slice(out Reader body)) { return true; }
                 int tag = FindVariant(f, id, false);
                 if (tag == 0) { return true; }
                 TableFieldInfo arm = f.Arms.Arms[tag].Field;
-                if (arm == null || Kind(arm) != kind) { return true; }
+                if (arm == null) { return true; }
                 return ExtentField(ref body, arm, false, ref at, ref reason);
             }
             // Locate the winning node table and validate its framing with no objects or
@@ -2904,10 +2906,11 @@ namespace Blockhome
                     if (!body.Has(1)) { return false; }
                     byte kind = body.Byte();
                     if (id != k.Id) { if (!body.Skip(kind)) { return false; } continue; }
-                    if (kind != k.Kind)
+                    if (kind != k.Kind && Widen(kind,k.Kind)) { widened=true; }
+                    else
                     {
-                        if (!Widen(kind, k.Kind)) { mismatch = true; return false; }
-                        widened = true;
+                        mismatch=kind!=k.Kind;
+                        if(mismatch) { if(!body.Skip(kind)) { return false; } continue; }
                     }
                     if (kind == 12)
                     {
@@ -2921,13 +2924,15 @@ namespace Blockhome
                     }
                 }
             }
-            static bool ReadMapBody(ref Reader a, object value, TableFieldInfo f, TableReport report)
+            static bool ReadMapBody(ref Reader a, object value, TableFieldInfo f, TableReport report, ReadOnlySpan<byte> headerTail = default)
             {
-                f.ResetField(value);
                 if (!a.Has(2)) { return true; }
                 byte kind = a.Byte();
-                if (!a.Var(out ulong count)) { Damage(report); return true; }
+                Reader header = headerTail.IsEmpty ? a : new Reader(headerTail, a.Vocabulary) { Offset = 1 };
+                if (!header.Var(out ulong count)) { Damage(report); return true; }
+                a.Offset = Math.Min(a.Buffer.Length, header.Offset);
                 if (kind != 13) { report.KindMismatch++; return true; }
+                f.ResetField(value);
                 int landed = 0; bool widened = false; MapKey last = default;
                 TableFieldInfo keyField = f.Table.Fields[0];
                 for (ulong i = 0; i < count; i++)
@@ -3391,7 +3396,7 @@ namespace Blockhome
                         return true;
                     }
                     int run = Width(shape.Elem) != 0 ? ValueBits(shape.Elem, shape.Inner) : -1;
-                    if (f.Dynamic && (n > int.MaxValue || n > (ulong)((r.End - r.At) / Math.Max(1, run)))) { return false; }
+                    if (f.Dynamic && (n > int.MaxValue || run!=0 && n > (ulong)((r.End - r.At) / Math.Max(1, run)))) { return false; }
                     int kept = (int)Math.Min(n, (ulong)f.ArrayBound);
                     if (n > (ulong)f.ArrayBound) { d.Report.Clamped++; }
                     ulong walk = run >= 0 ? (ulong)kept : n;
@@ -3591,7 +3596,7 @@ namespace Blockhome
                     if (reference == 0) { return true; }
                     TableFieldInfo field = null;
                     if (type != null)
-                    { foreach (TableFieldInfo f in type.Fields) { if (f.Id == entry.Id && entry.Kind == Kind(f)) { field = f; break; } } }
+                    { foreach (TableFieldInfo f in type.Fields) { if (f.Id == entry.Id && MessageCompatible(entry,f,out _)) { field = f; break; } } }
                     if (field == null) { if (!MessageSkip(ref r, d, entry.Kind, entry.Shape)) { return false; } }
                     else if (!MessageExtentField(ref r, d, field, entry.Kind, entry.Shape, ref extent)) { return false; }
                 }
@@ -3606,17 +3611,17 @@ namespace Blockhome
                     if (entry.Kind == 0 || Reserved(entry.Id)) { return false; }
                     int tag = FindVariant(field, entry.Id, false);
                     TableFieldInfo arm = tag == 0 ? null : field.Arms.Arms[tag].Field;
-                    if (arm == null || entry.Kind != Kind(arm)) { return MessageSkip(ref r, d, entry.Kind, entry.Shape); }
+                    if (arm == null || !MessageCompatible(entry,arm,out _)) { return MessageSkip(ref r, d, entry.Kind, entry.Shape); }
                     return MessageExtentField(ref r, d, arm, entry.Kind, entry.Shape, ref extent);
                 }
-                if ((kind == 14 || kind == 16) && shape.Elem == field.Kind)
+                if ((kind == 14 || kind == 16) && (shape.Elem == field.Kind || Widen(shape.Elem,field.Kind)))
                 {
                     if (!r.Get(BitCount(shape.Max - shape.Min), out UInt128 raw) || kind == 14 && shape.Elem == 6 && !r.Align()) { return false; }
                     ulong n = (ulong)raw + shape.Min;
                     if (field.Dynamic)
                     {
-                        int floor = Math.Max(1, ValueBits(shape.Elem, shape.Inner));
-                        if (n > int.MaxValue || n > (ulong)((r.End - r.At) / floor)) { return false; }
+                        int floor = Width(shape.Elem)!=0?ValueBits(shape.Elem,shape.Inner):1;
+                        if (n > int.MaxValue || floor>0 && n > (ulong)((r.End - r.At) / floor)) { return false; }
                         extent = Align(extent, field.StorageAlign) + (long)n * field.StorageSize;
                     }
                     if (kind == 14 && Width(shape.Elem) != 0) { return r.Skip((long)n * ValueBits(shape.Elem, shape.Inner)); }
@@ -4289,7 +4294,7 @@ namespace Blockhome
                     if (!r.Var(out ulong count)) { return Damage(report); }
                     if (!Compatible(elementKind, f.Kind, report)) { return false; }
                     int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
-                    if (count > (ulong)f.ArrayBound) { report.Clamped++; }
+                    if (!f.Dynamic && count > (ulong)f.ArrayBound) { report.Clamped++; }
                     int decoded = 0;
                     for (int i = 0; i < keep; i++)
                     {
@@ -4362,7 +4367,7 @@ namespace Blockhome
             static bool ReadField(ref Reader r, object value, TableFieldInfo f, byte kind, TableReport report, out bool placed)
             {
                 placed = true;
-                if (f.Map) { if (!r.Slice(out Reader map)) { return Damage(report); } return ReadMapBody(ref map, value, f, report); }
+                if (f.Map) { if (!r.Slice(out Reader map)) { return Damage(report); } return ReadMapBody(ref map, value, f, report, r.Buffer.Slice(r.Offset - map.Buffer.Length)); }
                 if (kind == 12 || kind == 33)
                 {
                     if (!r.Slice(out Reader text)) { return Damage(report); }
@@ -4396,7 +4401,7 @@ namespace Blockhome
                     else
                     {
                         int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
-                        if (count > (ulong)f.ArrayBound) { report.Clamped++; }
+                        if (!f.Dynamic && count > (ulong)f.ArrayBound) { report.Clamped++; }
                         int decoded = 0;
                         for (int i = 0; i < keep; i++)
                         {
@@ -4431,6 +4436,7 @@ namespace Blockhome
                         continue;
                     }
                     int beforeWidened = report.Widened;
+                    if (Widen(kind,Kind(field)) && !r.Has(Width(kind))) { return Damage(report); }
                     if (!Compatible(kind, Kind(field), report))
                     {
                         if (!r.Skip(kind)) { return Damage(report); }

@@ -87,6 +87,24 @@ static partial class Program
             for(int i=0;i<2;i++) { NativeMemory.Free(stores[i].Bytes); NativeMemory.Free(stores[i].Ids); }
         }
     }
+    static unsafe void RetainDamagedListElement()
+    {
+        byte[] wire=Fixture(new byte[]{1,14,8,13,1,5,2,1,1,0,0,0},"rows","future");
+        byte[] expected=Fixture(new byte[]{1,14,7,13,1,4,2,1,1,0,0},"rows","future");
+        long need=Listdemo.Schema.SheetLoadMeasure(wire);
+        Check(need>=0,"damaged list element can be sized"); if(need<0) { return; }
+        byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)(need+64),64);
+        byte* bytes=stackalloc byte[512]; Listdemo.TableRetain.Id* ids=stackalloc Listdemo.TableRetain.Id[16];
+        var store=new Listdemo.TableRetain { Bytes=bytes,Capacity=512,Ids=ids,IdCapacity=16 };
+        try
+        {
+            var report=new Listdemo.TableReport();
+            Check(Listdemo.Schema.SheetLoadRetain((IntPtr)region,need,wire,ref store,report)!=null && report.Malformed && report.Retained==1 && store.Count==1,"body framing damage preserves its own captured unknown field");
+            byte[] saved=new byte[Listdemo.Schema.SheetMeasureRetain((IntPtr)region,ref store)];
+            Check(Listdemo.Schema.SheetSaveRetain((IntPtr)region,ref store,saved,new Listdemo.TableReport())==saved.Length && saved.AsSpan().SequenceEqual(expected),"damaged list element saves its retained field with repaired framing");
+        }
+        finally { NativeMemory.AlignedFree(region); }
+    }
     static void TestRetention()
     {
         RetainCase("retain_rt2",9,2,11,0,"retain_rt1_save");
@@ -95,5 +113,6 @@ static partial class Program
         for(int i=2;i<=5;i++) { RetainCase("retain_excluded_"+i,0,1,1,0); }
         RetainCase("retain_rt3",0,1,1,0);
         RetainMessages();
+        RetainDamagedListElement();
     }
 }

@@ -135,7 +135,7 @@ namespace Benchtable
         // the 64 every unit this language can declare produces.
         public const long TableCookMaxAlign = 64;
 
-        public static unsafe ulong TableCookRead64(byte* p) { return *(ulong*) p; }
+        public static unsafe ulong TableCookRead64(byte* p) { return System.Runtime.CompilerServices.Unsafe.ReadUnaligned<ulong>(p); }
     }
 
     // THE LAYOUT CONTRACT for the cook closure (docs/SPEC-TABLES.md §20.3), run ONCE:

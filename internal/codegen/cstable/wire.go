@@ -646,7 +646,7 @@ public static partial class TableWire
             if (!r.Var(out ulong count)) { return Damage(report); }
             if (!Compatible(elementKind, f.Kind, report)) { return false; }
             int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
-            if (count > (ulong)f.ArrayBound) { report.Clamped++; }
+            if (!f.Dynamic && count > (ulong)f.ArrayBound) { report.Clamped++; }
             int decoded = 0;
             for (int i = 0; i < keep; i++)
             {
@@ -719,7 +719,7 @@ public static partial class TableWire
     static bool ReadField(ref Reader r, object value, TableFieldInfo f, byte kind, TableReport report, out bool placed)
     {
         placed = true;
-        if (f.Map) { if (!r.Slice(out Reader map)) { return Damage(report); } return ReadMapBody(ref map, value, f, report); }
+        if (f.Map) { if (!r.Slice(out Reader map)) { return Damage(report); } return ReadMapBody(ref map, value, f, report, r.Buffer.Slice(r.Offset - map.Buffer.Length)); }
         if (kind == 12 || kind == 33)
         {
             if (!r.Slice(out Reader text)) { return Damage(report); }
@@ -753,7 +753,7 @@ public static partial class TableWire
             else
             {
                 int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
-                if (count > (ulong)f.ArrayBound) { report.Clamped++; }
+                if (!f.Dynamic && count > (ulong)f.ArrayBound) { report.Clamped++; }
                 int decoded = 0;
                 for (int i = 0; i < keep; i++)
                 {
@@ -788,6 +788,7 @@ public static partial class TableWire
                 continue;
             }
             int beforeWidened = report.Widened;
+            if (Widen(kind,Kind(field)) && !r.Has(Width(kind))) { return Damage(report); }
             if (!Compatible(kind, Kind(field), report))
             {
                 if (!r.Skip(kind)) { return Damage(report); }

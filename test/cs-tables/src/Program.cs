@@ -1712,6 +1712,7 @@ static partial class Program
         TestRetentionContracts();
         TestRetentionPaths();
         TestCollectionMessages();
+        TestCollectionEdges();
         TestGoldenWireWrite();
         TestGoldenWireRead();
         TestGoldenSeamsWrite();

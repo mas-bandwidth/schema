@@ -5,10 +5,20 @@ const tableRegionGraphSource = `
     {
         public NativeValue Value;
         public ulong TypeId;
-        public long NativeOffset;
+        public long NativeOffset,NativeExtent;
         public byte BlobKind;
         public bool Open;
-        public ReadOnlySpan<byte> Blob { get { return new ReadOnlySpan<byte>(Value.Base+Value.At+8,checked((int)NativeWord(Value.Base+Value.At,8))); } }
+        public ReadOnlySpan<byte> Blob
+        {
+            get
+            {
+                // A later arena slab may have a lower address. Compute its
+                // signed displacement outside the checked length conversion.
+                byte* node=Value.Base+Value.At;
+                int length=checked((int)NativeWord(node,4));
+                return new ReadOnlySpan<byte>(node+8,length);
+            }
+        }
     }
     // Numbering scratch is proportional to the reachable nodes. It owns
     // native metadata only; neither values nor retained payloads enter it.
@@ -46,6 +56,7 @@ const tableRegionGraphSource = `
                 int* hash=(int*)Allocator.Get((long)capacity*2*sizeof(int));
                 if(entries==null || hash==null)
                 { Allocator.Release(entries); Allocator.Release(hash); return false; }
+                System.Runtime.InteropServices.NativeMemory.Clear(hash,(nuint)((long)capacity*2*sizeof(int)));
                 Nodes.CopyTo(new Span<RegionNode>(entries,Count));
                 Allocator.Release(Entries); Allocator.Release(Hash);
                 Entries=entries; Hash=hash; Capacity=capacity;
@@ -107,7 +118,7 @@ const tableRegionGraphSource = `
                 if(index>=2)
                 { if(graph.Entries[index-2].TypeId!=f.PointerTypeId) { return false; } continue; }
                 var child=new NativeValue(value.Base,at) { Mutable=value.Mutable };
-                if(f.BlobKind!=0 && NativeWord(child.Base+at,8)>int.MaxValue) { return false; }
+                if(f.BlobKind!=0 && NativeWord(child.Base+at,4)>int.MaxValue) { return false; }
                 int entry=graph.Count;
                 if(!graph.Add(new RegionNode { Value=child,TypeId=f.PointerTypeId,BlobKind=f.BlobKind,Open=true })) { return false; }
                 if(f.BlobKind==0 && !RegionVisit(child,f.Table,ref graph)) { return false; }

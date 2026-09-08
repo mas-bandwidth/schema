@@ -19,11 +19,13 @@ const tableLoadMeasureSource = `
         {
             Reader a = r;
             if (framed && !r.Slice(out a)) { return true; }
-            if (!a.Has(2) || a.Byte() != f.Kind || !a.Var(out ulong n)) { return true; }
+            if (!a.Has(2)) { return true; }
+            byte sourceKind=a.Byte();
+            if (sourceKind!=f.Kind && !Widen(sourceKind,f.Kind) || !a.Var(out ulong n)) { return true; }
             if (f.Dynamic)
             {
                 if (n > int.MaxValue) { reason = "count_over_extent_cap"; return false; }
-                int floor = f.Kind == 13 ? 2 : f.Kind == 15 || f.Kind == 17 || f.Kind == 30 ? 1 : Width(f.Kind);
+                int floor = sourceKind == 13 ? 2 : sourceKind == 15 || sourceKind == 17 || sourceKind == 30 ? 1 : Width(sourceKind);
                 if (floor < 1 || n > (ulong)((a.Buffer.Length - a.Offset) / floor)) { reason = "count_over_length"; return false; }
                 at = Align(at, f.StorageAlign) + (long)n * f.StorageSize;
             }
@@ -61,12 +63,12 @@ const tableLoadMeasureSource = `
     static bool ExtentUnion(ref Reader r, TableFieldInfo f, ref long at, ref string reason)
     {
         if (!r.Ref(out ulong reference, out ulong id) || reference == 0 || !r.Has(1)) { return true; }
-        byte kind = r.Byte();
+        r.Byte(); // the framing scan follows a named arm even if its value kind mismatches
         if (!r.Slice(out Reader body)) { return true; }
         int tag = FindVariant(f, id, false);
         if (tag == 0) { return true; }
         TableFieldInfo arm = f.Arms.Arms[tag].Field;
-        if (arm == null || Kind(arm) != kind) { return true; }
+        if (arm == null) { return true; }
         return ExtentField(ref body, arm, false, ref at, ref reason);
     }
     // Locate the winning node table and validate its framing with no objects or

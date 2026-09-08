@@ -73,7 +73,7 @@ const tableRegionMessageReadSource = `
                 return true;
             }
             int run = Width(shape.Elem) != 0 ? ValueBits(shape.Elem, shape.Inner) : -1;
-            if (f.Dynamic && (n > int.MaxValue || n > (ulong)((r.End - r.At) / Math.Max(1, run)))) { return false; }
+            if (f.Dynamic && (n > int.MaxValue || run!=0 && n > (ulong)((r.End - r.At) / Math.Max(1, run)))) { return false; }
             int kept = (int)Math.Min(n, (ulong)f.ArrayBound);
             if (n > (ulong)f.ArrayBound) { d.Report.Clamped++; }
             if(f.Dynamic && !NativeReserve(ref state,value,f,n,d.Report)) { return false; }

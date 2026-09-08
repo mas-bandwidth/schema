@@ -27,10 +27,11 @@ const tableMapWireSource = `
             if (!body.Has(1)) { return false; }
             byte kind = body.Byte();
             if (id != k.Id) { if (!body.Skip(kind)) { return false; } continue; }
-            if (kind != k.Kind)
+            if (kind != k.Kind && Widen(kind,k.Kind)) { widened=true; }
+            else
             {
-                if (!Widen(kind, k.Kind)) { mismatch = true; return false; }
-                widened = true;
+                mismatch=kind!=k.Kind;
+                if(mismatch) { if(!body.Skip(kind)) { return false; } continue; }
             }
             if (kind == 12)
             {
@@ -44,13 +45,15 @@ const tableMapWireSource = `
             }
         }
     }
-    static bool ReadMapBody(ref Reader a, object value, TableFieldInfo f, TableReport report)
+    static bool ReadMapBody(ref Reader a, object value, TableFieldInfo f, TableReport report, ReadOnlySpan<byte> headerTail = default)
     {
-        f.ResetField(value);
         if (!a.Has(2)) { return true; }
         byte kind = a.Byte();
-        if (!a.Var(out ulong count)) { Damage(report); return true; }
+        Reader header = headerTail.IsEmpty ? a : new Reader(headerTail, a.Vocabulary) { Offset = 1 };
+        if (!header.Var(out ulong count)) { Damage(report); return true; }
+        a.Offset = Math.Min(a.Buffer.Length, header.Offset);
         if (kind != 13) { report.KindMismatch++; return true; }
+        f.ResetField(value);
         int landed = 0; bool widened = false; MapKey last = default;
         TableFieldInfo keyField = f.Table.Fields[0];
         for (ulong i = 0; i < count; i++)

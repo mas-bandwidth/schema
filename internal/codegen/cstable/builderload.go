@@ -11,7 +11,7 @@ const tableBuilderLoadSource = `
     public static bool LoadBuilder(IntPtr pointer,TableTypeInfo type,TableWorker worker,ReadOnlySpan<byte> bytes,TableReport report)
     {
         if(report==null) { throw new ArgumentNullException(nameof(report)); }
-        report.Refused=false; report.Reason=null;
+        report.Refused=false; report.Reason=null; Finish(report,Verdict.BodyStopped);
         if(pointer==IntPtr.Zero || worker.Arena.Closed) { return false; }
         if(bytes.Length==0) { Damage(report); Finish(report,Verdict.Damaged); return false; }
         if(bytes[0]!=1)

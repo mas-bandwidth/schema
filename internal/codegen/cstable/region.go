@@ -210,8 +210,12 @@ const tableRegionSource = `
             if(!body.Has(1)) { return false; }
             byte kind=body.Byte();
             if(id!=field.Id) { if(!body.Skip(kind)) { return false; } continue; }
-            if(kind!=field.Kind)
-            { if(!Widen(kind,field.Kind)) { mismatch=true; return false; } widened=true; }
+            if(kind!=field.Kind && Widen(kind,field.Kind)) { widened=true; }
+            else
+            {
+                mismatch=kind!=field.Kind;
+                if(mismatch) { if(!body.Skip(kind)) { return false; } continue; }
+            }
             if(kind==12)
             { if(!body.Slice(out Reader text) || !TextValid(text.Buffer)) { return false; } key.Text=text.Buffer; }
             else
@@ -223,13 +227,16 @@ const tableRegionSource = `
             }
         }
     }
-    static unsafe bool NativeReadMapBody(ref NativeState state,ref Reader a,NativeValue value,TableFieldInfo f,TableReport report)
+    static unsafe bool NativeReadMapBody(ref NativeState state,ref Reader a,NativeValue value,TableFieldInfo f,TableReport report,ReadOnlySpan<byte> headerTail=default)
     {
-        NativeResetField(value,f,true);
         if(!a.Has(2)) { return true; }
-        byte kind=a.Byte(); if(!a.Var(out ulong count)) { Damage(report); return true; }
+        byte kind=a.Byte();
+        Reader header=headerTail.IsEmpty?a:new Reader(headerTail,a.Vocabulary) { Offset=1 };
+        if(!header.Var(out ulong count)) { Damage(report); return true; }
+        a.Offset=Math.Min(a.Buffer.Length,header.Offset);
         if(kind!=13) { report.KindMismatch++; return true; }
-        if(!NativeReserve(ref state,value,f,count,report)) { return false; }
+        NativeResetField(value,f,true);
+        if(state.Worker==null && !NativeReserve(ref state,value,f,count,report)) { return false; }
         int landed=0; bool widened=false; NativeMapKey last=default;
         TableFieldInfo keyField=f.Table.Fields[0];
         for(ulong i=0;i<count;i++)
@@ -299,6 +306,7 @@ const tableRegionSource = `
             if (framed && !r.Slice(out sub)) { return Damage(report); }
             NativeValue child = value.Child(f,index);
             NativeReadBody(ref state, ref sub, child, f.Table, report, true);
+            if (state.Refused) { return false; }
             if (sub.Offset != sub.Buffer.Length) { NativeReset(child,f.Table); Damage(report); }
             if (!framed) { r.Offset = r.Buffer.Length; }
             return true;
@@ -374,6 +382,7 @@ const tableRegionSource = `
         if (kind == 13)
         {
             NativeReadBody(ref state, ref r, value.Child(f,0), f.Table, report, true);
+            if (state.Refused) { return false; }
             return r.Offset == r.Buffer.Length || Damage(report);
         }
         if (kind == 15) { return NativeReadElement(ref state, ref r, value, f, 0, kind, report, true); }
@@ -446,7 +455,7 @@ const tableRegionSource = `
     static bool NativeReadField(ref NativeState state, ref Reader r, NativeValue value, TableFieldInfo f, byte kind, TableReport report, out bool placed)
     {
         placed = true;
-        if (f.Map) { if (!r.Slice(out Reader map)) { return Damage(report); } return NativeReadMapBody(ref state, ref map, value, f, report); }
+        if (f.Map) { if (!r.Slice(out Reader map)) { return Damage(report); } return NativeReadMapBody(ref state, ref map, value, f, report, r.Buffer.Slice(r.Offset - map.Buffer.Length)); }
         if (kind == 12 || kind == 33)
         {
             if (!r.Slice(out Reader text)) { return Damage(report); }
@@ -516,6 +525,7 @@ const tableRegionSource = `
                 continue;
             }
             int beforeWidened = report.Widened;
+            if (Widen(kind,Kind(field)) && !r.Has(Width(kind))) { return Damage(report); }
             if (!Compatible(kind, Kind(field), report))
             {
                 if (!r.Skip(kind)) { return Damage(report); }
@@ -530,12 +540,12 @@ const tableRegionSource = `
 
     // The authoring conversion owns its allocations. Memoizing each node
     // before its fields preserves both sharing and editable cycles.
-    public static unsafe object CopyRegion(TableTypeInfo type,IntPtr region)
+    public static unsafe object CopyRegion(TableTypeInfo type,IntPtr region,bool mutable=false)
     {
         if(region==IntPtr.Zero) { return null; }
         var nodes=new System.Collections.Generic.Dictionary<long,object>();
         object value=type.Create(); nodes.Add(0,value);
-        NativeCopyBody(new NativeValue((byte*)region,0),value,type,nodes); return value;
+        NativeCopyBody(new NativeValue((byte*)region,0) { Mutable=mutable },value,type,nodes); return value;
     }
     static unsafe void NativeCopyBody(NativeValue source,object target,TableTypeInfo type,System.Collections.Generic.Dictionary<long,object> nodes)
     { foreach(TableFieldInfo f in type.Fields) { NativeCopyField(source,target,f,nodes); } }
@@ -563,7 +573,7 @@ const tableRegionSource = `
                             child=new TableBlob(new ReadOnlySpan<byte>(source.Base+at+8,length).ToArray());
                             nodes.Add(at,child);
                         }
-                        else { child=f.Table.Create(); nodes.Add(at,child); NativeCopyBody(new NativeValue(source.Base,at),child,f.Table,nodes); }
+                        else { child=f.Table.Create(); nodes.Add(at,child); NativeCopyBody(new NativeValue(source.Base,at) { Mutable=source.Mutable },child,f.Table,nodes); }
                     }
                 }
                 f.SetChild(target,i,child);

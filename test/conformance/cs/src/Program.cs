@@ -294,6 +294,18 @@ static partial class Program
         Row<Mapdemo.Fleet, Mapdemo.TableReport>("mapdemo", "Fleet", () => new Mapdemo.TableReport(), Copy,
             Mapdemo.Schema.FleetLoad, Mapdemo.Schema.FleetMeasure, Mapdemo.Schema.FleetSave,
             Mapdemo.Schema.FleetFromJson, Mapdemo.Schema.FleetToJsonMeasure, Mapdemo.Schema.FleetToJson, Mapdemo.Schema.FleetLoadMeasure),
+        Row<Listdemo.Unbounded, Listdemo.TableReport>("listdemo", "Unbounded", () => new Listdemo.TableReport(), Copy,
+            Listdemo.Schema.UnboundedLoad, Listdemo.Schema.UnboundedMeasure, Listdemo.Schema.UnboundedSave,
+            Listdemo.Schema.UnboundedFromJson, Listdemo.Schema.UnboundedToJsonMeasure, Listdemo.Schema.UnboundedToJson, Listdemo.Schema.UnboundedLoadMeasure),
+        Row<Listdemo.Ints, Listdemo.TableReport>("listdemo", "Ints", () => new Listdemo.TableReport(), Copy,
+            Listdemo.Schema.IntsLoad, Listdemo.Schema.IntsMeasure, Listdemo.Schema.IntsSave,
+            Listdemo.Schema.IntsFromJson, Listdemo.Schema.IntsToJsonMeasure, Listdemo.Schema.IntsToJson, Listdemo.Schema.IntsLoadMeasure),
+        Row<Listdemo.Floats, Listdemo.TableReport>("listdemo", "Floats", () => new Listdemo.TableReport(), Copy,
+            Listdemo.Schema.FloatsLoad, Listdemo.Schema.FloatsMeasure, Listdemo.Schema.FloatsSave,
+            Listdemo.Schema.FloatsFromJson, Listdemo.Schema.FloatsToJsonMeasure, Listdemo.Schema.FloatsToJson, Listdemo.Schema.FloatsLoadMeasure),
+        Row<Listdemo.Bytes, Listdemo.TableReport>("listdemo", "Bytes", () => new Listdemo.TableReport(), Copy,
+            Listdemo.Schema.BytesLoad, Listdemo.Schema.BytesMeasure, Listdemo.Schema.BytesSave,
+            Listdemo.Schema.BytesFromJson, Listdemo.Schema.BytesToJsonMeasure, Listdemo.Schema.BytesToJson, Listdemo.Schema.BytesLoadMeasure),
         Row<Listdemo.Album, Listdemo.TableReport>("listdemo", "Album", () => new Listdemo.TableReport(), Copy,
             Listdemo.Schema.AlbumLoad, Listdemo.Schema.AlbumMeasure, Listdemo.Schema.AlbumSave,
             Listdemo.Schema.AlbumFromJson, Listdemo.Schema.AlbumToJsonMeasure, Listdemo.Schema.AlbumToJson, Listdemo.Schema.AlbumLoadMeasure),
@@ -2431,7 +2443,7 @@ static partial class Program
         }
     }
 
-    static int WireFuzz()
+    static int WireFuzz(bool builder = false)
     {
         using var scratch=new RetainScratch();
         RegisterRetains(scratch);
@@ -2473,7 +2485,7 @@ static partial class Program
             bool message = forms[index] == 2;
             long need = message ? (codec.MessageLoadMeasure == null ? -1 : codec.MessageLoadMeasure(bytes)) : codec.LoadMeasure == null ? -1 : codec.LoadMeasure(bytes);
             object value = message ? codec.MessageLoad(codec.Announcement, bytes, report) : codec.PartialLoad(bytes, report);
-            bool loaded = (message ? codec.MessageLoadMeasure == null : codec.LoadMeasure == null) || need >= 0;
+            bool loaded = builder ? builderLoaded : (message ? codec.MessageLoadMeasure == null : codec.LoadMeasure == null) || need >= 0;
             output.Write((byte)(loaded ? 1 : 0));
             output.Write(report.Unknown); output.Write(report.KindMismatch); output.Write(report.Widened);
             output.Write(report.Clamped); output.Write(report.Duplicate);
@@ -2492,6 +2504,7 @@ static partial class Program
     {
         RegisterMessages();
         RegisterNativeCooks();
+        if(args.Length==1 && args[0]=="wire-fuzz-builder") { RegisterBuilders(); return WireFuzz(true); }
         if(args.Length==1 && args[0]=="wire-fuzz-region") { RegisterRegions(); return WireFuzz(); }
         if (args.Length == 1 && args[0] == "wire-fuzz") { return WireFuzz(); }
         if (args.Length < 2)

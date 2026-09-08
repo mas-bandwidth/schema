@@ -9,7 +9,7 @@ const tableMessageMeasureSource = `
             if (reference == 0) { return true; }
             TableFieldInfo field = null;
             if (type != null)
-            { foreach (TableFieldInfo f in type.Fields) { if (f.Id == entry.Id && entry.Kind == Kind(f)) { field = f; break; } } }
+            { foreach (TableFieldInfo f in type.Fields) { if (f.Id == entry.Id && MessageCompatible(entry,f,out _)) { field = f; break; } } }
             if (field == null) { if (!MessageSkip(ref r, d, entry.Kind, entry.Shape)) { return false; } }
             else if (!MessageExtentField(ref r, d, field, entry.Kind, entry.Shape, ref extent)) { return false; }
         }
@@ -24,17 +24,17 @@ const tableMessageMeasureSource = `
             if (entry.Kind == 0 || Reserved(entry.Id)) { return false; }
             int tag = FindVariant(field, entry.Id, false);
             TableFieldInfo arm = tag == 0 ? null : field.Arms.Arms[tag].Field;
-            if (arm == null || entry.Kind != Kind(arm)) { return MessageSkip(ref r, d, entry.Kind, entry.Shape); }
+            if (arm == null || !MessageCompatible(entry,arm,out _)) { return MessageSkip(ref r, d, entry.Kind, entry.Shape); }
             return MessageExtentField(ref r, d, arm, entry.Kind, entry.Shape, ref extent);
         }
-        if ((kind == 14 || kind == 16) && shape.Elem == field.Kind)
+        if ((kind == 14 || kind == 16) && (shape.Elem == field.Kind || Widen(shape.Elem,field.Kind)))
         {
             if (!r.Get(BitCount(shape.Max - shape.Min), out UInt128 raw) || kind == 14 && shape.Elem == 6 && !r.Align()) { return false; }
             ulong n = (ulong)raw + shape.Min;
             if (field.Dynamic)
             {
-                int floor = Math.Max(1, ValueBits(shape.Elem, shape.Inner));
-                if (n > int.MaxValue || n > (ulong)((r.End - r.At) / floor)) { return false; }
+                int floor = Width(shape.Elem)!=0?ValueBits(shape.Elem,shape.Inner):1;
+                if (n > int.MaxValue || floor>0 && n > (ulong)((r.End - r.At) / floor)) { return false; }
                 extent = Align(extent, field.StorageAlign) + (long)n * field.StorageSize;
             }
             if (kind == 14 && Width(shape.Elem) != 0) { return r.Skip((long)n * ValueBits(shape.Elem, shape.Inner)); }

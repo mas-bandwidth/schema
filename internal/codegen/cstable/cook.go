@@ -1044,7 +1044,7 @@ public static partial class Schema
     // the 64 every unit this language can declare produces.
     public const long TableCookMaxAlign = ` + fmt.Sprintf("%d", cookMaxAlign) + `;
 
-    public static unsafe ulong TableCookRead64(byte* p) { return *(ulong*) p; }
+    public static unsafe ulong TableCookRead64(byte* p) { return System.Runtime.CompilerServices.Unsafe.ReadUnaligned<ulong>(p); }
 }
 
 `)

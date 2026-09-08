@@ -138,7 +138,7 @@ public sealed unsafe class TableWorker
         if(length<0 || length>int.MaxValue) { return default; }
         byte* p=Raw(8+length+terminator);
         if(p==null) { return default; }
-        *(ulong*)p=(ulong)length;
+        *(uint*)p=(uint)length;
         return new TableBlobSlot { Pointer=(IntPtr)p,Length=length,ByteLength=length };
     }
 }

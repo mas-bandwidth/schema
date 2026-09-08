@@ -30,6 +30,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="../../build/tables-generated-cs/cscollections1/*.cs" />
+    <Compile Include="../../build/tables-generated-cs/cscollections2/*.cs" />
 
     <Compile Include="src/*.cs" />
     <Compile Include="../../build/tables-generated-cs/csretain1/*.cs" />

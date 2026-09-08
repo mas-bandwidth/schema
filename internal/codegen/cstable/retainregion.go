@@ -43,10 +43,10 @@ func tableRetainRegionSource() string {
         { RetainDiscard(Store,IsArm && f.IsArray?Path.Step(ArmOrdinal,ArmIndex):Path,IsArm && !f.IsArray?ArmOrdinal:f.Ordinal); }`)
 	// NativeMemory is a BCL API, not a member of the family.
 	s = tableReplace(s, "InteropServices.RetainMemory", "InteropServices.NativeMemory")
-	s = tableReplace(s, "        if(f.Dynamic) { RetainPut", `        if(f.Kind==13 || f.Kind==15) { RetainDiscard(value.Store,value.Path,f.Ordinal); }
-        if(f.Dynamic) { RetainPut`)
+	s = tableReplace(s, "        RetainResetField(value,f,true);\n        if(state.Worker==null", "        value.DiscardField(f);\n        RetainResetField(value,f,true);\n        if(state.Worker==null")
 	s = tableReplace(s, "        RetainReset(value,type);\n        for (;;)", "        RetainDiscard(value.Store,value.Path);\n        RetainReset(value,type);\n        for (;;)")
-	s = tableReplace(s, "if (sub.Offset != sub.Buffer.Length) { RetainReset(child,f.Table);", "if (sub.Offset != sub.Buffer.Length) { RetainDiscard(child.Store,child.Path); RetainReset(child,f.Table);")
+	// A damaged body resets its known value. Its own captured unknown fields
+	// survive; damage is not a later occurrence that replaces them.
 	s = tableReplace(s, "report.Unknown++;\n                if (!r.Skip(kind))", "report.Unknown++;\n                if (!RetainCapture(value.Store,value.Path,ref r,id,kind,report))")
 	s = tableReplace(s, "{ report.Unknown++; }", "{ report.Unknown++; if(value.Store!=null) { report.RetainLost++; } }")
 	s = tableReplace(s, "{ report.Unknown++; return true; }", "{ report.Unknown++; if(value.Store!=null) { report.RetainLost++; } return true; }")
