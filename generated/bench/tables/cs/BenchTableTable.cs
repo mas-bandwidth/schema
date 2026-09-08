@@ -2611,16 +2611,35 @@ namespace Benchtable
             ref struct Ids
             {
                 public Span<ulong> Values;
+                public Span<int> Slots;
                 public int Count;
                 public Graph Graph;
-                public Ids(Span<ulong> values) { Values = values; Count = 0; Graph = null; }
+                public Ids(Span<ulong> values) { Values = values; Slots = default; Count = 0; Graph = null; }
+                public Ids(Span<ulong> values, Span<int> slots)
+                { Values = values; Slots = slots; Slots.Clear(); Count = 0; Graph = null; }
+                int Slot(ulong id)
+                {
+                    int mask = Slots.Length - 1;
+                    int slot = unchecked((int)(id ^ (id >> 32))) & mask;
+                    while (Slots[slot] != 0 && Values[Slots[slot] - 1] != id) { slot = (slot + 1) & mask; }
+                    return slot;
+                }
                 public ulong Reference(ulong id)
                 {
+                    if (!Slots.IsEmpty) { return (ulong)Slots[Slot(id)]; }
                     for (int i = 0; i < Count; i++) { if (Values[i] == id) { return (ulong)i + 1; } }
                     return 0;
                 }
                 public bool Add(ulong id)
                 {
+                    if (!Slots.IsEmpty)
+                    {
+                        int slot = Slot(id);
+                        if (Slots[slot] != 0) { return true; }
+                        if (Count == Values.Length) { return false; }
+                        Values[Count++] = id; Slots[slot] = Count;
+                        return true;
+                    }
                     if (Reference(id) != 0) { return true; }
                     if (Count == Values.Length) { return false; }
                     Values[Count++] = id;
@@ -4259,7 +4278,18 @@ namespace Benchtable
             }
             public static long Save(object value, TableTypeInfo type, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
             {
-                Ids ids = new Ids(vocabulary);
+                // Preserve first-use vocabulary order; the index only accelerates
+                // references during the repeated collect, measure and write walks.
+                // Bound extra stack use for large schemas; their existing linear
+                // path remains available without a per-save heap allocation.
+                int slots = 0;
+                if (vocabulary.Length <= 1024)
+                {
+                    slots = 1;
+                    while (slots < vocabulary.Length * 2) { slots <<= 1; }
+                }
+                Span<int> index = stackalloc int[slots];
+                Ids ids = new Ids(vocabulary, index);
                 if (type.Variable) { ids.Graph = Number(value, type); if (ids.Graph == null) { return -1; } }
                 if (!Collect(value, type, ref ids) || !CollectNodes(ref ids)) { return -1; }
                 long n = 1 + BodySize(value, type, ref ids) + 8L * ids.Count + 8;
@@ -4267,7 +4297,7 @@ namespace Benchtable
                 if (nodes != 0) { n += VarSize(ids.Reference(ulong.MaxValue)) + 1 + VarSize((ulong)nodes) + nodes; }
                 if (measure) { return n; }
                 if (n > buffer.Length) { return -1; }
-                Writer w = new Writer(buffer);
+                scoped Writer w = new Writer(buffer);
                 w.Byte(1); WriteBody(ref w, value, type, ref ids, true);
                 for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
                 w.Fixed((ulong)ids.Count, 8);
