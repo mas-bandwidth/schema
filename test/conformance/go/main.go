@@ -460,6 +460,8 @@ func main() {
 	out := os.Args[3]
 	var run func([]line, string) error
 	switch surface {
+	case "message":
+		run = surfaceMessage
 	case "wire":
 		run = surfaceWire
 	case "report":

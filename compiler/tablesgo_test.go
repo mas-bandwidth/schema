@@ -141,10 +141,9 @@ func TestTableRuntimeNamesAreClaimedGo(t *testing.T) {
 			files[fmt.Sprintf("%d/%s", i, name)] = data
 		}
 	}
-	// BuildVersion rides in the alternation because it is the one registered
-	// name that is not a table spelling, and the Go backend defines it
-	// (docs/SPEC-TABLES.md §20).
-	ident := regexp.MustCompile(`\b(?:[Tt]able[A-Za-z0-9_]*|BuildVersion)\b`)
+	// The build version and announcement verbs are the registered runtime
+	// names without a Table prefix (docs/SPEC-TABLES.md §20 and §3.3).
+	ident := regexp.MustCompile(`\b(?:[Tt]able[A-Za-z0-9_]*|BuildVersion|Announce(?:Measure|Read)?)\b`)
 	emitted := map[string]bool{}
 	for _, data := range files {
 		for line := range strings.SplitSeq(string(data), "\n") {

@@ -153,3 +153,16 @@ list_map_truncated_widen listdemo Army testdata/wire/tables/fuzz-vectors/list_ma
 
 # A skipped incompatible map repeat preserves the earlier decoded occurrence.
 map_repeat_mismatch mapdemo Crews testdata/wire/tables/fuzz-vectors/map_repeat_mismatch.bin
+
+# The enclosing count crosses L: the extent is 40 bytes, and the region load
+# empties photos and marks damage. The builder path refuses its partial value.
+list_count_cross_length listdemo Album testdata/wire/tables/fuzz-vectors/list_count_cross_length.bin
+
+# Flags accept unsigned scalar widening in positional collections (#717).
+list_flags_widen listdemo Mixed testdata/wire/tables/fuzz-vectors/list_flags_widen.bin
+
+# A truncated message bytes payload fails before any length clamp is counted.
+message_bytes_truncated backenddemo LoginRequest testdata/wire/tables/fuzz-vectors/message_bytes_truncated.bin message
+
+# The key scan reads through an incompatible occurrence; the final key kind wins.
+map_key_repeat_kind mapdemo Slots testdata/wire/tables/fuzz-vectors/map_key_repeat_kind.bin

@@ -7,7 +7,7 @@ import "github.com/mas-bandwidth/schema/v2/ir"
 func (g *tableGen) emitTableUnion(un *ir.Union) {
 	width := 32
 	if g.regional {
-		width = int(ir.StorageBitsFor(un.Max))
+		width = ir.StorageBitsFor(un.Max)
 	}
 	g.tf("type %sType uint%d\nconst (\n%sTypeNone %sType = iota\n", un.Name, width, un.Name, un.Name)
 	for _, v := range un.Variants {

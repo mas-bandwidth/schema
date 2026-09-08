@@ -60,10 +60,6 @@ const (
 	tkTable  = 13
 	tkArray  = 14
 	tkUnion  = 15
-	// an ENUM-KEYED array body is its OWN kind (docs/SPEC-TABLES.md §3.2): the
-	// positional array body and the keyed one are incompatible, so a reader
-	// meeting the other must see a KIND MISMATCH and skip, never misdecode.
-	tkKeyed = 16
 )
 
 func tableScalarKind(f *ir.Field) int { return ir.TableScalarKind(f) }
@@ -169,7 +165,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		if g.home {
 			g.needsMath = true
 			g.needsUnsafe() // the descriptor surface's reset column takes an unsafe.Pointer
-			g.pf("%s", tableRuntime()+tableWireRuntime(u))
+			g.pf("%s", tableRuntime()+tableWireRuntime(u)+tableMessageRuntime(u))
 			if regional {
 				g.emitRegionRuntime(blocks)
 			}
@@ -200,6 +196,10 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			g.emitTableWrite(st)
 			g.emitTableSave(st)
 			g.emitTableRead(st)
+			g.emitMessageWrite(st)
+			if !ir.VariableTables(u)[st.Name] {
+				g.emitMessageRead(st)
+			}
 			if regional {
 				g.emitRegionMember(st)
 				for _, f := range st.Fields {

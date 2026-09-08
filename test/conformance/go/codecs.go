@@ -5,6 +5,7 @@
 package main
 
 import (
+	"backenddemo"
 	"blobdemo"
 	"graphdemo"
 	"listdemo"
@@ -13,6 +14,8 @@ import (
 	"scalardemo"
 	"streamdemo"
 	tblscalars2 "tblscalars2"
+	"vocab9demo"
+	"vocabdemo"
 	widedemo "widedemo"
 
 	"tbla1"
@@ -55,6 +58,30 @@ func snapP3(r *tblp3.TableReport) report {
 }
 
 var codecTable = []codec{
+	row("backenddemo", "LoginRequest", backenddemo.LoginRequestReset, backenddemo.LoginRequestLoad, backenddemo.LoginRequestMeasure, backenddemo.LoginRequestSave, backenddemo.LoginRequestFromJson, backenddemo.LoginRequestToJsonMeasure, backenddemo.LoginRequestToJson, func(r *backenddemo.TableReport) report {
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == backenddemo.TableOpenRefused}
+	}),
+	row("backenddemo", "MatchResult", backenddemo.MatchResultReset, backenddemo.MatchResultLoad, backenddemo.MatchResultMeasure, backenddemo.MatchResultSave, backenddemo.MatchResultFromJson, backenddemo.MatchResultToJsonMeasure, backenddemo.MatchResultToJson, func(r *backenddemo.TableReport) report {
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == backenddemo.TableOpenRefused}
+	}),
+	row("backenddemo", "StorePurchase", backenddemo.StorePurchaseReset, backenddemo.StorePurchaseLoad, backenddemo.StorePurchaseMeasure, backenddemo.StorePurchaseSave, backenddemo.StorePurchaseFromJson, backenddemo.StorePurchaseToJsonMeasure, backenddemo.StorePurchaseToJson, func(r *backenddemo.TableReport) report {
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == backenddemo.TableOpenRefused}
+	}),
+	row("backenddemo", "Envelope", backenddemo.EnvelopeReset, backenddemo.EnvelopeLoad, backenddemo.EnvelopeMeasure, backenddemo.EnvelopeSave, backenddemo.EnvelopeFromJson, backenddemo.EnvelopeToJsonMeasure, backenddemo.EnvelopeToJson, func(r *backenddemo.TableReport) report {
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == backenddemo.TableOpenRefused}
+	}),
+	row("vocabdemo", "Wide00", vocabdemo.Wide00Reset, vocabdemo.Wide00Load, vocabdemo.Wide00Measure, vocabdemo.Wide00Save, vocabdemo.Wide00FromJson, vocabdemo.Wide00ToJsonMeasure, vocabdemo.Wide00ToJson, func(r *vocabdemo.TableReport) report {
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == vocabdemo.TableOpenRefused}
+	}),
+	row("vocabdemo", "Wide09", vocabdemo.Wide09Reset, vocabdemo.Wide09Load, vocabdemo.Wide09Measure, vocabdemo.Wide09Save, vocabdemo.Wide09FromJson, vocabdemo.Wide09ToJsonMeasure, vocabdemo.Wide09ToJson, func(r *vocabdemo.TableReport) report {
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == vocabdemo.TableOpenRefused}
+	}),
+	row("vocab9demo", "Wide00", vocab9demo.Wide00Reset, vocab9demo.Wide00Load, vocab9demo.Wide00Measure, vocab9demo.Wide00Save, vocab9demo.Wide00FromJson, vocab9demo.Wide00ToJsonMeasure, vocab9demo.Wide00ToJson, func(r *vocab9demo.TableReport) report {
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == vocab9demo.TableOpenRefused}
+	}),
+	row("vocab9demo", "Wide19", vocab9demo.Wide19Reset, vocab9demo.Wide19Load, vocab9demo.Wide19Measure, vocab9demo.Wide19Save, vocab9demo.Wide19FromJson, vocab9demo.Wide19ToJsonMeasure, vocab9demo.Wide19ToJson, func(r *vocab9demo.TableReport) report {
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == vocab9demo.TableOpenRefused}
+	}),
 	regionRow("mapdemo", "Cells", mapdemo.CellsLoadMeasure, mapdemo.CellsLoad, mapdemo.CellsMeasure, mapdemo.CellsSave, func(text []byte, r *mapdemo.TableReport) (*mapdemo.Cells, []byte, bool) {
 		var b mapdemo.CellsBuilder
 		if !b.Init() {
@@ -649,5 +676,5 @@ var codecTable = []codec{
 // surfaces is what this backend implements. A surface not listed prints as
 // ABSENT in the matrix, which is a missing FEATURE and not a failing test.
 func surfaces() []string {
-	return []string{"wire", "report", "json-read", "json-write", "json-hostile", "cook", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery"}
+	return []string{"wire", "message", "report", "json-read", "json-write", "json-hostile", "cook", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery"}
 }

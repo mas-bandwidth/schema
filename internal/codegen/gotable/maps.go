@@ -19,11 +19,12 @@ func mapValueHandle(u *ir.Unit, f *ir.Field) (typ, access string) {
 		return containerElementType(u, f), "entry"
 	}
 	typ = goCookBlittableType(u, v.Type)
-	if v.IsMap() {
+	switch {
+	case v.IsMap():
 		typ = "TableMap[" + containerElementType(u, v) + "]"
-	} else if v.IsList() {
+	case v.IsList():
 		typ = "TableList[" + containerElementType(u, v) + "]"
-	} else if v.Array != ir.ArrayNone {
+	case v.Array != ir.ArrayNone:
 		typ = fmt.Sprintf("[%d]%s", v.ArrayBound, typ)
 	}
 	return typ, "&entry.Value"
@@ -88,7 +89,7 @@ func tableMapCursor(h *tableContainer,f *TableFieldInfo,a *TableArena) tableCont
 func tableMapFind(h *tableContainer,f *TableFieldInfo,key tableMapKey,a *TableArena) unsafe.Pointer {if h==nil||h.Count<=0||h.Ref==0{return nil};kf:=&f.Table().Fields[0];if !tableMapKeyValid(key,kf){return nil};if a==nil {base:=unsafe.Add(unsafe.Pointer(h),h.Ref);lo,hi:=int32(0),h.Count;for lo<hi {mid:=lo+(hi-lo)/2;p:=unsafe.Add(base,int64(mid)*int64(f.ElemSize));order:=tableMapKeyOrder(tableMapStoredKey(p,kf),key,kf);if order<0{lo=mid+1}else{hi=mid}};if lo<h.Count {p:=unsafe.Add(base,int64(lo)*int64(f.ElemSize));if tableMapKeyOrder(tableMapStoredKey(p,kf),key,kf)==0{return p}};return nil};c:=tableContainerCursorBegin(h,int64(f.ElemSize),a);for i:=int32(0);i<h.Count;i++ {p:=c.Next();if p==nil{return nil};if tableMapKeyOrder(tableMapStoredKey(p,kf),key,kf)==0{return p}};return nil}
 func tableMapPlace(w *TableWorker,h *tableContainer,f *TableFieldInfo,key tableMapKey)(unsafe.Pointer,bool) {if w==nil||w.Arena==nil||w.Arena.Locked||!tableMapKeyValid(key,&f.Table().Fields[0]) {return nil,false};if p:=tableMapFind(h,f,key,w.Arena);p!=nil{return p,true};p:=tableContainerAppend(w,h,int64(f.ElemSize));if p==nil{return nil,false};f.Table().Reset(p);tableMapStoreKey(p,&f.Table().Fields[0],key);return p,false}
 func tableMapReadKey(r TableReader,f *TableFieldInfo)(key tableMapKey,bad,over,wide,whole bool) {
- for {ref,ok:=r.Leb();if !ok{return};if ref==0 {whole=r.Offset==int64(len(r.Buffer));return};id,ok:=r.Resolve(ref);if !ok||!r.Has(1){return};kind:=r.Get8();if id!=f.Id {if !r.Skip(kind){return};continue};if kind!=f.Kind&&!tableKindWidens(kind,f.Kind) {bad=true;return};if kind!=f.Kind {wide=true};if kind==12 {body,ok:=r.Body();if !ok||!tableUtf8Valid(body.Buffer){return};key.text=body.Buffer;over=len(key.text)>int(f.ArrayBound)}else{size:=tableKindBytes(kind);if !r.Has(size){return};if f.Kind>=2&&f.Kind<=5 {key.raw=uint64(r.Signed(kind))}else{key.raw=r.Unsigned(kind)}} }
+ for {ref,ok:=r.Leb();if !ok{return};if ref==0 {whole=r.Offset==int64(len(r.Buffer));return};id,ok:=r.Resolve(ref);if !ok||!r.Has(1){return};kind:=r.Get8();if id!=f.Id {if !r.Skip(kind){return};continue};if kind!=f.Kind&&tableKindWidens(kind,f.Kind) {wide=true}else{bad=kind!=f.Kind;if bad {if !r.Skip(kind){return};continue}};if kind==12 {body,ok:=r.Body();if !ok||!tableUtf8Valid(body.Buffer){return};key.text=body.Buffer;over=len(key.text)>int(f.ArrayBound)}else{size:=tableKindBytes(kind);if !r.Has(size){return};if f.Kind>=2&&f.Kind<=5 {key.raw=uint64(r.Signed(kind))}else{key.raw=r.Unsigned(kind)}} }
 }
 type TableMapIndex struct { slots []int32 }
 func tableMapIndexMeasure(count int32)int64 {if count<0||count>1<<29{return -1};capacity:=int64(2);for capacity<int64(count)*2 {capacity*=2};return capacity*4}

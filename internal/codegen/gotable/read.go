@@ -126,14 +126,15 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 		g.pf("%skey, ok := sub.Resolve(keyRef); if !ok { r.Report.Malformed = true; break }\n", j)
 		g.pf("%selem, ok := sub.Body(); if !ok { r.Report.Malformed = true; break }\n", j)
 		g.pf("%svar slot %s; if !slot.TableEnumValue(key) { r.Report.Unknown++; continue }\n", j, f.KeyEnum)
-		if kind == tkTable {
+		switch kind {
+		case tkTable:
 			g.pf("%s%sLoadBody(&elem, &%s[int(slot)-1])\n", j, f.Type.Name, expr)
 			g.emitCarveReturn("sub", "elem", j)
 			g.pf("%sif elem.Offset!=int64(len(elem.Buffer)) { r.Report.Malformed=true;%sReset(&%s[int(slot)-1]) }\n", j, f.Type.Name, expr)
-		} else if kind == tkUnion {
+		case tkUnion:
 			g.emitReadUnion(f.Type.Ref.(*ir.Union), expr+"[int(slot)-1]", "elem", j, "continue", true)
 			g.emitCarveReturn("sub", "elem", j)
-		} else {
+		default:
 			g.emitReadScalar(f, expr+"[int(slot)-1]", "elem", "elemKind", j, "r.Report.Malformed = true; continue")
 		}
 		g.pf("%s}\n", i)
@@ -145,14 +146,15 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 		}
 		g.pf("%sfor i := uint64(0); i < keep; i++ {\n", i)
 		j := i + "\t"
-		if kind == tkTable {
+		switch kind {
+		case tkTable:
 			g.pf("%selem, ok := sub.Body(); if !ok { r.Report.Malformed = true; break }\n", j)
 			g.pf("%s%sLoadBody(&elem, &%s[i])\n", j, f.Type.Name, expr)
 			g.emitCarveReturn("sub", "elem", j)
 			g.pf("%sif elem.Offset!=int64(len(elem.Buffer)) {r.Report.Malformed=true;%sReset(&%s[i])}\n", j, f.Type.Name, expr)
-		} else if kind == tkUnion {
+		case tkUnion:
 			g.emitReadUnion(f.Type.Ref.(*ir.Union), expr+"[i]", "sub", j, "break", true)
-		} else {
+		default:
 			g.emitReadScalar(f, expr+"[i]", "sub", "elemKind", j, "r.Report.Malformed = true; break")
 		}
 		if counted {
@@ -274,13 +276,14 @@ func (g *tableGen) emitReadArmArray(f *ir.Field, expr, rdr, ind, none string) {
 	g.pf("%s}\n%skeep:=count;if keep > %d {keep=%d;r.Report.Clamped++}\n", ind, ind, bound, bound)
 	g.pf("%sfor i:=uint64(0); i<keep; i++ {\n", ind)
 	j := ind + "\t"
-	if isStructRef(f.Type) {
+	switch {
+	case isStructRef(f.Type):
 		elem := g.nextWireWriter()
 		g.pf("%s%s,ok:=%s.Body();if !ok {r.Report.Malformed=true;break};%sLoadBody(&%s,&%s[i])\n", j, elem, rdr, f.Type.Name, elem, expr)
 		g.emitCarveReturn(rdr, elem, j)
-	} else if isUnionRef(f.Type) {
+	case isUnionRef(f.Type):
 		g.emitReadUnion(f.Type.Ref.(*ir.Union), expr+"[i]", rdr, j, "break", true)
-	} else {
+	default:
 		g.emitReadScalar(f, expr+"[i]", rdr, "elemKind", j, "r.Report.Malformed=true;break")
 	}
 	if counted {

@@ -83,7 +83,7 @@ tables-go-json-walk: build/tables-generated-go/.stamp
 # a generated package names its schema's `package` and Go resolves an import by
 # module path — so the conformance leg's go.mod replaces one path per unit,
 # exactly as test/go/go.mod already does for the packet corpus.
-build/tables-generated-go/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema $(wildcard test/tables/[MAKR][12].schema) tables/scalars/Scalars.schema test/tables/Scalars2.schema $(wildcard examples-wide/*.schema) tables/messages/Messages.schema $(wildcard tables/stream/*.schema tables/blobs/*.schema tables/lists/*.schema tables/maps/*.schema)
+build/tables-generated-go/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema $(wildcard test/tables/[MAKR][12].schema) tables/scalars/Scalars.schema test/tables/Scalars2.schema $(wildcard examples-wide/*.schema) tables/messages/Messages.schema tables/backend/Backend.schema tables/vocab/Vocab.schema tables/vocab9/Vocab9.schema $(wildcard tables/stream/*.schema tables/blobs/*.schema tables/lists/*.schema tables/maps/*.schema)
 	@mkdir -p build/tables-generated-go
 	./bin/schema generate --lang go --out build/tables-generated-go/examples tables/examples
 	# The pointer corpus exercises the wire, region and cook read surfaces.
@@ -115,6 +115,12 @@ build/tables-generated-go/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_
 	$(call go_table_module,lists,listdemo)
 	./bin/schema generate --lang go --out build/tables-generated-go/maps tables/maps
 	$(call go_table_module,maps,mapdemo)
+	./bin/schema generate --lang go --out build/tables-generated-go/backend tables/backend
+	$(call go_table_module,backend,backenddemo)
+	./bin/schema generate --lang go --out build/tables-generated-go/vocab tables/vocab
+	$(call go_table_module,vocab,vocabdemo)
+	./bin/schema generate --lang go --out build/tables-generated-go/vocab9 tables/vocab9
+	$(call go_table_module,vocab9,vocab9demo)
 	$(call go_table_module,messages,messagedemo)
 	$(call go_table_module,examples,tabledemo)
 	$(call go_table_module,pointers,graphdemo)

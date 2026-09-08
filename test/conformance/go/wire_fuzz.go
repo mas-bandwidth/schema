@@ -28,6 +28,7 @@ func wireFuzz() error {
 		return err
 	}
 	roster := make([]*codec, count)
+	messages := make([]*messageCodec, count)
 	for i := range roster {
 		unit, err := text()
 		if err != nil {
@@ -48,8 +49,11 @@ func wireFuzz() error {
 		if form == 1 && retain == 0 {
 			roster[i] = findCodec(unit, root)
 		}
+		if form == 2 && retain == 0 {
+			messages[i] = findMessageCodec(unit, root)
+		}
 		available := byte(0)
-		if roster[i] != nil {
+		if roster[i] != nil || messages[i] != nil {
 			available = 1
 		}
 		if err := out.WriteByte(available); err != nil {
@@ -70,28 +74,37 @@ func wireFuzz() error {
 		if err := read(&size); err != nil {
 			return err
 		}
-		if uint64(index) >= uint64(len(roster)) || roster[index] == nil {
+		if uint64(index) >= uint64(len(roster)) || roster[index] == nil && messages[index] == nil {
 			return fmt.Errorf("unsupported roster index %d", index)
 		}
 		wire := make([]byte, size)
 		if _, err := io.ReadFull(in, wire); err != nil {
 			return err
 		}
-		c := roster[index]
-		value := c.fresh()
 		var rep report
-		loaded := c.load(value, wire, &rep)
+		loaded := true
 		regionBytes := int64(-1)
-		if c.loadMeasure != nil {
-			regionBytes = c.loadMeasure(wire)
-		} else {
-			loaded = true
-		}
-		saved := c.measure(value)
+		saved := int64(-1)
 		var buffer []byte
-		if saved >= 0 {
-			buffer = make([]byte, saved)
-			saved = c.save(value, buffer)
+		if m := messages[index]; m != nil {
+			buffer, rep, _ = m.run(nil, wire, true)
+			if buffer != nil {
+				saved = int64(len(buffer))
+			}
+		} else {
+			c := roster[index]
+			value := c.fresh()
+			loaded = c.load(value, wire, &rep)
+			if c.loadMeasure != nil {
+				regionBytes = c.loadMeasure(wire)
+			} else {
+				loaded = true
+			}
+			saved = c.measure(value)
+			if saved >= 0 {
+				buffer = make([]byte, saved)
+				saved = c.save(value, buffer)
+			}
 		}
 		for _, v := range []any{loaded, rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate, rep.malformed, rep.refused, regionBytes, int32(0), int32(0), saved} {
 			if err := write(v); err != nil {

@@ -32,14 +32,23 @@ func (e *FormRefusal) Error() string {
 // false with a nil error is framing damage past the point the walk could
 // continue, and the instance keeps what it decoded.
 func Decode(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *tabletext.Report) (bool, error) {
-	return decodeWith(m, inst, data, report, nil)
+	return decodeWith(m, inst, data, report, nil, false)
+}
+
+// DecodeRegion models a load into a region sized by FileRegionMeasure. A
+// collection header can finish beyond its own L during value decoding even
+// though the framing pass bounded that header by L. A count beyond the storage
+// cap then empties that collection and reports damage; a builder instead
+// refuses its partial value. The caller must honor a framing refusal first.
+func DecodeRegion(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *tabletext.Report) (bool, error) {
+	return decodeWith(m, inst, data, report, nil, true)
 }
 
 // decodeWith is Decode with RETENTION's state threaded through it
 // (docs/SPEC-TABLES.md §6.6). `rt` is nil for every plain read, and the three
 // names are ADDITIVE: nothing below reads a byte differently, counts an event
 // differently or places a value differently because retention is on.
-func decodeWith(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *tabletext.Report, rt *retainState) (bool, error) {
+func decodeWith(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *tabletext.Report, rt *retainState, region bool) (bool, error) {
 	// THE FORM BYTE IS READ FIRST, before the trailer and before any body, so
 	// a file that is both a newer form and damaged is a refusal and never
 	// damage (§3).
@@ -80,7 +89,7 @@ func decodeWith(m *tabletext.Model, inst *tabletext.Instance, data []byte, repor
 		r := &wireReader{buf: body, report: report, m: m, ids: ids, rt: rt}
 		return r.body(inst), nil
 	}
-	return decodeVariable(m, inst, body, ids, report, rt)
+	return decodeVariable(m, inst, body, ids, report, rt, region)
 }
 
 // trailer locates the ID TABLE from the END of the wire (docs/SPEC-TABLES.md
@@ -153,6 +162,7 @@ type wireReader struct {
 	// Installed by decodeVariable and shared by its nested readers. Only
 	// value-only and framing/key scanners omit it; none can decode a list.
 	countRefusal *bool // a storage refusal, not a malformed event
+	region       bool  // region value pass, after the bounded framing pass
 
 	buf    []byte
 	off    int
@@ -211,7 +221,7 @@ func (r *wireReader) id(ref uint64) (uint64, bool) {
 }
 
 func (r *wireReader) sub(n int) *wireReader {
-	return &wireReader{buf: r.buf[r.off : r.off+n], report: r.report, m: r.m, ids: r.ids, st: r.st, rt: r.rt, countRefusal: r.countRefusal}
+	return &wireReader{buf: r.buf[r.off : r.off+n], report: r.report, m: r.m, ids: r.ids, st: r.st, rt: r.rt, countRefusal: r.countRefusal, region: r.region}
 }
 
 // subTo spans from the cursor to `end`, the last byte of the body the cursor
@@ -709,6 +719,17 @@ func (r *wireReader) mapField(fv *tabletext.Field) bool {
 	return true
 }
 
+// collectionCap matches TableListFillBegin: builder storage refuses the
+// partial value, while a region read reports damage and resumes after L.
+func (r *wireReader) collectionCap() bool {
+	if r.region || r.countRefusal == nil {
+		r.report.Malformed = true
+		return true
+	}
+	*r.countRefusal = true
+	return false
+}
+
 // mapKey is the KEY SCAN (docs/SPEC-TABLES.md §2.8): the reader does not
 // assume where the key sits, so before an entry's body decodes it scans that
 // body's field headers for the key's id and reads the key. Where the body
@@ -739,14 +760,7 @@ func (r *wireReader) mapKey(f *ir.Field, entry *tabletext.Instance, kindBad, wid
 		kind := scan.u8()
 		if id == ir.MapKeyWireId {
 			cell := &entry.Fields[0].Cell
-			if int(kind) != want {
-				if !ir.TableKindWidens(int(kind), want) {
-					*kindBad = true
-					return key, false
-				}
-				// A KEY KIND THE DECLARATION WIDENS IS NOT A DISAGREEMENT
-				// (§2.8, §4): the key decodes exactly at its own width, the
-				// entry lands, and the MAP counts one `widened`
+			if int(kind) != want && ir.TableKindWidens(int(kind), want) {
 				*widened = true
 				if !scan.scalarAt(cell, keyField, int(kind)) {
 					return key, false
@@ -754,6 +768,16 @@ func (r *wireReader) mapKey(f *ir.Field, entry *tabletext.Instance, kindBad, wid
 				key = tabletext.MapKeyOf(f, entry)
 				continue
 			}
+			// Scan the whole body: a later occurrence of key replaces this
+			// occurrence, including whether its kind matches the declaration.
+			*kindBad = int(kind) != want
+			if *kindBad {
+				if !scan.skip(kind) {
+					return key, false
+				}
+				continue
+			}
+
 			if !scan.scalarOrString(cell, keyField) {
 				return key, false
 			}
@@ -867,27 +891,14 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 		keep := int(count)
 		switch {
 		case f.Array == ir.ArrayList:
-			// AN UNBOUNDED ARRAY HAS NO BOUND TO CLAMP AGAINST, and that is
-			// the one counter this construct removes (§2.9): a count is read,
-			// or refused before the read, or damaged. A count above the int32
-			// STORAGE CAP is the refusal LoadBuilder answers NULL for — the
-			// partial value is discarded and the report holds what it held —
-			// so the walk stops here rather than sizing a slot list from a
-			// number the wire chose.
-			if count > uint64(math.MaxInt32) {
-				if r.countRefusal != nil {
-					*r.countRefusal = true
-				} else {
-					// A reader without variable-root state cannot decode
-					// lists. Do not silently accept a misrouted internal read.
-					r.report.Malformed = true
-				}
-				r.off = end
-				return false, false
-			}
-			// the slots are grown ONE AT A TIME below, against the body's own
-			// length, so a count no body can cover allocates nothing
+			// Replacement empties the holder even when its count cannot land.
 			fv.Elems = fv.Elems[:0]
+			if count > uint64(math.MaxInt32) {
+				r.off = end
+				return r.collectionCap(), false
+			}
+			// Slots grow one at a time against the body's own length.
+
 		case count > uint64(bound):
 			keep = bound
 			r.report.Clamped++

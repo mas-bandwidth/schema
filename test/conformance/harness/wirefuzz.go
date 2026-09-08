@@ -216,20 +216,29 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 			err = fmt.Errorf("the oracle PANICKED on the mutant: %v\n%s", p, debug.Stack())
 		}
 	}()
+	// A region caller measures before decoding. A storage refusal ends that
+	// path; a header that merely crosses its L is still decoded below using
+	// the region's recovery rules rather than the builder's count refusal.
+	if r.variable && !r.message {
+		if _, _, refused := tablewire.FileRegionMeasure(r.model.Unit, r.def, data); refused {
+			ans.measureRefused, ans.encFail, ans.bytes = true, true, -1
+			return ans, nil
+		}
+	}
 	inst := r.model.New(r.def)
 	var rep tabletext.Report
 	// THE MESSAGE FORM's mutants are read against the CONNECTION's table and
 	// written back the same way (docs/SPEC-TABLES.md §3.3). Every other rule
 	// of the read is §3's and §4's, unchanged, so the branch is here and
 	// nowhere else in this file.
-	decode := func() (bool, error) { return tablewire.Decode(r.model, inst, data, &rep) }
+	decode := func() (bool, error) { return tablewire.DecodeRegion(r.model, inst, data, &rep) }
 	encode := func() ([]byte, error) { return tablewire.Encode(r.model, inst) }
 	if r.retain {
 		// THE RETENTION ARM (docs/SPEC-TABLES.md §6.6): the same mutant read
 		// and written back through the retaining pair, with the two stores the
 		// arm declares.
 		retain := tablewire.Retain{Capacity: retainFuzzCapacity, IdCapacity: retainFuzzIdCapacity}
-		decode = func() (bool, error) { return tablewire.DecodeRetain(r.model, inst, data, &retain, &rep) }
+		decode = func() (bool, error) { return tablewire.DecodeRegionRetain(r.model, inst, data, &retain, &rep) }
 		encode = func() ([]byte, error) {
 			var saved tabletext.Report
 			out, err := tablewire.EncodeRetain(r.model, inst, &retain, &saved)
@@ -274,18 +283,6 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 		} else {
 			ans.encoded = encoded
 		}
-		return ans, nil
-	}
-	var capRefusal *tablewire.CountRefusal
-	if errors.As(derr, &capRefusal) && r.variable && !r.message {
-		_, _, refused := tablewire.FileRegionMeasure(r.model.Unit, r.def, data)
-		if !refused {
-			return ans, fmt.Errorf("builder count refusal without a matching framing refusal: %w", derr)
-		}
-		ans.measureRefused = true
-		ans.bytes = -1
-		ans.encFail = true
-		ans.report = Counts{Unknown: rep.Unknown, KindMismatch: rep.KindMismatch, Widened: rep.Widened, Clamped: rep.Clamped, Duplicate: rep.Duplicate, Malformed: rep.Malformed}
 		return ans, nil
 	}
 	if derr != nil {

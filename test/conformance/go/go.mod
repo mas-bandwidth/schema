@@ -70,3 +70,10 @@ require listdemo v0.0.0
 replace listdemo => ../../../build/tables-generated-go/lists
 
 replace mapdemo => ../../../build/tables-generated-go/maps
+
+require backenddemo v0.0.0
+replace backenddemo => ../../../build/tables-generated-go/backend
+require vocabdemo v0.0.0
+replace vocabdemo => ../../../build/tables-generated-go/vocab
+require vocab9demo v0.0.0
+replace vocab9demo => ../../../build/tables-generated-go/vocab9

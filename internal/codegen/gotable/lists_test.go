@@ -77,3 +77,23 @@ func TestRecovery(t *testing.T){var ids TableIds;wire:=make([]byte,512);w:=Table
  w.Id(RootTableFields[4].Id);w.Put8(4);w.Put32(42);w.Put8(0);w.Trailer();var b RootBuilder;b.Init();defer b.Shutdown();var report TableReport;if !RootLoadBuilder(&b,wire[:w.Offset],&report)||!report.Malformed {t.Fatalf("load %+v",report)};r:=b.GetRoot();if string(r.Name[:r.NameLength])!="default"||r.Values[0].N!=7||r.Slots[0].N!=7||r.List.At(0,&b.Arena).N!=7||r.Next!=42 {t.Fatalf("recovery %+v",r)} }
 `)
 }
+
+func TestRegionCountCrossesLength(t *testing.T) {
+	runGenerated(t, `package listdemo
+ table Photo { width uint32
+ height uint32 }
+ table Album { photos []*Photo
+ cover *Photo }
+ `, `package listdemo
+ import("testing";"encoding/hex")
+ func TestCountCrossesLength(t *testing.T) {
+ wire,_:=hex.DecodeString("01010e0511b1968cb6ab8703020200470c1001030d0408800200000000000030b13aff4ad9b140ffffffffffffffffc3648950d28da7f1bfe9d12f93cddadb2272347df60b72170500000000000000")
+ size:=AlbumLoadMeasure(wire);if size!=40 {t.Fatalf("measure %d",size)}
+ var report TableReport
+ root:=AlbumLoad(make([]byte,size),wire,&report)
+ if root==nil||root.Photos.Count!=0||report!=(TableReport{Malformed:true}) {t.Fatalf("region %v %+v",root,report)}
+ var builder AlbumBuilder;builder.Init();defer builder.Shutdown();report=TableReport{Unknown:3}
+ if AlbumLoadBuilder(&builder,wire,&report)||report.Malformed||report.Unknown!=3 {t.Fatalf("builder %+v",report)}
+ }
+ `)
+}
