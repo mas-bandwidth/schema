@@ -1524,47 +1524,33 @@ static partial class Program
 
     // ---- the keyed indexer refuses None and past Max at runtime (§2.4) ----
 
-    static void TestKeyedIndexerRefusesNone()
+    static void CheckKeyedRefuses(int key, string why)
     {
         Demo.KeyedConfig cfg = new Demo.KeyedConfig();
-        bool threw = false;
         try
         {
-            Demo.TeamConfig ignored = cfg.Teams[0];
-            Check(ignored == null, "unreachable");
+            Demo.TeamConfig ignored = cfg.Teams[key];
+            Check(ignored == null, why + ": should throw");
         }
-        catch (ArgumentOutOfRangeException)
+        catch (ArgumentOutOfRangeException e)
         {
-            threw = true;
+            Check(e.ParamName == "key", why + ": the exception names the key");
+            return;
         }
-        Check(threw, "keyed indexer: None is the null key and indexing it is an error");
+        Check(false, why + ": no exception");
+    }
 
-        threw = false;
-        try
-        {
-            Demo.TeamConfig ignored = cfg.Teams[(int)Demo.Team.Max + 1];
-            Check(ignored == null, "unreachable");
-        }
-        catch (ArgumentOutOfRangeException)
-        {
-            threw = true;
-        }
-        Check(threw, "keyed indexer: a key past Max is an error, named as a key");
+    static void TestKeyedIndexerRefusesNone()
+    {
+        CheckKeyedRefuses(0, "keyed indexer: None");
+        CheckKeyedRefuses((int)Demo.Team.Max + 1, "keyed indexer: past Max");
+        CheckKeyedRefuses(-1, "keyed indexer: minus one");
+        CheckKeyedRefuses(int.MinValue, "keyed indexer: int min");
+        CheckKeyedRefuses(int.MaxValue, "keyed indexer: int max");
 
-        threw = false;
-        try
-        {
-            Demo.TeamConfig ignored = cfg.Teams[-1];
-            Check(ignored == null, "unreachable");
-        }
-        catch (ArgumentOutOfRangeException)
-        {
-            threw = true;
-        }
-        Check(threw, "keyed indexer: a negative key is an error, named as a key");
-
-        // and a real slot is reachable through the same indexer
+        Demo.KeyedConfig cfg = new Demo.KeyedConfig();
         Check(cfg.Teams[(int)Demo.Team.Blue] != null, "keyed indexer: a named slot reads");
+        Check(cfg.Teams[(int)Demo.Team.Max] != null, "keyed indexer: Max is the last named slot");
     }
 
     // ---- iteration over the VALID slots (§2.4) ----
