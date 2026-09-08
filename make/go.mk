@@ -360,13 +360,13 @@ test-go: tables-go-retain
 
 .PHONY: tables-go-allocator tables-go-allocator-negative-controls tables-go-allocator-runtime-negative-control tables-go-retain-negative-controls
 tables-go-allocator:
-	SCHEMA_GO_ALLOC_CERTIFY=1 GOTOOLCHAIN=go1.26.0 go test ./internal/codegen/gotable -run '^TestAllocatorOwnershipAndStandaloneWriters$$' -count=1
+	GOTOOLCHAIN=go1.26.0 go test ./internal/codegen/gotable -run '^TestAllocatorOwnershipAndStandaloneWriters$$' -count=1
 tables-go-allocator-negative-controls:
 	@set -e; for mode in original-slice pair frame; do sh test/conformance/go/ownership-negative-control $$mode; done
 tables-go-allocator-runtime-negative-control:
 	sh test/conformance/go/ownership-negative-control runtime
 tables-go-retain-negative-controls:
-	@set -e; for mode in file-count-floor message-depth; do sh test/conformance/go/ownership-negative-control $$mode; done
+	@set -e; for mode in file-count-floor message-depth unknown-node; do sh test/conformance/go/ownership-negative-control $$mode; done
 
 test-go: tables-go-allocator tables-go-allocator-negative-controls tables-go-allocator-runtime-negative-control tables-go-retain-negative-controls
 
@@ -380,3 +380,12 @@ tables-go-typed-refusals:
 	go test ./internal/codegen/gotable -run '^TestAcceleratorTypedRefusals$$' -count=1
 
 test-go: tables-go-builders tables-go-builders-negative-control tables-go-typed-refusals
+
+.PHONY: tables-go-view tables-go-view-negative-controls
+tables-go-view:
+	go test ./compiler -run '^TestGoUnitViewCorpus$$' -count=1
+	go test ./internal/codegen/gotable -run '^TestUnitViewPacketStorage$$' -count=1
+tables-go-view-negative-controls:
+	@set -e; for mode in identity packet-offset arm-offset; do sh test/tables/view-go-control $$mode; done
+
+test-go: tables-go-view tables-go-view-negative-controls

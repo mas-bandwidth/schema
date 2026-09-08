@@ -17,7 +17,12 @@ func storageName(u *ir.Unit, n string) string {
 	}
 	return n
 }
-func (g *tableGen) storageName(n string) string { return storageName(g.unit, n) }
+func (g *tableGen) storageName(n string) string {
+	if g.viewPacket != nil {
+		return n
+	}
+	return storageName(g.unit, n)
+}
 func pointerTargetId(f *ir.Field) uint64 {
 	if !f.Type.Pointer {
 		return 0

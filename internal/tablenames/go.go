@@ -343,6 +343,10 @@ func init() {
 		Name{Name: "tableJsonWriteString", What: "one step of the text form's generic walk (§16)"},
 		Name{Name: "tableJsonWriteUnsigned", What: "one step of the text form's generic walk (§16)"},
 		Name{Name: "tableJsonWriteValue", What: "one step of the text form's generic walk (§16)"},
+		Name{Name: "tableUnitView", What: "the optional unit view registry and packet storage descriptors"},
+		Name{Name: "tableRetainWalkDepthMax", What: "the retained payload nesting bound"},
+		Name{Name: "tableViewPacketTypes", What: "the optional unit view registry and packet storage descriptors"},
+		Name{Name: "tableViewPacketUnions", What: "the optional unit view registry and packet storage descriptors"},
 		Name{Name: "tableUnionArms", What: "the unit's union-field shapes, one slice"},
 		Name{Name: "BuildVersion", What: "the unit's build version (docs/SPEC-TABLES.md §20). C# spells it a member of Schema, which claims nothing; C++, Go, Rust, Java, Elixir and JavaScript put it at unit scope — Java in a file of its own name, Elixir as a module, JavaScript as a module-scope export — so the claim is the union. C does NOT emit this spelling: an object-like macro carrying a common PascalCase identifier rewrites it everywhere in the consumer's own translation unit, which no front end can refuse, so the C backend spells the value SCHEMA_<PKG>_BUILD_VERSION_VALUE under the reserved prefix (internal/check's cReservedMacros)", RustConst: true},
 	)

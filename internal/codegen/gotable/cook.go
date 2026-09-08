@@ -255,9 +255,7 @@ func (g *cookGen) emit() {
 	for _, st := range g.file.Tables {
 		if g.cook.opens(st.Name) {
 			g.emitCookHandle(st)
-			continue
 		}
-
 	}
 }
 

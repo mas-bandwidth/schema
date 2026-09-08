@@ -3895,8 +3895,29 @@ phase, as measured. Two further costs are the JIT's and never AOT's: a
 `float32` carrying a NaN with a payload costs one boxed double, and a 64-bit
 integer field holding a value outside ±2⁶² costs one boxed integer per read.
 
-**Go** — accessors avoid allocation; reads and writes run on caller-owned
-buffers.
+**Go** — accessors, file/message loads and block fill avoid allocation and
+operate on caller-owned buffers. Variable table builders own a `TableArena`;
+its embedded segment descriptors occupy 163,888 bytes on a 64-bit target.
+Stop readers and workers before calling `Shutdown`. An allocator pair owns
+all node-proportional and temporary numbering storage; `Free` receives the
+original returned slice, even when its length exceeds the request.
+
+With caller-backed scratch on Go 1.26.0, wire, message and retaining-file
+measure/save each use one collector-visible activation frame; JSON and cook
+measure/save use none. The frame includes the unit's id table, so its byte
+size varies with the schema (2,232 bytes in the lists unit). `make
+tables-go-allocator` certifies the pinned toolchain. Set
+`SCHEMA_GO_ALLOC_ANY_GO=1` only to observe another version without certifying it.
+
+`UnitView()` returns the generated registry: name-ordered types, tables,
+enums, flags, unions and constants, with annotations and field descriptors.
+Treat its data as immutable. `ViewVariant.Payload` and `.Field` are functions
+that return descriptors without allocating, avoiding Go initialization cycles.
+An outside packet type's descriptor follows its native Go storage; nested
+packet dependencies have private descriptors when a table `Row` has different
+offsets. `DeclaredTypeName` carries the complete schema spelling. The
+`<Package>View.go` file is optional and no codec depends on it; table-free
+units remain the separate packet-view follow-on.
 
 **Elixir** — Elixir 1.20 on Erlang/OTP 29, built to issue #167's measured
 directives from the serialize.elixir port. Generated code is

@@ -426,7 +426,11 @@ numbering passes with the measurement storage released between them. Arena
 segment descriptors are embedded in the arena. With caller-backed scratch on
 Go 1.26.0, wire, message and retaining file measure/save each use one managed,
 typed activation frame; JSON and cook measure/save use zero. Node-proportional
-storage all goes through the pair. The three ownership controls remove the
+storage all goes through the pair. On a 64-bit target the arena occupies
+163,888 bytes, including 4096 embedded segment descriptors; Shutdown requires
+all readers and workers to have stopped. A typed frame contains a unit-sized
+id table: 2,232 bytes for the lists unit, rather than a fixed byte cost per
+object. The three ownership controls remove the
 original-slice guarantee, bypass the pair, and add a managed allocation.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
@@ -1285,7 +1289,9 @@ refusal, `SCHEMA_JS_ALLOC_ANY_NODE`).
 **Measured effect.** The allocation the gate exists to catch is invisible on
 one V8 major and steady at sixteen bytes a call on another.
 
-**Negative control.** Running the gate on another major must refuse.
+**Negative control.** Running the gate on another major must refuse. Go uses
+`tables-go-allocator-runtime-negative-control`; `SCHEMA_GO_ALLOC_ANY_GO=1`
+prints observations without certification. The default requires Go 1.26.0.
 
 **Targets:** none
 

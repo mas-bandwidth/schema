@@ -118,15 +118,20 @@ func TestBlockFillRefuserNegativeControl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	checked := 0
 	for name, source := range files {
 		if !strings.HasSuffix(name, "Block.go") {
 			continue
 		}
+		checked++
 		for _, token := range []string{"make([]byte,1)", "new(int)", "append(rows,row)", "sync.Mutex{}", "atomic.AddInt64(&count,1)"} {
 			mutant := strings.Replace(string(source), "// ---- block fill path: begin ----", "// ---- block fill path: begin ----\n"+token, 1)
 			if err := blockFillGate(mutant); err == nil {
 				t.Fatalf("%s accepted %s", name, token)
 			}
 		}
+	}
+	if checked == 0 {
+		t.Fatal("no block source")
 	}
 }

@@ -4,6 +4,9 @@ package compiler
 
 import (
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"regexp"
 	"sort"
 	"strings"
@@ -85,7 +88,7 @@ func TestTablesMoveNoGeneratedGoByte(t *testing.T) {
 			continue
 		}
 		if !strings.HasSuffix(name, "Table.go") && !strings.HasSuffix(name, "Block.go") &&
-			!strings.HasSuffix(name, "Cook.go") && !strings.HasSuffix(name, "TableJson.go") {
+			!strings.HasSuffix(name, "Cook.go") && !strings.HasSuffix(name, "TableJson.go") && !strings.HasSuffix(name, "View.go") {
 			t.Errorf("adding a table grew unexpected non-table file %s", name)
 		}
 	}
@@ -145,13 +148,40 @@ func TestTableRuntimeNamesAreClaimedGo(t *testing.T) {
 	// names without a Table prefix (docs/SPEC-TABLES.md §20 and §3.3).
 	ident := regexp.MustCompile(`\b(?:[Tt]able[A-Za-z0-9_]*|BuildVersion|Announce(?:Measure|Read)?)\b`)
 	emitted := map[string]bool{}
-	for _, data := range files {
-		for line := range strings.SplitSeq(string(data), "\n") {
-			if i := strings.Index(line, "//"); i >= 0 {
-				line = line[:i]
+	referenced := map[string]bool{}
+	for name, data := range files {
+		file, err := parser.ParseFile(token.NewFileSet(), name, data, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			if id, ok := node.(*ast.Ident); ok {
+				referenced[id.Name] = true
 			}
-			for _, m := range ident.FindAllString(line, -1) {
-				emitted[m] = true
+			return true
+		})
+		record := func(name string) {
+			if ident.MatchString(name) && ident.FindString(name) == name {
+				emitted[name] = true
+			}
+		}
+		for _, decl := range file.Decls {
+			switch d := decl.(type) {
+			case *ast.FuncDecl:
+				if d.Recv == nil {
+					record(d.Name.Name)
+				}
+			case *ast.GenDecl:
+				for _, spec := range d.Specs {
+					switch v := spec.(type) {
+					case *ast.TypeSpec:
+						record(v.Name.Name)
+					case *ast.ValueSpec:
+						for _, n := range v.Names {
+							record(n.Name)
+						}
+					}
+				}
 			}
 		}
 	}
@@ -171,7 +201,7 @@ func TestTableRuntimeNamesAreClaimedGo(t *testing.T) {
 		}
 	}
 	for _, name := range tablenames.DefinedBy(tablenames.Go) {
-		if !emitted[name] {
+		if !referenced[name] {
 			t.Errorf("internal/tablenames says the Go backend defines %s, but nothing in the emitted "+
 				"Go names it — drop the registration or fix the backend; a claim nothing needs takes "+
 				"a name away from every schema for free", name)

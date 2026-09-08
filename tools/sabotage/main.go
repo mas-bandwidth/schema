@@ -26,6 +26,10 @@ type edit struct{ old, new string }
 // sabotages maps a control's name to what it breaks. Each entry names the
 // rule it removes, so a reader of a red control knows what was taken away.
 var sabotages = map[string][]edit{
+	"go-retain-unknown-node":       {{old: "report.Unknown+=unknown;if retain!=nil{report.RetainLost+=unknown}", new: "report.Unknown+=unknown;if retain!=nil{/* SABOTAGED */}"}},
+	"go-view-arm-offset":           {{old: "PayloadOffset:uint32(unsafe.Offsetof(%sRow{}.Payload)),", new: "PayloadOffset:uint32(unsafe.Offsetof(%sRow{}.Payload))+1,/* SABOTAGED */"}},
+	"go-view-packet-offset":        {{old: "offset := fmt.Sprintf(\"uint32(unsafe.Offsetof(%s{}.%s))\", g.storageName(st.Name), name)", new: "offset := fmt.Sprintf(\"uint32(unsafe.Offsetof(%s{}.%s))\", g.storageName(st.Name), name)\n if g.viewPacket != nil {offset += \"+1\"} // SABOTAGED"}},
+	"go-view-outside-identity":     {{old: "id = 0\n\t\tjson = \"\"", new: "id = 1 // SABOTAGED: grant an outside field wire identity\n\t\tjson = \"\""}},
 	"reference-wide-union-include": {{old: "for name := range ir.TableClosureVocabulary(u) {", new: "for name := range map[string]bool{} { // SABOTAGED: miss union-only wide storage"}},
 	"reference-wide-alignment":     {{old: "static const uint32_t kTableAlign       = ` + fmt.Sprint(align) + `;", new: "static const uint32_t kTableAlign       = 8; // SABOTAGED ` + fmt.Sprint(align) + `;"}},
 	"reference-flags-widen":        {{old: "// decides widening, including flags elements (SPEC-TABLES §4).\n\treturn widenable(tableScalarKind(f))", new: "// decides widening, including flags elements (SPEC-TABLES §4).\n\tif f.Type.Ref != nil { return false } // SABOTAGED\n\treturn widenable(tableScalarKind(f))"}},

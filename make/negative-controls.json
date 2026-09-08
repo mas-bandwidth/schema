@@ -526,6 +526,14 @@
         "tables-reference-alignment-negative-control",
         "tables-reference-include-negative-control"
       ]
+    },
+    {
+      "name": "go-view",
+      "when": "pull-request",
+      "why": "the compiled Go unit registry and packet descriptor boundary controls",
+      "targets": [
+        "tables-go-view-negative-controls"
+      ]
     }
   ],
   "excluded": [

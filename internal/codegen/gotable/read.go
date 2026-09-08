@@ -308,13 +308,13 @@ func (g *tableGen) emitReadArmArray(f *ir.Field, expr, rdr, ind, none string) {
 	g.pf("%sfor i:=uint64(0); i<keep; i++ {\n", ind)
 	j := ind + "\t"
 	switch {
-	case isStructRef(f.Type):
+	case isStructRef(f.Type) && !f.Type.Pointer:
 		elem := g.nextWireWriter()
 		g.pf("%s%s,ok:=%s.Body();if !ok {r.Report.Malformed=true;break}\n", j, elem, rdr)
 		g.retainReadPath(elem, rdr, "i")
 		g.pf("%s%sLoadBody(&%s,&%s[i])\n", j, f.Type.Name, elem, expr)
 		g.emitCarveReturn(rdr, elem, j)
-	case isUnionRef(f.Type):
+	case isUnionRef(f.Type) && !f.Type.Pointer:
 		if g.retain {
 			g.pf("savedPath:=%s.Path; %s.Path=%s.Path.step(%d,uint32(i))\n", rdr, rdr, rdr, g.retainOrdinal)
 		}

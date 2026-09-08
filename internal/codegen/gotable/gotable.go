@@ -84,6 +84,9 @@ type tableGen struct {
 	retainArm     bool
 	regional      bool
 	armOffset     *int64
+	viewPacket    map[string]int
+	viewUnions    map[string]int
+	viewNoIds     bool
 
 	// Every union declaration reached by this unit's table closure has one
 	// immutable descriptor slot, shared by fields, arrays and nested arms.
@@ -259,6 +262,11 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		return nil, err
 	}
 	maps.Copy(out, texts)
+	view, err := generateViewFile(u, closure, armSlots)
+	if err != nil {
+		return nil, err
+	}
+	maps.Copy(out, view)
 	return out, nil
 }
 
@@ -493,7 +501,8 @@ type TableFieldInfo struct {
  ElemAlign uint32
 	Name     string // schema field name, e.g. "health"
 	Json     string // the TEXT form's key: the json = "key" attribute, else Name (§16.3)
-	TypeName string // schema type name, e.g. "float32", "Grade"
+	TypeName string // schema element type, e.g. "float32", "Grade"
+	DeclaredTypeName string // complete schema spelling including arrays, bounds and pointers
 	Id       uint64 // table-wire field id (name hash; the was alias's hash after a rename)
 	Pointer bool
  TargetId uint64

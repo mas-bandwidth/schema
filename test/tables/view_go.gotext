@@ -1,0 +1,28 @@
+package VIEW_PACKAGE
+import("fmt";"math";"os";"strings";"testing")
+func viewAnnotationTest(doc string,tags []string)string{return fmt.Sprintf("tags=[%s] doc=%s",strings.Join(tags,","),strings.NewReplacer("\\","\\\\","\n","\\n").Replace(doc))}
+func viewListingTest(v *UnitViewInfo)string{
+ var b strings.Builder
+ fmt.Fprintf(&b,"unit package=%s protocol=%016x\n",v.Package,v.ProtocolId)
+ for _,c:=range v.Constants{fmt.Fprintf(&b,"constant %s file=%s type=%s float=%v int=%d real=%016x %s\n",c.Name,c.File,c.TypeName,c.IsFloat,c.IntValue,math.Float64bits(c.FloatValue),viewAnnotationTest(c.Doc,c.Tags))}
+ for _,set:=range []struct{name,row string;v []ViewVocabulary}{{"enum","variant",v.Enums},{"flags","bit",v.Flags}}{
+ for _,e:=range set.v{fmt.Fprintf(&b,"%s %s file=%s max=%d bits=%d variants=%d %s\n",set.name,e.Name,e.File,e.Max,e.StorageBits,e.NumVariants,viewAnnotationTest(e.Doc,e.Tags));for _,r:=range e.Variants{fmt.Fprintf(&b,"%s %s %s %d %s id=%016x %s\n",set.name,e.Name,set.row,r.Value,r.Name,r.Id,viewAnnotationTest(r.Doc,r.Tags))}}}
+ for _,u:=range v.Unions{
+ fmt.Fprintf(&b,"union %s file=%s max=%d bits=%d variants=%d %s\n",u.Name,u.File,u.Max,u.StorageBits,u.NumVariants,viewAnnotationTest(u.Doc,u.Tags))
+ held:=false;for _,set:=range [][]ViewType{v.Tables,v.Types}{for _,typ:=range set{for _,f:=range typ.Type.Fields{if f.TypeName==u.Name{held=true}}}}
+ for _,a:=range u.Variants{
+ payload,record,field,kind,bound,overlay:="-","no","no","-","-","-"
+ if a.PayloadName!=""{payload=a.PayloadName};if a.Payload!=nil{if a.Payload()==nil{panic("missing payload")};record="yes"};if a.Field!=nil {f:=a.Field();field="yes";kind=fmt.Sprint(f.Kind);limit:=f.ArrayBound;if f.List||f.Map{limit=0};bound=fmt.Sprint(limit);if held{overlay=fmt.Sprint(int64(f.CookOffset)-int64(u.PayloadOffset))}}
+ fmt.Fprintf(&b,"union %s arm %d %s id=%016x payload=%s record=%s field=%s kind=%s bound=%s overlay=%s %s\n",u.Name,a.Value,a.Name,a.Id,payload,record,field,kind,bound,overlay,viewAnnotationTest(a.Doc,a.Tags))
+ }}
+ for _,set:=range []struct{name string;v []ViewType}{{"type",v.Types},{"table",v.Tables}}{for _,r:=range set.v{
+ fmt.Fprintf(&b,"%s %s file=%s fields=%d %s\n",set.name,r.Name,r.File,r.Type.NumFields,viewAnnotationTest(r.Doc,r.Tags))
+ for _,f:=range r.Type.Fields{key:=f.Json;if key==""{key="-"};fmt.Fprintf(&b,"%s %s field %s json=%s type=%s id=%016x optional=%v %s\n",set.name,r.Name,f.Name,key,f.DeclaredTypeName,f.Id,f.Optional,viewAnnotationTest(f.Doc,f.Tags))}
+ }};return b.String()
+}
+func TestViewListing(t *testing.T){
+ v:=UnitView();want,err:=os.ReadFile("listing.want");if err!=nil{t.Fatal(err)};got:=viewListingTest(v);if got!=string(want){t.Fatalf("unit view listing differs\nGOT\n%s\nWANT\n%s",got,want)}
+ if int(v.NumTypes)!=len(v.Types)||int(v.NumTables)!=len(v.Tables)||int(v.NumEnums)!=len(v.Enums)||int(v.NumFlags)!=len(v.Flags)||int(v.NumUnions)!=len(v.Unions)||int(v.NumConstants)!=len(v.Constants){t.Fatal("registry counts")}
+ for _,set:=range [][]ViewType{v.Types,v.Tables}{for _,r:=range set{if int(r.Type.NumFields)!=len(r.Type.Fields)||r.Doc!=r.Type.Doc||strings.Join(r.Tags,",")!=strings.Join(r.Type.Tags,","){t.Fatal("descriptor annotations/count")};for _,f:=range r.Type.Fields{if f.Offset>=r.Type.Size{t.Fatalf("field %s.%s outside storage",r.Name,f.Name)}}}}
+ if n:=testing.AllocsPerRun(20,func(){v:=UnitView();for _,set:=range [][]ViewVocabulary{v.Enums,v.Flags,v.Unions}{for _,r:=range set{for _,a:=range r.Variants{if a.Payload!=nil{a.Payload()};if a.Field!=nil{a.Field()}}}}});n!=0{t.Fatalf("registry lookup allocates %v",n)}
+}

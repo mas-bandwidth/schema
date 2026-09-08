@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"os"
 	"strings"
 	"testing"
 )
@@ -207,4 +208,19 @@ func TestRetainSourceSeamsFailClosed(t *testing.T) {
 			tc.call()
 		})
 	}
+}
+
+func TestRetainUnknownNodeRecord(t *testing.T) {
+	schema, err := os.ReadFile("../../../test/tables/RT1.schema")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire, err := os.ReadFile("../../../testdata/wire/tables/retain_rt3.bin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	runGenerated(t, string(schema), fmt.Sprintf(`package tblrt1
+ import("testing";"unsafe")
+ func TestUnknownNode(t *testing.T){wire:=[]byte{%s};size:=NodeLoadMeasure(wire);if size<0{t.Fatal("measure")};raw:=make([]byte,size+16);offset:=(-uintptr(unsafe.Pointer(&raw[0])))&15;region:=raw[offset:offset+uintptr(size)];store:=TableRetain{Bytes:make([]byte,4096),Ids:make([]TableRetainId,128)};report:=TableReport{Clamped:3};value:=NodeLoadRetain(region,wire,&store,&report);if value==nil||value.Head!=0||report.RetainLost!=1||report.Unknown!=1||report.Malformed||report.Clamped!=3{t.Fatalf("unplaceable node retention: %%+v",report)}}
+ `, strings.Trim(strings.ReplaceAll(fmt.Sprint(wire), " ", ","), "[]")))
 }

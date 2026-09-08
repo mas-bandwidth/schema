@@ -614,6 +614,9 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	table := "nil"
 	if isStructRef(f.Type) {
 		table = fmt.Sprintf("%sTableType", f.Type.Name)
+		if g.viewPacket != nil {
+			table = fmt.Sprintf("func()*TableTypeInfo{return &tableViewPacketTypes[%d]}", g.viewPacket[f.Type.Name])
+		}
 	} else if f.IsMap() {
 		table = f.MapEntry.Name + "TableType"
 	}
@@ -681,11 +684,24 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 		keyId = fmt.Sprintf("func(v uint64) uint64 { id, _ := %s(v).TableEnumId(); return id }", f.KeyEnum)
 	}
 
-	g.pf("\t{Name: %q, Json: %q, TypeName: %q, Id: 0x%04x, Kind: %d, IsArray: %v, Counted: %v, Optional: %v,\n",
-		f.Name, ir.TableFieldJsonKey(f), tableFieldTypeName(f), id, kind, isArray, counted, f.Type.Optional)
+	json := ir.TableFieldJsonKey(f)
+	if g.viewNoIds {
+		id = 0
+		json = ""
+		if variantId != "nil" {
+			variantId = "func(uint64)uint64{return 0}"
+		}
+		if keyId != "nil" {
+			keyId = "func(uint64)uint64{return 0}"
+		}
+	}
+	g.pf("\t{Name: %q, Json: %q, TypeName: %q, DeclaredTypeName:%q, Id: 0x%04x, Kind: %d, IsArray: %v, Counted: %v, Optional: %v,\n",
+		f.Name, json, tableFieldTypeName(f), ir.TableTypeSpelling(f), id, kind, isArray, counted, f.Type.Optional)
 	g.pf("\t\tArrayBound: %s, Offset: %s, ElemSize: %s, CountOffset: %s, PresentOffset: %s,\n",
 		bound, offset, elemSize, countOffset, presentOffset)
-	g.emitCookFieldColumns(st, f)
+	if g.viewPacket == nil {
+		g.emitCookFieldColumns(st, f)
+	}
 	g.pf("\t\tHasRange: %s, RangeMin: %s, RangeMax: %s, EnumMax: %s,\n", hasRange, rangeMin, rangeMax, enumMax)
 	if f.IsList() {
 		_, align := ir.ListElementLayout(g.unit, f)
@@ -706,7 +722,11 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	g.pf("\t\tKeyTypeName: %s, KeyName: %s, KeyId: %s,\n", keyTypeName, keyName, keyId)
 	g.pf("\t\tArms: %s,\n", arms)
 	g.pf("\t\tGuard: %q, Table: %s,\n", guard, table)
-	g.pf("\t\t%s},\n", annotationColumns(f.Doc, f.Tags, tagsName(g.storageName(st.Name), name)))
+	if g.viewPacket != nil {
+		g.pf("\t\t%s},\n", viewAnnotation(f.Doc, f.Tags))
+	} else {
+		g.pf("\t\t%s},\n", annotationColumns(f.Doc, f.Tags, tagsName(st.Name, name)))
+	}
 }
 
 // unionArmsFunc renders a union field's Arms column: a closure over ONE SLOT of
@@ -726,6 +746,9 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 // initialization cycle among package-level variables, an arm's Table column
 // names a descriptor, and a descriptor can name the union back.
 func (g *tableGen) unionArmsFunc(un *ir.Union) string {
+	if g.viewPacket != nil {
+		return fmt.Sprintf("func() *TableUnionInfo { return &tableViewPacketUnions[%d] }", g.viewUnions[un.Name])
+	}
 	return fmt.Sprintf("func() *TableUnionInfo { return &tableUnionArms[%d] }", g.unionArmSlot[un.Name])
 }
 
