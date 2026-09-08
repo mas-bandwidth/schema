@@ -240,6 +240,10 @@ func benchTable[T any](name, golden string, baseIters int64,
 		}
 	}
 
+	if gateOnly {
+		return
+	}
+
 	writeRates := make([]float64, 0, numRuns)
 	roundTripRates := make([]float64, 0, numRuns)
 
@@ -306,10 +310,14 @@ func benchTable[T any](name, golden string, baseIters int64,
 	}
 }
 
+var gateOnly bool
+
 func main() {
 	args := os.Args[1:]
 	for i := 0; i < len(args); i++ {
 		switch {
+		case args[i] == "--gate":
+			gateOnly = true
 		case args[i] == "--csv":
 			csv = true
 		case args[i] == "--wire-dir" && i+1 < len(args):
@@ -326,7 +334,7 @@ func main() {
 			}
 			numRuns = 1
 		default:
-			fmt.Fprintf(os.Stderr, "usage: %s [--csv] [--round K] [--wire-dir <dir>] [--variant-dir <dir>]\n", os.Args[0])
+			fmt.Fprintf(os.Stderr, "usage: %s [--gate] [--csv] [--round K] [--wire-dir <dir>] [--variant-dir <dir>]\n", os.Args[0])
 			os.Exit(1)
 		}
 	}

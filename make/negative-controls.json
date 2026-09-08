@@ -512,7 +512,8 @@
         "tables-go-allocator-negative-controls",
         "tables-go-allocator-runtime-negative-control",
         "tables-go-retain-negative-controls",
-        "tables-go-builders-negative-control"
+        "tables-go-builders-negative-control",
+        "tables-go-measure-negative-controls"
       ]
     },
     {

@@ -3829,7 +3829,7 @@ var tableGeneratedVerbs = []string{
 	// singular verbs are not claimed beside them: a surface with both would let
 	// a caller write one message a call and never learn where the bandwidth is
 	"MeasureMessages", "SaveMessages", "LoadMessages", "LoadMessagesMeasure", "SaveMessageBody", "LoadMessageBody",
-	"Reset", "LoadMeasure", "LoadBuilder", "TableType", "Builder",
+	"Reset", "LoadMeasure", "LoadMeasureReason", "MeasureReason", "CookMeasureReason", "LoadBuilder", "TableType", "Builder",
 	"At", "Emplace", "Pack", "PackMeasure",
 	// the FLAT NODE TABLE's own spellings (docs/SPEC-TABLES.md §3.1): the
 	// numbering walk, the two wire entries it feeds, and the four answers a

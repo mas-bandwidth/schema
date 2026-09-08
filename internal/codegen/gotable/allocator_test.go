@@ -12,7 +12,7 @@ func TestAllocatorOwnershipAndStandaloneWriters(t *testing.T) {
  blob *bytes }
  table Plain { child *Child }
  `, `package probe
-import("testing";"unsafe";"bytes";"runtime";"os")
+import("testing";"unsafe";"bytes";"runtime";"os";"strconv")
 func alignedAllocation(n int64)[]byte{raw:=make([]byte,n+63);off:=(-uintptr(unsafe.Pointer(&raw[0])))&63;return raw[off:off+uintptr(n)]}
 func TestPairLifetime(t *testing.T){
  active:=map[unsafe.Pointer][]byte{};calls,frees,fail:=0,0,0
@@ -51,7 +51,7 @@ func TestStandalonePair(t *testing.T){
  }
  for _,op:=range operations{t.Run(op.name,func(t *testing.T){calls,frees=0,0;if !op.call()||calls==0||calls!=frees{t.Fatalf("standalone pair not used or leaked %d/%d",calls,frees)};count:=calls
   for refused:=1;refused<=count;refused++{calls,frees,fail=0,0,refused;if op.call()||calls-frees!=1{t.Fatalf("failure %d accepted or leaked %d/%d",refused,calls,frees)};for _,n:=range live{if n!=0{t.Fatal("failure leaked")}}};fail=0
-  allocations:=testing.AllocsPerRun(20,func(){if !op.call(){panic("write")}});want:=float64(1);if op.name=="json measure"||op.name=="json save"||op.name=="cook measure"||op.name=="cook save"{want=0};if allocations!=want{t.Errorf("Go allocations outside caller-backed scratch: %v want %v",allocations,want)}
+  runs:=20;if text:=os.Getenv("SCHEMA_GO_ALLOC_RUNS");text!=""{n,err:=strconv.Atoi(text);if err!=nil||n<20{t.Fatal("SCHEMA_GO_ALLOC_RUNS must be at least 20")};runs=n};allocations:=testing.AllocsPerRun(runs,func(){if !op.call(){panic("write")}});want:=float64(1);if op.name=="json measure"||op.name=="json save"||op.name=="cook measure"||op.name=="cook save"{want=0};if allocations!=want{t.Errorf("Go allocations outside caller-backed scratch: %v want %v",allocations,want)}
  })}
 }
 `)

@@ -283,6 +283,8 @@ const (
 	TableRefuseCountOverExtentCap
 	TableRefuseBlobOverSizeCap
 	TableRefuseDataCycle
+	TableRefuseInvalidValue
+	TableRefuseAllocationFailed
 )
 
 func (r TableRefuseReason) Error() string {
@@ -315,8 +317,18 @@ func (r TableRefuseReason) Error() string {
 		return "blob_over_size_cap"
 	case TableRefuseDataCycle:
 		return "data_cycle"
+	case TableRefuseInvalidValue:
+		return "invalid_value"
+	case TableRefuseAllocationFailed:
+		return "allocation_failed"
 	}
 	return "invalid refusal reason"
+}
+func tableRefuseError(reason TableRefuseReason) error {
+	if reason == TableRefuseOk {
+		return nil
+	}
+	return reason
 }
 
 const tableIdCapacity = 78
@@ -1319,6 +1331,8 @@ func tableMessageSkip(r *TableBitReader, v *TableVocabulary, indexBits int64, e 
 	}
 	return s.Bits >= 0 && r.Skip(s.Bits)
 }
+
+// Framing scans follow announced shapes; typed body reads diagnose reserved ids.
 func tableMessageSkipBody(r *TableBitReader, v *TableVocabulary, indexBits int64, depth int) bool {
 	if depth > 128 {
 		return false
@@ -1329,7 +1343,7 @@ func tableMessageSkipBody(r *TableBitReader, v *TableVocabulary, indexBits int64
 			return ok
 		}
 		e, ok := v.Entry(ref)
-		if !ok || e.Id >= 0xfffffffffffffffd || !tableMessageSkip(r, v, indexBits, e, depth) {
+		if !ok || !tableMessageSkip(r, v, indexBits, e, depth) {
 			return false
 		}
 	}
@@ -1765,6 +1779,13 @@ func TableEntityMeasure(value *TableEntity) int64 {
 	return w.Offset
 }
 
+func TableEntityMeasureReason(value *TableEntity) (int64, error) {
+	size := TableEntityMeasure(value)
+	if size < 0 {
+		return size, TableRefuseInvalidValue
+	}
+	return size, nil
+}
 func TableEntitySaveBody(w *TableWriter, value *TableEntity) bool {
 	{
 		if value.EntityId != 0 {
@@ -2326,6 +2347,9 @@ const TableEntityMeasureRetain = "TableEntity: retention requires a variable roo
 const TableEntitySaveRetain = "TableEntity: retention requires a variable root and its region directory"
 
 func TableEntityCookMeasure(value *TableEntity) int64 { return 144 }
+func TableEntityCookMeasureReason(value *TableEntity) (int64, error) {
+	return TableEntityCookMeasure(value), nil
+}
 func TableEntityCookFrom(value *TableEntity, buffer []byte, order TableByteOrder) bool {
 	return tableCookFixed(unsafe.Pointer(value), TableEntityTableType(), buffer, order)
 }
@@ -3101,6 +3125,13 @@ func TableStatMeasure(value *TableStat) int64 {
 	return w.Offset
 }
 
+func TableStatMeasureReason(value *TableStat) (int64, error) {
+	size := TableStatMeasure(value)
+	if size < 0 {
+		return size, TableRefuseInvalidValue
+	}
+	return size, nil
+}
 func TableStatSaveBody(w *TableWriter, value *TableStat) bool {
 	{
 		if value.StatId != 0 {
@@ -3251,6 +3282,9 @@ const TableStatMeasureRetain = "TableStat: retention requires a variable root an
 const TableStatSaveRetain = "TableStat: retention requires a variable root and its region directory"
 
 func TableStatCookMeasure(value *TableStat) int64 { return 88 }
+func TableStatCookMeasureReason(value *TableStat) (int64, error) {
+	return TableStatCookMeasure(value), nil
+}
 func TableStatCookFrom(value *TableStat, buffer []byte, order TableByteOrder) bool {
 	return tableCookFixed(unsafe.Pointer(value), TableStatTableType(), buffer, order)
 }
@@ -3501,6 +3535,13 @@ func TableMixedMeasure(value *TableMixed) int64 {
 	return w.Offset
 }
 
+func TableMixedMeasureReason(value *TableMixed) (int64, error) {
+	size := TableMixedMeasure(value)
+	if size < 0 {
+		return size, TableRefuseInvalidValue
+	}
+	return size, nil
+}
 func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 	{
 		if value.ProtocolMagic != 0 {
@@ -4302,6 +4343,9 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 						}
 						decoded = int32(i + 1)
 					}
+					for i := decoded; i < 8; i++ {
+						TableEntityReset(&value.Entities[i])
+					}
 					value.EntitiesCount = decoded
 				}
 			}
@@ -4350,6 +4394,9 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 							TableStatReset(&value.Stats[i])
 						}
 						decoded = int32(i + 1)
+					}
+					for i := decoded; i < 80; i++ {
+						TableStatReset(&value.Stats[i])
 					}
 					value.StatsCount = decoded
 				}
@@ -4543,6 +4590,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 						}
 						decoded = int32(i + 1)
 					}
+					clear(value.Payload[decoded:])
 					value.PayloadLength = decoded
 				}
 			}
@@ -4880,6 +4928,9 @@ const TableMixedMeasureRetain = "TableMixed: retention requires a variable root 
 const TableMixedSaveRetain = "TableMixed: retention requires a variable root and its region directory"
 
 func TableMixedCookMeasure(value *TableMixed) int64 { return 1432 }
+func TableMixedCookMeasureReason(value *TableMixed) (int64, error) {
+	return TableMixedCookMeasure(value), nil
+}
 func TableMixedCookFrom(value *TableMixed, buffer []byte, order TableByteOrder) bool {
 	return tableCookFixed(unsafe.Pointer(value), TableMixedTableType(), buffer, order)
 }
@@ -6514,6 +6565,13 @@ func TableHitEventMeasure(value *TableHitEvent) int64 {
 	return w.Offset
 }
 
+func TableHitEventMeasureReason(value *TableHitEvent) (int64, error) {
+	size := TableHitEventMeasure(value)
+	if size < 0 {
+		return size, TableRefuseInvalidValue
+	}
+	return size, nil
+}
 func TableHitEventSaveBody(w *TableWriter, value *TableHitEvent) bool {
 	{
 		if value.TargetId != 0 {
@@ -7026,6 +7084,13 @@ func TableChatEventMeasure(value *TableChatEvent) int64 {
 	return w.Offset
 }
 
+func TableChatEventMeasureReason(value *TableChatEvent) (int64, error) {
+	size := TableChatEventMeasure(value)
+	if size < 0 {
+		return size, TableRefuseInvalidValue
+	}
+	return size, nil
+}
 func TableChatEventSaveBody(w *TableWriter, value *TableChatEvent) bool {
 	{
 		if value.Channel != 0 {
@@ -7387,6 +7452,13 @@ func TablePickupEventMeasure(value *TablePickupEvent) int64 {
 	return w.Offset
 }
 
+func TablePickupEventMeasureReason(value *TablePickupEvent) (int64, error) {
+	size := TablePickupEventMeasure(value)
+	if size < 0 {
+		return size, TableRefuseInvalidValue
+	}
+	return size, nil
+}
 func TablePickupEventSaveBody(w *TableWriter, value *TablePickupEvent) bool {
 	{
 		if value.ItemId != 0 {

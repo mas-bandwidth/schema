@@ -19,6 +19,8 @@ TableRefuseCountOverLength
 TableRefuseCountOverExtentCap
 TableRefuseBlobOverSizeCap
 TableRefuseDataCycle
+TableRefuseInvalidValue
+TableRefuseAllocationFailed
 )
 func(r TableRefuseReason) Error()string{switch r {
 case TableRefuseOk:return "ok"
@@ -35,5 +37,8 @@ case TableRefuseCountOverLength:return "count_over_length"
 case TableRefuseCountOverExtentCap:return "count_over_extent_cap"
 case TableRefuseBlobOverSizeCap:return "blob_over_size_cap"
 case TableRefuseDataCycle:return "data_cycle"
+case TableRefuseInvalidValue:return "invalid_value"
+case TableRefuseAllocationFailed:return "allocation_failed"
 };return "invalid refusal reason"}
+func tableRefuseError(reason TableRefuseReason)error{if reason==TableRefuseOk{return nil};return reason}
 `

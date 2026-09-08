@@ -306,7 +306,7 @@ in post-order in the emitter and requires the lock red;
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-flat-wire` `tables-flat-wire-negative-control` | ❌ #408 (the earlier nested form: a depth cap, no identity map) | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 |
+| ✅ `tables-flat-wire` `tables-flat-wire-negative-control` | ❌ #408 (the earlier nested form: a depth cap, no identity map) | ❌ #349 | ✅ `TestRegionGraphs` `tables-go-wire-fuzz` `tables-go-wire-fuzz-negative-control` | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 |
 
 ### M7 — A block row is reached by stride, with no per-row object
 
@@ -429,7 +429,7 @@ typed activation frame; JSON and cook measure/save use zero. Node-proportional
 storage all goes through the pair. On a 64-bit target the arena occupies
 163,888 bytes, including 4096 embedded segment descriptors; Shutdown requires
 all readers and workers to have stopped. A typed frame contains a unit-sized
-id table: 2,232 bytes for the lists unit, rather than a fixed byte cost per
+id table: 2,240 bytes for the lists unit, rather than a fixed byte cost per
 object. The three ownership controls remove the
 original-slice guarantee, bypass the pair, and add a managed allocation.
 
@@ -537,7 +537,7 @@ adapters; `tables-json-graph-walk`.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-json-graph-walk` | ❌ #408 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 |
+| ✅ `tables-json-graph-walk` | ❌ #408 | ❌ #349 | ✅ `TestRegionGraphs` `tables-go-json-walk` | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 |
 
 ### M15 — One walk for the numbering, the pack measure and the pack
 
@@ -578,7 +578,7 @@ post-order numbering the same way.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/pointers.go:150` `conformance` | ❌ #433 (its `pack_measure` and `pack` take every pointer field before every by-value nesting, `internal/codegen/ctable/pointers.go:220`, `:280`) | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 |
+| ✅ `internal/codegen/cpptable/pointers.go:150` `conformance` | ❌ #433 (its `pack_measure` and `pack` take every pointer field before every by-value nesting, `internal/codegen/ctable/pointers.go:220`, `:280`) | ❌ #349 | ✅ `internal/codegen/gotable/regions.go` (`tableRegionEdges`, `tableNumber`) `TestAllocatorOwnershipAndStandaloneWriters` `tables-go-builders` | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 |
 
 ### M16 — The presence companion rides beside the array walks
 
@@ -619,7 +619,7 @@ on the corpus rows that carry it.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/codecs.go:588` `test/tables/main.cpp:6814` `TestReportRowsDecodeThroughTheEngine` | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 |
+| ✅ `internal/codegen/cpptable/codecs.go:588` `test/tables/main.cpp:6814` `TestReportRowsDecodeThroughTheEngine` | ❌ #392 | ❌ #392 | ✅ `TestDefaultsAndOptionalArrays` `conformance` | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 |
 ### M17 — A node larger than a slab takes a span of the address space
 
 **Method.** An arena hands out nodes by bumping inside a fixed-size slab, and a
@@ -709,7 +709,7 @@ payload's last byte, decodes a body that ends inside its own length.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/arms.go` `tables-wire-fuzz-arm-width-negative-control` `tables-wire-fuzz-arm-terminator-negative-control` | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 |
+| ✅ `internal/codegen/cpptable/arms.go` `tables-wire-fuzz-arm-width-negative-control` `tables-wire-fuzz-arm-terminator-negative-control` | ❌ #392 | ❌ #392 | ✅ `TestRegionUnionAndBlobValues` `TestUnionPointerArrayReaders` `tables-go-measure-negative-controls` `tables-go-wire-fuzz` | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 |
 
 ### M19 — A map is a sorted entry array in the holder's node extent
 
@@ -779,7 +779,7 @@ shared control.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-maps` `tables-json-map-walk` `tables-maps-negative-controls` `tables-maps-cook-check-negative-control`, and the TOOL's wire and text halves and its cook-check clause (`TestTheToolWritesTheReferencesMapBytes`, `TestCookCheckMapSlot`) | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 |
+| ✅ `tables-maps` `tables-json-map-walk` `tables-maps-negative-controls` `tables-maps-cook-check-negative-control`, and the TOOL's wire and text halves and its cook-check clause (`TestTheToolWritesTheReferencesMapBytes`, `TestCookCheckMapSlot`) | ❌ #502 | ❌ #502 | ✅ `tables-go-containers` `tables-go-containers-negative-controls` `tables-go-wire-fuzz` | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 |
 
 ### M20 — The id-table wire
 
@@ -855,7 +855,7 @@ through `go build -overlay` and each turning the fuzzer red on its own verdict.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ❌ #512 | ❌ #518 | ❌ #511 (`tables-go-wire-fuzz` and its negative control carry the fixed class file form; variable class and messages remain #349/#511) | ❌ #513 | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 |
+| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ❌ #512 | ❌ #518 | ✅ `tables-go-wire-fuzz` `tables-go-wire-fuzz-negative-control` `tables-go-retain-wire-fuzz` (fixed and variable file/message forms) | ❌ #513 | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 |
 
 ### M21 — A float crosses two widths by bit surgery, never by conversion
 
@@ -1244,7 +1244,7 @@ found a module name the packet emitter refuses — the drift a gate catches.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-cook-open` | ❌ #418 | ❌ #418 | ❌ #418 | ✅ `tables-cook-open-cs` | ❌ #418 | ❌ #418 | ✅ `tables-dart-usage` | ❌ #418 |
+| ✅ `tables-cook-open` | ❌ #418 | ❌ #418 | ✅ `tables-go-usage` | ✅ `tables-cook-open-cs` | ❌ #418 | ❌ #418 | ✅ `tables-dart-usage` | ❌ #418 |
 
 ### I13 — The text differential against a third implementation
 
@@ -1331,7 +1331,7 @@ check removed reds on the report.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 |
+| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ❌ #492 | ❌ #492 | ✅ `tables-go-wire-fuzz` `tables-go-wire-fuzz-negative-control` `tables-go-builders` `tables-go-retain-wire-fuzz` | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 |
 
 ### J1 — Accessor and descriptor agreement
 
@@ -1407,7 +1407,7 @@ so and passes.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #423 | ❌ #423 | ❌ #423 | ❌ #423 | ❌ #423 | ✅ `tables-java-release` | ✅ `tables-js-release` | ✅ `tables-dart-release` | ✅ `tables-elixir-release` |
+| ❌ #423 | ❌ #423 | ❌ #423 | ✅ `tables-go-release` | ❌ #423 | ✅ `tables-java-release` | ✅ `tables-js-release` | ✅ `tables-dart-release` | ✅ `tables-elixir-release` |
 
 ### J4 — Emitted text is analyzer-clean and format-canonical
 
@@ -1429,7 +1429,7 @@ diff rather than on a reviewer.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #424 | ❌ #424 | ✅ `tables-rust-clippy` | ❌ #424 | ❌ #424 | ❌ #424 | ❌ #424 | ✅ `tables-dart-clean` | ❌ #424 (the packet units are format-checked; the table units are not) |
+| ❌ #424 | ❌ #424 | ✅ `tables-rust-clippy` | ✅ `tables-go-clean` (`gofmt`, `go vet`) | ❌ #424 | ❌ #424 | ❌ #424 | ✅ `tables-dart-clean` | ❌ #424 (the packet units are format-checked; the table units are not) |
 
 ### J5 — The bench leg's golden gate runs before the clock
 
@@ -1450,4 +1450,4 @@ the Dart leg's `WIRE GOLDEN MISMATCH` in `bench/tables/dart/leg`.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #425 | ❌ #425 | ❌ #425 | ❌ #425 | ❌ #425 | ❌ #425 | ❌ #425 | ✅ `bench/tables/dart/leg` | ✅ `tables-elixir-bench-gate` |
+| ❌ #425 | ❌ #425 | ❌ #425 | ✅ `tables-go-bench-gate` | ❌ #425 | ❌ #425 | ❌ #425 | ✅ `bench/tables/dart/leg` | ✅ `tables-elixir-bench-gate` |

@@ -40,6 +40,9 @@ func corpus(t *testing.T) []string {
 			t.Fatalf("VIEW_CORPUS entry %q is not dir:package", entry)
 		}
 		path := "../../tables/" + dir
+		if dir == "wide" {
+			path = "../../examples-wide"
+		}
 		if got := load(t, path).Package; got != pkg {
 			t.Errorf("VIEW_CORPUS says %s declares package %s; the unit declares %s", dir, pkg, got)
 		}

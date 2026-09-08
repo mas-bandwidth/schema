@@ -6,6 +6,11 @@ out=build/go-ownership-control-$mode
 mkdir -p "$out"
 test=TestAllocatorOwnershipAndStandaloneWriters
 case "$mode" in
+arm-framing) source=read.go; sabotage=go-arm-reference-framing; test=TestPointerArmLengthBeforeResolution; expected="arm framing must precede resolution" ;;
+message-reserved) source=message.go; sabotage=go-message-measure-reserved; test=TestMessageMeasureReservedFraming; expected="reserved framing extent 192 want 960" ;;
+counted-tail) source=read.go; sabotage=go-counted-tail-reset; test=TestRepeatedArrayTailDefaults; expected="counted tail not reset" ;;
+measure-cycle) source=regions.go; sabotage=go-measure-cycle-reason; test=TestMeasureRefusalReasons; expected="wire cycle:" ;;
+measure-count) source=lists.go; sabotage=go-measure-count-reason; test=TestMeasureRefusalReasons; expected="count 2147483648: size -1 reason count_over_length" ;;
 unknown-node) source=retain.go; sabotage=go-retain-unknown-node; test=TestRetainUnknownNodeRecord; expected="unplaceable node retention" ;;
 builder-union) source=read.go; sabotage=go-builder-union-refusal; test=TestBuilderRefusalThroughUnion; expected="union count refusal became damage or continued" ;;
 original-slice) source=allocator.go; sabotage=go-allocator-original-slice; expected='Free must receive original slice' ;;

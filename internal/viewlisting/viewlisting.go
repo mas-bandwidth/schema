@@ -281,7 +281,7 @@ func armBound(f *ir.Field) int64 {
 		return 0
 	case f.Array != ir.ArrayNone:
 		return f.ArrayBound
-	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString:
+	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString:
 		return f.Type.Size
 	}
 	return 0

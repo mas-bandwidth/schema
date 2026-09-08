@@ -2503,8 +2503,8 @@ first, each the one an array already raises:
 - **AN ELEMENT KIND THAT DISAGREES** with the reader's declaration is §3's
   element-kind rule: the field is skipped whole by its `L`, and one
   `kind_mismatch` counts. A first occurrence leaves the default empty array;
-  an incompatible repeat preserves the value an earlier occurrence placed. `[]int32` read into a `[]float32`
-  field, `[]T` read into a `[]*T` field and the reverse are all this event.
+  an incompatible repeat preserves the value an earlier occurrence placed.
+  `[]int32` read into a `[]float32` field, `[]T` read into a `[]*T` field and the reverse are all this event.
 - **A DAMAGED ELEMENT** inside a good count is that element's own framing
   damage, and the array keeps what it decoded, exactly as a bounded array's
   elements do.
@@ -10204,11 +10204,11 @@ in build version (§20.5).
 
   ```
   Measure  MeasureBody  Save  SaveBody  SaveBodyFields  Load  LoadBody
-  SaveInto  Reset  LoadMeasure  LoadBuilder  TableType  Builder
-  At  Emplace  Pack  PackMeasure
+  SaveInto  Reset  LoadMeasure  LoadMeasureReason  LoadBuilder  TableType  Builder
+  At  Emplace  Pack  PackMeasure  MeasureReason
   Number  NumberFrom  MeasureWire  SaveWire
   NodeStorage  NodePlace  NodeAlloc  NodeBody
-  Cook  CookMeasure  CookBody  CookLayout  CookMeasureFrom  CookFrom
+  Cook  CookMeasure  CookMeasureReason  CookBody  CookLayout  CookMeasureFrom  CookFrom
   Open  TableFields  TableInfo
   FromJson  ToJson  ToJsonMeasure  Table
   MeasureMessages  SaveMessages  LoadMessages
@@ -10224,6 +10224,13 @@ in build version (§20.5).
   checker's own, and this section is held to it: the base, block and C-backend
   suffix lists are `tableGeneratedVerbs` entire, spelling for spelling, because
   a claim the page states and the checker does not make is a name a user may take.
+
+  Go adds `MeasureReason`, `LoadMeasureReason` (variable roots), and
+  `CookMeasureReason` alongside its integer-returning measure calls. They
+  return `(int64, error)`, with literal `nil` on success and a typed
+  `TableRefuseReason` on refusal. Builder `PackMeasureReason` follows the
+  same rule. `invalid_value` and `allocation_failed` distinguish Go
+  authoring failures from file count, form, blob-size, and cycle refusals.
 
   Go spells message region sizing `<T>LoadMessagesMeasure(vocabulary, data)`
   because its file sizing verb `<T>LoadMeasure(wire)` cannot be overloaded.

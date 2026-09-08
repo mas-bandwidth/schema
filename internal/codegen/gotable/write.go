@@ -13,6 +13,7 @@ func (g *tableGen) emitTableMeasure(st *ir.Struct) {
 		return
 	}
 	g.pf("func %sMeasure(value *%s) int64 {\n var ids TableIds\n w := TableWriter{Measuring:true, Ids:&ids}\n w.Put8(1)\n if !%sSaveBody(&w,value) { return -1 }; w.Trailer()\n if w.Overflow || ids.Overflow { return -1 }; return w.Offset\n}\n\n", n, g.storageName(n), n)
+	g.pf("func %sMeasureReason(value *%s)(int64,error){size:=%sMeasure(value);if size<0{return size,TableRefuseInvalidValue};return size,nil}\n", n, g.storageName(n), n)
 }
 
 func (g *tableGen) emitTableSave(st *ir.Struct) {

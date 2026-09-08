@@ -3905,9 +3905,53 @@ original returned slice, even when its length exceeds the request.
 With caller-backed scratch on Go 1.26.0, wire, message and retaining-file
 measure/save each use one collector-visible activation frame; JSON and cook
 measure/save use none. The frame includes the unit's id table, so its byte
-size varies with the schema (2,232 bytes in the lists unit). `make
+size varies with the schema (2,240 bytes in the lists unit). `make
 tables-go-allocator` certifies the pinned toolchain. Set
 `SCHEMA_GO_ALLOC_ANY_GO=1` only to observe another version without certifying it.
+
+The `MeasureReason`, `LoadMeasureReason`, `CookMeasureReason`, and builder
+`PackMeasureReason` variants return `(int64, error)`. Success returns a literal
+`nil`; refusals carry `TableRefuseReason`, usable with `errors.As` or direct
+comparison. The existing integer measure and boolean open calls remain available.
+Cook and block handles also provide `Open(base, bytes) error`.
+
+This complete example uses the `tables/pointers` generated package; `make
+tables-go-usage` runs it directly from this page.
+
+<!-- go-table-usage -->
+```go
+package main
+
+import "graphdemo"
+
+func main() {
+    var source graphdemo.SceneBuilder
+    if !source.Init() { panic("builder allocation failed") }
+    defer source.Shutdown()
+    source.GetRoot().Version = 7
+
+    size, err := graphdemo.SceneMeasureReason(source.GetRoot(), &source.Arena)
+    if err != nil { panic(err) }
+    wire := make([]byte, size)
+    if graphdemo.SceneSave(source.GetRoot(), wire, &source.Arena) != size {
+        panic("save failed")
+    }
+
+    var loaded graphdemo.SceneBuilder
+    if !loaded.Init() { panic("builder allocation failed") }
+    defer loaded.Shutdown()
+    var report graphdemo.TableReport
+    if !graphdemo.SceneLoadBuilder(&loaded, wire, &report) || report.Malformed {
+        panic("load failed")
+    }
+    if !loaded.Lock() { panic("packing failed") }
+    if loaded.AsConst().Version != 7 { panic("round trip changed the value") }
+    if _, err := graphdemo.SceneCookMeasureReason(loaded.AsConst()); err != nil {
+        panic(err)
+    }
+}
+```
+<!-- /go-table-usage -->
 
 `UnitView()` returns the generated registry: name-ordered types, tables,
 enums, flags, unions and constants, with annotations and field descriptors.

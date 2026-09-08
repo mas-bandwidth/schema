@@ -112,8 +112,10 @@ func (g *tableGen) emitRegionMember(st *ir.Struct) {
 		blobmask |= 2
 	}
 	g.pf("func %sLoadMeasure(wire []byte) int64 { n,_,_:=tableRegionMeasure(wire,%sTableType(),%sTableType().NodeType,%d);return n }\n", n, n, n, blobmask)
+	g.pf("func %sLoadMeasureReason(wire []byte)(int64,error){size,_,_,reason:=tableRegionMeasureReason(wire,%sTableType(),%sTableType().NodeType,%d);return size,tableRefuseError(reason)}\n", n, n, n, blobmask)
 	g.pf("func %sLoad(region,wire []byte,report *TableReport) *%s { return (*%s)(tableRegionLoad(region,wire,%sTableType(),%sTableType().NodeType,%d,report)) }\n", n, typ, typ, n, n, blobmask)
 	g.pf("func %sMeasure(value *%s,context ...TableWriteContext) int64 { arena,allocator:=tableWriteOptions(context);return tableRegionSave(unsafe.Pointer(value),%sTableType(),nil,true,arena,allocator) }\n", n, typ, n)
+	g.pf("func %sMeasureReason(value *%s,context ...TableWriteContext)(int64,error){arena,allocator:=tableWriteOptions(context);size,reason:=tableRegionSaveReason(unsafe.Pointer(value),%sTableType(),nil,true,arena,allocator);return size,tableRefuseError(reason)}\n", n, typ, n)
 	g.pf("func %sSave(value *%s,buffer []byte,context ...TableWriteContext) int64 { arena,allocator:=tableWriteOptions(context);return tableRegionSave(unsafe.Pointer(value),%sTableType(),buffer,false,arena,allocator) }\n", n, typ, n)
 	g.pf("func %sLoadBuilder(b *%sBuilder,wire []byte,report *TableReport) bool {return tableBuilderLoad(unsafe.Pointer(b.GetRoot()),b.root,&b.Main,wire,%sTableType(),%sTableType().NodeType,%d,report)}\n", n, n, n, n, blobmask)
 	g.pf("type %sBuilder struct { Arena TableArena; Main TableWorker; root TableRef; region,allocation []byte }\n", n)
@@ -122,6 +124,7 @@ func (g *tableGen) emitRegionMember(st *ir.Struct) {
 	g.pf("func (b *%sBuilder) AsConst() *%s { if len(b.region)==0{return nil};return (*%s)(unsafe.Pointer(&b.region[0])) }\n", n, typ, typ)
 	g.pf("func (b *%sBuilder) Region() []byte { return b.region }\n", n)
 	g.pf("func (b *%sBuilder) PackMeasure() int64 {if b.Arena.Locked{return int64(len(b.region))};return tableRegionPackMeasure(unsafe.Pointer(b.GetRoot()),%sTableType(),&b.Arena)}\n", n, n)
+	g.pf("func (b *%sBuilder) PackMeasureReason()(int64,error){if b.Arena.Locked{return int64(len(b.region)),nil};size,reason:=tableRegionPackMeasureReason(unsafe.Pointer(b.GetRoot()),%sTableType(),&b.Arena);return size,tableRefuseError(reason)}\n", n, n)
 	g.pf("func (b *%sBuilder) Lock() bool { if b.Arena.Locked { return true };region,allocation,ok:=tableRegionPack(unsafe.Pointer(b.GetRoot()),%sTableType(),&b.Arena);if !ok{return false};b.region=region;b.allocation=allocation;b.Arena.Shutdown();b.Arena.Locked=true;return true }\n", n, n)
 	g.pf("func (b *%sBuilder) Shutdown() { b.Arena.Shutdown();b.Arena.Allocator.free(b.allocation);b.region=nil;b.allocation=nil;b.root=0 }\n", n)
 }
@@ -168,7 +171,7 @@ func tableRegionRound(n int64) int64 {return (n+tableRegionAlign-1)& -tableRegio
 type tableNodeEntry struct { json tableJsonGraphNode; node unsafe.Pointer; info *TableTypeInfo; id uint64; open bool; offset int64 }
 // The root and arena keep the source storage live while pointer-free backing
 // allocations hold the index and entries. Temporary storage is released by caller.
-type TableNumbering struct { arena *TableArena; root unsafe.Pointer; allocator TableAllocator; entries []tableNodeEntry; buckets []uint64; memory,indexMemory []byte }
+type TableNumbering struct { reason TableRefuseReason; arena *TableArena; root unsafe.Pointer; allocator TableAllocator; entries []tableNodeEntry; buckets []uint64; memory,indexMemory []byte }
 func (n *TableNumbering) Release() {n.allocator.free(n.memory);n.allocator.free(n.indexMemory);n.memory=nil;n.indexMemory=nil;n.entries=nil;n.buckets=nil;n.root=nil}
 func (n *TableNumbering) find(p unsafe.Pointer)(int,bool) {if p==nil||len(n.buckets)==0{return 0,false};h:=uint64(uintptr(p));h^=h>>33;h*=0xff51afd7ed558ccd;h^=h>>33;mask:=uint64(len(n.buckets)-1);for slot:=h&mask;;slot=(slot+1)&mask {v:=n.buckets[slot];if v==0{return int(slot),false};if n.entries[v-1].node==p{return int(v-1),true}}}
 func (n *TableNumbering) grow()bool {
@@ -182,11 +185,11 @@ func (n *TableNumbering) grow()bool {
 }
 func (n *TableNumbering) Index(slot *TableRef)(uint64,bool){if n==nil{return 0,false};i,ok:=n.find(tableRefAt(slot,n.arena));return uint64(i+1),ok}
 func (n *TableNumbering) visit(p unsafe.Pointer,t *TableTypeInfo,id uint64)bool {
- if p==nil{return true};if i,ok:=n.find(p);ok{return !n.entries[i].open&&n.entries[i].id==id}
- if len(n.entries)==cap(n.entries)&&!n.grow(){return false};slot,_:=n.find(p);i:=len(n.entries);n.entries=n.entries[:i+1];n.entries[i]=tableNodeEntry{node:p,info:t,id:id,open:true};n.buckets[slot]=uint64(i+1);a:=n.arena
+ if p==nil{return true};if i,ok:=n.find(p);ok{if n.entries[i].open{n.reason=TableRefuseDataCycle;return false};if n.entries[i].id!=id{n.reason=TableRefuseInvalidValue;return false};return true}
+ if len(n.entries)==cap(n.entries)&&!n.grow(){n.reason=TableRefuseAllocationFailed;return false};slot,_:=n.find(p);i:=len(n.entries);n.entries=n.entries[:i+1];n.entries[i]=tableNodeEntry{node:p,info:t,id:id,open:true};n.buckets[slot]=uint64(i+1);a:=n.arena
  if t!=nil&&!tableRegionEdges(p,t,func(slot *TableRef,f *TableFieldInfo)bool {var target *TableTypeInfo;if f.Table!=nil{target=f.Table()};return n.visit(tableRefAt(slot,a),target,f.TargetId)}){return false};n.entries[i].open=false;return true
 }
-func tableNumber(root unsafe.Pointer,info *TableTypeInfo,a *TableArena,allocator ...TableAllocator)(TableNumbering,bool){n:=TableNumbering{arena:a,root:root};if a!=nil{n.allocator=a.Allocator};if len(allocator)>0{n.allocator=allocator[0]};if root==nil||!n.visit(root,info,info.Id){n.Release();return n,false};return n,true}
+func tableNumber(root unsafe.Pointer,info *TableTypeInfo,a *TableArena,allocator ...TableAllocator)(TableNumbering,bool){n:=TableNumbering{arena:a,root:root};if a!=nil{n.allocator=a.Allocator};if len(allocator)>0{n.allocator=allocator[0]};if root==nil||!n.visit(root,info,info.Id){if n.reason==TableRefuseOk{n.reason=TableRefuseInvalidValue};n.Release();return n,false};return n,true}
 func tableRegionEdges(base unsafe.Pointer,info *TableTypeInfo,visit func(*TableRef,*TableFieldInfo) bool) bool {
  for i:=range info.Fields {f:=&info.Fields[i];if !tableJsonGuardHolds(base,info,f.Guard) || f.Optional && !*(*bool)(unsafe.Add(base,f.PresentOffset)){continue};p:=unsafe.Add(base,f.Offset);count:=int32(1);if f.IsArray {count=tableRegionCount(base,f);if count<0 || count>f.ArrayBound{return false}};for j:=int32(0);j<count;j++ {at:=unsafe.Add(p,uintptr(j)*uintptr(f.ElemSize));if !tableRegionValueEdges(at,f,visit){return false}} };return true
 }
@@ -200,10 +203,11 @@ func tableNodeMeasure(w *TableWriter,ids *TableIds,e *tableNodeEntry)int64 {*w=T
 // A typed frame keeps its pointers visible to Go's collector. The descriptor
 // callbacks make it escape once per call; node-proportional storage uses the pair.
 type tableWireFrame struct {numbering TableNumbering;ids TableIds;writer,measure TableWriter}
-func tableRegionSave(root unsafe.Pointer,info *TableTypeInfo,buffer []byte,measure bool,a *TableArena,allocator ...TableAllocator) int64 {
- frame:=tableWireFrame{};var ok bool;frame.numbering,ok=tableNumber(root,info,a,allocator...);if !ok{return -1};n:=&frame.numbering;defer n.Release();ids:=&frame.ids;*ids=TableIds{Numbering:n};w:=&frame.writer;*w=TableWriter{Buffer:buffer,Measuring:measure,Ids:ids};w.Put8(1);if !info.SaveBody(w,root){return -1};w.Offset--
- if len(n.entries)>1 {w.Id(0xffffffffffffffff);w.Put8(12);payload:=tableLebBytes(uint64(len(n.entries)-1));for i:=1;i<len(n.entries);i++ {e:=&n.entries[i];payload+=tableLebBytes(ids.Ref(e.id));size:=tableNodeMeasure(&frame.measure,ids,e);if size<0{return -1};payload+=tableLebBytes(uint64(size))+size};w.PutLeb(uint64(payload));w.PutLeb(uint64(len(n.entries)-1));for i:=1;i<len(n.entries);i++ {e:=&n.entries[i];w.Id(e.id);size:=tableNodeMeasure(&frame.measure,ids,e);if size<0{return -1};w.PutLeb(uint64(size));if w.Measuring {w.Advance(size)} else if !tableNodeWrite(w,e){return -1}} }
- w.Put8(0);w.Trailer();if w.Overflow||ids.Overflow{return -1};return w.Offset
+func tableRegionSave(root unsafe.Pointer,info *TableTypeInfo,buffer []byte,measure bool,a *TableArena,allocator ...TableAllocator)int64{n,_:=tableRegionSaveReason(root,info,buffer,measure,a,allocator...);return n}
+func tableRegionSaveReason(root unsafe.Pointer,info *TableTypeInfo,buffer []byte,measure bool,a *TableArena,allocator ...TableAllocator) (int64,TableRefuseReason) {
+ frame:=tableWireFrame{};var ok bool;frame.numbering,ok=tableNumber(root,info,a,allocator...);if !ok{return -1,frame.numbering.reason};n:=&frame.numbering;defer n.Release();ids:=&frame.ids;*ids=TableIds{Numbering:n};w:=&frame.writer;*w=TableWriter{Buffer:buffer,Measuring:measure,Ids:ids};w.Put8(1);if !info.SaveBody(w,root){return -1,TableRefuseInvalidValue};w.Offset--
+ if len(n.entries)>1 {w.Id(0xffffffffffffffff);w.Put8(12);payload:=tableLebBytes(uint64(len(n.entries)-1));for i:=1;i<len(n.entries);i++ {e:=&n.entries[i];payload+=tableLebBytes(ids.Ref(e.id));size:=tableNodeMeasure(&frame.measure,ids,e);if size<0{return -1,TableRefuseInvalidValue};payload+=tableLebBytes(uint64(size))+size};w.PutLeb(uint64(payload));w.PutLeb(uint64(len(n.entries)-1));for i:=1;i<len(n.entries);i++ {e:=&n.entries[i];w.Id(e.id);size:=tableNodeMeasure(&frame.measure,ids,e);if size<0{return -1,TableRefuseInvalidValue};w.PutLeb(uint64(size));if w.Measuring {w.Advance(size)} else if !tableNodeWrite(w,e){return -1,TableRefuseInvalidValue}} }
+ w.Put8(0);w.Trailer();if w.Overflow||ids.Overflow{return -1,TableRefuseInvalidValue};return w.Offset,TableRefuseOk
 }
 
 type TableNodeDirEntry struct { Offset,TypeId uint64 }
@@ -218,8 +222,11 @@ func tableNodeScanBegin(r TableReader) tableNodeScan {
 }
 func (s *tableNodeScan) next() (uint64,TableReader,bool) { r:=&s.payload;if s.bad || r.Offset>=int64(len(r.Buffer)){return 0,TableReader{},false};ref,ok:=r.Leb();if !ok{s.bad=true;return 0,TableReader{},false};id,ok:=r.Resolve(ref);if !ok{s.bad=true;return 0,TableReader{},false};body,ok:=r.Body();if !ok{s.bad=true;return 0,TableReader{},false};s.records++;return id,body,true }
 func (s *tableNodeScan) whole() bool {return !s.bad && (!s.present||s.declared==s.records)}
-func tableNodeStorage(id uint64,body TableReader,nodeType func(uint64)*TableTypeInfo,blobs int) int64 { if t:=nodeType(id);t!=nil{return tableRegionRound(int64(t.Size))};if id==tableBytesTypeId && blobs&1!=0 || id==tableStringTypeId && blobs&2!=0 {extra:=int64(0);if id==tableStringTypeId{extra=1};if int64(len(body.Buffer))>0xffffffff{return -2};return tableRegionRound(8+int64(len(body.Buffer))+extra)};return -1 }
-func tableRegionMeasure(wire []byte,root *TableTypeInfo,nodeType func(uint64)*TableTypeInfo,blobs int) (int64,int64,TableOpenVerdict) {var ignored TableReport;r,verdict:=tableOpen(wire,&ignored);if verdict!=TableOpenOk{return -1,0,verdict};data:=tableRegionRound(int64(root.Size));s:=tableNodeScanBegin(r);for {id,body,ok:=s.next();if !ok{break};n:=tableNodeStorage(id,body,nodeType,blobs);if n== -2{return -1,0,TableOpenRefused};if n>0{data+=n}};attribution:=int64(s.records+1)*16;return data+attribution,attribution,TableOpenOk }
+func tableNodeStorage(id uint64,body TableReader,nodeType func(uint64)*TableTypeInfo,blobs int)int64{n,_:=tableNodeStorageReason(id,body,nodeType,blobs);return n}
+func tableNodeStorageReason(id uint64,body TableReader,nodeType func(uint64)*TableTypeInfo,blobs int)(int64,TableRefuseReason){if t:=nodeType(id);t!=nil{return tableRegionRound(int64(t.Size)),TableRefuseOk};if id==tableBytesTypeId&&blobs&1!=0||id==tableStringTypeId&&blobs&2!=0{extra:=int64(0);if id==tableStringTypeId{extra=1};if int64(len(body.Buffer))>0xffffffff{return -2,TableRefuseBlobOverSizeCap};return tableRegionRound(8+int64(len(body.Buffer))+extra),TableRefuseOk};return -1,TableRefuseOk}
+func tableRegionMeasure(wire []byte,root *TableTypeInfo,nodeType func(uint64)*TableTypeInfo,blobs int)(int64,int64,TableOpenVerdict){n,a,v,_:=tableRegionMeasureReason(wire,root,nodeType,blobs);return n,a,v}
+func tableRegionMeasureReason(wire []byte,root *TableTypeInfo,nodeType func(uint64)*TableTypeInfo,blobs int)(int64,int64,TableOpenVerdict,TableRefuseReason){var ignored TableReport;r,verdict:=tableOpen(wire,&ignored);if verdict!=TableOpenOk{reason:=TableRefuseTruncated;if verdict==TableOpenRefused{reason=TableRefuseUnknownForm};return -1,0,verdict,reason};data:=tableRegionRound(int64(root.Size));s:=tableNodeScanBegin(r);for{id,body,ok:=s.next();if !ok{break};n,reason:=tableNodeStorageReason(id,body,nodeType,blobs);if n== -2{return -1,0,TableOpenRefused,reason};if n>0{data+=n}};attribution:=int64(s.records+1)*16;return data+attribution,attribution,TableOpenOk,TableRefuseOk}
+
 func tableRegionLoad(region,wire []byte,root *TableTypeInfo,nodeType func(uint64)*TableTypeInfo,blobs int,report *TableReport) unsafe.Pointer {
  if report==nil {var ignored TableReport;report=&ignored};r,verdict:=tableOpen(wire,report);report.Verdict=verdict;if verdict!=TableOpenOk {if verdict==TableOpenDamaged{report.Malformed=true}else {report.Reason="unsupported wire form"};return nil}
  n,attr,_:=tableRegionMeasure(wire,root,nodeType,blobs);if n<0||int64(len(region))<n||len(region)==0||uintptr(unsafe.Pointer(&region[0]))%uintptr(tableRegionAlign)!=0 {report.Malformed=true;return nil};clear(region);data:=n-attr;base:=unsafe.Pointer(&region[0]);directory:=unsafe.Slice((*TableNodeDirEntry)(unsafe.Add(base,data)),int(attr/16));directory[0]=TableNodeDirEntry{0,root.Id};nodes:=TableNodeMap{Base:base,Entries:directory};root.Reset(base)
@@ -231,7 +238,8 @@ func tableRegionLoad(region,wire []byte,root *TableTypeInfo,nodeType func(uint64
 }
 func tablePackNodeBytes(e *tableNodeEntry,a *TableArena)int64 {if e.info!=nil {return tableRegionRound(int64(e.info.Size))};extra:=int64(0);if e.id==tableStringTypeId{extra=1};return tableRegionRound(8+int64(*(*uint32)(e.node))+extra)}
 func tablePackOffsets(n *TableNumbering)int64 {size:=int64(0);for i:=range n.entries{e:=&n.entries[i];extent:=tablePackNodeBytes(e,n.arena);if extent<0||size>math.MaxInt64-extent{return -1};e.offset=size;size+=extent};return size}
-func tableRegionPackMeasure(root unsafe.Pointer,info *TableTypeInfo,a *TableArena)int64 {n,ok:=tableNumber(root,info,a);if !ok{return -1};defer n.Release();return tablePackOffsets(&n)}
+func tableRegionPackMeasure(root unsafe.Pointer,info *TableTypeInfo,a *TableArena)int64{n,_:=tableRegionPackMeasureReason(root,info,a);return n}
+func tableRegionPackMeasureReason(root unsafe.Pointer,info *TableTypeInfo,a *TableArena)(int64,TableRefuseReason){n,ok:=tableNumber(root,info,a);if !ok{return -1,n.reason};defer n.Release();size:=tablePackOffsets(&n);if size<0{return -1,TableRefuseInvalidValue};return size,TableRefuseOk}
 func tableRegionPack(root unsafe.Pointer,info *TableTypeInfo,a *TableArena) ([]byte,[]byte,bool) {
  total:=tableRegionPackMeasure(root,info,a);if total<0{return nil,nil,false};n,ok:=tableNumber(root,info,a);if !ok{return nil,nil,false};defer n.Release();size:=tablePackOffsets(&n);if size<0||size!=total{return nil,nil,false};allocation:=a.Allocator.alloc(size);if allocation==nil{return nil,nil,false};region:=allocation[:size];clear(region);base:=unsafe.Pointer(&region[0]);for i:=range n.entries {e:=&n.entries[i];p:=unsafe.Add(base,e.offset);if e.info==nil {copy(unsafe.Slice((*byte)(p),8+int(uint64(*(*uint32)(e.node)))),unsafe.Slice((*byte)(e.node),8+int(uint64(*(*uint32)(e.node)))));continue};copy(unsafe.Slice((*byte)(p),int(e.info.Size)),unsafe.Slice((*byte)(e.node),int(e.info.Size)));if !tableRegionEdges(p,e.info,func(slot *TableRef,f *TableFieldInfo) bool {if *slot==0{return true};target:=a.At(*slot);idx,ok:=n.find(target);if !ok{return false};*slot=int64(uintptr(unsafe.Add(base,n.entries[idx].offset))-uintptr(unsafe.Pointer(slot)));return true}){a.Allocator.free(allocation);return nil,nil,false} };return region,allocation,true
 }

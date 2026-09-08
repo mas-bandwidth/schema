@@ -16,10 +16,14 @@ func TestGoUnitViewCorpus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"examples", "pointers", "block", "blockhome", "messages", "stream", "blobs", "scalars", "maps", "lists", "arms", "backend", "vocab", "vocab9"} {
+	for _, path := range []string{"examples", "pointers", "block", "blockhome", "messages", "stream", "blobs", "scalars", "maps", "lists", "arms", "backend", "vocab", "vocab9", "wide"} {
 		t.Run(path, func(t *testing.T) {
 			c := New()
-			paths, err := filepath.Glob("../tables/" + path + "/*.schema")
+			source := "../tables/" + path
+			if path == "wide" {
+				source = "../examples-wide"
+			}
+			paths, err := filepath.Glob(source + "/*.schema")
 			if err != nil {
 				t.Fatal(err)
 			}

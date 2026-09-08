@@ -181,6 +181,17 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 			g.pf("%sdecoded = int32(i+1)\n", j)
 		}
 		g.pf("%s}\n", i)
+		if counted {
+			// An accepted replacement owns its decoded prefix. Restore all
+			// other slots so packing and cooking cannot see an older value.
+			if !f.Type.Pointer && isStructRef(f.Type) {
+				g.pf("%sfor i:=decoded;i<%d;i++{%sReset(&%s[i])}\n", i, bound, f.Type.Name, expr)
+			} else if !f.Type.Pointer && isUnionRef(f.Type) {
+				g.pf("%sfor i:=decoded;i<%d;i++{%s[i].Type=%sTypeNone}\n", i, bound, expr, f.Type.Name)
+			} else {
+				g.pf("%sclear(%s[decoded:])\n", i, expr)
+			}
+		}
 		if f.Type.Kind == ir.TBytes && !f.Type.Pointer {
 			g.pf("%s%sLength = decoded\n", i, expr)
 		} else if counted {
@@ -252,6 +263,10 @@ func (g *tableGen) emitReadArm(v ir.UnionVariant, expr, rdr, kind, ind, none str
 	if f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes && !f.Type.Pointer {
 		g.emitReadArmArray(f, expr, rdr, ind, none)
 		return
+	}
+	if f.Type.Pointer || enumRef(f) != nil {
+		// An arm's complete reference framing precedes resolution/reporting.
+		g.pf("%s{framing:=%s;_,ok:=framing.Leb();if !ok||framing.Offset!=int64(len(framing.Buffer)){%s}}\n", ind, rdr, bad)
 	}
 	if f.Type.Pointer {
 		g.emitReadScalar(f, expr, rdr, kind, ind, bad)
@@ -400,6 +415,10 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 
 func (g *tableGen) emitCarveReturn(parent, child, ind string) {
 	if unitHasContainers(g.unit) {
-		g.pf("%s%s.Take(%s);if %s.Nodes.Carve.Refused { r.Nodes.Carve=%s.Nodes.Carve;return false }\n", ind, parent, child, parent, parent)
+		g.pf("%s%s.Take(%s);if %s.Nodes.Carve.Refused { ", ind, parent, child, parent)
+		if parent != "r" {
+			g.pf("r.Nodes.Carve=%s.Nodes.Carve;", parent)
+		}
+		g.pf("return false }\n")
 	}
 }

@@ -26,6 +26,12 @@ type edit struct{ old, new string }
 // sabotages maps a control's name to what it breaks. Each entry names the
 // rule it removes, so a reader of a red control knows what was taken away.
 var sabotages = map[string][]edit{
+	"go-arm-reference-framing":    {{old: "if f.Type.Pointer || enumRef(f) != nil {", new: "if false { // SABOTAGED: resolve before validating an arm reference length"}},
+	"go-message-measure-reserved": {{old: "e,ok:=v.Entry(ref);if !ok||!tableMessageSkip(r,v,indexBits,e,depth){return false}", new: "e,ok:=v.Entry(ref);if !ok||e.Id>=0xfffffffffffffffd||!tableMessageSkip(r,v,indexBits,e,depth){return false} /* SABOTAGED */"}},
+	"go-counted-tail-reset":       {{old: "g.pf(\"%sfor i:=decoded;i<%d;i++{%s[i].Type=%sTypeNone}\\n\", i, bound, expr, f.Type.Name)", new: "// SABOTAGED: retain the union tags beyond the replacement prefix"}},
+
+	"go-measure-cycle-reason":      {{old: "n.reason=TableRefuseDataCycle;return false", new: "n.reason=TableRefuseInvalidValue;return false /* SABOTAGED */"}},
+	"go-measure-count-reason":      {{old: "if count>math.MaxInt32{return TableRefuseCountOverExtentCap}", new: "if count>math.MaxInt32{return TableRefuseCountOverLength} /* SABOTAGED */"}},
 	"go-retain-unknown-node":       {{old: "report.Unknown+=unknown;if retain!=nil{report.RetainLost+=unknown}", new: "report.Unknown+=unknown;if retain!=nil{/* SABOTAGED */}"}},
 	"go-view-arm-offset":           {{old: "PayloadOffset:uint32(unsafe.Offsetof(%sRow{}.Payload)),", new: "PayloadOffset:uint32(unsafe.Offsetof(%sRow{}.Payload))+1,/* SABOTAGED */"}},
 	"go-view-packet-offset":        {{old: "offset := fmt.Sprintf(\"uint32(unsafe.Offsetof(%s{}.%s))\", g.storageName(st.Name), name)", new: "offset := fmt.Sprintf(\"uint32(unsafe.Offsetof(%s{}.%s))\", g.storageName(st.Name), name)\n if g.viewPacket != nil {offset += \"+1\"} // SABOTAGED"}},

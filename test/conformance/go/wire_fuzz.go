@@ -30,6 +30,7 @@ func wireFuzz(builder bool) error {
 	roster := make([]*codec, count)
 	messages := make([]*messageCodec, count)
 	builders := make([]*builderCodec, count)
+	retainers := make([]*retentionCodec, count)
 	for i := range roster {
 		unit, err := text()
 		if err != nil {
@@ -57,8 +58,11 @@ func wireFuzz(builder bool) error {
 		if form == 2 && retain == 0 && !builder {
 			messages[i] = findMessageCodec(unit, root)
 		}
+		if form == 1 && retain == 1 && !builder {
+			retainers[i] = findRetentionCodec(unit, root)
+		}
 		available := byte(0)
-		if roster[i] != nil || messages[i] != nil || builders[i] != nil {
+		if roster[i] != nil || messages[i] != nil || builders[i] != nil || retainers[i] != nil {
 			available = 1
 		}
 		if err := out.WriteByte(available); err != nil {
@@ -79,7 +83,7 @@ func wireFuzz(builder bool) error {
 		if err := read(&size); err != nil {
 			return err
 		}
-		if uint64(index) >= uint64(len(roster)) || roster[index] == nil && messages[index] == nil && builders[index] == nil {
+		if uint64(index) >= uint64(len(roster)) || roster[index] == nil && messages[index] == nil && builders[index] == nil && retainers[index] == nil {
 			return fmt.Errorf("unsupported roster index %d", index)
 		}
 		wire := make([]byte, size)
@@ -87,11 +91,17 @@ func wireFuzz(builder bool) error {
 			return err
 		}
 		var rep report
+		var retained, lost int32
 		loaded := true
 		regionBytes := int64(-1)
 		saved := int64(-1)
 		var buffer []byte
-		if b := builders[index]; b != nil {
+		if rt := retainers[index]; rt != nil {
+			buffer, rep, retained, lost, loaded, regionBytes = rt.run(wire)
+			if buffer != nil {
+				saved = int64(len(buffer))
+			}
+		} else if b := builders[index]; b != nil {
 			buffer, rep, loaded = b.run(wire)
 			if buffer != nil {
 				saved = int64(len(buffer))
@@ -121,7 +131,7 @@ func wireFuzz(builder bool) error {
 				saved = c.save(value, buffer)
 			}
 		}
-		for _, v := range []any{loaded, rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate, rep.malformed, rep.refused, regionBytes, int32(0), int32(0), saved} {
+		for _, v := range []any{loaded, rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate, rep.malformed, rep.refused, regionBytes, retained, lost, saved} {
 			if err := write(v); err != nil {
 				return err
 			}
