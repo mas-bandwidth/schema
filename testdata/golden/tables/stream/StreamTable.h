@@ -1102,20 +1102,6 @@ struct TableMessageEntry
     uint8_t elem_packing = 0;
 };
 
-// TableMessageEntrySame reports whether two RESOLVED entries carry the same
-// shape, which is every fact of the entry but its id and its kind. It is what
-// the announcement's duplicate rule is asked in: two entries that agree on all
-// three parts are malformed (§3.3).
-inline bool TableMessageEntrySame( const TableMessageEntry & a, const TableMessageEntry & b )
-{
-    return a.min == b.min && a.max == b.max && a.base_lo == b.base_lo && a.base_hi == b.base_hi
-        && a.elem_max == b.elem_max && a.elem_base_lo == b.elem_base_lo && a.elem_base_hi == b.elem_base_hi
-        && a.qmin == b.qmin && a.qdelta == b.qdelta && a.qcount == b.qcount
-        && a.elem_qmin == b.elem_qmin && a.elem_qdelta == b.elem_qdelta && a.elem_qcount == b.elem_qcount
-        && a.value_bits == b.value_bits && a.elem_value_bits == b.elem_value_bits
-        && a.packing == b.packing && a.elem_kind == b.elem_kind && a.elem_packing == b.elem_packing;
-}
-
 // TableMessageKindBits is the widest RANGED value a kind can carry, its own
 // storage width: a width above it is a hostile width on the announcement.
 inline int64_t TableMessageKindBits( uint8_t kind )
@@ -1582,6 +1568,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
     {
         if ( count >= vocabulary.max_entries ) { to->refused = true; to->reason = vocabulary_too_large; return false; }
         TableMessageEntry & parsed = vocabulary.entries[ count ];
+        const int64_t began = at;
         if ( !TableMessageEntryRead( words, words_bytes, at, parsed ) ) { to->malformed = true; return false; }
         // THE RESERVED IDS WHERE THEY DO NOT BELONG (§3.3): the announcement's
         // own two never take a slot, and the node-table id takes exactly one,
@@ -1592,16 +1579,35 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
         // A TRIPLE ALREADY PLACED IS NEVER PLACED TWICE, so two entries that
         // agree on the id, the kind and every fact of the shape are malformed
         // (§3.3): no writer this wire has produces one, and a reader that took
-        // it would carry two slots naming one thing. The scan is quadratic in
-        // the entry count, and the entry count is bounded above at 4096, so it
-        // is at most eight million compares on a path that runs ONCE a
-        // connection and never again.
+        // it would carry two slots naming one thing. THE SHAPE IS THE DECLARED
+        // ONE, the bytes the announcement spells, and never the resolved
+        // entry: a resolved quantized entry keeps §4.3's derivation and not
+        // the max and res it consumed, so two declared resolutions that derive
+        // one delta and count would read as one entry there, and the unit's
+        // own announcement would be refused (#722). The entry's encoding is
+        // canonical, a minimal LEB128 and fixed four-byte floats, so byte
+        // equality is declared-fact equality, bit pattern for bit pattern.
+        // Each accepted entry parks its byte extent in min and max until the
+        // scan is over, and the second pass below resolves every entry in
+        // place, so no offset into the announcement outlives this call. The
+        // scan is quadratic in the entry count, and the entry count is bounded
+        // above at 4096, so it is at most eight million compares on a path
+        // that runs ONCE a connection and never again.
+        const int64_t length = at - began;
         for ( int64_t seen = 0; seen < count; seen++ )
         {
             const TableMessageEntry & other = vocabulary.entries[ seen ];
-            if ( other.id == parsed.id && other.kind == parsed.kind && TableMessageEntrySame( other, parsed ) ) { to->malformed = true; return false; }
+            if ( other.max - other.min == length && memcmp( words + other.min, words + began, (size_t) length ) == 0 ) { to->malformed = true; return false; }
         }
+        parsed.min = began;
+        parsed.max = at;
         count++;
+    }
+    // THE ENTRIES RESOLVED, over bytes the first pass already accepted
+    at = 0;
+    for ( int64_t slot = 0; slot < count; slot++ )
+    {
+        if ( !TableMessageEntryRead( words, words_bytes, at, vocabulary.entries[ slot ] ) ) { to->malformed = true; return false; }
     }
     vocabulary.count = count;
     vocabulary.ref_bits = TableBitsRequired( 0, count );
