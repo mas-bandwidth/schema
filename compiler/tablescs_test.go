@@ -189,3 +189,35 @@ func TestCsFloatBitCastIsAtTheAssignment(t *testing.T) {
 		t.Error("f32 GetRaw still calls TableFloatToBits instead of bit-casting at the assignment")
 	}
 }
+
+// TestCsUnionElementReset: TableReset of a union clears every arm in place,
+// not the tag alone (#734). Tag-only left a list arm standing under None.
+func TestCsUnionElementReset(t *testing.T) {
+	u := unitFromSource(t, `package probe
+type Cell { x int32 }
+union Choice
+{
+    signal
+    many [..4]Cell
+}
+table Root { history [..8]Choice }
+`)
+	files, err := New().Generate(u, "cs", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(files["ProbeTable.cs"])
+	for _, want := range []string{
+		"public static void TableReset(Choice value)",
+		"value.Type = ChoiceType.None;",
+		"TableReset(value.History[i]);",
+		"else if (f.Kind == 15) { ResetUnion(f.GetChild(value, i), f.Arms); }",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("C# union reset lacks %q", want)
+		}
+	}
+	if strings.Contains(src, "value.History[i].Type = ChoiceType.None;") {
+		t.Error("C# union array reset is still tag-only")
+	}
+}

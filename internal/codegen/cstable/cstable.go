@@ -190,6 +190,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		for _, un := range f.TableUnions {
 			g.emitTableUnion(un)
 		}
+		for _, un := range f.TableUnions {
+			g.emitUnionReset(un)
+		}
 		for _, st := range members {
 			if st.IsTable {
 				g.owner = st
