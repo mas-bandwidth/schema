@@ -23,6 +23,18 @@ static partial class Program
         Check(Csids.Schema.WideIdsSave(wide, actual) == expected.Length && actual.AsSpan().SequenceEqual(expected),
             "reference boundary: independent first-use bytes, including 128");
         Check(Csids.Schema.WideIdsSave(wide, new byte[actual.Length - 1]) == -1, "reference boundary: short output refused");
+        // Caller vocabulary capacity must not change first-use wire order.
+        // Exercise exact capacity and the bounded-stack fallback against the
+        // independent fixture, including references crossing 127/128.
+        foreach (int capacity in new int[] { names.Length, 1024, 1025 })
+        {
+            Array.Fill(actual, (byte)0xa5);
+            Check(Csids.Schema.TableWire.Save(wide, Csids.Schema.WideIdsTableType(), actual, new ulong[capacity], false) == expected.Length &&
+                actual.AsSpan().SequenceEqual(expected), "reference storage capacity preserves canonical bytes: " + capacity);
+        }
+        Array.Fill(actual, (byte)0xa5);
+        Check(Csids.Schema.TableWire.Save(wide, Csids.Schema.WideIdsTableType(), actual, new ulong[names.Length - 1], false) == -1 &&
+            Array.TrueForAll(actual, b => b == 0xa5), "reference capacity refusal leaves output untouched");
         Csids.WideIds decoded = new Csids.WideIds(); Csids.TableReport wideReport = new Csids.TableReport();
         Check(Csids.Schema.WideIdsLoad(decoded, expected, wideReport) && decoded.Words[139] == (Csids.Word)140,
             "reference boundary: decode independent bytes");
