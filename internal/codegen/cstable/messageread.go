@@ -198,6 +198,7 @@ const tableMessageReadSource = `
             if (f.Dynamic && (n > int.MaxValue || run!=0 && n > (ulong)((r.End - r.At) / Math.Max(1, run)))) { return false; }
             int kept = (int)Math.Min(n, (ulong)f.ArrayBound);
             if (n > (ulong)f.ArrayBound) { d.Report.Clamped++; }
+            int previous = f.Counted && value != null && f.GetCount != null ? f.GetCount(value) : 0;
             ulong walk = run >= 0 ? (ulong)kept : n;
             for (ulong i = 0; i < walk; i++)
             {
@@ -205,7 +206,7 @@ const tableMessageReadSource = `
                 if (!MessageReadElement(ref r, d, value, f, (int)i, shape.Elem, shape.Inner, i < (ulong)kept)) { return false; }
             }
             if (walk < n && !r.Skip((long)(n - walk) * run)) { return false; }
-            if (f.Counted && value!=null) { f.SetCount(value, kept); }
+            if (f.Counted && value!=null) { ResetCountedTail(value, f, previous, kept); }
             if (f.Optional && value!=null) { f.SetPresent(value, true); }
             return true;
         }

@@ -88,3 +88,26 @@ table Node
 		t.Errorf("--lang cpp refused a pointered unit: %v", err)
 	}
 }
+
+// TestCsCountedArrayTailReset: a shorter counted-array replacement must restore
+// slots above the new count (#725). C++/C/Go already walk previous..decoded.
+func TestCsCountedArrayTailReset(t *testing.T) {
+	u := unitFromSource(t, `package probe
+table Child { n int32 = 7 }
+table Root { values [..8]Child }
+`)
+	files, err := New().Generate(u, "cs", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(files["ProbeTable.cs"])
+	for _, want := range []string{
+		"static void ResetCountedTail(object value, TableFieldInfo f, int previous, int decoded)",
+		"int previous = f.Counted && f.GetCount != null ? f.GetCount(value) : 0",
+		"ResetCountedTail(value, f, previous, decoded)",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("C# counted-array load lacks %q", want)
+		}
+	}
+}
