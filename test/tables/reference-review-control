@@ -1,0 +1,23 @@
+#!/bin/sh
+set -eu
+mode=$1
+out=build/reference-review-control-$mode
+mkdir -p "$out"
+case "$mode" in
+list) source=lists.go; sabotage=reference-list-widen-extent; test='TestCppCollectionWidening/list'; expected='collection widening failed' ;;
+map) source=codecs.go; sabotage=reference-map-widen-count; test='TestCppCollectionWidening/map'; expected='report.widened==3' ;;
+flags) source=widen.go; sabotage=reference-flags-widen; test=TestFlagsElementWidening; expected='flags widening report failed' ;;
+alignment) source=arena.go; sabotage=reference-wide-alignment; test='TestCppVariableWideAlignment/direct'; expected='static assertion failed' ;;
+include) source=cpptable.go; sabotage=reference-wide-union-include; test='TestCppVariableWideAlignment/union'; expected="serialize" ;;
+*) echo "unknown control: $mode" >&2; exit 1 ;;
+esac
+source=internal/codegen/cpptable/$source
+go run ./tools/sabotage -name "$sabotage" -out "$out/source.gotext" "$source"
+root=$(pwd)
+printf '{"Replace":{"%s/%s":"%s/%s/source.gotext"}}\n' "$root" "$source" "$root" "$out" > "$out/overlay.json"
+if go test -overlay "$out/overlay.json" ./compiler -run "^$test\$" -count=1 > "$out/log" 2>&1; then
+ echo "reference control stayed green: $mode" >&2; exit 1
+fi
+if grep -q '\[build failed\]' "$out/log"; then cat "$out/log"; exit 1; fi
+grep -Fq "$expected" "$out/log" || { cat "$out/log"; exit 1; }
+echo "reference review control: $mode detected"

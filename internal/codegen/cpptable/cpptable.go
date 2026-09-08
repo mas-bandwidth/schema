@@ -1482,5 +1482,20 @@ func unitHas128(u *ir.Unit, closure map[string]bool) bool {
 			}
 		}
 	}
+	// General arms live in Table.h and may be the only wide storage in
+	// the unit. The record closure alone does not contain their fields.
+	for name := range ir.TableClosureVocabulary(u) {
+		un := u.Unions[name]
+		if un == nil {
+			un = u.TableUnions[name]
+		}
+		if un != nil {
+			for _, arm := range un.Variants {
+				if arm.F != nil && arm.F.Type.Width == 128 && (arm.F.Type.Kind == ir.TInt || arm.F.Type.Kind == ir.TFixed) {
+					return true
+				}
+			}
+		}
+	}
 	return false
 }

@@ -514,6 +514,18 @@
         "tables-go-retain-negative-controls",
         "tables-go-builders-negative-control"
       ]
+    },
+    {
+      "name": "base-reference-review",
+      "when": "pull-request",
+      "why": "compiled native and sanitizer regressions for variable wide closure, list extent and flags/map widening accounting; five bounded emitter controls",
+      "targets": [
+        "tables-reference-list-negative-control",
+        "tables-reference-map-negative-control",
+        "tables-reference-flags-negative-control",
+        "tables-reference-alignment-negative-control",
+        "tables-reference-include-negative-control"
+      ]
     }
   ],
   "excluded": [

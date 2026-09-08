@@ -26,8 +26,13 @@ type edit struct{ old, new string }
 // sabotages maps a control's name to what it breaks. Each entry names the
 // rule it removes, so a reader of a red control knows what was taken away.
 var sabotages = map[string][]edit{
-	"go-builder-union-refusal": {{old: "g.pf(\"%s%sLoadBody(&%s,&%s)\\n\", ind, v.Type, rdr, expr)\n\t\tg.emitCarveReturn(\"r\", rdr, ind)", new: "g.pf(\"%s%sLoadBody(&%s,&%s)\\n\", ind, v.Type, rdr, expr)\n\t\t// SABOTAGED: inspect payload length before propagating refusal"}},
-	"map-builder-count-oracle": {{old: "\t\tif count > uint64(math.MaxInt32) {\n\t\t\tr.off = end\n\t\t\treturn r.collectionCap()\n\t\t}\n\t\tsub := r.subTo(end)", new: "\t\tif false && count > uint64(math.MaxInt32) { // SABOTAGED\n\t\t\tr.off = end\n\t\t\treturn r.collectionCap()\n\t\t}\n\t\tsub := r.subTo(end)"}},
+	"reference-wide-union-include": {{old: "for name := range ir.TableClosureVocabulary(u) {", new: "for name := range map[string]bool{} { // SABOTAGED: miss union-only wide storage"}},
+	"reference-wide-alignment":     {{old: "static const uint32_t kTableAlign       = ` + fmt.Sprint(align) + `;", new: "static const uint32_t kTableAlign       = 8; // SABOTAGED ` + fmt.Sprint(align) + `;"}},
+	"reference-flags-widen":        {{old: "// decides widening, including flags elements (SPEC-TABLES §4).\n\treturn widenable(tableScalarKind(f))", new: "// decides widening, including flags elements (SPEC-TABLES §4).\n\tif f.Type.Ref != nil { return false } // SABOTAGED\n\treturn widenable(tableScalarKind(f))"}},
+	"reference-map-widen-count":    {{old: "if !st.IsMapEntry() || f.Name != ir.MapKeyFieldName {", new: "if true { // SABOTAGED: count each widened key twice"}},
+	"reference-list-widen-extent":  {{old: "        if ( !TableKindWidens( wire_kind, elem_kind ) ) { return true; }\n        // Load accepts the widening ladder.", new: "        if ( wire_kind != elem_kind ) { return true; } // SABOTAGED\n        // Load accepts the widening ladder."}},
+	"go-builder-union-refusal":     {{old: "g.pf(\"%s%sLoadBody(&%s,&%s)\\n\", ind, v.Type, rdr, expr)\n\t\tg.emitCarveReturn(\"r\", rdr, ind)", new: "g.pf(\"%s%sLoadBody(&%s,&%s)\\n\", ind, v.Type, rdr, expr)\n\t\t// SABOTAGED: inspect payload length before propagating refusal"}},
+	"map-builder-count-oracle":     {{old: "\t\tif count > uint64(math.MaxInt32) {\n\t\t\tr.off = end\n\t\t\treturn r.collectionCap()\n\t\t}\n\t\tsub := r.subTo(end)", new: "\t\tif false && count > uint64(math.MaxInt32) { // SABOTAGED\n\t\t\tr.off = end\n\t\t\treturn r.collectionCap()\n\t\t}\n\t\tsub := r.subTo(end)"}},
 	// Go ownership, managed activation frames, and bounded retention.
 	"go-allocator-original-slice": {
 		{old: ";return b}", new: ";return b[:n] /* SABOTAGED */}"},
