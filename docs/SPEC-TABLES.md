@@ -181,9 +181,10 @@ reasons and const block handles. Its UnitView registry includes table-free
 units. C also reads and writes bitpacked message batches, with caller-owned
 resolved announcement entries and native regions for graphs and collections.
 C retains unknown fields in caller-owned storage for variable file roots and
-message loads, and writes retained file roots (§6.6). Dart, Rust, Java, JavaScript and Elixir still write
-the earlier form in this tree. [ROADMAP.md](../ROADMAP.md) records coverage by
-construct and form.
+message loads, and writes retained file roots (§6.6). Rust, Java, JavaScript and Elixir still write
+the earlier form in this tree; that code is dead and is being removed port by
+port. Dart writes no table wire: it carries the block and cook read halves only.
+[ROADMAP.md](../ROADMAP.md) records coverage by construct and form.
 
 The C report has added `widened`, `retained`, `retain_lost`, `refused` and `reason` members after
 `malformed`. Recompile callers with their generated headers and initialize a
@@ -428,12 +429,12 @@ carrying data alone, so there are no attribution bytes to absorb the overrun.
 The size is the pointee's own `<Name>Row.size`, which every call site knows.
 `make tables-java-cook-extent` is that forgery as a gate and its negative
 control puts the start-only bound back and requires the gate to go red.
-**DART emits three libraries per unit file**: `<Base>Table.dart` (the storage
-classes, the codecs, the reflection descriptors and the text form's per-table
-entries), `<Base>Block.dart` and `<Base>Cook.dart` (the two accelerators, §19
-and §7) — plus one runtime home per unit and per surface, `<Package>Table.dart`,
-`<Package>Block.dart` and `<Package>Cook.dart`, which every other library of the
-unit imports. A Dart library IS a file, so a runtime shared across a unit's
+**DART emits two libraries per unit file**: `<Base>Block.dart` and
+`<Base>Cook.dart` (the two accelerators, §19 and §7) — plus one runtime home
+per unit and per surface, `<Package>Block.dart` and `<Package>Cook.dart`, which
+every other library of the unit imports. It emits no `<Base>Table.dart`: the
+Dart port of the table wire wrote the form that preceded the id-table wire and
+was removed rather than carried (schema#514 brings the current wire to Dart). A Dart library IS a file, so a runtime shared across a unit's
 files has to be PUBLIC, and every spelling of it is claimed by the front end
 (§11); the backend spells NO PRIVATE LIBRARY-SCOPE NAME AT ALL, because a schema
 identifier may begin with an underscore and a private top-level name would be a
