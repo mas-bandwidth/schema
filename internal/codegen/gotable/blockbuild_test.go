@@ -84,11 +84,11 @@ func blockFillGate(source string) error {
 	}
 	forbidden := regexp.MustCompile(`\b(make|new|append)\s*\(|\b(sync|atomic)\s*\.`)
 	for _, part := range strings.Split(source, begin)[1:] {
-		finish := strings.Index(part, end)
-		if finish < 0 {
+		fill, _, found := strings.Cut(part, end)
+		if !found {
 			return fmt.Errorf("missing end marker")
 		}
-		if token := forbidden.FindString(part[:finish]); token != "" {
+		if token := forbidden.FindString(fill); token != "" {
 			return fmt.Errorf("fill path contains %s", token)
 		}
 	}

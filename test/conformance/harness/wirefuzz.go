@@ -277,8 +277,7 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 	ok, derr := decode()
 	if r.builder {
 		ans.builderStopped = !ok
-		var capRefusal *tablewire.CountRefusal
-		if errors.As(derr, &capRefusal) {
+		if _, ok := errors.AsType[*tablewire.CountRefusal](derr); ok {
 			derr = nil
 		}
 	}

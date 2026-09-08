@@ -184,11 +184,12 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 		if counted {
 			// An accepted replacement owns its decoded prefix. Restore all
 			// other slots so packing and cooking cannot see an older value.
-			if !f.Type.Pointer && isStructRef(f.Type) {
+			switch {
+			case !f.Type.Pointer && isStructRef(f.Type):
 				g.pf("%sfor i:=decoded;i<%d;i++{%sReset(&%s[i])}\n", i, bound, f.Type.Name, expr)
-			} else if !f.Type.Pointer && isUnionRef(f.Type) {
+			case !f.Type.Pointer && isUnionRef(f.Type):
 				g.pf("%sfor i:=decoded;i<%d;i++{%s[i].Type=%sTypeNone}\n", i, bound, expr, f.Type.Name)
-			} else {
+			default:
 				g.pf("%sclear(%s[decoded:])\n", i, expr)
 			}
 		}

@@ -1,8 +1,23 @@
 package gotable
 
-import "testing"
+import (
+	"os"
+	"runtime"
+	"testing"
+)
 
 func TestAllocatorOwnershipAndStandaloneWriters(t *testing.T) {
+	// The emitter may be tested by any Go patch release; allocation evidence
+	// belongs to the compiler running the generated probe, pinned separately.
+	toolchain := os.Getenv("SCHEMA_GO_ALLOC_TOOLCHAIN")
+	if toolchain == "" {
+		toolchain = "go1.26.0"
+		if os.Getenv("SCHEMA_GO_ALLOC_ANY_GO") == "1" {
+			toolchain = runtime.Version()
+		}
+	}
+	t.Setenv("GOTOOLCHAIN", toolchain)
+
 	runGenerated(t, `package probe
  table Child { n int32 }
  table Root { head *Child

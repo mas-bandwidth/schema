@@ -6,7 +6,7 @@ import (
 )
 
 func TestBitWriterTruncate(t *testing.T) {
-	for prefix := 0; prefix < 17; prefix++ {
+	for prefix := range 17 {
 		var got, want bitWriter
 		got.put(0x51b7, prefix)
 		want.put(0x51b7, prefix)

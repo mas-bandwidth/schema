@@ -62,7 +62,7 @@ func TestMessageNestedEncodingWork(t *testing.T) {
 		var schema strings.Builder
 		schema.WriteString("package probe\ntype Leaf { text string(12) }\n")
 		child := "Leaf"
-		for i := 0; i < depth; i++ {
+		for i := range depth {
 			name := fmt.Sprintf("Level%d", i)
 			fmt.Fprintf(&schema, "type %s { child %s }\n", name, child)
 			child = name
