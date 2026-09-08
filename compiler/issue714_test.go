@@ -8,15 +8,19 @@ import (
 // Issue #714: Table JSON Base64 writer wraps signed 32-bit integer at INT32_MAX.
 //
 // In cpptable, ctable, cstable, and javatable, the Base64 writer loop previously tested:
-//   for ( ; i + 3 <= length; i += 3 )
+//
+//	for ( ; i + 3 <= length; i += 3 )
+//
 // When length == 2147483647 (MaxInt32, which is legally permitted by the compiler check
 // for bytes(N) and *bytes), evaluating i + 3 when i == 2147483646 overflows signed 32-bit
 // integer to -2147483647. Because -2147483647 <= 2147483647 evaluates to true, the loop
 // continues past the end of the buffer, causing out-of-bounds reads and infinite looping.
 //
 // The loop condition must be structured as remaining-length subtraction:
-//   cpp / c / java: length - i >= 3
-//   cs:             data.Length - i >= 3
+//
+//	cpp / c / java: length - i >= 3
+//	cs:             data.Length - i >= 3
+//
 // Because i <= length is guaranteed, length - i never underflows or overflows,
 // eliminating the integer wrap completely without requiring 64-bit promotion.
 func TestIssue714Base64WriterIntegerWrap(t *testing.T) {
