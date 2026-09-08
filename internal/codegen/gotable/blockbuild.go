@@ -39,12 +39,12 @@ func (g *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 	g.hf("// %sBlockBegin writes only the prologue and triples, never rows or padding.\n", n)
 	g.hf("// Storage and all counts are checked before any byte of the extent changes.\n")
 	g.hf("func %sBlockBegin(b *%sBlock,s *%sBlockStorage,c %sCounts,refusal *TableBlockRefusal) bool {\n", n, n, n, n)
-	g.hf("if refusal!=nil {*refusal=TableBlockRefusal{}};if b==nil {return false};*b=%sBlock{}\n", n)
-	g.hf("if s==nil || s.base==nil {return false}\n")
+	g.hf("if refusal!=nil {*refusal=TableBlockRefusal{}};if b==nil {return false}\n")
 	for _, a := range bl.Arrays {
 		field := ir.GoExportName(a.Field.Name)
 		g.hf("if c.%s<0 || c.%s>%d {if refusal!=nil {*refusal=TableBlockRefusal{Field:%q,Count:int64(c.%s),Maximum:%d}};return false}\n", field, field, a.Max, a.Field.Name, field, a.Max)
 	}
+	g.hf("if s==nil || s.base==nil {return false}\n")
 	g.hf("p:=(*%sBlockProjection)(s.base);p.Magic=TableBlockMagic;p.BuildVersion=BuildVersion;p.ByteOrder=TableBlockByteOrder\n", n)
 	g.hf("offset:=int64(%d)\n", bl.Projection.Size)
 	for _, a := range bl.Arrays {

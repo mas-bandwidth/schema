@@ -24,7 +24,8 @@ func TestBuild(t *testing.T) {
  if uintptr(block.Base)%64!=0||block.Bytes!=448||RootBlockBytes(&block)!=448||block.Projection.Rows.OffsetOf!=64||block.Projection.Other.OffsetOf!=384||block.Projection.Rows.Stride!=16 {t.Fatalf("independent layout: %+v",block)}
  if block.Rows().At(0).Value!=0xa5a5a5a5a5a5a5a5||block.Projection.Stamp!=0xa5a5a5a5a5a5a5a5 {t.Fatal("begin touched caller fields")}
  snapshot:=append([]byte(nil),original...)
- if RootBlockBegin(&block,&storage,RootCounts{Rows:66},&refusal)||block.Base!=nil||refusal.Field!="rows"||refusal.Count!=66||refusal.Maximum!=65||!bytes.Equal(snapshot,original) {t.Fatal("maximum refusal changed storage")}
+ previous:=block
+ if RootBlockBegin(&block,&storage,RootCounts{Rows:66},&refusal)||block!=previous||refusal.Field!="rows"||refusal.Count!=66||refusal.Maximum!=65||!bytes.Equal(snapshot,original) {t.Fatal("maximum refusal changed storage")}
  if RootBlockBegin(&block,&storage,RootCounts{Other:-1},&refusal)||refusal.Field!="other"||refusal.Count!=-1 {t.Fatal("negative count")}
  clear(original)
  if !RootBlockBegin(&block,&storage,counts,nil){t.Fatal("begin again")}
@@ -39,8 +40,9 @@ func TestBuild(t *testing.T) {
  if !RootBlockOpen(&reopened,block.Base,block.Bytes)||reopened.Rows().At(16).Value!=263 {t.Fatal("open built block")}
  if n:=testing.AllocsPerRun(20,func(){if !RootBlockBegin(&block,&storage,counts,nil){panic("begin")};fill(0,17);RootBlockBytes(&block)});n!=0||allocs!=1{t.Fatalf("frame allocated: heap=%v pair=%d",n,allocs)}
  if !RootBlockBegin(&block,&storage,RootCounts{Rows:65,Other:3},nil)||block.Bytes!=RootBlockMaxBytes{t.Fatal("allocate max")}
+ previous=block
  storage.Destroy();storage.Destroy();if frees!=1 {t.Fatal("release lifetime")}
- if RootBlockBegin(&block,&storage,counts,nil)||block.Base!=nil {t.Fatal("destroyed storage")}
+ if RootBlockBegin(&block,&storage,counts,nil)||block!=previous {t.Fatal("destroyed storage")}
  var empty RowBlockStorage;if !empty.Create(TableBlockDefaultAllocator()){t.Fatal("empty create")};defer empty.Destroy();var one RowBlock
  if !RowBlockBegin(&one,&empty,RowCounts{},nil)||one.Bytes!=RowBlockMaxBytes{t.Fatal("no arrays")}
 }
