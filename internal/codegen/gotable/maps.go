@@ -68,7 +68,11 @@ func (g *tableGen) emitMapRead(f *ir.Field, ind string) {
 	desc := g.mapDescriptor(f)
 	g.pf("%ssub,ok:=r.Body();if !ok {r.Report.Malformed=true;return false};if len(sub.Buffer)>=2 {header:=sub;header.Buffer=r.Buffer[r.Offset-int64(len(sub.Buffer)):];kind:=header.Get8();count,ok:=header.Leb();sub.Offset=header.Offset;if !ok {r.Report.Malformed=true;break};if kind!=13 {r.Report.KindMismatch++;break};field:=%s;holder:=(*tableContainer)(unsafe.Pointer(&value.%s));if !tableContainerFill(&sub.Nodes.Carve,holder,count,%d,%d) {if sub.Nodes.Carve.Refused {r.Take(sub);return false};r.Report.Malformed=true;break};holder.Count=0;var last tableMapKey;var prior *%s;widened:=false\n", ind, desc, member(f), layout.Size, layout.Align, entry)
 	g.retainDiscard("r")
-	g.pf("%sfor i:=uint64(0);i<count;i++ {elem,ok:=sub.Body();if !ok {r.Report.Malformed=true;break};key,bad,over,wide,whole:=tableMapReadKey(elem,&field.Table().Fields[0]);if wide&&!widened {widened=true;r.Report.Widened++};if bad {r.Report.KindMismatch++;*holder=tableContainer{};break};if !whole {r.Report.Malformed=true;break};if over {r.Report.Clamped++;continue};order:= -1;if prior!=nil {order=tableMapKeyOrder(last,key,&field.Table().Fields[0])};if order>0 {r.Report.Malformed=true;break};p:=prior;if order==0 {r.Report.Duplicate++}else {p=(*%s)(tableContainerFillAt(&sub.Nodes.Carve,holder,holder.Count,%d));if p==nil {r.Report.Malformed=true;break};if sub.Nodes.Carve.Worker==nil {holder.Count++}};\n", ind, entry, layout.Size)
+	keyReader := "elem"
+	if g.retain {
+		keyReader = "elem.tableRetainPlainReader"
+	}
+	g.pf("%sfor i:=uint64(0);i<count;i++ {elem,ok:=sub.Body();if !ok {r.Report.Malformed=true;break};key,bad,over,wide,whole:=tableMapReadKey(%s,&field.Table().Fields[0]);if wide&&!widened {widened=true;r.Report.Widened++};if bad {r.Report.KindMismatch++;*holder=tableContainer{};break};if !whole {r.Report.Malformed=true;break};if over {r.Report.Clamped++;continue};order:= -1;if prior!=nil {order=tableMapKeyOrder(last,key,&field.Table().Fields[0])};if order>0 {r.Report.Malformed=true;break};p:=prior;if order==0 {r.Report.Duplicate++}else {p=(*%s)(tableContainerFillAt(&sub.Nodes.Carve,holder,holder.Count,%d));if p==nil {r.Report.Malformed=true;break};if sub.Nodes.Carve.Worker==nil {holder.Count++}};\n", ind, keyReader, entry, layout.Size)
 	g.retainReadPath("elem", "r", "holder.Count-1")
 	g.pf("%sLoadBody(&elem,p);\n", f.MapEntry.Name)
 	g.emitCarveReturn("sub", "elem", ind)

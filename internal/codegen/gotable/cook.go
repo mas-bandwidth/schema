@@ -43,7 +43,7 @@ func generateCookFiles(u *ir.Unit, blocks *ir.BlockUnit) (map[string][]byte, err
 		return out, nil
 	}
 	ck := cookUnitOf(u)
-	if len(ck.tables) == 0 && len(ck.skipped) == 0 {
+	if len(ck.tables) == 0 {
 		return out, nil
 	}
 	// THE COOK HOME is the first file, by declaration order, that declares a
@@ -78,7 +78,6 @@ type cookUnit struct {
 	tables  []*ir.Struct                // every table with a Go Open, sorted by name
 	members map[string]*ir.MemberLayout // every record the cook closure reaches
 	order   []string                    // those record names, sorted
-	skipped map[string]string           // table -> why it has no Go Open
 	align   int64                       // the unit's region alignment (§7.1)
 	// every record's slot in the unit's ONE descriptor graph, so no descriptor
 	// takes a name derived from a declaration's own spelling (§11)
@@ -113,7 +112,7 @@ func (c *cookUnit) opens(name string) bool {
 // Every table has a cooked view. Unions use the same canonical overlay as
 // the variable table storage; their active arm is exposed through accessors.
 func cookUnitOf(u *ir.Unit) *cookUnit {
-	c := &cookUnit{members: map[string]*ir.MemberLayout{}, skipped: map[string]string{}}
+	c := &cookUnit{members: map[string]*ir.MemberLayout{}}
 	names := make([]string, 0, len(u.Tables))
 	for name := range u.Tables {
 		names = append(names, name)
@@ -257,9 +256,7 @@ func (g *cookGen) emit() {
 			g.emitCookHandle(st)
 			continue
 		}
-		g.hf("// table %s has NO Go cook Open: %s (docs/SPEC-TABLES.md §7, §19.3).\n", st.Name, g.cook.skipped[st.Name])
-		g.hf("// Its wire (§3) and its cook are unaffected — only this backend's reader is\n")
-		g.hf("// absent, and it is absent by construction rather than by refusal.\n\n")
+
 	}
 }
 

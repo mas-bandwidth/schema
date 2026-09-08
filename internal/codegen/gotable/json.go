@@ -61,8 +61,8 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 			}
 			if ir.VariableTables(u)[n] {
 				fmt.Fprintf(&b, "func %sFromJson(builder *%sBuilder,text []byte,report *TableReport) bool { if builder.Arena.Locked {return false};return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()),%sTableType(),&builder.Main,text,report) }\n", n, n, n)
-				fmt.Fprintf(&b, "func %sToJsonMeasure(value *%s) int64 {return tableRegionToJson(unsafe.Pointer(value),%sTableType(),nil)}\n", n, storageName(u, n), n)
-				fmt.Fprintf(&b, "func %sToJson(value *%s,buffer []byte) int64 {return tableRegionToJson(unsafe.Pointer(value),%sTableType(),buffer)}\n", n, storageName(u, n), n)
+				fmt.Fprintf(&b, "func %sToJsonMeasure(value *%s,allocator ...TableAllocator) int64 {return tableRegionToJson(unsafe.Pointer(value),%sTableType(),nil,allocator...)}\n", n, storageName(u, n), n)
+				fmt.Fprintf(&b, "func %sToJson(value *%s,buffer []byte,allocator ...TableAllocator) int64 {return tableRegionToJson(unsafe.Pointer(value),%sTableType(),buffer,allocator...)}\n", n, storageName(u, n), n)
 				continue
 			}
 			fmt.Fprintf(&b, "// %sFromJson fills one %s from a JSON text (docs/SPEC-TABLES.md §16).\n", n, n)

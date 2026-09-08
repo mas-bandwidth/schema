@@ -349,3 +349,15 @@ test-go: tables-go-block-build tables-go-block-fill-refuser
 tables-go-retain:
 	go test ./internal/codegen/gotable -run '^TestRetain' -count=1
 test-go: tables-go-retain
+
+.PHONY: tables-go-allocator tables-go-allocator-negative-controls tables-go-allocator-runtime-negative-control tables-go-retain-negative-controls
+tables-go-allocator:
+	SCHEMA_GO_ALLOC_CERTIFY=1 GOTOOLCHAIN=go1.26.0 go test ./internal/codegen/gotable -run '^TestAllocatorOwnershipAndStandaloneWriters$$' -count=1
+tables-go-allocator-negative-controls:
+	@set -e; for mode in original-slice pair frame; do sh test/conformance/go/ownership-negative-control $$mode; done
+tables-go-allocator-runtime-negative-control:
+	sh test/conformance/go/ownership-negative-control runtime
+tables-go-retain-negative-controls:
+	@set -e; for mode in file-count-floor message-depth; do sh test/conformance/go/ownership-negative-control $$mode; done
+
+test-go: tables-go-allocator

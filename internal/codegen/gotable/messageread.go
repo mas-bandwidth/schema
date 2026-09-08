@@ -128,7 +128,11 @@ func (g *tableGen) emitMessageReadValue(f *ir.Field, expr, entry, ind string) {
 		g.pf("%s{ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok{%s};if ref==0{%s=%sNone}else{id,ok:=r.Vocabulary.Name(ref);if !ok{%s};if !%s.TableEnumValue(id){r.Report.Unknown++;%s}}}\n", ind, bad, expr, f.Type.Name, bad, expr, extra)
 	default:
 		scalar := g.nextWireWriter()
-		g.pf("%s{var raw [16]byte;if !tableMessageReadScalar(&r.Bits,%s.Shape,&raw){%s};%s:=TableReader{Buffer:raw[:],Report:&r.Report}\n", ind, entry, bad, scalar)
+		readerType := "TableReader"
+		if g.retain {
+			readerType = "tableRetainPlainReader"
+		}
+		g.pf("%s{var raw [16]byte;if !tableMessageReadScalar(&r.Bits,%s.Shape,&raw){%s};%s:=%s{Buffer:raw[:],Report:&r.Report}\n", ind, entry, bad, scalar, readerType)
 		g.emitReadScalar(f, expr, scalar, entry+".Shape.Kind", ind+"\t", bad)
 		g.pf("%s}\n", ind)
 	}

@@ -413,9 +413,25 @@ a managed backend allocates inside its runtime and says so.
 
 **Targets:** hooks
 
+Go uses one optional final writer argument, `TableWriteContext`: a
+`*TableArena` carries the authoring address space and its pair, while a
+`*TableAllocator` supplies scratch for a loaded/locked root. An allocator never
+supplies an address space. JSON and retaining file writers take the pair
+directly. C++ takes `root, out, capacity, order, allocator` for cook writing
+and `root, allocator` for its measure; the builder overload takes ownership
+from the builder. These are argument-order adaptations of the same contract.
+The Go ownership gate returns exact original slices, including oversized ones,
+injects failure at each request, and checks that packing performs two independent
+numbering passes with the measurement storage released between them. Arena
+segment descriptors are embedded in the arena. With caller-backed scratch on
+Go 1.26.0, wire, message and retaining file measure/save each use one managed,
+typed activation frame; JSON and cook measure/save use zero. Node-proportional
+storage all goes through the pair. The three ownership controls remove the
+original-slice guarantee, bypass the pair, and add a managed allocation.
+
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-hooks` | ❌ #410 (raw `calloc`/`free` on the pointer path) | — no allocating path exists: a pointered unit's wire is refused and the fixed class allocates nothing (`tables-rust-alloc-audit`) | — the runtime allocates inside itself and says so (docs/SPEC-TABLES.md, "who calls the allocator is per form") | — the runtime allocates inside itself and says so (docs/SPEC-TABLES.md) | — the runtime allocates inside itself and says so; where it does is named per path at `tables-java-alloc` | — the runtime allocates inside itself and says so; every unavoidable allocation is named in the floor (docs/SPEC-TABLES.md) | — the runtime allocates inside itself and says so (docs/SPEC-TABLES.md) | — the BEAM allocates every term; the count is pinned instead (docs/SPEC-TABLES.md) |
+| ✅ `tables-hooks` | ❌ #410 (raw `calloc`/`free` on the pointer path) | — no allocating path exists: a pointered unit's wire is refused and the fixed class allocates nothing (`tables-rust-alloc-audit`) | ✅ `tables-go-allocator` `tables-go-allocator-negative-controls` (typed activation frames stated below) | — the runtime allocates inside itself and says so (docs/SPEC-TABLES.md) | — the runtime allocates inside itself and says so; where it does is named per path at `tables-java-alloc` | — the runtime allocates inside itself and says so; every unavoidable allocation is named in the floor (docs/SPEC-TABLES.md) | — the runtime allocates inside itself and says so (docs/SPEC-TABLES.md) | — the BEAM allocates every term; the count is pinned instead (docs/SPEC-TABLES.md) |
 
 ### M11 — The layout contract is asserted in generated code
 
@@ -1275,7 +1291,7 @@ one V8 major and steady at sixteen bytes a call on another.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| — a native codec's allocations are in its source; the counting allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the interposed allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the counting global allocator sees the same calls under any toolchain | ❌ #420 (escape analysis moves between compiler versions; nothing pins it) | ❌ #420 | ❌ #420 (pinned JDK; the gate SKIPS rather than refuses without the counter) | ✅ `test/js-tables/main.mjs:1412` | ❌ #420 (pinned SDK; nothing refuses off it) | ❌ #420 (pinned OTP; the audit does not read it) |
+| — a native codec's allocations are in its source; the counting allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the interposed allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the counting global allocator sees the same calls under any toolchain | ✅ `tables-go-allocator` `tables-go-allocator-runtime-negative-control` (Go 1.26.0) | ❌ #420 | ❌ #420 (pinned JDK; the gate SKIPS rather than refuses without the counter) | ✅ `test/js-tables/main.mjs:1412` | ❌ #420 (pinned SDK; nothing refuses off it) | ❌ #420 (pinned OTP; the audit does not read it) |
 
 ### I15 — The tolerant wire's differential fuzzer with an independent oracle
 

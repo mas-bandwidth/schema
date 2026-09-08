@@ -3,7 +3,6 @@ package gotable
 import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 	"regexp"
-	"strings"
 )
 
 // Retention has its own readers, writers and id interner. The ordinary family
@@ -16,40 +15,34 @@ func (g *tableGen) emitRetainRuntime() {
 	}
 	g.pf("}\n%s", goRetainRuntime)
 	g.emitRetainMessageRuntime()
-	start := strings.Index(tableWireSource, "type TableWriter struct")
-	end := strings.Index(tableWireSource, "// TableOpenVerdict")
-	source := tableWireSource[start:end]
-	source = strings.ReplaceAll(source, "TableWriter", "TableRetainWriter")
-	source = strings.ReplaceAll(source, "TableIds", "TableRetainIds")
-	start = strings.Index(source, "func (w *TableRetainWriter) Trailer()")
+	source := tableSourceSpan(tableWireSource, "type TableWriter struct", "// TableOpenVerdict")
+	source = tableSourceReplace(source, "TableWriter", "TableRetainWriter", -1)
+	source = tableSourceReplace(source, "TableIds", "TableRetainIds", -1)
+	start := tableSourceIndex(source, "func (w *TableRetainWriter) Trailer()")
 	source = source[:start] + "func (w *TableRetainWriter) Trailer(){w.Ids.trailer(w)}\n"
 	g.pf("%s", source)
 	load := tableRegionSource
 	if unitHasContainers(g.unit) {
 		load = containerRegionSource(load)
 	}
-	start = strings.Index(load, "func tableRegionLoad(")
-	end = strings.Index(load[start:], "\n}\n") + start + 3
-	load = load[start:end]
-	load = strings.Replace(load, "func tableRegionLoad(", "func tableRegionLoadRetain(", 1)
-	load = strings.Replace(load, "report *TableReport) unsafe.Pointer {", "report *TableReport,retain *TableRetain) unsafe.Pointer {\nretain.reset(nil,nil)", 1)
-	load = strings.Replace(load, "root.Reset(base)", "root.Reset(base);retain.reset(base,directory)", 1)
-	load = strings.Replace(load, "report.Unknown+=unknown", "report.Unknown+=unknown;if retain!=nil{report.RetainLost+=unknown}", 1)
-	load = strings.Replace(load, "t.LoadBody(body,p)", "t.LoadBodyRetain(TableRetainReader{tableRetainPlainReader:body,Retain:retain,Path:tableRetainPath{at:p,node:uint32(k+1)}},p)", 1)
-	load = strings.Replace(load, "root.LoadBody(r,base)", "root.LoadBodyRetain(TableRetainReader{tableRetainPlainReader:r,Retain:retain,Path:tableRetainPath{at:base,node:1}},base)", 1)
+	load = tableSourceFunction(load, "func tableRegionLoad(")
+	load = tableSourceReplace(load, "func tableRegionLoad(", "func tableRegionLoadRetain(", 1)
+	load = tableSourceReplace(load, "report *TableReport) unsafe.Pointer {", "report *TableReport,retain *TableRetain) unsafe.Pointer {\nretain.reset(nil,nil)", 1)
+	load = tableSourceReplace(load, "root.Reset(base)", "root.Reset(base);retain.reset(base,directory)", 1)
+	load = tableSourceReplace(load, "report.Unknown+=unknown", "report.Unknown+=unknown;if retain!=nil{report.RetainLost+=unknown}", 1)
+	load = tableSourceReplace(load, "t.LoadBody(body,p)", "t.LoadBodyRetain(TableRetainReader{tableRetainPlainReader:body,Retain:retain,Path:tableRetainPath{at:p,node:uint32(k+1)}},p)", 1)
+	load = tableSourceReplace(load, "root.LoadBody(r,base)", "root.LoadBodyRetain(TableRetainReader{tableRetainPlainReader:r,Retain:retain,Path:tableRetainPath{at:base,node:1}},base)", 1)
 	g.pf("%s", load)
 	save := tableRegionSource
-	start = strings.Index(save, "func tableRegionSave(")
-	end = strings.Index(save[start:], "\n}\n") + start + 3
-	save = save[start:end]
-	save = strings.Replace(save, "a *TableArena) int64 {", "retain *TableRetain,report *TableReport) int64 {\nif retain!=nil{retain.idUsed=0;retain.clearPlaced()}", 1)
-	save = strings.Replace(save, "tableNumber(root,info,a)", "tableNumber(root,info,nil)", 1)
-	save = strings.Replace(save, "ids:=TableIds{Numbering:&n}", "ids:=TableRetainIds{Numbering:&n,Retain:retain,Path:tableRetainPath{at:root,node:1}}", 1)
-	save = strings.NewReplacer("tableRegionSave(", "tableRegionSaveRetain(", "TableMessageReader", "TableRetainMessageReader", "TableWriter", "TableRetainWriter", "info.SaveBody(", "info.SaveBodyRetain(", "tableNodeMeasure(", "tableNodeMeasureRetain(", "tableNodeWrite(", "tableNodeWriteRetain(").Replace(save)
-	save = strings.Replace(save, "return w.Offset", "if !measure{retain.countLost(report)};return w.Offset", 1)
+	save = tableSourceFunction(save, "func tableRegionSave(")
+	save = tableSourceReplace(save, "a *TableArena,allocator ...TableAllocator) int64 {", "retain *TableRetain,report *TableReport,allocator ...TableAllocator) int64 {\nif retain!=nil{retain.idUsed=0;retain.clearPlaced()}", 1)
+	save = tableSourceReplace(save, "tableNumber(root,info,a,allocator...)", "tableNumber(root,info,nil,allocator...)", 1)
+	save = tableSourceReplace(save, "*ids=TableIds{Numbering:n}", "*ids=TableRetainIds{Numbering:n,Retain:retain,Path:tableRetainPath{at:root,node:1}}", 1)
+	save = tableSourceRewriter(save, "tableRegionSave(", "tableRegionSaveRetain(", "tableWireFrame", "tableRetainFrame", "TableWriter", "TableRetainWriter", "info.SaveBody(", "info.SaveBodyRetain(", "tableNodeMeasure(", "tableNodeMeasureRetain(", "tableNodeWrite(", "tableNodeWriteRetain(")
+	save = tableSourceReplace(save, "return w.Offset", "if !measure{retain.countLost(report)};return w.Offset", 1)
 	g.pf("%s", save)
 	g.pf("func tableNodeWriteRetain(w *TableRetainWriter,e *tableNodeEntry)bool{if e.info!=nil{path:=w.Ids.Path;w.Ids.Path=tableRetainPath{at:e.node};ok:=e.info.SaveBodyRetain(w,e.node);w.Ids.Path=path;return ok};length:=(*TableBlob)(e.node).Length;w.Raw(unsafe.Slice((*byte)(unsafe.Add(e.node,8)),int(length)));return !w.Overflow}\n")
-	g.pf("func tableNodeMeasureRetain(ids *TableRetainIds,e *tableNodeEntry)int64{w:=TableRetainWriter{Measuring:true,Ids:ids};if !tableNodeWriteRetain(&w,e){return -1};return w.Offset}\n")
+	g.pf("func tableNodeMeasureRetain(w *TableRetainWriter,ids *TableRetainIds,e *tableNodeEntry)int64{*w=TableRetainWriter{Measuring:true,Ids:ids};if !tableNodeWriteRetain(w,e){return -1};return w.Offset}\n")
 	if unitHasContainers(g.unit) {
 		g.pf("func(r *TableRetainReader)Take(sub TableRetainReader){r.tableRetainPlainReader.Take(sub.tableRetainPlainReader)}\n")
 	}
@@ -58,7 +51,7 @@ func (g *tableGen) emitRetainRuntime() {
 func tableRuntimeForUnit(regional bool) string {
 	s := tableRuntime()
 	if regional {
-		s = strings.Replace(s, "type TableTypeInfo struct {", "type TableTypeInfo struct {\nSaveBodyRetain func(*TableRetainWriter,unsafe.Pointer)bool\nLoadBodyRetain func(TableRetainReader,unsafe.Pointer)bool\nLoadMessageBodyRetain func(TableRetainMessageReader,unsafe.Pointer)(TableRetainMessageReader,bool)", 1)
+		s = tableSourceReplace(s, "type TableTypeInfo struct {", "type TableTypeInfo struct {\nSaveBodyRetain func(*TableRetainWriter,unsafe.Pointer)bool\nLoadBodyRetain func(TableRetainReader,unsafe.Pointer)bool\nLoadMessageBodyRetain func(TableRetainMessageReader,unsafe.Pointer)(TableRetainMessageReader,bool)", 1)
 	}
 	return s
 }
@@ -130,8 +123,8 @@ func (g *tableGen) emitRetainMember(st *ir.Struct) {
 				blobs |= 2
 			}
 			g.pf("func %sLoadRetain(region,wire []byte,retain *TableRetain,report *TableReport)*%s{return (*%s)(tableRegionLoadRetain(region,wire,%sTableType(),%sTableType().NodeType,%d,report,retain))}\n", n, typ, typ, n, n, blobs)
-			g.pf("func %sMeasureRetain(value *%s,retain *TableRetain)int64{return tableRegionSaveRetain(unsafe.Pointer(value),%sTableType(),nil,true,retain,nil)}\n", n, typ, n)
-			g.pf("func %sSaveRetain(value *%s,retain *TableRetain,buffer []byte,report *TableReport)int64{if report==nil{return -1};return tableRegionSaveRetain(unsafe.Pointer(value),%sTableType(),buffer,false,retain,report)}\n", n, typ, n)
+			g.pf("func %sMeasureRetain(value *%s,retain *TableRetain,allocator ...TableAllocator)int64{return tableRegionSaveRetain(unsafe.Pointer(value),%sTableType(),nil,true,retain,nil,allocator...)}\n", n, typ, n)
+			g.pf("func %sSaveRetain(value *%s,retain *TableRetain,buffer []byte,report *TableReport,allocator ...TableAllocator)int64{if report==nil{return -1};return tableRegionSaveRetain(unsafe.Pointer(value),%sTableType(),buffer,false,retain,report,allocator...)}\n", n, typ, n)
 		}
 	}
 	g.emitRetainMessageSurface(st)
@@ -143,12 +136,12 @@ func (g *tableGen) emitRetainMember(st *ir.Struct) {
 	side.emitTableWrite(st)
 	side.emitTableRead(st)
 	side.emitMessageRead(st)
-	source := retainBodyName.ReplaceAllString(side.body.String(), "${1}${2}Retain")
-	source = strings.NewReplacer("TableMessageReader", "TableRetainMessageReader", "TableWriter", "TableRetainWriter", "TableReader", "TableRetainReader", "TableIds", "TableRetainIds").Replace(source)
-	source = strings.ReplaceAll(source, "tableMapReadKey(elem,", "tableMapReadKey(elem.tableRetainPlainReader,")
-	source = strings.ReplaceAll(source, "tableMessageMapReadKey(*r,", "tableMessageMapReadKey(r.tableMessagePlainReader,")
-	// Scalar message reads borrow the ordinary fixed-width file reader.
-	source = strings.ReplaceAll(source, "TableRetainReader{Buffer:raw[:],Report:&r.Report}", "TableReader{Buffer:raw[:],Report:&r.Report}")
+	source := side.body.String()
+	if !retainBodyName.MatchString(source) {
+		panic("retaining body family has no source codecs")
+	}
+	source = retainBodyName.ReplaceAllString(source, "${1}${2}Retain")
+	source = tableSourceRewriter(source, "TableMessageReader", "TableRetainMessageReader", "TableWriter", "TableRetainWriter", "TableReader", "TableRetainReader", "TableIds", "TableRetainIds")
 	g.pf("%s", source)
 	g.needsMath = g.needsMath || side.needsMath
 	g.unsafeUsed = true
@@ -200,23 +193,25 @@ type TableRetainReader struct {tableRetainPlainReader;Retain *TableRetain;Path t
 func(r *TableRetainReader)Body()(TableRetainReader,bool){sub,ok:=r.tableRetainPlainReader.Body();return TableRetainReader{tableRetainPlainReader:sub,Retain:r.Retain,Path:r.Path},ok}
 func(r *TableRetainReader)capture(id uint64,kind uint8)bool{
  at:=r.Offset;if !r.Skip(kind){return false};if r.Retain==nil{return true};t:=r.Retain;p:=r.Path
- probe:=tableRetainIn{r:TableReader{Buffer:r.Buffer[at:r.Offset],Ids:r.Ids},w:TableWriter{Measuring:true}}
+ limit:=int64(len(t.Bytes))-t.Used-int64(26+p.depth*8);if limit<0{r.Report.RetainLost++;return true};probe:=tableRetainIn{r:TableReader{Buffer:r.Buffer[at:r.Offset],Ids:r.Ids},w:TableWriter{Measuring:true},limit:limit}
  if p.depth>len(p.steps)||!probe.payload(kind,0)||probe.r.Offset!=int64(len(probe.r.Buffer)){r.Report.RetainLost++;return true}
  need:=int64(26+p.depth*8)+probe.w.Offset;if need>0xffffffff||need>int64(len(t.Bytes))-t.Used{r.Report.RetainLost++;return true}
  b:=t.Bytes[t.Used:t.Used+need];clear(b[:26]);binary.LittleEndian.PutUint32(b,uint32(need));binary.LittleEndian.PutUint32(b[4:],p.node);binary.LittleEndian.PutUint32(b[8:],uint32(p.depth));binary.LittleEndian.PutUint32(b[12:],uint32(probe.w.Offset));binary.LittleEndian.PutUint64(b[16:],id);b[24]=kind
  for i:=0;i<p.depth;i++{binary.LittleEndian.PutUint32(b[26+8*i:],p.steps[i].ordinal);binary.LittleEndian.PutUint32(b[30+8*i:],p.steps[i].index)}
- write:=tableRetainIn{r:probe.r,w:TableWriter{Buffer:b[26+p.depth*8:]}};write.r.Offset=0;if !write.payload(kind,0)||write.w.Overflow{r.Report.RetainLost++;return true};t.Used+=need;t.Count++;r.Report.Retained++;return true
+ write:=tableRetainIn{r:probe.r,w:TableWriter{Buffer:b[26+p.depth*8:]},limit:limit};write.r.Offset=0;if !write.payload(kind,0)||write.w.Overflow{r.Report.RetainLost++;return true};t.Used+=need;t.Count++;r.Report.Retained++;return true
 }
 
-type tableRetainIn struct {r TableReader;w TableWriter}
-func(s *tableRetainIn)ref(zero bool)(uint64,bool){v,ok:=s.r.Leb();if !ok{return 0,false};if v==0{if !zero{return 0,false};s.w.Put64(0);return 0,true};id,ok:=s.r.Resolve(v);if !ok||id==0||id>=0xfffffffffffffffd{return 0,false};s.w.Put64(id);return id,true}
-func(s *tableRetainIn)raw(n int64)bool{if !s.r.Has(n){return false};s.w.Raw(s.r.Buffer[s.r.Offset:s.r.Offset+n]);s.r.Offset+=n;return !s.w.Overflow}
-func(s *tableRetainIn)framed(kind uint8,n int64,depth int)bool{at:=s.w.Offset;s.w.Put64(0);start:=s.w.Offset;if !s.content(kind,n,depth)||s.w.Offset-start>0xffffffff{return false};if !s.w.Measuring{binary.LittleEndian.PutUint32(s.w.Buffer[at:],uint32(s.w.Offset-start))};return true}
+type tableRetainIn struct {r TableReader;w TableWriter;limit int64}
+func(s *tableRetainIn)room(n int64)bool{return n>=0&&n<=s.limit-s.w.Offset}
+func tableRetainFileMinimum(kind uint8)int64{if n:=tableKindBytes(kind);n!=0{return n};switch kind{case 13:return 16;case 14,16:return 10;case 15,30:return 8;case 12,31,32,33:return 1};return 0}
+func(s *tableRetainIn)ref(zero bool)(uint64,bool){if !s.room(8){return 0,false};v,ok:=s.r.Leb();if !ok{return 0,false};if v==0{if !zero{return 0,false};s.w.Put64(0);return 0,true};id,ok:=s.r.Resolve(v);if !ok||id==0||id>=0xfffffffffffffffd{return 0,false};s.w.Put64(id);return id,true}
+func(s *tableRetainIn)raw(n int64)bool{if !s.room(n)||!s.r.Has(n){return false};s.w.Raw(s.r.Buffer[s.r.Offset:s.r.Offset+n]);s.r.Offset+=n;return !s.w.Overflow}
+func(s *tableRetainIn)framed(kind uint8,n int64,depth int)bool{if !s.room(8){return false};at:=s.w.Offset;s.w.Put64(0);start:=s.w.Offset;if !s.content(kind,n,depth)||s.w.Offset-start>0xffffffff{return false};if !s.w.Measuring{binary.LittleEndian.PutUint32(s.w.Buffer[at:],uint32(s.w.Offset-start))};return true}
 func(s *tableRetainIn)content(kind uint8,n int64,depth int)bool{
  if depth>64||!s.r.Has(n){return false};end:=s.r.Offset+n
  switch kind {
- case 13:for{ref,ok:=s.ref(true);if !ok{return false};if ref==0{break};if !s.r.Has(1){return false};k:=s.r.Get8();s.w.Put8(k);if !s.payload(k,depth)||s.r.Offset>end{return false}}
- case 14,16:if !s.r.Has(1){return false};k:=s.r.Get8();s.w.Put8(k);count,ok:=s.r.Leb();if !ok{return false};s.w.PutLeb(count);for i:=uint64(0);i<count;i++{if kind==16{if _,ok:=s.ref(false);!ok{return false};length,ok:=s.r.Leb();if !ok||length>uint64(end-s.r.Offset)||!s.framed(k,int64(length),depth+1){return false}}else if !s.payload(k,depth){return false};if s.r.Offset>end{return false}}
+ case 13:for{ref,ok:=s.ref(true);if !ok{return false};if ref==0{break};if !s.room(1)||!s.r.Has(1){return false};k:=s.r.Get8();s.w.Put8(k);if !s.payload(k,depth)||s.r.Offset>end{return false}}
+ case 14,16:if !s.room(1)||!s.r.Has(1){return false};k:=s.r.Get8();s.w.Put8(k);count,ok:=s.r.Leb();if !ok||!s.room(tableLebBytes(count)){return false};s.w.PutLeb(count);minimum:=tableRetainFileMinimum(k);if kind==16{minimum=16};if minimum<=0||count>uint64(max(int64(0),s.limit-s.w.Offset)/minimum)||count>uint64(max(int64(0),end-s.r.Offset)){return false};for i:=uint64(0);i<count;i++{if kind==16{if _,ok:=s.ref(false);!ok{return false};length,ok:=s.r.Leb();if !ok||length>uint64(end-s.r.Offset)||!s.framed(k,int64(length),depth+1){return false}}else if !s.payload(k,depth){return false};if s.r.Offset>end{return false}}
  case 15,30:if !s.payload(kind,depth){return false}
  case 17:return false
  default:if !s.raw(n){return false}
@@ -225,13 +220,14 @@ func(s *tableRetainIn)content(kind uint8,n int64,depth int)bool{
 func(s *tableRetainIn)payload(kind uint8,depth int)bool{
  if width:=tableKindBytes(kind);width!=0{return s.raw(width)}
  switch kind{
- case 12,31,32,33:n,ok:=s.r.Leb();if !ok||!s.r.Room(n){return false};s.w.PutLeb(n);return s.raw(int64(n))
+ case 12,31,32,33:n,ok:=s.r.Leb();if !ok||!s.r.Room(n)||!s.room(tableLebBytes(n)){return false};s.w.PutLeb(n);return s.raw(int64(n))
  case 13,14,16:n,ok:=s.r.Leb();return ok&&s.r.Room(n)&&s.framed(kind,int64(n),depth+1)
- case 15:id,ok:=s.ref(true);if !ok{return false};if id==0{return true};if !s.r.Has(1){return false};k:=s.r.Get8();s.w.Put8(k);n,ok:=s.r.Leb();return ok&&s.r.Room(n)&&s.framed(k,int64(n),depth+1)
+ case 15:id,ok:=s.ref(true);if !ok{return false};if id==0{return true};if !s.room(1)||!s.r.Has(1){return false};k:=s.r.Get8();s.w.Put8(k);n,ok:=s.r.Leb();return ok&&s.r.Room(n)&&s.framed(k,int64(n),depth+1)
  case 30:_,ok:=s.ref(true);return ok
  };return false
 }
 
+type tableRetainFrame struct {numbering TableNumbering;ids TableRetainIds;writer,measure TableRetainWriter}
 type TableRetainIds struct {known TableIds;slots [tableIdCapacity]int;Numbering *TableNumbering;Retain *TableRetain;Path tableRetainPath;Count int;Overflow,Lost bool}
 func(i *TableRetainIds)Ref(id uint64)uint64{before:=i.known.Count;ref:=i.known.Ref(id);if i.known.Overflow{i.Overflow=true;return 0};if i.known.Count!=before{i.Count++;i.slots[ref-1]=i.Count};return uint64(i.slots[ref-1])}
 func(i *TableRetainIds)recordRef(id uint64)uint64{lo,hi:=0,len(tableRetainKnown);for lo<hi{m:=lo+(hi-lo)/2;if tableRetainKnown[m]<id{lo=m+1}else{hi=m}};if lo<len(tableRetainKnown)&&tableRetainKnown[lo]==id{return i.Ref(id)};t:=i.Retain;if t==nil{i.Lost=true;return 0};for k:=0;k<t.idUsed;k++{if t.Ids[k].Id==id{return uint64(t.Ids[k].Slot)}};if t.idUsed==len(t.Ids){i.Lost=true;return 0};i.Count++;t.Ids[t.idUsed]=TableRetainId{id,i.Count};t.idUsed++;return uint64(i.Count)}

@@ -1329,6 +1329,27 @@ each read zero under `testing.AllocsPerRun`, and a soak over the whole corpus
 holds the allocation counter at zero. A nil `*TableReport` is allowed and every
 tolerance event still decides the same way.
 
+Variable tables add an arena for authoring and a caller-buffer region for
+reading. `RootBuilder.Init(pair)` uses a `TableAllocator` with paired `Alloc`
+and `Free` callbacks; omitting it uses Go-owned storage. `Alloc` returns zeroed,
+aligned bytes and may return an oversized slice. `Free` receives that exact
+original slice. `PackMeasure` releases its temporary numbering before `Lock`
+starts a separate numbering pass and packs the used region. Failed packing
+preserves the authoring graph; `Shutdown` releases its storage and is repeatable.
+
+For a loaded or locked root, pass `&pair` as the final argument to wire,
+message and cook writers to supply temporary storage. The same argument accepts
+`&builder.Arena` for authoring references. `TableWriteContext` selects these two
+existing inputs without treating an allocator as an address space. JSON and
+retaining file writers take the pair directly as their final argument.
+Every buffer whose size grows with the graph goes through that pair. With
+caller-backed scratch on Go 1.26.0, JSON and cook measurement and writing
+allocate zero Go objects; wire, message and retaining file measurement and
+writing allocate one typed activation frame per call. Those frames remain
+visible to Go's garbage collector. Loads, retaining loads and block filling
+allocate zero. `tables-go-allocator` certifies these counts on that exact
+toolchain and refuses to certify another version.
+
 `string(N)` and `bytes(N)` are an `[N]byte` beside an `int32` used length,
 arrays an `[N]T` beside an `int32` used count, `?T` a value beside a
 `<Name>Present` bool, and a union its tag beside one arm per variant.

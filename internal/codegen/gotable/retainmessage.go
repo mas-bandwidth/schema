@@ -3,23 +3,20 @@ package gotable
 import (
 	"fmt"
 	"github.com/mas-bandwidth/schema/v2/ir"
-	"strings"
 )
 
 func (g *tableGen) emitRetainMessageRuntime() {
 	g.pf("%s", goRetainMessageRuntime)
 	source := tableMessageRegionRuntime(g.unit)
-	start := strings.Index(source, "func tableMessageLoadInto(")
-	end := strings.Index(source, "func tableMessageHasExtent(")
-	source = source[start:end]
-	source = strings.NewReplacer("tableMessageLoadInto(", "tableMessageLoadIntoRetain(", "tableMessageRegionInto(", "tableMessageRegionIntoRetain(", "TableMessageReader", "TableRetainMessageReader", "t.LoadMessageBody(", "t.LoadMessageBodyRetain(").Replace(source)
-	source = strings.ReplaceAll(source, "tableMessageNodeOpen(r)", "tableMessageNodeOpen(&r.tableMessagePlainReader)")
-	source = strings.ReplaceAll(source, "tableMessageRecordScan(r,", "tableMessageRecordScan(&r.tableMessagePlainReader,")
-	source = strings.ReplaceAll(source, "tableMessageExtent(&walk,", "tableMessageExtent(&walk.tableMessagePlainReader,")
-	source = strings.Replace(source, "count,ok:=tableMessageNodeOpen(", "r.Retain.reset(nil,nil);count,ok:=tableMessageNodeOpen(", 1)
-	source = strings.Replace(source, "nodes.Good=true;", "nodes.Good=true;r.Retain.reset(base,directory);if r.Retain!=nil{r.Report.RetainLost+=unknown};", 1)
-	source = strings.Replace(source, "*r,ok=tableMessageLoadIntoRetain(*r,t,", "r.Path=tableRetainPath{at:unsafe.Add(base,entry.Offset),node:uint32(k+2)};*r,ok=tableMessageLoadIntoRetain(*r,t,", 1)
-	source = strings.Replace(source, "*r,ok=tableMessageLoadIntoRetain(*r,root,", "r.Path=tableRetainPath{at:out,node:1};*r,ok=tableMessageLoadIntoRetain(*r,root,", 1)
+	source = tableSourceSpan(source, "func tableMessageLoadInto(", "func tableMessageHasExtent(")
+	source = tableSourceRewriter(source, "tableMessageLoadInto(", "tableMessageLoadIntoRetain(", "tableMessageRegionInto(", "tableMessageRegionIntoRetain(", "TableMessageReader", "TableRetainMessageReader", "t.LoadMessageBody(", "t.LoadMessageBodyRetain(")
+	source = tableSourceReplace(source, "tableMessageNodeOpen(r)", "tableMessageNodeOpen(&r.tableMessagePlainReader)", -1)
+	source = tableSourceReplace(source, "tableMessageRecordScan(r,", "tableMessageRecordScan(&r.tableMessagePlainReader,", -1)
+	source = tableSourceReplace(source, "tableMessageExtent(&walk,", "tableMessageExtent(&walk.tableMessagePlainReader,", -1)
+	source = tableSourceReplace(source, "count,ok:=tableMessageNodeOpen(", "r.Retain.reset(nil,nil);count,ok:=tableMessageNodeOpen(", 1)
+	source = tableSourceReplace(source, "nodes.Good=true;", "nodes.Good=true;r.Retain.reset(base,directory);if r.Retain!=nil{r.Report.RetainLost+=unknown};", 1)
+	source = tableSourceReplace(source, "*r,ok=tableMessageLoadIntoRetain(*r,t,", "r.Path=tableRetainPath{at:unsafe.Add(base,entry.Offset),node:uint32(k+2)};*r,ok=tableMessageLoadIntoRetain(*r,t,", 1)
+	source = tableSourceReplace(source, "*r,ok=tableMessageLoadIntoRetain(*r,root,", "r.Path=tableRetainPath{at:out,node:1};*r,ok=tableMessageLoadIntoRetain(*r,root,", 1)
 	g.pf("%s", source)
 }
 func (g *tableGen) emitRetainMessageSurface(st *ir.Struct) {

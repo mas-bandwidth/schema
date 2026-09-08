@@ -5,6 +5,16 @@ const Go Backend = 1 << 3
 
 func init() {
 	define(Go,
+		Name{Name: "tableWireFrame", What: "one collector-visible writer frame per call"},
+		Name{Name: "tableRetainFrame", What: "one collector-visible retaining writer frame per call"},
+		Name{Name: "tableRegionContainerEdges", What: "one cursor lifetime per container"},
+		Name{Name: "tableExtentContainer", What: "one cursor lifetime per container"},
+		Name{Name: "tableRetainFileMinimum", What: "bounded retained file expansion"},
+		Name{Name: "tablePackNodeBytes", What: "independent packing passes"},
+		Name{Name: "tablePackOffsets", What: "independent packing passes"},
+		Name{Name: "tableRegionPackMeasure", What: "independent packing passes"},
+		Name{Name: "TableWriteContext", What: "writer allocation and address selection"},
+		Name{Name: "tableWriteOptions", What: "writer allocation and address selection"},
 		Name{Name: "TableRetainMessageReader", What: "the bounded retention codec family"},
 		Name{Name: "tableMessagePlainReader", What: "the bounded retention codec family"},
 		Name{Name: "tableRetainMessageIn", What: "the bounded retention codec family"},

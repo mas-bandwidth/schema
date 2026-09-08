@@ -503,11 +503,14 @@
     {
       "name": "go-containers",
       "when": "pull-request",
-      "why": "Go generated container runtime controls: sorting, ascending recovery, duplicate replacement, exact key domains, erased list elements and count-cap refusal.",
+      "why": "Go generated runtime controls: containers, block fill races, caller allocation ownership and the pinned managed allocation floor, and bounded retention.",
       "targets": [
         "tables-go-containers-negative-controls",
         "tables-go-block-race-negative-control",
-        "tables-go-block-fill-refuser-negative-control"
+        "tables-go-block-fill-refuser-negative-control",
+        "tables-go-allocator-negative-controls",
+        "tables-go-allocator-runtime-negative-control",
+        "tables-go-retain-negative-controls"
       ]
     }
   ],

@@ -7,16 +7,16 @@ type regionValue[T any] struct {
 	storage []byte
 }
 
-func regionRow[T, R, A any, O ~uint8](unit, root string,
+func regionRow[T, R, A, C any, O ~uint8](unit, root string,
 	loadMeasure func([]byte) int64,
 	load func([]byte, []byte, *R) *T,
-	measure func(*T, ...*A) int64,
-	save func(*T, []byte, ...*A) int64,
+	measure func(*T, ...C) int64,
+	save func(*T, []byte, ...C) int64,
 	fromJson func([]byte, *R) (*T, []byte, bool),
-	toJsonMeasure func(*T) int64,
-	toJson func(*T, []byte) int64,
-	cookMeasure func(*T, ...*A) int64,
-	cook func(*T, []byte, O, ...*A) bool,
+	toJsonMeasure func(*T, ...A) int64,
+	toJson func(*T, []byte, ...A) int64,
+	cookMeasure func(*T, ...C) int64,
+	cook func(*T, []byte, O, ...C) bool,
 	snap func(*R) report,
 ) codec {
 	return codec{unit: unit, root: root, loadMeasure: loadMeasure,

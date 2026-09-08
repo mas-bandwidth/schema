@@ -57,8 +57,8 @@ func (g *tableGen) emitCookWriteSurface(st *ir.Struct) {
 	// Cook already names the read handle in Go. CookFrom is the claimed
 	// name-first writer spelling; the handle remains source compatible.
 	if ir.VariableTables(g.unit)[n] {
-		g.pf("func %sCookMeasure(value *%s,arena ...*TableArena) int64 {return tableCookRegion(unsafe.Pointer(value),%sTableType(),nil,TableByteOrderLittle,true,tableOptionalArena(arena))}\n", n, typ, n)
-		g.pf("func %sCookFrom(value *%s,buffer []byte,order TableByteOrder,arena ...*TableArena) bool {return tableCookRegion(unsafe.Pointer(value),%sTableType(),buffer,order,false,tableOptionalArena(arena))>=0}\n", n, typ, n)
+		g.pf("func %sCookMeasure(value *%s,context ...TableWriteContext) int64 {arena,allocator:=tableWriteOptions(context);return tableCookRegion(unsafe.Pointer(value),%sTableType(),nil,TableByteOrderLittle,true,arena,allocator)}\n", n, typ, n)
+		g.pf("func %sCookFrom(value *%s,buffer []byte,order TableByteOrder,context ...TableWriteContext) bool {arena,allocator:=tableWriteOptions(context);return tableCookRegion(unsafe.Pointer(value),%sTableType(),buffer,order,false,arena,allocator)>=0}\n", n, typ, n)
 	} else {
 		size := ir.RecordLayout(g.unit, st).Size
 		align := max(int64(8), ir.RecordLayout(g.unit, st).Align)
@@ -123,8 +123,8 @@ func tableCookFixed(p unsafe.Pointer,t *TableTypeInfo,buffer []byte,order TableB
 
 const goCookRegionWriteRuntime = `
 func(w *tableCookWriter) reference(slot *int64,at int64)bool {if *slot==0{return true};if w.numbering==nil{return false};i,ok:=w.numbering.Index(slot);if !ok{return false};w.put(at,uint64(64+w.numbering.entries[i-1].offset-at),8);return true}
-func tableCookRegion(p unsafe.Pointer,t *TableTypeInfo,buffer []byte,order TableByteOrder,measure bool,a *TableArena)int64 {
- if order!=TableByteOrderLittle&&order!=TableByteOrderBig{return -1};n,ok:=tableNumber(p,t,a);if !ok{return -1};defer n.Release();w:=tableCookWriter{order:order,numbering:&n};data,align:=int64(0),int64(8)
+func tableCookRegion(p unsafe.Pointer,t *TableTypeInfo,buffer []byte,order TableByteOrder,measure bool,a *TableArena,allocator ...TableAllocator)int64 {
+ if order!=TableByteOrderLittle&&order!=TableByteOrderBig{return -1};n,ok:=tableNumber(p,t,a,allocator...);if !ok{return -1};defer n.Release();w:=tableCookWriter{order:order,numbering:&n};data,align:=int64(0),int64(8)
  for i:=range n.entries {e:=&n.entries[i];size,alignment:=int64(0),int64(8);if e.info!=nil {size=int64(e.info.CookSize);alignment=int64(e.info.CookAlign)}else {length:=uint64(*(*uint32)(e.node));size=8+int64(length);if e.id==tableStringTypeId{size++}};align=max(align,alignment);data=(data+alignment-1)& -alignment;e.offset=data;w.at=64+data+size;if e.info!=nil&&!w.record(e.node,e.info,64+data,true){return -1};data=w.at-64}
  data=(data+align-1)& -align;total:=64+data+int64(len(n.entries))*16;if measure{return total};if int64(len(buffer))<total{return -1};clear(buffer[:total]);w.buffer=buffer;w.header(data,int64(len(n.entries)),align)
  for i:=range n.entries {e:=&n.entries[i];at:=64+e.offset;if e.info!=nil {w.at=at+int64(e.info.CookSize);if !w.record(e.node,e.info,at,true){return -1}}else {length:=uint64(*(*uint32)(e.node));w.put(at,length,4);copy(buffer[at+8:at+8+int64(length)],unsafe.Slice((*byte)(unsafe.Add(e.node,8)),int(length)))};w.put(64+data+int64(i)*16,uint64(e.offset),8);w.put(64+data+int64(i)*16+8,e.id,8)};return total

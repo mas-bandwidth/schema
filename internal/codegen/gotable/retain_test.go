@@ -168,3 +168,43 @@ func TestReplacement(t *testing.T){
 }
 `)
 }
+
+func TestRetainFileCapacityBeforeExpansion(t *testing.T) {
+	runGenerated(t, `package probe
+ table Child { n int32 }
+ table Root { child *Child }
+ `, `package probe
+ import("testing";"unsafe")
+ func TestFileCapacity(t *testing.T){
+  body:=append([]byte{6,100},make([]byte,100)...)
+  probe:=tableRetainIn{r:TableReader{Buffer:body},w:TableWriter{Measuring:true},limit:16}
+  if probe.content(14,int64(len(body)),0)||probe.r.Offset!=2{t.Fatalf("count expanded past available resolved capacity at %d",probe.r.Offset)}
+  var root Root;store:=TableRetain{Bytes:make([]byte,42),Ids:make([]TableRetainId,8)};store.reset(unsafe.Pointer(&root),[]TableNodeDirEntry{{TypeId:RootTableType().Id}})
+  wire:=append([]byte{byte(len(body))},body...);var report TableReport;r:=TableRetainReader{tableRetainPlainReader:TableReader{Buffer:wire,Report:&report},Retain:&store,Path:tableRetainPath{at:unsafe.Pointer(&root),node:1}}
+  if !r.capture(123,14)||report.Malformed||report.RetainLost!=1||report.Retained!=0||store.Used!=0{t.Fatalf("whole-record capacity %+v",report)}
+ }
+ `)
+}
+
+func TestRetainSourceSeamsFailClosed(t *testing.T) {
+	cases := []struct {
+		name string
+		call func()
+	}{
+		{"missing", func() { tableSourceReplace("one", "missing", "other", 1) }},
+		{"duplicate", func() { tableSourceReplace("one one", "one", "other", 1) }},
+		{"span", func() { tableSourceSpan("end start", "start", "end") }},
+		{"function", func() { tableSourceFunction("func missing() {", "func missing(") }},
+		{"rewrite", func() { tableSourceRewriter("one", "absent", "two") }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Fatal("source drift did not panic")
+				}
+			}()
+			tc.call()
+		})
+	}
+}

@@ -44,7 +44,7 @@ func tableMessageRuntime(u *ir.Unit) string {
 	runtime := goMessageRuntime
 	if len(variableTableNames(u)) > 0 {
 		runtime = strings.Replace(runtime, "type TableMessageReader struct {", "type TableMessageReader struct { Nodes TableNodeMap;", 1)
-		runtime += "\ntype TableMessageWriter struct { TableBitWriter; IndexBits int64; Numbering *TableNumbering }\n"
+		runtime += "\ntype TableMessageWriter struct { TableBitWriter; IndexBits int64; Numbering *TableNumbering; numbering TableNumbering }\n"
 		runtime += tableMessageRegionRuntime(u)
 	} else {
 		runtime += "\ntype TableMessageWriter struct { TableBitWriter; IndexBits int64 }\n"

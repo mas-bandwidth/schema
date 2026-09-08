@@ -26,6 +26,23 @@ type edit struct{ old, new string }
 // sabotages maps a control's name to what it breaks. Each entry names the
 // rule it removes, so a reader of a red control knows what was taken away.
 var sabotages = map[string][]edit{
+	// Go ownership, managed activation frames, and bounded retention.
+	"go-allocator-original-slice": {
+		{old: ";return b}", new: ";return b[:n] /* SABOTAGED */}"},
+	},
+	"go-allocator-pair": {
+		{old: "if len(allocator)>0{n.allocator=allocator[0]}", new: "if len(allocator)>0{n.allocator=TableAllocator{}} /* SABOTAGED */"},
+	},
+	"go-allocator-frame": {
+		{old: "type tableWireFrame struct", new: "var tableAllocationProbe []byte // SABOTAGED\ntype tableWireFrame struct"},
+		{old: "frame:=tableWireFrame{};var ok bool", new: "frame:=tableWireFrame{};tableAllocationProbe=make([]byte,64);var ok bool"},
+	},
+	"go-retain-file-count-floor": {
+		{old: "||count>uint64(max(int64(0),s.limit-s.w.Offset)/minimum)", new: "/* SABOTAGED */"},
+	},
+	"go-retain-message-depth": {
+		{old: "case 13,14,16:return s.framed(e,depth+1)", new: "case 13,14,16:return s.framed(e,depth) /* SABOTAGED */"},
+	},
 	// Packet defaults: remove only the constructor byte copy.
 	"packet-defaults-c-constructor-bytes": {{
 		old: "\t\t\tg.pf(\" };\\n        memcpy( value.%s, bytes, sizeof( bytes ) );\\n    }\\n\", f.Name)",
