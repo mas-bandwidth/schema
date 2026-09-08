@@ -70,9 +70,9 @@ func generateViewFiles(u *ir.Unit, closure map[string]bool, variable, targets ma
 	for _, st := range v.outside {
 		g.emitTableDescriptor(st)
 	}
+	g.outside = false
 	_, _, unions := v.vocabularies()
 	for _, un := range unions {
-		g.outside = !v.reached[un.Name]
 		g.emitUnionArmDescriptors(un)
 	}
 	g.outside = false

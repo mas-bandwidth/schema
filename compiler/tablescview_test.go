@@ -42,7 +42,7 @@ int main(void) {
 }
 
 func TestCTableViewListing(t *testing.T) {
-	for _, path := range []string{"../tables/examples", "../tables/pointers", "../tables/maps", "../tables/lists", "../tables/arms", "../examples"} {
+	for _, path := range []string{"../tables/examples", "../tables/pointers", "../tables/maps", "../tables/lists", "../tables/arms", "../examples", "../examples-wide"} {
 		t.Run(filepath.Base(path), func(t *testing.T) {
 			c := New()
 			paths, err := filepath.Glob(filepath.Join(path, "*.schema"))

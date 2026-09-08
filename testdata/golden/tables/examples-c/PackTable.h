@@ -110,6 +110,7 @@ typedef struct TableReport
     int32_t duplicate;
     int malformed;         /* framing damage; decode stopped, partial result kept */
     int32_t widened;        /* exact widening of a known kind */
+    int32_t retained, retain_lost; /* opt-in unknown-field round trips */
     int refused;           /* unsupported file form, not framing damage */
     int reason;            /* SCHEMA_TABLE_REFUSAL_REASON */
 } TableReport;
@@ -1017,7 +1018,7 @@ static SCHEMA_UNUSED int table_message_entry_read(const uint8_t * in,int64_t siz
 
 static SCHEMA_UNUSED int table_announce_once(TableVocabulary * v,const uint8_t * buffer,int64_t bytes,TableReport * report)
 {
- TableReader r;int seen_version=0,seen_words=0;const uint8_t * words=NULL;int64_t words_bytes=0,at=0,count=0,nodes=0;
+ TableReader r;int seen_version=0,seen_words=0;const uint8_t * words=NULL;int64_t words_bytes=0,at=0,count=0,nodes=0,touched=0;
  if(!table_wire_open(&r,buffer,bytes,report))return 0;
  for(;;){
   uint64_t ref,id;uint8_t kind;
@@ -1041,8 +1042,9 @@ static SCHEMA_UNUSED int table_announce_once(TableVocabulary * v,const uint8_t *
  if(seen_version!=1||seen_words!=1||r.offset!=r.size)goto malformed;
  while(at<words_bytes){
   TableMessageEntry * entry;int64_t i,began=at;
-  if(count>=v->max_entries || v->entries==NULL){report->refused=1;report->reason=SCHEMA_TABLE_VOCABULARY_TOO_LARGE;return 0;}
-  entry=&v->entries[count];
+  if(v->entries==NULL){report->refused=1;report->reason=SCHEMA_TABLE_NO_VOCABULARY;goto refused;}
+  if(count>=v->max_entries){report->refused=1;report->reason=SCHEMA_TABLE_VOCABULARY_TOO_LARGE;goto refused;}
+  entry=&v->entries[count];touched=count+1;
   if(!table_message_entry_read(words,words_bytes,&at,entry))goto malformed;
   if(entry->id==UINT64_C(0xfffffffffffffffe)||entry->id==UINT64_C(0xfffffffffffffffd))goto malformed;
   if(entry->id==UINT64_MAX && nodes++>0)goto malformed;
@@ -1058,7 +1060,9 @@ static SCHEMA_UNUSED int table_announce_once(TableVocabulary * v,const uint8_t *
  at=0;{int64_t i;for(i=0;i<count;i++)if(!table_message_entry_read(words,words_bytes,&at,v->entries+i))goto malformed;}
  v->count=count;v->ref_bits=table_bits_required(0,count);v->announced=1;return 1;
 malformed:
- report->malformed=1;return 0;
+ report->malformed=1;
+refused:
+ if(touched)memset(v->entries,0,(size_t)touched*sizeof(*v->entries));return 0;
 }
 static SCHEMA_UNUSED int announce_read(TableVocabulary * v,const uint8_t * buffer,int64_t bytes,TableReport * report)
 {
@@ -1796,7 +1800,7 @@ static SCHEMA_UNUSED int ship_entry_load_body( TableReader * r, ShipEntry * valu
                 if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
                 if ( sub.size >= 2 )
                 {
-                    uint8_t elem_kind; uint64_t count, keep, i;
+                    uint8_t elem_kind; uint64_t count, kept, i;
                     if ( !table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->malformed = 1; }
                     else
                     {
@@ -1805,9 +1809,9 @@ static SCHEMA_UNUSED int ship_entry_load_body( TableReader * r, ShipEntry * valu
                             if ( !(table_kind_widens(elem_kind,4)) ) { r->report->kind_mismatch++; break; }
                             r->report->widened++;
                         }
-                        keep = count; if ( keep > 4 ) { keep = 4; r->report->clamped++; }
+                        kept = count; if ( kept > 4 ) { kept = 4; r->report->clamped++; }
                         value->hardpoints_count = 0;
-                        for ( i = 0; i < keep; i++ )
+                        for ( i = 0; i < kept; i++ )
                         {
                             switch ( elem_kind )
                             {
@@ -2270,7 +2274,7 @@ static SCHEMA_UNUSED int global_settings_load_body( TableReader * r, GlobalSetti
                 if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
                 if ( sub.size >= 2 )
                 {
-                    uint8_t elem_kind; uint64_t count, keep, i;
+                    uint8_t elem_kind; uint64_t count, kept, i;
                     if ( !table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->malformed = 1; }
                     else
                     {
@@ -2279,8 +2283,8 @@ static SCHEMA_UNUSED int global_settings_load_body( TableReader * r, GlobalSetti
                             if ( !(table_kind_widens(elem_kind,10)) ) { r->report->kind_mismatch++; break; }
                             r->report->widened++;
                         }
-                        keep = count; if ( keep > 3 ) { keep = 3; r->report->clamped++; }
-                        for ( i = 0; i < keep; i++ )
+                        kept = count; if ( kept > 3 ) { kept = 3; r->report->clamped++; }
+                        for ( i = 0; i < kept; i++ )
                         {
                             switch ( elem_kind )
                             {
@@ -2442,6 +2446,8 @@ static SCHEMA_UNUSED int schema_tabledemo_global_settings_message_extent_(TableM
  default:break;}if(!table_message_skip(r,entry))return 0;
  }
 }
+#define SCHEMA_TABLEDEMO_PACK_CONFIG_SHIPS_AT(value,key) SCHEMA_TABLE_KEYED_AT((value).ships,(key),SHIP_TYPE_MAX)
+#define SCHEMA_TABLEDEMO_PACK_CONFIG_THRESHOLDS_AT(value,key) SCHEMA_TABLE_KEYED_AT((value).thresholds,(key),DIFFICULTY_MAX)
 static SCHEMA_UNUSED int schema_tabledemo_pack_config_wire_ships_( TableWriter * w, const PackConfig * value )
 {
     uint64_t count = 0; int32_t i;
@@ -2784,7 +2790,7 @@ static SCHEMA_UNUSED int pack_config_load_body( TableReader * r, PackConfig * va
                 {
                     uint8_t elem_kind; uint64_t count, i;
                     if ( !table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->malformed = 1; break; }
-                    if ( elem_kind != 13 ) { if ( !(0) ) { r->report->kind_mismatch++; break; } r->report->widened++; }
+                    if ( elem_kind != 13 ) { if ( !(table_kind_widens(elem_kind,13)) ) { r->report->kind_mismatch++; break; } r->report->widened++; }
                     for ( i = 0; i < count; i++ )
                     {
                         uint64_t key_ref, key; int32_t slot = -1; TableReader elem;
@@ -2882,18 +2888,18 @@ static SCHEMA_UNUSED int pack_config_load_body( TableReader * r, PackConfig * va
                 if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
                 if ( sub.size >= 2 )
                 {
-                    uint8_t elem_kind; uint64_t count, keep, i;
+                    uint8_t elem_kind; uint64_t count, kept, i;
                     if ( !table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->malformed = 1; }
                     else
                     {
                         if ( elem_kind != 13 )
                         {
-                            if ( !(0) ) { r->report->kind_mismatch++; break; }
+                            if ( !(table_kind_widens(elem_kind,13)) ) { r->report->kind_mismatch++; break; }
                             r->report->widened++;
                         }
-                        keep = count; if ( keep > 3 ) { keep = 3; r->report->clamped++; }
+                        kept = count; if ( kept > 3 ) { kept = 3; r->report->clamped++; }
                         value->reserves_count = 0;
-                        for ( i = 0; i < keep; i++ )
+                        for ( i = 0; i < kept; i++ )
                         {
                             TableReader elem;
                             if ( !table_reader_span( &sub, &elem ) ) { r->report->malformed = 1; goto end_reserves; }
@@ -3055,7 +3061,10 @@ static SCHEMA_UNUSED int pack_config_load_message_body(TableMessageReader * r,Pa
   case UINT64_C(0xd011f7c3c15285c2):slot=0;break;
   case UINT64_C(0xa8216aa1c554cb8a):slot=1;break;
   case UINT64_C(0x7d573c625719c1a5):slot=2;break;
-  default:break;} if(slot<0){r->report->unknown++;if(!table_message_skip(r,element_entry))goto malformed;continue;}
+  default:break;} if(slot<0){r->report->unknown++;
+  { ShipEntry scratch;memset(&scratch,0,sizeof(scratch));
+  if(!ship_entry_load_message_body(r,&scratch))return 0;
+  }continue;}
   if(!ship_entry_load_message_body(r,&value->ships[slot]))return 0;
  } }
  break;}
@@ -3067,7 +3076,14 @@ static SCHEMA_UNUSED int pack_config_load_message_body(TableMessageReader * r,Pa
   case UINT64_C(0x483d9e6c1ccd1f9b):slot=0;break;
   case UINT64_C(0x9ff3121d30f88d52):slot=1;break;
   case UINT64_C(0x58c7b5d87587287c):slot=2;break;
-  default:break;} if(slot<0){r->report->unknown++;if(!table_message_skip(r,element_entry))goto malformed;continue;}
+  default:break;} if(slot<0){r->report->unknown++;
+  { int32_t scratch;memset(&scratch,0,sizeof(scratch));
+  { uint64_t lo,hi;if(!table_message_number(r,element_entry,&lo,&hi))goto malformed;
+   int64_t decoded=(int64_t)lo;(void)hi;
+   if(decoded<0ll){decoded=0ll;r->report->clamped++;}
+   if(decoded>1000ll){decoded=1000ll;r->report->clamped++;}
+   scratch=(int32_t)decoded; }
+  }continue;}
   { uint64_t lo,hi;if(!table_message_number(r,element_entry,&lo,&hi))goto malformed;
    int64_t decoded=(int64_t)lo;(void)hi;
    if(decoded<0ll){decoded=0ll;r->report->clamped++;}
@@ -3104,6 +3120,46 @@ static SCHEMA_UNUSED int schema_tabledemo_pack_config_message_extent_(TableMessa
  default:break;}if(!table_message_skip(r,entry))return 0;
  }
 }
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define gunner_settings_load_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define gunner_settings_measure_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define gunner_settings_save_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define gunner_settings_load_retain_messages(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retained fields have no announced slots: save the FILE form or relay the original message. */
+#define gunner_settings_save_retain_messages(...) ((void)sizeof(struct { int retention_message_write_requires_file_form : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define ship_entry_load_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define ship_entry_measure_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define ship_entry_save_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define ship_entry_load_retain_messages(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retained fields have no announced slots: save the FILE form or relay the original message. */
+#define ship_entry_save_retain_messages(...) ((void)sizeof(struct { int retention_message_write_requires_file_form : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define global_settings_load_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define global_settings_measure_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define global_settings_save_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define global_settings_load_retain_messages(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retained fields have no announced slots: save the FILE form or relay the original message. */
+#define global_settings_save_retain_messages(...) ((void)sizeof(struct { int retention_message_write_requires_file_form : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define pack_config_load_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define pack_config_measure_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define pack_config_save_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define pack_config_load_retain_messages(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retained fields have no announced slots: save the FILE form or relay the original message. */
+#define pack_config_save_retain_messages(...) ((void)sizeof(struct { int retention_message_write_requires_file_form : -1; }))
 /* ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ---- */
 
 /* gunner_settings_open: match the header and POINT. On a match the bytes ARE what this

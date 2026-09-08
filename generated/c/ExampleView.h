@@ -94,7 +94,6 @@ typedef struct TableReport
     int32_t duplicate;
     int malformed;         /* framing damage; decode stopped, partial result kept */
     int32_t widened;        /* exact widening of a known kind */
-    int32_t retained, retain_lost; /* opt-in unknown-field round trips */
     int refused;           /* unsupported file form, not framing damage */
     int reason;            /* SCHEMA_TABLE_REFUSAL_REASON */
 } TableReport;

@@ -129,11 +129,14 @@ func (g *tableGen) emitUnionWireDeclarations(unions []*ir.Union) {
 func (g *tableGen) emitUnionWire(un *ir.Union) {
 	// One payload writer per arm: lengths are measured from the current
 	// vocabulary, exactly as a field's framed payload is measured.
-	for _, v := range un.Variants {
+	for ordinal, v := range un.Variants {
 		if v.Void() {
 			continue
 		}
 		g.pf("static SCHEMA_UNUSED int %s( TableWriter * w, const %s * value )\n{\n", g.sym(un.Name, "wire_arm_"+v.Name), un.Name)
+		if g.retain {
+			g.pf("    retention=table_retain_step(retention,%d,0);\n", ordinal)
+		}
 		expr := armValue("(*value)", v)
 		g.wireBarePayload(v.F, expr, "    ")
 		g.pf("    return !w->overflow;\n}\n\n")
@@ -153,8 +156,11 @@ func (g *tableGen) emitUnionWire(un *ir.Union) {
 	g.pf("        default: return 0;\n    }\n    return !w->overflow;\n}\n\n")
 	g.pf("static SCHEMA_UNUSED int %s( TableReader * r, %s * value, int element )\n{\n", g.unionWireName(un, "load"), un.Name)
 	g.pf("    uint64_t ref; uint8_t kind; TableReader arm;\n")
+	if g.retain {
+		g.pf("    table_retain_discard(retention,0,0);\n")
+	}
 	g.pf("    if ( !table_reader_leb( r, &ref ) || ref > r->id_count ) { r->report->malformed = 1; return 0; }\n    if ( ref == 0 ) { value->type = 0; return 1; }\n    if ( element ) { value->type = 0; }\n    if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }\n    kind = table_reader_get8( r );\n    if ( !table_reader_span( r, &arm ) ) { r->report->malformed = 1; return 0; }\n    value->type = 0;\n    switch ( table_reader_id_at( r, ref ) )\n    {\n")
-	for _, v := range un.Variants {
+	for ordinal, v := range un.Variants {
 		g.pf("        case 0x%016xull:\n        {\n", ir.TableWireId(v.WireName()))
 		k := armWireKind(v)
 		g.pf("            if ( kind != %d && !table_kind_widens( kind, %d ) ) { r->report->kind_mismatch++; break; }\n", k, k)
@@ -168,6 +174,9 @@ func (g *tableGen) emitUnionWire(un *ir.Union) {
 			g.pf("                default: break;\n            }\n")
 		}
 		if !v.Void() {
+			if g.retain {
+				g.pf("            retention=table_retain_step(retention,%d,0);\n", ordinal)
+			}
 			g.wireReadArm(v, armValue("(*value)", v), "            ")
 			g.wireRefusalCheck("            ")
 		}
@@ -206,6 +215,7 @@ func (g *tableGen) wireBarePayload(f *ir.Field, expr, ind string) {
 		}
 		g.pf("%s{ int32_t i; table_writer_put8( w, %d ); table_writer_leb( w, (uint64_t)(%s) );\n", ind, ir.TableWireScalarKind(f), n)
 		g.pf("%s  for ( i=0; i<%s; i++ ) {\n", ind, n)
+		g.retainIndex(f, "i", ind+"    ")
 		g.wirePayload(f, expr+"[i]", ind+"    ")
 		g.pf("%s  }\n%s}\n", ind, ind)
 	case ir.TableWireScalarKind(f) == tkTable:
@@ -281,8 +291,5 @@ func (g *tableGen) emitUnionArmDescriptors(un *ir.Union) {
 }
 
 func (g *tableGen) armDescriptorSymbol(owner, arm string) string {
-	if g.outside {
-		return g.sym(owner, "outside_arm_field_"+arm)
-	}
 	return g.sym(owner, "arm_field_"+arm)
 }

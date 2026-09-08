@@ -111,6 +111,7 @@ typedef struct TableReport
     int32_t duplicate;
     int malformed;         /* framing damage; decode stopped, partial result kept */
     int32_t widened;        /* exact widening of a known kind */
+    int32_t retained, retain_lost; /* opt-in unknown-field round trips */
     int refused;           /* unsupported file form, not framing damage */
     int reason;            /* SCHEMA_TABLE_REFUSAL_REASON */
 } TableReport;
@@ -1018,7 +1019,7 @@ static SCHEMA_UNUSED int table_message_entry_read(const uint8_t * in,int64_t siz
 
 static SCHEMA_UNUSED int table_announce_once(TableVocabulary * v,const uint8_t * buffer,int64_t bytes,TableReport * report)
 {
- TableReader r;int seen_version=0,seen_words=0;const uint8_t * words=NULL;int64_t words_bytes=0,at=0,count=0,nodes=0;
+ TableReader r;int seen_version=0,seen_words=0;const uint8_t * words=NULL;int64_t words_bytes=0,at=0,count=0,nodes=0,touched=0;
  if(!table_wire_open(&r,buffer,bytes,report))return 0;
  for(;;){
   uint64_t ref,id;uint8_t kind;
@@ -1042,8 +1043,9 @@ static SCHEMA_UNUSED int table_announce_once(TableVocabulary * v,const uint8_t *
  if(seen_version!=1||seen_words!=1||r.offset!=r.size)goto malformed;
  while(at<words_bytes){
   TableMessageEntry * entry;int64_t i,began=at;
-  if(count>=v->max_entries || v->entries==NULL){report->refused=1;report->reason=SCHEMA_TABLE_VOCABULARY_TOO_LARGE;return 0;}
-  entry=&v->entries[count];
+  if(v->entries==NULL){report->refused=1;report->reason=SCHEMA_TABLE_NO_VOCABULARY;goto refused;}
+  if(count>=v->max_entries){report->refused=1;report->reason=SCHEMA_TABLE_VOCABULARY_TOO_LARGE;goto refused;}
+  entry=&v->entries[count];touched=count+1;
   if(!table_message_entry_read(words,words_bytes,&at,entry))goto malformed;
   if(entry->id==UINT64_C(0xfffffffffffffffe)||entry->id==UINT64_C(0xfffffffffffffffd))goto malformed;
   if(entry->id==UINT64_MAX && nodes++>0)goto malformed;
@@ -1059,7 +1061,9 @@ static SCHEMA_UNUSED int table_announce_once(TableVocabulary * v,const uint8_t *
  at=0;{int64_t i;for(i=0;i<count;i++)if(!table_message_entry_read(words,words_bytes,&at,v->entries+i))goto malformed;}
  v->count=count;v->ref_bits=table_bits_required(0,count);v->announced=1;return 1;
 malformed:
- report->malformed=1;return 0;
+ report->malformed=1;
+refused:
+ if(touched)memset(v->entries,0,(size_t)touched*sizeof(*v->entries));return 0;
 }
 static SCHEMA_UNUSED int announce_read(TableVocabulary * v,const uint8_t * buffer,int64_t bytes,TableReport * report)
 {
@@ -1283,6 +1287,7 @@ static SCHEMA_UNUSED int padded_row_load_message_body(TableMessageReader *,Padde
 static SCHEMA_UNUSED int padded_frame_load_message_body(TableMessageReader *,PaddedFrame *);
 static SCHEMA_UNUSED int schema_blockdemo_padded_row_message_extent_(TableMessageReader *,int64_t *);
 static SCHEMA_UNUSED int schema_blockdemo_padded_frame_message_extent_(TableMessageReader *,int64_t *);
+#define SCHEMA_BLOCKDEMO_PADDED_ROW_TEAMS_AT(value,key) SCHEMA_TABLE_KEYED_AT((value).teams,(key),TEAM_MAX)
 static SCHEMA_UNUSED int schema_blockdemo_padded_row_wire_label_( TableWriter * w, const PaddedRow * value )
 {
     if ( value->label_length < 0 || value->label_length > 15 ) { return 0; }
@@ -1674,7 +1679,7 @@ static SCHEMA_UNUSED int padded_row_load_body( TableReader * r, PaddedRow * valu
                 if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
                 if ( sub.size >= 2 )
                 {
-                    uint8_t elem_kind; uint64_t count, keep, i;
+                    uint8_t elem_kind; uint64_t count, kept, i;
                     if ( !table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->malformed = 1; }
                     else
                     {
@@ -1683,8 +1688,8 @@ static SCHEMA_UNUSED int padded_row_load_body( TableReader * r, PaddedRow * valu
                             if ( !(table_kind_widens(elem_kind,7)) ) { r->report->kind_mismatch++; break; }
                             r->report->widened++;
                         }
-                        keep = count; if ( keep > 4 ) { keep = 4; r->report->clamped++; }
-                        for ( i = 0; i < keep; i++ )
+                        kept = count; if ( kept > 4 ) { kept = 4; r->report->clamped++; }
+                        for ( i = 0; i < kept; i++ )
                         {
                             switch ( elem_kind )
                             {
@@ -2013,7 +2018,13 @@ static SCHEMA_UNUSED int padded_row_load_message_body(TableMessageReader * r,Pad
   case UINT64_C(0xecf3d3a7c1693e2d):slot=1;break;
   case UINT64_C(0xcf00d78fd5953f1c):slot=2;break;
   case UINT64_C(0xc416c97e0d3218b3):slot=3;break;
-  default:break;} if(slot<0){r->report->unknown++;if(!table_message_skip(r,element_entry))goto malformed;continue;}
+  default:break;} if(slot<0){r->report->unknown++;
+  { uint8_t scratch;memset(&scratch,0,sizeof(scratch));
+  { uint64_t lo,hi;if(!table_message_number(r,element_entry,&lo,&hi))goto malformed;
+   uint64_t decoded=(uint64_t)lo;(void)hi;
+   if(decoded>255ull){decoded=255ull;r->report->clamped++;}
+   scratch=(uint8_t)decoded; }
+  }continue;}
   { uint64_t lo,hi;if(!table_message_number(r,element_entry,&lo,&hi))goto malformed;
    uint64_t decoded=(uint64_t)lo;(void)hi;
    if(decoded>255ull){decoded=255ull;r->report->clamped++;}
@@ -2295,18 +2306,18 @@ static SCHEMA_UNUSED int padded_frame_load_body( TableReader * r, PaddedFrame * 
                 if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
                 if ( sub.size >= 2 )
                 {
-                    uint8_t elem_kind; uint64_t count, keep, i;
+                    uint8_t elem_kind; uint64_t count, kept, i;
                     if ( !table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->malformed = 1; }
                     else
                     {
                         if ( elem_kind != 13 )
                         {
-                            if ( !(0) ) { r->report->kind_mismatch++; break; }
+                            if ( !(table_kind_widens(elem_kind,13)) ) { r->report->kind_mismatch++; break; }
                             r->report->widened++;
                         }
-                        keep = count; if ( keep > 64 ) { keep = 64; r->report->clamped++; }
+                        kept = count; if ( kept > 64 ) { kept = 64; r->report->clamped++; }
                         value->rows_count = 0;
-                        for ( i = 0; i < keep; i++ )
+                        for ( i = 0; i < kept; i++ )
                         {
                             TableReader elem;
                             if ( !table_reader_span( &sub, &elem ) ) { r->report->malformed = 1; goto end_rows; }
@@ -2331,7 +2342,7 @@ static SCHEMA_UNUSED int padded_frame_load_body( TableReader * r, PaddedFrame * 
                 if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
                 if ( sub.size >= 2 )
                 {
-                    uint8_t elem_kind; uint64_t count, keep, i;
+                    uint8_t elem_kind; uint64_t count, kept, i;
                     if ( !table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->malformed = 1; }
                     else
                     {
@@ -2340,9 +2351,9 @@ static SCHEMA_UNUSED int padded_frame_load_body( TableReader * r, PaddedFrame * 
                             if ( !(table_kind_widens(elem_kind,6)) ) { r->report->kind_mismatch++; break; }
                             r->report->widened++;
                         }
-                        keep = count; if ( keep > 12 ) { keep = 12; r->report->clamped++; }
+                        kept = count; if ( kept > 12 ) { kept = 12; r->report->clamped++; }
                         value->blob_length = 0;
-                        for ( i = 0; i < keep; i++ )
+                        for ( i = 0; i < kept; i++ )
                         {
                             switch ( elem_kind )
                             {
@@ -2497,6 +2508,26 @@ static SCHEMA_UNUSED int schema_blockdemo_padded_frame_message_extent_(TableMess
  default:break;}if(!table_message_skip(r,entry))return 0;
  }
 }
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define padded_row_load_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define padded_row_measure_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define padded_row_save_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define padded_row_load_retain_messages(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retained fields have no announced slots: save the FILE form or relay the original message. */
+#define padded_row_save_retain_messages(...) ((void)sizeof(struct { int retention_message_write_requires_file_form : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define padded_frame_load_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define padded_frame_measure_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define padded_frame_save_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define padded_frame_load_retain_messages(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retained fields have no announced slots: save the FILE form or relay the original message. */
+#define padded_frame_save_retain_messages(...) ((void)sizeof(struct { int retention_message_write_requires_file_form : -1; }))
 /* ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ---- */
 
 /* padded_row_open: match the header and POINT. On a match the bytes ARE what this

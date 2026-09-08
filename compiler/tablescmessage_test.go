@@ -272,3 +272,16 @@ value uint64 }
  free(region);return 0;
  }`, slot))
 }
+
+func TestCTableAnnouncementFailureClearsEntries(t *testing.T) {
+	u := unitFromSource(t, "package probe\ntable Root { a int32\nb string(8)\nc bool }\n")
+	runCTableWireProbe(t, u, `#include "ProbeTable.h"
+ int main(void){uint8_t wire[2048];TableMessageEntry entries[1];TableVocabulary v;TableReport report={0};int64_t n=announce(wire,sizeof(wire));size_t i;
+ if(n<=0)return 1;memset(entries,0xa5,sizeof(entries));v=table_vocabulary(entries,1);
+ if(announce_read(&v,wire,n,&report)||!report.refused||report.reason!=SCHEMA_TABLE_VOCABULARY_TOO_LARGE)return 2;
+ for(i=0;i<sizeof(entries);i++)if(((uint8_t*)entries)[i])return 3;
+ v=table_vocabulary(NULL,1);memset(&report,0,sizeof(report));if(announce_read(&v,wire,n,&report)||report.reason!=SCHEMA_TABLE_NO_VOCABULARY)return 4;
+ {TableMessageEntry full[kTableMessageEntriesHere];int64_t at;size_t j;int failures=0;for(at=0;at<n;at++){memset(full,0,sizeof(full));v=table_vocabulary(full,kTableMessageEntriesHere);report=(TableReport){0};wire[at]^=0x80;
+ if(!announce_read(&v,wire,n,&report)){failures++;for(j=0;j<sizeof(full);j++)if(((uint8_t *)full)[j])return 5;}wire[at]^=0x80;}if(!failures)return 6;}return 0;
+ }`)
+}

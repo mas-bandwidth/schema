@@ -104,6 +104,8 @@ func tablePut(width int) string { return fmt.Sprintf("table_writer_put%d", width
 func tableGet(width int) string { return fmt.Sprintf("table_reader_get%d", width*8) }
 
 type tableGen struct {
+	retain bool // emit the opt-in parallel body family
+
 	messageSlots     map[string]uint64
 	descriptorUnions map[string]bool
 	outside          bool // descriptors outside the checked table closure carry no wire ids
@@ -343,6 +345,7 @@ typedef struct TableReport
     int32_t duplicate;
     int malformed;         /* framing damage; decode stopped, partial result kept */
     int32_t widened;        /* exact widening of a known kind */
+    int32_t retained, retain_lost; /* opt-in unknown-field round trips */
     int refused;           /* unsupported file form, not framing damage */
     int reason;            /* SCHEMA_TABLE_REFUSAL_REASON */
 } TableReport;
@@ -722,6 +725,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			}
 			for _, st := range members {
 				g.owner = st
+				g.emitKeyedAccessors(st)
 				if g.fileWire() {
 					g.emitWireWrite(st)
 					g.emitWireRead(st)
@@ -744,7 +748,10 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 					}
 				}
 			}
+			g.emitRetainBodies(members, unions)
 			g.emitVariableSurface(members)
+			g.emitRetainRoots(members)
+			g.emitRetainRefusals(members)
 			g.emitCookSurface(members)
 			g.emitCookWriteSurface(members)
 			g.emitRelocatabilityPreamble()
@@ -796,6 +803,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 					g.emitUnionWire(un)
 				}
 			}
+			g.emitRetainBodies(nil, g.fileWireUnions())
 			g.pf("/* no tables declared or referenced in this file — codecs are emitted\n")
 			g.pf("   for the table closure only (`table` declarations and what they reach) */\n")
 		}
@@ -881,6 +889,7 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 	h.WriteString(tableMessageForm(u, g.anyVariable))
 	if g.anyVariable {
 		h.WriteString(tableCookGraphRuntime)
+		h.WriteString(g.retainRuntime())
 	}
 	h.WriteString("\n")
 	h.WriteString(g.body.String())

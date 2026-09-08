@@ -100,6 +100,7 @@ build/tables-generated-c/.stamp: bin/schema make/c.mk test/tables/G1.schema $(wi
 	./bin/schema generate --lang c --out build/tables-generated-c/backend tables/backend
 	./bin/schema generate --lang c --out build/tables-generated-c/r2 test/tables/R2.schema
 	./bin/schema generate --lang c --out build/tables-generated-c/r1 test/tables/R1.schema
+	./bin/schema generate --lang c --out build/tables-generated-c/rt1 test/tables/RT1.schema
 	./bin/schema generate --lang c --out build/tables-generated-c/k2 test/tables/K2.schema
 	./bin/schema generate --lang c --out build/tables-generated-c/k1 test/tables/K1.schema
 	./bin/schema generate --lang c --out build/tables-generated-c/a2 test/tables/A2.schema
@@ -135,7 +136,7 @@ TABLES_CFLAGS := -std=c99 -Wall -Wextra -Werror -Wshadow -Wtype-limits $(C_TAUTO
 # these.
 TABLES_CFLAGS_CONTROL := $(subst -O2,-O0,$(TABLES_CFLAGS))
 
-C_CONFORMANCE_SOURCES = test/conformance/c/main.c \
+C_CONFORMANCE_SOURCES = test/conformance/c/main.c test/conformance/c/retain.c build/tables-generated-c/rt1/RT1Table.c \
 	test/conformance/c/unit_tblg1.c build/tables-generated-c/g1/G1Table.c \
 	test/conformance/c/unit_tblp2.c build/tables-generated-c/p2/P2Table.c \
 	test/conformance/c/unit_streamdemo.c build/tables-generated-c/stream/StreamTable.c \
@@ -173,7 +174,7 @@ C_CONFORMANCE_SOURCES = test/conformance/c/main.c \
 # Each unit's translation unit gets ONLY its own unit on the include path, which
 # is what keeps two units' identically-named headers from meeting. The driver's
 # own headers come from test/conformance/c.
-C_CONFORMANCE_INCLUDES := -Ibuild/tables-generated-c/g1 -Ibuild/tables-generated-c/p2 -Ibuild/tables-generated-c/stream -Ibuild/tables-generated-c/blobs -Ibuild/tables-generated-c/vocab9 -Ibuild/tables-generated-c/vocab -Ibuild/tables-generated-c/backend -Ibuild/tables-generated-c/r2 -Ibuild/tables-generated-c/r1 -Ibuild/tables-generated-c/k2 -Ibuild/tables-generated-c/k1 -Ibuild/tables-generated-c/a2 -Ibuild/tables-generated-c/a1 -Ibuild/tables-generated-c/m2 -Ibuild/tables-generated-c/m1 -Ibuild/tables-generated-c/messages -Ibuild/tables-generated-c/wide -I$(SERIALIZE_C) -Ibuild/tables-generated-c/scalars -Ibuild/tables-generated-c/scalars2 -Itest/conformance/c -Ibuild/tables-generated-c/examples \
+C_CONFORMANCE_INCLUDES := -Ibuild/tables-generated-c/rt1 -Ibuild/tables-generated-c/g1 -Ibuild/tables-generated-c/p2 -Ibuild/tables-generated-c/stream -Ibuild/tables-generated-c/blobs -Ibuild/tables-generated-c/vocab9 -Ibuild/tables-generated-c/vocab -Ibuild/tables-generated-c/backend -Ibuild/tables-generated-c/r2 -Ibuild/tables-generated-c/r1 -Ibuild/tables-generated-c/k2 -Ibuild/tables-generated-c/k1 -Ibuild/tables-generated-c/a2 -Ibuild/tables-generated-c/a1 -Ibuild/tables-generated-c/m2 -Ibuild/tables-generated-c/m1 -Ibuild/tables-generated-c/messages -Ibuild/tables-generated-c/wide -I$(SERIALIZE_C) -Ibuild/tables-generated-c/scalars -Ibuild/tables-generated-c/scalars2 -Itest/conformance/c -Ibuild/tables-generated-c/examples \
 	-Ibuild/tables-generated-c/v1 -Ibuild/tables-generated-c/v2 \
 	-Ibuild/tables-generated-c/p1 -Ibuild/tables-generated-c/p3 \
 	-Ibuild/tables-generated-c/block -Ibuild/tables-generated-c/pointers
@@ -320,6 +321,7 @@ conformance-negative-control-c: build/conformance-harness
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/backend tables/backend
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/r2 test/tables/R2.schema
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/r1 test/tables/R1.schema
+	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/rt1 test/tables/RT1.schema
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/k2 test/tables/K2.schema
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/k1 test/tables/K1.schema
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/a2 test/tables/A2.schema
@@ -598,11 +600,13 @@ update-goldens-c: build/tables-generated-c/.stamp
 # The same registry listing oracle as the reference, through the C surface.
 .PHONY: tables-c-view
 tables-c-view: bin/schema test/c-tables/view_main.c
+	@rm -rf build/c-view
 	@mkdir -p build/c-view
 	@set -e; for entry in $(VIEW_CORPUS); do \
 		dir=$${entry%%:*}; pkg=$${entry##*:}; \
 		cap=$$(printf '%s' "$$pkg" | cut -c1 | tr 'a-z' 'A-Z')$$(printf '%s' "$$pkg" | cut -c2-); \
-		./bin/schema generate --lang c --out build/c-view/$$dir tables/$$dir; \
+		source=tables/$$dir; if [ "$$dir" = wide ]; then source=examples-wide; fi; \
+		./bin/schema generate --lang c --out build/c-view/$$dir $$source; \
 		$(CC) $(TABLES_CFLAGS) -Ibuild/c-view/$$dir -I$(SERIALIZE_C) \
 			-DVIEW_HEADER="\"$${cap}View.h\"" test/c-tables/view_main.c \
 			build/c-view/$$dir/*Table.c build/c-view/$$dir/*View.c -o build/c-view/prog-$$pkg -lm; \
@@ -721,9 +725,10 @@ test-c: tables-c-wire-fuzz-negative-control
 # Maps and lists use the C++ reference's pinned file bytes and exact region
 # sizes. Both allocator-backed construction and caller-owned loads are checked
 # through lock, save, and JSON under native execution and ASan/UBSan.
-build/tables-generated-c/collections.stamp: bin/schema make/c.mk $(wildcard tables/maps/*.schema) $(wildcard tables/lists/*.schema)
+build/tables-generated-c/collections.stamp: bin/schema make/c.mk $(wildcard tables/maps/*.schema) $(wildcard tables/lists/*.schema) $(wildcard tables/arms/*.schema)
 	./bin/schema generate --lang c --out build/tables-generated-c/maps tables/maps
 	./bin/schema generate --lang c --out build/tables-generated-c/lists tables/lists
+	./bin/schema generate --lang c --out build/tables-generated-c/arms tables/arms
 	@touch $@
 
 build/c-collections-maps: build/tables-generated-c/collections.stamp test/c-tables/collections_maps.c test/c-tables/collections.h
@@ -747,16 +752,17 @@ tables-c-collections: build/c-collections-maps build/c-collections-lists build/c
 
 test-c tables-c: tables-c-collections
 
-build/collections-cpp/.stamp: bin/schema make/c.mk $(wildcard tables/maps/*.schema) $(wildcard tables/lists/*.schema)
+build/collections-cpp/.stamp: bin/schema make/c.mk $(wildcard tables/maps/*.schema) $(wildcard tables/lists/*.schema) $(wildcard tables/arms/*.schema)
 	./bin/schema generate --lang cpp --out build/collections-cpp/maps tables/maps
 	./bin/schema generate --lang cpp --out build/collections-cpp/lists tables/lists
+	./bin/schema generate --lang cpp --out build/collections-cpp/arms tables/arms
 	@touch $@
 
-build/c-collections-fuzz: build/tables-generated-c/collections.stamp test/c-tables/collections_fuzz_maps.c test/c-tables/collections_fuzz_lists.c test/c-tables/wire_fuzz_main.c $(wildcard test/conformance/c/*.h)
-	$(CC) $(TABLES_CFLAGS) -DSCHEMA_C_COLLECTIONS_FUZZ -Itest/conformance/c -Ibuild/tables-generated-c test/c-tables/wire_fuzz_main.c test/c-tables/collections_fuzz_maps.c test/c-tables/collections_fuzz_lists.c build/tables-generated-c/maps/*Table.c build/tables-generated-c/lists/*Table.c -o $@ -lm
+build/c-collections-fuzz: build/tables-generated-c/collections.stamp test/c-tables/collections_fuzz_maps.c test/c-tables/collections_fuzz_lists.c test/c-tables/collections_fuzz_arms.c test/c-tables/wire_fuzz_main.c $(wildcard test/conformance/c/*.h)
+	$(CC) $(TABLES_CFLAGS) -DSCHEMA_C_COLLECTIONS_FUZZ -Itest/conformance/c -Ibuild/tables-generated-c test/c-tables/wire_fuzz_main.c test/c-tables/collections_fuzz_maps.c test/c-tables/collections_fuzz_lists.c test/c-tables/collections_fuzz_arms.c build/tables-generated-c/maps/*Table.c build/tables-generated-c/lists/*Table.c build/tables-generated-c/arms/*Table.c -o $@ -lm
 
-build/c-collections-fuzz-asan: build/tables-generated-c/collections.stamp test/c-tables/collections_fuzz_maps.c test/c-tables/collections_fuzz_lists.c test/c-tables/wire_fuzz_main.c $(wildcard test/conformance/c/*.h)
-	$(CC) $(TABLES_CFLAGS_CONTROL) $(C_SANITIZE) -DSCHEMA_C_COLLECTIONS_FUZZ -Itest/conformance/c -Ibuild/tables-generated-c test/c-tables/wire_fuzz_main.c test/c-tables/collections_fuzz_maps.c test/c-tables/collections_fuzz_lists.c build/tables-generated-c/maps/*Table.c build/tables-generated-c/lists/*Table.c -o $@ -lm
+build/c-collections-fuzz-asan: build/tables-generated-c/collections.stamp test/c-tables/collections_fuzz_maps.c test/c-tables/collections_fuzz_lists.c test/c-tables/collections_fuzz_arms.c test/c-tables/wire_fuzz_main.c $(wildcard test/conformance/c/*.h)
+	$(CC) $(TABLES_CFLAGS_CONTROL) $(C_SANITIZE) -DSCHEMA_C_COLLECTIONS_FUZZ -Itest/conformance/c -Ibuild/tables-generated-c test/c-tables/wire_fuzz_main.c test/c-tables/collections_fuzz_maps.c test/c-tables/collections_fuzz_lists.c test/c-tables/collections_fuzz_arms.c build/tables-generated-c/maps/*Table.c build/tables-generated-c/lists/*Table.c build/tables-generated-c/arms/*Table.c -o $@ -lm
 
 build/cpp-collections-fuzz: build/collections-cpp/.stamp test/c-tables/collections_fuzz.cpp test/c-tables/wire_fuzz_main.c test/conformance/c/driver.h
 	$(CXX) -std=c++17 -Wall -Wextra -Werror -O2 -Itest/conformance/c -Ibuild/collections-cpp test/c-tables/collections_fuzz.cpp -o $@

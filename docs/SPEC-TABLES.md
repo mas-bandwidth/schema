@@ -1036,11 +1036,13 @@ enum is keyed.
   INDEX. Go's own bounds check still stands behind the array, so the failure
   mode is a wrong slot rather than a wrong page.
 
-  **C likewise stores a plain array.** Use
-  `SCHEMA_TABLE_KEYED_AT( hull.turrets, key, SHIP_TYPE_MAX )` for a key. The
-  explicit enum bound preserves both refusals when the array has decayed to a
-  pointer. The key is evaluated once, and the result is an lvalue. A direct C
-  array subscript remains the caller's responsibility.
+  **C likewise stores a plain array.** Its generated per-field accessor is
+  `SCHEMA_<PACKAGE>_<TABLE>_<FIELD>_AT(value, key)`. It supplies the declared
+  enum maximum itself, evaluates each argument once, and returns an lvalue;
+  const values remain const. For a pointer, pass `*pointer` as the value.
+  The generic `SCHEMA_TABLE_KEYED_AT(array, key, count)` is its implementation
+  helper; raw callers are responsible for supplying the correct count.
+  Direct C array subscripts likewise remain the caller's responsibility.
 
   **ITERATION is still the surface a
   consumer of a whole array should reach for**, below, because it needs no
@@ -7039,6 +7041,20 @@ edit and a name that is free today must not become a collision tomorrow. **The
 conformance rows below live on POINTERED units** for the same reason, and the
 fixed class's own row is the refusal.
 
+**The C surface** is `root_load_retain`, `root_measure_retain` and
+`root_save_retain`, with `root_load_retain_messages` taking a parallel
+`TableRetain` array for the batch. `TableRetainId` is the C spelling of the
+caller-owned ID entry, since C has no nested types. Fixed-root calls and
+`root_save_retain_messages` are C99 macros that fail at the call site with a
+named diagnostic. Ordinary bodies carry no retention parameter or branch;
+the opt-in family reuses the field emitters with an explicit context passed
+by value. Its private resolved records carry directory/path anchors and full
+IDs. The resolving walk permits 64 framed levels and commits only complete
+records that fit the caller's remaining capacity. A zero-bit message count
+cannot bypass that output bound. Saving measures each retained frame once
+before emitting its bytes. `TableReport.retained` and `retain_lost` carry the
+load and save outcomes; `SaveRetain` requires a report.
+
 **THE SURFACE: the caller's buffer, threaded through three calls.**
 
 ```cpp
@@ -10327,6 +10343,7 @@ in build version (§20.5).
   ```
   BuilderInit  BuilderShutdown  BuilderLock  BuilderRoot
   BuilderInitWithAllocator
+  LoadMessageBodyRetain  MeasureRetainWithAllocator  SaveRetainWithAllocator
   LoadMeasureMessages  LoadMeasureMessagesEx
   SaveMessageBody  LoadMessageBody
   MeasureMessagesWithAllocator  SaveMessagesWithAllocator

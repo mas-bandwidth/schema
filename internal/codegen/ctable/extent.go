@@ -169,15 +169,25 @@ func (g *tableGen) emitWireExtentField(f *ir.Field, r string, bounded bool, ind 
 		kind := ir.TableWireScalarKind(e)
 		done := b + "_done"
 		g.pf("%s  if(%s.size>=2) { uint64_t %s_count;\n", ind, b, b)
-		g.pf("%s    if(table_reader_get8(&%s)!=%d || !table_reader_leb(&%s,&%s_count)) { goto %s; }\n", ind, b, kind, b, b, done)
+		g.pf("%s    uint8_t wire_kind=table_reader_get8(&%s);\n", ind, b)
+		g.pf("%s    if((wire_kind!=%d && !(%s)) || !table_reader_leb(&%s,&%s_count)) { goto %s; }\n", ind, kind, wireElementWidenTest(f, kind, "wire_kind"), b, b, done)
 		if f.IsList() || f.IsMap() {
 			typ := g.sequenceType(f)
+			g.pf("%s    int64_t floor=%d;\n", ind, sequenceFloor(f))
+			if ir.TableKindSigned(kind) || kind >= tkU8 && kind <= tkU64 || kind == tkF64 {
+				for source := 1; source <= 29; source++ {
+					if ir.TableKindWidens(source, kind) {
+						g.pf("%s    if(wire_kind==%d)floor=%d;\n", ind, source, tableKindWidth(source))
+					}
+				}
+			}
 			g.pf("%s    if(%s_count>INT32_MAX) { %s.report->reason=11; return 0; }\n", ind, b, b)
-			g.pf("%s    if(%s_count>(uint64_t)((%s.size-%s.offset)/%d)) { %s.report->reason=10; return 0; }\n", ind, b, b, b, sequenceFloor(f), b)
+			g.pf("%s    if(%s_count>(uint64_t)((%s.size-%s.offset)/floor)) { %s.report->reason=10; return 0; }\n", ind, b, b, b, b)
 			g.pf("%s    if(!table_extent_reserve(at,(int64_t)%s_count,sizeof(%s),SCHEMA_TABLE_ALIGNOF(%s))) { return 0; }\n", ind, b, typ, typ)
 		}
 		if g.fieldHasExtent(e) {
 			g.pf("%s    { uint64_t i; for(i=0;i<%s_count;i++) {\n", ind, b)
+			g.pf("%s      if(!table_reader_has(&%s,1)) { goto %s; }\n", ind, b, done)
 			if f.KeyEnum != "" {
 				g.pf("%s      uint64_t key; if(!table_reader_leb(&%s,&key)) { goto %s; }\n", ind, b, done)
 			}

@@ -1243,42 +1243,7 @@ func (g *tableGen) emitTableReadScalarFrom(f *ir.Field, kind int, lvalue, ind, r
 
 // tableFieldTypeName renders a field's schema-facing type name for the
 // descriptor ("float32", "bits(9)", "Grade", "GunnerSettings").
-func tableFieldTypeName(f *ir.Field) string {
-	if f.IsMap() {
-		return ir.FieldTypeSpelling(f)
-	}
-	switch f.Type.Kind {
-	case ir.TBool:
-		return "bool"
-	case ir.TInt:
-		prefix := "int"
-		if !f.Type.Signed {
-			prefix = "uint"
-		}
-		return fmt.Sprintf("%s%d", prefix, f.Type.Width)
-	case ir.TFixed:
-		prefix := "fixed"
-		if !f.Type.Signed {
-			prefix = "ufixed"
-		}
-		return fmt.Sprintf("%s(%d, %d)", prefix, f.Type.Width-f.Type.FracBits, f.Type.FracBits)
-	case ir.TBits:
-		return fmt.Sprintf("bits(%d)", f.Type.Width)
-	case ir.TFloat32:
-		return "float32"
-	case ir.TFloat64:
-		return "float64"
-	case ir.TWString:
-		return "wstring"
-	case ir.TString:
-		return "string"
-	case ir.TBytes:
-		return "bytes"
-	case ir.TNamed:
-		return f.Type.Name
-	}
-	return "?"
-}
+func tableFieldTypeName(f *ir.Field) string { return ir.TableTypeSpelling(f) }
 
 // bigToDouble renders a big.Int as a C double literal for the descriptor's
 // range fields (precision past 2^53 is documented as lost).
@@ -1676,4 +1641,15 @@ func (g *tableGen) descriptorJSON(f *ir.Field) string {
 		return "NULL"
 	}
 	return fmt.Sprintf("%q", ir.TableFieldJsonKey(f))
+}
+
+// Each keyed accessor owns its declaration's bound, including after a caller
+// receives the containing value through a pointer. Both arguments occur once.
+func (g *tableGen) emitKeyedAccessors(st *ir.Struct) {
+	for _, f := range st.Fields {
+		if f.KeyEnum != "" {
+			name := "SCHEMA_" + ir.RustConstName(g.unit.Package) + "_" + ir.RustConstName(st.Name) + "_" + ir.RustConstName(f.Name) + "_AT"
+			g.pf("#define %s(value,key) SCHEMA_TABLE_KEYED_AT((value).%s,(key),%s)\n", name, f.Name, enumMaxConst(f.KeyEnum))
+		}
+	}
 }

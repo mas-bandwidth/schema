@@ -805,7 +805,8 @@ three, the message overload of `LoadMeasure` for a pointered batch's one region,
 convention. **The verbs are PLURAL** because the form's primitive is a batch of
 bodies of one root and a single message is the batch of one. C++, C and the
 independent tool engine carry the bitpacked form-`2` path. The C conformance
-and mutation drivers exercise fixed and variable message roots. The BODY's rules are the ones a port already has,
+and mutation drivers exercise fixed and variable message roots. The BODY's
+rules are the ones a port already has,
 read off a bit stream instead of a byte one: references resolve against the
 announced vocabulary instead of a trailer, elision and every tolerance rule
 above are unchanged, and the two rules that DO move are named on the page,

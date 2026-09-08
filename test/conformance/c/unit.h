@@ -102,6 +102,13 @@
 /* Variable batch_roots are loaded into driver-owned regions. The generated load
    itself neither allocates nor follows a reference. */
 #define SCHEMA_CONFORMANCE_GRAPH_CODEC( TYPE, FN ) \
+    static int64_t schema_conformance_retain_fuzz_##TYPE(const uint8_t * wire,int64_t bytes,uint8_t ** saved,ConformanceReport * report,int * loaded,int64_t * extent) \
+    { \
+     static uint8_t store[1<<20];static TableRetainId ids[(1<<20)/8];TableRetain retain={0};TableReport inner={0};uint8_t * region;const TYPE * root;int64_t size=-1; \
+     retain.bytes=store;retain.capacity=sizeof(store);retain.ids=ids;retain.id_capacity=(1<<20)/8;*extent=FN##_load_measure(wire,bytes);region=(uint8_t *)malloc((size_t)(*extent>0?*extent:1));if(!region)return -1; \
+     root=FN##_load_retain(region,*extent,wire,bytes,&retain,&inner);*loaded=root!=NULL;if(root)size=FN##_measure_retain(root,&retain); \
+     if(size>=0){*saved=(uint8_t *)malloc((size_t)(size?size:1));if(!*saved)size=-1;else size=FN##_save_retain(root,&retain,*saved,size,&inner);}free(region);SCHEMA_CONFORMANCE_COPY_REPORT(inner,report);report->retained=inner.retained;report->retain_lost=inner.retain_lost;return size; \
+    } \
     static int64_t schema_conformance_message_fuzz_##TYPE(const uint8_t * wire,int64_t bytes,uint8_t ** saved,ConformanceReport * report,int * loaded,int64_t * extent) \
     { \
      static TableMessageEntry entries[kTableMessageEntriesHere];static TableVocabulary vocabulary; \
@@ -171,11 +178,11 @@
 
 #define SCHEMA_CONFORMANCE_GRAPH_ROW( UNIT, TYPE ) \
     { #UNIT, #TYPE, schema_conformance_message_fuzz_##TYPE, schema_conformance_message_##TYPE, schema_conformance_load_##TYPE, schema_conformance_measure_##TYPE, \
-      schema_conformance_save_##TYPE, schema_conformance_from_json_##TYPE, schema_conformance_to_json_##TYPE, schema_conformance_make_##TYPE, schema_conformance_load_measure_##TYPE, schema_conformance_cook_measure_##TYPE, schema_conformance_cook_##TYPE }
+      schema_conformance_save_##TYPE, schema_conformance_from_json_##TYPE, schema_conformance_to_json_##TYPE, schema_conformance_make_##TYPE, schema_conformance_load_measure_##TYPE, schema_conformance_cook_measure_##TYPE, schema_conformance_cook_##TYPE, schema_conformance_retain_fuzz_##TYPE }
 
 #define SCHEMA_CONFORMANCE_ROW( UNIT, TYPE ) \
     { #UNIT, #TYPE, schema_conformance_message_fuzz_##TYPE, schema_conformance_message_##TYPE, schema_conformance_load_##TYPE, schema_conformance_measure_##TYPE, \
       schema_conformance_save_##TYPE, schema_conformance_from_json_##TYPE, \
-      schema_conformance_to_json_##TYPE, schema_conformance_make_##TYPE, NULL, schema_conformance_cook_measure_##TYPE, schema_conformance_cook_##TYPE }
+      schema_conformance_to_json_##TYPE, schema_conformance_make_##TYPE, NULL, schema_conformance_cook_measure_##TYPE, schema_conformance_cook_##TYPE, NULL }
 
 #endif /* SCHEMA_CONFORMANCE_UNIT_H */

@@ -3762,9 +3762,9 @@ func (c *checker) checkClaimedNames() {
 					}
 					add(base+"FindMut", whyMap, d.DeclPos())
 				}
-				// AND AN UNBOUNDED ARRAY claims three names on the table
-				// that declares it: <Table><Field> followed by Add, Each and
-				// Erase (docs/SPEC-TABLES.md §2.9, §11). Three where a map
+				// AND AN UNBOUNDED ARRAY claims four names on the table
+				// that declares it: <Table><Field> followed by Add, Each,
+				// Erase and At (docs/SPEC-TABLES.md §2.9, §11). Four where a map
 				// claims eight, and the difference is the key on both sides:
 				// an append needs none, so there is no entry to name, no
 				// insert, no find and no index to accelerate.
@@ -3869,6 +3869,7 @@ var tableGeneratedVerbs = []string{
 	"BuilderInit", "BuilderInitWithAllocator", "BuilderShutdown", "BuilderLock", "BuilderRoot",
 	"OpenEx", "BlockOpenEx", "BlockOpenConst", "BlockOpenConstEx", "BlockOpenCheck", "BlockConst", "BlockBytesConst",
 	"CookWithAllocator", "CookMeasureWithAllocator", "CookExtent",
+	"LoadMessageBodyRetain", "MeasureRetainWithAllocator", "SaveRetainWithAllocator",
 	"LoadMeasureMessages", "LoadMeasureMessagesEx", "SaveMessageBody", "LoadMessageBody", "MeasureMessagesWithAllocator", "SaveMessagesWithAllocator",
 	"LoadMeasureEx", "MeasureWithAllocator", "SaveWithAllocator", "ToJsonWithAllocator", "ToJsonMeasureWithAllocator",
 	"BlockStorageCreate", "BlockStorageDestroy", "BlockType",

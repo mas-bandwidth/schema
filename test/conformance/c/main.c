@@ -612,6 +612,22 @@ static int surface_message(const char * out)
  return 0;
 }
 
+static int surface_retain(const char * out,int saved)
+{
+ int i,j;
+ for(i=0;i<num_lines;i++){
+  const Line * f=lines+i;int message=!strcmp(f->field[0],"retain-message"),shift=message;uint8_t * a=NULL,*wire,*answer=NULL;size_t an=0,n;int counters[4]={0},ok;int64_t size=0,ids;char summary[128];
+  if(!message&&strcmp(f->field[0],"retain"))continue;
+  if(strcmp(f->field[2+shift],"tblrt1")||strcmp(f->field[3+shift],"Node"))return 1;
+  if(message){for(j=0;j<num_lines;j++)if(!strcmp(lines[j].field[0],"connection")&&!strcmp(lines[j].field[1],f->field[2])){a=slurp(lines[j].field[4],&an);break;}if(!a)return 1;}
+  wire=slurp(f->field[4+shift],&n);if(!wire){free(a);return 1;}ids=!strcmp(f->field[6+shift],"full")?-1:strtoll(f->field[6+shift],NULL,10);
+  ok=conformance_retain(message,a,(int64_t)an,wire,(int64_t)n,!strcmp(f->field[5+shift],"short"),ids,counters,&answer,&size);
+  if(ok){if(saved)ok=spill(out,f->field[1],answer,(size_t)size);else{int length=snprintf(summary,sizeof(summary),"%d,%d,%d %d\n",counters[0],counters[1],counters[2],counters[3]);ok=spill(out,f->field[1],summary,(size_t)length);}}
+  free(answer);free(wire);free(a);if(!ok){fprintf(stderr,"retain %s failed\n",f->field[1]);return 1;}
+ }
+ return 0;
+}
+
 int main( int argc, char ** argv )
 {
     const char * surface;
@@ -625,7 +641,7 @@ int main( int argc, char ** argv )
     surface = argv[2];
     if ( strcmp( surface, "list" ) == 0 )
     {
-        printf( "wire\nmessage\nreport\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-reason\nblock-reason\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\n" );
+        printf( "wire\nmessage\nretain\nretain-save\nreport\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-reason\nblock-reason\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\n" );
         return 0;
     }
     if ( argc < 4 )
@@ -634,6 +650,8 @@ int main( int argc, char ** argv )
         return 2;
     }
     out = argv[3];
+    if(!strcmp(surface,"retain"))return surface_retain(out,0);
+    if(!strcmp(surface,"retain-save"))return surface_retain(out,1);
     if ( strcmp( surface, "message" ) == 0 ) { return surface_message(out); }
     if ( strcmp( surface, "wire" ) == 0 ) { return surface_wire( out ); }
     if ( strcmp( surface, "report" ) == 0 ) { return surface_report( out ); }

@@ -53,6 +53,15 @@ func cCollectionDifferential(t *testing.T, mode string) {
 		{"listdemo", "Sheet", "list_nested"},
 		{"listdemo", "Army", "list_of_maps"},
 		{"listdemo", "Unbounded", "list_migrates"},
+		{"armdemo", "Holder", "arms_holder"},
+		{"armdemo", "Hand", "arms_hand"},
+		{"armdemo", "Chain", "arms_chain"},
+		{"armdemo", "Gate", "arms_gate"},
+		{"armdemo", "Nest", "arms_nest"},
+		{"armdemo", "Ring", "arms_ring"},
+		{"armdemo", "Rack", "arms_rack"},
+		{"armdemo", "Tray", "arms_tray"},
+		{"armdemo", "Gate", "arms_gate_text"},
 	}
 	for _, c := range cases {
 		path := filepath.Join("testdata/wire/tables", c.name+".bin")

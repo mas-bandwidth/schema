@@ -33,7 +33,7 @@
 typedef struct ConformanceReport
 {
     int unknown, kind_mismatch, clamped, duplicate;
-    int malformed, refused, widened;
+    int malformed, refused, widened, retained, retain_lost;
 } ConformanceReport;
 
 /* One row per (unit, root) the corpus names. Every row is the SAME six
@@ -54,6 +54,7 @@ typedef struct ConformanceCodec
     int64_t (*load_measure)(const uint8_t * wire, int64_t bytes);
     int64_t (*cook_measure)(const void * value);
     int (*cook)(const void * value,void * buffer,uint64_t capacity,int big);
+    int64_t (*retain_fuzz)(const uint8_t *,int64_t,uint8_t **,ConformanceReport *,int *,int64_t *);
 } ConformanceCodec;
 
 /* A GROWING TEXT, for the two dumps. The harness compares bytes, so nothing
@@ -85,7 +86,10 @@ SCHEMA_CONFORMANCE_UNUSED static void conformance_text_add( ConformanceText * ou
     conformance_text_raw( out, s, strlen( s ) );
 }
 
+int conformance_retain(int message,const uint8_t * announcement,int64_t announcement_bytes,const uint8_t * wire,int64_t bytes,int short_buffer,int64_t id_capacity,int * counters,uint8_t ** output,int64_t * output_bytes);
+
 /* the per-unit entry points, each defined in that unit's own translation unit */
+const ConformanceCodec * conformance_codecs_armdemo(int * count);
 const ConformanceCodec * conformance_codecs_mapdemo(int * count);
 const ConformanceCodec * conformance_codecs_listdemo(int * count);
 const ConformanceCodec * conformance_codecs_streamdemo(int * count);

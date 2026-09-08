@@ -276,13 +276,24 @@ func (g *tableGen) messageReadValue(f *ir.Field, dst, count, e, ind string) {
 			g.pf("%s case UINT64_C(0x%016x):slot=%d;break;\n", ind, ir.TableWireId(f.KeyEnumRef.VariantWireName(i)), i)
 			_ = v
 		}
-		g.pf("%s default:break;} if(slot<0){r->report->unknown++;if(!table_message_skip(r,element_entry))goto malformed;continue;}\n", ind)
+		g.pf("%s default:break;} if(slot<0){r->report->unknown++;\n%s { %s scratch;memset(&scratch,0,sizeof(scratch));\n", ind, ind, g.sequenceType(f))
+		if g.retain {
+			g.pf("%s TableRetainWalk named_retention=retention;retention.retain=NULL;\n", ind)
+		}
+		g.messageReadElement(f, "scratch", "element_entry", ind+" ")
+		if g.retain {
+			g.pf("%s retention=named_retention;\n", ind)
+		}
+		g.pf("%s }continue;}\n", ind)
+		g.retainIndex(f, "slot", ind+" ")
 		g.messageReadElement(f, dst+"[slot]", "element_entry", ind+" ")
 		g.pf("%s} }\n", ind)
 	case f.Array != ir.ArrayNone:
 		g.pf("%s{uint64_t n,kept,walk,i;TableMessageEntry element_shape=table_message_element(%s);const TableMessageEntry * element_entry=&element_shape;(void)element_entry;\n", ind, e)
 		g.pf("%s if(!table_message_count(r,%s,&n))goto malformed;kept=n>%d?%d:n;if(kept<n)r->report->clamped++;\n", ind, e, f.ArrayBound, f.ArrayBound)
+		g.retainReplace(f, ind+" ")
 		g.pf("%s walk=element_entry->value_bits>=0?kept:n;for(i=0;i<walk;i++){%s scratch; %s * item=i<kept ? &%s[i] : &scratch;\n", ind, g.sequenceType(f), g.sequenceType(f), dst)
+		g.retainIndex(f, "i", ind+" ")
 		g.messageReadElement(f, "(*item)", "element_entry", ind+" ")
 		g.pf("%s }if(walk<n && !table_message_skip_run(r,n-walk,element_entry->value_bits))goto malformed;\n", ind)
 		if f.Array == ir.ArrayCounted {
@@ -319,11 +330,14 @@ func (g *tableGen) emitMessageReadDeclarations(members []*ir.Struct, unions []*i
 }
 
 func (g *tableGen) emitMessageUnionRead(un *ir.Union) {
-	g.pf("static SCHEMA_UNUSED int %s(TableMessageReader * r,%s * value)\n{\n const TableMessageEntry * entry;\n if(!table_message_ref(r,&entry,0))goto malformed;value->type=0;if(entry==NULL)return 1;if(entry->kind==0)goto malformed;\n switch(entry->id){\n", g.unionWireName(un, "message_load"), un.Name)
-	for _, v := range un.Variants {
+	g.pf("static SCHEMA_UNUSED int %s(TableMessageReader * r,%s * value)\n{\n const TableMessageEntry * entry;\n %sif(!table_message_ref(r,&entry,0))goto malformed;value->type=0;if(entry==NULL)return 1;if(entry->kind==0)goto malformed;\n switch(entry->id){\n", g.unionWireName(un, "message_load"), un.Name, g.retainUnionDiscard())
+	for ordinal, v := range un.Variants {
 		g.pf(" case UINT64_C(0x%016x): {\n", ir.TableWireId(v.WireName()))
 		g.messageAccept(v.F, ir.TableArmEntry(v), " ")
 		if !v.Void() {
+			if g.retain {
+				g.pf(" retention=table_retain_step(retention,%d,0);\n", ordinal)
+			}
 			dst := armValue("(*value)", v)
 			count := dst + "_count"
 			if v.F.Array == ir.ArrayNone {
@@ -338,10 +352,15 @@ func (g *tableGen) emitMessageUnionRead(un *ir.Union) {
 }
 
 func (g *tableGen) emitMessageRead(st *ir.Struct) {
-	g.pf("static SCHEMA_UNUSED int %s(TableMessageReader * r,%s * value)\n{\n %s(value);for(;;){const TableMessageEntry * entry;\n if(!table_message_ref(r,&entry,0))goto malformed;if(entry==NULL)return 1;switch(entry->id){\n", g.api(st.Name, "load_message_body"), st.Name, g.api(st.Name, "reset"))
-	for _, f := range st.Fields {
+	g.pf("static SCHEMA_UNUSED int %s(TableMessageReader * r,%s * value)\n{\n", g.api(st.Name, "load_message_body"), st.Name)
+	if g.retain {
+		g.pf(" TableRetainWalk body_keep=retention;table_retain_discard(retention,0,0);\n")
+	}
+	g.pf(" %s(value);for(;;){const TableMessageEntry * entry;\n if(!table_message_ref(r,&entry,0))goto malformed;if(entry==NULL)return 1;switch(entry->id){\n", g.api(st.Name, "reset"))
+	for ordinal, f := range st.Fields {
 		g.pf(" case UINT64_C(0x%016x): {\n", ir.TableFieldWireId(f))
 		g.messageAccept(f, ir.TableFieldEntry(f), " ")
+		g.retainReadField(f, ordinal, " ")
 		dst, count := "value->"+f.Name, "value->"+f.Name+"_count"
 		if f.Array == ir.ArrayNone {
 			count = "value->" + f.Name + "_length"
@@ -352,8 +371,12 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 		}
 		g.pf(" break;}\n")
 	}
-	g.pf(" default:r->report->unknown++;if(!table_message_skip(r,entry))goto malformed;break;\n } }\n malformed:r->report->malformed=1;return 0;\n}\n")
-	if !g.isVar(st.Name) && !st.IsMapEntry() {
+	if g.retain {
+		g.pf(" default:r->report->unknown += 1;if(!table_retain_message_capture(r,entry,body_keep))goto malformed;break;\n } }\n malformed:r->report->malformed=1;return 0;\n}\n")
+	} else {
+		g.pf(" default:r->report->unknown++;if(!table_message_skip(r,entry))goto malformed;break;\n } }\n malformed:r->report->malformed=1;return 0;\n}\n")
+	}
+	if !g.retain && !g.isVar(st.Name) && !st.IsMapEntry() {
 		g.emitFixedMessageRead(st)
 	}
 }
@@ -376,11 +399,11 @@ func (g *tableGen) emitMessageMapKeyRead(f *ir.Field) {
 		bits := tableKindWidth(kind) * 8
 		if bits < 64 {
 			lo, hi := messageRange(ir.TableKindSigned(kind), bits)
-			cast := "uint64_t"
 			if ir.TableKindSigned(kind) {
-				cast = "int64_t"
+				g.pf(" if((int64_t)low<%s || (int64_t)low>%s)out.over=1;\n", tableIntLit(lo, true, 8), tableIntLit(hi, true, 8))
+			} else {
+				g.pf(" if(low>%s)out.over=1;\n", tableIntLit(hi, false, 8))
 			}
-			g.pf(" if((%s)low<%s || (%s)low>%s)out.over=1;\n", cast, tableIntLit(lo, ir.TableKindSigned(kind), 8), cast, tableIntLit(hi, ir.TableKindSigned(kind), 8))
 		}
 		g.pf(" out.key=(%s)low;\n", g.mapKeyType(f))
 	}
@@ -391,7 +414,9 @@ func (g *tableGen) emitMessageSequenceRead(f *ir.Field, dst, e, ind string) {
 	n := g.sequenceType(f)
 	elem := sequenceElement(f)
 	g.pf("%s{uint64_t count,i;TableSequenceFill fill;TableMessageEntry element_shape=table_message_element(%s);const TableMessageEntry * element_entry=&element_shape;(void)element_entry;\n", ind, e)
-	g.pf("%s if(!table_message_count(r,%s,&count))goto malformed;fill=table_sequence_fill(r->nodes?r->nodes->sink:NULL,&%s,count,sizeof(%s),SCHEMA_TABLE_ALIGNOF(%s));\n", ind, e, dst, n, n)
+	g.pf("%s if(!table_message_count(r,%s,&count))goto malformed;\n", ind, e)
+	g.retainReplace(f, ind)
+	g.pf("%s fill=table_sequence_fill(r->nodes?r->nodes->sink:NULL,&%s,count,sizeof(%s),SCHEMA_TABLE_ALIGNOF(%s));\n", ind, dst, n, n)
 	g.pf("%s if(fill.refused){if(r->nodes)r->nodes->refused=1;return 0;}if(!fill.ok)goto malformed;\n", ind)
 	if f.IsMap() {
 		g.pf("%s { %s previous; %s * last=NULL;int widened=0;memset(&previous,0,sizeof(previous));(void)element_entry;\n", ind, g.sym(n, "key_read"), n)
@@ -403,10 +428,12 @@ func (g *tableGen) emitMessageSequenceRead(f *ir.Field, dst, e, ind string) {
 		g.pf("%s if(key.malformed)goto malformed;if(key.kind_bad){r->report->kind_mismatch++;r->bits=scan.bits;for(i++;i<count;i++)if(!table_message_skip_body(r))goto malformed;memset(&%s,0,sizeof(%s));break;}\n", ind, dst, dst)
 		g.pf("%s if(key.over){r->report->clamped++;r->bits=scan.bits;continue;}order=last?%s(previous.key,key.key):-1;if(order>0)goto malformed;\n", ind, g.sym(n, "key_compare"))
 		g.pf("%s if(order==0){item=last;r->report->duplicate++;}else item=(%s *)table_sequence_fill_next(&fill);if(item==NULL)goto malformed;\n", ind, n)
+		g.retainIndex(f, "fill.value->count-1", ind+" ")
 		g.messageReadElement(elem, "(*item)", "element_entry", ind+" ")
 		g.pf("%s last=item;previous=key;\n", ind)
 	} else {
 		g.pf("%s item=(%s *)table_sequence_fill_next(&fill);if(item==NULL)goto malformed;\n", ind, n)
+		g.retainIndex(f, "i", ind+" ")
 		g.messageReadElement(elem, "(*item)", "element_entry", ind+" ")
 	}
 	g.pf("%s }\n", ind)

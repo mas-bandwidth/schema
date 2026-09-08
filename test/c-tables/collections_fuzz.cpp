@@ -19,6 +19,11 @@
 #include "lists/SaveTable.h"
 #include "lists/SharedTable.h"
 
+#include "arms/CarryTable.h"
+#include "arms/GateTable.h"
+#include "arms/NestTable.h"
+#include "arms/RingTable.h"
+
 #define REFERENCE_CODEC(NS,TYPE) \
 static const NS::TYPE * reference_##NS##_##TYPE; \
 static void * reference_storage_##NS##_##TYPE() { free((void *)reference_##NS##_##TYPE); reference_##NS##_##TYPE=NULL; return &reference_##NS##_##TYPE; } \
@@ -34,7 +39,7 @@ static int64_t reference_save_##NS##_##TYPE(const void * value,uint8_t * buffer,
 static int64_t reference_load_measure_##NS##_##TYPE(const uint8_t * wire,int64_t bytes) { return NS::TYPE##LoadMeasure(wire,bytes); } \
 static int64_t reference_cook_measure_##NS##_##TYPE(const void * value) { return NS::TYPE##CookMeasure(*(const NS::TYPE * const *)value); } \
 static int reference_cook_##NS##_##TYPE(const void * value,void * buffer,uint64_t capacity,int big) { return NS::TYPE##Cook(*(const NS::TYPE * const *)value,buffer,capacity,big ? NS::TableByteOrder::Big : NS::TableByteOrder::Little); }
-#define REFERENCE_ROW(NS,TYPE) {#NS,#TYPE,reference_load_##NS##_##TYPE,reference_measure_##NS##_##TYPE,reference_save_##NS##_##TYPE,NULL,NULL,reference_storage_##NS##_##TYPE,reference_load_measure_##NS##_##TYPE,reference_cook_measure_##NS##_##TYPE,reference_cook_##NS##_##TYPE}
+#define REFERENCE_ROW(NS,TYPE) {#NS,#TYPE,NULL,NULL,reference_load_##NS##_##TYPE,reference_measure_##NS##_##TYPE,reference_save_##NS##_##TYPE,NULL,NULL,reference_storage_##NS##_##TYPE,reference_load_measure_##NS##_##TYPE,reference_cook_measure_##NS##_##TYPE,reference_cook_##NS##_##TYPE,NULL}
 REFERENCE_CODEC(mapdemo,Depth)
 REFERENCE_CODEC(mapdemo,Text)
 REFERENCE_CODEC(mapdemo,Cells)
@@ -78,6 +83,27 @@ const ConformanceCodec * conformance_codecs_listdemo(int * count) {
  REFERENCE_ROW(listdemo,Army),
  REFERENCE_ROW(listdemo,Unbounded),
  }; *count=(int)(sizeof(codecs)/sizeof(codecs[0]));return codecs;
+}
+
+REFERENCE_CODEC(armdemo,Holder)
+REFERENCE_CODEC(armdemo,Hand)
+REFERENCE_CODEC(armdemo,Chain)
+REFERENCE_CODEC(armdemo,Gate)
+REFERENCE_CODEC(armdemo,Nest)
+REFERENCE_CODEC(armdemo,Ring)
+REFERENCE_CODEC(armdemo,Rack)
+REFERENCE_CODEC(armdemo,Tray)
+const ConformanceCodec * conformance_codecs_armdemo(int * count) {
+ static const ConformanceCodec codecs[]={
+ REFERENCE_ROW(armdemo,Holder),
+ REFERENCE_ROW(armdemo,Hand),
+ REFERENCE_ROW(armdemo,Chain),
+ REFERENCE_ROW(armdemo,Gate),
+ REFERENCE_ROW(armdemo,Nest),
+ REFERENCE_ROW(armdemo,Ring),
+ REFERENCE_ROW(armdemo,Rack),
+ REFERENCE_ROW(armdemo,Tray),
+ };*count=(int)(sizeof(codecs)/sizeof(codecs[0]));return codecs;
 }
 
 #define SCHEMA_C_COLLECTIONS_FUZZ

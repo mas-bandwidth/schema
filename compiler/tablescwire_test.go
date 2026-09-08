@@ -459,10 +459,13 @@ static void * allocate(void * context,int64_t bytes) {
 static void release(void * context,void * p) {
  Counts * c=(Counts *)context;if(p!=NULL)c->live--;free(p);
 }
+static int tail_intact(const uint8_t * bytes,int64_t used,int64_t capacity) {
+ int64_t i;for(i=used;i<capacity;i++)if(bytes[i]!=0xa5)return 0;return 1;
+}
 static int exercise(Counts * counts) {
  const char * source="{\"first\":{\"&node\":1,\"value\":9},\"second\":{\"&node\":1},\"children\":[{\"entries\":{\"-2\":{\"&node\":1},\"9\":{\"value\":17}}}],\"rows\":{\"z\":{\"value\":3},\"a\":{\"value\":4}}}";
  TableAllocator a={allocate,release,counts}; RootBuilder b,copy; TableReport report={0};
- TableCtx ctx; uint8_t wire[2048],cook[4096],messages[4096];const Root * batch[2]; char text[1024]; int64_t n,m; int ok=0,have_copy=0;
+ TableCtx ctx; uint8_t wire[2048],cook[4096],messages[4096];const Root * batch[2]; char text[1024]; int64_t n,m,result; int ok=0,have_copy=0;
  if(!root_builder_init_with_allocator(&b,a))goto done;
  if(!root_from_json(&b,source,(int64_t)strlen(source),&report))goto done;
  ctx.arena=&b.arena;
@@ -470,15 +473,20 @@ static int exercise(Counts * counts) {
  if(root_save(&ctx,root_builder_root(&b),wire,n)!=n)goto done;
  if(!root_builder_lock(&b))goto done;
  if(root_measure_with_allocator(NULL,(const Root *)(const void *)b.region,a)!=n)goto done;
- if(root_save_with_allocator(NULL,(const Root *)(const void *)b.region,wire,n,a)!=n)goto done;
+ memset(wire,0xa5,sizeof(wire));result=root_save_with_allocator(NULL,(const Root *)(const void *)b.region,wire,n,a);
+ if(!tail_intact(wire,n,sizeof(wire)))abort();if(result!=n)goto done;
  m=root_to_json_measure_with_allocator((const Root *)(const void *)b.region,a);if(m<=0 || m>1024)goto done;
  if(root_to_json_with_allocator((const Root *)(const void *)b.region,text,m,a)!=m)goto done;
  m=root_cook_measure_with_allocator(NULL,(const Root *)(const void *)b.region,a);if(m<=0 || m>4096)goto done;
- if(!root_cook_with_allocator(NULL,(const Root *)(const void *)b.region,cook,(uint64_t)m,TableByteOrder_Little,a))goto done;
- if(!root_cook_with_allocator(NULL,(const Root *)(const void *)b.region,cook,(uint64_t)m,TableByteOrder_Big,a))goto done;
+ {int order;for(order=0;order<2;order++){
+  memset(cook,0xa5,sizeof(cook));result=root_cook_with_allocator(NULL,(const Root *)(const void *)b.region,cook,(uint64_t)m,order?TableByteOrder_Big:TableByteOrder_Little,a);
+  if(!tail_intact(cook,m,sizeof(cook)))abort();
+  if(!result){uint64_t magic=table_cook_read64(cook);if(magic==UINT64_C(0x4b4f4f434d484353)||magic==UINT64_C(0x5343484d434f4f4b))abort();goto done;}
+ }}
  batch[0]=(const Root *)(const void *)b.region;batch[1]=batch[0];
  m=root_measure_messages_with_allocator(batch,2,&report,a);if(m<=0||m>4096)goto done;
- if(root_save_messages_with_allocator(batch,2,messages,m,&report,a)!=m)goto done;
+ memset(messages,0xa5,sizeof(messages));result=root_save_messages_with_allocator(batch,2,messages,m,&report,a);
+ if(!tail_intact(messages,m,sizeof(messages)))abort();if(result!=m)goto done;
  have_copy=1;if(!root_builder_init_with_allocator(&copy,a))goto done;
  if(!root_load_builder(&copy,wire,n,&report) || !root_builder_lock(&copy))goto done;
  if(node_at(NULL,&((const Root *)(const void *)copy.region)->first)!=node_at(NULL,&((const Root *)(const void *)copy.region)->second))goto done;
@@ -520,13 +528,18 @@ static jmp_buf fatal;
 #define schema_assert(x) ((void)(x))
 #define schema_fatal() longjmp(fatal,1)
 #include "ProbeTable.h"
-static void assign(uint32_t * slots, int32_t key) { SCHEMA_TABLE_KEYED_AT(slots,key,KEY_MAX)=17; }
+static void assign(Root * root, int32_t key) { SCHEMA_PROBE_ROOT_SLOTS_AT(*root,key)=17; }
 int main(void) {
  Root root; int i; static const int32_t invalid[]={INT32_MIN,-1,0,KEY_MAX+1,INT32_MAX};
  root_reset(&root);
- assign(root.slots,KEY_FIRST);assign(root.slots,KEY_THIRD);
+ assign(&root,KEY_FIRST);assign(&root,KEY_THIRD);
  if(root.slots[0]!=17 || root.slots[1]!=0 || root.slots[2]!=17) return 1;
- for(i=0;i<5;i++) { if(setjmp(fatal)==0) { assign(root.slots,invalid[i]); return 2; } }
+ {const Root * read=&root;int key=KEY_FIRST;Root * cursor=&root;
+  if(SCHEMA_PROBE_ROOT_SLOTS_AT(*read,key++)!=17||key!=KEY_SECOND)return 3;
+  SCHEMA_PROBE_ROOT_SLOTS_AT(*cursor++,KEY_SECOND)=23;
+  if(cursor!=&root+1||root.slots[1]!=23)return 4;}
+
+ for(i=0;i<5;i++) { if(setjmp(fatal)==0) { assign(&root,invalid[i]); return 2; } }
  return 0;
 }
 `)

@@ -227,6 +227,7 @@ func (g *tableGen) emitSequenceWrite(f *ir.Field, expr string) {
 	g.pf("    TableSequenceCursor cursor=%s; int32_t i;\n", g.sequenceCursor(f, "w->nodes", expr))
 	g.pf("    if(!cursor.ok) { return 0; } table_writer_put8(w,%d); table_writer_leb(w,(uint64_t)%s.count);\n", ir.TableWireScalarKind(e), expr)
 	g.pf("    for(i=0;i<%s.count;i++) {\n        const %s * element=(const %s *)table_sequence_next(&cursor); if(element==NULL) { return 0; }\n", expr, typ, typ)
+	g.retainIndex(f, "i", "        ")
 	g.wirePayload(e, "(*element)", "        ")
 	g.pf("    }\n")
 }
@@ -248,8 +249,10 @@ func (g *tableGen) emitListRead(f *ir.Field, dst, bounded string) {
 		g.pf("                    elem_kind=table_reader_get8(&sub); if(!table_reader_leb(&sub,&count)) { r->report->malformed=1; break; }\n")
 	}
 	g.pf("                    if(elem_kind!=%d) { if(!(%s)) { r->report->kind_mismatch++; break; } r->report->widened++; }\n", kind, wireElementWidenTest(f, kind, "elem_kind"))
+	g.retainReplace(f, "                    ")
 	g.pf("                    fill=table_sequence_fill(r->nodes ? r->nodes->sink : NULL,&%s,count,sizeof(%s),SCHEMA_TABLE_ALIGNOF(%s));\n                    if(fill.refused) { r->nodes->refused=1; return 0; }\n                    if(!fill.ok) { r->report->malformed=1; break; }\n", dst, typ, typ)
 	g.pf("                    for(i=0;i<count;i++) {\n                        %s * element=(%s *)table_sequence_fill_next(&fill); if(element==NULL) { r->report->malformed=1; break; }\n", typ, typ)
+	g.retainIndex(f, "i", "                        ")
 	if ref, ok := e.Type.Ref.(*ir.Struct); ok && !e.Type.Pointer {
 		g.pf("                        %s(element);\n", g.api(ref.Name, "reset"))
 	}

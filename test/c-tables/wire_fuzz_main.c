@@ -26,7 +26,7 @@ typedef const ConformanceCodec * (*Unit)( int * count );
 static const ConformanceCodec * find_codec( const char * unit, const char * root )
 {
 #if defined(SCHEMA_C_COLLECTIONS_FUZZ)
-    const Unit units[] = { conformance_codecs_mapdemo, conformance_codecs_listdemo };
+    const Unit units[] = { conformance_codecs_mapdemo, conformance_codecs_listdemo, conformance_codecs_armdemo };
 #else
     const Unit units[] = { conformance_codecs_vocab9demo, conformance_codecs_vocabdemo, conformance_codecs_backenddemo, conformance_codecs_tblr2, conformance_codecs_tblr1, conformance_codecs_tblk2, conformance_codecs_tblk1, conformance_codecs_tbla2, conformance_codecs_tbla1, conformance_codecs_tblm2, conformance_codecs_tblm1, conformance_codecs_messagedemo, conformance_codecs_tabledemo, conformance_codecs_tblv1,
         conformance_codecs_tblv2, conformance_codecs_tblp1, conformance_codecs_tblp3, conformance_codecs_widedemo, conformance_codecs_scalars, conformance_codecs_graphdemo, conformance_codecs_blobdemo, conformance_codecs_tblg1, conformance_codecs_tblp2, conformance_codecs_streamdemo, conformance_codecs_tblscalars2 };
@@ -59,8 +59,10 @@ int main( int argc, char ** argv )
         char unit[256], root[256]; uint64_t form, retain;
         if ( !read_name( unit, sizeof( unit ) ) || !read_name( root, sizeof( root ) ) ||
              !read_number( &form, 1 ) || !read_number( &retain, 1 ) ) { return 1; }
-        forms[i]=(uint8_t)form;
-        if ( (form == 1 || (form==2&&!cook)) && !retain ) { roster[i] = find_codec( unit, root ); }
+        forms[i]=(uint8_t)(retain?3:form);
+        if ( (form == 1 || (form==2&&!cook))  ) { roster[i] = find_codec( unit, root ); }
+        if(form==2 && roster[i] && !roster[i]->message_fuzz)roster[i]=NULL;
+        if(retain && roster[i] && !roster[i]->retain_fuzz)roster[i]=NULL;
         putchar( roster[i] != NULL );
     }
     fflush( stdout );
@@ -73,6 +75,7 @@ int main( int argc, char ** argv )
         wire = (uint8_t *) malloc( (size_t) (size ? size : 1) );
         if ( wire == NULL || fread( wire, 1, (size_t) size, stdin ) != size ) { return 1; }
         memset( &report, 0, sizeof( report ) );
+        if(forms[index]==3){length=codec->retain_fuzz(wire,(int64_t)size,&saved,&report,&loaded,&region_bytes);free(wire);goto reply;}
         if(forms[index]==2){length=codec->message_fuzz(wire,(int64_t)size,&saved,&report,&loaded,&region_bytes);free(wire);goto reply;}
         value = codec->storage();
         region_bytes=codec->load_measure ? codec->load_measure(wire,(int64_t)size) : -1;
@@ -93,7 +96,7 @@ int main( int argc, char ** argv )
         write_number( (uint64_t) report.widened, 4 ); write_number( (uint64_t) report.clamped, 4 );
         write_number( (uint64_t) report.duplicate, 4 ); write_number( (uint64_t) report.malformed, 1 );
         write_number( (uint64_t) report.refused, 1 ); write_number( (uint64_t)region_bytes, 8 );
-        write_number( 0, 4 ); write_number( 0, 4 ); write_number( (uint64_t) length, 8 );
+        write_number( (uint64_t)report.retained, 4 ); write_number( (uint64_t)report.retain_lost, 4 ); write_number( (uint64_t) length, 8 );
         if ( length > 0 && fwrite( saved, 1, (size_t) length, stdout ) != (size_t) length ) { return 1; }
         free( saved ); if ( fflush( stdout ) != 0 ) { return 1; }
     }

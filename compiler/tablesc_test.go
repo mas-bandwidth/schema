@@ -291,8 +291,8 @@ func TestCGeneratorMacrosAreOwned(t *testing.T) {
 				continue
 			}
 			// anything carrying the schema's own prefix is a macro the
-			// DECLARATIONS asked for, in either spelling the emitter uses
-			if strings.Contains(m[1], "ZQQ") || strings.Contains(m[1], "Zqq") {
+			// DECLARATIONS asked for, in the upper, Pascal and C snake spellings the emitter uses
+			if strings.Contains(m[1], "ZQQ") || strings.Contains(m[1], "Zqq") || strings.HasPrefix(m[1], "zqq_") {
 				continue
 			}
 			owned[m[1]] = true

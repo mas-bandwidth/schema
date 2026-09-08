@@ -563,8 +563,12 @@ func (g *tableGen) emitGraphLoad(st *ir.Struct) {
 	g.pf("static SCHEMA_UNUSED int %s(TableReader * reader, %s * root, TableNodeMap * nodes, TableNodeDirEntry * directory, TableSink * sink)\n{\n", g.sym(n, "load_graph"), n)
 	g.pf("    TableNodeScan scan=table_node_scan_begin(reader); TableReader body; uint64_t id,k=0; int32_t unknown=0;\n    %s(root);\n", g.api(n, "reset"))
 	g.pf("    while (table_node_scan_next(&scan,&id,&body)) {\n        const TableNodeType * type=%s(id);\n        directory[k+1].type_id=id; directory[k+1].offset=UINT64_MAX;\n", g.sym(n, "node_lookup"))
-	g.pf("        if (type!=NULL && type->blob==2 && !table_wire_utf8(body.buffer,body.size)) { reader->report->malformed=1; k++; continue; }\n        if (type==NULL) { unknown++; }\n        else if (sink->region!=NULL) {\n            int64_t at=sink->region->used, size=table_node_wire_storage(type,&body);\n            if(size<0 || size>sink->region->capacity-at) { reader->report->malformed=1; return 0; }\n            directory[k+1].offset=(uint64_t)at; sink->region->used+=size;\n        } else {\n            uint32_t at=table_worker_alloc(sink->worker,type->blob ? table_node_wire_storage(type,&body) : type->size);\n            if(at==kTableAllocFailed) { reader->report->malformed=1; return 0; }\n            directory[k+1].offset=at;\n        }\n        k++;\n    }\n")
-	g.pf("    nodes->good=table_node_scan_whole(&scan);\n    if(nodes->good) { reader->report->unknown+=unknown; } else { reader->report->malformed=1; }\n    if(nodes->good) {\n        scan=table_node_scan_begin(reader); k=0;\n        while(table_node_scan_next(&scan,&id,&body)) {\n            if(directory[k+1].offset!=UINT64_MAX) {\n                void * value=nodes->arena ? table_arena_at(sink->worker->arena,(uint32_t)directory[k+1].offset) : nodes->base+directory[k+1].offset;\n                TableRegionSink extent; TableSink carve; const TableNodeType * type=%s(id);\n                carve.worker=sink->worker; carve.region=NULL;\n                if(!nodes->arena) { extent.base=(uint8_t *)value; extent.used=type->size; extent.capacity=table_node_wire_storage(type,&body); carve.region=&extent; }\n                nodes->sink=&carve; body.nodes=nodes;\n                switch(id) {\n", g.sym(n, "node_lookup"))
+	g.pf("        if (type!=NULL && type->blob && body.size>UINT32_MAX) { reader->report->reason=SCHEMA_TABLE_REFUSE_BLOB_OVER_SIZE_CAP; return 0; }\n        if (type!=NULL && type->blob==2 && !table_wire_utf8(body.buffer,body.size)) { reader->report->malformed=1; k++; continue; }\n        if (type==NULL) { unknown++; }\n        else if (sink->region!=NULL) {\n            int64_t at=sink->region->used, size=table_node_wire_storage(type,&body);\n            if(size<0 || size>sink->region->capacity-at) { reader->report->malformed=1; return 0; }\n            directory[k+1].offset=(uint64_t)at; sink->region->used+=size;\n        } else {\n            uint32_t at=table_worker_alloc(sink->worker,type->blob ? table_node_wire_storage(type,&body) : type->size);\n            if(at==kTableAllocFailed) { reader->report->malformed=1; return 0; }\n            directory[k+1].offset=at;\n        }\n        k++;\n    }\n")
+	retainedUnknown := ""
+	if g.retain {
+		retainedUnknown = "if(retention.retain)reader->report->retain_lost+=unknown;"
+	}
+	g.pf("    nodes->good=table_node_scan_whole(&scan);\n    if(nodes->good) { reader->report->unknown+=unknown; %s } else { reader->report->malformed=1; }\n    if(nodes->good) {\n        scan=table_node_scan_begin(reader); k=0;\n        while(table_node_scan_next(&scan,&id,&body)) {\n            if(directory[k+1].offset!=UINT64_MAX) {\n                void * value=nodes->arena ? table_arena_at(sink->worker->arena,(uint32_t)directory[k+1].offset) : nodes->base+directory[k+1].offset;\n                TableRegionSink extent; TableSink carve; const TableNodeType * type=%s(id);\n                carve.worker=sink->worker; carve.region=NULL;\n                if(!nodes->arena) { extent.base=(uint8_t *)value; extent.used=type->size; extent.capacity=table_node_wire_storage(type,&body); carve.region=&extent; }\n                nodes->sink=&carve; body.nodes=nodes;\n                switch(id) {\n", retainedUnknown, g.sym(n, "node_lookup"))
 	bytesBlob, stringBlob := ir.PointerReachableBlobs(st)
 	for _, blob := range []struct {
 		enabled bool
@@ -575,9 +579,20 @@ func (g *tableGen) emitGraphLoad(st *ir.Struct) {
 		}
 	}
 	for _, t := range ir.PointerReachable(st) {
-		g.pf("                    case UINT64_C(0x%016x): %s(&body,(%s *)value); break;\n", ir.TableWireId(t.WireName()), g.api(t.Name, "load_body"), t.Name)
+		if g.retain {
+			g.pf("                    case UINT64_C(0x%016x):retention.path=table_retain_root(value,(uint32_t)k+2);%s(&body,(%s *)value);break;\n", ir.TableWireId(t.WireName()), g.api(t.Name, "load_body"), t.Name)
+		} else {
+			g.pf("                    case UINT64_C(0x%016x): %s(&body,(%s *)value); break;\n", ir.TableWireId(t.WireName()), g.api(t.Name, "load_body"), t.Name)
+		}
 	}
-	g.pf("                    default: break;\n                }\n                nodes->sink=NULL; if(nodes->refused) { return 0; }\n            }\n            k++;\n        }\n    }\n    reader->nodes=nodes; reader->nested=0;\n    { int read_ok; TableRegionSink extent; TableSink carve; carve.worker=sink->worker; carve.region=NULL;\n      if(!nodes->arena) { extent.base=(uint8_t *)(void *)root; extent.used=sizeof(*root); extent.capacity=%s(reader); carve.region=&extent; }\n      nodes->sink=&carve; read_ok=%s(reader,root); nodes->sink=NULL; return !nodes->refused && (!nodes->arena || read_ok); }\n}\n", g.sym(n, "wire_storage"), g.api(n, "load_body"))
+	retainedRoot := ""
+	if g.retain {
+		retainedRoot = "retention.path=table_retain_root(root,1);"
+	}
+	g.pf("                    default: break;\n                }\n                nodes->sink=NULL; if(nodes->refused) { return 0; }\n            }\n            k++;\n        }\n    }\n    reader->nodes=nodes; reader->nested=0;\n    { int read_ok; TableRegionSink extent; TableSink carve; carve.worker=sink->worker; carve.region=NULL;\n      if(!nodes->arena) { extent.base=(uint8_t *)(void *)root; extent.used=sizeof(*root); extent.capacity=%s(reader); carve.region=&extent; }\n      nodes->sink=&carve; %s read_ok=%s(reader,root); nodes->sink=NULL; return !nodes->refused && (!nodes->arena || read_ok); }\n}\n", g.sym(n, "wire_storage"), retainedRoot, g.api(n, "load_body"))
+	if g.retain {
+		return
+	}
 	g.pf("static SCHEMA_UNUSED const %s * %s(uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, TableReport * report)\n{\n", n, g.api(n, "load"))
 	g.pf("    TableReport ignored; TableReader reader; TableNodeMap nodes; TableNodeDirEntry * directory; TableRegionSink place; TableSink sink; int64_t data,records,total;\n    memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; }\n    if(!table_wire_open(&reader,wire,wire_bytes,report)) { return NULL; }\n")
 	g.pf("    total=%s(&reader,&data,&records);\n", g.sym(n, "load_layout"))

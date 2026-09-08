@@ -360,9 +360,11 @@ func (g *tableGen) emitWireFieldHelper(st *ir.Struct, f *ir.Field) {
 	case f.KeyEnum != "":
 		g.pf("    uint64_t count = 0; int32_t i;\n")
 		g.pf("    for ( i = 0; i < %s; i++ )\n    {\n", enumMaxConst(f.KeyEnum))
+		g.retainIndex(f, "i", "        ")
 		g.wireKeyedRides(f, "        ")
 		g.pf("        count++;\n    }\n    table_writer_put8( w, %d ); table_writer_leb( w, count );\n", kind)
 		g.pf("    for ( i = 0; i < %s; i++ )\n    {\n", enumMaxConst(f.KeyEnum))
+		g.retainIndex(f, "i", "        ")
 		g.wireKeyedRides(f, "        ")
 		g.wireEnumWrite(f.KeyEnumRef, "i + 1", "        ")
 		if kind == tkTable {
@@ -382,6 +384,7 @@ func (g *tableGen) emitWireFieldHelper(st *ir.Struct, f *ir.Field) {
 		}
 		g.pf("    int32_t i;\n    table_writer_put8( w, %d ); table_writer_leb( w, (uint64_t) %s );\n", kind, n)
 		g.pf("    for ( i = 0; i < %s; i++ )\n    {\n", n)
+		g.retainIndex(f, "i", "        ")
 		g.wirePayload(f, expr+"[i]", "        ")
 		g.pf("    }\n")
 	default:
@@ -391,6 +394,7 @@ func (g *tableGen) emitWireFieldHelper(st *ir.Struct, f *ir.Field) {
 }
 
 func (g *tableGen) wireKeyedRides(f *ir.Field, ind string) {
+	g.retainIndex(f, "i", ind)
 	expr := "value->" + f.Name + "[i]"
 	if ir.TableWireScalarKind(f) == tkTable {
 		g.pf("%sTableWriter slot_probe = table_writer_probe( w ); slot_probe.check_default = 1;\n", ind)
@@ -409,8 +413,12 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 	}
 	g.pf("static SCHEMA_UNUSED int %s( TableWriter * w, const %s * value )\n{\n", g.api(st.Name, "save_body"), st.Name)
 	g.pf("    (void) value;\n")
+	if g.retain {
+		g.pf("    TableRetainWalk body_keep=retention;\n")
+	}
 	guards := tableGuardExprs(st)
-	for _, f := range st.Fields {
+	for ordinal, f := range st.Fields {
+		_ = ordinal
 		expr := "value->" + f.Name
 		kind := ir.TableWireScalarKind(f)
 		wireKind := kind
@@ -422,6 +430,9 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 			wireKind = tkKeyed
 		}
 		g.pf("    { /* %s */\n", f.Name)
+		if g.retain {
+			g.pf("    retention=table_retain_step(body_keep,%d,0);\n", ordinal)
+		}
 		if guard := guards[f.Name]; guard != "" {
 			g.pf("    if ( %s )\n    {\n", guard)
 		}
@@ -476,8 +487,11 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 		}
 		g.pf("    }\n")
 	}
+	if g.retain {
+		g.pf("    retention=body_keep;if(!table_retain_tail(w,retention))return 0;\n")
+	}
 	g.pf("    table_writer_leb( w, 0 );\n    return !w->overflow;\n}\n\n")
-	if g.isVar(st.Name) || st.IsMapEntry() {
+	if g.retain || g.isVar(st.Name) || st.IsMapEntry() {
 		return
 	}
 	for _, measure := range []bool{true, false} {
