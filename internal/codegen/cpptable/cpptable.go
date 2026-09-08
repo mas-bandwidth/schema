@@ -1305,7 +1305,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		h.WriteString(tablePrimitives(u.Package, anyVariable, anyKeyed, anyExtent, ir.TableWireIdCapacity(u), u))
 		if anyVariable {
 			h.WriteString("\n")
-			h.WriteString(tableArenaRuntime(u.Package, anyExtent))
+			h.WriteString(tableArenaRuntime(u, anyExtent))
 			// the node table on the MESSAGE wire (docs/SPEC-TABLES.md §3.3),
 			// spelled in terms of the numbering the arena runtime declares
 			h.WriteString("\n")
@@ -1479,6 +1479,21 @@ func unitHas128(u *ir.Unit, closure map[string]bool) bool {
 		for _, f := range st.Fields {
 			if f.Type.Width == 128 && (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) {
 				return true
+			}
+		}
+	}
+	// General arms live in Table.h and may be the only wide storage in
+	// the unit. The record closure alone does not contain their fields.
+	for name := range ir.TableClosureVocabulary(u) {
+		un := u.Unions[name]
+		if un == nil {
+			un = u.TableUnions[name]
+		}
+		if un != nil {
+			for _, arm := range un.Variants {
+				if arm.F != nil && arm.F.Type.Width == 128 && (arm.F.Type.Kind == ir.TInt || arm.F.Type.Kind == ir.TFixed) {
+					return true
+				}
 			}
 		}
 	}

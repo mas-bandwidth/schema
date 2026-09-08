@@ -2521,8 +2521,9 @@ not a decode, and that difference is the two rows below. Two decoding events
 first, each the one an array already raises:
 
 - **AN ELEMENT KIND THAT DISAGREES** with the reader's declaration is §3's
-  element-kind rule: the field is skipped whole by its `L`, the array reads
-  empty, and one `kind_mismatch` counts. `[]int32` read into a `[]float32`
+  element-kind rule: the field is skipped whole by its `L`, and one
+  `kind_mismatch` counts. A first occurrence leaves the default empty array;
+  an incompatible repeat preserves the value an earlier occurrence placed. `[]int32` read into a `[]float32`
   field, `[]T` read into a `[]*T` field and the reverse are all this event.
 - **A DAMAGED ELEMENT** inside a good count is that element's own framing
   damage, and the array keeps what it decoded, exactly as a bounded array's
@@ -2555,6 +2556,16 @@ of adding a bound.
 
 **A body TOO SHORT TO CARRY ITS OWN HEADER is INERT**, §4's rule unchanged: no
 element is decoded, no counter fires, and the field keeps the value it has.
+This includes an earlier successfully decoded occurrence of the same field.
+The extent scan bounds the count header by the field's `L`; a header incomplete
+within that bound reserves no elements. The decoding cursor reads the count
+against the enclosing value buffer, so a continuation byte beyond `L` can
+complete that header. This does not extend the element body: element reads
+remain bounded by `L`. The pinned `list_count_cross_length.bin` exercises this
+boundary: region measurement succeeds, the region decode reports damage, and
+the builder refuses the completed count if it exceeds the storage cap, keeping
+its prior counters. A count header incomplete even in the enclosing buffer
+remains inert.
 
 **How a reader without the field skips it**: by `L`, under §3's second skip
 rule, counting `unknown`. **How a FIXED-class reader meets one**: it does not
