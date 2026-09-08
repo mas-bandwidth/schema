@@ -21,10 +21,9 @@ table-base64-go: build/table-base64/harness build/table-base64/go/.stamp
 	cd test/table-base64/go && go build -o ../../../build/table-base64/go/driver .
 	./build/table-base64/harness ./build/table-base64/go/driver
 
-table-base64-rust: build/table-base64/harness build/table-base64/rust/.stamp
-	@printf '[package]\nname = "base64test"\nversion = "0.0.0"\nedition = "2024"\n[lib]\npath = "lib.rs"\n[[bin]]\nname = "driver"\npath = "../../../test/table-base64/rust/main.rs"\n[features]\nblock = []\ncook = []\n[dependencies]\nserialize = { package = "serialize-official", path = "%s/$(SERIALIZE_RS)" }\n' "$(CURDIR)" > build/table-base64/rust/Cargo.toml
-	PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --release --manifest-path build/table-base64/rust/Cargo.toml
-	./build/table-base64/harness ./build/table-base64/rust/target/release/driver
+table-base64-rust:
+	@echo "SKIP: table-base64-rust (Rust table wire and JSON surface removed; deferred to #518)"
+
 
 table-base64-cs: build/table-base64/harness build/table-base64/cs/.stamp
 	$(DOTNET) build --configuration Release --nologo test/table-base64/cs/table-base64.csproj
