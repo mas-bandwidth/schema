@@ -2,10 +2,9 @@
 // SIDE into <Table>Block.java.
 //
 // NOTHING DECLARES IT. Every fixed table has a block form; a consumer compiles
-// this file only if it uses one, and <Base>Table.java carries not one symbol of
-// it. The C++ side is the producer (§19.1's builder) and this side is the
-// consumer: it reads bytes another language wrote, in place, out of the array
-// the caller owns.
+// this file only if it uses one. The C++ side is the producer (§19.1's builder)
+// and this side is the consumer: it reads bytes another language wrote, in
+// place, out of the array the caller owns.
 //
 // Two ways to read one block, and both come from one declaration (§19.2): the
 // DESCRIPTORS, which carry the projection's own layout and retire a hand-kept
@@ -45,19 +44,16 @@ import (
 // blockRuntimeFiles is the shared block runtime, one file per public type.
 func blockRuntimeFiles(u *ir.Unit) map[string][]byte {
 	return map[string][]byte{
-		"TableBlockRows.java": javaFile(u, "TableBlockRows",
-			"one out-of-line array's rows, at the pitch the instance gives (docs/SPEC-TABLES.md §19.2).", tableBlockRowsSource),
-		"TableBlockInfo.java": javaFile(u, "TableBlockInfo",
-			"a block record's reflection descriptor (docs/SPEC-TABLES.md §8, §19.2).", tableBlockInfoSource()),
-		"TableBlockFieldInfo.java": javaFile(u, "TableBlockFieldInfo",
-			"a block field's reflection descriptor (docs/SPEC-TABLES.md §8.1, §19.2).", tableBlockFieldInfoSource),
+		"TableBlockRows.java":      javaFile(u, "one out-of-line array's rows, at the pitch the instance gives (docs/SPEC-TABLES.md §19.2).", tableBlockRowsSource),
+		"TableBlockInfo.java":      javaFile(u, "a block record's reflection descriptor (docs/SPEC-TABLES.md §8, §19.2).", tableBlockInfoSource()),
+		"TableBlockFieldInfo.java": javaFile(u, "a block field's reflection descriptor (docs/SPEC-TABLES.md §8.1, §19.2).", tableBlockFieldInfoSource),
 	}
 }
 
 // tableBytesFile is the little-endian byte access every accelerator reads
 // through — the one primitive Java needs and C++ gets from its type system.
 func tableBytesFile(u *ir.Unit) []byte {
-	return javaFile(u, "TableBytes", "explicit little-endian reads out of a byte[] (docs/SPEC-TABLES.md §7, §19).", tableBytesSource)
+	return javaFile(u, "explicit little-endian reads out of a byte[] (docs/SPEC-TABLES.md §7, §19).", tableBytesSource)
 }
 
 // buildVersionFile is the unit's BUILD VERSION (docs/SPEC-TABLES.md §20).
@@ -77,7 +73,7 @@ func buildVersionFile(u *ir.Unit) []byte {
 	b.WriteString("    private BuildVersion() {}\n\n")
 	fmt.Fprintf(&b, "    public static final long value = 0x%016xL;\n", ir.BuildVersion(u))
 	b.WriteString("}\n")
-	return javaFile(u, "BuildVersion", "the unit's build version (docs/SPEC-TABLES.md §20).", b.String())
+	return javaFile(u, "the unit's build version (docs/SPEC-TABLES.md §20).", b.String())
 }
 
 const tableBytesSource = `// Explicit little-endian reads out of a byte[]. Every multi-byte read a block
@@ -298,8 +294,7 @@ func generateBlockFiles(u *ir.Unit, blocks *ir.BlockUnit) (map[string][]byte, er
 	for _, bl := range blocks.Tables {
 		g := &blockGen{unit: u, blocks: blocks, bl: bl}
 		g.emit()
-		out[bl.Table.Name+"Block.java"] = javaFile(u, bl.Table.Name+"Block",
-			"the BLOCK FORM's read half (docs/SPEC-TABLES.md §19).", g.b.String())
+		out[bl.Table.Name+"Block.java"] = javaFile(u, "the BLOCK FORM's read half (docs/SPEC-TABLES.md §19).", g.b.String())
 	}
 	return out, nil
 }
@@ -627,5 +622,5 @@ func emitBlockLayoutFile(u *ir.Unit, blocks *ir.BlockUnit, set *records) []byte 
     }
 }
 `)
-	return javaFile(u, "TableBlockLayout", "the block form's layout contract, run once (docs/SPEC-TABLES.md §19.3).", b.String())
+	return javaFile(u, "the block form's layout contract, run once (docs/SPEC-TABLES.md §19.3).", b.String())
 }

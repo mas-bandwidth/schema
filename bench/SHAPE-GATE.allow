@@ -175,8 +175,6 @@ paths test/bench/table_main.cpp 1 the tables corpus's producer and §1.5 oracle:
 # conformance corpus's own manifest, and it reports no time.
 
 timing test/go-tables/soak_test.go 2 the Go port's allocation soak: the clock BOUNDS the loop, the allocation counter is what is watched — no time is reported and no shape is measured
-timing test/java-tables/src/Main.java 7 the Java tables leg's SOAK and ALLOCATION gates: a wall clock bounding a duration and a warm-up window, over a corpus it never names — no shape measured, no rate reported
-
 # Matched wire coordinator: existing runners, no field list or timing loop.
 names bench/paired/main.go 3 source filenames passed to the existing compiler; no corpus fields
 paths test/bench/paired_main.cpp 1 shared-data producer and packet/table equivalence oracle; no timing

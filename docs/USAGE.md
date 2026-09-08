@@ -1413,109 +1413,22 @@ element column, so one walk reaches the whole graph from either root. The wire's
 `TableTypeInfo` is not those and does not substitute for them: it describes the
 STORAGE a codec fills, and the accelerators describe bytes another build wrote.
 
-**The Java surface is the same three functions once more**, name first and
-lowerCamel — Java's one naming rule, the same one the packet half follows with
-`writeVec3` — as `static` methods on the file's `<Base>Table` class, over
-`byte[]` the caller owns. Storage is a `final` class with public fields, lowerCamel, every buffer
-allocated at construction — the Java packet emitter's own spelling, because a
-table's closure decodes into that emitter's own classes:
-
-```java
-import example.ConfigTable;
-import example.TableReport;
-
-ConfigTable.ShipConfig ship = new ConfigTable.ShipConfig();
-ship.health = 250.0f;
-ship.settingsPresent = true;          // ?T: presence decides whether it rides
-
-long size = ConfigTable.shipConfigMeasure(ship);   // exact, writes nothing
-byte[] buffer = new byte[(int) size];              // or any storage you own
-ConfigTable.shipConfigSave(ship, buffer);          // returns size, or -1
-
-TableReport report = new TableReport();
-ConfigTable.ShipConfig loaded = new ConfigTable.ShipConfig();
-if (!ConfigTable.shipConfigLoad(loaded, buffer, report)) {
-    // framing damage: report.malformed is set, the good prefix is kept
-}
-if (report.unknown != 0 || report.kindMismatch != 0 || report.clamped != 0) {
-    // the data came from a different schema generation — loaded is still
-    // fully usable; log the counts so drift is visible
-}
-```
-
-**A hot loop hoists the reader and reuses it**, which is the shape to reach for
-when you are reading a stream of records rather than a config file once:
-
-```java
-TableReader reader = new TableReader();            // yours, not the codec's
-TableWriter writer = new TableWriter();            // and the writer likewise
-TableReport report = new TableReport();
-for (byte[] record : records) {
-    reader.reset(record, 0, record.length, report.clear());
-    ConfigTable.shipConfigLoadBody(reader, loaded); // allocates nothing at all
-
-    writer.reset(buffer, 0, buffer.length);
-    ConfigTable.shipConfigSaveBody(writer, loaded); // nor does this
-}
-```
-
-**The convenience forms allocate one object each, and the hoisted forms are how
-you get to zero.** `shipConfigLoad` builds a `TableReader` per call and
-`shipConfigSave` a `TableWriter`; `shipConfigLoadBody` and `shipConfigSaveBody`
-take yours. Neither allocates anything else.
-
-**Nothing on the hoisted path allocates, and in Java that is measured rather than
-asserted** — the same standard the Go leg holds itself to, with the JVM's own
-per-thread allocation counter in place of `testing.AllocsPerRun`. The wire's
-read and save, the block's row walk and the cook's read each read **zero bytes
-per record** across a measured window, a soak re-measures every path at every
-sample for an hour, and a negative control adds one `new byte[1]` per record and
-requires the gate to go red. A nested body is bounded by MOVING THE READER'S
-LIMIT rather than by allocating a sub-reader, which is what makes the number
-reachable at all. The text form allocates by nature and says what it allocates.
-
-Java's unit scope is the PACKAGE and a public type lives in a file of its own
-name, so the shared runtime is **one file per type** — `TableReport.java`,
-`TableReader.java`, `TableWriter.java`, `TableJson.java` and the rest — rather
-than one home file. Nothing about that varies with which schema file sorts
-first, and a unit that declares no table emits not one of them.
-
-`string(N)` and `bytes(N)` are a `byte[N]` beside an `int` used length, arrays a
-`T[N]` beside an `int` used count, `?T` a value beside a `<name>Present` bool,
-and a union its tag beside one pre-allocated arm per variant.
-
-**An enum-keyed array in Java is a plain typed array of `E.max` slots** — Java
-has no generic container that could hold a primitive slot without boxing, and an
-`[E]int32` is exactly that case. **On a `table` it comes with an accessor pair
-that takes the KEY**; on a plain `type` it is the bare array, because a `type`'s
-storage is the packet emitter's and this wire changes nothing about it (C++ does
-the same), so there a caller reaches through `TableKeyed.slot(key)` rather than
-an accessor:
-
-```java
-hull.turrets(Weapon.missile).ammo = 20;            // by the key, never the slot
-hull.scores(Grade.gold, 7);                        // the setter, for a value element
-
-for (int i = 0; i < TableKeyed.count(hull.turrets); i++) {
-    int key = TableKeyed.key(i);                   // the KEY, 1 .. E.max
-    hull.turrets(key).health *= 2.0f;
-}
-```
-
-No call site spells the shift: `TableKeyed` is the one place the `k - 1` lives —
-on a table through the accessor above, on a `type` through
-`board.perTeam[TableKeyed.slot(key)]` — and indexing by `None` throws from it, in
-every build, as the C++ abort does. The generated codecs walk the raw array by
-storage index and never pay for the guard.
-
-`<Name>TableType()` returns the reflection descriptor. **Its memory columns are
-ACCESSORS rather than offsets**, which is the one place a walker written from
-the C++ example has to know the difference: a Java field has no offset and a
-Java object has no meaningful sizeof, so the descriptor carries the reader and
-the writer the emitter wrote — `getRaw`, `setRaw`, `getChild`, `getBuffer` and
-the counted and presence companions beside them. Same role, one place, in the
-language's own currency, and the generic text-form walk reaches storage through
-those and through nothing else.
+**Java carries the two table accelerators** (docs/SPEC-TABLES.md §19 and §7)
+and not the table wire: a unit that declares tables grows `<Table>Block.java`
+and `<Table>Cook.java` per table beside its packet classes, `<Name>Row.java`
+for every blittable record in the closure, and the runtime types those need —
+one file per type (`TableBytes.java`, `TableBlockInfo.java`,
+`TableCookInfo.java` and the rest), because Java's unit scope is the PACKAGE
+and a public type lives in a file of its own name; nothing about that varies
+with which schema file sorts first, and a unit that declares no table emits not
+one of them. A block is pointed at and a cook is opened; neither parses a wire,
+both are read-only, and both refuse a forged image rather than throwing on it
+(`make tables-java-fuzz` is that oracle over mutated corpus images, with its
+planted control). There is no `<Base>Table.java`: the Java port of the table
+wire wrote the form that preceded the id-table wire, which the current
+specification does not describe, and it was removed rather than carried;
+schema#517 is the row that brings the id-table wire to Java, and ROADMAP.md
+marks the cells.
 
 **A block row and a cooked record have no Java type at all.** There is no struct
 to lay out, so `<Name>Row`'s generated accessors read each field at its offset

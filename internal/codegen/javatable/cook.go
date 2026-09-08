@@ -8,8 +8,7 @@
 // size, the bar the scale §7 is built for asks for.
 //
 // NOTHING DECLARES IT, exactly as nothing declares the block form. Every table
-// gets an Open, a consumer compiles this file only if it opens a cook, and
-// <Base>Table.java carries not one symbol of it.
+// gets an Open, and a consumer compiles this file only if it opens a cook.
 //
 // A COOKED RECORD IS THE BLITTABLE ROW. The region is laid out by §20.3's C ABI
 // model, which is the same model <Name>Row's accessors read at — so the two
@@ -169,12 +168,9 @@ func cookMember(u *ir.Unit, name string) *ir.Struct {
 // cookRuntimeFiles is the shared cook runtime, one file per public type.
 func cookRuntimeFiles(u *ir.Unit) map[string][]byte {
 	return map[string][]byte{
-		"TableCookStorage.java": javaFile(u, "TableCookStorage",
-			"what a cooked slot HOLDS (docs/SPEC-TABLES.md §7.2).", tableCookStorageSource),
-		"TableCookInfo.java": javaFile(u, "TableCookInfo",
-			"a cooked record's reflection descriptor (docs/SPEC-TABLES.md §7).", tableCookInfoSource()),
-		"TableCookFieldInfo.java": javaFile(u, "TableCookFieldInfo",
-			"a cooked field's reflection descriptor (docs/SPEC-TABLES.md §7).", tableCookFieldInfoSource),
+		"TableCookStorage.java":   javaFile(u, "what a cooked slot HOLDS (docs/SPEC-TABLES.md §7.2).", tableCookStorageSource),
+		"TableCookInfo.java":      javaFile(u, "a cooked record's reflection descriptor (docs/SPEC-TABLES.md §7).", tableCookInfoSource()),
+		"TableCookFieldInfo.java": javaFile(u, "a cooked field's reflection descriptor (docs/SPEC-TABLES.md §7).", tableCookFieldInfoSource),
 	}
 }
 
@@ -302,12 +298,12 @@ func generateCookFiles(u *ir.Unit, ck *cookUnit) (map[string][]byte, error) {
 			b.WriteString("// reaching for open gets a missing name from its own compiler, beside this\n")
 			b.WriteString("// file, which says why.\n")
 			fmt.Fprintf(&b, "public final class %sCook {\n    private %sCook() {}\n}\n", name, name)
-			out[name+"Cook.java"] = javaFile(u, name+"Cook", "the COOKED FORM's read half (docs/SPEC-TABLES.md §7).", b.String())
+			out[name+"Cook.java"] = javaFile(u, "the COOKED FORM's read half (docs/SPEC-TABLES.md §7).", b.String())
 			continue
 		}
 		g := &cookGen{unit: u, cook: ck, table: u.Tables[name]}
 		g.emit()
-		out[name+"Cook.java"] = javaFile(u, name+"Cook", "the COOKED FORM's read half (docs/SPEC-TABLES.md §7).", g.b.String())
+		out[name+"Cook.java"] = javaFile(u, "the COOKED FORM's read half (docs/SPEC-TABLES.md §7).", g.b.String())
 	}
 	return out, nil
 }
@@ -542,5 +538,5 @@ func emitCookLayoutFile(u *ir.Unit, ck *cookUnit, set *records, withBlock bool) 
     }
 }
 `)
-	return javaFile(u, "TableCookLayout", "the cook closure's layout contract, run once (docs/SPEC-TABLES.md §20.3).", b.String())
+	return javaFile(u, "the cook closure's layout contract, run once (docs/SPEC-TABLES.md §20.3).", b.String())
 }

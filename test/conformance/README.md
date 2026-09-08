@@ -30,7 +30,6 @@ goes red everywhere localises nothing:
 | `conformance-negative-control-cs` | the C# walker, in the emitter | `cs / json-read` | `json-write` |
 | `conformance-negative-control-go` | the Go leg, in the emitter | its own surface | the rest |
 | `conformance-negative-control-go-walk` | the Go walk's field offset | `go / json-read` | `json-write` |
-| `conformance-negative-control-java` | the Java walk's field index | `java / json-read` | `json-write` |
 | `conformance-negative-control-java-block` | the array PITCH CHECK in the Java `open` | `java / forgery` | `block`, `block-dump` |
 
 Two of those rows are the reason two surfaces exist at all. The row-dump one is
@@ -489,8 +488,8 @@ from a binary that already existed, which the contract exists to allow.
 **The two MANAGED legs differ by seven times, and the difference is the SHAPE
 rather than the runtime.** Both start a process per surface; the C# leg starts
 one more per cook, because `test/cs-cook`'s dump takes one root per invocation,
-and the Java leg starts none, because its generated units — the wire ones, the
-block unit and the pointered unit — are packages of a single classpath, so both
+and the Java leg starts none, because its generated units — the block unit and
+the pointered unit — are packages of a single classpath, so both
 cook surfaces ride inside processes that were already starting. Twelve JVM
 starts is 2.2 s; twelve runtime starts plus six more is 11.7 s. A managed leg
 pays for its process starts and nothing else, so the number of them is the
