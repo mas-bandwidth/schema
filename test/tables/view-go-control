@@ -5,7 +5,7 @@ out=build/go-view-control-$mode
 mkdir -p "$out"
 case "$mode" in
 identity) source=codecs.go; sabotage=go-view-outside-identity; package=./internal/codegen/gotable; test=TestUnitViewPacketStorage; expected='outside packet gained wire identity or codec' ;;
-packet-offset) source=codecs.go; sabotage=go-view-packet-offset; package=./internal/codegen/gotable; test=TestUnitViewPacketStorage; expected='outside packet gained wire identity or codec' ;;
+packet-offset) source=codecs.go; sabotage=go-view-packet-offset; package=./internal/codegen/gotable; test=TestUnitViewPacketStorage; expected='outside packet field offset' ;;
 arm-offset) source=view.go; sabotage=go-view-arm-offset; package=./compiler; test='TestGoUnitViewCorpus/arms'; expected='unit view listing differs' ;;
 *) echo "unknown view control: $mode" >&2;exit 1 ;;
 esac

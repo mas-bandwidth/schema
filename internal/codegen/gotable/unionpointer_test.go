@@ -18,3 +18,25 @@ func TestUnionPointerArrayReaders(t *testing.T) {
  }
  `)
 }
+
+func TestNestedUnionArmReaders(t *testing.T) {
+	runGenerated(t, `package probe
+ union Inner { number int32 }
+ union Outer { nested [..2]Inner }
+ table Root { items [..2]Outer
+ anchor Inner
+ next *Root }
+ `, `package probe
+ import("testing";"unsafe")
+ func TestNestedUnion(t *testing.T){
+ var b RootBuilder;if !b.Init(){t.Fatal("init")};defer b.Shutdown();root:=b.GetRoot();root.ItemsCount=1;root.Items[0].Type=OuterTypeNested;arm:=root.Items[0].Nested();arm.ValueCount=2
+ for i:=range 2{inner:=&arm.Value[i];inner.Type=InnerTypeNumber;inner.Number().Value=int32(19+i)}
+ wire:=make([]byte,RootMeasure(root));if RootSave(root,wire)!=int64(len(wire)){t.Fatal("save")}
+ size:=RootLoadMeasure(wire);if size<=0{t.Fatal("measure")};raw:=make([]byte,size+63);off:=(-uintptr(unsafe.Pointer(&raw[0])))&63;region:=raw[off:off+uintptr(size)]
+ var report TableReport
+ check:=func(value *Root){if value==nil||report.Malformed||value.ItemsCount!=1{t.Fatalf("nested union load: %+v",report)};outer:=&value.Items[0];if outer.Type!=OuterTypeNested||outer.Nested().ValueCount!=2{t.Fatal("outer tag or count")};for i:=range 2{inner:=&outer.Nested().Value[i];if inner.Type!=InnerTypeNumber||inner.Number().Value!=int32(19+i){t.Fatal("nested union arm value")}}}
+ check(RootLoad(region,wire,&report));report=TableReport{};store:=TableRetain{Bytes:make([]byte,1024),Ids:make([]TableRetainId,32)};check(RootLoadRetain(region,wire,&store,&report))
+ var loaded RootBuilder;if !loaded.Init(){t.Fatal("load builder init")};defer loaded.Shutdown();report=TableReport{};if !RootLoadBuilder(&loaded,wire,&report){t.Fatal("builder load")};check(loaded.GetRoot())
+ }
+ `)
+}

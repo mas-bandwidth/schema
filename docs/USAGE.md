@@ -3905,7 +3905,8 @@ integer field holding a value outside ±2⁶² costs one boxed integer per read.
 
 **Go** — accessors, file/message loads and block fill avoid allocation and
 operate on caller-owned buffers. Variable table builders own a `TableArena`;
-its embedded segment descriptors occupy 163,888 bytes on a 64-bit target.
+the arena occupies 163,888 bytes on a 64-bit target, including 163,840 bytes
+of embedded segment descriptors.
 Stop readers and workers before calling `Shutdown`. An allocator pair owns
 all node-proportional and temporary numbering storage; `Free` receives the
 original returned slice, even when its length exceeds the request.

@@ -180,6 +180,7 @@ func generateViewFile(u *ir.Unit, closure map[string]bool, arms map[string]int) 
 						if arm.Body() {
 							extra += fmt.Sprintf("Payload:%sTableType,", arm.Type)
 						} else {
+							// The checker permits field-shaped arms only in a table closure.
 							extra += fmt.Sprintf("Field:func()*TableFieldInfo{return &tableUnionArms[%d].Arms[%d].Field},", arms[n], i+1)
 						}
 					}

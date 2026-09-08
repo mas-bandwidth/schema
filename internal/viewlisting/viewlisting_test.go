@@ -29,7 +29,7 @@ func corpus(t *testing.T) []string {
 	if err != nil {
 		t.Fatalf("the Makefile carries VIEW_CORPUS and cannot be read: %v", err)
 	}
-	entries := viewCorpusEntries(string(text))
+	entries := viewlisting.CorpusEntries(string(text))
 	if len(entries) == 0 {
 		t.Fatal("the Makefile declares no VIEW_CORPUS entries. The gate's two halves are one list, and this is that list")
 	}
@@ -49,28 +49,6 @@ func corpus(t *testing.T) []string {
 		paths = append(paths, path)
 	}
 	return paths
-}
-
-// viewCorpusEntries reads the VIEW_CORPUS assignment out of the Makefile,
-// following its backslash continuations.
-func viewCorpusEntries(makefile string) []string {
-	var entries []string
-	inside := false
-	for line := range strings.SplitSeq(makefile, "\n") {
-		if !inside {
-			rest, ok := strings.CutPrefix(line, "VIEW_CORPUS :=")
-			if !ok {
-				continue
-			}
-			inside, line = true, rest
-		}
-		trimmed, more := strings.CutSuffix(strings.TrimRight(line, " \t"), "\\")
-		entries = append(entries, strings.Fields(trimmed)...)
-		if !more {
-			break
-		}
-	}
-	return entries
 }
 
 // TestUnitViewListingMatchesTheIR is the CORPUS GATE (docs/SPEC-TABLES.md

@@ -122,10 +122,9 @@ table Effected
 // against tablenames.Go, so a name the Go emitter defines and nobody registered
 // fails here, and a name registered for Go that nothing emits fails here too.
 //
-// The scan is the C# one's, shape-independent for the same reason: it collects
-// every table-prefixed identifier in the emitted text, declaration or use, and
-// requires the whole set to be registered. Line comments are stripped first —
-// prose is not an identifier.
+// The forward scan claims package declarations, since methods and fields do
+// not consume schema names. The reverse scan requires an actual declaration,
+// including scoped members recorded by DefinedBy; a selector use is not one.
 //
 // IT MATCHES BOTH CASES, and that is the whole reason this scan is not the C#
 // one copied. Go is the first backend whose runtime puts UNEXPORTED names at
@@ -148,23 +147,33 @@ func TestTableRuntimeNamesAreClaimedGo(t *testing.T) {
 	// names without a Table prefix (docs/SPEC-TABLES.md §20 and §3.3).
 	ident := regexp.MustCompile(`\b(?:[Tt]able[A-Za-z0-9_]*|BuildVersion|Announce(?:Measure|Read)?)\b`)
 	emitted := map[string]bool{}
-	referenced := map[string]bool{}
+	declared := map[string]bool{}
 	for name, data := range files {
 		file, err := parser.ParseFile(token.NewFileSet(), name, data, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
-		ast.Inspect(file, func(node ast.Node) bool {
-			if id, ok := node.(*ast.Ident); ok {
-				referenced[id.Name] = true
-			}
-			return true
-		})
 		record := func(name string) {
+			declared[name] = true
 			if ident.MatchString(name) && ident.FindString(name) == name {
 				emitted[name] = true
 			}
 		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			switch n := node.(type) {
+			case *ast.FuncDecl:
+				if n.Recv != nil {
+					declared[n.Name.Name] = true
+				}
+			case *ast.StructType:
+				for _, field := range n.Fields.List {
+					for _, name := range field.Names {
+						declared[name.Name] = true
+					}
+				}
+			}
+			return true
+		})
 		for _, decl := range file.Decls {
 			switch d := decl.(type) {
 			case *ast.FuncDecl:
@@ -201,9 +210,9 @@ func TestTableRuntimeNamesAreClaimedGo(t *testing.T) {
 		}
 	}
 	for _, name := range tablenames.DefinedBy(tablenames.Go) {
-		if !referenced[name] {
+		if !declared[name] {
 			t.Errorf("internal/tablenames says the Go backend defines %s, but nothing in the emitted "+
-				"Go names it — drop the registration or fix the backend; a claim nothing needs takes "+
+				"Go declares it — drop the registration or fix the backend; a claim nothing needs takes "+
 				"a name away from every schema for free", name)
 		}
 	}

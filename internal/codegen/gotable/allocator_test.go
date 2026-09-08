@@ -1,6 +1,7 @@
 package gotable
 
 import (
+	"fmt"
 	"os"
 	"runtime"
 	"testing"
@@ -17,6 +18,9 @@ func TestAllocatorOwnershipAndStandaloneWriters(t *testing.T) {
 		}
 	}
 	t.Setenv("GOTOOLCHAIN", toolchain)
+	if os.Getenv("SCHEMA_GO_ALLOC_ANY_GO") == "1" {
+		fmt.Fprintf(os.Stderr, "Go allocation observations on %s; NOT CERTIFIED\n", toolchain)
+	}
 
 	runGenerated(t, `package probe
  table Child { n int32 }

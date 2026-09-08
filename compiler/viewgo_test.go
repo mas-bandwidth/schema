@@ -16,7 +16,19 @@ func TestGoUnitViewCorpus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"examples", "pointers", "block", "blockhome", "messages", "stream", "blobs", "scalars", "maps", "lists", "arms", "backend", "vocab", "vocab9", "wide"} {
+	makefile, err := os.ReadFile("../Makefile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries := viewlisting.CorpusEntries(string(makefile))
+	if len(entries) == 0 {
+		t.Fatal("Makefile declares no VIEW_CORPUS entries")
+	}
+	for _, entry := range entries {
+		path, pkg, ok := strings.Cut(entry, ":")
+		if !ok {
+			t.Fatalf("VIEW_CORPUS entry %q is not dir:package", entry)
+		}
 		t.Run(path, func(t *testing.T) {
 			c := New()
 			source := "../tables/" + path
@@ -30,6 +42,9 @@ func TestGoUnitViewCorpus(t *testing.T) {
 			u, err := c.Load(paths)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if u.Package != pkg {
+				t.Fatalf("VIEW_CORPUS package %s, generated %s", pkg, u.Package)
 			}
 			files, err := c.Generate(u, "go", Options{})
 			if err != nil {
