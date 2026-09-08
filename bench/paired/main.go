@@ -431,7 +431,7 @@ func parseRows(data []byte, lang, wire, id string) ([]sample, error) {
 	seen := map[string]bool{}
 	for {
 		cols, e := r.Read()
-		if e == io.EOF {
+		if errors.Is(e, io.EOF) {
 			break
 		}
 		if e != nil {
@@ -573,7 +573,7 @@ func measure(langs []string, out string, rounds int, info buildInfo) error {
 	}
 	for key, start := range before {
 		if math.Abs(after[key]/start-1) > 0.05 {
-			return fmt.Errorf("C++ %s control moved more than 5%%; repeat the complete sitting", key)
+			return fmt.Errorf("reference C++ %s control moved more than 5%%; repeat the complete sitting", key)
 		}
 	}
 	loads = append(loads, map[string]any{"date": time.Now().UTC().Format(time.RFC3339), "load": loadNow()})
@@ -618,7 +618,7 @@ func render(dir string) error {
 				if label == "start" {
 					controls[key] = row.rate
 				} else if math.Abs(row.rate/controls[key]-1) > 0.05 {
-					return fmt.Errorf("C++ %s/%s control moved more than 5%%", wire, key)
+					return fmt.Errorf("reference C++ %s/%s control moved more than 5%%", wire, key)
 				}
 			}
 		}
