@@ -34,8 +34,6 @@ mod benchtable_cook;
 pub use benchtable_cook::*;
 mod benchtable_records;
 pub use benchtable_records::*;
-mod benchtable_table;
-pub use benchtable_table::*;
 #[cfg(feature = "block")]
 mod block_runtime;
 #[cfg(feature = "block")]
@@ -46,5 +44,3 @@ pub use build_version::*;
 mod cook_runtime;
 #[cfg(feature = "cook")]
 pub use cook_runtime::*;
-mod table_runtime;
-pub use table_runtime::*;

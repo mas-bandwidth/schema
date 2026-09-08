@@ -11,24 +11,38 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
 )
 
-// TestDartEmitsTableSources: the dart target adds <Base>Table.dart beside the
-// packet libraries for a unit with tables, and adds NOTHING for one without —
-// the same contract the cpp and cs targets hold.
+// TestDartEmitsTableSources: the dart target adds the BLOCK and COOK read
+// halves, <Base>Block.dart and <Base>Cook.dart with their runtime homes, beside
+// the packet libraries for a unit with tables, and adds NOTHING for one
+// without. It emits no <Base>Table.dart at all: the table wire's Dart port
+// wrote the form that preceded the id-table wire and was removed rather than
+// carried (schema#514 brings the current wire to Dart).
 func TestDartEmitsTableSources(t *testing.T) {
 	c := New()
 	with, err := c.Generate(unitFromSource(t, tableSrc), "dart", Options{})
 	if err != nil {
 		t.Fatalf("--lang dart: %v", err)
 	}
-	if _, ok := with["ProbeTable.dart"]; !ok {
-		t.Fatalf("--lang dart emitted no ProbeTable.dart for a unit with tables; got %d files", len(with))
+	blocks, cooks := 0, 0
+	for name := range with {
+		switch {
+		case strings.HasSuffix(name, "Table.dart"):
+			t.Errorf("--lang dart emitted %s: the previous-form table wire was removed and nothing emits <Base>Table.dart", name)
+		case strings.HasSuffix(name, "Block.dart"):
+			blocks++
+		case strings.HasSuffix(name, "Cook.dart"):
+			cooks++
+		}
+	}
+	if blocks == 0 || cooks == 0 {
+		t.Fatalf("--lang dart emitted %d Block.dart and %d Cook.dart files for a unit with tables; both halves are owed", blocks, cooks)
 	}
 	without, err := c.Generate(unitFromSource(t, packetSrc), "dart", Options{})
 	if err != nil {
 		t.Fatalf("--lang dart: %v", err)
 	}
 	for name := range without {
-		if strings.HasSuffix(name, "Table.dart") {
+		if dartTableSource(name) {
 			t.Errorf("--lang dart emitted %s for a table-free unit", name)
 		}
 	}
@@ -43,46 +57,6 @@ func TestDartEmitsTableSources(t *testing.T) {
 		if string(got) != string(data) {
 			t.Errorf("file %s changed when a table was added — tables must move no packet byte", name)
 		}
-	}
-}
-
-// TestDartRefusesPointeredTables: the Dart READING TIER has no arena, no
-// builder, no region and no node-table codec, so a unit whose closure declares
-// a pointer gets no codec — and the refusal is NAMED, in a file that stays, so
-// a consumer reaching for Save or Load meets an explanation rather than a
-// missing name with none.
-func TestDartRefusesPointeredTables(t *testing.T) {
-	c := New()
-	u := unitFromSource(t, packetSrc+`
-table Node
-{
-    value int32
-    next  *Node
-}
-`)
-	files, err := c.Generate(u, "dart", Options{})
-	if err != nil {
-		t.Fatalf("--lang dart refused a pointered unit outright — the refusal is a FILE, not an error: %v", err)
-	}
-	banner := ""
-	for name, data := range files {
-		if !strings.HasSuffix(name, "Table.dart") {
-			continue
-		}
-		text := string(data)
-		if strings.Contains(text, "SaveBody") || strings.Contains(text, "LoadBody") {
-			t.Errorf("--lang dart emitted a codec in %s for a pointered unit", name)
-		}
-		banner = text
-	}
-	if banner == "" {
-		t.Fatal("--lang dart emitted no file at all for a pointered unit — the refusal has nowhere to live")
-	}
-	if !strings.Contains(banner, "REFUSED, BY NAME") {
-		t.Error("the pointered unit's Dart file carries no refusal banner")
-	}
-	if !strings.Contains(banner, "Node") || !strings.Contains(banner, "named follow-on") {
-		t.Error("the refusal does not name the table and the follow-on")
 	}
 }
 
@@ -167,8 +141,8 @@ func TestDartTableRuntimeNamesAreClaimed(t *testing.T) {
 }
 
 // dartTableSource reports whether a generated file is one the DART TABLE
-// backend wrote: the wire's <Base>Table.dart, the block form's
-// <Base>Block.dart, the cook's <Base>Cook.dart. The packet emitter's own
+// backend wrote: the block form's <Base>Block.dart, the cook's <Base>Cook.dart,
+// and (should one ever reappear) a <Base>Table.dart. The packet emitter's own
 // libraries are not this backend's to scan.
 func dartTableSource(name string) bool {
 	return strings.HasSuffix(name, "Table.dart") ||
