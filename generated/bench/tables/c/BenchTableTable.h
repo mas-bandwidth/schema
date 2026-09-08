@@ -1147,6 +1147,9 @@ typedef struct TableMessageReader {
  TableBitReader bits; const TableVocabulary * vocabulary; TableReport * report;
  int64_t index_bits; int extent_refused;
 } TableMessageReader;
+/* Framing scans skip by announced shape, including a reserved transport id
+   (kind 0, no extra bits). A NAME reference still refuses reserved ids.
+   Typed body reads diagnose reserved as malformed after resolving the entry. */
 static SCHEMA_UNUSED int table_message_ref(TableMessageReader * r,const TableMessageEntry ** entry,int name)
 {
  uint64_t ref=0;
@@ -1155,7 +1158,8 @@ static SCHEMA_UNUSED int table_message_ref(TableMessageReader * r,const TableMes
  if(ref==0)return 1;
  if(ref>(uint64_t)r->vocabulary->count)return 0;
  *entry=r->vocabulary->entries+ref-1;
- return (*entry)->id<UINT64_C(0xfffffffffffffffd) && (!name || (*entry)->kind==0);
+ if(name) return (*entry)->id<UINT64_C(0xfffffffffffffffd) && (*entry)->kind==0;
+ return 1;
 }
 static SCHEMA_UNUSED TableMessageEntry table_message_element(const TableMessageEntry * e)
 {
@@ -1566,7 +1570,7 @@ static SCHEMA_UNUSED int schema_benchtable_table_event_wire_message_load_(TableM
  if(!table_message_ref(r,&entry,0))goto malformed;
  value->type=0;
  if(entry==NULL)return 1;
- if(entry->kind==0)goto malformed;
+ if(entry->id>=UINT64_C(0xfffffffffffffffd)||entry->kind==0)goto malformed;
  switch(entry->id){
  case UINT64_C(0x33732819300680aa): {
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,13)){r->report->widened++;
@@ -3036,6 +3040,7 @@ static SCHEMA_UNUSED int table_entity_load_message_body(TableMessageReader * r,T
  for(;;){const TableMessageEntry * entry;
  if(!table_message_ref(r,&entry,0))goto malformed;
  if(entry==NULL)return 1;
+ if(entry->id>=UINT64_C(0xfffffffffffffffd))goto malformed;
  switch(entry->id){
  case UINT64_C(0x23fcfd6678e36712): {
  if(!(entry->kind==7 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,7)){r->report->widened++;
@@ -3589,6 +3594,7 @@ static SCHEMA_UNUSED int table_stat_load_message_body(TableMessageReader * r,Tab
  for(;;){const TableMessageEntry * entry;
  if(!table_message_ref(r,&entry,0))goto malformed;
  if(entry==NULL)return 1;
+ if(entry->id>=UINT64_C(0xfffffffffffffffd))goto malformed;
  switch(entry->id){
  case UINT64_C(0x80ab75f0866dbf65): {
  if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,6)){r->report->widened++;
@@ -5961,6 +5967,7 @@ static SCHEMA_UNUSED int table_mixed_load_message_body(TableMessageReader * r,Ta
  for(;;){const TableMessageEntry * entry;
  if(!table_message_ref(r,&entry,0))goto malformed;
  if(entry==NULL)return 1;
+ if(entry->id>=UINT64_C(0xfffffffffffffffd))goto malformed;
  switch(entry->id){
  case UINT64_C(0x6a5a70d91aa115fd): {
  if(!(entry->kind==7 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,7)){r->report->widened++;
@@ -6944,6 +6951,7 @@ static SCHEMA_UNUSED int table_hit_event_load_message_body(TableMessageReader * 
  for(;;){const TableMessageEntry * entry;
  if(!table_message_ref(r,&entry,0))goto malformed;
  if(entry==NULL)return 1;
+ if(entry->id>=UINT64_C(0xfffffffffffffffd))goto malformed;
  switch(entry->id){
  case UINT64_C(0xb7bc9ac015a25050): {
  if(!(entry->kind==7 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,7)){r->report->widened++;
@@ -7327,6 +7335,7 @@ static SCHEMA_UNUSED int table_chat_event_load_message_body(TableMessageReader *
  for(;;){const TableMessageEntry * entry;
  if(!table_message_ref(r,&entry,0))goto malformed;
  if(entry==NULL)return 1;
+ if(entry->id>=UINT64_C(0xfffffffffffffffd))goto malformed;
  switch(entry->id){
  case UINT64_C(0xa5013e9ad5caeda4): {
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,4)){r->report->widened++;
@@ -7678,6 +7687,7 @@ static SCHEMA_UNUSED int table_pickup_event_load_message_body(TableMessageReader
  for(;;){const TableMessageEntry * entry;
  if(!table_message_ref(r,&entry,0))goto malformed;
  if(entry==NULL)return 1;
+ if(entry->id>=UINT64_C(0xfffffffffffffffd))goto malformed;
  switch(entry->id){
  case UINT64_C(0x9e7fd06d864fbd56): {
  if(!(entry->kind==7 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,7)){r->report->widened++;
