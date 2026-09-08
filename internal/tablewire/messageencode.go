@@ -265,8 +265,9 @@ func encodeBitField(e *bitEncoder, w *bitWriter, fv *tabletext.Field) error {
 			return nil // an all-default nested table elides: its body is its terminator alone
 		}
 		e.ref(w, entry)
-		w.splice(body)
-		return nil
+		// The probe decides elision only. Aligned payloads must be written
+		// at their position in the batch, not spliced from bit zero.
+		return encodeBitBody(e, w, subInstanceOf(e.m, f, &fv.Cell), false)
 
 	case kind == ir.TableKindEnum:
 		if cellIsDefaultIn(e.m, f, &fv.Cell) {
@@ -492,8 +493,11 @@ func encodeBitArm(e *bitEncoder, w *bitWriter, arm ir.UnionVariant, cell *tablet
 func encodeBitKeyed(e *bitEncoder, w *bitWriter, fv *tabletext.Field, entry ir.TableVocabularyEntry) error {
 	f := fv.Def
 	shape := entry.Shape
-	pairs := &bitWriter{}
-	n := uint64(0)
+	type presentSlot struct {
+		slot  int
+		keyID uint64
+	}
+	var present []presentSlot
 	for slot := tabletext.KeyedFirstSlot(); slot < tabletext.KeyedSlotCount(f); slot++ {
 		cell := &fv.Elems[slot]
 		keyID, none, err := variantWireId(f.KeyEnumRef, uint64(tabletext.KeyedSlotValue(f, slot)), f.Name)
@@ -517,20 +521,20 @@ func encodeBitKeyed(e *bitEncoder, w *bitWriter, fv *tabletext.Field, entry ir.T
 			if cellIsDefaultIn(e.m, f, cell) {
 				continue // a default slot elides
 			}
-			if err := encodeBitElement(e, elem, f, shape, cell); err != nil {
-				return err
-			}
 		}
-		e.name(pairs, keyID)
-		pairs.splice(elem)
-		n++
+		present = append(present, presentSlot{slot: slot, keyID: keyID})
 	}
-	if n == 0 {
+	if len(present) == 0 {
 		return nil
 	}
 	e.ref(w, entry)
-	w.put(n, ir.TableMessageBitsRequired(0, shape.Max))
-	w.splice(pairs)
+	w.put(uint64(len(present)), ir.TableMessageBitsRequired(0, shape.Max))
+	for _, slot := range present {
+		e.name(w, slot.keyID)
+		if err := encodeBitElement(e, w, f, shape, &fv.Elems[slot.slot]); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
