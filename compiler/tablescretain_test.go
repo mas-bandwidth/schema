@@ -192,3 +192,56 @@ func TestCTableRetainRefusedByName(t *testing.T) {
 		})
 	}
 }
+
+// Keys are probed before entry placement: clipping one would invent a key,
+// and a dropped entry contributes no decoded fields or retained records.
+func TestCTableRetainMessageDroppedMapKey(t *testing.T) {
+	const old = `package probe
+ table Item { number int32 }
+ table Root { names map[string(2)]Item }
+ `
+	newer := strings.Replace(strings.Replace(old, "string(2)", "string(8)", 1), "number int32", "number int32\nextra int32", 1)
+	sender, receiver := unitFromSource(t, newer), unitFromSource(t, old)
+	sm, rm := tabletext.NewModel(sender), tabletext.NewModel(receiver)
+	octets := func(b []byte) string {
+		var s strings.Builder
+		for _, v := range b {
+			fmt.Fprintf(&s, "0x%02x,", v)
+		}
+		return s.String()
+	}
+	for _, replaced := range []bool{false, true} {
+		t.Run(fmt.Sprint(replaced), func(t *testing.T) {
+			source, next := sm.New(sm.Lookup("Root")), sm.New(sm.Lookup("Root"))
+			var report tabletext.Report
+			if !sm.Read(source, []byte(`{"names":{"long":{"number":1,"extra":7}}}`), &report) || !report.Silent() {
+				t.Fatal(report)
+			}
+			expected := rm.New(rm.Lookup("Root"))
+			if replaced {
+				text := []byte(`{"names":{"ok":{"number":2}}}`)
+				if !sm.Read(next, text, &report) || !rm.Read(expected, text, &report) || !report.Silent() {
+					t.Fatal(report)
+				}
+				source.Fields = append(source.Fields, next.Fields[0])
+			}
+			batch, err := tablewire.EncodeMessages(sm, []*tabletext.Instance{source})
+			if err != nil {
+				t.Fatal(err)
+			}
+			want, err := tablewire.Encode(rm, expected)
+			if err != nil {
+				t.Fatal(err)
+			}
+			runCTableWireProbe(t, receiver, fmt.Sprintf(`#include "ProbeTable.h"
+#include <stdio.h>
+#define CHECK(x) do{if(!(x)){fprintf(stderr,"line %%d: %%s\n",__LINE__,#x);return 1;}}while(0)
+static const uint8_t announcement[]={%s},batch[]={%s},want[]={%s};
+int main(void){TableMessageEntry entries[128];TableVocabulary vocabulary=table_vocabulary(entries,128);TableReport report={0};TableRetain keep={0};TableRetainId ids[128];uint8_t store[8192],out[8192];uint8_t *region;const Root *roots[1];int64_t count=1,need,bytes;
+ CHECK(announce_read(&vocabulary,announcement,sizeof(announcement),&report));need=root_load_measure_messages(&vocabulary,batch,sizeof(batch));CHECK(need>0);region=(uint8_t *)malloc((size_t)need);CHECK(region);keep.bytes=store;keep.capacity=sizeof(store);keep.ids=ids;keep.id_capacity=128;
+ CHECK(root_load_retain_messages(roots,&count,region,need,&vocabulary,batch,sizeof(batch),&keep,&report));CHECK(count==1&&!report.malformed&&!report.refused&&report.clamped==1&&report.unknown==0&&report.retained==0&&report.retain_lost==0);
+ bytes=root_save_retain(roots[0],&keep,out,sizeof(out),&report);CHECK(bytes==sizeof(want)&&!memcmp(out,want,sizeof(want))&&report.retain_lost==0);free(region);return 0;
+}`, octets(tablewire.Announce(sender)), octets(batch), octets(want)))
+		})
+	}
+}

@@ -63,18 +63,39 @@
     {
       "name": "base-conformance",
       "when": "pull-request",
-      "why": "the conformance harness's own controls. The first of them rebuilds the C++ reference driver under a sabotage, which is 45 s of this group on the runner and the reason the absence control sits in a group of its own. Measured 22 s over 7 controls.",
+      "why": "The shared conformance harness controls, including the sabotaged C++ reference. The completed C driver now has three separate compile-heavy groups below; combining them exceeded the five-minute job ceiling on run 34186742566.",
       "targets": [
         "conformance-negative-control",
         "conformance-negative-control-block-dump",
-        "conformance-negative-control-c",
-        "tables-c-wire-fuzz-negative-control",
-        "tables-c-message-negative-control",
-        "tables-c-retain-negative-control",
-        "conformance-negative-control-c-foreign",
         "conformance-negative-control-go",
         "conformance-negative-control-go-walk",
         "conformance-negative-control-reference-surface"
+      ]
+    },
+    {
+      "name": "base-c-conformance",
+      "when": "pull-request",
+      "why": "The C JSON driver sabotage and the small message/retention compiler probes share one job. The expanded C driver must not share a job with the other two complete C driver rebuilds.",
+      "targets": [
+        "conformance-negative-control-c",
+        "tables-c-message-negative-control",
+        "tables-c-retain-negative-control"
+      ]
+    },
+    {
+      "name": "base-c-wire",
+      "when": "pull-request",
+      "why": "The complete C wire roster rebuilt with a permissive LEB reader took about 99 seconds on run 34186742566. Keep that compile in its own job within the control-time budget.",
+      "targets": [
+        "tables-c-wire-fuzz-negative-control"
+      ]
+    },
+    {
+      "name": "base-c-foreign",
+      "when": "pull-request",
+      "why": "The C foreign-byte-order sabotage rebuilds the complete driver. It was cancelled while compiling after the preceding C controls exhausted the old combined job; isolate it without raising the timeout.",
+      "targets": [
+        "conformance-negative-control-c-foreign"
       ]
     },
     {
