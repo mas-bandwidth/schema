@@ -1589,6 +1589,7 @@ static SCHEMA_UNUSED int wide_blob_load_body( TableReader * r, WideBlob * value 
                             r->report->widened++;
                         }
                         kept = count; if ( kept > 70000 ) { kept = 70000; r->report->clamped++; }
+                        int32_t previous_count = value->samples_count;
                         value->samples_count = 0;
                         for ( i = 0; i < kept; i++ )
                         {
@@ -1615,7 +1616,7 @@ static SCHEMA_UNUSED int wide_blob_load_body( TableReader * r, WideBlob * value 
                             value->samples_count = (int32_t) i + 1;
                         }
                         end_samples: ;
-                        { int32_t tail; for (tail=value->samples_count;tail<70000;tail++) {
+                        { int32_t tail; for (tail=value->samples_count;tail<previous_count;tail++) {
                          memset(&value->samples[tail],0,sizeof(value->samples[tail]));
                         } }
                     }

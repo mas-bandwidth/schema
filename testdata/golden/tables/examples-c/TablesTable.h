@@ -2530,6 +2530,7 @@ static SCHEMA_UNUSED int loadout_config_load_body( TableReader * r, LoadoutConfi
                             r->report->widened++;
                         }
                         kept = count; if ( kept > 4 ) { kept = 4; r->report->clamped++; }
+                        int32_t previous_count = value->grades_count;
                         value->grades_count = 0;
                         for ( i = 0; i < kept; i++ )
                         {
@@ -2551,7 +2552,7 @@ static SCHEMA_UNUSED int loadout_config_load_body( TableReader * r, LoadoutConfi
                             value->grades_count = (int32_t) i + 1;
                         }
                         end_grades: ;
-                        { int32_t tail; for (tail=value->grades_count;tail<4;tail++) {
+                        { int32_t tail; for (tail=value->grades_count;tail<previous_count;tail++) {
                          memset(&value->grades[tail],0,sizeof(value->grades[tail]));
                         } }
                     }
@@ -2756,6 +2757,7 @@ static SCHEMA_UNUSED int loadout_config_load_body( TableReader * r, LoadoutConfi
                             r->report->widened++;
                         }
                         kept = count; if ( kept > 8 ) { kept = 8; r->report->clamped++; }
+                        int32_t previous_count = value->attachments_count;
                         value->attachments_count = 0;
                         for ( i = 0; i < kept; i++ )
                         {
@@ -2766,7 +2768,7 @@ static SCHEMA_UNUSED int loadout_config_load_body( TableReader * r, LoadoutConfi
                             value->attachments_count = (int32_t) i + 1;
                         }
                         end_attachments: ;
-                        { int32_t tail; for (tail=value->attachments_count;tail<8;tail++) {
+                        { int32_t tail; for (tail=value->attachments_count;tail<previous_count;tail++) {
                          attachment_reset(&value->attachments[tail]);
                         } }
                     }
@@ -4631,6 +4633,7 @@ static SCHEMA_UNUSED int root_config_load_body( TableReader * r, RootConfig * va
                             r->report->widened++;
                         }
                         kept = count; if ( kept > 8 ) { kept = 8; r->report->clamped++; }
+                        int32_t previous_count = value->weapons_count;
                         value->weapons_count = 0;
                         for ( i = 0; i < kept; i++ )
                         {
@@ -4641,7 +4644,7 @@ static SCHEMA_UNUSED int root_config_load_body( TableReader * r, RootConfig * va
                             value->weapons_count = (int32_t) i + 1;
                         }
                         end_weapons: ;
-                        { int32_t tail; for (tail=value->weapons_count;tail<8;tail++) {
+                        { int32_t tail; for (tail=value->weapons_count;tail<previous_count;tail++) {
                          weapon_config_reset(&value->weapons[tail]);
                         } }
                     }
@@ -4670,6 +4673,7 @@ static SCHEMA_UNUSED int root_config_load_body( TableReader * r, RootConfig * va
                             r->report->widened++;
                         }
                         kept = count; if ( kept > 4 ) { kept = 4; r->report->clamped++; }
+                        int32_t previous_count = value->profiles_count;
                         value->profiles_count = 0;
                         for ( i = 0; i < kept; i++ )
                         {
@@ -4680,7 +4684,7 @@ static SCHEMA_UNUSED int root_config_load_body( TableReader * r, RootConfig * va
                             value->profiles_count = (int32_t) i + 1;
                         }
                         end_profiles: ;
-                        { int32_t tail; for (tail=value->profiles_count;tail<4;tail++) {
+                        { int32_t tail; for (tail=value->profiles_count;tail<previous_count;tail++) {
                          profile_config_reset(&value->profiles[tail]);
                         } }
                     }

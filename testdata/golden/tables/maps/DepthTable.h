@@ -7693,6 +7693,7 @@ inline bool DepthLoadBody( TableReader & r, const TableNodeMap & nodes, Depth & 
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.many_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -7725,7 +7726,7 @@ inline bool DepthLoadBody( TableReader & r, const TableNodeMap & nodes, Depth & 
                         decoded = i + 1;
                     }
                     value.many_count = (int32_t) decoded;
-                    for ( int32_t tail = value.many_count; tail < 3; tail++ ) {
+                    for ( int32_t tail = value.many_count; tail < previous_count; tail++ ) {
                         SquadReset( value.many[tail] );
                     }
                     }
@@ -11507,6 +11508,7 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.many_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -11542,7 +11544,7 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
                         decoded = i + 1;
                     }
                     value.many_count = (int32_t) decoded;
-                    for ( int32_t tail = value.many_count; tail < 3; tail++ ) {
+                    for ( int32_t tail = value.many_count; tail < previous_count; tail++ ) {
                         SquadReset( value.many[tail] );
                     }
                     }

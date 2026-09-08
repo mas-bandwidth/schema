@@ -2550,6 +2550,7 @@ WIDE_TABLE_INLINE bool CaptionLoadBody( TableReader & r, Caption & value )
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.lines_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -2581,7 +2582,7 @@ WIDE_TABLE_INLINE bool CaptionLoadBody( TableReader & r, Caption & value )
                         decoded = i + 1;
                     }
                     value.lines_count = (int32_t) decoded;
-                    for ( int32_t tail = value.lines_count; tail < 3; tail++ ) {
+                    for ( int32_t tail = value.lines_count; tail < previous_count; tail++ ) {
                         LineReset( value.lines[tail] );
                     }
                     }

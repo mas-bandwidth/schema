@@ -233,6 +233,9 @@ func (g *tableGen) wireReadFieldPayload(f *ir.Field, kind int, dst, bounded stri
 		g.pf("%s            if ( !(%s) ) { r->report->kind_mismatch++; break; }\n%s            r->report->widened++;\n%s        }\n", ind, wireElementWidenTest(f, kind, "elem_kind"), ind, ind)
 		g.retainReplace(f, ind+"        ")
 		g.pf("%s        kept = count; if ( kept > %d ) { kept = %d; r->report->clamped++; }\n", ind, bound, bound)
+		if f.Array == ir.ArrayCounted {
+			g.pf("%s        int32_t previous_count = %s_count;\n", ind, dst)
+		}
 		if count != "" {
 			g.pf("%s        %s = 0;\n", ind, count)
 		}
@@ -302,7 +305,7 @@ func (g *tableGen) wireReadKeyed(f *ir.Field, kind int, ind string) {
 
 // Keep value-initialized storage past a replacement's decoded prefix (#725).
 func (g *tableGen) wireCountedTailReset(f *ir.Field, dst, ind string) {
-	g.pf("%s{ int32_t tail; for (tail=%s_count;tail<%d;tail++) {\n", ind, dst, f.ArrayBound)
+	g.pf("%s{ int32_t tail; for (tail=%s_count;tail<previous_count;tail++) {\n", ind, dst)
 	if st, ok := f.Type.Ref.(*ir.Struct); ok && !f.Type.Pointer {
 		g.pf("%s %s(&%s[tail]);\n", ind, g.api(st.Name, "reset"), dst)
 	} else {

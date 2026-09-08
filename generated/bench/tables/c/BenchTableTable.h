@@ -4829,6 +4829,7 @@ static SCHEMA_UNUSED int table_mixed_load_body( TableReader * r, TableMixed * va
                             r->report->widened++;
                         }
                         kept = count; if ( kept > 8 ) { kept = 8; r->report->clamped++; }
+                        int32_t previous_count = value->entities_count;
                         value->entities_count = 0;
                         for ( i = 0; i < kept; i++ )
                         {
@@ -4839,7 +4840,7 @@ static SCHEMA_UNUSED int table_mixed_load_body( TableReader * r, TableMixed * va
                             value->entities_count = (int32_t) i + 1;
                         }
                         end_entities: ;
-                        { int32_t tail; for (tail=value->entities_count;tail<8;tail++) {
+                        { int32_t tail; for (tail=value->entities_count;tail<previous_count;tail++) {
                          table_entity_reset(&value->entities[tail]);
                         } }
                     }
@@ -4868,6 +4869,7 @@ static SCHEMA_UNUSED int table_mixed_load_body( TableReader * r, TableMixed * va
                             r->report->widened++;
                         }
                         kept = count; if ( kept > 80 ) { kept = 80; r->report->clamped++; }
+                        int32_t previous_count = value->stats_count;
                         value->stats_count = 0;
                         for ( i = 0; i < kept; i++ )
                         {
@@ -4878,7 +4880,7 @@ static SCHEMA_UNUSED int table_mixed_load_body( TableReader * r, TableMixed * va
                             value->stats_count = (int32_t) i + 1;
                         }
                         end_stats: ;
-                        { int32_t tail; for (tail=value->stats_count;tail<80;tail++) {
+                        { int32_t tail; for (tail=value->stats_count;tail<previous_count;tail++) {
                          table_stat_reset(&value->stats[tail]);
                         } }
                     }

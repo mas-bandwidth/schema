@@ -2016,6 +2016,7 @@ static SCHEMA_UNUSED int ship_entry_load_body( TableReader * r, ShipEntry * valu
                             r->report->widened++;
                         }
                         kept = count; if ( kept > 4 ) { kept = 4; r->report->clamped++; }
+                        int32_t previous_count = value->hardpoints_count;
                         value->hardpoints_count = 0;
                         for ( i = 0; i < kept; i++ )
                         {
@@ -2055,7 +2056,7 @@ static SCHEMA_UNUSED int ship_entry_load_body( TableReader * r, ShipEntry * valu
                             value->hardpoints_count = (int32_t) i + 1;
                         }
                         end_hardpoints: ;
-                        { int32_t tail; for (tail=value->hardpoints_count;tail<4;tail++) {
+                        { int32_t tail; for (tail=value->hardpoints_count;tail<previous_count;tail++) {
                          memset(&value->hardpoints[tail],0,sizeof(value->hardpoints[tail]));
                         } }
                     }
@@ -3329,6 +3330,7 @@ static SCHEMA_UNUSED int pack_config_load_body( TableReader * r, PackConfig * va
                             r->report->widened++;
                         }
                         kept = count; if ( kept > 3 ) { kept = 3; r->report->clamped++; }
+                        int32_t previous_count = value->reserves_count;
                         value->reserves_count = 0;
                         for ( i = 0; i < kept; i++ )
                         {
@@ -3339,7 +3341,7 @@ static SCHEMA_UNUSED int pack_config_load_body( TableReader * r, PackConfig * va
                             value->reserves_count = (int32_t) i + 1;
                         }
                         end_reserves: ;
-                        { int32_t tail; for (tail=value->reserves_count;tail<3;tail++) {
+                        { int32_t tail; for (tail=value->reserves_count;tail<previous_count;tail++) {
                          ship_entry_reset(&value->reserves[tail]);
                         } }
                     }

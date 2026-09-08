@@ -3276,6 +3276,7 @@ TABLEDEMO_TABLE_INLINE bool ShipEntryLoadBody( TableReader & r, ShipEntry & valu
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.hardpoints_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -3302,7 +3303,7 @@ TABLEDEMO_TABLE_INLINE bool ShipEntryLoadBody( TableReader & r, ShipEntry & valu
                             widened_decoded = widened_i + 1;
                         }
                         value.hardpoints_count = (int32_t) widened_decoded;
-                        for ( int32_t tail = value.hardpoints_count; tail < 4; tail++ ) {
+                        for ( int32_t tail = value.hardpoints_count; tail < previous_count; tail++ ) {
                             value.hardpoints[tail] = int32_t();
                         }
                     }
@@ -3326,7 +3327,7 @@ TABLEDEMO_TABLE_INLINE bool ShipEntryLoadBody( TableReader & r, ShipEntry & valu
                         decoded = i + 1;
                     }
                     value.hardpoints_count = (int32_t) decoded;
-                    for ( int32_t tail = value.hardpoints_count; tail < 4; tail++ ) {
+                    for ( int32_t tail = value.hardpoints_count; tail < previous_count; tail++ ) {
                         value.hardpoints[tail] = int32_t();
                     }
                     }
@@ -4887,6 +4888,7 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBody( TableReader & r, PackConfig & va
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.reserves_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -4918,7 +4920,7 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBody( TableReader & r, PackConfig & va
                         decoded = i + 1;
                     }
                     value.reserves_count = (int32_t) decoded;
-                    for ( int32_t tail = value.reserves_count; tail < 3; tail++ ) {
+                    for ( int32_t tail = value.reserves_count; tail < previous_count; tail++ ) {
                         ShipEntryReset( value.reserves[tail] );
                     }
                     }

@@ -3151,6 +3151,7 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.edges_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -3175,7 +3176,7 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
                             widened_decoded = widened_i + 1;
                         }
                         value.edges_count = (int32_t) widened_decoded;
-                        for ( int32_t tail = value.edges_count; tail < 4; tail++ ) {
+                        for ( int32_t tail = value.edges_count; tail < previous_count; tail++ ) {
                             value.edges[tail] = int16_t();
                         }
                     }
@@ -3197,7 +3198,7 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
                         decoded = i + 1;
                     }
                     value.edges_count = (int32_t) decoded;
-                    for ( int32_t tail = value.edges_count; tail < 4; tail++ ) {
+                    for ( int32_t tail = value.edges_count; tail < previous_count; tail++ ) {
                         value.edges[tail] = int16_t();
                     }
                     }
@@ -4964,6 +4965,7 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.counts_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -4988,7 +4990,7 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
                             widened_decoded = widened_i + 1;
                         }
                         value.counts_count = (int32_t) widened_decoded;
-                        for ( int32_t tail = value.counts_count; tail < 4; tail++ ) {
+                        for ( int32_t tail = value.counts_count; tail < previous_count; tail++ ) {
                             value.counts[tail] = uint64_t();
                         }
                     }
@@ -5010,7 +5012,7 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
                         decoded = i + 1;
                     }
                     value.counts_count = (int32_t) decoded;
-                    for ( int32_t tail = value.counts_count; tail < 4; tail++ ) {
+                    for ( int32_t tail = value.counts_count; tail < previous_count; tail++ ) {
                         value.counts[tail] = uint64_t();
                     }
                     }

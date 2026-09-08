@@ -9426,6 +9426,7 @@ inline bool DeckLoadBody( TableReader & r, const TableNodeMap & nodes, Deck & va
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.hands_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -9458,7 +9459,7 @@ inline bool DeckLoadBody( TableReader & r, const TableNodeMap & nodes, Deck & va
                         decoded = i + 1;
                     }
                     value.hands_count = (int32_t) decoded;
-                    for ( int32_t tail = value.hands_count; tail < 3; tail++ ) {
+                    for ( int32_t tail = value.hands_count; tail < previous_count; tail++ ) {
                         RowReset( value.hands[tail] );
                     }
                     }
@@ -17248,6 +17249,7 @@ inline bool DeckLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Dec
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.hands_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -17283,7 +17285,7 @@ inline bool DeckLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Dec
                         decoded = i + 1;
                     }
                     value.hands_count = (int32_t) decoded;
-                    for ( int32_t tail = value.hands_count; tail < 3; tail++ ) {
+                    for ( int32_t tail = value.hands_count; tail < previous_count; tail++ ) {
                         RowReset( value.hands[tail] );
                     }
                     }

@@ -6832,6 +6832,7 @@ inline bool CrewsMembersEntryLoadBody( TableReader & r, const TableNodeMap & nod
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.value_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -6860,7 +6861,7 @@ inline bool CrewsMembersEntryLoadBody( TableReader & r, const TableNodeMap & nod
                         decoded = i + 1;
                     }
                     value.value_count = (int32_t) decoded;
-                    for ( int32_t tail = value.value_count; tail < 2; tail++ ) {
+                    for ( int32_t tail = value.value_count; tail < previous_count; tail++ ) {
                         value.value[tail] = TableRef();
                     }
                     }
@@ -8984,6 +8985,7 @@ inline bool CrewsMembersEntryLoadBodyRetain( TableReader & r, const TableNodeMap
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.value_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -9012,7 +9014,7 @@ inline bool CrewsMembersEntryLoadBodyRetain( TableReader & r, const TableNodeMap
                         decoded = i + 1;
                     }
                     value.value_count = (int32_t) decoded;
-                    for ( int32_t tail = value.value_count; tail < 2; tail++ ) {
+                    for ( int32_t tail = value.value_count; tail < previous_count; tail++ ) {
                         value.value[tail] = TableRef();
                     }
                     }

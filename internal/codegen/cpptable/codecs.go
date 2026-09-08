@@ -1865,6 +1865,9 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s// count, so fewer than two bytes — is INERT (§4): the field keeps the\n", ind)
 		g.pf("%s// value it has, no counter is raised, and the walk continues past L.\n", ind)
 		g.pf("%sif ( body_len >= 2 )\n%s{\n", ind, ind)
+		if f.Array == ir.ArrayCounted {
+			g.pf("%s    const int32_t previous_count = value.%s_count;\n", ind, f.Name)
+		}
 		g.pf("%s    uint8_t elem_kind = r.get8();\n", ind)
 		g.pf("%s    uint64_t count = 0;\n", ind)
 		g.pf("%s    const bool counted_ok = r.getleb( count );\n", ind)
@@ -2729,7 +2732,7 @@ func (g *tableGen) emitCountedTailReset(f *ir.Field, ind string) {
 	if f.Type.Pointer {
 		typ = "TableRef"
 	}
-	g.pf("%sfor ( int32_t tail = value.%s_count; tail < %d; tail++ ) {\n", ind, f.Name, f.ArrayBound)
+	g.pf("%sfor ( int32_t tail = value.%s_count; tail < previous_count; tail++ ) {\n", ind, f.Name)
 	saved := g.indent
 	g.indent += ind
 	g.emitTableResetOne("value."+f.Name+"[tail]", typ, f)

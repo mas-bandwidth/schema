@@ -3744,6 +3744,7 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigLoadBody( TableReader & r, LoadoutConfi
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.grades_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -3778,7 +3779,7 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigLoadBody( TableReader & r, LoadoutConfi
                         decoded = i + 1;
                     }
                     value.grades_count = (int32_t) decoded;
-                    for ( int32_t tail = value.grades_count; tail < 4; tail++ ) {
+                    for ( int32_t tail = value.grades_count; tail < previous_count; tail++ ) {
                         value.grades[tail] = Grade();
                     }
                     }
@@ -3959,6 +3960,7 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigLoadBody( TableReader & r, LoadoutConfi
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.attachments_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -3990,7 +3992,7 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigLoadBody( TableReader & r, LoadoutConfi
                         decoded = i + 1;
                     }
                     value.attachments_count = (int32_t) decoded;
-                    for ( int32_t tail = value.attachments_count; tail < 8; tail++ ) {
+                    for ( int32_t tail = value.attachments_count; tail < previous_count; tail++ ) {
                         AttachmentReset( value.attachments[tail] );
                     }
                     }
@@ -6047,6 +6049,7 @@ TABLEDEMO_TABLE_INLINE bool RootConfigLoadBody( TableReader & r, RootConfig & va
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.weapons_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -6078,7 +6081,7 @@ TABLEDEMO_TABLE_INLINE bool RootConfigLoadBody( TableReader & r, RootConfig & va
                         decoded = i + 1;
                     }
                     value.weapons_count = (int32_t) decoded;
-                    for ( int32_t tail = value.weapons_count; tail < 8; tail++ ) {
+                    for ( int32_t tail = value.weapons_count; tail < previous_count; tail++ ) {
                         WeaponConfigReset( value.weapons[tail] );
                     }
                     }
@@ -6104,6 +6107,7 @@ TABLEDEMO_TABLE_INLINE bool RootConfigLoadBody( TableReader & r, RootConfig & va
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.profiles_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -6135,7 +6139,7 @@ TABLEDEMO_TABLE_INLINE bool RootConfigLoadBody( TableReader & r, RootConfig & va
                         decoded = i + 1;
                     }
                     value.profiles_count = (int32_t) decoded;
-                    for ( int32_t tail = value.profiles_count; tail < 4; tail++ ) {
+                    for ( int32_t tail = value.profiles_count; tail < previous_count; tail++ ) {
                         ProfileConfigReset( value.profiles[tail] );
                     }
                     }

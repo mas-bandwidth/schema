@@ -9080,6 +9080,7 @@ static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * 
                             r->report->widened++;
                         }
                         kept = count; if ( kept > 1 ) { kept = 1; r->report->clamped++; }
+                        int32_t previous_count = value->cameras_count;
                         value->cameras_count = 0;
                         for ( i = 0; i < kept; i++ )
                         {
@@ -9090,7 +9091,7 @@ static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * 
                             value->cameras_count = (int32_t) i + 1;
                         }
                         end_cameras: ;
-                        { int32_t tail; for (tail=value->cameras_count;tail<1;tail++) {
+                        { int32_t tail; for (tail=value->cameras_count;tail<previous_count;tail++) {
                          render_camera_reset(&value->cameras[tail]);
                         } }
                     }
@@ -9119,6 +9120,7 @@ static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * 
                             r->report->widened++;
                         }
                         kept = count; if ( kept > 4096 ) { kept = 4096; r->report->clamped++; }
+                        int32_t previous_count = value->ships_count;
                         value->ships_count = 0;
                         for ( i = 0; i < kept; i++ )
                         {
@@ -9129,7 +9131,7 @@ static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * 
                             value->ships_count = (int32_t) i + 1;
                         }
                         end_ships: ;
-                        { int32_t tail; for (tail=value->ships_count;tail<4096;tail++) {
+                        { int32_t tail; for (tail=value->ships_count;tail<previous_count;tail++) {
                          render_ship_reset(&value->ships[tail]);
                         } }
                     }
@@ -9158,6 +9160,7 @@ static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * 
                             r->report->widened++;
                         }
                         kept = count; if ( kept > 1024 ) { kept = 1024; r->report->clamped++; }
+                        int32_t previous_count = value->turrets_count;
                         value->turrets_count = 0;
                         for ( i = 0; i < kept; i++ )
                         {
@@ -9168,7 +9171,7 @@ static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * 
                             value->turrets_count = (int32_t) i + 1;
                         }
                         end_turrets: ;
-                        { int32_t tail; for (tail=value->turrets_count;tail<1024;tail++) {
+                        { int32_t tail; for (tail=value->turrets_count;tail<previous_count;tail++) {
                          render_turret_reset(&value->turrets[tail]);
                         } }
                     }
@@ -9197,6 +9200,7 @@ static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * 
                             r->report->widened++;
                         }
                         kept = count; if ( kept > 4096 ) { kept = 4096; r->report->clamped++; }
+                        int32_t previous_count = value->missiles_count;
                         value->missiles_count = 0;
                         for ( i = 0; i < kept; i++ )
                         {
@@ -9207,7 +9211,7 @@ static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * 
                             value->missiles_count = (int32_t) i + 1;
                         }
                         end_missiles: ;
-                        { int32_t tail; for (tail=value->missiles_count;tail<4096;tail++) {
+                        { int32_t tail; for (tail=value->missiles_count;tail<previous_count;tail++) {
                          render_missile_reset(&value->missiles[tail]);
                         } }
                     }
@@ -9236,6 +9240,7 @@ static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * 
                             r->report->widened++;
                         }
                         kept = count; if ( kept > 4096 ) { kept = 4096; r->report->clamped++; }
+                        int32_t previous_count = value->dynamic_props_count;
                         value->dynamic_props_count = 0;
                         for ( i = 0; i < kept; i++ )
                         {
@@ -9246,7 +9251,7 @@ static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * 
                             value->dynamic_props_count = (int32_t) i + 1;
                         }
                         end_dynamic_props: ;
-                        { int32_t tail; for (tail=value->dynamic_props_count;tail<4096;tail++) {
+                        { int32_t tail; for (tail=value->dynamic_props_count;tail<previous_count;tail++) {
                          render_dynamic_prop_reset(&value->dynamic_props[tail]);
                         } }
                     }
@@ -9275,6 +9280,7 @@ static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * 
                             r->report->widened++;
                         }
                         kept = count; if ( kept > 20000 ) { kept = 20000; r->report->clamped++; }
+                        int32_t previous_count = value->static_props_count;
                         value->static_props_count = 0;
                         for ( i = 0; i < kept; i++ )
                         {
@@ -9285,7 +9291,7 @@ static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * 
                             value->static_props_count = (int32_t) i + 1;
                         }
                         end_static_props: ;
-                        { int32_t tail; for (tail=value->static_props_count;tail<20000;tail++) {
+                        { int32_t tail; for (tail=value->static_props_count;tail<previous_count;tail++) {
                          render_static_prop_reset(&value->static_props[tail]);
                         } }
                     }
@@ -9314,6 +9320,7 @@ static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * 
                             r->report->widened++;
                         }
                         kept = count; if ( kept > 8192 ) { kept = 8192; r->report->clamped++; }
+                        int32_t previous_count = value->cosmetic_props_count;
                         value->cosmetic_props_count = 0;
                         for ( i = 0; i < kept; i++ )
                         {
@@ -9324,7 +9331,7 @@ static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * 
                             value->cosmetic_props_count = (int32_t) i + 1;
                         }
                         end_cosmetic_props: ;
-                        { int32_t tail; for (tail=value->cosmetic_props_count;tail<8192;tail++) {
+                        { int32_t tail; for (tail=value->cosmetic_props_count;tail<previous_count;tail++) {
                          render_cosmetic_prop_reset(&value->cosmetic_props[tail]);
                         } }
                     }
@@ -9353,6 +9360,7 @@ static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * 
                             r->report->widened++;
                         }
                         kept = count; if ( kept > 32000 ) { kept = 32000; r->report->clamped++; }
+                        int32_t previous_count = value->lasers_count;
                         value->lasers_count = 0;
                         for ( i = 0; i < kept; i++ )
                         {
@@ -9363,7 +9371,7 @@ static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * 
                             value->lasers_count = (int32_t) i + 1;
                         }
                         end_lasers: ;
-                        { int32_t tail; for (tail=value->lasers_count;tail<32000;tail++) {
+                        { int32_t tail; for (tail=value->lasers_count;tail<previous_count;tail++) {
                          render_laser_reset(&value->lasers[tail]);
                         } }
                     }
@@ -9392,6 +9400,7 @@ static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * 
                             r->report->widened++;
                         }
                         kept = count; if ( kept > 32000 ) { kept = 32000; r->report->clamped++; }
+                        int32_t previous_count = value->explosions_count;
                         value->explosions_count = 0;
                         for ( i = 0; i < kept; i++ )
                         {
@@ -9402,7 +9411,7 @@ static SCHEMA_UNUSED int render_frame_load_body( TableReader * r, RenderFrame * 
                             value->explosions_count = (int32_t) i + 1;
                         }
                         end_explosions: ;
-                        { int32_t tail; for (tail=value->explosions_count;tail<32000;tail++) {
+                        { int32_t tail; for (tail=value->explosions_count;tail<previous_count;tail++) {
                          render_explosion_reset(&value->explosions[tail]);
                         } }
                     }

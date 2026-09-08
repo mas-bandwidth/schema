@@ -2625,6 +2625,7 @@ static SCHEMA_UNUSED int padded_frame_load_body( TableReader * r, PaddedFrame * 
                             r->report->widened++;
                         }
                         kept = count; if ( kept > 64 ) { kept = 64; r->report->clamped++; }
+                        int32_t previous_count = value->rows_count;
                         value->rows_count = 0;
                         for ( i = 0; i < kept; i++ )
                         {
@@ -2635,7 +2636,7 @@ static SCHEMA_UNUSED int padded_frame_load_body( TableReader * r, PaddedFrame * 
                             value->rows_count = (int32_t) i + 1;
                         }
                         end_rows: ;
-                        { int32_t tail; for (tail=value->rows_count;tail<64;tail++) {
+                        { int32_t tail; for (tail=value->rows_count;tail<previous_count;tail++) {
                          padded_row_reset(&value->rows[tail]);
                         } }
                     }
