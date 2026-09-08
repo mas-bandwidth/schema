@@ -301,7 +301,10 @@ func (g *gen) emitReadField(f *ir.Field, ind string) {
 func (g *gen) emitReadScalar(f *ir.Field, expr, ind string) {
 	switch f.Type.Kind {
 	case ir.TBool:
-		g.call(ind, fmt.Sprintf("serialize_read_bool( stream, &%s )", expr))
+		// serialize_read_bool takes int *; storage is uint8_t
+		g.pf("%s{\n%s    int bool_value = 0;\n", ind, ind)
+		g.call(ind+"    ", "serialize_read_bool( stream, &bool_value )")
+		g.pf("%s    %s = (uint8_t) bool_value;\n%s}\n", ind, expr, ind)
 	case ir.TFloat32:
 		if f.HasFloatRange {
 			// read twin of the write-side fold: same generation-time

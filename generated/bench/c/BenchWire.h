@@ -293,9 +293,13 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_packet( serialize_read_
         }
         value->bits23 = (uint32_t) raw;
     }
-    if ( !serialize_read_bool( stream, &value->flag ) )
     {
-        return 0;
+        int bool_value = 0;
+        if ( !serialize_read_bool( stream, &bool_value ) )
+        {
+            return 0;
+        }
+        value->flag = (uint8_t) bool_value;
     }
     if ( !serialize_read_float( stream, &value->x ) )
     {
@@ -884,13 +888,21 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_entity( serialize_read_
         }
         value->damage = (MixedDamage) flags_value;
     }
-    if ( !serialize_read_bool( stream, &value->moving ) )
     {
-        return 0;
+        int bool_value = 0;
+        if ( !serialize_read_bool( stream, &bool_value ) )
+        {
+            return 0;
+        }
+        value->moving = (uint8_t) bool_value;
     }
-    if ( !serialize_read_bool( stream, &value->firing ) )
     {
-        return 0;
+        int bool_value = 0;
+        if ( !serialize_read_bool( stream, &bool_value ) )
+        {
+            return 0;
+        }
+        value->firing = (uint8_t) bool_value;
     }
     return 1;
 }
@@ -1013,9 +1025,13 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_hit_event( serialize_re
         }
         value->hit_kind = (int32_t) offset_value;
     }
-    if ( !serialize_read_bool( stream, &value->crit ) )
     {
-        return 0;
+        int bool_value = 0;
+        if ( !serialize_read_bool( stream, &bool_value ) )
+        {
+            return 0;
+        }
+        value->crit = (uint8_t) bool_value;
     }
     return 1;
 }
@@ -1622,9 +1638,13 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_mixed( serialize_read_s
         }
         value->crc_hint = (uint32_t) raw;
     }
-    if ( !serialize_read_bool( stream, &value->has_extra ) )
     {
-        return 0;
+        int bool_value = 0;
+        if ( !serialize_read_bool( stream, &bool_value ) )
+        {
+            return 0;
+        }
+        value->has_extra = (uint8_t) bool_value;
     }
     if ( value->has_extra )
     {

@@ -97,7 +97,7 @@ typedef struct QuantizedRotation {
 typedef struct RigidBody {
     Vec3 position;
     Quat orientation;
-    int at_rest;
+    uint8_t at_rest;
     Vec3 linear_velocity;
     Vec3 angular_velocity;
 } RigidBody;
@@ -113,14 +113,14 @@ typedef struct Input {
     float throttle;
     float yaw;
     float pitch;
-    int fire;
-    int alt_fire;
-    int boost;
-    int brake;
-    int aim;
-    int lock_on;
-    int zoom;
-    int ping;
+    uint8_t fire;
+    uint8_t alt_fire;
+    uint8_t boost;
+    uint8_t brake;
+    uint8_t aim;
+    uint8_t lock_on;
+    uint8_t zoom;
+    uint8_t ping;
 } Input;
 
 #define INPUT_MAX_BITS 168   /* longest wire path; align pads at worst case (SPEC §6.1) */
@@ -146,7 +146,7 @@ typedef struct ShipCreate {
     QuantizedPosition position;
     QuantizedRotation rotation;
     QuantizedVelocity linear_velocity;
-    int has_flags;
+    uint8_t has_flags;
     ShipFlags flags;
     Team team;
     int16_t health;

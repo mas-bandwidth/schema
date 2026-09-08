@@ -126,7 +126,7 @@ typedef struct LudicrousState {
     WideProbe wide;
     serialize_uint128_t keys[4];
     int32_t keys_count;
-    int has_target;
+    uint8_t has_target;
     serialize_uint128_t target_id;
 } LudicrousState;
 
