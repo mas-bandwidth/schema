@@ -122,7 +122,7 @@ red on the one row it was planted in.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/codecs.go:1113` | ✅ `internal/codegen/ctable/codecs.go:1074` | ❌ #518 | ✅ `internal/codegen/gotable/wire.go:178-187` | ✅ `internal/codegen/cstable/cstable.go:958` (a `ref struct`) | ✅ `internal/codegen/javatable/codecs.go:1016` (the limit) | ✅ `internal/codegen/jstable/jstable.go:960` (the limit) | ❌ #514 | — a decoded BEAM term is an allocation and no buffer is caller-owned; the leg pins the per-case COUNT instead (`tables-elixir-alloc-audit`, docs/SPEC-TABLES.md) |
+| ✅ `internal/codegen/cpptable/codecs.go:1113` | ✅ `internal/codegen/ctable/codecs.go:1074` | ❌ #518 | ✅ `internal/codegen/gotable/wire.go:178-187` | ✅ `internal/codegen/cstable/cstable.go:958` (a `ref struct`) | ✅ `internal/codegen/javatable/codecs.go:1016` (the limit) | ❌ #516 | ❌ #514 | — a decoded BEAM term is an allocation and no buffer is caller-owned; the leg pins the per-case COUNT instead (`tables-elixir-alloc-audit`, docs/SPEC-TABLES.md) |
 
 ### M2 — 64-bit values without boxing
 
@@ -162,9 +162,8 @@ and a generated codec must not depend on the compiler's inlining budget.
 
 **Reference.** `internal/codegen/cpptable/cpptable.go:572-573`
 (`table_bits_to_float` and its three siblings, `inline` free functions over
-`get32`/`get64`). The JavaScript statement of the rule:
-`internal/codegen/jstable/jstable.go:979-985` and `codecs.go:897-902`; elevated
-to a cross-port rule at docs/SPEC-TABLES.md's JavaScript allocation paragraph.
+`get32`/`get64`); elevated to a cross-port rule at docs/SPEC-TABLES.md's
+JavaScript allocation paragraph.
 
 **Proven in.** C++; measured in JavaScript.
 
@@ -179,7 +178,7 @@ reads as bytes per iteration on the pinned runtime.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/cpptable.go:572-573` | ✅ `internal/codegen/ctable/ctable.go:565-568` | ❌ #518 | ✅ `internal/codegen/gotable/read.go` (`emitReadScalar`) | ✅ `TestCsFloatBitCastIsAtTheAssignment` (`BitConverter` at the store; helpers `[MethodImpl(AggressiveInlining)]`) | ✅ `internal/codegen/javatable/codecs.go:919-921` | ✅ `internal/codegen/jstable/codecs.go:1209-1219` | ❌ #404 | — a BEAM float is a boxed term whatever the call shape; `R.f32_bits` costs what the term costs |
+| ✅ `internal/codegen/cpptable/cpptable.go:572-573` | ✅ `internal/codegen/ctable/ctable.go:565-568` | ❌ #518 | ✅ `internal/codegen/gotable/read.go` (`emitReadScalar`) | ✅ `TestCsFloatBitCastIsAtTheAssignment` (`BitConverter` at the store; helpers `[MethodImpl(AggressiveInlining)]`) | ✅ `internal/codegen/javatable/codecs.go:919-921` | ❌ #516 | ❌ #404 | — a BEAM float is a boxed term whatever the call shape; `R.f32_bits` costs what the term costs |
 
 ### M4 — The codec is shaped for the optimizer
 
@@ -264,15 +263,13 @@ enum answered `undefined` before the guard was made symmetric.
 
 **Negative control.** `tables-keyed-none-refusal-negative-control`,
 `tables-keyed-max-refusal-negative-control` and
-`tables-keyed-shift-negative-control` in the reference;
-`tables-js-keyed-negative-control` puts a None-only guard back and requires
-"accepted E.Max + 1 as a key".
+`tables-keyed-shift-negative-control` in the reference.
 
 **Targets:** none
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-keyed-none-refusal-ndebug` `tables-keyed-max-refusal-ndebug` | ✅ `TestCTableKeyedBounds` `tables-c-keyed-none-refusal-ndebug` `tables-c-keyed-max-refusal-ndebug` | ❌ #518 | ✅ `TestKeyedRefusesNone` `TestKeyedRefusesPastMax` `TestKeyedPlacesByKey` | ✅ `TestCsKeyedAccessorCoversBothEnds` (`RefuseKey`, both ends) | ❌ #407 (refuses both ends; no test holds it) | ✅ `tables-js-keyed-negative-control` | ❌ #407 (refuses both ends; no test holds it) | ❌ #407 (guards refuse both ends; no test holds it) |
+| ✅ `tables-keyed-none-refusal-ndebug` `tables-keyed-max-refusal-ndebug` | ✅ `TestCTableKeyedBounds` `tables-c-keyed-none-refusal-ndebug` `tables-c-keyed-max-refusal-ndebug` | ❌ #518 | ✅ `TestKeyedRefusesNone` `TestKeyedRefusesPastMax` `TestKeyedPlacesByKey` | ✅ `TestCsKeyedAccessorCoversBothEnds` (`RefuseKey`, both ends) | ❌ #407 (refuses both ends; no test holds it) | ❌ #516 | ❌ #407 (refuses both ends; no test holds it) | ❌ #407 (guards refuse both ends; no test holds it) |
 
 ### M6 — The variable class on the wire: a flat node table and an identity map
 
@@ -388,7 +385,7 @@ offset arithmetic and requires red.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-json-walk` `tables-json-graph-walk` | ✅ `tables-c-json-walk` | ❌ #518 | ✅ `tables-go-json-walk` | ✅ `tables-cs-json-walk` | ✅ `tables-java-json-walk` | ✅ `tables-js-json-walk` | ❌ #514 | ✅ `tables-elixir-walk` |
+| ✅ `tables-json-walk` `tables-json-graph-walk` | ✅ `tables-c-json-walk` | ❌ #518 | ✅ `tables-go-json-walk` | ✅ `tables-cs-json-walk` | ✅ `tables-java-json-walk` | ❌ #516 | ❌ #514 | ✅ `tables-elixir-walk` |
 
 ### M10 — Hooks and the allocator contract
 
@@ -514,7 +511,7 @@ plain-cache line.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `testdata/golden/tables/examples/KeyedTable.h:2245-2249` | ✅ `internal/codegen/ctable/ctable.go:45-50` (defined in `<Base>Table.c`) | ❌ #518 | ✅ `internal/codegen/gotable/codecs.go` (`emitTableDescriptor`) | ❌ #411 (the plain-cache idiom) | ✅ `TestJavaDescriptorsAreSafelyPublished` | ✅ `internal/codegen/jstable/codecs.go:1301-1324` (built once on first use, frozen; one thread) | ❌ #514 | ✅ `internal/codegen/elixirtable/descriptors.go:4-12` (module attributes) |
+| ✅ `testdata/golden/tables/examples/KeyedTable.h:2245-2249` | ✅ `internal/codegen/ctable/ctable.go:45-50` (defined in `<Base>Table.c`) | ❌ #518 | ✅ `internal/codegen/gotable/codecs.go` (`emitTableDescriptor`) | ❌ #411 (the plain-cache idiom) | ✅ `TestJavaDescriptorsAreSafelyPublished` | ❌ #516 | ❌ #514 | ✅ `internal/codegen/elixirtable/descriptors.go:4-12` (module attributes) |
 
 ### M14 — The `&node` label in the text form
 
@@ -1186,7 +1183,7 @@ audit's freed one, and requires both floors to rise.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #416 | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ❌ #416 (`tables-rust-soak` gates on the count; nothing runs it) | ✅ `TestSoak` `TestSoakIdentifierCanGoRed` | ❌ #416 | ✅ `tables-java-soak` `tables-java-soak-negative-control` | ✅ `tables-js-soak` | ❌ #514 | ✅ `tables-elixir-soak` `tables-elixir-soak-negative-control` |
+| ❌ #416 | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ❌ #416 (`tables-rust-soak` gates on the count; nothing runs it) | ✅ `TestSoak` `TestSoakIdentifierCanGoRed` | ❌ #416 | ✅ `tables-java-soak` `tables-java-soak-negative-control` | ❌ #516 | ❌ #514 | ✅ `tables-elixir-soak` `tables-elixir-soak-negative-control` |
 
 ### I10 — The zero-cost gate
 
@@ -1233,7 +1230,7 @@ table of controls.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #417 (`conformance-negative-control` sabotages a copy of the driver) | ✅ `conformance-negative-control-c` | ❌ #417 (no conformance control) | ✅ `conformance-negative-control-go-walk` | ✅ `conformance-negative-control-cs` | ✅ `conformance-negative-control-java` | ✅ `conformance-negative-control-js` | ❌ #514 | ✅ `conformance-negative-control-elixir` |
+| ❌ #417 (`conformance-negative-control` sabotages a copy of the driver) | ✅ `conformance-negative-control-c` | ❌ #417 (no conformance control) | ✅ `conformance-negative-control-go-walk` | ✅ `conformance-negative-control-cs` | ✅ `conformance-negative-control-java` | ❌ #516 | ❌ #514 | ✅ `conformance-negative-control-elixir` |
 
 ### I12 — The documented surface compiles and runs
 
@@ -1266,22 +1263,21 @@ backend) reads the same wire and writes its text; the two texts are
 byte-compared, then the other direction. Pinned goldens reach eighteen
 instances; a random differential reaches the float ties they never do.
 
-**Reference.** `tables-js-json-differential` and its control in the
-Makefile; the engine in `internal/tabletext`.
+**Reference.** The engine in `internal/tabletext` (the original JavaScript
+reference was pruned in #516).
 
-**Proven in.** JavaScript.
+**Proven in.** JavaScript (#516).
 
 **Measured effect.** Twelve of forty instances differed on the first run —
 a float32 at `-266744.625` rendering as an eight-digit tie.
 
-**Negative control.** `tables-js-json-differential-negative-control` restores
-the magnitude tie-break and requires red (19 of 60 on the pinned seed).
+**Negative control.** Restoring the magnitude tie-break requires red (19 of 60 on the pinned seed; #419 tracks remaining targets).
 
 **Targets:** json-differential
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #419 (a WIRE differential, `tables-flat-wire`; no text one) | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #419 | ✅ `tables-js-json-differential` `tables-js-json-differential-negative-control` | ❌ #419 | ❌ #419 |
+| ❌ #419 (a WIRE differential, `tables-flat-wire`; no text one) | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #516 | ❌ #419 | ❌ #419 |
 
 ### I14 — The allocation gate refuses to certify off the pinned runtime
 

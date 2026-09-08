@@ -114,8 +114,6 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\ntable Tab { x int32 }\ntype TableJson { y int32 }\n"},
 		{name: "a declaration colliding with the block layout check", want: "generated TABLE-wire runtime",
 			src: "package t\ntable Tab { x int32 }\ntype TableBlockLayout { y int32 }\n"},
-		{name: "a declaration colliding with the bit helpers' scratch", want: "generated TABLE-wire runtime",
-			src: "package t\ntable Tab { x int32 }\ntype TableBitsScratch { y int32 }\n"},
 
 		// THE RUST CONSTANT SPACE (docs/SPEC-TABLES.md §11). Rust spells a
 		// constant SCREAMING_SNAKE, and the spelling is MANY-TO-ONE:

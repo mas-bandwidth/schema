@@ -7,7 +7,7 @@ build/table-base64/%/.stamp: bin/schema test/table-base64/Bytes.schema
 	./bin/schema generate --lang $* --out build/table-base64/$* test/table-base64/Bytes.schema
 	@touch $@
 
-.PHONY: table-base64-cpp table-base64-c table-base64-go table-base64-cs table-base64-java table-base64-js table-base64-elixir
+.PHONY: table-base64-cpp table-base64-c table-base64-go table-base64-cs table-base64-java table-base64-elixir
 table-base64-cpp: build/table-base64/harness build/table-base64/cpp/.stamp
 	$(CXX) -std=c++17 -O2 -Wall -Wextra -Werror -x c++ -Ibuild/table-base64/cpp test/table-base64/driver.c build/table-base64/cpp/BytesTable.cpp -o build/table-base64/cpp/driver
 	./build/table-base64/harness ./build/table-base64/cpp/driver
@@ -29,10 +29,6 @@ table-base64-java: build/table-base64/harness build/table-base64/java/.stamp
 	$(JAVAC) -d build/table-base64/java/classes build/table-base64/java/*.java test/table-base64/java/Main.java
 	./build/table-base64/harness $(JAVA) -cp build/table-base64/java/classes Main
 
-table-base64-js: build/table-base64/harness build/table-base64/js/.stamp
-	./build/table-base64/harness $(NODE) test/table-base64/js/main.mjs
-
-
 table-base64-elixir: build/table-base64/harness build/table-base64/elixir/.stamp
 	./build/table-base64/harness $(ELIXIR) test/table-base64/elixir/main.exs
 
@@ -41,5 +37,4 @@ test-c: table-base64-c
 test-go: table-base64-go
 test-cs: table-base64-cs
 test-java: table-base64-java
-test-js: table-base64-js
 test-elixir: table-base64-elixir
