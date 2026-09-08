@@ -4,6 +4,7 @@ mode=$1
 out=build/reference-review-control-$mode
 mkdir -p "$out"
 case "$mode" in
+tail) source=codecs.go; sabotage=reference-counted-tail; test=TestRepeatedArrayTailDefaults/cpp; expected="entries[1].type==CarryType::None" ;;
 hidden) source=extent.go; sabotage=reference-hidden-union-extent; test=TestCppHiddenUnionExtentRefusal; expected="RootCookMeasure(builder)==-1" ;;
 list) source=lists.go; sabotage=reference-list-widen-extent; test='TestCppCollectionWidening/list'; expected='collection widening failed' ;;
 map) source=codecs.go; sabotage=reference-map-widen-count; test='TestCppCollectionWidening/map'; expected='report.widened==3' ;;

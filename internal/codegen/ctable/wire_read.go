@@ -142,6 +142,7 @@ func (g *tableGen) emitWireRead(st *ir.Struct) {
 			g.pf("                    if ( table_kind_widens( kind, %d ) )\n                    {\n", wireKind)
 			g.wireScalarRead(f, "value->"+f.Name, "(*r)", "kind", "                        ", "r->report->malformed = 1; return 0;")
 			g.pf("                        r->report->widened++;\n")
+
 			if f.Type.Optional {
 				g.pf("                        value->%s_present = 1;\n", f.Name)
 			}
@@ -250,7 +251,11 @@ func (g *tableGen) wireReadFieldPayload(f *ir.Field, kind int, dst, bounded stri
 		if count != "" {
 			g.pf("%s            %s = (int32_t) i + 1;\n", ind, count)
 		}
-		g.pf("%s        }\n%s        end_%s: ;\n%s    }\n%s}\n", ind, ind, f.Name, ind, ind)
+		g.pf("%s        }\n%s        end_%s: ;\n", ind, ind, f.Name)
+		if f.Array == ir.ArrayCounted {
+			g.wireCountedTailReset(f, dst, ind+"        ")
+		}
+		g.pf("%s    }\n%s}\n", ind, ind)
 	case kind == tkUnion:
 		g.pf("%sif ( !%s( r, &%s, 0 ) ) { return 0; }\n", ind, g.unionWireName(f.Type.Ref.(*ir.Union), "load"), dst)
 
@@ -291,4 +296,15 @@ func (g *tableGen) wireReadKeyed(f *ir.Field, kind int, ind string) {
 		g.pf("%s        next_%s: ;\n", ind, f.Name)
 	}
 	g.pf("%s    }\n%s}\n", ind, ind)
+}
+
+// Keep value-initialized storage past a replacement's decoded prefix (#725).
+func (g *tableGen) wireCountedTailReset(f *ir.Field, dst, ind string) {
+	g.pf("%s{ int32_t tail; for (tail=%s_count;tail<%d;tail++) {\n", ind, dst, f.ArrayBound)
+	if st, ok := f.Type.Ref.(*ir.Struct); ok && !f.Type.Pointer {
+		g.pf("%s %s(&%s[tail]);\n", ind, g.api(st.Name, "reset"), dst)
+	} else {
+		g.pf("%s memset(&%s[tail],0,sizeof(%s[tail]));\n", ind, dst, dst)
+	}
+	g.pf("%s} }\n", ind)
 }

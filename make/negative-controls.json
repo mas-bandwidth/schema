@@ -513,7 +513,8 @@
         "tables-reference-flags-negative-control",
         "tables-reference-alignment-negative-control",
         "tables-reference-include-negative-control",
-        "tables-reference-hidden-union-negative-control"
+        "tables-reference-hidden-union-negative-control",
+        "tables-reference-counted-tail-negative-control"
       ]
     }
   ],
