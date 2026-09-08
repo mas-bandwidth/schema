@@ -10,12 +10,22 @@ import (
 	"testing"
 )
 
-func TestCCollectionDifferential(t *testing.T) {
+func TestCCollectionDifferential(t *testing.T) { cCollectionDifferential(t, "") }
+
+func TestCCollectionCookDifferential(t *testing.T) {
+	for _, mode := range []string{"--cook-le", "--cook-be"} {
+		t.Run(mode, func(t *testing.T) { cCollectionDifferential(t, mode) })
+	}
+}
+
+func cCollectionDifferential(t *testing.T, mode string) {
 	driver, reference := os.Getenv("SCHEMA_C_COLLECTIONS_DRIVER"), os.Getenv("SCHEMA_CPP_COLLECTIONS_DRIVER")
 	if driver == "" || reference == "" {
 		t.Skip("run make tables-c-collections-fuzz to build both native legs")
 	}
 	t.Chdir(conformanceRoot(t))
+	driver += " " + mode
+	reference += " " + mode
 	var roots []*wireRoot
 	var seeds []*wireSeed
 	var indexes []int
@@ -87,9 +97,13 @@ func TestCCollectionDifferential(t *testing.T) {
 			t.Fatalf("C++ died: %v\n%s", err, expected.stderr.String())
 		}
 		if a.loaded != e.loaded || a.measure != e.measure || a.report != e.report || (a.loaded && (a.saveFail != e.saveFail || !bytes.Equal(a.saved, e.saved))) {
-			dir := filepath.Join("build", "c-collections-fuzz")
-			_ = os.MkdirAll(dir, 0755)
-			_ = os.WriteFile(filepath.Join(dir, "failed.bin"), wire, 0644)
+			dir := filepath.Join("build", "c-collections-failures")
+			if err := os.MkdirAll(dir, 0755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "failed.bin"), wire, 0644); err != nil {
+				t.Fatal(err)
+			}
 			_ = os.WriteFile(filepath.Join(dir, "c.bin"), a.saved, 0644)
 			_ = os.WriteFile(filepath.Join(dir, "cpp.bin"), e.saved, 0644)
 			t.Fatalf("after %d mutants: %s %s\nC: loaded=%t measure=%d report=%s save-failed=%t\nC++: loaded=%t measure=%d report=%s save-failed=%t\nwire=%x", count, seed.name, pass, a.loaded, a.measure, a.report, a.saveFail, e.loaded, e.measure, e.report, e.saveFail, wire)
@@ -110,5 +124,5 @@ func TestCCollectionDifferential(t *testing.T) {
 		}
 		check(m.seed, index, m.pass, m.data)
 	}
-	t.Logf("C/C++ collections: %d mutants, identical reports, decoded values, and region sizes", count)
+	t.Logf("C/C++ collections %s: %d mutants, identical reports, output bytes, and measured sizes", mode, count)
 }

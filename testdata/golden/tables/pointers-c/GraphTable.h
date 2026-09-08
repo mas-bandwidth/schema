@@ -501,6 +501,13 @@ static SCHEMA_UNUSED uint64_t table_wire_utf8_clamp( const uint8_t * p, uint64_t
     if ( n <= cap ) { return n; } while ( cap && (p[cap] & 192) == 128 ) { cap--; } return cap;
 }
 
+#ifndef schema_assert
+#define schema_assert assert
+#endif
+#ifndef schema_fatal
+#define schema_fatal abort
+#endif
+
 /* The storage index a key names, with the None refusal that stands in EVERY
    build. The storage shifts left and holds no slot for None, so a build that
    skipped this compare would index one element BEFORE the array — undefined
@@ -509,8 +516,8 @@ static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key )
 {
     if ( key <= 0 )
     {
-        assert( 0 && "None is the null key of an enum-keyed array: it keys no slot" );
-        abort();
+        schema_assert( 0 && "None is the null key of an enum-keyed array: it keys no slot" );
+        schema_fatal();
     }
     return key - 1;
 }
@@ -1016,6 +1023,10 @@ typedef struct TableNodeType
     int blob; /* 0 table, 1 bytes, 2 terminated UTF-8 */
     int (*extent)(TableNumbering *,const void *,uint8_t *,int64_t *);
     int64_t (*wire_storage)(const TableReader *);
+    int64_t alignment;
+    int has_extent;
+    int (*cook_body)(struct TableNumbering *,uint8_t *,const void *,int);
+    int (*cook_extent)(TableNumbering *,const void *,uint8_t *,uint8_t *,int64_t *,int);
 } TableNodeType;
 
 typedef struct TableNodeEntry
@@ -1055,7 +1066,12 @@ static SCHEMA_UNUSED int64_t table_node_storage( TableNumbering * n, const Table
 {
     int64_t at=type->size;
     if(type->blob) { return table_blob_storage(((const TableBlob *)value)->length,type->blob==2); }
-    if(!type->extent(n,value,NULL,&at) || at>INT64_MAX-kTableAlign) { return -1; } return table_align_up64(at);
+    if(type->has_extent) {
+        int64_t extent=0;
+        if(!type->cook_extent(n,value,NULL,NULL,&extent,1) || at>INT64_MAX-kTableAlign) { return -1; }
+        at=table_align_up64(at); if(extent>INT64_MAX-at) { return -1; } at+=extent;
+    }
+    if(at>INT64_MAX-kTableAlign) { return -1; } return table_align_up64(at);
 }
 static SCHEMA_UNUSED int64_t table_node_wire_storage( const TableNodeType * type, const TableReader * body )
 {
@@ -1069,8 +1085,8 @@ static SCHEMA_UNUSED int table_blob_save( TableWriter * w, const void * value )
 }
 static SCHEMA_UNUSED int table_blob_edges( TableNumbering * n, const void * value )
 { (void)n; (void)value; return 1; }
-static const TableNodeType table_bytes_node_type = { kTableBytesTypeId, 0, table_blob_save, table_blob_edges, 1, NULL, NULL };
-static const TableNodeType table_string_node_type = { kTableStringTypeId, 0, table_blob_save, table_blob_edges, 2, NULL, NULL };
+static const TableNodeType table_bytes_node_type = { kTableBytesTypeId, 0, table_blob_save, table_blob_edges, 1, NULL, NULL, 8, 0, NULL, NULL };
+static const TableNodeType table_string_node_type = { kTableStringTypeId, 0, table_blob_save, table_blob_edges, 2, NULL, NULL, 8, 0, NULL, NULL };
 
 
 static SCHEMA_UNUSED uint64_t table_number_hash( const void * value )
@@ -1300,11 +1316,17 @@ static SCHEMA_UNUSED uint8_t * table_graph_pack( const TableCtx * ctx, const voi
     {
         const TableNodeEntry * entry=&n.entries[i];
         uint8_t * target=packed+entry->packed_offset;
-        memcpy(target,entry->value,(size_t)(entry->type->blob ? 8+(int64_t)((const TableBlob *)entry->value)->length : entry->type->size));
-        if(!entry->type->blob) {
-            int64_t at=(int64_t)entry->packed_offset+entry->type->size;
-            n.pack_base=packed;
-            if(!entry->type->extent(&n,entry->value,target,&at)) { table_release(n.allocator,packed); packed=NULL; goto done; }
+        n.pack_base=packed;
+        if(entry->type->blob) {
+            memcpy(target,entry->value,(size_t)(8+(int64_t)((const TableBlob *)entry->value)->length));
+        } else {
+            const uint16_t one=1;
+            int order=*(const uint8_t *)(const void *)&one ? 1 : 2;
+            int64_t at=0;
+            if(!entry->type->cook_body(&n,target,entry->value,order) ||
+               (entry->type->has_extent && !entry->type->cook_extent(&n,entry->value,target,target+table_align_up64(entry->type->size),&at,order))) {
+                table_release(n.allocator,packed); packed=NULL; goto done;
+            }
         }
     }
     *bytes=total;
@@ -1410,6 +1432,29 @@ static SCHEMA_UNUSED int table_node_scan_whole( const TableNodeScan * scan )
 
 #endif /* SCHEMA_GRAPHDEMO_BUILD_VERSION */
 
+
+#ifndef SCHEMA_TABLE_REFUSE_RUNTIME
+#define SCHEMA_TABLE_REFUSE_RUNTIME
+typedef int TableRefuseReason;
+enum {
+    SCHEMA_TABLE_REFUSE_OK=0,
+    SCHEMA_TABLE_REFUSE_NOT_A_COOK=1,
+    SCHEMA_TABLE_REFUSE_FOREIGN_ORDER=2,
+    SCHEMA_TABLE_REFUSE_WRONG_BUILD_VERSION=3,
+    SCHEMA_TABLE_REFUSE_RESERVED_NOT_ZERO=4,
+    SCHEMA_TABLE_REFUSE_BAD_ALIGNMENT=5,
+    SCHEMA_TABLE_REFUSE_TRUNCATED=6,
+    SCHEMA_TABLE_REFUSE_UNALIGNED_BASE=7,
+    SCHEMA_TABLE_REFUSE_BAD_LAYOUT=8,
+    SCHEMA_TABLE_REFUSE_UNKNOWN_FORM=9,
+    SCHEMA_TABLE_REFUSE_COUNT_OVER_LENGTH=10,
+    SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP=11,
+    SCHEMA_TABLE_REFUSE_BLOB_OVER_SIZE_CAP=12,
+    SCHEMA_TABLE_REFUSE_DATA_CYCLE=13
+};
+static SCHEMA_UNUSED const uint8_t * table_cook_refuse(TableRefuseReason * out,TableRefuseReason reason)
+{ if(out!=NULL) { *out=reason; } return NULL; }
+#endif
 #ifndef SCHEMA_GRAPHDEMO_TABLE_COOK
 #define SCHEMA_GRAPHDEMO_TABLE_COOK
 
@@ -1502,25 +1547,25 @@ static SCHEMA_UNUSED uint64_t table_cook_read64( const uint8_t * p )
    refuse, and an addition that wrapped would be the defect the comparison
    after it was supposed to catch. Nothing past length is read on any path,
    including every refusing one. */
-static SCHEMA_UNUSED const uint8_t * table_cook_open( const void * bytes, uint64_t length, uint64_t root_size, uint64_t root_align )
+static SCHEMA_UNUSED const uint8_t * table_cook_open_ex( const void * bytes, uint64_t length, uint64_t root_size, uint64_t root_align, TableRefuseReason * reason )
 {
     const uint8_t * raw;
     uint64_t data_length, attribution_length, alignment, data_offset;
     const uint8_t * base;
-    if ( bytes == NULL ) { return NULL; }
-    if ( length < (uint64_t) table_cook_header_bytes ) { return NULL; }
+    if ( bytes == NULL ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_UNALIGNED_BASE); }
+    if ( length < (uint64_t) table_cook_header_bytes ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_TRUNCATED); }
     raw = (const uint8_t *) bytes;
     /* the MAGIC, bytewise and first: it is what establishes the byte order
        every other header word is read in, so nothing else may be read before
        it. A byte-reversed constant is a cook of the other order and refuses
        here, which is why the order never reaches a fix-up pass. */
-    if ( table_cook_read64( raw ) != table_cook_magic ) { return NULL; }
-    if ( table_cook_read64( raw + 16 ) != table_cook_byte_order ) { return NULL; }
-    if ( table_cook_read64( raw + 8 ) != SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE ) { return NULL; }
+    if ( table_cook_read64( raw ) != table_cook_magic ) { return table_cook_refuse(reason,table_cook_read64(raw)==UINT64_C(0x5343484d434f4f4b) ? SCHEMA_TABLE_REFUSE_FOREIGN_ORDER : SCHEMA_TABLE_REFUSE_NOT_A_COOK); }
+    if ( table_cook_read64( raw + 16 ) != table_cook_byte_order ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_NOT_A_COOK); }
+    if ( table_cook_read64( raw + 8 ) != SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_WRONG_BUILD_VERSION); }
     /* the RESERVED words: a non-zero one means a writer used a form this build
        does not understand, and Open refuses rather than ignoring it. */
-    if ( table_cook_read64( raw + 48 ) != 0 ) { return NULL; }
-    if ( table_cook_read64( raw + 56 ) != 0 ) { return NULL; }
+    if ( table_cook_read64( raw + 48 ) != 0 ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_RESERVED_NOT_ZERO); }
+    if ( table_cook_read64( raw + 56 ) != 0 ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_RESERVED_NOT_ZERO); }
     data_length = table_cook_read64( raw + 24 );
     attribution_length = table_cook_read64( raw + 32 );
     alignment = table_cook_read64( raw + 40 );
@@ -1530,39 +1575,137 @@ static SCHEMA_UNUSED const uint8_t * table_cook_open( const void * bytes, uint64
        puts the attribution part on an eight-byte boundary without a second
        padding rule) and never past the cap above; a word that is none of those
        rounds nothing and aligns nothing, so it is refused before it is used. */
-    if ( alignment < 8 || alignment > table_cook_max_align ) { return NULL; }
-    if ( ( alignment & ( alignment - 1 ) ) != 0 ) { return NULL; }
+    if ( alignment < 8 || alignment > table_cook_max_align ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_BAD_ALIGNMENT); }
+    if ( ( alignment & ( alignment - 1 ) ) != 0 ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_BAD_ALIGNMENT); }
     /* and it must be an alignment THE ROOT CAN SIT AT, since the root is at
        the region's base: both are powers of two, so "at least the root's"
        is one division. */
-    if ( ( alignment % root_align ) != 0 ) { return NULL; }
+    if ( ( alignment % root_align ) != 0 ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_BAD_ALIGNMENT); }
     /* The DATA part begins at align_up( 64, alignment ). It is DERIVED and not
        a header field, because a fact a reader computes is a fact two writers
        cannot disagree about. */
     data_offset = ( (uint64_t) table_cook_header_bytes + alignment - 1 ) & ~( alignment - 1 );
-    if ( length < data_offset ) { return NULL; }
+    if ( length < data_offset ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_TRUNCATED); }
     /* the two part lengths against the length the caller passed. The whole
        file is data_offset + data_length + attribution_length, and a length
        that is not EXACTLY that refuses — truncation and trailing bytes are one
        refusal, and both terms are subtracted rather than added so no sum can
        carry. */
-    if ( data_length > length - data_offset ) { return NULL; }
-    if ( attribution_length != length - data_offset - data_length ) { return NULL; }
+    if ( data_length > length - data_offset ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_TRUNCATED); }
+    if ( attribution_length != length - data_offset - data_length ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_TRUNCATED); }
     /* the ROOT sits at the region's base, so the region has to hold it: a
        shorter data part describes a root partly outside the file, which is the
        one way a match-and-point reader could hand back storage it never
        received. */
-    if ( data_length < root_size ) { return NULL; }
+    if ( data_length < root_size ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_TRUNCATED); }
     base = raw + data_offset;
     /* the alignment of the BASE. The header pads the data part to the region's
        alignment, so a base an allocator or mmap gave you is already aligned —
        mmap gives page alignment for free — and a base that is not is a caller's
        buffer this form cannot be read out of. */
-    if ( ( (uintptr_t) base % (uintptr_t) alignment ) != 0 ) { return NULL; }
+    if ( ( (uintptr_t) base % (uintptr_t) alignment ) != 0 ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_UNALIGNED_BASE); }
     return base;
 }
+static SCHEMA_UNUSED const uint8_t * table_cook_open(const void * bytes,uint64_t length,uint64_t root_size,uint64_t root_align)
+{ return table_cook_open_ex(bytes,length,root_size,root_align,NULL); }
 
 #endif /* SCHEMA_GRAPHDEMO_TABLE_COOK */
+
+#ifndef SCHEMA_TABLE_COOK_WRITE_RUNTIME
+#define SCHEMA_TABLE_COOK_WRITE_RUNTIME
+struct TableNumbering;
+typedef enum TableByteOrder { TableByteOrder_Little=1, TableByteOrder_Big=2 } TableByteOrder;
+static SCHEMA_UNUSED void table_cook_put(uint8_t * at,uint64_t value,int width,int order)
+{
+    int i; for(i=0;i<width;i++) { at[i]=(uint8_t)(value >> (8*(order==TableByteOrder_Little ? i : width-1-i))); }
+}
+static SCHEMA_UNUSED void table_cook_put128(uint8_t * at,uint64_t lo,uint64_t hi,int order)
+{
+    table_cook_put(at,order==TableByteOrder_Little ? lo : hi,8,order);
+    table_cook_put(at+8,order==TableByteOrder_Little ? hi : lo,8,order);
+}
+static SCHEMA_UNUSED void table_cook_bytes(uint8_t * at,const void * source,int64_t used,int64_t capacity)
+{ if(used>0) { memcpy(at,source,(size_t)(used<capacity ? used : capacity)); } }
+static SCHEMA_UNUSED void table_cook_units(uint8_t * at,const uint16_t * source,int64_t used,int64_t capacity,int order)
+{
+    int64_t i, count=used<capacity ? used : capacity;
+    for(i=0;i<count;i++) { table_cook_put(at+i*2,source[i],2,order); }
+}
+static SCHEMA_UNUSED void table_cook_header(uint8_t * raw,uint64_t version,int64_t bytes,int64_t count,int64_t align,int order)
+{
+    table_cook_put(raw,table_cook_magic,8,order); table_cook_put(raw+8,version,8,order);
+    table_cook_put(raw+16,order==TableByteOrder_Big ? 2 : 1,8,order);
+    table_cook_put(raw+24,(uint64_t)bytes,8,order); table_cook_put(raw+32,(uint64_t)count*16,8,order);
+    table_cook_put(raw+40,(uint64_t)align,8,order);
+}
+#endif
+
+#ifndef SCHEMA_TABLE_COOK_GRAPH_RUNTIME
+#define SCHEMA_TABLE_COOK_GRAPH_RUNTIME
+static SCHEMA_UNUSED int table_cook_ref(TableNumbering * n,uint8_t * at,const TableRef * slot,int order)
+{
+    const void * pointee=table_ref_at(n->ctx,slot);
+    uint64_t index=table_number_find(n,pointee);
+    if(pointee!=NULL && index==0) { return 0; }
+    table_cook_put(at,index ? n->entries[index-1].packed_offset-(uint64_t)(at-n->pack_base) : 0,8,order);
+    return 1;
+}
+static SCHEMA_UNUSED int64_t table_cook_layout(TableNumbering * n,int64_t * alignment,int64_t * data_bytes)
+{
+    uint64_t i;
+    int64_t total=0, align=8;
+    for(i=0;i<n->count;i++) {
+        TableNodeEntry * entry=&n->entries[i]; const TableNodeType * type=entry->type;
+        int64_t size=type->size, node_align=type->alignment;
+        if(type->blob) { size=8+(int64_t)((const TableBlob *)entry->value)->length+(type->blob==2); }
+        else if(type->has_extent) {
+            int64_t extent=0;
+            if(!type->cook_extent(n,entry->value,NULL,NULL,&extent,TableByteOrder_Little) || size>INT64_MAX-7) { return -1; }
+            size=(size+7)&~INT64_C(7); if(extent>INT64_MAX-size) { return -1; } size+=extent;
+        }
+        if(node_align<1 || total>INT64_MAX-(node_align-1)) { return -1; }
+        total=(total+node_align-1)&~(node_align-1);
+        entry->packed_offset=(uint64_t)total;
+        if(size<0 || size>INT64_MAX-total) { return -1; } total+=size;
+        if(node_align>align) { align=node_align; }
+    }
+    if(total>INT64_MAX-(align-1)) { return -1; } total=(total+align-1)&~(align-1);
+    *alignment=align; *data_bytes=total;
+    if(total>INT64_MAX-64 || n->count>(uint64_t)(INT64_MAX-64-total)/16) { return -1; }
+    return 64+total+(int64_t)n->count*16;
+}
+static SCHEMA_UNUSED int64_t table_graph_cook(const TableCtx * ctx,const void * root,const TableNodeType * type,
+    void * output,uint64_t capacity,int order,TableAllocator allocator,uint64_t version,int measure)
+{
+    TableNumbering n; int64_t result=-1,align=8,bytes=0,need; uint64_t i; uint8_t * raw=(uint8_t *)output;
+    if(!table_number_build(&n,ctx,root,type,allocator)) { table_number_dispose(&n); return -1; }
+    need=table_cook_layout(&n,&align,&bytes); if(need<0) { goto done; }
+    if(measure) { result=need; goto done; }
+    if(raw==NULL || (uint64_t)need>capacity || (uint64_t)need>SIZE_MAX) { goto done; }
+    memset(raw,0,(size_t)need); n.pack_base=raw+64;
+    for(i=0;i<n.count;i++) {
+        const TableNodeEntry * entry=&n.entries[i]; uint8_t * at=n.pack_base+entry->packed_offset;
+        if(entry->type->blob) {
+            const TableBlob * blob=(const TableBlob *)entry->value;
+            table_cook_put(at,blob->length,4,order); table_cook_bytes(at+8,blob+1,blob->length,blob->length);
+        } else {
+            int64_t extent=0;
+            if(!entry->type->cook_body(&n,at,entry->value,order)) { goto done; }
+            if(entry->type->has_extent) {
+                int64_t expected=0,record=(entry->type->size+7)&~INT64_C(7);
+                if(!entry->type->cook_extent(&n,entry->value,NULL,NULL,&expected,order) ||
+                   !entry->type->cook_extent(&n,entry->value,at,at+record,&extent,order) || extent!=expected) { goto done; }
+            }
+        }
+        table_cook_put(n.pack_base+bytes+i*16,entry->packed_offset,8,order);
+        table_cook_put(n.pack_base+bytes+i*16+8,entry->type->id,8,order);
+    }
+    /* A failed body must never leave a recognizable cook header. */
+    table_cook_header(raw,version,bytes,(int64_t)n.count,align,order); result=need;
+done:
+    table_number_dispose(&n); return result;
+}
+#endif
 
 /* table Meta — TABLE-wire storage: relocatable, bounded. C has no member
    initializers, so the declared defaults live in meta_reset and nowhere
@@ -1914,6 +2057,14 @@ static SCHEMA_UNUSED  int depot_load_body( TableReader * r, Depot * value );
 static SCHEMA_UNUSED  int album_save_body( TableWriter * w, const Album * value );
 static SCHEMA_UNUSED  int album_load_body( TableReader * r, Album * value );
 
+static SCHEMA_UNUSED int schema_graphdemo_meta_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_graphdemo_settings_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_graphdemo_list_node_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_graphdemo_tree_node_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_graphdemo_layer_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_graphdemo_scene_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_graphdemo_depot_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_graphdemo_album_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
 SCHEMA_TABLE_STATIC_ASSERT( schema_graphdemo_settings_arena_alignment_, SCHEMA_TABLE_ALIGNOF(Settings) <= kTableAlign, "a table node's alignment must fit the arena's" );
 static const TableNodeType schema_graphdemo_settings_node_type_;
 static SCHEMA_UNUSED int schema_graphdemo_settings_graph_edges_( TableNumbering * numbering, const void * storage );
@@ -3901,7 +4052,7 @@ static SCHEMA_UNUSED int schema_graphdemo_settings_graph_edges_( TableNumbering 
     (void)value; (void)numbering;
     return 1;
 }
-static const TableNodeType schema_graphdemo_settings_node_type_ = { UINT64_C(0x9d8b8aa2b404c2c8), sizeof(Settings), schema_graphdemo_settings_node_save_, schema_graphdemo_settings_graph_edges_, 0, schema_graphdemo_settings_extent_, schema_graphdemo_settings_wire_storage_ };
+static const TableNodeType schema_graphdemo_settings_node_type_ = { UINT64_C(0x9d8b8aa2b404c2c8), sizeof(Settings), schema_graphdemo_settings_node_save_, schema_graphdemo_settings_graph_edges_, 0, schema_graphdemo_settings_extent_, schema_graphdemo_settings_wire_storage_, 4, 0, schema_graphdemo_settings_cook_body_, NULL };
 
 static SCHEMA_UNUSED int schema_graphdemo_list_node_node_save_( TableWriter * w, const void * storage )
 { return list_node_save_body(w,(const ListNode *)storage); }
@@ -3912,7 +4063,7 @@ static SCHEMA_UNUSED int schema_graphdemo_list_node_graph_edges_( TableNumbering
     if (!table_number_slot(numbering,&value->next,&schema_graphdemo_list_node_node_type_)) { return 0; }
     return 1;
 }
-static const TableNodeType schema_graphdemo_list_node_node_type_ = { UINT64_C(0xf60ec899a5a69fa9), sizeof(ListNode), schema_graphdemo_list_node_node_save_, schema_graphdemo_list_node_graph_edges_, 0, schema_graphdemo_list_node_extent_, schema_graphdemo_list_node_wire_storage_ };
+static const TableNodeType schema_graphdemo_list_node_node_type_ = { UINT64_C(0xf60ec899a5a69fa9), sizeof(ListNode), schema_graphdemo_list_node_node_save_, schema_graphdemo_list_node_graph_edges_, 0, schema_graphdemo_list_node_extent_, schema_graphdemo_list_node_wire_storage_, 8, 0, schema_graphdemo_list_node_cook_body_, NULL };
 
 static SCHEMA_UNUSED int schema_graphdemo_tree_node_node_save_( TableWriter * w, const void * storage )
 { return tree_node_save_body(w,(const TreeNode *)storage); }
@@ -3924,7 +4075,7 @@ static SCHEMA_UNUSED int schema_graphdemo_tree_node_graph_edges_( TableNumbering
     if (!table_number_slot(numbering,&value->right,&schema_graphdemo_tree_node_node_type_)) { return 0; }
     return 1;
 }
-static const TableNodeType schema_graphdemo_tree_node_node_type_ = { UINT64_C(0xb97e90a3784c431d), sizeof(TreeNode), schema_graphdemo_tree_node_node_save_, schema_graphdemo_tree_node_graph_edges_, 0, schema_graphdemo_tree_node_extent_, schema_graphdemo_tree_node_wire_storage_ };
+static const TableNodeType schema_graphdemo_tree_node_node_type_ = { UINT64_C(0xb97e90a3784c431d), sizeof(TreeNode), schema_graphdemo_tree_node_node_save_, schema_graphdemo_tree_node_graph_edges_, 0, schema_graphdemo_tree_node_extent_, schema_graphdemo_tree_node_wire_storage_, 8, 0, schema_graphdemo_tree_node_cook_body_, NULL };
 
 static SCHEMA_UNUSED int schema_graphdemo_layer_node_save_( TableWriter * w, const void * storage )
 { return layer_save_body(w,(const Layer *)storage); }
@@ -3935,7 +4086,7 @@ static SCHEMA_UNUSED int schema_graphdemo_layer_graph_edges_( TableNumbering * n
     if (!table_number_slot(numbering,&value->head,&schema_graphdemo_list_node_node_type_)) { return 0; }
     return 1;
 }
-static const TableNodeType schema_graphdemo_layer_node_type_ = { UINT64_C(0x9d167ef77aed79b6), sizeof(Layer), schema_graphdemo_layer_node_save_, schema_graphdemo_layer_graph_edges_, 0, schema_graphdemo_layer_extent_, schema_graphdemo_layer_wire_storage_ };
+static const TableNodeType schema_graphdemo_layer_node_type_ = { UINT64_C(0x9d167ef77aed79b6), sizeof(Layer), schema_graphdemo_layer_node_save_, schema_graphdemo_layer_graph_edges_, 0, schema_graphdemo_layer_extent_, schema_graphdemo_layer_wire_storage_, 8, 0, schema_graphdemo_layer_cook_body_, NULL };
 
 static SCHEMA_UNUSED int schema_graphdemo_scene_node_save_( TableWriter * w, const void * storage )
 { return scene_save_body(w,(const Scene *)storage); }
@@ -3954,7 +4105,7 @@ static SCHEMA_UNUSED int schema_graphdemo_scene_graph_edges_( TableNumbering * n
     } }
     return 1;
 }
-static const TableNodeType schema_graphdemo_scene_node_type_ = { UINT64_C(0x4a9a31623ab5f213), sizeof(Scene), schema_graphdemo_scene_node_save_, schema_graphdemo_scene_graph_edges_, 0, schema_graphdemo_scene_extent_, schema_graphdemo_scene_wire_storage_ };
+static const TableNodeType schema_graphdemo_scene_node_type_ = { UINT64_C(0x4a9a31623ab5f213), sizeof(Scene), schema_graphdemo_scene_node_save_, schema_graphdemo_scene_graph_edges_, 0, schema_graphdemo_scene_extent_, schema_graphdemo_scene_wire_storage_, 8, 0, schema_graphdemo_scene_cook_body_, NULL };
 
 static SCHEMA_UNUSED int schema_graphdemo_depot_node_save_( TableWriter * w, const void * storage )
 { return depot_save_body(w,(const Depot *)storage); }
@@ -3970,7 +4121,7 @@ static SCHEMA_UNUSED int schema_graphdemo_depot_graph_edges_( TableNumbering * n
     if (!table_number_slot(numbering,&value->head,&schema_graphdemo_list_node_node_type_)) { return 0; }
     return 1;
 }
-static const TableNodeType schema_graphdemo_depot_node_type_ = { UINT64_C(0x327fe6dc702553fd), sizeof(Depot), schema_graphdemo_depot_node_save_, schema_graphdemo_depot_graph_edges_, 0, schema_graphdemo_depot_extent_, schema_graphdemo_depot_wire_storage_ };
+static const TableNodeType schema_graphdemo_depot_node_type_ = { UINT64_C(0x327fe6dc702553fd), sizeof(Depot), schema_graphdemo_depot_node_save_, schema_graphdemo_depot_graph_edges_, 0, schema_graphdemo_depot_extent_, schema_graphdemo_depot_wire_storage_, 8, 0, schema_graphdemo_depot_cook_body_, NULL };
 
 static SCHEMA_UNUSED int schema_graphdemo_album_node_save_( TableWriter * w, const void * storage )
 { return album_save_body(w,(const Album *)storage); }
@@ -3983,7 +4134,7 @@ static SCHEMA_UNUSED int schema_graphdemo_album_graph_edges_( TableNumbering * n
     if (!table_number_slot(numbering,&value->head,&schema_graphdemo_list_node_node_type_)) { return 0; }
     return 1;
 }
-static const TableNodeType schema_graphdemo_album_node_type_ = { UINT64_C(0xd858c2cb7f1514cc), sizeof(Album), schema_graphdemo_album_node_save_, schema_graphdemo_album_graph_edges_, 0, schema_graphdemo_album_extent_, schema_graphdemo_album_wire_storage_ };
+static const TableNodeType schema_graphdemo_album_node_type_ = { UINT64_C(0xd858c2cb7f1514cc), sizeof(Album), schema_graphdemo_album_node_save_, schema_graphdemo_album_graph_edges_, 0, schema_graphdemo_album_extent_, schema_graphdemo_album_wire_storage_, 8, 0, schema_graphdemo_album_cook_body_, NULL };
 
 /* ---- ListNode: the variable-length life (docs/SPEC-TABLES.md §2, §6, §9) ----
 
@@ -4091,12 +4242,12 @@ static SCHEMA_UNUSED int64_t schema_graphdemo_list_node_load_layout_(const Table
     if (records>=INT64_MAX/(int64_t)sizeof(TableNodeDirEntry)-1 || (records+1)*(int64_t)sizeof(TableNodeDirEntry)>INT64_MAX-data) { return -1; }
     *data_out=data; *records_out=records; return data+(records+1)*(int64_t)sizeof(TableNodeDirEntry);
 }
-static SCHEMA_UNUSED int64_t list_node_load_measure_ex(const uint8_t * wire, int64_t bytes, int64_t * attribution, int * reason)
+static SCHEMA_UNUSED int64_t list_node_load_measure_ex(const uint8_t * wire, int64_t bytes, int64_t * attribution, TableRefuseReason * reason)
 {
     TableReport report; TableReader reader; int64_t data,records,total; memset(&report,0,sizeof(report));
-    if (attribution!=NULL) { *attribution=0; } if (reason!=NULL) { *reason=0; }
-    if (!table_wire_open(&reader,wire,bytes,&report)) { if(reason!=NULL) { *reason=report.reason; } return -1; }
-    total=schema_graphdemo_list_node_load_layout_(&reader,&data,&records);
+    if (attribution!=NULL) { *attribution=0; }
+    if (!table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && reason!=NULL) { *reason=SCHEMA_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }
+    report.reason=SCHEMA_TABLE_REFUSE_COUNT_OVER_LENGTH; total=schema_graphdemo_list_node_load_layout_(&reader,&data,&records);
     if(total<0 && reason!=NULL) { *reason=report.reason; }
     if(total>=0 && attribution!=NULL) { *attribution=(records+1)*(int64_t)sizeof(TableNodeDirEntry); } return total;
 }
@@ -4137,7 +4288,7 @@ static SCHEMA_UNUSED int schema_graphdemo_list_node_load_graph_(TableReader * re
                     case UINT64_C(0xf60ec899a5a69fa9): list_node_load_body(&body,(ListNode *)value); break;
                     default: break;
                 }
-                if(nodes->refused) { return 0; }
+                nodes->sink=NULL; if(nodes->refused) { return 0; }
             }
             k++;
         }
@@ -4281,12 +4432,12 @@ static SCHEMA_UNUSED int64_t schema_graphdemo_tree_node_load_layout_(const Table
     if (records>=INT64_MAX/(int64_t)sizeof(TableNodeDirEntry)-1 || (records+1)*(int64_t)sizeof(TableNodeDirEntry)>INT64_MAX-data) { return -1; }
     *data_out=data; *records_out=records; return data+(records+1)*(int64_t)sizeof(TableNodeDirEntry);
 }
-static SCHEMA_UNUSED int64_t tree_node_load_measure_ex(const uint8_t * wire, int64_t bytes, int64_t * attribution, int * reason)
+static SCHEMA_UNUSED int64_t tree_node_load_measure_ex(const uint8_t * wire, int64_t bytes, int64_t * attribution, TableRefuseReason * reason)
 {
     TableReport report; TableReader reader; int64_t data,records,total; memset(&report,0,sizeof(report));
-    if (attribution!=NULL) { *attribution=0; } if (reason!=NULL) { *reason=0; }
-    if (!table_wire_open(&reader,wire,bytes,&report)) { if(reason!=NULL) { *reason=report.reason; } return -1; }
-    total=schema_graphdemo_tree_node_load_layout_(&reader,&data,&records);
+    if (attribution!=NULL) { *attribution=0; }
+    if (!table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && reason!=NULL) { *reason=SCHEMA_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }
+    report.reason=SCHEMA_TABLE_REFUSE_COUNT_OVER_LENGTH; total=schema_graphdemo_tree_node_load_layout_(&reader,&data,&records);
     if(total<0 && reason!=NULL) { *reason=report.reason; }
     if(total>=0 && attribution!=NULL) { *attribution=(records+1)*(int64_t)sizeof(TableNodeDirEntry); } return total;
 }
@@ -4327,7 +4478,7 @@ static SCHEMA_UNUSED int schema_graphdemo_tree_node_load_graph_(TableReader * re
                     case UINT64_C(0xb97e90a3784c431d): tree_node_load_body(&body,(TreeNode *)value); break;
                     default: break;
                 }
-                if(nodes->refused) { return 0; }
+                nodes->sink=NULL; if(nodes->refused) { return 0; }
             }
             k++;
         }
@@ -4471,12 +4622,12 @@ static SCHEMA_UNUSED int64_t schema_graphdemo_layer_load_layout_(const TableRead
     if (records>=INT64_MAX/(int64_t)sizeof(TableNodeDirEntry)-1 || (records+1)*(int64_t)sizeof(TableNodeDirEntry)>INT64_MAX-data) { return -1; }
     *data_out=data; *records_out=records; return data+(records+1)*(int64_t)sizeof(TableNodeDirEntry);
 }
-static SCHEMA_UNUSED int64_t layer_load_measure_ex(const uint8_t * wire, int64_t bytes, int64_t * attribution, int * reason)
+static SCHEMA_UNUSED int64_t layer_load_measure_ex(const uint8_t * wire, int64_t bytes, int64_t * attribution, TableRefuseReason * reason)
 {
     TableReport report; TableReader reader; int64_t data,records,total; memset(&report,0,sizeof(report));
-    if (attribution!=NULL) { *attribution=0; } if (reason!=NULL) { *reason=0; }
-    if (!table_wire_open(&reader,wire,bytes,&report)) { if(reason!=NULL) { *reason=report.reason; } return -1; }
-    total=schema_graphdemo_layer_load_layout_(&reader,&data,&records);
+    if (attribution!=NULL) { *attribution=0; }
+    if (!table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && reason!=NULL) { *reason=SCHEMA_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }
+    report.reason=SCHEMA_TABLE_REFUSE_COUNT_OVER_LENGTH; total=schema_graphdemo_layer_load_layout_(&reader,&data,&records);
     if(total<0 && reason!=NULL) { *reason=report.reason; }
     if(total>=0 && attribution!=NULL) { *attribution=(records+1)*(int64_t)sizeof(TableNodeDirEntry); } return total;
 }
@@ -4517,7 +4668,7 @@ static SCHEMA_UNUSED int schema_graphdemo_layer_load_graph_(TableReader * reader
                     case UINT64_C(0xf60ec899a5a69fa9): list_node_load_body(&body,(ListNode *)value); break;
                     default: break;
                 }
-                if(nodes->refused) { return 0; }
+                nodes->sink=NULL; if(nodes->refused) { return 0; }
             }
             k++;
         }
@@ -4663,12 +4814,12 @@ static SCHEMA_UNUSED int64_t schema_graphdemo_scene_load_layout_(const TableRead
     if (records>=INT64_MAX/(int64_t)sizeof(TableNodeDirEntry)-1 || (records+1)*(int64_t)sizeof(TableNodeDirEntry)>INT64_MAX-data) { return -1; }
     *data_out=data; *records_out=records; return data+(records+1)*(int64_t)sizeof(TableNodeDirEntry);
 }
-static SCHEMA_UNUSED int64_t scene_load_measure_ex(const uint8_t * wire, int64_t bytes, int64_t * attribution, int * reason)
+static SCHEMA_UNUSED int64_t scene_load_measure_ex(const uint8_t * wire, int64_t bytes, int64_t * attribution, TableRefuseReason * reason)
 {
     TableReport report; TableReader reader; int64_t data,records,total; memset(&report,0,sizeof(report));
-    if (attribution!=NULL) { *attribution=0; } if (reason!=NULL) { *reason=0; }
-    if (!table_wire_open(&reader,wire,bytes,&report)) { if(reason!=NULL) { *reason=report.reason; } return -1; }
-    total=schema_graphdemo_scene_load_layout_(&reader,&data,&records);
+    if (attribution!=NULL) { *attribution=0; }
+    if (!table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && reason!=NULL) { *reason=SCHEMA_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }
+    report.reason=SCHEMA_TABLE_REFUSE_COUNT_OVER_LENGTH; total=schema_graphdemo_scene_load_layout_(&reader,&data,&records);
     if(total<0 && reason!=NULL) { *reason=report.reason; }
     if(total>=0 && attribution!=NULL) { *attribution=(records+1)*(int64_t)sizeof(TableNodeDirEntry); } return total;
 }
@@ -4711,7 +4862,7 @@ static SCHEMA_UNUSED int schema_graphdemo_scene_load_graph_(TableReader * reader
                     case UINT64_C(0x9d8b8aa2b404c2c8): settings_load_body(&body,(Settings *)value); break;
                     default: break;
                 }
-                if(nodes->refused) { return 0; }
+                nodes->sink=NULL; if(nodes->refused) { return 0; }
             }
             k++;
         }
@@ -4855,12 +5006,12 @@ static SCHEMA_UNUSED int64_t schema_graphdemo_depot_load_layout_(const TableRead
     if (records>=INT64_MAX/(int64_t)sizeof(TableNodeDirEntry)-1 || (records+1)*(int64_t)sizeof(TableNodeDirEntry)>INT64_MAX-data) { return -1; }
     *data_out=data; *records_out=records; return data+(records+1)*(int64_t)sizeof(TableNodeDirEntry);
 }
-static SCHEMA_UNUSED int64_t depot_load_measure_ex(const uint8_t * wire, int64_t bytes, int64_t * attribution, int * reason)
+static SCHEMA_UNUSED int64_t depot_load_measure_ex(const uint8_t * wire, int64_t bytes, int64_t * attribution, TableRefuseReason * reason)
 {
     TableReport report; TableReader reader; int64_t data,records,total; memset(&report,0,sizeof(report));
-    if (attribution!=NULL) { *attribution=0; } if (reason!=NULL) { *reason=0; }
-    if (!table_wire_open(&reader,wire,bytes,&report)) { if(reason!=NULL) { *reason=report.reason; } return -1; }
-    total=schema_graphdemo_depot_load_layout_(&reader,&data,&records);
+    if (attribution!=NULL) { *attribution=0; }
+    if (!table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && reason!=NULL) { *reason=SCHEMA_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }
+    report.reason=SCHEMA_TABLE_REFUSE_COUNT_OVER_LENGTH; total=schema_graphdemo_depot_load_layout_(&reader,&data,&records);
     if(total<0 && reason!=NULL) { *reason=report.reason; }
     if(total>=0 && attribution!=NULL) { *attribution=(records+1)*(int64_t)sizeof(TableNodeDirEntry); } return total;
 }
@@ -4901,7 +5052,7 @@ static SCHEMA_UNUSED int schema_graphdemo_depot_load_graph_(TableReader * reader
                     case UINT64_C(0xf60ec899a5a69fa9): list_node_load_body(&body,(ListNode *)value); break;
                     default: break;
                 }
-                if(nodes->refused) { return 0; }
+                nodes->sink=NULL; if(nodes->refused) { return 0; }
             }
             k++;
         }
@@ -5047,12 +5198,12 @@ static SCHEMA_UNUSED int64_t schema_graphdemo_album_load_layout_(const TableRead
     if (records>=INT64_MAX/(int64_t)sizeof(TableNodeDirEntry)-1 || (records+1)*(int64_t)sizeof(TableNodeDirEntry)>INT64_MAX-data) { return -1; }
     *data_out=data; *records_out=records; return data+(records+1)*(int64_t)sizeof(TableNodeDirEntry);
 }
-static SCHEMA_UNUSED int64_t album_load_measure_ex(const uint8_t * wire, int64_t bytes, int64_t * attribution, int * reason)
+static SCHEMA_UNUSED int64_t album_load_measure_ex(const uint8_t * wire, int64_t bytes, int64_t * attribution, TableRefuseReason * reason)
 {
     TableReport report; TableReader reader; int64_t data,records,total; memset(&report,0,sizeof(report));
-    if (attribution!=NULL) { *attribution=0; } if (reason!=NULL) { *reason=0; }
-    if (!table_wire_open(&reader,wire,bytes,&report)) { if(reason!=NULL) { *reason=report.reason; } return -1; }
-    total=schema_graphdemo_album_load_layout_(&reader,&data,&records);
+    if (attribution!=NULL) { *attribution=0; }
+    if (!table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && reason!=NULL) { *reason=SCHEMA_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }
+    report.reason=SCHEMA_TABLE_REFUSE_COUNT_OVER_LENGTH; total=schema_graphdemo_album_load_layout_(&reader,&data,&records);
     if(total<0 && reason!=NULL) { *reason=report.reason; }
     if(total>=0 && attribution!=NULL) { *attribution=(records+1)*(int64_t)sizeof(TableNodeDirEntry); } return total;
 }
@@ -5095,7 +5246,7 @@ static SCHEMA_UNUSED int schema_graphdemo_album_load_graph_(TableReader * reader
                     case UINT64_C(0xf60ec899a5a69fa9): list_node_load_body(&body,(ListNode *)value); break;
                     default: break;
                 }
-                if(nodes->refused) { return 0; }
+                nodes->sink=NULL; if(nodes->refused) { return 0; }
             }
             k++;
         }
@@ -5154,6 +5305,8 @@ static SCHEMA_UNUSED int album_load_builder(AlbumBuilder * builder, const uint8_
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
+static SCHEMA_UNUSED const Meta * meta_open_ex(const void * bytes,uint64_t length,TableRefuseReason * reason)
+{ return (const Meta *)table_cook_open_ex(bytes,length,sizeof(Meta),SCHEMA_TABLE_ALIGNOF(Meta),reason); }
 static SCHEMA_UNUSED const Meta * meta_open( const void * bytes, uint64_t length )
 {
     return (const Meta *) table_cook_open( bytes, length, (uint64_t) sizeof( Meta ), (uint64_t) SCHEMA_TABLE_ALIGNOF( Meta ) );
@@ -5178,6 +5331,8 @@ static SCHEMA_UNUSED const Meta * meta_open( const void * bytes, uint64_t length
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
+static SCHEMA_UNUSED const Settings * settings_open_ex(const void * bytes,uint64_t length,TableRefuseReason * reason)
+{ return (const Settings *)table_cook_open_ex(bytes,length,sizeof(Settings),SCHEMA_TABLE_ALIGNOF(Settings),reason); }
 static SCHEMA_UNUSED const Settings * settings_open( const void * bytes, uint64_t length )
 {
     return (const Settings *) table_cook_open( bytes, length, (uint64_t) sizeof( Settings ), (uint64_t) SCHEMA_TABLE_ALIGNOF( Settings ) );
@@ -5203,6 +5358,8 @@ static SCHEMA_UNUSED const Settings * settings_open( const void * bytes, uint64_
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
+static SCHEMA_UNUSED const ListNode * list_node_open_ex(const void * bytes,uint64_t length,TableRefuseReason * reason)
+{ return (const ListNode *)table_cook_open_ex(bytes,length,sizeof(ListNode),SCHEMA_TABLE_ALIGNOF(ListNode),reason); }
 static SCHEMA_UNUSED const ListNode * list_node_open( const void * bytes, uint64_t length )
 {
     return (const ListNode *) table_cook_open( bytes, length, (uint64_t) sizeof( ListNode ), (uint64_t) SCHEMA_TABLE_ALIGNOF( ListNode ) );
@@ -5228,6 +5385,8 @@ static SCHEMA_UNUSED const ListNode * list_node_open( const void * bytes, uint64
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
+static SCHEMA_UNUSED const TreeNode * tree_node_open_ex(const void * bytes,uint64_t length,TableRefuseReason * reason)
+{ return (const TreeNode *)table_cook_open_ex(bytes,length,sizeof(TreeNode),SCHEMA_TABLE_ALIGNOF(TreeNode),reason); }
 static SCHEMA_UNUSED const TreeNode * tree_node_open( const void * bytes, uint64_t length )
 {
     return (const TreeNode *) table_cook_open( bytes, length, (uint64_t) sizeof( TreeNode ), (uint64_t) SCHEMA_TABLE_ALIGNOF( TreeNode ) );
@@ -5253,6 +5412,8 @@ static SCHEMA_UNUSED const TreeNode * tree_node_open( const void * bytes, uint64
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
+static SCHEMA_UNUSED const Layer * layer_open_ex(const void * bytes,uint64_t length,TableRefuseReason * reason)
+{ return (const Layer *)table_cook_open_ex(bytes,length,sizeof(Layer),SCHEMA_TABLE_ALIGNOF(Layer),reason); }
 static SCHEMA_UNUSED const Layer * layer_open( const void * bytes, uint64_t length )
 {
     return (const Layer *) table_cook_open( bytes, length, (uint64_t) sizeof( Layer ), (uint64_t) SCHEMA_TABLE_ALIGNOF( Layer ) );
@@ -5278,6 +5439,8 @@ static SCHEMA_UNUSED const Layer * layer_open( const void * bytes, uint64_t leng
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
+static SCHEMA_UNUSED const Scene * scene_open_ex(const void * bytes,uint64_t length,TableRefuseReason * reason)
+{ return (const Scene *)table_cook_open_ex(bytes,length,sizeof(Scene),SCHEMA_TABLE_ALIGNOF(Scene),reason); }
 static SCHEMA_UNUSED const Scene * scene_open( const void * bytes, uint64_t length )
 {
     return (const Scene *) table_cook_open( bytes, length, (uint64_t) sizeof( Scene ), (uint64_t) SCHEMA_TABLE_ALIGNOF( Scene ) );
@@ -5303,6 +5466,8 @@ static SCHEMA_UNUSED const Scene * scene_open( const void * bytes, uint64_t leng
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
+static SCHEMA_UNUSED const Depot * depot_open_ex(const void * bytes,uint64_t length,TableRefuseReason * reason)
+{ return (const Depot *)table_cook_open_ex(bytes,length,sizeof(Depot),SCHEMA_TABLE_ALIGNOF(Depot),reason); }
 static SCHEMA_UNUSED const Depot * depot_open( const void * bytes, uint64_t length )
 {
     return (const Depot *) table_cook_open( bytes, length, (uint64_t) sizeof( Depot ), (uint64_t) SCHEMA_TABLE_ALIGNOF( Depot ) );
@@ -5328,11 +5493,173 @@ static SCHEMA_UNUSED const Depot * depot_open( const void * bytes, uint64_t leng
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
+static SCHEMA_UNUSED const Album * album_open_ex(const void * bytes,uint64_t length,TableRefuseReason * reason)
+{ return (const Album *)table_cook_open_ex(bytes,length,sizeof(Album),SCHEMA_TABLE_ALIGNOF(Album),reason); }
 static SCHEMA_UNUSED const Album * album_open( const void * bytes, uint64_t length )
 {
     return (const Album *) table_cook_open( bytes, length, (uint64_t) sizeof( Album ), (uint64_t) SCHEMA_TABLE_ALIGNOF( Album ) );
 }
 
+static SCHEMA_UNUSED int schema_graphdemo_meta_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order)
+{
+    const Meta * value=(const Meta *)storage;
+    (void)n; (void)at; (void)value; (void)order;
+    table_cook_put(at+0,(uint64_t)value->build,4,order);
+    table_cook_bytes(at+4,value->tag,value->tag_length,9);
+    table_cook_put(at+4+12,(uint32_t)value->tag_length,4,order);
+    return 1;
+}
+static SCHEMA_UNUSED int64_t meta_cook_measure(const Meta * value) { (void)value; return 104; }
+static SCHEMA_UNUSED int meta_cook(const Meta * value,void * output,uint64_t capacity,TableByteOrder order)
+{
+    uint8_t * raw=(uint8_t *)output;
+    if(value==NULL || raw==NULL || capacity<104) { return 0; }
+    memset(raw,0,104);
+    if(!schema_graphdemo_meta_cook_body_(NULL,raw+64,value,order)) { return 0; }
+    table_cook_put(raw+96,UINT64_C(0x6dadeaaee49d6d18),8,order);
+    table_cook_header(raw,SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE,24,1,8,order); return 1;
+}
+static SCHEMA_UNUSED int schema_graphdemo_settings_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order)
+{
+    const Settings * value=(const Settings *)storage;
+    (void)n; (void)at; (void)value; (void)order;
+    table_cook_put(at+0,(uint64_t)value->quality,4,order);
+    table_cook_bytes(at+4,value->label,value->label_length,17);
+    table_cook_put(at+4+20,(uint32_t)value->label_length,4,order);
+    return 1;
+}
+static SCHEMA_UNUSED int64_t settings_cook_measure(const Settings * value) { (void)value; return 112; }
+static SCHEMA_UNUSED int settings_cook(const Settings * value,void * output,uint64_t capacity,TableByteOrder order)
+{
+    uint8_t * raw=(uint8_t *)output;
+    if(value==NULL || raw==NULL || capacity<112) { return 0; }
+    memset(raw,0,112);
+    if(!schema_graphdemo_settings_cook_body_(NULL,raw+64,value,order)) { return 0; }
+    table_cook_put(raw+104,UINT64_C(0x9d8b8aa2b404c2c8),8,order);
+    table_cook_header(raw,SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE,32,1,8,order); return 1;
+}
+static SCHEMA_UNUSED int schema_graphdemo_list_node_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order)
+{
+    const ListNode * value=(const ListNode *)storage;
+    (void)n; (void)at; (void)value; (void)order;
+    table_cook_put(at+0,(uint64_t)value->value,4,order);
+    table_cook_bytes(at+4,value->name,value->name_length,13);
+    table_cook_put(at+4+16,(uint32_t)value->name_length,4,order);
+    if(!table_cook_ref(n,at+24,&value->next,order)) { return 0; }
+    return 1;
+}
+static SCHEMA_UNUSED int64_t list_node_cook_measure_with_allocator(const TableCtx * ctx,const ListNode * value,TableAllocator allocator)
+{ return table_graph_cook(ctx,value,&schema_graphdemo_list_node_node_type_,NULL,0,TableByteOrder_Little,allocator,SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE,1); }
+static SCHEMA_UNUSED int list_node_cook_with_allocator(const TableCtx * ctx,const ListNode * value,void * output,uint64_t capacity,TableByteOrder order,TableAllocator allocator)
+{ return table_graph_cook(ctx,value,&schema_graphdemo_list_node_node_type_,output,capacity,order,allocator,SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE,0)>=0; }
+static SCHEMA_UNUSED int64_t list_node_cook_measure(const TableCtx * ctx,const ListNode * value)
+{ return list_node_cook_measure_with_allocator(ctx,value,ctx!=NULL && ctx->arena!=NULL ? ctx->arena->allocator : table_default_allocator()); }
+static SCHEMA_UNUSED int list_node_cook(const TableCtx * ctx,const ListNode * value,void * output,uint64_t capacity,TableByteOrder order)
+{ return list_node_cook_with_allocator(ctx,value,output,capacity,order,ctx!=NULL && ctx->arena!=NULL ? ctx->arena->allocator : table_default_allocator()); }
+static SCHEMA_UNUSED int schema_graphdemo_tree_node_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order)
+{
+    const TreeNode * value=(const TreeNode *)storage;
+    (void)n; (void)at; (void)value; (void)order;
+    table_cook_bytes(at+0,value->label,value->label_length,13);
+    table_cook_put(at+0+16,(uint32_t)value->label_length,4,order);
+    if(!table_cook_ref(n,at+24,&value->left,order)) { return 0; }
+    if(!table_cook_ref(n,at+32,&value->right,order)) { return 0; }
+    return 1;
+}
+static SCHEMA_UNUSED int64_t tree_node_cook_measure_with_allocator(const TableCtx * ctx,const TreeNode * value,TableAllocator allocator)
+{ return table_graph_cook(ctx,value,&schema_graphdemo_tree_node_node_type_,NULL,0,TableByteOrder_Little,allocator,SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE,1); }
+static SCHEMA_UNUSED int tree_node_cook_with_allocator(const TableCtx * ctx,const TreeNode * value,void * output,uint64_t capacity,TableByteOrder order,TableAllocator allocator)
+{ return table_graph_cook(ctx,value,&schema_graphdemo_tree_node_node_type_,output,capacity,order,allocator,SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE,0)>=0; }
+static SCHEMA_UNUSED int64_t tree_node_cook_measure(const TableCtx * ctx,const TreeNode * value)
+{ return tree_node_cook_measure_with_allocator(ctx,value,ctx!=NULL && ctx->arena!=NULL ? ctx->arena->allocator : table_default_allocator()); }
+static SCHEMA_UNUSED int tree_node_cook(const TableCtx * ctx,const TreeNode * value,void * output,uint64_t capacity,TableByteOrder order)
+{ return tree_node_cook_with_allocator(ctx,value,output,capacity,order,ctx!=NULL && ctx->arena!=NULL ? ctx->arena->allocator : table_default_allocator()); }
+static SCHEMA_UNUSED int schema_graphdemo_layer_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order)
+{
+    const Layer * value=(const Layer *)storage;
+    (void)n; (void)at; (void)value; (void)order;
+    table_cook_put(at+0,(uint64_t)value->depth,4,order);
+    if(!table_cook_ref(n,at+8,&value->head,order)) { return 0; }
+    return 1;
+}
+static SCHEMA_UNUSED int64_t layer_cook_measure_with_allocator(const TableCtx * ctx,const Layer * value,TableAllocator allocator)
+{ return table_graph_cook(ctx,value,&schema_graphdemo_layer_node_type_,NULL,0,TableByteOrder_Little,allocator,SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE,1); }
+static SCHEMA_UNUSED int layer_cook_with_allocator(const TableCtx * ctx,const Layer * value,void * output,uint64_t capacity,TableByteOrder order,TableAllocator allocator)
+{ return table_graph_cook(ctx,value,&schema_graphdemo_layer_node_type_,output,capacity,order,allocator,SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE,0)>=0; }
+static SCHEMA_UNUSED int64_t layer_cook_measure(const TableCtx * ctx,const Layer * value)
+{ return layer_cook_measure_with_allocator(ctx,value,ctx!=NULL && ctx->arena!=NULL ? ctx->arena->allocator : table_default_allocator()); }
+static SCHEMA_UNUSED int layer_cook(const TableCtx * ctx,const Layer * value,void * output,uint64_t capacity,TableByteOrder order)
+{ return layer_cook_with_allocator(ctx,value,output,capacity,order,ctx!=NULL && ctx->arena!=NULL ? ctx->arena->allocator : table_default_allocator()); }
+static SCHEMA_UNUSED int schema_graphdemo_scene_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order)
+{
+    const Scene * value=(const Scene *)storage;
+    (void)n; (void)at; (void)value; (void)order;
+    table_cook_bytes(at+0,value->name,value->name_length,25);
+    table_cook_put(at+0+28,(uint32_t)value->name_length,4,order);
+    table_cook_put(at+32,(uint64_t)value->version,4,order);
+    if(!table_cook_ref(n,at+40,&value->head,order)) { return 0; }
+    if(!table_cook_ref(n,at+48,&value->tree,order)) { return 0; }
+    if(!table_cook_ref(n,at+56,&value->settings,order)) { return 0; }
+    if(!table_cook_ref(n,at+64,&value->alias,order)) { return 0; }
+    if(!schema_graphdemo_layer_cook_body_(n,at+72,&value->ground,order)) { return 0; }
+    { int32_t cook_i1; for(cook_i1=0;cook_i1<4;cook_i1++) {
+        if(!schema_graphdemo_layer_cook_body_(n,at+88+cook_i1*16,&value->layers[cook_i1],order)) { return 0; }
+    } }
+    table_cook_put(at+88+64,(uint32_t)value->layers_count,4,order);
+    if(!schema_graphdemo_meta_cook_body_(n,at+156,&value->meta,order)) { return 0; }
+    return 1;
+}
+static SCHEMA_UNUSED int64_t scene_cook_measure_with_allocator(const TableCtx * ctx,const Scene * value,TableAllocator allocator)
+{ return table_graph_cook(ctx,value,&schema_graphdemo_scene_node_type_,NULL,0,TableByteOrder_Little,allocator,SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE,1); }
+static SCHEMA_UNUSED int scene_cook_with_allocator(const TableCtx * ctx,const Scene * value,void * output,uint64_t capacity,TableByteOrder order,TableAllocator allocator)
+{ return table_graph_cook(ctx,value,&schema_graphdemo_scene_node_type_,output,capacity,order,allocator,SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE,0)>=0; }
+static SCHEMA_UNUSED int64_t scene_cook_measure(const TableCtx * ctx,const Scene * value)
+{ return scene_cook_measure_with_allocator(ctx,value,ctx!=NULL && ctx->arena!=NULL ? ctx->arena->allocator : table_default_allocator()); }
+static SCHEMA_UNUSED int scene_cook(const TableCtx * ctx,const Scene * value,void * output,uint64_t capacity,TableByteOrder order)
+{ return scene_cook_with_allocator(ctx,value,output,capacity,order,ctx!=NULL && ctx->arena!=NULL ? ctx->arena->allocator : table_default_allocator()); }
+static SCHEMA_UNUSED int schema_graphdemo_depot_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order)
+{
+    const Depot * value=(const Depot *)storage;
+    (void)n; (void)at; (void)value; (void)order;
+    table_cook_bytes(at+0,value->name,value->name_length,13);
+    table_cook_put(at+0+16,(uint32_t)value->name_length,4,order);
+    { int32_t cook_i1; for(cook_i1=0;cook_i1<2;cook_i1++) {
+        if(!schema_graphdemo_layer_cook_body_(n,at+24+cook_i1*16,&value->banks[cook_i1],order)) { return 0; }
+    } }
+    table_cook_put(at+56+20,value->spare_present ? 1 : 0,1,order);
+    if(!schema_graphdemo_meta_cook_body_(n,at+56,&value->spare,order)) { return 0; }
+    if(!table_cook_ref(n,at+80,&value->head,order)) { return 0; }
+    return 1;
+}
+static SCHEMA_UNUSED int64_t depot_cook_measure_with_allocator(const TableCtx * ctx,const Depot * value,TableAllocator allocator)
+{ return table_graph_cook(ctx,value,&schema_graphdemo_depot_node_type_,NULL,0,TableByteOrder_Little,allocator,SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE,1); }
+static SCHEMA_UNUSED int depot_cook_with_allocator(const TableCtx * ctx,const Depot * value,void * output,uint64_t capacity,TableByteOrder order,TableAllocator allocator)
+{ return table_graph_cook(ctx,value,&schema_graphdemo_depot_node_type_,output,capacity,order,allocator,SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE,0)>=0; }
+static SCHEMA_UNUSED int64_t depot_cook_measure(const TableCtx * ctx,const Depot * value)
+{ return depot_cook_measure_with_allocator(ctx,value,ctx!=NULL && ctx->arena!=NULL ? ctx->arena->allocator : table_default_allocator()); }
+static SCHEMA_UNUSED int depot_cook(const TableCtx * ctx,const Depot * value,void * output,uint64_t capacity,TableByteOrder order)
+{ return depot_cook_with_allocator(ctx,value,output,capacity,order,ctx!=NULL && ctx->arena!=NULL ? ctx->arena->allocator : table_default_allocator()); }
+static SCHEMA_UNUSED int schema_graphdemo_album_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order)
+{
+    const Album * value=(const Album *)storage;
+    (void)n; (void)at; (void)value; (void)order;
+    table_cook_bytes(at+0,value->name,value->name_length,17);
+    table_cook_put(at+0+20,(uint32_t)value->name_length,4,order);
+    if(!schema_graphdemo_colour_cook_body_(n,at+24,&value->tint,order)) { return 0; }
+    if(!schema_graphdemo_stamp_cook_body_(n,at+28,&value->stamp,order)) { return 0; }
+    if(!schema_graphdemo_marker_cook_body_(n,at+48,&value->marker,order)) { return 0; }
+    if(!table_cook_ref(n,at+72,&value->pin,order)) { return 0; }
+    if(!table_cook_ref(n,at+80,&value->head,order)) { return 0; }
+    return 1;
+}
+static SCHEMA_UNUSED int64_t album_cook_measure_with_allocator(const TableCtx * ctx,const Album * value,TableAllocator allocator)
+{ return table_graph_cook(ctx,value,&schema_graphdemo_album_node_type_,NULL,0,TableByteOrder_Little,allocator,SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE,1); }
+static SCHEMA_UNUSED int album_cook_with_allocator(const TableCtx * ctx,const Album * value,void * output,uint64_t capacity,TableByteOrder order,TableAllocator allocator)
+{ return table_graph_cook(ctx,value,&schema_graphdemo_album_node_type_,output,capacity,order,allocator,SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE,0)>=0; }
+static SCHEMA_UNUSED int64_t album_cook_measure(const TableCtx * ctx,const Album * value)
+{ return album_cook_measure_with_allocator(ctx,value,ctx!=NULL && ctx->arena!=NULL ? ctx->arena->allocator : table_default_allocator()); }
+static SCHEMA_UNUSED int album_cook(const TableCtx * ctx,const Album * value,void * output,uint64_t capacity,TableByteOrder order)
+{ return album_cook_with_allocator(ctx,value,output,capacity,order,ctx!=NULL && ctx->arena!=NULL ? ctx->arena->allocator : table_default_allocator()); }
 /* ---- relocatability: the wire is a pure length-prefixed stream AND the
    decoded storage is pointer-free — every closure type is a plain C struct
    of scalars and arrays, so instances can be memcpy'd, mmap'd, shared

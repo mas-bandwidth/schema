@@ -192,7 +192,7 @@ tables-c-zero-cost: build/tables-generated-c/.stamp
 	@for f in build/tables-generated-c/examples/*Table.h build/tables-generated-c/v1/*Table.h \
 	          build/tables-generated-c/v2/*Table.h build/tables-generated-c/p1/*Table.h \
 	          build/tables-generated-c/p3/*Table.h; do \
-		if grep -nE "TableArena|TableWorker|TableRef|TableSink|TableCtx|TableRegionSink|kTableSegment|kTableSlab|kTableMaxDepth|is_pointer|Builder|PackMeasure|LoadMeasure|stdatomic" $$f; then \
+		if grep -nE "TableArena|TableWorker|TableRef([^u]|$$)|TableSink|TableCtx|TableRegionSink|kTableSegment|kTableSlab|kTableMaxDepth|is_pointer|Builder|PackMeasure|LoadMeasure|stdatomic" $$f; then \
 			echo "ZERO-COST GATE FAILED: pointer machinery leaked into $$f"; exit 1; \
 		fi; \
 	done
@@ -456,7 +456,7 @@ tables-c-keyed-none-refusal-ndebug: build/tables-generated-c/.stamp test/c-table
 .PHONY: tables-c-keyed-none-refusal-negative-control
 tables-c-keyed-none-refusal-negative-control: bin/schema test/c-tables/keyed_none_ndebug_main.c
 	@rm -rf build/c-keyed-sabotage && mkdir -p build/c-keyed-sabotage
-	@sed 's|        abort();|        /* SABOTAGED: the abort is gone */ (void) 0;|' \
+	@sed 's|        schema_fatal();|        /* SABOTAGED: the abort is gone */ (void) 0;|' \
 		internal/codegen/ctable/ctable.go > build/c-keyed-sabotage/ctable.go.txt
 	@cmp -s internal/codegen/ctable/ctable.go build/c-keyed-sabotage/ctable.go.txt && \
 		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; } || true
@@ -525,8 +525,8 @@ tables-c-variable: build/schema_test_c_variable build/schema_test_c_variable_asa
 tables-c-fuzz-negative-control: build/tables-generated-c/.stamp build/cook-open/.stamp
 	@rm -rf build/c-fuzz-sabotage && mkdir -p build/c-fuzz-sabotage
 	@cp -r build/tables-generated-c/block build/c-fuzz-sabotage/
-	@sed -i.bak -e 's|if ( rows > (uint64_t) bytes - offset_of ) { return 0; }|/* SABOTAGED */|' \
-	            -e 's|if ( padding > bytes - used ) { return 0; }|/* SABOTAGED */|' \
+	@sed -i.bak -e 's|if(rows>(uint64_t)bytes-offset) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_BAD_LAYOUT)!=NULL; }|/* SABOTAGED */|' \
+	            -e 's|if(padding>bytes-used) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_TRUNCATED)!=NULL; }|/* SABOTAGED */|' \
 		build/c-fuzz-sabotage/block/RenderBlock.c
 	@grep -q SABOTAGED build/c-fuzz-sabotage/block/RenderBlock.c || \
 		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; }
@@ -745,7 +745,7 @@ build/cpp-collections-fuzz: build/collections-cpp/.stamp test/c-tables/collectio
 
 .PHONY: tables-c-collections-fuzz
 tables-c-collections-fuzz: build/c-collections-fuzz build/c-collections-fuzz-asan build/cpp-collections-fuzz
-	SCHEMA_C_COLLECTIONS_DRIVER=./build/c-collections-fuzz SCHEMA_CPP_COLLECTIONS_DRIVER=./build/cpp-collections-fuzz go test ./test/conformance/harness -run '^TestCCollectionDifferential$$' -count=1 -v
-	SCHEMA_C_COLLECTIONS_DRIVER=./build/c-collections-fuzz-asan SCHEMA_CPP_COLLECTIONS_DRIVER=./build/cpp-collections-fuzz go test ./test/conformance/harness -run '^TestCCollectionDifferential$$' -count=1 -v
+	SCHEMA_C_COLLECTIONS_DRIVER=./build/c-collections-fuzz SCHEMA_CPP_COLLECTIONS_DRIVER=./build/cpp-collections-fuzz go test ./test/conformance/harness -run '^TestCCollection(Cook)?Differential$$' -count=1 -v
+	SCHEMA_C_COLLECTIONS_DRIVER=./build/c-collections-fuzz-asan SCHEMA_CPP_COLLECTIONS_DRIVER=./build/cpp-collections-fuzz go test ./test/conformance/harness -run '^TestCCollection(Cook)?Differential$$' -count=1 -v
 
 test-c tables-c: tables-c-collections-fuzz

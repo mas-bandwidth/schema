@@ -1,8 +1,6 @@
 package ctable
 
 import (
-	"fmt"
-
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -279,8 +277,4 @@ func sequenceFloor(f *ir.Field) int {
 		return 1
 	}
 	return tableKindWidth(k)
-}
-
-func (g *tableGen) sequenceName(f *ir.Field) string {
-	return fmt.Sprintf("%s_%s", g.owner.Name, f.Name)
 }

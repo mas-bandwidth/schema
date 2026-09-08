@@ -46,6 +46,39 @@ extern "C" {
 
 #endif /* SCHEMA_BENCHTABLE_BUILD_VERSION */
 
+
+#ifndef SCHEMA_TABLE_ALLOCATOR_RUNTIME
+#define SCHEMA_TABLE_ALLOCATOR_RUNTIME
+#ifndef schema_allocate
+#include <stdlib.h>
+#define schema_allocate(bytes) calloc(1,(size_t)(bytes))
+#endif
+#ifndef schema_release
+#include <stdlib.h>
+#define schema_release(pointer) free(pointer)
+#endif
+typedef struct TableAllocator
+{
+    void * (*alloc)(void * context,int64_t bytes);
+    void (*free)(void * context,void * pointer);
+    void * context;
+} TableAllocator;
+static SCHEMA_UNUSED void * table_default_allocate(void * context,int64_t bytes)
+{ (void)context; return bytes>0 && (uint64_t)bytes<=SIZE_MAX ? schema_allocate(bytes) : NULL; }
+static SCHEMA_UNUSED void table_default_release(void * context,void * pointer)
+{ (void)context; schema_release(pointer); }
+static SCHEMA_UNUSED TableAllocator table_default_allocator(void)
+{
+    TableAllocator allocator={table_default_allocate,table_default_release,NULL}; return allocator;
+}
+static SCHEMA_UNUSED void * table_allocate(TableAllocator allocator,int64_t bytes)
+{
+    if(allocator.alloc==NULL || allocator.free==NULL || bytes<=0 || (uint64_t)bytes>SIZE_MAX) { return NULL; }
+    return allocator.alloc(allocator.context,bytes);
+}
+static SCHEMA_UNUSED void table_release(TableAllocator allocator,void * pointer)
+{ if(allocator.free!=NULL) { allocator.free(allocator.context,pointer); } }
+#endif
 #ifndef SCHEMA_BENCHTABLE_BLOCK_PRIMITIVES
 #define SCHEMA_BENCHTABLE_BLOCK_PRIMITIVES
 
@@ -70,17 +103,12 @@ typedef struct TableBlockTriple
    The FILL path allocates nothing and takes no lock, which is the obligation
    §19.1 states; "the block form never allocates" would be a claim about who
    owns the extent, and the answer is that the caller does. */
-typedef struct TableBlockAllocator
-{
-    void * ( *alloc )( void * context, int64_t bytes );
-    void ( *free )( void * context, void * pointer );
-    void * context;
-} TableBlockAllocator;
+typedef TableAllocator TableBlockAllocator;
 
 /* The default triple, for a caller that has no allocator of its own to hand
    in. Nothing in the generated surface reaches for it: a caller names it. */
-static SCHEMA_UNUSED void * table_block_default_alloc( void * context, int64_t bytes ) { (void) context; return malloc( (size_t) bytes ); }
-static SCHEMA_UNUSED void table_block_default_free( void * context, void * pointer ) { (void) context; free( pointer ); }
+static SCHEMA_UNUSED void * table_block_default_alloc( void * context, int64_t bytes ) { (void) context; return bytes>0 && (uint64_t)bytes<=SIZE_MAX ? schema_allocate(bytes) : NULL; }
+static SCHEMA_UNUSED void table_block_default_free( void * context, void * pointer ) { (void) context; schema_release( pointer ); }
 
 static SCHEMA_UNUSED TableBlockAllocator table_block_default_allocator( void )
 {
@@ -128,6 +156,10 @@ static SCHEMA_UNUSED void * table_block_row_at( const TableBlockRows * rows, int
 {
     return (void *) ( rows->base + (ptrdiff_t) index * rows->stride );
 }
+
+typedef struct TableBlockConstRows { const uint8_t * base; int32_t count, stride; } TableBlockConstRows;
+static SCHEMA_UNUSED const void * table_block_row_at_const(const TableBlockConstRows * rows,int32_t index)
+{ return rows->base+(ptrdiff_t)index*rows->stride; }
 
 /* ---- reflection over a block (docs/SPEC-TABLES.md §8, §19.2) ----
 
@@ -208,6 +240,9 @@ static SCHEMA_UNUSED uint64_t table_block_read64( const uint8_t * p )
     memcpy( &v, p, 8 );
     return v;
 }
+
+static SCHEMA_UNUSED uint32_t table_block_read32(const uint8_t * p)
+{ uint32_t value; memcpy(&value,p,4); return value; }
 
 static SCHEMA_UNUSED int64_t table_block_align( int64_t offset, int64_t alignment )
 {
@@ -305,6 +340,8 @@ typedef struct TableEntityBlock
     int64_t bytes;                     /* the extent in use */
 } TableEntityBlock;
 
+typedef struct TableEntityBlockConst { const uint8_t * base; const TableEntityBlockProjection * projection; int64_t bytes; } TableEntityBlockConst;
+static SCHEMA_UNUSED int64_t table_entity_block_bytes_const(const TableEntityBlockConst * block) { return block->bytes; }
 /* this table's block descriptors (docs/SPEC-TABLES.md §8, §19.2): constant
    data, defined in the .c beside this header. A consumer holding this reads
    the triples out of an instance and points at rows, with no hand-written
@@ -406,6 +443,14 @@ static SCHEMA_UNUSED int table_entity_block_open( TableEntityBlock * block, void
     return schema_benchtable_table_entity_block_open_( block, base, bytes );
 }
 
+int schema_benchtable_table_entity_block_open_ex_(TableEntityBlock * block,void * base,int64_t bytes,TableRefuseReason * reason);
+static SCHEMA_UNUSED int table_entity_block_open_ex(TableEntityBlock * block,void * base,int64_t bytes,TableRefuseReason * reason)
+{ return schema_benchtable_table_entity_block_open_ex_(block,base,bytes,reason); }
+int schema_benchtable_table_entity_block_open_const_ex_(TableEntityBlockConst * block,const void * base,int64_t bytes,TableRefuseReason * reason);
+static SCHEMA_UNUSED int table_entity_block_open_const_ex(TableEntityBlockConst * block,const void * base,int64_t bytes,TableRefuseReason * reason)
+{ return schema_benchtable_table_entity_block_open_const_ex_(block,base,bytes,reason); }
+static SCHEMA_UNUSED int table_entity_block_open_const(TableEntityBlockConst * block,const void * base,int64_t bytes)
+{ return schema_benchtable_table_entity_block_open_const_ex_(block,base,bytes,NULL); }
 /* ---- the block form of table TableEntity: end ---- */
 
 /* ---- the block form of table TableStat (docs/SPEC-TABLES.md §19): begin ---- */
@@ -481,6 +526,8 @@ typedef struct TableStatBlock
     int64_t bytes;                     /* the extent in use */
 } TableStatBlock;
 
+typedef struct TableStatBlockConst { const uint8_t * base; const TableStatBlockProjection * projection; int64_t bytes; } TableStatBlockConst;
+static SCHEMA_UNUSED int64_t table_stat_block_bytes_const(const TableStatBlockConst * block) { return block->bytes; }
 /* this table's block descriptors (docs/SPEC-TABLES.md §8, §19.2): constant
    data, defined in the .c beside this header. A consumer holding this reads
    the triples out of an instance and points at rows, with no hand-written
@@ -570,6 +617,14 @@ static SCHEMA_UNUSED int table_stat_block_open( TableStatBlock * block, void * b
     return schema_benchtable_table_stat_block_open_( block, base, bytes );
 }
 
+int schema_benchtable_table_stat_block_open_ex_(TableStatBlock * block,void * base,int64_t bytes,TableRefuseReason * reason);
+static SCHEMA_UNUSED int table_stat_block_open_ex(TableStatBlock * block,void * base,int64_t bytes,TableRefuseReason * reason)
+{ return schema_benchtable_table_stat_block_open_ex_(block,base,bytes,reason); }
+int schema_benchtable_table_stat_block_open_const_ex_(TableStatBlockConst * block,const void * base,int64_t bytes,TableRefuseReason * reason);
+static SCHEMA_UNUSED int table_stat_block_open_const_ex(TableStatBlockConst * block,const void * base,int64_t bytes,TableRefuseReason * reason)
+{ return schema_benchtable_table_stat_block_open_const_ex_(block,base,bytes,reason); }
+static SCHEMA_UNUSED int table_stat_block_open_const(TableStatBlockConst * block,const void * base,int64_t bytes)
+{ return schema_benchtable_table_stat_block_open_const_ex_(block,base,bytes,NULL); }
 /* ---- the block form of table TableStat: end ---- */
 
 

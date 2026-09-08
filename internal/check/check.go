@@ -3741,6 +3741,9 @@ func (c *checker) checkClaimedNames() {
 					accessor := name + ir.GoExportName(f.Name)
 					add(accessor, why, d.DeclPos())
 					add(accessor+"Span", why, d.DeclPos())
+					add(accessor+"Rows", why, d.DeclPos())
+					add(accessor+"RowsConst", why, d.DeclPos())
+					add(accessor+"SpanConst", why, d.DeclPos())
 				}
 				// AND A MAP claims its whole lookup surface on the table
 				// that declares it: <Table><Field> followed by Entry and
@@ -3864,6 +3867,8 @@ var tableGeneratedVerbs = []string{
 	// comment above this list is the rule they are added under: a port that
 	// spells the surface otherwise adds its spellings here.
 	"BuilderInit", "BuilderInitWithAllocator", "BuilderShutdown", "BuilderLock", "BuilderRoot",
+	"OpenEx", "BlockOpenEx", "BlockOpenConst", "BlockOpenConstEx", "BlockOpenCheck", "BlockConst", "BlockBytesConst",
+	"CookWithAllocator", "CookMeasureWithAllocator", "CookExtent",
 	"LoadMeasureEx", "MeasureWithAllocator", "SaveWithAllocator", "ToJsonWithAllocator", "ToJsonMeasureWithAllocator",
 	"BlockStorageCreate", "BlockStorageDestroy", "BlockType",
 	// the C# BLITTABLE records take claimed suffixes in the package namespace

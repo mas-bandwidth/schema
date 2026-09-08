@@ -209,6 +209,13 @@ func unitHasKeyedArray(u *ir.Unit, closure map[string]bool) bool {
 // debugger can read it and NDEBUG removes that; the abort is what stands after
 // it. The cost is one perfectly-predicted compare, on a path that reads config.
 const tableKeyedAccessor = `
+#ifndef schema_assert
+#define schema_assert assert
+#endif
+#ifndef schema_fatal
+#define schema_fatal abort
+#endif
+
 /* The storage index a key names, with the None refusal that stands in EVERY
    build. The storage shifts left and holds no slot for None, so a build that
    skipped this compare would index one element BEFORE the array — undefined
@@ -217,8 +224,8 @@ static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key )
 {
     if ( key <= 0 )
     {
-        assert( 0 && "None is the null key of an enum-keyed array: it keys no slot" );
-        abort();
+        schema_assert( 0 && "None is the null key of an enum-keyed array: it keys no slot" );
+        schema_fatal();
     }
     return key - 1;
 }
@@ -689,6 +696,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 				}
 			}
 			g.emitCodecDeclarations(members)
+			g.emitCookWriteDeclarations(members)
 			if g.anyVariable && g.fileWire() {
 				g.emitGraphDeclarations(members)
 				g.emitExtentDeclarations(members)
@@ -723,6 +731,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			}
 			g.emitVariableSurface(members)
 			g.emitCookSurface(members)
+			g.emitCookWriteSurface(members)
 			g.emitRelocatabilityPreamble()
 			g.emitCookLayoutAsserts(members)
 			g.pf("/* ---- reflection descriptors (tables only, docs/SPEC-TABLES.md) ----\n\n")
@@ -837,6 +846,10 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 	h.WriteString(buildVersionConstant(u.Package, ir.BuildVersion(u)))
 	h.WriteString("\n")
 	h.WriteString(tableCookRuntime(u.Package))
+	h.WriteString(tableCookWriteRuntime)
+	if g.anyVariable {
+		h.WriteString(tableCookGraphRuntime)
+	}
 	h.WriteString("\n")
 	h.WriteString(g.body.String())
 	fmt.Fprintf(&h, "\n#ifdef __cplusplus\n}\n#endif\n\n#endif /* %s */\n", guard)

@@ -50,6 +50,8 @@ typedef struct ConformanceCodec
     int64_t ( *to_json )( const void * value, char * buffer, int64_t capacity );
     void * ( *storage )( void ); /* one static instance per root, reset by load */
     int64_t (*load_measure)(const uint8_t * wire, int64_t bytes);
+    int64_t (*cook_measure)(const void * value);
+    int (*cook)(const void * value,void * buffer,uint64_t capacity,int big);
 } ConformanceCodec;
 
 /* A GROWING TEXT, for the two dumps. The harness compares bytes, so nothing
@@ -124,6 +126,8 @@ int conformance_block_dump( const char * name, const uint8_t * data, size_t byte
  * times, and the noise would bury the one message that matters. It is a flag
  * rather than a redirect because the sanitizers write to stderr too. */
 extern int conformance_quiet;
+int conformance_cook_open_reason(const char * root,const uint8_t * data,size_t bytes,int64_t extent,int pointer,int * reason);
+int conformance_block_open_reason(const char * name,const uint8_t * data,size_t bytes,int64_t extent,int pointer,int * reason);
 int conformance_cook_dump( const char * root, const uint8_t * data, size_t bytes, ConformanceText * out );
 int conformance_cook_open( const char * root, const uint8_t * data, size_t bytes, int64_t extent, int pointer );
 

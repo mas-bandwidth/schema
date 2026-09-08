@@ -493,6 +493,13 @@ static SCHEMA_UNUSED uint64_t table_wire_utf8_clamp( const uint8_t * p, uint64_t
     if ( n <= cap ) { return n; } while ( cap && (p[cap] & 192) == 128 ) { cap--; } return cap;
 }
 
+#ifndef schema_assert
+#define schema_assert assert
+#endif
+#ifndef schema_fatal
+#define schema_fatal abort
+#endif
+
 /* The storage index a key names, with the None refusal that stands in EVERY
    build. The storage shifts left and holds no slot for None, so a build that
    skipped this compare would index one element BEFORE the array — undefined
@@ -501,8 +508,8 @@ static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key )
 {
     if ( key <= 0 )
     {
-        assert( 0 && "None is the null key of an enum-keyed array: it keys no slot" );
-        abort();
+        schema_assert( 0 && "None is the null key of an enum-keyed array: it keys no slot" );
+        schema_fatal();
     }
     return key - 1;
 }
@@ -571,6 +578,29 @@ static SCHEMA_UNUSED int64_t table_wire_utf16_clamp( const uint8_t * bytes, int6
 
 #endif /* SCHEMA_BLOCKDEMO_BUILD_VERSION */
 
+
+#ifndef SCHEMA_TABLE_REFUSE_RUNTIME
+#define SCHEMA_TABLE_REFUSE_RUNTIME
+typedef int TableRefuseReason;
+enum {
+    SCHEMA_TABLE_REFUSE_OK=0,
+    SCHEMA_TABLE_REFUSE_NOT_A_COOK=1,
+    SCHEMA_TABLE_REFUSE_FOREIGN_ORDER=2,
+    SCHEMA_TABLE_REFUSE_WRONG_BUILD_VERSION=3,
+    SCHEMA_TABLE_REFUSE_RESERVED_NOT_ZERO=4,
+    SCHEMA_TABLE_REFUSE_BAD_ALIGNMENT=5,
+    SCHEMA_TABLE_REFUSE_TRUNCATED=6,
+    SCHEMA_TABLE_REFUSE_UNALIGNED_BASE=7,
+    SCHEMA_TABLE_REFUSE_BAD_LAYOUT=8,
+    SCHEMA_TABLE_REFUSE_UNKNOWN_FORM=9,
+    SCHEMA_TABLE_REFUSE_COUNT_OVER_LENGTH=10,
+    SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP=11,
+    SCHEMA_TABLE_REFUSE_BLOB_OVER_SIZE_CAP=12,
+    SCHEMA_TABLE_REFUSE_DATA_CYCLE=13
+};
+static SCHEMA_UNUSED const uint8_t * table_cook_refuse(TableRefuseReason * out,TableRefuseReason reason)
+{ if(out!=NULL) { *out=reason; } return NULL; }
+#endif
 #ifndef SCHEMA_BLOCKDEMO_TABLE_COOK
 #define SCHEMA_BLOCKDEMO_TABLE_COOK
 
@@ -663,25 +693,25 @@ static SCHEMA_UNUSED uint64_t table_cook_read64( const uint8_t * p )
    refuse, and an addition that wrapped would be the defect the comparison
    after it was supposed to catch. Nothing past length is read on any path,
    including every refusing one. */
-static SCHEMA_UNUSED const uint8_t * table_cook_open( const void * bytes, uint64_t length, uint64_t root_size, uint64_t root_align )
+static SCHEMA_UNUSED const uint8_t * table_cook_open_ex( const void * bytes, uint64_t length, uint64_t root_size, uint64_t root_align, TableRefuseReason * reason )
 {
     const uint8_t * raw;
     uint64_t data_length, attribution_length, alignment, data_offset;
     const uint8_t * base;
-    if ( bytes == NULL ) { return NULL; }
-    if ( length < (uint64_t) table_cook_header_bytes ) { return NULL; }
+    if ( bytes == NULL ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_UNALIGNED_BASE); }
+    if ( length < (uint64_t) table_cook_header_bytes ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_TRUNCATED); }
     raw = (const uint8_t *) bytes;
     /* the MAGIC, bytewise and first: it is what establishes the byte order
        every other header word is read in, so nothing else may be read before
        it. A byte-reversed constant is a cook of the other order and refuses
        here, which is why the order never reaches a fix-up pass. */
-    if ( table_cook_read64( raw ) != table_cook_magic ) { return NULL; }
-    if ( table_cook_read64( raw + 16 ) != table_cook_byte_order ) { return NULL; }
-    if ( table_cook_read64( raw + 8 ) != SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE ) { return NULL; }
+    if ( table_cook_read64( raw ) != table_cook_magic ) { return table_cook_refuse(reason,table_cook_read64(raw)==UINT64_C(0x5343484d434f4f4b) ? SCHEMA_TABLE_REFUSE_FOREIGN_ORDER : SCHEMA_TABLE_REFUSE_NOT_A_COOK); }
+    if ( table_cook_read64( raw + 16 ) != table_cook_byte_order ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_NOT_A_COOK); }
+    if ( table_cook_read64( raw + 8 ) != SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_WRONG_BUILD_VERSION); }
     /* the RESERVED words: a non-zero one means a writer used a form this build
        does not understand, and Open refuses rather than ignoring it. */
-    if ( table_cook_read64( raw + 48 ) != 0 ) { return NULL; }
-    if ( table_cook_read64( raw + 56 ) != 0 ) { return NULL; }
+    if ( table_cook_read64( raw + 48 ) != 0 ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_RESERVED_NOT_ZERO); }
+    if ( table_cook_read64( raw + 56 ) != 0 ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_RESERVED_NOT_ZERO); }
     data_length = table_cook_read64( raw + 24 );
     attribution_length = table_cook_read64( raw + 32 );
     alignment = table_cook_read64( raw + 40 );
@@ -691,39 +721,70 @@ static SCHEMA_UNUSED const uint8_t * table_cook_open( const void * bytes, uint64
        puts the attribution part on an eight-byte boundary without a second
        padding rule) and never past the cap above; a word that is none of those
        rounds nothing and aligns nothing, so it is refused before it is used. */
-    if ( alignment < 8 || alignment > table_cook_max_align ) { return NULL; }
-    if ( ( alignment & ( alignment - 1 ) ) != 0 ) { return NULL; }
+    if ( alignment < 8 || alignment > table_cook_max_align ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_BAD_ALIGNMENT); }
+    if ( ( alignment & ( alignment - 1 ) ) != 0 ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_BAD_ALIGNMENT); }
     /* and it must be an alignment THE ROOT CAN SIT AT, since the root is at
        the region's base: both are powers of two, so "at least the root's"
        is one division. */
-    if ( ( alignment % root_align ) != 0 ) { return NULL; }
+    if ( ( alignment % root_align ) != 0 ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_BAD_ALIGNMENT); }
     /* The DATA part begins at align_up( 64, alignment ). It is DERIVED and not
        a header field, because a fact a reader computes is a fact two writers
        cannot disagree about. */
     data_offset = ( (uint64_t) table_cook_header_bytes + alignment - 1 ) & ~( alignment - 1 );
-    if ( length < data_offset ) { return NULL; }
+    if ( length < data_offset ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_TRUNCATED); }
     /* the two part lengths against the length the caller passed. The whole
        file is data_offset + data_length + attribution_length, and a length
        that is not EXACTLY that refuses — truncation and trailing bytes are one
        refusal, and both terms are subtracted rather than added so no sum can
        carry. */
-    if ( data_length > length - data_offset ) { return NULL; }
-    if ( attribution_length != length - data_offset - data_length ) { return NULL; }
+    if ( data_length > length - data_offset ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_TRUNCATED); }
+    if ( attribution_length != length - data_offset - data_length ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_TRUNCATED); }
     /* the ROOT sits at the region's base, so the region has to hold it: a
        shorter data part describes a root partly outside the file, which is the
        one way a match-and-point reader could hand back storage it never
        received. */
-    if ( data_length < root_size ) { return NULL; }
+    if ( data_length < root_size ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_TRUNCATED); }
     base = raw + data_offset;
     /* the alignment of the BASE. The header pads the data part to the region's
        alignment, so a base an allocator or mmap gave you is already aligned —
        mmap gives page alignment for free — and a base that is not is a caller's
        buffer this form cannot be read out of. */
-    if ( ( (uintptr_t) base % (uintptr_t) alignment ) != 0 ) { return NULL; }
+    if ( ( (uintptr_t) base % (uintptr_t) alignment ) != 0 ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_UNALIGNED_BASE); }
     return base;
 }
+static SCHEMA_UNUSED const uint8_t * table_cook_open(const void * bytes,uint64_t length,uint64_t root_size,uint64_t root_align)
+{ return table_cook_open_ex(bytes,length,root_size,root_align,NULL); }
 
 #endif /* SCHEMA_BLOCKDEMO_TABLE_COOK */
+
+#ifndef SCHEMA_TABLE_COOK_WRITE_RUNTIME
+#define SCHEMA_TABLE_COOK_WRITE_RUNTIME
+struct TableNumbering;
+typedef enum TableByteOrder { TableByteOrder_Little=1, TableByteOrder_Big=2 } TableByteOrder;
+static SCHEMA_UNUSED void table_cook_put(uint8_t * at,uint64_t value,int width,int order)
+{
+    int i; for(i=0;i<width;i++) { at[i]=(uint8_t)(value >> (8*(order==TableByteOrder_Little ? i : width-1-i))); }
+}
+static SCHEMA_UNUSED void table_cook_put128(uint8_t * at,uint64_t lo,uint64_t hi,int order)
+{
+    table_cook_put(at,order==TableByteOrder_Little ? lo : hi,8,order);
+    table_cook_put(at+8,order==TableByteOrder_Little ? hi : lo,8,order);
+}
+static SCHEMA_UNUSED void table_cook_bytes(uint8_t * at,const void * source,int64_t used,int64_t capacity)
+{ if(used>0) { memcpy(at,source,(size_t)(used<capacity ? used : capacity)); } }
+static SCHEMA_UNUSED void table_cook_units(uint8_t * at,const uint16_t * source,int64_t used,int64_t capacity,int order)
+{
+    int64_t i, count=used<capacity ? used : capacity;
+    for(i=0;i<count;i++) { table_cook_put(at+i*2,source[i],2,order); }
+}
+static SCHEMA_UNUSED void table_cook_header(uint8_t * raw,uint64_t version,int64_t bytes,int64_t count,int64_t align,int order)
+{
+    table_cook_put(raw,table_cook_magic,8,order); table_cook_put(raw+8,version,8,order);
+    table_cook_put(raw+16,order==TableByteOrder_Big ? 2 : 1,8,order);
+    table_cook_put(raw+24,(uint64_t)bytes,8,order); table_cook_put(raw+32,(uint64_t)count*16,8,order);
+    table_cook_put(raw+40,(uint64_t)align,8,order);
+}
+#endif
 
 /* table RenderCamera — TABLE-wire storage: relocatable, bounded. C has no member
    initializers, so the declared defaults live in render_camera_reset and nowhere
@@ -1113,6 +1174,18 @@ static SCHEMA_UNUSED int64_t render_quaternion_measure( const RenderQuaternion *
 static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_quaternion_save_body( TableWriter * w, const RenderQuaternion * value );
 static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_quaternion_load_body( TableReader * r, RenderQuaternion * value );
 
+static SCHEMA_UNUSED int schema_blockdemo_render_camera_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_blockdemo_render_ship_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_blockdemo_render_turret_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_blockdemo_render_missile_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_blockdemo_render_dynamic_prop_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_blockdemo_render_static_prop_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_blockdemo_render_cosmetic_prop_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_blockdemo_render_laser_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_blockdemo_render_explosion_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_blockdemo_render_frame_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_blockdemo_render_vector3_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_blockdemo_render_quaternion_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
 static SCHEMA_UNUSED int render_camera_save_body( TableWriter * w, const RenderCamera * value )
 {
     (void) value;
@@ -6577,6 +6650,8 @@ static SCHEMA_UNUSED int render_quaternion_load( RenderQuaternion * value, const
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
+static SCHEMA_UNUSED const RenderCamera * render_camera_open_ex(const void * bytes,uint64_t length,TableRefuseReason * reason)
+{ return (const RenderCamera *)table_cook_open_ex(bytes,length,sizeof(RenderCamera),SCHEMA_TABLE_ALIGNOF(RenderCamera),reason); }
 static SCHEMA_UNUSED const RenderCamera * render_camera_open( const void * bytes, uint64_t length )
 {
     return (const RenderCamera *) table_cook_open( bytes, length, (uint64_t) sizeof( RenderCamera ), (uint64_t) SCHEMA_TABLE_ALIGNOF( RenderCamera ) );
@@ -6601,6 +6676,8 @@ static SCHEMA_UNUSED const RenderCamera * render_camera_open( const void * bytes
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
+static SCHEMA_UNUSED const RenderShip * render_ship_open_ex(const void * bytes,uint64_t length,TableRefuseReason * reason)
+{ return (const RenderShip *)table_cook_open_ex(bytes,length,sizeof(RenderShip),SCHEMA_TABLE_ALIGNOF(RenderShip),reason); }
 static SCHEMA_UNUSED const RenderShip * render_ship_open( const void * bytes, uint64_t length )
 {
     return (const RenderShip *) table_cook_open( bytes, length, (uint64_t) sizeof( RenderShip ), (uint64_t) SCHEMA_TABLE_ALIGNOF( RenderShip ) );
@@ -6625,6 +6702,8 @@ static SCHEMA_UNUSED const RenderShip * render_ship_open( const void * bytes, ui
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
+static SCHEMA_UNUSED const RenderTurret * render_turret_open_ex(const void * bytes,uint64_t length,TableRefuseReason * reason)
+{ return (const RenderTurret *)table_cook_open_ex(bytes,length,sizeof(RenderTurret),SCHEMA_TABLE_ALIGNOF(RenderTurret),reason); }
 static SCHEMA_UNUSED const RenderTurret * render_turret_open( const void * bytes, uint64_t length )
 {
     return (const RenderTurret *) table_cook_open( bytes, length, (uint64_t) sizeof( RenderTurret ), (uint64_t) SCHEMA_TABLE_ALIGNOF( RenderTurret ) );
@@ -6649,6 +6728,8 @@ static SCHEMA_UNUSED const RenderTurret * render_turret_open( const void * bytes
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
+static SCHEMA_UNUSED const RenderMissile * render_missile_open_ex(const void * bytes,uint64_t length,TableRefuseReason * reason)
+{ return (const RenderMissile *)table_cook_open_ex(bytes,length,sizeof(RenderMissile),SCHEMA_TABLE_ALIGNOF(RenderMissile),reason); }
 static SCHEMA_UNUSED const RenderMissile * render_missile_open( const void * bytes, uint64_t length )
 {
     return (const RenderMissile *) table_cook_open( bytes, length, (uint64_t) sizeof( RenderMissile ), (uint64_t) SCHEMA_TABLE_ALIGNOF( RenderMissile ) );
@@ -6673,6 +6754,8 @@ static SCHEMA_UNUSED const RenderMissile * render_missile_open( const void * byt
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
+static SCHEMA_UNUSED const RenderDynamicProp * render_dynamic_prop_open_ex(const void * bytes,uint64_t length,TableRefuseReason * reason)
+{ return (const RenderDynamicProp *)table_cook_open_ex(bytes,length,sizeof(RenderDynamicProp),SCHEMA_TABLE_ALIGNOF(RenderDynamicProp),reason); }
 static SCHEMA_UNUSED const RenderDynamicProp * render_dynamic_prop_open( const void * bytes, uint64_t length )
 {
     return (const RenderDynamicProp *) table_cook_open( bytes, length, (uint64_t) sizeof( RenderDynamicProp ), (uint64_t) SCHEMA_TABLE_ALIGNOF( RenderDynamicProp ) );
@@ -6697,6 +6780,8 @@ static SCHEMA_UNUSED const RenderDynamicProp * render_dynamic_prop_open( const v
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
+static SCHEMA_UNUSED const RenderStaticProp * render_static_prop_open_ex(const void * bytes,uint64_t length,TableRefuseReason * reason)
+{ return (const RenderStaticProp *)table_cook_open_ex(bytes,length,sizeof(RenderStaticProp),SCHEMA_TABLE_ALIGNOF(RenderStaticProp),reason); }
 static SCHEMA_UNUSED const RenderStaticProp * render_static_prop_open( const void * bytes, uint64_t length )
 {
     return (const RenderStaticProp *) table_cook_open( bytes, length, (uint64_t) sizeof( RenderStaticProp ), (uint64_t) SCHEMA_TABLE_ALIGNOF( RenderStaticProp ) );
@@ -6721,6 +6806,8 @@ static SCHEMA_UNUSED const RenderStaticProp * render_static_prop_open( const voi
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
+static SCHEMA_UNUSED const RenderCosmeticProp * render_cosmetic_prop_open_ex(const void * bytes,uint64_t length,TableRefuseReason * reason)
+{ return (const RenderCosmeticProp *)table_cook_open_ex(bytes,length,sizeof(RenderCosmeticProp),SCHEMA_TABLE_ALIGNOF(RenderCosmeticProp),reason); }
 static SCHEMA_UNUSED const RenderCosmeticProp * render_cosmetic_prop_open( const void * bytes, uint64_t length )
 {
     return (const RenderCosmeticProp *) table_cook_open( bytes, length, (uint64_t) sizeof( RenderCosmeticProp ), (uint64_t) SCHEMA_TABLE_ALIGNOF( RenderCosmeticProp ) );
@@ -6745,6 +6832,8 @@ static SCHEMA_UNUSED const RenderCosmeticProp * render_cosmetic_prop_open( const
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
+static SCHEMA_UNUSED const RenderLaser * render_laser_open_ex(const void * bytes,uint64_t length,TableRefuseReason * reason)
+{ return (const RenderLaser *)table_cook_open_ex(bytes,length,sizeof(RenderLaser),SCHEMA_TABLE_ALIGNOF(RenderLaser),reason); }
 static SCHEMA_UNUSED const RenderLaser * render_laser_open( const void * bytes, uint64_t length )
 {
     return (const RenderLaser *) table_cook_open( bytes, length, (uint64_t) sizeof( RenderLaser ), (uint64_t) SCHEMA_TABLE_ALIGNOF( RenderLaser ) );
@@ -6769,6 +6858,8 @@ static SCHEMA_UNUSED const RenderLaser * render_laser_open( const void * bytes, 
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
+static SCHEMA_UNUSED const RenderExplosion * render_explosion_open_ex(const void * bytes,uint64_t length,TableRefuseReason * reason)
+{ return (const RenderExplosion *)table_cook_open_ex(bytes,length,sizeof(RenderExplosion),SCHEMA_TABLE_ALIGNOF(RenderExplosion),reason); }
 static SCHEMA_UNUSED const RenderExplosion * render_explosion_open( const void * bytes, uint64_t length )
 {
     return (const RenderExplosion *) table_cook_open( bytes, length, (uint64_t) sizeof( RenderExplosion ), (uint64_t) SCHEMA_TABLE_ALIGNOF( RenderExplosion ) );
@@ -6793,11 +6884,297 @@ static SCHEMA_UNUSED const RenderExplosion * render_explosion_open( const void *
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
+static SCHEMA_UNUSED const RenderFrame * render_frame_open_ex(const void * bytes,uint64_t length,TableRefuseReason * reason)
+{ return (const RenderFrame *)table_cook_open_ex(bytes,length,sizeof(RenderFrame),SCHEMA_TABLE_ALIGNOF(RenderFrame),reason); }
 static SCHEMA_UNUSED const RenderFrame * render_frame_open( const void * bytes, uint64_t length )
 {
     return (const RenderFrame *) table_cook_open( bytes, length, (uint64_t) sizeof( RenderFrame ), (uint64_t) SCHEMA_TABLE_ALIGNOF( RenderFrame ) );
 }
 
+static SCHEMA_UNUSED int schema_blockdemo_render_camera_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order)
+{
+    const RenderCamera * value=(const RenderCamera *)storage;
+    (void)n; (void)at; (void)value; (void)order;
+    if(!schema_blockdemo_render_vector3_cook_body_(n,at+0,&value->position,order)) { return 0; }
+    if(!schema_blockdemo_render_quaternion_cook_body_(n,at+24,&value->rotation,order)) { return 0; }
+    table_cook_put(at+56,(uint64_t)value->camera_id,4,order);
+    table_cook_put(at+60,(uint64_t)value->camera_type,4,order);
+    table_cook_put(at+64,(uint64_t)value->target_object_id,4,order);
+    { uint32_t bits; memcpy(&bits,&value->fov,4); table_cook_put(at+68,bits,4,order); }
+    return 1;
+}
+static SCHEMA_UNUSED int64_t render_camera_cook_measure(const RenderCamera * value) { (void)value; return 152; }
+static SCHEMA_UNUSED int render_camera_cook(const RenderCamera * value,void * output,uint64_t capacity,TableByteOrder order)
+{
+    uint8_t * raw=(uint8_t *)output;
+    if(value==NULL || raw==NULL || capacity<152) { return 0; }
+    memset(raw,0,152);
+    if(!schema_blockdemo_render_camera_cook_body_(NULL,raw+64,value,order)) { return 0; }
+    table_cook_put(raw+144,UINT64_C(0x11c6b29d15f30306),8,order);
+    table_cook_header(raw,SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE,72,1,8,order); return 1;
+}
+static SCHEMA_UNUSED int schema_blockdemo_render_ship_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order)
+{
+    const RenderShip * value=(const RenderShip *)storage;
+    (void)n; (void)at; (void)value; (void)order;
+    if(!schema_blockdemo_render_vector3_cook_body_(n,at+0,&value->position,order)) { return 0; }
+    if(!schema_blockdemo_render_quaternion_cook_body_(n,at+24,&value->rotation,order)) { return 0; }
+    table_cook_put(at+56,(uint64_t)value->flags,8,order);
+    table_cook_put(at+64,(uint64_t)value->object_id,4,order);
+    table_cook_put(at+68,(uint64_t)value->target_object_id,4,order);
+    { uint32_t bits; memcpy(&bits,&value->thrust,4); table_cook_put(at+72,bits,4,order); }
+    table_cook_put(at+76,(uint64_t)value->object_sequence,1,order);
+    table_cook_put(at+77,(uint64_t)value->ship_type,1,order);
+    table_cook_put(at+78,(uint64_t)value->team,1,order);
+    table_cook_put(at+79,value->has_target_lock ? 1 : 0,1,order);
+    table_cook_put(at+80,value->predicted_explode ? 1 : 0,1,order);
+    return 1;
+}
+static SCHEMA_UNUSED int64_t render_ship_cook_measure(const RenderShip * value) { (void)value; return 168; }
+static SCHEMA_UNUSED int render_ship_cook(const RenderShip * value,void * output,uint64_t capacity,TableByteOrder order)
+{
+    uint8_t * raw=(uint8_t *)output;
+    if(value==NULL || raw==NULL || capacity<168) { return 0; }
+    memset(raw,0,168);
+    if(!schema_blockdemo_render_ship_cook_body_(NULL,raw+64,value,order)) { return 0; }
+    table_cook_put(raw+160,UINT64_C(0x5b00edd93fad6007),8,order);
+    table_cook_header(raw,SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE,88,1,8,order); return 1;
+}
+static SCHEMA_UNUSED int schema_blockdemo_render_turret_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order)
+{
+    const RenderTurret * value=(const RenderTurret *)storage;
+    (void)n; (void)at; (void)value; (void)order;
+    if(!schema_blockdemo_render_quaternion_cook_body_(n,at+0,&value->rotation,order)) { return 0; }
+    table_cook_put(at+32,(uint64_t)value->flags,8,order);
+    table_cook_put(at+40,(uint64_t)value->object_id,4,order);
+    table_cook_put(at+44,(uint64_t)value->parent_object_id,4,order);
+    table_cook_put(at+48,(uint64_t)value->turret_index,4,order);
+    table_cook_put(at+52,(uint64_t)value->target_object_id,4,order);
+    table_cook_put(at+56,(uint64_t)value->object_sequence,1,order);
+    table_cook_put(at+57,(uint64_t)value->team,1,order);
+    table_cook_put(at+58,value->has_target_lock ? 1 : 0,1,order);
+    return 1;
+}
+static SCHEMA_UNUSED int64_t render_turret_cook_measure(const RenderTurret * value) { (void)value; return 144; }
+static SCHEMA_UNUSED int render_turret_cook(const RenderTurret * value,void * output,uint64_t capacity,TableByteOrder order)
+{
+    uint8_t * raw=(uint8_t *)output;
+    if(value==NULL || raw==NULL || capacity<144) { return 0; }
+    memset(raw,0,144);
+    if(!schema_blockdemo_render_turret_cook_body_(NULL,raw+64,value,order)) { return 0; }
+    table_cook_put(raw+136,UINT64_C(0x4034181fa408c29f),8,order);
+    table_cook_header(raw,SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE,64,1,8,order); return 1;
+}
+static SCHEMA_UNUSED int schema_blockdemo_render_missile_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order)
+{
+    const RenderMissile * value=(const RenderMissile *)storage;
+    (void)n; (void)at; (void)value; (void)order;
+    if(!schema_blockdemo_render_vector3_cook_body_(n,at+0,&value->position,order)) { return 0; }
+    if(!schema_blockdemo_render_quaternion_cook_body_(n,at+24,&value->rotation,order)) { return 0; }
+    table_cook_put(at+56,(uint64_t)value->flags,8,order);
+    table_cook_put(at+64,(uint64_t)value->object_id,4,order);
+    table_cook_put(at+68,(uint64_t)value->object_sequence,1,order);
+    table_cook_put(at+69,(uint64_t)value->missile_type,1,order);
+    table_cook_put(at+70,(uint64_t)value->team,1,order);
+    return 1;
+}
+static SCHEMA_UNUSED int64_t render_missile_cook_measure(const RenderMissile * value) { (void)value; return 152; }
+static SCHEMA_UNUSED int render_missile_cook(const RenderMissile * value,void * output,uint64_t capacity,TableByteOrder order)
+{
+    uint8_t * raw=(uint8_t *)output;
+    if(value==NULL || raw==NULL || capacity<152) { return 0; }
+    memset(raw,0,152);
+    if(!schema_blockdemo_render_missile_cook_body_(NULL,raw+64,value,order)) { return 0; }
+    table_cook_put(raw+144,UINT64_C(0x93dab31114da135b),8,order);
+    table_cook_header(raw,SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE,72,1,8,order); return 1;
+}
+static SCHEMA_UNUSED int schema_blockdemo_render_dynamic_prop_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order)
+{
+    const RenderDynamicProp * value=(const RenderDynamicProp *)storage;
+    (void)n; (void)at; (void)value; (void)order;
+    if(!schema_blockdemo_render_vector3_cook_body_(n,at+0,&value->position,order)) { return 0; }
+    if(!schema_blockdemo_render_quaternion_cook_body_(n,at+24,&value->rotation,order)) { return 0; }
+    table_cook_put(at+56,(uint64_t)value->flags,8,order);
+    table_cook_put(at+64,(uint64_t)value->object_id,4,order);
+    table_cook_put(at+68,(uint64_t)value->object_sequence,1,order);
+    table_cook_put(at+69,(uint64_t)value->prop_type,1,order);
+    table_cook_put(at+70,(uint64_t)value->team,1,order);
+    return 1;
+}
+static SCHEMA_UNUSED int64_t render_dynamic_prop_cook_measure(const RenderDynamicProp * value) { (void)value; return 152; }
+static SCHEMA_UNUSED int render_dynamic_prop_cook(const RenderDynamicProp * value,void * output,uint64_t capacity,TableByteOrder order)
+{
+    uint8_t * raw=(uint8_t *)output;
+    if(value==NULL || raw==NULL || capacity<152) { return 0; }
+    memset(raw,0,152);
+    if(!schema_blockdemo_render_dynamic_prop_cook_body_(NULL,raw+64,value,order)) { return 0; }
+    table_cook_put(raw+144,UINT64_C(0xcca6d00e1bb40147),8,order);
+    table_cook_header(raw,SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE,72,1,8,order); return 1;
+}
+static SCHEMA_UNUSED int schema_blockdemo_render_static_prop_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order)
+{
+    const RenderStaticProp * value=(const RenderStaticProp *)storage;
+    (void)n; (void)at; (void)value; (void)order;
+    if(!schema_blockdemo_render_vector3_cook_body_(n,at+0,&value->position,order)) { return 0; }
+    if(!schema_blockdemo_render_quaternion_cook_body_(n,at+24,&value->rotation,order)) { return 0; }
+    { uint64_t bits; memcpy(&bits,&value->scale,8); table_cook_put(at+56,bits,8,order); }
+    table_cook_put(at+64,(uint64_t)value->flags,8,order);
+    table_cook_put(at+72,(uint64_t)value->static_prop_id,4,order);
+    table_cook_put(at+76,(uint64_t)value->prop_type,1,order);
+    table_cook_put(at+77,(uint64_t)value->team,1,order);
+    return 1;
+}
+static SCHEMA_UNUSED int64_t render_static_prop_cook_measure(const RenderStaticProp * value) { (void)value; return 160; }
+static SCHEMA_UNUSED int render_static_prop_cook(const RenderStaticProp * value,void * output,uint64_t capacity,TableByteOrder order)
+{
+    uint8_t * raw=(uint8_t *)output;
+    if(value==NULL || raw==NULL || capacity<160) { return 0; }
+    memset(raw,0,160);
+    if(!schema_blockdemo_render_static_prop_cook_body_(NULL,raw+64,value,order)) { return 0; }
+    table_cook_put(raw+152,UINT64_C(0xc19ad62b865276fe),8,order);
+    table_cook_header(raw,SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE,80,1,8,order); return 1;
+}
+static SCHEMA_UNUSED int schema_blockdemo_render_cosmetic_prop_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order)
+{
+    const RenderCosmeticProp * value=(const RenderCosmeticProp *)storage;
+    (void)n; (void)at; (void)value; (void)order;
+    if(!schema_blockdemo_render_vector3_cook_body_(n,at+0,&value->position,order)) { return 0; }
+    if(!schema_blockdemo_render_quaternion_cook_body_(n,at+24,&value->rotation,order)) { return 0; }
+    { uint64_t bits; memcpy(&bits,&value->scale,8); table_cook_put(at+56,bits,8,order); }
+    table_cook_put(at+64,(uint64_t)value->flags,8,order);
+    table_cook_put(at+72,(uint64_t)value->cosmetic_prop_id,4,order);
+    table_cook_put(at+76,(uint64_t)value->prop_sequence,1,order);
+    table_cook_put(at+77,(uint64_t)value->prop_type,1,order);
+    table_cook_put(at+78,(uint64_t)value->team,1,order);
+    return 1;
+}
+static SCHEMA_UNUSED int64_t render_cosmetic_prop_cook_measure(const RenderCosmeticProp * value) { (void)value; return 160; }
+static SCHEMA_UNUSED int render_cosmetic_prop_cook(const RenderCosmeticProp * value,void * output,uint64_t capacity,TableByteOrder order)
+{
+    uint8_t * raw=(uint8_t *)output;
+    if(value==NULL || raw==NULL || capacity<160) { return 0; }
+    memset(raw,0,160);
+    if(!schema_blockdemo_render_cosmetic_prop_cook_body_(NULL,raw+64,value,order)) { return 0; }
+    table_cook_put(raw+152,UINT64_C(0x5ff5bdbae776636f),8,order);
+    table_cook_header(raw,SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE,80,1,8,order); return 1;
+}
+static SCHEMA_UNUSED int schema_blockdemo_render_laser_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order)
+{
+    const RenderLaser * value=(const RenderLaser *)storage;
+    (void)n; (void)at; (void)value; (void)order;
+    if(!schema_blockdemo_render_vector3_cook_body_(n,at+0,&value->start,order)) { return 0; }
+    if(!schema_blockdemo_render_vector3_cook_body_(n,at+24,&value->finish,order)) { return 0; }
+    { uint64_t bits; memcpy(&bits,&value->t,8); table_cook_put(at+48,bits,8,order); }
+    table_cook_put(at+56,(uint64_t)value->laser_id,4,order);
+    table_cook_put(at+60,(uint64_t)value->laser_type,1,order);
+    table_cook_put(at+61,(uint64_t)value->team,1,order);
+    return 1;
+}
+static SCHEMA_UNUSED int64_t render_laser_cook_measure(const RenderLaser * value) { (void)value; return 144; }
+static SCHEMA_UNUSED int render_laser_cook(const RenderLaser * value,void * output,uint64_t capacity,TableByteOrder order)
+{
+    uint8_t * raw=(uint8_t *)output;
+    if(value==NULL || raw==NULL || capacity<144) { return 0; }
+    memset(raw,0,144);
+    if(!schema_blockdemo_render_laser_cook_body_(NULL,raw+64,value,order)) { return 0; }
+    table_cook_put(raw+136,UINT64_C(0xb0947dbe6c23d994),8,order);
+    table_cook_header(raw,SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE,64,1,8,order); return 1;
+}
+static SCHEMA_UNUSED int schema_blockdemo_render_explosion_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order)
+{
+    const RenderExplosion * value=(const RenderExplosion *)storage;
+    (void)n; (void)at; (void)value; (void)order;
+    if(!schema_blockdemo_render_vector3_cook_body_(n,at+0,&value->position,order)) { return 0; }
+    if(!schema_blockdemo_render_quaternion_cook_body_(n,at+24,&value->rotation,order)) { return 0; }
+    { uint64_t bits; memcpy(&bits,&value->t,8); table_cook_put(at+56,bits,8,order); }
+    table_cook_put(at+64,(uint64_t)value->explosion_id,4,order);
+    table_cook_put(at+68,(uint64_t)value->parent_object_id,4,order);
+    table_cook_put(at+72,(uint64_t)value->explosion_type,1,order);
+    table_cook_put(at+73,(uint64_t)value->team,1,order);
+    return 1;
+}
+static SCHEMA_UNUSED int64_t render_explosion_cook_measure(const RenderExplosion * value) { (void)value; return 160; }
+static SCHEMA_UNUSED int render_explosion_cook(const RenderExplosion * value,void * output,uint64_t capacity,TableByteOrder order)
+{
+    uint8_t * raw=(uint8_t *)output;
+    if(value==NULL || raw==NULL || capacity<160) { return 0; }
+    memset(raw,0,160);
+    if(!schema_blockdemo_render_explosion_cook_body_(NULL,raw+64,value,order)) { return 0; }
+    table_cook_put(raw+152,UINT64_C(0x0cc738b585c9e5f8),8,order);
+    table_cook_header(raw,SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE,80,1,8,order); return 1;
+}
+static SCHEMA_UNUSED int schema_blockdemo_render_frame_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order)
+{
+    const RenderFrame * value=(const RenderFrame *)storage;
+    (void)n; (void)at; (void)value; (void)order;
+    table_cook_put(at+0,(uint64_t)value->version,8,order);
+    { int32_t cook_i1; for(cook_i1=0;cook_i1<1;cook_i1++) {
+        if(!schema_blockdemo_render_camera_cook_body_(n,at+8+cook_i1*72,&value->cameras[cook_i1],order)) { return 0; }
+    } }
+    table_cook_put(at+8+72,(uint32_t)value->cameras_count,4,order);
+    { int32_t cook_i2; for(cook_i2=0;cook_i2<4096;cook_i2++) {
+        if(!schema_blockdemo_render_ship_cook_body_(n,at+88+cook_i2*88,&value->ships[cook_i2],order)) { return 0; }
+    } }
+    table_cook_put(at+88+360448,(uint32_t)value->ships_count,4,order);
+    { int32_t cook_i3; for(cook_i3=0;cook_i3<1024;cook_i3++) {
+        if(!schema_blockdemo_render_turret_cook_body_(n,at+360544+cook_i3*64,&value->turrets[cook_i3],order)) { return 0; }
+    } }
+    table_cook_put(at+360544+65536,(uint32_t)value->turrets_count,4,order);
+    { int32_t cook_i4; for(cook_i4=0;cook_i4<4096;cook_i4++) {
+        if(!schema_blockdemo_render_missile_cook_body_(n,at+426088+cook_i4*72,&value->missiles[cook_i4],order)) { return 0; }
+    } }
+    table_cook_put(at+426088+294912,(uint32_t)value->missiles_count,4,order);
+    { int32_t cook_i5; for(cook_i5=0;cook_i5<4096;cook_i5++) {
+        if(!schema_blockdemo_render_dynamic_prop_cook_body_(n,at+721008+cook_i5*72,&value->dynamic_props[cook_i5],order)) { return 0; }
+    } }
+    table_cook_put(at+721008+294912,(uint32_t)value->dynamic_props_count,4,order);
+    { int32_t cook_i6; for(cook_i6=0;cook_i6<20000;cook_i6++) {
+        if(!schema_blockdemo_render_static_prop_cook_body_(n,at+1015928+cook_i6*80,&value->static_props[cook_i6],order)) { return 0; }
+    } }
+    table_cook_put(at+1015928+1600000,(uint32_t)value->static_props_count,4,order);
+    { int32_t cook_i7; for(cook_i7=0;cook_i7<8192;cook_i7++) {
+        if(!schema_blockdemo_render_cosmetic_prop_cook_body_(n,at+2615936+cook_i7*80,&value->cosmetic_props[cook_i7],order)) { return 0; }
+    } }
+    table_cook_put(at+2615936+655360,(uint32_t)value->cosmetic_props_count,4,order);
+    { int32_t cook_i8; for(cook_i8=0;cook_i8<32000;cook_i8++) {
+        if(!schema_blockdemo_render_laser_cook_body_(n,at+3271304+cook_i8*64,&value->lasers[cook_i8],order)) { return 0; }
+    } }
+    table_cook_put(at+3271304+2048000,(uint32_t)value->lasers_count,4,order);
+    { int32_t cook_i9; for(cook_i9=0;cook_i9<32000;cook_i9++) {
+        if(!schema_blockdemo_render_explosion_cook_body_(n,at+5319312+cook_i9*80,&value->explosions[cook_i9],order)) { return 0; }
+    } }
+    table_cook_put(at+5319312+2560000,(uint32_t)value->explosions_count,4,order);
+    return 1;
+}
+static SCHEMA_UNUSED int64_t render_frame_cook_measure(const RenderFrame * value) { (void)value; return 7879400; }
+static SCHEMA_UNUSED int render_frame_cook(const RenderFrame * value,void * output,uint64_t capacity,TableByteOrder order)
+{
+    uint8_t * raw=(uint8_t *)output;
+    if(value==NULL || raw==NULL || capacity<7879400) { return 0; }
+    memset(raw,0,7879400);
+    if(!schema_blockdemo_render_frame_cook_body_(NULL,raw+64,value,order)) { return 0; }
+    table_cook_put(raw+7879392,UINT64_C(0x9b2749fb3fc30f4e),8,order);
+    table_cook_header(raw,SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE,7879320,1,8,order); return 1;
+}
+static SCHEMA_UNUSED int schema_blockdemo_render_vector3_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order)
+{
+    const RenderVector3 * value=(const RenderVector3 *)storage;
+    (void)n; (void)at; (void)value; (void)order;
+    { uint64_t bits; memcpy(&bits,&value->x,8); table_cook_put(at+0,bits,8,order); }
+    { uint64_t bits; memcpy(&bits,&value->y,8); table_cook_put(at+8,bits,8,order); }
+    { uint64_t bits; memcpy(&bits,&value->z,8); table_cook_put(at+16,bits,8,order); }
+    return 1;
+}
+static SCHEMA_UNUSED int schema_blockdemo_render_quaternion_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order)
+{
+    const RenderQuaternion * value=(const RenderQuaternion *)storage;
+    (void)n; (void)at; (void)value; (void)order;
+    { uint64_t bits; memcpy(&bits,&value->x,8); table_cook_put(at+0,bits,8,order); }
+    { uint64_t bits; memcpy(&bits,&value->y,8); table_cook_put(at+8,bits,8,order); }
+    { uint64_t bits; memcpy(&bits,&value->z,8); table_cook_put(at+16,bits,8,order); }
+    { uint64_t bits; memcpy(&bits,&value->w,8); table_cook_put(at+24,bits,8,order); }
+    return 1;
+}
 /* ---- relocatability: the wire is a pure length-prefixed stream AND the
    decoded storage is pointer-free — every closure type is a plain C struct
    of scalars and arrays, so instances can be memcpy'd, mmap'd, shared

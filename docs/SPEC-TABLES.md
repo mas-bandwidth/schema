@@ -174,8 +174,10 @@ byte/string blobs, wide scalars, fixed-point values, defaults and aliases ride
 on that form. `tables-c-wire-fuzz` compares C with the independent engine.
 Dynamic maps and lists use the same file form and graph JSON;
 `tables-c-collections-fuzz` compares their recovery and native C region sizes
-with C++ directly. Message form, retention, runtime cook writing and UnitView
-remain C port work. C#, Dart, Go, Rust, Java, JavaScript and Elixir still write
+with C++ directly. C also writes canonical cooks in both byte orders, with
+field-by-field padding normalization, and exposes named cook/block refusal
+reasons and const block handles. Message form, retention and UnitView remain
+C port work. C#, Dart, Go, Rust, Java, JavaScript and Elixir still write
 the earlier form in this tree. [ROADMAP.md](../ROADMAP.md) records coverage by
 construct and form.
 
@@ -7905,9 +7907,12 @@ the wire, and keeps the flexibility that comes with it.
   BLOCK VALUE THAT SURFACE DOES NOT CARRY**, because it is a clause over the
   ADDRESS the caller passed and a manifest row hands a driver a path rather
   than a pointer. It is held in the C++ reference's own `BlockOpen` gate
-  instead, beside the four readings that are on the surface. Every other backend's `Open`
-  is still the null alone in its own spelling, and takes the parameter with
-  the wire form it lacks (§15).
+  instead, beside the four readings that are on the surface. C carries the
+  same clauses through `<root>_open_ex` and `<root>_block_open_ex`, with an
+  optional `TableRefuseReason *` last parameter; the existing entry points
+  forward with a null reason pointer. The C reason type preserves the `int`
+  out-parameter ABI and names the values `SCHEMA_TABLE_REFUSE_*`, in the order
+  above. Other backends take the parameter with the wire form they lack (§15).
 
 - **`Open` is the RUNTIME's only entry point.** There is no second one: a
   build either wrote a file or it did not, and the build version is what says
@@ -8779,6 +8784,23 @@ language and a runtime in any other."*
 int64_t SettingsCookMeasure( const Settings & value );
 bool    SettingsCook( const Settings & value, void * out, uint64_t capacity, TableByteOrder order );
 ```
+
+**THE C SURFACE** uses pointers and explicit contexts, retaining the same
+measure/write contract:
+
+```c
+int64_t settings_cook_measure(const Settings * value);
+int settings_cook(const Settings * value, void * out, uint64_t capacity, TableByteOrder order);
+int64_t scene_cook_measure(const TableCtx * ctx, const Scene * value);
+int scene_cook(const TableCtx * ctx, const Scene * value, void * out, uint64_t capacity, TableByteOrder order);
+```
+
+A region or opened cook uses a null context; an editable builder uses a context
+whose `arena` points at the builder's arena. `TableByteOrder_Little` and
+`TableByteOrder_Big` select the target order. Variable roots also expose
+`_cook_with_allocator` and `_cook_measure_with_allocator`, with a final
+`TableAllocator` argument. The default pair is the builder's when a context
+names one, and the `schema_allocate`/`schema_release` hooks otherwise.
 
 - **IT IS A MEASURE/WRITE SPLIT, exactly as the wire's is** (§6.1).
   `CookMeasure` answers the whole file's length — the header, the data part and
@@ -10206,9 +10228,9 @@ in build version (§20.5).
   The set is claimed for EVERY closure member, not only pointer-bearing
   ones: a table gains or loses pointers as an edit, and a name that was
   free yesterday must not become a collision tomorrow. That list is the
-  checker's own, and this section is held to it: the three lists here, 53, then
-  the block form's nine, then the C backend's seven, are `tableGeneratedVerbs`
-  entire, spelling for spelling and 69 in all, because a claim the page states
+  checker's own, and this section is held to it: the three lists here cover
+  `tableGeneratedVerbs` in full, spelling for spelling, including the block
+  form and the C backend's additional spellings, because a claim the page states
   and the checker does not make is a name a user may take.
 
   **RETAIN-UNKNOWN'S TWELVE ARE THREE AND NINE** (§6.6). `LoadRetain`,
@@ -10286,7 +10308,7 @@ in build version (§20.5).
   Counts  Row  BlockProjection
   ```
 
-  **THE C BACKEND CLAIMS THIRTEEN MORE**, and the checker claims them on the same
+  **THE C BACKEND CLAIMS THESE ADDITIONAL SPELLINGS**, and the checker claims them on the same
   terms. C++ and C# put these on a class — a builder's `Lock`, a storage's
   `Create`, a block type's `Type` — and a member function claims nothing; C has
   no members, so each is a free function under its owner's name (§6.1's C
@@ -10298,6 +10320,9 @@ in build version (§20.5).
   LoadMeasureEx  MeasureWithAllocator  SaveWithAllocator
   ToJsonWithAllocator  ToJsonMeasureWithAllocator
   BlockStorageCreate  BlockStorageDestroy  BlockType
+  CookWithAllocator  CookMeasureWithAllocator  CookExtent  OpenEx
+  BlockOpenEx  BlockOpenConst  BlockOpenConstEx  BlockOpenCheck
+  BlockConst  BlockBytesConst
   ```
 
   **`Row` and `BlockProjection` are the C# BLITTABLE records' names** (§19.2),
@@ -10306,7 +10331,7 @@ in build version (§20.5).
   noun collides with declarations in OTHER units of the same assembly, which a
   compiler that sees one unit cannot refuse.
 
-  **A table also claims TWO PER OUT-OF-LINE ARRAY**, because its row
+  **A table also claims names PER OUT-OF-LINE ARRAY**, because its row
   accessors are named after its fields: `<Table>` followed by the PascalCase
   of the field's name hands back that field's rows, and the same name with
   `Span` appended is the contiguous view (§19.2) — so `RenderFrame` with a
@@ -10314,7 +10339,10 @@ in build version (§20.5).
   declaration spelling either is refused naming both. That part of the set
   moves with the declaration, which is why it is a rule here rather than a
   list. A language whose accessors are members spells the same two names on
-  the block type and claims nothing at file scope for them.
+  the block type and claims nothing at file scope for them. C also claims
+  `<Table><Field>Rows`, `<Table><Field>RowsConst` and
+  `<Table><Field>SpanConst`, for its mutable row handle and its const row/span
+  readers. The emitted functions use snake_case, as the other C entry points do.
 
   **THE DESCRIPTOR SURFACE'S CLAIMS ARE UNCONDITIONAL — every declaration,
   every unit, tables or not.** Every unit is to emit a view file and that file
@@ -11426,8 +11454,8 @@ inspects everything in the schema built:
   a catalog is re-cooked when any table in its unit moves (§7).
   Everything about it is a decision — who declares the set, what proves two
   versions interchangeable — and none of that is decided here.
-- **THE COOK's WRITE SIDE in every other language.** C++ writes a cook of
-  either class today and its bytes are the tool's (§7.6). Every other
+- **THE COOK's WRITE SIDE in every other language.** C++ and C write cooks of
+  either class today and their bytes are the tool's (§7.6). Every other
   language's writer is the same feature in that language's own idiom, held to
   the same `cook-write` surface — a language writes, the harness compares to
   the tool's bytes — and a pointered root's needs what the C++ one needed: the
@@ -13762,7 +13790,10 @@ schema name, as everywhere else in that backend.
   they were, and a producer holds a mutable block exactly as before. The split
   is the one C# states above with `ref readonly` and `ReadOnlySpan<Row>`, and
   the one Rust has by returning `&[Row]`. **A write through a const view is a
-  COMPILE ERROR**, held by a negative compile control (§19.5).
+  COMPILE ERROR**, held by a negative compile control (§19.5). C spells its
+  reader `<Name>BlockConst` with `<root>_block_open_const` and the `_ex` variant
+  for a reason, and provides `_rows_const` and `_span_const` accessors. Both
+  handles use one bytewise gate; the reader's row pointers remain const.
 - **An array is ITERATED, not indexed by hand.** The accessor yields a
   reference to each row where it lies, at the pitch the instance gives, for
   `count` rows — a range-for in C++, an enumerator in C#, the equivalent per

@@ -210,7 +210,7 @@ static int dump_block( ConformanceText * out, const uint8_t * base, const TableB
 
 /* ---- the two entry points main.c names ---- */
 
-int conformance_block_open( const char * name, const uint8_t * data, size_t bytes, int64_t extent, int pointer )
+int conformance_block_open_reason( const char * name, const uint8_t * data, size_t bytes, int64_t extent, int pointer,int * reason )
 {
     ConformanceBuffer buffer;
     int opened = 0;
@@ -218,12 +218,12 @@ int conformance_block_open( const char * name, const uint8_t * data, size_t byte
     if ( strncmp( name, "block_render", 12 ) == 0 )
     {
         RenderFrameBlock block;
-        opened = render_frame_block_open( &block, buffer.base, buffer.bytes );
+        opened = render_frame_block_open_ex( &block, buffer.base, buffer.bytes,reason );
     }
     else if ( strncmp( name, "block_padded", 12 ) == 0 )
     {
         PaddedFrameBlock block;
-        opened = padded_frame_block_open( &block, buffer.base, buffer.bytes );
+        opened = padded_frame_block_open_ex( &block, buffer.base, buffer.bytes,reason );
     }
     else
     {
@@ -259,3 +259,6 @@ int conformance_block_dump( const char * name, const uint8_t * data, size_t byte
     conformance_buffer_destroy( &buffer );
     return ok;
 }
+
+int conformance_block_open(const char * name,const uint8_t * data,size_t bytes,int64_t extent,int pointer)
+{ return conformance_block_open_reason(name,data,bytes,extent,pointer,NULL); }

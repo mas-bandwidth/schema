@@ -31,8 +31,10 @@ static int reference_load_##NS##_##TYPE(void * value,const uint8_t * wire,int64_
  out->duplicate=report.duplicate;out->malformed=report.malformed;out->refused=report.refused;return root!=NULL; } \
 static int64_t reference_measure_##NS##_##TYPE(const void * value) { const NS::TYPE * root=*(const NS::TYPE * const *)value;return root ? NS::TYPE##Measure(root) : -1; } \
 static int64_t reference_save_##NS##_##TYPE(const void * value,uint8_t * buffer,int64_t capacity) { return NS::TYPE##Save(*(const NS::TYPE * const *)value,buffer,capacity); } \
-static int64_t reference_load_measure_##NS##_##TYPE(const uint8_t * wire,int64_t bytes) { return NS::TYPE##LoadMeasure(wire,bytes); }
-#define REFERENCE_ROW(NS,TYPE) {#NS,#TYPE,reference_load_##NS##_##TYPE,reference_measure_##NS##_##TYPE,reference_save_##NS##_##TYPE,NULL,NULL,reference_storage_##NS##_##TYPE,reference_load_measure_##NS##_##TYPE}
+static int64_t reference_load_measure_##NS##_##TYPE(const uint8_t * wire,int64_t bytes) { return NS::TYPE##LoadMeasure(wire,bytes); } \
+static int64_t reference_cook_measure_##NS##_##TYPE(const void * value) { return NS::TYPE##CookMeasure(*(const NS::TYPE * const *)value); } \
+static int reference_cook_##NS##_##TYPE(const void * value,void * buffer,uint64_t capacity,int big) { return NS::TYPE##Cook(*(const NS::TYPE * const *)value,buffer,capacity,big ? NS::TableByteOrder::Big : NS::TableByteOrder::Little); }
+#define REFERENCE_ROW(NS,TYPE) {#NS,#TYPE,reference_load_##NS##_##TYPE,reference_measure_##NS##_##TYPE,reference_save_##NS##_##TYPE,NULL,NULL,reference_storage_##NS##_##TYPE,reference_load_measure_##NS##_##TYPE,reference_cook_measure_##NS##_##TYPE,reference_cook_##NS##_##TYPE}
 REFERENCE_CODEC(mapdemo,Depth)
 REFERENCE_CODEC(mapdemo,Text)
 REFERENCE_CODEC(mapdemo,Cells)

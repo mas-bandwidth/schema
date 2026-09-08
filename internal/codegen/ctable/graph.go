@@ -22,6 +22,10 @@ typedef struct TableNodeType
     int blob; /* 0 table, 1 bytes, 2 terminated UTF-8 */
     int (*extent)(TableNumbering *,const void *,uint8_t *,int64_t *);
     int64_t (*wire_storage)(const TableReader *);
+    int64_t alignment;
+    int has_extent;
+    int (*cook_body)(struct TableNumbering *,uint8_t *,const void *,int);
+    int (*cook_extent)(TableNumbering *,const void *,uint8_t *,uint8_t *,int64_t *,int);
 } TableNodeType;
 
 typedef struct TableNodeEntry
@@ -61,7 +65,12 @@ static SCHEMA_UNUSED int64_t table_node_storage( TableNumbering * n, const Table
 {
     int64_t at=type->size;
     if(type->blob) { return table_blob_storage(((const TableBlob *)value)->length,type->blob==2); }
-    if(!type->extent(n,value,NULL,&at) || at>INT64_MAX-kTableAlign) { return -1; } return table_align_up64(at);
+    if(type->has_extent) {
+        int64_t extent=0;
+        if(!type->cook_extent(n,value,NULL,NULL,&extent,1) || at>INT64_MAX-kTableAlign) { return -1; }
+        at=table_align_up64(at); if(extent>INT64_MAX-at) { return -1; } at+=extent;
+    }
+    if(at>INT64_MAX-kTableAlign) { return -1; } return table_align_up64(at);
 }
 static SCHEMA_UNUSED int64_t table_node_wire_storage( const TableNodeType * type, const TableReader * body )
 {
@@ -296,11 +305,17 @@ static SCHEMA_UNUSED uint8_t * table_graph_pack( const TableCtx * ctx, const voi
     {
         const TableNodeEntry * entry=&n.entries[i];
         uint8_t * target=packed+entry->packed_offset;
-        memcpy(target,entry->value,(size_t)(entry->type->blob ? 8+(int64_t)((const TableBlob *)entry->value)->length : entry->type->size));
-        if(!entry->type->blob) {
-            int64_t at=(int64_t)entry->packed_offset+entry->type->size;
-            n.pack_base=packed;
-            if(!entry->type->extent(&n,entry->value,target,&at)) { table_release(n.allocator,packed); packed=NULL; goto done; }
+        n.pack_base=packed;
+        if(entry->type->blob) {
+            memcpy(target,entry->value,(size_t)(8+(int64_t)((const TableBlob *)entry->value)->length));
+        } else {
+            const uint16_t one=1;
+            int order=*(const uint8_t *)(const void *)&one ? 1 : 2;
+            int64_t at=0;
+            if(!entry->type->cook_body(&n,target,entry->value,order) ||
+               (entry->type->has_extent && !entry->type->cook_extent(&n,entry->value,target,target+table_align_up64(entry->type->size),&at,order))) {
+                table_release(n.allocator,packed); packed=NULL; goto done;
+            }
         }
     }
     *bytes=total;
@@ -416,7 +431,12 @@ func (g *tableGen) emitGraphBodies(members []*ir.Struct) {
 			}
 		}
 		g.pf("    return 1;\n}\n")
-		g.pf("static const TableNodeType %s = { UINT64_C(0x%016x), sizeof(%s), %s, %s, 0, %s, %s };\n\n", g.graphType(st.Name), ir.TableWireId(st.WireName()), st.Name, g.sym(st.Name, "node_save"), g.sym(st.Name, "graph_edges"), g.sym(st.Name, "extent"), g.sym(st.Name, "wire_storage"))
+		extent, hasExtent := "NULL", 0
+		if g.hasCookExtent(st) {
+			extent = g.sym(st.Name, "cook_extent")
+			hasExtent = 1
+		}
+		g.pf("static const TableNodeType %s = { UINT64_C(0x%016x), sizeof(%s), %s, %s, 0, %s, %s, %d, %d, %s, %s };\n\n", g.graphType(st.Name), ir.TableWireId(st.WireName()), st.Name, g.sym(st.Name, "node_save"), g.sym(st.Name, "graph_edges"), g.sym(st.Name, "extent"), g.sym(st.Name, "wire_storage"), ir.RecordLayout(g.unit, st).Align, hasExtent, g.sym(st.Name, "cook_body"), extent)
 	}
 }
 
@@ -524,10 +544,10 @@ func (g *tableGen) emitGraphPublic(st *ir.Struct) {
 	g.pf("        if (type!=NULL) { int64_t size=table_node_wire_storage(type,&body); if (size<0 || size>INT64_MAX-data) { return -1; } data+=size; }\n        records++;\n    }\n")
 	g.pf("    if (records>=INT64_MAX/(int64_t)sizeof(TableNodeDirEntry)-1 || (records+1)*(int64_t)sizeof(TableNodeDirEntry)>INT64_MAX-data) { return -1; }\n")
 	g.pf("    *data_out=data; *records_out=records; return data+(records+1)*(int64_t)sizeof(TableNodeDirEntry);\n}\n")
-	g.pf("static SCHEMA_UNUSED int64_t %s(const uint8_t * wire, int64_t bytes, int64_t * attribution, int * reason)\n{\n", g.api(n, "load_measure_ex"))
-	g.pf("    TableReport report; TableReader reader; int64_t data,records,total; memset(&report,0,sizeof(report));\n    if (attribution!=NULL) { *attribution=0; } if (reason!=NULL) { *reason=0; }\n")
-	g.pf("    if (!table_wire_open(&reader,wire,bytes,&report)) { if(reason!=NULL) { *reason=report.reason; } return -1; }\n")
-	g.pf("    total=%s(&reader,&data,&records);\n    if(total<0 && reason!=NULL) { *reason=report.reason; }\n    if(total>=0 && attribution!=NULL) { *attribution=(records+1)*(int64_t)sizeof(TableNodeDirEntry); } return total;\n}\n", g.sym(n, "load_layout"))
+	g.pf("static SCHEMA_UNUSED int64_t %s(const uint8_t * wire, int64_t bytes, int64_t * attribution, TableRefuseReason * reason)\n{\n", g.api(n, "load_measure_ex"))
+	g.pf("    TableReport report; TableReader reader; int64_t data,records,total; memset(&report,0,sizeof(report));\n    if (attribution!=NULL) { *attribution=0; }\n")
+	g.pf("    if (!table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && reason!=NULL) { *reason=SCHEMA_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }\n")
+	g.pf("    report.reason=SCHEMA_TABLE_REFUSE_COUNT_OVER_LENGTH; total=%s(&reader,&data,&records);\n    if(total<0 && reason!=NULL) { *reason=report.reason; }\n    if(total>=0 && attribution!=NULL) { *attribution=(records+1)*(int64_t)sizeof(TableNodeDirEntry); } return total;\n}\n", g.sym(n, "load_layout"))
 	g.pf("static SCHEMA_UNUSED int64_t %s(const uint8_t * wire, int64_t bytes)\n{ return %s(wire,bytes,NULL,NULL); }\n", g.api(n, "load_measure"), g.api(n, "load_measure_ex"))
 	g.emitGraphLoad(st)
 }
@@ -553,7 +573,7 @@ func (g *tableGen) emitGraphLoad(st *ir.Struct) {
 	for _, t := range ir.PointerReachable(st) {
 		g.pf("                    case UINT64_C(0x%016x): %s(&body,(%s *)value); break;\n", ir.TableWireId(t.WireName()), g.api(t.Name, "load_body"), t.Name)
 	}
-	g.pf("                    default: break;\n                }\n                if(nodes->refused) { return 0; }\n            }\n            k++;\n        }\n    }\n    reader->nodes=nodes; reader->nested=0;\n    { int read_ok; TableRegionSink extent; TableSink carve; carve.worker=sink->worker; carve.region=NULL;\n      if(!nodes->arena) { extent.base=(uint8_t *)(void *)root; extent.used=sizeof(*root); extent.capacity=%s(reader); carve.region=&extent; }\n      nodes->sink=&carve; read_ok=%s(reader,root); nodes->sink=NULL; return !nodes->refused && (!nodes->arena || read_ok); }\n}\n", g.sym(n, "wire_storage"), g.api(n, "load_body"))
+	g.pf("                    default: break;\n                }\n                nodes->sink=NULL; if(nodes->refused) { return 0; }\n            }\n            k++;\n        }\n    }\n    reader->nodes=nodes; reader->nested=0;\n    { int read_ok; TableRegionSink extent; TableSink carve; carve.worker=sink->worker; carve.region=NULL;\n      if(!nodes->arena) { extent.base=(uint8_t *)(void *)root; extent.used=sizeof(*root); extent.capacity=%s(reader); carve.region=&extent; }\n      nodes->sink=&carve; read_ok=%s(reader,root); nodes->sink=NULL; return !nodes->refused && (!nodes->arena || read_ok); }\n}\n", g.sym(n, "wire_storage"), g.api(n, "load_body"))
 	g.pf("static SCHEMA_UNUSED const %s * %s(uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, TableReport * report)\n{\n", n, g.api(n, "load"))
 	g.pf("    TableReport ignored; TableReader reader; TableNodeMap nodes; TableNodeDirEntry * directory; TableRegionSink place; TableSink sink; int64_t data,records,total;\n    memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; }\n    if(!table_wire_open(&reader,wire,wire_bytes,report)) { return NULL; }\n")
 	g.pf("    total=%s(&reader,&data,&records);\n", g.sym(n, "load_layout"))

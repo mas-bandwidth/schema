@@ -487,6 +487,35 @@ static int surface_cook_foreign( const char * out )
 }
 
 
+static int surface_cook_write(const char * out)
+{
+    int i,j;
+    for(i=0;i<num_lines;i++) {
+        const Line * f=&lines[i], * instance=NULL;
+        const ConformanceCodec * codec; void * value; ConformanceReport report={0};
+        uint8_t * wire, * file; size_t wire_bytes; int64_t need; int big;
+        if(strcmp(f->field[0],"cook-write")!=0) { continue; }
+        for(j=0;j<num_lines;j++) {
+            if(strcmp(lines[j].field[0],"instance")==0 && strcmp(lines[j].field[1],f->field[1])==0) { instance=&lines[j]; break; }
+        }
+        if(instance==NULL) { return 1; }
+        codec=find_codec(instance->field[2],instance->field[3]);
+        if(codec==NULL) { return 2; }
+        wire=slurp(instance->field[4],&wire_bytes); if(wire==NULL) { return 1; }
+        value=codec->storage();
+        if(!codec->load(value,wire,(int64_t)wire_bytes,&report)) { free(wire); return 1; } free(wire);
+        need=codec->cook_measure(value); if(need<=0) { return 1; }
+        file=(uint8_t *)malloc((size_t)need); if(file==NULL) { return 1; }
+        for(big=0;big<2;big++) {
+            char name[1024]; int ok=codec->cook(value,file,(uint64_t)need,big);
+            snprintf(name,sizeof(name),"%s%s",f->field[1],big ? "-be" : "");
+            if(!ok || !spill(out,name,file,(size_t)need)) { free(file); return 1; }
+        }
+        free(file);
+    }
+    return 0;
+}
+
 static int surface_cook( const char * out )
 {
     int i;
@@ -546,6 +575,24 @@ static int surface_forgery( const char * out, const char * kind )
     return 0;
 }
 
+static int surface_reason(const char * out,const char * kind)
+{
+    static const char * names[]={"ok","not_a_cook","foreign_order","wrong_build_version","reserved_not_zero","bad_alignment","truncated","unaligned_base","bad_layout","unknown_form","count_over_length","count_over_extent_cap","blob_over_size_cap","data_cycle"};
+    int i,j;
+    for(i=0;i<num_lines;i++) {
+        const Line * r=&lines[i], * f=NULL; uint8_t * data; size_t bytes; int64_t extent; int pointer,reason=0,opened; char answer[64];
+        if(strcmp(r->field[0],"refusal")!=0 || r->count<3 || strcmp(r->field[2],kind)!=0) { continue; }
+        for(j=0;j<num_lines;j++) { if(strcmp(lines[j].field[0],"forgery")==0 && strcmp(lines[j].field[1],r->field[1])==0) { f=&lines[j]; break; } }
+        if(f==NULL) { return 1; } data=slurp(f->field[4],&bytes);if(data==NULL) { return 1; }
+        extent=(int64_t)strtoll(f->field[5],NULL,0);pointer=strcmp(f->field[6],"null")==0 ? -1 : (int)strtol(f->field[6],NULL,0);
+        opened=strcmp(kind,"cook")==0 ? conformance_cook_open_reason(f->field[3],data,bytes,extent,pointer,&reason) : conformance_block_open_reason(f->field[3],data,bytes,extent,pointer,&reason);
+        free(data); if(reason<0 || reason>13) { return 1; }
+        snprintf(answer,sizeof(answer),"%s\n",opened ? "ok" : names[reason]);
+        if(!spill(out,r->field[1],answer,strlen(answer))) { return 1; }
+    }
+    return 0;
+}
+
 int main( int argc, char ** argv )
 {
     const char * surface;
@@ -559,7 +606,7 @@ int main( int argc, char ** argv )
     surface = argv[2];
     if ( strcmp( surface, "list" ) == 0 )
     {
-        printf( "wire\nreport\njson-read\njson-write\njson-hostile\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\n" );
+        printf( "wire\nreport\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-reason\nblock-reason\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\n" );
         return 0;
     }
     if ( argc < 4 )
@@ -573,6 +620,9 @@ int main( int argc, char ** argv )
     if ( strcmp( surface, "json-read" ) == 0 ) { return surface_json_read( out ); }
     if ( strcmp( surface, "json-write" ) == 0 ) { return surface_json_write( out ); }
     if ( strcmp( surface, "json-hostile" ) == 0 ) { return surface_json_hostile( out ); }
+    if ( strcmp( surface, "cook-reason" ) == 0 ) { return surface_reason(out,"cook"); }
+    if ( strcmp( surface, "block-reason" ) == 0 ) { return surface_reason(out,"block"); }
+    if ( strcmp( surface, "cook-write" ) == 0 ) { return surface_cook_write(out); }
     if ( strcmp( surface, "cook" ) == 0 ) { return surface_cook( out ); }
     if ( strcmp( surface, "block" ) == 0 ) { return surface_block( out ); }
     if ( strcmp( surface, "cook-foreign" ) == 0 ) { return surface_cook_foreign( out ); }

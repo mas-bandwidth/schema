@@ -55,6 +55,10 @@
     { \
         return FN##_save( (const TYPE *) value, buffer, capacity ); \
     } \
+    static int64_t schema_conformance_cook_measure_##TYPE(const void * value) \
+    { return FN##_cook_measure((const TYPE *)value); } \
+    static int schema_conformance_cook_##TYPE(const void * value,void * buffer,uint64_t capacity,int big) \
+    { return FN##_cook((const TYPE *)value,buffer,capacity,big ? TableByteOrder_Big : TableByteOrder_Little); } \
     static int schema_conformance_from_json_##TYPE( void * value, const char * text, int64_t bytes, ConformanceReport * report ) \
     { \
         TableReport inner; \
@@ -98,6 +102,10 @@
     { return FN##_measure(NULL,((const schema_conformance_holder_##TYPE *)value)->root); } \
     static int64_t schema_conformance_save_##TYPE(const void * value,uint8_t * buffer,int64_t capacity) \
     { return FN##_save(NULL,((const schema_conformance_holder_##TYPE *)value)->root,buffer,capacity); } \
+    static int64_t schema_conformance_cook_measure_##TYPE(const void * value) \
+    { return FN##_cook_measure(NULL,((const schema_conformance_holder_##TYPE *)value)->root); } \
+    static int schema_conformance_cook_##TYPE(const void * value,void * buffer,uint64_t capacity,int big) \
+    { return FN##_cook(NULL,((const schema_conformance_holder_##TYPE *)value)->root,buffer,capacity,big ? TableByteOrder_Big : TableByteOrder_Little); } \
     static int schema_conformance_from_json_##TYPE(void * value,const char * text,int64_t bytes,ConformanceReport * report) \
     { \
         schema_conformance_holder_##TYPE * holder=(schema_conformance_holder_##TYPE *)value; \
@@ -114,11 +122,11 @@
 
 #define SCHEMA_CONFORMANCE_GRAPH_ROW( UNIT, TYPE ) \
     { #UNIT, #TYPE, schema_conformance_load_##TYPE, schema_conformance_measure_##TYPE, \
-      schema_conformance_save_##TYPE, schema_conformance_from_json_##TYPE, schema_conformance_to_json_##TYPE, schema_conformance_make_##TYPE, schema_conformance_load_measure_##TYPE }
+      schema_conformance_save_##TYPE, schema_conformance_from_json_##TYPE, schema_conformance_to_json_##TYPE, schema_conformance_make_##TYPE, schema_conformance_load_measure_##TYPE, schema_conformance_cook_measure_##TYPE, schema_conformance_cook_##TYPE }
 
 #define SCHEMA_CONFORMANCE_ROW( UNIT, TYPE ) \
     { #UNIT, #TYPE, schema_conformance_load_##TYPE, schema_conformance_measure_##TYPE, \
       schema_conformance_save_##TYPE, schema_conformance_from_json_##TYPE, \
-      schema_conformance_to_json_##TYPE, schema_conformance_make_##TYPE, NULL }
+      schema_conformance_to_json_##TYPE, schema_conformance_make_##TYPE, NULL, schema_conformance_cook_measure_##TYPE, schema_conformance_cook_##TYPE }
 
 #endif /* SCHEMA_CONFORMANCE_UNIT_H */

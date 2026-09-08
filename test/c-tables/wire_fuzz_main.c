@@ -40,9 +40,11 @@ static const ConformanceCodec * find_codec( const char * unit, const char * root
     }
     return NULL;
 }
-int main( void )
+int main( int argc, char ** argv )
 {
     uint64_t count, i, index, size;
+    int cook=argc>1 && strncmp(argv[1],"--cook-",7)==0;
+    int big=cook && strcmp(argv[1],"--cook-be")==0;
     const ConformanceCodec ** roster;
     #if defined(_WIN32)
     _setmode( _fileno( stdin ), _O_BINARY );
@@ -70,11 +72,13 @@ int main( void )
         memset( &report, 0, sizeof( report ) ); value = codec->storage();
         region_bytes=codec->load_measure ? codec->load_measure(wire,(int64_t)size) : -1;
         loaded = codec->load( value, wire, (int64_t) size, &report ); free( wire );
-        length = codec->measure( value );
+        length = cook ? (loaded ? codec->cook_measure(value) : -1) : codec->measure( value );
+        if(cook) { region_bytes=length; }
         if ( length >= 0 ) {
             saved = (uint8_t *) malloc( (size_t) (length ? length : 1) );
             if ( saved == NULL ) { return 1; }
-            length = codec->save( value, saved, length );
+            if(cook) { if(!codec->cook(value,saved,(uint64_t)length,big)) { length=-1; } }
+            else { length = codec->save( value, saved, length ); }
         }
         /* Fixed storage always exists; load's bool is the body verdict. */
         if ( !loaded && !report.refused ) { report.malformed = 1; }

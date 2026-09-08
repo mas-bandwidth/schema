@@ -40,7 +40,7 @@ import (
 // own and one text — buildVersionConstant, emitted by both.
 func blockRuntime(pkg string) string {
 	guard := "SCHEMA_" + strings.ToUpper(pkg) + "_BLOCK_PRIMITIVES"
-	return `#ifndef ` + guard + `
+	return tableAllocatorRuntime + `#ifndef ` + guard + `
 #define ` + guard + `
 
 /* ---- the block form's runtime (docs/SPEC-TABLES.md §19) ---- */
@@ -64,17 +64,12 @@ typedef struct TableBlockTriple
    The FILL path allocates nothing and takes no lock, which is the obligation
    §19.1 states; "the block form never allocates" would be a claim about who
    owns the extent, and the answer is that the caller does. */
-typedef struct TableBlockAllocator
-{
-    void * ( *alloc )( void * context, int64_t bytes );
-    void ( *free )( void * context, void * pointer );
-    void * context;
-} TableBlockAllocator;
+typedef TableAllocator TableBlockAllocator;
 
 /* The default triple, for a caller that has no allocator of its own to hand
    in. Nothing in the generated surface reaches for it: a caller names it. */
-static SCHEMA_UNUSED void * table_block_default_alloc( void * context, int64_t bytes ) { (void) context; return malloc( (size_t) bytes ); }
-static SCHEMA_UNUSED void table_block_default_free( void * context, void * pointer ) { (void) context; free( pointer ); }
+static SCHEMA_UNUSED void * table_block_default_alloc( void * context, int64_t bytes ) { (void) context; return bytes>0 && (uint64_t)bytes<=SIZE_MAX ? schema_allocate(bytes) : NULL; }
+static SCHEMA_UNUSED void table_block_default_free( void * context, void * pointer ) { (void) context; schema_release( pointer ); }
 
 static SCHEMA_UNUSED TableBlockAllocator table_block_default_allocator( void )
 {
@@ -122,6 +117,10 @@ static SCHEMA_UNUSED void * table_block_row_at( const TableBlockRows * rows, int
 {
     return (void *) ( rows->base + (ptrdiff_t) index * rows->stride );
 }
+
+typedef struct TableBlockConstRows { const uint8_t * base; int32_t count, stride; } TableBlockConstRows;
+static SCHEMA_UNUSED const void * table_block_row_at_const(const TableBlockConstRows * rows,int32_t index)
+{ return rows->base+(ptrdiff_t)index*rows->stride; }
 
 /* ---- reflection over a block (docs/SPEC-TABLES.md §8, §19.2) ----
 
@@ -202,6 +201,9 @@ static SCHEMA_UNUSED uint64_t table_block_read64( const uint8_t * p )
     memcpy( &v, p, 8 );
     return v;
 }
+
+static SCHEMA_UNUSED uint32_t table_block_read32(const uint8_t * p)
+{ uint32_t value; memcpy(&value,p,4); return value; }
 
 static SCHEMA_UNUSED int64_t table_block_align( int64_t offset, int64_t alignment )
 {
@@ -401,6 +403,13 @@ func (g *tableGen) emitBlockSurface(bl *ir.BlockLayout) {
 	g.pf("    %sBlockProjection * projection;    /* the projection, at offset 0 */\n", name)
 	g.pf("    int64_t bytes;                     /* the extent in use */\n")
 	g.pf("} %sBlock;\n\n", name)
+	g.pf("typedef struct %sBlockConst { const uint8_t * base; const %sBlockProjection * projection; int64_t bytes; } %sBlockConst;\n", name, name, name)
+	g.pf("static SCHEMA_UNUSED int64_t %s(const %sBlockConst * block) { return block->bytes; }\n", g.api(name, "block_bytes_const"), name)
+	for _, a := range bl.Arrays {
+		field := g.api(name, ir.RustSnake(a.Field.Name))
+		g.pf("static SCHEMA_UNUSED TableBlockConstRows %s_rows_const(const %sBlockConst * block)\n{ TableBlockConstRows rows; rows.base=block->base+block->projection->%s.offset_of; rows.count=(int32_t)block->projection->%s.count; rows.stride=(int32_t)block->projection->%s.stride; return rows; }\n", field, name, a.Field.Name, a.Field.Name, a.Field.Name)
+		g.pf("static SCHEMA_UNUSED const %s * %s_span_const(const %sBlockConst * block)\n{ return (const %s *)(const void *)(block->base+block->projection->%s.offset_of); }\n", a.ElemName, field, name, a.ElemName, a.Field.Name)
+	}
 
 	g.pf("/* this table's block descriptors (docs/SPEC-TABLES.md §8, §19.2): constant\n")
 	g.pf("   data, defined in the .c beside this header. A consumer holding this reads\n")
@@ -431,6 +440,11 @@ func (g *tableGen) emitBlockSurface(bl *ir.BlockLayout) {
 	g.pf("static SCHEMA_UNUSED int %s( %sBlock * block, void * base, int64_t bytes )\n{\n", g.api(name, "block_open"), name)
 	g.pf("    return %s( block, base, bytes );\n}\n\n", g.sym(name, "block_open"))
 
+	g.pf("int %s(%sBlock * block,void * base,int64_t bytes,TableRefuseReason * reason);\n", g.sym(name, "block_open_ex"), name)
+	g.pf("static SCHEMA_UNUSED int %s(%sBlock * block,void * base,int64_t bytes,TableRefuseReason * reason)\n{ return %s(block,base,bytes,reason); }\n", g.api(name, "block_open_ex"), name, g.sym(name, "block_open_ex"))
+	g.pf("int %s(%sBlockConst * block,const void * base,int64_t bytes,TableRefuseReason * reason);\n", g.sym(name, "block_open_const_ex"), name)
+	g.pf("static SCHEMA_UNUSED int %s(%sBlockConst * block,const void * base,int64_t bytes,TableRefuseReason * reason)\n{ return %s(block,base,bytes,reason); }\n", g.api(name, "block_open_const_ex"), name, g.sym(name, "block_open_const_ex"))
+	g.pf("static SCHEMA_UNUSED int %s(%sBlockConst * block,const void * base,int64_t bytes)\n{ return %s(block,base,bytes,NULL); }\n", g.api(name, "block_open_const"), name, g.sym(name, "block_open_const_ex"))
 	g.pf("/* ---- the block form of table %s: end ---- */\n\n", name)
 }
 
@@ -636,63 +650,27 @@ func (g *tableGen) emitBlockDefinitions(bl *ir.BlockLayout) {
 
 func (g *tableGen) emitBlockOpenBody(bl *ir.BlockLayout) {
 	name := bl.Table.Name
-	g.pf("int %s( %sBlock * block, void * base, int64_t bytes )\n{\n", g.sym(name, "block_open"), name)
-	g.pf("    const uint8_t * raw;\n    uint64_t magic;\n    %sBlockProjection * projection;\n    int64_t used, padding;\n", name)
-	g.pf("    block->base = NULL;\n    block->projection = NULL;\n    block->bytes = 0;\n")
-	g.pf("    if ( base == NULL || bytes < %d ) { return 0; }\n", bl.Projection.Size)
-	g.pf("    if ( ( (uintptr_t) base %% %d ) != 0 ) { return 0; } /* the base's alignment */\n", ir.BlockAlign)
-	g.pf("    raw = (const uint8_t *) base;\n")
-	g.pf("    magic = table_block_read64( raw );\n")
-	g.pf("    if ( magic != table_block_magic )\n")
-	g.pf("    {\n")
-	g.pf("        /* a byte-swapped magic is a FOREIGN BYTE ORDER, and anything else is\n")
-	g.pf("           not a block at all. Both refuse; the distinction is here so a\n")
-	g.pf("           reader of this code knows the check covers the order too. */\n")
-	g.pf("        (void) table_block_byteswap64( magic );\n")
-	g.pf("        return 0;\n")
-	g.pf("    }\n")
-	g.pf("    if ( table_block_read64( raw + 8 ) != %s ) { return 0; }\n", buildVersionName(g.unit.Package))
-	g.pf("    if ( table_block_read64( raw + 16 ) != table_block_byte_order )\n")
-	g.pf("    {\n        return 0; /* a block of the other byte order: the fix-up path is a named obligation */\n    }\n")
-	g.pf("    projection = (%sBlockProjection *) base;\n", name)
-	g.pf("    used = %d;\n", bl.Projection.Size)
+	check := g.sym(name, "block_open_check")
+	g.pf("static int %s(const void * base,int64_t bytes,int64_t * used_out,TableRefuseReason * reason)\n{\n    const uint8_t * raw=(const uint8_t *)base; uint64_t magic; int64_t used=%d, padding;\n", check, bl.Projection.Size)
+	g.pf("    if(base==NULL) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_UNALIGNED_BASE)!=NULL; }\n    if(bytes<%d) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_TRUNCATED)!=NULL; }\n", bl.Projection.Size)
+	g.pf("    magic=table_block_read64(raw);\n    if(magic!=table_block_magic) { return table_cook_refuse(reason,magic==table_block_byteswap64(table_block_magic) ? SCHEMA_TABLE_REFUSE_FOREIGN_ORDER : SCHEMA_TABLE_REFUSE_NOT_A_COOK)!=NULL; }\n")
+	g.pf("    if(table_block_read64(raw+16)!=table_block_byte_order) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_NOT_A_COOK)!=NULL; }\n    if(table_block_read64(raw+8)!=%s) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_WRONG_BUILD_VERSION)!=NULL; }\n", buildVersionName(g.unit.Package))
 	for _, a := range bl.Arrays {
-		g.pf("    {\n")
-		g.pf("        /* EVERY NUMBER BELOW COMES FROM THE INSTANCE, so the arithmetic is\n")
-		g.pf("           unsigned and each term is BOUNDED BEFORE IT IS ADDED. A forged\n")
-		g.pf("           offset_of near 2^63 must refuse, and an addition that carried past\n")
-		g.pf("           the top of the type would be the undefined behaviour the check\n")
-		g.pf("           after it was supposed to catch. */\n")
-		g.pf("        const uint64_t offset_of = projection->%s.offset_of;\n", a.Field.Name)
-		g.pf("        const uint64_t count = projection->%s.count;\n", a.Field.Name)
-		g.pf("        const uint64_t stride = projection->%s.stride;\n", a.Field.Name)
-		g.pf("        uint64_t rows;\n        int64_t end;\n")
-		g.pf("        if ( stride != (uint64_t) sizeof( %s ) ) { return 0; }\n", a.ElemName)
-		g.pf("        if ( count > (uint64_t) %d )\n", a.Max)
-		g.pf("        {\n")
-		g.pf("            return 0; /* past the DECLARED MAXIMUM: Begin refuses this on the\n")
-		g.pf("                         producer side and Open refuses it here, because a\n")
-		g.pf("                         consumer that sizes anything by the maximum would\n")
-		g.pf("                         overflow on a count the maximum does not bound */\n")
-		g.pf("        }\n")
-		g.pf("        if ( offset_of < %d || ( offset_of %% %d ) != 0 ) { return 0; }\n", bl.Projection.Size, blockStartAlign(a))
-		g.pf("        if ( offset_of > (uint64_t) bytes ) { return 0; }\n")
-		g.pf("        rows = count * stride; /* both bounded above: this cannot carry */\n")
-		g.pf("        if ( rows > (uint64_t) bytes - offset_of ) { return 0; }\n")
-		g.pf("        end = (int64_t) ( offset_of + rows );\n")
-		g.pf("        if ( end > used ) { used = end; }\n")
-		g.pf("    }\n")
+		g.pf("    { const uint8_t * triple=raw+%d; uint64_t offset=table_block_read64(triple), count=table_block_read32(triple+8), stride=table_block_read32(triple+12), rows; int64_t end;\n", a.OffsetOfOffset)
+		g.pf("      if(stride!=sizeof(%s) || count>%d || offset<%d || offset%%%d!=0 || offset>(uint64_t)bytes) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_BAD_LAYOUT)!=NULL; }\n", a.ElemName, a.Max, bl.Projection.Size, blockStartAlign(a))
+		g.pf("      rows=count*stride; if(rows>(uint64_t)bytes-offset) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_BAD_LAYOUT)!=NULL; }\n      end=(int64_t)(offset+rows); if(end>used) { used=end; }\n    }\n")
 	}
-	g.pf("    /* the used extent, rounded to %d WITHOUT the rounding itself carrying past\n", ir.BlockAlign)
-	g.pf("       the top of the type: used is already inside bytes, and the padding is\n")
-	g.pf("       paid out of the slack that is left rather than added and compared after. */\n")
-	g.pf("    padding = ( %d - ( used %% %d ) ) %% %d;\n", ir.BlockAlign, ir.BlockAlign, ir.BlockAlign)
-	g.pf("    if ( padding > bytes - used ) { return 0; }\n")
-	g.pf("    used += padding;\n")
-	g.pf("    block->base = (uint8_t *) base;\n")
-	g.pf("    block->projection = projection;\n")
-	g.pf("    block->bytes = used;\n")
-	g.pf("    return 1;\n}\n\n")
+	g.pf("    padding=(%d-used%%%d)%%%d; if(padding>bytes-used) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_TRUNCATED)!=NULL; }\n    used+=padding; if((uintptr_t)base%%%d!=0) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_UNALIGNED_BASE)!=NULL; }\n    *used_out=used; return 1;\n}\n", ir.BlockAlign, ir.BlockAlign, ir.BlockAlign, ir.BlockAlign)
+	for _, readOnly := range []bool{false, true} {
+		suffix, typ, qual := "block_open_ex", "Block", ""
+		if readOnly {
+			suffix = "block_open_const_ex"
+			typ = "BlockConst"
+			qual = "const "
+		}
+		g.pf("int %s(%s%s * block,%svoid * base,int64_t bytes,TableRefuseReason * reason)\n{\n    int64_t used=0; block->base=NULL; block->projection=NULL; block->bytes=0;\n    if(!%s(base,bytes,&used,reason)) { return 0; }\n    block->base=(%suint8_t *)base; block->projection=(%s%sBlockProjection *)base; block->bytes=used; return 1;\n}\n", g.sym(name, suffix), name, typ, qual, check, qual, qual, name)
+	}
+	g.pf("int %s(%sBlock * block,void * base,int64_t bytes)\n{ return %s(block,base,bytes,NULL); }\n", g.sym(name, "block_open"), name, g.sym(name, "block_open_ex"))
 }
 
 // emitBlockDescriptors emits one table's block reflection: the projection

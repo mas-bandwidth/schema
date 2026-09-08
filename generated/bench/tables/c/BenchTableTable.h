@@ -549,6 +549,29 @@ static SCHEMA_UNUSED int64_t table_wire_utf16_clamp( const uint8_t * bytes, int6
 
 #endif /* SCHEMA_BENCHTABLE_BUILD_VERSION */
 
+
+#ifndef SCHEMA_TABLE_REFUSE_RUNTIME
+#define SCHEMA_TABLE_REFUSE_RUNTIME
+typedef int TableRefuseReason;
+enum {
+    SCHEMA_TABLE_REFUSE_OK=0,
+    SCHEMA_TABLE_REFUSE_NOT_A_COOK=1,
+    SCHEMA_TABLE_REFUSE_FOREIGN_ORDER=2,
+    SCHEMA_TABLE_REFUSE_WRONG_BUILD_VERSION=3,
+    SCHEMA_TABLE_REFUSE_RESERVED_NOT_ZERO=4,
+    SCHEMA_TABLE_REFUSE_BAD_ALIGNMENT=5,
+    SCHEMA_TABLE_REFUSE_TRUNCATED=6,
+    SCHEMA_TABLE_REFUSE_UNALIGNED_BASE=7,
+    SCHEMA_TABLE_REFUSE_BAD_LAYOUT=8,
+    SCHEMA_TABLE_REFUSE_UNKNOWN_FORM=9,
+    SCHEMA_TABLE_REFUSE_COUNT_OVER_LENGTH=10,
+    SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP=11,
+    SCHEMA_TABLE_REFUSE_BLOB_OVER_SIZE_CAP=12,
+    SCHEMA_TABLE_REFUSE_DATA_CYCLE=13
+};
+static SCHEMA_UNUSED const uint8_t * table_cook_refuse(TableRefuseReason * out,TableRefuseReason reason)
+{ if(out!=NULL) { *out=reason; } return NULL; }
+#endif
 #ifndef SCHEMA_BENCHTABLE_TABLE_COOK
 #define SCHEMA_BENCHTABLE_TABLE_COOK
 
@@ -641,25 +664,25 @@ static SCHEMA_UNUSED uint64_t table_cook_read64( const uint8_t * p )
    refuse, and an addition that wrapped would be the defect the comparison
    after it was supposed to catch. Nothing past length is read on any path,
    including every refusing one. */
-static SCHEMA_UNUSED const uint8_t * table_cook_open( const void * bytes, uint64_t length, uint64_t root_size, uint64_t root_align )
+static SCHEMA_UNUSED const uint8_t * table_cook_open_ex( const void * bytes, uint64_t length, uint64_t root_size, uint64_t root_align, TableRefuseReason * reason )
 {
     const uint8_t * raw;
     uint64_t data_length, attribution_length, alignment, data_offset;
     const uint8_t * base;
-    if ( bytes == NULL ) { return NULL; }
-    if ( length < (uint64_t) table_cook_header_bytes ) { return NULL; }
+    if ( bytes == NULL ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_UNALIGNED_BASE); }
+    if ( length < (uint64_t) table_cook_header_bytes ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_TRUNCATED); }
     raw = (const uint8_t *) bytes;
     /* the MAGIC, bytewise and first: it is what establishes the byte order
        every other header word is read in, so nothing else may be read before
        it. A byte-reversed constant is a cook of the other order and refuses
        here, which is why the order never reaches a fix-up pass. */
-    if ( table_cook_read64( raw ) != table_cook_magic ) { return NULL; }
-    if ( table_cook_read64( raw + 16 ) != table_cook_byte_order ) { return NULL; }
-    if ( table_cook_read64( raw + 8 ) != SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE ) { return NULL; }
+    if ( table_cook_read64( raw ) != table_cook_magic ) { return table_cook_refuse(reason,table_cook_read64(raw)==UINT64_C(0x5343484d434f4f4b) ? SCHEMA_TABLE_REFUSE_FOREIGN_ORDER : SCHEMA_TABLE_REFUSE_NOT_A_COOK); }
+    if ( table_cook_read64( raw + 16 ) != table_cook_byte_order ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_NOT_A_COOK); }
+    if ( table_cook_read64( raw + 8 ) != SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_WRONG_BUILD_VERSION); }
     /* the RESERVED words: a non-zero one means a writer used a form this build
        does not understand, and Open refuses rather than ignoring it. */
-    if ( table_cook_read64( raw + 48 ) != 0 ) { return NULL; }
-    if ( table_cook_read64( raw + 56 ) != 0 ) { return NULL; }
+    if ( table_cook_read64( raw + 48 ) != 0 ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_RESERVED_NOT_ZERO); }
+    if ( table_cook_read64( raw + 56 ) != 0 ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_RESERVED_NOT_ZERO); }
     data_length = table_cook_read64( raw + 24 );
     attribution_length = table_cook_read64( raw + 32 );
     alignment = table_cook_read64( raw + 40 );
@@ -669,39 +692,70 @@ static SCHEMA_UNUSED const uint8_t * table_cook_open( const void * bytes, uint64
        puts the attribution part on an eight-byte boundary without a second
        padding rule) and never past the cap above; a word that is none of those
        rounds nothing and aligns nothing, so it is refused before it is used. */
-    if ( alignment < 8 || alignment > table_cook_max_align ) { return NULL; }
-    if ( ( alignment & ( alignment - 1 ) ) != 0 ) { return NULL; }
+    if ( alignment < 8 || alignment > table_cook_max_align ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_BAD_ALIGNMENT); }
+    if ( ( alignment & ( alignment - 1 ) ) != 0 ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_BAD_ALIGNMENT); }
     /* and it must be an alignment THE ROOT CAN SIT AT, since the root is at
        the region's base: both are powers of two, so "at least the root's"
        is one division. */
-    if ( ( alignment % root_align ) != 0 ) { return NULL; }
+    if ( ( alignment % root_align ) != 0 ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_BAD_ALIGNMENT); }
     /* The DATA part begins at align_up( 64, alignment ). It is DERIVED and not
        a header field, because a fact a reader computes is a fact two writers
        cannot disagree about. */
     data_offset = ( (uint64_t) table_cook_header_bytes + alignment - 1 ) & ~( alignment - 1 );
-    if ( length < data_offset ) { return NULL; }
+    if ( length < data_offset ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_TRUNCATED); }
     /* the two part lengths against the length the caller passed. The whole
        file is data_offset + data_length + attribution_length, and a length
        that is not EXACTLY that refuses — truncation and trailing bytes are one
        refusal, and both terms are subtracted rather than added so no sum can
        carry. */
-    if ( data_length > length - data_offset ) { return NULL; }
-    if ( attribution_length != length - data_offset - data_length ) { return NULL; }
+    if ( data_length > length - data_offset ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_TRUNCATED); }
+    if ( attribution_length != length - data_offset - data_length ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_TRUNCATED); }
     /* the ROOT sits at the region's base, so the region has to hold it: a
        shorter data part describes a root partly outside the file, which is the
        one way a match-and-point reader could hand back storage it never
        received. */
-    if ( data_length < root_size ) { return NULL; }
+    if ( data_length < root_size ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_TRUNCATED); }
     base = raw + data_offset;
     /* the alignment of the BASE. The header pads the data part to the region's
        alignment, so a base an allocator or mmap gave you is already aligned —
        mmap gives page alignment for free — and a base that is not is a caller's
        buffer this form cannot be read out of. */
-    if ( ( (uintptr_t) base % (uintptr_t) alignment ) != 0 ) { return NULL; }
+    if ( ( (uintptr_t) base % (uintptr_t) alignment ) != 0 ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_UNALIGNED_BASE); }
     return base;
 }
+static SCHEMA_UNUSED const uint8_t * table_cook_open(const void * bytes,uint64_t length,uint64_t root_size,uint64_t root_align)
+{ return table_cook_open_ex(bytes,length,root_size,root_align,NULL); }
 
 #endif /* SCHEMA_BENCHTABLE_TABLE_COOK */
+
+#ifndef SCHEMA_TABLE_COOK_WRITE_RUNTIME
+#define SCHEMA_TABLE_COOK_WRITE_RUNTIME
+struct TableNumbering;
+typedef enum TableByteOrder { TableByteOrder_Little=1, TableByteOrder_Big=2 } TableByteOrder;
+static SCHEMA_UNUSED void table_cook_put(uint8_t * at,uint64_t value,int width,int order)
+{
+    int i; for(i=0;i<width;i++) { at[i]=(uint8_t)(value >> (8*(order==TableByteOrder_Little ? i : width-1-i))); }
+}
+static SCHEMA_UNUSED void table_cook_put128(uint8_t * at,uint64_t lo,uint64_t hi,int order)
+{
+    table_cook_put(at,order==TableByteOrder_Little ? lo : hi,8,order);
+    table_cook_put(at+8,order==TableByteOrder_Little ? hi : lo,8,order);
+}
+static SCHEMA_UNUSED void table_cook_bytes(uint8_t * at,const void * source,int64_t used,int64_t capacity)
+{ if(used>0) { memcpy(at,source,(size_t)(used<capacity ? used : capacity)); } }
+static SCHEMA_UNUSED void table_cook_units(uint8_t * at,const uint16_t * source,int64_t used,int64_t capacity,int order)
+{
+    int64_t i, count=used<capacity ? used : capacity;
+    for(i=0;i<count;i++) { table_cook_put(at+i*2,source[i],2,order); }
+}
+static SCHEMA_UNUSED void table_cook_header(uint8_t * raw,uint64_t version,int64_t bytes,int64_t count,int64_t align,int order)
+{
+    table_cook_put(raw,table_cook_magic,8,order); table_cook_put(raw+8,version,8,order);
+    table_cook_put(raw+16,order==TableByteOrder_Big ? 2 : 1,8,order);
+    table_cook_put(raw+24,(uint64_t)bytes,8,order); table_cook_put(raw+32,(uint64_t)count*16,8,order);
+    table_cook_put(raw+40,(uint64_t)align,8,order);
+}
+#endif
 
 /* table TableEntity — TABLE-wire storage: relocatable, bounded. C has no member
    initializers, so the declared defaults live in table_entity_reset and nowhere
@@ -905,6 +959,12 @@ static SCHEMA_UNUSED int64_t table_pickup_event_measure( const TablePickupEvent 
 static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE int table_pickup_event_save_body( TableWriter * w, const TablePickupEvent * value );
 static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE int table_pickup_event_load_body( TableReader * r, TablePickupEvent * value );
 
+static SCHEMA_UNUSED int schema_benchtable_table_entity_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_benchtable_table_stat_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_benchtable_table_mixed_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_benchtable_table_hit_event_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_benchtable_table_chat_event_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_benchtable_table_pickup_event_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
 static SCHEMA_UNUSED int schema_benchtable_table_event_wire_save_( TableWriter * w, const TableEvent * value );
 static SCHEMA_UNUSED int schema_benchtable_table_event_wire_load_( TableReader * r, TableEvent * value, int element );
 static SCHEMA_UNUSED int schema_benchtable_table_event_wire_arm_hit_( TableWriter * w, const TableEvent * value )
@@ -5030,6 +5090,8 @@ static SCHEMA_UNUSED int table_pickup_event_load( TablePickupEvent * value, cons
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
+static SCHEMA_UNUSED const TableEntity * table_entity_open_ex(const void * bytes,uint64_t length,TableRefuseReason * reason)
+{ return (const TableEntity *)table_cook_open_ex(bytes,length,sizeof(TableEntity),SCHEMA_TABLE_ALIGNOF(TableEntity),reason); }
 static SCHEMA_UNUSED const TableEntity * table_entity_open( const void * bytes, uint64_t length )
 {
     return (const TableEntity *) table_cook_open( bytes, length, (uint64_t) sizeof( TableEntity ), (uint64_t) SCHEMA_TABLE_ALIGNOF( TableEntity ) );
@@ -5054,6 +5116,8 @@ static SCHEMA_UNUSED const TableEntity * table_entity_open( const void * bytes, 
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
+static SCHEMA_UNUSED const TableStat * table_stat_open_ex(const void * bytes,uint64_t length,TableRefuseReason * reason)
+{ return (const TableStat *)table_cook_open_ex(bytes,length,sizeof(TableStat),SCHEMA_TABLE_ALIGNOF(TableStat),reason); }
 static SCHEMA_UNUSED const TableStat * table_stat_open( const void * bytes, uint64_t length )
 {
     return (const TableStat *) table_cook_open( bytes, length, (uint64_t) sizeof( TableStat ), (uint64_t) SCHEMA_TABLE_ALIGNOF( TableStat ) );
@@ -5078,11 +5142,153 @@ static SCHEMA_UNUSED const TableStat * table_stat_open( const void * bytes, uint
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
+static SCHEMA_UNUSED const TableMixed * table_mixed_open_ex(const void * bytes,uint64_t length,TableRefuseReason * reason)
+{ return (const TableMixed *)table_cook_open_ex(bytes,length,sizeof(TableMixed),SCHEMA_TABLE_ALIGNOF(TableMixed),reason); }
 static SCHEMA_UNUSED const TableMixed * table_mixed_open( const void * bytes, uint64_t length )
 {
     return (const TableMixed *) table_cook_open( bytes, length, (uint64_t) sizeof( TableMixed ), (uint64_t) SCHEMA_TABLE_ALIGNOF( TableMixed ) );
 }
 
+static SCHEMA_UNUSED int schema_benchtable_table_entity_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order)
+{
+    const TableEntity * value=(const TableEntity *)storage;
+    (void)n; (void)at; (void)value; (void)order;
+    table_cook_put(at+0,(uint64_t)value->entity_id,4,order);
+    table_cook_put(at+4,(uint64_t)value->pos_x,4,order);
+    table_cook_put(at+8,(uint64_t)value->pos_y,4,order);
+    table_cook_put(at+12,(uint64_t)value->pos_z,4,order);
+    table_cook_put(at+16,(uint64_t)value->yaw,4,order);
+    table_cook_put(at+20,(uint64_t)value->pitch,4,order);
+    table_cook_put(at+24,(uint64_t)value->vel_x,4,order);
+    table_cook_put(at+28,(uint64_t)value->vel_y,4,order);
+    table_cook_put(at+32,(uint64_t)value->vel_z,4,order);
+    table_cook_put(at+36,(uint64_t)value->health,4,order);
+    table_cook_put(at+40,(uint64_t)value->weapon,1,order);
+    table_cook_put(at+48,(uint64_t)value->damage,8,order);
+    table_cook_put(at+56,value->moving ? 1 : 0,1,order);
+    table_cook_put(at+57,value->firing ? 1 : 0,1,order);
+    return 1;
+}
+static SCHEMA_UNUSED int64_t table_entity_cook_measure(const TableEntity * value) { (void)value; return 144; }
+static SCHEMA_UNUSED int table_entity_cook(const TableEntity * value,void * output,uint64_t capacity,TableByteOrder order)
+{
+    uint8_t * raw=(uint8_t *)output;
+    if(value==NULL || raw==NULL || capacity<144) { return 0; }
+    memset(raw,0,144);
+    if(!schema_benchtable_table_entity_cook_body_(NULL,raw+64,value,order)) { return 0; }
+    table_cook_put(raw+136,UINT64_C(0x3161723596c6cba8),8,order);
+    table_cook_header(raw,SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE,64,1,8,order); return 1;
+}
+static SCHEMA_UNUSED int schema_benchtable_table_stat_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order)
+{
+    const TableStat * value=(const TableStat *)storage;
+    (void)n; (void)at; (void)value; (void)order;
+    table_cook_put(at+0,(uint64_t)value->stat_id,4,order);
+    table_cook_put(at+4,(uint64_t)value->delta,4,order);
+    return 1;
+}
+static SCHEMA_UNUSED int64_t table_stat_cook_measure(const TableStat * value) { (void)value; return 88; }
+static SCHEMA_UNUSED int table_stat_cook(const TableStat * value,void * output,uint64_t capacity,TableByteOrder order)
+{
+    uint8_t * raw=(uint8_t *)output;
+    if(value==NULL || raw==NULL || capacity<88) { return 0; }
+    memset(raw,0,88);
+    if(!schema_benchtable_table_stat_cook_body_(NULL,raw+64,value,order)) { return 0; }
+    table_cook_put(raw+80,UINT64_C(0x296aa8e669b99c95),8,order);
+    table_cook_header(raw,SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE,8,1,8,order); return 1;
+}
+static SCHEMA_UNUSED int schema_benchtable_table_mixed_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order)
+{
+    const TableMixed * value=(const TableMixed *)storage;
+    (void)n; (void)at; (void)value; (void)order;
+    table_cook_put(at+0,(uint64_t)value->protocol_magic,2,order);
+    table_cook_put(at+4,(uint64_t)value->sequence,4,order);
+    table_cook_put(at+8,(uint64_t)value->ack_sequence,4,order);
+    table_cook_put(at+12,(uint64_t)value->ack_bits,4,order);
+    table_cook_put(at+16,(uint64_t)value->session_id,8,order);
+    table_cook_put(at+24,(uint64_t)value->client_id,4,order);
+    table_cook_put(at+32,(uint64_t)value->nonce,8,order);
+    table_cook_put(at+40,(uint64_t)value->world_time,8,order);
+    table_cook_put(at+48,(uint64_t)value->frame_tick,8,order);
+    { uint32_t bits; memcpy(&bits,&value->server_time,4); table_cook_put(at+56,bits,4,order); }
+    { int32_t cook_i1; for(cook_i1=0;cook_i1<8;cook_i1++) {
+        if(!schema_benchtable_table_entity_cook_body_(n,at+64+cook_i1*64,&value->entities[cook_i1],order)) { return 0; }
+    } }
+    table_cook_put(at+64+512,(uint32_t)value->entities_count,4,order);
+    { int32_t cook_i2; for(cook_i2=0;cook_i2<80;cook_i2++) {
+        if(!schema_benchtable_table_stat_cook_body_(n,at+580+cook_i2*8,&value->stats[cook_i2],order)) { return 0; }
+    } }
+    table_cook_put(at+580+640,(uint32_t)value->stats_count,4,order);
+    table_cook_put(at+1224,(uint64_t)value->game_event.type,1,order);
+    switch(value->game_event.type) {
+    case TABLE_EVENT_TYPE_HIT: {
+        if(!schema_benchtable_table_hit_event_cook_body_(n,at+1224+4,&value->game_event.as.hit,order)) { return 0; }
+        break; }
+    case TABLE_EVENT_TYPE_CHAT: {
+        if(!schema_benchtable_table_chat_event_cook_body_(n,at+1224+4,&value->game_event.as.chat,order)) { return 0; }
+        break; }
+    case TABLE_EVENT_TYPE_PICKUP: {
+        if(!schema_benchtable_table_pickup_event_cook_body_(n,at+1224+4,&value->game_event.as.pickup,order)) { return 0; }
+        break; }
+    default: break;
+    }
+    { int32_t cook_i3; for(cook_i3=0;cook_i3<4;cook_i3++) {
+        table_cook_put(at+1244+cook_i3*1,(uint64_t)value->loadout[cook_i3],1,order);
+    } }
+    table_cook_bytes(at+1248,value->player_name,value->player_name_length,16);
+    table_cook_put(at+1248+16,(uint32_t)value->player_name_length,4,order);
+    table_cook_bytes(at+1268,value->payload,value->payload_length,16);
+    table_cook_put(at+1268+16,(uint32_t)value->payload_length,4,order);
+    { uint32_t bits; memcpy(&bits,&value->aim_x,4); table_cook_put(at+1288,bits,4,order); }
+    { uint32_t bits; memcpy(&bits,&value->aim_y,4); table_cook_put(at+1292,bits,4,order); }
+    { uint32_t bits; memcpy(&bits,&value->aim_z,4); table_cook_put(at+1296,bits,4,order); }
+    { uint32_t bits; memcpy(&bits,&value->recoil,4); table_cook_put(at+1300,bits,4,order); }
+    { uint64_t bits; memcpy(&bits,&value->drift,8); table_cook_put(at+1304,bits,8,order); }
+    table_cook_put(at+1312,(uint64_t)value->wide_key,8,order);
+    table_cook_put(at+1320,(uint64_t)value->flux,8,order);
+    { uint32_t bits; memcpy(&bits,&value->ping,4); table_cook_put(at+1328,bits,4,order); }
+    table_cook_put(at+1332,(uint64_t)value->crc_hint,4,order);
+    table_cook_put(at+1336,value->has_extra ? 1 : 0,1,order);
+    table_cook_put(at+1340,(uint64_t)value->extra,4,order);
+    table_cook_put(at+1344,(uint64_t)value->idle_ticks,4,order);
+    return 1;
+}
+static SCHEMA_UNUSED int64_t table_mixed_cook_measure(const TableMixed * value) { (void)value; return 1432; }
+static SCHEMA_UNUSED int table_mixed_cook(const TableMixed * value,void * output,uint64_t capacity,TableByteOrder order)
+{
+    uint8_t * raw=(uint8_t *)output;
+    if(value==NULL || raw==NULL || capacity<1432) { return 0; }
+    memset(raw,0,1432);
+    if(!schema_benchtable_table_mixed_cook_body_(NULL,raw+64,value,order)) { return 0; }
+    table_cook_put(raw+1424,UINT64_C(0x439ae459d6f88a8e),8,order);
+    table_cook_header(raw,SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE,1352,1,8,order); return 1;
+}
+static SCHEMA_UNUSED int schema_benchtable_table_hit_event_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order)
+{
+    const TableHitEvent * value=(const TableHitEvent *)storage;
+    (void)n; (void)at; (void)value; (void)order;
+    table_cook_put(at+0,(uint64_t)value->target_id,4,order);
+    table_cook_put(at+4,(uint64_t)value->damage,4,order);
+    table_cook_put(at+8,(uint64_t)value->hit_kind,4,order);
+    table_cook_put(at+12,value->crit ? 1 : 0,1,order);
+    return 1;
+}
+static SCHEMA_UNUSED int schema_benchtable_table_chat_event_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order)
+{
+    const TableChatEvent * value=(const TableChatEvent *)storage;
+    (void)n; (void)at; (void)value; (void)order;
+    table_cook_put(at+0,(uint64_t)value->channel,4,order);
+    table_cook_put(at+4,(uint64_t)value->speaker,4,order);
+    return 1;
+}
+static SCHEMA_UNUSED int schema_benchtable_table_pickup_event_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order)
+{
+    const TablePickupEvent * value=(const TablePickupEvent *)storage;
+    (void)n; (void)at; (void)value; (void)order;
+    table_cook_put(at+0,(uint64_t)value->item_id,4,order);
+    table_cook_put(at+4,(uint64_t)value->amount,4,order);
+    return 1;
+}
 /* ---- relocatability: the wire is a pure length-prefixed stream AND the
    decoded storage is pointer-free — every closure type is a plain C struct
    of scalars and arrays, so instances can be memcpy'd, mmap'd, shared
