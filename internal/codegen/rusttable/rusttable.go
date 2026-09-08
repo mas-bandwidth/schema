@@ -366,4 +366,3 @@ func tableFieldTypeName(f *ir.Field) string {
 	}
 	return "?"
 }
-
