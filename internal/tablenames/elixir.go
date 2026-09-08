@@ -1,11 +1,15 @@
 package tablenames
 
 // Elixir is the Elixir table backend (internal/codegen/elixirtable).
+//
+// The Elixir backend emits the BLOCK and COOK read halves only (the table wire
+// it once wrote was the form that preceded the id-table wire and was removed;
+// schema#515 brings the current wire), so it claims no TableRuntime: that name
+// is another backend's.
 const Elixir Backend = 1 << 6
 
 func init() {
 	define(Elixir,
-		Name{Name: "TableRuntime", What: "the unit's shared table runtime — a Rust crate module, an Elixir unit-level module"},
 		// ---- the ELIXIR backend's own unit-level MODULES
 		// (internal/codegen/elixirtable) ----
 		//

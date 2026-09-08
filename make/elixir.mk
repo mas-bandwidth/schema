@@ -71,29 +71,6 @@ generated/elixir-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 	./bin/schema generate --lang elixir --out generated/elixir-ludicrous examples128
 	@touch $@
 
-# THE ELIXIR GENERIC-WALK GATE (docs/SPEC-TABLES.md §16.1): the text form is ONE
-# walk over the descriptors, emitted once per UNIT — a unit's Elixir modules
-# compile into one application, so a second copy would be a duplicate module
-# rather than C++'s harmless re-inclusion behind a guard. This holds the
-# runtime's source byte-identical across every unit of the corpus, with nothing
-# normalized away but the five-line generated banner and the one line that
-# names the unit's own module — a module is named for its package in Elixir,
-# and no port can make that line the same in two units.
-.PHONY: tables-elixir-walk
-tables-elixir-walk: build/tables-generated-elixir/.stamp
-	@rm -rf build/elixir-walk && mkdir -p build/elixir-walk
-	@for f in build/tables-generated-elixir/*/TableRuntime.ex; do \
-		out=build/elixir-walk/$$(echo $$f | tr / _); \
-		tail -n +6 $$f | sed 's/^defmodule .*\.TableRuntime do$$/defmodule <Package>.TableRuntime do/' > $$out; \
-		if [ ! -s $$out ]; then echo "ELIXIR GENERIC-WALK GATE FAILED: no runtime in $$f"; exit 1; fi; \
-	done
-	@first=""; for f in build/elixir-walk/*; do \
-		if [ -z "$$first" ]; then first=$$f; else \
-			cmp -s $$first $$f || { echo "ELIXIR GENERIC-WALK GATE FAILED: the runtime in $$f is not the runtime in $$first"; exit 1; }; \
-		fi; \
-	done
-	@echo "elixir generic-walk gate: one table runtime, the same bytes in every unit"
-
 generated/bench/tables/elixir/.stamp: bin/schema bench/corpus/BenchTable.schema
 	@mkdir -p generated/bench/tables/elixir
 	./bin/schema generate --lang elixir --out generated/bench/tables/elixir bench/corpus/BenchTable.schema
@@ -135,13 +112,6 @@ build-conformance-elixir: build/elixir-tables-ebin/.stamp
 # THE ELIXIR LEG's own gates, beside the harness's matrix row. They read the
 # DERIVED manifest the harness writes, so each is `conformance` plus one run.
 #
-# THE ALLOCATION AUDIT (docs/SPEC-TABLES.md §16.1's Rust paragraph, in the shape
-# the BEAM allows): the COUNT of heap words and refc binary bytes one iteration
-# allocates, measured in a process large enough that no garbage collection
-# happens, so the heap grows by exactly what the loop allocated. The floor is
-# not zero and is not claimed to be — Elixir has no caller-owned buffer and no
-# mutable struct — so the gate is a PINNED BUDGET per case, re-pinned
-# deliberately the way a wire golden is.
 # THE DERIVED MANIFEST, made by an ELIXIR-ONLY harness run. The leg's own gates
 # need the materialized fixtures and the manifest, not the other four legs'
 # verdicts — and rebuilding those to read one file is a minute nobody gets back
@@ -149,14 +119,6 @@ build-conformance-elixir: build/elixir-tables-ebin/.stamp
 # whichever ran last serves.
 build/conformance/manifest.txt: build/conformance-harness build-conformance-elixir
 	./build/conformance-harness run --only elixir > /dev/null
-
-.PHONY: tables-elixir-alloc-audit
-tables-elixir-alloc-audit:
-	@echo "tables-elixir-alloc-audit: dormant — the corpus it gates against is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#515)"
-
-.PHONY: tables-elixir-alloc-pin
-tables-elixir-alloc-pin:
-	@echo "tables-elixir-alloc-pin: dormant — the corpus it gates against is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#515)"
 
 # A SABOTAGED BUILD OF THE CORPUS, which every Elixir negative control below
 # runs its gate against: the emitter source $(2) with the sed program held in
@@ -183,38 +145,11 @@ define ELIXIR_SABOTAGED_BUILD
 	$(ELIXIRC) -o $(1)/ebin $(1)/generated/*/*.ex test/conformance/elixir/driver_impl.ex
 endef
 
-# THE AUDIT'S NEGATIVE CONTROL, and it is what makes the audit an instrument
-# rather than a number: every generated load gains sixteen refc binaries and a
-# thousand-cell list, freed
-# again at once, and every case must go over its budget on the heap-word column
-# AND on the binary-call column — each named in the audit's own output, so a
-# column that lost its teeth is found on its own. A gate that cannot go red is
-# not a gate.
-
-.PHONY: tables-elixir-alloc-negative-control
-tables-elixir-alloc-negative-control:
-	@echo "tables-elixir-alloc-negative-control: dormant — the surface it turns red is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#515)"
-
-.PHONY: tables-elixir-soak
-tables-elixir-soak:
-	@echo "tables-elixir-soak: dormant — the corpus it gates against is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#515)"
-
 # THE FUZZER'S ORACLE over the two READERS: for ANY bytes, Open either refuses
 # or opens, and an opened image is one every accessor walks without leaving the
 # buffer. An index out of bounds is a REFUSAL, never an exception that escapes
 # — which on the BEAM has teeth, because a bad binary match raises.
 ELIXIR_FUZZ_N ?= 20000
-
-# THE SOAK's OWN negative control, and it is a DIFFERENT sabotage from the
-# audit's on purpose: the audit's extra allocation is freed every iteration and
-# lifts no floor, which is exactly why the two instruments both exist. This one
-# RETAINS — every generated load caches a copy of its bytes under a fresh key
-# and never evicts, the shape a leak in generated code takes on the BEAM — so
-# both floors rise, and the soak must name each arm.
-
-.PHONY: tables-elixir-soak-negative-control
-tables-elixir-soak-negative-control:
-	@echo "tables-elixir-soak-negative-control: dormant — the surface it turns red is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#515)"
 
 .PHONY: tables-elixir-fuzz
 tables-elixir-fuzz: build/conformance/manifest.txt
@@ -276,35 +211,16 @@ tables-elixir-block-lead-negative-control: build/conformance/manifest.txt
 		echo "elixir base-alignment negative control: dropping the check reds the gate"; \
 	fi
 
-# THE ELIXIR LEG's BENCH GATE: the leg builds, and its GOLDEN GATE answers
-# before any clock does — variant 0 is byte-compared to the pinned instance and
-# every one of the 64 variants must load, re-save at the same length and come
-# back byte-identical, so a leg that fails refuses to produce numbers. It is a
-# correctness check wearing a bench's clothes, which is why it belongs on a gate
-# at all — and `--gate` is this leg's own verb for it, which stops there rather
-# than spending eight timed runs to learn the same thing.
-#
-# THE GATE IS DORMANT while this port writes the wire's previous form (schema
-# #515), on the same rule as the audit and the soak above. The bench corpus is
-# the id-table form, and a codec that does not write that form cannot re-save a
-# variant to its own bytes. The gate says so itself, in the words it refuses
-# with: "refusing to bench a codec that does not reproduce the corpus."
-.PHONY: tables-elixir-bench-gate
-tables-elixir-bench-gate:
-	@echo "tables-elixir-bench-gate: dormant — the corpus it gates against is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#515)"
-
 # THE ELIXIR RELEASE GATE (certify.yml's release-gates job finds it BY NAME, so
 # landing it is this target and nothing else — no edit to that file).
 #
 # It is the leg's expensive half, and the split is the one the CI files draw: an
 # ITERATION gate answers "is this diff right" and rides the pull request; this
-# answers "does the runtime still hold under load", which is measured in minutes
-# and fires on a toolchain change as readily as on a code one.
-#
-# The soak here is BOUNDED at five minutes, and `make tables-elixir-soak` is the
-# hour. The two answer the same question at two costs, and a certification job
-# sharing a runner with every other port's gate is not where an hour belongs.
-ELIXIR_RELEASE_SOAK_SECONDS ?= 300
+# answers "do the readers still hold under load", which is measured in minutes
+# and fires on a toolchain change as readily as on a code one. It is the long
+# fuzz over both readers and the base-alignment gate, each with its control;
+# the soak, the audit and the bench gate that once sat beside them went with
+# the table wire they measured (schema#515 brings the wire back, and them).
 ELIXIR_RELEASE_FUZZ_N ?= 200000
 
 .PHONY: tables-elixir-release
@@ -313,73 +229,15 @@ tables-elixir-release:
 	$(MAKE) tables-elixir-fuzz-negative-control
 	$(MAKE) tables-elixir-block-lead
 	$(MAKE) tables-elixir-block-lead-negative-control
-	$(MAKE) tables-elixir-alloc-audit
-	$(MAKE) tables-elixir-alloc-negative-control
-	$(MAKE) tables-elixir-soak SOAK_SECONDS=$(ELIXIR_RELEASE_SOAK_SECONDS)
-	$(MAKE) tables-elixir-soak-negative-control
-	$(MAKE) tables-elixir-bench-gate
 
-# THE GO WALKER's NEGATIVE CONTROL (docs/SPEC-TABLES.md §16.5), and it is a
-# DIFFERENT sabotage from conformance-negative-control-go above, on purpose.
-# That one flips a byte of an ANSWER and proves the harness can see a wrong
-# answer; this one breaks the WALK's own offset arithmetic and proves it can see
-# a wrong walk — the shape §16.5 asks every backend for, and the shape the C#
-# control already has.
-#
-# It is sabotaged IN THE EMITTER and generated afresh, because the walker IS
-# emitter source — one constant in internal/codegen/gotable/json.go — so
-# patching the emitter is patching the walk itself rather than an artifact of
-# it. No tracked file is written to: the sed lands in build/ and a Go build
-# overlay points the compiler at it.
-#
-# THE SABOTAGE is the C++ control's, in Go's spelling: a field's STORAGE OFFSET
-# xor 4 on the READ path only. Go has real offsets — the descriptors carry
-# unsafe.Offsetof — so unlike C#, whose twin had to perturb a field INDEX
-# instead, that arithmetic ports directly. The sed is bounded to
-# tableJsonReadField's own body, because the writer's line is the same text and
-# a control that broke both would not localise the READER.
-#
-# The second half is the point, as it is for every control here: json-read must
-# go RED and every other surface must stay GREEN.
-# THE ELIXIR WALK's negative control (docs/SPEC-TABLES.md §16.5): with the READ
-# path's placement sabotaged by one key, the text a walk reads lands somewhere
-# the writer never looks, and json-read goes red.
-#
-# WHAT STANDS IN FOR AN OFFSET HERE. C++ sabotages the walker's offset
-# arithmetic and C# the field INDEX a descriptor is looked up by. An Elixir
-# struct has neither: a field is reached by its KEY, so the key is what the
-# control breaks — the read places every scalar under a name the instance does
-# not have, which is precisely "one key's value lands in its neighbour's" in the
-# only vocabulary this language has for it.
-#
-# The second half is the point, as it is for every control here: json-read must
-# go RED and every other surface must stay GREEN. json-write staying green is
-# what says the break is the READER's.
-# (the marker is inside the ATOM: a Makefile variable cannot carry a "#", which
-# starts a comment, so the sabotage names itself in the only place it can)
-.PHONY: conformance-negative-control-elixir
-conformance-negative-control-elixir:
-	@echo "conformance-negative-control-elixir: dormant — the surface it turns red is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#515)"
-
-# THE SOAK: the whole corpus read and written in a loop, with the bytes
-# compared every iteration so a run that drifted STOPS rather than merely
-# getting slower, and the live heap and binary memory printed against the warm
-# baseline. This is the LEAK half; the audit above is the COUNT half, and the
-# two answer different questions. Its length is the Makefile's SOAK_SECONDS.
-
-# THE ELIXIR LEG of `make test`: the generic-walk gate, the conformance
-# negative control, THE ELIXIR PORT's own instruments (docs/SPEC-TABLES.md) —
-# the reading tier's allocation BUDGET and its negative control (the BEAM has
-# no caller-owned buffer, so the claim is that the count does not move rather
-# than that it is zero), the forgery fuzzer over both readers, and the block
-# lead gate; the hour is `make tables-elixir-soak` — then the format check and
-# the packet tests.
+# THE ELIXIR LEG of `make test`: THE ELIXIR PORT's own instruments over the
+# two readers it emits (docs/SPEC-TABLES.md §7, §19) — the forgery fuzzer over
+# both and the block lead gate — then the format check and the packet tests.
+# The port emits no table wire (schema#515), so there is no walk gate, no
+# text-form control, no allocation audit and no soak here: each measured the
+# wire's previous form and went with it.
 .PHONY: test-elixir
 test-elixir: toolchain-elixir generated/bench/tables/elixir/.stamp generated/elixir/.stamp generated/elixir-ludicrous/.stamp generated/bench/elixir/.stamp
-	$(MAKE) tables-elixir-walk
-	$(MAKE) conformance-negative-control-elixir
-	$(MAKE) tables-elixir-alloc-audit
-	$(MAKE) tables-elixir-alloc-negative-control
 	$(MAKE) tables-elixir-fuzz
 	$(MAKE) tables-elixir-block-lead
 	$(MIX) format --check-formatted generated/elixir/*.ex generated/elixir-ludicrous/*.ex generated/bench/elixir/*.ex generated/bench/elixir/realworld/*.ex
