@@ -77,6 +77,7 @@ static partial class Program
         public Func<object, byte[], long> MessageSave;
         public Func<byte[], long> MessageLoadMeasure;
         public byte[] Announcement;
+        public Func<byte[],RetainAnswer> Retain;
         public string Unit;
         public string Root;
         public Func<byte[], Report, object> PartialLoad;
@@ -2424,17 +2425,22 @@ static partial class Program
 
     static int WireFuzz()
     {
+        using var scratch=new RetainScratch();
+        RegisterRetains(scratch);
         using BinaryReader input = new BinaryReader(Console.OpenStandardInput());
         using BinaryWriter output = new BinaryWriter(Console.OpenStandardOutput());
         uint n = input.ReadUInt32();
         Codec[] roster = new Codec[n];
         byte[] forms = new byte[n];
+        bool[] retaining=new bool[n];
         for (int i = 0; i < n; i++)
         {
             string unit = Encoding.UTF8.GetString(input.ReadBytes(input.ReadUInt16()));
             string root = Encoding.UTF8.GetString(input.ReadBytes(input.ReadUInt16()));
             byte form = input.ReadByte(), retain = input.ReadByte();
-            roster[i] = retain == 0 ? Find(unit, root) : null;
+            Codec found=Find(unit,root);
+            roster[i] = retain == 0 || found?.Retain!=null?found:null;
+            retaining[i]=retain!=0;
             forms[i] = form;
             output.Write((byte)(roster[i] != null ? 1 : 0));
         }
@@ -2445,6 +2451,16 @@ static partial class Program
             try { index = input.ReadUInt32(); } catch (EndOfStreamException) { return 0; }
             byte[] bytes = input.ReadBytes(checked((int)input.ReadUInt32()));
             Codec codec = roster[index];
+            if(retaining[index])
+            {
+                RetainAnswer answer=codec.Retain(bytes); Report r=answer.Report;
+                output.Write((byte)(answer.Loaded?1:0));
+                output.Write(r.Unknown); output.Write(r.KindMismatch); output.Write(r.Widened); output.Write(r.Clamped); output.Write(r.Duplicate);
+                output.Write((byte)(r.Malformed?1:0)); output.Write((byte)(r.Refused?1:0)); output.Write(answer.Need);
+                output.Write(answer.Kept); output.Write(answer.Lost); output.Write(answer.Written);
+                if(answer.Written>0) { output.Write(answer.Saved,0,(int)answer.Written); }
+                output.Flush(); continue;
+            }
             Report report = new Report();
             bool message = forms[index] == 2;
             long need = message ? (codec.MessageLoadMeasure == null ? -1 : codec.MessageLoadMeasure(bytes)) : codec.LoadMeasure == null ? -1 : codec.LoadMeasure(bytes);
@@ -2480,7 +2496,7 @@ static partial class Program
         {
             // Form-1 wire and its five conformance surfaces. Unsupported constructs
             // remain explicit per-case absences, as in the other language drivers.
-            Console.Out.Write("wire\nmessage\ncook-write\nreport\njson-read\njson-write\njson-hostile\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\n");
+            Console.Out.Write("wire\nmessage\ncook-write\nreport\njson-read\njson-write\njson-hostile\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\nretain\nretain-save\n");
             return 0;
         }
         if (args.Length < 3)
@@ -2491,6 +2507,8 @@ static partial class Program
         string outDir = args[2];
         switch (surface)
         {
+            case "retain": return SurfaceRetain(outDir,false);
+            case "retain-save": return SurfaceRetain(outDir,true);
             case "wire": return SurfaceWire(outDir);
             case "message": return SurfaceMessage(outDir);
             case "cook-write": return SurfaceCookWrite(outDir);

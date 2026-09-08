@@ -209,8 +209,10 @@ const tableRegionWriteSource = `
     {
         if(pointer==IntPtr.Zero) { return -1; }
         NativeValue value=new NativeValue((byte*)pointer,0);
-        RegionIds ids = new RegionIds(vocabulary);
-        if (type.Variable) { ids.Graph = RegionNumber(value, type); if (ids.Graph == null) { return -1; } }
+        RegionIds ids = new RegionIds(vocabulary) { RootType=type };
+        if (type.Variable) { ids.Graph = RegionNumber(value, type); if (!ids.Graph.Valid) { return -1; } }
+        try
+        {
         if (!RegionCollect(value, type, ref ids) || !RegionCollectNodes(ref ids)) { return -1; }
         long n = 1 + RegionBodySize(value, type, ref ids) + 8L * ids.Count + 8;
         long nodes = RegionNodesSize(ref ids);
@@ -222,6 +224,8 @@ const tableRegionWriteSource = `
         for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
         w.Fixed((ulong)ids.Count, 8);
         return w.Offset;
+        }
+        finally { ids.Graph.Dispose(); }
     }
 
 `

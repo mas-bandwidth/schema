@@ -32,6 +32,7 @@
 
   <ItemGroup>
     <Compile Include="src/*.cs" />
+    <Compile Include="$(TablesGeneratedDir)/rt1/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/r2/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/r1/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/vocab9/*.cs" />

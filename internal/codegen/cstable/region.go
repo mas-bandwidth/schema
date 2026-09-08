@@ -17,6 +17,11 @@ func generateRegion(u *ir.Unit) []byte {
 		}
 	}
 	sort.Strings(names)
+	g.emitRetainRefusals()
+	if len(names) == 0 {
+		g.tf("// Retention is refused on every root in this fixed-only unit.\npublic struct TableRetain {}\n")
+		return g.assemble()
+	}
 	for _, name := range names {
 		st := u.Tables[name]
 		if st.IsMapEntry() {
@@ -26,7 +31,13 @@ func generateRegion(u *ir.Unit) []byte {
 		g.pf("public static %s %sLoadBuilder(System.IntPtr region) { return (%s)TableWire.CopyRegion(%sTableType(),region); }\n", st.Name, st.Name, st.Name, st.Name)
 		g.pf("public static unsafe %sRow* %sLoad(System.IntPtr region, long capacity, System.IntPtr attribution, long attributionCapacity, System.ReadOnlySpan<byte> bytes, TableReport report) { return (%sRow*)TableWire.LoadRegion(%sTableType(),region,capacity,attribution,attributionCapacity,bytes,report); }\n", st.Name, st.Name, st.Name, st.Name)
 		g.pf("public static long %sLoadMeasure(System.ReadOnlySpan<byte> bytes, out long dataBytes, out long attributionBytes, out TableRefuseReason reason) { long n=TableWire.LoadMeasureParts(%sTableType(),bytes,out dataBytes,out attributionBytes,out string text); reason=text==null?TableRefuseReason.ok:System.Enum.Parse<TableRefuseReason>(text); return n; }\n", st.Name, st.Name)
+		g.pf("public static unsafe %sRow* %sLoadRetain(IntPtr region,long capacity,ReadOnlySpan<byte> bytes,ref TableRetain retain,TableReport report) { return (%sRow*)TableWire.LoadRetainRegion(%sTableType(),region,capacity,bytes,ref retain,report); }\n", st.Name, st.Name, st.Name, st.Name)
+		g.pf("public static unsafe %sRow* %sLoadRetain(IntPtr region,long capacity,IntPtr attribution,long attributionCapacity,ReadOnlySpan<byte> bytes,ref TableRetain retain,TableReport report) { return (%sRow*)TableWire.LoadRetainRegion(%sTableType(),region,capacity,attribution,attributionCapacity,bytes,ref retain,report); }\n", st.Name, st.Name, st.Name, st.Name)
+		g.pf("public static TableWire.Verdict %sLoadRetainMessages(IntPtr region,long capacity,Span<IntPtr> roots,ReadOnlySpan<byte> bytes,TableVocabulary vocabulary,Span<TableRetain> retains,TableReport report,out int count) { return TableWire.LoadMessageRetainRegion(%sTableType(),region,capacity,IntPtr.Zero,0,false,roots,bytes,vocabulary,retains,report,out count); }\n", st.Name, st.Name)
+		g.pf("public static TableWire.Verdict %sLoadRetainMessages(IntPtr region,long capacity,IntPtr attribution,long attributionCapacity,Span<IntPtr> roots,ReadOnlySpan<byte> bytes,TableVocabulary vocabulary,Span<TableRetain> retains,TableReport report,out int count) { return TableWire.LoadMessageRetainRegion(%sTableType(),region,capacity,attribution,attributionCapacity,true,roots,bytes,vocabulary,retains,report,out count); }\n", st.Name, st.Name)
 		cap := ir.TableWireIdCapacity(u)
+		g.pf("public static long %sMeasureRetain(IntPtr region,ref TableRetain retain) { Span<ulong> ids=stackalloc ulong[%d]; Span<int> slots=stackalloc int[%d]; return TableWire.SaveRetainRegion(region,%sTableType(),Span<byte>.Empty,ids,slots,ref retain,null,true); }\n", st.Name, cap, cap, st.Name)
+		g.pf("public static long %sSaveRetain(IntPtr region,ref TableRetain retain,Span<byte> bytes,TableReport report) { Span<ulong> ids=stackalloc ulong[%d]; Span<int> slots=stackalloc int[%d]; return TableWire.SaveRetainRegion(region,%sTableType(),bytes,ids,slots,ref retain,report,false); }\n", st.Name, cap, cap, st.Name)
 		g.pf("public static long %sMeasure(System.IntPtr region) { Span<ulong> ids=stackalloc ulong[%d]; return TableWire.SaveRegion(region,%sTableType(),Span<byte>.Empty,ids,true); }\n", st.Name, cap, st.Name)
 		g.pf("public static long %sSave(System.IntPtr region,Span<byte> bytes) { Span<ulong> ids=stackalloc ulong[%d]; return TableWire.SaveRegion(region,%sTableType(),bytes,ids,false); }\n", st.Name, cap, st.Name)
 		g.pf("public static TableWire.Verdict %sLoadMessages(System.IntPtr region,long capacity,Span<System.IntPtr> roots,ReadOnlySpan<byte> bytes,TableVocabulary vocabulary,TableReport report,out int count) { return TableWire.LoadMessageRegion(%sTableType(),region,capacity,roots,bytes,vocabulary,report,out count); }\n", st.Name, st.Name)
@@ -36,7 +47,8 @@ func generateRegion(u *ir.Unit) []byte {
 		g.pf("public static long %sSaveMessages(ReadOnlySpan<System.IntPtr> roots,Span<byte> bytes,TableReport report) { if(roots.Length>256 && report!=null) { report.Refused=true; report.Reason=\"batch_too_large\"; report.Verdict=TableWire.Verdict.Refused; } return %sSaveMessages(roots,bytes); }\n", st.Name, st.Name)
 		g.pf("public static long %sLoadMeasure(TableVocabulary vocabulary,ReadOnlySpan<byte> bytes,out long dataBytes,out long attributionBytes) { return TableWire.MessageLoadMeasureParts(%sTableType(),bytes,vocabulary,out dataBytes,out attributionBytes); }\n", st.Name, st.Name)
 	}
-	g.pf("public static unsafe partial class TableWire {\n%s\n}\n", tableRegionSource+tableRegionGraphSource+tableRegionWriteSource+tableRegionMessageReadSource+tableRegionMessageLoadSource+tableRegionMessageWriteSource)
+	g.emitRetain()
+	g.pf("public static unsafe partial class TableWire {\n%s\n}\n", tableRegionSource+tableRegionGraphSource+tableRegionWriteSource+tableRegionMessageReadSource+tableRegionMessageLoadSource+tableRegionMessageWriteSource+tableRetainRegionSource()+tableRetainWriteSource()+tableRetainMessageSource())
 	return g.assemble()
 }
 

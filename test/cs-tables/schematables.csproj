@@ -32,6 +32,13 @@
   <ItemGroup>
 
     <Compile Include="src/*.cs" />
+    <Compile Include="../../build/tables-generated-cs/csretain1/*.cs" />
+    <Compile Include="../../build/tables-generated-cs/csretain2/*.cs" />
+
+    <Compile Include="../../build/tables-generated-cs/rt1/*.cs" />
+    <Compile Include="../../build/tables-generated-cs/rt2/*.cs" />
+    <Compile Include="../../build/tables-generated-cs/rt3/*.cs" />
+
     <Compile Include="../../build/tables-generated-cs/csview/*.cs" />
     <Compile Include="../../build/tables-generated-cs/block/*.cs" />
     <Compile Include="../../build/tables-generated-cs/blockhome/*.cs" />

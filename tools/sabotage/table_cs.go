@@ -10,3 +10,10 @@ func init() {
 		new: `TableFieldInfo f = info.Fields[(index + 1) % info.NumFields]; // SABOTAGED: read through the adjacent descriptor`,
 	}}
 }
+
+func init() {
+	sabotages["table-cs-retain-capture"] = []edit{{
+		old: "        retain->Used+=need; retain->Count++; report.Retained++; return true;",
+		new: "        report.RetainLost++; return true; // SABOTAGED: the framed record is not admitted",
+	}}
+}

@@ -33,7 +33,16 @@ func (g *tableGen) nativeColumns(f *ir.Field) string {
 	} else if f.Array != ir.ArrayNone && f.ArrayBound > 0 {
 		element /= f.ArrayBound
 	}
-	columns := fmt.Sprintf(", NativeOffset = %d, NativeElementSize = %d, NativeCountOffset = %d, NativePresentOffset = %d", at, element, count, present)
+	ordinal := 0
+	if !g.arm {
+		for i, field := range g.owner.Fields {
+			if field == f {
+				ordinal = i
+				break
+			}
+		}
+	}
+	columns := fmt.Sprintf(", Ordinal = %d, NativeOffset = %d, NativeElementSize = %d, NativeCountOffset = %d, NativePresentOffset = %d", ordinal, at, element, count, present)
 	if !g.arm {
 		guard := tableGuardStrings(g.owner)[f.Name]
 		if guard != "" {

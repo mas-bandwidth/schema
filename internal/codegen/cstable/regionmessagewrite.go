@@ -67,13 +67,15 @@ const tableRegionMessageWriteSource = `
     {
         if (values.Length < 1 || values.Length > 256) { return -1; }
         // Validate the graph and every enum/tag before touching the output.
-        RegionGraph[] graphs = type.Variable ? new RegionGraph[values.Length] : null;
+        Span<RegionGraph> graphs=stackalloc RegionGraph[values.Length]; graphs.Clear();
+        try
+        {
         Span<ulong> storage = stackalloc ulong[tableOwnVocabulary.Count];
         for (int i = 0; i < values.Length; i++)
         {
             if (values[i] == IntPtr.Zero) { return -1; }
-            if (type.Variable) { graphs[i] = RegionNumber(new NativeValue((byte*)values[i],0), type); if (graphs[i] == null) { return -1; } }
-            RegionIds ids = new RegionIds(storage) { Graph = graphs == null ? null : graphs[i] };
+            if (type.Variable) { graphs[i] = RegionNumber(new NativeValue((byte*)values[i],0), type); if (!graphs[i].Valid) { return -1; } }
+            RegionIds ids = new RegionIds(storage) { Graph = graphs[i],RootType=type };
             if (!RegionCollect(new NativeValue((byte*)values[i],0), type, ref ids) || !RegionCollectNodes(ref ids)) { return -1; }
         }
         BitWriter probe = new BitWriter(Span<byte>.Empty, true);
@@ -83,21 +85,23 @@ const tableRegionMessageWriteSource = `
         if (size > bytes.Length) { return -1; }
         bytes.Slice(0, (int)size).Clear(); BitWriter writer = new BitWriter(bytes, false);
         RegionMessageBatch(ref writer, values, type, graphs); return size;
+        }
+        finally { for(int i=0;i<graphs.Length;i++) { graphs[i].Dispose(); } }
     }
-    static unsafe void RegionMessageBatch(ref BitWriter w, ReadOnlySpan<IntPtr> values, TableTypeInfo type, RegionGraph[] graphs)
+    static unsafe void RegionMessageBatch(ref BitWriter w, ReadOnlySpan<IntPtr> values, TableTypeInfo type, scoped ReadOnlySpan<RegionGraph> graphs)
     {
         w.Put(2, 8); w.Put((uint)(values.Length - 1), 8);
         for (int i = 0; i < values.Length; i++)
         {
-            RegionGraph graph = graphs == null ? null : graphs[i]; int indices = BitCount((ulong)(graph == null ? 1 : graph.Nodes.Count + 1));
-            if (graph != null && graph.Nodes.Count > 0)
+            RegionGraph graph=graphs[i]; int indices=BitCount((ulong)(graph.Count+1));
+            if (graph.Valid && graph.Count > 0)
             {
-                w.Put(NameSlot(ulong.MaxValue), tableOwnVocabulary.RefBits); w.Put((uint)graph.Nodes.Count, 32);
+                w.Put(NameSlot(ulong.MaxValue), tableOwnVocabulary.RefBits); w.Put((uint)graph.Count, 32);
                 foreach (RegionNode node in graph.Nodes)
                 {
                     w.Put(NameSlot(node.TypeId), tableOwnVocabulary.RefBits);
                     if (node.BlobKind != 0) { ReadOnlySpan<byte> data = node.Blob; w.Put((uint)data.Length, 32); w.Align(); w.Raw(data); }
-                    else { RegionMessageBody(ref w, node.Value, node.Type, graph, indices); }
+                    else { RegionMessageBody(ref w, node.Value, type.PointerType(node.TypeId), graph, indices); }
                 }
             }
             RegionMessageBody(ref w, new NativeValue((byte*)values[i],0), type, graph, indices);

@@ -146,6 +146,7 @@ namespace Tabledemo
         // zero, and <Name>FromJson is what raises it.
         public int Duplicate;
         public int Widened;
+        public int Retained, RetainLost;
         public bool Refused;
         public string Reason;
         public Schema.TableWire.Verdict Verdict;
@@ -178,6 +179,7 @@ namespace Tabledemo
     public sealed class TableFieldInfo
     {
         internal bool MapKey = false;
+        internal int Ordinal;
         internal int NativeOffset, NativeElementSize, NativeCountOffset, NativePresentOffset;
         internal int MessageSlot = 0;
         internal bool MessageBounded = false, MessageSigned = false;
