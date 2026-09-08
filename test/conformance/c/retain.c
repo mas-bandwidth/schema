@@ -13,7 +13,7 @@ int conformance_retain(int message,const uint8_t * announcement,int64_t announce
  if(id_capacity>INT32_MAX)return 0;
  if(message){if(!announce_read(&vocabulary,announcement,announcement_bytes,&report)||bytes<2)return 0;count=(int64_t)wire[1]+1;need=node_load_measure_messages(&vocabulary,wire,bytes);}
  else need=node_load_measure(wire,bytes);
- if(need<0)return 0;region=(uint8_t *)malloc((size_t)need);if(!region)return 0;
+ if(need<0){return 0;}region=(uint8_t *)malloc((size_t)need);if(!region)return 0;
  for(i=0;i<count;i++){retains[i].bytes=(uint8_t *)malloc(roomy);retains[i].capacity=roomy;retains[i].ids=(TableRetainId *)calloc((size_t)(id_capacity?id_capacity:1),sizeof(TableRetainId));retains[i].id_capacity=(int32_t)id_capacity;if(!retains[i].bytes||!retains[i].ids)goto done;}
  if(message){if(!node_load_retain_messages(roots,&count,region,need,&vocabulary,wire,bytes,retains,&report))goto done;}
  else {if(short_buffer){if(!node_load_retain(region,need,wire,bytes,retains,&report))goto done;retains[0].capacity=retains[0].used-1;report=(TableReport){0};}roots[0]=node_load_retain(region,need,wire,bytes,retains,&report);if(!roots[0])goto done;}

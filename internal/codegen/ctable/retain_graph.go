@@ -2,7 +2,6 @@ package ctable
 
 import (
 	"github.com/mas-bandwidth/schema/v2/ir"
-	"strings"
 )
 
 const cRetainGraph = `
@@ -59,7 +58,7 @@ func (g *tableGen) emitRetainFileRoot(st *ir.Struct) {
 	code := g.body.String()
 	g.body.Reset()
 	g.body.WriteString(previous)
-	g.body.WriteString(retainedCode(code, names))
+	g.body.WriteString(retainedCode(code, names, g.sym(n, "load_graph")))
 	g.pf("static SCHEMA_UNUSED const %s * %s(uint8_t * region,int64_t region_bytes,const uint8_t * wire,int64_t wire_bytes,TableRetain * retain,TableReport * report)\n{\n", n, g.api(n, "load_retain"))
 	g.pf(" TableReport ignored={0};TableReader reader;TableNodeMap nodes;TableNodeDirEntry * directory;TableRegionSink place;TableSink sink;TableRetainWalk retention;int64_t data,records,total;\n if(report==NULL)report=&ignored;table_retain_reset(retain,NULL,NULL);\n if(!table_wire_open(&reader,wire,wire_bytes,report))return NULL;total=%s(&reader,&data,&records);\n if(total<0||region==NULL||region_bytes<total||((uintptr_t)region&(kTableAlign-1))){report->malformed=1;return NULL;}\n memset(region,0,(size_t)total);directory=(TableNodeDirEntry *)(void *)(region+data);directory[0].offset=0;directory[0].type_id=UINT64_C(0x%016x);\n memset(&nodes,0,sizeof(nodes));nodes.base=region;nodes.entries=directory;nodes.count=(uint64_t)records+1;place.base=region;place.capacity=data;place.used=%s(&reader);sink.region=&place;sink.worker=NULL;\n table_retain_reset(retain,&nodes,region);memset(&retention,0,sizeof(retention));retention.retain=retain;retention.path=table_retain_root(region,1);\n if(!%s(&reader,(%s *)(void *)region,&nodes,directory,&sink,retention))return NULL;return (const %s *)(const void *)region;\n}\n", g.sym(n, "load_layout"), ir.TableWireId(st.WireName()), g.sym(n, "wire_storage"), g.sym(n, "load_graph_retain"), n, n)
 	dispatch := g.sym(n, "retain_save_node")
@@ -100,10 +99,10 @@ func (g *tableGen) emitRetainMessageRoot(st *ir.Struct) {
 		fn := g.api(name, "load_message_body")
 		names[fn] = fn + "_retain"
 	}
-	code := strings.ReplaceAll(g.body.String(), "r->report->unknown++;", "r->report->unknown++;r->report->retain_lost += retention.retain != NULL;")
+	code := g.body.String()
 	g.body.Reset()
 	g.body.WriteString(previous)
-	g.body.WriteString(retainedCode(code, names))
+	g.body.WriteString(retainedCode(code, names, g.sym(n, "message_load_into")))
 	g.pf("static SCHEMA_UNUSED int %s(const %s ** roots,int64_t * count,uint8_t * region,int64_t region_bytes,const TableVocabulary * vocabulary,const uint8_t * buffer,int64_t bytes,TableRetain * retains,TableReport * report)\n{\n", g.api(n, "load_retain_messages"), n)
 	g.pf(" TableReport ignored={0};TableMessageReader r;TableRetainWalk retention;int64_t bodies,capacity,used=0,i;if(!report)report=&ignored;\n if(!roots||!count){report->malformed=1;return 0;}capacity=*count;*count=0;bodies=table_message_open(&r,vocabulary,buffer,bytes,report);if(bodies<0)return 0;\n if(bodies>capacity){*count=bodies;report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;return 0;}\n if(!region||region_bytes<0||((uintptr_t)region&(kTableAlign-1))){report->malformed=1;return 0;}memset(region,0,(size_t)region_bytes);\n for(i=0;i<bodies;i++){roots[i]=NULL;memset(&retention,0,sizeof(retention));retention.retain=retains?retains+i:NULL;table_retain_reset(retention.retain,NULL,NULL);if(!%s(&r,region,region_bytes,&used,roots+i,retention))return 0;(*count)++;}return table_message_close(&r);\n}\n", g.sym(n, "message_load_into_retain"))
 }

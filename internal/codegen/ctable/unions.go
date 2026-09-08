@@ -229,6 +229,15 @@ func (g *tableGen) wireReadArm(v ir.UnionVariant, dst, ind string) {
 	k := armWireKind(v)
 	bad := "r->report->malformed = 1; break;"
 	switch {
+	case f.Type.Pointer && f.Array == ir.ArrayNone:
+		// Validate the whole framed index before resolving it. Trailing bytes
+		// damage this arm without producing a pointee-kind event.
+		target := ir.TableWireId(ir.PointeeWireName(f))
+		if f.Type.Blob() {
+			target = ir.BlobWireTypeId(f)
+		}
+		g.pf("%suint64_t index; if (!table_reader_leb(&arm,&index) || arm.offset!=arm.size) { %s }\n", ind, bad)
+		g.pf("%stable_node_resolve(arm.nodes,&%s,index,UINT64_C(0x%016x),r->report);\n", ind, dst, target)
 	case v.Body():
 		g.pf("%s%s( &arm, &%s );\n", ind, g.api(v.Type, "load_body"), dst)
 	case f.Type.Kind == ir.TString && !f.Type.Blob():

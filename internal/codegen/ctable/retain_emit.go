@@ -9,7 +9,18 @@ import (
 // calls gain the retention context; primitive reads and writes stay unchanged.
 // This pass operates on compiler-generated C identifiers, skipping comments
 // and literals, and balances arguments before adding the context parameter.
-func retainedCode(source string, names map[string]string) string {
+func retainedCode(source string, names map[string]string, required ...string) string {
+	hits := make(map[string]bool)
+	result := retainedCodeWalk(source, names, hits)
+	for _, name := range required {
+		if !hits[name] {
+			panic("missing generated retention anchor: " + name)
+		}
+	}
+	return result
+}
+
+func retainedCodeWalk(source string, names map[string]string, hits map[string]bool) string {
 	var out strings.Builder
 	for i := 0; i < len(source); {
 		if end := retainedLiteralEnd(source, i); end > i {
@@ -55,10 +66,11 @@ func retainedCode(source string, names map[string]string) string {
 			panic("unbalanced generated retention call: " + word)
 		}
 		args := source[open+1 : close-1]
+		hits[word] = true
 		decl := strings.HasPrefix(strings.TrimSpace(args), "TableWriter") || strings.HasPrefix(strings.TrimSpace(args), "TableReader") || strings.HasPrefix(strings.TrimSpace(args), "TableMessageReader")
 		out.WriteString(replacement)
 		out.WriteString(source[j : open+1])
-		out.WriteString(retainedCode(args, names))
+		out.WriteString(retainedCodeWalk(args, names, hits))
 		if decl {
 			out.WriteString(", TableRetainWalk retention")
 		} else {
@@ -116,6 +128,12 @@ func (g *tableGen) emitRetainBodies(members []*ir.Struct, unions []*ir.Union) {
 		return
 	}
 	names := map[string]string{"table_writer_id": "table_retain_writer_id", "table_writer_probe": "table_retain_probe", "table_writer_rewind": "table_retain_rewind"}
+	var required []string
+	for _, st := range members {
+		for _, verb := range []string{"save_body", "load_body", "load_message_body"} {
+			required = append(required, g.api(st.Name, verb))
+		}
+	}
 	for name := range ir.TableClosure(g.unit) {
 		for _, verb := range []string{"save_body", "load_body", "load_message_body"} {
 			fn := g.api(name, verb)
@@ -163,7 +181,7 @@ func (g *tableGen) emitRetainBodies(members []*ir.Struct, unions []*ir.Union) {
 	code := g.body.String()
 	g.body.Reset()
 	g.body.WriteString(previous)
-	g.body.WriteString(retainedCode(code, names))
+	g.body.WriteString(retainedCode(code, names, required...))
 }
 func (g *tableGen) retainUnionNames(names map[string]string, un *ir.Union) {
 	for _, verb := range []string{"save", "load", "message_load"} {

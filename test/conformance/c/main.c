@@ -149,6 +149,9 @@ static int spill( const char * dir, const char * name, const void * data, size_t
 typedef const ConformanceCodec * ( *UnitFn )( int * count );
 
 static const UnitFn units[] = {
+    conformance_codecs_mapdemo,
+    conformance_codecs_listdemo,
+    conformance_codecs_armdemo,
     conformance_codecs_tblw1,
     conformance_codecs_tblw2,
     conformance_codecs_messagedemo,
@@ -603,7 +606,7 @@ static int surface_message(const char * out)
   uint8_t * announcement,*message,*answer=NULL;size_t an,n;int64_t size=0;ConformanceReport report={0};int ok;
   if(strcmp(f->field[0],"message")!=0)continue;
   for(j=0;j<num_lines;j++)if(!strcmp(lines[j].field[0],"connection")&&!strcmp(lines[j].field[1],f->field[2])){connection=lines+j;break;}
-  if(!connection)return 1;codec=find_codec(connection->field[2],f->field[3]);if(!codec)return 1;
+  if(!connection){return 1;}codec=find_codec(connection->field[2],f->field[3]);if(!codec)return 1;
   announcement=slurp(connection->field[4],&an);message=slurp(f->field[5],&n);
   if(!announcement||!message){free(announcement);free(message);return 1;}
   ok=codec->message(announcement,(int64_t)an,message,(int64_t)n,&answer,&size,&report);

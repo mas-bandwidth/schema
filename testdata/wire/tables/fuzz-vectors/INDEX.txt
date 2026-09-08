@@ -166,3 +166,6 @@ message_bytes_truncated backenddemo LoginRequest testdata/wire/tables/fuzz-vecto
 
 # The key scan reads through an incompatible occurrence; the final key kind wins.
 map_key_repeat_kind mapdemo Slots testdata/wire/tables/fuzz-vectors/map_key_repeat_kind.bin
+
+# A damaged framed pointer arm cannot produce a pointee-kind mismatch.
+pointer_arm_trailing streamdemo Feed testdata/wire/tables/fuzz-vectors/pointer_arm_trailing.bin
