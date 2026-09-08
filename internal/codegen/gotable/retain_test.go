@@ -296,3 +296,51 @@ func TestMapKeys(t *testing.T){
 }
 `, tablewire.Announce(sender.Unit), cases.String()))
 }
+
+func TestRetainMessageMapRepeatedKeyKeepsWidening(t *testing.T) {
+	const schema = `package probe
+ table Root { names map[uint32]int32
+ narrow map[uint8]int32 }
+ `
+	m := tabletext.NewModel(unitFrom(t, schema))
+	source := m.New(m.Lookup("Root"))
+	var report tabletext.Report
+	if !m.Read(source, []byte(`{"names":{"2":7},"narrow":{"1":0}}`), &report) || !report.Silent() {
+		t.Fatal(report)
+	}
+	entry := source.Fields[0].Entries[0].Tab
+	key := source.Fields[1].Entries[0].Tab.Fields[0]
+	entry.Fields = append([]tabletext.Field{key}, entry.Fields...)
+	source.Fields[1].Entries = nil
+	source.Fields[1].Count = 0
+	batch, err := tablewire.EncodeMessages(m, []*tabletext.Instance{source})
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := m.New(m.Lookup("Root"))
+	if !m.Read(expected, []byte(`{"names":{"2":7}}`), &report) || !report.Silent() {
+		t.Fatal(report)
+	}
+	want, err := tablewire.Encode(m, expected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runGenerated(t, schema, fmt.Sprintf(`package probe
+import("bytes";"testing";"unsafe")
+func TestRepeatedKey(t *testing.T){
+ message:=%#v;announcement:=%#v;want:=%#v
+ vocabulary:=TableVocabulary{};vocabulary.Init(make([]TableMessageEntry,128));var report TableReport
+ if !AnnounceRead(&vocabulary,announcement,&report){t.Fatal(report)}
+ size:=RootLoadMessagesMeasure(&vocabulary,message);if size<0{t.Fatal("measure")}
+ raw:=make([]byte,size+63);off:=(-uintptr(unsafe.Pointer(&raw[0])))&63;region:=raw[off:off+uintptr(size)]
+ for _,retaining:=range []bool{false,true}{
+  report=TableReport{};roots:=make([]*Root,1);stores:=[]TableRetain{{Bytes:make([]byte,8192),Ids:make([]TableRetainId,128)}}
+  var n int64;var ok bool
+  if retaining{n,ok=RootLoadRetainMessages(roots,region,&vocabulary,message,stores,&report)}else{n,ok=RootLoadMessages(roots,region,&vocabulary,message,&report)}
+  if n!=1||!ok||report.Malformed||report.Widened!=1{t.Fatalf("load: %%d %%v %%+v",n,ok,report)}
+  out:=make([]byte,8192);if retaining{n=RootSaveRetain(roots[0],&stores[0],out,&report)}else{n=RootSave(roots[0],out)}
+  if n!=int64(len(want))||!bytes.Equal(out[:n],want){t.Fatalf("rewrite: %%d %%+v",n,report)}
+ }
+}
+`, batch, tablewire.Announce(m.Unit), want))
+}
