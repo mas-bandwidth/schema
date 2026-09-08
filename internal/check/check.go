@@ -3468,7 +3468,7 @@ func (c *checker) checkClaimedNames() {
 	// unit rather than to a declaration, so they are claimed once at unit
 	// scope, as ProtocolId is (SPEC §6.1), and a unit that grows its first
 	// table must not find a name that was free yesterday taken today.
-	for _, gen := range []string{"UnitView", "UnitViewInfo", "ViewType", "ViewVocabulary", "ViewVariant", "ViewConstant"} {
+	for _, gen := range []string{"UnitView", "unit_view", "UnitViewInfo", "ViewType", "ViewVocabulary", "ViewVariant", "ViewConstant"} {
 		add(gen, "the generated unit registry (docs/SPEC-TABLES.md §8.3)", unitPos)
 	}
 	// names the generated Rust references unqualified: the serialize imports
@@ -3741,6 +3741,9 @@ func (c *checker) checkClaimedNames() {
 					accessor := name + ir.GoExportName(f.Name)
 					add(accessor, why, d.DeclPos())
 					add(accessor+"Span", why, d.DeclPos())
+					add(accessor+"Rows", why, d.DeclPos())
+					add(accessor+"RowsConst", why, d.DeclPos())
+					add(accessor+"SpanConst", why, d.DeclPos())
 				}
 				// AND A MAP claims its whole lookup surface on the table
 				// that declares it: <Table><Field> followed by Entry and
@@ -3757,10 +3760,11 @@ func (c *checker) checkClaimedNames() {
 					for _, verb := range ir.MapFieldVerbs {
 						add(base+verb, whyMap, d.DeclPos())
 					}
+					add(base+"FindMut", whyMap, d.DeclPos())
 				}
-				// AND AN UNBOUNDED ARRAY claims three names on the table
-				// that declares it: <Table><Field> followed by Add, Each and
-				// Erase (docs/SPEC-TABLES.md §2.9, §11). Three where a map
+				// AND AN UNBOUNDED ARRAY claims four names on the table
+				// that declares it: <Table><Field> followed by Add, Each,
+				// Erase and At (docs/SPEC-TABLES.md §2.9, §11). Four where a map
 				// claims eight, and the difference is the key on both sides:
 				// an append needs none, so there is no entry to name, no
 				// insert, no find and no index to accelerate.
@@ -3773,6 +3777,7 @@ func (c *checker) checkClaimedNames() {
 					for _, verb := range ir.ListFieldVerbs {
 						add(base+verb, whyList, d.DeclPos())
 					}
+					add(base+"At", whyList, d.DeclPos())
 				}
 			}
 		}
@@ -3861,7 +3866,12 @@ var tableGeneratedVerbs = []string{
 	// members, so each is a free function under its owner's name, and the
 	// comment above this list is the rule they are added under: a port that
 	// spells the surface otherwise adds its spellings here.
-	"BuilderInit", "BuilderShutdown", "BuilderLock", "BuilderRoot",
+	"BuilderInit", "BuilderInitWithAllocator", "BuilderShutdown", "BuilderLock", "BuilderRoot",
+	"OpenEx", "BlockOpenEx", "BlockOpenConst", "BlockOpenConstEx", "BlockOpenCheck", "BlockConst", "BlockBytesConst",
+	"CookWithAllocator", "CookMeasureWithAllocator", "CookExtent",
+	"MeasureRetainWithAllocator", "SaveRetainWithAllocator",
+	"LoadMeasureMessages", "LoadMeasureMessagesEx", "MeasureMessagesWithAllocator", "SaveMessagesWithAllocator",
+	"LoadMeasureEx", "MeasureWithAllocator", "SaveWithAllocator", "ToJsonWithAllocator", "ToJsonMeasureWithAllocator",
 	"BlockStorageCreate", "BlockStorageDestroy", "BlockType",
 	// the C# BLITTABLE records take claimed suffixes in the package namespace
 	// rather than a nested namespace of their own: a generated namespace named
@@ -4076,7 +4086,7 @@ func (c *checker) cReservedMacros() map[string]bool {
 		"SCHEMA_UNUSED", "SCHEMA_C_READ_INLINE", "SCHEMA_C_WRITE_INLINE",
 		"SCHEMA_C_SPINE_INLINE_DEFINED", "SCHEMA_UTF8_VALID_DEFINED", "SCHEMA_FLAG_APPEND_DEFINED",
 		// the table backend's (internal/codegen/ctable)
-		"SCHEMA_TABLE_ALIGNOF", "SCHEMA_TABLE_ATOMIC", "SCHEMA_TABLE_STATIC_ASSERT",
+		"SCHEMA_C_ALIGN16", "SCHEMA_TABLE_ALIGNOF", "SCHEMA_TABLE_ATOMIC", "SCHEMA_TABLE_STATIC_ASSERT",
 		"SCHEMA_TABLE_KEYED_AT",
 	} {
 		out[fixed] = true

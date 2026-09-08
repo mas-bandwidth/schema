@@ -7,7 +7,7 @@ package tablewire
 
 import "math/big"
 
-// bitWriter accumulates the batch's bits. Nested bodies reach the wire in place:
+// bitWriter accumulates the batch's bits. Nested bodies are written in place:
 // alignment is relative to the batch's byte zero (docs/SPEC-TABLES.md §3.3).
 type bitWriter struct {
 	b []byte

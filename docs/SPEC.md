@@ -731,7 +731,7 @@ FloatExpr   = float expression over float literals, int literals and const names
   On the TABLE wire a field at its declared default elides and an
   absent field reads as it, whatever the kind (SPEC-TABLES.md §4), so the
   string, bytes and flags defaults are part of that wire's contract exactly
-  as a scalar's is. C++ carries all three on both wires. The other eight
+  as a scalar's is. C and C++ carry all three on both wires. The other seven
   built-in backends carry them for packet-only fields and refuse a default
   reachable from any table by name.
   **On the packet wire, defaults initialize storage without eliding fields.**

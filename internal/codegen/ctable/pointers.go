@@ -127,18 +127,33 @@ func (g *tableGen) emitCodecDeclarations(members []*ir.Struct) {
 	}
 	g.pf("/* ---- codecs: measure/save/load per closure member ---- */\n\n")
 	for _, st := range members {
-		if g.isVar(st.Name) {
+		if g.isVar(st.Name) && !g.fileWire() {
 			g.pf("static SCHEMA_UNUSED int64_t %s( const TableCtx * ctx, const %s * value, int32_t depth );\n", g.api(st.Name, "measure_body"), st.Name)
 			g.pf("static SCHEMA_UNUSED int %s( const TableCtx * ctx, TableWriter * w, const %s * value, int32_t depth );\n", g.api(st.Name, "save_body"), st.Name)
 			g.pf("static SCHEMA_UNUSED int %s( TableReader * r, TableSink * sink, %s * value, int32_t depth );\n", g.api(st.Name, "load_body"), st.Name)
 			continue
 		}
-		g.pf("static SCHEMA_UNUSED int64_t %s( const %s * value );\n", g.api(st.Name, "measure"), st.Name)
-		g.pf("static SCHEMA_UNUSED %s int %s( TableWriter * w, const %s * value );\n", tableInlineMacro(g.unit.Package), g.api(st.Name, "save_body"), st.Name)
-		g.pf("static SCHEMA_UNUSED %s int %s( TableReader * r, %s * value );\n", tableInlineMacro(g.unit.Package), g.api(st.Name, "load_body"), st.Name)
+		if !g.isVar(st.Name) && !st.IsMapEntry() {
+			g.pf("static SCHEMA_UNUSED int64_t %s( const %s * value );\n", g.api(st.Name, "measure"), st.Name)
+		}
+		inline := tableInlineMacro(g.unit.Package)
+		// Composite file bodies have several measurement and default-check
+		// calls to each child. Forcing all of those inline expands the C
+		// compiler's work exponentially with schema depth; leave that choice
+		// to its optimizer while keeping primitive leaf codecs forced inline.
+		if g.fileWire() {
+			for _, f := range st.Fields {
+				switch f.Type.Ref.(type) {
+				case *ir.Struct, *ir.Union:
+					inline = ""
+				}
+			}
+		}
+		g.pf("static SCHEMA_UNUSED %s int %s( TableWriter * w, const %s * value );\n", inline, g.api(st.Name, "save_body"), st.Name)
+		g.pf("static SCHEMA_UNUSED %s int %s( TableReader * r, %s * value );\n", inline, g.api(st.Name, "load_body"), st.Name)
 	}
 	g.pf("\n")
-	if vars := g.varMembers(members); len(vars) > 0 {
+	if vars := g.varMembers(members); len(vars) > 0 && !g.fileWire() {
 		g.pf("/* ---- pointer-graph walkers: pack (Lock), size (Load) ---- */\n\n")
 		for _, st := range vars {
 			g.pf("static SCHEMA_UNUSED int64_t %s( const TableCtx * ctx, const %s * value, int32_t depth );\n", g.api(st.Name, "pack_measure"), st.Name)
@@ -190,6 +205,16 @@ func (g *tableGen) emitPointerTargetSurface(st *ir.Struct) {
 
 func (g *tableGen) emitVariableSurface(members []*ir.Struct) {
 	if !g.anyVariable {
+		return
+	}
+	if g.fileWire() {
+		g.emitGraphBodies(members)
+		for _, st := range members {
+			if g.isVar(st.Name) {
+				g.emitBuilderAndPublicSurface(st)
+				g.emitMessageGraph(st)
+			}
+		}
 		return
 	}
 	for _, st := range g.varMembers(members) {
@@ -427,6 +452,9 @@ func (g *tableGen) emitLoadMeasureBody(st *ir.Struct) {
 // ---- the builder and the public surface ----
 
 func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
+	if st.IsMapEntry() {
+		return
+	}
 	n := st.Name
 	g.pf("/* ---- %s: the variable-length life (docs/SPEC-TABLES.md §2, §6, §9) ----\n", n)
 	g.pf("\n")
@@ -453,9 +481,9 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("/* Allocate a node in THIS thread's front: no lock, no atomic per node. One\n")
 	g.pf("   worker per thread; allocate on your own, and synchronize your own writes\n")
 	g.pf("   to nodes another worker allocated (§6.4). */\n")
-	g.pf("static SCHEMA_UNUSED int %s( %sBuilder * builder )\n{\n", g.api(n, "builder_init"), n)
+	g.pf("static SCHEMA_UNUSED int %s( %sBuilder * builder, TableAllocator allocator )\n{\n", g.api(n, "builder_init_with_allocator"), n)
 	g.pf("    uint32_t at;\n")
-	g.pf("    table_arena_init( &builder->arena );\n")
+	g.pf("    table_arena_init_with_allocator( &builder->arena, allocator );\n")
 	g.pf("    builder->main = table_worker_make( &builder->arena );\n")
 	g.pf("    builder->root_ref.value = 0;\n")
 	g.pf("    builder->region = NULL;\n")
@@ -469,9 +497,11 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    %s( (%s *) (void *) table_arena_at( &builder->arena, at ) );\n", g.api(n, "reset"), n)
 	g.pf("    return 1;\n}\n\n")
 
+	g.pf("static SCHEMA_UNUSED int %s(%sBuilder * builder) { return %s(builder,table_default_allocator()); }\n\n", g.api(n, "builder_init"), n, g.api(n, "builder_init_with_allocator"))
+
 	g.pf("static SCHEMA_UNUSED void %s( %sBuilder * builder )\n{\n", g.api(n, "builder_shutdown"), n)
 	g.pf("    table_arena_shutdown( &builder->arena );\n")
-	g.pf("    free( builder->region );\n")
+	g.pf("    table_release(builder->arena.allocator,builder->region);\n")
 	g.pf("    builder->region = NULL;\n    builder->region_bytes = 0;\n}\n\n")
 
 	g.pf("/* The mutable root, or NULL once the builder is locked. */\n")
@@ -479,6 +509,11 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    if ( builder->arena.locked || builder->root_ref.value == 0 ) { return NULL; }\n")
 	g.pf("    return (%s *) (void *) table_arena_at( &builder->arena, (uint32_t) builder->root_ref.value );\n}\n\n", n)
 
+	if g.fileWire() {
+		g.emitGraphLock(st)
+		g.emitGraphPublic(st)
+		return
+	}
 	g.pf("/* Lock is ONE WAY and it is the compaction: the segmented arena becomes one\n")
 	g.pf("   exact-packed region with zero slack, references rewritten self-relative,\n")
 	g.pf("   and the mutable life released. Single-threaded: call it after the workers\n")

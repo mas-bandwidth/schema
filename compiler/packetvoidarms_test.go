@@ -96,12 +96,12 @@ func TestScalarArmInTypeBodyIsRefusedByCheck(t *testing.T) {
 	}
 }
 
-func TestPacketVoidArmSupportPreservesCTableRefusal(t *testing.T) {
+func TestPacketAndTableVoidArmsInC(t *testing.T) {
 	u := unitFromSource(t, strings.Replace(voidArmInTypeBody, "type FireCommand", "table FireCommand", 1))
 	c := New()
 	_, err := c.Generate(u, "c", Options{})
-	if err == nil || !strings.Contains(err.Error(), "payload-free arm in a table closure") || !strings.Contains(err.Error(), "WeaponFire") {
-		t.Fatalf("C must retain its named table-closure refusal, got %v", err)
+	if err != nil {
+		t.Fatalf("C refused a supported table payload-free arm: %v", err)
 	}
 	if _, err := c.Generate(u, "cpp", Options{}); err != nil {
 		t.Fatalf("C++ must retain its existing table payload-free support: %v", err)

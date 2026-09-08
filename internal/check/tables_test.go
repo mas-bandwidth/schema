@@ -409,6 +409,8 @@ func TestTableRefusals(t *testing.T) {
 		// refusals the view brought and nothing held
 		{name: "a declaration colliding with a unit-scope registry name", want: "generated unit registry",
 			src: "package t\ntype ViewVariant { x int32 }\n"},
+		{name: "the C unit registry function in a table-free unit", want: "generated unit registry",
+			src: "package t\ntype unit_view { x int32 }\n"},
 		{name: "a declaration colliding with an out-of-closure type's view descriptor", want: "generated view descriptor",
 			src: "package t\ntable Tab { x int32 }\ntype Orphan { y int32 }\ntype OrphanTableFields { z int32 }\n"},
 		{name: "a schema file named for the unit's view file", want: "the same name as the unit's view file",

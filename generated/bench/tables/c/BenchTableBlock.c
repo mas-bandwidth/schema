@@ -13,46 +13,33 @@
 
 /* ---- the block form of table TableEntity: the open path and the descriptors ---- */
 
-int schema_benchtable_table_entity_block_open_( TableEntityBlock * block, void * base, int64_t bytes )
+static int schema_benchtable_table_entity_block_open_check_(const void * base,int64_t bytes,int64_t * used_out,TableRefuseReason * reason)
 {
-    const uint8_t * raw;
-    uint64_t magic;
-    TableEntityBlockProjection * projection;
-    int64_t used, padding;
-    block->base = NULL;
-    block->projection = NULL;
-    block->bytes = 0;
-    if ( base == NULL || bytes < 88 ) { return 0; }
-    if ( ( (uintptr_t) base % 64 ) != 0 ) { return 0; } /* the base's alignment */
-    raw = (const uint8_t *) base;
-    magic = table_block_read64( raw );
-    if ( magic != table_block_magic )
-    {
-        /* a byte-swapped magic is a FOREIGN BYTE ORDER, and anything else is
-           not a block at all. Both refuse; the distinction is here so a
-           reader of this code knows the check covers the order too. */
-        (void) table_block_byteswap64( magic );
-        return 0;
-    }
-    if ( table_block_read64( raw + 8 ) != SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE ) { return 0; }
-    if ( table_block_read64( raw + 16 ) != table_block_byte_order )
-    {
-        return 0; /* a block of the other byte order: the fix-up path is a named obligation */
-    }
-    projection = (TableEntityBlockProjection *) base;
-    used = 88;
-    /* the used extent, rounded to 64 WITHOUT the rounding itself carrying past
-       the top of the type: used is already inside bytes, and the padding is
-       paid out of the slack that is left rather than added and compared after. */
-    padding = ( 64 - ( used % 64 ) ) % 64;
-    if ( padding > bytes - used ) { return 0; }
-    used += padding;
-    block->base = (uint8_t *) base;
-    block->projection = projection;
-    block->bytes = used;
-    return 1;
+    const uint8_t * raw=(const uint8_t *)base; uint64_t magic; int64_t used=88, padding;
+    if(base==NULL) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_UNALIGNED_BASE)!=NULL; }
+    if(bytes<88) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_TRUNCATED)!=NULL; }
+    magic=table_block_read64(raw);
+    if(magic!=table_block_magic) { return table_cook_refuse(reason,magic==table_block_byteswap64(table_block_magic) ? SCHEMA_TABLE_REFUSE_FOREIGN_ORDER : SCHEMA_TABLE_REFUSE_NOT_A_COOK)!=NULL; }
+    if(table_block_read64(raw+16)!=table_block_byte_order) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_NOT_A_COOK)!=NULL; }
+    if(table_block_read64(raw+8)!=SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_WRONG_BUILD_VERSION)!=NULL; }
+    padding=(64-used%64)%64; if(padding>bytes-used) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_TRUNCATED)!=NULL; }
+    used+=padding; if((uintptr_t)base%64!=0) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_UNALIGNED_BASE)!=NULL; }
+    *used_out=used; return 1;
 }
-
+int schema_benchtable_table_entity_block_open_ex_(TableEntityBlock * block,void * base,int64_t bytes,TableRefuseReason * reason)
+{
+    int64_t used=0; block->base=NULL; block->projection=NULL; block->bytes=0;
+    if(!schema_benchtable_table_entity_block_open_check_(base,bytes,&used,reason)) { return 0; }
+    block->base=(uint8_t *)base; block->projection=(TableEntityBlockProjection *)base; block->bytes=used; return 1;
+}
+int schema_benchtable_table_entity_block_open_const_ex_(TableEntityBlockConst * block,const void * base,int64_t bytes,TableRefuseReason * reason)
+{
+    int64_t used=0; block->base=NULL; block->projection=NULL; block->bytes=0;
+    if(!schema_benchtable_table_entity_block_open_check_(base,bytes,&used,reason)) { return 0; }
+    block->base=(const uint8_t *)base; block->projection=(const TableEntityBlockProjection *)base; block->bytes=used; return 1;
+}
+int schema_benchtable_table_entity_block_open_(TableEntityBlock * block,void * base,int64_t bytes)
+{ return schema_benchtable_table_entity_block_open_ex_(block,base,bytes,NULL); }
 /* Every record's field table, concatenated: the projection's, then each
    row's. One name for the whole graph (docs/SPEC-TABLES.md §11). */
 static const TableBlockFieldInfo schema_benchtable_table_entity_block_fields_[] = {
@@ -77,46 +64,33 @@ const TableBlockInfo schema_benchtable_table_entity_block_info_ = { "TableEntity
 
 /* ---- the block form of table TableStat: the open path and the descriptors ---- */
 
-int schema_benchtable_table_stat_block_open_( TableStatBlock * block, void * base, int64_t bytes )
+static int schema_benchtable_table_stat_block_open_check_(const void * base,int64_t bytes,int64_t * used_out,TableRefuseReason * reason)
 {
-    const uint8_t * raw;
-    uint64_t magic;
-    TableStatBlockProjection * projection;
-    int64_t used, padding;
-    block->base = NULL;
-    block->projection = NULL;
-    block->bytes = 0;
-    if ( base == NULL || bytes < 32 ) { return 0; }
-    if ( ( (uintptr_t) base % 64 ) != 0 ) { return 0; } /* the base's alignment */
-    raw = (const uint8_t *) base;
-    magic = table_block_read64( raw );
-    if ( magic != table_block_magic )
-    {
-        /* a byte-swapped magic is a FOREIGN BYTE ORDER, and anything else is
-           not a block at all. Both refuse; the distinction is here so a
-           reader of this code knows the check covers the order too. */
-        (void) table_block_byteswap64( magic );
-        return 0;
-    }
-    if ( table_block_read64( raw + 8 ) != SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE ) { return 0; }
-    if ( table_block_read64( raw + 16 ) != table_block_byte_order )
-    {
-        return 0; /* a block of the other byte order: the fix-up path is a named obligation */
-    }
-    projection = (TableStatBlockProjection *) base;
-    used = 32;
-    /* the used extent, rounded to 64 WITHOUT the rounding itself carrying past
-       the top of the type: used is already inside bytes, and the padding is
-       paid out of the slack that is left rather than added and compared after. */
-    padding = ( 64 - ( used % 64 ) ) % 64;
-    if ( padding > bytes - used ) { return 0; }
-    used += padding;
-    block->base = (uint8_t *) base;
-    block->projection = projection;
-    block->bytes = used;
-    return 1;
+    const uint8_t * raw=(const uint8_t *)base; uint64_t magic; int64_t used=32, padding;
+    if(base==NULL) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_UNALIGNED_BASE)!=NULL; }
+    if(bytes<32) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_TRUNCATED)!=NULL; }
+    magic=table_block_read64(raw);
+    if(magic!=table_block_magic) { return table_cook_refuse(reason,magic==table_block_byteswap64(table_block_magic) ? SCHEMA_TABLE_REFUSE_FOREIGN_ORDER : SCHEMA_TABLE_REFUSE_NOT_A_COOK)!=NULL; }
+    if(table_block_read64(raw+16)!=table_block_byte_order) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_NOT_A_COOK)!=NULL; }
+    if(table_block_read64(raw+8)!=SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_WRONG_BUILD_VERSION)!=NULL; }
+    padding=(64-used%64)%64; if(padding>bytes-used) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_TRUNCATED)!=NULL; }
+    used+=padding; if((uintptr_t)base%64!=0) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_UNALIGNED_BASE)!=NULL; }
+    *used_out=used; return 1;
 }
-
+int schema_benchtable_table_stat_block_open_ex_(TableStatBlock * block,void * base,int64_t bytes,TableRefuseReason * reason)
+{
+    int64_t used=0; block->base=NULL; block->projection=NULL; block->bytes=0;
+    if(!schema_benchtable_table_stat_block_open_check_(base,bytes,&used,reason)) { return 0; }
+    block->base=(uint8_t *)base; block->projection=(TableStatBlockProjection *)base; block->bytes=used; return 1;
+}
+int schema_benchtable_table_stat_block_open_const_ex_(TableStatBlockConst * block,const void * base,int64_t bytes,TableRefuseReason * reason)
+{
+    int64_t used=0; block->base=NULL; block->projection=NULL; block->bytes=0;
+    if(!schema_benchtable_table_stat_block_open_check_(base,bytes,&used,reason)) { return 0; }
+    block->base=(const uint8_t *)base; block->projection=(const TableStatBlockProjection *)base; block->bytes=used; return 1;
+}
+int schema_benchtable_table_stat_block_open_(TableStatBlock * block,void * base,int64_t bytes)
+{ return schema_benchtable_table_stat_block_open_ex_(block,base,bytes,NULL); }
 /* Every record's field table, concatenated: the projection's, then each
    row's. One name for the whole graph (docs/SPEC-TABLES.md §11). */
 static const TableBlockFieldInfo schema_benchtable_table_stat_block_fields_[] = {

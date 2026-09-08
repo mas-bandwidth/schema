@@ -16,7 +16,7 @@ type cTarget struct{}
 func (cTarget) Names() []string { return []string{"c"} }
 
 func (cTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
-	// Packet wide text is carried; table kind 33 remains a named refusal.
+	// C carries packet and table wide text.
 	if err := refuseWideText(u, "c"); err != nil {
 		return nil, err
 	}
@@ -54,6 +54,9 @@ func (cTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 
 func init() {
 	registerWideTextCarrier("c")
-	registerBuiltin(cTarget{}, true, false, false, false)
+	registerBuiltin(cTarget{}, true, true, true, true)
+	registerOptionalArrayCarrier("c")
+	registerListCarrier("c")
+	registerMapCarrier("c")
 	registerPacketValueDefaultCarrier("c")
 }

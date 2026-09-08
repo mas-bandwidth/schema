@@ -334,7 +334,7 @@ func TestGoldenPacketWideSource(t *testing.T) {
 func TestWideTextIsRefusedByEveryOtherTarget(t *testing.T) {
 	u := loadCorpusDir(t, corpusWideDir)
 	for _, target := range compiler.New().Targets() {
-		if target == "cpp" || target == "cs" || target == "go" {
+		if target == "cpp" || target == "c" || target == "cs" || target == "go" {
 			continue
 		}
 		if _, err := schema.Generate(u, target, nil); err == nil {

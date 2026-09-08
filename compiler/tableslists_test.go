@@ -1,10 +1,11 @@
 package compiler
 
 // The UNBOUNDED ARRAY's cross-target refusals (docs/SPEC-TABLES.md §2.9, §11,
-// §15): the C++ reference carries the codec, every port refuses a unit that
-// declares one BY NAME, and none of them refuses a list-free unit for it.
+// §15): C and C++ carry the codec. Other targets refuse a unit that declares
+// one by name, and none refuses a list-free unit for it.
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -25,18 +26,16 @@ table Save
 }
 `
 
-// TestListsAreRefusedByEveryPort: the refusal is a REFUSAL and not a silent
-// emission of an array whose elements no port laid out, and the reference
-// does not refuse.
-func TestListsAreRefusedByEveryPort(t *testing.T) {
+// TestListsAreRefusedByNonCarriers prevents silent emission without a codec.
+func TestListsAreRefusedByNonCarriers(t *testing.T) {
 	u := unitFromSource(t, listSrc)
 	c := New()
 	for _, target := range c.Targets() {
 		t.Run(target, func(t *testing.T) {
 			_, err := c.Generate(u, target, Options{})
-			if target == "cpp" || target == "cs" || target == "go" {
+			if slices.Contains(listTargets, target) {
 				if err != nil {
-					t.Fatalf("--lang cpp refused an unbounded array: the reference carries the codec (schema#531): %v", err)
+					t.Fatalf("--lang %s refused an unbounded array: %v", target, err)
 				}
 				return
 			}
@@ -52,11 +51,10 @@ func TestListsAreRefusedByEveryPort(t *testing.T) {
 	}
 }
 
-// TestListCarriers pins the targets that implement the list codec
-// (docs/SPEC-TABLES.md §2.9, §15).
+// TestListCarriers keeps the advertised targets in step with their codecs.
 func TestListCarriers(t *testing.T) {
-	if len(listTargets) != 3 || listTargets[0] != "cpp" || listTargets[1] != "cs" || listTargets[2] != "go" {
-		t.Fatalf("listTargets = %v, want exactly [cpp cs go]: the variable class is the reference's (docs/SPEC-TABLES.md §2.9, §15)", listTargets)
+	if !slices.Equal(listTargets, []string{"c", "cpp", "cs", "go"}) {
+		t.Fatalf("listTargets = %v, want [c cpp cs go]", listTargets)
 	}
 }
 
@@ -93,11 +91,11 @@ func TestListFieldsNamesWhatAnAuthorWrote(t *testing.T) {
 // TestListRefusalNamesTheCarrier: what a port's refusal says: the carrier,
 // the flag that generates, and the fields an author wrote.
 func TestListRefusalNamesTheCarrier(t *testing.T) {
-	err := refuseLists(unitFromSource(t, listSrc), "cs")
+	err := refuseLists(unitFromSource(t, listSrc), "rust")
 	if err == nil {
 		t.Fatalf("refuseLists accepted a list-bearing unit for a non-carrier")
 	}
-	for _, want := range []string{"cpp, cs and go", "Save.placements", "--lang cpp"} {
+	for _, want := range []string{"a []T is c, cpp, cs and go only today", "Save.placements", "--lang cpp"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the carrier-form refusal does not name %q: %v", want, err)
 		}

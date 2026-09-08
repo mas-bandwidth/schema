@@ -21,7 +21,7 @@
 
 /* ---- the roots a cook may be opened at ---- */
 
-typedef const void * ( *CookOpenFn )( const void * bytes, uint64_t length );
+typedef const void * ( *CookOpenFn )( const void * bytes, uint64_t length,TableRefuseReason * reason );
 typedef const TableTypeInfo * ( *CookTypeFn )( void );
 
 typedef struct CookRoot
@@ -31,16 +31,16 @@ typedef struct CookRoot
     CookTypeFn type;
 } CookRoot;
 
-static const void * open_scene( const void * b, uint64_t n ) { return scene_open( b, n ); }
-static const void * open_depot( const void * b, uint64_t n ) { return depot_open( b, n ); }
-static const void * open_album( const void * b, uint64_t n ) { return album_open( b, n ); }
-static const void * open_tree( const void * b, uint64_t n ) { return tree_node_open( b, n ); }
-static const void * open_list( const void * b, uint64_t n ) { return list_node_open( b, n ); }
-static const void * open_marker( const void * b, uint64_t n ) { return marker_open( b, n ); }
+static const void * open_scene( const void * b, uint64_t n,TableRefuseReason * reason ) { return scene_open_ex( b, n,reason ); }
+static const void * open_depot( const void * b, uint64_t n,TableRefuseReason * reason ) { return depot_open_ex( b, n,reason ); }
+static const void * open_album( const void * b, uint64_t n,TableRefuseReason * reason ) { return album_open_ex( b, n,reason ); }
+static const void * open_tree( const void * b, uint64_t n,TableRefuseReason * reason ) { return tree_node_open_ex( b, n,reason ); }
+static const void * open_list( const void * b, uint64_t n,TableRefuseReason * reason ) { return list_node_open_ex( b, n,reason ); }
+static const void * open_marker( const void * b, uint64_t n,TableRefuseReason * reason ) { return marker_open_ex( b, n,reason ); }
 /* the FIXED class: a cook of one is ONE REGION OF ONE NODE (§7), and it is the
    same header match. */
-static const void * open_settings( const void * b, uint64_t n ) { return settings_open( b, n ); }
-static const void * open_stamp( const void * b, uint64_t n ) { return stamp_open( b, n ); }
+static const void * open_settings( const void * b, uint64_t n,TableRefuseReason * reason ) { return settings_open_ex( b, n,reason ); }
+static const void * open_stamp( const void * b, uint64_t n,TableRefuseReason * reason ) { return stamp_open_ex( b, n,reason ); }
 
 static const CookRoot roots[] = {
     { "Scene", open_scene, scene_table_type },
@@ -365,7 +365,7 @@ int conformance_cook_dump( const char * root_name, const uint8_t * data, size_t 
     int ok;
     if ( root == NULL ) { fprintf( stderr, "driver: no cook root named %s\n", root_name ); return 0; }
     if ( !conformance_buffer_create( &buffer, data, bytes, -1, 0 ) ) { return 0; }
-    region = (const uint8_t *) root->open( buffer.base, (uint64_t) buffer.bytes );
+    region = (const uint8_t *) root->open( buffer.base, (uint64_t) buffer.bytes,NULL );
     if ( region == NULL )
     {
         fprintf( stderr, "driver: the cook at root %s does not open\n", root_name );
@@ -384,14 +384,22 @@ int conformance_cook_dump( const char * root_name, const uint8_t * data, size_t 
     return ok;
 }
 
-int conformance_cook_open( const char * root_name, const uint8_t * data, size_t bytes, int64_t extent, int pointer )
+int conformance_cook_open_reason( const char * root_name, const uint8_t * data, size_t bytes, int64_t extent, int pointer,int * reason )
 {
     const CookRoot * root = find_root( root_name );
     ConformanceBuffer buffer;
     int opened;
     if ( root == NULL ) { fprintf( stderr, "driver: no cook root named %s\n", root_name ); exit( 1 ); }
     if ( !conformance_buffer_create( &buffer, data, bytes, extent, pointer ) ) { return 0; }
-    opened = root->open( buffer.base, (uint64_t) buffer.bytes ) != NULL;
+    opened = root->open( buffer.base, (uint64_t) buffer.bytes,reason ) != NULL;
     conformance_buffer_destroy( &buffer );
     return opened;
 }
+
+SCHEMA_CONFORMANCE_GRAPH_CODEC(Scene,scene)
+static const ConformanceCodec graph_codecs[] = { SCHEMA_CONFORMANCE_GRAPH_ROW(graphdemo,Scene) };
+const ConformanceCodec * conformance_codecs_graphdemo(int * count)
+{ *count=(int)(sizeof(graph_codecs)/sizeof(graph_codecs[0])); return graph_codecs; }
+
+int conformance_cook_open(const char * root,const uint8_t * data,size_t bytes,int64_t extent,int pointer)
+{ return conformance_cook_open_reason(root,data,bytes,extent,pointer,NULL); }

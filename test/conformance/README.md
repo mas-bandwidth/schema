@@ -121,29 +121,17 @@ they become part of the count as schema#349 and the per-construct follow-ons
 land them, one language at a time, with nothing in this data or this contract
 moving as they do.
 
-**AND ONE ABSENCE IS WIDER THAN A CLASS: the WIRE FORM ITSELF.** The id-table
-wire (docs/SPEC-TABLES.md §3) is the form byte, the reference-and-kind field
-header, the canonical LEB128 numbers and the trailing id table. The C++
-reference and the tool write it. C# now carries form 1 for its supported fixed
-roots: `make tables-cs-wire-fuzz` invokes its pipe driver and compares decoded
-values, re-saved bytes and every report column with the independent engine.
-Its five wire/text surfaces are active; unsupported roots and the message and
-retention forms still answer absent. `conformance-negative-control-cs` removes
-the duplicate-id check in an emitter overlay and requires the fuzzer to fail,
-then shifts the text reader's field lookup and requires read failures while
-wire, report and JSON-write still pass.
+**Wire-form coverage is separate from storage coverage.** C++, C, C# and the
+independent compiler engine carry the id-table file form and bitpacked message
+form. C and C# also carry variable regions, builders, retained unknowns and
+canonical cooks. Their pipe drivers compare values, re-saved bytes, measured
+sizes and reports with the independent engine. `make tables-c-wire-fuzz` and
+`make tables-c-retain` run C natively and under ASan/UBSan; the corresponding
+C# managed, native, builder and retention targets are in make/cs.mk.
 
-The C# fixed roots include `tables/messages`, the M1/M2 arm-evolution pair,
-and the A1/A2 arm-retype pair. These exercise table/general arms, union arrays
-and optional arrays at several depths. This is the Messages corpus carried
-in a form-1 file; form-2 message framing remains absent.
-
-The remaining seven ports still write the previous form. The harness prints
-`N seeds absent (roots the leg has no codec for)`, applying the same
-"absent is not failure" rule one grain up. The port work is schema#511 (go),
-#512 (c), #513 (cs, remaining constructs), #514 (dart), #515 (elixir), #516 (js),
-#517 (java) and #518 (rust), and PORTING.md
-M20 is the register cell for each.
+Unsupported roots are printed as `N seeds absent (roots the leg has no codec
+for)`. Absence is explicit and never counted as a passing fixture.
+PORTING.md M20 records the coverage and gates.
 
 **Absent is not failure, and the distinction is the whole reason the matrix
 exists.** A backend with no text form is missing a FEATURE; a backend whose text

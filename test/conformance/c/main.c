@@ -149,11 +149,31 @@ static int spill( const char * dir, const char * name, const void * data, size_t
 typedef const ConformanceCodec * ( *UnitFn )( int * count );
 
 static const UnitFn units[] = {
+    conformance_codecs_mapdemo,
+    conformance_codecs_listdemo,
+    conformance_codecs_armdemo,
+    conformance_codecs_tblw1,
+    conformance_codecs_tblw2,
+    conformance_codecs_messagedemo,
+    conformance_codecs_tblm1,
+    conformance_codecs_tblm2,
+    conformance_codecs_tbla1,
+    conformance_codecs_tbla2,
+    conformance_codecs_tblk1,
+    conformance_codecs_tblk2,
+    conformance_codecs_tblr1,
+    conformance_codecs_tblr2,
+    conformance_codecs_backenddemo,
+    conformance_codecs_vocabdemo,
+    conformance_codecs_vocab9demo,
     conformance_codecs_tabledemo,
     conformance_codecs_tblv1,
     conformance_codecs_tblv2,
     conformance_codecs_tblp1,
-    conformance_codecs_tblp3
+    conformance_codecs_tblp3,
+    conformance_codecs_widedemo,
+    conformance_codecs_scalars,
+    conformance_codecs_graphdemo, conformance_codecs_blobdemo, conformance_codecs_tblg1, conformance_codecs_tblp2, conformance_codecs_streamdemo, conformance_codecs_tblscalars2
 };
 
 static const ConformanceCodec * find_codec( const char * unit, const char * root )
@@ -240,7 +260,7 @@ static int surface_report( const char * out )
         void * value;
         ConformanceReport report;
         char text[128];
-        int n, ok;
+        int n;
         if ( strcmp( f->field[0], "report" ) != 0 ) { continue; }
         codec = find_codec( f->field[2], f->field[3] );
         if ( codec == NULL ) { if ( !spill_absent( out, f->field[1] ) ) { return 1; } continue; }
@@ -248,11 +268,11 @@ static int surface_report( const char * out )
         if ( wire == NULL ) { fprintf( stderr, "driver: cannot read %s\n", f->field[4] ); return 1; }
         value = codec->storage();
         memset( &report, 0, sizeof( report ) );
-        ok = codec->load( value, wire, (int64_t) bytes, &report );
+        codec->load( value, wire, (int64_t) bytes, &report );
         free( wire );
-        n = snprintf( text, sizeof( text ), "%d,%d,%d,%d,%s\n",
-                      report.unknown, report.kind_mismatch, report.clamped, report.duplicate,
-                      ( report.malformed || !ok ) ? "true" : "false" );
+        n = snprintf( text, sizeof( text ), "%d,%d,%d,%d,%d,%s,%s\n",
+                      report.unknown, report.kind_mismatch, report.widened, report.clamped, report.duplicate,
+                      report.malformed ? "true" : "false", report.refused ? "refused" : "read" );
         if ( !spill( out, f->field[1], text, (size_t) n ) ) { return 1; }
     }
     return 0;
@@ -273,7 +293,7 @@ static int surface_json_read( const char * out )
         if ( strcmp( f->field[0], "instance" ) != 0 || no_text( f ) ) { continue; }
         codec = find_codec( f->field[2], f->field[3] );
         /* the C port carries no text form for a pointered unit (16.7), and says so per case */
-        if ( codec == NULL ) { if ( !spill_absent( out, f->field[1] ) ) { return 1; } continue; }
+        if ( codec == NULL || codec->from_json == NULL ) { if ( !spill_absent( out, f->field[1] ) ) { return 1; } continue; }
         snprintf( path, sizeof( path ), "testdata/conformance/tables/json/%s.json", f->field[1] );
         text = slurp( path, &bytes );
         if ( text == NULL ) { fprintf( stderr, "driver: cannot read %s\n", path ); return 1; }
@@ -304,7 +324,7 @@ static int surface_json_write( const char * out )
         if ( strcmp( f->field[0], "instance" ) != 0 || no_text( f ) ) { continue; }
         codec = find_codec( f->field[2], f->field[3] );
         snprintf( name, sizeof( name ), "%s.json", f->field[1] );
-        if ( codec == NULL ) { if ( !spill_absent( out, name ) ) { return 1; } continue; }
+        if ( codec == NULL || codec->to_json == NULL ) { if ( !spill_absent( out, name ) ) { return 1; } continue; }
         wire = slurp( f->field[4], &bytes );
         if ( wire == NULL ) { fprintf( stderr, "driver: cannot read %s\n", f->field[4] ); return 1; }
         value = codec->storage();
@@ -342,7 +362,7 @@ static int surface_json_hostile( const char * out )
         int n, ok;
         if ( strcmp( f->field[0], "json-hostile" ) != 0 ) { continue; }
         codec = find_codec( f->field[2], f->field[3] );
-        if ( codec == NULL ) { if ( !spill_absent( out, f->field[1] ) ) { return 1; } continue; }
+        if ( codec == NULL || codec->from_json == NULL ) { if ( !spill_absent( out, f->field[1] ) ) { return 1; } continue; }
         /* the tree is what `schema pack` reads, so the text is <tree>/<root>.json (§17) */
         snprintf( path, sizeof( path ), "%s/%s.json", f->field[4], f->field[3] );
         text = slurp( path, &bytes );
@@ -357,8 +377,8 @@ static int surface_json_hostile( const char * out )
         }
         else
         {
-            n = snprintf( verdict, sizeof( verdict ), "%d,%d,%d,%d,false\n",
-                          report.unknown, report.kind_mismatch, report.clamped, report.duplicate );
+            n = snprintf( verdict, sizeof( verdict ), "%d,%d,%d,%d,%d,false,read\n",
+                          report.unknown, report.kind_mismatch, report.widened, report.clamped, report.duplicate );
         }
         if ( !spill( out, f->field[1], verdict, (size_t) n ) ) { return 1; }
     }
@@ -472,6 +492,35 @@ static int surface_cook_foreign( const char * out )
 }
 
 
+static int surface_cook_write(const char * out)
+{
+    int i,j;
+    for(i=0;i<num_lines;i++) {
+        const Line * f=&lines[i], * instance=NULL;
+        const ConformanceCodec * codec; void * value; ConformanceReport report={0};
+        uint8_t * wire, * file; size_t wire_bytes; int64_t need; int big;
+        if(strcmp(f->field[0],"cook-write")!=0) { continue; }
+        for(j=0;j<num_lines;j++) {
+            if(strcmp(lines[j].field[0],"instance")==0 && strcmp(lines[j].field[1],f->field[1])==0) { instance=&lines[j]; break; }
+        }
+        if(instance==NULL) { return 1; }
+        codec=find_codec(instance->field[2],instance->field[3]);
+        if(codec==NULL) { return 2; }
+        wire=slurp(instance->field[4],&wire_bytes); if(wire==NULL) { return 1; }
+        value=codec->storage();
+        if(!codec->load(value,wire,(int64_t)wire_bytes,&report)) { free(wire); return 1; } free(wire);
+        need=codec->cook_measure(value); if(need<=0) { return 1; }
+        file=(uint8_t *)malloc((size_t)need); if(file==NULL) { return 1; }
+        for(big=0;big<2;big++) {
+            char name[1024]; int ok=codec->cook(value,file,(uint64_t)need,big);
+            snprintf(name,sizeof(name),"%s%s",f->field[1],big ? "-be" : "");
+            if(!ok || !spill(out,name,file,(size_t)need)) { free(file); return 1; }
+        }
+        free(file);
+    }
+    return 0;
+}
+
 static int surface_cook( const char * out )
 {
     int i;
@@ -531,6 +580,59 @@ static int surface_forgery( const char * out, const char * kind )
     return 0;
 }
 
+static int surface_reason(const char * out,const char * kind)
+{
+    static const char * names[]={"ok","not_a_cook","foreign_order","wrong_build_version","reserved_not_zero","bad_alignment","truncated","unaligned_base","bad_layout","unknown_form","count_over_length","count_over_extent_cap","blob_over_size_cap","data_cycle"};
+    int i,j;
+    for(i=0;i<num_lines;i++) {
+        const Line * r=&lines[i], * f=NULL; uint8_t * data; size_t bytes; int64_t extent; int pointer,reason=0,opened; char answer[64];
+        if(strcmp(r->field[0],"refusal")!=0 || r->count<3 || strcmp(r->field[2],kind)!=0) { continue; }
+        for(j=0;j<num_lines;j++) { if(strcmp(lines[j].field[0],"forgery")==0 && strcmp(lines[j].field[1],r->field[1])==0) { f=&lines[j]; break; } }
+        if(f==NULL) { return 1; } data=slurp(f->field[4],&bytes);if(data==NULL) { return 1; }
+        extent=(int64_t)strtoll(f->field[5],NULL,0);pointer=strcmp(f->field[6],"null")==0 ? -1 : (int)strtol(f->field[6],NULL,0);
+        opened=strcmp(kind,"cook")==0 ? conformance_cook_open_reason(f->field[3],data,bytes,extent,pointer,&reason) : conformance_block_open_reason(f->field[3],data,bytes,extent,pointer,&reason);
+        free(data); if(reason<0 || reason>13) { return 1; }
+        snprintf(answer,sizeof(answer),"%s\n",opened ? "ok" : names[reason]);
+        if(!spill(out,r->field[1],answer,strlen(answer))) { return 1; }
+    }
+    return 0;
+}
+
+static int surface_message(const char * out)
+{
+ int i,j;
+ for(i=0;i<num_lines;i++){
+  const Line * f=lines+i;const Line * connection=NULL;const ConformanceCodec * codec;
+  uint8_t * announcement,*message,*answer=NULL;size_t an,n;int64_t size=0;ConformanceReport report={0};int ok;
+  if(strcmp(f->field[0],"message")!=0)continue;
+  for(j=0;j<num_lines;j++)if(!strcmp(lines[j].field[0],"connection")&&!strcmp(lines[j].field[1],f->field[2])){connection=lines+j;break;}
+  if(!connection){return 1;}codec=find_codec(connection->field[2],f->field[3]);if(!codec)return 1;
+  announcement=slurp(connection->field[4],&an);message=slurp(f->field[5],&n);
+  if(!announcement||!message){free(announcement);free(message);return 1;}
+  ok=codec->message(announcement,(int64_t)an,message,(int64_t)n,&answer,&size,&report);
+  if(ok)ok=spill(out,f->field[1],answer,(size_t)size);
+  free(answer);free(message);free(announcement);
+  if(!ok){fprintf(stderr,"message %s failed: malformed=%d refused=%d unknown=%d mismatch=%d\n",f->field[1],report.malformed,report.refused,report.unknown,report.kind_mismatch);return 1;}
+ }
+ return 0;
+}
+
+static int surface_retain(const char * out,int saved)
+{
+ int i,j;
+ for(i=0;i<num_lines;i++){
+  const Line * f=lines+i;int message=!strcmp(f->field[0],"retain-message"),shift=message;uint8_t * a=NULL,*wire,*answer=NULL;size_t an=0,n;int counters[4]={0},ok;int64_t size=0,ids;char summary[128];
+  if(!message&&strcmp(f->field[0],"retain"))continue;
+  if(strcmp(f->field[2+shift],"tblrt1")||strcmp(f->field[3+shift],"Node"))return 1;
+  if(message){for(j=0;j<num_lines;j++)if(!strcmp(lines[j].field[0],"connection")&&!strcmp(lines[j].field[1],f->field[2])){a=slurp(lines[j].field[4],&an);break;}if(!a)return 1;}
+  wire=slurp(f->field[4+shift],&n);if(!wire){free(a);return 1;}ids=!strcmp(f->field[6+shift],"full")?-1:strtoll(f->field[6+shift],NULL,10);
+  ok=conformance_retain(message,a,(int64_t)an,wire,(int64_t)n,!strcmp(f->field[5+shift],"short"),ids,counters,&answer,&size);
+  if(ok){if(saved)ok=spill(out,f->field[1],answer,(size_t)size);else{int length=snprintf(summary,sizeof(summary),"%d,%d,%d %d\n",counters[0],counters[1],counters[2],counters[3]);ok=spill(out,f->field[1],summary,(size_t)length);}}
+  free(answer);free(wire);free(a);if(!ok){fprintf(stderr,"retain %s failed\n",f->field[1]);return 1;}
+ }
+ return 0;
+}
+
 int main( int argc, char ** argv )
 {
     const char * surface;
@@ -544,10 +646,7 @@ int main( int argc, char ** argv )
     surface = argv[2];
     if ( strcmp( surface, "list" ) == 0 )
     {
-        /* the five WIRE-CARRYING surfaces are ABSENT: this port writes the wire's
-           PREVIOUS form and the corpus is pinned in the id-table form
-           (docs/SPEC-TABLES.md §3). schema#512 is the port's row. */
-        printf( "cook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\n" );
+        printf( "wire\nmessage\nretain\nretain-save\nreport\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-reason\nblock-reason\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\n" );
         return 0;
     }
     if ( argc < 4 )
@@ -556,11 +655,17 @@ int main( int argc, char ** argv )
         return 2;
     }
     out = argv[3];
+    if(!strcmp(surface,"retain"))return surface_retain(out,0);
+    if(!strcmp(surface,"retain-save"))return surface_retain(out,1);
+    if ( strcmp( surface, "message" ) == 0 ) { return surface_message(out); }
     if ( strcmp( surface, "wire" ) == 0 ) { return surface_wire( out ); }
     if ( strcmp( surface, "report" ) == 0 ) { return surface_report( out ); }
     if ( strcmp( surface, "json-read" ) == 0 ) { return surface_json_read( out ); }
     if ( strcmp( surface, "json-write" ) == 0 ) { return surface_json_write( out ); }
     if ( strcmp( surface, "json-hostile" ) == 0 ) { return surface_json_hostile( out ); }
+    if ( strcmp( surface, "cook-reason" ) == 0 ) { return surface_reason(out,"cook"); }
+    if ( strcmp( surface, "block-reason" ) == 0 ) { return surface_reason(out,"block"); }
+    if ( strcmp( surface, "cook-write" ) == 0 ) { return surface_cook_write(out); }
     if ( strcmp( surface, "cook" ) == 0 ) { return surface_cook( out ); }
     if ( strcmp( surface, "block" ) == 0 ) { return surface_block( out ); }
     if ( strcmp( surface, "cook-foreign" ) == 0 ) { return surface_cook_foreign( out ); }

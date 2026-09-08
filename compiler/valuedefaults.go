@@ -14,7 +14,7 @@ import (
 
 // valueDefaultTargets is the canonical name of every built-in target whose
 // backends carry a string, bytes or flags default on both wires.
-var valueDefaultTargets = []string{"cpp", "cs"}
+var valueDefaultTargets = []string{"cpp", "c", "cs"}
 
 // packetValueDefaultTargets names the packet carriers independently of the
 // table carriers. A port registers here from its own target file's init.

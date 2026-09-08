@@ -3,9 +3,9 @@
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
    package tabledemo — protocol id 0xba7b344f28584d33 (packets only: tables version by field id, not by protocol id)
-   The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize
-   dependency — includable from any TU. Compile the .c beside this header
-   to use the reflection descriptors or the text form. */
+   The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md). Compile the .c
+   beside this header to use descriptors or JSON. 128-bit storage uses
+   the lane types from serialize.h. */
 
 #ifndef SCHEMA_TABLEDEMO_PACKTABLE_H
 #define SCHEMA_TABLEDEMO_PACKTABLE_H
@@ -109,7 +109,13 @@ typedef struct TableReport
        id twice is legal input whose last occurrence wins, silently (§3). */
     int32_t duplicate;
     int malformed;         /* framing damage; decode stopped, partial result kept */
+    int32_t widened;        /* exact widening of a known kind */
+    int32_t retained, retain_lost; /* opt-in unknown-field round trips */
+    int refused;           /* unsupported file form, not framing damage */
+    int reason;            /* SCHEMA_TABLE_REFUSAL_REASON */
 } TableReport;
+
+enum SCHEMA_TABLE_REFUSAL_REASON { SCHEMA_TABLE_NO_REFUSAL, SCHEMA_TABLE_NEWER_FORM, SCHEMA_TABLE_MESSAGE_FORM_AS_FILE };
 
 /* ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 
@@ -119,6 +125,7 @@ typedef struct TableReport
    no schema files. <name>_table_type() returns <Name>'s descriptor. */
 
 struct TableTypeInfo;
+struct TableFieldInfo;
 
 /* One arm of a union field: where its payload sits inside the union's storage
    and what its payload looks like. The arm's NAME and its table-wire id ride
@@ -128,6 +135,8 @@ typedef struct TableUnionArmInfo
 {
     uint32_t offset;                    /* offsetof the arm's payload within the union storage */
     const struct TableTypeInfo * table; /* the arm payload's descriptor */
+    const struct TableFieldInfo * field; /* non-body arm, relative to union storage */
+    uint32_t size; /* bytes established when this arm is selected */
 } TableUnionArmInfo;
 
 /* A union field's shape: the tag, and the arms indexed by it. Arms run
@@ -154,7 +163,7 @@ typedef struct TableUnionInfo
 typedef struct TableVariantInfo
 {
     const char * name;
-    uint16_t id;
+    uint64_t id;
 } TableVariantInfo;
 
 /* THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1): a declaration with no ///
@@ -164,12 +173,14 @@ typedef struct TableVariantInfo
    are one, so every absent doc compares equal by address. */
 static SCHEMA_UNUSED const char TableDocNone[1] = "";
 
+typedef struct TableWideRange { uint64_t lo[2], hi[2]; } TableWideRange;
+
 typedef struct TableFieldInfo
 {
     const char * name;      /* schema field name, e.g. "health" */
     const char * json;      /* the TEXT form's key: the json = "key" attribute, else name (§16.3) */
     const char * type_name; /* schema type name, e.g. "float32", "Grade" */
-    uint16_t id;            /* table-wire field id (name hash; the was alias's hash after a rename) */
+    uint64_t id;            /* table-wire field id (name hash; the was alias's hash after a rename) */
     uint8_t kind;           /* table-wire kind; for arrays/strings/bytes, the ELEMENT kind */
     int is_array;           /* fixed or counted array (bytes included) */
     int counted;            /* a _count/_length int32 companion exists (counted arrays, strings, bytes) */
@@ -183,6 +194,8 @@ typedef struct TableFieldInfo
     int has_range;          /* a declared [min, max] (int or float) */
     double range_min;       /* NOTE: int64 ranges beyond 2^53 lose precision here */
     double range_max;
+    const TableWideRange * wide; /* exact raw range for wide/fixed storage */
+    int32_t frac_bits;
     int64_t enum_max;       /* enums: highest valid value (None = 0 always valid);
                                unions: the arm count (tag range [0, enum_max]);
                                flags: the highest declared BIT INDEX; else -1 */
@@ -210,6 +223,8 @@ typedef struct TableFieldInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    int sequence; /* 0 inline field, 1 unbounded list, 2 map */
+    void * (*place)(void * worker,void * slot,const char * key,int32_t length,int64_t number);
 } TableFieldInfo;
 
 typedef struct TableTypeInfo
@@ -231,157 +246,277 @@ typedef struct TableTypeInfo
     const char * const * tags;
 } TableTypeInfo;
 
+
+/* Each save owns one bounded identity table. Probes share it and rewind their
+   additions, so nesting copies only the writer cursor. Reverse-order removal
+   preserves every earlier open-addressing chain and first-use wire reference. */
+typedef struct TableWriteIds
+{
+    uint64_t ids[156];
+    uint32_t slots[512], positions[156];
+    int count;
+} TableWriteIds;
+
 typedef struct TableWriter
 {
     uint8_t * buffer;
-    int64_t capacity;
-    int64_t offset;
-    int overflow;
+    int64_t capacity, offset;
+    int overflow, id_checkpoint, check_default;
+    TableWriteIds * vocabulary;
+
 } TableWriter;
 
-static SCHEMA_UNUSED TableWriter table_writer_make( uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED TableWriter table_writer_make( uint8_t * buffer, int64_t capacity, TableWriteIds * vocabulary )
 {
     TableWriter w;
-    w.buffer = buffer;
-    w.capacity = capacity;
-    w.offset = 0;
-    w.overflow = 0;
+    memset( &w, 0, sizeof( w ) );
+    w.buffer = buffer; w.capacity = capacity; w.vocabulary=vocabulary;
+    memset(vocabulary,0,sizeof(*vocabulary));
     return w;
 }
-
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void table_writer_raw( TableWriter * w, const void * data, int64_t bytes )
 {
-    if ( w->offset + bytes > w->capacity ) { w->overflow = 1; return; }
-    memcpy( w->buffer + w->offset, data, (size_t) bytes );
+    if ( bytes < 0 || w->offset > w->capacity || bytes > w->capacity - w->offset ) { w->overflow = 1; return; }
+    if ( w->buffer != NULL && bytes != 0 ) { memcpy( w->buffer + w->offset, data, (size_t) bytes ); }
     w->offset += bytes;
 }
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void table_writer_put8( TableWriter * w, uint8_t v ) { table_writer_raw( w, &v, 1 ); }
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void table_writer_put16( TableWriter * w, uint16_t v )
 {
-    uint8_t b[2];
-    b[0] = (uint8_t) v; b[1] = (uint8_t) ( v >> 8 );
-    table_writer_raw( w, b, 2 );
+    uint8_t b[2]; b[0] = (uint8_t) v; b[1] = (uint8_t) (v >> 8); table_writer_raw( w, b, 2 );
 }
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void table_writer_put32( TableWriter * w, uint32_t v )
 {
-    uint8_t b[4];
-    b[0] = (uint8_t) v; b[1] = (uint8_t) ( v >> 8 ); b[2] = (uint8_t) ( v >> 16 ); b[3] = (uint8_t) ( v >> 24 );
-    table_writer_raw( w, b, 4 );
+    uint8_t b[4]; int i; for ( i = 0; i < 4; i++ ) { b[i] = (uint8_t) (v >> (8*i)); } table_writer_raw( w, b, 4 );
 }
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void table_writer_put64( TableWriter * w, uint64_t v )
 {
-    table_writer_put32( w, (uint32_t) v );
-    table_writer_put32( w, (uint32_t) ( v >> 32 ) );
+    table_writer_put32( w, (uint32_t) v ); table_writer_put32( w, (uint32_t) (v >> 32) );
 }
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void table_writer_patch32( TableWriter * w, int64_t at, uint32_t v )
+static SCHEMA_UNUSED void table_writer_leb( TableWriter * w, uint64_t v )
 {
-    if ( at + 4 > w->capacity ) { w->overflow = 1; return; }
-    w->buffer[at] = (uint8_t) v; w->buffer[at+1] = (uint8_t) ( v >> 8 );
-    w->buffer[at+2] = (uint8_t) ( v >> 16 ); w->buffer[at+3] = (uint8_t) ( v >> 24 );
+    do { uint8_t b = (uint8_t) (v & 127); v >>= 7; table_writer_put8( w, (uint8_t) (b | (v ? 128 : 0)) ); } while ( v );
+}
+static SCHEMA_UNUSED void table_writer_id( TableWriter * w, uint64_t id )
+{
+    TableWriteIds * v=w->vocabulary;
+    uint64_t hash=id;
+    uint32_t slot,index;
+    hash ^= hash>>33; hash *= UINT64_C(0xff51afd7ed558ccd); hash ^= hash>>33;
+    slot=(uint32_t)hash & (512-1);
+    while((index=v->slots[slot])!=0) {
+        if(v->ids[index-1]==id) { table_writer_leb(w,index); return; }
+        slot=(slot+1)&(512-1);
+    }
+    if(v->count==156) { w->overflow=1; return; }
+    v->ids[v->count]=id; v->positions[v->count]=slot; v->count++;
+    v->slots[slot]=(uint32_t)v->count; table_writer_leb(w,(uint64_t)v->count);
+}
+static SCHEMA_UNUSED TableWriter table_writer_probe( const TableWriter * w )
+{
+    TableWriter probe = *w;
+    probe.buffer = NULL; probe.capacity = INT64_MAX; probe.offset = 0; probe.overflow = 0;
+    probe.id_checkpoint=w->vocabulary->count;
+    return probe;
+}
+static SCHEMA_UNUSED void table_writer_rewind( const TableWriter * probe )
+{
+    TableWriteIds * v=probe->vocabulary;
+    while(v->count>probe->id_checkpoint) { v->count--; v->slots[v->positions[v->count]]=0; }
+}
+static SCHEMA_UNUSED void table_writer_finish( TableWriter * w )
+{
+    int i; for ( i = 0; i < w->vocabulary->count; i++ ) { table_writer_put64( w, w->vocabulary->ids[i] ); }
+    table_writer_put64( w, (uint64_t) w->vocabulary->count );
 }
 
 typedef struct TableReader
 {
     const uint8_t * buffer;
-    int64_t size;
-    int64_t offset;
+    int64_t size, offset;
     TableReport * report;
+    const uint8_t * ids;
+
+    uint64_t id_count;
+    int nested;
 } TableReader;
 
 static SCHEMA_UNUSED TableReader table_reader_make( const uint8_t * buffer, int64_t size, TableReport * report )
 {
     TableReader r;
-    r.buffer = buffer;
-    r.size = size;
-    r.offset = 0;
-    r.report = report;
+    memset( &r, 0, sizeof( r ) ); r.buffer = buffer; r.size = size; r.report = report; r.nested = 1;
     return r;
 }
-
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int table_reader_has( const TableReader * r, int64_t bytes ) { return bytes >= 0 && r->offset >= 0 && r->offset <= r->size && bytes <= r->size - r->offset; }
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int table_reader_has( const TableReader * r, int64_t n )
+{ return n >= 0 && r->offset >= 0 && r->offset <= r->size && n <= r->size - r->offset; }
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int table_reader_room( const TableReader * r, uint64_t n )
+{ return r->offset >= 0 && r->offset <= r->size && n <= (uint64_t) (r->size - r->offset); }
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE uint8_t table_reader_get8( TableReader * r ) { return r->buffer[r->offset++]; }
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE uint16_t table_reader_get16( TableReader * r )
-{
-    uint16_t v = (uint16_t) ( (uint16_t) r->buffer[r->offset] | ( (uint16_t) r->buffer[r->offset+1] << 8 ) );
-    r->offset += 2;
-    return v;
-}
+{ uint16_t v = r->buffer[r->offset]; v |= (uint16_t) ((uint16_t) r->buffer[r->offset+1] << 8); r->offset += 2; return v; }
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE uint32_t table_reader_get32( TableReader * r )
-{
-    uint32_t v = (uint32_t) r->buffer[r->offset] | ( (uint32_t) r->buffer[r->offset+1] << 8 )
-               | ( (uint32_t) r->buffer[r->offset+2] << 16 ) | ( (uint32_t) r->buffer[r->offset+3] << 24 );
-    r->offset += 4;
-    return v;
-}
+{ uint32_t v = 0; int i; for ( i = 0; i < 4; i++ ) { v |= (uint32_t) table_reader_get8( r ) << (8*i); } return v; }
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE uint64_t table_reader_get64( TableReader * r )
+{ uint64_t lo = table_reader_get32( r ); return lo | ((uint64_t) table_reader_get32( r ) << 32); }
+static SCHEMA_UNUSED uint64_t table_reader_id_at( const TableReader * r, uint64_t ref )
 {
-    uint64_t lo = table_reader_get32( r );
-    uint64_t hi = table_reader_get32( r );
-    return lo | ( hi << 32 );
+    TableReader entry = table_reader_make( r->ids + (ref-1)*8, 8, r->report );
+    return table_reader_get64( &entry );
 }
-
-/* skip one payload by kind; 0 = framing damage */
+/* Rejected numbers do not consume input: the containing body's exact extent
+   must still be able to detect the damaged spelling. */
+static SCHEMA_UNUSED int table_reader_leb( TableReader * r, uint64_t * value )
+{
+    int i; int64_t at = r->offset; *value = 0;
+    for ( i = 0; i < 10; i++ )
+    {
+        uint8_t b;
+        if ( !table_reader_has( r, 1 ) ) { r->offset = at; return 0; }
+        b = table_reader_get8( r );
+        if ( i == 9 && b > 1 ) { r->offset = at; return 0; }
+        *value |= (uint64_t) (b & 127) << (7*i);
+        if ( (b & 128) == 0 ) { if ( i && b == 0 ) { r->offset = at; return 0; } return 1; }
+    }
+    r->offset = at; return 0;
+}
+static SCHEMA_UNUSED TableReader table_reader_child( const TableReader * r, int64_t offset, int64_t bytes )
+{
+    TableReader child = *r;
+    child.buffer = r->buffer + offset; child.size = bytes; child.offset = 0; child.nested = 1;
+    return child;
+}
+static SCHEMA_UNUSED int table_reader_span( TableReader * r, TableReader * sub )
+{
+    uint64_t bytes;
+    if ( !table_reader_leb( r, &bytes ) || !table_reader_room( r, bytes ) ) { return 0; }
+    *sub = table_reader_child( r, r->offset, (int64_t) bytes ); r->offset += (int64_t) bytes; return 1;
+}
+/* The reference reads the array header in the enclosing body, then bounds
+   elements by L. Keep that recovery order even when the count crosses L. */
+static SCHEMA_UNUSED int table_reader_array_header( TableReader * sub, const TableReader * parent, uint8_t * kind, uint64_t * count )
+{
+    TableReader header = *sub;
+    int ok;
+    header.size += parent->size - parent->offset;
+    *kind = table_reader_get8( &header );
+    ok = table_reader_leb( &header, count ); sub->offset = header.offset;
+    return ok;
+}
 static SCHEMA_UNUSED int table_reader_skip( TableReader * r, uint8_t kind )
 {
+    int width = 0; uint64_t n;
     switch ( kind )
     {
-        case 1: case 2: case 6:
+        case 1: case 2: case 6: case 20: case 25: width = 1; break;
+        case 3: case 7: case 21: case 26: width = 2; break;
+        case 4: case 8: case 10: case 22: case 27: width = 4; break;
+        case 5: case 9: case 11: case 23: case 28: width = 8; break;
+        case 18: case 19: case 24: case 29: width = 16; break;
+        case 17: case 30: return table_reader_leb( r, &n );
+        case 15:
+            if ( !table_reader_leb( r, &n ) ) { return 0; }
+            if ( n == 0 ) { return 1; }
             if ( !table_reader_has( r, 1 ) ) { return 0; }
-            r->offset += 1; return 1;
-        case 3: case 7:
-            if ( !table_reader_has( r, 2 ) ) { return 0; }
-            r->offset += 2; return 1;
-        /* 17 is a NODE INDEX (docs/SPEC-TABLES.md 3.1): four bytes, so it costs
-           one row here and a reader without the kind still skips a pointer field */
-        case 4: case 8: case 10: case 17:
-            if ( !table_reader_has( r, 4 ) ) { return 0; }
-            r->offset += 4; return 1;
-        case 5: case 9: case 11:
-            if ( !table_reader_has( r, 8 ) ) { return 0; }
-            r->offset += 8; return 1;
-        case 12: case 13: case 14: case 16:
-        {
-            uint32_t n;
-            if ( !table_reader_has( r, 4 ) ) { return 0; }
-            n = table_reader_get32( r );
-            if ( !table_reader_has( r, n ) ) { return 0; }
-            r->offset += n;
-            return 1;
-        }
-        case 15: /* union: u16 arm id, then the arm length-prefixed (id 0 = empty, no body) */
-        {
-            uint32_t n;
-            if ( !table_reader_has( r, 2 ) ) { return 0; }
-            if ( table_reader_get16( r ) == 0 ) { return 1; }
-            if ( !table_reader_has( r, 4 ) ) { return 0; }
-            n = table_reader_get32( r );
-            if ( !table_reader_has( r, n ) ) { return 0; }
-            r->offset += n;
-            return 1;
-        }
-        default: break;
+            r->offset++;
+            /* fall through */
+        case 12: case 13: case 14: case 16: case 31: case 32: case 33:
+            if ( !table_reader_leb( r, &n ) || !table_reader_room( r, n ) ) { return 0; }
+            r->offset += (int64_t) n; return 1;
+        default: return 0;
     }
-    return 0;
+    if ( !table_reader_has( r, width ) ) { return 0; } r->offset += width; return 1;
+}
+static SCHEMA_UNUSED int table_kind_widens( uint8_t kind, uint8_t declared )
+{
+    if ( declared >= 3 && declared <= 5 ) { return kind >= 2 && kind < declared; }
+    if ( declared >= 7 && declared <= 9 ) { return kind >= 6 && kind < declared; }
+    if ( declared == 18 ) { return kind >= 2 && kind <= 5; }
+    if ( declared == 19 ) { return kind >= 6 && kind <= 9; }
+    return declared == 11 && kind == 10;
+}
+static SCHEMA_UNUSED double table_wire_widen_f32( uint32_t bits )
+{
+    if ( (bits & 0x7f800000u) == 0x7f800000u && (bits & 0x007fffffu) != 0 )
+    {
+        uint64_t wide = ((uint64_t) (bits >> 31) << 63) | 0x7ff0000000000000ull | ((uint64_t) (bits & 0x007fffffu) << 29);
+        double d; memcpy( &d, &wide, 8 ); return d;
+    }
+    { float f; memcpy( &f, &bits, 4 ); return (double) f; }
+}
+static SCHEMA_UNUSED int table_wire_open( TableReader * r, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    uint64_t count, i, j; int64_t span; TableReader tail;
+    if ( bytes < 1 || buffer == NULL ) { report->malformed = 1; return 0; }
+    if ( buffer[0] != 1 ) { report->refused = 1; report->reason = buffer[0] == 2 ? SCHEMA_TABLE_MESSAGE_FORM_AS_FILE : SCHEMA_TABLE_NEWER_FORM; return 0; }
+    if ( bytes < 9 ) { report->malformed = 1; return 0; }
+    tail = table_reader_make( buffer + bytes - 8, 8, report ); count = table_reader_get64( &tail );
+    if ( count > (uint64_t) ((bytes - 9) / 8) ) { report->malformed = 1; return 0; }
+    span = (int64_t) count * 8 + 8;
+    *r = table_reader_make( buffer + 1, bytes - span - 1, report );
+    r->ids = buffer + bytes - span; r->id_count = count; r->nested = 0;
+    for ( i = 1; i < count; i++ ) { for ( j = 0; j < i; j++ ) {
+        if ( table_reader_id_at( r, i+1 ) == table_reader_id_at( r, j+1 ) ) { report->malformed = 1; return 0; }
+    } }
+    /* Root slack invalidates the whole file before any overlay. A stopped
+       body is different: its successfully decoded prefix must survive. */
+    tail = *r;
+    for ( ;; )
+    {
+        uint64_t ref; uint8_t kind;
+        if ( !table_reader_leb( &tail, &ref ) ) { break; }
+        if ( ref == 0 ) { if ( tail.offset != tail.size ) { report->malformed = 1; return 0; } break; }
+        if ( ref > count || !table_reader_has( &tail, 1 ) ) { break; }
+        kind = table_reader_get8( &tail ); if ( !table_reader_skip( &tail, kind ) ) { break; }
+    }
+    return 1;
+}
+/* UTF-8 admits Unicode scalar values except U+0000, which cannot be held in
+   the generated terminated string storage. */
+static SCHEMA_UNUSED int table_wire_utf8( const uint8_t * p, uint64_t n )
+{
+    uint64_t i = 0;
+    while ( i < n )
+    {
+        uint8_t b = p[i++]; uint32_t cp; int more, j;
+        if ( b == 0 ) { return 0; } if ( b < 128 ) { continue; }
+        if ( b >= 194 && b <= 223 ) { cp = b & 31; more = 1; }
+        else if ( b >= 224 && b <= 239 ) { cp = b & 15; more = 2; }
+        else if ( b >= 240 && b <= 244 ) { cp = b & 7; more = 3; }
+        else { return 0; }
+        if ( (uint64_t) more > n-i ) { return 0; }
+        for ( j = 0; j < more; j++ ) { b = p[i++]; if ( (b & 192) != 128 ) { return 0; } cp = (cp << 6) | (b & 63); }
+        if ( (more == 2 && cp < 2048) || (more == 3 && cp < 65536) || cp > 1114111 || (cp >= 55296 && cp <= 57343) ) { return 0; }
+    }
+    return 1;
+}
+static SCHEMA_UNUSED uint64_t table_wire_utf8_clamp( const uint8_t * p, uint64_t n, uint64_t cap )
+{
+    if ( n <= cap ) { return n; } while ( cap && (p[cap] & 192) == 128 ) { cap--; } return cap;
 }
 
-/* The storage index a key names, with the None refusal that stands in EVERY
-   build. The storage shifts left and holds no slot for None, so a build that
-   skipped this compare would index one element BEFORE the array — undefined
-   behaviour in the configuration a game ships. */
-static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key )
+#ifndef schema_assert
+#define schema_assert assert
+#endif
+#ifndef schema_fatal
+#define schema_fatal abort
+#endif
+
+/* The storage index a key names. Both bounds stand in EVERY build: None,
+   negative values and keys beyond the enum's maximum all refuse. */
+static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key, uint32_t count )
 {
-    if ( key == 0 )
+    if ( (uint32_t) key - 1u >= count )
     {
-        assert( 0 && "None is the null key of an enum-keyed array: it keys no slot" );
-        abort();
+        schema_assert( 0 && "key is outside the enum-keyed array" );
+        schema_fatal();
     }
     return key - 1;
 }
 
-/* keyed[key] — the slot a variant owns, as an LVALUE. The key is evaluated
+/* SCHEMA_TABLE_KEYED_AT(slots,key,E_MAX) is an LVALUE. The key is evaluated
    once. ITERATION is the surface a consumer of the whole array wants: walk
    1..E_MAX and index with the key, so a call site writes no shift. */
-#define SCHEMA_TABLE_KEYED_AT( array, key ) ( (array)[ table_keyed_slot( (int32_t) ( key ) ) ] )
+#define SCHEMA_TABLE_KEYED_AT( array, key, count ) ( (array)[ table_keyed_slot( (int32_t) ( key ), (uint32_t) ( count ) ) ] )
 
 
 static SCHEMA_UNUSED float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
@@ -390,6 +525,61 @@ static SCHEMA_UNUSED double table_bits_to_double( uint64_t bits ) { double d; me
 static SCHEMA_UNUSED uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
 
 #endif /* SCHEMA_TABLEDEMO_TABLE_PRIMITIVES */
+
+#ifndef SCHEMA_TABLE_UTF16_RUNTIME
+#define SCHEMA_TABLE_UTF16_RUNTIME
+static SCHEMA_UNUSED uint16_t table_wire_utf16_unit( const uint8_t * bytes, int64_t index )
+{
+    return (uint16_t) ((uint16_t) bytes[index*2] | ((uint16_t) bytes[index*2+1] << 8));
+}
+static SCHEMA_UNUSED int table_wire_utf16( const uint8_t * bytes, int64_t units )
+{
+    int64_t i = 0;
+    while ( i < units ) {
+        uint16_t unit = table_wire_utf16_unit( bytes, i++ );
+        if ( unit == 0 ) { return 0; }
+        if ( unit >= 0xd800 && unit <= 0xdbff ) {
+            uint16_t low;
+            if ( i == units ) { return 0; }
+            low = table_wire_utf16_unit( bytes, i++ );
+            if ( low < 0xdc00 || low > 0xdfff ) { return 0; }
+        } else if ( unit >= 0xdc00 && unit <= 0xdfff ) { return 0; }
+    }
+    return 1;
+}
+static SCHEMA_UNUSED int64_t table_wire_utf16_clamp( const uint8_t * bytes, int64_t units, int64_t bound )
+{
+    if ( units <= bound ) { return units; }
+    if ( bound > 0 ) {
+        uint16_t last = table_wire_utf16_unit( bytes, bound-1 );
+        if ( last >= 0xd800 && last <= 0xdbff ) { bound--; }
+    }
+    return bound;
+}
+#endif
+
+#ifndef SCHEMA_TABLE_REFUSE_RUNTIME
+#define SCHEMA_TABLE_REFUSE_RUNTIME
+typedef int TableRefuseReason;
+enum {
+    SCHEMA_TABLE_REFUSE_OK=0,
+    SCHEMA_TABLE_REFUSE_NOT_A_COOK=1,
+    SCHEMA_TABLE_REFUSE_FOREIGN_ORDER=2,
+    SCHEMA_TABLE_REFUSE_WRONG_BUILD_VERSION=3,
+    SCHEMA_TABLE_REFUSE_RESERVED_NOT_ZERO=4,
+    SCHEMA_TABLE_REFUSE_BAD_ALIGNMENT=5,
+    SCHEMA_TABLE_REFUSE_TRUNCATED=6,
+    SCHEMA_TABLE_REFUSE_UNALIGNED_BASE=7,
+    SCHEMA_TABLE_REFUSE_BAD_LAYOUT=8,
+    SCHEMA_TABLE_REFUSE_UNKNOWN_FORM=9,
+    SCHEMA_TABLE_REFUSE_COUNT_OVER_LENGTH=10,
+    SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP=11,
+    SCHEMA_TABLE_REFUSE_BLOB_OVER_SIZE_CAP=12,
+    SCHEMA_TABLE_REFUSE_DATA_CYCLE=13
+};
+static SCHEMA_UNUSED const uint8_t * table_cook_refuse(TableRefuseReason * out,TableRefuseReason reason)
+{ if(out!=NULL) { *out=reason; } return NULL; }
+#endif
 
 #ifndef SCHEMA_TABLEDEMO_BUILD_VERSION
 #define SCHEMA_TABLEDEMO_BUILD_VERSION
@@ -502,25 +692,25 @@ static SCHEMA_UNUSED uint64_t table_cook_read64( const uint8_t * p )
    refuse, and an addition that wrapped would be the defect the comparison
    after it was supposed to catch. Nothing past length is read on any path,
    including every refusing one. */
-static SCHEMA_UNUSED const uint8_t * table_cook_open( const void * bytes, uint64_t length, uint64_t root_size, uint64_t root_align )
+static SCHEMA_UNUSED const uint8_t * table_cook_open_ex( const void * bytes, uint64_t length, uint64_t root_size, uint64_t root_align, TableRefuseReason * reason )
 {
     const uint8_t * raw;
     uint64_t data_length, attribution_length, alignment, data_offset;
     const uint8_t * base;
-    if ( bytes == NULL ) { return NULL; }
-    if ( length < (uint64_t) table_cook_header_bytes ) { return NULL; }
+    if ( bytes == NULL ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_UNALIGNED_BASE); }
+    if ( length < (uint64_t) table_cook_header_bytes ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_TRUNCATED); }
     raw = (const uint8_t *) bytes;
     /* the MAGIC, bytewise and first: it is what establishes the byte order
        every other header word is read in, so nothing else may be read before
        it. A byte-reversed constant is a cook of the other order and refuses
        here, which is why the order never reaches a fix-up pass. */
-    if ( table_cook_read64( raw ) != table_cook_magic ) { return NULL; }
-    if ( table_cook_read64( raw + 16 ) != table_cook_byte_order ) { return NULL; }
-    if ( table_cook_read64( raw + 8 ) != SCHEMA_TABLEDEMO_BUILD_VERSION_VALUE ) { return NULL; }
+    if ( table_cook_read64( raw ) != table_cook_magic ) { return table_cook_refuse(reason,table_cook_read64(raw)==UINT64_C(0x5343484d434f4f4b) ? SCHEMA_TABLE_REFUSE_FOREIGN_ORDER : SCHEMA_TABLE_REFUSE_NOT_A_COOK); }
+    if ( table_cook_read64( raw + 16 ) != table_cook_byte_order ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_NOT_A_COOK); }
+    if ( table_cook_read64( raw + 8 ) != SCHEMA_TABLEDEMO_BUILD_VERSION_VALUE ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_WRONG_BUILD_VERSION); }
     /* the RESERVED words: a non-zero one means a writer used a form this build
        does not understand, and Open refuses rather than ignoring it. */
-    if ( table_cook_read64( raw + 48 ) != 0 ) { return NULL; }
-    if ( table_cook_read64( raw + 56 ) != 0 ) { return NULL; }
+    if ( table_cook_read64( raw + 48 ) != 0 ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_RESERVED_NOT_ZERO); }
+    if ( table_cook_read64( raw + 56 ) != 0 ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_RESERVED_NOT_ZERO); }
     data_length = table_cook_read64( raw + 24 );
     attribution_length = table_cook_read64( raw + 32 );
     alignment = table_cook_read64( raw + 40 );
@@ -530,39 +720,620 @@ static SCHEMA_UNUSED const uint8_t * table_cook_open( const void * bytes, uint64
        puts the attribution part on an eight-byte boundary without a second
        padding rule) and never past the cap above; a word that is none of those
        rounds nothing and aligns nothing, so it is refused before it is used. */
-    if ( alignment < 8 || alignment > table_cook_max_align ) { return NULL; }
-    if ( ( alignment & ( alignment - 1 ) ) != 0 ) { return NULL; }
+    if ( alignment < 8 || alignment > table_cook_max_align ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_BAD_ALIGNMENT); }
+    if ( ( alignment & ( alignment - 1 ) ) != 0 ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_BAD_ALIGNMENT); }
     /* and it must be an alignment THE ROOT CAN SIT AT, since the root is at
        the region's base: both are powers of two, so "at least the root's"
        is one division. */
-    if ( ( alignment % root_align ) != 0 ) { return NULL; }
+    if ( ( alignment % root_align ) != 0 ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_BAD_ALIGNMENT); }
     /* The DATA part begins at align_up( 64, alignment ). It is DERIVED and not
        a header field, because a fact a reader computes is a fact two writers
        cannot disagree about. */
     data_offset = ( (uint64_t) table_cook_header_bytes + alignment - 1 ) & ~( alignment - 1 );
-    if ( length < data_offset ) { return NULL; }
+    if ( length < data_offset ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_TRUNCATED); }
     /* the two part lengths against the length the caller passed. The whole
        file is data_offset + data_length + attribution_length, and a length
        that is not EXACTLY that refuses — truncation and trailing bytes are one
        refusal, and both terms are subtracted rather than added so no sum can
        carry. */
-    if ( data_length > length - data_offset ) { return NULL; }
-    if ( attribution_length != length - data_offset - data_length ) { return NULL; }
+    if ( data_length > length - data_offset ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_TRUNCATED); }
+    if ( attribution_length != length - data_offset - data_length ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_TRUNCATED); }
     /* the ROOT sits at the region's base, so the region has to hold it: a
        shorter data part describes a root partly outside the file, which is the
        one way a match-and-point reader could hand back storage it never
        received. */
-    if ( data_length < root_size ) { return NULL; }
+    if ( data_length < root_size ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_TRUNCATED); }
     base = raw + data_offset;
     /* the alignment of the BASE. The header pads the data part to the region's
        alignment, so a base an allocator or mmap gave you is already aligned —
        mmap gives page alignment for free — and a base that is not is a caller's
        buffer this form cannot be read out of. */
-    if ( ( (uintptr_t) base % (uintptr_t) alignment ) != 0 ) { return NULL; }
+    if ( ( (uintptr_t) base % (uintptr_t) alignment ) != 0 ) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_UNALIGNED_BASE); }
     return base;
 }
+static SCHEMA_UNUSED const uint8_t * table_cook_open(const void * bytes,uint64_t length,uint64_t root_size,uint64_t root_align)
+{ return table_cook_open_ex(bytes,length,root_size,root_align,NULL); }
 
 #endif /* SCHEMA_TABLEDEMO_TABLE_COOK */
+
+#ifndef SCHEMA_TABLE_COOK_WRITE_RUNTIME
+#define SCHEMA_TABLE_COOK_WRITE_RUNTIME
+struct TableNumbering;
+typedef enum TableByteOrder { TableByteOrder_Little=1, TableByteOrder_Big=2 } TableByteOrder;
+static SCHEMA_UNUSED void table_cook_put(uint8_t * at,uint64_t value,int width,int order)
+{
+    int i; for(i=0;i<width;i++) { at[i]=(uint8_t)(value >> (8*(order==TableByteOrder_Little ? i : width-1-i))); }
+}
+static SCHEMA_UNUSED void table_cook_put128(uint8_t * at,uint64_t lo,uint64_t hi,int order)
+{
+    table_cook_put(at,order==TableByteOrder_Little ? lo : hi,8,order);
+    table_cook_put(at+8,order==TableByteOrder_Little ? hi : lo,8,order);
+}
+static SCHEMA_UNUSED void table_cook_bytes(uint8_t * at,const void * source,int64_t used,int64_t capacity)
+{ if(used>0) { memcpy(at,source,(size_t)(used<capacity ? used : capacity)); } }
+static SCHEMA_UNUSED void table_cook_units(uint8_t * at,const uint16_t * source,int64_t used,int64_t capacity,int order)
+{
+    int64_t i, count=used<capacity ? used : capacity;
+    for(i=0;i<count;i++) { table_cook_put(at+i*2,source[i],2,order); }
+}
+static SCHEMA_UNUSED void table_cook_header(uint8_t * raw,uint64_t version,int64_t bytes,int64_t count,int64_t align,int order)
+{
+    table_cook_put(raw,table_cook_magic,8,order); table_cook_put(raw+8,version,8,order);
+    table_cook_put(raw+16,order==TableByteOrder_Big ? 2 : 1,8,order);
+    table_cook_put(raw+24,(uint64_t)bytes,8,order); table_cook_put(raw+32,(uint64_t)count*16,8,order);
+    table_cook_put(raw+40,(uint64_t)align,8,order);
+}
+#endif
+#ifndef SCHEMA_TABLEDEMO_TABLE_MESSAGE
+#define SCHEMA_TABLEDEMO_TABLE_MESSAGE
+enum { kTableMessageRefBitsHere=8, kTableMessageEntriesHere=152, kTableAnnounceBytes=1727, kTableMessageBatchMax=256 };
+static const uint8_t kTableAnnounce[kTableAnnounceBytes]={0x01,0x01,0x09,0x4e,0x0a,0x10,0xd9,0x0e,0x0f,0x49,0x31,0x02,0x0e,0x97,0x0d,0x06,0x94,0x0d,0xc5,0x67,0xc4,0xf0,0x1f,0xfd,0x54,0xa3,0x0d,0x74,0xa2,0x79,0x44,0x8e,0xe2,0xe5,0xb1,0x04,0x01,0x07,0x00,0xd1,0x31,0xfe,0xf6,0x18,0x16,0x77,0x6a,0x04,0x01,0x03,0x00,0xe6,0xb4,0xe7,0x8a,0x35,0xd1,0xf9,0xee,0x0a,0x00,0xc6,0x87,0x5c,0x80,0x3a,0x62,0xdc,0x9a,0x0a,0x00,0x69,0x69,0xb1,0xa2,0x7e,0xfe,0x13,0x81,0x04,0x01,0x07,0x00,0xf3,0xea,0x7d,0x61,0x9b,0x85,0x5f,0xa6,0x08,0x01,0x08,0x01,0x70,0x4a,0x6e,0x4c,0xa7,0x35,0x7f,0x46,0x1e,0x60,0x9d,0x54,0xc2,0x1c,0x92,0xec,0x14,0x0c,0x30,0x71,0x12,0x05,0xb0,0x13,0x56,0xae,0x09,0x0e,0x03,0x03,0x0a,0x00,0x6a,0x64,0x01,0x22,0x66,0xa3,0x5a,0xb7,0x0a,0x00,0xbc,0xb0,0x02,0x46,0x9a,0x71,0xbf,0xa6,0x01,0x18,0x88,0x84,0xb9,0x27,0x46,0xc4,0x5b,0x0c,0x18,0xcf,0xa9,0x8b,0x28,0xb5,0xd4,0x69,0x7f,0x0a,0x00,0xb1,0x0a,0x7b,0xce,0xa2,0x57,0x37,0x1f,0x0a,0x00,0x8c,0x60,0x83,0xc2,0x0b,0x26,0xf8,0x84,0x10,0x03,0x0d,0x6d,0xfa,0xa8,0xa5,0x48,0xb0,0xae,0xba,0x10,0x03,0x0d,0xff,0xd8,0x94,0x56,0xc2,0xc3,0x0a,0xce,0x10,0x03,0x0d,0xb2,0x0f,0x40,0x27,0x0b,0x6b,0x98,0x01,0x0d,0xd4,0x8a,0xc4,0x77,0x29,0x9b,0xa8,0x32,0x1e,0xc5,0x99,0xf7,0x82,0x76,0x4e,0x0a,0xd9,0x0e,0x00,0x04,0x1e,0x49,0x25,0xd7,0x23,0x5a,0xf4,0x6f,0xb4,0x0e,0x03,0x03,0x1e,0x4a,0xe5,0x96,0x70,0x84,0xf5,0x06,0x4b,0x09,0x01,0x03,0x00,0x39,0xe9,0x83,0xf7,0x7f,0x13,0x31,0xbf,0x0d,0x24,0xcc,0x8a,0x11,0xf5,0xf0,0x28,0xde,0x0e,0x02,0x02,0x0d,0x41,0x9a,0x24,0x40,0x03,0xaa,0x01,0xf9,0x0e,0x00,0x08,0x0d,0x37,0xea,0x08,0x98,0x2c,0xc6,0x62,0xbb,0x08,0x00,0xce,0x49,0x41,0xb5,0x57,0x35,0xb4,0x7f,0x0d,0x44,0xad,0xe1,0x13,0x49,0x5c,0x4a,0x29,0x10,0x03,0x0d,0x71,0x15,0x4e,0x34,0x0a,0x94,0xda,0x9c,0x10,0x03,0x04,0x01,0x0a,0x00,0x28,0xc2,0x01,0xd2,0xcc,0x7f,0x70,0x77,0x0e,0x00,0x03,0x0d,0x6f,0x0c,0x6f,0x03,0x0b,0x79,0x80,0x65,0x01,0x40,0x0e,0x20,0xa0,0x8a,0x49,0x81,0x22,0x0a,0x00,0xbd,0xcf,0xaa,0x55,0x7f,0x0e,0x7f,0x24,0x01,0x50,0x50,0xa2,0x15,0xc0,0x9a,0xbc,0xb7,0x04,0x01,0x0a,0x00,0xd4,0x45,0x18,0xbd,0xd8,0x58,0xc7,0xb8,0x0a,0x00,0xdd,0x7c,0x58,0xd1,0xba,0xfb,0xf8,0x3b,0x0c,0x08,0x86,0x1b,0x63,0x8e,0xba,0xad,0xbc,0xc4,0x0c,0x20,0xf0,0x92,0x20,0x6c,0xc5,0x4c,0xff,0xdb,0x0e,0x00,0x10,0x06,0x00,0x69,0xb9,0x80,0x1f,0x52,0x6d,0x8b,0xab,0x08,0x00,0xc6,0xaf,0x9b,0x2e,0xef,0x88,0x50,0x1e,0x02,0x00,0x75,0x0f,0xca,0x90,0x91,0x82,0x28,0xb1,0x03,0x00,0x03,0x34,0xf5,0x8e,0x33,0x92,0xdc,0x5d,0x05,0x00,0x18,0x55,0x09,0xfe,0x81,0xa9,0xbd,0x10,0x06,0x00,0xa6,0x3f,0x93,0xa8,0x0d,0xdb,0x2c,0x8c,0x07,0x00,0xa6,0x6b,0x6e,0x19,0xd1,0x97,0x96,0xfc,0x09,0x00,0xf7,0x05,0xbd,0xba,0xf5,0x27,0x84,0x28,0x0b,0xf9,0xb0,0x0c,0x3d,0x8a,0xeb,0x21,0xb9,0x0e,0x04,0x04,0x0a,0x00,0x3c,0x25,0x8e,0x14,0x0a,0x5e,0x6f,0xa0,0x01,0xa3,0xb5,0xbb,0x86,0x75,0xce,0x59,0x57,0x0d,0xb5,0x2e,0x70,0xbf,0x11,0x15,0x12,0x48,0x02,0x01,0x08,0xff,0x01,0x7d,0x0f,0x09,0x68,0x31,0xfe,0x2b,0x94,0x02,0x01,0x08,0xff,0x01,0xd1,0x5d,0xb5,0x05,0xd1,0xac,0x82,0xd1,0x02,0x01,0x08,0xfd,0x01,0x81,0x2a,0x91,0xc8,0x23,0xed,0x9d,0xef,0x02,0x01,0x08,0xfd,0x01,0xb4,0x60,0x37,0xa2,0x4e,0x57,0x55,0xb6,0x03,0x01,0x10,0xff,0xff,0x03,0xde,0x2b,0x7a,0x8d,0xaf,0xb3,0x17,0xd2,0x03,0x01,0x10,0xff,0xff,0x03,0x00,0x79,0x12,0xc9,0x70,0x2f,0x65,0x90,0x03,0x01,0x10,0xfd,0xff,0x03,0x58,0xb1,0x4d,0x35,0x7c,0x9d,0x65,0x6a,0x03,0x01,0x10,0xfd,0xff,0x03,0xd6,0x91,0x2c,0x53,0x88,0xbd,0x93,0xe6,0x04,0x01,0x20,0xff,0xff,0xff,0xff,0x0f,0xb4,0xfb,0x99,0xcf,0x27,0xe8,0x5e,0x06,0x04,0x01,0x20,0xff,0xff,0xff,0xff,0x0f,0xee,0x86,0xa1,0xc2,0xc4,0x21,0xb1,0xc9,0x04,0x01,0x20,0xfd,0xff,0xff,0xff,0x0f,0x7a,0xf2,0xac,0x65,0xa4,0xdf,0x63,0xd3,0x04,0x01,0x20,0xfd,0xff,0xff,0xff,0x0f,0x6f,0x9d,0xc4,0x00,0x07,0xc7,0x49,0x75,0x05,0x01,0x40,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x01,0xdb,0x71,0x97,0x41,0x17,0x66,0xce,0x1c,0x05,0x01,0x40,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x01,0x97,0x55,0x0b,0x62,0x60,0xfa,0x54,0x3b,0x05,0x01,0x40,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x01,0x23,0x5d,0xce,0x8e,0xb9,0xfc,0x08,0xd3,0x05,0x01,0x40,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x01,0x7d,0x19,0xb6,0x85,0x6b,0xde,0x0c,0xc7,0x0e,0x00,0x04,0x03,0x01,0x10,0xff,0xff,0x03,0x21,0xc0,0x37,0x7f,0x55,0x97,0x88,0x0f,0x06,0x01,0x08,0x00,0xa1,0xa2,0x00,0x82,0x3f,0x55,0x17,0x2e,0x06,0x01,0x08,0x00,0x7d,0x1b,0x30,0xf9,0x0d,0xc6,0xe5,0xa0,0x06,0x01,0x08,0x01,0x4d,0x84,0xf5,0xa6,0x73,0xc0,0xb2,0x1c,0x06,0x01,0x08,0x01,0x60,0x09,0x79,0xb1,0x50,0xc1,0xa0,0x4c,0x07,0x01,0x10,0x00,0xb2,0x4c,0xb0,0x36,0x68,0x13,0x52,0xf2,0x07,0x01,0x10,0x00,0x0c,0x61,0xe7,0x16,0xf2,0xe1,0x37,0x4f,0x07,0x01,0x10,0x01,0x04,0x33,0x8f,0x97,0x05,0xb6,0x76,0xd1,0x07,0x01,0x10,0x01,0xda,0x9c,0x47,0xe7,0x4d,0x92,0x0b,0x20,0x08,0x01,0x20,0x00,0xb0,0xac,0xb5,0x31,0x2a,0x2f,0x3d,0xa5,0x08,0x01,0x20,0x00,0xd2,0xe3,0xa4,0xa1,0x8e,0xbe,0x59,0x97,0x08,0x01,0x20,0x01,0x0e,0x3c,0x2e,0x08,0xfc,0x15,0xc5,0x8d,0x08,0x01,0x20,0x01,0x73,0x89,0xdf,0xdb,0x11,0xef,0xec,0xbe,0x09,0x01,0x40,0x00,0x27,0xf2,0xff,0xe0,0x66,0xad,0x17,0x01,0x09,0x01,0x40,0x00,0xdb,0x89,0x06,0xb5,0xf3,0x5a,0xb4,0xf2,0x09,0x01,0x40,0x01,0xf7,0xca,0xeb,0x7e,0x01,0x12,0x3e,0x71,0x09,0x01,0x40,0x01,0xe5,0x51,0xae,0x5a,0xbe,0xfe,0x41,0xc3,0x0e,0x00,0x04,0x09,0x01,0x40,0x00,0xc7,0x8d,0x4d,0xb5,0x07,0x0c,0xa6,0x08,0x06,0x01,0x08,0x00,0xbe,0x97,0xad,0x12,0x19,0x70,0x95,0xff,0x07,0x01,0x10,0x00,0x70,0x94,0xb3,0x12,0x19,0x5c,0x9c,0xff,0x08,0x01,0x20,0x00,0xe7,0x61,0xab,0x12,0x19,0x70,0x92,0xff,0x09,0x01,0x40,0x00,0x8a,0x9e,0xad,0x12,0x19,0x74,0x95,0xff,0x07,0x01,0x0c,0x00,0xa1,0x35,0xa5,0x12,0x19,0x68,0x8b,0xff,0x09,0x01,0x30,0x00,0x94,0xd3,0x46,0x87,0x72,0xc9,0x67,0x8a,0x0c,0x10,0xb6,0xab,0x7f,0xb8,0x01,0xd9,0xcb,0x41,0x0e,0x00,0x08,0x0d,0x67,0x67,0x43,0xc0,0x1f,0xe6,0x81,0x81,0x0e,0x00,0x04,0x0d,0x60,0x16,0x0e,0x9a,0x73,0xad,0x0f,0xf1,0x10,0x03,0x04,0x01,0x11,0x00,0x5d,0x5a,0xbd,0x66,0xcd,0xd7,0x21,0x2d,0x0c,0x20,0x73,0x2b,0xa8,0x9c,0xe0,0xcc,0xd0,0x95,0x0e,0x00,0x04,0x04,0x01,0x04,0x00,0xaa,0x44,0xcd,0xc0,0x48,0xb6,0xdb,0x40,0x0d,0x74,0xb6,0x5d,0xd6,0xe2,0x99,0xec,0xce,0x04,0x01,0x07,0x00,0xcf,0x0c,0xa0,0xc7,0xb1,0xda,0xa0,0xbc,0x0c,0x10,0xc0,0x7f,0xb3,0x8a,0xbe,0x08,0x63,0x7f,0x0a,0x00,0x48,0x3d,0x34,0x53,0x69,0xbe,0x2c,0xdc,0x0a,0x00,0xd2,0xb1,0xac,0x02,0x57,0x05,0x33,0x17,0x0a,0x00,0x32,0xe9,0x13,0x9e,0x30,0xc5,0x31,0x4f,0x04,0x01,0x04,0x00,0xa4,0xed,0xca,0xd5,0x9a,0x3e,0x01,0xa5,0x06,0x01,0x06,0x00,0x59,0x3f,0x2e,0x60,0xbc,0x87,0x65,0xad,0x01,0x94,0x43,0xf2,0x51,0x3b,0xc8,0xc1,0x36,0x0f,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0xf0,0xa2,0x04,0xe5,0xe9,0xb5,0x63,0xd0,0xa9,0xb8,0xcf,0x0e,0x00,0xf0,0xa2,0x04,0x06,0x00,0xdc,0xdd,0x48,0x3b,0x6a,0xca,0xb1,0xe3,0x0e,0x00,0xf0,0xa2,0x04,0x07,0x00,0x9b,0x1f,0xcd,0x1c,0x6c,0x9e,0x3d,0x48,0x00,0x52,0x8d,0xf8,0x30,0x1d,0x12,0xf3,0x9f,0x00,0x7c,0x28,0x87,0x75,0xd8,0xb5,0xc7,0x58,0x00,0x91,0xc5,0xc4,0xaa,0x39,0x77,0x92,0xc4,0x00,0x80,0x25,0xf1,0xea,0xde,0x1a,0xe5,0xc3,0x00,0xb3,0x18,0x32,0x0d,0x7e,0xc9,0x16,0xc4,0x00,0xf4,0x2c,0x8c,0xe8,0xcb,0xa6,0x61,0xae,0x00,0x1f,0xbc,0x0d,0x42,0xe1,0x24,0x4d,0x33,0x00,0xdb,0x23,0x0e,0xd0,0xa3,0x21,0x23,0x6c,0x00,0xc2,0x85,0x52,0xc1,0xc3,0xf7,0x11,0xd0,0x00,0x8a,0xcb,0x54,0xc5,0xa1,0x6a,0x21,0xa8,0x00,0xa5,0xc1,0x19,0x57,0x62,0x3c,0x57,0x7d,0x00,0x7c,0x1b,0xac,0xfe,0x19,0xde,0xf1,0x9f,0x00,0x2d,0x3e,0x69,0xc1,0xa7,0xd3,0xf3,0xec,0x00,0x1c,0x3f,0x95,0xd5,0x8f,0xd7,0x00,0xcf,0x00,0x7c,0x76,0x2e,0x3b,0xbe,0xde,0x54,0x58,0x00,0xe3,0x83,0x45,0x5a,0x2e,0x59,0x28,0xb5,0x00,0x76,0x52,0xff,0xa8,0xae,0x16,0xdc,0x04,0x00,0xcc,0x69,0xe4,0xe2,0x9b,0xbe,0xb5,0xff,0x0d,0xd7,0x2f,0x3d,0xe7,0xed,0xc5,0xcd,0x13,0x0d,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x00,0xe4,0x4f,0x1c,0x4f,0x47,0xc0,0x2e,0x2f,0x00,0x58,0xfc,0xaf,0xfa,0xd8,0xe0,0x4b,0x70,0x00,0xc7,0xd4,0x7b,0x26,0xb0,0x9d,0x29,0x5f,0x00,0xc7,0xc3,0x1b,0x26,0xcf,0x7b,0x3e,0x41,0x00,0x5b,0x21,0xce,0xf6,0xb1,0xdf,0xb1,0xff,0x00,0x64,0x1b,0x41,0x15,0x46,0xe0,0xcb,0x5f,0x00,0xaf,0x37,0x33,0x25,0xb2,0x42,0x68,0xb7,0x00,0x90,0x78,0xbd,0xdf,0x30,0xb1,0x66,0x30,0x00,0xcf,0xee,0x4d,0xe9,0xe4,0x3a,0x63,0xd6,0x00,0xa1,0xcc,0x8d,0xa2,0xae,0x0c,0xaa,0xa6,0x00,0x6e,0x33,0x14,0xb1,0x5d,0x82,0x2d,0xd0,0x00,0x7b,0x02,0x29,0x25,0x1c,0x2e,0x18,0x1c,0x00,0x78,0xa7,0x9d,0x85,0xb7,0xfc,0xff,0x19,0x00,0x2e,0xbe,0x28,0xda,0x1d,0x75,0x79,0xec,0x00,0xf1,0x8b,0xd2,0xb7,0xc4,0xc0,0x1e,0x03,0x00,0xd7,0x5e,0x4f,0x9e,0x4e,0x69,0x59,0xbf,0x00,0x87,0x5e,0xf4,0xde,0xf6,0x43,0x48,0x5f,0x00,0x29,0x1a,0x17,0xda,0x11,0x99,0x1a,0x1d,0x00,0x3a,0x11,0xfb,0x11,0x5d,0x55,0xf8,0x1c,0x00,0x15,0xad,0xb2,0x16,0x0c,0xba,0x9d,0x46,0x00,0xc3,0xb0,0xc4,0x86,0x0d,0x78,0x77,0x05,0x00,0x51,0x64,0x36,0xd3,0x61,0x69,0x6a,0xab,0x00,0x00,0xfe,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,};
+
+typedef struct TableBitWriter { uint8_t * buffer; int64_t capacity,bits; int overflow,check_default;  } TableBitWriter;
+typedef struct TableBitReader { const uint8_t * buffer; int64_t bits,offset; } TableBitReader;
+static SCHEMA_UNUSED TableBitWriter table_bit_writer(uint8_t * buffer,int64_t capacity)
+{ TableBitWriter w;memset(&w,0,sizeof(w));w.buffer=buffer;w.capacity=capacity;return w; }
+static SCHEMA_UNUSED TableBitReader table_bit_reader(const uint8_t * buffer,int64_t bytes)
+{ TableBitReader r={buffer,bytes>=0 && bytes<=INT64_MAX/8 ? bytes*8 : 0,0}; return r; }
+static SCHEMA_UNUSED int table_bit_has(const TableBitReader * r,int64_t n)
+{ return n>=0 && r->offset>=0 && r->offset<=r->bits && n<=r->bits-r->offset; }
+static SCHEMA_UNUSED void table_bit_put(TableBitWriter * w,uint64_t value,int64_t n)
+{
+ int64_t index,bit,need,i; uint64_t word,head;
+ if(n<0 || n>64 || w->bits>INT64_MAX-n-7) { w->overflow=1;return; }
+ if(n==0) return;
+ if(w->capacity<0 || (w->bits+n+7)/8>w->capacity) {w->overflow=1;w->bits+=n;return;}
+ if(w->buffer==NULL) {w->bits+=n;return;}
+ if(n<64) value&=(UINT64_C(1)<<n)-1;
+ index=w->bits>>3;bit=w->bits&7;need=(bit+n+7)>>3;
+ head=bit ? (uint64_t)w->buffer[index]&((UINT64_C(1)<<bit)-1) : 0;
+ word=head|(value<<bit);
+ for(i=0;i<need && i<8;i++) w->buffer[index+i]=(uint8_t)(word>>(8*i));
+ if(need>8) w->buffer[index+8]=(uint8_t)(value>>(64-bit));
+ w->bits+=n;
+}
+static SCHEMA_UNUSED int table_bit_get(TableBitReader * r,uint64_t * value,int64_t n)
+{
+ int64_t got=0;
+ if(n>64 || !table_bit_has(r,n)) return 0;
+ *value=0;
+ while(got<n) {
+  int64_t bit=r->offset&7,take=8-bit;
+  if(take>n-got) take=n-got;
+  *value|=(((uint64_t)r->buffer[r->offset>>3]>>bit)&((UINT64_C(1)<<take)-1))<<got;
+  r->offset+=take;got+=take;
+ }
+ return 1;
+}
+static SCHEMA_UNUSED int table_bit_skip(TableBitReader * r,int64_t n)
+{ if(!table_bit_has(r,n))return 0;r->offset+=n;return 1; }
+static SCHEMA_UNUSED void table_bit_align_write(TableBitWriter * w)
+{table_bit_put(w,0,(8-(w->bits&7))&7);}
+static SCHEMA_UNUSED int table_bit_align_read(TableBitReader * r)
+{uint64_t pad;return table_bit_get(r,&pad,(8-(r->offset&7))&7) && pad==0;}
+static SCHEMA_UNUSED void table_bit_putbytes(TableBitWriter * w,const void * source,int64_t n)
+{
+ int64_t i;
+ if(n<0 || n>(INT64_MAX-w->bits)/8) {w->overflow=1;return;}
+ if(w->buffer==NULL || (w->bits&7)==0) {
+  if(w->bits/8+n>w->capacity)w->overflow=1;
+  else if(w->buffer!=NULL && n>0)memcpy(w->buffer+w->bits/8,source,(size_t)n);
+  w->bits+=n*8;return;
+ }
+ for(i=0;i<n;i++)table_bit_put(w,((const uint8_t *)source)[i],8);
+}
+static SCHEMA_UNUSED int table_bit_getbytes(TableBitReader * r,uint8_t * target,int64_t n)
+{
+ int64_t i;uint64_t by;
+ if(n<0 || n>INT64_MAX/8 || !table_bit_has(r,n*8))return 0;
+ if((r->offset&7)==0){if(n>0)memcpy(target,r->buffer+r->offset/8,(size_t)n);r->offset+=n*8;return 1;}
+ for(i=0;i<n;i++){if(!table_bit_get(r,&by,8))return 0;target[i]=(uint8_t)by;}return 1;
+}
+static SCHEMA_UNUSED int64_t announce_measure(void) {return kTableAnnounceBytes;
+}
+static SCHEMA_UNUSED int64_t announce(uint8_t * buffer,int64_t capacity)
+{if(buffer==NULL || capacity<kTableAnnounceBytes)return -1;
+memcpy(buffer,kTableAnnounce,kTableAnnounceBytes);
+return kTableAnnounceBytes;
+}
+static SCHEMA_UNUSED int64_t table_bits_required( int64_t min, int64_t max )
+{
+    if ( max <= min ) { return 0; }
+    uint64_t span = (uint64_t) max - (uint64_t) min;
+    int64_t n = 0;
+    while ( span > 0 ) { n++; span >>= 1; }
+    return n;
+}
+
+// table_message_kind_bits is the widest RANGED value a kind can carry, its own
+// storage width: a width above it is a hostile width on the announcement.
+static SCHEMA_UNUSED int64_t table_message_kind_bits( uint8_t kind )
+{
+    switch ( kind )
+    {
+        case 2: case 6: case 20: case 25: return 8;
+        case 3: case 7: case 21: case 26: return 16;
+        case 4: case 8: case 22: case 27: return 32;
+        case 5: case 9: case 23: case 28: return 64;
+        default: return 128;
+    }
+}
+
+// table_message_quantization is SPEC.md §4.3's derivation over an announced
+// triple, in float32 and by nothing else: delta, the step count and the
+// width. False is a triple SPEC.md calls non-conforming, which on the
+// announcement is a hostile width like any other (§3.3).
+static SCHEMA_UNUSED int table_message_quantization( float qmin, float qmax, float qres, float * delta, uint32_t * count, int64_t * bits )
+{
+    if ( !( qmin < qmax ) || !( qres > 0.0f ) ) { return 0;
+    }
+    (*delta) = qmax - qmin;
+    float values = (*delta) / qres;
+    if ( !( (*delta) - (*delta) == 0.0f ) || !( values - values == 0.0f ) ) { return 0;
+    } // Inf - Inf is NaN
+    if ( !( values >= 1.0f ) ) { values = 1.0f;
+    }
+    else if ( values > 4294967040.0f ) { values = 4294967040.0f;
+    } // the largest float below 2^32
+    (*count) = (uint32_t) values;
+    if ( (float) (*count) < values ) { (*count)++;
+    } // ceil, on a value the cast holds exactly
+    (*bits) = table_bits_required( 0, (int64_t) (*count) );
+    return 1;
+}
+
+// The two roundings on each side of the rule (SPEC.md §7.2): the product
+// rounds to float32 BEFORE the add, which a compiler permitted to contract
+// would otherwise fuse into one rounding and move the wire.
+#if ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __aarch64__ ) || defined( _M_ARM64 ) )
+#define SCHEMA_TABLE_FLOAT_FORCE_ROUND( x ) __asm__ ( "" : "+w" ( x ) )
+#elif ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __x86_64__ ) || defined( __i386__ ) )
+#define SCHEMA_TABLE_FLOAT_FORCE_ROUND( x ) __asm__ ( "" : "+x" ( x ) )
+#else
+#define SCHEMA_TABLE_FLOAT_FORCE_ROUND( x ) do { volatile float schema_table_float_force_round_slot_ = ( x ); ( x ) = schema_table_float_force_round_slot_; } while ( 0 )
+#endif
+
+// table_message_quantize is the writer's half: the index a value takes.
+static SCHEMA_UNUSED uint32_t table_message_quantize( float value, float qmin, float delta, uint32_t count )
+{
+    float normalized = ( value - qmin ) / delta;
+    if ( !( normalized >= 0.0f ) ) { normalized = 0.0f;
+    }
+    else if ( !( normalized <= 1.0f ) ) { normalized = 1.0f;
+    }
+    float scaled = normalized * (float) count;
+    SCHEMA_TABLE_FLOAT_FORCE_ROUND( scaled );
+    uint32_t index = (uint32_t) ( scaled + 0.5f );
+    // floor of a non-negative value
+    if ( index > count ) { index = count;
+    }
+    return index;
+}
+
+// table_message_dequantize is the reader's half: the float an index names.
+static SCHEMA_UNUSED float table_message_dequantize( uint32_t index, float qmin, float delta, uint32_t count )
+{
+    if ( index > count ) { index = count;
+    }
+    const float normalized = index / (float) count;
+    float scaled = normalized * delta;
+    SCHEMA_TABLE_FLOAT_FORCE_ROUND( scaled );
+    return scaled + qmin;
+}
+
+static SCHEMA_UNUSED int table_message_integer_kind( uint8_t kind )
+{
+    return ( kind >= 2 && kind <= 9 ) || kind == 18 || kind == 19;
+}
+
+static SCHEMA_UNUSED int table_message_fixed_kind( uint8_t kind ) { return kind >= 20 && kind <= 29;
+}
+
+static SCHEMA_UNUSED int table_message_known_kind( uint8_t kind )
+{
+    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 33 );
+}
+
+
+typedef struct TableMessageEntry {
+ uint64_t id;
+ int64_t min,max,base_lo,base_hi,elem_max,elem_base_lo,elem_base_hi;
+ float qmin,qdelta;uint32_t qcount;float elem_qmin,elem_qdelta;uint32_t elem_qcount;
+ int16_t value_bits,elem_value_bits;
+ uint8_t kind,packing,elem_kind,elem_packing;
+} TableMessageEntry;
+typedef struct TableMessageShapeFacts {
+ uint8_t packing,elem_kind; int64_t value_bits,base_lo,base_hi,min,max;
+ float qmin,qmax,qres,qdelta;uint32_t qcount;
+} TableMessageShapeFacts;
+typedef struct TableVocabulary {
+ TableMessageEntry * entries;int64_t max_entries,count,ref_bits;
+ uint64_t build_version;int announced,refused;int64_t max_bytes;
+} TableVocabulary;
+enum { SCHEMA_TABLE_NO_VOCABULARY=3,SCHEMA_TABLE_SECOND_ANNOUNCEMENT=4,SCHEMA_TABLE_VOCABULARY_TOO_LARGE=5,SCHEMA_TABLE_BATCH_TOO_LARGE=6 };
+static SCHEMA_UNUSED TableVocabulary table_vocabulary(TableMessageEntry * storage,int64_t capacity)
+{TableVocabulary v;memset(&v,0,sizeof(v));v.entries=storage;v.max_entries=capacity;v.max_bytes=65536;return v;}
+static SCHEMA_UNUSED int table_message_leb(const uint8_t * in,int64_t size,int64_t * at,uint64_t * value)
+{
+ TableReader r=table_reader_make(in,size,NULL);
+ r.offset=*at;
+ if(!table_reader_leb(&r,value))return 0;
+ *at=r.offset;
+ return 1;
+}
+static SCHEMA_UNUSED int64_t table_message_value_bits(uint8_t kind,uint8_t packing,int64_t bits)
+{
+ if(kind==1)return 1;
+ if(kind==11)return 64;
+ if(kind==10)return packing==2?bits:32;
+ if(table_message_integer_kind(kind)||table_message_fixed_kind(kind))return packing==1?bits:table_message_kind_bits(kind);
+ return -1;
+}
+static SCHEMA_UNUSED int table_message_shape_read(const uint8_t * in,int64_t size,int64_t * at,uint8_t kind,TableMessageShapeFacts * f)
+{
+ uint64_t v=0;
+ int i,k;
+ if(table_message_integer_kind(kind)||table_message_fixed_kind(kind)||kind==10){
+  if(*at>=size)return 0;
+  f->packing=in[(*at)++];
+  if(f->packing==0)return 1;
+  if(f->packing==1 && kind!=10){
+   if(!table_message_leb(in,size,at,&v)||v>(uint64_t)table_message_kind_bits(kind))return 0;
+   f->value_bits=(int64_t)v;
+   if(kind==18||kind==19||table_message_fixed_kind(kind)){
+    uint64_t lo=0,hi=0;
+    if(*at>size-16)return 0;
+    for(i=0;i<8;i++){lo|=(uint64_t)in[*at+i]<<(8*i);
+    hi|=(uint64_t)in[*at+8+i]<<(8*i);
+    }
+    f->base_lo=(int64_t)lo;
+    f->base_hi=(int64_t)hi;
+    *at+=16;
+    return 1;
+   }
+   if(!table_message_leb(in,size,at,&v))return 0;
+   f->base_lo=kind>=2&&kind<=5?(int64_t)(v>>1)^-(int64_t)(v&1):(int64_t)v;
+   return 1;
+  }
+  if(f->packing==2 && kind==10){
+   uint32_t raw[3]={0,0,0};
+   if(*at>size-12)return 0;
+   for(k=0;k<3;k++)for(i=0;i<4;i++)raw[k]|=(uint32_t)in[*at+4*k+i]<<(8*i);
+   *at+=12;
+   memcpy(&f->qmin,raw,4);
+   memcpy(&f->qmax,raw+1,4);
+   memcpy(&f->qres,raw+2,4);
+   return table_message_quantization(f->qmin,f->qmax,f->qres,&f->qdelta,&f->qcount,&f->value_bits);
+  }return 0;
+ }
+ if(kind==12||kind==33){if(!table_message_leb(in,size,at,&v)||v>INT32_MAX)return 0;
+ f->max=(int64_t)v;
+ return 1;
+ }
+ if(kind==14||kind==16){
+  if(kind==14){if(!table_message_leb(in,size,at,&v)||v>UINT32_MAX)return 0;
+  f->min=(int64_t)v;
+  }
+  if(!table_message_leb(in,size,at,&v)||v>UINT32_MAX||v<(uint64_t)f->min)return 0;
+  f->max=(int64_t)v;
+  if(*at>=size)return 0;
+  f->elem_kind=in[(*at)++];
+  return table_message_known_kind(f->elem_kind)&&f->elem_kind!=12&&f->elem_kind!=33;
+ }return 1;
+}
+static SCHEMA_UNUSED int table_message_entry_read(const uint8_t * in,int64_t size,int64_t * at,TableMessageEntry * e)
+{
+ TableMessageShapeFacts own={0},elem={0};
+ int i;
+ if(*at<0||*at>size-9)return 0;
+ memset(e,0,sizeof(*e));
+ e->value_bits=e->elem_value_bits=-1;
+ for(i=0;i<8;i++)e->id|=(uint64_t)in[*at+i]<<(8*i);
+ e->kind=in[*at+8];
+ *at+=9;
+ if(!table_message_known_kind(e->kind)||!table_message_shape_read(in,size,at,e->kind,&own))return 0;
+ e->packing=own.packing;
+ e->value_bits=(int16_t)table_message_value_bits(e->kind,own.packing,own.value_bits);
+ e->min=own.min;
+ e->max=own.max;
+ e->base_lo=own.base_lo;
+ e->base_hi=own.base_hi;
+ e->qmin=own.qmin;
+ e->qdelta=own.qdelta;
+ e->qcount=own.qcount;
+ e->elem_kind=own.elem_kind;
+ if(e->kind==14||e->kind==16){
+  if(!table_message_shape_read(in,size,at,e->elem_kind,&elem))return 0;
+  e->elem_packing=elem.packing;
+  e->elem_value_bits=(int16_t)table_message_value_bits(e->elem_kind,elem.packing,elem.value_bits);
+  e->elem_max=elem.max;
+  e->elem_base_lo=elem.base_lo;
+  e->elem_base_hi=elem.base_hi;
+  e->elem_qmin=elem.qmin;
+  e->elem_qdelta=elem.qdelta;
+  e->elem_qcount=elem.qcount;
+ }return 1;
+}
+
+
+static SCHEMA_UNUSED int table_announce_once(TableVocabulary * v,const uint8_t * buffer,int64_t bytes,TableReport * report)
+{
+ TableReader r;
+ int seen_version=0,seen_words=0;
+ const uint8_t * words=NULL;
+ int64_t words_bytes=0,at=0,count=0,nodes=0,touched=0;
+ if(!table_wire_open(&r,buffer,bytes,report))return 0;
+ for(;;){
+  uint64_t ref,id;
+  uint8_t kind;
+  if(!table_reader_leb(&r,&ref))goto malformed;
+  if(ref==0)break;
+  if(ref>r.id_count||!table_reader_has(&r,1))goto malformed;
+  id=table_reader_id_at(&r,ref);
+  kind=table_reader_get8(&r);
+  if(id==UINT64_C(0xfffffffffffffffe)){
+   if(kind!=9||!table_reader_has(&r,8))goto malformed;
+   v->build_version=table_reader_get64(&r);
+   seen_version++;
+   continue;
+  }
+  if(id==UINT64_C(0xfffffffffffffffd)){
+   TableReader field;
+   uint64_t n;
+   if(kind!=14||!table_reader_span(&r,&field)||!table_reader_has(&field,1)||table_reader_get8(&field)!=6)goto malformed;
+   if(!table_reader_leb(&field,&n)||!table_reader_room(&field,n)||n!=(uint64_t)(field.size-field.offset))goto malformed;
+   if(v->max_bytes<0 || n>(uint64_t)v->max_bytes){report->refused=1;
+   report->reason=SCHEMA_TABLE_VOCABULARY_TOO_LARGE;
+   return 0;
+   }
+   words=field.buffer+field.offset;
+   words_bytes=(int64_t)n;
+   seen_words++;
+   continue;
+  }
+  report->unknown++;
+  if(!table_reader_skip(&r,kind))goto malformed;
+ }
+ if(seen_version!=1||seen_words!=1||r.offset!=r.size)goto malformed;
+ while(at<words_bytes){
+  TableMessageEntry * entry;
+  int64_t i,began=at;
+  if(v->entries==NULL){report->refused=1;
+  report->reason=SCHEMA_TABLE_NO_VOCABULARY;
+  goto refused;
+  }
+  if(count>=v->max_entries){report->refused=1;
+  report->reason=SCHEMA_TABLE_VOCABULARY_TOO_LARGE;
+  goto refused;
+  }
+  entry=&v->entries[count];
+  touched=count+1;
+  if(!table_message_entry_read(words,words_bytes,&at,entry))goto malformed;
+  if(entry->id==UINT64_C(0xfffffffffffffffe)||entry->id==UINT64_C(0xfffffffffffffffd))goto malformed;
+  if(entry->id==UINT64_MAX && nodes++>0)goto malformed;
+  /* Declared canonical bytes identify a shape. Resolved quantization facts
+     alone can collapse different triples (#722). Until validation finishes,
+     min/max temporarily hold the source span; no announcement pointer escapes. */
+  for(i=0;i<count;i++){int64_t start=v->entries[i].min,length=v->entries[i].max-start;
+   if(length==at-began && !memcmp(words+start,words+began,(size_t)length))goto malformed;
+   }
+  entry->min=began;
+  entry->max=at;
+  count++;
+ }
+ /* Resolve the accepted spans into the caller's final 96-byte entries. */
+ at=0;
+ {int64_t i;
+ for(i=0;i<count;i++)if(!table_message_entry_read(words,words_bytes,&at,v->entries+i))goto malformed;
+ }
+ v->count=count;
+ v->ref_bits=table_bits_required(0,count);
+ v->announced=1;
+ return 1;
+malformed:
+ report->malformed=1;
+refused:
+ if(touched)memset(v->entries,0,(size_t)touched*sizeof(*v->entries));
+ return 0;
+}
+static SCHEMA_UNUSED int announce_read(TableVocabulary * v,const uint8_t * buffer,int64_t bytes,TableReport * report)
+{
+ TableReport ignored={0};
+ int ok;
+ if(report==NULL)report=&ignored;
+ if(v->announced||v->refused){report->refused=1;
+ report->reason=SCHEMA_TABLE_SECOND_ANNOUNCEMENT;
+ return 0;
+ }
+ ok=table_announce_once(v,buffer,bytes,report);
+ if(!ok)v->refused=1;
+ return ok;
+}
+
+typedef struct TableMessageReader {
+ TableBitReader bits; const TableVocabulary * vocabulary; TableReport * report;
+ int64_t index_bits; int extent_refused;
+} TableMessageReader;
+static SCHEMA_UNUSED int table_message_ref(TableMessageReader * r,const TableMessageEntry ** entry,int name)
+{
+ uint64_t ref=0;
+ *entry=NULL;
+ if(!table_bit_get(&r->bits,&ref,r->vocabulary->ref_bits))return 0;
+ if(ref==0)return 1;
+ if(ref>(uint64_t)r->vocabulary->count)return 0;
+ *entry=r->vocabulary->entries+ref-1;
+ return (*entry)->id<UINT64_C(0xfffffffffffffffd) && (!name || (*entry)->kind==0);
+}
+static SCHEMA_UNUSED TableMessageEntry table_message_element(const TableMessageEntry * e)
+{
+ TableMessageEntry v;
+ memset(&v,0,sizeof(v));
+ v.kind=e->elem_kind;
+ v.packing=e->elem_packing;
+ v.value_bits=e->elem_value_bits;
+ v.base_lo=e->elem_base_lo;
+ v.base_hi=e->elem_base_hi;
+ v.max=e->elem_max;
+ v.qmin=e->elem_qmin;
+ v.qdelta=e->elem_qdelta;
+ v.qcount=e->elem_qcount;
+ return v;
+}
+static SCHEMA_UNUSED int table_message_skip_run(TableMessageReader * r,uint64_t count,int64_t width)
+{
+ if(width<0)return 0;
+ if(width==0)return 1;
+ if(count>(uint64_t)(INT64_MAX/width))return 0;
+ return table_bit_skip(&r->bits,(int64_t)(count*(uint64_t)width));
+}
+static SCHEMA_UNUSED int table_message_count(TableMessageReader * r,const TableMessageEntry * e,uint64_t * n)
+{
+ uint64_t raw;
+ if(!table_bit_get(&r->bits,&raw,table_bits_required(e->min,e->max)))return 0;
+ *n=raw+(uint64_t)e->min;
+ return !(e->kind==14 && e->elem_kind==6) || table_bit_align_read(&r->bits);
+}
+static SCHEMA_UNUSED int table_message_skip(TableMessageReader *,const TableMessageEntry *);
+static SCHEMA_UNUSED int table_message_skip_body(TableMessageReader * r)
+{
+ for(;;) {const TableMessageEntry * entry;
+  if(!table_message_ref(r,&entry,0))return 0;
+  if(entry==NULL)return 1;
+  if(!table_message_skip(r,entry))return 0;
+ }
+}
+static SCHEMA_UNUSED int table_message_skip(TableMessageReader * r,const TableMessageEntry * e)
+{
+ uint64_t n,i;
+ const TableMessageEntry * entry;
+ switch(e->kind) {
+ case 0:case 32:return 1;
+ case 30:return table_message_ref(r,&entry,1);
+ case 13:return table_message_skip_body(r);
+ case 17:return r->index_bits>0 && table_bit_skip(&r->bits,r->index_bits);
+ case 15:
+  if(!table_message_ref(r,&entry,0))return 0;
+  return entry==NULL || (entry->kind!=0 && table_message_skip(r,entry));
+ case 12:case 33:
+  if(!table_bit_get(&r->bits,&n,table_bits_required(0,e->max)))return 0;
+  if(e->kind==12 && !table_bit_align_read(&r->bits))return 0;
+  return table_message_skip_run(r,n,e->kind==12?8:16);
+ case 31:
+  if(!table_bit_align_read(&r->bits)||!table_bit_get(&r->bits,&n,32))return 0;
+  return table_message_skip_run(r,n,8);
+ case 14:case 16: {
+  TableMessageEntry elem=table_message_element(e);
+  if(!table_message_count(r,e,&n))return 0;
+  if(e->kind==14 && (elem.kind==0||elem.kind==32))return 1;
+  if(e->kind==14 && elem.value_bits>=0)return table_message_skip_run(r,n,elem.value_bits);
+  for(i=0;i<n;i++) {
+   if(e->kind==16 && !table_message_ref(r,&entry,1))return 0;
+   if(!table_message_skip(r,&elem))return 0;
+  }return 1;
+ }
+ default:return e->value_bits>=0 && table_bit_skip(&r->bits,e->value_bits);
+ }
+}
+static SCHEMA_UNUSED int table_message_number(TableMessageReader * r,const TableMessageEntry * e,uint64_t * lo,uint64_t * hi)
+{
+ int64_t width=e->value_bits;
+ uint64_t before;
+ *lo=*hi=0;
+ if(width<0 || width>128 || !table_bit_get(&r->bits,lo,width<64?width:64))return 0;
+ if(width>64 && !table_bit_get(&r->bits,hi,width-64))return 0;
+ if(e->packing==1) {
+  before=*lo;
+  *lo+=(uint64_t)e->base_lo;
+  if(table_message_kind_bits(e->kind)>64)*hi+=(uint64_t)e->base_hi+(*lo<before);
+ } else if(((e->kind>=2 && e->kind<=5)||(e->kind>=20 && e->kind<=23)) && width>0 && width<64 && (*lo&(UINT64_C(1)<<(width-1)))) {
+  *lo|=UINT64_MAX<<width;
+ }
+ if((e->kind>=2 && e->kind<=5)||(e->kind>=20 && e->kind<=23))*hi=(int64_t)*lo<0?UINT64_MAX:0;
+ return 1;
+}
+static SCHEMA_UNUSED int table_message_float(TableMessageReader * r,const TableMessageEntry * e,float * value)
+{
+ uint64_t raw;
+ if(!table_bit_get(&r->bits,&raw,e->value_bits))return 0;
+ if(e->packing==2) {
+  if(raw>e->qcount)return 0;
+  *value=table_message_dequantize((uint32_t)raw,e->qmin,e->qdelta,e->qcount);
+ }else *value=table_bits_to_float((uint32_t)raw);
+ return 1;
+}
+static SCHEMA_UNUSED int64_t table_message_open(TableMessageReader * r,const TableVocabulary * v,const uint8_t * buffer,int64_t bytes,TableReport * report)
+{
+ uint64_t count;
+ memset(r,0,sizeof(*r));
+ r->report=report;
+ r->vocabulary=v;
+ if(bytes<1 || buffer==NULL){report->malformed=1;
+ return -1;
+ }
+ if(buffer[0]!=2){report->refused=1;
+ report->reason=SCHEMA_TABLE_NEWER_FORM;
+ return -1;
+ }
+ if(v==NULL || !v->announced){report->refused=1;
+ report->reason=SCHEMA_TABLE_NO_VOCABULARY;
+ return -1;
+ }
+ r->bits=table_bit_reader(buffer+1,bytes-1);
+ if(!table_bit_get(&r->bits,&count,8)){report->malformed=1;
+ return -1;
+ }
+ return (int64_t)count+1;
+}
+static SCHEMA_UNUSED int table_message_close(TableMessageReader * r)
+{
+ if(!table_bit_align_read(&r->bits)||r->bits.offset!=r->bits.bits){r->report->malformed=1;
+ return 0;
+ }return 1;
+}
+
+static SCHEMA_UNUSED int table_message_nodes_open(TableMessageReader * r,uint64_t * count)
+{
+ uint64_t ref;
+ int64_t start=r->bits.offset;
+ *count=0;
+ if(!table_bit_get(&r->bits,&ref,r->vocabulary->ref_bits))return 0;
+ if(ref>(uint64_t)r->vocabulary->count)return 0;
+ if(ref==0 || r->vocabulary->entries[ref-1].id!=UINT64_MAX){r->bits.offset=start;
+ r->index_bits=1;
+ return 1;
+ }
+ if(!table_bit_get(&r->bits,count,32))return 0;
+ r->index_bits=table_bits_required(0,(int64_t)*count+1);
+ /* Every record spends at least its type reference. Bound the walk before
+    inspecting any record, even when its body holds no scalar bits. */
+ return r->vocabulary->ref_bits>0 && *count<=(uint64_t)((r->bits.bits-r->bits.offset)/r->vocabulary->ref_bits);
+}
+static SCHEMA_UNUSED int table_message_blob_scan(TableMessageReader * r,uint64_t * length)
+{
+ return table_bit_get(&r->bits,length,32) && table_bit_align_read(&r->bits) && table_message_skip_run(r,*length,8);
+}
+
+#endif
 
 /* table GunnerSettings — TABLE-wire storage: relocatable, bounded. C has no member
    initializers, so the declared defaults live in gunner_settings_reset and nowhere
@@ -677,70 +1448,115 @@ static SCHEMA_UNUSED int64_t gunner_settings_measure( const GunnerSettings * val
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int gunner_settings_save_body( TableWriter * w, const GunnerSettings * value );
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int gunner_settings_load_body( TableReader * r, GunnerSettings * value );
 static SCHEMA_UNUSED int64_t ship_entry_measure( const ShipEntry * value );
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ship_entry_save_body( TableWriter * w, const ShipEntry * value );
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ship_entry_load_body( TableReader * r, ShipEntry * value );
+static SCHEMA_UNUSED  int ship_entry_save_body( TableWriter * w, const ShipEntry * value );
+static SCHEMA_UNUSED  int ship_entry_load_body( TableReader * r, ShipEntry * value );
 static SCHEMA_UNUSED int64_t global_settings_measure( const GlobalSettings * value );
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int global_settings_save_body( TableWriter * w, const GlobalSettings * value );
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int global_settings_load_body( TableReader * r, GlobalSettings * value );
 static SCHEMA_UNUSED int64_t pack_config_measure( const PackConfig * value );
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int pack_config_save_body( TableWriter * w, const PackConfig * value );
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int pack_config_load_body( TableReader * r, PackConfig * value );
+static SCHEMA_UNUSED  int pack_config_save_body( TableWriter * w, const PackConfig * value );
+static SCHEMA_UNUSED  int pack_config_load_body( TableReader * r, PackConfig * value );
+
+static SCHEMA_UNUSED int schema_tabledemo_gunner_settings_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_tabledemo_ship_entry_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_tabledemo_global_settings_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_tabledemo_pack_config_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int gunner_settings_save_message_body(TableBitWriter *,const GunnerSettings *);
+static SCHEMA_UNUSED int ship_entry_save_message_body(TableBitWriter *,const ShipEntry *);
+static SCHEMA_UNUSED int global_settings_save_message_body(TableBitWriter *,const GlobalSettings *);
+static SCHEMA_UNUSED int pack_config_save_message_body(TableBitWriter *,const PackConfig *);
+static SCHEMA_UNUSED int gunner_settings_load_message_body(TableMessageReader *,GunnerSettings *);
+static SCHEMA_UNUSED int ship_entry_load_message_body(TableMessageReader *,ShipEntry *);
+static SCHEMA_UNUSED int global_settings_load_message_body(TableMessageReader *,GlobalSettings *);
+static SCHEMA_UNUSED int pack_config_load_message_body(TableMessageReader *,PackConfig *);
+static SCHEMA_UNUSED int schema_tabledemo_gunner_settings_message_extent_(TableMessageReader *,int64_t *);
+static SCHEMA_UNUSED int schema_tabledemo_ship_entry_message_extent_(TableMessageReader *,int64_t *);
+static SCHEMA_UNUSED int schema_tabledemo_global_settings_message_extent_(TableMessageReader *,int64_t *);
+static SCHEMA_UNUSED int schema_tabledemo_pack_config_message_extent_(TableMessageReader *,int64_t *);
+static SCHEMA_UNUSED int schema_tabledemo_gunner_settings_wire_callsign_( TableWriter * w, const GunnerSettings * value )
+{
+    if ( value->callsign_length < 0 || value->callsign_length > 24 ) { return 0; }
+    table_writer_raw( w, value->callsign, value->callsign_length );
+    return !w->overflow;
+}
+
+static SCHEMA_UNUSED int gunner_settings_save_body( TableWriter * w, const GunnerSettings * value )
+{
+    (void) value;
+    { /* reaction */
+        if ( !( value->reaction == 0.2f ) )
+        {
+            if ( w->check_default ) { w->offset = 2; return 1; }
+            table_writer_id( w, 0xb75aa3662201646aull ); table_writer_put8( w, 10 );
+            table_writer_put32( w, table_float_to_bits( value->reaction ) );
+        }
+    }
+    { /* tracking */
+        if ( !( value->tracking == 0 ) )
+        {
+            if ( w->check_default ) { w->offset = 2; return 1; }
+            table_writer_id( w, 0xa6bf719a4602b0bcull ); table_writer_put8( w, 1 );
+            table_writer_put8( w, value->tracking ? 1 : 0 );
+        }
+    }
+    { /* callsign */
+        if ( value->callsign_length < 0 || value->callsign_length > 24 ) { return 0; }
+        if ( value->callsign_length != 0 )
+        {
+            if ( w->check_default ) { w->offset = 2; return 1; }
+            table_writer_id( w, 0x5bc44627b9848818ull ); table_writer_put8( w, 12 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !schema_tabledemo_gunner_settings_wire_callsign_( w, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !schema_tabledemo_gunner_settings_wire_callsign_( &probe, value ) ) { return 0; }
+                table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !schema_tabledemo_gunner_settings_wire_callsign_( w, value ) ) { return 0; }
+            }
+        }
+    }
+    table_writer_leb( w, 0 );
+    return !w->overflow;
+}
 
 static SCHEMA_UNUSED int64_t gunner_settings_measure( const GunnerSettings * value )
 {
-    int64_t bytes = 2; /* terminator */
-    if ( value->reaction != 0.2f ) { bytes += 3 + 4; } /* reaction */
-    if ( value->tracking != 0 ) { bytes += 3 + 1; } /* tracking */
-    if ( value->callsign_length < 0 || value->callsign_length > 24 ) { return -1; } /* storage invariant */
-    if ( value->callsign_length > 0 ) { bytes += 3 + 4 + value->callsign_length; } /* callsign */
-    return bytes;
-}
-
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int gunner_settings_save_body( TableWriter * w, const GunnerSettings * value )
-{
-    if ( value->reaction != 0.2f )
-    {
-        table_writer_put16( w, 0x900f ); table_writer_put8( w, 10 ); /* reaction */
-        table_writer_put32( w, table_float_to_bits( value->reaction ) );
-    }
-    if ( value->tracking != 0 )
-    {
-        table_writer_put16( w, 0x53d5 ); table_writer_put8( w, 1 ); /* tracking */
-        table_writer_put8( w, value->tracking ? 1 : 0 );
-    }
-    if ( value->callsign_length < 0 || value->callsign_length > 24 ) { return 0; } /* storage invariant */
-    if ( value->callsign_length > 0 )
-    {
-        table_writer_put16( w, 0x74dc ); table_writer_put8( w, 12 ); /* callsign */
-        table_writer_put32( w, (uint32_t) value->callsign_length );
-        table_writer_raw( w, value->callsign, value->callsign_length );
-    }
-    table_writer_put16( w, 0 ); /* terminator */
-    return !w->overflow;
+    TableWriteIds vocabulary; TableWriter w = table_writer_make( NULL, INT64_MAX, &vocabulary );
+    table_writer_put8( &w, 1 );
+    if ( !gunner_settings_save_body( &w, value ) ) { return -1; }
+    table_writer_finish( &w );
+    return w.overflow ? -1 : w.offset;
 }
 
 static SCHEMA_UNUSED int64_t gunner_settings_save( const GunnerSettings * value, uint8_t * buffer, int64_t capacity )
 {
-    TableWriter w = table_writer_make( buffer, capacity );
+    if ( buffer == NULL || capacity < 0 ) { return -1; }
+    TableWriteIds vocabulary; TableWriter w = table_writer_make( buffer, capacity, &vocabulary );
+    table_writer_put8( &w, 1 );
     if ( !gunner_settings_save_body( &w, value ) ) { return -1; }
-    return w.offset; /* == gunner_settings_measure( value ) */
+    table_writer_finish( &w );
+    return w.overflow ? -1 : w.offset;
 }
 
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int gunner_settings_load_body( TableReader * r, GunnerSettings * value )
+static SCHEMA_UNUSED int gunner_settings_load_body( TableReader * r, GunnerSettings * value )
 {
-    gunner_settings_reset( value ); /* prefill declared defaults in place, then overlay */
+    gunner_settings_reset( value );
     for ( ;; )
     {
-        uint16_t field_id;
-        uint8_t kind;
-        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = table_reader_get16( r );
-        if ( field_id == 0 ) { return 1; }
-        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = table_reader_get8( r );
-        switch ( field_id )
+        uint64_t ref, id; uint8_t kind;
+        if ( !table_reader_leb( r, &ref ) ) { r->report->malformed = 1; return 0; }
+        if ( ref == 0 ) { return 1; }
+        if ( ref > r->id_count || !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        id = table_reader_id_at( r, ref ); kind = table_reader_get8( r );
+        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->malformed = 1; return 0; }
+        switch ( id )
         {
-            case 0x900f: /* reaction */
+            case 0xb75aa3662201646aull: /* reaction */
             {
                 if ( kind != 10 )
                 {
@@ -748,11 +1564,19 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int gunner_settings_load_body
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                value->reaction = table_bits_to_float( table_reader_get32( &(*r) ) );
+                switch ( kind )
+                {
+                    case 10:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        value->reaction = table_bits_to_float( table_reader_get32( &(*r) ) );
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
+                }
                 break;
             }
-            case 0x53d5: /* tracking */
+            case 0xa6bf719a4602b0bcull: /* tracking */
             {
                 if ( kind != 1 )
                 {
@@ -760,11 +1584,19 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int gunner_settings_load_body
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                value->tracking = table_reader_get8( &(*r) ) != 0;
+                switch ( kind )
+                {
+                    case 1:
+                    {
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        value->tracking = table_reader_get8( &(*r) ) != 0;
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
+                }
                 break;
             }
-            case 0x74dc: /* callsign */
+            case 0x5bc44627b9848818ull: /* callsign */
             {
                 if ( kind != 12 )
                 {
@@ -772,126 +1604,338 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int gunner_settings_load_body
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint32_t len;
-                uint32_t keep;
-                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                len = table_reader_get32( r );
-                if ( !table_reader_has( r, len ) ) { r->report->malformed = 1; return 0; }
-                keep = len;
-                if ( keep > 24 ) { keep = 24; r->report->clamped++; }
-                memcpy( value->callsign, r->buffer + r->offset, keep );
-                value->callsign[keep] = 0;
-                value->callsign_length = (int32_t) keep;
-                r->offset += len;
+                TableReader sub; uint64_t keep;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_wire_utf8( sub.buffer, (uint64_t) sub.size ) )
+                {
+                    r->report->malformed = 1; value->callsign[0] = 0; value->callsign_length = 0; break;
+                }
+                keep = (uint64_t) sub.size;
+                if ( keep > 24 ) { keep = table_wire_utf8_clamp( sub.buffer, keep, 24 ); r->report->clamped++; }
+                memcpy( value->callsign, sub.buffer, (size_t) keep ); value->callsign[keep] = 0; value->callsign_length = (int32_t) keep;
                 break;
             }
             default:
-            {
                 r->report->unknown++;
                 if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
-            }
         }
     }
 }
 
 static SCHEMA_UNUSED int gunner_settings_load( GunnerSettings * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
-    TableReport ignored;
-    TableReader r;
+    TableReport ignored; TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    if ( report == NULL ) { report = &ignored; }
+    gunner_settings_reset( value );
+    if ( !table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     return gunner_settings_load_body( &r, value );
+}
+
+static SCHEMA_UNUSED int gunner_settings_save_message_body(TableBitWriter * w,const GunnerSettings * value)
+{
+ (void)value;
+ { /* reaction */
+ if(!(value->reaction == 0.2f)) {
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
+  table_bit_put(w,11,kTableMessageRefBitsHere);
+  table_bit_put(w,table_float_to_bits(value->reaction),32);
+ }
+ }
+ { /* tracking */
+ if(!(value->tracking == 0)) {
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
+  table_bit_put(w,12,kTableMessageRefBitsHere);
+  table_bit_put(w,value->tracking ? 1 : 0,1);
+ }
+ }
+ { /* callsign */
+ if(value->callsign_length<0 || value->callsign_length>24) return 0;
+ if(value->callsign_length != 0) {
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
+  table_bit_put(w,13,kTableMessageRefBitsHere);
+  if(value->callsign_length<0 || value->callsign_length>24) return 0;
+  table_bit_put(w,(uint64_t)value->callsign_length,5);
+  table_bit_align_write(w);
+  table_bit_putbytes(w,value->callsign,value->callsign_length);
+ }
+ }
+ table_bit_put(w,0,kTableMessageRefBitsHere);
+ return !w->overflow;
+}
+static SCHEMA_UNUSED int64_t gunner_settings_measure_messages(const GunnerSettings * values,int64_t count,TableReport * report)
+{
+ TableBitWriter w=table_bit_writer(NULL,INT64_MAX);
+ int64_t i;
+ if(count<1 || values==NULL) return -1;
+ if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;
+ report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;
+ }return -1;
+ }
+ table_bit_put(&w,2,8);
+ table_bit_put(&w,(uint64_t)(count-1),8);
+ for(i=0;i<count;i++) if(!gunner_settings_save_message_body(&w,values+i)) return -1;
+ table_bit_align_write(&w);
+ return w.overflow ? -1 : w.bits/8;
+}
+static SCHEMA_UNUSED int64_t gunner_settings_save_messages(const GunnerSettings * values,int64_t count,uint8_t * buffer,int64_t capacity,TableReport * report)
+{
+ TableBitWriter w=table_bit_writer(buffer,capacity);
+ int64_t i;
+ if(count<1 || values==NULL) return -1;
+ if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;
+ report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;
+ }return -1;
+ }
+ if(buffer==NULL || capacity<0) return -1;
+ table_bit_put(&w,2,8);
+ table_bit_put(&w,(uint64_t)(count-1),8);
+ for(i=0;i<count;i++) if(!gunner_settings_save_message_body(&w,values+i)) return -1;
+ table_bit_align_write(&w);
+ return w.overflow ? -1 : w.bits/8;
+}
+static SCHEMA_UNUSED int gunner_settings_load_message_body(TableMessageReader * r,GunnerSettings * value)
+{
+ gunner_settings_reset(value);
+ for(;;){const TableMessageEntry * entry;
+ if(!table_message_ref(r,&entry,0))goto malformed;
+ if(entry==NULL)return 1;
+ switch(entry->id){
+ case UINT64_C(0xb75aa3662201646a): {
+ if(!(entry->kind==10 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,10)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { float decoded;
+ if(entry->kind==10) {float narrow;
+ if(!table_message_float(r,entry,&narrow))goto malformed;
+ decoded=narrow;
+ } else {uint64_t raw;
+ if(!table_bit_get(&r->bits,&raw,64))goto malformed;
+ decoded=(float)table_bits_to_double(raw);
+ }
+  value->reaction=decoded;
+  }
+ break;
+ }
+ case UINT64_C(0xa6bf719a4602b0bc): {
+ if(!(entry->kind==1 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,1)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  value->tracking=lo!=0;
+  }
+ break;
+ }
+ case UINT64_C(0x5bc44627b9848818): {
+ if(!(entry->kind==12 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,12)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ {uint64_t n,kept;
+ if(!table_bit_get(&r->bits,&n,table_bits_required(0,entry->max)))goto malformed;
+  if(!table_bit_align_read(&r->bits))goto malformed;
+  if(n>INT64_MAX/8 || !table_bit_has(&r->bits,(int64_t)n*8))goto malformed;
+  {const uint8_t * text=r->bits.buffer+(r->bits.offset>>3);
+  if(!table_wire_utf8(text,n))goto malformed;
+  kept=table_wire_utf8_clamp(text,n,24);
+  memcpy(value->callsign,text,(size_t)kept);
+  value->callsign[kept]=0;
+  }
+  r->bits.offset+=(int64_t)n*8;
+  if(kept<n)r->report->clamped++;
+  value->callsign_length=(int32_t)kept;
+  }
+ break;
+ }
+ default:r->report->unknown++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ } }
+ malformed:r->report->malformed=1;
+ return 0;
+}
+static SCHEMA_UNUSED int gunner_settings_load_messages(GunnerSettings * values,int64_t * count,const TableVocabulary * vocabulary,const uint8_t * buffer,int64_t bytes,TableReport * report)
+{
+ TableReport ignored={0};
+ TableMessageReader r;
+ int64_t capacity,bodies,i;
+ if(report==NULL)report=&ignored;
+ if(values==NULL||count==NULL){report->malformed=1;
+ return 0;
+ }capacity=*count;
+ *count=0;
+ bodies=table_message_open(&r,vocabulary,buffer,bytes,report);
+ if(bodies<0)return 0;
+ if(bodies>capacity){*count=bodies;
+ report->refused=1;
+ report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;
+ return 0;
+ }
+ for(i=0;i<bodies;i++){if(!gunner_settings_load_message_body(&r,values+i))return 0;
+ (*count)++;
+ }return table_message_close(&r);
+}
+static SCHEMA_UNUSED int schema_tabledemo_gunner_settings_message_extent_(TableMessageReader * r,int64_t * at)
+{
+ (void)at;
+ for(;;){const TableMessageEntry * entry;
+ if(!table_message_ref(r,&entry,0))return 0;
+ if(entry==NULL)return 1;
+ switch(entry->id){
+ default:break;
+ }if(!table_message_skip(r,entry))return 0;
+ }
+}
+static SCHEMA_UNUSED int schema_tabledemo_ship_entry_wire_display_name_( TableWriter * w, const ShipEntry * value )
+{
+    if ( value->display_name_length < 0 || value->display_name_length > 32 ) { return 0; }
+    table_writer_raw( w, value->display_name, value->display_name_length );
+    return !w->overflow;
+}
+
+static SCHEMA_UNUSED int schema_tabledemo_ship_entry_wire_hardpoints_( TableWriter * w, const ShipEntry * value )
+{
+    if ( value->hardpoints_count < 0 || value->hardpoints_count > 4 ) { return 0; }
+    int32_t i;
+    table_writer_put8( w, 4 ); table_writer_leb( w, (uint64_t) value->hardpoints_count );
+    for ( i = 0; i < value->hardpoints_count; i++ )
+    {
+        table_writer_put32( w, (uint32_t) ( value->hardpoints[i] ) );
+    }
+    return !w->overflow;
+}
+
+static SCHEMA_UNUSED int ship_entry_save_body( TableWriter * w, const ShipEntry * value )
+{
+    (void) value;
+    { /* display_name */
+        if ( value->display_name_length < 0 || value->display_name_length > 32 ) { return 0; }
+        if ( value->display_name_length != 0 )
+        {
+            if ( w->check_default ) { w->offset = 2; return 1; }
+            table_writer_id( w, 0x2d21d7cd66bd5a5dull ); table_writer_put8( w, 12 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !schema_tabledemo_ship_entry_wire_display_name_( w, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !schema_tabledemo_ship_entry_wire_display_name_( &probe, value ) ) { return 0; }
+                table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !schema_tabledemo_ship_entry_wire_display_name_( w, value ) ) { return 0; }
+            }
+        }
+    }
+    { /* health */
+        if ( !( value->health == 100.0f ) )
+        {
+            if ( w->check_default ) { w->offset = 2; return 1; }
+            table_writer_id( w, 0x7f69d4b5288ba9cfull ); table_writer_put8( w, 10 );
+            table_writer_put32( w, table_float_to_bits( value->health ) );
+        }
+    }
+    { /* mass */
+        if ( !( value->mass == 1.0f ) )
+        {
+            if ( w->check_default ) { w->offset = 2; return 1; }
+            table_writer_id( w, 0x1f3757a2ce7b0ab1ull ); table_writer_put8( w, 10 );
+            table_writer_put32( w, table_float_to_bits( value->mass ) );
+        }
+    }
+    { /* hardpoints */
+        if ( value->hardpoints_count < 0 || value->hardpoints_count > 4 ) { return 0; }
+        if ( value->hardpoints_count > 0 )
+        {
+            if ( w->check_default ) { w->offset = 2; return 1; }
+            table_writer_id( w, 0x95d0cce09ca82b73ull ); table_writer_put8( w, 14 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !schema_tabledemo_ship_entry_wire_hardpoints_( w, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !schema_tabledemo_ship_entry_wire_hardpoints_( &probe, value ) ) { return 0; }
+                table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !schema_tabledemo_ship_entry_wire_hardpoints_( w, value ) ) { return 0; }
+            }
+        }
+    }
+    { /* gunner */
+        if ( value->gunner_present )
+        {
+            if ( w->check_default ) { w->offset = 2; return 1; }
+            table_writer_id( w, 0x40dbb648c0cd44aaull ); table_writer_put8( w, 13 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !gunner_settings_save_body( w, &value->gunner ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !gunner_settings_save_body( &probe, &value->gunner ) ) { return 0; }
+                table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !gunner_settings_save_body( w, &value->gunner ) ) { return 0; }
+            }
+        }
+    }
+    table_writer_leb( w, 0 );
+    return !w->overflow;
 }
 
 static SCHEMA_UNUSED int64_t ship_entry_measure( const ShipEntry * value )
 {
-    int64_t bytes = 2; /* terminator */
-    if ( value->display_name_length < 0 || value->display_name_length > 32 ) { return -1; } /* storage invariant */
-    if ( value->display_name_length > 0 ) { bytes += 3 + 4 + value->display_name_length; } /* display_name */
-    if ( value->health != 100.0f ) { bytes += 3 + 4; } /* health */
-    if ( value->mass != 1.0f ) { bytes += 3 + 4; } /* mass */
-    if ( value->hardpoints_count < 0 || value->hardpoints_count > 4 ) { return -1; } /* storage invariant */
-    if ( value->hardpoints_count > 0 )
-    {
-        bytes += 3 + 4 + 5 + (int64_t) value->hardpoints_count * 4; /* hardpoints */
-    }
-    if ( value->gunner_present ) /* ?GunnerSettings: presence decides, not content */
-    {
-        int64_t body_gunner = gunner_settings_measure( &value->gunner );
-        if ( body_gunner < 0 ) { return -1; }
-        bytes += 3 + 4 + body_gunner; /* gunner */
-    }
-    return bytes;
-}
-
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ship_entry_save_body( TableWriter * w, const ShipEntry * value )
-{
-    if ( value->display_name_length < 0 || value->display_name_length > 32 ) { return 0; } /* storage invariant */
-    if ( value->display_name_length > 0 )
-    {
-        table_writer_put16( w, 0xcb8b ); table_writer_put8( w, 12 ); /* display_name */
-        table_writer_put32( w, (uint32_t) value->display_name_length );
-        table_writer_raw( w, value->display_name, value->display_name_length );
-    }
-    if ( value->health != 100.0f )
-    {
-        table_writer_put16( w, 0x8617 ); table_writer_put8( w, 10 ); /* health */
-        table_writer_put32( w, table_float_to_bits( value->health ) );
-    }
-    if ( value->mass != 1.0f )
-    {
-        table_writer_put16( w, 0xe7a6 ); table_writer_put8( w, 10 ); /* mass */
-        table_writer_put32( w, table_float_to_bits( value->mass ) );
-    }
-    if ( value->hardpoints_count < 0 || value->hardpoints_count > 4 ) { return 0; } /* storage invariant */
-    if ( value->hardpoints_count > 0 )
-    {
-        int64_t len_at_hardpoints;
-        int32_t i;
-        table_writer_put16( w, 0xc4b2 ); table_writer_put8( w, 14 ); /* hardpoints */
-        len_at_hardpoints = w->offset; table_writer_put32( w, 0 );
-        table_writer_put8( w, 4 ); table_writer_put32( w, (uint32_t) value->hardpoints_count );
-        for ( i = 0; i < value->hardpoints_count; i++ )
-        {
-            table_writer_put32( w, (uint32_t) ( value->hardpoints[i] ) );
-        }
-        table_writer_patch32( w, len_at_hardpoints, (uint32_t) ( w->offset - len_at_hardpoints - 4 ) );
-    }
-    if ( value->gunner_present ) /* ?GunnerSettings */
-    {
-        int64_t body_gunner = gunner_settings_measure( &value->gunner );
-        if ( body_gunner < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
-        table_writer_put16( w, 0x2bc9 ); table_writer_put8( w, 13 ); /* gunner */
-        table_writer_put32( w, (uint32_t) body_gunner );
-        if ( !gunner_settings_save_body( w, &value->gunner ) ) { return 0; }
-    }
-    table_writer_put16( w, 0 ); /* terminator */
-    return !w->overflow;
+    TableWriteIds vocabulary; TableWriter w = table_writer_make( NULL, INT64_MAX, &vocabulary );
+    table_writer_put8( &w, 1 );
+    if ( !ship_entry_save_body( &w, value ) ) { return -1; }
+    table_writer_finish( &w );
+    return w.overflow ? -1 : w.offset;
 }
 
 static SCHEMA_UNUSED int64_t ship_entry_save( const ShipEntry * value, uint8_t * buffer, int64_t capacity )
 {
-    TableWriter w = table_writer_make( buffer, capacity );
+    if ( buffer == NULL || capacity < 0 ) { return -1; }
+    TableWriteIds vocabulary; TableWriter w = table_writer_make( buffer, capacity, &vocabulary );
+    table_writer_put8( &w, 1 );
     if ( !ship_entry_save_body( &w, value ) ) { return -1; }
-    return w.offset; /* == ship_entry_measure( value ) */
+    table_writer_finish( &w );
+    return w.overflow ? -1 : w.offset;
 }
 
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ship_entry_load_body( TableReader * r, ShipEntry * value )
+static SCHEMA_UNUSED int ship_entry_load_body( TableReader * r, ShipEntry * value )
 {
-    ship_entry_reset( value ); /* prefill declared defaults in place, then overlay */
+    ship_entry_reset( value );
     for ( ;; )
     {
-        uint16_t field_id;
-        uint8_t kind;
-        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = table_reader_get16( r );
-        if ( field_id == 0 ) { return 1; }
-        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = table_reader_get8( r );
-        switch ( field_id )
+        uint64_t ref, id; uint8_t kind;
+        if ( !table_reader_leb( r, &ref ) ) { r->report->malformed = 1; return 0; }
+        if ( ref == 0 ) { return 1; }
+        if ( ref > r->id_count || !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        id = table_reader_id_at( r, ref ); kind = table_reader_get8( r );
+        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->malformed = 1; return 0; }
+        switch ( id )
         {
-            case 0xcb8b: /* display_name */
+            case 0x2d21d7cd66bd5a5dull: /* display_name */
             {
                 if ( kind != 12 )
                 {
@@ -899,20 +1943,18 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ship_entry_load_body( Tab
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint32_t len;
-                uint32_t keep;
-                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                len = table_reader_get32( r );
-                if ( !table_reader_has( r, len ) ) { r->report->malformed = 1; return 0; }
-                keep = len;
-                if ( keep > 32 ) { keep = 32; r->report->clamped++; }
-                memcpy( value->display_name, r->buffer + r->offset, keep );
-                value->display_name[keep] = 0;
-                value->display_name_length = (int32_t) keep;
-                r->offset += len;
+                TableReader sub; uint64_t keep;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_wire_utf8( sub.buffer, (uint64_t) sub.size ) )
+                {
+                    r->report->malformed = 1; value->display_name[0] = 0; value->display_name_length = 0; break;
+                }
+                keep = (uint64_t) sub.size;
+                if ( keep > 32 ) { keep = table_wire_utf8_clamp( sub.buffer, keep, 32 ); r->report->clamped++; }
+                memcpy( value->display_name, sub.buffer, (size_t) keep ); value->display_name[keep] = 0; value->display_name_length = (int32_t) keep;
                 break;
             }
-            case 0x8617: /* health */
+            case 0x7f69d4b5288ba9cfull: /* health */
             {
                 if ( kind != 10 )
                 {
@@ -920,11 +1962,19 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ship_entry_load_body( Tab
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                value->health = table_bits_to_float( table_reader_get32( &(*r) ) );
+                switch ( kind )
+                {
+                    case 10:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        value->health = table_bits_to_float( table_reader_get32( &(*r) ) );
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
+                }
                 break;
             }
-            case 0xe7a6: /* mass */
+            case 0x1f3757a2ce7b0ab1ull: /* mass */
             {
                 if ( kind != 10 )
                 {
@@ -932,11 +1982,19 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ship_entry_load_body( Tab
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                value->mass = table_bits_to_float( table_reader_get32( &(*r) ) );
+                switch ( kind )
+                {
+                    case 10:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        value->mass = table_bits_to_float( table_reader_get32( &(*r) ) );
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
+                }
                 break;
             }
-            case 0xc4b2: /* hardpoints */
+            case 0x95d0cce09ca82b73ull: /* hardpoints */
             {
                 if ( kind != 14 )
                 {
@@ -944,45 +2002,68 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ship_entry_load_body( Tab
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint32_t body_len;
-                int64_t body_end;
-                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = table_reader_get32( r );
-                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
-                body_end = r->offset + body_len;
-                if ( body_len >= 5 )
+                TableReader sub;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( sub.size >= 2 )
                 {
-                    uint8_t elem_kind = table_reader_get8( r );
-                    uint32_t count = table_reader_get32( r );
-                    uint32_t keep;
-                    TableReader sub;
-                    uint32_t i;
-                    uint32_t decoded = 0;
-                    if ( elem_kind != 4 ) { r->report->kind_mismatch++; r->offset = body_end; break; }
-                    keep = count;
-                    if ( keep > 4 ) { keep = 4; r->report->clamped++; }
-                    /* elements are BOUNDED by the field body: a count the length
-                       cannot cover keeps the decoded prefix, flags malformed, and
-                       the parent continues at the next field — following fields'
-                       bytes are never fabricated into elements */
-                    sub = table_reader_make( r->buffer + r->offset, body_end - r->offset, r->report );
-                    for ( i = 0; i < keep; i++ )
+                    uint8_t elem_kind; uint64_t count, kept, i;
+                    if ( !table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->malformed = 1; }
+                    else
                     {
-                        if ( !table_reader_has( &sub, 4 ) ) { r->report->malformed = 1; break; }
+                        if ( elem_kind != 4 )
                         {
-                            int32_t decoded_v = (int32_t) table_reader_get32( &sub );
-                            if ( decoded_v < 0 ) { decoded_v = 0; r->report->clamped++; }
-                            else if ( decoded_v > 8 ) { decoded_v = 8; r->report->clamped++; }
-                            value->hardpoints[i] = decoded_v;
+                            if ( !(table_kind_widens(elem_kind,4)) ) { r->report->kind_mismatch++; break; }
+                            r->report->widened++;
                         }
-                        decoded = i + 1;
+                        kept = count; if ( kept > 4 ) { kept = 4; r->report->clamped++; }
+                        int32_t previous_count = value->hardpoints_count;
+                        value->hardpoints_count = 0;
+                        for ( i = 0; i < kept; i++ )
+                        {
+                            switch ( elem_kind )
+                            {
+                                case 2:
+                                {
+                                    if ( !table_reader_has( &sub, 1 ) ) { r->report->malformed = 1; goto end_hardpoints; }
+                                    int64_t decoded_wide = (int8_t) table_reader_get8( &sub );
+                                    if ( decoded_wide < 0ll ) { decoded_wide = 0ll; r->report->clamped++; }
+                                    if ( decoded_wide > 8ll ) { decoded_wide = 8ll; r->report->clamped++; }
+                                    value->hardpoints[i] = decoded_wide;
+                                    break;
+                                }
+                                case 3:
+                                {
+                                    if ( !table_reader_has( &sub, 2 ) ) { r->report->malformed = 1; goto end_hardpoints; }
+                                    int64_t decoded_wide = (int16_t) table_reader_get16( &sub );
+                                    if ( decoded_wide < 0ll ) { decoded_wide = 0ll; r->report->clamped++; }
+                                    if ( decoded_wide > 8ll ) { decoded_wide = 8ll; r->report->clamped++; }
+                                    value->hardpoints[i] = decoded_wide;
+                                    break;
+                                }
+                                case 4:
+                                {
+                                    if ( !table_reader_has( &sub, 4 ) ) { r->report->malformed = 1; goto end_hardpoints; }
+                                    {
+                                        int32_t decoded_v = (int32_t) table_reader_get32( &sub );
+                                        if ( decoded_v < 0 ) { decoded_v = 0; r->report->clamped++; }
+                                        else if ( decoded_v > 8 ) { decoded_v = 8; r->report->clamped++; }
+                                        value->hardpoints[i] = decoded_v;
+                                    }
+                                    break;
+                                }
+                                default: r->report->malformed = 1; goto end_hardpoints;
+                            }
+                            value->hardpoints_count = (int32_t) i + 1;
+                        }
+                        end_hardpoints: ;
+                        { uint32_t tail; for (tail=(uint32_t)value->hardpoints_count;tail<(uint32_t)previous_count && tail<4;tail++) {
+                         memset(&value->hardpoints[tail],0,sizeof(value->hardpoints[tail]));
+                        } }
                     }
-                    value->hardpoints_count = (int32_t) decoded;
                 }
-                r->offset = body_end; /* excess elements and slack skip via the length */
                 break;
             }
-            case 0x2bc9: /* gunner */
+            case 0x40dbb648c0cd44aaull: /* gunner */
             {
                 if ( kind != 13 )
                 {
@@ -990,179 +2071,500 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ship_entry_load_body( Tab
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint32_t body_len;
-                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = table_reader_get32( r );
-                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
-                {
-                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
-                    gunner_settings_load_body( &sub, &value->gunner );
-                }
-                r->offset += body_len;
+                TableReader sub;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                gunner_settings_load_body( &sub, &value->gunner );
+                if ( sub.offset != sub.size ) { r->report->malformed = 1; gunner_settings_reset( &value->gunner ); }
                 value->gunner_present = 1;
                 break;
             }
             default:
-            {
                 r->report->unknown++;
                 if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
-            }
         }
     }
 }
 
 static SCHEMA_UNUSED int ship_entry_load( ShipEntry * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
-    TableReport ignored;
-    TableReader r;
+    TableReport ignored; TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    if ( report == NULL ) { report = &ignored; }
+    ship_entry_reset( value );
+    if ( !table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     return ship_entry_load_body( &r, value );
+}
+
+static SCHEMA_UNUSED int ship_entry_save_message_body(TableBitWriter * w,const ShipEntry * value)
+{
+ (void)value;
+ { /* display_name */
+ if(value->display_name_length<0 || value->display_name_length>32) return 0;
+ if(value->display_name_length != 0) {
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
+  table_bit_put(w,95,kTableMessageRefBitsHere);
+  if(value->display_name_length<0 || value->display_name_length>32) return 0;
+  table_bit_put(w,(uint64_t)value->display_name_length,6);
+  table_bit_align_write(w);
+  table_bit_putbytes(w,value->display_name,value->display_name_length);
+ }
+ }
+ { /* health */
+ if(!(value->health == 100.0f)) {
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
+  table_bit_put(w,14,kTableMessageRefBitsHere);
+  table_bit_put(w,table_float_to_bits(value->health),32);
+ }
+ }
+ { /* mass */
+ if(!(value->mass == 1.0f)) {
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
+  table_bit_put(w,15,kTableMessageRefBitsHere);
+  table_bit_put(w,table_float_to_bits(value->mass),32);
+ }
+ }
+ { /* hardpoints */
+ if(value->hardpoints_count<0 || value->hardpoints_count>4) return 0;
+ if(value->hardpoints_count>0) {
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
+  table_bit_put(w,96,kTableMessageRefBitsHere);
+  if(value->hardpoints_count<0 || value->hardpoints_count>4) return 0;
+  table_bit_put(w,(uint64_t)value->hardpoints_count-0,3);
+  { int32_t i;
+  for(i=0;i<value->hardpoints_count;i++) {
+    table_bit_put(w,(uint64_t)(value->hardpoints[i])-UINT64_C(0),4);
+  } }
+ }
+ }
+ { /* gunner */
+ if(value->gunner_present) {
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
+  table_bit_put(w,97,kTableMessageRefBitsHere);
+  if(!gunner_settings_save_message_body(w,&value->gunner)) return 0;
+ }
+ }
+ table_bit_put(w,0,kTableMessageRefBitsHere);
+ return !w->overflow;
+}
+static SCHEMA_UNUSED int64_t ship_entry_measure_messages(const ShipEntry * values,int64_t count,TableReport * report)
+{
+ TableBitWriter w=table_bit_writer(NULL,INT64_MAX);
+ int64_t i;
+ if(count<1 || values==NULL) return -1;
+ if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;
+ report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;
+ }return -1;
+ }
+ table_bit_put(&w,2,8);
+ table_bit_put(&w,(uint64_t)(count-1),8);
+ for(i=0;i<count;i++) if(!ship_entry_save_message_body(&w,values+i)) return -1;
+ table_bit_align_write(&w);
+ return w.overflow ? -1 : w.bits/8;
+}
+static SCHEMA_UNUSED int64_t ship_entry_save_messages(const ShipEntry * values,int64_t count,uint8_t * buffer,int64_t capacity,TableReport * report)
+{
+ TableBitWriter w=table_bit_writer(buffer,capacity);
+ int64_t i;
+ if(count<1 || values==NULL) return -1;
+ if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;
+ report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;
+ }return -1;
+ }
+ if(buffer==NULL || capacity<0) return -1;
+ table_bit_put(&w,2,8);
+ table_bit_put(&w,(uint64_t)(count-1),8);
+ for(i=0;i<count;i++) if(!ship_entry_save_message_body(&w,values+i)) return -1;
+ table_bit_align_write(&w);
+ return w.overflow ? -1 : w.bits/8;
+}
+static SCHEMA_UNUSED int ship_entry_load_message_body(TableMessageReader * r,ShipEntry * value)
+{
+ ship_entry_reset(value);
+ for(;;){const TableMessageEntry * entry;
+ if(!table_message_ref(r,&entry,0))goto malformed;
+ if(entry==NULL)return 1;
+ switch(entry->id){
+ case UINT64_C(0x2d21d7cd66bd5a5d): {
+ if(!(entry->kind==12 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,12)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ {uint64_t n,kept;
+ if(!table_bit_get(&r->bits,&n,table_bits_required(0,entry->max)))goto malformed;
+  if(!table_bit_align_read(&r->bits))goto malformed;
+  if(n>INT64_MAX/8 || !table_bit_has(&r->bits,(int64_t)n*8))goto malformed;
+  {const uint8_t * text=r->bits.buffer+(r->bits.offset>>3);
+  if(!table_wire_utf8(text,n))goto malformed;
+  kept=table_wire_utf8_clamp(text,n,32);
+  memcpy(value->display_name,text,(size_t)kept);
+  value->display_name[kept]=0;
+  }
+  r->bits.offset+=(int64_t)n*8;
+  if(kept<n)r->report->clamped++;
+  value->display_name_length=(int32_t)kept;
+  }
+ break;
+ }
+ case UINT64_C(0x7f69d4b5288ba9cf): {
+ if(!(entry->kind==10 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,10)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { float decoded;
+ if(entry->kind==10) {float narrow;
+ if(!table_message_float(r,entry,&narrow))goto malformed;
+ decoded=narrow;
+ } else {uint64_t raw;
+ if(!table_bit_get(&r->bits,&raw,64))goto malformed;
+ decoded=(float)table_bits_to_double(raw);
+ }
+  value->health=decoded;
+  }
+ break;
+ }
+ case UINT64_C(0x1f3757a2ce7b0ab1): {
+ if(!(entry->kind==10 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,10)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { float decoded;
+ if(entry->kind==10) {float narrow;
+ if(!table_message_float(r,entry,&narrow))goto malformed;
+ decoded=narrow;
+ } else {uint64_t raw;
+ if(!table_bit_get(&r->bits,&raw,64))goto malformed;
+ decoded=(float)table_bits_to_double(raw);
+ }
+  value->mass=decoded;
+  }
+ break;
+ }
+ case UINT64_C(0x95d0cce09ca82b73): {
+ if(!(entry->kind==14 && entry->elem_kind==4)){if(entry->kind==14 && table_kind_widens(entry->elem_kind,4)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ {uint64_t n,kept,walk,i;
+ TableMessageEntry element_shape=table_message_element(entry);
+ const TableMessageEntry * element_entry=&element_shape;
+ (void)element_entry;
+  if(!table_message_count(r,entry,&n))goto malformed;
+  kept=n>4?4:n;
+  if(kept<n)r->report->clamped++;
+  walk=element_entry->value_bits>=0?kept:n;
+  for(i=0;i<walk;i++){int32_t scratch;
+  int32_t * item=i<kept ? &value->hardpoints[i] : &scratch;
+  { uint64_t lo,hi;
+  if(!table_message_number(r,element_entry,&lo,&hi))goto malformed;
+   int64_t decoded=(int64_t)lo;
+   (void)hi;
+   if(decoded<0ll){decoded=0ll;
+   r->report->clamped++;
+   }
+   if(decoded>8ll){decoded=8ll;
+   r->report->clamped++;
+   }
+   (*item)=(int32_t)decoded;
+   }
+  }if(walk<n && !table_message_skip_run(r,n-walk,element_entry->value_bits))goto malformed;
+  value->hardpoints_count=(int32_t)kept;
+ }
+ break;
+ }
+ case UINT64_C(0x40dbb648c0cd44aa): {
+ if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,13)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ if(!gunner_settings_load_message_body(r,&value->gunner))return 0;
+ value->gunner_present=1;
+ break;
+ }
+ default:r->report->unknown++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ } }
+ malformed:r->report->malformed=1;
+ return 0;
+}
+static SCHEMA_UNUSED int ship_entry_load_messages(ShipEntry * values,int64_t * count,const TableVocabulary * vocabulary,const uint8_t * buffer,int64_t bytes,TableReport * report)
+{
+ TableReport ignored={0};
+ TableMessageReader r;
+ int64_t capacity,bodies,i;
+ if(report==NULL)report=&ignored;
+ if(values==NULL||count==NULL){report->malformed=1;
+ return 0;
+ }capacity=*count;
+ *count=0;
+ bodies=table_message_open(&r,vocabulary,buffer,bytes,report);
+ if(bodies<0)return 0;
+ if(bodies>capacity){*count=bodies;
+ report->refused=1;
+ report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;
+ return 0;
+ }
+ for(i=0;i<bodies;i++){if(!ship_entry_load_message_body(&r,values+i))return 0;
+ (*count)++;
+ }return table_message_close(&r);
+}
+static SCHEMA_UNUSED int schema_tabledemo_ship_entry_message_extent_(TableMessageReader * r,int64_t * at)
+{
+ (void)at;
+ for(;;){const TableMessageEntry * entry;
+ if(!table_message_ref(r,&entry,0))return 0;
+ if(entry==NULL)return 1;
+ switch(entry->id){
+ default:break;
+ }if(!table_message_skip(r,entry))return 0;
+ }
+}
+static SCHEMA_UNUSED int schema_tabledemo_global_settings_wire_build_note_( TableWriter * w, const GlobalSettings * value )
+{
+    if ( value->build_note_length < 0 || value->build_note_length > 48 ) { return 0; }
+    table_writer_raw( w, value->build_note, value->build_note_length );
+    return !w->overflow;
+}
+
+static SCHEMA_UNUSED int schema_tabledemo_global_settings_wire_spawn_delays_( TableWriter * w, const GlobalSettings * value )
+{
+    int32_t i;
+    table_writer_put8( w, 10 ); table_writer_leb( w, (uint64_t) 3 );
+    for ( i = 0; i < 3; i++ )
+    {
+        table_writer_put32( w, table_float_to_bits( value->spawn_delays[i] ) );
+    }
+    return !w->overflow;
+}
+
+static SCHEMA_UNUSED int global_settings_save_body( TableWriter * w, const GlobalSettings * value )
+{
+    (void) value;
+    { /* tick_rate */
+        if ( !( value->tick_rate == 60 ) )
+        {
+            if ( w->check_default ) { w->offset = 2; return 1; }
+            table_writer_id( w, 0xa65f859b617deaf3ull ); table_writer_put8( w, 8 );
+            table_writer_put32( w, (uint32_t) ( value->tick_rate ) );
+        }
+    }
+    { /* difficulty */
+        if ( !( value->difficulty == DIFFICULTY_NORMAL ) )
+        {
+            if ( w->check_default ) { w->offset = 2; return 1; }
+            table_writer_id( w, 0x467f35a74c6e4a70ull ); table_writer_put8( w, 30 );
+            switch ( value->difficulty )
+            {
+                case DIFFICULTY_NONE: table_writer_leb( w, 0 ); break;
+                case DIFFICULTY_EASY: table_writer_id( w, 0x483d9e6c1ccd1f9bull ); break;
+                case DIFFICULTY_NORMAL: table_writer_id( w, 0x9ff3121d30f88d52ull ); break;
+                case DIFFICULTY_HARD: table_writer_id( w, 0x58c7b5d87587287cull ); break;
+                default: return 0; /* no declared identity */
+            }
+        }
+    }
+    { /* build_note */
+        if ( value->build_note_length < 0 || value->build_note_length > 48 ) { return 0; }
+        if ( value->build_note_length != 0 )
+        {
+            if ( w->check_default ) { w->offset = 2; return 1; }
+            table_writer_id( w, 0x14ec921cc2549d60ull ); table_writer_put8( w, 12 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !schema_tabledemo_global_settings_wire_build_note_( w, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !schema_tabledemo_global_settings_wire_build_note_( &probe, value ) ) { return 0; }
+                table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !schema_tabledemo_global_settings_wire_build_note_( w, value ) ) { return 0; }
+            }
+        }
+    }
+    { /* spawn_delays */
+        int rides = 0; int32_t i;
+        for ( i = 0; i < 3; i++ ) { if ( !( value->spawn_delays[i] == 0.0f ) ) { rides = 1; break; } }
+        if ( rides )
+        {
+            if ( w->check_default ) { w->offset = 2; return 1; }
+            table_writer_id( w, 0x09ae5613b0051271ull ); table_writer_put8( w, 14 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !schema_tabledemo_global_settings_wire_spawn_delays_( w, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !schema_tabledemo_global_settings_wire_spawn_delays_( &probe, value ) ) { return 0; }
+                table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !schema_tabledemo_global_settings_wire_spawn_delays_( w, value ) ) { return 0; }
+            }
+        }
+    }
+    table_writer_leb( w, 0 );
+    return !w->overflow;
 }
 
 static SCHEMA_UNUSED int64_t global_settings_measure( const GlobalSettings * value )
 {
-    int64_t bytes = 2; /* terminator */
-    if ( value->tick_rate != 60 ) { bytes += 3 + 4; } /* tick_rate */
-    if ( value->difficulty != DIFFICULTY_NORMAL )
-    {
-        uint16_t id_difficulty = 0;
-        switch ( value->difficulty ) /* Difficulty rides as the u16 hash of its VARIANT NAME (§5) */
-        {
-            case DIFFICULTY_NONE: id_difficulty = 0; break;
-            case DIFFICULTY_EASY: id_difficulty = 0x7d08; break;
-            case DIFFICULTY_NORMAL: id_difficulty = 0x7fac; break;
-            case DIFFICULTY_HARD: id_difficulty = 0xc313; break;
-            default: return -1; /* no variant names this value: no wire identity */
-        }
-        (void) id_difficulty;
-        bytes += 3 + 2; /* difficulty: the variant's name hash */
-    }
-    if ( value->build_note_length < 0 || value->build_note_length > 48 ) { return -1; } /* storage invariant */
-    if ( value->build_note_length > 0 ) { bytes += 3 + 4 + value->build_note_length; } /* build_note */
-    {
-        int all_default_spawn_delays = 1;
-        int32_t i;
-        for ( i = 0; i < 3; i++ ) { if ( value->spawn_delays[i] != 0.0f ) { all_default_spawn_delays = 0; break; } }
-        if ( !all_default_spawn_delays )
-        {
-            bytes += 3 + 4 + 5 + 12; /* spawn_delays */
-        }
-    }
-    return bytes;
-}
-
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int global_settings_save_body( TableWriter * w, const GlobalSettings * value )
-{
-    if ( value->tick_rate != 60 )
-    {
-        table_writer_put16( w, 0x1953 ); table_writer_put8( w, 8 ); /* tick_rate */
-        table_writer_put32( w, (uint32_t) ( value->tick_rate ) );
-    }
-    if ( value->difficulty != DIFFICULTY_NORMAL )
-    {
-        uint16_t id_difficulty = 0;
-        switch ( value->difficulty ) /* Difficulty rides as the u16 hash of its VARIANT NAME (§5) */
-        {
-            case DIFFICULTY_NONE: id_difficulty = 0; break;
-            case DIFFICULTY_EASY: id_difficulty = 0x7d08; break;
-            case DIFFICULTY_NORMAL: id_difficulty = 0x7fac; break;
-            case DIFFICULTY_HARD: id_difficulty = 0xc313; break;
-            default: return 0; /* no variant names this value: no wire identity */
-        }
-        table_writer_put16( w, 0xd53f ); table_writer_put8( w, 7 ); /* difficulty */
-        table_writer_put16( w, id_difficulty );
-    }
-    if ( value->build_note_length < 0 || value->build_note_length > 48 ) { return 0; } /* storage invariant */
-    if ( value->build_note_length > 0 )
-    {
-        table_writer_put16( w, 0xb2d4 ); table_writer_put8( w, 12 ); /* build_note */
-        table_writer_put32( w, (uint32_t) value->build_note_length );
-        table_writer_raw( w, value->build_note, value->build_note_length );
-    }
-    {
-        int all_default_spawn_delays = 1;
-        int32_t i;
-        for ( i = 0; i < 3; i++ ) { if ( value->spawn_delays[i] != 0.0f ) { all_default_spawn_delays = 0; break; } }
-        if ( !all_default_spawn_delays )
-        {
-            int64_t len_at_spawn_delays;
-            table_writer_put16( w, 0x7c01 ); table_writer_put8( w, 14 ); /* spawn_delays (fixed [3]) */
-            len_at_spawn_delays = w->offset; table_writer_put32( w, 0 );
-            table_writer_put8( w, 10 ); table_writer_put32( w, 3 );
-            for ( i = 0; i < 3; i++ )
-            {
-                table_writer_put32( w, table_float_to_bits( value->spawn_delays[i] ) );
-            }
-            table_writer_patch32( w, len_at_spawn_delays, (uint32_t) ( w->offset - len_at_spawn_delays - 4 ) );
-        }
-    }
-    table_writer_put16( w, 0 ); /* terminator */
-    return !w->overflow;
+    TableWriteIds vocabulary; TableWriter w = table_writer_make( NULL, INT64_MAX, &vocabulary );
+    table_writer_put8( &w, 1 );
+    if ( !global_settings_save_body( &w, value ) ) { return -1; }
+    table_writer_finish( &w );
+    return w.overflow ? -1 : w.offset;
 }
 
 static SCHEMA_UNUSED int64_t global_settings_save( const GlobalSettings * value, uint8_t * buffer, int64_t capacity )
 {
-    TableWriter w = table_writer_make( buffer, capacity );
+    if ( buffer == NULL || capacity < 0 ) { return -1; }
+    TableWriteIds vocabulary; TableWriter w = table_writer_make( buffer, capacity, &vocabulary );
+    table_writer_put8( &w, 1 );
     if ( !global_settings_save_body( &w, value ) ) { return -1; }
-    return w.offset; /* == global_settings_measure( value ) */
+    table_writer_finish( &w );
+    return w.overflow ? -1 : w.offset;
 }
 
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int global_settings_load_body( TableReader * r, GlobalSettings * value )
+static SCHEMA_UNUSED int global_settings_load_body( TableReader * r, GlobalSettings * value )
 {
-    global_settings_reset( value ); /* prefill declared defaults in place, then overlay */
+    global_settings_reset( value );
     for ( ;; )
     {
-        uint16_t field_id;
-        uint8_t kind;
-        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = table_reader_get16( r );
-        if ( field_id == 0 ) { return 1; }
-        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = table_reader_get8( r );
-        switch ( field_id )
+        uint64_t ref, id; uint8_t kind;
+        if ( !table_reader_leb( r, &ref ) ) { r->report->malformed = 1; return 0; }
+        if ( ref == 0 ) { return 1; }
+        if ( ref > r->id_count || !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        id = table_reader_id_at( r, ref ); kind = table_reader_get8( r );
+        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->malformed = 1; return 0; }
+        switch ( id )
         {
-            case 0x1953: /* tick_rate */
+            case 0xa65f859b617deaf3ull: /* tick_rate */
             {
                 if ( kind != 8 )
                 {
+                    if ( table_kind_widens( kind, 8 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 6:
+                            {
+                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                                if ( decoded_wide < 1ull ) { decoded_wide = 1ull; r->report->clamped++; }
+                                if ( decoded_wide > 240ull ) { decoded_wide = 240ull; r->report->clamped++; }
+                                value->tick_rate = decoded_wide;
+                                break;
+                            }
+                            case 7:
+                            {
+                                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                                if ( decoded_wide < 1ull ) { decoded_wide = 1ull; r->report->clamped++; }
+                                if ( decoded_wide > 240ull ) { decoded_wide = 240ull; r->report->clamped++; }
+                                value->tick_rate = decoded_wide;
+                                break;
+                            }
+                            case 8:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                {
+                                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                                    if ( decoded_v < 1 ) { decoded_v = 1; r->report->clamped++; }
+                                    else if ( decoded_v > 240 ) { decoded_v = 240; r->report->clamped++; }
+                                    value->tick_rate = decoded_v;
+                                }
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                switch ( kind )
                 {
-                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
-                    if ( decoded_v < 1 ) { decoded_v = 1; r->report->clamped++; }
-                    else if ( decoded_v > 240 ) { decoded_v = 240; r->report->clamped++; }
-                    value->tick_rate = decoded_v;
+                    case 6:
+                    {
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                        if ( decoded_wide < 1ull ) { decoded_wide = 1ull; r->report->clamped++; }
+                        if ( decoded_wide > 240ull ) { decoded_wide = 240ull; r->report->clamped++; }
+                        value->tick_rate = decoded_wide;
+                        break;
+                    }
+                    case 7:
+                    {
+                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                        if ( decoded_wide < 1ull ) { decoded_wide = 1ull; r->report->clamped++; }
+                        if ( decoded_wide > 240ull ) { decoded_wide = 240ull; r->report->clamped++; }
+                        value->tick_rate = decoded_wide;
+                        break;
+                    }
+                    case 8:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        {
+                            uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                            if ( decoded_v < 1 ) { decoded_v = 1; r->report->clamped++; }
+                            else if ( decoded_v > 240 ) { decoded_v = 240; r->report->clamped++; }
+                            value->tick_rate = decoded_v;
+                        }
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
                 }
                 break;
             }
-            case 0xd53f: /* difficulty */
+            case 0x467f35a74c6e4a70ull: /* difficulty */
             {
-                if ( kind != 7 )
+                if ( kind != 30 )
                 {
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t variant = table_reader_get16( &(*r) );
-                    switch ( variant )
+                    uint64_t variant_ref;
+                    if ( !table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->malformed = 1; return 0; }
+                    if ( variant_ref == 0 ) { value->difficulty = DIFFICULTY_NONE; }
+                    else
                     {
-                        case 0: value->difficulty = DIFFICULTY_NONE; break;
-                        case 0x7d08: value->difficulty = DIFFICULTY_EASY; break;
-                        case 0x7fac: value->difficulty = DIFFICULTY_NORMAL; break;
-                        case 0xc313: value->difficulty = DIFFICULTY_HARD; break;
-                        default: value->difficulty = DIFFICULTY_NONE; r->report->unknown++; break; /* an id this build cannot name */
+                        switch ( table_reader_id_at( &(*r), variant_ref ) )
+                        {
+                            case 0x483d9e6c1ccd1f9bull: value->difficulty = DIFFICULTY_EASY; break;
+                            case 0x9ff3121d30f88d52ull: value->difficulty = DIFFICULTY_NORMAL; break;
+                            case 0x58c7b5d87587287cull: value->difficulty = DIFFICULTY_HARD; break;
+                            default: value->difficulty = DIFFICULTY_NONE; r->report->unknown++; break;
+                        }
                     }
                 }
                 break;
             }
-            case 0xb2d4: /* build_note */
+            case 0x14ec921cc2549d60ull: /* build_note */
             {
                 if ( kind != 12 )
                 {
@@ -1170,20 +2572,18 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int global_settings_load_body
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint32_t len;
-                uint32_t keep;
-                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                len = table_reader_get32( r );
-                if ( !table_reader_has( r, len ) ) { r->report->malformed = 1; return 0; }
-                keep = len;
-                if ( keep > 48 ) { keep = 48; r->report->clamped++; }
-                memcpy( value->build_note, r->buffer + r->offset, keep );
-                value->build_note[keep] = 0;
-                value->build_note_length = (int32_t) keep;
-                r->offset += len;
+                TableReader sub; uint64_t keep;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_wire_utf8( sub.buffer, (uint64_t) sub.size ) )
+                {
+                    r->report->malformed = 1; value->build_note[0] = 0; value->build_note_length = 0; break;
+                }
+                keep = (uint64_t) sub.size;
+                if ( keep > 48 ) { keep = table_wire_utf8_clamp( sub.buffer, keep, 48 ); r->report->clamped++; }
+                memcpy( value->build_note, sub.buffer, (size_t) keep ); value->build_note[keep] = 0; value->build_note_length = (int32_t) keep;
                 break;
             }
-            case 0x7c01: /* spawn_delays */
+            case 0x09ae5613b0051271ull: /* spawn_delays */
             {
                 if ( kind != 14 )
                 {
@@ -1191,306 +2591,610 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int global_settings_load_body
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint32_t body_len;
-                int64_t body_end;
-                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = table_reader_get32( r );
-                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
-                body_end = r->offset + body_len;
-                if ( body_len >= 5 )
+                TableReader sub;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( sub.size >= 2 )
                 {
-                    uint8_t elem_kind = table_reader_get8( r );
-                    uint32_t count = table_reader_get32( r );
-                    uint32_t keep;
-                    TableReader sub;
-                    uint32_t i;
-                    if ( elem_kind != 10 ) { r->report->kind_mismatch++; r->offset = body_end; break; }
-                    keep = count;
-                    if ( keep > 3 ) { keep = 3; r->report->clamped++; }
-                    /* elements are BOUNDED by the field body: a count the length
-                       cannot cover keeps the decoded prefix, flags malformed, and
-                       the parent continues at the next field — following fields'
-                       bytes are never fabricated into elements */
-                    sub = table_reader_make( r->buffer + r->offset, body_end - r->offset, r->report );
-                    for ( i = 0; i < keep; i++ )
+                    uint8_t elem_kind; uint64_t count, kept, i;
+                    if ( !table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->malformed = 1; }
+                    else
                     {
-                        if ( !table_reader_has( &sub, 4 ) ) { r->report->malformed = 1; break; }
-                        value->spawn_delays[i] = table_bits_to_float( table_reader_get32( &sub ) );
+                        if ( elem_kind != 10 )
+                        {
+                            if ( !(table_kind_widens(elem_kind,10)) ) { r->report->kind_mismatch++; break; }
+                            r->report->widened++;
+                        }
+                        kept = count; if ( kept > 3 ) { kept = 3; r->report->clamped++; }
+                        for ( i = 0; i < kept; i++ )
+                        {
+                            switch ( elem_kind )
+                            {
+                                case 10:
+                                {
+                                    if ( !table_reader_has( &sub, 4 ) ) { r->report->malformed = 1; goto end_spawn_delays; }
+                                    value->spawn_delays[i] = table_bits_to_float( table_reader_get32( &sub ) );
+                                    break;
+                                }
+                                default: r->report->malformed = 1; goto end_spawn_delays;
+                            }
+                        }
+                        end_spawn_delays: ;
                     }
                 }
-                r->offset = body_end; /* excess elements and slack skip via the length */
                 break;
             }
             default:
-            {
                 r->report->unknown++;
                 if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
-            }
         }
     }
 }
 
 static SCHEMA_UNUSED int global_settings_load( GlobalSettings * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
-    TableReport ignored;
-    TableReader r;
+    TableReport ignored; TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    if ( report == NULL ) { report = &ignored; }
+    global_settings_reset( value );
+    if ( !table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     return global_settings_load_body( &r, value );
+}
+
+static SCHEMA_UNUSED int global_settings_save_message_body(TableBitWriter * w,const GlobalSettings * value)
+{
+ (void)value;
+ { /* tick_rate */
+ if(!(value->tick_rate == 60)) {
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
+  table_bit_put(w,7,kTableMessageRefBitsHere);
+  table_bit_put(w,(uint64_t)(value->tick_rate)-UINT64_C(1),8);
+ }
+ }
+ { /* difficulty */
+ if(!(value->difficulty == DIFFICULTY_NORMAL)) {
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
+  table_bit_put(w,8,kTableMessageRefBitsHere);
+  switch(value->difficulty) {
+   case DIFFICULTY_NONE: table_bit_put(w,0,kTableMessageRefBitsHere);
+   break;
+   case DIFFICULTY_EASY: table_bit_put(w,110,kTableMessageRefBitsHere);
+   break;
+   case DIFFICULTY_NORMAL: table_bit_put(w,111,kTableMessageRefBitsHere);
+   break;
+   case DIFFICULTY_HARD: table_bit_put(w,112,kTableMessageRefBitsHere);
+   break;
+   default: return 0;
+  }
+ }
+ }
+ { /* build_note */
+ if(value->build_note_length<0 || value->build_note_length>48) return 0;
+ if(value->build_note_length != 0) {
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
+  table_bit_put(w,9,kTableMessageRefBitsHere);
+  if(value->build_note_length<0 || value->build_note_length>48) return 0;
+  table_bit_put(w,(uint64_t)value->build_note_length,6);
+  table_bit_align_write(w);
+  table_bit_putbytes(w,value->build_note,value->build_note_length);
+ }
+ }
+ { /* spawn_delays */
+ int rides=0;
+ { int32_t i;
+ for(i=0;i<3;i++) if(!(value->spawn_delays[i] == 0.0f)) { rides=1;
+ break;
+ } }
+ if(rides) {
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
+  table_bit_put(w,10,kTableMessageRefBitsHere);
+  if(3<0 || 3>3) return 0;
+  table_bit_put(w,(uint64_t)3-3,0);
+  { int32_t i;
+  for(i=0;i<3;i++) {
+    table_bit_put(w,table_float_to_bits(value->spawn_delays[i]),32);
+  } }
+ }
+ }
+ table_bit_put(w,0,kTableMessageRefBitsHere);
+ return !w->overflow;
+}
+static SCHEMA_UNUSED int64_t global_settings_measure_messages(const GlobalSettings * values,int64_t count,TableReport * report)
+{
+ TableBitWriter w=table_bit_writer(NULL,INT64_MAX);
+ int64_t i;
+ if(count<1 || values==NULL) return -1;
+ if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;
+ report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;
+ }return -1;
+ }
+ table_bit_put(&w,2,8);
+ table_bit_put(&w,(uint64_t)(count-1),8);
+ for(i=0;i<count;i++) if(!global_settings_save_message_body(&w,values+i)) return -1;
+ table_bit_align_write(&w);
+ return w.overflow ? -1 : w.bits/8;
+}
+static SCHEMA_UNUSED int64_t global_settings_save_messages(const GlobalSettings * values,int64_t count,uint8_t * buffer,int64_t capacity,TableReport * report)
+{
+ TableBitWriter w=table_bit_writer(buffer,capacity);
+ int64_t i;
+ if(count<1 || values==NULL) return -1;
+ if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;
+ report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;
+ }return -1;
+ }
+ if(buffer==NULL || capacity<0) return -1;
+ table_bit_put(&w,2,8);
+ table_bit_put(&w,(uint64_t)(count-1),8);
+ for(i=0;i<count;i++) if(!global_settings_save_message_body(&w,values+i)) return -1;
+ table_bit_align_write(&w);
+ return w.overflow ? -1 : w.bits/8;
+}
+static SCHEMA_UNUSED int global_settings_load_message_body(TableMessageReader * r,GlobalSettings * value)
+{
+ global_settings_reset(value);
+ for(;;){const TableMessageEntry * entry;
+ if(!table_message_ref(r,&entry,0))goto malformed;
+ if(entry==NULL)return 1;
+ switch(entry->id){
+ case UINT64_C(0xa65f859b617deaf3): {
+ if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,8)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  uint64_t decoded=(uint64_t)lo;
+  (void)hi;
+  if(decoded<1ull){decoded=1ull;
+  r->report->clamped++;
+  }
+  if(decoded>240ull){decoded=240ull;
+  r->report->clamped++;
+  }
+  value->tick_rate=(uint32_t)decoded;
+  }
+ break;
+ }
+ case UINT64_C(0x467f35a74c6e4a70): {
+ if(!(entry->kind==30 && entry->elem_kind==0)){if(0){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { const TableMessageEntry * named;
+ if(!table_message_ref(r,&named,1)) goto malformed;
+  if(named==NULL) value->difficulty=DIFFICULTY_NONE;
+  else switch(named->id) {
+  case UINT64_C(0x483d9e6c1ccd1f9b): value->difficulty=DIFFICULTY_EASY;
+  break;
+  case UINT64_C(0x9ff3121d30f88d52): value->difficulty=DIFFICULTY_NORMAL;
+  break;
+  case UINT64_C(0x58c7b5d87587287c): value->difficulty=DIFFICULTY_HARD;
+  break;
+  default:value->difficulty=DIFFICULTY_NONE;
+  r->report->unknown++;
+  break;
+  } }
+ break;
+ }
+ case UINT64_C(0x14ec921cc2549d60): {
+ if(!(entry->kind==12 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,12)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ {uint64_t n,kept;
+ if(!table_bit_get(&r->bits,&n,table_bits_required(0,entry->max)))goto malformed;
+  if(!table_bit_align_read(&r->bits))goto malformed;
+  if(n>INT64_MAX/8 || !table_bit_has(&r->bits,(int64_t)n*8))goto malformed;
+  {const uint8_t * text=r->bits.buffer+(r->bits.offset>>3);
+  if(!table_wire_utf8(text,n))goto malformed;
+  kept=table_wire_utf8_clamp(text,n,48);
+  memcpy(value->build_note,text,(size_t)kept);
+  value->build_note[kept]=0;
+  }
+  r->bits.offset+=(int64_t)n*8;
+  if(kept<n)r->report->clamped++;
+  value->build_note_length=(int32_t)kept;
+  }
+ break;
+ }
+ case UINT64_C(0x09ae5613b0051271): {
+ if(!(entry->kind==14 && entry->elem_kind==10)){if(entry->kind==14 && table_kind_widens(entry->elem_kind,10)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ {uint64_t n,kept,walk,i;
+ TableMessageEntry element_shape=table_message_element(entry);
+ const TableMessageEntry * element_entry=&element_shape;
+ (void)element_entry;
+  if(!table_message_count(r,entry,&n))goto malformed;
+  kept=n>3?3:n;
+  if(kept<n)r->report->clamped++;
+  walk=element_entry->value_bits>=0?kept:n;
+  for(i=0;i<walk;i++){float scratch;
+  float * item=i<kept ? &value->spawn_delays[i] : &scratch;
+  { float decoded;
+  if(element_entry->kind==10) {float narrow;
+  if(!table_message_float(r,element_entry,&narrow))goto malformed;
+  decoded=narrow;
+  } else {uint64_t raw;
+  if(!table_bit_get(&r->bits,&raw,64))goto malformed;
+  decoded=(float)table_bits_to_double(raw);
+  }
+   (*item)=decoded;
+   }
+  }if(walk<n && !table_message_skip_run(r,n-walk,element_entry->value_bits))goto malformed;
+ }
+ break;
+ }
+ default:r->report->unknown++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ } }
+ malformed:r->report->malformed=1;
+ return 0;
+}
+static SCHEMA_UNUSED int global_settings_load_messages(GlobalSettings * values,int64_t * count,const TableVocabulary * vocabulary,const uint8_t * buffer,int64_t bytes,TableReport * report)
+{
+ TableReport ignored={0};
+ TableMessageReader r;
+ int64_t capacity,bodies,i;
+ if(report==NULL)report=&ignored;
+ if(values==NULL||count==NULL){report->malformed=1;
+ return 0;
+ }capacity=*count;
+ *count=0;
+ bodies=table_message_open(&r,vocabulary,buffer,bytes,report);
+ if(bodies<0)return 0;
+ if(bodies>capacity){*count=bodies;
+ report->refused=1;
+ report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;
+ return 0;
+ }
+ for(i=0;i<bodies;i++){if(!global_settings_load_message_body(&r,values+i))return 0;
+ (*count)++;
+ }return table_message_close(&r);
+}
+static SCHEMA_UNUSED int schema_tabledemo_global_settings_message_extent_(TableMessageReader * r,int64_t * at)
+{
+ (void)at;
+ for(;;){const TableMessageEntry * entry;
+ if(!table_message_ref(r,&entry,0))return 0;
+ if(entry==NULL)return 1;
+ switch(entry->id){
+ default:break;
+ }if(!table_message_skip(r,entry))return 0;
+ }
+}
+#define SCHEMA_TABLEDEMO_PACK_CONFIG_SHIPS_AT(value,key) SCHEMA_TABLE_KEYED_AT((value).ships,(key),SHIP_TYPE_MAX)
+#define SCHEMA_TABLEDEMO_PACK_CONFIG_THRESHOLDS_AT(value,key) SCHEMA_TABLE_KEYED_AT((value).thresholds,(key),DIFFICULTY_MAX)
+static SCHEMA_UNUSED int schema_tabledemo_pack_config_wire_ships_( TableWriter * w, const PackConfig * value )
+{
+    uint64_t count = 0; int32_t i;
+    for ( i = 0; i < SHIP_TYPE_MAX; i++ )
+    {
+        TableWriter slot_probe = table_writer_probe( w ); slot_probe.check_default = 1;
+        if ( !ship_entry_save_body( &slot_probe, &value->ships[i] ) ) { return 0; }
+        table_writer_rewind(&slot_probe);
+        if ( slot_probe.offset == 1 ) { continue; }
+        count++;
+    }
+    table_writer_put8( w, 13 ); table_writer_leb( w, count );
+    for ( i = 0; i < SHIP_TYPE_MAX; i++ )
+    {
+        TableWriter slot_probe = table_writer_probe( w ); slot_probe.check_default = 1;
+        if ( !ship_entry_save_body( &slot_probe, &value->ships[i] ) ) { return 0; }
+        table_writer_rewind(&slot_probe);
+        if ( slot_probe.offset == 1 ) { continue; }
+        switch ( i + 1 )
+        {
+            case SHIP_TYPE_NONE: table_writer_leb( w, 0 ); break;
+            case SHIP_TYPE_FIGHTER: table_writer_id( w, 0xd011f7c3c15285c2ull ); break;
+            case SHIP_TYPE_BOMBER: table_writer_id( w, 0xa8216aa1c554cb8aull ); break;
+            case SHIP_TYPE_SCOUT: table_writer_id( w, 0x7d573c625719c1a5ull ); break;
+            default: return 0; /* no declared identity */
+        }
+        if ( w->buffer == NULL )
+        {
+            int64_t frame_begin = w->offset;
+            if ( !ship_entry_save_body( w, &value->ships[i] ) ) { return 0; }
+            table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+        }
+        else
+        {
+            TableWriter probe = table_writer_probe( w );
+            if ( !ship_entry_save_body( &probe, &value->ships[i] ) ) { return 0; }
+            table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+            if ( !ship_entry_save_body( w, &value->ships[i] ) ) { return 0; }
+        }
+    }
+    return !w->overflow;
+}
+
+static SCHEMA_UNUSED int schema_tabledemo_pack_config_wire_thresholds_( TableWriter * w, const PackConfig * value )
+{
+    uint64_t count = 0; int32_t i;
+    for ( i = 0; i < DIFFICULTY_MAX; i++ )
+    {
+        if ( value->thresholds[i] == 0 ) { continue; }
+        count++;
+    }
+    table_writer_put8( w, 4 ); table_writer_leb( w, count );
+    for ( i = 0; i < DIFFICULTY_MAX; i++ )
+    {
+        if ( value->thresholds[i] == 0 ) { continue; }
+        switch ( i + 1 )
+        {
+            case DIFFICULTY_NONE: table_writer_leb( w, 0 ); break;
+            case DIFFICULTY_EASY: table_writer_id( w, 0x483d9e6c1ccd1f9bull ); break;
+            case DIFFICULTY_NORMAL: table_writer_id( w, 0x9ff3121d30f88d52ull ); break;
+            case DIFFICULTY_HARD: table_writer_id( w, 0x58c7b5d87587287cull ); break;
+            default: return 0; /* no declared identity */
+        }
+        {
+            TableWriter probe = table_writer_probe( w );
+            TableWriter * outer = w;
+            w = &probe;
+            table_writer_put32( w, (uint32_t) ( value->thresholds[i] ) );
+            w = outer; table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+            table_writer_put32( w, (uint32_t) ( value->thresholds[i] ) );
+        }
+    }
+    return !w->overflow;
+}
+
+static SCHEMA_UNUSED int schema_tabledemo_pack_config_wire_reserves_( TableWriter * w, const PackConfig * value )
+{
+    if ( value->reserves_count < 0 || value->reserves_count > 3 ) { return 0; }
+    int32_t i;
+    table_writer_put8( w, 13 ); table_writer_leb( w, (uint64_t) value->reserves_count );
+    for ( i = 0; i < value->reserves_count; i++ )
+    {
+        if ( w->buffer == NULL )
+        {
+            int64_t frame_begin = w->offset;
+            if ( !ship_entry_save_body( w, &value->reserves[i] ) ) { return 0; }
+            table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+        }
+        else
+        {
+            TableWriter probe = table_writer_probe( w );
+            if ( !ship_entry_save_body( &probe, &value->reserves[i] ) ) { return 0; }
+            table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+            if ( !ship_entry_save_body( w, &value->reserves[i] ) ) { return 0; }
+        }
+    }
+    return !w->overflow;
+}
+
+static SCHEMA_UNUSED int pack_config_save_body( TableWriter * w, const PackConfig * value )
+{
+    (void) value;
+    { /* version */
+        if ( !( value->version == 1 ) )
+        {
+            if ( w->check_default ) { w->offset = 2; return 1; }
+            table_writer_id( w, 0xbb62c62c9808ea37ull ); table_writer_put8( w, 8 );
+            table_writer_put32( w, (uint32_t) ( value->version ) );
+        }
+    }
+    { /* global */
+        TableWriter default_probe = table_writer_probe( w ); default_probe.check_default = 1;
+        if ( !global_settings_save_body( &default_probe, &value->global ) ) { return 0; }
+        table_writer_rewind(&default_probe);
+        if ( default_probe.offset > 1 )
+        {
+            if ( w->check_default ) { w->offset = 2; return 1; }
+            table_writer_id( w, 0x7fb43557b54149ceull ); table_writer_put8( w, 13 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !global_settings_save_body( w, &value->global ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !global_settings_save_body( &probe, &value->global ) ) { return 0; }
+                table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !global_settings_save_body( w, &value->global ) ) { return 0; }
+            }
+        }
+    }
+    { /* ships */
+        int rides = 0; int32_t i;
+        for ( i = 0; i < SHIP_TYPE_MAX; i++ )
+        {
+            TableWriter slot_probe = table_writer_probe( w ); slot_probe.check_default = 1;
+            if ( !ship_entry_save_body( &slot_probe, &value->ships[i] ) ) { return 0; }
+            table_writer_rewind(&slot_probe);
+            if ( slot_probe.offset == 1 ) { continue; }
+            rides = 1; break;
+        }
+        if ( rides )
+        {
+            if ( w->check_default ) { w->offset = 2; return 1; }
+            table_writer_id( w, 0x294a5c4913e1ad44ull ); table_writer_put8( w, 16 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !schema_tabledemo_pack_config_wire_ships_( w, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !schema_tabledemo_pack_config_wire_ships_( &probe, value ) ) { return 0; }
+                table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !schema_tabledemo_pack_config_wire_ships_( w, value ) ) { return 0; }
+            }
+        }
+    }
+    { /* thresholds */
+        int rides = 0; int32_t i;
+        for ( i = 0; i < DIFFICULTY_MAX; i++ )
+        {
+            if ( value->thresholds[i] == 0 ) { continue; }
+            rides = 1; break;
+        }
+        if ( rides )
+        {
+            if ( w->check_default ) { w->offset = 2; return 1; }
+            table_writer_id( w, 0x9cda940a344e1571ull ); table_writer_put8( w, 16 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !schema_tabledemo_pack_config_wire_thresholds_( w, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !schema_tabledemo_pack_config_wire_thresholds_( &probe, value ) ) { return 0; }
+                table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !schema_tabledemo_pack_config_wire_thresholds_( w, value ) ) { return 0; }
+            }
+        }
+    }
+    { /* reserves */
+        if ( value->reserves_count < 0 || value->reserves_count > 3 ) { return 0; }
+        if ( value->reserves_count > 0 )
+        {
+            if ( w->check_default ) { w->offset = 2; return 1; }
+            table_writer_id( w, 0x77707fccd201c228ull ); table_writer_put8( w, 14 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !schema_tabledemo_pack_config_wire_reserves_( w, value ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !schema_tabledemo_pack_config_wire_reserves_( &probe, value ) ) { return 0; }
+                table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !schema_tabledemo_pack_config_wire_reserves_( w, value ) ) { return 0; }
+            }
+        }
+    }
+    table_writer_leb( w, 0 );
+    return !w->overflow;
 }
 
 static SCHEMA_UNUSED int64_t pack_config_measure( const PackConfig * value )
 {
-    int64_t bytes = 2; /* terminator */
-    if ( value->version != 1 ) { bytes += 3 + 4; } /* version */
-    {
-        int64_t body_global = global_settings_measure( &value->global );
-        if ( body_global < 0 ) { return -1; }
-        if ( body_global > 2 ) { bytes += 3 + 4 + body_global; } /* global: all-default nested elides */
-    }
-    {
-        int64_t pairs_ships = 0, body_ships = 0;
-        int32_t i;
-        for ( i = 0; i < SHIP_TYPE_MAX; i++ ) /* [ShipType]: every stored slot is a named variant's */
-        {
-            int64_t elem_bytes = ship_entry_measure( &value->ships[i] );
-            if ( elem_bytes < 0 ) { return -1; }
-            if ( elem_bytes <= 2 ) { continue; } /* an all-default slot elides */
-            uint16_t key_id = 0;
-            switch ( (ShipType) ( i + 1 ) ) /* ShipType rides as the u16 hash of its VARIANT NAME (§5) */
-            {
-                case SHIP_TYPE_NONE: key_id = 0; break;
-                case SHIP_TYPE_FIGHTER: key_id = 0x412b; break;
-                case SHIP_TYPE_BOMBER: key_id = 0xb7ce; break;
-                case SHIP_TYPE_SCOUT: key_id = 0xd97a; break;
-                default: return -1; /* no variant names this value: no wire identity */
-            }
-            (void) key_id;
-            pairs_ships++; body_ships += 2 + 4 + elem_bytes; /* key, length, body */
-        }
-        if ( pairs_ships > 0 ) { bytes += 3 + 4 + 5 + body_ships; } /* ships */
-    }
-    {
-        int64_t pairs_thresholds = 0, body_thresholds = 0;
-        int32_t i;
-        for ( i = 0; i < DIFFICULTY_MAX; i++ ) /* [Difficulty]: every stored slot is a named variant's */
-        {
-            if ( value->thresholds[i] == 0 ) { continue; } /* a default slot elides */
-            uint16_t key_id = 0;
-            switch ( (Difficulty) ( i + 1 ) ) /* Difficulty rides as the u16 hash of its VARIANT NAME (§5) */
-            {
-                case DIFFICULTY_NONE: key_id = 0; break;
-                case DIFFICULTY_EASY: key_id = 0x7d08; break;
-                case DIFFICULTY_NORMAL: key_id = 0x7fac; break;
-                case DIFFICULTY_HARD: key_id = 0xc313; break;
-                default: return -1; /* no variant names this value: no wire identity */
-            }
-            (void) key_id;
-            pairs_thresholds++; body_thresholds += 2 + 4 + 4; /* key, length, element */
-        }
-        if ( pairs_thresholds > 0 ) { bytes += 3 + 4 + 5 + body_thresholds; } /* thresholds */
-    }
-    if ( value->reserves_count < 0 || value->reserves_count > 3 ) { return -1; } /* storage invariant */
-    if ( value->reserves_count > 0 )
-    {
-        int32_t i;
-        bytes += 3 + 4 + 5; /* reserves */
-        for ( i = 0; i < value->reserves_count; i++ )
-        {
-            int64_t elem_reserves = ship_entry_measure( &value->reserves[i] );
-            if ( elem_reserves < 0 ) { return -1; }
-            bytes += 4 + elem_reserves;
-        }
-    }
-    return bytes;
-}
-
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int pack_config_save_body( TableWriter * w, const PackConfig * value )
-{
-    if ( value->version != 1 )
-    {
-        table_writer_put16( w, 0xe8e6 ); table_writer_put8( w, 8 ); /* version */
-        table_writer_put32( w, (uint32_t) ( value->version ) );
-    }
-    {
-        int64_t body_global = global_settings_measure( &value->global );
-        if ( body_global < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
-        if ( body_global > 2 ) /* all-default nested elides */
-        {
-            table_writer_put16( w, 0x1b51 ); table_writer_put8( w, 13 ); /* global */
-            table_writer_put32( w, (uint32_t) body_global );
-            if ( !global_settings_save_body( w, &value->global ) ) { return 0; }
-        }
-    }
-    {
-        uint32_t pairs_ships = 0;
-        int32_t i;
-        for ( i = 0; i < SHIP_TYPE_MAX; i++ ) /* [ShipType]: every stored slot is a named variant's */
-        {
-            int64_t elem_bytes = ship_entry_measure( &value->ships[i] );
-            if ( elem_bytes < 0 ) { return 0; }
-            if ( elem_bytes <= 2 ) { continue; } /* an all-default slot elides */
-            uint16_t key_id = 0;
-            switch ( (ShipType) ( i + 1 ) ) /* ShipType rides as the u16 hash of its VARIANT NAME (§5) */
-            {
-                case SHIP_TYPE_NONE: key_id = 0; break;
-                case SHIP_TYPE_FIGHTER: key_id = 0x412b; break;
-                case SHIP_TYPE_BOMBER: key_id = 0xb7ce; break;
-                case SHIP_TYPE_SCOUT: key_id = 0xd97a; break;
-                default: return 0; /* no variant names this value: no wire identity */
-            }
-            (void) key_id;
-            pairs_ships++;
-        }
-        if ( pairs_ships > 0 )
-        {
-            int64_t len_at_ships;
-            /* KIND 16, not 14: a keyed body and a positional one are
-               incompatible, so a reader of the other kind must see a kind
-               mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2) */
-            table_writer_put16( w, 0x2d39 ); table_writer_put8( w, 16 ); /* ships (keyed by ShipType) */
-            len_at_ships = w->offset; table_writer_put32( w, 0 );
-            table_writer_put8( w, 13 ); table_writer_put32( w, pairs_ships );
-            /* ASCENDING BY VARIANT ORDINAL, which is slot order — this
-               writer's choice, and a reader must not rely on it: every
-               slot is found by its key (docs/SPEC-TABLES.md §3.2) */
-            for ( i = 0; i < SHIP_TYPE_MAX; i++ )
-            {
-                int64_t elem_len_at_ships;
-                int64_t elem_bytes = ship_entry_measure( &value->ships[i] );
-                if ( elem_bytes < 0 ) { return 0; }
-                if ( elem_bytes <= 2 ) { continue; } /* an all-default slot elides */
-                uint16_t key_id = 0;
-                switch ( (ShipType) ( i + 1 ) ) /* ShipType rides as the u16 hash of its VARIANT NAME (§5) */
-                {
-                    case SHIP_TYPE_NONE: key_id = 0; break;
-                    case SHIP_TYPE_FIGHTER: key_id = 0x412b; break;
-                    case SHIP_TYPE_BOMBER: key_id = 0xb7ce; break;
-                    case SHIP_TYPE_SCOUT: key_id = 0xd97a; break;
-                    default: return 0; /* no variant names this value: no wire identity */
-                }
-                (void) key_id;
-                table_writer_put16( w, key_id ); /* the slot's VARIANT id, not its position */
-                elem_len_at_ships = w->offset; table_writer_put32( w, 0 );
-                if ( !ship_entry_save_body( w, &value->ships[i] ) ) { return 0; }
-                table_writer_patch32( w, elem_len_at_ships, (uint32_t) ( w->offset - elem_len_at_ships - 4 ) );
-            }
-            table_writer_patch32( w, len_at_ships, (uint32_t) ( w->offset - len_at_ships - 4 ) );
-        }
-    }
-    {
-        uint32_t pairs_thresholds = 0;
-        int32_t i;
-        for ( i = 0; i < DIFFICULTY_MAX; i++ ) /* [Difficulty]: every stored slot is a named variant's */
-        {
-            if ( value->thresholds[i] == 0 ) { continue; } /* a default slot elides */
-            uint16_t key_id = 0;
-            switch ( (Difficulty) ( i + 1 ) ) /* Difficulty rides as the u16 hash of its VARIANT NAME (§5) */
-            {
-                case DIFFICULTY_NONE: key_id = 0; break;
-                case DIFFICULTY_EASY: key_id = 0x7d08; break;
-                case DIFFICULTY_NORMAL: key_id = 0x7fac; break;
-                case DIFFICULTY_HARD: key_id = 0xc313; break;
-                default: return 0; /* no variant names this value: no wire identity */
-            }
-            (void) key_id;
-            pairs_thresholds++;
-        }
-        if ( pairs_thresholds > 0 )
-        {
-            int64_t len_at_thresholds;
-            /* KIND 16, not 14: a keyed body and a positional one are
-               incompatible, so a reader of the other kind must see a kind
-               mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2) */
-            table_writer_put16( w, 0xb2eb ); table_writer_put8( w, 16 ); /* thresholds (keyed by Difficulty) */
-            len_at_thresholds = w->offset; table_writer_put32( w, 0 );
-            table_writer_put8( w, 4 ); table_writer_put32( w, pairs_thresholds );
-            /* ASCENDING BY VARIANT ORDINAL, which is slot order — this
-               writer's choice, and a reader must not rely on it: every
-               slot is found by its key (docs/SPEC-TABLES.md §3.2) */
-            for ( i = 0; i < DIFFICULTY_MAX; i++ )
-            {
-                int64_t elem_len_at_thresholds;
-                if ( value->thresholds[i] == 0 ) { continue; } /* a default slot elides */
-                uint16_t key_id = 0;
-                switch ( (Difficulty) ( i + 1 ) ) /* Difficulty rides as the u16 hash of its VARIANT NAME (§5) */
-                {
-                    case DIFFICULTY_NONE: key_id = 0; break;
-                    case DIFFICULTY_EASY: key_id = 0x7d08; break;
-                    case DIFFICULTY_NORMAL: key_id = 0x7fac; break;
-                    case DIFFICULTY_HARD: key_id = 0xc313; break;
-                    default: return 0; /* no variant names this value: no wire identity */
-                }
-                (void) key_id;
-                table_writer_put16( w, key_id ); /* the slot's VARIANT id, not its position */
-                elem_len_at_thresholds = w->offset; table_writer_put32( w, 0 );
-                table_writer_put32( w, (uint32_t) ( value->thresholds[i] ) );
-                table_writer_patch32( w, elem_len_at_thresholds, (uint32_t) ( w->offset - elem_len_at_thresholds - 4 ) );
-            }
-            table_writer_patch32( w, len_at_thresholds, (uint32_t) ( w->offset - len_at_thresholds - 4 ) );
-        }
-    }
-    if ( value->reserves_count < 0 || value->reserves_count > 3 ) { return 0; } /* storage invariant */
-    if ( value->reserves_count > 0 )
-    {
-        int64_t len_at_reserves;
-        int32_t i;
-        table_writer_put16( w, 0x049d ); table_writer_put8( w, 14 ); /* reserves */
-        len_at_reserves = w->offset; table_writer_put32( w, 0 );
-        table_writer_put8( w, 13 ); table_writer_put32( w, (uint32_t) value->reserves_count );
-        for ( i = 0; i < value->reserves_count; i++ )
-        {
-            {
-                int64_t elem_len_at = w->offset;
-                table_writer_put32( w, 0 );
-                if ( !ship_entry_save_body( w, &value->reserves[i] ) ) { return 0; }
-                table_writer_patch32( w, elem_len_at, (uint32_t) ( w->offset - elem_len_at - 4 ) );
-            }
-        }
-        table_writer_patch32( w, len_at_reserves, (uint32_t) ( w->offset - len_at_reserves - 4 ) );
-    }
-    table_writer_put16( w, 0 ); /* terminator */
-    return !w->overflow;
+    TableWriteIds vocabulary; TableWriter w = table_writer_make( NULL, INT64_MAX, &vocabulary );
+    table_writer_put8( &w, 1 );
+    if ( !pack_config_save_body( &w, value ) ) { return -1; }
+    table_writer_finish( &w );
+    return w.overflow ? -1 : w.offset;
 }
 
 static SCHEMA_UNUSED int64_t pack_config_save( const PackConfig * value, uint8_t * buffer, int64_t capacity )
 {
-    TableWriter w = table_writer_make( buffer, capacity );
+    if ( buffer == NULL || capacity < 0 ) { return -1; }
+    TableWriteIds vocabulary; TableWriter w = table_writer_make( buffer, capacity, &vocabulary );
+    table_writer_put8( &w, 1 );
     if ( !pack_config_save_body( &w, value ) ) { return -1; }
-    return w.offset; /* == pack_config_measure( value ) */
+    table_writer_finish( &w );
+    return w.overflow ? -1 : w.offset;
 }
 
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int pack_config_load_body( TableReader * r, PackConfig * value )
+static SCHEMA_UNUSED int pack_config_load_body( TableReader * r, PackConfig * value )
 {
-    pack_config_reset( value ); /* prefill declared defaults in place, then overlay */
+    pack_config_reset( value );
     for ( ;; )
     {
-        uint16_t field_id;
-        uint8_t kind;
-        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = table_reader_get16( r );
-        if ( field_id == 0 ) { return 1; }
-        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = table_reader_get8( r );
-        switch ( field_id )
+        uint64_t ref, id; uint8_t kind;
+        if ( !table_reader_leb( r, &ref ) ) { r->report->malformed = 1; return 0; }
+        if ( ref == 0 ) { return 1; }
+        if ( ref > r->id_count || !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        id = table_reader_id_at( r, ref ); kind = table_reader_get8( r );
+        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->malformed = 1; return 0; }
+        switch ( id )
         {
-            case 0xe8e6: /* version */
+            case 0xbb62c62c9808ea37ull: /* version */
             {
                 if ( kind != 8 )
                 {
+                    if ( table_kind_widens( kind, 8 ) )
+                    {
+                        switch ( kind )
+                        {
+                            case 6:
+                            {
+                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                                value->version = decoded_wide;
+                                break;
+                            }
+                            case 7:
+                            {
+                                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                                value->version = decoded_wide;
+                                break;
+                            }
+                            case 8:
+                            {
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                {
+                                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                                    value->version = decoded_v;
+                                }
+                                break;
+                            }
+                            default: r->report->malformed = 1; return 0;
+                        }
+                        r->report->widened++;
+                        break;
+                    }
                     r->report->kind_mismatch++;
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                switch ( kind )
                 {
-                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
-                    value->version = decoded_v;
+                    case 6:
+                    {
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
+                        value->version = decoded_wide;
+                        break;
+                    }
+                    case 7:
+                    {
+                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                        uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
+                        value->version = decoded_wide;
+                        break;
+                    }
+                    case 8:
+                    {
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        {
+                            uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                            value->version = decoded_v;
+                        }
+                        break;
+                    }
+                    default: r->report->malformed = 1; return 0;
                 }
                 break;
             }
-            case 0x1b51: /* global */
+            case 0x7fb43557b54149ceull: /* global */
             {
                 if ( kind != 13 )
                 {
@@ -1498,18 +3202,13 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int pack_config_load_body( Ta
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint32_t body_len;
-                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = table_reader_get32( r );
-                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
-                {
-                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
-                    global_settings_load_body( &sub, &value->global );
-                }
-                r->offset += body_len;
+                TableReader sub;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                global_settings_load_body( &sub, &value->global );
+                if ( sub.offset != sub.size ) { r->report->malformed = 1; global_settings_reset( &value->global ); }
                 break;
             }
-            case 0x2d39: /* ships */
+            case 0x294a5c4913e1ad44ull: /* ships */
             {
                 if ( kind != 16 )
                 {
@@ -1517,68 +3216,33 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int pack_config_load_body( Ta
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint32_t body_len;
-                int64_t body_end;
-                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = table_reader_get32( r );
-                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
-                body_end = r->offset + body_len;
-                if ( body_len >= 5 )
+                TableReader sub;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( sub.size >= 2 )
                 {
-                    uint8_t elem_kind = table_reader_get8( r );
-                    uint32_t count = table_reader_get32( r );
-                    TableReader sub;
-                    uint32_t i;
-                    if ( elem_kind != 13 ) { r->report->kind_mismatch++; r->offset = body_end; break; }
-                    sub = table_reader_make( r->buffer + r->offset, body_end - r->offset, r->report );
+                    uint8_t elem_kind; uint64_t count, i;
+                    if ( !table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->malformed = 1; break; }
+                    if ( elem_kind != 13 ) { if ( !(table_kind_widens(elem_kind,13)) ) { r->report->kind_mismatch++; break; } r->report->widened++; }
                     for ( i = 0; i < count; i++ )
                     {
-                        uint16_t key;
-                        uint32_t elem_len;
-                        ShipType slot;
-                        if ( !table_reader_has( &sub, 2 ) ) { r->report->malformed = 1; break; }
-                        key = table_reader_get16( &sub );
-                        if ( !table_reader_has( &sub, 4 ) ) { r->report->malformed = 1; break; }
-                        elem_len = table_reader_get32( &sub );
-                        if ( !table_reader_has( &sub, elem_len ) ) { r->report->malformed = 1; break; }
-                        if ( key == 0 )
+                        uint64_t key_ref, key; int32_t slot = -1; TableReader elem;
+                        if ( !table_reader_leb( &sub, &key_ref ) || key_ref == 0 || key_ref > sub.id_count || !table_reader_span( &sub, &elem ) ) { r->report->malformed = 1; break; }
+                        key = table_reader_id_at( &sub, key_ref );
+                        switch ( key )
                         {
-                            /* None is the NULL KEY: 0 is the reserved id no declared
-                               name can fold to, so a body carrying one is DAMAGED, not
-                               merely foreign. Framing damage stops this body, keeps what
-                               it decoded, and the parent reads on past the length
-                               (docs/SPEC-TABLES.md §3.2, §4). */
-                            r->report->malformed = 1;
-                            break;
+                            case 0xd011f7c3c15285c2ull: slot = 0; break;
+                            case 0xa8216aa1c554cb8aull: slot = 1; break;
+                            case 0x7d573c625719c1a5ull: slot = 2; break;
+                            default: r->report->unknown++; break;
                         }
-                        slot = SHIP_TYPE_NONE;
-                        {
-                            int32_t before = r->report->unknown;
-                            switch ( key )
-                            {
-                                case 0: slot = SHIP_TYPE_NONE; break;
-                                case 0x412b: slot = SHIP_TYPE_FIGHTER; break;
-                                case 0xb7ce: slot = SHIP_TYPE_BOMBER; break;
-                                case 0xd97a: slot = SHIP_TYPE_SCOUT; break;
-                                default: slot = SHIP_TYPE_NONE; r->report->unknown++; break; /* an id this build cannot name */
-                            }
-                            if ( r->report->unknown != before )
-                            {
-                                sub.offset += elem_len; /* a slot this reader cannot name */
-                                continue;
-                            }
-                        }
-                        {
-                            TableReader elem = table_reader_make( sub.buffer + sub.offset, elem_len, r->report );
-                            ship_entry_load_body( &elem, &value->ships[(int32_t) slot - 1] );
-                        }
-                        sub.offset += elem_len;
+                        if ( slot < 0 ) { continue; }
+                        ship_entry_load_body( &elem, &value->ships[slot] );
+                        if(elem.offset!=elem.size) { r->report->malformed=1; ship_entry_reset(&value->ships[slot]); }
                     }
                 }
-                r->offset = body_end; /* unread pairs and slack skip via the length */
                 break;
             }
-            case 0xb2eb: /* thresholds */
+            case 0x9cda940a344e1571ull: /* thresholds */
             {
                 if ( kind != 16 )
                 {
@@ -1586,74 +3250,65 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int pack_config_load_body( Ta
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint32_t body_len;
-                int64_t body_end;
-                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = table_reader_get32( r );
-                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
-                body_end = r->offset + body_len;
-                if ( body_len >= 5 )
+                TableReader sub;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( sub.size >= 2 )
                 {
-                    uint8_t elem_kind = table_reader_get8( r );
-                    uint32_t count = table_reader_get32( r );
-                    TableReader sub;
-                    uint32_t i;
-                    if ( elem_kind != 4 ) { r->report->kind_mismatch++; r->offset = body_end; break; }
-                    sub = table_reader_make( r->buffer + r->offset, body_end - r->offset, r->report );
+                    uint8_t elem_kind; uint64_t count, i;
+                    if ( !table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->malformed = 1; break; }
+                    if ( elem_kind != 4 ) { if ( !(table_kind_widens(elem_kind,4)) ) { r->report->kind_mismatch++; break; } r->report->widened++; }
                     for ( i = 0; i < count; i++ )
                     {
-                        uint16_t key;
-                        uint32_t elem_len;
-                        Difficulty slot;
-                        if ( !table_reader_has( &sub, 2 ) ) { r->report->malformed = 1; break; }
-                        key = table_reader_get16( &sub );
-                        if ( !table_reader_has( &sub, 4 ) ) { r->report->malformed = 1; break; }
-                        elem_len = table_reader_get32( &sub );
-                        if ( !table_reader_has( &sub, elem_len ) ) { r->report->malformed = 1; break; }
-                        if ( key == 0 )
+                        uint64_t key_ref, key; int32_t slot = -1; TableReader elem;
+                        if ( !table_reader_leb( &sub, &key_ref ) || key_ref == 0 || key_ref > sub.id_count || !table_reader_span( &sub, &elem ) ) { r->report->malformed = 1; break; }
+                        key = table_reader_id_at( &sub, key_ref );
+                        switch ( key )
                         {
-                            /* None is the NULL KEY: 0 is the reserved id no declared
-                               name can fold to, so a body carrying one is DAMAGED, not
-                               merely foreign. Framing damage stops this body, keeps what
-                               it decoded, and the parent reads on past the length
-                               (docs/SPEC-TABLES.md §3.2, §4). */
-                            r->report->malformed = 1;
-                            break;
+                            case 0x483d9e6c1ccd1f9bull: slot = 0; break;
+                            case 0x9ff3121d30f88d52ull: slot = 1; break;
+                            case 0x58c7b5d87587287cull: slot = 2; break;
+                            default: r->report->unknown++; break;
                         }
-                        slot = DIFFICULTY_NONE;
+                        if ( slot < 0 ) { continue; }
+                        switch ( elem_kind )
                         {
-                            int32_t before = r->report->unknown;
-                            switch ( key )
+                            case 2:
                             {
-                                case 0: slot = DIFFICULTY_NONE; break;
-                                case 0x7d08: slot = DIFFICULTY_EASY; break;
-                                case 0x7fac: slot = DIFFICULTY_NORMAL; break;
-                                case 0xc313: slot = DIFFICULTY_HARD; break;
-                                default: slot = DIFFICULTY_NONE; r->report->unknown++; break; /* an id this build cannot name */
+                                if ( !table_reader_has( &elem, 1 ) ) { r->report->malformed = 1; goto next_thresholds; }
+                                int64_t decoded_wide = (int8_t) table_reader_get8( &elem );
+                                if ( decoded_wide < 0ll ) { decoded_wide = 0ll; r->report->clamped++; }
+                                if ( decoded_wide > 1000ll ) { decoded_wide = 1000ll; r->report->clamped++; }
+                                value->thresholds[slot] = decoded_wide;
+                                break;
                             }
-                            if ( r->report->unknown != before )
+                            case 3:
                             {
-                                sub.offset += elem_len; /* a slot this reader cannot name */
-                                continue;
+                                if ( !table_reader_has( &elem, 2 ) ) { r->report->malformed = 1; goto next_thresholds; }
+                                int64_t decoded_wide = (int16_t) table_reader_get16( &elem );
+                                if ( decoded_wide < 0ll ) { decoded_wide = 0ll; r->report->clamped++; }
+                                if ( decoded_wide > 1000ll ) { decoded_wide = 1000ll; r->report->clamped++; }
+                                value->thresholds[slot] = decoded_wide;
+                                break;
                             }
+                            case 4:
+                            {
+                                if ( !table_reader_has( &elem, 4 ) ) { r->report->malformed = 1; goto next_thresholds; }
+                                {
+                                    int32_t decoded_v = (int32_t) table_reader_get32( &elem );
+                                    if ( decoded_v < 0 ) { decoded_v = 0; r->report->clamped++; }
+                                    else if ( decoded_v > 1000 ) { decoded_v = 1000; r->report->clamped++; }
+                                    value->thresholds[slot] = decoded_v;
+                                }
+                                break;
+                            }
+                            default: r->report->malformed = 1; goto next_thresholds;
                         }
-                        {
-                            TableReader elem = table_reader_make( sub.buffer + sub.offset, elem_len, r->report );
-                            if ( !table_reader_has( &elem, 4 ) ) { r->report->malformed = 1; sub.offset += elem_len; continue; }
-                            {
-                                int32_t decoded_v = (int32_t) table_reader_get32( &elem );
-                                if ( decoded_v < 0 ) { decoded_v = 0; r->report->clamped++; }
-                                else if ( decoded_v > 1000 ) { decoded_v = 1000; r->report->clamped++; }
-                                value->thresholds[(int32_t) slot - 1] = decoded_v;
-                            }
-                        }
-                        sub.offset += elem_len;
+                        next_thresholds: ;
                     }
                 }
-                r->offset = body_end; /* unread pairs and slack skip via the length */
                 break;
             }
-            case 0x049d: /* reserves */
+            case 0x77707fccd201c228ull: /* reserves */
             {
                 if ( kind != 14 )
                 {
@@ -1661,65 +3316,444 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int pack_config_load_body( Ta
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                uint32_t body_len;
-                int64_t body_end;
-                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = table_reader_get32( r );
-                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
-                body_end = r->offset + body_len;
-                if ( body_len >= 5 )
+                TableReader sub;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                if ( sub.size >= 2 )
                 {
-                    uint8_t elem_kind = table_reader_get8( r );
-                    uint32_t count = table_reader_get32( r );
-                    uint32_t keep;
-                    TableReader sub;
-                    uint32_t i;
-                    uint32_t decoded = 0;
-                    if ( elem_kind != 13 ) { r->report->kind_mismatch++; r->offset = body_end; break; }
-                    keep = count;
-                    if ( keep > 3 ) { keep = 3; r->report->clamped++; }
-                    /* elements are BOUNDED by the field body: a count the length
-                       cannot cover keeps the decoded prefix, flags malformed, and
-                       the parent continues at the next field — following fields'
-                       bytes are never fabricated into elements */
-                    sub = table_reader_make( r->buffer + r->offset, body_end - r->offset, r->report );
-                    for ( i = 0; i < keep; i++ )
+                    uint8_t elem_kind; uint64_t count, kept, i;
+                    if ( !table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->malformed = 1; }
+                    else
                     {
-                        uint32_t elem_len;
-                        if ( !table_reader_has( &sub, 4 ) ) { r->report->malformed = 1; break; }
-                        elem_len = table_reader_get32( &sub );
-                        if ( !table_reader_has( &sub, elem_len ) ) { r->report->malformed = 1; break; }
+                        if ( elem_kind != 13 )
                         {
-                            TableReader elem = table_reader_make( sub.buffer + sub.offset, elem_len, r->report );
-                            ship_entry_load_body( &elem, &value->reserves[i] );
+                            if ( !(table_kind_widens(elem_kind,13)) ) { r->report->kind_mismatch++; break; }
+                            r->report->widened++;
                         }
-                        sub.offset += elem_len;
-                        decoded = i + 1;
+                        kept = count; if ( kept > 3 ) { kept = 3; r->report->clamped++; }
+                        int32_t previous_count = value->reserves_count;
+                        value->reserves_count = 0;
+                        for ( i = 0; i < kept; i++ )
+                        {
+                            TableReader elem;
+                            if ( !table_reader_span( &sub, &elem ) ) { r->report->malformed = 1; goto end_reserves; }
+                            ship_entry_load_body( &elem, &value->reserves[i] );
+                            if(elem.offset!=elem.size) { r->report->malformed=1; ship_entry_reset(&value->reserves[i]); }
+                            value->reserves_count = (int32_t) i + 1;
+                        }
+                        end_reserves: ;
+                        { uint32_t tail; for (tail=(uint32_t)value->reserves_count;tail<(uint32_t)previous_count && tail<3;tail++) {
+                         ship_entry_reset(&value->reserves[tail]);
+                        } }
                     }
-                    value->reserves_count = (int32_t) decoded;
                 }
-                r->offset = body_end; /* excess elements and slack skip via the length */
                 break;
             }
             default:
-            {
                 r->report->unknown++;
                 if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
-            }
         }
     }
 }
 
 static SCHEMA_UNUSED int pack_config_load( PackConfig * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
-    TableReport ignored;
-    TableReader r;
+    TableReport ignored; TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    if ( report == NULL ) { report = &ignored; }
+    pack_config_reset( value );
+    if ( !table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     return pack_config_load_body( &r, value );
 }
 
+static SCHEMA_UNUSED int pack_config_save_message_body(TableBitWriter * w,const PackConfig * value)
+{
+ (void)value;
+ { /* version */
+ if(!(value->version == 1)) {
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
+  table_bit_put(w,27,kTableMessageRefBitsHere);
+  table_bit_put(w,(uint64_t)(value->version)-UINT64_C(0),32);
+ }
+ }
+ { /* global */
+ TableBitWriter probe=*w;
+ probe.buffer=NULL;
+ probe.capacity=INT64_MAX;
+ probe.bits=0;
+ probe.check_default=1;
+ if(!global_settings_save_message_body(&probe,&value->global)) return 0;
+ if(probe.bits>kTableMessageRefBitsHere) {
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
+  table_bit_put(w,28,kTableMessageRefBitsHere);
+  if(!global_settings_save_message_body(w,&value->global)) return 0;
+ }
+ }
+ { /* ships */
+ int rides=0;
+ { int32_t i;
+ for(i=0;i<3;i++) {
+  TableBitWriter probe=*w;
+  probe.buffer=NULL;
+  probe.capacity=INT64_MAX;
+  probe.bits=0;
+  probe.check_default=1;
+  if(!ship_entry_save_message_body(&probe,&value->ships[i])) return 0;
+  if(probe.bits==kTableMessageRefBitsHere) continue;
+  rides=1;
+  break;
+  } }
+ if(rides) {
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
+  table_bit_put(w,29,kTableMessageRefBitsHere);
+  { uint32_t count=0;
+  int32_t i;
+   for(i=0;i<3;i++) {
+    TableBitWriter probe=*w;
+    probe.buffer=NULL;
+    probe.capacity=INT64_MAX;
+    probe.bits=0;
+    probe.check_default=1;
+    if(!ship_entry_save_message_body(&probe,&value->ships[i])) return 0;
+    if(probe.bits==kTableMessageRefBitsHere) continue;
+    count++;
+    }
+   table_bit_put(w,count,2);
+   for(i=0;i<3;i++) {
+    TableBitWriter probe=*w;
+    probe.buffer=NULL;
+    probe.capacity=INT64_MAX;
+    probe.bits=0;
+    probe.check_default=1;
+    if(!ship_entry_save_message_body(&probe,&value->ships[i])) return 0;
+    if(probe.bits==kTableMessageRefBitsHere) continue;
+    switch(i+1) {
+     case SHIP_TYPE_NONE: table_bit_put(w,0,kTableMessageRefBitsHere);
+     break;
+     case SHIP_TYPE_FIGHTER: table_bit_put(w,119,kTableMessageRefBitsHere);
+     break;
+     case SHIP_TYPE_BOMBER: table_bit_put(w,120,kTableMessageRefBitsHere);
+     break;
+     case SHIP_TYPE_SCOUT: table_bit_put(w,121,kTableMessageRefBitsHere);
+     break;
+     default: return 0;
+    }
+    if(!ship_entry_save_message_body(w,&value->ships[i])) return 0;
+   } }
+ }
+ }
+ { /* thresholds */
+ int rides=0;
+ { int32_t i;
+ for(i=0;i<3;i++) {
+  if(value->thresholds[i] == 0) continue;
+  rides=1;
+  break;
+  } }
+ if(rides) {
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
+  table_bit_put(w,30,kTableMessageRefBitsHere);
+  { uint32_t count=0;
+  int32_t i;
+   for(i=0;i<3;i++) {
+    if(value->thresholds[i] == 0) continue;
+    count++;
+    }
+   table_bit_put(w,count,2);
+   for(i=0;i<3;i++) {
+    if(value->thresholds[i] == 0) continue;
+    switch(i+1) {
+     case DIFFICULTY_NONE: table_bit_put(w,0,kTableMessageRefBitsHere);
+     break;
+     case DIFFICULTY_EASY: table_bit_put(w,110,kTableMessageRefBitsHere);
+     break;
+     case DIFFICULTY_NORMAL: table_bit_put(w,111,kTableMessageRefBitsHere);
+     break;
+     case DIFFICULTY_HARD: table_bit_put(w,112,kTableMessageRefBitsHere);
+     break;
+     default: return 0;
+    }
+    table_bit_put(w,(uint64_t)(value->thresholds[i])-UINT64_C(0),10);
+   } }
+ }
+ }
+ { /* reserves */
+ if(value->reserves_count<0 || value->reserves_count>3) return 0;
+ if(value->reserves_count>0) {
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
+  table_bit_put(w,31,kTableMessageRefBitsHere);
+  if(value->reserves_count<0 || value->reserves_count>3) return 0;
+  table_bit_put(w,(uint64_t)value->reserves_count-0,2);
+  { int32_t i;
+  for(i=0;i<value->reserves_count;i++) {
+    if(!ship_entry_save_message_body(w,&value->reserves[i])) return 0;
+  } }
+ }
+ }
+ table_bit_put(w,0,kTableMessageRefBitsHere);
+ return !w->overflow;
+}
+static SCHEMA_UNUSED int64_t pack_config_measure_messages(const PackConfig * values,int64_t count,TableReport * report)
+{
+ TableBitWriter w=table_bit_writer(NULL,INT64_MAX);
+ int64_t i;
+ if(count<1 || values==NULL) return -1;
+ if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;
+ report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;
+ }return -1;
+ }
+ table_bit_put(&w,2,8);
+ table_bit_put(&w,(uint64_t)(count-1),8);
+ for(i=0;i<count;i++) if(!pack_config_save_message_body(&w,values+i)) return -1;
+ table_bit_align_write(&w);
+ return w.overflow ? -1 : w.bits/8;
+}
+static SCHEMA_UNUSED int64_t pack_config_save_messages(const PackConfig * values,int64_t count,uint8_t * buffer,int64_t capacity,TableReport * report)
+{
+ TableBitWriter w=table_bit_writer(buffer,capacity);
+ int64_t i;
+ if(count<1 || values==NULL) return -1;
+ if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;
+ report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;
+ }return -1;
+ }
+ if(buffer==NULL || capacity<0) return -1;
+ table_bit_put(&w,2,8);
+ table_bit_put(&w,(uint64_t)(count-1),8);
+ for(i=0;i<count;i++) if(!pack_config_save_message_body(&w,values+i)) return -1;
+ table_bit_align_write(&w);
+ return w.overflow ? -1 : w.bits/8;
+}
+static SCHEMA_UNUSED int pack_config_load_message_body(TableMessageReader * r,PackConfig * value)
+{
+ pack_config_reset(value);
+ for(;;){const TableMessageEntry * entry;
+ if(!table_message_ref(r,&entry,0))goto malformed;
+ if(entry==NULL)return 1;
+ switch(entry->id){
+ case UINT64_C(0xbb62c62c9808ea37): {
+ if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,8)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  uint64_t decoded=(uint64_t)lo;
+  (void)hi;
+  if(decoded>4294967295ull){decoded=4294967295ull;
+  r->report->clamped++;
+  }
+  value->version=(uint32_t)decoded;
+  }
+ break;
+ }
+ case UINT64_C(0x7fb43557b54149ce): {
+ if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,13)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ if(!global_settings_load_message_body(r,&value->global))return 0;
+ break;
+ }
+ case UINT64_C(0x294a5c4913e1ad44): {
+ if(!(entry->kind==16 && entry->elem_kind==13)){if(0){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ {uint64_t n,i;
+ TableMessageEntry element_shape=table_message_element(entry);
+ const TableMessageEntry * element_entry=&element_shape;
+ (void)element_entry;
+  if(!table_message_count(r,entry,&n))goto malformed;
+  for(i=0;i<n;i++){const TableMessageEntry * key;
+  int32_t slot=-1;
+  if(!table_message_ref(r,&key,1)||key==NULL)goto malformed;
+  switch(key->id){
+  case UINT64_C(0xd011f7c3c15285c2):slot=0;
+  break;
+  case UINT64_C(0xa8216aa1c554cb8a):slot=1;
+  break;
+  case UINT64_C(0x7d573c625719c1a5):slot=2;
+  break;
+  default:break;
+  } if(slot<0){r->report->unknown++;
+  { ShipEntry scratch;
+  memset(&scratch,0,sizeof(scratch));
+  if(!ship_entry_load_message_body(r,&scratch))return 0;
+  }continue;
+  }
+  if(!ship_entry_load_message_body(r,&value->ships[slot]))return 0;
+ } }
+ break;
+ }
+ case UINT64_C(0x9cda940a344e1571): {
+ if(!(entry->kind==16 && entry->elem_kind==4)){if(0){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ {uint64_t n,i;
+ TableMessageEntry element_shape=table_message_element(entry);
+ const TableMessageEntry * element_entry=&element_shape;
+ (void)element_entry;
+  if(!table_message_count(r,entry,&n))goto malformed;
+  for(i=0;i<n;i++){const TableMessageEntry * key;
+  int32_t slot=-1;
+  if(!table_message_ref(r,&key,1)||key==NULL)goto malformed;
+  switch(key->id){
+  case UINT64_C(0x483d9e6c1ccd1f9b):slot=0;
+  break;
+  case UINT64_C(0x9ff3121d30f88d52):slot=1;
+  break;
+  case UINT64_C(0x58c7b5d87587287c):slot=2;
+  break;
+  default:break;
+  } if(slot<0){r->report->unknown++;
+  { int32_t scratch;
+  memset(&scratch,0,sizeof(scratch));
+  { uint64_t lo,hi;
+  if(!table_message_number(r,element_entry,&lo,&hi))goto malformed;
+   int64_t decoded=(int64_t)lo;
+   (void)hi;
+   if(decoded<0ll){decoded=0ll;
+   r->report->clamped++;
+   }
+   if(decoded>1000ll){decoded=1000ll;
+   r->report->clamped++;
+   }
+   scratch=(int32_t)decoded;
+   }
+  }continue;
+  }
+  { uint64_t lo,hi;
+  if(!table_message_number(r,element_entry,&lo,&hi))goto malformed;
+   int64_t decoded=(int64_t)lo;
+   (void)hi;
+   if(decoded<0ll){decoded=0ll;
+   r->report->clamped++;
+   }
+   if(decoded>1000ll){decoded=1000ll;
+   r->report->clamped++;
+   }
+   value->thresholds[slot]=(int32_t)decoded;
+   }
+ } }
+ break;
+ }
+ case UINT64_C(0x77707fccd201c228): {
+ if(!(entry->kind==14 && entry->elem_kind==13)){if(entry->kind==14 && table_kind_widens(entry->elem_kind,13)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ {uint64_t n,kept,walk,i;
+ TableMessageEntry element_shape=table_message_element(entry);
+ const TableMessageEntry * element_entry=&element_shape;
+ (void)element_entry;
+  if(!table_message_count(r,entry,&n))goto malformed;
+  kept=n>3?3:n;
+  if(kept<n)r->report->clamped++;
+  walk=element_entry->value_bits>=0?kept:n;
+  for(i=0;i<walk;i++){ShipEntry scratch;
+  ShipEntry * item=i<kept ? &value->reserves[i] : &scratch;
+  if(!ship_entry_load_message_body(r,&(*item)))return 0;
+  }if(walk<n && !table_message_skip_run(r,n-walk,element_entry->value_bits))goto malformed;
+  value->reserves_count=(int32_t)kept;
+ }
+ break;
+ }
+ default:r->report->unknown++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ } }
+ malformed:r->report->malformed=1;
+ return 0;
+}
+static SCHEMA_UNUSED int pack_config_load_messages(PackConfig * values,int64_t * count,const TableVocabulary * vocabulary,const uint8_t * buffer,int64_t bytes,TableReport * report)
+{
+ TableReport ignored={0};
+ TableMessageReader r;
+ int64_t capacity,bodies,i;
+ if(report==NULL)report=&ignored;
+ if(values==NULL||count==NULL){report->malformed=1;
+ return 0;
+ }capacity=*count;
+ *count=0;
+ bodies=table_message_open(&r,vocabulary,buffer,bytes,report);
+ if(bodies<0)return 0;
+ if(bodies>capacity){*count=bodies;
+ report->refused=1;
+ report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;
+ return 0;
+ }
+ for(i=0;i<bodies;i++){if(!pack_config_load_message_body(&r,values+i))return 0;
+ (*count)++;
+ }return table_message_close(&r);
+}
+static SCHEMA_UNUSED int schema_tabledemo_pack_config_message_extent_(TableMessageReader * r,int64_t * at)
+{
+ (void)at;
+ for(;;){const TableMessageEntry * entry;
+ if(!table_message_ref(r,&entry,0))return 0;
+ if(entry==NULL)return 1;
+ switch(entry->id){
+ default:break;
+ }if(!table_message_skip(r,entry))return 0;
+ }
+}
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define gunner_settings_load_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define gunner_settings_measure_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define gunner_settings_save_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define gunner_settings_load_retain_messages(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retained fields have no announced slots: save the FILE form or relay the original message. */
+#define gunner_settings_save_retain_messages(...) ((void)sizeof(struct { int retention_message_write_requires_file_form : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define ship_entry_load_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define ship_entry_measure_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define ship_entry_save_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define ship_entry_load_retain_messages(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retained fields have no announced slots: save the FILE form or relay the original message. */
+#define ship_entry_save_retain_messages(...) ((void)sizeof(struct { int retention_message_write_requires_file_form : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define global_settings_load_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define global_settings_measure_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define global_settings_save_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define global_settings_load_retain_messages(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retained fields have no announced slots: save the FILE form or relay the original message. */
+#define global_settings_save_retain_messages(...) ((void)sizeof(struct { int retention_message_write_requires_file_form : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define pack_config_load_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define pack_config_measure_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define pack_config_save_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
+#define pack_config_load_retain_messages(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
+/* Retained fields have no announced slots: save the FILE form or relay the original message. */
+#define pack_config_save_retain_messages(...) ((void)sizeof(struct { int retention_message_write_requires_file_form : -1; }))
 /* ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ---- */
 
 /* gunner_settings_open: match the header and POINT. On a match the bytes ARE what this
@@ -1741,6 +3775,8 @@ static SCHEMA_UNUSED int pack_config_load( PackConfig * value, const uint8_t * b
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
+static SCHEMA_UNUSED const GunnerSettings * gunner_settings_open_ex(const void * bytes,uint64_t length,TableRefuseReason * reason)
+{ return (const GunnerSettings *)table_cook_open_ex(bytes,length,sizeof(GunnerSettings),SCHEMA_TABLE_ALIGNOF(GunnerSettings),reason); }
 static SCHEMA_UNUSED const GunnerSettings * gunner_settings_open( const void * bytes, uint64_t length )
 {
     return (const GunnerSettings *) table_cook_open( bytes, length, (uint64_t) sizeof( GunnerSettings ), (uint64_t) SCHEMA_TABLE_ALIGNOF( GunnerSettings ) );
@@ -1765,6 +3801,8 @@ static SCHEMA_UNUSED const GunnerSettings * gunner_settings_open( const void * b
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
+static SCHEMA_UNUSED const ShipEntry * ship_entry_open_ex(const void * bytes,uint64_t length,TableRefuseReason * reason)
+{ return (const ShipEntry *)table_cook_open_ex(bytes,length,sizeof(ShipEntry),SCHEMA_TABLE_ALIGNOF(ShipEntry),reason); }
 static SCHEMA_UNUSED const ShipEntry * ship_entry_open( const void * bytes, uint64_t length )
 {
     return (const ShipEntry *) table_cook_open( bytes, length, (uint64_t) sizeof( ShipEntry ), (uint64_t) SCHEMA_TABLE_ALIGNOF( ShipEntry ) );
@@ -1789,6 +3827,8 @@ static SCHEMA_UNUSED const ShipEntry * ship_entry_open( const void * bytes, uint
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
+static SCHEMA_UNUSED const GlobalSettings * global_settings_open_ex(const void * bytes,uint64_t length,TableRefuseReason * reason)
+{ return (const GlobalSettings *)table_cook_open_ex(bytes,length,sizeof(GlobalSettings),SCHEMA_TABLE_ALIGNOF(GlobalSettings),reason); }
 static SCHEMA_UNUSED const GlobalSettings * global_settings_open( const void * bytes, uint64_t length )
 {
     return (const GlobalSettings *) table_cook_open( bytes, length, (uint64_t) sizeof( GlobalSettings ), (uint64_t) SCHEMA_TABLE_ALIGNOF( GlobalSettings ) );
@@ -1813,11 +3853,110 @@ static SCHEMA_UNUSED const GlobalSettings * global_settings_open( const void * b
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
+static SCHEMA_UNUSED const PackConfig * pack_config_open_ex(const void * bytes,uint64_t length,TableRefuseReason * reason)
+{ return (const PackConfig *)table_cook_open_ex(bytes,length,sizeof(PackConfig),SCHEMA_TABLE_ALIGNOF(PackConfig),reason); }
 static SCHEMA_UNUSED const PackConfig * pack_config_open( const void * bytes, uint64_t length )
 {
     return (const PackConfig *) table_cook_open( bytes, length, (uint64_t) sizeof( PackConfig ), (uint64_t) SCHEMA_TABLE_ALIGNOF( PackConfig ) );
 }
 
+static SCHEMA_UNUSED int schema_tabledemo_gunner_settings_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order)
+{
+    const GunnerSettings * value=(const GunnerSettings *)storage;
+    (void)n; (void)at; (void)value; (void)order;
+    { uint32_t bits; memcpy(&bits,&value->reaction,4); table_cook_put(at+0,bits,4,order); }
+    table_cook_put(at+4,value->tracking ? 1 : 0,1,order);
+    table_cook_bytes(at+5,value->callsign,value->callsign_length,25);
+    table_cook_put(at+5+27,(uint32_t)value->callsign_length,4,order);
+    return 1;
+}
+static SCHEMA_UNUSED int64_t gunner_settings_cook_measure(const GunnerSettings * value) { (void)value; return 120; }
+static SCHEMA_UNUSED int gunner_settings_cook(const GunnerSettings * value,void * output,uint64_t capacity,TableByteOrder order)
+{
+    uint8_t * raw=(uint8_t *)output;
+    if(value==NULL || raw==NULL || capacity<120) { return 0; }
+    memset(raw,0,120);
+    if(!schema_tabledemo_gunner_settings_cook_body_(NULL,raw+64,value,order)) { return 0; }
+    table_cook_put(raw+112,UINT64_C(0xb76842b2253337af),8,order);
+    table_cook_header(raw,SCHEMA_TABLEDEMO_BUILD_VERSION_VALUE,40,1,8,order); return 1;
+}
+static SCHEMA_UNUSED int schema_tabledemo_ship_entry_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order)
+{
+    const ShipEntry * value=(const ShipEntry *)storage;
+    (void)n; (void)at; (void)value; (void)order;
+    table_cook_bytes(at+0,value->display_name,value->display_name_length,33);
+    table_cook_put(at+0+36,(uint32_t)value->display_name_length,4,order);
+    { uint32_t bits; memcpy(&bits,&value->health,4); table_cook_put(at+40,bits,4,order); }
+    { uint32_t bits; memcpy(&bits,&value->mass,4); table_cook_put(at+44,bits,4,order); }
+    { int32_t cook_i1; for(cook_i1=0;cook_i1<4;cook_i1++) {
+        table_cook_put(at+48+cook_i1*4,(uint64_t)value->hardpoints[cook_i1],4,order);
+    } }
+    table_cook_put(at+48+16,(uint32_t)value->hardpoints_count,4,order);
+    table_cook_put(at+68+36,value->gunner_present ? 1 : 0,1,order);
+    if(!schema_tabledemo_gunner_settings_cook_body_(n,at+68,&value->gunner,order)) { return 0; }
+    return 1;
+}
+static SCHEMA_UNUSED int64_t ship_entry_cook_measure(const ShipEntry * value) { (void)value; return 192; }
+static SCHEMA_UNUSED int ship_entry_cook(const ShipEntry * value,void * output,uint64_t capacity,TableByteOrder order)
+{
+    uint8_t * raw=(uint8_t *)output;
+    if(value==NULL || raw==NULL || capacity<192) { return 0; }
+    memset(raw,0,192);
+    if(!schema_tabledemo_ship_entry_cook_body_(NULL,raw+64,value,order)) { return 0; }
+    table_cook_put(raw+184,UINT64_C(0x1d1a9911da171a29),8,order);
+    table_cook_header(raw,SCHEMA_TABLEDEMO_BUILD_VERSION_VALUE,112,1,8,order); return 1;
+}
+static SCHEMA_UNUSED int schema_tabledemo_global_settings_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order)
+{
+    const GlobalSettings * value=(const GlobalSettings *)storage;
+    (void)n; (void)at; (void)value; (void)order;
+    table_cook_put(at+0,(uint64_t)value->tick_rate,4,order);
+    table_cook_put(at+4,(uint64_t)value->difficulty,1,order);
+    table_cook_bytes(at+5,value->build_note,value->build_note_length,49);
+    table_cook_put(at+5+51,(uint32_t)value->build_note_length,4,order);
+    { int32_t cook_i1; for(cook_i1=0;cook_i1<3;cook_i1++) {
+        { uint32_t bits; memcpy(&bits,&value->spawn_delays[cook_i1],4); table_cook_put(at+60+cook_i1*4,bits,4,order); }
+    } }
+    return 1;
+}
+static SCHEMA_UNUSED int64_t global_settings_cook_measure(const GlobalSettings * value) { (void)value; return 152; }
+static SCHEMA_UNUSED int global_settings_cook(const GlobalSettings * value,void * output,uint64_t capacity,TableByteOrder order)
+{
+    uint8_t * raw=(uint8_t *)output;
+    if(value==NULL || raw==NULL || capacity<152) { return 0; }
+    memset(raw,0,152);
+    if(!schema_tabledemo_global_settings_cook_body_(NULL,raw+64,value,order)) { return 0; }
+    table_cook_put(raw+144,UINT64_C(0xffb1dfb1f6ce215b),8,order);
+    table_cook_header(raw,SCHEMA_TABLEDEMO_BUILD_VERSION_VALUE,72,1,8,order); return 1;
+}
+static SCHEMA_UNUSED int schema_tabledemo_pack_config_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order)
+{
+    const PackConfig * value=(const PackConfig *)storage;
+    (void)n; (void)at; (void)value; (void)order;
+    table_cook_put(at+0,(uint64_t)value->version,4,order);
+    if(!schema_tabledemo_global_settings_cook_body_(n,at+4,&value->global,order)) { return 0; }
+    { int32_t cook_i1; for(cook_i1=0;cook_i1<3;cook_i1++) {
+        if(!schema_tabledemo_ship_entry_cook_body_(n,at+76+cook_i1*108,&value->ships[cook_i1],order)) { return 0; }
+    } }
+    { int32_t cook_i2; for(cook_i2=0;cook_i2<3;cook_i2++) {
+        table_cook_put(at+400+cook_i2*4,(uint64_t)value->thresholds[cook_i2],4,order);
+    } }
+    { int32_t cook_i3; for(cook_i3=0;cook_i3<3;cook_i3++) {
+        if(!schema_tabledemo_ship_entry_cook_body_(n,at+412+cook_i3*108,&value->reserves[cook_i3],order)) { return 0; }
+    } }
+    table_cook_put(at+412+324,(uint32_t)value->reserves_count,4,order);
+    return 1;
+}
+static SCHEMA_UNUSED int64_t pack_config_cook_measure(const PackConfig * value) { (void)value; return 824; }
+static SCHEMA_UNUSED int pack_config_cook(const PackConfig * value,void * output,uint64_t capacity,TableByteOrder order)
+{
+    uint8_t * raw=(uint8_t *)output;
+    if(value==NULL || raw==NULL || capacity<824) { return 0; }
+    memset(raw,0,824);
+    if(!schema_tabledemo_pack_config_cook_body_(NULL,raw+64,value,order)) { return 0; }
+    table_cook_put(raw+816,UINT64_C(0xd02d825db114336e),8,order);
+    table_cook_header(raw,SCHEMA_TABLEDEMO_BUILD_VERSION_VALUE,744,1,8,order); return 1;
+}
 /* ---- relocatability: the wire is a pure length-prefixed stream AND the
    decoded storage is pointer-free — every closure type is a plain C struct
    of scalars and arrays, so instances can be memcpy'd, mmap'd, shared

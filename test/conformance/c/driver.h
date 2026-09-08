@@ -33,7 +33,7 @@
 typedef struct ConformanceReport
 {
     int unknown, kind_mismatch, clamped, duplicate;
-    int malformed;
+    int malformed, refused, widened, retained, retain_lost;
 } ConformanceReport;
 
 /* One row per (unit, root) the corpus names. Every row is the SAME six
@@ -43,12 +43,18 @@ typedef struct ConformanceCodec
 {
     const char * unit;
     const char * root;
+    int64_t (*message_fuzz)(const uint8_t * wire,int64_t bytes,uint8_t ** saved,ConformanceReport * report,int * loaded,int64_t * extent);
+    int (*message)(const uint8_t * announcement,int64_t announcement_bytes,const uint8_t * wire,int64_t bytes,uint8_t ** answer,int64_t * size,ConformanceReport * report);
     int ( *load )( void * value, const uint8_t * bytes, int64_t size, ConformanceReport * report );
     int64_t ( *measure )( const void * value );
     int64_t ( *save )( const void * value, uint8_t * buffer, int64_t capacity );
     int ( *from_json )( void * value, const char * text, int64_t bytes, ConformanceReport * report );
     int64_t ( *to_json )( const void * value, char * buffer, int64_t capacity );
     void * ( *storage )( void ); /* one static instance per root, reset by load */
+    int64_t (*load_measure)(const uint8_t * wire, int64_t bytes);
+    int64_t (*cook_measure)(const void * value);
+    int (*cook)(const void * value,void * buffer,uint64_t capacity,int big);
+    int64_t (*retain_fuzz)(const uint8_t *,int64_t,uint8_t **,ConformanceReport *,int *,int64_t *);
 } ConformanceCodec;
 
 /* A GROWING TEXT, for the two dumps. The harness compares bytes, so nothing
@@ -80,12 +86,39 @@ SCHEMA_CONFORMANCE_UNUSED static void conformance_text_add( ConformanceText * ou
     conformance_text_raw( out, s, strlen( s ) );
 }
 
+int conformance_retain(int message,const uint8_t * announcement,int64_t announcement_bytes,const uint8_t * wire,int64_t bytes,int short_buffer,int64_t id_capacity,int * counters,uint8_t ** output,int64_t * output_bytes);
+
 /* the per-unit entry points, each defined in that unit's own translation unit */
+const ConformanceCodec * conformance_codecs_armdemo(int * count);
+const ConformanceCodec * conformance_codecs_mapdemo(int * count);
+const ConformanceCodec * conformance_codecs_listdemo(int * count);
+const ConformanceCodec * conformance_codecs_streamdemo(int * count);
+const ConformanceCodec * conformance_codecs_tblw1(int * count);
+const ConformanceCodec * conformance_codecs_tblw2(int * count);
+const ConformanceCodec * conformance_codecs_tblp2(int * count);
+const ConformanceCodec * conformance_codecs_tblg1(int * count);
+const ConformanceCodec * conformance_codecs_blobdemo( int * count );
+const ConformanceCodec * conformance_codecs_messagedemo( int * count );
+const ConformanceCodec * conformance_codecs_tblm1( int * count );
+const ConformanceCodec * conformance_codecs_tblm2( int * count );
+const ConformanceCodec * conformance_codecs_tbla1( int * count );
+const ConformanceCodec * conformance_codecs_tbla2( int * count );
+const ConformanceCodec * conformance_codecs_tblk1( int * count );
+const ConformanceCodec * conformance_codecs_tblk2( int * count );
+const ConformanceCodec * conformance_codecs_tblr1( int * count );
+const ConformanceCodec * conformance_codecs_tblr2( int * count );
+const ConformanceCodec * conformance_codecs_backenddemo( int * count );
+const ConformanceCodec * conformance_codecs_vocabdemo( int * count );
+const ConformanceCodec * conformance_codecs_vocab9demo( int * count );
 const ConformanceCodec * conformance_codecs_tabledemo( int * count );
+const ConformanceCodec * conformance_codecs_graphdemo( int * count );
 const ConformanceCodec * conformance_codecs_tblv1( int * count );
 const ConformanceCodec * conformance_codecs_tblv2( int * count );
 const ConformanceCodec * conformance_codecs_tblp1( int * count );
 const ConformanceCodec * conformance_codecs_tblp3( int * count );
+const ConformanceCodec * conformance_codecs_widedemo( int * count );
+const ConformanceCodec * conformance_codecs_scalars( int * count );
+const ConformanceCodec * conformance_codecs_tblscalars2( int * count );
 
 /* the BLOCK unit (blockdemo): open one image at the extent and pointer the
  * caller claims, and read every row out of the descriptors */
@@ -101,6 +134,8 @@ int conformance_block_dump( const char * name, const uint8_t * data, size_t byte
  * times, and the noise would bury the one message that matters. It is a flag
  * rather than a redirect because the sanitizers write to stderr too. */
 extern int conformance_quiet;
+int conformance_cook_open_reason(const char * root,const uint8_t * data,size_t bytes,int64_t extent,int pointer,int * reason);
+int conformance_block_open_reason(const char * name,const uint8_t * data,size_t bytes,int64_t extent,int pointer,int * reason);
 int conformance_cook_dump( const char * root, const uint8_t * data, size_t bytes, ConformanceText * out );
 int conformance_cook_open( const char * root, const uint8_t * data, size_t bytes, int64_t extent, int pointer );
 

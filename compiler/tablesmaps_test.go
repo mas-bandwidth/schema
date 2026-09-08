@@ -6,6 +6,7 @@
 package compiler
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -132,21 +133,17 @@ func TestMapsAreLegal(t *testing.T) {
 	}
 }
 
-// TestMapsAreRefusedByNonCarriers: the C++ REFERENCE carries the codec and the
-// eight ports do not (docs/SPEC-TABLES.md §2.8, §15) — a map is a
-// variable-class construct and the variable class is the reference's alone.
-// Every port refuses the UNIT, naming the fields, naming the carrier and
-// naming the flag that generates. A codec that never met the entry, its sort
-// or its ascending check must not be emitted anywhere.
+// TestMapsAreRefusedByNonCarriers requires a named refusal until a target
+// carries map storage, sorting, and its ascending-key reader check.
 func TestMapsAreRefusedByNonCarriers(t *testing.T) {
 	u := unitFromSource(t, mapSrc)
 	c := New()
 	for _, target := range c.Targets() {
 		t.Run(target, func(t *testing.T) {
 			_, err := c.Generate(u, target, Options{})
-			if target == "cpp" || target == "cs" || target == "go" {
+			if slices.Contains(mapTargets, target) {
 				if err != nil {
-					t.Fatalf("--lang %s refused a supported map: %v", target, err)
+					t.Fatalf("--lang %s refused a map: %v", target, err)
 				}
 				return
 			}
@@ -162,13 +159,10 @@ func TestMapsAreRefusedByNonCarriers(t *testing.T) {
 	}
 }
 
-// TestMapCarriers pins the implemented map codecs (docs/SPEC-TABLES.md
-// §2.8, §15). A port that
-// registers here without its codec would turn every refusal below into a
-// silent acceptance.
+// TestMapCarriers keeps the advertised targets in step with their codecs.
 func TestMapCarriers(t *testing.T) {
-	if len(mapTargets) != 3 || mapTargets[0] != "cpp" || mapTargets[1] != "cs" || mapTargets[2] != "go" {
-		t.Fatalf("mapTargets = %v, want exactly [cpp cs go] — the variable class is the reference's (docs/SPEC-TABLES.md §2.8, §15)", mapTargets)
+	if !slices.Equal(mapTargets, []string{"c", "cpp", "cs", "go"}) {
+		t.Fatalf("mapTargets = %v, want [c cpp cs go]", mapTargets)
 	}
 }
 
@@ -193,17 +187,16 @@ func TestMapFreeUnitIsUntouched(t *testing.T) {
 // the fields an author wrote.
 func TestMapRefusalNamesTheCarrier(t *testing.T) {
 	u := unitFromSource(t, mapSrc)
-	err := refuseMaps(u, "cs")
+	err := refuseMaps(u, "rust")
 	if err == nil {
 		t.Fatalf("refuseMaps accepted a map-bearing unit for a non-carrier")
 	}
-	for _, want := range []string{"a map is cpp, cs and go only today", "Fleet.ships", "--lang cpp"} {
+	for _, want := range []string{"a map is c, cpp, cs and go only today", "Fleet.ships", "--lang cpp"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the carrier-form refusal does not name %q: %v", want, err)
 		}
 	}
-	// a CARRIER never calls refuseMaps at all — it registers instead, exactly as
-	// target_cpp.go does for the optional array — so there is no third shape.
+	// Registered carriers pass through refuseMaps without a refusal.
 }
 
 // TestMapTypeSpelling: a diagnostic and a descriptor name the declaration the

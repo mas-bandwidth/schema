@@ -167,6 +167,34 @@ func TestIssue710TableRecovery(t *testing.T) {
 	}
 	cpp.WriteString("return 0;}\n")
 	issue710CompileRun(t, dir, "c++", ".cpp", cpp.String())
+	cfiles, err := c.Generate(u, "c", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cdir := t.TempDir()
+	for name, data := range cfiles {
+		if err := os.WriteFile(filepath.Join(cdir, name), data, 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	checks := []string{
+		`Text v; TableReport r={0}; if(!text_load(&v,wire,sizeof(wire),&r) || !r.malformed || v.after!=42 || v.label_length!=8 || strcmp(v.label,"untitled")) return 1;`,
+		`Rows v; TableReport r={0}; if(!rows_load(&v,wire,sizeof(wire),&r) || !r.malformed || v.after!=42 || v.items_count!=1 || v.items[0].value!=7) return 2;`,
+		`MappingBuilder b; TableReport r={0}; int ok; if(!mapping_builder_init(&b))return 3; ok=mapping_load_builder(&b,wire,sizeof(wire),&r); if(!ok || !r.malformed || mapping_builder_root(&b)->after!=42 || mapping_builder_root(&b)->items.count) return 4; mapping_builder_shutdown(&b);`,
+		`Keyed v; TableReport r={0}; if(!keyed_load(&v,wire,sizeof(wire),&r) || !r.malformed || v.after!=42 || v.items[0].value!=7 || v.items[1].value!=55) return 5;`,
+	}
+	var csrc strings.Builder
+	csrc.WriteString("#include \"ProbeTable.h\"\nint main(void){\n")
+	for i, tc := range cases {
+		csrc.WriteString("{const uint8_t wire[]={")
+		for _, b := range tc.wire {
+			fmt.Fprintf(&csrc, "%d,", b)
+		}
+		csrc.WriteString("};" + checks[i] + "}\n")
+	}
+	csrc.WriteString("return 0;}\n")
+	issue710CompileRun(t, cdir, "cc", ".c", csrc.String())
+
 }
 
 func issue710CompileRun(t *testing.T, dir, compiler, ext, source string) {
@@ -338,6 +366,32 @@ func TestIssue710ListRefusal(t *testing.T) {
 	}
 	cpp.WriteString("return 0;}\n")
 	issue710CompileRun(t, dir, "c++", ".cpp", cpp.String())
+	cfiles, err := New().Generate(u, "c", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cdir := t.TempDir()
+	for name, data := range cfiles {
+		if err := os.WriteFile(filepath.Join(cdir, name), data, 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var csrc strings.Builder
+	csrc.WriteString("#include \"ProbeTable.h\"\nint main(void){\n")
+	for _, tc := range []struct {
+		root, fn string
+		body     []byte
+	}{{"Lists", "lists", body}, {"Nested", "nested", nested}, {"KeyedLists", "keyed_lists", keyed}} {
+		wire := issue710Wire(tc.body, ids...)
+		csrc.WriteString("{const uint8_t wire[]={")
+		for _, b := range wire {
+			fmt.Fprintf(&csrc, "%d,", b)
+		}
+		fmt.Fprintf(&csrc, "};%sBuilder b;TableReport r={0};int reason=0;if(!%s_builder_init(&b))return 1;if(%s_load_builder(&b,wire,sizeof(wire),&r) || r.malformed || r.unknown || r.kind_mismatch || %s_builder_root(&b)->after) return 2;if(%s_load_measure_ex(wire,sizeof(wire),NULL,&reason)!=-1 || reason!=11)return 3;%s_builder_shutdown(&b); }\n", tc.root, tc.fn, tc.fn, tc.fn, tc.fn, tc.fn)
+	}
+	csrc.WriteString("return 0;}\n")
+	issue710CompileRun(t, cdir, "cc", ".c", csrc.String())
+
 }
 
 func TestIssue710CTableBounds(t *testing.T) {

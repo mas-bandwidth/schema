@@ -137,16 +137,15 @@ reach.
   going wide costs no allocation and no lock per node.
 
   **WHO CALLS THE ALLOCATOR IS PER FORM, and it is worth saying exactly.** The
-  arena's segments and `Lock`'s packed region are the RUNTIME's own calls —
-  `calloc` and `malloc` by name in both C++ and C — and a caller-provided
-  allocator is not threaded through them today. What the caller does own is the
-  REGION a load fills: `LoadMeasure` sizes it and the caller supplies it, which
-  is allocation with the caller holding the pointer. The BLOCK form (§19.1) is
-  the one surface that takes a caller-provided allocator with malloc semantics,
-  and there it is real: C++ takes an alloc/free pair with a context, C the same
-  three as a struct, used once at build time and never on the fill path. C#
-  threads a zeroed native allocation/free pair through arena, packing and
-  native numbering scratch; its managed authoring classes use the CLR. Go
+  C++ and C variable-length runtimes carry the caller's zeroed allocation/free
+  pair and context through arena segments, packing, numbering scratch and the
+  packed region. The default pair uses the runtime's allocation hooks (§6.5).
+  The REGION a load fills is caller-owned: `LoadMeasure` sizes it and the caller
+  supplies it. The BLOCK form (§19.1) takes a separate caller-provided allocator
+  with malloc semantics: C++ takes an alloc/free pair with a context, C the same
+  three as a struct, used once at build time and never on the fill path.
+  C# also threads a zeroed native allocation/free pair through arena, packing
+  and native numbering scratch; its managed authoring classes use the CLR. Go
   accepts allocation/free pairs for arenas, packing, numbering and block
   construction, with managed activation costs stated in PORTING.md. Other
   backends allocate inside their runtime and say so. No port contorts itself
@@ -162,12 +161,36 @@ C-like dialect of `serialize.h`, with library calls behind hooks (§13.9).
 C++ and C carry both storage classes. C# carries both classes and the current
 id-table file and bitpacked message forms, JSON, runtime cook writing, block
 construction, native regions, builders, retain-unknown and UnitView. Go carries
-these surfaces too, with its storage contracts described below. C, Dart, Rust,
-Java, JavaScript and Elixir still carry their previously recorded wire surface
-at this checkpoint; their current-form work is tracked separately.
+these surfaces too. Dart, Rust, Java, JavaScript and Elixir still carry their previously recorded
+wire surface at this checkpoint; their current-form work is tracked separately.
 Dart, Rust, Java, JavaScript and Elixir's fixed-class ports refuse pointers
 by name until their variable-class carry lands. Every generated language has
 a table backend; refusal is scoped to a construct, never the table declaration.
+
+**WIRE FORM STATUS.** Section 3's id-table form is carried by the C++
+reference, the compiler engine (`internal/tablewire`), C, C# and Go. The C codec uses
+full identities, canonical LEB128, first-use references, arm-kind framing,
+flat node records and verdict-bearing reports. Graph JSON, pointer arrays,
+byte/string blobs, wide scalars, fixed-point values, defaults and aliases ride
+on that form. `tables-c-wire-fuzz` compares C with the independent engine.
+Dynamic maps and lists use the same file form and graph JSON;
+`tables-c-collections-fuzz` compares their recovery and native C region sizes
+with C++ directly. C also writes canonical cooks in both byte orders, with
+field-by-field padding normalization, and exposes named cook/block refusal
+reasons and const block handles. Its UnitView registry includes table-free
+units. C also reads and writes bitpacked message batches, with caller-owned
+resolved announcement entries and native regions for graphs and collections.
+C retains unknown fields in caller-owned storage for variable file roots and
+message loads, and writes retained file roots (§6.6). Dart, Rust, Java, JavaScript and Elixir still write
+the earlier form in this tree. [ROADMAP.md](../ROADMAP.md) records coverage by
+construct and form.
+
+The C report has added `widened`, `retained`, `retain_lost`, `refused` and `reason` members after
+`malformed`. Recompile callers with their generated headers and initialize a
+fresh report with `{0}` or designated members; positional initializers must
+account for the complete current structure. C refusal enum values are a local
+generated API, not wire codes or a numeric ABI shared with C++. Compare the
+named constants from the generated header rather than persisting their numbers.
 
 **The Go backend carries fixed and variable tables.** Its file and announced
 message codecs use §3's id-table wire form. Caller-owned regions, mutable arena
@@ -1040,6 +1063,14 @@ enum is keyed.
   INDEX. Go's own bounds check still stands behind the array, so the failure
   mode is a wrong slot rather than a wrong page.
 
+  **C likewise stores a plain array.** Its generated per-field accessor is
+  `SCHEMA_<PACKAGE>_<TABLE>_<FIELD>_AT(value, key)`. It supplies the declared
+  enum maximum itself, evaluates each argument once, and returns an lvalue;
+  const values remain const. For a pointer, pass `*pointer` as the value.
+  The generic `SCHEMA_TABLE_KEYED_AT(array, key, count)` is its implementation
+  helper; raw callers are responsible for supplying the correct count.
+  Direct C array subscripts likewise remain the caller's responsibility.
+
   **ITERATION is still the surface a
   consumer of a whole array should reach for**, below, because it needs no
   key from the caller at all.
@@ -1328,8 +1359,9 @@ is the buffer's own size argument one level up: a node pays for the
 sub-document it actually holds, and pays nothing to walk past one it never
 reads.
 
-**Backend status: the C++ REFERENCE and the TOOL carry it; every other backend
-refuses a unit that declares one, by name** (§11), and the ports are a named
+**Backend status: the C++ REFERENCE and the TOOL carry it, and C carries its
+file wire, region and text forms; the other backends refuse a unit that declares
+one, by name** (§11), and the ports are a named
 follow-on (§15). The corpus holds the construct in `tables/blobs`: a small
 blob beside a caption, a blob past 64 KiB, a shared blob, and a present blob
 and string of length zero beside null slots, each crossing the wire and the
@@ -3592,9 +3624,8 @@ moves not one byte of a value-only table: a fixed-size table has no
 pointer, therefore no node table, therefore exactly the bytes §3 already
 describes.
 
-**Backend status for this section: the TOOL and the C++ REFERENCE write it;
-the C port still writes the NESTED form, and every other backend refuses a
-pointered unit's wire by name (§11).**
+**Backend status for this section: the TOOL, C++ REFERENCE and C write it;
+the other backends refuse a pointered unit's wire by name (§11).**
 `schema pack`'s engine — the compiler-side encoder and decoder this repo runs
 as tooling (§17.1) — and the generated C++ codecs are two implementations of
 this section, written from it rather than from each other, and each reads what
@@ -3616,16 +3647,9 @@ unit's wire answers ABSENT for them, per case, so its FIXED-class pass is
 untouched and the gap is a number in the matrix rather than a paragraph
 somewhere. That is the row schema#349 fills, one language at a time.
 
-**The C port is the one backend that carries a pointered unit and does not
-carry this form yet**, because it was mirrored from the C++ backend while that
-backend still wrote the earlier NESTED one: a pointee inline as a body under
-kind `13`, no node table, and the three consequences that are the reasons this
-form is the law — a node two parents name written once per parent, a pointer
-chain that IS a nesting depth, and a cap on that depth. Its wire is part of
-schema#349 with the seven that have no variable class at all. What every
-backend DOES carry already is kind `17`'s row in the fixed-width skip rule,
-because a fixed-class reader meeting a pointered writer's field has to step
-over it whether or not it can write one.
+The C port uses the same flat node table and preserves shared identity through
+save, load, builder load and lock. Every fixed-class reader also carries kind
+`17` in its skip rule, so it can pass a pointer field it cannot interpret.
 
 **What that edit MOVED, stated once.** A pointer field's kind changed from `13`
 to `17` and a pointered save gained the node table, so every pointered unit's
@@ -7066,6 +7090,20 @@ edit and a name that is free today must not become a collision tomorrow. **The
 conformance rows below live on POINTERED units** for the same reason, and the
 fixed class's own row is the refusal.
 
+**The C surface** is `root_load_retain`, `root_measure_retain` and
+`root_save_retain`, with `root_load_retain_messages` taking a parallel
+`TableRetain` array for the batch. `TableRetainId` is the C spelling of the
+caller-owned ID entry, since C has no nested types. Fixed-root calls and
+`root_save_retain_messages` are C99 macros that fail at the call site with a
+named diagnostic. Ordinary bodies carry no retention parameter or branch;
+the opt-in family reuses the field emitters with an explicit context passed
+by value. Its private resolved records carry directory/path anchors and full
+IDs. The resolving walk permits 64 framed levels and commits only complete
+records that fit the caller's remaining capacity. A zero-bit message count
+cannot bypass that output bound. Saving measures each retained frame once
+before emitting its bytes. `TableReport.retained` and `retain_lost` carry the
+load and save outcomes; `SaveRetain` requires a report.
+
 **THE SURFACE: the caller's buffer, threaded through three calls.**
 
 ```cpp
@@ -7943,9 +7981,12 @@ the wire, and keeps the flexibility that comes with it.
   BLOCK VALUE THAT SURFACE DOES NOT CARRY**, because it is a clause over the
   ADDRESS the caller passed and a manifest row hands a driver a path rather
   than a pointer. It is held in the C++ reference's own `BlockOpen` gate
-  instead, beside the four readings that are on the surface. Every other backend's `Open`
-  is still the null alone in its own spelling, and takes the parameter with
-  the wire form it lacks (§15).
+  instead, beside the four readings that are on the surface. C carries the
+  same clauses through `<root>_open_ex` and `<root>_block_open_ex`, with an
+  optional `TableRefuseReason *` last parameter; the existing entry points
+  forward with a null reason pointer. The C reason type preserves the `int`
+  out-parameter ABI and names the values `SCHEMA_TABLE_REFUSE_*`, in the order
+  above. Other backends take the parameter with the wire form they lack (§15).
 
 - **`Open` is the RUNTIME's only entry point.** There is no second one: a
   build either wrote a file or it did not, and the build version is what says
@@ -8818,6 +8859,23 @@ int64_t SettingsCookMeasure( const Settings & value );
 bool    SettingsCook( const Settings & value, void * out, uint64_t capacity, TableByteOrder order );
 ```
 
+**THE C SURFACE** uses pointers and explicit contexts, retaining the same
+measure/write contract:
+
+```c
+int64_t settings_cook_measure(const Settings * value);
+int settings_cook(const Settings * value, void * out, uint64_t capacity, TableByteOrder order);
+int64_t scene_cook_measure(const TableCtx * ctx, const Scene * value);
+int scene_cook(const TableCtx * ctx, const Scene * value, void * out, uint64_t capacity, TableByteOrder order);
+```
+
+A region or opened cook uses a null context; an editable builder uses a context
+whose `arena` points at the builder's arena. `TableByteOrder_Little` and
+`TableByteOrder_Big` select the target order. Variable roots also expose
+`_cook_with_allocator` and `_cook_measure_with_allocator`, with a final
+`TableAllocator` argument. The default pair is the builder's when a context
+names one, and the `schema_allocate`/`schema_release` hooks otherwise.
+
 - **IT IS A MEASURE/WRITE SPLIT, exactly as the wire's is** (§6.1).
   `CookMeasure` answers the whole file's length — the header, the data part and
   the attribution part — in `int64_t`, because a cook's part lengths are 64
@@ -9433,12 +9491,13 @@ function per unit, name-first in the unit's own namespace beside
 `ProtocolId` (SPEC §6.1), answering with the set of everything the build
 declared:
 
-**PORT STATUS: the C++ reference emits it; the eight ports do not yet.** The
-C++ backend emits the pair for every unit that declares a table, with the
-corpus gate of §8.7 holding its listing to the compiler's own. A TABLE-FREE
-unit's view waits on the type view in the packet backend, which is where the
-descriptors of a unit with no table closure would have to come from; that and
-the eight ports are named follow-ons (§15).
+**PORT STATUS: C++ and C emit the registry.** C++ emits its pair for units
+that declare a table. C emits `<Package>View.h` and `<Package>View.c` for
+every unit, including a table-free unit, with `unit_view()` as its entry point.
+The independently generated listing in §8.7 checks both. The C registry and
+its descriptors are immutable static data, with program lifetime; they own no
+decoded region. A caller using a descriptor to inspect a value must still keep
+that value's storage alive. Other ports' registries remain follow-ons (§15).
 
 ```cpp
 struct ViewConstant
@@ -9633,7 +9692,8 @@ here?" — §2.2's own distinction between machinery and columns.
 ### 8.5 On the side
 
 **The view is one generated file per UNIT, not per schema file** —
-`<Package>View.h` and `<Package>View.cpp` in C++, `<Package>View.cs` in C#.
+`<Package>View.h` and `<Package>View.cpp` in C++, `<Package>View.h` and
+`<Package>View.c` in C, `<Package>View.cs` in C#.
 **The name is `capitalize(package)` followed by `View`** in every target
 that emits one: `package tabledemo` gives `TabledemoView.h`. It is a FILE
 name, and generated file names are basename-shaped in every target, so it
@@ -10092,7 +10152,8 @@ in build version (§20.5).
   whose lookup surface is members spells the same eight on the storage type
   and claims nothing at file scope for them. And the generated ENTRY is a
   closure member like every other, so it claims the suffix set below in its
-  own right.
+  own right. C additionally claims `<Table><Field>FindMut` for lookup in a
+  mutable arena.
 - **Unbounded arrays** (§2.9): a `[]T` in a `type` body, which is what keeps
   the type wire's "no unbounded collections" true (SPEC.md §1) and what
   refuses one on a packet; **a `[]T` or `[]*T` as a UNION ARM** (§2.6), the
@@ -10110,21 +10171,22 @@ in build version (§20.5).
   bounded array's own diagnostic and naming its own follow-on, which is
   `[][]T`, `[]map[K]V`, `[]?T` and `[]*bytes`; an element whose ALIGNMENT
   exceeds the arena's, naming the field and the alignment it asks for (§2.9);
-  and a declaration under any of the three names the construct CLAIMS.
+  and a declaration under any of the four names the construct CLAIMS.
 
-  **AN UNBOUNDED ARRAY CLAIMS THREE NAMES AGAINST ITS FIELD**, on the map's own
+  **AN UNBOUNDED ARRAY CLAIMS FOUR NAMES AGAINST ITS FIELD**, on the map's own
   rule: `<Table>` followed by the PascalCase of the field's name, and then
-  `Add`, `Each` or `Erase`. A `Save` with a `placements` list therefore claims
-  `SavePlacementsAdd`, `SavePlacementsEach` and `SavePlacementsErase`, and a
-  declaration spelling any of the three is refused naming the field. **It
-  claims THREE where a map claims eight**, and the difference is the key on
+  `Add`, `Each`, `Erase` or `At`. A `Save` with a `placements` list therefore claims
+  `SavePlacementsAdd`, `SavePlacementsEach`, `SavePlacementsErase` and
+  `SavePlacementsAt`. A declaration spelling any of the four is refused naming
+  the field. `At` is the C indexed accessor over a region list. **It
+  claims FOUR where a map claims eight**, and the difference is the key on
   both sides: `Add` is the one name a list has that a map does not, because an
   append needs no key where an insert does, and of the map's eight it does not
   claim `Entry`, because no entry table is generated (§2.9), `Insert` and
   `Find`, because there is no key to insert under or look up by, or
   `IndexMeasure`, `Index` and `IndexFind`, because there is no lookup to
   accelerate. `Erase` it does claim, and it is addressed by the element's own
-  pointer (§2.9). A language whose surface is members spells the same three on
+  pointer (§2.9). A language whose surface is members spells these operations on
   the storage type and claims nothing at file scope for them.
 - **Byte buffers** (§2.5): `*bytes` or `*string` outside a table body; a
   bound on one, `*bytes(N)` (a buffer at its used size has no bound to
@@ -10173,9 +10235,9 @@ in build version (§20.5).
   makes it one. **A payload-free arm is outside the class**: it has no
   payload, so it rides the packet wire as its tag alone and a `type` body
   takes it in all nine backends (SPEC §4.8). **A payload-free arm reached by
-  a table closure is C++ only**, and the other eight targets refuse it
+  a table closure is carried by C and C++**, and the other seven targets refuse it
   naming the union and the target. And **a TABLE-CLOSURE union under every
-  backend but C++** is refused naming the union and the target: the ports are
+  backend but C and C++** is refused naming the union and the target: the ports are
   a named follow-on (§15), and a port that emitted the union would name a
   table it never declares, or overlay storage its fixed-class codecs never met.
 - **On an ARM** (§2.6, which states each reason): a specified default; `?`;
@@ -10342,7 +10404,7 @@ in build version (§20.5).
   Counts  Row  BlockProjection
   ```
 
-  **THE C BACKEND CLAIMS SEVEN MORE**, and the checker claims them on the same
+  **THE C BACKEND CLAIMS THESE ADDITIONAL SPELLINGS**, and the checker claims them on the same
   terms. C++ and C# put these on a class — a builder's `Lock`, a storage's
   `Create`, a block type's `Type` — and a member function claims nothing; C has
   no members, so each is a free function under its owner's name (§6.1's C
@@ -10350,7 +10412,16 @@ in build version (§20.5).
 
   ```
   BuilderInit  BuilderShutdown  BuilderLock  BuilderRoot
+  BuilderInitWithAllocator
+  MeasureRetainWithAllocator  SaveRetainWithAllocator
+  LoadMeasureMessages  LoadMeasureMessagesEx
+  MeasureMessagesWithAllocator  SaveMessagesWithAllocator
+  LoadMeasureEx  MeasureWithAllocator  SaveWithAllocator
+  ToJsonWithAllocator  ToJsonMeasureWithAllocator
   BlockStorageCreate  BlockStorageDestroy  BlockType
+  CookWithAllocator  CookMeasureWithAllocator  CookExtent  OpenEx
+  BlockOpenEx  BlockOpenConst  BlockOpenConstEx  BlockOpenCheck
+  BlockConst  BlockBytesConst
   ```
 
   **`Row` and `BlockProjection` are the C# BLITTABLE records' names** (§19.2),
@@ -10359,7 +10430,7 @@ in build version (§20.5).
   noun collides with declarations in OTHER units of the same assembly, which a
   compiler that sees one unit cannot refuse.
 
-  **A table also claims TWO PER OUT-OF-LINE ARRAY**, because its row
+  **A table also claims names PER OUT-OF-LINE ARRAY**, because its row
   accessors are named after its fields: `<Table>` followed by the PascalCase
   of the field's name hands back that field's rows, and the same name with
   `Span` appended is the contiguous view (§19.2) — so `RenderFrame` with a
@@ -10367,7 +10438,10 @@ in build version (§20.5).
   declaration spelling either is refused naming both. That part of the set
   moves with the declaration, which is why it is a rule here rather than a
   list. A language whose accessors are members spells the same two names on
-  the block type and claims nothing at file scope for them.
+  the block type and claims nothing at file scope for them. C also claims
+  `<Table><Field>Rows`, `<Table><Field>RowsConst` and
+  `<Table><Field>SpanConst`, for its mutable row handle and its const row/span
+  readers. The emitted functions use snake_case, as the other C entry points do.
 
   **THE DESCRIPTOR SURFACE'S CLAIMS ARE UNCONDITIONAL — every declaration,
   every unit, tables or not.** Every unit is to emit a view file and that file
@@ -11447,15 +11521,16 @@ inspects everything in the schema built:
   reachable. Closing it is the same one-line predicate the pair rule is
   already spelled as, plus a corpus unit per spelling; the page's rule is
   already the one above and nothing about it is undecided.
-- **THE UNIT REGISTRY IN THE EIGHT PORTS** (§8.3, §8.7). The C++ reference
-  emits `UnitView()` and the eight ports do not, so in those eight an enum
+- **THE UNIT REGISTRY IN THE SEVEN REMAINING PORTS** (§8.3, §8.7). C++ and C
+  emit the registry; the remaining seven ports do not in this tree, so an enum
   VARIANT's, a flags BIT's and a record-naming ARM's `doc` and `tags` reach
   the IR and the generated comments and no descriptor column. What a port
   lands is `ViewConstant`, `ViewVariant`, `ViewVocabulary` and `ViewType` with
   their three annotation members, and its own program byte-compared against
   the same pin — the corpus listing gate and the two same-declaration pairs
   are written once, against the IR, and every backend answers to them.
-- **THE VIEW OF A TABLE-FREE UNIT** (§8.2, §8.5). The C++ view is emitted by
+- **THE VIEW OF A TABLE-FREE UNIT IN C++** (§8.2, §8.5). C emits its unit
+  registry for table-free units. The C++ view is emitted by
   the TABLE backend, so a unit that declares no table gets none — and a
   packet-only unit's `type` declarations therefore carry no descriptor at all
   today. Landing it is the type view in the packet backend: the descriptor
@@ -11479,8 +11554,8 @@ inspects everything in the schema built:
   a catalog is re-cooked when any table in its unit moves (§7).
   Everything about it is a decision — who declares the set, what proves two
   versions interchangeable — and none of that is decided here.
-- **THE COOK's WRITE SIDE in every other language.** C++ writes a cook of
-  either class today and its bytes are the tool's (§7.6). Every other
+- **THE COOK's WRITE SIDE in every other language.** C++ and C write cooks of
+  either class today and their bytes are the tool's (§7.6). Every other
   language's writer is the same feature in that language's own idiom, held to
   the same `cook-write` surface — a language writes, the harness compares to
   the tool's bytes — and a pointered root's needs what the C++ one needed: the
@@ -11701,7 +11776,7 @@ inspects everything in the schema built:
   belongs with the emitters rather than with this page, because a snapshot
   taken before the code that could move it is a snapshot of nothing.
 - **The view in a ported backend** — C++ carries it (§8); every other backend,
-  C# included, emits no view file until it emits the same registry against the
+  except C, emits no view file until it emits the same registry against the
   same pin (§8.7). Nothing is refused meanwhile, because nothing in a schema
   asks for one (§8.4): a backend without the emitter is a backend whose
   users have no registry, and the status paragraph says so.
@@ -11718,12 +11793,13 @@ inspects everything in the schema built:
   the construct — the parser's `map[K]V`, the checker's refusals, the generated
   entry table with its record and its two constant ids — and every backend
   refuses a unit that declares one, by name (§11), until its codec lands. The
-  C++ reference is first and carries the whole construct: the builder surface
+  C++ reference carries the whole construct: the builder surface
   (insert, erase,
   find, iterate), the sort in the four walks, the region load's ascending check
   with its `duplicate` and `malformed` events, the const `Find`, the text
   form's object and `schema cook-check`'s map-slot clause with its order check
-  (§7.4). The tool's COOK and UNCOOK halves are the one piece still owed for
+  (§7.4). C carries the file wire, region and text forms, including the optional
+  runtime index. The tool's COOK and UNCOOK halves are the one piece still owed for
   this construct: a map-bearing unit is refused by name at those two surfaces,
   because a map adds the sort, the entry array's key order and the two reader
   events to the node extent the list's own halves already
@@ -11740,9 +11816,10 @@ inspects everything in the schema built:
   construct, which is the parser's `[]T`, the checker's refusals and its three
   claimed names, and the record's reference-and-count slot, and every port
   refuses a unit that declares one, by name (§11), until its codec lands. The
-  C++ reference carries it: the builder's segments and `Add`, the four walks
-  in index order, the region load, the const `TableList` surface, the text
-  form's array, and `schema cook-check`'s element-array clause in the tool.
+  C++ reference carries it; C carries the file wire, region and text forms,
+  including the builder's segments and `Add`, the walks in index order, the
+  region load, the const `TableList` surface and the text form's array. The tool
+  also carries `schema cook-check`'s element-array clause.
   The TOOL carries the construct whole: its cook lays the element arrays in
   the holder's node extent in the same PRE-ORDER the reference lays them and
   lands on the reference's bytes exactly, in both byte orders, and its uncook
@@ -11761,7 +11838,7 @@ inspects everything in the schema built:
   and not about the bound.
 - Keyed lookup conveniences over loaded collections (library-side, never
   stored semantics).
-- **AN ARRAY OF UNIONS in every ported backend** (§2.6): C++ and the tool
+- **AN ARRAY OF UNIONS in the remaining ported backends** (§2.6): C, C++ and the tool
   carry `[..N]Body` and `[N]Body`, and every other backend refuses a table
   closure holding one, by name (§11). What a port needs is the union element
   in its fixed-class walks — measure, save, load, the descriptors' arms column
@@ -12000,15 +12077,12 @@ SceneFromJson( builder, text, text_bytes, &report );
 ```
 
 **Backend status for this section: the FIXED class in all nine — C++, C, C#,
-Dart, Elixir, Go, Java, JavaScript and Rust — and the VARIABLE class in C++
-(§16.7).** A pointered
-unit's text form is the C++ reference's, through the builder, and carrying it
-to the other backends is schema#349's row beside the wire. In C#, Dart,
+Dart, Elixir, Go, Java, JavaScript and Rust — and the VARIABLE class in C and
+C++ (§16.7).** A pointered unit's text form reads through the builder. In C#, Dart,
 Elixir, Go, Java, JavaScript and Rust the absence is already made one level
 up: a
 pointered unit gets no table source at all (§11), so it has no text form for
-the same reason it has no wire codec; the C port has the wire's earlier form
-(§3.1) and its text form follows it.
+the same reason it has no wire codec.
 
 **The FLOAT SPELLING is C's `%.*g`, byte for byte, in every port**, and each
 says how it gets there rather than reaching for its runtime's default. C++
@@ -13816,7 +13890,10 @@ schema name, as everywhere else in that backend.
   they were, and a producer holds a mutable block exactly as before. The split
   is the one C# states above with `ref readonly` and `ReadOnlySpan<Row>`, and
   the one Rust has by returning `&[Row]`. **A write through a const view is a
-  COMPILE ERROR**, held by a negative compile control (§19.5).
+  COMPILE ERROR**, held by a negative compile control (§19.5). C spells its
+  reader `<Name>BlockConst` with `<root>_block_open_const` and the `_ex` variant
+  for a reason, and provides `_rows_const` and `_span_const` accessors. Both
+  handles use one bytewise gate; the reader's row pointers remain const.
 - **An array is ITERATED, not indexed by hand.** The accessor yields a
   reference to each row where it lies, at the pitch the instance gives, for
   `count` rows — a range-for in C++, an enumerator in C#, the equivalent per

@@ -7,6 +7,7 @@ package compiler
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -20,16 +21,12 @@ var listTargets []string
 // beside its registerBuiltin call.
 func registerListCarrier(name string) { listTargets = append(listTargets, name) }
 
-// refuseLists is the named refusal every PORT gives a unit whose table
-// closure declares a `[]T` (docs/SPEC-TABLES.md §2.9, §11, §15).
-//
-// An unbounded array is a VARIABLE-CLASS construct, and the variable class is
-// the C++ reference's alone — the arena, the region, the node extent and the
-// walks a list's elements ride in are all the reference's. So the reference
-// carries the codec, registers through [registerListCarrier] from its own
-// init and never reaches here, and every port refuses loudly rather than
-// emitting a codec that never met an element array.
+// refuseLists gives targets without this codec a named refusal.
+// Registered carriers accept the construct.
 func refuseLists(u *ir.Unit, target string) error {
+	if slices.Contains(listTargets, target) {
+		return nil
+	}
 	fields := ir.ListFields(u)
 	if len(fields) == 0 {
 		return nil

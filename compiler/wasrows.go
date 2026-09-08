@@ -15,7 +15,7 @@ import (
 
 // wasRowTargets is the canonical name of every built-in target whose backends
 // carry the three; refuseWasRows names them.
-var wasRowTargets = []string{"cpp", "cs"}
+var wasRowTargets = []string{"cpp", "c", "cs"}
 
 // refuseWasRows is the named refusal every target without the form gives a
 // unit whose table closure carries a variant, arm or type-field `was`.

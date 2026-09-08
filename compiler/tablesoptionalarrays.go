@@ -8,6 +8,7 @@ package compiler
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -29,6 +30,9 @@ func registerOptionalArrayCarrier(name string) {
 // is a named follow-on — refused loudly here rather than emitted as a
 // fixed-class codec that never met the presence companion beside an array.
 func refuseOptionalArrays(u *ir.Unit, target string) error {
+	if slices.Contains(optionalArrayTargets, target) {
+		return nil
+	}
 	fields := ir.TableOptionalArrays(u)
 	if len(fields) == 0 {
 		return nil

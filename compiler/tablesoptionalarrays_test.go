@@ -1,4 +1,4 @@
-// The cross-target gate on optional arrays: C++ and C# carry the fixed
+// The cross-target gate on optional arrays: C++, C and C# carry the fixed
 // shapes, and targets without them refuse the unit by name.
 package compiler
 
@@ -88,7 +88,7 @@ func TestOptionalArraysCarriers(t *testing.T) {
 	u := unitFromSource(t, optionalArraySrc)
 	c := New()
 	for _, target := range c.Targets() {
-		if target == "cpp" || target == "cs" || target == "go" {
+		if target == "cpp" || target == "c" || target == "cs" || target == "go" {
 			files, err := c.Generate(u, target, Options{})
 			if err != nil {
 				t.Fatalf("--lang %s refused the supported shape: %v", target, err)
