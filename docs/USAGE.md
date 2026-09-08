@@ -1024,14 +1024,22 @@ TableReport report = new TableReport();
 ShipConfig loaded = new ShipConfig();
 if (!Schema.ShipConfigLoad(loaded, buffer, report))
 {
-    // framing damage: report.Malformed is set, the good prefix is kept
+    // report.Refused names an unsupported form; report.Malformed marks damage.
+    // A stopped root preserves its decoded prefix; invalid file framing resets it.
 }
-if (report.Unknown != 0 || report.KindMismatch != 0 || report.Clamped != 0)
+if (report.Unknown != 0 || report.KindMismatch != 0 || report.Widened != 0 || report.Clamped != 0)
 {
     // the data came from a different schema generation — loaded is still
     // fully usable; log the counts so drift is visible
 }
 ```
+
+The C# fixed-class file reader uses form 1. `ShipConfigLoadVerdict` returns
+`Schema.TableWire.Verdict.Ok`, `Refused`, `Damaged` or `BodyStopped`; the bool
+wrapper returns true only for `Ok`. Check `report.Malformed` as well: a damaged
+bounded nested value can leave the enclosing root readable. `report.Reason`
+distinguishes `message_form_as_file` from `newer_form` on form refusal. Construct
+the storage and report once, and reuse them with the caller-owned spans.
 
 The JavaScript surface is the same functions, name first, exported from
 `<Base>Table.js` beside the packet module — and it imports no runtime at all —

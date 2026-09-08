@@ -34,7 +34,7 @@ func TestListsAreRefusedByEveryPort(t *testing.T) {
 	for _, target := range c.Targets() {
 		t.Run(target, func(t *testing.T) {
 			_, err := c.Generate(u, target, Options{})
-			if target == "cpp" || target == "go" {
+			if target == "cpp" || target == "cs" || target == "go" {
 				if err != nil {
 					t.Fatalf("--lang cpp refused an unbounded array: the reference carries the codec (schema#531): %v", err)
 				}
@@ -52,11 +52,11 @@ func TestListsAreRefusedByEveryPort(t *testing.T) {
 	}
 }
 
-// TestListCarriers: exactly one target carries the
-// construct, and it is the C++ reference (docs/SPEC-TABLES.md §2.9, §15).
+// TestListCarriers pins the targets that implement the list codec
+// (docs/SPEC-TABLES.md §2.9, §15).
 func TestListCarriers(t *testing.T) {
-	if len(listTargets) != 2 || listTargets[0] != "cpp" || listTargets[1] != "go" {
-		t.Fatalf("listTargets = %v, want exactly [cpp go]: the variable class is the reference's (docs/SPEC-TABLES.md §2.9, §15)", listTargets)
+	if len(listTargets) != 3 || listTargets[0] != "cpp" || listTargets[1] != "cs" || listTargets[2] != "go" {
+		t.Fatalf("listTargets = %v, want exactly [cpp cs go]: the variable class is the reference's (docs/SPEC-TABLES.md §2.9, §15)", listTargets)
 	}
 }
 
@@ -97,7 +97,7 @@ func TestListRefusalNamesTheCarrier(t *testing.T) {
 	if err == nil {
 		t.Fatalf("refuseLists accepted a list-bearing unit for a non-carrier")
 	}
-	for _, want := range []string{"cpp and go", "Save.placements", "--lang cpp"} {
+	for _, want := range []string{"cpp, cs and go", "Save.placements", "--lang cpp"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the carrier-form refusal does not name %q: %v", want, err)
 		}

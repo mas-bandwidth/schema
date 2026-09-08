@@ -43,22 +43,22 @@ func nodeRecordTypes(body []byte, ids []uint64) (types []uint64, whole bool) {
 	return types, true
 }
 
-// FileRecord is the framing of one node record. Length is the framed body
-// length, including for blob records whose storage is determined by it.
-type FileRecord struct {
+// FileNodeRecord is a framed record before decoding its body. Length is needed
+// to account for blob storage; a type ID alone does not determine that storage.
+type FileNodeRecord struct {
 	TypeId uint64
 	Length int64
 }
 
-// NodeRecordFrames is NodeRecordTypes with each body's length retained. A
-// sizing oracle needs both: a blob's type identity alone cannot size its node.
-func NodeRecordFrames(data []byte) (frames []FileRecord, whole bool) {
+// FileNodeRecords returns the authoritative file node-table scan. It allocates
+// from records actually framed, never from the untrusted declared count.
+func FileNodeRecords(data []byte) ([]FileNodeRecord, bool) {
 	body, ids, ok := trailer(data)
-	if len(data) < 1 || data[0] != ir.TableWireForm || !ok {
+	if len(data) == 0 || data[0] != ir.TableWireForm || !ok {
 		return nil, false
 	}
-	var ignored tabletext.Report
-	payload, present, framed := nodeTableBytes(body, ids, &ignored)
+	var report tabletext.Report
+	payload, present, framed := nodeTableBytes(body, ids, &report)
 	if !present {
 		return nil, true
 	}
@@ -69,9 +69,9 @@ func NodeRecordFrames(data []byte) (frames []FileRecord, whole bool) {
 	if !scanned {
 		return nil, false
 	}
-	frames = make([]FileRecord, len(records))
+	out := make([]FileNodeRecord, len(records))
 	for i, record := range records {
-		frames[i] = FileRecord{TypeId: record.TypeId, Length: int64(len(record.Body))}
+		out[i] = FileNodeRecord{TypeId: record.TypeId, Length: int64(len(record.Body))}
 	}
-	return frames, true
+	return out, true
 }

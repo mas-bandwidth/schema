@@ -79,7 +79,7 @@ func TestWideTextInATableClosureRefusesMissingCarriers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load refused a wstring(N) inside a table closure: %v", err)
 	}
-	for _, target := range []string{"c", "cs", "rust", "java", "js", "dart", "elixir"} {
+	for _, target := range []string{"c", "rust", "java", "js", "dart", "elixir"} {
 		_, err := c.Generate(u, target, Options{})
 		if err == nil {
 			t.Errorf("%s took a wstring(N) it does not carry", target)

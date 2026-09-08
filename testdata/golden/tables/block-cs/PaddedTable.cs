@@ -70,339 +70,32 @@ namespace Blockdemo
 
         public static long PaddedRowMeasure(PaddedRow value)
         {
-            long bytes = 2; // terminator
-            if (value.Tag != 0) { bytes += 3 + 1; } // tag
-            if (value.Value != 0.0) { bytes += 3 + 8; } // value
-            if (value.Flag != false) { bytes += 3 + 1; } // flag
-            if (value.Id != 0) { bytes += 3 + 4; } // id
-            if (value.LabelLength < 0 || value.LabelLength > 15) { return -1; } // storage invariant
-            if (value.LabelLength > 0) { bytes += 3 + 4 + value.LabelLength; } // label
-            {
-                bool allDefault = true;
-                for (int i = 0; i < 4; i++) { if (value.Slots[i] != 0) { allDefault = false; break; } }
-                if (!allDefault)
-                {
-                    bytes += 3 + 4 + 5 + 8; // slots
-                }
-            }
-            {
-                long pairs = 0, keyedBytes = 0;
-                for (int i = 0; i < 4; i++) // [Team]: every stored slot is a named variant's
-                {
-                    if (value.Teams.Slots[i] == 0) { continue; } // a default slot elides
-                    ushort keyId;
-                    if (!TableEnumId((Team)(i + 1), out keyId)) { return -1; } // i is the STORAGE index; the key it holds is i + 1
-                    pairs++; keyedBytes += 2 + 4 + 1; // key, length, element
-                }
-                if (pairs > 0) { bytes += 3 + 4 + 5 + keyedBytes; } // teams
-            }
-            if (value.CounterPresent) // ?int32: presence decides, not content
-            {
-                bytes += 3 + 4; // counter
-            }
-            return bytes;
-        }
-
-        public static bool PaddedRowSaveBody(ref TableWriter w, PaddedRow value)
-        {
-            if (value.Tag != 0)
-            {
-                w.Put16(0xbc64); w.Put8(6); // tag
-                w.Put8(unchecked((byte)(value.Tag)));
-            }
-            if (value.Value != 0.0)
-            {
-                w.Put16(0x9194); w.Put8(11); // value
-                w.Put64(TableDoubleToBits(value.Value));
-            }
-            if (value.Flag != false)
-            {
-                w.Put16(0x153d); w.Put8(1); // flag
-                w.Put8(value.Flag ? (byte)1 : (byte)0);
-            }
-            if (value.Id != 0)
-            {
-                w.Put16(0x5dd8); w.Put8(8); // id
-                w.Put32(unchecked((uint)(value.Id)));
-            }
-            if (value.LabelLength < 0 || value.LabelLength > 15) { return false; } // storage invariant
-            if (value.LabelLength > 0)
-            {
-                w.Put16(0xe16a); w.Put8(12); // label
-                w.Put32((uint)value.LabelLength);
-                w.Raw(new ReadOnlySpan<byte>(value.Label, 0, value.LabelLength));
-            }
-            {
-                bool allDefault = true;
-                for (int i = 0; i < 4; i++) { if (value.Slots[i] != 0) { allDefault = false; break; } }
-                if (!allDefault)
-                {
-                    w.Put16(0xf4d8); w.Put8(14); // slots (fixed [4])
-                    int lenAt = w.Offset; w.Put32(0);
-                    w.Put8(7); w.Put32(4);
-                    for (int i = 0; i < 4; i++)
-                    {
-                        w.Put16(unchecked((ushort)(value.Slots[i])));
-                    }
-                    w.Patch32(lenAt, (uint)(w.Offset - lenAt - 4));
-                }
-            }
-            {
-                uint pairs = 0;
-                for (int i = 0; i < 4; i++) // [Team]: every stored slot is a named variant's
-                {
-                    if (value.Teams.Slots[i] == 0) { continue; } // a default slot elides
-                    ushort keyId;
-                    if (!TableEnumId((Team)(i + 1), out keyId)) { return false; } // i is the STORAGE index; the key it holds is i + 1
-                    pairs++;
-                }
-                if (pairs > 0)
-                {
-                    // KIND 16, not 14: a keyed body and a positional one are
-                    // incompatible, so a reader of the other kind must see a kind
-                    // mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2)
-                    w.Put16(0x9ae1); w.Put8(16); // teams (keyed by Team)
-                    int lenAt = w.Offset; w.Put32(0);
-                    w.Put8(6); w.Put32(pairs);
-                    // ASCENDING BY VARIANT ORDINAL, which is slot order — this
-                    // writer's choice, and a reader must not rely on it: every
-                    // slot is found by its key (docs/SPEC-TABLES.md §3.2)
-                    for (int i = 0; i < 4; i++)
-                    {
-                        if (value.Teams.Slots[i] == 0) { continue; } // a default slot elides
-                        ushort keyId;
-                        if (!TableEnumId((Team)(i + 1), out keyId)) { return false; } // i is the STORAGE index; the key it holds is i + 1
-                        w.Put16(keyId); // the slot's VARIANT id, not its position
-                        int elemLenAt = w.Offset; w.Put32(0);
-                        w.Put8(unchecked((byte)(value.Teams.Slots[i])));
-                        w.Patch32(elemLenAt, (uint)(w.Offset - elemLenAt - 4));
-                    }
-                    w.Patch32(lenAt, (uint)(w.Offset - lenAt - 4));
-                }
-            }
-            if (value.CounterPresent) // ?int32
-            {
-                w.Put16(0x428f); w.Put8(4); // counter
-                w.Put32(unchecked((uint)(value.Counter)));
-            }
-            w.Put16(0); // terminator
-            return !w.Overflow;
+            Span<ulong> ids = stackalloc ulong[88];
+            return TableWire.Save(value, PaddedRowTableType(), Span<byte>.Empty, ids, true);
         }
 
         public static long PaddedRowSave(PaddedRow value, Span<byte> buffer)
         {
-            TableWriter w = new TableWriter(buffer);
-            if (!PaddedRowSaveBody(ref w, value)) { return -1; }
-            return w.Offset; // == PaddedRowMeasure(value)
+            Span<ulong> ids = stackalloc ulong[88];
+            return TableWire.Save(value, PaddedRowTableType(), buffer, ids, false);
         }
 
-        public static bool PaddedRowLoadBody(ref TableReader r, PaddedRow value)
+        public static TableWire.Verdict PaddedRowLoadVerdict(PaddedRow value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReset(value); // restore declared defaults in place, then overlay
-            for (;;)
-            {
-                if (!r.Has(2)) { r.Report.Malformed = true; return false; }
-                ushort fieldId = r.Get16();
-                if (fieldId == 0) { return true; }
-                if (!r.Has(1)) { r.Report.Malformed = true; return false; }
-                byte kind = r.Get8();
-                switch (fieldId)
-                {
-                    case 0xbc64: // tag
-                    {
-                        if (kind != 6)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(1)) { r.Report.Malformed = true; return false; }
-                        {
-                            byte decodedV = unchecked((byte)r.Get8());
-                            value.Tag = decodedV;
-                        }
-                        break;
-                    }
-                    case 0x9194: // value
-                    {
-                        if (kind != 11)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(8)) { r.Report.Malformed = true; return false; }
-                        value.Value = TableBitsToDouble(r.Get64());
-                        break;
-                    }
-                    case 0x153d: // flag
-                    {
-                        if (kind != 1)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(1)) { r.Report.Malformed = true; return false; }
-                        value.Flag = r.Get8() != 0;
-                        break;
-                    }
-                    case 0x5dd8: // id
-                    {
-                        if (kind != 8)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        {
-                            uint decodedV = unchecked((uint)r.Get32());
-                            value.Id = decodedV;
-                        }
-                        break;
-                    }
-                    case 0xe16a: // label
-                    {
-                        if (kind != 12)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        uint len = r.Get32();
-                        if (!r.Has(len)) { r.Report.Malformed = true; return false; }
-                        uint keep = len;
-                        if (keep > 15) { keep = 15; r.Report.Clamped++; }
-                        r.Buffer.Slice(r.Offset, (int)keep).CopyTo(new Span<byte>(value.Label, 0, (int)keep));
-                        value.LabelLength = (int)keep;
-                        r.Offset += (int)len;
-                        break;
-                    }
-                    case 0xf4d8: // slots
-                    {
-                        if (kind != 14)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        uint bodyLen = r.Get32();
-                        if (!r.Has(bodyLen)) { r.Report.Malformed = true; return false; }
-                        int bodyEnd = r.Offset + (int)bodyLen;
-                        if (bodyLen >= 5)
-                        {
-                            byte elemKind = r.Get8();
-                            uint count = r.Get32();
-                            if (elemKind != 7) { r.Report.KindMismatch++; r.Offset = bodyEnd; break; }
-                            uint keep = count;
-                            if (keep > 4) { keep = 4; r.Report.Clamped++; }
-                            // elements are BOUNDED by the field body: a count the length
-                            // cannot cover keeps the decoded prefix, flags malformed, and
-                            // the parent continues at the next field — following fields'
-                            // bytes are never fabricated into elements
-                            TableReader sub = new TableReader(r.Buffer.Slice(r.Offset, bodyEnd - r.Offset), r.Report);
-                            for (uint i = 0; i < keep; i++)
-                            {
-                                if (!sub.Has(2)) { r.Report.Malformed = true; break; }
-                                {
-                                    ushort decodedV = unchecked((ushort)sub.Get16());
-                                    value.Slots[i] = decodedV;
-                                }
-                            }
-                        }
-                        r.Offset = bodyEnd; // excess elements and slack skip via the length
-                        break;
-                    }
-                    case 0x9ae1: // teams
-                    {
-                        if (kind != 16)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        uint bodyLen = r.Get32();
-                        if (!r.Has(bodyLen)) { r.Report.Malformed = true; return false; }
-                        int bodyEnd = r.Offset + (int)bodyLen;
-                        if (bodyLen >= 5)
-                        {
-                            byte elemKind = r.Get8();
-                            uint count = r.Get32();
-                            if (elemKind != 6) { r.Report.KindMismatch++; r.Offset = bodyEnd; break; }
-                            TableReader sub = new TableReader(r.Buffer.Slice(r.Offset, bodyEnd - r.Offset), r.Report);
-                            for (uint i = 0; i < count; i++)
-                            {
-                                if (!sub.Has(2)) { r.Report.Malformed = true; break; }
-                                ushort key = sub.Get16();
-                                if (!sub.Has(4)) { r.Report.Malformed = true; break; }
-                                uint elemLen = sub.Get32();
-                                if (!sub.Has(elemLen)) { r.Report.Malformed = true; break; }
-                                if (key == 0)
-                                {
-                                    // None is the NULL KEY: 0 is the reserved id no declared
-                                    // name can fold to, so a body carrying one is DAMAGED, not
-                                    // merely foreign. Framing damage stops this body, keeps what
-                                    // it decoded, and the parent reads on past the length
-                                    // (docs/SPEC-TABLES.md §3.2, §4).
-                                    r.Report.Malformed = true;
-                                    break;
-                                }
-                                Team slot;
-                                if (!TableEnumValue(key, out slot))
-                                {
-                                    r.Report.Unknown++; // a slot this reader cannot name
-                                    sub.Offset += (int)elemLen;
-                                    continue;
-                                }
-                                {
-                                    TableReader elem = new TableReader(sub.Buffer.Slice(sub.Offset, (int)elemLen), r.Report);
-                                    if (!elem.Has(1)) { r.Report.Malformed = true; sub.Offset += (int)elemLen; continue; }
-                                    {
-                                        byte decodedV = unchecked((byte)elem.Get8());
-                                        value.Teams.Slots[(int)slot - 1] = decodedV;
-                                    }
-                                }
-                                sub.Offset += (int)elemLen;
-                            }
-                        }
-                        r.Offset = bodyEnd; // unread pairs and slack skip via the length
-                        break;
-                    }
-                    case 0x428f: // counter
-                    {
-                        if (kind != 4)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        {
-                            int decodedV = unchecked((int)r.Get32());
-                            value.Counter = decodedV;
-                        }
-                        value.CounterPresent = true;
-                        break;
-                    }
-                    default:
-                    {
-                        r.Report.Unknown++;
-                        if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                        break;
-                    }
-                }
-            }
+            return TableWire.Load(value, PaddedRowTableType(), bytes, report);
         }
 
         public static bool PaddedRowLoad(PaddedRow value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReader r = new TableReader(bytes, report != null ? report : new TableReport());
-            return PaddedRowLoadBody(ref r, value);
+            return PaddedRowLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
+
+        public static long PaddedRowMeasureMessages(PaddedRow[] values) { return TableWire.MessageSave(values, PaddedRowTableType(), Span<byte>.Empty, true); }
+        public static long PaddedRowSaveMessages(PaddedRow[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, PaddedRowTableType(), bytes, false); }
+        public static TableWire.Verdict PaddedRowLoadMessages(PaddedRow[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, PaddedRowTableType(), bytes, vocabulary, report, out count); }
+
+        public static long PaddedRowCookMeasure(PaddedRow value) { return TableWire.Cook(value, PaddedRowTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
+        public static bool PaddedRowCook(PaddedRow value, Span<byte> bytes, TableByteOrder order = TableByteOrder.Little) { return TableWire.Cook(value, PaddedRowTableType(), bytes, order, false) >= 0; }
 
         // TableReset(PaddedFrame) restores PaddedFrame's declared defaults in place, reusing every
         // buffer the value already owns. The reader calls it before overlaying.
@@ -421,210 +114,32 @@ namespace Blockdemo
 
         public static long PaddedFrameMeasure(PaddedFrame value)
         {
-            long bytes = 2; // terminator
-            if (value.Marker != 0) { bytes += 3 + 1; } // marker
-            if (value.Stamp != 0) { bytes += 3 + 8; } // stamp
-            if (value.RowsCount < 0 || value.RowsCount > 64) { return -1; } // storage invariant
-            if (value.RowsCount > 0)
-            {
-                bytes += 3 + 4 + 5; // rows
-                for (int i = 0; i < value.RowsCount; i++)
-                {
-                    long elem = PaddedRowMeasure(value.Rows[i]);
-                    if (elem < 0) { return -1; }
-                    bytes += 4 + elem;
-                }
-            }
-            if (value.BlobLength < 0 || value.BlobLength > 12) { return -1; } // storage invariant
-            if (value.BlobLength > 0) { bytes += 3 + 4 + 5 + value.BlobLength; } // blob
-            return bytes;
-        }
-
-        public static bool PaddedFrameSaveBody(ref TableWriter w, PaddedFrame value)
-        {
-            if (value.Marker != 0)
-            {
-                w.Put16(0x866f); w.Put8(6); // marker
-                w.Put8(unchecked((byte)(value.Marker)));
-            }
-            if (value.Stamp != 0)
-            {
-                w.Put16(0x0dc6); w.Put8(9); // stamp
-                w.Put64(unchecked((ulong)(value.Stamp)));
-            }
-            if (value.RowsCount < 0 || value.RowsCount > 64) { return false; } // storage invariant
-            if (value.RowsCount > 0)
-            {
-                w.Put16(0x99af); w.Put8(14); // rows
-                int lenAt = w.Offset; w.Put32(0);
-                w.Put8(13); w.Put32((uint)value.RowsCount);
-                for (int i = 0; i < value.RowsCount; i++)
-                {
-                    {
-                        int elemLenAt = w.Offset; w.Put32(0);
-                        if (!PaddedRowSaveBody(ref w, value.Rows[i])) { return false; }
-                        w.Patch32(elemLenAt, (uint)(w.Offset - elemLenAt - 4));
-                    }
-                }
-                w.Patch32(lenAt, (uint)(w.Offset - lenAt - 4));
-            }
-            if (value.BlobLength < 0 || value.BlobLength > 12) { return false; } // storage invariant
-            if (value.BlobLength > 0)
-            {
-                w.Put16(0xd316); w.Put8(14); // blob
-                w.Put32((uint)(5 + value.BlobLength));
-                w.Put8(6); w.Put32((uint)value.BlobLength);
-                w.Raw(new ReadOnlySpan<byte>(value.Blob, 0, value.BlobLength));
-            }
-            w.Put16(0); // terminator
-            return !w.Overflow;
+            Span<ulong> ids = stackalloc ulong[88];
+            return TableWire.Save(value, PaddedFrameTableType(), Span<byte>.Empty, ids, true);
         }
 
         public static long PaddedFrameSave(PaddedFrame value, Span<byte> buffer)
         {
-            TableWriter w = new TableWriter(buffer);
-            if (!PaddedFrameSaveBody(ref w, value)) { return -1; }
-            return w.Offset; // == PaddedFrameMeasure(value)
+            Span<ulong> ids = stackalloc ulong[88];
+            return TableWire.Save(value, PaddedFrameTableType(), buffer, ids, false);
         }
 
-        public static bool PaddedFrameLoadBody(ref TableReader r, PaddedFrame value)
+        public static TableWire.Verdict PaddedFrameLoadVerdict(PaddedFrame value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReset(value); // restore declared defaults in place, then overlay
-            for (;;)
-            {
-                if (!r.Has(2)) { r.Report.Malformed = true; return false; }
-                ushort fieldId = r.Get16();
-                if (fieldId == 0) { return true; }
-                if (!r.Has(1)) { r.Report.Malformed = true; return false; }
-                byte kind = r.Get8();
-                switch (fieldId)
-                {
-                    case 0x866f: // marker
-                    {
-                        if (kind != 6)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(1)) { r.Report.Malformed = true; return false; }
-                        {
-                            byte decodedV = unchecked((byte)r.Get8());
-                            value.Marker = decodedV;
-                        }
-                        break;
-                    }
-                    case 0x0dc6: // stamp
-                    {
-                        if (kind != 9)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(8)) { r.Report.Malformed = true; return false; }
-                        {
-                            ulong decodedV = unchecked((ulong)r.Get64());
-                            value.Stamp = decodedV;
-                        }
-                        break;
-                    }
-                    case 0x99af: // rows
-                    {
-                        if (kind != 14)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        uint bodyLen = r.Get32();
-                        if (!r.Has(bodyLen)) { r.Report.Malformed = true; return false; }
-                        int bodyEnd = r.Offset + (int)bodyLen;
-                        if (bodyLen >= 5)
-                        {
-                            byte elemKind = r.Get8();
-                            uint count = r.Get32();
-                            if (elemKind != 13) { r.Report.KindMismatch++; r.Offset = bodyEnd; break; }
-                            uint keep = count;
-                            if (keep > 64) { keep = 64; r.Report.Clamped++; }
-                            // elements are BOUNDED by the field body: a count the length
-                            // cannot cover keeps the decoded prefix, flags malformed, and
-                            // the parent continues at the next field — following fields'
-                            // bytes are never fabricated into elements
-                            TableReader sub = new TableReader(r.Buffer.Slice(r.Offset, bodyEnd - r.Offset), r.Report);
-                            uint decoded = 0;
-                            for (uint i = 0; i < keep; i++)
-                            {
-                                if (!sub.Has(4)) { r.Report.Malformed = true; break; }
-                                uint elemLen = sub.Get32();
-                                if (!sub.Has(elemLen)) { r.Report.Malformed = true; break; }
-                                {
-                                    TableReader elem = new TableReader(sub.Buffer.Slice(sub.Offset, (int)elemLen), r.Report);
-                                    PaddedRowLoadBody(ref elem, value.Rows[i]);
-                                }
-                                sub.Offset += (int)elemLen;
-                                decoded = i + 1;
-                            }
-                            value.RowsCount = (int)decoded;
-                        }
-                        r.Offset = bodyEnd; // excess elements and slack skip via the length
-                        break;
-                    }
-                    case 0xd316: // blob
-                    {
-                        if (kind != 14)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        uint bodyLen = r.Get32();
-                        if (!r.Has(bodyLen)) { r.Report.Malformed = true; return false; }
-                        int bodyEnd = r.Offset + (int)bodyLen;
-                        if (bodyLen >= 5)
-                        {
-                            byte elemKind = r.Get8();
-                            uint count = r.Get32();
-                            if (elemKind != 6) { r.Report.KindMismatch++; r.Offset = bodyEnd; break; }
-                            uint keep = count;
-                            if (keep > 12) { keep = 12; r.Report.Clamped++; }
-                            // elements are BOUNDED by the field body: a count the length
-                            // cannot cover keeps the decoded prefix, flags malformed, and
-                            // the parent continues at the next field — following fields'
-                            // bytes are never fabricated into elements
-                            TableReader sub = new TableReader(r.Buffer.Slice(r.Offset, bodyEnd - r.Offset), r.Report);
-                            uint decoded = 0;
-                            for (uint i = 0; i < keep; i++)
-                            {
-                                if (!sub.Has(1)) { r.Report.Malformed = true; break; }
-                                {
-                                    byte decodedV = unchecked((byte)sub.Get8());
-                                    value.Blob[i] = decodedV;
-                                }
-                                decoded = i + 1;
-                            }
-                            value.BlobLength = (int)decoded;
-                        }
-                        r.Offset = bodyEnd; // excess elements and slack skip via the length
-                        break;
-                    }
-                    default:
-                    {
-                        r.Report.Unknown++;
-                        if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                        break;
-                    }
-                }
-            }
+            return TableWire.Load(value, PaddedFrameTableType(), bytes, report);
         }
 
         public static bool PaddedFrameLoad(PaddedFrame value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReader r = new TableReader(bytes, report != null ? report : new TableReport());
-            return PaddedFrameLoadBody(ref r, value);
+            return PaddedFrameLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
+
+        public static long PaddedFrameMeasureMessages(PaddedFrame[] values) { return TableWire.MessageSave(values, PaddedFrameTableType(), Span<byte>.Empty, true); }
+        public static long PaddedFrameSaveMessages(PaddedFrame[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, PaddedFrameTableType(), bytes, false); }
+        public static TableWire.Verdict PaddedFrameLoadMessages(PaddedFrame[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, PaddedFrameTableType(), bytes, vocabulary, report, out count); }
+
+        public static long PaddedFrameCookMeasure(PaddedFrame value) { return TableWire.Cook(value, PaddedFrameTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
+        public static bool PaddedFrameCook(PaddedFrame value, Span<byte> bytes, TableByteOrder order = TableByteOrder.Little) { return TableWire.Cook(value, PaddedFrameTableType(), bytes, order, false) >= 0; }
 
         // ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----
 
@@ -635,17 +150,24 @@ namespace Blockdemo
             if (info != null) { return info; }
             info = new TableTypeInfo();
             info.Name = "PaddedRow";
+            info.Id = 0x1d3a1648d6207581ul;
             info.NumFields = 8;
+            info.Create = delegate { return new PaddedRow(); };
+            info.StorageSize = 64; info.StorageAlign = 8; info.RegionAlign = 8;
+            info.Variable = false;
+            info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+            info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+            info.BytesEdge = false; info.StringEdge = false;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "tag", Json = "tag", TypeName = "uint8", Id = 0xbc64, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((PaddedRow)o).Tag; }, SetRaw = delegate(object o, int i, ulong r) { ((PaddedRow)o).Tag = unchecked((byte)r); } },
-                new TableFieldInfo { Name = "value", Json = "value", TypeName = "float64", Id = 0x9194, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return TableDoubleToBits(((PaddedRow)o).Value); }, SetRaw = delegate(object o, int i, ulong r) { ((PaddedRow)o).Value = TableBitsToDouble(r); } },
-                new TableFieldInfo { Name = "flag", Json = "flag", TypeName = "bool", Id = 0x153d, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return ((PaddedRow)o).Flag ? 1ul : 0ul; }, SetRaw = delegate(object o, int i, ulong r) { ((PaddedRow)o).Flag = r != 0; } },
-                new TableFieldInfo { Name = "id", Json = "id", TypeName = "uint32", Id = 0x5dd8, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((PaddedRow)o).Id; }, SetRaw = delegate(object o, int i, ulong r) { ((PaddedRow)o).Id = unchecked((uint)r); } },
-                new TableFieldInfo { Name = "label", Json = "label", TypeName = "string", Id = 0xe16a, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 15, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate(object o) { return ((PaddedRow)o).Label; }, GetCount = delegate(object o) { return ((PaddedRow)o).LabelLength; }, SetCount = delegate(object o, int n) { ((PaddedRow)o).LabelLength = n; } },
-                new TableFieldInfo { Name = "slots", Json = "slots", TypeName = "uint16", Id = 0xf4d8, Kind = 7, IsArray = true, Counted = false, Optional = false, ArrayBound = 4, ElemWidth = 2, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((PaddedRow)o).Slots[i]; }, SetRaw = delegate(object o, int i, ulong r) { ((PaddedRow)o).Slots[i] = unchecked((ushort)r); } },
-                new TableFieldInfo { Name = "teams", Json = "teams", TypeName = "uint8", Id = 0x9ae1, Kind = 6, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)Team.Max, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Team", KeyName = delegate(ulong v) { return EnumNameTeam(v); }, KeyId = delegate(ulong v) { ushort id; TableEnumId((Team)v, out id); return id; }, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((PaddedRow)o).Teams.Slots[i]; }, SetRaw = delegate(object o, int i, ulong r) { ((PaddedRow)o).Teams.Slots[i] = unchecked((byte)r); } },
-                new TableFieldInfo { Name = "counter", Json = "counter", TypeName = "int32", Id = 0x428f, Kind = 4, IsArray = false, Counted = false, Optional = true, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((PaddedRow)o).Counter; }, SetRaw = delegate(object o, int i, ulong r) { ((PaddedRow)o).Counter = unchecked((int)(long)r); }, GetPresent = delegate(object o) { return ((PaddedRow)o).CounterPresent; }, SetPresent = delegate(object o, bool p) { ((PaddedRow)o).CounterPresent = p; } },
+                new TableFieldInfo { Name = "tag", Json = "tag", TypeName = "uint8", Id = 0x56d7ab194448a4f3, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((PaddedRow)o).Tag; }, SetRaw = delegate(object o, int i, ulong r) { ((PaddedRow)o).Tag = unchecked((byte)r); }, MessageSlot = 5, Ordinal = 0, NativeOffset = 0, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (PaddedRow)o; value.Tag = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { byte v = unchecked((byte)raw); return (ulong)v; } },
+                new TableFieldInfo { Name = "value", Json = "value", TypeName = "float64", Id = 0x7ce4fd9430e80cea, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return TableDoubleToBits(((PaddedRow)o).Value); }, SetRaw = delegate(object o, int i, ulong r) { ((PaddedRow)o).Value = TableBitsToDouble(r); }, MessageSlot = 6, Ordinal = 1, NativeOffset = 8, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (PaddedRow)o; value.Value = 0.0; }, DefaultRaw = TableDoubleToBits(0.0), ClampRaw = delegate(ulong raw, TableReport r) { double v = TableBitsToDouble(raw); return TableDoubleToBits(v); } },
+                new TableFieldInfo { Name = "flag", Json = "flag", TypeName = "bool", Id = 0xd5f2d079088c0b17, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return ((PaddedRow)o).Flag ? 1ul : 0ul; }, SetRaw = delegate(object o, int i, ulong r) { ((PaddedRow)o).Flag = r != 0; }, MessageSlot = 7, Ordinal = 2, NativeOffset = 16, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (PaddedRow)o; value.Flag = false; }, DefaultRaw = false ? 1ul : 0ul },
+                new TableFieldInfo { Name = "id", Json = "id", TypeName = "uint32", Id = 0x08b72e07b55c3ac0, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((PaddedRow)o).Id; }, SetRaw = delegate(object o, int i, ulong r) { ((PaddedRow)o).Id = unchecked((uint)r); }, MessageSlot = 8, Ordinal = 3, NativeOffset = 20, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (PaddedRow)o; value.Id = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
+                new TableFieldInfo { Name = "label", Json = "label", TypeName = "string", Id = 0x39f7fcec8fcb623d, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 15, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate(object o) { return ((PaddedRow)o).Label; }, GetCount = delegate(object o) { return ((PaddedRow)o).LabelLength; }, SetCount = delegate(object o, int n) { ((PaddedRow)o).LabelLength = n; }, MessageSlot = 9, Ordinal = 4, NativeOffset = 24, NativeElementSize = 16, NativeCountOffset = 40, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (PaddedRow)o; Array.Clear(value.Label, 0, value.Label.Length); value.LabelLength = 0; } },
+                new TableFieldInfo { Name = "slots", Json = "slots", TypeName = "uint16", Id = 0xe68c2e6bb1ee5646, Kind = 7, IsArray = true, Counted = false, Optional = false, ArrayBound = 4, ElemWidth = 2, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((PaddedRow)o).Slots[i]; }, SetRaw = delegate(object o, int i, ulong r) { ((PaddedRow)o).Slots[i] = unchecked((ushort)r); }, MessageSlot = 10, Ordinal = 5, NativeOffset = 44, NativeElementSize = 2, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (PaddedRow)o; Array.Clear(value.Slots, 0, value.Slots.Length); }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { ushort v = unchecked((ushort)raw); return (ulong)v; } },
+                new TableFieldInfo { Name = "teams", Json = "teams", TypeName = "uint8", Id = 0xbaaeb048a5a8fa6d, Kind = 6, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)Team.Max, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Team", KeyName = delegate(ulong v) { return EnumNameTeam(v); }, KeyId = delegate(ulong v) { ulong id; TableEnumId((Team)v, out id); return id; }, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((PaddedRow)o).Teams.Slots[i]; }, SetRaw = delegate(object o, int i, ulong r) { ((PaddedRow)o).Teams.Slots[i] = unchecked((byte)r); }, MessageSlot = 11, Ordinal = 6, NativeOffset = 52, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (PaddedRow)o; Array.Clear(value.Teams.Slots, 0, value.Teams.Slots.Length); }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { byte v = unchecked((byte)raw); return (ulong)v; } },
+                new TableFieldInfo { Name = "counter", Json = "counter", TypeName = "int32", Id = 0x77976c7416517c63, Kind = 4, IsArray = false, Counted = false, Optional = true, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((PaddedRow)o).Counter; }, SetRaw = delegate(object o, int i, ulong r) { ((PaddedRow)o).Counter = unchecked((int)(long)r); }, GetPresent = delegate(object o) { return ((PaddedRow)o).CounterPresent; }, SetPresent = delegate(object o, bool p) { ((PaddedRow)o).CounterPresent = p; }, MessageSlot = 12, Ordinal = 7, NativeOffset = 56, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = 60, ResetField = delegate(object o) { var value = (PaddedRow)o; value.Counter = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate(ulong raw, TableReport r) { int v = unchecked((int)(long)raw); return (ulong)(long)v; } },
             };
             info.Reset = delegate(object o) { TableReset((PaddedRow)o); };
             info.Doc = TableDocNone;
@@ -662,13 +184,20 @@ namespace Blockdemo
             if (info != null) { return info; }
             info = new TableTypeInfo();
             info.Name = "PaddedFrame";
+            info.Id = 0xbf050ec6de1ec3e0ul;
             info.NumFields = 4;
+            info.Create = delegate { return new PaddedFrame(); };
+            info.StorageSize = 4136; info.StorageAlign = 8; info.RegionAlign = 8;
+            info.Variable = false;
+            info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+            info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+            info.BytesEdge = false; info.StringEdge = false;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "marker", Json = "marker", TypeName = "uint8", Id = 0x866f, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((PaddedFrame)o).Marker; }, SetRaw = delegate(object o, int i, ulong r) { ((PaddedFrame)o).Marker = unchecked((byte)r); } },
-                new TableFieldInfo { Name = "stamp", Json = "stamp", TypeName = "uint64", Id = 0x0dc6, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((PaddedFrame)o).Stamp; }, SetRaw = delegate(object o, int i, ulong r) { ((PaddedFrame)o).Stamp = unchecked((ulong)r); } },
-                new TableFieldInfo { Name = "rows", Json = "rows", TypeName = "PaddedRow", Id = 0x99af, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 64, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return PaddedRowTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((PaddedFrame)o).Rows[i]; }, GetCount = delegate(object o) { return ((PaddedFrame)o).RowsCount; }, SetCount = delegate(object o, int n) { ((PaddedFrame)o).RowsCount = n; } },
-                new TableFieldInfo { Name = "blob", Json = "blob", TypeName = "bytes", Id = 0xd316, Kind = 6, IsArray = true, Counted = true, Optional = false, ArrayBound = 12, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate(object o) { return ((PaddedFrame)o).Blob; }, GetCount = delegate(object o) { return ((PaddedFrame)o).BlobLength; }, SetCount = delegate(object o, int n) { ((PaddedFrame)o).BlobLength = n; } },
+                new TableFieldInfo { Name = "marker", Json = "marker", TypeName = "uint8", Id = 0xeddcb72b15486e77, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((PaddedFrame)o).Marker; }, SetRaw = delegate(object o, int i, ulong r) { ((PaddedFrame)o).Marker = unchecked((byte)r); }, MessageSlot = 1, Ordinal = 0, NativeOffset = 0, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (PaddedFrame)o; value.Marker = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { byte v = unchecked((byte)raw); return (ulong)v; } },
+                new TableFieldInfo { Name = "stamp", Json = "stamp", TypeName = "uint64", Id = 0xee7ba9ad45c64144, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((PaddedFrame)o).Stamp; }, SetRaw = delegate(object o, int i, ulong r) { ((PaddedFrame)o).Stamp = unchecked((ulong)r); }, MessageSlot = 2, Ordinal = 1, NativeOffset = 8, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (PaddedFrame)o; value.Stamp = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { ulong v = unchecked((ulong)raw); return (ulong)v; } },
+                new TableFieldInfo { Name = "rows", Json = "rows", TypeName = "PaddedRow", Id = 0xa3a7061ff10a8138, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 64, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return PaddedRowTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((PaddedFrame)o).Rows[i]; }, GetCount = delegate(object o) { return ((PaddedFrame)o).RowsCount; }, SetCount = delegate(object o, int n) { ((PaddedFrame)o).RowsCount = n; }, MessageSlot = 3, Ordinal = 2, NativeOffset = 16, NativeElementSize = 64, NativeCountOffset = 4112, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (PaddedFrame)o; for (int i = 0; i < value.Rows.Length; i++) { TableReset(value.Rows[i]); } value.RowsCount = 0; } },
+                new TableFieldInfo { Name = "blob", Json = "blob", TypeName = "bytes", Id = 0xc573b39bc29148ca, Kind = 6, IsArray = true, Counted = true, Optional = false, ArrayBound = 12, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate(object o) { return ((PaddedFrame)o).Blob; }, GetCount = delegate(object o) { return ((PaddedFrame)o).BlobLength; }, SetCount = delegate(object o, int n) { ((PaddedFrame)o).BlobLength = n; }, MessageSlot = 4, Ordinal = 3, NativeOffset = 4116, NativeElementSize = 12, NativeCountOffset = 4128, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (PaddedFrame)o; Array.Clear(value.Blob, 0, value.Blob.Length); value.BlobLength = 0; } },
             };
             info.Reset = delegate(object o) { TableReset((PaddedFrame)o); };
             info.Doc = TableDocNone;

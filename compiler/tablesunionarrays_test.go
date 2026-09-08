@@ -1,7 +1,5 @@
-// The cross-target gate on ARRAYS OF UNIONS (docs/SPEC-TABLES.md §2.6, §11):
-// the C++ reference carries `[N]U` and `[..N]U`, and every other target
-// refuses a table closure holding one BY NAME, pointing at the carrier. In
-// its own file so the construct's gate adds a file and edits no shared one.
+// The cross-target gate on arrays of unions: C++ and C# carry the fixed
+// shapes, and targets without them refuse the unit by name.
 package compiler
 
 import (
@@ -37,32 +35,26 @@ table Log
 }
 `
 
-// TestUnionArrayCarriers: --lang cpp emits the table sources for a unit
-// whose closure holds an array of unions; every other registered target
-// refuses the UNIT, naming the fields, the carrier and the flag that selects
+// TestUnionArraysCarriers: C++, C# and Go emit the table sources for a unit
+// whose closure holds an array of unions; targets without the form
+// refuse the UNIT, naming the fields, the carrier and the flag that selects
 // it — a fixed-class codec that never met the element must not be emitted.
-func TestUnionArrayCarriers(t *testing.T) {
+func TestUnionArraysCarriers(t *testing.T) {
 	u := unitFromSource(t, unionArraySrc)
 	c := New()
-	files, err := c.Generate(u, "cpp", Options{})
-	if err != nil {
-		t.Fatalf("--lang cpp refused an array of unions: %v", err)
-	}
-	if _, ok := files["ProbeTable.h"]; !ok {
-		t.Fatalf("--lang cpp emitted no ProbeTable.h for a unit with an array of unions; got %d files", len(files))
-	}
 	for _, target := range c.Targets() {
-		if target == "go" {
+		if target == "cpp" || target == "cs" || target == "go" {
 			files, err := c.Generate(u, target, Options{})
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("--lang %s refused the supported shape: %v", target, err)
 			}
-			if _, ok := files["ProbeTable.go"]; !ok {
-				t.Fatal("Go union-array wire source missing")
+			suffix := "h"
+			if target != "cpp" {
+				suffix = target
 			}
-			continue
-		}
-		if target == "cpp" {
+			if _, ok := files["ProbeTable."+suffix]; !ok {
+				t.Fatalf("--lang %s emitted no table source", target)
+			}
 			continue
 		}
 		t.Run(target, func(t *testing.T) {

@@ -16,20 +16,11 @@ type csTarget struct{}
 func (csTarget) Names() []string { return []string{"cs", "csharp"} }
 
 func (csTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
-	// Packet wide text is carried; table kind 33 remains refused.
+	// Wide text and declared value defaults are carried on both wires.
 	if err := refuseWideText(u, "cs"); err != nil {
 		return nil, err
 	}
-	if err := refuseUnported(u, "cs"); err != nil {
-		return nil, err
-	}
-	if err := refuseOptionalArrays(u, "cs"); err != nil {
-		return nil, err
-	}
-	if err := refuseMaps(u, "cs"); err != nil {
-		return nil, err
-	}
-	if err := refuseLists(u, "cs"); err != nil {
+	if err := refuseValueDefaults(u, "cs"); err != nil {
 		return nil, err
 	}
 	files, err := csharp.Generate(u)
@@ -37,7 +28,7 @@ func (csTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 		return nil, err
 	}
 	// units that declare tables ALSO get <Base>Table.cs per file — the
-	// TABLE-wire codecs, FIXED class (docs/SPEC-TABLES.md); a table-free unit's
+	// table-wire codecs and optional native surfaces; a table-free unit's
 	// output is byte-identical to what the packet emitter alone produces
 	tables, err := cstable.Generate(u)
 	if err != nil {
@@ -55,5 +46,8 @@ func (csTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 func init() {
 	registerPacketValueDefaultCarrier("cs")
 	registerWideTextCarrier("cs")
-	registerBuiltin(csTarget{}, true, false, false, false)
+	registerBuiltin(csTarget{}, true, true, true, false)
+	registerOptionalArrayCarrier("cs")
+	registerMapCarrier("cs")
+	registerListCarrier("cs")
 }
