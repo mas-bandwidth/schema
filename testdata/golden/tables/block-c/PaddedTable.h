@@ -1175,6 +1175,9 @@ typedef struct TableMessageReader {
  TableBitReader bits; const TableVocabulary * vocabulary; TableReport * report;
  int64_t index_bits; int extent_refused;
 } TableMessageReader;
+/* Framing scans skip by announced shape, including a reserved transport id
+   (kind 0, no extra bits). A NAME reference still refuses reserved ids.
+   Typed body reads diagnose reserved as malformed after resolving the entry. */
 static SCHEMA_UNUSED int table_message_ref(TableMessageReader * r,const TableMessageEntry ** entry,int name)
 {
  uint64_t ref=0;
@@ -1183,7 +1186,8 @@ static SCHEMA_UNUSED int table_message_ref(TableMessageReader * r,const TableMes
  if(ref==0)return 1;
  if(ref>(uint64_t)r->vocabulary->count)return 0;
  *entry=r->vocabulary->entries+ref-1;
- return (*entry)->id<UINT64_C(0xfffffffffffffffd) && (!name || (*entry)->kind==0);
+ if(name) return (*entry)->id<UINT64_C(0xfffffffffffffffd) && (*entry)->kind==0;
+ return 1;
 }
 static SCHEMA_UNUSED TableMessageEntry table_message_element(const TableMessageEntry * e)
 {
@@ -2142,6 +2146,7 @@ static SCHEMA_UNUSED int padded_row_load_message_body(TableMessageReader * r,Pad
  for(;;){const TableMessageEntry * entry;
  if(!table_message_ref(r,&entry,0))goto malformed;
  if(entry==NULL)return 1;
+ if(entry->id>=UINT64_C(0xfffffffffffffffd))goto malformed;
  switch(entry->id){
  case UINT64_C(0x56d7ab194448a4f3): {
  if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,6)){r->report->widened++;
@@ -2795,6 +2800,7 @@ static SCHEMA_UNUSED int padded_frame_load_message_body(TableMessageReader * r,P
  for(;;){const TableMessageEntry * entry;
  if(!table_message_ref(r,&entry,0))goto malformed;
  if(entry==NULL)return 1;
+ if(entry->id>=UINT64_C(0xfffffffffffffffd))goto malformed;
  switch(entry->id){
  case UINT64_C(0xeddcb72b15486e77): {
  if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,6)){r->report->widened++;

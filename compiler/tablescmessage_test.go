@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -284,4 +285,39 @@ func TestCTableAnnouncementFailureClearsEntries(t *testing.T) {
  {TableMessageEntry full[kTableMessageEntriesHere];int64_t at;size_t j;int failures=0;for(at=0;at<n;at++){memset(full,0,sizeof(full));v=table_vocabulary(full,kTableMessageEntriesHere);report=(TableReport){0};wire[at]^=0x80;
  if(!announce_read(&v,wire,n,&report)){failures++;for(j=0;j<sizeof(full);j++)if(((uint8_t *)full)[j])return 5;}wire[at]^=0x80;}if(!failures)return 6;}return 0;
  }`)
+}
+
+// A sizing scan follows announced framing even when a reserved transport id
+// occurs in a root body. Typed decoding still rejects that body as damage.
+// This is schema#749: C LoadMeasure used to stop at the reserved id (192)
+// while C++ / the oracle sized the batch (960).
+func TestCTableMessageMeasureReservedFraming(t *testing.T) {
+	paths, err := filepath.Glob("../tables/pointers/*.schema")
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := New().Load(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCTableWireProbe(t, u, `#include "GraphTable.h"
+#include <stdio.h>
+static const uint8_t wire[]={
+ 0x02,0x0c,0x01,0x00,0xa5,0x01,0x00,0x00,0x00,0xeb,0x04,0x00,0x00,0x00,0x28,0x01,
+ 0x61,0xcf,0x00,0xd6,0x11,0x00,0x00,0x00,0x10,0x66,0x70,0x00,0x74,0x6f,0x70,0x21,
+ 0x44,0x03,0x33,0x48,0x6c,0x65,0x66,0x74,0xc0,0x0c,0x16,0x72,0x69,0x67,0x68,0x74,
+ 0x00,0xcc,0xad,0x1b,0x6d,0x69,0x64,0x00,0x45,0x00,0x74,0x72,0x65,0x65,0x95,0xc0,
+ 0x90,0xc5,0xeb,0x00
+};
+int main(void){
+ TableMessageEntry entries[kTableMessageEntriesHere];TableVocabulary v=table_vocabulary(entries,kTableMessageEntriesHere);
+ TableReport report={0};const Scene * roots[256]={0};int64_t count=256,need;uint8_t * region;
+ if(!announce_read(&v,kTableAnnounce,kTableAnnounceBytes,&report))return 1;
+ need=scene_load_measure_messages(&v,wire,sizeof(wire));
+ if(need!=960){fprintf(stderr,"reserved framing extent %lld want 960\n",(long long)need);return 2;}
+ region=(uint8_t *)malloc((size_t)need);if(!region)return 3;
+ if(scene_load_messages(roots,&count,region,need,&v,wire,sizeof(wire),&report)||!report.malformed){free(region);return 4;}
+ free(region);return 0;
+}
+`)
 }

@@ -12,6 +12,9 @@ typedef struct TableMessageReader {
  TableBitReader bits; const TableVocabulary * vocabulary; TableReport * report;
  int64_t index_bits; int extent_refused;@NODES@
 } TableMessageReader;
+/* Framing scans skip by announced shape, including a reserved transport id
+   (kind 0, no extra bits). A NAME reference still refuses reserved ids.
+   Typed body reads diagnose reserved as malformed after resolving the entry. */
 static SCHEMA_UNUSED int table_message_ref(TableMessageReader * r,const TableMessageEntry ** entry,int name)
 {
  uint64_t ref=0;*entry=NULL;
@@ -19,7 +22,8 @@ static SCHEMA_UNUSED int table_message_ref(TableMessageReader * r,const TableMes
  if(ref==0)return 1;
  if(ref>(uint64_t)r->vocabulary->count)return 0;
  *entry=r->vocabulary->entries+ref-1;
- return (*entry)->id<UINT64_C(0xfffffffffffffffd) && (!name || (*entry)->kind==0);
+ if(name) return (*entry)->id<UINT64_C(0xfffffffffffffffd) && (*entry)->kind==0;
+ return 1;
 }
 static SCHEMA_UNUSED TableMessageEntry table_message_element(const TableMessageEntry * e)
 {
@@ -330,7 +334,7 @@ func (g *tableGen) emitMessageReadDeclarations(members []*ir.Struct, unions []*i
 }
 
 func (g *tableGen) emitMessageUnionRead(un *ir.Union) {
-	g.pf("static SCHEMA_UNUSED int %s(TableMessageReader * r,%s * value)\n{\n const TableMessageEntry * entry;\n %sif(!table_message_ref(r,&entry,0))goto malformed;value->type=0;if(entry==NULL)return 1;if(entry->kind==0)goto malformed;\n switch(entry->id){\n", g.unionWireName(un, "message_load"), un.Name, g.retainUnionDiscard())
+	g.pf("static SCHEMA_UNUSED int %s(TableMessageReader * r,%s * value)\n{\n const TableMessageEntry * entry;\n %sif(!table_message_ref(r,&entry,0))goto malformed;value->type=0;if(entry==NULL)return 1;if(entry->id>=UINT64_C(0xfffffffffffffffd)||entry->kind==0)goto malformed;\n switch(entry->id){\n", g.unionWireName(un, "message_load"), un.Name, g.retainUnionDiscard())
 	for ordinal, v := range un.Variants {
 		g.pf(" case UINT64_C(0x%016x): {\n", ir.TableWireId(v.WireName()))
 		g.messageAccept(v.F, ir.TableArmEntry(v), " ")
@@ -356,7 +360,7 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 	if g.retain {
 		g.pf(" TableRetainWalk body_keep=retention;table_retain_discard(retention,0,0);\n")
 	}
-	g.pf(" %s(value);for(;;){const TableMessageEntry * entry;\n if(!table_message_ref(r,&entry,0))goto malformed;if(entry==NULL)return 1;switch(entry->id){\n", g.api(st.Name, "reset"))
+	g.pf(" %s(value);for(;;){const TableMessageEntry * entry;\n if(!table_message_ref(r,&entry,0))goto malformed;if(entry==NULL)return 1;if(entry->id>=UINT64_C(0xfffffffffffffffd))goto malformed;switch(entry->id){\n", g.api(st.Name, "reset"))
 	for ordinal, f := range st.Fields {
 		g.pf(" case UINT64_C(0x%016x): {\n", ir.TableFieldWireId(f))
 		g.messageAccept(f, ir.TableFieldEntry(f), " ")
@@ -390,7 +394,7 @@ func (g *tableGen) emitMessageMapKeyRead(f *ir.Field) {
 	n, key := f.MapEntry.Name, ir.MapKeyField(f)
 	readType := g.sym(n, "key_read")
 	kind := ir.TableWireScalarKind(key)
-	g.pf("static SCHEMA_UNUSED %s %s(TableMessageReader * r)\n{\n %s out;memset(&out,0,sizeof(out));for(;;){const TableMessageEntry * entry;\n if(!table_message_ref(r,&entry,0))goto malformed;if(entry==NULL)return out;\n if(entry->id==UINT64_C(0x%016x)){\n", readType, g.sym(n, "message_key"), readType, ir.MapKeyWireId)
+	g.pf("static SCHEMA_UNUSED %s %s(TableMessageReader * r)\n{\n %s out;memset(&out,0,sizeof(out));for(;;){const TableMessageEntry * entry;\n if(!table_message_ref(r,&entry,0))goto malformed;if(entry==NULL)return out;if(entry->id>=UINT64_C(0xfffffffffffffffd))goto malformed;\n if(entry->id==UINT64_C(0x%016x)){\n", readType, g.sym(n, "message_key"), readType, ir.MapKeyWireId)
 	g.pf(" out.kind_bad=entry->kind!=%d && !table_kind_widens(entry->kind,%d);if(entry->kind!=%d && !out.kind_bad)out.widened=1;\n if(!out.kind_bad){\n", kind, kind, kind)
 	if key.Type.Kind == ir.TString {
 		g.pf(" uint64_t count;if(!table_bit_get(&r->bits,&count,table_bits_required(0,entry->max))||!table_bit_align_read(&r->bits)||!table_bit_has(&r->bits,(int64_t)count*8))goto malformed;\n out.key.data=(const char *)(r->bits.buffer+(r->bits.offset>>3));out.key.length=(int32_t)count;out.over=count>%d;\n if(!table_wire_utf8((const uint8_t *)out.key.data,count))goto malformed;r->bits.offset+=(int64_t)count*8;\n", key.Type.Size)
