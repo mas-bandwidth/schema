@@ -603,7 +603,7 @@ static const int64_t kRetainBatchCap = 256;
                 retains[i].ids = lists[i].data();                                                \
                 retains[i].id_capacity = (int32_t) lists[i].size();                              \
             }                                                                                    \
-            (void) short_buffer; /* no message row asks for the short rule yet */                \
+            (void) short_buffer; /* the loader refuses short on a message row (#681) */          \
             std::vector<uint8_t> region( (size_t) need + 16, 0 );                                \
             uint8_t * base = (uint8_t *) ( ( (uintptr_t) region.data() + 15 ) & ~(uintptr_t) 15 );\
             int64_t count = (int64_t) roots.size();                                              \

@@ -281,14 +281,16 @@ type Message struct {
 // names the announcement its references resolve against, and the SAVES are the
 // FILE form, one a body, back to back in body order, which is the one
 // direction retention crosses the forms, because a form-2 SaveRetain refuses by
-// name.
+// name. A message row's capacity is `full`: `short` is one buffer's rule, a
+// batch takes one buffer a body, and the loader refuses the pair by name
+// (schema#681).
 type RetainCase struct {
 	Name       string
 	Unit       string // the READER's unit; empty on a message row, which names a connection
 	Connection string // the announcement a message row resolves against
 	Root       string
 	Wire       string
-	Short      bool // the retention buffer is one byte short of the last record
+	Short      bool // the retention buffer is one byte short of the last record; never on a message row
 	Ids        int  // the caller's id-list entries; -1 is full
 	Load       RetainCounts
 	SaveLost   int      // the `retain_lost` the SAVE adds
@@ -453,6 +455,17 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 			switch f[5] {
 			case "full":
 			case "short":
+				// SHORT IS ONE BUFFER'S RULE, AND A BATCH TAKES ONE A BODY
+				// (docs/SPEC-TABLES.md §6.6, §3.3, schema#681). "One byte short
+				// of the last record" names a record of ONE port's ONE store,
+				// and the page states no rule for which body of a batch that
+				// record sits in. A message row that carried `short` would be
+				// answered by each leg's own reading of it, and the matrix
+				// would go red on the row rather than on a driver, so the
+				// loader refuses it by name until the page says what it means.
+				if rc.Message {
+					return nil, fmt.Errorf("%s: retain-message takes a full retention capacity; short is one buffer's rule and a batch takes one buffer a body (docs/SPEC-TABLES.md §6.6, §3.3)", where)
+				}
 				rc.Short = true
 			default:
 				return nil, fmt.Errorf("%s: %q is not a retention capacity; it is full or short", where, f[5])

@@ -12887,11 +12887,12 @@ inline bool RenderQuaternionLoadMessages( RenderQuaternion * values, int64_t * c
 // ---- retain-unknown on a FIXED-class root: refused by name (§6.6) ----
 //
 // A fixed-class root is a VALUE: no region, no node directory, and so no
-// anchor for a retained record's path. The three names are declared here so
-// that naming one is a refusal that says why, rather than a symbol a linker
-// could not find. The suffixes stay claimed on every closure member all the
-// same (§11): a table gains or loses pointers as an edit, and a name that is
-// free today must not become a collision tomorrow.
+// anchor for a retained record's path. The five names, the file form's three
+// and the message form's two (§3.3), are declared here so that naming one is
+// a refusal that says why, rather than a symbol a linker could not find. The
+// suffixes stay claimed on every closure member all the same (§11): a table
+// gains or loses pointers as an edit, and a name that is free today must not
+// become a collision tomorrow.
 //
 // NOTHING BETWEEN THESE TWO MARKERS IS MACHINERY. Each name is a function
 // template that defines nothing and instantiates nothing until it is called,
@@ -12903,252 +12904,420 @@ template <typename... Args>
 inline void RenderCameraLoadRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "RenderCamera is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "RenderCamera is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
 inline void RenderCameraMeasureRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "RenderCamera is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "RenderCamera is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
 inline void RenderCameraSaveRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "RenderCamera is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "RenderCamera is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void RenderCameraLoadRetainMessages( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "RenderCamera is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void RenderCameraSaveRetainMessages( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "RenderCamera is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
 inline void RenderShipLoadRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "RenderShip is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "RenderShip is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
 inline void RenderShipMeasureRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "RenderShip is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "RenderShip is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
 inline void RenderShipSaveRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "RenderShip is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "RenderShip is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void RenderShipLoadRetainMessages( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "RenderShip is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void RenderShipSaveRetainMessages( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "RenderShip is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
 inline void RenderTurretLoadRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "RenderTurret is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "RenderTurret is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
 inline void RenderTurretMeasureRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "RenderTurret is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "RenderTurret is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
 inline void RenderTurretSaveRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "RenderTurret is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "RenderTurret is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void RenderTurretLoadRetainMessages( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "RenderTurret is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void RenderTurretSaveRetainMessages( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "RenderTurret is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
 inline void RenderMissileLoadRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "RenderMissile is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "RenderMissile is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
 inline void RenderMissileMeasureRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "RenderMissile is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "RenderMissile is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
 inline void RenderMissileSaveRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "RenderMissile is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "RenderMissile is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void RenderMissileLoadRetainMessages( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "RenderMissile is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void RenderMissileSaveRetainMessages( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "RenderMissile is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
 inline void RenderDynamicPropLoadRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "RenderDynamicProp is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "RenderDynamicProp is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
 inline void RenderDynamicPropMeasureRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "RenderDynamicProp is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "RenderDynamicProp is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
 inline void RenderDynamicPropSaveRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "RenderDynamicProp is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "RenderDynamicProp is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void RenderDynamicPropLoadRetainMessages( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "RenderDynamicProp is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void RenderDynamicPropSaveRetainMessages( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "RenderDynamicProp is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
 inline void RenderStaticPropLoadRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "RenderStaticProp is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "RenderStaticProp is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
 inline void RenderStaticPropMeasureRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "RenderStaticProp is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "RenderStaticProp is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
 inline void RenderStaticPropSaveRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "RenderStaticProp is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "RenderStaticProp is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void RenderStaticPropLoadRetainMessages( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "RenderStaticProp is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void RenderStaticPropSaveRetainMessages( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "RenderStaticProp is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
 inline void RenderCosmeticPropLoadRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "RenderCosmeticProp is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "RenderCosmeticProp is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
 inline void RenderCosmeticPropMeasureRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "RenderCosmeticProp is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "RenderCosmeticProp is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
 inline void RenderCosmeticPropSaveRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "RenderCosmeticProp is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "RenderCosmeticProp is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void RenderCosmeticPropLoadRetainMessages( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "RenderCosmeticProp is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void RenderCosmeticPropSaveRetainMessages( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "RenderCosmeticProp is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
 inline void RenderLaserLoadRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "RenderLaser is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "RenderLaser is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
 inline void RenderLaserMeasureRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "RenderLaser is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "RenderLaser is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
 inline void RenderLaserSaveRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "RenderLaser is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "RenderLaser is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void RenderLaserLoadRetainMessages( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "RenderLaser is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void RenderLaserSaveRetainMessages( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "RenderLaser is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
 inline void RenderExplosionLoadRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "RenderExplosion is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "RenderExplosion is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
 inline void RenderExplosionMeasureRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "RenderExplosion is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "RenderExplosion is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
 inline void RenderExplosionSaveRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "RenderExplosion is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "RenderExplosion is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void RenderExplosionLoadRetainMessages( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "RenderExplosion is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void RenderExplosionSaveRetainMessages( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "RenderExplosion is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
 inline void RenderFrameLoadRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "RenderFrame is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "RenderFrame is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
 inline void RenderFrameMeasureRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "RenderFrame is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "RenderFrame is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
 inline void RenderFrameSaveRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "RenderFrame is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "RenderFrame is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void RenderFrameLoadRetainMessages( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "RenderFrame is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void RenderFrameSaveRetainMessages( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "RenderFrame is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
 inline void RenderVector3LoadRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "RenderVector3 is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "RenderVector3 is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
 inline void RenderVector3MeasureRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "RenderVector3 is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "RenderVector3 is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
 inline void RenderVector3SaveRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "RenderVector3 is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "RenderVector3 is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void RenderVector3LoadRetainMessages( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "RenderVector3 is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void RenderVector3SaveRetainMessages( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "RenderVector3 is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
 inline void RenderQuaternionLoadRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "RenderQuaternion is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "RenderQuaternion is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
 inline void RenderQuaternionMeasureRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "RenderQuaternion is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "RenderQuaternion is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 template <typename... Args>
 inline void RenderQuaternionSaveRetain( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "RenderQuaternion is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+        "RenderQuaternion is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void RenderQuaternionLoadRetainMessages( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "RenderQuaternion is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
+}
+
+template <typename... Args>
+inline void RenderQuaternionSaveRetainMessages( Args &&... )
+{
+    static_assert( sizeof...( Args ) == (size_t) -1,
+        "RenderQuaternion is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it." );
 }
 
 // ---- end of the fixed-class retain refusal ----
