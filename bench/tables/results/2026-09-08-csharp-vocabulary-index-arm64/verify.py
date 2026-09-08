@@ -29,6 +29,8 @@ def main():
     metadata = json.loads((here / "metadata.json").read_text())
     provenance = json.loads((here / "provenance.json").read_text())
     summary = json.loads((here / "summary.json").read_text())
+    record_bytes = provenance["corpus"]["bytes_per_record"]
+    record_count = provenance["corpus"]["records"]
     for name, expected in provenance["evidence_files_sha256"].items():
         require(sha(here / name) == expected, f"changed evidence: {name}")
 
@@ -40,7 +42,7 @@ def main():
             "changed pass dimensions")
     identities = {
         "lang": "cs", "bench": "bench_table", "iters": "400000",
-        "bytes_per_op": "2147", "runs": "1", "spread_pct": "0.00",
+        "bytes_per_op": str(record_bytes), "runs": "1", "spread_pct": "0.00",
         "corpus_id": "b51387f36d9b59c4", "family": "table", "linkage": "asm",
         "checks": "contract", "opt": "default", "inline": "unknown",
     }
@@ -60,7 +62,7 @@ def main():
                         float(row["min_msgs_per_sec"]) == float(row["max_msgs_per_sec"]),
                         f"invalid single-sample rate: {name}")
                 require(400000 / rate >= 0.2, f"sample under 200 ms: {name}")
-                require(abs(float(row["median_mb_per_sec"]) - rate * 2147 / 1024**2)
+                require(abs(float(row["median_mb_per_sec"]) - rate * record_bytes / 1024**2)
                         < 0.011, f"byte rate mismatch: {name}")
                 rows.append(dict(row, variant=variant, round=i))
     require(len(rows) == 28, "expected 28 data rows")
@@ -107,9 +109,11 @@ def main():
                 f"generated source hash mismatch: {variant}")
     golden = recorded(metadata["before_revision"], "testdata/wire/bench_table.bin")
     packed = recorded(metadata["before_revision"], "bench/corpus/variants/bench_table.variants.bin")
-    require(len(golden) == 2147 and len(packed) == 64 * 2147 and packed[:2147] == golden,
+    require(len(golden) == record_bytes and len(packed) == record_count * record_bytes and
+            packed[:record_bytes] == golden,
             "corpus dimensions or golden mismatch")
-    require(len({packed[i * 2147:(i + 1) * 2147] for i in range(64)}) == 64,
+    require(len({packed[i * record_bytes:(i + 1) * record_bytes]
+                 for i in range(record_count)}) == record_count,
             "corpus records are not distinct")
     corpus = {"bench_table.bin": golden, "bench_table.variants.bin": packed}
     value = 0xcbf29ce484222325
