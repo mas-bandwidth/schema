@@ -789,3 +789,21 @@ tables-c-message-negative-control:
 	@echo 'negative control: the wrong C message slot turns the independent wire comparison red'
 
 test-c tables-c: tables-c-message-negative-control
+
+.PHONY: tables-c-retain tables-c-retain-negative-control
+tables-c-retain: build/conformance-harness build/wire-fuzz-c build/wire-fuzz-c-asan
+	go test ./compiler -run '^TestCTableRetain' -count=1
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --retain --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-retain.bin
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --retain --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-retain-asan.bin
+
+tables-c-retain-negative-control:
+	@mkdir -p build/c-retain-negative
+	go run ./tools/sabotage -name retain-c-drop-field -out build/c-retain-negative/retain.gotext internal/codegen/ctable/retain.go
+	@printf '{"Replace":{"%s/internal/codegen/ctable/retain.go":"%s/build/c-retain-negative/retain.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/c-retain-negative/overlay.json
+	@if go test -count=1 -overlay=build/c-retain-negative/overlay.json ./compiler -run '^TestCTableRetainFile$$' > build/c-retain-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: silently dropped C retained field passed'; exit 1; fi
+	@grep -q -- '--- FAIL: TestCTableRetainFile' build/c-retain-negative/log
+	@grep -q -- 'report.retained==13' build/c-retain-negative/log
+	@echo 'C retention negative control: dropped field fails the public round-trip report'
+
+test-c tables-c: tables-c-retain tables-c-retain-negative-control

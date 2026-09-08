@@ -70,6 +70,7 @@
         "conformance-negative-control-c",
         "tables-c-wire-fuzz-negative-control",
         "tables-c-message-negative-control",
+        "tables-c-retain-negative-control",
         "conformance-negative-control-c-foreign",
         "conformance-negative-control-go",
         "conformance-negative-control-go-walk",
