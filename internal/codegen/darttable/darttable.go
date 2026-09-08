@@ -29,32 +29,11 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// table-wire kinds (docs/SPEC-TABLES.md §3) — the numbers are the wire's, not a
-// backend's, and they are duplicated from cpptable deliberately: a port that
-// derived them from the reference emitter's private helpers would break the
-// day the two files disagree, and this way a disagreement shows up in the
-// shared golden bytes instead.
-const (
-	tkBool   = 1
-	tkI8     = 2
-	tkI16    = 3
-	tkI32    = 4
-	tkI64    = 5
-	tkU8     = 6
-	tkU16    = 7
-	tkU32    = 8
-	tkU64    = 9
-	tkF32    = 10
-	tkF64    = 11
-	tkString = 12
-	tkTable  = 13
-	tkArray  = 14
-	tkUnion  = 15
-	// an ENUM-KEYED array body is its OWN kind (docs/SPEC-TABLES.md §3.2): the
-	// positional array body and the keyed one are incompatible, so a reader
-	// meeting the other must see a KIND MISMATCH and skip, never misdecode.
-	tkKeyed = 16
-)
+// tkU8 is the table-wire kind of a uint8 (docs/SPEC-TABLES.md §3), the one
+// kind the block emitter names by number: a string or bytes field's storage
+// row is a run of uint8 cells. The number is the wire's, duplicated from
+// cpptable deliberately, so a disagreement shows in the shared golden bytes.
+const tkU8 = 6
 
 func tableScalarKind(f *ir.Field) int { return ir.TableScalarKind(f) }
 
