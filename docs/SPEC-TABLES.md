@@ -10201,6 +10201,7 @@ in build version (§20.5).
   Open  TableFields  TableInfo
   FromJson  ToJson  ToJsonMeasure  Table
   MeasureMessages  SaveMessages  LoadMessages
+  LoadMessagesMeasure  SaveMessageBody  LoadMessageBody
   LoadRetain  MeasureRetain  SaveRetain  LoadRetainMessages  SaveRetainMessages
   LoadBodyRetain  MeasureBodyRetain  SaveBodyRetain  SaveBodyFieldsRetain
   MeasureWireRetain  SaveWireRetain  NodeBodyRetain
@@ -10209,10 +10210,16 @@ in build version (§20.5).
   The set is claimed for EVERY closure member, not only pointer-bearing
   ones: a table gains or loses pointers as an edit, and a name that was
   free yesterday must not become a collision tomorrow. That list is the
-  checker's own, and this section is held to it: the three lists here, 53, then
-  the block form's nine, then the C backend's seven, are `tableGeneratedVerbs`
-  entire, spelling for spelling and 69 in all, because a claim the page states
-  and the checker does not make is a name a user may take.
+  checker's own, and this section is held to it: the base, block and C-backend
+  suffix lists are `tableGeneratedVerbs` entire, spelling for spelling, because
+  a claim the page states and the checker does not make is a name a user may take.
+
+  Go spells message region sizing `<T>LoadMessagesMeasure(vocabulary, data)`
+  because its file sizing verb `<T>LoadMeasure(wire)` cannot be overloaded.
+  `<T>LoadMessages` takes a slice of values for a fixed root, or a slice of
+  root pointers plus one caller-owned region for a variable root. Its
+  `SaveMessageBody` and `LoadMessageBody` helpers are package-level functions,
+  so their suffixes are claimed too.
 
   **RETAIN-UNKNOWN'S TWELVE ARE THREE AND NINE** (§6.6). `LoadRetain`,
   `MeasureRetain` and `SaveRetain` are the SURFACE the feature owes this

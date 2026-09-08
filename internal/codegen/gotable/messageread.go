@@ -15,13 +15,18 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 		if f.Type.Optional {
 			g.pf("value.%sPresent=true\n", member(f))
 		}
-		g.pf("if widened {r.Report.Widened++}\n}\n")
+		if !st.IsMapEntry() || f.Name != "key" {
+			g.pf("if widened {r.Report.Widened++}\n")
+		} else {
+			g.pf("_ = widened\n")
+		}
+		g.pf("}\n")
 	}
 	g.pf("default:r.Report.Unknown++;if !tableMessageSkip(&r.Bits,r.Vocabulary,r.IndexBits,entry,0){r.Report.Malformed=true;return false}\n}}}\n")
 	if st.IsMapEntry() || ir.VariableTables(g.unit)[st.Name] {
 		return
 	}
-	g.pf("func %sLoadMessages(values []%s,vocabulary *TableVocabulary,data []byte,report *TableReport)(int64,bool) {if report==nil {var ignored TableReport;report=&ignored};r,count:=tableMessageBatchOpen(vocabulary,data,report);if count<0{return 0,false};if count>int64(len(values)){return count,tableMessageRefuse(report,\"batch_too_large\")};for i:=int64(0);i<count;i++ {if !%sLoadMessageBody(&r,&values[i]){return i,false}};return count,tableMessageBatchClose(&r)}\n", st.Name, g.storageName(st.Name), st.Name)
+	g.pf("func %sLoadMessages(values []%s,vocabulary *TableVocabulary,data []byte,report *TableReport)(int64,bool) {if report==nil {var ignored TableReport;report=&ignored};r,count:=tableMessageBatchOpen(vocabulary,data,report);defer func(){*report=r.Report}();if count<0{return 0,false};if count>int64(len(values)){return count,tableMessageRefuse(&r.Report,\"batch_too_large\")};for i:=int64(0);i<count;i++ {if !%sLoadMessageBody(&r,&values[i]){return i,false}};return count,tableMessageBatchClose(&r)}\n", st.Name, g.storageName(st.Name), st.Name)
 }
 func (g *tableGen) emitMessageCompatibility(f *ir.Field, mine ir.TableVocabularyEntry, entry, reset, ind string) {
 	g.pf("%swidened:=false;if %s.Shape.Kind!=%d||%s.Element.Kind!=%d {\n", ind, entry, mine.Kind, entry, mine.Shape.Elem)
@@ -37,10 +42,12 @@ func (g *tableGen) emitMessageCompatibility(f *ir.Field, mine ir.TableVocabulary
 func (g *tableGen) emitMessageReadValue(f *ir.Field, expr, entry, ind string) {
 	bad := "r.Report.Malformed=true;return false"
 	switch {
-	case f.IsMap(), f.IsList():
-		panic("message container read needs the region pass")
+	case f.IsMap():
+		g.emitMessageReadMap(f, expr, entry, ind)
+	case f.IsList():
+		g.emitMessageReadList(f, expr, entry, ind)
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
-		g.pf("%s{index,ok:=r.Bits.Get(r.IndexBits);if !ok||r.IndexBits<=0{%s};r.Nodes.Resolve(&%s,index,0x%016x,r.Report)}\n", ind, bad, expr, pointerTargetId(f))
+		g.pf("%s{index,ok:=r.Bits.Get(r.IndexBits);if !ok||r.IndexBits<=0{%s};r.Nodes.Resolve(&%s,index,0x%016x,&r.Report)}\n", ind, bad, expr, pointerTargetId(f))
 	case f.Type.Kind == ir.TString:
 		g.pf("%s{n,ok:=tableMessageCount(&r.Bits,%s.Shape);if !ok||!r.Bits.Align(){%s};start:=r.Bits.Offset/8;if !r.Bits.Skip(int64(n)*8){%s};text:=r.Bits.Buffer[start:start+int64(n)];if !tableUtf8Valid(text){%s};kept:=tableUtf8Clamp(text,min(int64(n),int64(%d)));if kept<int64(n){r.Report.Clamped++};clear(%s[:]);copy(%s[:],text[:kept]);%sLength=int32(kept)}\n", ind, entry, bad, bad, bad, f.Type.Size, expr, expr, expr)
 	case f.Type.Kind == ir.TBytes && !f.Type.Pointer:
@@ -61,6 +68,7 @@ func (g *tableGen) emitMessageReadValue(f *ir.Field, expr, entry, ind string) {
 			g.emitMessageCompatibility(v.F, mine, arm, expr+".Type="+un.Name+"TypeNone", ind+"\t")
 			g.pf("%s.Type=%sType%s\n", expr, un.Name, ir.GoExportName(v.Name))
 			if !v.Void() {
+				g.emitMessageArmReset(un, v, expr)
 				g.emitMessageReadValue(v.F, g.unionArmExpr(un, v, expr), arm, ind+"\t")
 			}
 			g.pf("if widened {r.Report.Widened++}\n}\n")
@@ -70,7 +78,7 @@ func (g *tableGen) emitMessageReadValue(f *ir.Field, expr, entry, ind string) {
 		g.pf("%s{ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok{%s};if ref==0{%s=%sNone}else{id,ok:=r.Vocabulary.Name(ref);if !ok{%s};if !%s.TableEnumValue(id){r.Report.Unknown++}}}\n", ind, bad, expr, f.Type.Name, bad, expr)
 	default:
 		scalar := g.nextWireWriter()
-		g.pf("%s{var raw [16]byte;if !tableMessageReadScalar(&r.Bits,%s.Shape,&raw){%s};%s:=TableReader{Buffer:raw[:],Report:r.Report}\n", ind, entry, bad, scalar)
+		g.pf("%s{var raw [16]byte;if !tableMessageReadScalar(&r.Bits,%s.Shape,&raw){%s};%s:=TableReader{Buffer:raw[:],Report:&r.Report}\n", ind, entry, bad, scalar)
 		g.emitReadScalar(f, expr, scalar, entry+".Shape.Kind", ind+"\t", bad)
 		g.pf("%s}\n", ind)
 	}

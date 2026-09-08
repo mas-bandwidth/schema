@@ -197,8 +197,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			g.emitTableSave(st)
 			g.emitTableRead(st)
 			g.emitMessageWrite(st)
-			if !ir.VariableTables(u)[st.Name] {
-				g.emitMessageRead(st)
+			g.emitMessageRead(st)
+			if regional {
+				g.emitRegionMessage(st)
 			}
 			if regional {
 				g.emitRegionMember(st)
@@ -564,6 +565,8 @@ type TableTypeInfo struct {
  NodeType func(uint64)*TableTypeInfo
  SaveBody func(*TableWriter, unsafe.Pointer) bool
  LoadBody func(TableReader, unsafe.Pointer) bool
+ SaveMessageBody func(*TableMessageWriter,unsafe.Pointer) bool
+ LoadMessageBody func(TableMessageReader,unsafe.Pointer)(TableMessageReader,bool)
 	NumFields int32
 	Fields    []TableFieldInfo
 	// Reset puts one instance back at its declared defaults, in place. A

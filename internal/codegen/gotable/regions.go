@@ -29,6 +29,8 @@ func pointerTargetId(f *ir.Field) uint64 {
 }
 func (g *tableGen) typeCodecColumns(st *ir.Struct) string {
 	columns := fmt.Sprintf(", Id:0x%016x, Variable:%v, SaveBody:func(w *TableWriter,p unsafe.Pointer) bool { return %sSaveBody(w,(*%s)(p)) }, LoadBody:func(r TableReader,p unsafe.Pointer) bool { return %sLoadBody(&r,(*%s)(p)) }", ir.TableWireId(st.WireName()), ir.VariableTables(g.unit)[st.Name], st.Name, g.storageName(st.Name), st.Name, g.storageName(st.Name))
+	columns += fmt.Sprintf(", SaveMessageBody:func(w *TableMessageWriter,p unsafe.Pointer)bool{return %sSaveMessageBody(w,(*%s)(p))},LoadMessageBody:func(r TableMessageReader,p unsafe.Pointer)(TableMessageReader,bool){ok:=%sLoadMessageBody(&r,(*%s)(p));return r,ok}", st.Name, g.storageName(st.Name), st.Name, g.storageName(st.Name))
+
 	if g.regional && ir.VariableTables(g.unit)[st.Name] {
 		var nodes strings.Builder
 		nodes.WriteString(", NodeType:func(id uint64)*TableTypeInfo{switch id {")

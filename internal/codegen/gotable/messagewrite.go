@@ -77,7 +77,7 @@ func (g *tableGen) emitMessageValue(f *ir.Field, entry ir.TableVocabularyEntry, 
 	switch {
 	case f.IsList() || f.IsMap():
 		desc := g.mapDescriptor(f)
-		g.pf("%sw.Put(uint64(%s.Count),32);field:=%s;cursor:=tableMapCursor((*tableContainer)(unsafe.Pointer(&%s)),field,w.Numbering.arena);defer cursor.Release();for i:=int32(0);i<%s.Count;i++ {p:=(*%s)(cursor.Next());if p==nil{return false}\n", ind, expr, desc, expr, expr, containerElementType(g.unit, f))
+		g.pf("%sw.Put(uint64(%s.Count),32);field:=%s;if field.Kind==6{w.Align()};cursor:=tableMapCursor((*tableContainer)(unsafe.Pointer(&%s)),field,w.Numbering.arena);defer cursor.Release();for i:=int32(0);i<%s.Count;i++ {p:=(*%s)(cursor.Next());if p==nil{return false}\n", ind, expr, desc, expr, expr, containerElementType(g.unit, f))
 		e := messageElement(f)
 		if f.IsMap() {
 			e = &ir.Field{Type: ir.FieldType{Kind: ir.TNamed, Name: f.MapEntry.Name, Ref: f.MapEntry}}

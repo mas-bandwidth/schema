@@ -2,15 +2,18 @@ package main
 
 import (
 	"backenddemo"
+	"blobdemo"
 	"fmt"
+	"graphdemo"
 	"os"
 	"vocab9demo"
 	"vocabdemo"
 )
 
 type messageCodec struct {
-	unit, root string
-	run        func([]byte, []byte, bool) ([]byte, report, bool)
+	unit, root  string
+	run         func([]byte, []byte, bool) ([]byte, report, bool)
+	loadMeasure func([]byte) int64
 }
 
 func messageRow[T, R, V any](unit, root string, reset func(*T), fresh func() *V, announceMeasure func() int64, announce func([]byte) int64, announceRead func(*V, []byte, *R) bool, load func([]T, *V, []byte, *R) (int64, bool), measure func([]*T) int64, save func([]*T, []byte, *R) int64, snap func(*R) report) messageCodec {
@@ -20,7 +23,7 @@ func messageRow[T, R, V any](unit, root string, reset func(*T), fresh func() *V,
 	for i := range values {
 		pointers[i] = &values[i]
 	}
-	return messageCodec{unit, root, func(announcement, wire []byte, fuzz bool) ([]byte, report, bool) {
+	return messageCodec{unit: unit, root: root, run: func(announcement, wire []byte, fuzz bool) ([]byte, report, bool) {
 		var r R
 		v := own
 		if announcement != nil {
@@ -111,6 +114,20 @@ func surfaceMessage(lines []line, out string) error {
 }
 
 var messageCodecs = []messageCodec{
+	regionMessageRow("blobdemo", "Catalog", func() *blobdemo.TableVocabulary {
+		v := new(blobdemo.TableVocabulary)
+		v.Init(make([]blobdemo.TableMessageEntry, blobdemo.TableMessageEntriesHere))
+		return v
+	}, blobdemo.AnnounceMeasure, blobdemo.Announce, blobdemo.AnnounceRead, blobdemo.CatalogLoadMessagesMeasure, blobdemo.CatalogLoadMessages, blobdemo.CatalogMeasureMessages, blobdemo.CatalogSaveMessages, func(r *blobdemo.TableReport) report {
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == blobdemo.TableOpenRefused}
+	}),
+	regionMessageRow("graphdemo", "Scene", func() *graphdemo.TableVocabulary {
+		v := new(graphdemo.TableVocabulary)
+		v.Init(make([]graphdemo.TableMessageEntry, graphdemo.TableMessageEntriesHere))
+		return v
+	}, graphdemo.AnnounceMeasure, graphdemo.Announce, graphdemo.AnnounceRead, graphdemo.SceneLoadMessagesMeasure, graphdemo.SceneLoadMessages, graphdemo.SceneMeasureMessages, graphdemo.SceneSaveMessages, func(r *graphdemo.TableReport) report {
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == graphdemo.TableOpenRefused}
+	}),
 	messageRow("backenddemo", "LoginRequest", backenddemo.LoginRequestReset, func() *backenddemo.TableVocabulary {
 		v := new(backenddemo.TableVocabulary)
 		v.Init(make([]backenddemo.TableMessageEntry, backenddemo.TableMessageEntriesHere))

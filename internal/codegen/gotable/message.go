@@ -45,6 +45,7 @@ func tableMessageRuntime(u *ir.Unit) string {
 	if len(variableTableNames(u)) > 0 {
 		runtime = strings.Replace(runtime, "type TableMessageReader struct {", "type TableMessageReader struct { Nodes TableNodeMap;", 1)
 		runtime += "\ntype TableMessageWriter struct { TableBitWriter; IndexBits int64; Numbering *TableNumbering }\n"
+		runtime += tableMessageRegionRuntime(u)
 	} else {
 		runtime += "\ntype TableMessageWriter struct { TableBitWriter; IndexBits int64 }\n"
 	}
@@ -141,7 +142,7 @@ func tableMessageReadScalar(r *TableBitReader,s TableMessageShape,out *[16]byte)
 func tableMessageWriteScalar(w *TableBitWriter,s TableMessageShape,lo,hi uint64) {
  if s.Packing==1 {borrow:=uint64(0);if lo<s.Base[0]{borrow=1};lo-=s.Base[0];hi-=s.Base[1]+borrow};if s.Packing==2 {value:=math.Float32frombits(uint32(lo));ratio:=float32((value-s.QMin)/s.QDelta);if !(ratio>=0){ratio=0}else if !(ratio<=1){ratio=1};scaled:=float32(ratio*float32(s.QCount));lo=uint64(min(uint32(math.Floor(float64(float32(scaled+0.5)))),s.QCount))};w.Put(lo,min(s.Bits,64));if s.Bits>64{w.Put(hi,s.Bits-64)}
 }
-type TableMessageReader struct { Bits TableBitReader; Vocabulary *TableVocabulary; Report *TableReport; IndexBits int64 }
-func tableMessageBatchOpen(v *TableVocabulary,data []byte,report *TableReport)(TableMessageReader,int64) {r:=TableMessageReader{Vocabulary:v,Report:report};if len(data)==0{report.Malformed=true;return r,-1};if data[0]!=2{tableMessageRefuse(report,"newer_form");return r,-1};if !v.Announced {tableMessageRefuse(report,"no_vocabulary");return r,-1};if len(data)<2{report.Malformed=true;return r,-1};r.Bits.Buffer=data[2:];return r,int64(data[1])+1}
+type TableMessageReader struct { Bits TableBitReader; Vocabulary *TableVocabulary; Report TableReport; IndexBits int64 }
+func tableMessageBatchOpen(v *TableVocabulary,data []byte,report *TableReport)(TableMessageReader,int64) {r:=TableMessageReader{Vocabulary:v,Report:*report};defer func(){*report=r.Report}();if len(data)==0{r.Report.Malformed=true;return r,-1};if data[0]!=2{tableMessageRefuse(&r.Report,"newer_form");return r,-1};if v==nil||!v.Announced {tableMessageRefuse(&r.Report,"no_vocabulary");return r,-1};if len(data)<2{r.Report.Malformed=true;return r,-1};r.Bits.Buffer=data[2:];return r,int64(data[1])+1}
 func tableMessageBatchClose(r *TableMessageReader)bool {if !r.Bits.Align()||r.Bits.Offset!=int64(len(r.Bits.Buffer))*8 {r.Report.Malformed=true;return false};return true}
 `

@@ -87,7 +87,12 @@ func wireFuzz() error {
 		saved := int64(-1)
 		var buffer []byte
 		if m := messages[index]; m != nil {
-			buffer, rep, _ = m.run(nil, wire, true)
+			var available bool
+			buffer, rep, available = m.run(nil, wire, true)
+			if m.loadMeasure != nil {
+				regionBytes = m.loadMeasure(wire)
+				loaded = available
+			}
 			if buffer != nil {
 				saved = int64(len(buffer))
 			}
