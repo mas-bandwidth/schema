@@ -1,0 +1,25 @@
+package csview
+
+enum Lonely { Alpha, Beta }
+
+flags Marks { One, Two }
+
+/// A type no table reaches.
+type Orphan | inspected
+{
+    grade Lonely
+    marks Marks
+    label string(8)
+    slots [Lonely]int32
+}
+
+type Reached
+{
+    hits int32
+}
+
+table Root
+{
+    reached Reached
+    count   int32
+}

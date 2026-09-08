@@ -53,8 +53,8 @@ func TestListsAreRefusedByNonCarriers(t *testing.T) {
 
 // TestListCarriers keeps the advertised targets in step with their codecs.
 func TestListCarriers(t *testing.T) {
-	if !slices.Equal(listTargets, []string{"c", "cpp"}) {
-		t.Fatalf("listTargets = %v, want [c cpp]", listTargets)
+	if !slices.Equal(listTargets, []string{"c", "cpp", "cs"}) {
+		t.Fatalf("listTargets = %v, want [c cpp cs]", listTargets)
 	}
 }
 
@@ -95,7 +95,7 @@ func TestListRefusalNamesTheCarrier(t *testing.T) {
 	if err == nil {
 		t.Fatalf("refuseLists accepted a list-bearing unit for a non-carrier")
 	}
-	for _, want := range []string{"a []T is c and cpp only today", "Save.placements", "--lang cpp"} {
+	for _, want := range []string{"a []T is c, cpp and cs only today", "Save.placements", "--lang cpp"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the carrier-form refusal does not name %q: %v", want, err)
 		}

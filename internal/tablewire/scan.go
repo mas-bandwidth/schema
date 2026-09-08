@@ -43,22 +43,22 @@ func nodeRecordTypes(body []byte, ids []uint64) (types []uint64, whole bool) {
 	return types, true
 }
 
-// NodeRecord describes the framing of one file-form node. A blob's length
-// contributes storage even though its reserved type has no table descriptor.
-type NodeRecord struct {
+// FileNodeRecord is a framed record before decoding its body. Length is needed
+// to account for blob storage; a type ID alone does not determine that storage.
+type FileNodeRecord struct {
 	TypeId uint64
 	Length int64
 }
 
-// NodeRecords exposes the same authoritative scan as NodeRecordTypes, with
-// lengths for consumers that measure blob storage without decoding values.
-func NodeRecords(data []byte) (out []NodeRecord, whole bool) {
+// FileNodeRecords returns the authoritative file node-table scan. It allocates
+// from records actually framed, never from the untrusted declared count.
+func FileNodeRecords(data []byte) ([]FileNodeRecord, bool) {
 	body, ids, ok := trailer(data)
-	if len(data) < 1 || data[0] != ir.TableWireForm || !ok {
+	if len(data) == 0 || data[0] != ir.TableWireForm || !ok {
 		return nil, false
 	}
-	var ignored tabletext.Report
-	payload, present, framed := nodeTableBytes(body, ids, &ignored)
+	var report tabletext.Report
+	payload, present, framed := nodeTableBytes(body, ids, &report)
 	if !present {
 		return nil, true
 	}
@@ -69,8 +69,9 @@ func NodeRecords(data []byte) (out []NodeRecord, whole bool) {
 	if !scanned {
 		return nil, false
 	}
-	for _, record := range records {
-		out = append(out, NodeRecord{TypeId: record.TypeId, Length: int64(len(record.Body))})
+	out := make([]FileNodeRecord, len(records))
+	for i, record := range records {
+		out[i] = FileNodeRecord{TypeId: record.TypeId, Length: int64(len(record.Body))}
 	}
 	return out, true
 }

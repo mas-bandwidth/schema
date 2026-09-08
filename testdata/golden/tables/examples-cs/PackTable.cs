@@ -40,7 +40,7 @@ namespace Tabledemo
     public sealed class GlobalSettings
     {
         public uint TickRate = 60;
-        public Difficulty Difficulty = Difficulty.Normal;
+        public Difficulty Difficulty = global::Tabledemo.Difficulty.Normal;
         public byte[] BuildNote = new byte[48]; // string(48): max length, used length beside it
         public int BuildNoteLength;
         public float[] SpawnDelays = new float[3];
@@ -75,56 +75,54 @@ namespace Tabledemo
     // one slice per generated file.
     public static partial class Schema
     {
-        // ShipType on the TABLE wire: a value rides as the u16 hash of its VARIANT
+        // ShipType on the TABLE wire: a value rides as the 64-bit hash of its VARIANT
         // NAME, so a variant may be added anywhere, removed, or reordered and old
-        // data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.
-        public static bool TableEnumId(ShipType value, out ushort id)
+        // data still reads (docs/SPEC-TABLES.md §5). None rides as reference zero.
+        public static bool TableEnumId(ShipType value, out ulong id)
         {
             switch (value)
             {
                 case ShipType.None: id = 0; return true;
-                case ShipType.Fighter: id = 0x412b; return true;
-                case ShipType.Bomber: id = 0xb7ce; return true;
-                case ShipType.Scout: id = 0xd97a; return true;
+                case ShipType.Fighter: id = 0xd011f7c3c15285c2; return true;
+                case ShipType.Bomber: id = 0xa8216aa1c554cb8a; return true;
+                case ShipType.Scout: id = 0x7d573c625719c1a5; return true;
                 default: id = 0; return false; // no variant names this value: no wire identity
             }
         }
 
-        public static bool TableEnumValue(ushort id, out ShipType value)
+        public static bool TableEnumValue(ulong id, out ShipType value)
         {
             switch (id)
             {
-                case 0: value = ShipType.None; return true;
-                case 0x412b: value = ShipType.Fighter; return true;
-                case 0xb7ce: value = ShipType.Bomber; return true;
-                case 0xd97a: value = ShipType.Scout; return true;
+                case 0xd011f7c3c15285c2: value = ShipType.Fighter; return true;
+                case 0xa8216aa1c554cb8a: value = ShipType.Bomber; return true;
+                case 0x7d573c625719c1a5: value = ShipType.Scout; return true;
                 default: value = ShipType.None; return false; // an id this build cannot name
             }
         }
 
-        // Difficulty on the TABLE wire: a value rides as the u16 hash of its VARIANT
+        // Difficulty on the TABLE wire: a value rides as the 64-bit hash of its VARIANT
         // NAME, so a variant may be added anywhere, removed, or reordered and old
-        // data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.
-        public static bool TableEnumId(Difficulty value, out ushort id)
+        // data still reads (docs/SPEC-TABLES.md §5). None rides as reference zero.
+        public static bool TableEnumId(Difficulty value, out ulong id)
         {
             switch (value)
             {
                 case Difficulty.None: id = 0; return true;
-                case Difficulty.Easy: id = 0x7d08; return true;
-                case Difficulty.Normal: id = 0x7fac; return true;
-                case Difficulty.Hard: id = 0xc313; return true;
+                case Difficulty.Easy: id = 0x483d9e6c1ccd1f9b; return true;
+                case Difficulty.Normal: id = 0x9ff3121d30f88d52; return true;
+                case Difficulty.Hard: id = 0x58c7b5d87587287c; return true;
                 default: id = 0; return false; // no variant names this value: no wire identity
             }
         }
 
-        public static bool TableEnumValue(ushort id, out Difficulty value)
+        public static bool TableEnumValue(ulong id, out Difficulty value)
         {
             switch (id)
             {
-                case 0: value = Difficulty.None; return true;
-                case 0x7d08: value = Difficulty.Easy; return true;
-                case 0x7fac: value = Difficulty.Normal; return true;
-                case 0xc313: value = Difficulty.Hard; return true;
+                case 0x483d9e6c1ccd1f9b: value = Difficulty.Easy; return true;
+                case 0x9ff3121d30f88d52: value = Difficulty.Normal; return true;
+                case 0x58c7b5d87587287c: value = Difficulty.Hard; return true;
                 default: value = Difficulty.None; return false; // an id this build cannot name
             }
         }
@@ -141,113 +139,32 @@ namespace Tabledemo
 
         public static long GunnerSettingsMeasure(GunnerSettings value)
         {
-            long bytes = 2; // terminator
-            if (value.Reaction != 0.2f) { bytes += 3 + 4; } // reaction
-            if (value.Tracking != false) { bytes += 3 + 1; } // tracking
-            if (value.CallsignLength < 0 || value.CallsignLength > 24) { return -1; } // storage invariant
-            if (value.CallsignLength > 0) { bytes += 3 + 4 + value.CallsignLength; } // callsign
-            return bytes;
-        }
-
-        public static bool GunnerSettingsSaveBody(ref TableWriter w, GunnerSettings value)
-        {
-            if (value.Reaction != 0.2f)
-            {
-                w.Put16(0x900f); w.Put8(10); // reaction
-                w.Put32(TableFloatToBits(value.Reaction));
-            }
-            if (value.Tracking != false)
-            {
-                w.Put16(0x53d5); w.Put8(1); // tracking
-                w.Put8(value.Tracking ? (byte)1 : (byte)0);
-            }
-            if (value.CallsignLength < 0 || value.CallsignLength > 24) { return false; } // storage invariant
-            if (value.CallsignLength > 0)
-            {
-                w.Put16(0x74dc); w.Put8(12); // callsign
-                w.Put32((uint)value.CallsignLength);
-                w.Raw(new ReadOnlySpan<byte>(value.Callsign, 0, value.CallsignLength));
-            }
-            w.Put16(0); // terminator
-            return !w.Overflow;
+            Span<ulong> ids = stackalloc ulong[155];
+            return TableWire.Save(value, GunnerSettingsTableType(), Span<byte>.Empty, ids, true);
         }
 
         public static long GunnerSettingsSave(GunnerSettings value, Span<byte> buffer)
         {
-            TableWriter w = new TableWriter(buffer);
-            if (!GunnerSettingsSaveBody(ref w, value)) { return -1; }
-            return w.Offset; // == GunnerSettingsMeasure(value)
+            Span<ulong> ids = stackalloc ulong[155];
+            return TableWire.Save(value, GunnerSettingsTableType(), buffer, ids, false);
         }
 
-        public static bool GunnerSettingsLoadBody(ref TableReader r, GunnerSettings value)
+        public static TableWire.Verdict GunnerSettingsLoadVerdict(GunnerSettings value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReset(value); // restore declared defaults in place, then overlay
-            for (;;)
-            {
-                if (!r.Has(2)) { r.Report.Malformed = true; return false; }
-                ushort fieldId = r.Get16();
-                if (fieldId == 0) { return true; }
-                if (!r.Has(1)) { r.Report.Malformed = true; return false; }
-                byte kind = r.Get8();
-                switch (fieldId)
-                {
-                    case 0x900f: // reaction
-                    {
-                        if (kind != 10)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        value.Reaction = TableBitsToFloat(r.Get32());
-                        break;
-                    }
-                    case 0x53d5: // tracking
-                    {
-                        if (kind != 1)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(1)) { r.Report.Malformed = true; return false; }
-                        value.Tracking = r.Get8() != 0;
-                        break;
-                    }
-                    case 0x74dc: // callsign
-                    {
-                        if (kind != 12)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        uint len = r.Get32();
-                        if (!r.Has(len)) { r.Report.Malformed = true; return false; }
-                        uint keep = len;
-                        if (keep > 24) { keep = 24; r.Report.Clamped++; }
-                        r.Buffer.Slice(r.Offset, (int)keep).CopyTo(new Span<byte>(value.Callsign, 0, (int)keep));
-                        value.CallsignLength = (int)keep;
-                        r.Offset += (int)len;
-                        break;
-                    }
-                    default:
-                    {
-                        r.Report.Unknown++;
-                        if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                        break;
-                    }
-                }
-            }
+            return TableWire.Load(value, GunnerSettingsTableType(), bytes, report);
         }
 
         public static bool GunnerSettingsLoad(GunnerSettings value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReader r = new TableReader(bytes, report != null ? report : new TableReport());
-            return GunnerSettingsLoadBody(ref r, value);
+            return GunnerSettingsLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
+
+        public static long GunnerSettingsMeasureMessages(GunnerSettings[] values) { return TableWire.MessageSave(values, GunnerSettingsTableType(), Span<byte>.Empty, true); }
+        public static long GunnerSettingsSaveMessages(GunnerSettings[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, GunnerSettingsTableType(), bytes, false); }
+        public static TableWire.Verdict GunnerSettingsLoadMessages(GunnerSettings[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, GunnerSettingsTableType(), bytes, vocabulary, report, out count); }
+
+        public static long GunnerSettingsCookMeasure(GunnerSettings value) { return TableWire.Cook(value, GunnerSettingsTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
+        public static bool GunnerSettingsCook(GunnerSettings value, Span<byte> bytes, TableByteOrder order = TableByteOrder.Little) { return TableWire.Cook(value, GunnerSettingsTableType(), bytes, order, false) >= 0; }
 
         // TableReset(ShipEntry) restores ShipEntry's declared defaults in place, reusing every
         // buffer the value already owns. The reader calls it before overlaying.
@@ -265,204 +182,32 @@ namespace Tabledemo
 
         public static long ShipEntryMeasure(ShipEntry value)
         {
-            long bytes = 2; // terminator
-            if (value.DisplayNameLength < 0 || value.DisplayNameLength > 32) { return -1; } // storage invariant
-            if (value.DisplayNameLength > 0) { bytes += 3 + 4 + value.DisplayNameLength; } // display_name
-            if (value.Health != 100.0f) { bytes += 3 + 4; } // health
-            if (value.Mass != 1.0f) { bytes += 3 + 4; } // mass
-            if (value.HardpointsCount < 0 || value.HardpointsCount > 4) { return -1; } // storage invariant
-            if (value.HardpointsCount > 0)
-            {
-                bytes += 3 + 4 + 5 + (long)value.HardpointsCount * 4; // hardpoints
-            }
-            if (value.GunnerPresent) // ?GunnerSettings: presence decides, not content
-            {
-                long body = GunnerSettingsMeasure(value.Gunner);
-                if (body < 0) { return -1; }
-                bytes += 3 + 4 + body; // gunner
-            }
-            return bytes;
-        }
-
-        public static bool ShipEntrySaveBody(ref TableWriter w, ShipEntry value)
-        {
-            if (value.DisplayNameLength < 0 || value.DisplayNameLength > 32) { return false; } // storage invariant
-            if (value.DisplayNameLength > 0)
-            {
-                w.Put16(0xcb8b); w.Put8(12); // display_name
-                w.Put32((uint)value.DisplayNameLength);
-                w.Raw(new ReadOnlySpan<byte>(value.DisplayName, 0, value.DisplayNameLength));
-            }
-            if (value.Health != 100.0f)
-            {
-                w.Put16(0x8617); w.Put8(10); // health
-                w.Put32(TableFloatToBits(value.Health));
-            }
-            if (value.Mass != 1.0f)
-            {
-                w.Put16(0xe7a6); w.Put8(10); // mass
-                w.Put32(TableFloatToBits(value.Mass));
-            }
-            if (value.HardpointsCount < 0 || value.HardpointsCount > 4) { return false; } // storage invariant
-            if (value.HardpointsCount > 0)
-            {
-                w.Put16(0xc4b2); w.Put8(14); // hardpoints
-                int lenAt = w.Offset; w.Put32(0);
-                w.Put8(4); w.Put32((uint)value.HardpointsCount);
-                for (int i = 0; i < value.HardpointsCount; i++)
-                {
-                    w.Put32(unchecked((uint)(value.Hardpoints[i])));
-                }
-                w.Patch32(lenAt, (uint)(w.Offset - lenAt - 4));
-            }
-            if (value.GunnerPresent) // ?GunnerSettings
-            {
-                long body = GunnerSettingsMeasure(value.Gunner);
-                if (body < 0) { return false; } // storage invariant, refused as measure refuses it
-                w.Put16(0x2bc9); w.Put8(13); // gunner
-                w.Put32((uint)body);
-                if (!GunnerSettingsSaveBody(ref w, value.Gunner)) { return false; }
-            }
-            w.Put16(0); // terminator
-            return !w.Overflow;
+            Span<ulong> ids = stackalloc ulong[155];
+            return TableWire.Save(value, ShipEntryTableType(), Span<byte>.Empty, ids, true);
         }
 
         public static long ShipEntrySave(ShipEntry value, Span<byte> buffer)
         {
-            TableWriter w = new TableWriter(buffer);
-            if (!ShipEntrySaveBody(ref w, value)) { return -1; }
-            return w.Offset; // == ShipEntryMeasure(value)
+            Span<ulong> ids = stackalloc ulong[155];
+            return TableWire.Save(value, ShipEntryTableType(), buffer, ids, false);
         }
 
-        public static bool ShipEntryLoadBody(ref TableReader r, ShipEntry value)
+        public static TableWire.Verdict ShipEntryLoadVerdict(ShipEntry value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReset(value); // restore declared defaults in place, then overlay
-            for (;;)
-            {
-                if (!r.Has(2)) { r.Report.Malformed = true; return false; }
-                ushort fieldId = r.Get16();
-                if (fieldId == 0) { return true; }
-                if (!r.Has(1)) { r.Report.Malformed = true; return false; }
-                byte kind = r.Get8();
-                switch (fieldId)
-                {
-                    case 0xcb8b: // display_name
-                    {
-                        if (kind != 12)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        uint len = r.Get32();
-                        if (!r.Has(len)) { r.Report.Malformed = true; return false; }
-                        uint keep = len;
-                        if (keep > 32) { keep = 32; r.Report.Clamped++; }
-                        r.Buffer.Slice(r.Offset, (int)keep).CopyTo(new Span<byte>(value.DisplayName, 0, (int)keep));
-                        value.DisplayNameLength = (int)keep;
-                        r.Offset += (int)len;
-                        break;
-                    }
-                    case 0x8617: // health
-                    {
-                        if (kind != 10)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        value.Health = TableBitsToFloat(r.Get32());
-                        break;
-                    }
-                    case 0xe7a6: // mass
-                    {
-                        if (kind != 10)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        value.Mass = TableBitsToFloat(r.Get32());
-                        break;
-                    }
-                    case 0xc4b2: // hardpoints
-                    {
-                        if (kind != 14)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        uint bodyLen = r.Get32();
-                        if (!r.Has(bodyLen)) { r.Report.Malformed = true; return false; }
-                        int bodyEnd = r.Offset + (int)bodyLen;
-                        if (bodyLen >= 5)
-                        {
-                            byte elemKind = r.Get8();
-                            uint count = r.Get32();
-                            if (elemKind != 4) { r.Report.KindMismatch++; r.Offset = bodyEnd; break; }
-                            uint keep = count;
-                            if (keep > 4) { keep = 4; r.Report.Clamped++; }
-                            // elements are BOUNDED by the field body: a count the length
-                            // cannot cover keeps the decoded prefix, flags malformed, and
-                            // the parent continues at the next field — following fields'
-                            // bytes are never fabricated into elements
-                            TableReader sub = new TableReader(r.Buffer.Slice(r.Offset, bodyEnd - r.Offset), r.Report);
-                            uint decoded = 0;
-                            for (uint i = 0; i < keep; i++)
-                            {
-                                if (!sub.Has(4)) { r.Report.Malformed = true; break; }
-                                {
-                                    int decodedV = unchecked((int)sub.Get32());
-                                    if (decodedV < 0) { decodedV = 0; r.Report.Clamped++; }
-                                    else if (decodedV > 8) { decodedV = 8; r.Report.Clamped++; }
-                                    value.Hardpoints[i] = decodedV;
-                                }
-                                decoded = i + 1;
-                            }
-                            value.HardpointsCount = (int)decoded;
-                        }
-                        r.Offset = bodyEnd; // excess elements and slack skip via the length
-                        break;
-                    }
-                    case 0x2bc9: // gunner
-                    {
-                        if (kind != 13)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        uint bodyLen = r.Get32();
-                        if (!r.Has(bodyLen)) { r.Report.Malformed = true; return false; }
-                        {
-                            TableReader sub = new TableReader(r.Buffer.Slice(r.Offset, (int)bodyLen), r.Report);
-                            GunnerSettingsLoadBody(ref sub, value.Gunner);
-                        }
-                        r.Offset += (int)bodyLen;
-                        value.GunnerPresent = true;
-                        break;
-                    }
-                    default:
-                    {
-                        r.Report.Unknown++;
-                        if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                        break;
-                    }
-                }
-            }
+            return TableWire.Load(value, ShipEntryTableType(), bytes, report);
         }
 
         public static bool ShipEntryLoad(ShipEntry value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReader r = new TableReader(bytes, report != null ? report : new TableReport());
-            return ShipEntryLoadBody(ref r, value);
+            return ShipEntryLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
+
+        public static long ShipEntryMeasureMessages(ShipEntry[] values) { return TableWire.MessageSave(values, ShipEntryTableType(), Span<byte>.Empty, true); }
+        public static long ShipEntrySaveMessages(ShipEntry[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, ShipEntryTableType(), bytes, false); }
+        public static TableWire.Verdict ShipEntryLoadMessages(ShipEntry[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, ShipEntryTableType(), bytes, vocabulary, report, out count); }
+
+        public static long ShipEntryCookMeasure(ShipEntry value) { return TableWire.Cook(value, ShipEntryTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
+        public static bool ShipEntryCook(ShipEntry value, Span<byte> bytes, TableByteOrder order = TableByteOrder.Little) { return TableWire.Cook(value, ShipEntryTableType(), bytes, order, false) >= 0; }
 
         // TableReset(GlobalSettings) restores GlobalSettings's declared defaults in place, reusing every
         // buffer the value already owns. The reader calls it before overlaying.
@@ -477,189 +222,32 @@ namespace Tabledemo
 
         public static long GlobalSettingsMeasure(GlobalSettings value)
         {
-            long bytes = 2; // terminator
-            if (value.TickRate != 60) { bytes += 3 + 4; } // tick_rate
-            if (value.Difficulty != Difficulty.Normal)
-            {
-                ushort id;
-                if (!TableEnumId(value.Difficulty, out id)) { return -1; } // no variant names this value
-                bytes += 3 + 2; // difficulty: the variant's name hash
-            }
-            if (value.BuildNoteLength < 0 || value.BuildNoteLength > 48) { return -1; } // storage invariant
-            if (value.BuildNoteLength > 0) { bytes += 3 + 4 + value.BuildNoteLength; } // build_note
-            {
-                bool allDefault = true;
-                for (int i = 0; i < 3; i++) { if (value.SpawnDelays[i] != 0.0f) { allDefault = false; break; } }
-                if (!allDefault)
-                {
-                    bytes += 3 + 4 + 5 + 12; // spawn_delays
-                }
-            }
-            return bytes;
-        }
-
-        public static bool GlobalSettingsSaveBody(ref TableWriter w, GlobalSettings value)
-        {
-            if (value.TickRate != 60)
-            {
-                w.Put16(0x1953); w.Put8(8); // tick_rate
-                w.Put32(unchecked((uint)(value.TickRate)));
-            }
-            if (value.Difficulty != Difficulty.Normal)
-            {
-                ushort variantId;
-                if (!TableEnumId(value.Difficulty, out variantId)) { return false; }
-                w.Put16(0xd53f); w.Put8(7); // difficulty
-                w.Put16(variantId);
-            }
-            if (value.BuildNoteLength < 0 || value.BuildNoteLength > 48) { return false; } // storage invariant
-            if (value.BuildNoteLength > 0)
-            {
-                w.Put16(0xb2d4); w.Put8(12); // build_note
-                w.Put32((uint)value.BuildNoteLength);
-                w.Raw(new ReadOnlySpan<byte>(value.BuildNote, 0, value.BuildNoteLength));
-            }
-            {
-                bool allDefault = true;
-                for (int i = 0; i < 3; i++) { if (value.SpawnDelays[i] != 0.0f) { allDefault = false; break; } }
-                if (!allDefault)
-                {
-                    w.Put16(0x7c01); w.Put8(14); // spawn_delays (fixed [3])
-                    int lenAt = w.Offset; w.Put32(0);
-                    w.Put8(10); w.Put32(3);
-                    for (int i = 0; i < 3; i++)
-                    {
-                        w.Put32(TableFloatToBits(value.SpawnDelays[i]));
-                    }
-                    w.Patch32(lenAt, (uint)(w.Offset - lenAt - 4));
-                }
-            }
-            w.Put16(0); // terminator
-            return !w.Overflow;
+            Span<ulong> ids = stackalloc ulong[155];
+            return TableWire.Save(value, GlobalSettingsTableType(), Span<byte>.Empty, ids, true);
         }
 
         public static long GlobalSettingsSave(GlobalSettings value, Span<byte> buffer)
         {
-            TableWriter w = new TableWriter(buffer);
-            if (!GlobalSettingsSaveBody(ref w, value)) { return -1; }
-            return w.Offset; // == GlobalSettingsMeasure(value)
+            Span<ulong> ids = stackalloc ulong[155];
+            return TableWire.Save(value, GlobalSettingsTableType(), buffer, ids, false);
         }
 
-        public static bool GlobalSettingsLoadBody(ref TableReader r, GlobalSettings value)
+        public static TableWire.Verdict GlobalSettingsLoadVerdict(GlobalSettings value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReset(value); // restore declared defaults in place, then overlay
-            for (;;)
-            {
-                if (!r.Has(2)) { r.Report.Malformed = true; return false; }
-                ushort fieldId = r.Get16();
-                if (fieldId == 0) { return true; }
-                if (!r.Has(1)) { r.Report.Malformed = true; return false; }
-                byte kind = r.Get8();
-                switch (fieldId)
-                {
-                    case 0x1953: // tick_rate
-                    {
-                        if (kind != 8)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        {
-                            uint decodedV = unchecked((uint)r.Get32());
-                            if (decodedV < 1) { decodedV = 1; r.Report.Clamped++; }
-                            else if (decodedV > 240) { decodedV = 240; r.Report.Clamped++; }
-                            value.TickRate = decodedV;
-                        }
-                        break;
-                    }
-                    case 0xd53f: // difficulty
-                    {
-                        if (kind != 7)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(2)) { r.Report.Malformed = true; return false; }
-                        {
-                            ushort variant = r.Get16();
-                            Difficulty decodedEnum;
-                            if (!TableEnumValue(variant, out decodedEnum))
-                            {
-                                r.Report.Unknown++;
-                            }
-                            value.Difficulty = decodedEnum;
-                        }
-                        break;
-                    }
-                    case 0xb2d4: // build_note
-                    {
-                        if (kind != 12)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        uint len = r.Get32();
-                        if (!r.Has(len)) { r.Report.Malformed = true; return false; }
-                        uint keep = len;
-                        if (keep > 48) { keep = 48; r.Report.Clamped++; }
-                        r.Buffer.Slice(r.Offset, (int)keep).CopyTo(new Span<byte>(value.BuildNote, 0, (int)keep));
-                        value.BuildNoteLength = (int)keep;
-                        r.Offset += (int)len;
-                        break;
-                    }
-                    case 0x7c01: // spawn_delays
-                    {
-                        if (kind != 14)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        uint bodyLen = r.Get32();
-                        if (!r.Has(bodyLen)) { r.Report.Malformed = true; return false; }
-                        int bodyEnd = r.Offset + (int)bodyLen;
-                        if (bodyLen >= 5)
-                        {
-                            byte elemKind = r.Get8();
-                            uint count = r.Get32();
-                            if (elemKind != 10) { r.Report.KindMismatch++; r.Offset = bodyEnd; break; }
-                            uint keep = count;
-                            if (keep > 3) { keep = 3; r.Report.Clamped++; }
-                            // elements are BOUNDED by the field body: a count the length
-                            // cannot cover keeps the decoded prefix, flags malformed, and
-                            // the parent continues at the next field — following fields'
-                            // bytes are never fabricated into elements
-                            TableReader sub = new TableReader(r.Buffer.Slice(r.Offset, bodyEnd - r.Offset), r.Report);
-                            for (uint i = 0; i < keep; i++)
-                            {
-                                if (!sub.Has(4)) { r.Report.Malformed = true; break; }
-                                value.SpawnDelays[i] = TableBitsToFloat(sub.Get32());
-                            }
-                        }
-                        r.Offset = bodyEnd; // excess elements and slack skip via the length
-                        break;
-                    }
-                    default:
-                    {
-                        r.Report.Unknown++;
-                        if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                        break;
-                    }
-                }
-            }
+            return TableWire.Load(value, GlobalSettingsTableType(), bytes, report);
         }
 
         public static bool GlobalSettingsLoad(GlobalSettings value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReader r = new TableReader(bytes, report != null ? report : new TableReport());
-            return GlobalSettingsLoadBody(ref r, value);
+            return GlobalSettingsLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
+
+        public static long GlobalSettingsMeasureMessages(GlobalSettings[] values) { return TableWire.MessageSave(values, GlobalSettingsTableType(), Span<byte>.Empty, true); }
+        public static long GlobalSettingsSaveMessages(GlobalSettings[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, GlobalSettingsTableType(), bytes, false); }
+        public static TableWire.Verdict GlobalSettingsLoadMessages(GlobalSettings[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, GlobalSettingsTableType(), bytes, vocabulary, report, out count); }
+
+        public static long GlobalSettingsCookMeasure(GlobalSettings value) { return TableWire.Cook(value, GlobalSettingsTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
+        public static bool GlobalSettingsCook(GlobalSettings value, Span<byte> bytes, TableByteOrder order = TableByteOrder.Little) { return TableWire.Cook(value, GlobalSettingsTableType(), bytes, order, false) >= 0; }
 
         // TableReset(PackConfig) restores PackConfig's declared defaults in place, reusing every
         // buffer the value already owns. The reader calls it before overlaying.
@@ -681,377 +269,32 @@ namespace Tabledemo
 
         public static long PackConfigMeasure(PackConfig value)
         {
-            long bytes = 2; // terminator
-            if (value.Version != 1) { bytes += 3 + 4; } // version
-            {
-                long body = GlobalSettingsMeasure(value.Global);
-                if (body < 0) { return -1; }
-                if (body > 2) { bytes += 3 + 4 + body; } // global: all-default nested elides
-            }
-            {
-                long pairs = 0, keyedBytes = 0;
-                for (int i = 0; i < 3; i++) // [ShipType]: every stored slot is a named variant's
-                {
-                    long elemBytes = ShipEntryMeasure(value.Ships.Slots[i]);
-                    if (elemBytes < 0) { return -1; }
-                    if (elemBytes <= 2) { continue; } // an all-default slot elides
-                    ushort keyId;
-                    if (!TableEnumId((ShipType)(i + 1), out keyId)) { return -1; } // i is the STORAGE index; the key it holds is i + 1
-                    pairs++; keyedBytes += 2 + 4 + elemBytes; // key, length, body
-                }
-                if (pairs > 0) { bytes += 3 + 4 + 5 + keyedBytes; } // ships
-            }
-            {
-                long pairs = 0, keyedBytes = 0;
-                for (int i = 0; i < 3; i++) // [Difficulty]: every stored slot is a named variant's
-                {
-                    if (value.Thresholds.Slots[i] == 0) { continue; } // a default slot elides
-                    ushort keyId;
-                    if (!TableEnumId((Difficulty)(i + 1), out keyId)) { return -1; } // i is the STORAGE index; the key it holds is i + 1
-                    pairs++; keyedBytes += 2 + 4 + 4; // key, length, element
-                }
-                if (pairs > 0) { bytes += 3 + 4 + 5 + keyedBytes; } // thresholds
-            }
-            if (value.ReservesCount < 0 || value.ReservesCount > 3) { return -1; } // storage invariant
-            if (value.ReservesCount > 0)
-            {
-                bytes += 3 + 4 + 5; // reserves
-                for (int i = 0; i < value.ReservesCount; i++)
-                {
-                    long elem = ShipEntryMeasure(value.Reserves[i]);
-                    if (elem < 0) { return -1; }
-                    bytes += 4 + elem;
-                }
-            }
-            return bytes;
-        }
-
-        public static bool PackConfigSaveBody(ref TableWriter w, PackConfig value)
-        {
-            if (value.Version != 1)
-            {
-                w.Put16(0xe8e6); w.Put8(8); // version
-                w.Put32(unchecked((uint)(value.Version)));
-            }
-            {
-                long body = GlobalSettingsMeasure(value.Global);
-                if (body < 0) { return false; } // storage invariant, refused as measure refuses it
-                if (body > 2) // all-default nested elides
-                {
-                    w.Put16(0x1b51); w.Put8(13); // global
-                    w.Put32((uint)body);
-                    if (!GlobalSettingsSaveBody(ref w, value.Global)) { return false; }
-                }
-            }
-            {
-                uint pairs = 0;
-                for (int i = 0; i < 3; i++) // [ShipType]: every stored slot is a named variant's
-                {
-                    long elemBytes = ShipEntryMeasure(value.Ships.Slots[i]);
-                    if (elemBytes < 0) { return false; }
-                    if (elemBytes <= 2) { continue; } // an all-default slot elides
-                    ushort keyId;
-                    if (!TableEnumId((ShipType)(i + 1), out keyId)) { return false; } // i is the STORAGE index; the key it holds is i + 1
-                    pairs++;
-                }
-                if (pairs > 0)
-                {
-                    // KIND 16, not 14: a keyed body and a positional one are
-                    // incompatible, so a reader of the other kind must see a kind
-                    // mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2)
-                    w.Put16(0x2d39); w.Put8(16); // ships (keyed by ShipType)
-                    int lenAt = w.Offset; w.Put32(0);
-                    w.Put8(13); w.Put32(pairs);
-                    // ASCENDING BY VARIANT ORDINAL, which is slot order — this
-                    // writer's choice, and a reader must not rely on it: every
-                    // slot is found by its key (docs/SPEC-TABLES.md §3.2)
-                    for (int i = 0; i < 3; i++)
-                    {
-                        long elemBytes = ShipEntryMeasure(value.Ships.Slots[i]);
-                        if (elemBytes < 0) { return false; }
-                        if (elemBytes <= 2) { continue; } // an all-default slot elides
-                        ushort keyId;
-                        if (!TableEnumId((ShipType)(i + 1), out keyId)) { return false; } // i is the STORAGE index; the key it holds is i + 1
-                        w.Put16(keyId); // the slot's VARIANT id, not its position
-                        int elemLenAt = w.Offset; w.Put32(0);
-                        if (!ShipEntrySaveBody(ref w, value.Ships.Slots[i])) { return false; }
-                        w.Patch32(elemLenAt, (uint)(w.Offset - elemLenAt - 4));
-                    }
-                    w.Patch32(lenAt, (uint)(w.Offset - lenAt - 4));
-                }
-            }
-            {
-                uint pairs = 0;
-                for (int i = 0; i < 3; i++) // [Difficulty]: every stored slot is a named variant's
-                {
-                    if (value.Thresholds.Slots[i] == 0) { continue; } // a default slot elides
-                    ushort keyId;
-                    if (!TableEnumId((Difficulty)(i + 1), out keyId)) { return false; } // i is the STORAGE index; the key it holds is i + 1
-                    pairs++;
-                }
-                if (pairs > 0)
-                {
-                    // KIND 16, not 14: a keyed body and a positional one are
-                    // incompatible, so a reader of the other kind must see a kind
-                    // mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2)
-                    w.Put16(0xb2eb); w.Put8(16); // thresholds (keyed by Difficulty)
-                    int lenAt = w.Offset; w.Put32(0);
-                    w.Put8(4); w.Put32(pairs);
-                    // ASCENDING BY VARIANT ORDINAL, which is slot order — this
-                    // writer's choice, and a reader must not rely on it: every
-                    // slot is found by its key (docs/SPEC-TABLES.md §3.2)
-                    for (int i = 0; i < 3; i++)
-                    {
-                        if (value.Thresholds.Slots[i] == 0) { continue; } // a default slot elides
-                        ushort keyId;
-                        if (!TableEnumId((Difficulty)(i + 1), out keyId)) { return false; } // i is the STORAGE index; the key it holds is i + 1
-                        w.Put16(keyId); // the slot's VARIANT id, not its position
-                        int elemLenAt = w.Offset; w.Put32(0);
-                        w.Put32(unchecked((uint)(value.Thresholds.Slots[i])));
-                        w.Patch32(elemLenAt, (uint)(w.Offset - elemLenAt - 4));
-                    }
-                    w.Patch32(lenAt, (uint)(w.Offset - lenAt - 4));
-                }
-            }
-            if (value.ReservesCount < 0 || value.ReservesCount > 3) { return false; } // storage invariant
-            if (value.ReservesCount > 0)
-            {
-                w.Put16(0x049d); w.Put8(14); // reserves
-                int lenAt = w.Offset; w.Put32(0);
-                w.Put8(13); w.Put32((uint)value.ReservesCount);
-                for (int i = 0; i < value.ReservesCount; i++)
-                {
-                    {
-                        int elemLenAt = w.Offset; w.Put32(0);
-                        if (!ShipEntrySaveBody(ref w, value.Reserves[i])) { return false; }
-                        w.Patch32(elemLenAt, (uint)(w.Offset - elemLenAt - 4));
-                    }
-                }
-                w.Patch32(lenAt, (uint)(w.Offset - lenAt - 4));
-            }
-            w.Put16(0); // terminator
-            return !w.Overflow;
+            Span<ulong> ids = stackalloc ulong[155];
+            return TableWire.Save(value, PackConfigTableType(), Span<byte>.Empty, ids, true);
         }
 
         public static long PackConfigSave(PackConfig value, Span<byte> buffer)
         {
-            TableWriter w = new TableWriter(buffer);
-            if (!PackConfigSaveBody(ref w, value)) { return -1; }
-            return w.Offset; // == PackConfigMeasure(value)
+            Span<ulong> ids = stackalloc ulong[155];
+            return TableWire.Save(value, PackConfigTableType(), buffer, ids, false);
         }
 
-        public static bool PackConfigLoadBody(ref TableReader r, PackConfig value)
+        public static TableWire.Verdict PackConfigLoadVerdict(PackConfig value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReset(value); // restore declared defaults in place, then overlay
-            for (;;)
-            {
-                if (!r.Has(2)) { r.Report.Malformed = true; return false; }
-                ushort fieldId = r.Get16();
-                if (fieldId == 0) { return true; }
-                if (!r.Has(1)) { r.Report.Malformed = true; return false; }
-                byte kind = r.Get8();
-                switch (fieldId)
-                {
-                    case 0xe8e6: // version
-                    {
-                        if (kind != 8)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        {
-                            uint decodedV = unchecked((uint)r.Get32());
-                            value.Version = decodedV;
-                        }
-                        break;
-                    }
-                    case 0x1b51: // global
-                    {
-                        if (kind != 13)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        uint bodyLen = r.Get32();
-                        if (!r.Has(bodyLen)) { r.Report.Malformed = true; return false; }
-                        {
-                            TableReader sub = new TableReader(r.Buffer.Slice(r.Offset, (int)bodyLen), r.Report);
-                            GlobalSettingsLoadBody(ref sub, value.Global);
-                        }
-                        r.Offset += (int)bodyLen;
-                        break;
-                    }
-                    case 0x2d39: // ships
-                    {
-                        if (kind != 16)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        uint bodyLen = r.Get32();
-                        if (!r.Has(bodyLen)) { r.Report.Malformed = true; return false; }
-                        int bodyEnd = r.Offset + (int)bodyLen;
-                        if (bodyLen >= 5)
-                        {
-                            byte elemKind = r.Get8();
-                            uint count = r.Get32();
-                            if (elemKind != 13) { r.Report.KindMismatch++; r.Offset = bodyEnd; break; }
-                            TableReader sub = new TableReader(r.Buffer.Slice(r.Offset, bodyEnd - r.Offset), r.Report);
-                            for (uint i = 0; i < count; i++)
-                            {
-                                if (!sub.Has(2)) { r.Report.Malformed = true; break; }
-                                ushort key = sub.Get16();
-                                if (!sub.Has(4)) { r.Report.Malformed = true; break; }
-                                uint elemLen = sub.Get32();
-                                if (!sub.Has(elemLen)) { r.Report.Malformed = true; break; }
-                                if (key == 0)
-                                {
-                                    // None is the NULL KEY: 0 is the reserved id no declared
-                                    // name can fold to, so a body carrying one is DAMAGED, not
-                                    // merely foreign. Framing damage stops this body, keeps what
-                                    // it decoded, and the parent reads on past the length
-                                    // (docs/SPEC-TABLES.md §3.2, §4).
-                                    r.Report.Malformed = true;
-                                    break;
-                                }
-                                ShipType slot;
-                                if (!TableEnumValue(key, out slot))
-                                {
-                                    r.Report.Unknown++; // a slot this reader cannot name
-                                    sub.Offset += (int)elemLen;
-                                    continue;
-                                }
-                                {
-                                    TableReader elem = new TableReader(sub.Buffer.Slice(sub.Offset, (int)elemLen), r.Report);
-                                    ShipEntryLoadBody(ref elem, value.Ships.Slots[(int)slot - 1]);
-                                }
-                                sub.Offset += (int)elemLen;
-                            }
-                        }
-                        r.Offset = bodyEnd; // unread pairs and slack skip via the length
-                        break;
-                    }
-                    case 0xb2eb: // thresholds
-                    {
-                        if (kind != 16)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        uint bodyLen = r.Get32();
-                        if (!r.Has(bodyLen)) { r.Report.Malformed = true; return false; }
-                        int bodyEnd = r.Offset + (int)bodyLen;
-                        if (bodyLen >= 5)
-                        {
-                            byte elemKind = r.Get8();
-                            uint count = r.Get32();
-                            if (elemKind != 4) { r.Report.KindMismatch++; r.Offset = bodyEnd; break; }
-                            TableReader sub = new TableReader(r.Buffer.Slice(r.Offset, bodyEnd - r.Offset), r.Report);
-                            for (uint i = 0; i < count; i++)
-                            {
-                                if (!sub.Has(2)) { r.Report.Malformed = true; break; }
-                                ushort key = sub.Get16();
-                                if (!sub.Has(4)) { r.Report.Malformed = true; break; }
-                                uint elemLen = sub.Get32();
-                                if (!sub.Has(elemLen)) { r.Report.Malformed = true; break; }
-                                if (key == 0)
-                                {
-                                    // None is the NULL KEY: 0 is the reserved id no declared
-                                    // name can fold to, so a body carrying one is DAMAGED, not
-                                    // merely foreign. Framing damage stops this body, keeps what
-                                    // it decoded, and the parent reads on past the length
-                                    // (docs/SPEC-TABLES.md §3.2, §4).
-                                    r.Report.Malformed = true;
-                                    break;
-                                }
-                                Difficulty slot;
-                                if (!TableEnumValue(key, out slot))
-                                {
-                                    r.Report.Unknown++; // a slot this reader cannot name
-                                    sub.Offset += (int)elemLen;
-                                    continue;
-                                }
-                                {
-                                    TableReader elem = new TableReader(sub.Buffer.Slice(sub.Offset, (int)elemLen), r.Report);
-                                    if (!elem.Has(4)) { r.Report.Malformed = true; sub.Offset += (int)elemLen; continue; }
-                                    {
-                                        int decodedV = unchecked((int)elem.Get32());
-                                        if (decodedV < 0) { decodedV = 0; r.Report.Clamped++; }
-                                        else if (decodedV > 1000) { decodedV = 1000; r.Report.Clamped++; }
-                                        value.Thresholds.Slots[(int)slot - 1] = decodedV;
-                                    }
-                                }
-                                sub.Offset += (int)elemLen;
-                            }
-                        }
-                        r.Offset = bodyEnd; // unread pairs and slack skip via the length
-                        break;
-                    }
-                    case 0x049d: // reserves
-                    {
-                        if (kind != 14)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        uint bodyLen = r.Get32();
-                        if (!r.Has(bodyLen)) { r.Report.Malformed = true; return false; }
-                        int bodyEnd = r.Offset + (int)bodyLen;
-                        if (bodyLen >= 5)
-                        {
-                            byte elemKind = r.Get8();
-                            uint count = r.Get32();
-                            if (elemKind != 13) { r.Report.KindMismatch++; r.Offset = bodyEnd; break; }
-                            uint keep = count;
-                            if (keep > 3) { keep = 3; r.Report.Clamped++; }
-                            // elements are BOUNDED by the field body: a count the length
-                            // cannot cover keeps the decoded prefix, flags malformed, and
-                            // the parent continues at the next field — following fields'
-                            // bytes are never fabricated into elements
-                            TableReader sub = new TableReader(r.Buffer.Slice(r.Offset, bodyEnd - r.Offset), r.Report);
-                            uint decoded = 0;
-                            for (uint i = 0; i < keep; i++)
-                            {
-                                if (!sub.Has(4)) { r.Report.Malformed = true; break; }
-                                uint elemLen = sub.Get32();
-                                if (!sub.Has(elemLen)) { r.Report.Malformed = true; break; }
-                                {
-                                    TableReader elem = new TableReader(sub.Buffer.Slice(sub.Offset, (int)elemLen), r.Report);
-                                    ShipEntryLoadBody(ref elem, value.Reserves[i]);
-                                }
-                                sub.Offset += (int)elemLen;
-                                decoded = i + 1;
-                            }
-                            value.ReservesCount = (int)decoded;
-                        }
-                        r.Offset = bodyEnd; // excess elements and slack skip via the length
-                        break;
-                    }
-                    default:
-                    {
-                        r.Report.Unknown++;
-                        if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                        break;
-                    }
-                }
-            }
+            return TableWire.Load(value, PackConfigTableType(), bytes, report);
         }
 
         public static bool PackConfigLoad(PackConfig value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReader r = new TableReader(bytes, report != null ? report : new TableReport());
-            return PackConfigLoadBody(ref r, value);
+            return PackConfigLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
+
+        public static long PackConfigMeasureMessages(PackConfig[] values) { return TableWire.MessageSave(values, PackConfigTableType(), Span<byte>.Empty, true); }
+        public static long PackConfigSaveMessages(PackConfig[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, PackConfigTableType(), bytes, false); }
+        public static TableWire.Verdict PackConfigLoadMessages(PackConfig[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, PackConfigTableType(), bytes, vocabulary, report, out count); }
+
+        public static long PackConfigCookMeasure(PackConfig value) { return TableWire.Cook(value, PackConfigTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
+        public static bool PackConfigCook(PackConfig value, Span<byte> bytes, TableByteOrder order = TableByteOrder.Little) { return TableWire.Cook(value, PackConfigTableType(), bytes, order, false) >= 0; }
 
         // ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----
 
@@ -1062,12 +305,19 @@ namespace Tabledemo
             if (info != null) { return info; }
             info = new TableTypeInfo();
             info.Name = "GunnerSettings";
+            info.Id = 0xb76842b2253337aful;
             info.NumFields = 3;
+            info.Create = delegate { return new GunnerSettings(); };
+            info.StorageSize = 36; info.StorageAlign = 4; info.RegionAlign = 8;
+            info.Variable = false;
+            info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+            info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+            info.BytesEdge = false; info.StringEdge = false;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "reaction", Json = "reaction", TypeName = "float32", Id = 0x900f, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((GunnerSettings)o).Reaction); }, SetRaw = delegate(object o, int i, ulong r) { ((GunnerSettings)o).Reaction = TableBitsToFloat(unchecked((uint)r)); } },
-                new TableFieldInfo { Name = "tracking", Json = "tracking", TypeName = "bool", Id = 0x53d5, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return ((GunnerSettings)o).Tracking ? 1ul : 0ul; }, SetRaw = delegate(object o, int i, ulong r) { ((GunnerSettings)o).Tracking = r != 0; } },
-                new TableFieldInfo { Name = "callsign", Json = "callsign", TypeName = "string", Id = 0x74dc, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 24, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate(object o) { return ((GunnerSettings)o).Callsign; }, GetCount = delegate(object o) { return ((GunnerSettings)o).CallsignLength; }, SetCount = delegate(object o, int n) { ((GunnerSettings)o).CallsignLength = n; } },
+                new TableFieldInfo { Name = "reaction", Json = "reaction", TypeName = "float32", Id = 0xb75aa3662201646a, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((GunnerSettings)o).Reaction); }, SetRaw = delegate(object o, int i, ulong r) { ((GunnerSettings)o).Reaction = TableBitsToFloat(unchecked((uint)r)); }, MessageSlot = 11, Ordinal = 0, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (GunnerSettings)o; value.Reaction = 0.2f; }, DefaultRaw = (ulong)TableFloatToBits(0.2f), ClampRaw = delegate(ulong raw, TableReport r) { float v = TableBitsToFloat(unchecked((uint)raw)); return (ulong)TableFloatToBits(v); } },
+                new TableFieldInfo { Name = "tracking", Json = "tracking", TypeName = "bool", Id = 0xa6bf719a4602b0bc, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return ((GunnerSettings)o).Tracking ? 1ul : 0ul; }, SetRaw = delegate(object o, int i, ulong r) { ((GunnerSettings)o).Tracking = r != 0; }, MessageSlot = 12, Ordinal = 1, NativeOffset = 4, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (GunnerSettings)o; value.Tracking = false; }, DefaultRaw = false ? 1ul : 0ul },
+                new TableFieldInfo { Name = "callsign", Json = "callsign", TypeName = "string", Id = 0x5bc44627b9848818, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 24, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate(object o) { return ((GunnerSettings)o).Callsign; }, GetCount = delegate(object o) { return ((GunnerSettings)o).CallsignLength; }, SetCount = delegate(object o, int n) { ((GunnerSettings)o).CallsignLength = n; }, MessageSlot = 13, Ordinal = 2, NativeOffset = 5, NativeElementSize = 25, NativeCountOffset = 32, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (GunnerSettings)o; Array.Clear(value.Callsign, 0, value.Callsign.Length); value.CallsignLength = 0; } },
             };
             info.Reset = delegate(object o) { TableReset((GunnerSettings)o); };
             info.Doc = TableDocNone;
@@ -1084,14 +334,21 @@ namespace Tabledemo
             if (info != null) { return info; }
             info = new TableTypeInfo();
             info.Name = "ShipEntry";
+            info.Id = 0x1d1a9911da171a29ul;
             info.NumFields = 5;
+            info.Create = delegate { return new ShipEntry(); };
+            info.StorageSize = 108; info.StorageAlign = 4; info.RegionAlign = 8;
+            info.Variable = false;
+            info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+            info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+            info.BytesEdge = false; info.StringEdge = false;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "display_name", Json = "name", TypeName = "string", Id = 0xcb8b, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 32, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate(object o) { return ((ShipEntry)o).DisplayName; }, GetCount = delegate(object o) { return ((ShipEntry)o).DisplayNameLength; }, SetCount = delegate(object o, int n) { ((ShipEntry)o).DisplayNameLength = n; } },
-                new TableFieldInfo { Name = "health", Json = "health", TypeName = "float32", Id = 0x8617, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((ShipEntry)o).Health); }, SetRaw = delegate(object o, int i, ulong r) { ((ShipEntry)o).Health = TableBitsToFloat(unchecked((uint)r)); } },
-                new TableFieldInfo { Name = "mass", Json = "mass", TypeName = "float32", Id = 0xe7a6, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((ShipEntry)o).Mass); }, SetRaw = delegate(object o, int i, ulong r) { ((ShipEntry)o).Mass = TableBitsToFloat(unchecked((uint)r)); } },
-                new TableFieldInfo { Name = "hardpoints", Json = "hardpoints", TypeName = "int32", Id = 0xc4b2, Kind = 4, IsArray = true, Counted = true, Optional = false, ArrayBound = 4, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 8.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((ShipEntry)o).Hardpoints[i]; }, SetRaw = delegate(object o, int i, ulong r) { ((ShipEntry)o).Hardpoints[i] = unchecked((int)(long)r); }, GetCount = delegate(object o) { return ((ShipEntry)o).HardpointsCount; }, SetCount = delegate(object o, int n) { ((ShipEntry)o).HardpointsCount = n; } },
-                new TableFieldInfo { Name = "gunner", Json = "gunner", TypeName = "GunnerSettings", Id = 0x2bc9, Kind = 13, IsArray = false, Counted = false, Optional = true, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return GunnerSettingsTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((ShipEntry)o).Gunner; }, GetPresent = delegate(object o) { return ((ShipEntry)o).GunnerPresent; }, SetPresent = delegate(object o, bool p) { ((ShipEntry)o).GunnerPresent = p; } },
+                new TableFieldInfo { Name = "display_name", Json = "name", TypeName = "string", Id = 0x2d21d7cd66bd5a5d, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 32, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate(object o) { return ((ShipEntry)o).DisplayName; }, GetCount = delegate(object o) { return ((ShipEntry)o).DisplayNameLength; }, SetCount = delegate(object o, int n) { ((ShipEntry)o).DisplayNameLength = n; }, MessageSlot = 95, Ordinal = 0, NativeOffset = 0, NativeElementSize = 33, NativeCountOffset = 36, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (ShipEntry)o; Array.Clear(value.DisplayName, 0, value.DisplayName.Length); value.DisplayNameLength = 0; } },
+                new TableFieldInfo { Name = "health", Json = "health", TypeName = "float32", Id = 0x7f69d4b5288ba9cf, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((ShipEntry)o).Health); }, SetRaw = delegate(object o, int i, ulong r) { ((ShipEntry)o).Health = TableBitsToFloat(unchecked((uint)r)); }, MessageSlot = 14, Ordinal = 1, NativeOffset = 40, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (ShipEntry)o; value.Health = 100.0f; }, DefaultRaw = (ulong)TableFloatToBits(100.0f), ClampRaw = delegate(ulong raw, TableReport r) { float v = TableBitsToFloat(unchecked((uint)raw)); return (ulong)TableFloatToBits(v); } },
+                new TableFieldInfo { Name = "mass", Json = "mass", TypeName = "float32", Id = 0x1f3757a2ce7b0ab1, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((ShipEntry)o).Mass); }, SetRaw = delegate(object o, int i, ulong r) { ((ShipEntry)o).Mass = TableBitsToFloat(unchecked((uint)r)); }, MessageSlot = 15, Ordinal = 2, NativeOffset = 44, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (ShipEntry)o; value.Mass = 1.0f; }, DefaultRaw = (ulong)TableFloatToBits(1.0f), ClampRaw = delegate(ulong raw, TableReport r) { float v = TableBitsToFloat(unchecked((uint)raw)); return (ulong)TableFloatToBits(v); } },
+                new TableFieldInfo { Name = "hardpoints", Json = "hardpoints", TypeName = "int32", Id = 0x95d0cce09ca82b73, Kind = 4, IsArray = true, Counted = true, Optional = false, ArrayBound = 4, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 8.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((ShipEntry)o).Hardpoints[i]; }, SetRaw = delegate(object o, int i, ulong r) { ((ShipEntry)o).Hardpoints[i] = unchecked((int)(long)r); }, GetCount = delegate(object o) { return ((ShipEntry)o).HardpointsCount; }, SetCount = delegate(object o, int n) { ((ShipEntry)o).HardpointsCount = n; }, MessageSlot = 96, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x8ul)), Ordinal = 3, NativeOffset = 48, NativeElementSize = 4, NativeCountOffset = 64, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (ShipEntry)o; Array.Clear(value.Hardpoints, 0, value.Hardpoints.Length); value.HardpointsCount = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate(ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { r.Clamped++; v = 0; } if (v > 8) { r.Clamped++; v = 8; } return (ulong)(long)v; } },
+                new TableFieldInfo { Name = "gunner", Json = "gunner", TypeName = "GunnerSettings", Id = 0x40dbb648c0cd44aa, Kind = 13, IsArray = false, Counted = false, Optional = true, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return GunnerSettingsTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((ShipEntry)o).Gunner; }, GetPresent = delegate(object o) { return ((ShipEntry)o).GunnerPresent; }, SetPresent = delegate(object o, bool p) { ((ShipEntry)o).GunnerPresent = p; }, MessageSlot = 97, Ordinal = 4, NativeOffset = 68, NativeElementSize = 36, NativeCountOffset = -1, NativePresentOffset = 104, ResetField = delegate(object o) { var value = (ShipEntry)o; TableReset(value.Gunner); } },
             };
             info.Reset = delegate(object o) { TableReset((ShipEntry)o); };
             info.Doc = TableDocNone;
@@ -1108,13 +365,20 @@ namespace Tabledemo
             if (info != null) { return info; }
             info = new TableTypeInfo();
             info.Name = "GlobalSettings";
+            info.Id = 0xffb1dfb1f6ce215bul;
             info.NumFields = 4;
+            info.Create = delegate { return new GlobalSettings(); };
+            info.StorageSize = 72; info.StorageAlign = 4; info.RegionAlign = 8;
+            info.Variable = false;
+            info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+            info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+            info.BytesEdge = false; info.StringEdge = false;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "tick_rate", Json = "tick_rate", TypeName = "uint32", Id = 0x1953, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 1.0, RangeMax = 240.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((GlobalSettings)o).TickRate; }, SetRaw = delegate(object o, int i, ulong r) { ((GlobalSettings)o).TickRate = unchecked((uint)r); } },
-                new TableFieldInfo { Name = "difficulty", Json = "difficulty", TypeName = "Difficulty", Id = 0xd53f, Kind = 7, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 3, EnumName = delegate(ulong v) { return EnumNameDifficulty(v); }, VariantId = delegate(ulong v) { ushort id; TableEnumId((Difficulty)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((GlobalSettings)o).Difficulty; }, SetRaw = delegate(object o, int i, ulong r) { ((GlobalSettings)o).Difficulty = unchecked((Difficulty)r); } },
-                new TableFieldInfo { Name = "build_note", Json = "build_note", TypeName = "string", Id = 0xb2d4, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 48, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate(object o) { return ((GlobalSettings)o).BuildNote; }, GetCount = delegate(object o) { return ((GlobalSettings)o).BuildNoteLength; }, SetCount = delegate(object o, int n) { ((GlobalSettings)o).BuildNoteLength = n; } },
-                new TableFieldInfo { Name = "spawn_delays", Json = "spawn_delays", TypeName = "float32", Id = 0x7c01, Kind = 10, IsArray = true, Counted = false, Optional = false, ArrayBound = 3, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((GlobalSettings)o).SpawnDelays[i]); }, SetRaw = delegate(object o, int i, ulong r) { ((GlobalSettings)o).SpawnDelays[i] = TableBitsToFloat(unchecked((uint)r)); } },
+                new TableFieldInfo { Name = "tick_rate", Json = "tick_rate", TypeName = "uint32", Id = 0xa65f859b617deaf3, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 1.0, RangeMax = 240.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((GlobalSettings)o).TickRate; }, SetRaw = delegate(object o, int i, ulong r) { ((GlobalSettings)o).TickRate = unchecked((uint)r); }, MessageSlot = 7, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x1ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xf0ul)), Ordinal = 0, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (GlobalSettings)o; value.TickRate = 60; }, DefaultRaw = (ulong)60, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); if (v < 1) { r.Clamped++; v = 1; } if (v > 240) { r.Clamped++; v = 240; } return (ulong)v; } },
+                new TableFieldInfo { Name = "difficulty", Json = "difficulty", TypeName = "Difficulty", Id = 0x467f35a74c6e4a70, Kind = 30, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 3, EnumName = delegate(ulong v) { return EnumNameDifficulty(v); }, VariantId = delegate(ulong v) { ulong id; TableEnumId((Difficulty)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((GlobalSettings)o).Difficulty; }, SetRaw = delegate(object o, int i, ulong r) { ((GlobalSettings)o).Difficulty = unchecked((Difficulty)r); }, MessageSlot = 8, Ordinal = 1, NativeOffset = 4, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (GlobalSettings)o; value.Difficulty = Difficulty.Normal; }, DefaultRaw = (ulong)Difficulty.Normal },
+                new TableFieldInfo { Name = "build_note", Json = "build_note", TypeName = "string", Id = 0x14ec921cc2549d60, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 48, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate(object o) { return ((GlobalSettings)o).BuildNote; }, GetCount = delegate(object o) { return ((GlobalSettings)o).BuildNoteLength; }, SetCount = delegate(object o, int n) { ((GlobalSettings)o).BuildNoteLength = n; }, MessageSlot = 9, Ordinal = 2, NativeOffset = 5, NativeElementSize = 49, NativeCountOffset = 56, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (GlobalSettings)o; Array.Clear(value.BuildNote, 0, value.BuildNote.Length); value.BuildNoteLength = 0; } },
+                new TableFieldInfo { Name = "spawn_delays", Json = "spawn_delays", TypeName = "float32", Id = 0x09ae5613b0051271, Kind = 10, IsArray = true, Counted = false, Optional = false, ArrayBound = 3, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((GlobalSettings)o).SpawnDelays[i]); }, SetRaw = delegate(object o, int i, ulong r) { ((GlobalSettings)o).SpawnDelays[i] = TableBitsToFloat(unchecked((uint)r)); }, MessageSlot = 10, Ordinal = 3, NativeOffset = 60, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (GlobalSettings)o; Array.Clear(value.SpawnDelays, 0, value.SpawnDelays.Length); }, DefaultRaw = (ulong)TableFloatToBits(0.0f), ClampRaw = delegate(ulong raw, TableReport r) { float v = TableBitsToFloat(unchecked((uint)raw)); return (ulong)TableFloatToBits(v); } },
             };
             info.Reset = delegate(object o) { TableReset((GlobalSettings)o); };
             info.Doc = TableDocNone;
@@ -1131,14 +395,21 @@ namespace Tabledemo
             if (info != null) { return info; }
             info = new TableTypeInfo();
             info.Name = "PackConfig";
+            info.Id = 0xd02d825db114336eul;
             info.NumFields = 5;
+            info.Create = delegate { return new PackConfig(); };
+            info.StorageSize = 740; info.StorageAlign = 4; info.RegionAlign = 8;
+            info.Variable = false;
+            info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+            info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+            info.BytesEdge = false; info.StringEdge = false;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "version", Json = "version", TypeName = "uint32", Id = 0xe8e6, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((PackConfig)o).Version; }, SetRaw = delegate(object o, int i, ulong r) { ((PackConfig)o).Version = unchecked((uint)r); } },
-                new TableFieldInfo { Name = "global", Json = "global", TypeName = "GlobalSettings", Id = 0x1b51, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return GlobalSettingsTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((PackConfig)o).Global; } },
-                new TableFieldInfo { Name = "ships", Json = "ships", TypeName = "ShipEntry", Id = 0x2d39, Kind = 13, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)ShipType.Max, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "ShipType", KeyName = delegate(ulong v) { return EnumNameShipType(v); }, KeyId = delegate(ulong v) { ushort id; TableEnumId((ShipType)v, out id); return id; }, Guard = "", TableRef = delegate { return ShipEntryTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((PackConfig)o).Ships.Slots[i]; } },
-                new TableFieldInfo { Name = "thresholds", Json = "thresholds", TypeName = "int32", Id = 0xb2eb, Kind = 4, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)Difficulty.Max, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 1000.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Difficulty", KeyName = delegate(ulong v) { return EnumNameDifficulty(v); }, KeyId = delegate(ulong v) { ushort id; TableEnumId((Difficulty)v, out id); return id; }, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((PackConfig)o).Thresholds.Slots[i]; }, SetRaw = delegate(object o, int i, ulong r) { ((PackConfig)o).Thresholds.Slots[i] = unchecked((int)(long)r); } },
-                new TableFieldInfo { Name = "reserves", Json = "reserves", TypeName = "ShipEntry", Id = 0x049d, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 3, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return ShipEntryTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((PackConfig)o).Reserves[i]; }, GetCount = delegate(object o) { return ((PackConfig)o).ReservesCount; }, SetCount = delegate(object o, int n) { ((PackConfig)o).ReservesCount = n; } },
+                new TableFieldInfo { Name = "version", Json = "version", TypeName = "uint32", Id = 0xbb62c62c9808ea37, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((PackConfig)o).Version; }, SetRaw = delegate(object o, int i, ulong r) { ((PackConfig)o).Version = unchecked((uint)r); }, MessageSlot = 27, Ordinal = 0, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (PackConfig)o; value.Version = 1; }, DefaultRaw = (ulong)1, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
+                new TableFieldInfo { Name = "global", Json = "global", TypeName = "GlobalSettings", Id = 0x7fb43557b54149ce, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return GlobalSettingsTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((PackConfig)o).Global; }, MessageSlot = 28, Ordinal = 1, NativeOffset = 4, NativeElementSize = 72, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (PackConfig)o; TableReset(value.Global); } },
+                new TableFieldInfo { Name = "ships", Json = "ships", TypeName = "ShipEntry", Id = 0x294a5c4913e1ad44, Kind = 13, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)ShipType.Max, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "ShipType", KeyName = delegate(ulong v) { return EnumNameShipType(v); }, KeyId = delegate(ulong v) { ulong id; TableEnumId((ShipType)v, out id); return id; }, Guard = "", TableRef = delegate { return ShipEntryTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((PackConfig)o).Ships.Slots[i]; }, MessageSlot = 29, Ordinal = 2, NativeOffset = 76, NativeElementSize = 108, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (PackConfig)o; for (int i = 0; i < value.Ships.Slots.Length; i++) { TableReset(value.Ships.Slots[i]); } } },
+                new TableFieldInfo { Name = "thresholds", Json = "thresholds", TypeName = "int32", Id = 0x9cda940a344e1571, Kind = 4, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)Difficulty.Max, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 1000.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Difficulty", KeyName = delegate(ulong v) { return EnumNameDifficulty(v); }, KeyId = delegate(ulong v) { ulong id; TableEnumId((Difficulty)v, out id); return id; }, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((PackConfig)o).Thresholds.Slots[i]; }, SetRaw = delegate(object o, int i, ulong r) { ((PackConfig)o).Thresholds.Slots[i] = unchecked((int)(long)r); }, MessageSlot = 30, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x3e8ul)), Ordinal = 3, NativeOffset = 400, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (PackConfig)o; Array.Clear(value.Thresholds.Slots, 0, value.Thresholds.Slots.Length); }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate(ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { r.Clamped++; v = 0; } if (v > 1000) { r.Clamped++; v = 1000; } return (ulong)(long)v; } },
+                new TableFieldInfo { Name = "reserves", Json = "reserves", TypeName = "ShipEntry", Id = 0x77707fccd201c228, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 3, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return ShipEntryTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((PackConfig)o).Reserves[i]; }, GetCount = delegate(object o) { return ((PackConfig)o).ReservesCount; }, SetCount = delegate(object o, int n) { ((PackConfig)o).ReservesCount = n; }, MessageSlot = 31, Ordinal = 4, NativeOffset = 412, NativeElementSize = 108, NativeCountOffset = 736, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (PackConfig)o; for (int i = 0; i < value.Reserves.Length; i++) { TableReset(value.Reserves[i]); } value.ReservesCount = 0; } },
             };
             info.Reset = delegate(object o) { TableReset((PackConfig)o); };
             info.Doc = TableDocNone;

@@ -55,158 +55,32 @@ namespace Blockhome
 
         public static long PartRowMeasure(PartRow value)
         {
-            long bytes = 2; // terminator
-            {
-                long body = ArmorConfigMeasure(value.Armor);
-                if (body < 0) { return -1; }
-                if (body > 2) { bytes += 3 + 4 + body; } // armor: all-default nested elides
-            }
-            {
-                long body = GunnerSettingsMeasure(value.Gunner);
-                if (body < 0) { return -1; }
-                if (body > 2) { bytes += 3 + 4 + body; } // gunner: all-default nested elides
-            }
-            if (value.PartId != 0) { bytes += 3 + 4; } // part_id
-            if (value.Slot != 0) { bytes += 3 + 1; } // slot
-            return bytes;
-        }
-
-        public static bool PartRowSaveBody(ref TableWriter w, PartRow value)
-        {
-            {
-                long body = ArmorConfigMeasure(value.Armor);
-                if (body < 0) { return false; } // storage invariant, refused as measure refuses it
-                if (body > 2) // all-default nested elides
-                {
-                    w.Put16(0x7c9d); w.Put8(13); // armor
-                    w.Put32((uint)body);
-                    if (!ArmorConfigSaveBody(ref w, value.Armor)) { return false; }
-                }
-            }
-            {
-                long body = GunnerSettingsMeasure(value.Gunner);
-                if (body < 0) { return false; } // storage invariant, refused as measure refuses it
-                if (body > 2) // all-default nested elides
-                {
-                    w.Put16(0x2bc9); w.Put8(13); // gunner
-                    w.Put32((uint)body);
-                    if (!GunnerSettingsSaveBody(ref w, value.Gunner)) { return false; }
-                }
-            }
-            if (value.PartId != 0)
-            {
-                w.Put16(0x6deb); w.Put8(8); // part_id
-                w.Put32(unchecked((uint)(value.PartId)));
-            }
-            if (value.Slot != 0)
-            {
-                w.Put16(0x37e4); w.Put8(6); // slot
-                w.Put8(unchecked((byte)(value.Slot)));
-            }
-            w.Put16(0); // terminator
-            return !w.Overflow;
+            Span<ulong> ids = stackalloc ulong[28];
+            return TableWire.Save(value, PartRowTableType(), Span<byte>.Empty, ids, true);
         }
 
         public static long PartRowSave(PartRow value, Span<byte> buffer)
         {
-            TableWriter w = new TableWriter(buffer);
-            if (!PartRowSaveBody(ref w, value)) { return -1; }
-            return w.Offset; // == PartRowMeasure(value)
+            Span<ulong> ids = stackalloc ulong[28];
+            return TableWire.Save(value, PartRowTableType(), buffer, ids, false);
         }
 
-        public static bool PartRowLoadBody(ref TableReader r, PartRow value)
+        public static TableWire.Verdict PartRowLoadVerdict(PartRow value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReset(value); // restore declared defaults in place, then overlay
-            for (;;)
-            {
-                if (!r.Has(2)) { r.Report.Malformed = true; return false; }
-                ushort fieldId = r.Get16();
-                if (fieldId == 0) { return true; }
-                if (!r.Has(1)) { r.Report.Malformed = true; return false; }
-                byte kind = r.Get8();
-                switch (fieldId)
-                {
-                    case 0x7c9d: // armor
-                    {
-                        if (kind != 13)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        uint bodyLen = r.Get32();
-                        if (!r.Has(bodyLen)) { r.Report.Malformed = true; return false; }
-                        {
-                            TableReader sub = new TableReader(r.Buffer.Slice(r.Offset, (int)bodyLen), r.Report);
-                            ArmorConfigLoadBody(ref sub, value.Armor);
-                        }
-                        r.Offset += (int)bodyLen;
-                        break;
-                    }
-                    case 0x2bc9: // gunner
-                    {
-                        if (kind != 13)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        uint bodyLen = r.Get32();
-                        if (!r.Has(bodyLen)) { r.Report.Malformed = true; return false; }
-                        {
-                            TableReader sub = new TableReader(r.Buffer.Slice(r.Offset, (int)bodyLen), r.Report);
-                            GunnerSettingsLoadBody(ref sub, value.Gunner);
-                        }
-                        r.Offset += (int)bodyLen;
-                        break;
-                    }
-                    case 0x6deb: // part_id
-                    {
-                        if (kind != 8)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        {
-                            uint decodedV = unchecked((uint)r.Get32());
-                            value.PartId = decodedV;
-                        }
-                        break;
-                    }
-                    case 0x37e4: // slot
-                    {
-                        if (kind != 6)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(1)) { r.Report.Malformed = true; return false; }
-                        {
-                            byte decodedV = unchecked((byte)r.Get8());
-                            value.Slot = decodedV;
-                        }
-                        break;
-                    }
-                    default:
-                    {
-                        r.Report.Unknown++;
-                        if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                        break;
-                    }
-                }
-            }
+            return TableWire.Load(value, PartRowTableType(), bytes, report);
         }
 
         public static bool PartRowLoad(PartRow value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReader r = new TableReader(bytes, report != null ? report : new TableReport());
-            return PartRowLoadBody(ref r, value);
+            return PartRowLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
+
+        public static long PartRowMeasureMessages(PartRow[] values) { return TableWire.MessageSave(values, PartRowTableType(), Span<byte>.Empty, true); }
+        public static long PartRowSaveMessages(PartRow[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, PartRowTableType(), bytes, false); }
+        public static TableWire.Verdict PartRowLoadMessages(PartRow[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, PartRowTableType(), bytes, vocabulary, report, out count); }
+
+        public static long PartRowCookMeasure(PartRow value) { return TableWire.Cook(value, PartRowTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
+        public static bool PartRowCook(PartRow value, Span<byte> bytes, TableByteOrder order = TableByteOrder.Little) { return TableWire.Cook(value, PartRowTableType(), bytes, order, false) >= 0; }
 
         // TableReset(PartFrame) restores PartFrame's declared defaults in place, reusing every
         // buffer the value already owns. The reader calls it before overlaying.
@@ -222,140 +96,32 @@ namespace Blockhome
 
         public static long PartFrameMeasure(PartFrame value)
         {
-            long bytes = 2; // terminator
-            if (value.Version != 0) { bytes += 3 + 8; } // version
-            if (value.PartsCount < 0 || value.PartsCount > 32) { return -1; } // storage invariant
-            if (value.PartsCount > 0)
-            {
-                bytes += 3 + 4 + 5; // parts
-                for (int i = 0; i < value.PartsCount; i++)
-                {
-                    long elem = PartRowMeasure(value.Parts[i]);
-                    if (elem < 0) { return -1; }
-                    bytes += 4 + elem;
-                }
-            }
-            return bytes;
-        }
-
-        public static bool PartFrameSaveBody(ref TableWriter w, PartFrame value)
-        {
-            if (value.Version != 0)
-            {
-                w.Put16(0xe8e6); w.Put8(9); // version
-                w.Put64(unchecked((ulong)(value.Version)));
-            }
-            if (value.PartsCount < 0 || value.PartsCount > 32) { return false; } // storage invariant
-            if (value.PartsCount > 0)
-            {
-                w.Put16(0xfc18); w.Put8(14); // parts
-                int lenAt = w.Offset; w.Put32(0);
-                w.Put8(13); w.Put32((uint)value.PartsCount);
-                for (int i = 0; i < value.PartsCount; i++)
-                {
-                    {
-                        int elemLenAt = w.Offset; w.Put32(0);
-                        if (!PartRowSaveBody(ref w, value.Parts[i])) { return false; }
-                        w.Patch32(elemLenAt, (uint)(w.Offset - elemLenAt - 4));
-                    }
-                }
-                w.Patch32(lenAt, (uint)(w.Offset - lenAt - 4));
-            }
-            w.Put16(0); // terminator
-            return !w.Overflow;
+            Span<ulong> ids = stackalloc ulong[28];
+            return TableWire.Save(value, PartFrameTableType(), Span<byte>.Empty, ids, true);
         }
 
         public static long PartFrameSave(PartFrame value, Span<byte> buffer)
         {
-            TableWriter w = new TableWriter(buffer);
-            if (!PartFrameSaveBody(ref w, value)) { return -1; }
-            return w.Offset; // == PartFrameMeasure(value)
+            Span<ulong> ids = stackalloc ulong[28];
+            return TableWire.Save(value, PartFrameTableType(), buffer, ids, false);
         }
 
-        public static bool PartFrameLoadBody(ref TableReader r, PartFrame value)
+        public static TableWire.Verdict PartFrameLoadVerdict(PartFrame value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReset(value); // restore declared defaults in place, then overlay
-            for (;;)
-            {
-                if (!r.Has(2)) { r.Report.Malformed = true; return false; }
-                ushort fieldId = r.Get16();
-                if (fieldId == 0) { return true; }
-                if (!r.Has(1)) { r.Report.Malformed = true; return false; }
-                byte kind = r.Get8();
-                switch (fieldId)
-                {
-                    case 0xe8e6: // version
-                    {
-                        if (kind != 9)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(8)) { r.Report.Malformed = true; return false; }
-                        {
-                            ulong decodedV = unchecked((ulong)r.Get64());
-                            value.Version = decodedV;
-                        }
-                        break;
-                    }
-                    case 0xfc18: // parts
-                    {
-                        if (kind != 14)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        uint bodyLen = r.Get32();
-                        if (!r.Has(bodyLen)) { r.Report.Malformed = true; return false; }
-                        int bodyEnd = r.Offset + (int)bodyLen;
-                        if (bodyLen >= 5)
-                        {
-                            byte elemKind = r.Get8();
-                            uint count = r.Get32();
-                            if (elemKind != 13) { r.Report.KindMismatch++; r.Offset = bodyEnd; break; }
-                            uint keep = count;
-                            if (keep > 32) { keep = 32; r.Report.Clamped++; }
-                            // elements are BOUNDED by the field body: a count the length
-                            // cannot cover keeps the decoded prefix, flags malformed, and
-                            // the parent continues at the next field — following fields'
-                            // bytes are never fabricated into elements
-                            TableReader sub = new TableReader(r.Buffer.Slice(r.Offset, bodyEnd - r.Offset), r.Report);
-                            uint decoded = 0;
-                            for (uint i = 0; i < keep; i++)
-                            {
-                                if (!sub.Has(4)) { r.Report.Malformed = true; break; }
-                                uint elemLen = sub.Get32();
-                                if (!sub.Has(elemLen)) { r.Report.Malformed = true; break; }
-                                {
-                                    TableReader elem = new TableReader(sub.Buffer.Slice(sub.Offset, (int)elemLen), r.Report);
-                                    PartRowLoadBody(ref elem, value.Parts[i]);
-                                }
-                                sub.Offset += (int)elemLen;
-                                decoded = i + 1;
-                            }
-                            value.PartsCount = (int)decoded;
-                        }
-                        r.Offset = bodyEnd; // excess elements and slack skip via the length
-                        break;
-                    }
-                    default:
-                    {
-                        r.Report.Unknown++;
-                        if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                        break;
-                    }
-                }
-            }
+            return TableWire.Load(value, PartFrameTableType(), bytes, report);
         }
 
         public static bool PartFrameLoad(PartFrame value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReader r = new TableReader(bytes, report != null ? report : new TableReport());
-            return PartFrameLoadBody(ref r, value);
+            return PartFrameLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
+
+        public static long PartFrameMeasureMessages(PartFrame[] values) { return TableWire.MessageSave(values, PartFrameTableType(), Span<byte>.Empty, true); }
+        public static long PartFrameSaveMessages(PartFrame[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, PartFrameTableType(), bytes, false); }
+        public static TableWire.Verdict PartFrameLoadMessages(PartFrame[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, PartFrameTableType(), bytes, vocabulary, report, out count); }
+
+        public static long PartFrameCookMeasure(PartFrame value) { return TableWire.Cook(value, PartFrameTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
+        public static bool PartFrameCook(PartFrame value, Span<byte> bytes, TableByteOrder order = TableByteOrder.Little) { return TableWire.Cook(value, PartFrameTableType(), bytes, order, false) >= 0; }
 
         // ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----
 
@@ -366,13 +132,20 @@ namespace Blockhome
             if (info != null) { return info; }
             info = new TableTypeInfo();
             info.Name = "PartRow";
+            info.Id = 0x27c461282640b1f0ul;
             info.NumFields = 4;
+            info.Create = delegate { return new PartRow(); };
+            info.StorageSize = 352; info.StorageAlign = 8; info.RegionAlign = 8;
+            info.Variable = false;
+            info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+            info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+            info.BytesEdge = false; info.StringEdge = false;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "armor", Json = "armor", TypeName = "ArmorConfig", Id = 0x7c9d, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return ArmorConfigTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((PartRow)o).Armor; } },
-                new TableFieldInfo { Name = "gunner", Json = "gunner", TypeName = "GunnerSettings", Id = 0x2bc9, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return GunnerSettingsTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((PartRow)o).Gunner; } },
-                new TableFieldInfo { Name = "part_id", Json = "part_id", TypeName = "uint32", Id = 0x6deb, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((PartRow)o).PartId; }, SetRaw = delegate(object o, int i, ulong r) { ((PartRow)o).PartId = unchecked((uint)r); } },
-                new TableFieldInfo { Name = "slot", Json = "slot", TypeName = "uint8", Id = 0x37e4, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((PartRow)o).Slot; }, SetRaw = delegate(object o, int i, ulong r) { ((PartRow)o).Slot = unchecked((byte)r); } },
+                new TableFieldInfo { Name = "armor", Json = "armor", TypeName = "ArmorConfig", Id = 0xd19988b67e699194, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return ArmorConfigTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((PartRow)o).Armor; }, MessageSlot = 16, Ordinal = 0, NativeOffset = 0, NativeElementSize = 40, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (PartRow)o; TableReset(value.Armor); } },
+                new TableFieldInfo { Name = "gunner", Json = "gunner", TypeName = "GunnerSettings", Id = 0x40dbb648c0cd44aa, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return GunnerSettingsTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((PartRow)o).Gunner; }, MessageSlot = 17, Ordinal = 1, NativeOffset = 40, NativeElementSize = 304, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (PartRow)o; TableReset(value.Gunner); } },
+                new TableFieldInfo { Name = "part_id", Json = "part_id", TypeName = "uint32", Id = 0x04d6206b33415104, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((PartRow)o).PartId; }, SetRaw = delegate(object o, int i, ulong r) { ((PartRow)o).PartId = unchecked((uint)r); }, MessageSlot = 18, Ordinal = 2, NativeOffset = 344, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (PartRow)o; value.PartId = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
+                new TableFieldInfo { Name = "slot", Json = "slot", TypeName = "uint8", Id = 0x6a771618f6fe31d1, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((PartRow)o).Slot; }, SetRaw = delegate(object o, int i, ulong r) { ((PartRow)o).Slot = unchecked((byte)r); }, MessageSlot = 19, Ordinal = 3, NativeOffset = 348, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (PartRow)o; value.Slot = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { byte v = unchecked((byte)raw); return (ulong)v; } },
             };
             info.Reset = delegate(object o) { TableReset((PartRow)o); };
             info.Doc = TableDocNone;
@@ -389,11 +162,18 @@ namespace Blockhome
             if (info != null) { return info; }
             info = new TableTypeInfo();
             info.Name = "PartFrame";
+            info.Id = 0x7ca1b7fd9e3a2fb1ul;
             info.NumFields = 2;
+            info.Create = delegate { return new PartFrame(); };
+            info.StorageSize = 11280; info.StorageAlign = 8; info.RegionAlign = 8;
+            info.Variable = false;
+            info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+            info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+            info.BytesEdge = false; info.StringEdge = false;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "version", Json = "version", TypeName = "uint64", Id = 0xe8e6, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((PartFrame)o).Version; }, SetRaw = delegate(object o, int i, ulong r) { ((PartFrame)o).Version = unchecked((ulong)r); } },
-                new TableFieldInfo { Name = "parts", Json = "parts", TypeName = "PartRow", Id = 0xfc18, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 32, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return PartRowTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((PartFrame)o).Parts[i]; }, GetCount = delegate(object o) { return ((PartFrame)o).PartsCount; }, SetCount = delegate(object o, int n) { ((PartFrame)o).PartsCount = n; } },
+                new TableFieldInfo { Name = "version", Json = "version", TypeName = "uint64", Id = 0xbb62c62c9808ea37, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((PartFrame)o).Version; }, SetRaw = delegate(object o, int i, ulong r) { ((PartFrame)o).Version = unchecked((ulong)r); }, MessageSlot = 14, Ordinal = 0, NativeOffset = 0, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (PartFrame)o; value.Version = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { ulong v = unchecked((ulong)raw); return (ulong)v; } },
+                new TableFieldInfo { Name = "parts", Json = "parts", TypeName = "PartRow", Id = 0x0c519da7a1f958c5, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 32, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return PartRowTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((PartFrame)o).Parts[i]; }, GetCount = delegate(object o) { return ((PartFrame)o).PartsCount; }, SetCount = delegate(object o, int n) { ((PartFrame)o).PartsCount = n; }, MessageSlot = 15, Ordinal = 1, NativeOffset = 8, NativeElementSize = 352, NativeCountOffset = 11272, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (PartFrame)o; for (int i = 0; i < value.Parts.Length; i++) { TableReset(value.Parts[i]); } value.PartsCount = 0; } },
             };
             info.Reset = delegate(object o) { TableReset((PartFrame)o); };
             info.Doc = TableDocNone;

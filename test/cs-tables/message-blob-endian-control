@@ -1,0 +1,51 @@
+#!/bin/sh
+# Execute the generated native and retaining message readers with their native
+# word helpers in big-endian order, independent of the machine running the test.
+set -eu
+dotnet=$1
+control=build/cs-message-blob-endian-control
+mkdir -p "$control"
+cat > "$control/Case.schema" <<'SCHEMA'
+package endianprobe
+table Root
+{
+    payload *bytes
+    note *string
+}
+SCHEMA
+cat > "$control/control.csproj" <<'PROJECT'
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks><EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <Nullable>annotations</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup><Compile Include="Program.cs"/><Compile Include="generated/*.cs"/></ItemGroup>
+</Project>
+PROJECT
+cp test/cs-tables/message-blob-endian.cs "$control/Program.cs"
+reverse_native_words()
+{
+    # This expression is shared by NativeWord/NativePut and their retaining
+    # clones. Only native word order changes: the message wire stays bitpacked.
+    grep -q 'BitConverter.IsLittleEndian?i:width-1-i' "$control/generated/EndianprobeRegion.cs"
+    for file in "$control"/generated/*.cs; do
+        sed 's/BitConverter.IsLittleEndian?i:width-1-i/width-1-i/g' "$file" > "$file.tmp"
+        mv "$file.tmp" "$file"
+    done
+}
+./bin/schema generate --lang cs --out "$control/generated" "$control/Case.schema"
+reverse_native_words
+"$dotnet" run --project "$control/control.csproj" > "$control/positive.log" 2>&1 || { cat "$control/positive.log"; exit 1; }
+go run ./tools/sabotage -name table-cs-message-blob-header -out "$control/regionmessageload.gotext" internal/codegen/cstable/regionmessageload.go
+printf '{"Replace":{"%s/internal/codegen/cstable/regionmessageload.go":"%s/%s/regionmessageload.gotext"}}\n' "$PWD" "$PWD" "$control" > "$control/overlay.json"
+go build -overlay="$control/overlay.json" -o "$control/schema" ./cmd/schema
+"$control/schema" generate --lang cs --out "$control/generated" "$control/Case.schema"
+reverse_native_words
+"$dotnet" build "$control/control.csproj" -v q > "$control/sabotaged-build.log" 2>&1 || { cat "$control/sabotaged-build.log"; exit 1; }
+if "$dotnet" run --project "$control/control.csproj" --no-build > "$control/sabotaged.log" 2>&1; then
+    echo 'NEGATIVE CONTROL FAILED: eight-byte native message blob header passed'; exit 1
+fi
+grep -q 'FAILED BLOB HEADER: native length' "$control/sabotaged.log" || { cat "$control/sabotaged.log"; exit 1; }
+grep -q 'FAILED BLOB HEADER: retain length' "$control/sabotaged.log" || { cat "$control/sabotaged.log"; exit 1; }
+echo 'C# native and retaining message blobs: big-endian round trips pass; eight-byte header mutation fails both readers'

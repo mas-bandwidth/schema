@@ -1,0 +1,58 @@
+#!/bin/sh
+# A probe walk deliberately consumes one byte less than measurement reserved.
+# Both a root's own extent and a pointer node's extent must refuse before output.
+set -eu
+dotnet=$1
+control=build/cs-pack-control
+mkdir -p "$control"
+cat > "$control/Case.schema" <<'SCHEMA'
+package packcontrol
+table Node { values []int32 }
+table Root
+{
+    values []int32
+    child *Node
+}
+SCHEMA
+cat > "$control/control.csproj" <<'PROJECT'
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks><EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <Nullable>annotations</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup><Compile Include="Program.cs"/><Compile Include="generated/*.cs"/></ItemGroup>
+</Project>
+PROJECT
+cat > "$control/Program.cs" <<'CS'
+using System;
+using Packcontrol;
+unsafe class Program
+{
+    static int Main()
+    {
+        for(int node=0;node<2;node++)
+        {
+            using var builder=new RootBuilder(); var worker=builder.CreateWorker();
+            TableCookList* slot; TableFieldInfo field;
+            if(node==0) { slot=&builder.GetRoot()->Values; field=Schema.RootTableType().Fields[0]; }
+            else
+            {
+                var child=builder.Alloc<NodeRow>(); TableArena.SetReference(ref builder.GetRoot()->Child,child);
+                slot=&child->Values; field=Schema.NodeTableType().Fields[0];
+            }
+            var list=worker.List<int>(ref *slot,field); *list.Add()=5;
+            byte[] output=new byte[1024]; Array.Fill(output,(byte)0xa5);
+            if(builder.CookMeasure()!=-1 || builder.Cook(output) || builder.Lock()) { Console.WriteLine("short extent walk escaped"); return 1; }
+            foreach(byte b in output) { if(b!=0xa5) { Console.WriteLine("short extent walk wrote output"); return 1; } }
+        }
+        Console.WriteLine("C# pack guard: short root and pointer-node walks refuse before writes"); return 0;
+    }
+}
+CS
+go run ./tools/sabotage -name table-cs-pack-short -out "$control/regioncook.gotext" internal/codegen/cstable/regioncook.go
+printf '{"Replace":{"%s/internal/codegen/cstable/regioncook.go":"%s/%s/regioncook.gotext"}}\n' "$PWD" "$PWD" "$control" > "$control/overlay.json"
+go build -overlay="$control/overlay.json" -o "$control/schema" ./cmd/schema
+"$control/schema" generate --lang cs --out "$control/generated" "$control/Case.schema"
+"$dotnet" build "$control/control.csproj" -v q
+"$dotnet" "$control/bin/Debug/net10.0/control.dll"

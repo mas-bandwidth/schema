@@ -1,0 +1,47 @@
+{
+  "ships": {
+    "bomber": {
+      "name": "bomber",
+      "health": 400
+    },
+    "fighter": {
+      "name": "fighter",
+      "health": 100
+    },
+    "scout": {
+      "name": "scout",
+      "health": 30
+    }
+  },
+  "by_id": {
+    "7": {
+      "&node": 1,
+      "name": "shared",
+      "health": 50
+    },
+    "12": {
+      "&node": 1
+    }
+  },
+  "flagship": {
+    "&node": 1
+  },
+  "loadouts": {
+    "kit": {
+      "2": {
+        "count": 22
+      },
+      "9": {
+        "count": 99
+      }
+    }
+  },
+  "tiers": {
+    "-3": {
+      "count": -3
+    },
+    "2": {
+      "count": 2
+    }
+  }
+}

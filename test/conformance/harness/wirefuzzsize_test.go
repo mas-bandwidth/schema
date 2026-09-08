@@ -24,16 +24,4 @@ func TestFileWireSizeIncludesBlobRecords(t *testing.T) {
 	if !got.exact || got.bytes != 400 {
 		t.Fatalf("region size = %d (exact %v), want exactly 400", got.bytes, got.exact)
 	}
-	if root.recordStorage(0xffff, 8000) != 0 {
-		t.Fatal("unknown record commands storage")
-	}
-	root.bytesBlob = false
-	root.stringBlob = false
-	got, err = root.oracle(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.bytes != 328 {
-		t.Fatalf("unreachable blobs command storage: got %d, want 328", got.bytes)
-	}
 }

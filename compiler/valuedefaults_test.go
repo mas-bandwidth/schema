@@ -36,6 +36,12 @@ func TestTableValueDefaultsCarriers(t *testing.T) {
 	c := New()
 	for _, target := range c.Targets() {
 		out, err := c.Generate(u, target, Options{})
+		if target == "cs" {
+			if err != nil {
+				t.Fatalf("cs refused table defaults: %v", err)
+			}
+			continue
+		}
 		if target == "c" {
 			if err != nil {
 				t.Fatalf("C refused table defaults: %v", err)

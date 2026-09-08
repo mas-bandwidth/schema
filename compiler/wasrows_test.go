@@ -1,6 +1,5 @@
 // A `was` on an enum variant, a union arm or a type's field (docs/SPEC-TABLES.md
-// §5) is carried by C++ and C; other targets refuse
-// the unit by name.
+// §5) is carried by C++, C and C#; targets without the form refuse it by name.
 package compiler
 
 import (
@@ -50,9 +49,9 @@ func TestWasRowsCarriers(t *testing.T) {
 	c := New()
 	for _, target := range c.Targets() {
 		out, err := c.Generate(u, target, Options{})
-		if target == "cpp" || target == "c" {
+		if target == "cpp" || target == "c" || target == "cs" {
 			if err != nil {
-				t.Fatalf("carrier refused the was rows: %v", err)
+				t.Fatalf("%s carries the was rows and refused: %v", target, err)
 			}
 			var all strings.Builder
 			for _, b := range out {
@@ -60,9 +59,9 @@ func TestWasRowsCarriers(t *testing.T) {
 			}
 			// every id the renamed things ride under is the OLD name's hash
 			for _, old := range []string{"Silver", "ward", "ping", "multiplier"} {
-				want := fmt.Sprintf("0x%016xull", ir.TableWireId(old))
+				want := fmt.Sprintf("0x%016x", ir.TableWireId(old))
 				if !strings.Contains(all.String(), want) {
-					t.Errorf("carrier output lacks the id of %q, %s", old, want)
+					t.Errorf("%s output lacks the id of %q, %s", target, old, want)
 				}
 			}
 			continue

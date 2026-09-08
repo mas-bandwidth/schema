@@ -121,15 +121,16 @@ they become part of the count as schema#349 and the per-construct follow-ons
 land them, one language at a time, with nothing in this data or this contract
 moving as they do.
 
-**Wire-form coverage is separate from storage coverage.** The id-table wire
-(docs/SPEC-TABLES.md §3) uses a form byte, reference-and-kind field headers,
-canonical LEB128 and a trailing id table. C++ and the tool carry it; C now
-answers file-wire, report and text surfaces for its existing fixed-unit
-roster. `make tables-c-wire-fuzz` runs those roots against the independent
-engine in native and sanitized builds. Variable storage, message form,
-retention and unsupported kinds remain absent in that C roster. The other
-ports still use their earlier wire in this tree. An unsupported root is named
-as `N seeds absent (roots the leg has no codec for)` in the run's own output.
+**Wire-form coverage is separate from storage coverage.** C++, C, C# and the
+independent compiler engine carry the id-table file form and bitpacked message
+form. C and C# also carry variable regions, builders, retained unknowns and
+canonical cooks. Their pipe drivers compare values, re-saved bytes, measured
+sizes and reports with the independent engine. `make tables-c-wire-fuzz` and
+`make tables-c-retain` run C natively and under ASan/UBSan; the corresponding
+C# managed, native, builder and retention targets are in make/cs.mk.
+
+Unsupported roots are printed as `N seeds absent (roots the leg has no codec
+for)`. Absence is explicit and never counted as a passing fixture.
 PORTING.md M20 records the coverage and gates.
 
 **Absent is not failure, and the distinction is the whole reason the matrix
@@ -516,3 +517,13 @@ Named, with the reason, so a port knows what it is not being asked for:
 - **The block form's fuzzers** (`test/tables/block_fuzz_main.cpp` and its C#
   twin) and the cook's. A fuzzer is a search, not a case, and the finds it
   produces land here as forgery rows — `block_offset_overflow` is one.
+
+The optional `wire-fuzz --builder` arm compares mutable file readers with
+`tablewire.Decode`. Its roster contains variable-class file roots. The driver
+reports its load result in the existing loaded byte, the accumulated report,
+and canonical saved bytes only after a successful read. A failed read emits a
+save failure (`-1`); the partial value must be discarded. This arm does not
+preflight or compare region extents. In particular, an int32 list count-cap
+refusal stops without inventing the region reader's malformed-data event.
+`--builder` cannot be combined with `--message` or `--retain`. The existing
+region and retention arms retain their measurement and bounds checks.

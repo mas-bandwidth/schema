@@ -625,7 +625,17 @@ func TestPointerGenerationDeterministic(t *testing.T) {
 // puts TableReset in expression position (TableReset.A), where it resolves to
 // the method group rather than the type — CS0119.
 func TestTableRuntimeNamesAreClaimed(t *testing.T) {
-	files, err := New().Generate(unitFromSource(t, runtimeSrc), "cs", Options{})
+	// Exercise the native builder as well as the fixed runtime. A fixed-only
+	// source cannot keep the arena and mutable collection names honest.
+	source := runtimeSrc + `
+table NativeRoot
+{
+    next *NativeRoot
+    values []int32
+    keys map[uint32]int32
+}
+`
+	files, err := New().Generate(unitFromSource(t, source), "cs", Options{})
 	if err != nil {
 		t.Fatal(err)
 	}

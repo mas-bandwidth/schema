@@ -103,6 +103,7 @@ type cookUnit struct {
 	order   []string                    // those record names, sorted
 	skipped map[string]string           // table -> why it has no C# Open
 	align   int64                       // the unit's region alignment (§7.1)
+	unions  []*ir.Union
 }
 
 func (c *cookUnit) opens(name string) bool {
@@ -139,6 +140,25 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 			c.members[name] = ml
 		})
 	}
+	seenUnions := map[string]bool{}
+	var collectUnion func(*ir.Field)
+	collectUnion = func(f *ir.Field) {
+		if un, ok := f.Type.Ref.(*ir.Union); ok && !seenUnions[un.Name] {
+			seenUnions[un.Name] = true
+			c.unions = append(c.unions, un)
+			for _, v := range un.Variants {
+				if !v.Void() {
+					collectUnion(v.F)
+				}
+			}
+		}
+	}
+	for _, ml := range c.members {
+		for _, fl := range ml.Fields {
+			collectUnion(fl.Field)
+		}
+	}
+	sort.Slice(c.unions, func(i, j int) bool { return c.unions[i].Name < c.unions[j].Name })
 	aligns := make([]int64, 0, len(c.members))
 	for name := range c.members {
 		c.order = append(c.order, name)
@@ -156,6 +176,27 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 func cookWalk(u *ir.Unit, name string, visit func(string, *ir.MemberLayout)) {
 	seen := map[string]bool{}
 	var walk func(string)
+	var field func(*ir.Field)
+	field = func(f *ir.Field) {
+		if f.IsMap() {
+			walk(f.MapEntry.Name)
+			return
+		}
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
+			walk(ref.Name)
+		case *ir.Union:
+			if seen["union:"+ref.Name] {
+				return
+			}
+			seen["union:"+ref.Name] = true
+			for _, v := range ref.Variants {
+				if v.F != nil {
+					field(v.F)
+				}
+			}
+		}
+	}
 	walk = func(n string) {
 		if seen[n] {
 			return
@@ -167,12 +208,7 @@ func cookWalk(u *ir.Unit, name string, visit func(string, *ir.MemberLayout)) {
 		seen[n] = true
 		visit(n, ir.RecordLayout(u, st))
 		for _, f := range st.Fields {
-			if f.Type.Kind != ir.TNamed {
-				continue
-			}
-			if ref, ok := f.Type.Ref.(*ir.Struct); ok {
-				walk(ref.Name)
-			}
+			field(f)
 		}
 	}
 	walk(name)
@@ -181,33 +217,7 @@ func cookWalk(u *ir.Unit, name string, visit func(string, *ir.MemberLayout)) {
 // cookableClosure answers whether C# can spell one table's whole cooked region
 // blittably, and why not when it cannot.
 func cookableClosure(u *ir.Unit, st *ir.Struct) string {
-	seen := map[string]bool{}
-	var walk func(string) string
-	walk = func(name string) string {
-		if seen[name] {
-			return ""
-		}
-		seen[name] = true
-		member := cookMember(u, name)
-		if member == nil {
-			return ""
-		}
-		for _, f := range member.Fields {
-			if f.Type.Kind != ir.TNamed {
-				continue
-			}
-			switch ref := f.Type.Ref.(type) {
-			case *ir.Union:
-				return name + "." + f.Name + " is a union, and a cooked record's C# form is Sequential with generated padding, which cannot overlay arms"
-			case *ir.Struct:
-				if why := walk(ref.Name); why != "" {
-					return why
-				}
-			}
-		}
-		return ""
-	}
-	return walk(st.Name)
+	return ""
 }
 
 func cookMember(u *ir.Unit, name string) *ir.Struct {
@@ -258,6 +268,9 @@ func (g *cookGen) emit() {
 				continue
 			}
 			g.emitBlittable(name)
+		}
+		for _, un := range g.cook.unions {
+			g.emitUnionRow(un)
 		}
 	}
 	if g.file == nil {
@@ -390,7 +403,10 @@ func (g *cookGen) emitBlittableField(f *ir.Field, w *cookWriter) {
 	name := ir.GoExportName(f.Name)
 	next := w.next
 	switch {
-	case f.Type.Pointer:
+	case f.IsList(), f.IsMap():
+		next()
+		g.sf("    public TableCookList %s;\n", name)
+	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		// A *T SLOT IS EIGHT BYTES AT EIGHT (docs/SPEC-TABLES.md §6.3, §7.2),
 		// holding the SIGNED SELF-RELATIVE delta from the slot's own address,
 		// and NULL IS ZERO. It is not a managed reference and never becomes
@@ -400,6 +416,11 @@ func (g *cookGen) emitBlittableField(f *ir.Field, w *cookWriter) {
 	case f.Type.Kind == ir.TString:
 		next()
 		g.sf("    public fixed byte %s[%d]; // string(%d): buffer, used length beside it\n", name, f.Type.Size+1, f.Type.Size)
+		next()
+		g.sf("    public int %sLength;\n", name)
+	case f.Type.Kind == ir.TWString:
+		next()
+		g.sf("    public fixed char %s[%d];\n", name, f.Type.Size+1)
 		next()
 		g.sf("    public int %sLength;\n", name)
 	case f.Type.Kind == ir.TBytes:
@@ -431,6 +452,14 @@ func (g *cookGen) emitBlittableArray(f *ir.Field, name string) {
 	typ := g.cookBlittableType(f.Type)
 	if csFixedBufferPrimitive(typ) {
 		g.sf("    public fixed %s %s[%d];\n", typ, name, f.ArrayBound)
+		return
+	}
+	// CLR metadata caps a type's field count. Keep a typed first element for
+	// the span accessor and represent the remaining identical slots as bytes.
+	if f.ArrayBound > 128 {
+		size := ir.FieldPieces(g.unit, f, 0)[0].Size / f.ArrayBound
+		g.sf("    public %s %s0;\n", typ, name)
+		g.sf("    private fixed byte %sStorage[%d];\n", name, (f.ArrayBound-1)*size)
 		return
 	}
 	g.sf("    // [%d]%s: a fixed-size buffer takes primitives only, so the elements are\n", f.ArrayBound, typ)
@@ -481,6 +510,18 @@ func (g *cookGen) emitLayoutCheck() {
 	for _, name := range g.cook.order {
 		g.emitRecordCheck(name)
 	}
+	for _, un := range g.cook.unions {
+		size, _, _, armAt := ir.UnionLayout(g.unit, un)
+		g.rf("        Size(%q, Unsafe.SizeOf<%sRow>(), %d);\n", un.Name+"Row", un.Name, size)
+		g.rf("        { %sRow probe = default; byte* at = (byte*)&probe; Offset(%q, (byte*)&probe.Type - at, 0);", un.Name, un.Name+"Row.Type")
+		for _, v := range un.Variants {
+			if v.Void() {
+				continue
+			}
+			g.rf(" Offset(%q, (byte*)%s - at, %d);", un.Name+"Row."+member(v.F), g.cookFieldAddress(v.F), armAt)
+		}
+		g.rf(" }\n")
+	}
 	g.rf("    }\n\n")
 	g.rf("    internal static void Size(string what, int got, int want)\n    {\n")
 	g.rf("        if (got != want)\n        {\n")
@@ -516,10 +557,13 @@ func (g *cookGen) emitRecordCheck(name string) {
 
 func (g *cookGen) cookFieldAddress(f *ir.Field) string {
 	name := ir.GoExportName(f.Name)
-	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
+	if f.IsList() || f.IsMap() {
+		return "&probe." + name
+	}
+	if !f.Type.Pointer && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString) {
 		return "probe." + name // a fixed-size buffer IS a pointer in unsafe context
 	}
-	if !f.Type.Pointer && (f.KeyEnum != "" || f.Array != ir.ArrayNone) {
+	if f.KeyEnum != "" || f.Array != ir.ArrayNone {
 		if csFixedBufferPrimitive(g.cookBlittableType(f.Type)) {
 			return "probe." + name
 		}
@@ -592,39 +636,40 @@ func (g *cookGen) emitOpen(st *ir.Struct, ml *ir.MemberLayout, align int64) {
 	g.hf("    // would put one signed value into that arithmetic and one negative case\n")
 	g.hf("    // into every comparison; a caller holding a length from a stat casts once,\n")
 	g.hf("    // at the call site, where the sign is still its own business.\n")
-	g.hf("    public static bool Open(out %sCook cook, IntPtr pointer, long length)\n    {\n", name)
-	g.hf("        cook = default;\n")
+	g.hf("    public static bool Open(out %sCook cook, IntPtr pointer, long length) { return Open(out cook, pointer, length, out _); }\n", name)
+	g.hf("    public static bool Open(out %sCook cook, IntPtr pointer, long length, out TableRefuseReason reason)\n    {\n", name)
+	g.hf("        cook = default; reason = TableRefuseReason.ok;\n")
 	g.hf("        TableCookLayout.Verify();\n")
-	g.hf("        if (pointer == IntPtr.Zero || length < %d) { return false; }\n", cookHeaderBytes)
+	g.hf("        if (pointer == IntPtr.Zero) { reason = TableRefuseReason.unaligned_base; return false; }\n        if (length < %d) { reason = TableRefuseReason.truncated; return false; }\n", cookHeaderBytes)
 	g.hf("        byte* at = (byte*) pointer;\n")
 	g.hf("        ulong bytes = (ulong) length;\n\n")
 	g.hf("        // THE MAGIC, read BYTEWISE before anything else: it is what establishes\n")
 	g.hf("        // the byte order every other header word is written in. A cook of the\n")
 	g.hf("        // other order reads back this constant byte-reversed and refuses HERE,\n")
 	g.hf("        // rather than reaching a fix-up pass this design does not have.\n")
-	g.hf("        if (Schema.TableCookRead64(at + %d) != Schema.TableCookMagic) { return false; }\n", 0)
+	g.hf("        if (Schema.TableCookRead64(at + %d) != Schema.TableCookMagic) { reason = Schema.TableCookRead64(at) == System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(Schema.TableCookMagic) ? TableRefuseReason.foreign_order : TableRefuseReason.not_a_cook; return false; }\n", 0)
 	g.hf("        // and the ORDER WORD does the other job: it RECORDS which order wrote the\n")
 	g.hf("        // file, so a refusal names the order rather than inferring it. A file\n")
 	g.hf("        // whose magic matched and whose order word did not is corrupt, and there\n")
 	g.hf("        // is no reading that recovers it.\n")
-	g.hf("        if (Schema.TableCookRead64(at + %d) != Schema.TableCookByteOrder) { return false; }\n", 16)
+	g.hf("        if (Schema.TableCookRead64(at + %d) != Schema.TableCookByteOrder) { reason = TableRefuseReason.not_a_cook; return false; }\n", 16)
 	g.hf("        // THE BUILD VERSION: under the match-and-point rule a matching id means\n")
 	g.hf("        // Open checks nothing further, so it is the sole guard between this\n")
 	g.hf("        // runtime and a foreign region (§20).\n")
-	g.hf("        if (Schema.TableCookRead64(at + %d) != Schema.BuildVersion) { return false; }\n", 8)
+	g.hf("        if (Schema.TableCookRead64(at + %d) != Schema.BuildVersion) { reason = TableRefuseReason.wrong_build_version; return false; }\n", 8)
 	g.hf("        // THE RESERVED WORDS: a non-zero one means a writer used a form this\n")
 	g.hf("        // build does not understand, and Open refuses rather than ignoring it.\n")
-	g.hf("        if (Schema.TableCookRead64(at + %d) != 0) { return false; }\n", 48)
-	g.hf("        if (Schema.TableCookRead64(at + %d) != 0) { return false; }\n\n", 56)
+	g.hf("        if (Schema.TableCookRead64(at + %d) != 0) { reason = TableRefuseReason.reserved_not_zero; return false; }\n", 48)
+	g.hf("        if (Schema.TableCookRead64(at + %d) != 0) { reason = TableRefuseReason.reserved_not_zero; return false; }\n\n", 56)
 	g.hf("        // THE ALIGNMENT WORD is the one field the check COMPUTES WITH rather than\n")
 	g.hf("        // only compares against — the data part begins at align_up(64, alignment)\n")
 	g.hf("        // and the base is measured against it — so a word that is not an\n")
 	g.hf("        // alignment rounds nothing and aligns nothing. A zero there is a division\n")
 	g.hf("        // by zero inside the check, which is the defect the check prevents.\n")
 	g.hf("        ulong alignment = Schema.TableCookRead64(at + %d);\n", 40)
-	g.hf("        if (alignment < %d || alignment > %d) { return false; }\n", ir.RegionAlignFloor, cookMaxAlign)
-	g.hf("        if ((alignment & (alignment - 1)) != 0) { return false; } // a power of two\n")
-	g.hf("        if ((alignment %% %d) != 0) { return false; }             // and a multiple of the ROOT's own alignof\n\n", ml.Align)
+	g.hf("        if (alignment < %d || alignment > %d) { reason = TableRefuseReason.bad_alignment; return false; }\n", ir.RegionAlignFloor, cookMaxAlign)
+	g.hf("        if ((alignment & (alignment - 1)) != 0) { reason = TableRefuseReason.bad_alignment; return false; } // a power of two\n")
+	g.hf("        if ((alignment %% %d) != 0) { reason = TableRefuseReason.bad_alignment; return false; }             // and a multiple of the ROOT's own alignof\n\n", ml.Align)
 	g.hf("        // THE DATA OFFSET IS DERIVED, never a header field: a fact a reader\n")
 	g.hf("        // computes is a fact two writers cannot disagree about, and it is 64 for\n")
 	g.hf("        // every unit this language can declare.\n")
@@ -636,21 +681,21 @@ func (g *cookGen) emitOpen(st *ir.Struct, ml *ir.MemberLayout, align int64) {
 	g.hf("        // can wrap past the top of the type and land back inside the buffer.\n")
 	g.hf("        ulong dataLength = Schema.TableCookRead64(at + %d);\n", 24)
 	g.hf("        ulong attribution = Schema.TableCookRead64(at + %d);\n", 32)
-	g.hf("        if (dataLength > bytes || attribution > bytes - dataLength) { return false; }\n")
-	g.hf("        if (dataOffset > bytes - dataLength - attribution) { return false; }\n")
-	g.hf("        if (dataOffset + dataLength + attribution != bytes) { return false; }\n\n")
+	g.hf("        if (dataLength > bytes || attribution > bytes - dataLength) { reason = TableRefuseReason.truncated; return false; }\n")
+	g.hf("        if (dataOffset > bytes - dataLength - attribution) { reason = TableRefuseReason.truncated; return false; }\n")
+	g.hf("        if (dataOffset + dataLength + attribution != bytes) { reason = TableRefuseReason.truncated; return false; }\n\n")
 	g.hf("        // THE DATA PART MUST HOLD THE ROOT. The part lengths frame the FILE; they\n")
 	g.hf("        // do not say the region is at least sizeof(root). Without this a forged\n")
 	g.hf("        // short data part describes a root partly outside the file, and a\n")
 	g.hf("        // match-and-point reader would hand back storage the caller never gave\n")
 	g.hf("        // it — the one way this design could read past the length it was passed.\n")
-	g.hf("        if (dataLength < %d) { return false; }\n\n", ml.Size)
+	g.hf("        if (dataLength < %d) { reason = TableRefuseReason.truncated; return false; }\n\n", ml.Size)
 	g.hf("        // THE ALIGNMENT OF THE BASE. The header pads the data part to the\n")
 	g.hf("        // region's alignment, so a base an allocator or mmap gave you is already\n")
 	g.hf("        // aligned; one that is not is a caller's buffer this form cannot be read\n")
 	g.hf("        // out of. The alignment divides 64, so the derived data offset carries\n")
 	g.hf("        // the property from the file's base to the region's.\n")
-	g.hf("        if ((((ulong) at) %% alignment) != 0) { return false; }\n\n")
+	g.hf("        if ((((ulong) at) %% alignment) != 0) { reason = TableRefuseReason.unaligned_base; return false; }\n\n")
 	g.hf("        cook = new %sCook(at + dataOffset, (long) dataLength);\n", name)
 	g.hf("        return true;\n    }\n\n")
 	g.hf("    // The same open over a SPAN, which is how a consumer that already has the\n")
@@ -706,8 +751,16 @@ func (g *cookGen) emitAccessors(st *ir.Struct, ml *ir.MemberLayout) {
 			wrote = true
 		}
 		switch {
-		case f.Type.Pointer:
+		case f.IsList(), f.IsMap():
+			elem := g.cookBlittableType(f.Type)
+			if f.IsMap() {
+				elem = f.MapEntry.Name + "Row"
+			}
+			g.hf("    public static ReadOnlySpan<%s> %s(%sRow* row) { return new ReadOnlySpan<%s>((byte*)&row->%s + row->%s.Reference, Math.Max(0, row->%s.Count)); }\n\n", elem, member, name, elem, member, member, member)
+		case f.Type.Pointer && f.Array == ir.ArrayNone:
 			continue
+		case f.Type.Kind == ir.TWString:
+			g.hf("    public static ReadOnlySpan<char> %s(%sRow* row) { int used = row->%sLength; return new ReadOnlySpan<char>(row->%s, used < 0 || used > %d ? 0 : used); }\n\n", member, name, member, member, f.Type.Size)
 		case f.Type.Kind == ir.TString:
 			g.hf("    // string(%d): the used bytes, without the zero tail (§7.2).\n", f.Type.Size)
 			g.hf("    public static ReadOnlySpan<byte> %s(%sRow* row)\n    {\n", member, name)
@@ -797,22 +850,32 @@ func (g *cookGen) emitRecordDescriptor(record string) {
 				countOffset = pieces[len(pieces)-2].Offset
 			}
 		}
-		if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
+		if !f.Type.Pointer && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) {
 			pieces := ir.FieldPieces(g.unit, f, fl.Offset)
 			countOffset = pieces[1].Offset
 		}
 		isArray := f.KeyEnum != "" || f.Array != ir.ArrayNone
 		bound := int64(1)
 		elemSize := fl.Size
-		if isArray {
+		if isArray && !f.IsList() {
 			bound = f.ArrayBound
 			elemSize = ir.FieldPieces(g.unit, f, fl.Offset)[0].Size / bound
 		}
-		if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
+		if !f.Type.Pointer && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) {
 			// the COUNT COMPANION of a string or a `bytes` bounds a walker just
 			// as an array's does (§7.4), and the bound is the declared length
 			bound = f.Type.Size
 			isArray = false
+		}
+		if f.IsList() {
+			elemSize, _ = ir.ListElementLayout(g.unit, f)
+			bound = 0
+			countOffset = fl.Offset + 8
+		}
+		if f.IsMap() {
+			elemSize = ir.RecordLayout(g.unit, f.MapEntry).Size
+			bound = 0
+			countOffset = fl.Offset + 8
 		}
 		presentOffset := int64(-1)
 		if f.Type.Optional {
@@ -926,6 +989,14 @@ public sealed class TableCookInfo
     public TableCookFieldInfo[] Fields;
 }
 
+[StructLayout(LayoutKind.Sequential, Size = 16)]
+public struct TableCookList
+{
+    public long Reference;
+    public int Count;
+    internal int Capacity; // mutable arena only; zero in regions and cooks
+}
+
 // Schema carries every generated function and constant of the unit — C# has no
 // namespace-level functions — and this is the cook's slice of it.
 public static partial class Schema
@@ -973,7 +1044,7 @@ public static partial class Schema
     // the 64 every unit this language can declare produces.
     public const long TableCookMaxAlign = ` + fmt.Sprintf("%d", cookMaxAlign) + `;
 
-    public static unsafe ulong TableCookRead64(byte* p) { return *(ulong*) p; }
+    public static unsafe ulong TableCookRead64(byte* p) { return System.Runtime.CompilerServices.Unsafe.ReadUnaligned<ulong>(p); }
 }
 
 `)

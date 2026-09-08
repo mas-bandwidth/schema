@@ -1,48 +1,12 @@
-// Package cstable emits a unit's C# table surface (docs/SPEC-TABLES.md): the
-// TABLE-wire codecs in <Base>Table.cs, and the two ACCELERATORS on the side in
-// <Base>Block.cs (§19) and <Base>Cook.cs (§7). One file per unit file, emitted
-// only when the unit declares tables — plus the unit's ONE RUNTIME HOME per
-// surface, <Package>Table.cs / <Package>Block.cs / <Package>Cook.cs, where
-// everything shared lands (runtimeHome, below).
-//
-// The WIRE half is the FIXED class only: storage classes for the `table`
-// declarations, then measure/save/load codecs and reflection descriptors for
-// the whole TABLE CLOSURE (every table plus everything one references,
-// transitively).
-//
-// The two ACCELERATORS reach further, because neither needs a codec: a block
-// and a cook are POINTED AT, not parsed. They are blittable records plus a
-// header match, so they cover the VARIABLE class too — a pointered unit's cooks
-// open in full while its wire codecs do not exist.
-//
-// The C++ backend (internal/codegen/cpptable) is the REFERENCE: this port
-// mirrors its framing, its elision decisions, its clamps and its report
-// events byte for byte, and invents no contract of its own. Where C# forces
-// a different spelling the reason is stated at the site.
-//
-// Storage follows the C# PACKET emitter's conventions exactly
-// (internal/codegen/csharp): sealed classes with public fields, string(N)
-// and bytes(N) as a pre-allocated byte[N] beside an int used length, arrays
-// as a pre-allocated T[N] beside an int used count, unions as a tag beside
-// one pre-allocated arm per variant. That is not a free choice — a table's
-// closure contains plain `type` declarations whose storage the packet
-// emitter already wrote, and the table codecs decode into those very
-// classes. One unit, one spelling.
-//
-// Nothing on the read path allocates: every buffer exists at construction,
-// the caller owns the wire span and the report, and Load overlays a value in
-// place after restoring its declared defaults.
-//
-// The VARIABLE class ON THE WIRE — the arena, the builder, the region and the
-// node-table codec — is a named follow-on: a unit whose closure declares a
-// pointer gets no <Base>Table.cs, and the refusal is NAMED in every source the
-// unit does emit rather than left as a missing symbol (§11).
+// Package cstable emits the C# table wire, descriptors and JSON runtime, plus
+// the block and cook accelerators. C++ and SPEC-TABLES define the wire law.
+// Fixed tables reuse preallocated buffers; variable tables use managed object
+// identity and growable collections. Both use the same typed descriptor walk.
 package cstable
 
 import (
 	"fmt"
 	"maps"
-	"sort"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -69,73 +33,15 @@ const (
 	tkTable  = 13
 	tkArray  = 14
 	tkUnion  = 15
-	// an ENUM-KEYED array body is its OWN kind (docs/SPEC-TABLES.md §3.2): the
-	// positional array body and the keyed one are incompatible, so a reader
-	// meeting the other must see a KIND MISMATCH and skip, never misdecode.
-	tkKeyed = 16
 )
 
 func tableScalarKind(f *ir.Field) int {
-	switch f.Type.Kind {
-	case ir.TBool:
-		return tkBool
-	case ir.TInt:
-		if f.Type.Signed {
-			switch f.Type.Width {
-			case 8:
-				return tkI8
-			case 16:
-				return tkI16
-			case 32:
-				return tkI32
-			default:
-				return tkI64
-			}
-		}
-		switch f.Type.Width {
-		case 8:
-			return tkU8
-		case 16:
-			return tkU16
-		case 32:
-			return tkU32
-		default:
-			return tkU64
-		}
-	case ir.TBits:
-		switch {
-		case f.Type.Width <= 8:
-			return tkU8
-		case f.Type.Width <= 16:
-			return tkU16
-		case f.Type.Width <= 32:
-			return tkU32
-		default:
-			return tkU64
-		}
-	case ir.TFloat32:
-		return tkF32
-	case ir.TFloat64:
-		return tkF64
-	case ir.TString:
-		return tkString
-	case ir.TBytes:
-		return tkArray
-	case ir.TNamed:
-		switch f.Type.Ref.(type) {
-		case *ir.Enum:
-			// an enum value rides as the u16 hash of its VARIANT NAME
-			// (docs/SPEC-TABLES.md §5), whatever the declaration-side width
-			return tkU16
-		case *ir.Flags:
-			return tkU64
-		case *ir.Struct:
-			return tkTable
-		case *ir.Union:
-			return tkUnion
+	if f.Type.Kind == ir.TNamed {
+		if _, ok := f.Type.Ref.(*ir.Enum); ok {
+			return 30
 		}
 	}
-	return 0
+	return ir.TableScalarKind(f)
 }
 
 func tableKindWidth(kind int) int {
@@ -150,34 +56,6 @@ func tableKindWidth(kind int) int {
 		return 8
 	}
 	return 0
-}
-
-func tablePut(width int) string { return fmt.Sprintf("Put%d", width*8) }
-func tableGet(width int) string { return fmt.Sprintf("Get%d", width*8) }
-
-// csKindStorage is the C# type a fixed-width wire kind decodes through — the
-// twin of C++'s intN_t/uintN_t locals, so the clamp comparisons happen at the
-// wire's own width before they land in storage.
-func csKindStorage(kind int) string {
-	switch kind {
-	case tkI8:
-		return "sbyte"
-	case tkI16:
-		return "short"
-	case tkI32:
-		return "int"
-	case tkI64:
-		return "long"
-	case tkU8:
-		return "byte"
-	case tkU16:
-		return "ushort"
-	case tkU32:
-		return "uint"
-	case tkU64:
-		return "ulong"
-	}
-	return "uint"
 }
 
 // runtimeHome is the basename of the file that carries a unit's shared C#
@@ -232,6 +110,8 @@ func generatedFrom(f *ir.File, u *ir.Unit) string {
 type tableGen struct {
 	unit     *ir.Unit
 	file     *ir.File   // nil in the emitted-for-the-unit runtime file
+	outside  bool       // a view-only type has no checked wire identity
+	arm      bool       // descriptor rows inside a union
 	home     bool       // this file carries the unit's shared table runtime
 	anyKeyed bool       // the unit declares at least one enum-keyed array
 	owner    *ir.Struct // the closure member whose codec is being emitted
@@ -269,9 +149,6 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
-	if err := ir.RefuseWideTableKinds(u, "C#"); err != nil {
-		return nil, err
-	}
 	// The two ACCELERATORS are emitted ON THE SIDE and neither needs a wire
 	// codec: the BLOCK form (§19) points at bytes a producer wrote, and the
 	// COOK (§7) points at a region the tooling wrote. Both are pure readers
@@ -288,19 +165,6 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		return nil, err
 	}
 	maps.Copy(out, cooks)
-	// The VARIABLE-CLASS refusal (docs/SPEC-TABLES.md §2.2, §11) is a refusal of the
-	// WIRE SURFACE, which is the half the variable class is missing: no arena,
-	// no builder, no region and no node-table codec. It is named rather than
-	// silent — every generated Cook file of the unit opens with the banner
-	// below, naming each table and the follow-on — and no <Base>Table.cs is
-	// emitted, so a consumer that reaches for Save or Load gets a missing name
-	// from its own compiler beside a file that says why.
-	if names := variableTableNames(u); len(names) > 0 {
-		for name, data := range out {
-			out[name] = append([]byte(variableClassBanner(names)), data...)
-		}
-		return out, nil
-	}
 	closure := ir.TableClosure(u)
 	home := runtimeHome(u)
 	anyKeyed := unitHasKeyedArray(u, closure)
@@ -323,6 +187,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			g.emitRuntime()
 			runtimeWritten = true
 		}
+		for _, un := range f.TableUnions {
+			g.emitTableUnion(un)
+		}
 		for _, st := range members {
 			if st.IsTable {
 				g.owner = st
@@ -335,10 +202,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		for _, st := range members {
 			g.owner = st
 			g.emitTableReset(st)
-			g.emitTableMeasure(st)
-			g.emitTableWrite(st)
-			g.emitTableSave(st)
-			g.emitTableRead(st)
+			g.emitWireSurface(st)
+			g.emitMessageSurface(st)
+			g.emitNativeSurface(st)
 		}
 		if len(members) > 0 {
 			g.pf("// ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----\n\n")
@@ -365,6 +231,11 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		g.emitRuntime()
 		out[home+"Table.cs"] = g.assemble()
 	}
+	out[capitalize(u.Package)+"View.cs"] = generateView(u, closure)
+	out[capitalize(u.Package)+"Region.cs"] = generateRegion(u)
+	common := &tableGen{unit: u}
+	common.tf("public enum TableRefuseReason { ok, not_a_cook, foreign_order, wrong_build_version, reserved_not_zero, bad_alignment, truncated, unaligned_base, bad_layout, unknown_form, count_over_length, count_over_extent_cap, blob_over_size_cap, data_cycle }\n")
+	out[capitalize(u.Package)+"Refuse.cs"] = common.assemble()
 	return out, nil
 }
 
@@ -376,84 +247,45 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 // the unit, which is the generic-walk gate (`make tables-cs-json-walk`).
 func (g *tableGen) emitRuntime() {
 	g.tf("%s", tableRuntime(g.anyKeyed))
+	g.emitMessages()
 	g.pf("%s", tableDocNone())
 	g.pf("%s", tableBitHelpers())
 	g.pf("%s", tableJsonWalkSource)
-}
-
-// variableTableNames is the unit's variable-length tables, sorted — the tables
-// whose WIRE surface this backend does not emit.
-func variableTableNames(u *ir.Unit) []string {
-	variable := ir.VariableTables(u)
-	if len(variable) == 0 {
-		return nil
-	}
-	names := make([]string, 0, len(variable))
-	for name := range variable {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
-}
-
-// variableClassBanner is the VARIABLE-class refusal, written where a consumer
-// meets it (docs/SPEC-TABLES.md §2.2, §11). The refusal is of the WIRE half and of
-// nothing else: the accelerators below are pure readers over blittable records
-// and need no codec, so they are emitted. What is absent is Measure, Save,
-// Load, the arena and the builder — named here rather than left as a missing
-// symbol with no explanation.
-func variableClassBanner(names []string) string {
-	return "// THE C# WIRE SURFACE OF THIS UNIT IS REFUSED, BY NAME (docs/SPEC-TABLES.md §11).\n" +
-		"//\n" +
-		"// It declares variable-length tables (" + englishList(names) + "), and the C# table\n" +
-		"// backend's VARIABLE CLASS — the arena, the builder, the region and the node-table\n" +
-		"// codec — is a named follow-on (§15). No <Base>Table.cs is emitted for this unit,\n" +
-		"// so a consumer reaching for Measure, Save or Load gets a missing name from its own\n" +
-		"// compiler, beside this file, which says why.\n" +
-		"//\n" +
-		"// What IS emitted is the two ACCELERATORS, because neither needs a codec: a block\n" +
-		"// (§19) and a cook (§7) are pointed at, not parsed. A build that loads this unit's\n" +
-		"// cooked assets is served in full; one that wants the tolerant wire is not, and\n" +
-		"// runs the tool or the C++ backend for it.\n\n"
-}
-
-func englishList(names []string) string {
-	switch len(names) {
-	case 0:
-		return ""
-	case 1:
-		return names[0]
-	}
-	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
+	g.pf("%s", tableWireSource)
 }
 
 // closureEnums is every enum whose values ride in the unit's table closure.
 func closureEnums(u *ir.Unit, closure map[string]bool) map[string]*ir.Enum {
 	used := map[string]*ir.Enum{}
-	names := make([]string, 0, len(closure))
-	for name := range closure {
-		names = append(names, name)
+	seen := map[*ir.Union]bool{}
+	var field func(*ir.Field)
+	field = func(f *ir.Field) {
+		if f.KeyEnumRef != nil {
+			used[f.KeyEnumRef.Name] = f.KeyEnumRef
+		}
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Enum:
+			used[ref.Name] = ref
+		case *ir.Union:
+			if seen[ref] {
+				return
+			}
+			seen[ref] = true
+			for _, arm := range ref.Variants {
+				if !arm.Void() {
+					field(arm.F)
+				}
+			}
+		}
 	}
-	sort.Strings(names)
-	for _, name := range names {
+	for name := range closure {
 		st := u.Tables[name]
 		if st == nil {
 			st = u.Structs[name]
 		}
-		if st == nil {
-			continue
-		}
-		for _, f := range st.Fields {
-			// an enum-keyed array's KEY rides as a variant hash too, so its
-			// enum needs the identity pair even when no field has that type
-			if f.KeyEnumRef != nil {
-				used[f.KeyEnumRef.Name] = f.KeyEnumRef
-			}
-			if f.Type.Kind != ir.TNamed {
-				continue
-			}
-			if e, isEnum := f.Type.Ref.(*ir.Enum); isEnum {
-				used[e.Name] = e
+		if st != nil {
+			for _, f := range st.Fields {
+				field(f)
 			}
 		}
 	}
@@ -770,6 +602,11 @@ public sealed class TableReport
     // caller has one report type, not two — so a wire read always leaves it
     // zero, and <Name>FromJson is what raises it.
     public int Duplicate;
+    public int Widened;
+    public int Retained, RetainLost;
+    public bool Refused;
+    public string Reason;
+    public Schema.TableWire.Verdict Verdict;
     public bool Malformed;     // framing damage; decode stopped, partial result kept
 }
 
@@ -798,10 +635,16 @@ public sealed class TableReport
 
 public sealed class TableFieldInfo
 {
+    internal bool MapKey = false;
+    internal int Ordinal;
+    internal int NativeOffset, NativeElementSize, NativeCountOffset, NativePresentOffset;
+    internal int MessageSlot = 0;
+    internal bool MessageBounded = false, MessageSigned = false;
+    internal UInt128 MessageMin = 0, MessageMax = 0;
     public string Name;         // schema field name, e.g. "health"
     public string Json;         // the TEXT form's key: the json = "key" attribute, else Name (§16.4)
     public string TypeName;     // schema type name, e.g. "float32", "Grade"
-    public ushort Id;           // table-wire field id (name hash; the was alias's hash after a rename)
+    public ulong Id;           // table-wire field id (name hash; the was alias's hash after a rename)
     public byte Kind;           // table-wire kind; for arrays/strings/bytes, the ELEMENT kind
     public bool IsArray;        // fixed or counted array (bytes included)
     public bool Counted;        // a <name>Count/<name>Length companion exists
@@ -819,22 +662,38 @@ public sealed class TableFieldInfo
     public Func<ulong, string> EnumName;  // enums: value -> name; unions: tag -> arm name; else null
     // the TABLE-WIRE id of one variant (docs/SPEC-TABLES.md §5): for an enum, the
     // hash of the variant's name; for a union, the hash of the arm's name.
-    // 0 is the reserved id — an enum's None, a union's empty. null for every
-    // other kind. Walk [0, EnumMax] to enumerate a vocabulary and its ids.
-    public Func<ulong, ushort> VariantId;
+    // None/empty maps to 0 for reflection; its WIRE reference is zero, while
+    // a named variant may have any 64-bit id. null for every other kind.
+    // Walk [1, EnumMax] to enumerate named vocabulary entries.
+    public Func<ulong, ulong> VariantId;
 
     // an ENUM-KEYED array (docs/SPEC-TABLES.md §2.4, §8): the array has one slot
     // per variant of KeyTypeName, indexed by the variant's value, and its
     // slots ride under variant ids rather than positions. KeyName and KeyId
-    // are the key's vocabulary — walk [0, ArrayBound) to print slots by name.
-    // SLOT 0 IS NONE'S AND IS NEVER VALID: KeyId(0) is 0, the one reserved id
-    // no declared name can hold, and KeyName(0) is "None", so a walker
+    // are the key's vocabulary — walk [1, ArrayBound] to print slots by name.
+    // SLOT 0 IS NONE'S AND IS NEVER VALID: KeyId(0) is a reflection sentinel,
+    // while a named variant may have any identity. KeyName(0) is "None", so a walker
     // enumerating slots skips it rather than printing a None row. All three
     // are null on every other field.
     public string KeyTypeName;
     public Func<ulong, string> KeyName;
-    public Func<ulong, ushort> KeyId;
+    public Func<ulong, ulong> KeyId;
 
+    // Typed callbacks retain exact integer bounds and defaults without boxing.
+    public ulong DefaultRaw;
+    public Func<object, bool> WireGuard;
+    public int[] NativeGuardOffsets;
+    public bool[] NativeGuardValues;
+    public Func<ulong, TableReport, ulong> ClampRaw;
+    public UInt128 DefaultWide;
+    public int FracBits;
+    public bool WideSigned;
+    public Func<UInt128, TableReport, UInt128> ClampWide;
+    public Func<object, int, UInt128> GetWide;
+    public Action<object, int, UInt128> SetWide;
+    public Func<object, char[]> GetChars;
+    public byte[] DefaultBytes;
+    public Action<object> ResetField;
     public string Guard;        // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
 
     // the nested table's descriptor, or null. Held as a factory rather than a
@@ -877,6 +736,12 @@ public sealed class TableFieldInfo
     public Func<object, int, ulong> GetRaw;
     public Action<object, int, ulong> SetRaw;
     public Func<object, int, object> GetChild;
+    public Action<object, int, object> SetChild;
+    public Action<object, int> EnsureCount;
+    public bool Dynamic, Map;
+    public int StorageSize, StorageAlign;
+    public ulong PointerTypeId;
+    public byte BlobKind;
     public Func<object, byte[]> GetBuffer;
     // the counted companion (a string's length, a bytes' length, a counted
     // array's count), and the optional's presence bool. null where the field
@@ -891,6 +756,8 @@ public sealed class TableFieldInfo
 // 0 is the EMPTY arm and carries neither payload nor descriptor.
 public sealed class TableUnionArmInfo
 {
+    internal int MessageSlot = 0;
+    public TableFieldInfo Field; // null for a payload-free arm; accessors take the union
     public Func<TableTypeInfo> TableRef;
     public TableTypeInfo Table
     {
@@ -904,14 +771,31 @@ public sealed class TableUnionArmInfo
 // reason the field accessors above exist.
 public sealed class TableUnionInfo
 {
+    internal int NativeTagSize = 0, NativeArmOffset = 0;
+    public Func<object> Create;
     public Func<object, ulong> GetTag;
     public Action<object, ulong> SetTag;
     public TableUnionArmInfo[] Arms;
 }
 
+public sealed class TableBlob
+{
+    public byte[] Data;
+    public TableBlob(byte[] data) { Data = data; }
+}
+
+public enum TableByteOrder { Little = 1, Big = 2 }
+
 public sealed class TableTypeInfo
 {
+    public Func<object> Create;
+    public int StorageSize, StorageAlign, RegionAlign;
+    public bool Variable;
+    public Func<TableTypeInfo[]> PointerTypes;
+    public Func<ulong,TableTypeInfo> PointerType;
+    public bool BytesEdge, StringEdge;
     public string Name;         // schema type name
+    public ulong Id;            // full wire identity of the table name
     public int NumFields;
     public TableFieldInfo[] Fields;
     // put one instance back at its declared defaults, in place. A generic
@@ -925,148 +809,6 @@ public sealed class TableTypeInfo
     public string Doc;
     public int NumTags;
     public string[] Tags;
-}
-
-// TableWriter is a ref struct over the caller's span: the wire is written in
-// place, and nothing here allocates.
-public ref struct TableWriter
-{
-    public Span<byte> Buffer;
-    public int Offset;
-    public bool Overflow;
-
-    public TableWriter(Span<byte> buffer)
-    {
-        Buffer = buffer;
-        Offset = 0;
-        Overflow = false;
-    }
-
-    public void Raw(ReadOnlySpan<byte> data)
-    {
-        if (Offset + (long)data.Length > Buffer.Length) { Overflow = true; return; }
-        data.CopyTo(Buffer.Slice(Offset, data.Length));
-        Offset += data.Length;
-    }
-    public void Put8(byte v)
-    {
-        if (Offset + 1 > Buffer.Length) { Overflow = true; return; }
-        Buffer[Offset] = v;
-        Offset += 1;
-    }
-    public void Put16(ushort v)
-    {
-        if (Offset + 2 > Buffer.Length) { Overflow = true; return; }
-        Buffer[Offset] = (byte)v;
-        Buffer[Offset + 1] = (byte)(v >> 8);
-        Offset += 2;
-    }
-    public void Put32(uint v)
-    {
-        if (Offset + 4 > Buffer.Length) { Overflow = true; return; }
-        Buffer[Offset] = (byte)v;
-        Buffer[Offset + 1] = (byte)(v >> 8);
-        Buffer[Offset + 2] = (byte)(v >> 16);
-        Buffer[Offset + 3] = (byte)(v >> 24);
-        Offset += 4;
-    }
-    public void Put64(ulong v)
-    {
-        Put32((uint)v);
-        Put32((uint)(v >> 32));
-    }
-    public void Patch32(int at, uint v)
-    {
-        if (at + 4 > Buffer.Length) { Overflow = true; return; }
-        Buffer[at] = (byte)v;
-        Buffer[at + 1] = (byte)(v >> 8);
-        Buffer[at + 2] = (byte)(v >> 16);
-        Buffer[at + 3] = (byte)(v >> 24);
-    }
-}
-
-// TableReader is a ref struct over the caller's span. A nested body is read
-// through a sub-reader sliced out of this one, so an inner decode can never
-// reach past its own framing.
-public ref struct TableReader
-{
-    public ReadOnlySpan<byte> Buffer;
-    public int Offset;
-    public TableReport Report;
-
-    public TableReader(ReadOnlySpan<byte> buffer, TableReport report)
-    {
-        Buffer = buffer;
-        Offset = 0;
-        Report = report;
-    }
-
-    public bool Has(long bytes) { return Offset + bytes <= Buffer.Length; }
-    public byte Get8() { return Buffer[Offset++]; }
-    public ushort Get16()
-    {
-        ushort v = (ushort)(Buffer[Offset] | (Buffer[Offset + 1] << 8));
-        Offset += 2;
-        return v;
-    }
-    public uint Get32()
-    {
-        uint v = (uint)Buffer[Offset] | ((uint)Buffer[Offset + 1] << 8) |
-                 ((uint)Buffer[Offset + 2] << 16) | ((uint)Buffer[Offset + 3] << 24);
-        Offset += 4;
-        return v;
-    }
-    public ulong Get64()
-    {
-        ulong lo = Get32();
-        ulong hi = Get32();
-        return lo | (hi << 32);
-    }
-
-    // skip one payload by kind; false = framing damage
-    public bool Skip(byte kind)
-    {
-        switch (kind)
-        {
-            case 1: case 2: case 6:
-                if (!Has(1)) { return false; }
-                Offset += 1;
-                return true;
-            case 3: case 7:
-                if (!Has(2)) { return false; }
-                Offset += 2;
-                return true;
-            // 17 is a NODE INDEX (docs/SPEC-TABLES.md §3.1): four bytes, so it costs
-            // one row here and a reader without the kind still skips a pointer field
-            case 4: case 8: case 10: case 17:
-                if (!Has(4)) { return false; }
-                Offset += 4;
-                return true;
-            case 5: case 9: case 11:
-                if (!Has(8)) { return false; }
-                Offset += 8;
-                return true;
-            case 12: case 13: case 14: case 16:
-            {
-                if (!Has(4)) { return false; }
-                uint n = Get32();
-                if (!Has(n)) { return false; }
-                Offset += (int)n;
-                return true;
-            }
-            case 15: // union: u16 arm id, then the arm length-prefixed (id 0 = empty, no body)
-            {
-                if (!Has(2)) { return false; }
-                if (Get16() == 0) { return true; }
-                if (!Has(4)) { return false; }
-                uint n = Get32();
-                if (!Has(n)) { return false; }
-                Offset += (int)n;
-                return true;
-            }
-        }
-        return false;
-    }
 }
 
 `

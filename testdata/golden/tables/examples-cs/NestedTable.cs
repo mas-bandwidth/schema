@@ -34,106 +34,32 @@ namespace Tabledemo
 
         public static long ArchiveConfigMeasure(ArchiveConfig value)
         {
-            long bytes = 2; // terminator
-            {
-                long body = RootConfigMeasure(value.Root);
-                if (body < 0) { return -1; }
-                if (body > 2) { bytes += 3 + 4 + body; } // root: all-default nested elides
-            }
-            if (value.Count != 1) { bytes += 3 + 4; } // count
-            return bytes;
-        }
-
-        public static bool ArchiveConfigSaveBody(ref TableWriter w, ArchiveConfig value)
-        {
-            {
-                long body = RootConfigMeasure(value.Root);
-                if (body < 0) { return false; } // storage invariant, refused as measure refuses it
-                if (body > 2) // all-default nested elides
-                {
-                    w.Put16(0x2eb8); w.Put8(13); // root
-                    w.Put32((uint)body);
-                    if (!RootConfigSaveBody(ref w, value.Root)) { return false; }
-                }
-            }
-            if (value.Count != 1)
-            {
-                w.Put16(0xe445); w.Put8(4); // count
-                w.Put32(unchecked((uint)(value.Count)));
-            }
-            w.Put16(0); // terminator
-            return !w.Overflow;
+            Span<ulong> ids = stackalloc ulong[155];
+            return TableWire.Save(value, ArchiveConfigTableType(), Span<byte>.Empty, ids, true);
         }
 
         public static long ArchiveConfigSave(ArchiveConfig value, Span<byte> buffer)
         {
-            TableWriter w = new TableWriter(buffer);
-            if (!ArchiveConfigSaveBody(ref w, value)) { return -1; }
-            return w.Offset; // == ArchiveConfigMeasure(value)
+            Span<ulong> ids = stackalloc ulong[155];
+            return TableWire.Save(value, ArchiveConfigTableType(), buffer, ids, false);
         }
 
-        public static bool ArchiveConfigLoadBody(ref TableReader r, ArchiveConfig value)
+        public static TableWire.Verdict ArchiveConfigLoadVerdict(ArchiveConfig value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReset(value); // restore declared defaults in place, then overlay
-            for (;;)
-            {
-                if (!r.Has(2)) { r.Report.Malformed = true; return false; }
-                ushort fieldId = r.Get16();
-                if (fieldId == 0) { return true; }
-                if (!r.Has(1)) { r.Report.Malformed = true; return false; }
-                byte kind = r.Get8();
-                switch (fieldId)
-                {
-                    case 0x2eb8: // root
-                    {
-                        if (kind != 13)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        uint bodyLen = r.Get32();
-                        if (!r.Has(bodyLen)) { r.Report.Malformed = true; return false; }
-                        {
-                            TableReader sub = new TableReader(r.Buffer.Slice(r.Offset, (int)bodyLen), r.Report);
-                            RootConfigLoadBody(ref sub, value.Root);
-                        }
-                        r.Offset += (int)bodyLen;
-                        break;
-                    }
-                    case 0xe445: // count
-                    {
-                        if (kind != 4)
-                        {
-                            r.Report.KindMismatch++;
-                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                            break;
-                        }
-                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
-                        {
-                            int decodedV = unchecked((int)r.Get32());
-                            if (decodedV < 0) { decodedV = 0; r.Report.Clamped++; }
-                            else if (decodedV > 100) { decodedV = 100; r.Report.Clamped++; }
-                            value.Count = decodedV;
-                        }
-                        break;
-                    }
-                    default:
-                    {
-                        r.Report.Unknown++;
-                        if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
-                        break;
-                    }
-                }
-            }
+            return TableWire.Load(value, ArchiveConfigTableType(), bytes, report);
         }
 
         public static bool ArchiveConfigLoad(ArchiveConfig value, ReadOnlySpan<byte> bytes, TableReport report)
         {
-            TableReader r = new TableReader(bytes, report != null ? report : new TableReport());
-            return ArchiveConfigLoadBody(ref r, value);
+            return ArchiveConfigLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
+
+        public static long ArchiveConfigMeasureMessages(ArchiveConfig[] values) { return TableWire.MessageSave(values, ArchiveConfigTableType(), Span<byte>.Empty, true); }
+        public static long ArchiveConfigSaveMessages(ArchiveConfig[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, ArchiveConfigTableType(), bytes, false); }
+        public static TableWire.Verdict ArchiveConfigLoadMessages(ArchiveConfig[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, ArchiveConfigTableType(), bytes, vocabulary, report, out count); }
+
+        public static long ArchiveConfigCookMeasure(ArchiveConfig value) { return TableWire.Cook(value, ArchiveConfigTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
+        public static bool ArchiveConfigCook(ArchiveConfig value, Span<byte> bytes, TableByteOrder order = TableByteOrder.Little) { return TableWire.Cook(value, ArchiveConfigTableType(), bytes, order, false) >= 0; }
 
         // ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----
 
@@ -144,11 +70,18 @@ namespace Tabledemo
             if (info != null) { return info; }
             info = new TableTypeInfo();
             info.Name = "ArchiveConfig";
+            info.Id = 0x413e7bcf261bc3c7ul;
             info.NumFields = 2;
+            info.Create = delegate { return new ArchiveConfig(); };
+            info.StorageSize = 1488; info.StorageAlign = 8; info.RegionAlign = 8;
+            info.Variable = false;
+            info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+            info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+            info.BytesEdge = false; info.StringEdge = false;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "root", Json = "root", TypeName = "RootConfig", Id = 0x2eb8, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RootConfigTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((ArchiveConfig)o).Root; } },
-                new TableFieldInfo { Name = "count", Json = "count", TypeName = "int32", Id = 0xe445, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 100.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((ArchiveConfig)o).Count; }, SetRaw = delegate(object o, int i, ulong r) { ((ArchiveConfig)o).Count = unchecked((int)(long)r); } },
+                new TableFieldInfo { Name = "root", Json = "root", TypeName = "RootConfig", Id = 0xa354fd1ff0c467c5, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RootConfigTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((ArchiveConfig)o).Root; }, MessageSlot = 1, Ordinal = 0, NativeOffset = 0, NativeElementSize = 1480, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (ArchiveConfig)o; TableReset(value.Root); } },
+                new TableFieldInfo { Name = "count", Json = "count", TypeName = "int32", Id = 0xb1e5e28e4479a274, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 100.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((ArchiveConfig)o).Count; }, SetRaw = delegate(object o, int i, ulong r) { ((ArchiveConfig)o).Count = unchecked((int)(long)r); }, MessageSlot = 2, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x64ul)), Ordinal = 1, NativeOffset = 1480, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (ArchiveConfig)o; value.Count = 1; }, DefaultRaw = (ulong)(long)1, ClampRaw = delegate(ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { r.Clamped++; v = 0; } if (v > 100) { r.Clamped++; v = 100; } return (ulong)(long)v; } },
             };
             info.Reset = delegate(object o) { TableReset((ArchiveConfig)o); };
             info.Doc = TableDocNone;
