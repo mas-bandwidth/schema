@@ -793,13 +793,13 @@ const (
 
 // EnumNameEmptyUnionType: debug/log/tooling name for any EmptyUnionType wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
-func EnumNameEmptyUnionType(value uint64) string {
+func EnumNameEmptyUnionType(value EmptyUnionType) string {
 	switch value {
-	case uint64(EmptyUnionTypeNone):
+	case EmptyUnionTypeNone:
 		return "None"
-	case uint64(EmptyUnionTypeA):
+	case EmptyUnionTypeA:
 		return "A"
-	case uint64(EmptyUnionTypeB):
+	case EmptyUnionTypeB:
 		return "B"
 	}
 	return "???"

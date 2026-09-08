@@ -47,39 +47,39 @@ const (
 
 // EnumNameTableWeapon: debug/log/tooling name for any TableWeapon wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
-func EnumNameTableWeapon(value uint64) string {
+func EnumNameTableWeapon(value TableWeapon) string {
 	switch value {
-	case uint64(TableWeaponNone):
+	case TableWeaponNone:
 		return "None"
-	case uint64(TableWeaponFists):
+	case TableWeaponFists:
 		return "Fists"
-	case uint64(TableWeaponPistol):
+	case TableWeaponPistol:
 		return "Pistol"
-	case uint64(TableWeaponShotgun):
+	case TableWeaponShotgun:
 		return "Shotgun"
-	case uint64(TableWeaponRifle):
+	case TableWeaponRifle:
 		return "Rifle"
-	case uint64(TableWeaponSniper):
+	case TableWeaponSniper:
 		return "Sniper"
-	case uint64(TableWeaponSmg):
+	case TableWeaponSmg:
 		return "Smg"
-	case uint64(TableWeaponRocket):
+	case TableWeaponRocket:
 		return "Rocket"
-	case uint64(TableWeaponGrenade):
+	case TableWeaponGrenade:
 		return "Grenade"
-	case uint64(TableWeaponPlasma):
+	case TableWeaponPlasma:
 		return "Plasma"
-	case uint64(TableWeaponRailgun):
+	case TableWeaponRailgun:
 		return "Railgun"
-	case uint64(TableWeaponFlamer):
+	case TableWeaponFlamer:
 		return "Flamer"
-	case uint64(TableWeaponMine):
+	case TableWeaponMine:
 		return "Mine"
-	case uint64(TableWeaponTurret):
+	case TableWeaponTurret:
 		return "Turret"
-	case uint64(TableWeaponDrone):
+	case TableWeaponDrone:
 		return "Drone"
-	case uint64(TableWeaponRepair):
+	case TableWeaponRepair:
 		return "Repair"
 	}
 	return "???"
@@ -312,15 +312,15 @@ const (
 
 // EnumNameTableEventType: debug/log/tooling name for any TableEventType wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
-func EnumNameTableEventType(value uint64) string {
+func EnumNameTableEventType(value TableEventType) string {
 	switch value {
-	case uint64(TableEventTypeNone):
+	case TableEventTypeNone:
 		return "None"
-	case uint64(TableEventTypeHit):
+	case TableEventTypeHit:
 		return "Hit"
-	case uint64(TableEventTypeChat):
+	case TableEventTypeChat:
 		return "Chat"
-	case uint64(TableEventTypePickup):
+	case TableEventTypePickup:
 		return "Pickup"
 	}
 	return "???"

@@ -366,39 +366,39 @@ const (
 
 // EnumNameMixedWeapon: debug/log/tooling name for any MixedWeapon wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
-func EnumNameMixedWeapon(value uint64) string {
+func EnumNameMixedWeapon(value MixedWeapon) string {
 	switch value {
-	case uint64(MixedWeaponNone):
+	case MixedWeaponNone:
 		return "None"
-	case uint64(MixedWeaponFists):
+	case MixedWeaponFists:
 		return "Fists"
-	case uint64(MixedWeaponPistol):
+	case MixedWeaponPistol:
 		return "Pistol"
-	case uint64(MixedWeaponShotgun):
+	case MixedWeaponShotgun:
 		return "Shotgun"
-	case uint64(MixedWeaponRifle):
+	case MixedWeaponRifle:
 		return "Rifle"
-	case uint64(MixedWeaponSniper):
+	case MixedWeaponSniper:
 		return "Sniper"
-	case uint64(MixedWeaponSmg):
+	case MixedWeaponSmg:
 		return "Smg"
-	case uint64(MixedWeaponRocket):
+	case MixedWeaponRocket:
 		return "Rocket"
-	case uint64(MixedWeaponGrenade):
+	case MixedWeaponGrenade:
 		return "Grenade"
-	case uint64(MixedWeaponPlasma):
+	case MixedWeaponPlasma:
 		return "Plasma"
-	case uint64(MixedWeaponRailgun):
+	case MixedWeaponRailgun:
 		return "Railgun"
-	case uint64(MixedWeaponFlamer):
+	case MixedWeaponFlamer:
 		return "Flamer"
-	case uint64(MixedWeaponMine):
+	case MixedWeaponMine:
 		return "Mine"
-	case uint64(MixedWeaponTurret):
+	case MixedWeaponTurret:
 		return "Turret"
-	case uint64(MixedWeaponDrone):
+	case MixedWeaponDrone:
 		return "Drone"
-	case uint64(MixedWeaponRepair):
+	case MixedWeaponRepair:
 		return "Repair"
 	}
 	return "???"
@@ -831,15 +831,15 @@ const (
 
 // EnumNameMixedEventType: debug/log/tooling name for any MixedEventType wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
-func EnumNameMixedEventType(value uint64) string {
+func EnumNameMixedEventType(value MixedEventType) string {
 	switch value {
-	case uint64(MixedEventTypeNone):
+	case MixedEventTypeNone:
 		return "None"
-	case uint64(MixedEventTypeHit):
+	case MixedEventTypeHit:
 		return "Hit"
-	case uint64(MixedEventTypeChat):
+	case MixedEventTypeChat:
 		return "Chat"
-	case uint64(MixedEventTypePickup):
+	case MixedEventTypePickup:
 		return "Pickup"
 	}
 	return "???"

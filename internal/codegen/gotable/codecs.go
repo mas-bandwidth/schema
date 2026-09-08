@@ -653,7 +653,7 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	case *ir.Enum:
 		if f.Type.Kind == ir.TNamed {
 			enumMax = fmt.Sprintf("%d", ref.Max)
-			enumName = fmt.Sprintf("EnumName%s", f.Type.Name)
+			enumName = fmt.Sprintf("func(v uint64) string { return EnumName%s(%s(v)) }", f.Type.Name, f.Type.Name)
 			variantId = fmt.Sprintf("func(v uint64) uint64 { id, _ := %s(v).TableEnumId(); return id }", f.Type.Name)
 		}
 	case *ir.Flags:
@@ -680,7 +680,7 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	keyTypeName, keyName, keyId := `""`, "nil", "nil"
 	if f.KeyEnum != "" {
 		keyTypeName = fmt.Sprintf("%q", f.KeyEnum)
-		keyName = fmt.Sprintf("EnumName%s", f.KeyEnum)
+		keyName = fmt.Sprintf("func(v uint64) string { return EnumName%s(%s(v)) }", f.KeyEnum, f.KeyEnum)
 		keyId = fmt.Sprintf("func(v uint64) uint64 { id, _ := %s(v).TableEnumId(); return id }", f.KeyEnum)
 	}
 

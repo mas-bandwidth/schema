@@ -36,15 +36,15 @@ const (
 
 // EnumNameWeapon: debug/log/tooling name for any Weapon wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
-func EnumNameWeapon(value uint64) string {
+func EnumNameWeapon(value Weapon) string {
 	switch value {
-	case uint64(WeaponNone):
+	case WeaponNone:
 		return "None"
-	case uint64(WeaponLaser):
+	case WeaponLaser:
 		return "Laser"
-	case uint64(WeaponMissile):
+	case WeaponMissile:
 		return "Missile"
-	case uint64(WeaponRailgun):
+	case WeaponRailgun:
 		return "Railgun"
 	}
 	return "???"
@@ -472,13 +472,13 @@ const (
 
 // EnumNameProbeShapeType: debug/log/tooling name for any ProbeShapeType wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
-func EnumNameProbeShapeType(value uint64) string {
+func EnumNameProbeShapeType(value ProbeShapeType) string {
 	switch value {
-	case uint64(ProbeShapeTypeNone):
+	case ProbeShapeTypeNone:
 		return "None"
-	case uint64(ProbeShapeTypeRing):
+	case ProbeShapeTypeRing:
 		return "Ring"
-	case uint64(ProbeShapeTypeSlab):
+	case ProbeShapeTypeSlab:
 		return "Slab"
 	}
 	return "???"

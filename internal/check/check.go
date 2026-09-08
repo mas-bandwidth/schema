@@ -19,6 +19,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/ast"
 	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
+	"github.com/mas-bandwidth/schema/v2/internal/version"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -93,7 +94,19 @@ type constEntry struct {
 }
 
 func (c *checker) errf(pos ast.Pos, format string, args ...any) {
-	c.errs = append(c.errs, fmt.Errorf("%s: %s", pos, fmt.Sprintf(format, args...)))
+	c.errs = append(c.errs, fmt.Errorf("%s: %s", pos, versioned(fmt.Sprintf(format, args...))))
+}
+
+// versioned appends the build's version line to a refusal that cites a spec
+// section (#458): a section is cited as it stands in the build that printed
+// the refusal, so a message pasted into an issue from a stale binary dates
+// itself instead of contradicting the page as it reads today. A refusal
+// that cites nothing is returned as it is.
+func versioned(msg string) string {
+	if !strings.Contains(msg, "§") {
+		return msg
+	}
+	return msg + "\nschema " + version.Version()
 }
 
 // Unit checks the files and lowers them to IR. Files may arrive in any order;
@@ -2162,8 +2175,8 @@ func (c *checker) checkCycles() {
 	visit = func(name string) bool {
 		switch color[name] {
 		case grey:
-			c.errs = append(c.errs, fmt.Errorf("type composition cycle: %s -> %s (SPEC §4.6)",
-				strings.Join(path, " -> "), name))
+			c.errs = append(c.errs, fmt.Errorf("%s", versioned(fmt.Sprintf("type composition cycle: %s -> %s (SPEC §4.6)",
+				strings.Join(path, " -> "), name))))
 			return false
 		case black:
 			return true

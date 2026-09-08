@@ -23,13 +23,13 @@ const (
 
 // EnumNameTeam: debug/log/tooling name for any Team wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
-func EnumNameTeam(value uint64) string {
+func EnumNameTeam(value Team) string {
 	switch value {
-	case uint64(TeamNone):
+	case TeamNone:
 		return "None"
-	case uint64(TeamRed):
+	case TeamRed:
 		return "Red"
-	case uint64(TeamBlue):
+	case TeamBlue:
 		return "Blue"
 	}
 	return "???"
@@ -51,19 +51,19 @@ const (
 
 // EnumNameShipType: debug/log/tooling name for any ShipType wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
-func EnumNameShipType(value uint64) string {
+func EnumNameShipType(value ShipType) string {
 	switch value {
-	case uint64(ShipTypeNone):
+	case ShipTypeNone:
 		return "None"
-	case uint64(ShipTypeFighter):
+	case ShipTypeFighter:
 		return "Fighter"
-	case uint64(ShipTypeCorvette):
+	case ShipTypeCorvette:
 		return "Corvette"
-	case uint64(ShipTypeBomber):
+	case ShipTypeBomber:
 		return "Bomber"
-	case uint64(ShipTypeDestroyer):
+	case ShipTypeDestroyer:
 		return "Destroyer"
-	case uint64(ShipTypeCarrier):
+	case ShipTypeCarrier:
 		return "Carrier"
 	}
 	return "???"
@@ -83,15 +83,15 @@ const (
 
 // EnumNameMissileType: debug/log/tooling name for any MissileType wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
-func EnumNameMissileType(value uint64) string {
+func EnumNameMissileType(value MissileType) string {
 	switch value {
-	case uint64(MissileTypeNone):
+	case MissileTypeNone:
 		return "None"
-	case uint64(MissileTypeHeatseeker):
+	case MissileTypeHeatseeker:
 		return "Heatseeker"
-	case uint64(MissileTypeTorpedo):
+	case MissileTypeTorpedo:
 		return "Torpedo"
-	case uint64(MissileTypeNuke):
+	case MissileTypeNuke:
 		return "Nuke"
 	}
 	return "???"
@@ -114,21 +114,21 @@ const (
 
 // EnumNamePropType: debug/log/tooling name for any PropType wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
-func EnumNamePropType(value uint64) string {
+func EnumNamePropType(value PropType) string {
 	switch value {
-	case uint64(PropTypeNone):
+	case PropTypeNone:
 		return "None"
-	case uint64(PropTypeAsteroid):
+	case PropTypeAsteroid:
 		return "Asteroid"
-	case uint64(PropTypeChunk):
+	case PropTypeChunk:
 		return "Chunk"
-	case uint64(PropTypeFragment):
+	case PropTypeFragment:
 		return "Fragment"
-	case uint64(PropTypeSphere):
+	case PropTypeSphere:
 		return "Sphere"
-	case uint64(PropTypeBlackHole):
+	case PropTypeBlackHole:
 		return "BlackHole"
-	case uint64(PropTypeDysonPanel):
+	case PropTypeDysonPanel:
 		return "DysonPanel"
 	}
 	return "???"
@@ -145,9 +145,9 @@ const (
 
 // EnumNamePending: debug/log/tooling name for any Pending wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
-func EnumNamePending(value uint64) string {
+func EnumNamePending(value Pending) string {
 	switch value {
-	case uint64(PendingNone):
+	case PendingNone:
 		return "None"
 	}
 	return "???"

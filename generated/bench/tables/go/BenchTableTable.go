@@ -7918,7 +7918,7 @@ var TableEntityTableFields = []TableFieldInfo{
 		CookOffset: 40, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 15,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
-		EnumName:    EnumNameTableWeapon,
+		EnumName:    func(v uint64) string { return EnumNameTableWeapon(TableWeapon(v)) },
 		VariantId:   func(v uint64) uint64 { id, _ := TableWeapon(v).TableEnumId(); return id },
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,

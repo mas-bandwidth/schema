@@ -537,13 +537,13 @@ const (
 
 // EnumNameUnevenType: debug/log/tooling name for any UnevenType wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
-func EnumNameUnevenType(value uint64) string {
+func EnumNameUnevenType(value UnevenType) string {
 	switch value {
-	case uint64(UnevenTypeNone):
+	case UnevenTypeNone:
 		return "None"
-	case uint64(UnevenTypeNarrow):
+	case UnevenTypeNarrow:
 		return "Narrow"
-	case uint64(UnevenTypeWide):
+	case UnevenTypeWide:
 		return "Wide"
 	}
 	return "???"
