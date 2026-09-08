@@ -25,7 +25,11 @@
  * The extent and the base are fuzzed too, because both are caller facts a file
  * cannot carry: a claim shorter than the file is a truncation, a claim longer
  * is a caller that lied, and an unaligned base is the one pointer fact the
- * conformance data grew a column for.
+ * conformance data grew a column for. Random leads cannot see the %64 check
+ * go missing — unaligned loads succeed on every host this repo builds on —
+ * so after the clean open, every block image is placed at leads 1..63 (must
+ * refuse) and 64 (aligned again, must open). Cook lead is the harness's
+ * cook_lead_1..63 rows; this is the block's (docs/PORTING.md I5).
  *
  *   SEED=<n> N=<n> ./build/schema_test_c_fuzz
  */
@@ -148,6 +152,28 @@ int main( void )
         {
             fprintf( stderr, "fuzz: the clean %s %s does not open — the fuzzer would be damaging nothing\n",
                      subjects[s].kind, subjects[s].name );
+            return 1;
+        }
+    }
+
+    /* pass "lead": every residue. The random loop below plants a lead one
+       mutant in four; that cannot see the alignment check go missing. */
+    for ( s = 0; s < num_subjects; s++ )
+    {
+        int lead;
+        if ( strcmp( subjects[s].kind, "block" ) != 0 ) { continue; }
+        for ( lead = 1; lead < 64; lead++ )
+        {
+            if ( open_subject( &subjects[s], subjects[s].clean, subjects[s].bytes, -1, lead ) )
+            {
+                fprintf( stderr, "fuzz: %s at lead %d opened, wanted refuse — an unaligned base\n",
+                         subjects[s].name, lead );
+                return 1;
+            }
+        }
+        if ( !open_subject( &subjects[s], subjects[s].clean, subjects[s].bytes, -1, 64 ) )
+        {
+            fprintf( stderr, "fuzz: %s at lead 64 refused, wanted open\n", subjects[s].name );
             return 1;
         }
     }
