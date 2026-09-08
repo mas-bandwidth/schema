@@ -1709,6 +1709,22 @@ graphdemo::SceneLoadMessages( roots, &root_count, region.data(), region_bytes,
                               vocabulary, wire, wire_bytes, &report );
 ```
 
+In C the same operations use `announce_measure`, `announce`, `announce_read`,
+`<root>_measure_messages`, `<root>_save_messages` and `<root>_load_messages`.
+Create a vocabulary with `table_vocabulary(entries, capacity)`, where `entries`
+is an array of `TableMessageEntry`. Those resolved entries belong to the caller
+and must outlive the vocabulary; the announcement buffer can be released after
+`announce_read`. Keep one vocabulary per connection direction. Its default byte
+limit is 65,536; `max_bytes` and the entry capacity are independent caller limits.
+
+Fixed roots take an array of values. Variable roots take an array of pointers to
+loaded or locked roots; reads use one caller-owned region sized by
+`<root>_load_measure_messages(vocabulary, wire, bytes)`. The `_ex` variant also
+returns attribution bytes and a refusal reason. The variable message writers
+provide `_with_allocator` variants for their temporary graph numbering. Message
+reads allocate nothing. A damaged body can return a partially decoded root, but
+the output count includes only complete bodies.
+
 **What you get.** The three backend messages measured on schema#523 go from
 106, 273 and 104 bytes to 52, 148 and 43, and from 10, 43 and 10 to 3, 11 and 3
 when every field sits at its declared default. Sent as ONE batch under an

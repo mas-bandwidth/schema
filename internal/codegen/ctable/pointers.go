@@ -212,6 +212,7 @@ func (g *tableGen) emitVariableSurface(members []*ir.Struct) {
 		for _, st := range members {
 			if g.isVar(st.Name) {
 				g.emitBuilderAndPublicSurface(st)
+				g.emitMessageGraph(st)
 			}
 		}
 		return

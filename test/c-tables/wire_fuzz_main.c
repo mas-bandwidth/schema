@@ -46,18 +46,21 @@ int main( int argc, char ** argv )
     int cook=argc>1 && strncmp(argv[1],"--cook-",7)==0;
     int big=cook && strcmp(argv[1],"--cook-be")==0;
     const ConformanceCodec ** roster;
+    uint8_t * forms;
     #if defined(_WIN32)
     _setmode( _fileno( stdin ), _O_BINARY );
     _setmode( _fileno( stdout ), _O_BINARY );
     #endif
     if ( !read_number( &count, 4 ) || count > 4096 ) { return 1; }
     roster = (const ConformanceCodec **) calloc( (size_t) count, sizeof( *roster ) );
-    if ( roster == NULL ) { return 1; }
+    forms=(uint8_t *)calloc((size_t)count,1);
+    if ( roster == NULL || forms==NULL ) { return 1; }
     for ( i = 0; i < count; i++ ) {
         char unit[256], root[256]; uint64_t form, retain;
         if ( !read_name( unit, sizeof( unit ) ) || !read_name( root, sizeof( root ) ) ||
              !read_number( &form, 1 ) || !read_number( &retain, 1 ) ) { return 1; }
-        if ( form == 1 && !retain ) { roster[i] = find_codec( unit, root ); }
+        forms[i]=(uint8_t)form;
+        if ( (form == 1 || (form==2&&!cook)) && !retain ) { roster[i] = find_codec( unit, root ); }
         putchar( roster[i] != NULL );
     }
     fflush( stdout );
@@ -69,7 +72,9 @@ int main( int argc, char ** argv )
         codec = roster[index];
         wire = (uint8_t *) malloc( (size_t) (size ? size : 1) );
         if ( wire == NULL || fread( wire, 1, (size_t) size, stdin ) != size ) { return 1; }
-        memset( &report, 0, sizeof( report ) ); value = codec->storage();
+        memset( &report, 0, sizeof( report ) );
+        if(forms[index]==2){length=codec->message_fuzz(wire,(int64_t)size,&saved,&report,&loaded,&region_bytes);free(wire);goto reply;}
+        value = codec->storage();
         region_bytes=codec->load_measure ? codec->load_measure(wire,(int64_t)size) : -1;
         loaded = codec->load( value, wire, (int64_t) size, &report ); free( wire );
         length = cook ? (loaded ? codec->cook_measure(value) : -1) : codec->measure( value );
@@ -82,6 +87,7 @@ int main( int argc, char ** argv )
         }
         /* Fixed storage always exists; load's bool is the body verdict. */
         if ( !loaded && !report.refused ) { report.malformed = 1; }
+        reply:
         write_number( codec->load_measure ? (uint64_t)loaded : 1, 1 );
         write_number( (uint64_t) report.unknown, 4 ); write_number( (uint64_t) report.kind_mismatch, 4 );
         write_number( (uint64_t) report.widened, 4 ); write_number( (uint64_t) report.clamped, 4 );
@@ -91,5 +97,5 @@ int main( int argc, char ** argv )
         if ( length > 0 && fwrite( saved, 1, (size_t) length, stdout ) != (size_t) length ) { return 1; }
         free( saved ); if ( fflush( stdout ) != 0 ) { return 1; }
     }
-    free( roster ); return ferror( stdin ) ? 1 : 0;
+    free(forms); free( roster ); return ferror( stdin ) ? 1 : 0;
 }

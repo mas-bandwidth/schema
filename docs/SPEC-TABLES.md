@@ -176,8 +176,10 @@ Dynamic maps and lists use the same file form and graph JSON;
 `tables-c-collections-fuzz` compares their recovery and native C region sizes
 with C++ directly. C also writes canonical cooks in both byte orders, with
 field-by-field padding normalization, and exposes named cook/block refusal
-reasons and const block handles. Message form, retention and UnitView remain
-C port work. C#, Dart, Go, Rust, Java, JavaScript and Elixir still write
+reasons and const block handles. Its UnitView registry includes table-free
+units. C also reads and writes bitpacked message batches, with caller-owned
+resolved announcement entries and native regions for graphs and collections.
+Retention remains C port work. C#, Dart, Go, Rust, Java, JavaScript and Elixir still write
 the earlier form in this tree. [ROADMAP.md](../ROADMAP.md) records coverage by
 construct and form.
 
@@ -10325,6 +10327,9 @@ in build version (§20.5).
   ```
   BuilderInit  BuilderShutdown  BuilderLock  BuilderRoot
   BuilderInitWithAllocator
+  LoadMeasureMessages  LoadMeasureMessagesEx
+  SaveMessageBody  LoadMessageBody
+  MeasureMessagesWithAllocator  SaveMessagesWithAllocator
   LoadMeasureEx  MeasureWithAllocator  SaveWithAllocator
   ToJsonWithAllocator  ToJsonMeasureWithAllocator
   BlockStorageCreate  BlockStorageDestroy  BlockType

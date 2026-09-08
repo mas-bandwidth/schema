@@ -43,7 +43,7 @@ func TestCTableRuntimeNamesAreClaimed(t *testing.T) {
 	for name, data := range fixed {
 		files["fixed-"+name] = data
 	}
-	ident := regexp.MustCompile(`\b(?:Table|kTable|table_|BuildVersion|schema_allocate|schema_release|schema_assert|schema_fatal)[A-Za-z0-9_]*\b`)
+	ident := regexp.MustCompile(`\b(?:(?:Table|kTable|table_|BuildVersion|schema_allocate|schema_release|schema_assert|schema_fatal)[A-Za-z0-9_]*|announce(?:_measure|_read)?)\b`)
 	// the unit's own type names start with Table for a schema that declares one;
 	// the corpus here declares none, and the file base does, so the two file
 	// spellings the include lines carry are excluded by name rather than by a

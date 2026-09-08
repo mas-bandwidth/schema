@@ -43,6 +43,8 @@ typedef struct ConformanceCodec
 {
     const char * unit;
     const char * root;
+    int64_t (*message_fuzz)(const uint8_t * wire,int64_t bytes,uint8_t ** saved,ConformanceReport * report,int * loaded,int64_t * extent);
+    int (*message)(const uint8_t * announcement,int64_t announcement_bytes,const uint8_t * wire,int64_t bytes,uint8_t ** answer,int64_t * size,ConformanceReport * report);
     int ( *load )( void * value, const uint8_t * bytes, int64_t size, ConformanceReport * report );
     int64_t ( *measure )( const void * value );
     int64_t ( *save )( const void * value, uint8_t * buffer, int64_t capacity );

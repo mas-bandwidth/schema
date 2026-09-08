@@ -767,3 +767,19 @@ tables-c-collections-fuzz: build/c-collections-fuzz build/c-collections-fuzz-asa
 	SCHEMA_C_COLLECTIONS_DRIVER=./build/c-collections-fuzz-asan SCHEMA_CPP_COLLECTIONS_DRIVER=./build/cpp-collections-fuzz go test ./test/conformance/harness -run '^TestCCollection(Cook)?Differential$$' -count=1 -v
 
 test-c tables-c: tables-c-collections-fuzz
+
+# A wrong compile-time field slot must turn the independently encoded mixed
+# message batch red. The generated writer is sabotaged only through an overlay.
+.PHONY: tables-c-message-negative-control
+tables-c-message-negative-control:
+	@mkdir -p build/c-message-negative
+	go run ./tools/sabotage -name message-c-wrong-slot -out build/c-message-negative/message_save.gotext internal/codegen/ctable/message_save.go
+	@printf '{"Replace":{"%s/internal/codegen/ctable/message_save.go":"%s/build/c-message-negative/message_save.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/c-message-negative/overlay.json
+	@if go test -count=1 -overlay=build/c-message-negative/overlay.json ./compiler -run '^TestCTableMessageSave$$' > build/c-message-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the message slot changed without failing the wire comparison'; exit 1; \
+	fi
+	@grep -q -- '--- FAIL: TestCTableMessageSave' build/c-message-negative/log
+	@grep -q 'memcmp(output,expected,sizeof(expected))' build/c-message-negative/log
+	@echo 'negative control: the wrong C message slot turns the independent wire comparison red'
+
+test-c tables-c: tables-c-message-negative-control

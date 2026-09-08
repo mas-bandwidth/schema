@@ -462,7 +462,7 @@ static void release(void * context,void * p) {
 static int exercise(Counts * counts) {
  const char * source="{\"first\":{\"&node\":1,\"value\":9},\"second\":{\"&node\":1},\"children\":[{\"entries\":{\"-2\":{\"&node\":1},\"9\":{\"value\":17}}}],\"rows\":{\"z\":{\"value\":3},\"a\":{\"value\":4}}}";
  TableAllocator a={allocate,release,counts}; RootBuilder b,copy; TableReport report={0};
- TableCtx ctx; uint8_t wire[2048],cook[4096]; char text[1024]; int64_t n,m; int ok=0,have_copy=0;
+ TableCtx ctx; uint8_t wire[2048],cook[4096],messages[4096];const Root * batch[2]; char text[1024]; int64_t n,m; int ok=0,have_copy=0;
  if(!root_builder_init_with_allocator(&b,a))goto done;
  if(!root_from_json(&b,source,(int64_t)strlen(source),&report))goto done;
  ctx.arena=&b.arena;
@@ -476,6 +476,9 @@ static int exercise(Counts * counts) {
  m=root_cook_measure_with_allocator(NULL,(const Root *)(const void *)b.region,a);if(m<=0 || m>4096)goto done;
  if(!root_cook_with_allocator(NULL,(const Root *)(const void *)b.region,cook,(uint64_t)m,TableByteOrder_Little,a))goto done;
  if(!root_cook_with_allocator(NULL,(const Root *)(const void *)b.region,cook,(uint64_t)m,TableByteOrder_Big,a))goto done;
+ batch[0]=(const Root *)(const void *)b.region;batch[1]=batch[0];
+ m=root_measure_messages_with_allocator(batch,2,&report,a);if(m<=0||m>4096)goto done;
+ if(root_save_messages_with_allocator(batch,2,messages,m,&report,a)!=m)goto done;
  have_copy=1;if(!root_builder_init_with_allocator(&copy,a))goto done;
  if(!root_load_builder(&copy,wire,n,&report) || !root_builder_lock(&copy))goto done;
  if(node_at(NULL,&((const Root *)(const void *)copy.region)->first)!=node_at(NULL,&((const Root *)(const void *)copy.region)->second))goto done;
@@ -486,7 +489,7 @@ static int exercise(Counts * counts) {
 }
 int main(void) {
  int fail,complete=0;
- for(fail=0;fail<128;fail++) {
+ for(fail=0;fail<256;fail++) {
   Counts counts={0,fail,0}; int ok=exercise(&counts);
   if(counts.live!=0) { fprintf(stderr,"allocation %d leaked %d allocations\n",fail,counts.live);return 1; }
   if(counts.calls<=fail) { if(!ok)return 2;complete=1;break; }

@@ -104,6 +104,7 @@ func tablePut(width int) string { return fmt.Sprintf("table_writer_put%d", width
 func tableGet(width int) string { return fmt.Sprintf("table_reader_get%d", width*8) }
 
 type tableGen struct {
+	messageSlots     map[string]uint64
 	descriptorUnions map[string]bool
 	outside          bool // descriptors outside the checked table closure carry no wire ids
 	unit             *ir.Unit
@@ -701,6 +702,18 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 				g.emitExtentDeclarations(members)
 			}
 			unions := g.fileWireUnions()
+			g.emitMessageSaveDeclarations(members, unions)
+			g.emitMessageReadDeclarations(members, unions)
+			g.emitMessageExtentDeclarations(members, unions)
+			for _, un := range unions {
+				g.emitMessageUnionSave(un)
+			}
+			for _, un := range unions {
+				g.emitMessageUnionRead(un)
+			}
+			for _, un := range unions {
+				g.emitMessageUnionExtent(un)
+			}
 			if g.fileWire() {
 				g.emitUnionWireDeclarations(unions)
 				for _, un := range unions {
@@ -712,6 +725,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 				if g.fileWire() {
 					g.emitWireWrite(st)
 					g.emitWireRead(st)
+					g.emitMessageSave(st)
+					g.emitMessageRead(st)
+					g.emitMessageExtent(st)
 				} else {
 					g.emitTableMeasure(st)
 					g.emitTableWrite(st)
@@ -763,6 +779,18 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			}
 		} else {
 			if unions := g.fileWireUnions(); g.fileWire() && len(unions) > 0 {
+				g.emitMessageSaveDeclarations(nil, unions)
+				g.emitMessageReadDeclarations(nil, unions)
+				g.emitMessageExtentDeclarations(nil, unions)
+				for _, un := range unions {
+					g.emitMessageUnionSave(un)
+				}
+				for _, un := range unions {
+					g.emitMessageUnionRead(un)
+				}
+				for _, un := range unions {
+					g.emitMessageUnionExtent(un)
+				}
 				g.emitUnionWireDeclarations(unions)
 				for _, un := range unions {
 					g.emitUnionWire(un)
@@ -850,6 +878,7 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 	h.WriteString("\n")
 	h.WriteString(tableCookRuntime(u.Package))
 	h.WriteString(tableCookWriteRuntime)
+	h.WriteString(tableMessageForm(u, g.anyVariable))
 	if g.anyVariable {
 		h.WriteString(tableCookGraphRuntime)
 	}

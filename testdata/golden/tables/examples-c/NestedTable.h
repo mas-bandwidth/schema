@@ -784,6 +784,423 @@ static SCHEMA_UNUSED void table_cook_header(uint8_t * raw,uint64_t version,int64
     table_cook_put(raw+40,(uint64_t)align,8,order);
 }
 #endif
+#ifndef SCHEMA_TABLEDEMO_TABLE_MESSAGE
+#define SCHEMA_TABLEDEMO_TABLE_MESSAGE
+enum { kTableMessageRefBitsHere=8, kTableMessageEntriesHere=152, kTableAnnounceBytes=1727, kTableMessageBatchMax=256 };
+static const uint8_t kTableAnnounce[kTableAnnounceBytes]={0x01,0x01,0x09,0x4e,0x0a,0x10,0xd9,0x0e,0x0f,0x49,0x31,0x02,0x0e,0x97,0x0d,0x06,0x94,0x0d,0xc5,0x67,0xc4,0xf0,0x1f,0xfd,0x54,0xa3,0x0d,0x74,0xa2,0x79,0x44,0x8e,0xe2,0xe5,0xb1,0x04,0x01,0x07,0x00,0xd1,0x31,0xfe,0xf6,0x18,0x16,0x77,0x6a,0x04,0x01,0x03,0x00,0xe6,0xb4,0xe7,0x8a,0x35,0xd1,0xf9,0xee,0x0a,0x00,0xc6,0x87,0x5c,0x80,0x3a,0x62,0xdc,0x9a,0x0a,0x00,0x69,0x69,0xb1,0xa2,0x7e,0xfe,0x13,0x81,0x04,0x01,0x07,0x00,0xf3,0xea,0x7d,0x61,0x9b,0x85,0x5f,0xa6,0x08,0x01,0x08,0x01,0x70,0x4a,0x6e,0x4c,0xa7,0x35,0x7f,0x46,0x1e,0x60,0x9d,0x54,0xc2,0x1c,0x92,0xec,0x14,0x0c,0x30,0x71,0x12,0x05,0xb0,0x13,0x56,0xae,0x09,0x0e,0x03,0x03,0x0a,0x00,0x6a,0x64,0x01,0x22,0x66,0xa3,0x5a,0xb7,0x0a,0x00,0xbc,0xb0,0x02,0x46,0x9a,0x71,0xbf,0xa6,0x01,0x18,0x88,0x84,0xb9,0x27,0x46,0xc4,0x5b,0x0c,0x18,0xcf,0xa9,0x8b,0x28,0xb5,0xd4,0x69,0x7f,0x0a,0x00,0xb1,0x0a,0x7b,0xce,0xa2,0x57,0x37,0x1f,0x0a,0x00,0x8c,0x60,0x83,0xc2,0x0b,0x26,0xf8,0x84,0x10,0x03,0x0d,0x6d,0xfa,0xa8,0xa5,0x48,0xb0,0xae,0xba,0x10,0x03,0x0d,0xff,0xd8,0x94,0x56,0xc2,0xc3,0x0a,0xce,0x10,0x03,0x0d,0xb2,0x0f,0x40,0x27,0x0b,0x6b,0x98,0x01,0x0d,0xd4,0x8a,0xc4,0x77,0x29,0x9b,0xa8,0x32,0x1e,0xc5,0x99,0xf7,0x82,0x76,0x4e,0x0a,0xd9,0x0e,0x00,0x04,0x1e,0x49,0x25,0xd7,0x23,0x5a,0xf4,0x6f,0xb4,0x0e,0x03,0x03,0x1e,0x4a,0xe5,0x96,0x70,0x84,0xf5,0x06,0x4b,0x09,0x01,0x03,0x00,0x39,0xe9,0x83,0xf7,0x7f,0x13,0x31,0xbf,0x0d,0x24,0xcc,0x8a,0x11,0xf5,0xf0,0x28,0xde,0x0e,0x02,0x02,0x0d,0x41,0x9a,0x24,0x40,0x03,0xaa,0x01,0xf9,0x0e,0x00,0x08,0x0d,0x37,0xea,0x08,0x98,0x2c,0xc6,0x62,0xbb,0x08,0x00,0xce,0x49,0x41,0xb5,0x57,0x35,0xb4,0x7f,0x0d,0x44,0xad,0xe1,0x13,0x49,0x5c,0x4a,0x29,0x10,0x03,0x0d,0x71,0x15,0x4e,0x34,0x0a,0x94,0xda,0x9c,0x10,0x03,0x04,0x01,0x0a,0x00,0x28,0xc2,0x01,0xd2,0xcc,0x7f,0x70,0x77,0x0e,0x00,0x03,0x0d,0x6f,0x0c,0x6f,0x03,0x0b,0x79,0x80,0x65,0x01,0x40,0x0e,0x20,0xa0,0x8a,0x49,0x81,0x22,0x0a,0x00,0xbd,0xcf,0xaa,0x55,0x7f,0x0e,0x7f,0x24,0x01,0x50,0x50,0xa2,0x15,0xc0,0x9a,0xbc,0xb7,0x04,0x01,0x0a,0x00,0xd4,0x45,0x18,0xbd,0xd8,0x58,0xc7,0xb8,0x0a,0x00,0xdd,0x7c,0x58,0xd1,0xba,0xfb,0xf8,0x3b,0x0c,0x08,0x86,0x1b,0x63,0x8e,0xba,0xad,0xbc,0xc4,0x0c,0x20,0xf0,0x92,0x20,0x6c,0xc5,0x4c,0xff,0xdb,0x0e,0x00,0x10,0x06,0x00,0x69,0xb9,0x80,0x1f,0x52,0x6d,0x8b,0xab,0x08,0x00,0xc6,0xaf,0x9b,0x2e,0xef,0x88,0x50,0x1e,0x02,0x00,0x75,0x0f,0xca,0x90,0x91,0x82,0x28,0xb1,0x03,0x00,0x03,0x34,0xf5,0x8e,0x33,0x92,0xdc,0x5d,0x05,0x00,0x18,0x55,0x09,0xfe,0x81,0xa9,0xbd,0x10,0x06,0x00,0xa6,0x3f,0x93,0xa8,0x0d,0xdb,0x2c,0x8c,0x07,0x00,0xa6,0x6b,0x6e,0x19,0xd1,0x97,0x96,0xfc,0x09,0x00,0xf7,0x05,0xbd,0xba,0xf5,0x27,0x84,0x28,0x0b,0xf9,0xb0,0x0c,0x3d,0x8a,0xeb,0x21,0xb9,0x0e,0x04,0x04,0x0a,0x00,0x3c,0x25,0x8e,0x14,0x0a,0x5e,0x6f,0xa0,0x01,0xa3,0xb5,0xbb,0x86,0x75,0xce,0x59,0x57,0x0d,0xb5,0x2e,0x70,0xbf,0x11,0x15,0x12,0x48,0x02,0x01,0x08,0xff,0x01,0x7d,0x0f,0x09,0x68,0x31,0xfe,0x2b,0x94,0x02,0x01,0x08,0xff,0x01,0xd1,0x5d,0xb5,0x05,0xd1,0xac,0x82,0xd1,0x02,0x01,0x08,0xfd,0x01,0x81,0x2a,0x91,0xc8,0x23,0xed,0x9d,0xef,0x02,0x01,0x08,0xfd,0x01,0xb4,0x60,0x37,0xa2,0x4e,0x57,0x55,0xb6,0x03,0x01,0x10,0xff,0xff,0x03,0xde,0x2b,0x7a,0x8d,0xaf,0xb3,0x17,0xd2,0x03,0x01,0x10,0xff,0xff,0x03,0x00,0x79,0x12,0xc9,0x70,0x2f,0x65,0x90,0x03,0x01,0x10,0xfd,0xff,0x03,0x58,0xb1,0x4d,0x35,0x7c,0x9d,0x65,0x6a,0x03,0x01,0x10,0xfd,0xff,0x03,0xd6,0x91,0x2c,0x53,0x88,0xbd,0x93,0xe6,0x04,0x01,0x20,0xff,0xff,0xff,0xff,0x0f,0xb4,0xfb,0x99,0xcf,0x27,0xe8,0x5e,0x06,0x04,0x01,0x20,0xff,0xff,0xff,0xff,0x0f,0xee,0x86,0xa1,0xc2,0xc4,0x21,0xb1,0xc9,0x04,0x01,0x20,0xfd,0xff,0xff,0xff,0x0f,0x7a,0xf2,0xac,0x65,0xa4,0xdf,0x63,0xd3,0x04,0x01,0x20,0xfd,0xff,0xff,0xff,0x0f,0x6f,0x9d,0xc4,0x00,0x07,0xc7,0x49,0x75,0x05,0x01,0x40,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x01,0xdb,0x71,0x97,0x41,0x17,0x66,0xce,0x1c,0x05,0x01,0x40,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x01,0x97,0x55,0x0b,0x62,0x60,0xfa,0x54,0x3b,0x05,0x01,0x40,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x01,0x23,0x5d,0xce,0x8e,0xb9,0xfc,0x08,0xd3,0x05,0x01,0x40,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x01,0x7d,0x19,0xb6,0x85,0x6b,0xde,0x0c,0xc7,0x0e,0x00,0x04,0x03,0x01,0x10,0xff,0xff,0x03,0x21,0xc0,0x37,0x7f,0x55,0x97,0x88,0x0f,0x06,0x01,0x08,0x00,0xa1,0xa2,0x00,0x82,0x3f,0x55,0x17,0x2e,0x06,0x01,0x08,0x00,0x7d,0x1b,0x30,0xf9,0x0d,0xc6,0xe5,0xa0,0x06,0x01,0x08,0x01,0x4d,0x84,0xf5,0xa6,0x73,0xc0,0xb2,0x1c,0x06,0x01,0x08,0x01,0x60,0x09,0x79,0xb1,0x50,0xc1,0xa0,0x4c,0x07,0x01,0x10,0x00,0xb2,0x4c,0xb0,0x36,0x68,0x13,0x52,0xf2,0x07,0x01,0x10,0x00,0x0c,0x61,0xe7,0x16,0xf2,0xe1,0x37,0x4f,0x07,0x01,0x10,0x01,0x04,0x33,0x8f,0x97,0x05,0xb6,0x76,0xd1,0x07,0x01,0x10,0x01,0xda,0x9c,0x47,0xe7,0x4d,0x92,0x0b,0x20,0x08,0x01,0x20,0x00,0xb0,0xac,0xb5,0x31,0x2a,0x2f,0x3d,0xa5,0x08,0x01,0x20,0x00,0xd2,0xe3,0xa4,0xa1,0x8e,0xbe,0x59,0x97,0x08,0x01,0x20,0x01,0x0e,0x3c,0x2e,0x08,0xfc,0x15,0xc5,0x8d,0x08,0x01,0x20,0x01,0x73,0x89,0xdf,0xdb,0x11,0xef,0xec,0xbe,0x09,0x01,0x40,0x00,0x27,0xf2,0xff,0xe0,0x66,0xad,0x17,0x01,0x09,0x01,0x40,0x00,0xdb,0x89,0x06,0xb5,0xf3,0x5a,0xb4,0xf2,0x09,0x01,0x40,0x01,0xf7,0xca,0xeb,0x7e,0x01,0x12,0x3e,0x71,0x09,0x01,0x40,0x01,0xe5,0x51,0xae,0x5a,0xbe,0xfe,0x41,0xc3,0x0e,0x00,0x04,0x09,0x01,0x40,0x00,0xc7,0x8d,0x4d,0xb5,0x07,0x0c,0xa6,0x08,0x06,0x01,0x08,0x00,0xbe,0x97,0xad,0x12,0x19,0x70,0x95,0xff,0x07,0x01,0x10,0x00,0x70,0x94,0xb3,0x12,0x19,0x5c,0x9c,0xff,0x08,0x01,0x20,0x00,0xe7,0x61,0xab,0x12,0x19,0x70,0x92,0xff,0x09,0x01,0x40,0x00,0x8a,0x9e,0xad,0x12,0x19,0x74,0x95,0xff,0x07,0x01,0x0c,0x00,0xa1,0x35,0xa5,0x12,0x19,0x68,0x8b,0xff,0x09,0x01,0x30,0x00,0x94,0xd3,0x46,0x87,0x72,0xc9,0x67,0x8a,0x0c,0x10,0xb6,0xab,0x7f,0xb8,0x01,0xd9,0xcb,0x41,0x0e,0x00,0x08,0x0d,0x67,0x67,0x43,0xc0,0x1f,0xe6,0x81,0x81,0x0e,0x00,0x04,0x0d,0x60,0x16,0x0e,0x9a,0x73,0xad,0x0f,0xf1,0x10,0x03,0x04,0x01,0x11,0x00,0x5d,0x5a,0xbd,0x66,0xcd,0xd7,0x21,0x2d,0x0c,0x20,0x73,0x2b,0xa8,0x9c,0xe0,0xcc,0xd0,0x95,0x0e,0x00,0x04,0x04,0x01,0x04,0x00,0xaa,0x44,0xcd,0xc0,0x48,0xb6,0xdb,0x40,0x0d,0x74,0xb6,0x5d,0xd6,0xe2,0x99,0xec,0xce,0x04,0x01,0x07,0x00,0xcf,0x0c,0xa0,0xc7,0xb1,0xda,0xa0,0xbc,0x0c,0x10,0xc0,0x7f,0xb3,0x8a,0xbe,0x08,0x63,0x7f,0x0a,0x00,0x48,0x3d,0x34,0x53,0x69,0xbe,0x2c,0xdc,0x0a,0x00,0xd2,0xb1,0xac,0x02,0x57,0x05,0x33,0x17,0x0a,0x00,0x32,0xe9,0x13,0x9e,0x30,0xc5,0x31,0x4f,0x04,0x01,0x04,0x00,0xa4,0xed,0xca,0xd5,0x9a,0x3e,0x01,0xa5,0x06,0x01,0x06,0x00,0x59,0x3f,0x2e,0x60,0xbc,0x87,0x65,0xad,0x01,0x94,0x43,0xf2,0x51,0x3b,0xc8,0xc1,0x36,0x0f,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0xf0,0xa2,0x04,0xe5,0xe9,0xb5,0x63,0xd0,0xa9,0xb8,0xcf,0x0e,0x00,0xf0,0xa2,0x04,0x06,0x00,0xdc,0xdd,0x48,0x3b,0x6a,0xca,0xb1,0xe3,0x0e,0x00,0xf0,0xa2,0x04,0x07,0x00,0x9b,0x1f,0xcd,0x1c,0x6c,0x9e,0x3d,0x48,0x00,0x52,0x8d,0xf8,0x30,0x1d,0x12,0xf3,0x9f,0x00,0x7c,0x28,0x87,0x75,0xd8,0xb5,0xc7,0x58,0x00,0x91,0xc5,0xc4,0xaa,0x39,0x77,0x92,0xc4,0x00,0x80,0x25,0xf1,0xea,0xde,0x1a,0xe5,0xc3,0x00,0xb3,0x18,0x32,0x0d,0x7e,0xc9,0x16,0xc4,0x00,0xf4,0x2c,0x8c,0xe8,0xcb,0xa6,0x61,0xae,0x00,0x1f,0xbc,0x0d,0x42,0xe1,0x24,0x4d,0x33,0x00,0xdb,0x23,0x0e,0xd0,0xa3,0x21,0x23,0x6c,0x00,0xc2,0x85,0x52,0xc1,0xc3,0xf7,0x11,0xd0,0x00,0x8a,0xcb,0x54,0xc5,0xa1,0x6a,0x21,0xa8,0x00,0xa5,0xc1,0x19,0x57,0x62,0x3c,0x57,0x7d,0x00,0x7c,0x1b,0xac,0xfe,0x19,0xde,0xf1,0x9f,0x00,0x2d,0x3e,0x69,0xc1,0xa7,0xd3,0xf3,0xec,0x00,0x1c,0x3f,0x95,0xd5,0x8f,0xd7,0x00,0xcf,0x00,0x7c,0x76,0x2e,0x3b,0xbe,0xde,0x54,0x58,0x00,0xe3,0x83,0x45,0x5a,0x2e,0x59,0x28,0xb5,0x00,0x76,0x52,0xff,0xa8,0xae,0x16,0xdc,0x04,0x00,0xcc,0x69,0xe4,0xe2,0x9b,0xbe,0xb5,0xff,0x0d,0xd7,0x2f,0x3d,0xe7,0xed,0xc5,0xcd,0x13,0x0d,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x00,0xe4,0x4f,0x1c,0x4f,0x47,0xc0,0x2e,0x2f,0x00,0x58,0xfc,0xaf,0xfa,0xd8,0xe0,0x4b,0x70,0x00,0xc7,0xd4,0x7b,0x26,0xb0,0x9d,0x29,0x5f,0x00,0xc7,0xc3,0x1b,0x26,0xcf,0x7b,0x3e,0x41,0x00,0x5b,0x21,0xce,0xf6,0xb1,0xdf,0xb1,0xff,0x00,0x64,0x1b,0x41,0x15,0x46,0xe0,0xcb,0x5f,0x00,0xaf,0x37,0x33,0x25,0xb2,0x42,0x68,0xb7,0x00,0x90,0x78,0xbd,0xdf,0x30,0xb1,0x66,0x30,0x00,0xcf,0xee,0x4d,0xe9,0xe4,0x3a,0x63,0xd6,0x00,0xa1,0xcc,0x8d,0xa2,0xae,0x0c,0xaa,0xa6,0x00,0x6e,0x33,0x14,0xb1,0x5d,0x82,0x2d,0xd0,0x00,0x7b,0x02,0x29,0x25,0x1c,0x2e,0x18,0x1c,0x00,0x78,0xa7,0x9d,0x85,0xb7,0xfc,0xff,0x19,0x00,0x2e,0xbe,0x28,0xda,0x1d,0x75,0x79,0xec,0x00,0xf1,0x8b,0xd2,0xb7,0xc4,0xc0,0x1e,0x03,0x00,0xd7,0x5e,0x4f,0x9e,0x4e,0x69,0x59,0xbf,0x00,0x87,0x5e,0xf4,0xde,0xf6,0x43,0x48,0x5f,0x00,0x29,0x1a,0x17,0xda,0x11,0x99,0x1a,0x1d,0x00,0x3a,0x11,0xfb,0x11,0x5d,0x55,0xf8,0x1c,0x00,0x15,0xad,0xb2,0x16,0x0c,0xba,0x9d,0x46,0x00,0xc3,0xb0,0xc4,0x86,0x0d,0x78,0x77,0x05,0x00,0x51,0x64,0x36,0xd3,0x61,0x69,0x6a,0xab,0x00,0x00,0xfe,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,};
+
+typedef struct TableBitWriter { uint8_t * buffer; int64_t capacity,bits; int overflow,check_default;  } TableBitWriter;
+typedef struct TableBitReader { const uint8_t * buffer; int64_t bits,offset; } TableBitReader;
+static SCHEMA_UNUSED TableBitWriter table_bit_writer(uint8_t * buffer,int64_t capacity)
+{ TableBitWriter w;memset(&w,0,sizeof(w));w.buffer=buffer;w.capacity=capacity;return w; }
+static SCHEMA_UNUSED TableBitReader table_bit_reader(const uint8_t * buffer,int64_t bytes)
+{ TableBitReader r={buffer,bytes>=0 && bytes<=INT64_MAX/8 ? bytes*8 : 0,0}; return r; }
+static SCHEMA_UNUSED int table_bit_has(const TableBitReader * r,int64_t n)
+{ return n>=0 && r->offset>=0 && r->offset<=r->bits && n<=r->bits-r->offset; }
+static SCHEMA_UNUSED void table_bit_put(TableBitWriter * w,uint64_t value,int64_t n)
+{
+ int64_t index,bit,need,i; uint64_t word,head;
+ if(n<0 || n>64 || w->bits>INT64_MAX-n-7) { w->overflow=1;return; }
+ if(n==0) return;
+ if(w->capacity<0 || (w->bits+n+7)/8>w->capacity) {w->overflow=1;w->bits+=n;return;}
+ if(w->buffer==NULL) {w->bits+=n;return;}
+ if(n<64) value&=(UINT64_C(1)<<n)-1;
+ index=w->bits>>3;bit=w->bits&7;need=(bit+n+7)>>3;
+ head=bit ? (uint64_t)w->buffer[index]&((UINT64_C(1)<<bit)-1) : 0;
+ word=head|(value<<bit);
+ for(i=0;i<need && i<8;i++) w->buffer[index+i]=(uint8_t)(word>>(8*i));
+ if(need>8) w->buffer[index+8]=(uint8_t)(value>>(64-bit));
+ w->bits+=n;
+}
+static SCHEMA_UNUSED int table_bit_get(TableBitReader * r,uint64_t * value,int64_t n)
+{
+ int64_t got=0;
+ if(n>64 || !table_bit_has(r,n)) return 0;
+ *value=0;
+ while(got<n) {
+  int64_t bit=r->offset&7,take=8-bit;
+  if(take>n-got) take=n-got;
+  *value|=(((uint64_t)r->buffer[r->offset>>3]>>bit)&((UINT64_C(1)<<take)-1))<<got;
+  r->offset+=take;got+=take;
+ }
+ return 1;
+}
+static SCHEMA_UNUSED int table_bit_skip(TableBitReader * r,int64_t n)
+{ if(!table_bit_has(r,n))return 0;r->offset+=n;return 1; }
+static SCHEMA_UNUSED void table_bit_align_write(TableBitWriter * w)
+{table_bit_put(w,0,(8-(w->bits&7))&7);}
+static SCHEMA_UNUSED int table_bit_align_read(TableBitReader * r)
+{uint64_t pad;return table_bit_get(r,&pad,(8-(r->offset&7))&7) && pad==0;}
+static SCHEMA_UNUSED void table_bit_putbytes(TableBitWriter * w,const void * source,int64_t n)
+{
+ int64_t i;
+ if(n<0 || n>(INT64_MAX-w->bits)/8) {w->overflow=1;return;}
+ if(w->buffer==NULL || (w->bits&7)==0) {
+  if(w->bits/8+n>w->capacity)w->overflow=1;
+  else if(w->buffer!=NULL && n>0)memcpy(w->buffer+w->bits/8,source,(size_t)n);
+  w->bits+=n*8;return;
+ }
+ for(i=0;i<n;i++)table_bit_put(w,((const uint8_t *)source)[i],8);
+}
+static SCHEMA_UNUSED int table_bit_getbytes(TableBitReader * r,uint8_t * target,int64_t n)
+{
+ int64_t i;uint64_t by;
+ if(n<0 || n>INT64_MAX/8 || !table_bit_has(r,n*8))return 0;
+ if((r->offset&7)==0){if(n>0)memcpy(target,r->buffer+r->offset/8,(size_t)n);r->offset+=n*8;return 1;}
+ for(i=0;i<n;i++){if(!table_bit_get(r,&by,8))return 0;target[i]=(uint8_t)by;}return 1;
+}
+static SCHEMA_UNUSED int64_t announce_measure(void) {return kTableAnnounceBytes;}
+static SCHEMA_UNUSED int64_t announce(uint8_t * buffer,int64_t capacity)
+{if(buffer==NULL || capacity<kTableAnnounceBytes)return -1;memcpy(buffer,kTableAnnounce,kTableAnnounceBytes);return kTableAnnounceBytes;}
+static SCHEMA_UNUSED int64_t table_bits_required( int64_t min, int64_t max )
+{
+    if ( max <= min ) { return 0; }
+    uint64_t span = (uint64_t) max - (uint64_t) min;
+    int64_t n = 0;
+    while ( span > 0 ) { n++; span >>= 1; }
+    return n;
+}
+
+// table_message_kind_bits is the widest RANGED value a kind can carry, its own
+// storage width: a width above it is a hostile width on the announcement.
+static SCHEMA_UNUSED int64_t table_message_kind_bits( uint8_t kind )
+{
+    switch ( kind )
+    {
+        case 2: case 6: case 20: case 25: return 8;
+        case 3: case 7: case 21: case 26: return 16;
+        case 4: case 8: case 22: case 27: return 32;
+        case 5: case 9: case 23: case 28: return 64;
+        default: return 128;
+    }
+}
+
+// table_message_quantization is SPEC.md §4.3's derivation over an announced
+// triple, in float32 and by nothing else: delta, the step count and the
+// width. False is a triple SPEC.md calls non-conforming, which on the
+// announcement is a hostile width like any other (§3.3).
+static SCHEMA_UNUSED int table_message_quantization( float qmin, float qmax, float qres, float * delta, uint32_t * count, int64_t * bits )
+{
+    if ( !( qmin < qmax ) || !( qres > 0.0f ) ) { return 0; }
+    (*delta) = qmax - qmin;
+    float values = (*delta) / qres;
+    if ( !( (*delta) - (*delta) == 0.0f ) || !( values - values == 0.0f ) ) { return 0; } // Inf - Inf is NaN
+    if ( !( values >= 1.0f ) ) { values = 1.0f; }
+    else if ( values > 4294967040.0f ) { values = 4294967040.0f; } // the largest float below 2^32
+    (*count) = (uint32_t) values;
+    if ( (float) (*count) < values ) { (*count)++; } // ceil, on a value the cast holds exactly
+    (*bits) = table_bits_required( 0, (int64_t) (*count) );
+    return 1;
+}
+
+// The two roundings on each side of the rule (SPEC.md §7.2): the product
+// rounds to float32 BEFORE the add, which a compiler permitted to contract
+// would otherwise fuse into one rounding and move the wire.
+#if ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __aarch64__ ) || defined( _M_ARM64 ) )
+#define SCHEMA_TABLE_FLOAT_FORCE_ROUND( x ) __asm__ ( "" : "+w" ( x ) )
+#elif ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __x86_64__ ) || defined( __i386__ ) )
+#define SCHEMA_TABLE_FLOAT_FORCE_ROUND( x ) __asm__ ( "" : "+x" ( x ) )
+#else
+#define SCHEMA_TABLE_FLOAT_FORCE_ROUND( x ) do { volatile float schema_table_float_force_round_slot_ = ( x ); ( x ) = schema_table_float_force_round_slot_; } while ( 0 )
+#endif
+
+// table_message_quantize is the writer's half: the index a value takes.
+static SCHEMA_UNUSED uint32_t table_message_quantize( float value, float qmin, float delta, uint32_t count )
+{
+    float normalized = ( value - qmin ) / delta;
+    if ( !( normalized >= 0.0f ) ) { normalized = 0.0f; }
+    else if ( !( normalized <= 1.0f ) ) { normalized = 1.0f; }
+    float scaled = normalized * (float) count;
+    SCHEMA_TABLE_FLOAT_FORCE_ROUND( scaled );
+    uint32_t index = (uint32_t) ( scaled + 0.5f ); // floor of a non-negative value
+    if ( index > count ) { index = count; }
+    return index;
+}
+
+// table_message_dequantize is the reader's half: the float an index names.
+static SCHEMA_UNUSED float table_message_dequantize( uint32_t index, float qmin, float delta, uint32_t count )
+{
+    if ( index > count ) { index = count; }
+    const float normalized = index / (float) count;
+    float scaled = normalized * delta;
+    SCHEMA_TABLE_FLOAT_FORCE_ROUND( scaled );
+    return scaled + qmin;
+}
+
+static SCHEMA_UNUSED int table_message_integer_kind( uint8_t kind )
+{
+    return ( kind >= 2 && kind <= 9 ) || kind == 18 || kind == 19;
+}
+
+static SCHEMA_UNUSED int table_message_fixed_kind( uint8_t kind ) { return kind >= 20 && kind <= 29; }
+
+static SCHEMA_UNUSED int table_message_known_kind( uint8_t kind )
+{
+    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 33 );
+}
+
+
+typedef struct TableMessageEntry {
+ uint64_t id;
+ int64_t min,max,base_lo,base_hi,elem_max,elem_base_lo,elem_base_hi;
+ float qmin,qdelta;uint32_t qcount;float elem_qmin,elem_qdelta;uint32_t elem_qcount;
+ int16_t value_bits,elem_value_bits;
+ uint8_t kind,packing,elem_kind,elem_packing;
+} TableMessageEntry;
+typedef struct TableMessageShapeFacts {
+ uint8_t packing,elem_kind; int64_t value_bits,base_lo,base_hi,min,max;
+ float qmin,qmax,qres,qdelta;uint32_t qcount;
+} TableMessageShapeFacts;
+typedef struct TableVocabulary {
+ TableMessageEntry * entries;int64_t max_entries,count,ref_bits;
+ uint64_t build_version;int announced,refused;int64_t max_bytes;
+} TableVocabulary;
+enum { SCHEMA_TABLE_NO_VOCABULARY=3,SCHEMA_TABLE_SECOND_ANNOUNCEMENT=4,SCHEMA_TABLE_VOCABULARY_TOO_LARGE=5,SCHEMA_TABLE_BATCH_TOO_LARGE=6 };
+static SCHEMA_UNUSED TableVocabulary table_vocabulary(TableMessageEntry * storage,int64_t capacity)
+{TableVocabulary v;memset(&v,0,sizeof(v));v.entries=storage;v.max_entries=capacity;v.max_bytes=65536;return v;}
+static SCHEMA_UNUSED int table_message_leb(const uint8_t * in,int64_t size,int64_t * at,uint64_t * value)
+{
+ TableReader r=table_reader_make(in,size,NULL);r.offset=*at;
+ if(!table_reader_leb(&r,value))return 0;*at=r.offset;return 1;
+}
+static SCHEMA_UNUSED int64_t table_message_value_bits(uint8_t kind,uint8_t packing,int64_t bits)
+{
+ if(kind==1)return 1;if(kind==11)return 64;if(kind==10)return packing==2?bits:32;
+ if(table_message_integer_kind(kind)||table_message_fixed_kind(kind))return packing==1?bits:table_message_kind_bits(kind);
+ return -1;
+}
+static SCHEMA_UNUSED int table_message_shape_read(const uint8_t * in,int64_t size,int64_t * at,uint8_t kind,TableMessageShapeFacts * f)
+{
+ uint64_t v=0;int i,k;
+ if(table_message_integer_kind(kind)||table_message_fixed_kind(kind)||kind==10){
+  if(*at>=size)return 0;f->packing=in[(*at)++];if(f->packing==0)return 1;
+  if(f->packing==1 && kind!=10){
+   if(!table_message_leb(in,size,at,&v)||v>(uint64_t)table_message_kind_bits(kind))return 0;
+   f->value_bits=(int64_t)v;
+   if(kind==18||kind==19||table_message_fixed_kind(kind)){
+    uint64_t lo=0,hi=0;if(*at>size-16)return 0;
+    for(i=0;i<8;i++){lo|=(uint64_t)in[*at+i]<<(8*i);hi|=(uint64_t)in[*at+8+i]<<(8*i);}
+    f->base_lo=(int64_t)lo;f->base_hi=(int64_t)hi;*at+=16;return 1;
+   }
+   if(!table_message_leb(in,size,at,&v))return 0;
+   f->base_lo=kind>=2&&kind<=5?(int64_t)(v>>1)^-(int64_t)(v&1):(int64_t)v;return 1;
+  }
+  if(f->packing==2 && kind==10){
+   uint32_t raw[3]={0,0,0};if(*at>size-12)return 0;
+   for(k=0;k<3;k++)for(i=0;i<4;i++)raw[k]|=(uint32_t)in[*at+4*k+i]<<(8*i);
+   *at+=12;memcpy(&f->qmin,raw,4);memcpy(&f->qmax,raw+1,4);memcpy(&f->qres,raw+2,4);
+   return table_message_quantization(f->qmin,f->qmax,f->qres,&f->qdelta,&f->qcount,&f->value_bits);
+  }return 0;
+ }
+ if(kind==12||kind==33){if(!table_message_leb(in,size,at,&v)||v>INT32_MAX)return 0;f->max=(int64_t)v;return 1;}
+ if(kind==14||kind==16){
+  if(kind==14){if(!table_message_leb(in,size,at,&v)||v>UINT32_MAX)return 0;f->min=(int64_t)v;}
+  if(!table_message_leb(in,size,at,&v)||v>UINT32_MAX||v<(uint64_t)f->min)return 0;f->max=(int64_t)v;
+  if(*at>=size)return 0;f->elem_kind=in[(*at)++];
+  return table_message_known_kind(f->elem_kind)&&f->elem_kind!=12&&f->elem_kind!=33;
+ }return 1;
+}
+static SCHEMA_UNUSED int table_message_entry_read(const uint8_t * in,int64_t size,int64_t * at,TableMessageEntry * e)
+{
+ TableMessageShapeFacts own={0},elem={0};int i;
+ if(*at<0||*at>size-9)return 0;memset(e,0,sizeof(*e));e->value_bits=e->elem_value_bits=-1;
+ for(i=0;i<8;i++)e->id|=(uint64_t)in[*at+i]<<(8*i);e->kind=in[*at+8];*at+=9;
+ if(!table_message_known_kind(e->kind)||!table_message_shape_read(in,size,at,e->kind,&own))return 0;
+ e->packing=own.packing;e->value_bits=(int16_t)table_message_value_bits(e->kind,own.packing,own.value_bits);
+ e->min=own.min;e->max=own.max;e->base_lo=own.base_lo;e->base_hi=own.base_hi;e->qmin=own.qmin;e->qdelta=own.qdelta;e->qcount=own.qcount;e->elem_kind=own.elem_kind;
+ if(e->kind==14||e->kind==16){
+  if(!table_message_shape_read(in,size,at,e->elem_kind,&elem))return 0;
+  e->elem_packing=elem.packing;e->elem_value_bits=(int16_t)table_message_value_bits(e->elem_kind,elem.packing,elem.value_bits);
+  e->elem_max=elem.max;e->elem_base_lo=elem.base_lo;e->elem_base_hi=elem.base_hi;e->elem_qmin=elem.qmin;e->elem_qdelta=elem.qdelta;e->elem_qcount=elem.qcount;
+ }return 1;
+}
+
+
+static SCHEMA_UNUSED int table_announce_once(TableVocabulary * v,const uint8_t * buffer,int64_t bytes,TableReport * report)
+{
+ TableReader r;int seen_version=0,seen_words=0;const uint8_t * words=NULL;int64_t words_bytes=0,at=0,count=0,nodes=0;
+ if(!table_wire_open(&r,buffer,bytes,report))return 0;
+ for(;;){
+  uint64_t ref,id;uint8_t kind;
+  if(!table_reader_leb(&r,&ref))goto malformed;
+  if(ref==0)break;
+  if(ref>r.id_count||!table_reader_has(&r,1))goto malformed;
+  id=table_reader_id_at(&r,ref);kind=table_reader_get8(&r);
+  if(id==UINT64_C(0xfffffffffffffffe)){
+   if(kind!=9||!table_reader_has(&r,8))goto malformed;
+   v->build_version=table_reader_get64(&r);seen_version++;continue;
+  }
+  if(id==UINT64_C(0xfffffffffffffffd)){
+   TableReader field;uint64_t n;
+   if(kind!=14||!table_reader_span(&r,&field)||!table_reader_has(&field,1)||table_reader_get8(&field)!=6)goto malformed;
+   if(!table_reader_leb(&field,&n)||!table_reader_room(&field,n)||n!=(uint64_t)(field.size-field.offset))goto malformed;
+   if(v->max_bytes<0 || n>(uint64_t)v->max_bytes){report->refused=1;report->reason=SCHEMA_TABLE_VOCABULARY_TOO_LARGE;return 0;}
+   words=field.buffer+field.offset;words_bytes=(int64_t)n;seen_words++;continue;
+  }
+  report->unknown++;if(!table_reader_skip(&r,kind))goto malformed;
+ }
+ if(seen_version!=1||seen_words!=1||r.offset!=r.size)goto malformed;
+ while(at<words_bytes){
+  TableMessageEntry * entry;int64_t i,began=at;
+  if(count>=v->max_entries || v->entries==NULL){report->refused=1;report->reason=SCHEMA_TABLE_VOCABULARY_TOO_LARGE;return 0;}
+  entry=&v->entries[count];
+  if(!table_message_entry_read(words,words_bytes,&at,entry))goto malformed;
+  if(entry->id==UINT64_C(0xfffffffffffffffe)||entry->id==UINT64_C(0xfffffffffffffffd))goto malformed;
+  if(entry->id==UINT64_MAX && nodes++>0)goto malformed;
+  /* Declared canonical bytes identify a shape. Resolved quantization facts
+     alone can collapse different triples (#722). Until validation finishes,
+     min/max temporarily hold the source span; no announcement pointer escapes. */
+  for(i=0;i<count;i++){int64_t start=v->entries[i].min,length=v->entries[i].max-start;
+   if(length==at-began && !memcmp(words+start,words+began,(size_t)length))goto malformed;}
+  entry->min=began;entry->max=at;
+  count++;
+ }
+ /* Resolve the accepted spans into the caller's final 96-byte entries. */
+ at=0;{int64_t i;for(i=0;i<count;i++)if(!table_message_entry_read(words,words_bytes,&at,v->entries+i))goto malformed;}
+ v->count=count;v->ref_bits=table_bits_required(0,count);v->announced=1;return 1;
+malformed:
+ report->malformed=1;return 0;
+}
+static SCHEMA_UNUSED int announce_read(TableVocabulary * v,const uint8_t * buffer,int64_t bytes,TableReport * report)
+{
+ TableReport ignored={0};int ok;
+ if(report==NULL)report=&ignored;
+ if(v->announced||v->refused){report->refused=1;report->reason=SCHEMA_TABLE_SECOND_ANNOUNCEMENT;return 0;}
+ ok=table_announce_once(v,buffer,bytes,report);if(!ok)v->refused=1;return ok;
+}
+
+typedef struct TableMessageReader {
+ TableBitReader bits; const TableVocabulary * vocabulary; TableReport * report;
+ int64_t index_bits; int extent_refused;
+} TableMessageReader;
+static SCHEMA_UNUSED int table_message_ref(TableMessageReader * r,const TableMessageEntry ** entry,int name)
+{
+ uint64_t ref=0;*entry=NULL;
+ if(!table_bit_get(&r->bits,&ref,r->vocabulary->ref_bits))return 0;
+ if(ref==0)return 1;
+ if(ref>(uint64_t)r->vocabulary->count)return 0;
+ *entry=r->vocabulary->entries+ref-1;
+ return (*entry)->id<UINT64_C(0xfffffffffffffffd) && (!name || (*entry)->kind==0);
+}
+static SCHEMA_UNUSED TableMessageEntry table_message_element(const TableMessageEntry * e)
+{
+ TableMessageEntry v;memset(&v,0,sizeof(v));v.kind=e->elem_kind;
+ v.packing=e->elem_packing;v.value_bits=e->elem_value_bits;v.base_lo=e->elem_base_lo;v.base_hi=e->elem_base_hi;
+ v.max=e->elem_max;v.qmin=e->elem_qmin;v.qdelta=e->elem_qdelta;v.qcount=e->elem_qcount;return v;
+}
+static SCHEMA_UNUSED int table_message_skip_run(TableMessageReader * r,uint64_t count,int64_t width)
+{
+ if(width<0)return 0;
+ if(width==0)return 1;
+ if(count>(uint64_t)(INT64_MAX/width))return 0;
+ return table_bit_skip(&r->bits,(int64_t)(count*(uint64_t)width));
+}
+static SCHEMA_UNUSED int table_message_count(TableMessageReader * r,const TableMessageEntry * e,uint64_t * n)
+{
+ uint64_t raw;
+ if(!table_bit_get(&r->bits,&raw,table_bits_required(e->min,e->max)))return 0;
+ *n=raw+(uint64_t)e->min;
+ return !(e->kind==14 && e->elem_kind==6) || table_bit_align_read(&r->bits);
+}
+static SCHEMA_UNUSED int table_message_skip(TableMessageReader *,const TableMessageEntry *);
+static SCHEMA_UNUSED int table_message_skip_body(TableMessageReader * r)
+{
+ for(;;) {const TableMessageEntry * entry;
+  if(!table_message_ref(r,&entry,0))return 0;
+  if(entry==NULL)return 1;
+  if(!table_message_skip(r,entry))return 0;
+ }
+}
+static SCHEMA_UNUSED int table_message_skip(TableMessageReader * r,const TableMessageEntry * e)
+{
+ uint64_t n,i;const TableMessageEntry * entry;
+ switch(e->kind) {
+ case 0:case 32:return 1;
+ case 30:return table_message_ref(r,&entry,1);
+ case 13:return table_message_skip_body(r);
+ case 17:return r->index_bits>0 && table_bit_skip(&r->bits,r->index_bits);
+ case 15:
+  if(!table_message_ref(r,&entry,0))return 0;
+  return entry==NULL || (entry->kind!=0 && table_message_skip(r,entry));
+ case 12:case 33:
+  if(!table_bit_get(&r->bits,&n,table_bits_required(0,e->max)))return 0;
+  if(e->kind==12 && !table_bit_align_read(&r->bits))return 0;
+  return table_message_skip_run(r,n,e->kind==12?8:16);
+ case 31:
+  if(!table_bit_align_read(&r->bits)||!table_bit_get(&r->bits,&n,32))return 0;
+  return table_message_skip_run(r,n,8);
+ case 14:case 16: {
+  TableMessageEntry elem=table_message_element(e);
+  if(!table_message_count(r,e,&n))return 0;
+  if(e->kind==14 && (elem.kind==0||elem.kind==32))return 1;
+  if(e->kind==14 && elem.value_bits>=0)return table_message_skip_run(r,n,elem.value_bits);
+  for(i=0;i<n;i++) {
+   if(e->kind==16 && !table_message_ref(r,&entry,1))return 0;
+   if(!table_message_skip(r,&elem))return 0;
+  }return 1;
+ }
+ default:return e->value_bits>=0 && table_bit_skip(&r->bits,e->value_bits);
+ }
+}
+static SCHEMA_UNUSED int table_message_number(TableMessageReader * r,const TableMessageEntry * e,uint64_t * lo,uint64_t * hi)
+{
+ int64_t width=e->value_bits;uint64_t before;
+ *lo=*hi=0;
+ if(width<0 || width>128 || !table_bit_get(&r->bits,lo,width<64?width:64))return 0;
+ if(width>64 && !table_bit_get(&r->bits,hi,width-64))return 0;
+ if(e->packing==1) {
+  before=*lo;*lo+=(uint64_t)e->base_lo;
+  if(table_message_kind_bits(e->kind)>64)*hi+=(uint64_t)e->base_hi+(*lo<before);
+ } else if(((e->kind>=2 && e->kind<=5)||(e->kind>=20 && e->kind<=23)) && width>0 && width<64 && (*lo&(UINT64_C(1)<<(width-1)))) {
+  *lo|=UINT64_MAX<<width;
+ }
+ if((e->kind>=2 && e->kind<=5)||(e->kind>=20 && e->kind<=23))*hi=(int64_t)*lo<0?UINT64_MAX:0;
+ return 1;
+}
+static SCHEMA_UNUSED int table_message_float(TableMessageReader * r,const TableMessageEntry * e,float * value)
+{
+ uint64_t raw;
+ if(!table_bit_get(&r->bits,&raw,e->value_bits))return 0;
+ if(e->packing==2) {
+  if(raw>e->qcount)return 0;
+  *value=table_message_dequantize((uint32_t)raw,e->qmin,e->qdelta,e->qcount);
+ }else *value=table_bits_to_float((uint32_t)raw);
+ return 1;
+}
+static SCHEMA_UNUSED int64_t table_message_open(TableMessageReader * r,const TableVocabulary * v,const uint8_t * buffer,int64_t bytes,TableReport * report)
+{
+ uint64_t count;
+ memset(r,0,sizeof(*r));r->report=report;r->vocabulary=v;
+ if(bytes<1 || buffer==NULL){report->malformed=1;return -1;}
+ if(buffer[0]!=2){report->refused=1;report->reason=SCHEMA_TABLE_NEWER_FORM;return -1;}
+ if(v==NULL || !v->announced){report->refused=1;report->reason=SCHEMA_TABLE_NO_VOCABULARY;return -1;}
+ r->bits=table_bit_reader(buffer+1,bytes-1);
+ if(!table_bit_get(&r->bits,&count,8)){report->malformed=1;return -1;}
+ return (int64_t)count+1;
+}
+static SCHEMA_UNUSED int table_message_close(TableMessageReader * r)
+{
+ if(!table_bit_align_read(&r->bits)||r->bits.offset!=r->bits.bits){r->report->malformed=1;return 0;}return 1;
+}
+
+static SCHEMA_UNUSED int table_message_nodes_open(TableMessageReader * r,uint64_t * count)
+{
+ uint64_t ref;int64_t start=r->bits.offset;*count=0;
+ if(!table_bit_get(&r->bits,&ref,r->vocabulary->ref_bits))return 0;
+ if(ref>(uint64_t)r->vocabulary->count)return 0;
+ if(ref==0 || r->vocabulary->entries[ref-1].id!=UINT64_MAX){r->bits.offset=start;r->index_bits=1;return 1;}
+ if(!table_bit_get(&r->bits,count,32))return 0;
+ r->index_bits=table_bits_required(0,(int64_t)*count+1);
+ /* Every record spends at least its type reference. Bound the walk before
+    inspecting any record, even when its body holds no scalar bits. */
+ return r->vocabulary->ref_bits>0 && *count<=(uint64_t)((r->bits.bits-r->bits.offset)/r->vocabulary->ref_bits);
+}
+static SCHEMA_UNUSED int table_message_blob_scan(TableMessageReader * r,uint64_t * length)
+{
+ return table_bit_get(&r->bits,length,32) && table_bit_align_read(&r->bits) && table_message_skip_run(r,*length,8);
+}
+
+#endif
 
 /* table ArchiveConfig — TABLE-wire storage: relocatable, bounded. C has no member
    initializers, so the declared defaults live in archive_config_reset and nowhere
@@ -813,6 +1230,9 @@ static SCHEMA_UNUSED  int archive_config_save_body( TableWriter * w, const Archi
 static SCHEMA_UNUSED  int archive_config_load_body( TableReader * r, ArchiveConfig * value );
 
 static SCHEMA_UNUSED int schema_tabledemo_archive_config_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int archive_config_save_message_body(TableBitWriter *,const ArchiveConfig *);
+static SCHEMA_UNUSED int archive_config_load_message_body(TableMessageReader *,ArchiveConfig *);
+static SCHEMA_UNUSED int schema_tabledemo_archive_config_message_extent_(TableMessageReader *,int64_t *);
 static SCHEMA_UNUSED int archive_config_save_body( TableWriter * w, const ArchiveConfig * value )
 {
     (void) value;
@@ -996,6 +1416,81 @@ static SCHEMA_UNUSED int archive_config_load( ArchiveConfig * value, const uint8
     return archive_config_load_body( &r, value );
 }
 
+static SCHEMA_UNUSED int archive_config_save_message_body(TableBitWriter * w,const ArchiveConfig * value)
+{
+ (void)value;
+ { /* root */
+ TableBitWriter probe=*w; probe.buffer=NULL; probe.capacity=INT64_MAX; probe.bits=0; probe.check_default=1;
+ if(!root_config_save_message_body(&probe,&value->root)) return 0;
+ if(probe.bits>kTableMessageRefBitsHere) {
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  table_bit_put(w,1,kTableMessageRefBitsHere);
+  if(!root_config_save_message_body(w,&value->root)) return 0;
+ }
+ }
+ { /* count */
+ if(!(value->count == 1)) {
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  table_bit_put(w,2,kTableMessageRefBitsHere);
+  table_bit_put(w,(uint64_t)(value->count)-UINT64_C(0),7);
+ }
+ }
+ table_bit_put(w,0,kTableMessageRefBitsHere); return !w->overflow;
+}
+static SCHEMA_UNUSED int64_t archive_config_measure_messages(const ArchiveConfig * values,int64_t count,TableReport * report)
+{
+ TableBitWriter w=table_bit_writer(NULL,INT64_MAX); int64_t i;
+ if(count<1 || values==NULL) return -1;
+ if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;}return -1;}
+ table_bit_put(&w,2,8); table_bit_put(&w,(uint64_t)(count-1),8);
+ for(i=0;i<count;i++) if(!archive_config_save_message_body(&w,values+i)) return -1;
+ table_bit_align_write(&w); return w.overflow ? -1 : w.bits/8;
+}
+static SCHEMA_UNUSED int64_t archive_config_save_messages(const ArchiveConfig * values,int64_t count,uint8_t * buffer,int64_t capacity,TableReport * report)
+{
+ TableBitWriter w=table_bit_writer(buffer,capacity); int64_t i;
+ if(count<1 || values==NULL) return -1;
+ if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;}return -1;}
+ if(buffer==NULL || capacity<0) return -1;
+ table_bit_put(&w,2,8); table_bit_put(&w,(uint64_t)(count-1),8);
+ for(i=0;i<count;i++) if(!archive_config_save_message_body(&w,values+i)) return -1;
+ table_bit_align_write(&w); return w.overflow ? -1 : w.bits/8;
+}
+static SCHEMA_UNUSED int archive_config_load_message_body(TableMessageReader * r,ArchiveConfig * value)
+{
+ archive_config_reset(value);for(;;){const TableMessageEntry * entry;
+ if(!table_message_ref(r,&entry,0))goto malformed;if(entry==NULL)return 1;switch(entry->id){
+ case UINT64_C(0xa354fd1ff0c467c5): {
+ if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,13)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
+ if(!root_config_load_message_body(r,&value->root))return 0;
+ break;}
+ case UINT64_C(0xb1e5e28e4479a274): {
+ if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,4)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
+ { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  int64_t decoded=(int64_t)lo;(void)hi;
+  if(decoded<0ll){decoded=0ll;r->report->clamped++;}
+  if(decoded>100ll){decoded=100ll;r->report->clamped++;}
+  value->count=(int32_t)decoded; }
+ break;}
+ default:r->report->unknown++;if(!table_message_skip(r,entry))goto malformed;break;
+ } }
+ malformed:r->report->malformed=1;return 0;
+}
+static SCHEMA_UNUSED int archive_config_load_messages(ArchiveConfig * values,int64_t * count,const TableVocabulary * vocabulary,const uint8_t * buffer,int64_t bytes,TableReport * report)
+{
+ TableReport ignored={0};TableMessageReader r;int64_t capacity,bodies,i;if(report==NULL)report=&ignored;
+ if(values==NULL||count==NULL){report->malformed=1;return 0;}capacity=*count;*count=0;
+ bodies=table_message_open(&r,vocabulary,buffer,bytes,report);if(bodies<0)return 0;
+ if(bodies>capacity){*count=bodies;report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;return 0;}
+ for(i=0;i<bodies;i++){if(!archive_config_load_message_body(&r,values+i))return 0;(*count)++;}return table_message_close(&r);
+}
+static SCHEMA_UNUSED int schema_tabledemo_archive_config_message_extent_(TableMessageReader * r,int64_t * at)
+{
+ (void)at;for(;;){const TableMessageEntry * entry;if(!table_message_ref(r,&entry,0))return 0;if(entry==NULL)return 1;
+ switch(entry->id){
+ default:break;}if(!table_message_skip(r,entry))return 0;
+ }
+}
 /* ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ---- */
 
 /* archive_config_open: match the header and POINT. On a match the bytes ARE what this

@@ -517,10 +517,8 @@ func encodeBitKeyed(e *bitEncoder, w *bitWriter, fv *tabletext.Field, entry ir.T
 			if elem.bits() <= e.refBits {
 				continue // an all-default slot elides
 			}
-		} else {
-			if cellIsDefaultIn(e.m, f, cell) {
-				continue // a default slot elides
-			}
+		} else if cellIsDefaultIn(e.m, f, cell) {
+			continue // a default slot elides
 		}
 		present = append(present, presentSlot{slot: slot, keyID: keyID})
 	}

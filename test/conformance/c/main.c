@@ -593,6 +593,25 @@ static int surface_reason(const char * out,const char * kind)
     return 0;
 }
 
+static int surface_message(const char * out)
+{
+ int i,j;
+ for(i=0;i<num_lines;i++){
+  const Line * f=lines+i;const Line * connection=NULL;const ConformanceCodec * codec;
+  uint8_t * announcement,*message,*answer=NULL;size_t an,n;int64_t size=0;ConformanceReport report={0};int ok;
+  if(strcmp(f->field[0],"message")!=0)continue;
+  for(j=0;j<num_lines;j++)if(!strcmp(lines[j].field[0],"connection")&&!strcmp(lines[j].field[1],f->field[2])){connection=lines+j;break;}
+  if(!connection)return 1;codec=find_codec(connection->field[2],f->field[3]);if(!codec)return 1;
+  announcement=slurp(connection->field[4],&an);message=slurp(f->field[5],&n);
+  if(!announcement||!message){free(announcement);free(message);return 1;}
+  ok=codec->message(announcement,(int64_t)an,message,(int64_t)n,&answer,&size,&report);
+  if(ok)ok=spill(out,f->field[1],answer,(size_t)size);
+  free(answer);free(message);free(announcement);
+  if(!ok){fprintf(stderr,"message %s failed: malformed=%d refused=%d unknown=%d mismatch=%d\n",f->field[1],report.malformed,report.refused,report.unknown,report.kind_mismatch);return 1;}
+ }
+ return 0;
+}
+
 int main( int argc, char ** argv )
 {
     const char * surface;
@@ -606,7 +625,7 @@ int main( int argc, char ** argv )
     surface = argv[2];
     if ( strcmp( surface, "list" ) == 0 )
     {
-        printf( "wire\nreport\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-reason\nblock-reason\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\n" );
+        printf( "wire\nmessage\nreport\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-reason\nblock-reason\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\n" );
         return 0;
     }
     if ( argc < 4 )
@@ -615,6 +634,7 @@ int main( int argc, char ** argv )
         return 2;
     }
     out = argv[3];
+    if ( strcmp( surface, "message" ) == 0 ) { return surface_message(out); }
     if ( strcmp( surface, "wire" ) == 0 ) { return surface_wire( out ); }
     if ( strcmp( surface, "report" ) == 0 ) { return surface_report( out ); }
     if ( strcmp( surface, "json-read" ) == 0 ) { return surface_json_read( out ); }

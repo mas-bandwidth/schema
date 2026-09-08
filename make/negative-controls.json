@@ -69,6 +69,7 @@
         "conformance-negative-control-block-dump",
         "conformance-negative-control-c",
         "tables-c-wire-fuzz-negative-control",
+        "tables-c-message-negative-control",
         "conformance-negative-control-c-foreign",
         "conformance-negative-control-go",
         "conformance-negative-control-go-walk",

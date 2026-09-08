@@ -48,14 +48,6 @@ func (w *bitWriter) bytes(p []byte) {
 	}
 }
 
-// splice appends another writer's bits, whole. A nested body has no length to
-// frame it on this wire, so this is the whole of how one body joins another.
-func (w *bitWriter) splice(other *bitWriter) {
-	for i := 0; i < other.n; i++ {
-		w.put(uint64(other.b[i/8]>>uint(i%8))&1, 1)
-	}
-}
-
 // align pads to the next byte boundary with zero bits. A batch pays this at
 // its end, and a `string(N)` or a `bytes(N)` payload pays it before its bytes,
 // which buys a memcpy on the largest payload on the wire.

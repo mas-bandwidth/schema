@@ -803,10 +803,9 @@ three, the message overload of `LoadMeasure` for a pointered batch's one region,
 `TableVocabulary` and the three unit-scope entry points `Announce`,
 `AnnounceMeasure` and `AnnounceRead`, each in that language's own naming
 convention. **The verbs are PLURAL** because the form's primitive is a batch of
-bodies of one root and a single message is the batch of one. C++ and the tool
-carry a form-`2` path today, byte framed until the codec change lands §3.3, and
-the harness's `message` surface prints ABSENT for every port, so the cell is
-where the work is counted. The BODY's rules are the ones a port already has,
+bodies of one root and a single message is the batch of one. C++, C and the
+independent tool engine carry the bitpacked form-`2` path. The C conformance
+and mutation drivers exercise fixed and variable message roots. The BODY's rules are the ones a port already has,
 read off a bit stream instead of a byte one: references resolve against the
 announced vocabulary instead of a trailer, elision and every tolerance rule
 above are unchanged, and the two rules that DO move are named on the page,
@@ -835,7 +834,7 @@ through `go build -overlay` and each turning the fuzzer red on its own verdict.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ✅ fixed-unit file wire only: `tables-c-wire-fuzz` and `tables-c-wire-fuzz-negative-control`; message form and other kinds remain absent | ❌ #518 | ❌ #511 | ❌ #513 | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 |
+| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ✅ file and message forms: `tables-c-wire-fuzz`, `tables-c-wire-fuzz-negative-control`, `tables-c-message-negative-control` | ❌ #518 | ❌ #511 | ❌ #513 | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 |
 
 ### M21 — A float crosses two widths by bit surgery, never by conversion
 

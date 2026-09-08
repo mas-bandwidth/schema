@@ -3869,6 +3869,7 @@ var tableGeneratedVerbs = []string{
 	"BuilderInit", "BuilderInitWithAllocator", "BuilderShutdown", "BuilderLock", "BuilderRoot",
 	"OpenEx", "BlockOpenEx", "BlockOpenConst", "BlockOpenConstEx", "BlockOpenCheck", "BlockConst", "BlockBytesConst",
 	"CookWithAllocator", "CookMeasureWithAllocator", "CookExtent",
+	"LoadMeasureMessages", "LoadMeasureMessagesEx", "SaveMessageBody", "LoadMessageBody", "MeasureMessagesWithAllocator", "SaveMessagesWithAllocator",
 	"LoadMeasureEx", "MeasureWithAllocator", "SaveWithAllocator", "ToJsonWithAllocator", "ToJsonMeasureWithAllocator",
 	"BlockStorageCreate", "BlockStorageDestroy", "BlockType",
 	// the C# BLITTABLE records take claimed suffixes in the package namespace

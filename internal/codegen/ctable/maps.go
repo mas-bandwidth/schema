@@ -152,6 +152,7 @@ func (g *tableGen) emitMapHelpers(owner *ir.Struct, f *ir.Field) {
 	}
 	g.pf("}\n")
 	g.emitMapKeyRead(f)
+	g.emitMessageMapKeyRead(f)
 	g.emitMapIndex(owner, f, result, found, keyParam, keyArg)
 }
 
