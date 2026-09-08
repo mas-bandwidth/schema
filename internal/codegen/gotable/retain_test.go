@@ -1,6 +1,7 @@
 package gotable
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -223,4 +224,75 @@ func TestRetainUnknownNodeRecord(t *testing.T) {
  import("testing";"unsafe")
  func TestUnknownNode(t *testing.T){wire:=[]byte{%s};size:=NodeLoadMeasure(wire);if size<0{t.Fatal("measure")};raw:=make([]byte,size+16);offset:=(-uintptr(unsafe.Pointer(&raw[0])))&15;region:=raw[offset:offset+uintptr(size)];store:=TableRetain{Bytes:make([]byte,4096),Ids:make([]TableRetainId,128)};report:=TableReport{Clamped:3};value:=NodeLoadRetain(region,wire,&store,&report);if value==nil||value.Head!=0||report.RetainLost!=1||report.Unknown!=1||report.Malformed||report.Clamped!=3{t.Fatalf("unplaceable node retention: %%+v",report)}}
  `, byteLiterals(wire)))
+}
+
+// Expected rewrites are constructed directly, independently of the message
+// decoder: dropping an oversized key must not expose or retain its value.
+func TestRetainMessageMapKeyProbe(t *testing.T) {
+	const old = `package probe
+ table Item { number int32 }
+ table Root { names map[string(2)]Item }
+ `
+	newer := strings.Replace(strings.Replace(old, "string(2)", "string(8)", 1), "number int32", "number int32\nextra int32", 1)
+	sender, reader := tabletext.NewModel(unitFrom(t, newer)), tabletext.NewModel(unitFrom(t, old))
+	var cases strings.Builder
+	for _, tc := range []struct {
+		name, input, output string
+		replace, malformed  bool
+	}{
+		{"dropped", `{"names":{"long":{"number":1,"extra":7}}}`, `{}`, false, false},
+		{"replacement", `{"names":{"long":{"number":1,"extra":7}}}`, `{"names":{"ok":{"number":2}}}`, true, false},
+		{"no alias", `{"names":{"lo":{"number":3},"long":{"number":1,"extra":7}}}`, `{"names":{"lo":{"number":3}}}`, false, false},
+		{"invalid oversized key", `{"names":{"long":{"number":1,"extra":7}}}`, `{}`, false, true},
+	} {
+		source, expected := sender.New(sender.Lookup("Root")), reader.New(reader.Lookup("Root"))
+		var report tabletext.Report
+		if !sender.Read(source, []byte(tc.input), &report) || !reader.Read(expected, []byte(tc.output), &report) || !report.Silent() {
+			t.Fatal(report)
+		}
+		if tc.replace {
+			next := sender.New(sender.Lookup("Root"))
+			if !sender.Read(next, []byte(tc.output), &report) || !report.Silent() {
+				t.Fatal(report)
+			}
+			source.Fields = append(source.Fields, next.Fields[0])
+		}
+		batch, err := tablewire.EncodeMessages(sender, []*tabletext.Instance{source})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tc.malformed {
+			if bytes.Count(batch, []byte("long")) != 1 {
+				t.Fatal("key bytes not found")
+			}
+			batch = bytes.Replace(batch, []byte("long"), []byte{0xff, 'o', 'n', 'g'}, 1)
+		}
+		want, err := tablewire.Encode(reader, expected)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Fprintf(&cases, "{name:%q, message:%#v, want:%#v, malformed:%v},\n", tc.name, batch, want, tc.malformed)
+	}
+	runGenerated(t, old, fmt.Sprintf(`package probe
+import("bytes";"testing";"unsafe")
+func TestMapKeys(t *testing.T){
+ announcement:=%#v
+ for _,tc:=range []struct{name string;message,want []byte;malformed bool}{%s}{t.Run(tc.name,func(t *testing.T){
+  vocabulary:=TableVocabulary{};vocabulary.Init(make([]TableMessageEntry,128));var report TableReport
+  if !AnnounceRead(&vocabulary,announcement,&report){t.Fatal(report)}
+  size:=RootLoadMessagesMeasure(&vocabulary,tc.message);if size<0{t.Fatal("measure")}
+  raw:=make([]byte,size+63);off:=(-uintptr(unsafe.Pointer(&raw[0])))&63;region:=raw[off:off+uintptr(size)]
+  for _,retaining:=range []bool{false,true}{
+   roots:=make([]*Root,1);stores:=[]TableRetain{{Bytes:make([]byte,8192),Ids:make([]TableRetainId,128)}};report=TableReport{}
+   var count int64;var ok bool
+   if retaining{count,ok=RootLoadRetainMessages(roots,region,&vocabulary,tc.message,stores,&report)}else{count,ok=RootLoadMessages(roots,region,&vocabulary,tc.message,&report)}
+   if tc.malformed{if count!=0||ok||!report.Malformed{t.Fatalf("accepted invalid key: %%d %%v %%+v",count,ok,report)};continue}
+   if count!=1||!ok||report.Malformed||report.Clamped!=1||report.Unknown!=0||report.Retained!=0||report.RetainLost!=0||report.Duplicate!=0{t.Fatalf("load: %%d %%v %%+v",count,ok,report)}
+   out:=make([]byte,8192);var n int64
+   if retaining{n=RootSaveRetain(roots[0],&stores[0],out,&report)}else{n=RootSave(roots[0],out)}
+   if n!=int64(len(tc.want))||!bytes.Equal(out[:n],tc.want)||report.RetainLost!=0{t.Fatalf("rewrite: %%d %%+v",n,report)}
+  }
+ })}
+}
+`, tablewire.Announce(sender.Unit), cases.String()))
 }
