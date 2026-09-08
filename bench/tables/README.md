@@ -210,12 +210,9 @@ Stated so a reader knows what is not here, and why:
   than borrowing C++'s spelling. `linkage` is `pkg`: the generated table codec
   is ordinary package code in the leg's binary and names no runtime at all.
 
-- **`relative rel` is C-referenced** (Glenn, 2026-08-17: *"make C the
-  reference"*), and this board's reference is C++ — the ratio a port is held
-  to — so `rel` and the tables board disagree about the denominator. C now
-  carries a tables leg, so a `--reference` flag serving both boards from one
-  renderer is the shape this wants; until then the tables board's own table
-  carries the C++ ratio in prose.
+- **`relative rel` is C-referenced.** A ratio is a comparison of this corpus
+  on this machine, not a language's implementation target. Publish absolute
+  times and throughput first, with the measurement spread.
 - **The tables emitters are not LOCKed** the way `bench/LOCK` locks the type
   emitters. The lock is a ruling about a profiling round, not a side effect of
   a board existing; it belongs to the round the owner opens after the first
