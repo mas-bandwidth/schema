@@ -2033,6 +2033,22 @@ inline TableAllocator TableDefaultAllocator()
     return allocator;
 }
 
+// Both callbacks are required together. An incomplete pair refuses before the
+// first callback, the same way C's table_allocate does.
+inline bool table_allocator_complete( TableAllocator const & a )
+{
+    return a.alloc != NULL && a.free != NULL;
+}
+inline void * table_allocate( TableAllocator const & a, int64_t bytes )
+{
+    if ( !table_allocator_complete( a ) || bytes <= 0 ) return NULL;
+    return a.alloc( a.context, bytes );
+}
+inline void table_release( TableAllocator const & a, void * pointer )
+{
+    if ( a.free != NULL ) a.free( a.context, pointer );
+}
+
 // ---- TableRef: a relocatable reference (never a machine pointer) ----
 //
 // Two encodings, one slot, and the FORM says which is in force:
@@ -2181,7 +2197,7 @@ inline void TableArenaShutdown( TableArena & arena )
     for ( uint32_t i = 0; i < kTableMaxSegments; i++ )
     {
         uint8_t * segment = arena.segments[i].exchange( NULL, std::memory_order_acq_rel );
-        if ( segment != NULL ) { arena.allocator.free( arena.allocator.context, segment ); }
+        if ( segment != NULL ) { table_release( arena.allocator, segment ); }
     }
     arena.cursor.store( 0, std::memory_order_relaxed );
 }
@@ -2216,13 +2232,13 @@ inline uint32_t TableArenaGrabSlab( TableArena & arena )
                 // at the segment or not at all. It costs nothing measurable: a
                 // fresh segment is untouched pages either way, and the default
                 // pair's calloc has the kernel hand them over zeroed.
-                uint8_t * memory = (uint8_t *) arena.allocator.alloc( arena.allocator.context, (int64_t) kTableSegmentSize );
+                uint8_t * memory = (uint8_t *) table_allocate( arena.allocator, (int64_t) kTableSegmentSize );
                 if ( memory == NULL ) { return kTableAllocFailed; }
                 uint8_t * expected = NULL;
                 if ( !arena.segments[segment].compare_exchange_strong( expected, memory, std::memory_order_acq_rel ) )
                 {
                     // another worker published this segment first
-                    arena.allocator.free( arena.allocator.context, memory );
+                    table_release( arena.allocator, memory );
                 }
             }
             if ( arena.cursor.compare_exchange_weak( cursor, cursor + kTableSlabBytes, std::memory_order_acq_rel ) )
@@ -2263,7 +2279,7 @@ inline uint32_t TableArenaGrabSpan( TableArena & arena, int64_t bytes )
         // first index, so a plain store suffices, and the block comes back
         // ZEROED like every segment — the blob's bytes and its tail are zeros
         // until written
-        uint8_t * memory = (uint8_t *) arena.allocator.alloc( arena.allocator.context, bytes );
+        uint8_t * memory = (uint8_t *) table_allocate( arena.allocator, bytes );
         if ( memory == NULL ) { return kTableAllocFailed; }
         arena.segments[start].store( memory, std::memory_order_release );
         return start << kTableSegmentBits;
@@ -2462,7 +2478,7 @@ inline void TablePackMapInit( TablePackMap & map, TableAllocator allocator )
 
 inline void TablePackMapShutdown( TablePackMap & map )
 {
-    map.allocator.free( map.allocator.context, map.entries );
+    table_release( map.allocator, map.entries );
     TablePackMapInit( map, map.allocator );
 }
 
@@ -2509,7 +2525,7 @@ inline bool TablePackMapGrow( TablePackMap & map )
     TablePackMap grown;
     grown.allocator = map.allocator;
     grown.capacity = map.capacity != 0 ? map.capacity * 4 : 1024;
-    grown.entries = (TablePackEntry *) map.allocator.alloc( map.allocator.context, grown.capacity * (int64_t) sizeof( TablePackEntry ) );
+    grown.entries = (TablePackEntry *) table_allocate( map.allocator, grown.capacity * (int64_t) sizeof( TablePackEntry ) );
     if ( grown.entries == NULL ) { return false; }
     for ( int64_t i = 0; i < map.capacity; i++ )
     {
@@ -2517,7 +2533,7 @@ inline bool TablePackMapGrow( TablePackMap & map )
         grown.entries[ TablePackMapSlot( grown, map.entries[i].key ) ] = map.entries[i];
         grown.count++;
     }
-    map.allocator.free( map.allocator.context, map.entries );
+    table_release( map.allocator, map.entries );
     map = grown;
     return true;
 }
@@ -2708,7 +2724,7 @@ inline void TableNumberingShutdown( TableNumbering & n )
 {
     TableAllocator allocator = n.seen.allocator;
     TablePackMapShutdown( n.seen );
-    allocator.free( allocator.context, n.entries );
+    table_release( allocator, n.entries );
     n.entries = NULL;
     n.count = 0;
     n.capacity = 0;
@@ -2736,12 +2752,12 @@ inline bool TableNumberingAppend( TableNumbering & n, const TableNodeEntry & ent
         // entry and the growth is the same growth it always was.
         int64_t capacity = n.capacity != 0 ? n.capacity * 4 : 256;
         TableAllocator allocator = n.seen.allocator;
-        TableNodeEntry * grown = (TableNodeEntry *) allocator.alloc( allocator.context, capacity * (int64_t) sizeof( TableNodeEntry ) );
+        TableNodeEntry * grown = (TableNodeEntry *) table_allocate( allocator, capacity * (int64_t) sizeof( TableNodeEntry ) );
         if ( grown == NULL ) { return false; }
         if ( n.entries != NULL )
         {
             memcpy( grown, n.entries, (size_t) n.count * sizeof( TableNodeEntry ) );
-            allocator.free( allocator.context, n.entries );
+            table_release( allocator, n.entries );
         }
         n.entries = grown;
         n.capacity = capacity;
@@ -8933,7 +8949,7 @@ struct LeafBuilder
         TableSlot<Leaf> slot = main.Alloc<Leaf>();
         root_ref = slot.ref;
     }
-    ~LeafBuilder() { TableArenaShutdown( arena ); arena.allocator.free( arena.allocator.context, region ); }
+    ~LeafBuilder() { TableArenaShutdown( arena ); table_release( arena.allocator, region ); }
     LeafBuilder( const LeafBuilder & ) = delete;
     LeafBuilder & operator=( const LeafBuilder & ) = delete;
 
@@ -8991,7 +9007,7 @@ inline bool LeafBuilder::Lock()
     // the AUTHORING path may allocate (§6.5), and it does so through the
     // builder's own pair. The region comes back ZEROED, which is the
     // allocator's contract: a packed region carries node padding.
-    uint8_t * packed = (uint8_t *) arena.allocator.alloc( arena.allocator.context, total );
+    uint8_t * packed = (uint8_t *) table_allocate( arena.allocator, total );
     if ( packed == NULL ) { TablePackMapShutdown( seen ); return false; }
     int64_t used = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Leaf ) ) + root_extent );
     Leaf * destination = new ( packed ) Leaf; // lifetime only: the Pack below memcpy's the whole node over it
@@ -9005,7 +9021,7 @@ inline bool LeafBuilder::Lock()
          !LeafPack( ctx, seen, root, *destination, packed, total, used ) || used != total )
     {
         TablePackMapShutdown( seen );
-        arena.allocator.free( arena.allocator.context, packed );
+        table_release( arena.allocator, packed );
         return false;
     }
     TablePackMapShutdown( seen );
@@ -9742,7 +9758,7 @@ inline bool LeafLoadBuilder( LeafBuilder & builder, const uint8_t * wire_file, i
     // It goes through the builder's own pair, like everything else the
     // builder reaches, and the entries come back zeroed.
     const TableAllocator allocator = builder.arena.allocator;
-    TableNodeDirEntry * directory = (TableNodeDirEntry *) allocator.alloc( allocator.context, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) );
+    TableNodeDirEntry * directory = (TableNodeDirEntry *) table_allocate( allocator, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) );
     if ( directory == NULL ) { out->malformed = true; return false; }
     directory[0].offset = (uint64_t) builder.root_ref.value;
     directory[0].type_id = 0xa5c085b4bb73d1b5ull;
@@ -9799,7 +9815,7 @@ inline bool LeafLoadBuilder( LeafBuilder & builder, const uint8_t * wire_file, i
     // §2.9): the partial builder is the caller's to discard, and the report
     // holds what it held when the count was met
     ok = ok && !nodes.refused;
-    allocator.free( allocator.context, directory );
+    table_release( allocator, directory );
     return ok;
 }
 
@@ -9832,7 +9848,7 @@ struct HolderBuilder
         TableSlot<Holder> slot = main.Alloc<Holder>();
         root_ref = slot.ref;
     }
-    ~HolderBuilder() { TableArenaShutdown( arena ); arena.allocator.free( arena.allocator.context, region ); }
+    ~HolderBuilder() { TableArenaShutdown( arena ); table_release( arena.allocator, region ); }
     HolderBuilder( const HolderBuilder & ) = delete;
     HolderBuilder & operator=( const HolderBuilder & ) = delete;
 
@@ -9890,7 +9906,7 @@ inline bool HolderBuilder::Lock()
     // the AUTHORING path may allocate (§6.5), and it does so through the
     // builder's own pair. The region comes back ZEROED, which is the
     // allocator's contract: a packed region carries node padding.
-    uint8_t * packed = (uint8_t *) arena.allocator.alloc( arena.allocator.context, total );
+    uint8_t * packed = (uint8_t *) table_allocate( arena.allocator, total );
     if ( packed == NULL ) { TablePackMapShutdown( seen ); return false; }
     int64_t used = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Holder ) ) + root_extent );
     Holder * destination = new ( packed ) Holder; // lifetime only: the Pack below memcpy's the whole node over it
@@ -9904,7 +9920,7 @@ inline bool HolderBuilder::Lock()
          !HolderPack( ctx, seen, root, *destination, packed, total, used ) || used != total )
     {
         TablePackMapShutdown( seen );
-        arena.allocator.free( arena.allocator.context, packed );
+        table_release( arena.allocator, packed );
         return false;
     }
     TablePackMapShutdown( seen );
@@ -10641,7 +10657,7 @@ inline bool HolderLoadBuilder( HolderBuilder & builder, const uint8_t * wire_fil
     // It goes through the builder's own pair, like everything else the
     // builder reaches, and the entries come back zeroed.
     const TableAllocator allocator = builder.arena.allocator;
-    TableNodeDirEntry * directory = (TableNodeDirEntry *) allocator.alloc( allocator.context, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) );
+    TableNodeDirEntry * directory = (TableNodeDirEntry *) table_allocate( allocator, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) );
     if ( directory == NULL ) { out->malformed = true; return false; }
     directory[0].offset = (uint64_t) builder.root_ref.value;
     directory[0].type_id = 0xa1f526c44ead452full;
@@ -10698,7 +10714,7 @@ inline bool HolderLoadBuilder( HolderBuilder & builder, const uint8_t * wire_fil
     // §2.9): the partial builder is the caller's to discard, and the report
     // holds what it held when the count was met
     ok = ok && !nodes.refused;
-    allocator.free( allocator.context, directory );
+    table_release( allocator, directory );
     return ok;
 }
 
@@ -10731,7 +10747,7 @@ struct HandBuilder
         TableSlot<Hand> slot = main.Alloc<Hand>();
         root_ref = slot.ref;
     }
-    ~HandBuilder() { TableArenaShutdown( arena ); arena.allocator.free( arena.allocator.context, region ); }
+    ~HandBuilder() { TableArenaShutdown( arena ); table_release( arena.allocator, region ); }
     HandBuilder( const HandBuilder & ) = delete;
     HandBuilder & operator=( const HandBuilder & ) = delete;
 
@@ -10789,7 +10805,7 @@ inline bool HandBuilder::Lock()
     // the AUTHORING path may allocate (§6.5), and it does so through the
     // builder's own pair. The region comes back ZEROED, which is the
     // allocator's contract: a packed region carries node padding.
-    uint8_t * packed = (uint8_t *) arena.allocator.alloc( arena.allocator.context, total );
+    uint8_t * packed = (uint8_t *) table_allocate( arena.allocator, total );
     if ( packed == NULL ) { TablePackMapShutdown( seen ); return false; }
     int64_t used = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Hand ) ) + root_extent );
     Hand * destination = new ( packed ) Hand; // lifetime only: the Pack below memcpy's the whole node over it
@@ -10803,7 +10819,7 @@ inline bool HandBuilder::Lock()
          !HandPack( ctx, seen, root, *destination, packed, total, used ) || used != total )
     {
         TablePackMapShutdown( seen );
-        arena.allocator.free( arena.allocator.context, packed );
+        table_release( arena.allocator, packed );
         return false;
     }
     TablePackMapShutdown( seen );
@@ -11540,7 +11556,7 @@ inline bool HandLoadBuilder( HandBuilder & builder, const uint8_t * wire_file, i
     // It goes through the builder's own pair, like everything else the
     // builder reaches, and the entries come back zeroed.
     const TableAllocator allocator = builder.arena.allocator;
-    TableNodeDirEntry * directory = (TableNodeDirEntry *) allocator.alloc( allocator.context, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) );
+    TableNodeDirEntry * directory = (TableNodeDirEntry *) table_allocate( allocator, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) );
     if ( directory == NULL ) { out->malformed = true; return false; }
     directory[0].offset = (uint64_t) builder.root_ref.value;
     directory[0].type_id = 0x58ba95d8757c67c0ull;
@@ -11597,7 +11613,7 @@ inline bool HandLoadBuilder( HandBuilder & builder, const uint8_t * wire_file, i
     // §2.9): the partial builder is the caller's to discard, and the report
     // holds what it held when the count was met
     ok = ok && !nodes.refused;
-    allocator.free( allocator.context, directory );
+    table_release( allocator, directory );
     return ok;
 }
 
@@ -11630,7 +11646,7 @@ struct ChainBuilder
         TableSlot<Chain> slot = main.Alloc<Chain>();
         root_ref = slot.ref;
     }
-    ~ChainBuilder() { TableArenaShutdown( arena ); arena.allocator.free( arena.allocator.context, region ); }
+    ~ChainBuilder() { TableArenaShutdown( arena ); table_release( arena.allocator, region ); }
     ChainBuilder( const ChainBuilder & ) = delete;
     ChainBuilder & operator=( const ChainBuilder & ) = delete;
 
@@ -11688,7 +11704,7 @@ inline bool ChainBuilder::Lock()
     // the AUTHORING path may allocate (§6.5), and it does so through the
     // builder's own pair. The region comes back ZEROED, which is the
     // allocator's contract: a packed region carries node padding.
-    uint8_t * packed = (uint8_t *) arena.allocator.alloc( arena.allocator.context, total );
+    uint8_t * packed = (uint8_t *) table_allocate( arena.allocator, total );
     if ( packed == NULL ) { TablePackMapShutdown( seen ); return false; }
     int64_t used = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Chain ) ) + root_extent );
     Chain * destination = new ( packed ) Chain; // lifetime only: the Pack below memcpy's the whole node over it
@@ -11702,7 +11718,7 @@ inline bool ChainBuilder::Lock()
          !ChainPack( ctx, seen, root, *destination, packed, total, used ) || used != total )
     {
         TablePackMapShutdown( seen );
-        arena.allocator.free( arena.allocator.context, packed );
+        table_release( arena.allocator, packed );
         return false;
     }
     TablePackMapShutdown( seen );
@@ -12439,7 +12455,7 @@ inline bool ChainLoadBuilder( ChainBuilder & builder, const uint8_t * wire_file,
     // It goes through the builder's own pair, like everything else the
     // builder reaches, and the entries come back zeroed.
     const TableAllocator allocator = builder.arena.allocator;
-    TableNodeDirEntry * directory = (TableNodeDirEntry *) allocator.alloc( allocator.context, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) );
+    TableNodeDirEntry * directory = (TableNodeDirEntry *) table_allocate( allocator, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) );
     if ( directory == NULL ) { out->malformed = true; return false; }
     directory[0].offset = (uint64_t) builder.root_ref.value;
     directory[0].type_id = 0x670377dcbe2f82b6ull;
@@ -12496,7 +12512,7 @@ inline bool ChainLoadBuilder( ChainBuilder & builder, const uint8_t * wire_file,
     // §2.9): the partial builder is the caller's to discard, and the report
     // holds what it held when the count was met
     ok = ok && !nodes.refused;
-    allocator.free( allocator.context, directory );
+    table_release( allocator, directory );
     return ok;
 }
 
@@ -16667,7 +16683,7 @@ inline bool LeafCookFrom( const Ctx & ctx, const Leaf & root, void * out, uint64
     bool ok = LeafNumberFrom( ctx, numbering, root );
     if ( ok )
     {
-        region.offsets = (int64_t *) allocator.alloc( allocator.context, ( numbering.count + 1 ) * (int64_t) sizeof( int64_t ) );
+        region.offsets = (int64_t *) table_allocate( allocator, ( numbering.count + 1 ) * (int64_t) sizeof( int64_t ) );
         ok = region.offsets != NULL && LeafCookLayout( ctx, root, numbering, region );
     }
     if ( ok )
@@ -16708,7 +16724,7 @@ inline bool LeafCookFrom( const Ctx & ctx, const Leaf & root, void * out, uint64
             }
         }
     }
-    allocator.free( allocator.context, region.offsets );
+    table_release( allocator, region.offsets );
     TableNumberingShutdown( numbering );
     return ok;
 }
@@ -16830,7 +16846,7 @@ inline bool HolderCookFrom( const Ctx & ctx, const Holder & root, void * out, ui
     bool ok = HolderNumberFrom( ctx, numbering, root );
     if ( ok )
     {
-        region.offsets = (int64_t *) allocator.alloc( allocator.context, ( numbering.count + 1 ) * (int64_t) sizeof( int64_t ) );
+        region.offsets = (int64_t *) table_allocate( allocator, ( numbering.count + 1 ) * (int64_t) sizeof( int64_t ) );
         ok = region.offsets != NULL && HolderCookLayout( ctx, root, numbering, region );
     }
     if ( ok )
@@ -16871,7 +16887,7 @@ inline bool HolderCookFrom( const Ctx & ctx, const Holder & root, void * out, ui
             }
         }
     }
-    allocator.free( allocator.context, region.offsets );
+    table_release( allocator, region.offsets );
     TableNumberingShutdown( numbering );
     return ok;
 }
@@ -16993,7 +17009,7 @@ inline bool HandCookFrom( const Ctx & ctx, const Hand & root, void * out, uint64
     bool ok = HandNumberFrom( ctx, numbering, root );
     if ( ok )
     {
-        region.offsets = (int64_t *) allocator.alloc( allocator.context, ( numbering.count + 1 ) * (int64_t) sizeof( int64_t ) );
+        region.offsets = (int64_t *) table_allocate( allocator, ( numbering.count + 1 ) * (int64_t) sizeof( int64_t ) );
         ok = region.offsets != NULL && HandCookLayout( ctx, root, numbering, region );
     }
     if ( ok )
@@ -17034,7 +17050,7 @@ inline bool HandCookFrom( const Ctx & ctx, const Hand & root, void * out, uint64
             }
         }
     }
-    allocator.free( allocator.context, region.offsets );
+    table_release( allocator, region.offsets );
     TableNumberingShutdown( numbering );
     return ok;
 }
@@ -17156,7 +17172,7 @@ inline bool ChainCookFrom( const Ctx & ctx, const Chain & root, void * out, uint
     bool ok = ChainNumberFrom( ctx, numbering, root );
     if ( ok )
     {
-        region.offsets = (int64_t *) allocator.alloc( allocator.context, ( numbering.count + 1 ) * (int64_t) sizeof( int64_t ) );
+        region.offsets = (int64_t *) table_allocate( allocator, ( numbering.count + 1 ) * (int64_t) sizeof( int64_t ) );
         ok = region.offsets != NULL && ChainCookLayout( ctx, root, numbering, region );
     }
     if ( ok )
@@ -17197,7 +17213,7 @@ inline bool ChainCookFrom( const Ctx & ctx, const Chain & root, void * out, uint
             }
         }
     }
-    allocator.free( allocator.context, region.offsets );
+    table_release( allocator, region.offsets );
     TableNumberingShutdown( numbering );
     return ok;
 }

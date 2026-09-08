@@ -210,6 +210,42 @@ static void test_allocator_sees_everything()
     CHECK( g_fallback_frees == 0 );
 }
 
+// An incomplete pair refuses before the first callback (C's table_allocate).
+static void test_incomplete_pair_refuses_before_callback()
+{
+    g_fallback_allocs = 0;
+    g_fallback_frees = 0;
+
+    Counters counters = { 0, 0, 0 };
+    graphdemo::TableAllocator alloc_only;
+    alloc_only.alloc = counting_alloc;
+    alloc_only.free = NULL;
+    alloc_only.context = &counters;
+    {
+        graphdemo::SceneBuilder builder( alloc_only );
+        CHECK( counters.allocs == 0 );
+        CHECK( builder.GetRoot() == NULL );
+        CHECK( !builder.Lock() );
+        CHECK( counters.allocs == 0 );
+        CHECK( counters.frees == 0 );
+    }
+    CHECK( counters.allocs == 0 );
+
+    graphdemo::TableAllocator free_only;
+    free_only.alloc = NULL;
+    free_only.free = counting_free;
+    free_only.context = &counters;
+    {
+        graphdemo::SceneBuilder builder( free_only );
+        CHECK( counters.allocs == 0 );
+        CHECK( builder.GetRoot() == NULL );
+        CHECK( !builder.Lock() );
+        CHECK( counters.frees == 0 );
+    }
+    CHECK( g_fallback_allocs == 0 );
+    CHECK( g_fallback_frees == 0 );
+}
+
 // ---- the BYTE BUFFER's two allocation claims, at run time ----
 //
 // THE BUILDER'S BLOBS GO THROUGH THE PAIR — a small blob inside a slab and a
@@ -290,6 +326,7 @@ int main()
 {
     test_refusal_reaches_the_caller();
     test_allocator_sees_everything();
+    test_incomplete_pair_refuses_before_callback();
     test_blob_read_path_allocates_nothing();
     if ( failures != 0 )
     {

@@ -396,7 +396,7 @@ inline TableMapCursor<Entry> TableMapOrder( const TableArena & arena, const Tabl
     if ( map.entries.value == 0 || map.count <= 0 ) { cursor.ok = map.count == 0; cursor.count = 0; return cursor; }
     const TableMapHead * head = (const TableMapHead *) TableArenaAt( arena, (uint32_t) map.entries.value );
     if ( head->live != map.count ) { return cursor; } // the slot and the head disagree: refused, never guessed
-    const Entry ** order = (const Entry **) arena.allocator.alloc( arena.allocator.context, (int64_t) map.count * (int64_t) sizeof( const Entry * ) );
+    const Entry ** order = (const Entry **) table_allocate( arena.allocator, (int64_t) map.count * (int64_t) sizeof( const Entry * ) );
     if ( order == NULL ) { return cursor; }
     int32_t at = 0;
     TableRef segment_ref = head->first;
@@ -412,7 +412,7 @@ inline TableMapCursor<Entry> TableMapOrder( const TableArena & arena, const Tabl
     }
     if ( at != map.count )
     {
-        arena.allocator.free( arena.allocator.context, order );
+        table_release( arena.allocator, order );
         return cursor;
     }
     TableMapSort( order, map.count );
@@ -429,7 +429,7 @@ inline TableMapCursor<Entry> TableMapOrder( const TableArenaCtx & ctx, const Tab
 
 template <typename Entry> inline void TableMapRelease( TableMapCursor<Entry> & cursor )
 {
-    if ( cursor.order != NULL ) { cursor.allocator.free( cursor.allocator.context, (void *) cursor.order ); }
+    if ( cursor.order != NULL ) { table_release( cursor.allocator, (void *) cursor.order ); }
     cursor.order = NULL;
 }
 

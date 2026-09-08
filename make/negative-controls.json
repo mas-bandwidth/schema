@@ -207,6 +207,7 @@
       "targets": [
         "tables-blob-read-hooks-negative-control",
         "tables-blob-span-negative-control",
+        "tables-go-blob-span-negative-control",
         "tables-c-fuzz-negative-control",
         "tables-c-keyed-none-refusal-negative-control",
         "tables-c-keyed-max-refusal-negative-control",

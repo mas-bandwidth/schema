@@ -273,7 +273,7 @@ enum answered `undefined` before the guard was made symmetric.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-keyed-none-refusal-ndebug` `tables-keyed-max-refusal-ndebug` | ✅ `TestCTableKeyedBounds` `tables-c-keyed-none-refusal-ndebug` `tables-c-keyed-max-refusal-ndebug` | ✅ `internal/codegen/rusttable/runtime.go:133-169` (panics in every build) | ✅ `TestKeyedRefusesNone` `TestKeyedRefusesPastMax` `TestKeyedPlacesByKey` | ✅ `test/cs-tables/src/Program.cs:1672` (None refused; past Max is the CLR's, always on) | ❌ #407 (refuses both ends; no test holds it) | ✅ `tables-js-keyed-negative-control` | ❌ #407 (refuses both ends; no test holds it) | ❌ #407 (guards refuse both ends; no test holds it) |
+| ✅ `tables-keyed-none-refusal-ndebug` `tables-keyed-max-refusal-ndebug` | ✅ `TestCTableKeyedBounds` `tables-c-keyed-none-refusal-ndebug` `tables-c-keyed-max-refusal-ndebug` | ✅ `internal/codegen/rusttable/runtime.go:133-169` (panics in every build) | ✅ `TestKeyedRefusesNone` `TestKeyedRefusesPastMax` `TestKeyedPlacesByKey` | ✅ `TestCsKeyedAccessorCoversBothEnds` (`RefuseKey`, both ends) | ❌ #407 (refuses both ends; no test holds it) | ✅ `tables-js-keyed-negative-control` | ❌ #407 (refuses both ends; no test holds it) | ❌ #407 (guards refuse both ends; no test holds it) |
 
 ### M6 — The variable class on the wire: a flat node table and an identity map
 
@@ -655,7 +655,7 @@ reads it back after the nodes allocated behind it and the bytes are gone.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-blob-span-negative-control` | ✅ `internal/codegen/ctable/arena.go:312` `TestCTableWireBlobIdentity` | ❌ #259 | ❌ #259 | ✅ `tables-cs-leg` (large spans, descending addresses and failed blob allocation) | ❌ #259 | ❌ #259 | ❌ #259 | ❌ #259 |
+| ✅ `tables-blob-span-negative-control` | ✅ `internal/codegen/ctable/arena.go:312` `TestCTableWireBlobIdentity` | ❌ #259 | ✅ `TestBlobSpanHoldsAfterLaterAllocations` `tables-go-blob-span-negative-control` | ✅ `tables-cs-leg` (large spans, descending addresses and failed blob allocation) | ❌ #259 | ❌ #259 | ❌ #259 | ❌ #259 |
 
 
 ### M18 — A union arm is a field line
@@ -1075,7 +1075,7 @@ lead 1 answered open, wanted refuse".
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-block-fuzz` (the enumerated 1..63 pass, `test/tables/block_fuzz_main.cpp:939`) | ❌ #387 (a random lead one mutant in four) | ❌ #387 (enumerated in the unreached `tables-rust-fuzz`) | ❌ #387 (a random lead; the oracle cannot see the check go missing) | ✅ `tables-block-fuzz` (`test/cs-block/src/Fuzz.cs:749-753`) | ❌ #387 (every `open` in the leg passes offset 0) | ❌ #387 (the block battery's pointer column is 0) | ❌ #387 (same) | ✅ `tables-elixir-block-lead` `tables-elixir-block-lead-negative-control` |
+| ✅ `tables-block-fuzz` (the enumerated 1..63 pass, `test/tables/block_fuzz_main.cpp:939`) | ✅ `tables-c-fuzz` (the enumerated 1..63 pass, `test/c-tables/fuzz_main.c:165`) | ❌ #387 (enumerated in the unreached `tables-rust-fuzz`) | ✅ `tables-go-fuzz` (the enumerated 1..63 pass, `test/go-tables/fuzz_test.go:205`) | ✅ `tables-block-fuzz` (`test/cs-block/src/Fuzz.cs:749-753`) | ❌ #387 (every `open` in the leg passes offset 0) | ❌ #387 (the block battery's pointer column is 0) | ❌ #387 (same) | ✅ `tables-elixir-block-lead` `tables-elixir-block-lead-negative-control` |
 
 ### I6 — Claimed names, both ways, with a control
 

@@ -46,7 +46,7 @@ func (csTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 func init() {
 	registerPacketValueDefaultCarrier("cs")
 	registerWideTextCarrier("cs")
-	registerBuiltin(csTarget{}, true, true, true, false)
+	registerBuiltin(csTarget{}, true, true, true, true)
 	registerOptionalArrayCarrier("cs")
 	registerMapCarrier("cs")
 	registerListCarrier("cs")
