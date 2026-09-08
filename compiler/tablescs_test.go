@@ -163,3 +163,28 @@ table Root { values [..8]Child }
 		}
 	}
 }
+
+// TestCsFloatBitCastIsAtTheAssignment: M3. A float must not cross a helper
+// call the JIT might leave as a call. Field GetRaw/SetRaw bit-cast inline.
+func TestCsFloatBitCastIsAtTheAssignment(t *testing.T) {
+	u := unitFromSource(t, "package probe\ntable Root { mass float32\n span float64 }\n")
+	files, err := New().Generate(u, "cs", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(files["ProbeTable.cs"])
+	for _, want := range []string{
+		"BitConverter.Int32BitsToSingle",
+		"BitConverter.SingleToInt32Bits",
+		"BitConverter.Int64BitsToDouble",
+		"BitConverter.DoubleToInt64Bits",
+		"[MethodImpl(MethodImplOptions.AggressiveInlining)]",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("C# float path lacks %q", want)
+		}
+	}
+	if strings.Contains(src, "GetRaw = delegate") && strings.Contains(src, "TableFloatToBits(value.Mass)") {
+		t.Error("f32 GetRaw still calls TableFloatToBits instead of bit-casting at the assignment")
+	}
+}

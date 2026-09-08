@@ -684,9 +684,9 @@ func csRawGet(expr string, t ir.FieldType) string {
 	case ir.TBool:
 		return expr + " ? 1ul : 0ul"
 	case ir.TFloat32:
-		return "(ulong)TableFloatToBits(" + expr + ")"
+		return "(ulong)unchecked((uint)BitConverter.SingleToInt32Bits(" + expr + "))"
 	case ir.TFloat64:
-		return "TableDoubleToBits(" + expr + ")"
+		return "unchecked((ulong)BitConverter.DoubleToInt64Bits(" + expr + "))"
 	case ir.TInt:
 		if t.Signed {
 			return "(ulong)(long)" + expr
@@ -712,9 +712,9 @@ func csRawSet(expr, src string, t ir.FieldType) string {
 	case ir.TBool:
 		return expr + " = " + src + " != 0;"
 	case ir.TFloat32:
-		return expr + " = TableBitsToFloat(unchecked((uint)" + src + "));"
+		return expr + " = BitConverter.Int32BitsToSingle(unchecked((int)(uint)" + src + "));"
 	case ir.TFloat64:
-		return expr + " = TableBitsToDouble(" + src + ");"
+		return expr + " = BitConverter.Int64BitsToDouble(unchecked((long)" + src + "));"
 	case ir.TInt:
 		if t.Signed {
 			return expr + " = unchecked((" + csFieldType(t) + ")(long)" + src + ");"
