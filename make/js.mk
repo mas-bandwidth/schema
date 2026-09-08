@@ -237,17 +237,6 @@ tables-js-fuzz-negative-control: bin/schema build/tables-generated-js/.stamp bui
 		  cat build/js-fuzz-sabotage/log; exit 1; }
 	@echo "negative control: a block reader with both extent bounds removed turns the JavaScript fuzz oracle RED on a read that escaped the buffer"
 
-# THE TEXT FORM AGAINST A THIRD IMPLEMENTATION, over instances nobody wrote
-# down (docs/SPEC-TABLES.md §16). The conformance harness holds eighteen pinned
-# texts; this holds the SPELLING RULE, which eighteen instances cannot cover: the
-# JS leg writes each random instance as (wire, text), `schema unpack` reads the
-# same wire bytes with the compiler's own Go engine — written from §16 and from
-# neither backend — and the two texts are byte-compared.
-#
-# The rule it holds that eighteen instances cannot: a float32 such as
-# -266744.625 renders as an eight-digit TIE, both candidates round-trip back to
-# the same float32 so the shortest-precision search cannot step past it, and C
-
 # WHAT ALLOCATES, as a RATE (test/js-tables/main.mjs's fourth property). A flat
 # heap is a LEAK instrument and nothing more — an allocation made and collected
 # every iteration leaves it exactly as flat as no allocation at all — so the

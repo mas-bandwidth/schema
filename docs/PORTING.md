@@ -162,9 +162,8 @@ and a generated codec must not depend on the compiler's inlining budget.
 
 **Reference.** `internal/codegen/cpptable/cpptable.go:572-573`
 (`table_bits_to_float` and its three siblings, `inline` free functions over
-`get32`/`get64`). The JavaScript statement of the rule:
-`internal/codegen/jstable/jstable.go:979-985` and `codecs.go:897-902`; elevated
-to a cross-port rule at docs/SPEC-TABLES.md's JavaScript allocation paragraph.
+`get32`/`get64`); elevated to a cross-port rule at docs/SPEC-TABLES.md's
+JavaScript allocation paragraph.
 
 **Proven in.** C++; measured in JavaScript.
 
@@ -264,9 +263,7 @@ enum answered `undefined` before the guard was made symmetric.
 
 **Negative control.** `tables-keyed-none-refusal-negative-control`,
 `tables-keyed-max-refusal-negative-control` and
-`tables-keyed-shift-negative-control` in the reference;
-`tables-js-keyed-negative-control` puts a None-only guard back and requires
-"accepted E.Max + 1 as a key".
+`tables-keyed-shift-negative-control` in the reference.
 
 **Targets:** none
 
@@ -1266,16 +1263,15 @@ backend) reads the same wire and writes its text; the two texts are
 byte-compared, then the other direction. Pinned goldens reach eighteen
 instances; a random differential reaches the float ties they never do.
 
-**Reference.** `tables-js-json-differential` and its control in the
-Makefile; the engine in `internal/tabletext`.
+**Reference.** The engine in `internal/tabletext` (the original JavaScript
+reference was pruned in #516).
 
-**Proven in.** JavaScript.
+**Proven in.** JavaScript (#516).
 
 **Measured effect.** Twelve of forty instances differed on the first run —
 a float32 at `-266744.625` rendering as an eight-digit tie.
 
-**Negative control.** `tables-js-json-differential-negative-control` restores
-the magnitude tie-break and requires red (19 of 60 on the pinned seed).
+**Negative control.** Restoring the magnitude tie-break requires red (19 of 60 on the pinned seed; #419 tracks remaining targets).
 
 **Targets:** json-differential
 
