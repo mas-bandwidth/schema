@@ -7,16 +7,24 @@ package tablewire
 
 import "math/big"
 
-// bitWriter accumulates a body's bits. Nothing here allocates per field: a
-// nested body is built in a writer of its own and spliced, exactly as the file
-// form's encoder builds a nested body in a byte buffer and copies it, and the
-// splice is what a length would otherwise have framed.
+// bitWriter accumulates the batch's bits. Nested bodies are written in place:
+// alignment is relative to the batch's byte zero (docs/SPEC-TABLES.md §3.3).
 type bitWriter struct {
 	b []byte
 	n int // bits written
 }
 
 func (w *bitWriter) bits() int { return w.n }
+
+// truncate removes an elided body and clears its bits so later writes at a
+// partial byte cannot inherit the discarded reference or terminator.
+func (w *bitWriter) truncate(n int) {
+	w.n = n
+	w.b = w.b[:(n+7)/8]
+	if n%8 != 0 {
+		w.b[n/8] &= (1 << uint(n%8)) - 1
+	}
+}
 
 // put writes the low `n` bits of v, low bit first.
 func (w *bitWriter) put(v uint64, n int) {
@@ -50,7 +58,7 @@ func (w *bitWriter) bytes(p []byte) {
 
 // align pads to the next byte boundary with zero bits. A batch pays this at
 // its end, and a `string(N)` or a `bytes(N)` payload pays it before its bytes,
-// which buys a memcpy on the largest payload on the wire.
+// always at its current position in the enclosing batch (§3.3).
 func (w *bitWriter) align() {
 	for w.n%8 != 0 {
 		w.put(0, 1)

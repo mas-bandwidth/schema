@@ -255,19 +255,15 @@ func encodeBitField(e *bitEncoder, w *bitWriter, fv *tabletext.Field) error {
 		return encodeBitArm(e, w, un.Variants[fv.Cell.U-1], &fv.Cell)
 
 	case kind == ir.TableKindTable:
-		body := &bitWriter{}
-		sub := *e
-		if err := encodeBitBody(&sub, body, subInstanceOf(e.m, f, &fv.Cell), false); err != nil {
+		start := w.bits()
+		e.ref(w, entry)
+		if err := encodeBitBody(e, w, subInstanceOf(e.m, f, &fv.Cell), false); err != nil {
 			return err
 		}
-		e.missing = sub.missing
-		if body.bits() <= e.refBits {
-			return nil // an all-default nested table elides: its body is its terminator alone
+		if w.bits()-start == 2*e.refBits {
+			w.truncate(start) // reference plus terminator: an all-default body elides
 		}
-		e.ref(w, entry)
-		// The probe decides elision only. Aligned payloads must be written
-		// at their position in the batch, not spliced from bit zero.
-		return encodeBitBody(e, w, subInstanceOf(e.m, f, &fv.Cell), false)
+		return nil
 
 	case kind == ir.TableKindEnum:
 		if cellIsDefaultIn(e.m, f, &fv.Cell) {
