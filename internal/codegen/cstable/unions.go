@@ -46,11 +46,12 @@ func (g *tableGen) emitTableUnion(un *ir.Union) {
 // remain available for body arms; Field also describes scalars and collections.
 func (g *tableGen) unionArmsValue(un *ir.Union) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "new TableUnionInfo { GetTag = delegate(object o) { return (ulong)((%s)o).Type; }", un.Name)
-	fmt.Fprintf(&b, ", Create = delegate { return new %s(); }", un.Name)
+	pkg := capitalize(g.unit.Package)
+	fmt.Fprintf(&b, "new TableUnionInfo { GetTag = delegate(object o) { return (ulong)((global::%s.%s)o).Type; }", pkg, un.Name)
+	fmt.Fprintf(&b, ", Create = delegate { return new global::%s.%s(); }", pkg, un.Name)
 	_, _, tagSize, armOffset := ir.UnionLayout(g.unit, un)
 	fmt.Fprintf(&b, ", NativeTagSize = %d, NativeArmOffset = %d", tagSize, armOffset)
-	fmt.Fprintf(&b, ", SetTag = delegate(object o, ulong t) { ((%s)o).Type = unchecked((%sType)t); }", un.Name, un.Name)
+	fmt.Fprintf(&b, ", SetTag = delegate(object o, ulong t) { ((global::%s.%s)o).Type = unchecked((global::%s.%sType)t); }", pkg, un.Name, pkg, un.Name)
 	b.WriteString(", Arms = new TableUnionArmInfo[] { new TableUnionArmInfo()")
 	for _, v := range un.Variants {
 		b.WriteString(", new TableUnionArmInfo { ")
@@ -61,7 +62,7 @@ func (g *tableGen) unionArmsValue(un *ir.Union) string {
 			field := strings.TrimSuffix(strings.TrimSpace(row.schema.String()), ",")
 			fmt.Fprintf(&b, "Field = %s", field)
 			if v.Body() {
-				fmt.Fprintf(&b, ", TableRef = delegate { return %sTableType(); }, Payload = delegate(object o) { return ((%s)o).%s; }", v.Type, un.Name, ir.GoExportName(v.Name))
+				fmt.Fprintf(&b, ", TableRef = delegate { return %sTableType(); }, Payload = delegate(object o) { return ((global::%s.%s)o).%s; }", v.Type, pkg, un.Name, ir.GoExportName(v.Name))
 			}
 		}
 		b.WriteString(" }")
