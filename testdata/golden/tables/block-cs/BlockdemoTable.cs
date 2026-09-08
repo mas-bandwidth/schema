@@ -4390,10 +4390,23 @@ namespace Blockdemo
             }
             // A shorter replacement, including a damaged one, must restore slots above
             // the new count to the value-initialized element (#725).
+            static void ResetUnion(object union, TableUnionInfo arms)
+            {
+                if (union == null || arms == null) { return; }
+                arms.SetTag(union, 0);
+                if (arms.Arms == null) { return; }
+                // C++ assigns a fresh element; C memsets. Tag-only leaves the previous
+                // arm's storage (a list under None). Reset every payload arm.
+                for (int a = 1; a < arms.Arms.Length; a++)
+                {
+                    TableFieldInfo payload = arms.Arms[a].Field;
+                    if (payload != null) { ResetArm(union, payload); }
+                }
+            }
             static void ResetElement(object value, TableFieldInfo f, int i)
             {
                 if (f.Kind == 13 && f.Table != null) { object child = f.GetChild(value, i); if (child != null) { f.Table.Reset(child); } }
-                else if (f.Kind == 15 && f.Arms != null) { f.Arms.SetTag(f.GetChild(value, i), 0); }
+                else if (f.Kind == 15 && f.Arms != null) { ResetUnion(f.GetChild(value, i), f.Arms); }
                 else if (f.Kind == 17) { f.SetChild(value, i, null); }
                 else if (f.SetWide != null) { f.SetWide(value, i, 0); }
                 else if (f.SetRaw != null) { f.SetRaw(value, i, f.DefaultRaw); }

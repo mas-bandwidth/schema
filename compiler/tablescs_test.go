@@ -157,6 +157,7 @@ table Root { values [..8]Child }
 		"static void ResetCountedTail(object value, TableFieldInfo f, int previous, int decoded)",
 		"int previous = f.Counted && f.GetCount != null ? f.GetCount(value) : 0",
 		"ResetCountedTail(value, f, previous, decoded)",
+		"static void ResetUnion(object union, TableUnionInfo arms)",
 	} {
 		if !strings.Contains(src, want) {
 			t.Errorf("C# counted-array load lacks %q", want)
