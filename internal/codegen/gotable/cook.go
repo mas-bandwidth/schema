@@ -110,12 +110,8 @@ func (c *cookUnit) opens(name string) bool {
 	return false
 }
 
-// cookUnitOf computes the surface. A ROOT IS ANY TABLE (§7) and every table
-// gets one — with one absence this backend states rather than hides: a closure
-// carrying a UNION has no blittable spelling under the C ABI record rule the
-// accelerators are pinned to (§19.3), which is the same reason a union keeps a
-// table out of the block form, and it is a named follow-on rather than a
-// refusal.
+// Every table has a cooked view. Unions use the same canonical overlay as
+// the variable table storage; their active arm is exposed through accessors.
 func cookUnitOf(u *ir.Unit) *cookUnit {
 	c := &cookUnit{members: map[string]*ir.MemberLayout{}, skipped: map[string]string{}}
 	names := make([]string, 0, len(u.Tables))
@@ -126,10 +122,6 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 	for _, name := range names {
 		st := u.Tables[name]
 		if st.IsMapEntry() {
-			continue
-		}
-		if why := cookableClosure(u, st); why != "" {
-			c.skipped[name] = why
 			continue
 		}
 		c.tables = append(c.tables, st)
@@ -160,62 +152,41 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 func cookWalk(u *ir.Unit, name string, visit func(string, *ir.MemberLayout)) {
 	seen := map[string]bool{}
 	var walk func(string)
+	var field func(*ir.Field)
+	field = func(f *ir.Field) {
+		if f.IsMap() {
+			walk(f.MapEntry.Name)
+			return
+		}
+		if f.Type.Kind == ir.TNamed {
+			walk(f.Type.Name)
+		}
+	}
 	walk = func(n string) {
 		if seen[n] {
 			return
 		}
-		st := cookMember(u, n)
-		if st == nil {
+		seen[n] = true
+		if st := cookMember(u, n); st != nil {
+			visit(n, ir.RecordLayout(u, st))
+			for _, f := range st.Fields {
+				field(f)
+			}
 			return
 		}
-		seen[n] = true
-		visit(n, ir.RecordLayout(u, st))
-		for _, f := range st.Fields {
-			if f.IsMap() {
-				walk(f.MapEntry.Name)
-				continue
-			}
-			if f.Type.Kind != ir.TNamed {
-				continue
-			}
-			if ref, ok := f.Type.Ref.(*ir.Struct); ok {
-				walk(ref.Name)
+		un := u.Unions[n]
+		if un == nil {
+			un = u.TableUnions[n]
+		}
+		if un != nil {
+			for _, v := range un.Variants {
+				if !v.Void() {
+					field(v.F)
+				}
 			}
 		}
 	}
 	walk(name)
-}
-
-// cookableClosure answers whether Go can spell one table's whole cooked region
-// blittably, and why not when it cannot.
-func cookableClosure(u *ir.Unit, st *ir.Struct) string {
-	seen := map[string]bool{}
-	var walk func(string) string
-	walk = func(name string) string {
-		if seen[name] {
-			return ""
-		}
-		seen[name] = true
-		member := cookMember(u, name)
-		if member == nil {
-			return ""
-		}
-		for _, f := range member.Fields {
-			if f.Type.Kind != ir.TNamed {
-				continue
-			}
-			switch ref := f.Type.Ref.(type) {
-			case *ir.Union:
-				return name + "." + f.Name + " is a union, and a cooked record's blittable form is a C ABI record with generated padding, which cannot overlay arms"
-			case *ir.Struct:
-				if why := walk(ref.Name); why != "" {
-					return why
-				}
-			}
-		}
-		return ""
-	}
-	return walk(st.Name)
 }
 
 func cookMember(u *ir.Unit, name string) *ir.Struct {

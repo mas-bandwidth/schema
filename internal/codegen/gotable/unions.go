@@ -1,6 +1,9 @@
 package gotable
 
-import "github.com/mas-bandwidth/schema/v2/ir"
+import (
+	"fmt"
+	"github.com/mas-bandwidth/schema/v2/ir"
+)
 
 // Table-only unions share the packet emitter's tag-plus-arms storage. Field
 // payloads retain the same companion names as ordinary table fields.
@@ -38,7 +41,11 @@ func (g *tableGen) emitTableUnion(un *ir.Union) {
 // without storing Go pointers in the record or duplicating inactive arms.
 func (g *tableGen) emitUnionRow(un *ir.Union) {
 	size, align, tag, offset := ir.UnionLayout(g.unit, un)
-	g.tf("type %sRow struct { _ [0]uint%d; Type %sType;", un.Name, min(align, 8)*8, un.Name)
+	tagType := un.Name + "Type"
+	if !g.regional {
+		tagType = fmt.Sprintf("uint%d", tag*8)
+	}
+	g.tf("type %sRow struct { _ [0]uint%d; Type %s;", un.Name, min(align, 8)*8, tagType)
 	if offset > tag {
 		g.tf("_ [%d]byte;", offset-tag)
 	}
@@ -72,7 +79,7 @@ func (g *tableGen) unionArmExpr(un *ir.Union, v ir.UnionVariant, expr string) st
 }
 func (g *tableGen) emitRegionUnionDescriptor(un *ir.Union) {
 	_, _, tag, offset := ir.UnionLayout(g.unit, un)
-	g.pf("tableUnionArms[%d]=TableUnionInfo{TagOffset:0,TagSize:%d,Arms:[]TableUnionArmInfo{{Void:true},\n", g.unionArmSlot[un.Name], tag)
+	g.pf("tableUnionArms[%d]=TableUnionInfo{CookTagSize:%d,TagOffset:0,TagSize:%d,Arms:[]TableUnionArmInfo{{Void:true},\n", g.unionArmSlot[un.Name], tag, tag)
 	for _, v := range un.Variants {
 		if v.Void() {
 			g.pf("{Void:true},\n")

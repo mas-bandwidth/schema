@@ -685,6 +685,7 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 		f.Name, ir.TableFieldJsonKey(f), tableFieldTypeName(f), id, kind, isArray, counted, f.Type.Optional)
 	g.pf("\t\tArrayBound: %s, Offset: %s, ElemSize: %s, CountOffset: %s, PresentOffset: %s,\n",
 		bound, offset, elemSize, countOffset, presentOffset)
+	g.emitCookFieldColumns(st, f)
 	g.pf("\t\tHasRange: %s, RangeMin: %s, RangeMax: %s, EnumMax: %s,\n", hasRange, rangeMin, rangeMax, enumMax)
 	if f.IsList() {
 		_, align := ir.ListElementLayout(g.unit, f)
@@ -759,7 +760,8 @@ func (g *tableGen) emitUnionArms() {
 			g.emitRegionUnionDescriptor(un)
 			continue
 		}
-		g.pf("tableUnionArms[%d] = TableUnionInfo{TagOffset:uint32(unsafe.Offsetof(%s{}.Type)), TagSize:uint32(unsafe.Sizeof(%s{}.Type)), Arms: []TableUnionArmInfo{{Void:true},\n", g.unionArmSlot[un.Name], un.Name, un.Name)
+		_, _, cookTag, _ := ir.UnionLayout(g.unit, un)
+		g.pf("tableUnionArms[%d] = TableUnionInfo{CookTagSize:%d, TagOffset:uint32(unsafe.Offsetof(%s{}.Type)), TagSize:uint32(unsafe.Sizeof(%s{}.Type)), Arms: []TableUnionArmInfo{{Void:true},\n", g.unionArmSlot[un.Name], cookTag, un.Name, un.Name)
 		for _, v := range un.Variants {
 			if v.Void() {
 				g.pf("{Void:true},\n")

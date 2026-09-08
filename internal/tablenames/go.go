@@ -5,6 +5,14 @@ const Go Backend = 1 << 3
 
 func init() {
 	define(Go,
+		Name{Name: "TableByteOrder", What: "the runtime cook writer"},
+		Name{Name: "TableByteOrderLittle", What: "the runtime cook writer"},
+		Name{Name: "TableByteOrderBig", What: "the runtime cook writer"},
+		Name{Name: "tableCookBuildVersion", What: "the runtime cook writer"},
+		Name{Name: "tableCookWriter", What: "the runtime cook writer"},
+		Name{Name: "tableCookFixed", What: "the runtime cook writer"},
+		Name{Name: "tableCookRegion", What: "the runtime cook writer"},
+
 		Name{Name: "TableBlockAllocator", What: "the block storage allocation pair"},
 		Name{Name: "TableBlockDefaultAllocator", What: "the explicit default block allocation pair"},
 		Name{Name: "TableBlockRefusal", What: "the producer count refusal"},

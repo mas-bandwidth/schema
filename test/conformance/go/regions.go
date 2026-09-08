@@ -7,7 +7,7 @@ type regionValue[T any] struct {
 	storage []byte
 }
 
-func regionRow[T, R, A any](unit, root string,
+func regionRow[T, R, A any, O ~uint8](unit, root string,
 	loadMeasure func([]byte) int64,
 	load func([]byte, []byte, *R) *T,
 	measure func(*T, ...*A) int64,
@@ -15,9 +15,19 @@ func regionRow[T, R, A any](unit, root string,
 	fromJson func([]byte, *R) (*T, []byte, bool),
 	toJsonMeasure func(*T) int64,
 	toJson func(*T, []byte) int64,
+	cookMeasure func(*T, ...*A) int64,
+	cook func(*T, []byte, O, ...*A) bool,
 	snap func(*R) report,
 ) codec {
 	return codec{unit: unit, root: root, loadMeasure: loadMeasure,
+		cookMeasure: func(value any) int64 { return cookMeasure(value.(*regionValue[T]).root) },
+		cook: func(value any, buffer []byte, big bool) bool {
+			order := O(1)
+			if big {
+				order = 2
+			}
+			return cook(value.(*regionValue[T]).root, buffer, order)
+		},
 		fresh: func() any { return &regionValue[T]{} },
 		load: func(value any, wire []byte, rep *report) bool {
 			v := value.(*regionValue[T])

@@ -175,6 +175,10 @@ func (g *tableGen) emitReadUnion(un *ir.Union, expr, rdr, ind, stop string, elem
 	arm := g.nextWireWriter()
 	g.pf("%s{\n", ind)
 	i := ind + "\t"
+	// Capture the destination before nested arm loops introduce their own indices.
+	target := g.nextWireWriter()
+	g.pf("%s%s := &%s\n", i, target, expr)
+	expr = target
 	g.pf("%sarmRef, ok := %s.Leb(); if !ok { r.Report.Malformed = true; %s }\n", i, rdr, stop)
 	if len(element) > 0 && element[0] {
 		g.pf("%s%s.Type = %sTypeNone\n", i, expr, un.Name)

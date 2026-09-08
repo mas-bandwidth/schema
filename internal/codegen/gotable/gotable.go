@@ -166,6 +166,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			g.needsMath = true
 			g.needsUnsafe() // the descriptor surface's reset column takes an unsafe.Pointer
 			g.pf("%s", tableRuntime()+tableWireRuntime(u)+tableMessageRuntime(u))
+			g.pf("%s", tableCookWriteSource(u))
 			if regional {
 				g.emitRegionRuntime(blocks)
 			}
@@ -175,6 +176,22 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			if len(armSlots) > 0 {
 				g.pf("// One descriptor per union declaration, initialized after package data.\n")
 				g.pf("var tableUnionArms = make([]TableUnionInfo, %d)\n\n", len(armSlots))
+				if !regional {
+					for _, file := range u.Files {
+						for _, decl := range file.Decls {
+							if un, ok := decl.(*ir.Union); ok {
+								if _, used := armSlots[un.Name]; used {
+									g.emitUnionRow(un)
+								}
+							}
+						}
+						for _, un := range file.TableUnions {
+							if _, used := armSlots[un.Name]; used {
+								g.emitUnionRow(un)
+							}
+						}
+					}
+				}
 			}
 		}
 		for _, un := range f.TableUnions {
@@ -196,6 +213,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			g.emitTableWrite(st)
 			g.emitTableSave(st)
 			g.emitTableRead(st)
+			g.emitCookWriteSurface(st)
 			g.emitMessageWrite(st)
 			g.emitMessageRead(st)
 			if regional {
@@ -463,6 +481,7 @@ const TableDocNone = ""
 
 // TableFieldInfo is one field's descriptor.
 type TableFieldInfo struct {
+ CookOffset, CookElemSize, CookCountOffset, CookPresentOffset uint32
  List, Map bool // unbounded by-value containers
  ElemAlign uint32
 	Name     string // schema field name, e.g. "health"
@@ -551,6 +570,7 @@ type TableUnionArmInfo struct {
 // TableUnionInfo is a union field's shape: the tag, and the arms indexed by
 // it. Arms run [0, EnumMax]; index 0 is the EMPTY arm and carries no payload.
 type TableUnionInfo struct {
+	CookTagSize uint32
 	TagOffset uint32 // unsafe.Offsetof the tag within the union storage
 	TagSize   uint32 // unsafe.Sizeof the tag
 	Arms      []TableUnionArmInfo
@@ -558,6 +578,7 @@ type TableUnionInfo struct {
 
 // TableTypeInfo is one type's descriptor.
 type TableTypeInfo struct {
+	CookSize, CookAlign uint32
 	Name      string // schema type name
 	Size      uint32 // unsafe.Sizeof the storage struct
  Id uint64

@@ -244,6 +244,9 @@ func (g *tableGen) emitWireArrayElement(f *ir.Field, expr, writer, ind string) {
 }
 
 func (g *tableGen) emitWireUnion(un *ir.Union, expr, writer, ind string) {
+	target := g.nextWireWriter()
+	g.pf("%s{ %s := &%s\n", ind, target, expr)
+	expr = target
 	g.pf("%sswitch %s.Type {\n%scase %sTypeNone: %s.PutLeb(0)\n", ind, expr, ind, un.Name, writer)
 	for _, v := range un.Variants {
 		g.pf("%scase %sType%s:\n", ind, un.Name, ir.GoExportName(v.Name))
@@ -266,7 +269,7 @@ func (g *tableGen) emitWireUnion(un *ir.Union, expr, writer, ind string) {
 		g.emitWireValue(v.F, arm, writer, i+"\t", false)
 		g.pf("%s}\n", i)
 	}
-	g.pf("%sdefault: return false\n%s}\n", ind, ind)
+	g.pf("%sdefault: return false\n%s}\n%s}\n", ind, ind, ind)
 }
 
 func (g *tableGen) emitWireScalar(f *ir.Field, expr, writer, ind string) {

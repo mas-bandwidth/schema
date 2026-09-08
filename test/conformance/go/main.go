@@ -80,6 +80,8 @@ type codec struct {
 	fromJson      func(value any, text []byte, rep *report) bool
 	toJsonMeasure func(value any) int64
 	toJson        func(value any, buffer []byte) int64
+	cookMeasure   func(any) int64
+	cook          func(any, []byte, bool) bool
 }
 
 // row binds one generated table's surface into the erased shape above. One
@@ -90,7 +92,7 @@ type codec struct {
 // R is the UNIT's own TableReport — the generated surface is per package, so
 // there are as many report types as units — and `snap` narrows it to the one
 // shape the harness's five counters need.
-func row[T any, R any](
+func row[T any, R any, O ~uint8](
 	unit, root string,
 	reset func(*T),
 	load func(*T, []byte, *R) bool,
@@ -99,11 +101,21 @@ func row[T any, R any](
 	fromJson func(*T, []byte, *R) bool,
 	toJsonMeasure func(*T) int64,
 	toJson func(*T, []byte) int64,
+	cookMeasure func(*T) int64,
+	cook func(*T, []byte, O) bool,
 	snap func(*R) report,
 ) codec {
 	var storage T
 	return codec{
 		unit: unit, root: root,
+		cookMeasure: func(value any) int64 { return cookMeasure(value.(*T)) },
+		cook: func(value any, buffer []byte, big bool) bool {
+			order := O(1)
+			if big {
+				order = 2
+			}
+			return cook(value.(*T), buffer, order)
+		},
 		fresh: func() any { reset(&storage); return &storage },
 		load: func(value any, wire []byte, rep *report) bool {
 			var inner R
@@ -470,6 +482,8 @@ func main() {
 		run = surfaceJsonRead
 	case "json-write":
 		run = surfaceJsonWrite
+	case "cook-write":
+		run = surfaceCookWrite
 	case "cook":
 		run = surfaceCook
 	case "json-hostile":
