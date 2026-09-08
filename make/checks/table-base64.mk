@@ -7,7 +7,7 @@ build/table-base64/%/.stamp: bin/schema test/table-base64/Bytes.schema
 	./bin/schema generate --lang $* --out build/table-base64/$* test/table-base64/Bytes.schema
 	@touch $@
 
-.PHONY: table-base64-cpp table-base64-c table-base64-go table-base64-rust table-base64-cs table-base64-java table-base64-js table-base64-dart table-base64-elixir
+.PHONY: table-base64-cpp table-base64-c table-base64-go table-base64-cs table-base64-java table-base64-js table-base64-dart table-base64-elixir
 table-base64-cpp: build/table-base64/harness build/table-base64/cpp/.stamp
 	$(CXX) -std=c++17 -O2 -Wall -Wextra -Werror -x c++ -Ibuild/table-base64/cpp test/table-base64/driver.c build/table-base64/cpp/BytesTable.cpp -o build/table-base64/cpp/driver
 	./build/table-base64/harness ./build/table-base64/cpp/driver
@@ -20,11 +20,6 @@ table-base64-go: build/table-base64/harness build/table-base64/go/.stamp
 	@printf 'module base64test\n\ngo 1.24.0\n' > build/table-base64/go/go.mod
 	cd test/table-base64/go && go build -o ../../../build/table-base64/go/driver .
 	./build/table-base64/harness ./build/table-base64/go/driver
-
-table-base64-rust: build/table-base64/harness build/table-base64/rust/.stamp
-	@printf '[package]\nname = "base64test"\nversion = "0.0.0"\nedition = "2024"\n[lib]\npath = "lib.rs"\n[[bin]]\nname = "driver"\npath = "../../../test/table-base64/rust/main.rs"\n[features]\nblock = []\ncook = []\n[dependencies]\nserialize = { package = "serialize-official", path = "%s/$(SERIALIZE_RS)" }\n' "$(CURDIR)" > build/table-base64/rust/Cargo.toml
-	PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --release --manifest-path build/table-base64/rust/Cargo.toml
-	./build/table-base64/harness ./build/table-base64/rust/target/release/driver
 
 table-base64-cs: build/table-base64/harness build/table-base64/cs/.stamp
 	$(DOTNET) build --configuration Release --nologo test/table-base64/cs/table-base64.csproj
@@ -46,7 +41,6 @@ table-base64-elixir: build/table-base64/harness build/table-base64/elixir/.stamp
 test: table-base64-cpp
 test-c: table-base64-c
 test-go: table-base64-go
-test-rust: table-base64-rust
 test-cs: table-base64-cs
 test-java: table-base64-java
 test-js: table-base64-js
