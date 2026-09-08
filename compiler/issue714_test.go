@@ -7,9 +7,9 @@ import (
 
 // Issue #714: Table JSON Base64 writer wraps signed 32-bit integer at INT32_MAX.
 //
-// In cpptable, ctable, cstable, and javatable, the Base64 writer loop previously tested:
+// In cpptable, ctable, cstable, javatable, and gotable, the Base64 writer loop previously tested:
 //
-//	for ( ; i + 3 <= length; i += 3 )
+//	for ( ; i + 3 <= length; i += 3 )  [or i+3 <= len(data) in Go]
 //
 // When length == 2147483647 (MaxInt32, which is legally permitted by the compiler check
 // for bytes(N) and *bytes), evaluating i + 3 when i == 2147483646 overflows signed 32-bit
@@ -20,6 +20,7 @@ import (
 //
 //	cpp / c / java: length - i >= 3
 //	cs:             data.Length - i >= 3
+//	go:             len(data)-i >= 3
 //
 // Because i <= length is guaranteed, length - i never underflows or overflows,
 // eliminating the integer wrap completely without requiring 64-bit promotion.
@@ -42,6 +43,7 @@ func TestIssue714Base64WriterIntegerWrap(t *testing.T) {
 		{"c", "i + 3 <= length", "length - i >= 3"},
 		{"cs", "i + 3 <= data.Length", "data.Length - i >= 3"},
 		{"java", "i + 3 <= length", "length - i >= 3"},
+		{"go", "i+3 <= len(data)", "len(data)-i >= 3"},
 	}
 
 	for _, tt := range tests {

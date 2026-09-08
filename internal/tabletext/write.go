@@ -683,7 +683,7 @@ const base64Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123
 func writeBase64(w *writer, data []byte) {
 	w.put('"')
 	i := 0
-	for ; i+3 <= len(data); i += 3 {
+	for ; len(data)-i >= 3; i += 3 {
 		triple := uint32(data[i])<<16 | uint32(data[i+1])<<8 | uint32(data[i+2])
 		w.put(base64Alphabet[triple>>18&0x3f])
 		w.put(base64Alphabet[triple>>12&0x3f])
