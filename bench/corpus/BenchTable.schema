@@ -12,7 +12,10 @@
 // type wire and the tolerant table wire comparable at all: the ratio between
 // them is the price of tolerance, and nothing else.
 //
-// THE FOUR SUBSTITUTIONS, named rather than silently dropped. The table wire
+// HISTORICAL CORPUS SUBSTITUTIONS. Wide table kinds now exist in C/C++/C#/Go,
+// but this retained benchmark keeps its original shape and golden identity.
+// The historical explanation below is not a statement of current support.
+// THE SUBSTITUTIONS, named rather than silently dropped. The table wire
 // is a neutral byte wire with a closed set of kinds (§3), so four of
 // BenchMixed's declarations are REFUSED in a table body by name (§11 —
 // "`fixed`/`ufixed` or the 128-bit family (no wire kind), `const`/`reserved`/

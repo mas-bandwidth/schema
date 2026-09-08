@@ -57,6 +57,7 @@ static int g_num_runs = MaxNumRuns; /* --round K drops this to 1 (§2.4) */
 #endif
 
 static int g_csv = 0;
+static int g_gate = 0;
 static const char * g_wire_dir = "testdata/wire";
 static const char * g_variant_dir = "bench/corpus/variants";
 
@@ -363,6 +364,8 @@ static void bench_table( const char * name, const char * golden, long base_iters
         }
     }
 
+    if ( g_gate ) return;
+
     /* WRITE: save the 64 pre-loaded instances round-robin. */
     for ( run = -1; run < g_num_runs; run++ )
     {
@@ -424,7 +427,8 @@ int main( int argc, char ** argv )
     int i;
     for ( i = 1; i < argc; i++ )
     {
-        if ( strcmp( argv[i], "--csv" ) == 0 ) { g_csv = 1; }
+        if ( strcmp( argv[i], "--gate" ) == 0 ) { g_gate = 1; }
+        else if ( strcmp( argv[i], "--csv" ) == 0 ) { g_csv = 1; }
         else if ( strcmp( argv[i], "--wire-dir" ) == 0 && i + 1 < argc ) { g_wire_dir = argv[++i]; }
         else if ( strcmp( argv[i], "--variant-dir" ) == 0 && i + 1 < argc ) { g_variant_dir = argv[++i]; }
         else if ( strcmp( argv[i], "--round" ) == 0 && i + 1 < argc )
@@ -440,7 +444,7 @@ int main( int argc, char ** argv )
         }
         else
         {
-            fprintf( stderr, "usage: %s [--csv] [--round K] [--wire-dir <dir>] [--variant-dir <dir>]\n", argv[0] );
+            fprintf( stderr, "usage: %s [--gate] [--csv] [--round K] [--wire-dir <dir>] [--variant-dir <dir>]\n", argv[0] );
             return 1;
         }
     }

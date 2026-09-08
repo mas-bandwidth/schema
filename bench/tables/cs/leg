@@ -21,9 +21,9 @@ build)
     fi
     command -v dotnet >/dev/null 2>&1 || { echo "no dotnet" >&2; exit 2; }
     if [ -n "$SERIALIZE_CS" ]; then
-        dotnet build "$PROJ" -c Release -v q --nologo "-property:SerializeCsRoot=$SERIALIZE_CS" >&2
+        dotnet build "$PROJ" -c Release -v q --nologo -property:UseSharedCompilation=false "-property:SerializeCsRoot=$SERIALIZE_CS" >&2
     else
-        dotnet build "$PROJ" -c Release -v q --nologo >&2
+        dotnet build "$PROJ" -c Release -v q --nologo -property:UseSharedCompilation=false >&2
     fi
     ;;
 run)
