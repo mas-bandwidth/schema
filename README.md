@@ -71,8 +71,6 @@ Write your data types once and generate bit-packed serialization code to read an
 
 ## Performance
 
-### Bitpacked Type
-
 Cost to serialize a representative game packet, relative to generated C++ at 100%. Lower is faster.
 
 | Language | % |
@@ -86,17 +84,6 @@ Cost to serialize a representative game packet, relative to generated C++ at 100
 | Dart | 266% |
 | JavaScript | 288% |
 | Elixir | 1479% |
-
-### Fixed Table
-
-Cost to serialize an equivalent table with versioning.
-
-| Language | % |
-|---|---:|
-| C++ | 100% |
-| C | 193% |
-| Go | 357% |
-| C# | 1265% |
 
 ## Install and build
 
