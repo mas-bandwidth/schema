@@ -328,6 +328,12 @@ generated/bench/tables/cs/.stamp: bin/schema bench/corpus/BenchTable.schema
 	./bin/schema generate --lang cs --out generated/bench/tables/cs bench/corpus/BenchTable.schema
 	@touch $@
 
+# CI discovers explicit generated/ stamps; make test reaches this through test-cs.
+generated/bench/paired/cs/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	@mkdir -p generated/bench/paired/cs
+	./bin/schema generate --lang cs --out generated/bench/paired/cs bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	@touch $@
+
 generated/bench/cs/.stamp: bin/schema $(SCHEMAS_BENCH)
 	./bin/schema generate --lang cs --out generated/bench/cs bench/corpus/Bench.schema
 	./bin/schema generate --lang cs --out generated/bench/cs/realworld bench/corpus/RealWorld.schema
@@ -433,7 +439,7 @@ tables-cs-message-blob-endian-negative-control: bin/schema
 # (a unit that generates but does not compile is issue #80's lesson), and the
 # packet tests.
 .PHONY: test-cs
-test-cs: toolchain-cs build/tables-generated-cs/.stamp generated/bench/tables/cs/.stamp generated/cs/.stamp generated/cs-ludicrous/.stamp generated/bench/cs/.stamp
+test-cs: toolchain-cs build/tables-generated-cs/.stamp generated/bench/tables/cs/.stamp generated/bench/paired/cs/.stamp generated/cs/.stamp generated/cs-ludicrous/.stamp generated/bench/cs/.stamp
 	$(MAKE) tables-cs-json-walk
 	$(MAKE) tables-cs-standalone
 	$(MAKE) tables-cs-variable-surface
@@ -452,6 +458,7 @@ test-cs: toolchain-cs build/tables-generated-cs/.stamp generated/bench/tables/cs
 	$(MAKE) tables-cook-open-cs-root-negative-control
 	$(MAKE) tables-cook-open-cs-walk-negative-control
 	$(DOTNET) build bench/tables/cs -c Release --nologo -v quiet
+	$(DOTNET) build bench/paired/cs -c Release --nologo -v quiet -property:UseSharedCompilation=false "-property:SerializeCsRoot=$(abspath $(SERIALIZE_CS))"
 	cd bench/cs && $(DOTNET) build -c Release --nologo -v quiet
 	cd test/cs && $(DOTNET) run
 	cd test/cs && $(DOTNET) run -c Release
