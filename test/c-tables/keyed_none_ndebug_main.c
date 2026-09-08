@@ -40,7 +40,7 @@ int main( void )
         Team key = TEAM_NONE;
         (void) quiet;
         keyed_config_reset( &cfg );
-        SCHEMA_TABLE_KEYED_AT( cfg.teams, key ).spawn_count = 1; /* never reached */
+        SCHEMA_TABLE_KEYED_AT( cfg.teams, key, TEAM_MAX ).spawn_count = 1; /* never reached */
         _exit( 0 );
     }
     if ( child < 0 )

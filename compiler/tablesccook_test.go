@@ -186,7 +186,7 @@ int main(void) {
  CHECK(read_only.base==NULL && read_only.projection==NULL && read_only.bytes==0);
  CHECK(!root_block_open_ex(&block,NULL,0,&reason));CHECK(reason==SCHEMA_TABLE_REFUSE_UNALIGNED_BASE);
  root_block_storage_destroy(&storage);CHECK(allocations==1 && releases==1);
- if(setjmp(fatal)==0) { SCHEMA_TABLE_KEYED_AT(root.keys,0)=1; return 1; }
+ if(setjmp(fatal)==0) { SCHEMA_TABLE_KEYED_AT(root.keys,0,sizeof(root.keys)/sizeof(root.keys[0]))=1; return 1; }
  return 0;
 }
 `

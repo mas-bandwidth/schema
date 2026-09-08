@@ -1245,7 +1245,7 @@ func (g *tableGen) emitTableReadScalarFrom(f *ir.Field, kind int, lvalue, ind, r
 // descriptor ("float32", "bits(9)", "Grade", "GunnerSettings").
 func tableFieldTypeName(f *ir.Field) string {
 	if f.IsMap() {
-		return "map"
+		return ir.FieldTypeSpelling(f)
 	}
 	switch f.Type.Kind {
 	case ir.TBool:
@@ -1261,7 +1261,7 @@ func tableFieldTypeName(f *ir.Field) string {
 		if !f.Type.Signed {
 			prefix = "ufixed"
 		}
-		return fmt.Sprintf("%s(%d,%d)", prefix, f.Type.Width-f.Type.FracBits, f.Type.FracBits)
+		return fmt.Sprintf("%s(%d, %d)", prefix, f.Type.Width-f.Type.FracBits, f.Type.FracBits)
 	case ir.TBits:
 		return fmt.Sprintf("bits(%d)", f.Type.Width)
 	case ir.TFloat32:
@@ -1293,6 +1293,9 @@ func bigToDouble(v *big.Int) string {
 // underscore. Nothing a schema can declare collides with it, which is why the
 // vocabularies claim no name of their own (docs/SPEC-TABLES.md §11).
 func (g *tableGen) vocabularySymbol(owner, field, what string) string {
+	if g.outside {
+		what = "outside_" + what
+	}
 	return g.sym(owner, ir.RustSnake(field)+"_"+what)
 }
 
@@ -1392,7 +1395,7 @@ func (g *tableGen) emitFieldVocabulary(st *ir.Struct, f *ir.Field) {
 						id = ir.TableWireId(ref.VariantWireName(int(i - 1)))
 					}
 				}
-				g.pf("    { \"%s\", 0x%016xull },\n", n, id)
+				g.pf("    { \"%s\", 0x%016xull },\n", n, g.descriptorID(id))
 				continue
 			}
 			// headroom past the declared set: a value the vocabulary does not
@@ -1424,7 +1427,7 @@ func (g *tableGen) emitFieldVocabulary(st *ir.Struct, f *ir.Field) {
 			if g.fileWire() {
 				id = ir.TableWireId(v.WireName())
 			}
-			g.pf("    { \"%s\", 0x%016xull },\n", v.Name, id)
+			g.pf("    { \"%s\", 0x%016xull },\n", v.Name, g.descriptorID(id))
 		}
 		g.pf("};\n")
 		g.pf("static const TableUnionArmInfo %s[] = {\n", g.vocabularySymbol(st.Name, f.Name, "arms"))
@@ -1439,7 +1442,7 @@ func (g *tableGen) emitFieldVocabulary(st *ir.Struct, f *ir.Field) {
 				g.noteRef(v.Type)
 				target = "&" + g.sym(v.Type, "info")
 			} else {
-				field = g.sym(ref.Name, "arm_field_"+v.Name)
+				field = g.armDescriptorSymbol(ref.Name, v.Name)
 			}
 			g.pf("    { (uint32_t)offsetof( %s, as.%s ), %s, %s, (uint32_t)sizeof( ((%s *)0)->as.%s ) },\n", ref.Name, v.Name, target, field, ref.Name, v.Name)
 		}
@@ -1466,7 +1469,7 @@ func (g *tableGen) emitFieldVocabulary(st *ir.Struct, f *ir.Field) {
 						id = ir.TableWireId(key.VariantWireName(int(i - 1)))
 					}
 				}
-				g.pf("    { \"%s\", 0x%016xull },\n", n, id)
+				g.pf("    { \"%s\", 0x%016xull },\n", n, g.descriptorID(id))
 				continue
 			}
 			g.pf("    { NULL, 0 },\n")
@@ -1629,8 +1632,8 @@ func (g *tableGen) emitFieldDescriptorAt(st *ir.Struct, f *ir.Field, guard, memb
 	if g.anyVariable {
 		pointerColumn = fmt.Sprintf("%s, ", boolC(f.Type.Pointer))
 	}
-	g.pf("    { \"%s\", \"%s\", \"%s\", 0x%016xull, %d, %s, %s%s, %s, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, \"%s\", %s, %d, %s },\n",
-		f.Name, ir.TableFieldJsonKey(f), tableFieldTypeName(f), id, kind, boolC(isArray), pointerColumn,
+	g.pf("    { \"%s\", %s, \"%s\", 0x%016xull, %d, %s, %s%s, %s, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, \"%s\", %s, %d, %s },\n",
+		f.Name, g.descriptorJSON(f), tableFieldTypeName(f), g.descriptorID(id), kind, boolC(isArray), pointerColumn,
 		boolC(counted), boolC(f.Type.Optional), bound,
 		st.Name, member, elemSize, countOffset, presentOffset, table,
 		hasRange, rangeMin, fmt.Sprintf("%s, %s, %d", rangeMax, wide, frac), enumMax, variants, hasIds,
@@ -1661,3 +1664,16 @@ func boolC(v bool) string {
 // `Measure` is NOT force-inlined, in either class and in either backend: it is
 // called once per nested body to decide elision and its result is a number, so
 // it neither holds the cursor nor merges stores.
+
+func (g *tableGen) descriptorID(id uint64) uint64 {
+	if g.outside {
+		return 0
+	}
+	return id
+}
+func (g *tableGen) descriptorJSON(f *ir.Field) string {
+	if g.outside {
+		return "NULL"
+	}
+	return fmt.Sprintf("%q", ir.TableFieldJsonKey(f))
+}

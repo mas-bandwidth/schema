@@ -109,7 +109,7 @@ static SCHEMA_UNUSED const uint8_t * table_cook_refuse(TableRefuseReason * out,T
 // include order and a lone Table.h works standalone.
 func tableCookRuntime(pkg string) string {
 	guard := "SCHEMA_" + strings.ToUpper(pkg) + "_TABLE_COOK"
-	return tableRefuseRuntime + `#ifndef ` + guard + `
+	return `#ifndef ` + guard + `
 #define ` + guard + `
 
 /* ---- the cooked form (docs/SPEC-TABLES.md §7) ----

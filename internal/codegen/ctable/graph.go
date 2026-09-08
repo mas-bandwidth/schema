@@ -74,6 +74,10 @@ static SCHEMA_UNUSED int64_t table_node_storage( TableNumbering * n, const Table
 }
 static SCHEMA_UNUSED int64_t table_node_wire_storage( const TableNodeType * type, const TableReader * body )
 {
+    if(type->blob && body->size>UINT32_MAX) {
+        body->report->reason=SCHEMA_TABLE_REFUSE_BLOB_OVER_SIZE_CAP;
+        return -1;
+    }
     return type->blob ? table_blob_storage(body->size,type->blob==2) : type->wire_storage(body);
 }
 @BLOB_GRAPH@

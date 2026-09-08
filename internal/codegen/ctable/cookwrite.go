@@ -3,6 +3,7 @@ package ctable
 import (
 	"fmt"
 	"github.com/mas-bandwidth/schema/v2/ir"
+	"slices"
 )
 
 // Cooks are canonical artifacts. Native record padding and byte order never
@@ -109,12 +110,7 @@ done:
 
 func cookAlignUp(v, a int64) int64 { return (v + a - 1) / a * a }
 func (g *tableGen) hasCookExtent(st *ir.Struct) bool {
-	for _, f := range st.Fields {
-		if g.cookFieldExtent(f) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(st.Fields, g.cookFieldExtent)
 }
 func (g *tableGen) cookFieldExtent(f *ir.Field) bool {
 	if f.IsList() || f.IsMap() {
@@ -261,6 +257,8 @@ func (g *tableGen) cookExtentField(f *ir.Field, src, dst, ind string, step *int)
 	}
 	*step++
 	label := fmt.Sprintf("cook_extent%d", *step)
+	g.pf("%suint8_t * %s_slot=%s;\n", ind, label, dst)
+	dst = label + "_slot"
 	switch {
 	case f.IsList() || f.IsMap():
 		typ := g.sequenceType(f)

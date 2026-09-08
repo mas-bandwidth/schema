@@ -592,8 +592,26 @@ tables-c-soak-negative-control: build/tables-generated-c/.stamp
 update-goldens-c: build/tables-generated-c/.stamp
 	@for d in examples block pointers; do \
 		mkdir -p testdata/golden/tables/$$d-c; \
-		cp build/tables-generated-c/$$d/*Table.h build/tables-generated-c/$$d/*Table.c testdata/golden/tables/$$d-c/ 2>/dev/null || true; \
+		cp build/tables-generated-c/$$d/*Table.h build/tables-generated-c/$$d/*Table.c build/tables-generated-c/$$d/*View.h build/tables-generated-c/$$d/*View.c testdata/golden/tables/$$d-c/; \
 	done
+
+# The same registry listing oracle as the reference, through the C surface.
+.PHONY: tables-c-view
+tables-c-view: bin/schema test/c-tables/view_main.c
+	@mkdir -p build/c-view
+	@set -e; for entry in $(VIEW_CORPUS); do \
+		dir=$${entry%%:*}; pkg=$${entry##*:}; \
+		cap=$$(printf '%s' "$$pkg" | cut -c1 | tr 'a-z' 'A-Z')$$(printf '%s' "$$pkg" | cut -c2-); \
+		./bin/schema generate --lang c --out build/c-view/$$dir tables/$$dir; \
+		$(CC) $(TABLES_CFLAGS) -Ibuild/c-view/$$dir -I$(SERIALIZE_C) \
+			-DVIEW_HEADER="\"$${cap}View.h\"" test/c-tables/view_main.c \
+			build/c-view/$$dir/*Table.c build/c-view/$$dir/*View.c -o build/c-view/prog-$$pkg -lm; \
+		./build/c-view/prog-$$pkg > build/c-view/$$pkg.listing; \
+	done
+	SCHEMA_VIEW_LISTING_DIR="$(CURDIR)/build/c-view" go test ./internal/viewlisting -run TestUnitViewListingMatchesTheIR
+	@echo "C unit registry: $(words $(VIEW_CORPUS)) units match the independent listing"
+
+test-c tables-c: tables-c-view
 
 # THE C LEG of `make test` (docs/SPEC-TABLES.md; test/conformance/README.md):
 # the same corpus in C, with the two gates that hold the emitter honest, the

@@ -105,6 +105,7 @@ func tableGet(width int) string { return fmt.Sprintf("table_reader_get%d", width
 
 type tableGen struct {
 	descriptorUnions map[string]bool
+	outside          bool // descriptors outside the checked table closure carry no wire ids
 	unit             *ir.Unit
 	file             *ir.File
 	anyVariable      bool // the unit declares at least one variable-length table
@@ -198,9 +199,9 @@ func unitHasKeyedArray(u *ir.Unit, closure map[string]bool) bool {
 // unit that declares one (docs/SPEC-TABLES.md §2.4).
 //
 // C's storage IS the array — `T slots[E_MAX]`, the key k at index k-1 — so
-// there is no wrapper type to emit and no size parameter to spell: the extent
-// comes from the key enum's own _MAX and from nowhere else. What C++ puts in
-// operator[] lives here instead.
+// there is no wrapper type to emit. The caller passes the key enum's own _MAX
+// explicitly, including when the array has decayed to a pointer. What C++ puts
+// in operator[] lives here instead.
 //
 // NONE IS THE NULL KEY: it names no slot, it never rides on the wire, a stored
 // key of 0 is malformed, and INDEXING BY IT IS A PROGRAM ERROR IN EVERY
@@ -216,24 +217,22 @@ const tableKeyedAccessor = `
 #define schema_fatal abort
 #endif
 
-/* The storage index a key names, with the None refusal that stands in EVERY
-   build. The storage shifts left and holds no slot for None, so a build that
-   skipped this compare would index one element BEFORE the array — undefined
-   behaviour in the configuration a game ships. */
-static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key )
+/* The storage index a key names. Both bounds stand in EVERY build: None,
+   negative values and keys beyond the enum's maximum all refuse. */
+static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key, uint32_t count )
 {
-    if ( key <= 0 )
+    if ( (uint32_t) key - 1u >= count )
     {
-        schema_assert( 0 && "None is the null key of an enum-keyed array: it keys no slot" );
+        schema_assert( 0 && "key is outside the enum-keyed array" );
         schema_fatal();
     }
     return key - 1;
 }
 
-/* keyed[key] — the slot a variant owns, as an LVALUE. The key is evaluated
+/* SCHEMA_TABLE_KEYED_AT(slots,key,E_MAX) is an LVALUE. The key is evaluated
    once. ITERATION is the surface a consumer of the whole array wants: walk
    1..E_MAX and index with the key, so a call site writes no shift. */
-#define SCHEMA_TABLE_KEYED_AT( array, key ) ( (array)[ table_keyed_slot( (int32_t) ( key ) ) ] )
+#define SCHEMA_TABLE_KEYED_AT( array, key, count ) ( (array)[ table_keyed_slot( (int32_t) ( key ), (uint32_t) ( count ) ) ] )
 
 `
 
@@ -631,7 +630,7 @@ static SCHEMA_UNUSED int table_reader_skip( TableReader * r, uint8_t kind )
 // generated tree is byte-identical with or without this package.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
-		return map[string][]byte{}, nil
+		return generateViewFiles(u, nil, nil, nil, false, false, false), nil
 	}
 	bases := map[string]bool{}
 	for _, f := range u.Files {
@@ -777,6 +776,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			out[f.Base+"Table.c"] = tableSource(u, f, g, cg, members)
 		}
 	}
+	for name, data := range generateViewFiles(u, closure, variable, targets, anyKeyed, anyList, anyMap) {
+		out[name] = data
+	}
 	return out, nil
 }
 
@@ -820,6 +822,7 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 	h.WriteString("\n#ifndef SCHEMA_UNUSED\n#if defined(__GNUC__) || defined(__clang__)\n#define SCHEMA_UNUSED __attribute__((unused))\n#else\n#define SCHEMA_UNUSED\n#endif\n#endif\n")
 	h.WriteString("\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n")
 	h.WriteString(g.wirePrimitives())
+	h.WriteString(tableRefuseRuntime)
 	if g.anyVariable {
 		h.WriteString("\n")
 		h.WriteString(tableAllocatorRuntime)

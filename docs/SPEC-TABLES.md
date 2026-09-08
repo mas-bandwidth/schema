@@ -1034,6 +1034,12 @@ enum is keyed.
   INDEX. Go's own bounds check still stands behind the array, so the failure
   mode is a wrong slot rather than a wrong page.
 
+  **C likewise stores a plain array.** Use
+  `SCHEMA_TABLE_KEYED_AT( hull.turrets, key, SHIP_TYPE_MAX )` for a key. The
+  explicit enum bound preserves both refusals when the array has decayed to a
+  pointer. The key is evaluated once, and the result is an lvalue. A direct C
+  array subscript remains the caller's responsibility.
+
   **ITERATION is still the surface a
   consumer of a whole array should reach for**, below, because it needs no
   key from the caller at all.
@@ -9417,12 +9423,13 @@ function per unit, name-first in the unit's own namespace beside
 `ProtocolId` (SPEC §6.1), answering with the set of everything the build
 declared:
 
-**PORT STATUS: the C++ reference emits it; the eight ports do not yet.** The
-C++ backend emits the pair for every unit that declares a table, with the
-corpus gate of §8.7 holding its listing to the compiler's own. A TABLE-FREE
-unit's view waits on the type view in the packet backend, which is where the
-descriptors of a unit with no table closure would have to come from; that and
-the eight ports are named follow-ons (§15).
+**PORT STATUS: C++ and C emit the registry.** C++ emits its pair for units
+that declare a table. C emits `<Package>View.h` and `<Package>View.c` for
+every unit, including a table-free unit, with `unit_view()` as its entry point.
+The independently generated listing in §8.7 checks both. The C registry and
+its descriptors are immutable static data, with program lifetime; they own no
+decoded region. A caller using a descriptor to inspect a value must still keep
+that value's storage alive. Other ports' registries remain follow-ons (§15).
 
 ```cpp
 struct ViewConstant
@@ -10095,21 +10102,22 @@ in build version (§20.5).
   bounded array's own diagnostic and naming its own follow-on, which is
   `[][]T`, `[]map[K]V`, `[]?T` and `[]*bytes`; an element whose ALIGNMENT
   exceeds the arena's, naming the field and the alignment it asks for (§2.9);
-  and a declaration under any of the three names the construct CLAIMS.
+  and a declaration under any of the four names the construct CLAIMS.
 
-  **AN UNBOUNDED ARRAY CLAIMS THREE NAMES AGAINST ITS FIELD**, on the map's own
+  **AN UNBOUNDED ARRAY CLAIMS FOUR NAMES AGAINST ITS FIELD**, on the map's own
   rule: `<Table>` followed by the PascalCase of the field's name, and then
-  `Add`, `Each` or `Erase`. A `Save` with a `placements` list therefore claims
-  `SavePlacementsAdd`, `SavePlacementsEach` and `SavePlacementsErase`, and a
-  declaration spelling any of the three is refused naming the field. **It
-  claims THREE where a map claims eight**, and the difference is the key on
+  `Add`, `Each`, `Erase` or `At`. A `Save` with a `placements` list therefore claims
+  `SavePlacementsAdd`, `SavePlacementsEach`, `SavePlacementsErase` and
+  `SavePlacementsAt`. A declaration spelling any of the four is refused naming
+  the field. `At` is the C indexed accessor over a region list. **It
+  claims FOUR where a map claims eight**, and the difference is the key on
   both sides: `Add` is the one name a list has that a map does not, because an
   append needs no key where an insert does, and of the map's eight it does not
   claim `Entry`, because no entry table is generated (§2.9), `Insert` and
   `Find`, because there is no key to insert under or look up by, or
   `IndexMeasure`, `Index` and `IndexFind`, because there is no lookup to
   accelerate. `Erase` it does claim, and it is addressed by the element's own
-  pointer (§2.9). A language whose surface is members spells the same three on
+  pointer (§2.9). A language whose surface is members spells these operations on
   the storage type and claims nothing at file scope for them.
 - **Byte buffers** (§2.5): `*bytes` or `*string` outside a table body; a
   bound on one, `*bytes(N)` (a buffer at its used size has no bound to
@@ -11676,7 +11684,7 @@ inspects everything in the schema built:
   belongs with the emitters rather than with this page, because a snapshot
   taken before the code that could move it is a snapshot of nothing.
 - **The view in a ported backend** — C++ carries it (§8); every other backend,
-  C# included, emits no view file until it emits the same registry against the
+  except C, emits no view file until it emits the same registry against the
   same pin (§8.7). Nothing is refused meanwhile, because nothing in a schema
   asks for one (§8.4): a backend without the emitter is a backend whose
   users have no registry, and the status paragraph says so.

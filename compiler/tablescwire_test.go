@@ -61,7 +61,7 @@ table Root {
 #include <stdio.h>
 #define CHECK(x) do { if (!(x)) { fprintf(stderr, "line %%d: %%s\n", __LINE__, #x); return 1; } } while (0)
 static const uint8_t expected[] = { %s };
-static void set_keyed(Leaf * slots,int32_t key) { SCHEMA_TABLE_KEYED_AT(slots,key).choice=CHOICE_SECOND; }
+static void set_keyed(Leaf * slots,int32_t key) { SCHEMA_TABLE_KEYED_AT(slots,key,CHOICE_MAX).choice=CHOICE_SECOND; }
 int main(void)
 {
     Root value, decoded;
@@ -125,7 +125,14 @@ func runCTableWireProbe(t *testing.T, u *ir.Unit, source string) {
 	if err := os.WriteFile(filepath.Join(dir, "main.c"), []byte(source), 0600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(cc, "-std=c99", "-Wall", "-Wextra", "-Werror", "-Wshadow", "-O2", "-I", dir, filepath.Join(dir, "main.c"), filepath.Join(dir, "ProbeTable.c"), "-lm", "-o", filepath.Join(dir, "probe"))
+	args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-Wshadow", "-O2", "-I", dir, filepath.Join(dir, "main.c")}
+	for name := range files {
+		if strings.HasSuffix(name, ".c") {
+			args = append(args, filepath.Join(dir, name))
+		}
+	}
+	args = append(args, "-lm", "-o", filepath.Join(dir, "probe"))
+	cmd := exec.Command(cc, args...)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, output)
 	}
@@ -328,7 +335,7 @@ int main(void) {
  RootBuilder builder,copy; Root * root; Node * first; Node * second;
  const Root * locked; const Root * loaded; TableSink sink; TableCtx ctx;
  char text[4096]; int64_t text_bytes;
- uint8_t saved[sizeof(expected)],*region; int64_t extent,attribution; int reason; TableReport report;
+ uint8_t saved[sizeof(expected)],*region; int64_t extent,attribution; TableRefuseReason reason=99; TableReport report;
  CHECK(root_builder_init(&builder)); root=root_builder_root(&builder);
  ctx.arena=&builder.arena; sink.region=NULL; sink.worker=&builder.main;
  first=node_emplace(&sink,&root->first); CHECK(first!=NULL);first->value=7;
@@ -346,7 +353,7 @@ int main(void) {
  CHECK(root_save(NULL,locked,saved,sizeof(saved))==(int64_t)sizeof(expected));
  CHECK(!memcmp(saved,expected,sizeof(saved)));
  extent=root_load_measure_ex(expected,sizeof(expected),&attribution,&reason);
- CHECK(extent>0 && attribution==3*(int64_t)sizeof(TableNodeDirEntry) && reason==0);
+ CHECK(extent>0 && attribution==3*(int64_t)sizeof(TableNodeDirEntry) && reason==99);
  region=(uint8_t *)malloc((size_t)extent);CHECK(region!=NULL);memset(&report,0,sizeof(report));
  loaded=root_load(region,extent,expected,sizeof(expected),&report);
  CHECK(loaded!=NULL && !report.malformed && !report.unknown && !report.kind_mismatch);
@@ -455,7 +462,7 @@ static void release(void * context,void * p) {
 static int exercise(Counts * counts) {
  const char * source="{\"first\":{\"&node\":1,\"value\":9},\"second\":{\"&node\":1},\"children\":[{\"entries\":{\"-2\":{\"&node\":1},\"9\":{\"value\":17}}}],\"rows\":{\"z\":{\"value\":3},\"a\":{\"value\":4}}}";
  TableAllocator a={allocate,release,counts}; RootBuilder b,copy; TableReport report={0};
- TableCtx ctx; uint8_t wire[2048]; char text[1024]; int64_t n,m; int ok=0,have_copy=0;
+ TableCtx ctx; uint8_t wire[2048],cook[4096]; char text[1024]; int64_t n,m; int ok=0,have_copy=0;
  if(!root_builder_init_with_allocator(&b,a))goto done;
  if(!root_from_json(&b,source,(int64_t)strlen(source),&report))goto done;
  ctx.arena=&b.arena;
@@ -466,6 +473,9 @@ static int exercise(Counts * counts) {
  if(root_save_with_allocator(NULL,(const Root *)(const void *)b.region,wire,n,a)!=n)goto done;
  m=root_to_json_measure_with_allocator((const Root *)(const void *)b.region,a);if(m<=0 || m>1024)goto done;
  if(root_to_json_with_allocator((const Root *)(const void *)b.region,text,m,a)!=m)goto done;
+ m=root_cook_measure_with_allocator(NULL,(const Root *)(const void *)b.region,a);if(m<=0 || m>4096)goto done;
+ if(!root_cook_with_allocator(NULL,(const Root *)(const void *)b.region,cook,(uint64_t)m,TableByteOrder_Little,a))goto done;
+ if(!root_cook_with_allocator(NULL,(const Root *)(const void *)b.region,cook,(uint64_t)m,TableByteOrder_Big,a))goto done;
  have_copy=1;if(!root_builder_init_with_allocator(&copy,a))goto done;
  if(!root_load_builder(&copy,wire,n,&report) || !root_builder_lock(&copy))goto done;
  if(node_at(NULL,&((const Root *)(const void *)copy.region)->first)!=node_at(NULL,&((const Root *)(const void *)copy.region)->second))goto done;
@@ -483,6 +493,57 @@ int main(void) {
   if(ok) { fprintf(stderr,"allocation %d was ignored\n",fail);return 3; }
  }
  return complete?0:4;
+}
+`)
+}
+
+func TestCTableKeyedBounds(t *testing.T) {
+	u := unitFromSource(t, `package probe
+enum Key {
+First
+Second
+Third
+}
+table Root { slots [Key]uint32 }
+`)
+	for _, release := range []bool{false, true} {
+		t.Run(fmt.Sprint(release), func(t *testing.T) {
+			prefix := ""
+			if release {
+				prefix = "#define NDEBUG\n"
+			}
+			runCTableWireProbe(t, u, prefix+`#include <setjmp.h>
+static jmp_buf fatal;
+#define schema_assert(x) ((void)(x))
+#define schema_fatal() longjmp(fatal,1)
+#include "ProbeTable.h"
+static void assign(uint32_t * slots, int32_t key) { SCHEMA_TABLE_KEYED_AT(slots,key,KEY_MAX)=17; }
+int main(void) {
+ Root root; int i; static const int32_t invalid[]={INT32_MIN,-1,0,KEY_MAX+1,INT32_MAX};
+ root_reset(&root);
+ assign(root.slots,KEY_FIRST);assign(root.slots,KEY_THIRD);
+ if(root.slots[0]!=17 || root.slots[1]!=0 || root.slots[2]!=17) return 1;
+ for(i=0;i<5;i++) { if(setjmp(fatal)==0) { assign(root.slots,invalid[i]); return 2; } }
+ return 0;
+}
+`)
+		})
+	}
+}
+
+func TestCTableBlobSizeRefusal(t *testing.T) {
+	u := unitFromSource(t, "package probe\ntable Root { data *bytes\ntext *string }\n")
+	runCTableWireProbe(t, u, `#include "ProbeTable.h"
+int main(void) {
+ TableReport report={0}; TableReader body={0}; body.report=&report;
+ /* Framing premeasurement must reject the length without reading payload bytes. */
+ body.size=(int64_t)UINT32_MAX+1;
+ if(table_node_wire_storage(&table_bytes_node_type,&body)!=-1 || report.reason!=SCHEMA_TABLE_REFUSE_BLOB_OVER_SIZE_CAP) return 1;
+ report.reason=0;
+ if(table_node_wire_storage(&table_string_node_type,&body)!=-1 || report.reason!=SCHEMA_TABLE_REFUSE_BLOB_OVER_SIZE_CAP) return 2;
+ body.size=UINT32_MAX;report.reason=0;
+ if(table_node_wire_storage(&table_bytes_node_type,&body)<=0 || report.reason) return 3;
+ return 0;
 }
 `)
 }

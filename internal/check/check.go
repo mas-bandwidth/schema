@@ -3468,7 +3468,7 @@ func (c *checker) checkClaimedNames() {
 	// unit rather than to a declaration, so they are claimed once at unit
 	// scope, as ProtocolId is (SPEC §6.1), and a unit that grows its first
 	// table must not find a name that was free yesterday taken today.
-	for _, gen := range []string{"UnitView", "UnitViewInfo", "ViewType", "ViewVocabulary", "ViewVariant", "ViewConstant"} {
+	for _, gen := range []string{"UnitView", "unit_view", "UnitViewInfo", "ViewType", "ViewVocabulary", "ViewVariant", "ViewConstant"} {
 		add(gen, "the generated unit registry (docs/SPEC-TABLES.md §8.3)", unitPos)
 	}
 	// names the generated Rust references unqualified: the serialize imports

@@ -189,13 +189,13 @@ func (g *tableGen) wireBarePayload(f *ir.Field, expr, ind string) {
 	switch {
 	case f.IsList() || f.IsMap():
 		g.emitSequenceWrite(f, expr)
-	case f.Type.Kind == ir.TString:
+	case f.Type.Kind == ir.TString && !f.Type.Blob():
 		g.pf("%sif ( %s_length < 0 || %s_length > %d ) { return 0; }\n", ind, expr, expr, f.Type.Size)
 		g.pf("%stable_writer_raw( w, %s, %s_length );\n", ind, expr, expr)
 	case f.Type.Kind == ir.TWString:
 		g.pf("%sif ( %s_length < 0 || %s_length > %d ) { return 0; }\n", ind, expr, expr, f.Type.Size)
 		g.pf("%s{ int32_t i; for ( i=0; i<%s_length; i++ ) { table_writer_put16( w, %s[i] ); } }\n", ind, expr, expr)
-	case f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TBytes && !f.Type.Blob():
 		g.pf("%sif ( %s_length < 0 || %s_length > %d ) { return 0; }\n", ind, expr, expr, f.Type.Size)
 		g.pf("%stable_writer_put8( w, 6 ); table_writer_leb( w, (uint64_t)%s_length ); table_writer_raw( w, %s, %s_length );\n", ind, expr, expr, expr)
 	case f.Array != ir.ArrayNone:
@@ -221,7 +221,7 @@ func (g *tableGen) wireReadArm(v ir.UnionVariant, dst, ind string) {
 	switch {
 	case v.Body():
 		g.pf("%s%s( &arm, &%s );\n", ind, g.api(v.Type, "load_body"), dst)
-	case f.Type.Kind == ir.TString:
+	case f.Type.Kind == ir.TString && !f.Type.Blob():
 		g.pf("%suint64_t keep;\n%sif ( !table_wire_utf8( arm.buffer, (uint64_t)arm.size ) ) { %s }\n", ind, ind, bad)
 		g.pf("%skeep = table_wire_utf8_clamp( arm.buffer, (uint64_t)arm.size, %d ); if ( keep != (uint64_t)arm.size ) { r->report->clamped++; }\n", ind, f.Type.Size)
 		g.pf("%smemcpy( %s, arm.buffer, (size_t)keep ); %s[keep]=0; %s_length=(int32_t)keep; arm.offset=arm.size;\n", ind, dst, dst, dst)
@@ -229,11 +229,11 @@ func (g *tableGen) wireReadArm(v ir.UnionVariant, dst, ind string) {
 		g.pf("%sint64_t keep, i;\n%sif ( arm.size%%2 || !table_wire_utf16( arm.buffer, arm.size/2 ) ) { %s }\n", ind, ind, bad)
 		g.pf("%skeep=table_wire_utf16_clamp( arm.buffer, arm.size/2, %d ); if ( keep != arm.size/2 ) { r->report->clamped++; }\n", ind, f.Type.Size)
 		g.pf("%sfor ( i=0; i<keep; i++ ) { %s[i]=table_wire_utf16_unit( arm.buffer,i ); } %s[keep]=0; %s_length=(int32_t)keep; arm.offset=arm.size;\n", ind, dst, dst, dst)
-	case f.IsMap() || f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes:
+	case f.IsMap() || f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes && !f.Type.Blob():
 		// Reuse the field's array payload walk with the arm's already-bounded
 		// span. No cast to a synthetic C storage type is involved.
 		g.pf("%smemset( &%s, 0, sizeof( %s ) );\n", ind, strings.TrimSuffix(dst, ".value"), strings.TrimSuffix(dst, ".value"))
-		if f.Array != ir.ArrayNone && !f.IsList() && cSelfInit(f.Type) {
+		if f.Array != ir.ArrayNone && !f.IsList() && !f.Type.Pointer && cSelfInit(f.Type) {
 			g.emitTableResetArray(dst, fmt.Sprint(f.ArrayBound), g.cFieldType(f.Type), true, f)
 		}
 		kind := ir.TableWireScalarKind(f)
@@ -256,10 +256,11 @@ func (g *tableGen) emitUnionArmDescriptors(un *ir.Union) {
 	if g.descriptorUnions == nil {
 		g.descriptorUnions = map[string]bool{}
 	}
-	if g.descriptorUnions[un.Name] {
+	key := fmt.Sprintf("%s:%t", un.Name, g.outside)
+	if g.descriptorUnions[key] {
 		return
 	}
-	g.descriptorUnions[un.Name] = true
+	g.descriptorUnions[key] = true
 	st := &ir.Struct{Name: un.Name}
 	for _, v := range un.Variants {
 		if v.Void() || v.Body() {
@@ -269,7 +270,7 @@ func (g *tableGen) emitUnionArmDescriptors(un *ir.Union) {
 		f.Name = v.Name
 		g.emitFieldVocabulary(st, &f)
 		g.emitTagsStatic(g.vocabularySymbol(st.Name, f.Name, "tags"), f.Tags)
-		g.pf("static const TableFieldInfo %s[] = {\n", g.sym(un.Name, "arm_field_"+v.Name))
+		g.pf("static const TableFieldInfo %s[] = {\n", g.armDescriptorSymbol(un.Name, v.Name))
 		member := "as." + v.Name
 		if armCompanioned(v) {
 			member += ".value"
@@ -277,4 +278,11 @@ func (g *tableGen) emitUnionArmDescriptors(un *ir.Union) {
 		g.emitFieldDescriptorAt(st, &f, "", member)
 		g.pf("};\n")
 	}
+}
+
+func (g *tableGen) armDescriptorSymbol(owner, arm string) string {
+	if g.outside {
+		return g.sym(owner, "outside_arm_field_"+arm)
+	}
+	return g.sym(owner, "arm_field_"+arm)
 }

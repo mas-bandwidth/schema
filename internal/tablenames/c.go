@@ -227,7 +227,7 @@ func init() {
 		// the ENUM-KEYED array (docs/SPEC-TABLES.md §2.4). C's storage IS the array,
 		// so there is no TableKeyed to emit; what C++ puts in operator[] — the
 		// left shift and the None refusal — lives in these two.
-		Name{Name: "table_keyed_slot", What: "the storage index a key names, refusing None in every build"},
+		Name{Name: "table_keyed_slot", What: "the storage index a key names, refusing out-of-range keys in every build"},
 		// the VARIABLE-LENGTH runtime's C spellings (docs/SPEC-TABLES.md §6). The
 		// arena and the worker are C++'s too; everything a member function or a
 		// template did there is a name here.

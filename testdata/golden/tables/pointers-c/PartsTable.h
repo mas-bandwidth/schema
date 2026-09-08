@@ -506,24 +506,22 @@ static SCHEMA_UNUSED uint64_t table_wire_utf8_clamp( const uint8_t * p, uint64_t
 #define schema_fatal abort
 #endif
 
-/* The storage index a key names, with the None refusal that stands in EVERY
-   build. The storage shifts left and holds no slot for None, so a build that
-   skipped this compare would index one element BEFORE the array — undefined
-   behaviour in the configuration a game ships. */
-static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key )
+/* The storage index a key names. Both bounds stand in EVERY build: None,
+   negative values and keys beyond the enum's maximum all refuse. */
+static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key, uint32_t count )
 {
-    if ( key <= 0 )
+    if ( (uint32_t) key - 1u >= count )
     {
-        schema_assert( 0 && "None is the null key of an enum-keyed array: it keys no slot" );
+        schema_assert( 0 && "key is outside the enum-keyed array" );
         schema_fatal();
     }
     return key - 1;
 }
 
-/* keyed[key] — the slot a variant owns, as an LVALUE. The key is evaluated
+/* SCHEMA_TABLE_KEYED_AT(slots,key,E_MAX) is an LVALUE. The key is evaluated
    once. ITERATION is the surface a consumer of the whole array wants: walk
    1..E_MAX and index with the key, so a call site writes no shift. */
-#define SCHEMA_TABLE_KEYED_AT( array, key ) ( (array)[ table_keyed_slot( (int32_t) ( key ) ) ] )
+#define SCHEMA_TABLE_KEYED_AT( array, key, count ) ( (array)[ table_keyed_slot( (int32_t) ( key ), (uint32_t) ( count ) ) ] )
 
 
 static SCHEMA_UNUSED float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
@@ -563,6 +561,29 @@ static SCHEMA_UNUSED int64_t table_wire_utf16_clamp( const uint8_t * bytes, int6
     }
     return bound;
 }
+#endif
+
+#ifndef SCHEMA_TABLE_REFUSE_RUNTIME
+#define SCHEMA_TABLE_REFUSE_RUNTIME
+typedef int TableRefuseReason;
+enum {
+    SCHEMA_TABLE_REFUSE_OK=0,
+    SCHEMA_TABLE_REFUSE_NOT_A_COOK=1,
+    SCHEMA_TABLE_REFUSE_FOREIGN_ORDER=2,
+    SCHEMA_TABLE_REFUSE_WRONG_BUILD_VERSION=3,
+    SCHEMA_TABLE_REFUSE_RESERVED_NOT_ZERO=4,
+    SCHEMA_TABLE_REFUSE_BAD_ALIGNMENT=5,
+    SCHEMA_TABLE_REFUSE_TRUNCATED=6,
+    SCHEMA_TABLE_REFUSE_UNALIGNED_BASE=7,
+    SCHEMA_TABLE_REFUSE_BAD_LAYOUT=8,
+    SCHEMA_TABLE_REFUSE_UNKNOWN_FORM=9,
+    SCHEMA_TABLE_REFUSE_COUNT_OVER_LENGTH=10,
+    SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP=11,
+    SCHEMA_TABLE_REFUSE_BLOB_OVER_SIZE_CAP=12,
+    SCHEMA_TABLE_REFUSE_DATA_CYCLE=13
+};
+static SCHEMA_UNUSED const uint8_t * table_cook_refuse(TableRefuseReason * out,TableRefuseReason reason)
+{ if(out!=NULL) { *out=reason; } return NULL; }
 #endif
 
 
@@ -1073,6 +1094,10 @@ static SCHEMA_UNUSED int64_t table_node_storage( TableNumbering * n, const Table
 }
 static SCHEMA_UNUSED int64_t table_node_wire_storage( const TableNodeType * type, const TableReader * body )
 {
+    if(type->blob && body->size>UINT32_MAX) {
+        body->report->reason=SCHEMA_TABLE_REFUSE_BLOB_OVER_SIZE_CAP;
+        return -1;
+    }
     return type->blob ? table_blob_storage(body->size,type->blob==2) : type->wire_storage(body);
 }
 
@@ -1430,29 +1455,6 @@ static SCHEMA_UNUSED int table_node_scan_whole( const TableNodeScan * scan )
 
 #endif /* SCHEMA_GRAPHDEMO_BUILD_VERSION */
 
-
-#ifndef SCHEMA_TABLE_REFUSE_RUNTIME
-#define SCHEMA_TABLE_REFUSE_RUNTIME
-typedef int TableRefuseReason;
-enum {
-    SCHEMA_TABLE_REFUSE_OK=0,
-    SCHEMA_TABLE_REFUSE_NOT_A_COOK=1,
-    SCHEMA_TABLE_REFUSE_FOREIGN_ORDER=2,
-    SCHEMA_TABLE_REFUSE_WRONG_BUILD_VERSION=3,
-    SCHEMA_TABLE_REFUSE_RESERVED_NOT_ZERO=4,
-    SCHEMA_TABLE_REFUSE_BAD_ALIGNMENT=5,
-    SCHEMA_TABLE_REFUSE_TRUNCATED=6,
-    SCHEMA_TABLE_REFUSE_UNALIGNED_BASE=7,
-    SCHEMA_TABLE_REFUSE_BAD_LAYOUT=8,
-    SCHEMA_TABLE_REFUSE_UNKNOWN_FORM=9,
-    SCHEMA_TABLE_REFUSE_COUNT_OVER_LENGTH=10,
-    SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP=11,
-    SCHEMA_TABLE_REFUSE_BLOB_OVER_SIZE_CAP=12,
-    SCHEMA_TABLE_REFUSE_DATA_CYCLE=13
-};
-static SCHEMA_UNUSED const uint8_t * table_cook_refuse(TableRefuseReason * out,TableRefuseReason reason)
-{ if(out!=NULL) { *out=reason; } return NULL; }
-#endif
 #ifndef SCHEMA_GRAPHDEMO_TABLE_COOK
 #define SCHEMA_GRAPHDEMO_TABLE_COOK
 
