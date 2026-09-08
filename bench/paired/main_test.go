@@ -27,7 +27,7 @@ func TestPairedCorpusIndex(t *testing.T) {
 		t.Fatal("index must contain exactly 64 uint32 lengths")
 	}
 	total := 0
-	for k := 0; k < 64; k++ {
+	for k := range 64 {
 		n := int(wirebinary.LittleEndian.Uint32(index[k*4:]))
 		if n <= 0 || n > 65536 || n > len(data)-total {
 			t.Fatalf("invalid record %d length", k)
@@ -72,7 +72,7 @@ func makePass(t *testing.T) string {
 			}
 		}
 	}
-	for round := 0; round < 7; round++ {
+	for round := range 7 {
 		for _, lang := range languages {
 			for _, wire := range []string{"packet", "table"} {
 				rate := packet[lang]
@@ -168,7 +168,7 @@ func TestEvenRoundMedian(t *testing.T) {
 			}
 		}
 	}
-	for round := 0; round < 4; round++ {
+	for round := range 4 {
 		p := filepath.Join(dir, fmt.Sprintf("round-%d-cpp-table.csv", round))
 		b, err := os.ReadFile(p)
 		if err != nil {
@@ -199,7 +199,7 @@ func TestBuiltGateOnly(t *testing.T) {
 		t.Skip("set SCHEMA_PAIRED_TEST_BUILT=cpp,c,go,cs after building")
 	}
 	t.Chdir("../..")
-	for _, lang := range strings.Split(langs, ",") {
+	for lang := range strings.SplitSeq(langs, ",") {
 		for _, wire := range []string{"packet", "table"} {
 			out, e := capture(runner(wire, lang, "--gate"))
 			if e != nil || len(out) != 0 {

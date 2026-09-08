@@ -18,6 +18,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -57,7 +58,7 @@ func cpuName() string {
 		return strings.TrimSpace(string(b))
 	}
 	b, _ := os.ReadFile("/proc/cpuinfo")
-	for _, line := range strings.Split(string(b), "\n") {
+	for line := range strings.SplitSeq(string(b), "\n") {
 		if strings.HasPrefix(line, "model name") {
 			_, name, _ := strings.Cut(line, ":")
 			return strings.TrimSpace(name)
@@ -361,12 +362,7 @@ func generateAndBuild(langs []string) error {
 	return os.WriteFile("build/paired/build.json", append(b, '\n'), 0644)
 }
 func contains(ss []string, s string) bool {
-	for _, v := range ss {
-		if v == s {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(ss, s)
 }
 func readBuild() (buildInfo, error) {
 	var info buildInfo
@@ -544,7 +540,7 @@ func measure(langs []string, out string, rounds int, info buildInfo) error {
 	if err != nil {
 		return err
 	}
-	for round := 0; round < rounds; round++ {
+	for round := range rounds {
 		loads = append(loads, map[string]any{"round": round, "date": time.Now().UTC().Format(time.RFC3339), "load": loadNow()})
 		for i, lang := range langs {
 			wires := []string{"packet", "table"}
