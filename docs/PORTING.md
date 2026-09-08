@@ -1449,8 +1449,7 @@ diff rather than on a reviewer.
 the corpus and byte-compares against the golden; a leg whose codec does not
 reproduce the corpus refuses to time it rather than posting a number.
 
-**Reference.** `tables-elixir-bench-gate` (`leg run --gate`, all 64 variants);
-the Dart leg's `WIRE GOLDEN MISMATCH` in `bench/tables/dart/leg`.
+**Reference.** `tables-elixir-bench-gate` (`leg run --gate`, all 64 variants).
 
 **Proven in.** Elixir.
 
@@ -1462,4 +1461,4 @@ the Dart leg's `WIRE GOLDEN MISMATCH` in `bench/tables/dart/leg`.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #425 | ❌ #425 | ❌ #425 | ✅ `tables-go-bench-gate` | ❌ #425 | ❌ #425 | ❌ #425 | ✅ `bench/tables/dart/leg` | ✅ `tables-elixir-bench-gate` |
+| ❌ #425 | ❌ #425 | — no table-wire bench | ✅ `tables-go-bench-gate` | ❌ #425 | ❌ #425 | ❌ #425 | — no table-wire bench | ✅ `tables-elixir-bench-gate` |

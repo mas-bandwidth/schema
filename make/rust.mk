@@ -204,17 +204,6 @@ tables-rust-names-negative-control:
 	@grep -m1 "was accepted beside a table" build/rust-names-control/log
 	@echo "rust name-claim negative control: removing the mapped-space claim turns the suite RED on it"
 
-# the Rust leg's generated crate: a unit is a Rust CRATE, so the corpus needs a
-# Cargo.toml beside its modules. The TABLE modules name no runtime — the
-# generated table surface carries no serialize dependency, which is the leg's
-# recorded linkage fact — but the unit's PACKET module does, because a table
-# closure's types are the packet backend's own and they carry their type-wire
-# codecs whether or not this bench calls one.
-generated/bench/tables/rust/.stamp: bin/schema bench/corpus/BenchTable.schema
-	@mkdir -p generated/bench/tables/rust/src
-	./bin/schema generate --lang rust --out generated/bench/tables/rust/src bench/corpus/BenchTable.schema
-	@printf '[package]\nname = "benchtable"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../../$(SERIALIZE_RS)" }\n' > generated/bench/tables/rust/Cargo.toml
-
 generated/bench/rust/.stamp: bin/schema $(SCHEMAS_BENCH)
 	./bin/schema generate --lang rust --out generated/bench/rust/src bench/corpus/Bench.schema
 	./bin/schema generate --lang rust --out generated/bench/rust-realworld/src bench/corpus/RealWorld.schema
@@ -276,7 +265,6 @@ test-rust: generated/rust/.stamp generated/rust-ludicrous/.stamp generated/bench
 
 TEST_LEGS         += test-rust
 CONFORMANCE_LEGS  += build/conformance-rust
-BENCH_TABLES_LEGS += generated/bench/tables/rust/.stamp
 
 # Packet defaults share the C++ oracle. Both build modes consume its byte and
 # bit pins, and the control removes only constructor byte copies.
