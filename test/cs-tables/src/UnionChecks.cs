@@ -54,6 +54,31 @@ static partial class Program
         Check(U.Schema.RootLoad(copy, repeat, report) && report.Malformed && copy.Pending[0].Type == U.ChoiceType.None && copy.Tail == 42,
             "repeated union array: damaged later header clears the old selection");
 
+        // A shorter counted union array must restore the whole element, not the
+        // tag only: a list arm under None is the leftover ResetElement left.
+        U.Root wide = new U.Root();
+        wide.HistoryCount = 2;
+        wide.History[0].Type = U.ChoiceType.Signal;
+        wide.History[1].Type = U.ChoiceType.Many;
+        wide.History[1].ManyCount = 3;
+        wide.History[1].Many[0].X = 1;
+        wide.History[1].Many[1].X = 2;
+        wide.History[1].Many[2].X = 3;
+        byte[] two = new byte[U.Schema.RootMeasure(wide)];
+        Check(U.Schema.RootSave(wide, two) == two.Length, "counted union tail: two-item save");
+        U.Root one = new U.Root();
+        one.HistoryCount = 1;
+        one.History[0].Type = U.ChoiceType.Signal;
+        byte[] once = new byte[U.Schema.RootMeasure(one)];
+        Check(U.Schema.RootSave(one, once) == once.Length, "counted union tail: one-item save");
+        report = new U.TableReport();
+        Check(U.Schema.RootLoad(copy, two, report) && copy.HistoryCount == 2 && copy.History[1].ManyCount == 3,
+            "counted union tail: long occurrence loads");
+        report = new U.TableReport();
+        Check(U.Schema.RootLoad(copy, once, report) && copy.HistoryCount == 1 &&
+            copy.History[1].Type == U.ChoiceType.None && copy.History[1].ManyCount == 0,
+            "counted union tail: None tag and empty arm");
+
         report = new U.TableReport();
         byte[] foreignArray = Fixture(new byte[] { 1,14,2,8,0,2,8,42,0,0,0,0 }, "optional", "tail");
         Check(U.Schema.RootLoad(copy, foreignArray, report) && report.KindMismatch == 1 && !copy.OptionalPresent && copy.Tail == 42,

@@ -7,6 +7,7 @@ package cstable
 import (
 	"fmt"
 	"maps"
+	"sort"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -185,6 +186,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		}
 		if g.home {
 			g.emitRuntime()
+			g.emitAllUnionResets()
 			runtimeWritten = true
 		}
 		for _, un := range f.TableUnions {
@@ -229,6 +231,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if !runtimeWritten {
 		g := &tableGen{unit: u, anyKeyed: anyKeyed, home: true}
 		g.emitRuntime()
+		g.emitAllUnionResets()
 		out[home+"Table.cs"] = g.assemble()
 	}
 	out[capitalize(u.Package)+"View.cs"] = generateView(u, closure)
@@ -237,6 +240,37 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	common.tf("public enum TableRefuseReason { ok, not_a_cook, foreign_order, wrong_build_version, reserved_not_zero, bad_alignment, truncated, unaligned_base, bad_layout, unknown_form, count_over_length, count_over_extent_cap, blob_over_size_cap, data_cycle }\n")
 	out[capitalize(u.Package)+"Refuse.cs"] = common.assemble()
 	return out, nil
+}
+
+// emitAllUnionResets emits TableReset for every union the unit knows, packet
+// and table-closure, once on the runtime home. Packet unions used as table
+// fields (Effect on WeaponConfig) have no File.TableUnions entry — those are
+// unions with a table arm — but TableReset(value.effect) still needs a
+// matching overload.
+func (g *tableGen) emitAllUnionResets() {
+	names := make([]string, 0, len(g.unit.Unions)+len(g.unit.TableUnions))
+	seen := map[string]bool{}
+	add := func(un *ir.Union) {
+		if un == nil || seen[un.Name] {
+			return
+		}
+		seen[un.Name] = true
+		names = append(names, un.Name)
+	}
+	for _, un := range g.unit.Unions {
+		add(un)
+	}
+	for _, un := range g.unit.TableUnions {
+		add(un)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		un := g.unit.Unions[name]
+		if un == nil {
+			un = g.unit.TableUnions[name]
+		}
+		g.emitUnionReset(un)
+	}
 }
 
 // emitRuntime writes the unit's shared table runtime — the storage and codec

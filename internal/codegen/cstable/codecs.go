@@ -467,11 +467,7 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 		g.emitBufferDefault(f, "value.", g.pf)
 	case f.Array != ir.ArrayNone && isClassRef(f.Type) && !f.Type.Pointer:
 		g.pf("    for (int i = 0; i < %s.Length; i++)\n    {\n", g.keyedSlots("value.", f))
-		if _, isUnion := f.Type.Ref.(*ir.Union); isUnion {
-			g.pf("        %s[i].Type = %sType.None;\n", g.keyedSlots("value.", f), f.Type.Name)
-		} else {
-			g.pf("        TableReset(%s[i]);\n", g.keyedSlots("value.", f))
-		}
+		g.pf("        TableReset(%s[i]);\n", g.keyedSlots("value.", f))
 		g.pf("    }\n")
 		if f.Array == ir.ArrayCounted {
 			g.pf("    value.%sCount = 0;\n", name)
@@ -483,18 +479,32 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 			g.pf("    value.%sCount = 0;\n", name)
 		}
 	default:
-		if _, isUnion := f.Type.Ref.(*ir.Union); isUnion && f.Type.Kind == ir.TNamed {
-			// the tag is the whole reset: an arm zero-establishes when the
-			// reader selects it, exactly as the packet reader does
-			g.pf("    value.%s.Type = %sType.None;\n", name, f.Type.Name)
-			return
-		}
 		if isClassRef(f.Type) {
 			g.pf("    TableReset(value.%s);\n", name)
 			return
 		}
 		g.pf("    value.%s = %s;\n", name, fieldDefaultExpr(f))
 	}
+}
+
+// emitUnionReset restores a union's tag and every arm's storage in place.
+// Tag-only left a previous list arm standing under None (#734); C++ assigns a
+// fresh element and C memsets. No allocation: `new T()` trips the zero-allocation
+// gate on the C# tables leg.
+func (g *tableGen) emitUnionReset(un *ir.Union) {
+	saved := g.owner
+	g.owner = unionOwner(un)
+	g.pf("// TableReset(%s) restores None and every arm in place, reusing buffers.\n", un.Name)
+	g.pf("public static void TableReset(%s value)\n{\n", un.Name)
+	g.pf("    value.Type = %sType.None;\n", un.Name)
+	for _, f := range g.owner.Fields {
+		g.emitTableResetField(f)
+		if f.Type.Optional {
+			g.pf("    value.%sPresent = false;\n", member(f))
+		}
+	}
+	g.pf("}\n\n")
+	g.owner = saved
 }
 
 // ---- reflection descriptors ----

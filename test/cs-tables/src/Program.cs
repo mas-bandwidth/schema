@@ -570,10 +570,13 @@ static partial class Program
             suffix++;
         }
         Check(suffix > 8, "counted tail: files share a vocabulary suffix");
-        Check(first[first.Length - suffix - 1] == 0, "counted tail: first field stream ends at 0");
-        byte[] spliced = new byte[first.Length - suffix - 1 + second.Length];
-        Buffer.BlockCopy(first, 0, spliced, 0, first.Length - suffix - 1);
-        Buffer.BlockCopy(second, 0, spliced, first.Length - suffix - 1, second.Length);
+        // Identical vocabularies make the terminator 0 part of the suffix, so
+        // the field stream ends at Length-suffix, not one byte earlier.
+        int cut = first.Length - suffix;
+        Check(cut > 0 && first[cut] == 0, "counted tail: first field stream ends at 0");
+        byte[] spliced = new byte[cut + second.Length];
+        Buffer.BlockCopy(first, 0, spliced, 0, cut);
+        Buffer.BlockCopy(second, 0, spliced, cut, second.Length);
         return spliced;
     }
 

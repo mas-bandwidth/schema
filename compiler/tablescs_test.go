@@ -157,6 +157,7 @@ table Root { values [..8]Child }
 		"static void ResetCountedTail(object value, TableFieldInfo f, int previous, int decoded)",
 		"int previous = f.Counted && f.GetCount != null ? f.GetCount(value) : 0",
 		"ResetCountedTail(value, f, previous, decoded)",
+		"static void ResetUnion(object union, TableUnionInfo arms)",
 	} {
 		if !strings.Contains(src, want) {
 			t.Errorf("C# counted-array load lacks %q", want)
@@ -186,5 +187,60 @@ func TestCsFloatBitCastIsAtTheAssignment(t *testing.T) {
 	}
 	if strings.Contains(src, "GetRaw = delegate") && strings.Contains(src, "TableFloatToBits(value.Mass)") {
 		t.Error("f32 GetRaw still calls TableFloatToBits instead of bit-casting at the assignment")
+	}
+}
+
+// TestCsUnionElementReset: TableReset of a union clears every arm in place,
+// not the tag alone (#734). Tag-only left a list arm standing under None.
+func TestCsUnionElementReset(t *testing.T) {
+	u := unitFromSource(t, `package probe
+type Cell { x int32 }
+union Choice
+{
+    signal
+    many [..4]Cell
+}
+table Root { history [..8]Choice }
+`)
+	files, err := New().Generate(u, "cs", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(files["ProbeTable.cs"])
+	for _, want := range []string{
+		"public static void TableReset(Choice value)",
+		"value.Type = ChoiceType.None;",
+		"TableReset(value.History[i]);",
+		"else if (f.Kind == 15) { ResetUnion(f.GetChild(value, i), f.Arms); }",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("C# union reset lacks %q", want)
+		}
+	}
+	if strings.Contains(src, "value.History[i].Type = ChoiceType.None;") {
+		t.Error("C# union array reset is still tag-only")
+	}
+}
+
+// Packet unions used as table fields are not File.TableUnions (no table arm)
+// but TableReset(value.effect) still needs the overload (#734).
+func TestCsPacketUnionTableReset(t *testing.T) {
+	u := unitFromSource(t, `package probe
+type Buff { n int32 }
+union Effect { buff Buff }
+table Root { effect Effect }
+`)
+	files, err := New().Generate(u, "cs", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(files["ProbeTable.cs"])
+	for _, want := range []string{
+		"public static void TableReset(Effect value)",
+		"TableReset(value.Effect);",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("C# packet-union table reset lacks %q", want)
+		}
 	}
 }
