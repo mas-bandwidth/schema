@@ -53,3 +53,39 @@ func TestFileFuzzCountCapIsFramingRefusal(t *testing.T) {
 		t.Fatal("accepted loaded count above the cap")
 	}
 }
+
+// A mutable reader has no region preflight. Its int32 count-cap refusal
+// discards the partial value without the region's recovery event.
+func TestBuilderFuzzChecksCountRefusalWithoutRegionPreflight(t *testing.T) {
+	_, _, units := corpus(t)
+	for _, tc := range []struct{ name, table string }{
+		{"list_count_cap", "Save"}, {"list_count_cross_length", "Album"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root, err := newWireRoot(units, "listdemo", tc.table, false, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			root.builder = true
+			wire, err := os.ReadFile(filepath.Join("testdata", "wire", "tables", "fuzz-vectors", tc.name+".bin"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			answer, err := root.oracle(wire)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if answer.measureRefused || answer.report.Malformed || !answer.encFail || !answer.builderStopped {
+				t.Fatalf("builder count cap: %+v", answer)
+			}
+			reply := legReply{loaded: false, measure: -1, report: answer.report, saveFail: true}
+			if verdict := wireVerdict(root, reply, answer); verdict != "" {
+				t.Fatal(verdict)
+			}
+			reply.report.Malformed = true
+			if verdict := wireVerdict(root, reply, answer); verdict == "" {
+				t.Fatal("builder gate ignored an invented region recovery event")
+			}
+		})
+	}
+}

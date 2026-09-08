@@ -60,6 +60,7 @@ type wireFuzzOptions struct {
 	// LoadRetain is refused by name, and a form-2 SaveRetain refuses by name
 	// (§3.3).
 	retain  bool
+	builder bool // mutable file reads have no region preflight
 	failed  string
 	vectors string
 }
@@ -81,7 +82,8 @@ type wireRoot struct {
 	vocabulary *tablewire.Vocabulary
 	// retain says this roster entry is driven through both engines' RETAINING
 	// paths (docs/SPEC-TABLES.md §6.6)
-	retain bool
+	retain  bool
+	builder bool
 	// the C ABI storage each node type commands (docs/SPEC-TABLES.md §6.5,
 	// §20.3), by wire type id, rounded to the unit alignment as a reader's LoadMeasure rounds it
 	storage               map[uint64]int64
@@ -205,6 +207,7 @@ type oracleAnswer struct {
 	exact          bool
 	measureRefused bool
 	bytes          int64
+	builderStopped bool
 	// the same two counters from the engine
 	retained   int
 	retainLost int
@@ -219,7 +222,7 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 	// A region caller measures before decoding. A storage refusal ends that
 	// path; a header that merely crosses its L is still decoded below using
 	// the region's recovery rules rather than the builder's count refusal.
-	if r.variable && !r.message {
+	if r.variable && !r.message && !r.builder {
 		if _, _, refused := tablewire.FileRegionMeasure(r.model.Unit, r.def, data); refused {
 			ans.measureRefused, ans.encFail, ans.bytes = true, true, -1
 			return ans, nil
@@ -233,6 +236,9 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 	// nowhere else in this file.
 	decode := func() (bool, error) { return tablewire.DecodeRegion(r.model, inst, data, &rep) }
 	encode := func() ([]byte, error) { return tablewire.Encode(r.model, inst) }
+	if r.builder {
+		decode = func() (bool, error) { return tablewire.Decode(r.model, inst, data, &rep) }
+	}
 	if r.retain {
 		// THE RETENTION ARM (docs/SPEC-TABLES.md §6.6): the same mutant read
 		// and written back through the retaining pair, with the two stores the
@@ -269,11 +275,22 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 		encode = func() ([]byte, error) { return tablewire.EncodeMessage(r.model, inst) }
 	}
 	ok, derr := decode()
+	if r.builder {
+		ans.builderStopped = !ok
+		var capRefusal *tablewire.CountRefusal
+		if errors.As(derr, &capRefusal) {
+			derr = nil
+		}
+	}
 	if tablewire.Refused(derr) {
 		// A FORM BYTE THIS READER DOES NOT CARRY IS A REFUSAL, and the refusal
 		// is the answer: nothing was decoded, no counter moved, and no damage
 		// is reported (docs/SPEC-TABLES.md §3). A leg must say the same.
 		ans.report = Counts{Refused: true}
+		if r.builder {
+			ans.encFail = true
+			return ans, nil
+		}
 		// nothing was decoded, so what a leg saves is what it read into: the
 		// value at its declared defaults, which is what the fresh instance
 		// encodes here. Both must answer the same bytes, as they must on
@@ -288,7 +305,11 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 	if derr != nil {
 		return ans, fmt.Errorf("the oracle refused the root itself: %w", derr)
 	}
-	ans.report = Counts{Unknown: rep.Unknown, KindMismatch: rep.KindMismatch, Widened: rep.Widened, Clamped: rep.Clamped, Duplicate: rep.Duplicate, Malformed: rep.Malformed || !ok}
+	ans.report = Counts{Unknown: rep.Unknown, KindMismatch: rep.KindMismatch, Widened: rep.Widened, Clamped: rep.Clamped, Duplicate: rep.Duplicate, Malformed: rep.Malformed || (!ok && !r.builder)}
+	if r.builder && !ok {
+		ans.encFail = true
+		return ans, nil
+	}
 	encoded, eerr := encode()
 	// the encode is what runs the SAVE half of the retaining pair, so the two
 	// counters are read after it and not before
@@ -298,7 +319,7 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 	} else {
 		ans.encoded = encoded
 	}
-	if r.variable {
+	if r.variable && !r.builder {
 		if r.message {
 			r.sizeBatch(&ans, data)
 			return ans, nil
@@ -465,7 +486,11 @@ func (l *wireLeg) kill() {
 // wireVerdict compares one leg reply with the oracle's answer and names the
 // first disagreement, or "" when there is none.
 func wireVerdict(root *wireRoot, reply legReply, ans oracleAnswer) string {
-	if !reply.loaded {
+	if root.builder {
+		if reply.loaded == ans.builderStopped {
+			return "builder completion differs from the oracle"
+		}
+	} else if !reply.loaded {
 		if root.variable && reply.measure < 0 {
 			// LOADMEASURE REFUSED THE FRAMING, so there was no region to load
 			// into and no value to compare: a wire that cannot be OPENED at
@@ -519,7 +544,7 @@ func wireVerdict(root *wireRoot, reply legReply, ans oracleAnswer) string {
 		}
 		return fmt.Sprintf("the decoded value differs: the leg saves %d bytes, the oracle %d, first difference at byte %d", len(reply.saved), len(ans.encoded), at)
 	}
-	if root.variable {
+	if root.variable && !root.builder {
 		if ans.exact && reply.measure != ans.bytes {
 			return fmt.Sprintf("LoadMeasure asks for %d region bytes; the framing commands exactly %d", reply.measure, ans.bytes)
 		}
@@ -531,6 +556,9 @@ func wireVerdict(root *wireRoot, reply legReply, ans oracleAnswer) string {
 }
 
 func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
+	if opts.builder && (opts.retain || opts.message) {
+		return fmt.Errorf("--builder is a non-retaining file arm")
+	}
 	if opts.driver == "" {
 		return fmt.Errorf("wire-fuzz needs --driver")
 	}
@@ -552,6 +580,13 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 		r, err := newWireRoot(u, unit, root, message, false)
 		if err != nil {
 			return 0, err
+		}
+		if opts.builder {
+			if !r.variable || message {
+				rootIndex[key] = -1
+				return -1, nil
+			}
+			r.builder = true
 		}
 		if opts.retain {
 			// THE RETENTION ARM'S ROSTER IS THE VARIABLE-CLASS FILE ROOTS AND
@@ -753,7 +788,7 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 			detail := fmt.Sprintf("  leg:    loaded=%t report=%s measure=%d saved=%s\n  oracle: report=%s encoded=%s",
 				reply.loaded, reply.report, reply.measure, describeBytes(reply.saved, reply.saveFail),
 				ans.report, describeBytes(ans.encoded, ans.encFail))
-			if root.variable {
+			if root.variable && !root.builder {
 				bound := "at most"
 				if ans.exact {
 					bound = "exactly"
@@ -798,6 +833,9 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 		absence += fmt.Sprintf(", %d seeds outside the arm", skipped)
 	}
 	arm := "wire-fuzz"
+	if opts.builder {
+		arm = "wire-fuzz-builder"
+	}
 	if opts.retain {
 		arm = "wire-fuzz retain"
 	}
@@ -842,6 +880,12 @@ func wireFailure(opts wireFuzzOptions, mut *wireMutant, passed int, verdict, det
 	// a MESSAGE seed's mutant is a form-2 wire, and a replay that read it as a
 	// file would read another wire entirely (docs/SPEC-TABLES.md §3.3)
 	form := ""
+	if opts.builder {
+		form = " --builder"
+	}
+	if opts.retain {
+		form += " --retain"
+	}
 	if mut.seed.message {
 		form = " --message"
 	}
