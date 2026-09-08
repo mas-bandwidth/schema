@@ -3298,6 +3298,15 @@ define map_negative_control
 	@echo "negative control: $(1) turns the MAP GATE red on $$(grep -c '^FAIL' build/map-$(1).log) failures"
 endef
 
+.PHONY: tables-maps-builder-cap-negative-control
+tables-maps-builder-cap-negative-control: bin/schema build/tables-generated/.stamp
+	$(call map_negative_control,builder-cap,'s@fill.refused = nodes.carve->worker != NULL;@fill.refused = false;@',internal/codegen/cpptable/maps.go,a builder count refusal became damage without turning the map gate red)
+	@grep -Fq '!report.malformed' build/map-builder-cap.log
+	go run ./tools/sabotage -name map-builder-count-oracle -out build/map-builder-oracle.gotext internal/tablewire/decode.go
+	@printf '{"Replace":{"%s/internal/tablewire/decode.go":"%s/build/map-builder-oracle.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/map-builder-oracle.json
+	@if go test -overlay=build/map-builder-oracle.json ./internal/tablewire -run '^TestMapBuilderCountCap$$' -count=1 > build/map-builder-oracle.log 2>&1; then echo 'map builder oracle control stayed green'; exit 1; fi
+	@grep -Fq 'must refuse before entries without adding damage' build/map-builder-oracle.log
+
 # THE WRITER EMITS INSERTION ORDER instead of sorted. The instance built OUT OF
 # KEY ORDER meets it: the byte compare against its pinned wire goes red while
 # measure == save still holds, which says the sabotage is the sort and not the

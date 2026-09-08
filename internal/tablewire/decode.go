@@ -641,6 +641,10 @@ func (r *wireReader) mapField(fv *tabletext.Field) bool {
 			r.rt.forget(fv.Entries[i].Tab)
 		}
 		fv.Entries = nil
+		if count > uint64(math.MaxInt32) {
+			r.off = end
+			return r.collectionCap()
+		}
 		sub := r.subTo(end)
 		var last tabletext.MapKey
 		landed := false
@@ -719,7 +723,7 @@ func (r *wireReader) mapField(fv *tabletext.Field) bool {
 	return true
 }
 
-// collectionCap matches TableListFillBegin: builder storage refuses the
+// collectionCap matches TableListFillBegin and TableMapFillBegin: builder storage refuses the
 // partial value, while a region read reports damage and resumes after L.
 func (r *wireReader) collectionCap() bool {
 	if r.region || r.countRefusal == nil {
@@ -1491,7 +1495,7 @@ func bigInt64(v *big.Int) int64 {
 type CountRefusal struct{}
 
 func (*CountRefusal) Error() string {
-	return "list count exceeds the int32 storage cap; discard the partial value"
+	return "collection count exceeds the int32 storage cap; discard the partial value"
 }
 
 func (r *wireReader) countRefused() bool { return r.countRefusal != nil && *r.countRefusal }
