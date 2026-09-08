@@ -161,11 +161,9 @@ C-like dialect of `serialize.h`, with library calls behind hooks (§13.9).
 C++ and C carry both storage classes. C# carries both classes and the current
 id-table file and bitpacked message forms, JSON, runtime cook writing, block
 construction, native regions, builders, retain-unknown and UnitView. Go carries
-these surfaces too. Rust, JavaScript and Elixir still carry their previously recorded
-wire surface at this checkpoint; their current-form work is tracked separately.
-Dart and Java carry no table wire — the block and cook read halves only.
-Dart, Rust, JavaScript and Elixir's fixed-class ports refuse pointers
-by name until their variable-class carry lands. Every generated language has
+these surfaces too. Rust, Dart, JavaScript, Elixir and Java carry no table
+wire: each emits the block and cook read halves only (schema#518, #514, #516,
+#515 and #517 bring the id-table wire to those ports). Every generated language has
 a table backend; refusal is scoped to a construct, never the table declaration.
 
 **WIRE FORM STATUS.** Section 3's id-table form is carried by the C++
@@ -182,9 +180,8 @@ reasons and const block handles. Its UnitView registry includes table-free
 units. C also reads and writes bitpacked message batches, with caller-owned
 resolved announcement entries and native regions for graphs and collections.
 C retains unknown fields in caller-owned storage for variable file roots and
-message loads, and writes retained file roots (§6.6). Elixir still writes the
-earlier form in this tree; that code is dead and is being removed. Rust, Dart,
-JavaScript and Java write no table wire: each carries the block and cook read
+message loads, and writes retained file roots (§6.6). Rust, Dart, JavaScript,
+Elixir and Java write no table wire: each carries the block and cook read
 halves only. [ROADMAP.md](../ROADMAP.md) records coverage by construct and form.
 
 The C report has added `widened`, `retained`, `retain_lost`, `refused` and `reason` members after
@@ -220,53 +217,25 @@ and any remaining optimization or instrumentation carry-across issues.
 **ELIXIR IS THE READING TIER, and the tier is a property of the LANGUAGE rather
 than of the port.** A BEAM term has no layout a producer could write, so this
 backend never produces a block or a cook: it OPENS one another build wrote and
-reads every slot at its offset. The tolerant wire and the text form are whole —
-measure, save, load, the report, `FromJson` and `ToJson` — because those are
-about bytes and not about addresses. Seven spellings are the language's and
-each is named where it is spelled: the READ REPORT is a value the caller
-threads, because the BEAM has no mutable struct; STORAGE is SPEC §6.1's Elixir
-column, so a `string(N)` is a binary whose `byte_size` IS the used length and an
-array is a list whose `length` IS the count, with no companion to keep in step;
-a `?T` is `nil` when absent; an enum-keyed array's slots are a TUPLE on a
-`table`, so a slot is reached in constant time, and the packet emitter's LIST on
-a `type`, whose struct is the packet emitter's and whose storage this wire
-changes nothing about — a walk rather than a reach, stated at the accessor's
-own site; a non-finite float travels as `{:nonfinite, bits}`, the convention
-the packet emitter already established; every refusal is `{:ok, result}` or
-`:error` with a bang form beside each writer, the packet emitter's reader
-verdict and its writer contract; and `Open` — both the block's and the cook's —
-takes a `lead` beside the bytes — how many bytes past an aligned base the
-caller's buffer begins — because §7 and §19.2 check the alignment of the BASE
-and a BEAM binary has no address a caller can observe or place. That last one
-is an ADDITION and not a subtraction: stating the fact makes the check a real
-one, where the alternative is a leg that cannot refuse an unaligned base at
-all, and `make tables-elixir-block-lead` holds the rule over every lead in
-0..64 with a negative control that drops the check from the emitter.
-
-**And what a reading-tier leg cannot claim, said plainly.** "The read path
-allocates nothing" is a claim about a language with caller-owned buffers, and
-Elixir has none: a decoded value IS an allocation and a sub-binary over the
-caller's bytes is a small one. What the leg holds instead is that the COUNT per
-iteration does not move — heap words, refc-binary allocations and reductions,
-pinned per case, re-pinned deliberately, with a negative control that reds it —
-which is the same instrument the Rust leg's allocation audit uses and a
-different number.
-
-**THE SOAK BESIDE IT GATES ON A FLOOR, and the reason generalizes past this
-port.** A managed runtime's memory readings are not levels: a process's heap
-size is CAPACITY a collection may leave grown, and a binary allocator's figure
-counts CARRIERS, so a corpus with one large instance in it reads bimodally
-forever without leaking a byte. A gate on the last sample, or on any sample,
-therefore reds for the runtime rather than for the code. A LEAK does one thing
-no carrier and no grown heap can imitate: it lifts the MINIMUM. So the gate
-compares the floor of the first third of the samples against the floor of the
-last third, and the two negative controls are different sabotages on purpose —
-a generated load that allocates more and frees it reds the COUNT and lifts no
-floor, and one that retains a copy of its bytes reds the FLOOR. Both sabotage
-the EMITTER through `go build -overlay`, as the fuzz controls do, because a
-control that sabotages the instrument's own loop proves the reading responds
-and not that a leak in generated code would be found. Two instruments, two
-questions, and neither one answers the other's.
+reads every slot at its offset. **And it emits the two accelerators and no
+table wire**: the Elixir port of the tolerant wire and the text form wrote the
+form that preceded the id-table wire, which this specification does not
+describe and the C++ reference does not open, and it was removed rather than
+carried — schema#515 brings the id-table wire to Elixir, and ROADMAP.md marks
+the cells. What the readers spell is the language's and is named where it is
+spelled: a row is a SUB-BINARY the runtime shares rather than copies; a refusal
+is `:error` against `{:ok, result}`, the packet emitter's reader verdict; and
+`Open` — both the block's and the cook's — takes a `lead` beside the bytes —
+how many bytes past an aligned base the caller's buffer begins — because §7
+and §19.2 check the alignment of the BASE and a BEAM binary has no address a
+caller can observe or place. That last one is an ADDITION and not a
+subtraction: stating the fact makes the check a real one, where the
+alternative is a leg that cannot refuse an unaligned base at all, and `make
+tables-elixir-block-lead` holds the rule over every lead in 0..64 with a
+negative control that drops the check from the emitter. The readers' fuzz
+oracle beside it, `make tables-elixir-fuzz`, is the leg's other instrument; the
+allocation audit and the soak that once sat beside them measured the wire's
+previous form and went with it.
 
 **JAVASCRIPT IS THE READING TIER TOO, and by the same rule.** A backend that
 controls no struct layout — no offsetof, no sizeof, no way to place a field —
@@ -581,7 +550,9 @@ compile time under C99's own means (§20.3); and **Elixir emits `<Base>Block.ex`
 beside `BlockRuntime.ex`, and it is the READING TIER** — there is no projection
 record and no layout assert, because a BEAM term has no layout to assert, so the
 descriptors ARE the mechanism and the typed accessors read each row field at its
-offset out of a SUB-BINARY the runtime shares rather than copies. **The unit's
+offset out of a SUB-BINARY the runtime shares rather than copies; the block and
+the cook (§7) are the whole of what Elixir emits for a table, and it emits no
+table wire (schema#515). **The unit's
 shared runtime is named by the PACKAGE in every port, so file order cannot
 reach it (§19.2)** — and in Java the package IS the unit scope, so each runtime
 type is a file of its own name and no rule is needed at all. The READ side is what the ported backends carry: a block is
@@ -2357,7 +2328,7 @@ binary-searching it. Row by row, with the section that holds each:
 | evolution by name | a key or value type change is reported, never misdecoded; the map reads empty and says so (§2.8, §4) | a type change misdecodes or drops by field number | none; a vtable slot's type is trusted |
 | a shared node as a value | `map[K]*T`: two keys, one node, on the wire, in a region and in the text as `&node` (§3.1, §16.7) | tree only; a value is copied per key | an `Offset` may be reused by the builder; nothing preserves it through text |
 | a map as a value | `map[K]map[K2]V`, by value, recursing (§2.8) | a map value may not be a map | a vector of tables of vectors, by hand |
-| zero allocation on `Load` and `Find`, every language | the region load allocates nothing and `Find` is in place (§6.5, §2.8); **Elixir cannot claim zero and does not** — its count per iteration is pinned rather than zero, the instrument §2 states | a hash map is allocated on parse in every runtime | `LookupByKey` allocates nothing; in C++, Swift and C |
+| zero allocation on `Load` and `Find`, every language | the region load allocates nothing and `Find` is in place (§6.5, §2.8); **Elixir emits no table wire today** and has no `Load` to measure (schema#515) | a hash map is allocated on parse in every runtime | `LookupByKey` allocates nothing; in C++, Swift and C |
 | a cook looked up in place | `Open` is O(1) and `Find` runs over the mapped bytes (§7) | none; parse first | yes, the vector is the buffer |
 | byte-stable sorted output | `measure == save`, sorted by the writer, the same bytes from any insertion order (§9, §2.8) | order undefined; two serializations of one map may differ | the builder sorts when asked; nothing holds it to a byte |
 | the text form a plain object | `{ "key": value }`, integer keys quoted, ascending, `&node` for sharing (§16) | a JSON object, order unspecified | a JSON array of objects |
@@ -2366,8 +2337,8 @@ binary-searching it. Row by row, with the section that holds each:
 | the optional index at load | linear probing over the sorted array, caller-owned, never stored (§2.8) | the parsed map IS a hash map, always, allocated | none; binary search only |
 
 Where a row is not achievable it says so in the row: zero allocation is a
-claim about a language with caller-owned buffers, and Elixir holds a pinned
-count instead, the same honest number it holds for every other read.
+claim about a language with caller-owned buffers, and a port without them says
+what it holds instead.
 
 ### 2.9 Unbounded arrays: `placements []Placement`
 
@@ -2961,7 +2932,7 @@ each:
 | an unbounded collection in a record | `[]T`, a reference and a count, elements in the node's extent (§2.9) | `repeated T` | a vector, an offset from the table |
 | the bounded spelling beside it | `[..N]T` and `[N]T`, inline storage, no allocation, the FIXED class (§2.2) | none, every repeated field is heap | none |
 | the same bytes for both spellings | `[]T` and `[..N]T` are one wire, so a bound is added or removed without touching a stored file (§2.9) | not a question it has | not a question it has |
-| zero allocation on `Load` and on read, every language | the region load allocates nothing and indexing is in place (§6.5), and **Elixir cannot claim zero and does not**, its count per iteration being pinned rather than zero | a repeated field is allocated on parse in every runtime | reading allocates nothing, in C++, Swift and C |
+| zero allocation on `Load` and on read, every language | the region load allocates nothing and indexing is in place (§6.5); **Elixir emits no table wire today** and has no `Load` to measure (schema#515) | a repeated field is allocated on parse in every runtime | reading allocates nothing, in C++, Swift and C |
 | a cook read in place | `Open` is O(1) and the elements are the mapped bytes (§7) | none, parse first | yes, the vector is the buffer |
 | a shared node as an element | `[]*T`: two slots, one node, on the wire, in a region and in the text as `&node` (§3.1, §16.7) | tree only, a message is copied per slot | an `Offset` may be reused by the builder, nothing preserves it through text |
 | element evolution by name | an element's type change is reported, never misdecoded (§3, §4) | a type change misdecodes or drops by field number | none, a vtable slot's type is trusted |
@@ -10579,21 +10550,18 @@ in build version (§20.5).
     the walk defines is unexported, and a schema declaration always generates an
     exported name, so the two sets cannot meet.
 
-    **ELIXIR UNSCOPES ONE AND ADDS TWO, and the collision class is the
-    language's own.** A declaration lowers to a MODULE under the unit's
-    namespace, so what a schema can collide with is exactly the set of
-    unit-level module segments the emitter defines — not a `Table*` prefix,
-    which would have been blind to three of the four this backend spells.
-    `TableRuntime` is a private crate module in Rust, which no declaration can
-    reach, and a `<Package>.TableRuntime` module in Elixir, which one lowers to
-    exactly: the claim is the UNION, so the name is claimed for every target.
-    The two additions are `BlockRuntime` and `CookRuntime`, the two
-    accelerators' shared runtimes, which are their own modules because a
-    VARIABLE unit gets no table runtime at all (above) and still has both
-    accelerators. **Elixir's own text walk claims nothing beyond
-    `TableRuntime`**: every function it spells is a function of that module,
-    reached through its owner, and a declaration lowers to a module rather than
-    to a function of one.
+    **ELIXIR ADDS TWO, and the collision class is the language's own.** A
+    declaration lowers to a MODULE under the unit's namespace, so what a
+    schema can collide with is exactly the set of unit-level module segments
+    the emitter defines — not a `Table*` prefix, which would have been blind
+    to every one of the three this backend spells. The two additions are
+    `BlockRuntime` and `CookRuntime`, the two accelerators' shared runtimes,
+    which are their own modules because a VARIABLE unit gets no table runtime
+    at all (above) and still has both accelerators; `BuildVersion` is the
+    third, claimed for every port that spells it. Elixir claims no
+    `TableRuntime` and no text-walk function: it emits no table wire and no
+    text form (schema#515), so there is no wire runtime module for a
+    declaration to collide with.
 
     **DART ADDS SIX, WIDENS SEVEN, AND CLAIMS TWELVE VERBS AGAINST FIELD
     NAMES.** A Dart library is a file and its privacy is per library, so a
@@ -12142,21 +12110,9 @@ gated on LIVE BYTES, which answers "does this leak", and a formatter that
 allocated and freed the same bytes every iteration read +0 there for an hour.
 The count is what the claim is about.
 
-**ELIXIR'S WALK CANNOT CLAIM ZERO AND DOES NOT**, and the same instrument is
-what it holds instead. The BEAM owns allocation: there is no caller-owned
-buffer for a text to be written into and no mutable struct for a read to fill,
-so a decoded value IS an allocation. `make tables-elixir-alloc-audit` counts
-what ONE iteration costs on three counters the BEAM keeps — heap words per
-PROCESS, through `:erlang.trace/3` on `:garbage_collection` summed over the
-loop's own collections; refc-binary allocations, through `binary_alloc`'s own
-call counter in `:erlang.system_info/1`, which is the payload the heap count
-cannot see; and reductions — and gates each case against a PINNED budget,
-re-pinned deliberately the way a wire golden is, with
-`make tables-elixir-alloc-negative-control` sabotaging the emitter so every
-generated load allocates sixteen refc binaries and a thousand-cell list more
-and requiring both memory columns of every case to red. A number that cannot go red is not a gate, and a
-claim a language cannot make is better stated than approximated. The readers'
-fuzz oracle beside it, `make tables-elixir-fuzz`, takes `SEED=` and
+**ELIXIR HAS NO WALK TO MEASURE**: it emits no text form and no table wire
+(schema#515), so the claim above is not one its leg makes or fails. The readers'
+fuzz oracle, `make tables-elixir-fuzz`, takes `SEED=` and
 `ELIXIR_FUZZ_N=` as every other leg's does and prints the seed it ran, so a
 find reproduces from its own output; its negative control removes both extent
 bounds from the emitted block reader, because removing one leaves the oracle

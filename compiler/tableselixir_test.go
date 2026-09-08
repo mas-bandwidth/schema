@@ -12,18 +12,27 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// TestElixirEmitsTableModules: the elixir target adds the table modules beside
-// the packet ones for a unit with tables, and adds NOTHING for a unit without —
-// the same contract the cpp, cs and rust targets hold.
+// TestElixirEmitsTableModules: the elixir target adds the BLOCK and COOK read
+// halves, <Base>Block.ex and <Base>Cook.ex with their runtime modules and the
+// unit's BuildVersion, beside the packet ones for a unit with tables, and adds
+// NOTHING for a unit without. It emits no <Base>Table.ex and no
+// TableRuntime.ex at all: the table wire's Elixir port wrote the form that
+// preceded the id-table wire and was removed rather than carried (schema#515
+// brings the current wire to Elixir).
 func TestElixirEmitsTableModules(t *testing.T) {
 	c := New()
 	with, err := c.Generate(unitFromSource(t, tableSrc), "elixir", Options{})
 	if err != nil {
 		t.Fatalf("--lang elixir: %v", err)
 	}
-	for _, want := range []string{"ProbeTable.ex", "TableRuntime.ex", "ProbeBlock.ex", "ProbeCook.ex", "BuildVersion.ex"} {
+	for _, want := range []string{"ProbeBlock.ex", "ProbeCook.ex", "BuildVersion.ex", "BlockRuntime.ex", "CookRuntime.ex"} {
 		if _, ok := with[want]; !ok {
 			t.Errorf("--lang elixir emitted no %s for a unit with tables; got %d files", want, len(with))
+		}
+	}
+	for name := range with {
+		if strings.HasSuffix(name, "Table.ex") || name == "TableRuntime.ex" {
+			t.Errorf("--lang elixir emitted %s: the previous-form table wire was removed and nothing emits it", name)
 		}
 	}
 
@@ -51,47 +60,6 @@ func TestElixirEmitsTableModules(t *testing.T) {
 	}
 }
 
-// TestElixirRefusesPointeredTables: the Elixir variable-class refusal is a
-// refusal of the WIRE SURFACE and of nothing else (docs/SPEC-TABLES.md §11),
-// exactly as the C# and Rust ones are. The wire codec is the half the variable
-// class is missing — the arena, the builder, the region, the node table — and
-// the two ACCELERATORS need none of it: a block and a cook are POINTED AT, not
-// parsed.
-func TestElixirRefusesPointeredTables(t *testing.T) {
-	c := New()
-	u := unitFromSource(t, packetSrc+`
-table Node
-{
-    value int32
-    next  *Node
-}
-`)
-	files, err := c.Generate(u, "elixir", Options{})
-	if err != nil {
-		t.Fatalf("--lang elixir refused a pointered unit outright — the accelerators need no codec: %v", err)
-	}
-	cooks := 0
-	for name, data := range files {
-		if strings.HasSuffix(name, "Table.ex") || name == "TableRuntime.ex" {
-			t.Errorf("--lang elixir emitted the WIRE surface %s for a pointered unit", name)
-		}
-		if strings.HasSuffix(name, "Cook.ex") && !strings.HasSuffix(name, "CookRuntime.ex") {
-			cooks++
-		}
-		if strings.HasSuffix(name, "Cook.ex") || strings.HasSuffix(name, "Block.ex") ||
-			name == "BuildVersion.ex" {
-			// and the refusal RIDES on every file the unit does emit, so a
-			// consumer meets it wherever they look
-			if !strings.Contains(string(data), "REFUSED, BY NAME") {
-				t.Errorf("%s carries no refusal banner for a pointered unit", name)
-			}
-		}
-	}
-	if cooks == 0 {
-		t.Error("--lang elixir emitted no cook module for a pointered unit — a cook's root is one")
-	}
-}
-
 // TestElixirRuntimeNamesAreClaimed is the Elixir half of the §11 promise, and
 // its SCAN IS THE LANGUAGE'S OWN COLLISION CLASS rather than C#'s.
 //
@@ -99,9 +67,9 @@ table Node
 // `<Package>.<Name>` — so the names a schema can collide with are exactly the
 // unit-level module segments the emitter defines, whatever they are spelled.
 // A Table* prefix would have been blind to BlockRuntime, CookRuntime and
-// BuildVersion, which are three of the four the Elixir backend actually
-// defines; scanning for the segment finds any module the emitter grows,
-// including one nobody thought to prefix.
+// BuildVersion, which are the three the Elixir backend actually defines;
+// scanning for the segment finds any module the emitter grows, including one
+// nobody thought to prefix.
 //
 // The segments a DECLARATION or a schema FILE produces are excluded, because
 // those are the schema author's own names and their collisions are refused
@@ -179,12 +147,12 @@ func TestElixirRuntimeNamesAreClaimed(t *testing.T) {
 // TestElixirRuntimeNameCollisionRepro is the REPRO the scan above exists for:
 // a declaration named for a generated module is refused by the checker in a
 // unit that declares a table, because that is where the backend writes the
-// module. None of the four is view surface: the descriptors are the view
-// file's, and these are the table, block and cook runtimes and the build
-// version, so a TABLE-FREE unit keeps every one of them
-// (docs/SPEC-TABLES.md §11, schema#672).
+// module. None of the three is view surface: the descriptors are the view
+// file's, and these are the block and cook runtimes and the build version, so
+// a TABLE-FREE unit keeps every one of them (docs/SPEC-TABLES.md §11,
+// schema#672).
 func TestElixirRuntimeNameCollisionRepro(t *testing.T) {
-	for _, name := range []string{"TableRuntime", "BlockRuntime", "CookRuntime", "BuildVersion"} {
+	for _, name := range []string{"BlockRuntime", "CookRuntime", "BuildVersion"} {
 		t.Run(name, func(t *testing.T) {
 			refused := "package probe\n\nenum " + name + " { A, B }\n\ntable Holder\n{\n    g " + name + "\n}\n"
 			errs := checkErrors(t, refused)
@@ -197,7 +165,7 @@ func TestElixirRuntimeNameCollisionRepro(t *testing.T) {
 					"view-surface name is claimed in every unit instead", name)
 			}
 			// and a table-free unit keeps it: no view file spells any of the
-			// four, and the modules that do are written into table sources
+			// three, and the modules that do are written into table sources
 			// that unit never gets
 			free := "package probe\n\nenum " + name + " { A, B }\n\ntype Holder\n{\n    g " + name + "\n}\n"
 			if errs := checkErrors(t, free); len(errs) > 0 {
@@ -210,11 +178,11 @@ func TestElixirRuntimeNameCollisionRepro(t *testing.T) {
 // TestElixirRefusesFileModuleCollision: a declaration lowers to a MODULE under
 // the unit's namespace, so one named for a generated file's module would merge
 // two unrelated modules. The unit-level runtime names are the checker's claim;
-// these three are derived from a schema FILE's own basename, which no
+// these two are derived from a schema FILE's own basename, which no
 // unit-level registry can hold, so the backend refuses them by name.
 func TestElixirRefusesFileModuleCollision(t *testing.T) {
 	c := New()
-	for _, suffix := range []string{"Table", "Block", "Cook"} {
+	for _, suffix := range []string{"Block", "Cook"} {
 		t.Run(suffix, func(t *testing.T) {
 			u := unitFromSource(t, tableSrc+"\ntype Probe"+suffix+"\n{\n    x int32\n}\n")
 			_, err := c.Generate(u, "elixir", Options{})
@@ -229,16 +197,16 @@ func TestElixirRefusesFileModuleCollision(t *testing.T) {
 	}
 	// and the same names in a TABLE-FREE unit are the author's: this backend
 	// emits no such module for one, so nothing collides
-	if _, err := c.Generate(unitFromSource(t, packetSrc+"\ntype ProbeTable\n{\n    x int32\n}\n"), "elixir", Options{}); err != nil {
-		t.Errorf("a TABLE-FREE unit must keep the name ProbeTable: %v", err)
+	if _, err := c.Generate(unitFromSource(t, packetSrc+"\ntype ProbeBlock\n{\n    x int32\n}\n"), "elixir", Options{}); err != nil {
+		t.Errorf("a TABLE-FREE unit must keep the name ProbeBlock: %v", err)
 	}
 }
 
 // TestElixirModuleNamesAreAliases: a generated MODULE name is not a filename.
 // An Elixir alias segment must begin upper-case, so `my_frame.schema` emits
-// `my_frameTable.ex` — the packet emitter's own file convention — carrying
-// `<Ns>.MyFrameTable`. Emitting the basename raw produced
-// `defmodule Probe.my_frameTable`, which is an ArgumentError at compile time,
+// `my_frameBlock.ex` — the packet emitter's own file convention — carrying
+// `<Ns>.MyFrameBlock`. Emitting the basename raw produced
+// `defmodule Probe.my_frameBlock`, which is an ArgumentError at compile time,
 // and left this backend's own collision check (which already reads the exported
 // form) naming a different module than the emitter wrote.
 //
@@ -256,7 +224,7 @@ table Holder
 		t.Fatalf("--lang elixir: %v", err)
 	}
 	// the FILES keep the schema basename, as the packet emitter's do
-	for _, want := range []string{"my_frameTable.ex", "my_frameBlock.ex", "my_frameCook.ex"} {
+	for _, want := range []string{"my_frameBlock.ex", "my_frameCook.ex"} {
 		if _, ok := files[want]; !ok {
 			t.Errorf("no %s emitted; got %d files", want, len(files))
 		}
@@ -273,9 +241,9 @@ table Holder
 			}
 		}
 	}
-	// the three the basename derives, spelled out so a rename of the helper
+	// the two the basename derives, spelled out so a rename of the helper
 	// cannot make the check vacuous
-	for _, want := range []string{"Probe.MyFrameTable", "Probe.MyFrameBlock", "Probe.MyFrameCook"} {
+	for _, want := range []string{"Probe.MyFrameBlock", "Probe.MyFrameCook"} {
 		found := false
 		for _, data := range files {
 			if strings.Contains(string(data), "defmodule "+want+" do") {

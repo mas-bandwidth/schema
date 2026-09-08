@@ -41,12 +41,11 @@ which no valid image can show you.
 
 **A PER-BACKEND WALK CONTROL, one per port with a text form**, because a
 walker's break is the backend's and not the data's:
-`conformance-negative-control-go-walk` breaks the Go walk's offset arithmetic
-and `conformance-negative-control-elixir` breaks the Elixir walk's KEY, which is
-what stands in for an offset in a language whose fields have none — the read
-places every scalar under a name the instance does not have. Each has the same
-second half, and it is the point: `json-read` goes red and `json-write` stays
-green, which is what says the break is the READER's.
+`conformance-negative-control-go-walk` breaks the Go walk's offset arithmetic.
+It has the same second half as every control here, and it is the point:
+`json-read` goes red and `json-write` stays green, which is what says the
+break is the READER's. (Elixir emits no text form and has no walk control;
+schema#515 brings its wire.)
 
 ## The shape
 
@@ -489,8 +488,8 @@ from a binary that already existed, which the contract exists to allow.
 **The two MANAGED legs differ by seven times, and the difference is the SHAPE
 rather than the runtime.** Both start a process per surface; the C# leg starts
 one more per cook, because `test/cs-cook`'s dump takes one root per invocation,
-and the Java leg starts none, because its generated units — the wire ones, the
-block unit and the pointered unit — are packages of a single classpath, so both
+and the Java leg starts none, because its generated units — the block unit and
+the pointered unit — are packages of a single classpath, so both
 cook surfaces ride inside processes that were already starting. Twelve JVM
 starts is 2.2 s; twelve runtime starts plus six more is 11.7 s. A managed leg
 pays for its process starts and nothing else, so the number of them is the
