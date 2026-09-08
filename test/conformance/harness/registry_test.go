@@ -51,7 +51,8 @@ func TestRegistryDiscoversAPlantedLanguage(t *testing.T) {
 	writeFile(t, filepath.Join(tree, "test", "conformance", "zz", "ci.json"),
 		`{"targets": "build/conformance-harness build/conformance-zz", "zztool": "1.0"}`+"\n")
 	writeExec(t, filepath.Join(tree, "bench", "tables", "zz", "leg"),
-		"#!/bin/sh\ncase \"$1\" in\nbuild) exit 0 ;;\nrun) echo 'zz,bench_table,write,1,1,1,1,1,1,1,0,0,table,pkg,contract,default,unknown' ;;\nesac\n")
+		"#!/bin/sh\ncase \"$1\" in\nbuild) exit 0 ;;\nrun) echo 'zz,bench_table,write,1,1,1,1,1,1,1,0,0,table,pkg,contract,default,unknown'\n"+
+			"echo 'zz,bench_table,round_trip,1,1,1,1,1,1,1,0,0,table,pkg,contract,default,unknown' ;;\nesac\n")
 	writeFile(t, filepath.Join(tree, "make", "zz.mk"), strings.Join([]string{
 		".PHONY: test-zz update-goldens-zz",
 		"test-zz: ;",
