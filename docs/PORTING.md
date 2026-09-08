@@ -810,7 +810,9 @@ convention. **The verbs are PLURAL** because the form's primitive is a batch of
 bodies of one root and a single message is the batch of one. C++, C and the
 independent tool engine carry the bitpacked form-`2` path. The C conformance
 and mutation drivers exercise fixed and variable message roots. Retained
-unknowns use caller-owned byte and identity stores; `tables-c-retain` checks
+unknowns use caller-owned byte and identity stores. Replacing an occurrence
+scans the retained-record log, whose size is bounded by the caller's storage.
+`tables-c-retain` checks
 file/message load retention and retained file saves, and
 `tables-c-retain-negative-control` drops a field and fails the public report. The BODY's
 rules are the ones a port already has,

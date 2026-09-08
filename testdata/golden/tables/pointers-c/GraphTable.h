@@ -5195,7 +5195,7 @@ static SCHEMA_UNUSED int scene_load_body( TableReader * r, Scene * value )
                             value->layers_count = (int32_t) i + 1;
                         }
                         end_layers: ;
-                        { int32_t tail; for (tail=value->layers_count;tail<previous_count;tail++) {
+                        { uint32_t tail; for (tail=(uint32_t)value->layers_count;tail<(uint32_t)previous_count && tail<4;tail++) {
                          layer_reset(&value->layers[tail]);
                         } }
                     }
@@ -8495,8 +8495,8 @@ static SCHEMA_UNUSED int scene_load_body_retain( TableReader * r, Scene * value 
                             value->layers_count = (int32_t) i + 1;
                         }
                         end_layers: ;
-                        { int32_t tail;
-                        for (tail=value->layers_count;tail<previous_count;tail++) {
+                        { uint32_t tail;
+                        for (tail=(uint32_t)value->layers_count;tail<(uint32_t)previous_count && tail<4;tail++) {
                          layer_reset(&value->layers[tail]);
                         } }
                     }

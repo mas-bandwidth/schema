@@ -2552,7 +2552,7 @@ static SCHEMA_UNUSED int loadout_config_load_body( TableReader * r, LoadoutConfi
                             value->grades_count = (int32_t) i + 1;
                         }
                         end_grades: ;
-                        { int32_t tail; for (tail=value->grades_count;tail<previous_count;tail++) {
+                        { uint32_t tail; for (tail=(uint32_t)value->grades_count;tail<(uint32_t)previous_count && tail<4;tail++) {
                          memset(&value->grades[tail],0,sizeof(value->grades[tail]));
                         } }
                     }
@@ -2768,7 +2768,7 @@ static SCHEMA_UNUSED int loadout_config_load_body( TableReader * r, LoadoutConfi
                             value->attachments_count = (int32_t) i + 1;
                         }
                         end_attachments: ;
-                        { int32_t tail; for (tail=value->attachments_count;tail<previous_count;tail++) {
+                        { uint32_t tail; for (tail=(uint32_t)value->attachments_count;tail<(uint32_t)previous_count && tail<8;tail++) {
                          attachment_reset(&value->attachments[tail]);
                         } }
                     }
@@ -4644,7 +4644,7 @@ static SCHEMA_UNUSED int root_config_load_body( TableReader * r, RootConfig * va
                             value->weapons_count = (int32_t) i + 1;
                         }
                         end_weapons: ;
-                        { int32_t tail; for (tail=value->weapons_count;tail<previous_count;tail++) {
+                        { uint32_t tail; for (tail=(uint32_t)value->weapons_count;tail<(uint32_t)previous_count && tail<8;tail++) {
                          weapon_config_reset(&value->weapons[tail]);
                         } }
                     }
@@ -4684,7 +4684,7 @@ static SCHEMA_UNUSED int root_config_load_body( TableReader * r, RootConfig * va
                             value->profiles_count = (int32_t) i + 1;
                         }
                         end_profiles: ;
-                        { int32_t tail; for (tail=value->profiles_count;tail<previous_count;tail++) {
+                        { uint32_t tail; for (tail=(uint32_t)value->profiles_count;tail<(uint32_t)previous_count && tail<4;tail++) {
                          profile_config_reset(&value->profiles[tail]);
                         } }
                     }

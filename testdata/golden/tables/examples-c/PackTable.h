@@ -2056,7 +2056,7 @@ static SCHEMA_UNUSED int ship_entry_load_body( TableReader * r, ShipEntry * valu
                             value->hardpoints_count = (int32_t) i + 1;
                         }
                         end_hardpoints: ;
-                        { int32_t tail; for (tail=value->hardpoints_count;tail<previous_count;tail++) {
+                        { uint32_t tail; for (tail=(uint32_t)value->hardpoints_count;tail<(uint32_t)previous_count && tail<4;tail++) {
                          memset(&value->hardpoints[tail],0,sizeof(value->hardpoints[tail]));
                         } }
                     }
@@ -3341,7 +3341,7 @@ static SCHEMA_UNUSED int pack_config_load_body( TableReader * r, PackConfig * va
                             value->reserves_count = (int32_t) i + 1;
                         }
                         end_reserves: ;
-                        { int32_t tail; for (tail=value->reserves_count;tail<previous_count;tail++) {
+                        { uint32_t tail; for (tail=(uint32_t)value->reserves_count;tail<(uint32_t)previous_count && tail<3;tail++) {
                          ship_entry_reset(&value->reserves[tail]);
                         } }
                     }

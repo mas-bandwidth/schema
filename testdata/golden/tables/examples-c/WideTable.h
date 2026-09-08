@@ -1616,7 +1616,7 @@ static SCHEMA_UNUSED int wide_blob_load_body( TableReader * r, WideBlob * value 
                             value->samples_count = (int32_t) i + 1;
                         }
                         end_samples: ;
-                        { int32_t tail; for (tail=value->samples_count;tail<previous_count;tail++) {
+                        { uint32_t tail; for (tail=(uint32_t)value->samples_count;tail<(uint32_t)previous_count && tail<70000;tail++) {
                          memset(&value->samples[tail],0,sizeof(value->samples[tail]));
                         } }
                     }

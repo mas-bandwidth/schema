@@ -137,14 +137,14 @@ reach.
   going wide costs no allocation and no lock per node.
 
   **WHO CALLS THE ALLOCATOR IS PER FORM, and it is worth saying exactly.** The
-  arena's segments and `Lock`'s packed region are the RUNTIME's own calls —
-  `calloc` and `malloc` by name in both C++ and C — and a caller-provided
-  allocator is not threaded through them today. What the caller does own is the
-  REGION a load fills: `LoadMeasure` sizes it and the caller supplies it, which
-  is allocation with the caller holding the pointer. The BLOCK form (§19.1) is
-  the one surface that takes a caller-provided allocator with malloc semantics,
-  and there it is real: C++ takes an alloc/free pair with a context, C the same
-  three as a struct, used once at build time and never on the fill path. C# also threads a zeroed native allocation/free pair through arena, packing
+  C++ and C variable-length runtimes carry the caller's zeroed allocation/free
+  pair and context through arena segments, packing, numbering scratch and the
+  packed region. The default pair uses the runtime's allocation hooks (§6.5).
+  The REGION a load fills is caller-owned: `LoadMeasure` sizes it and the caller
+  supplies it. The BLOCK form (§19.1) takes a separate caller-provided allocator
+  with malloc semantics: C++ takes an alloc/free pair with a context, C the same
+  three as a struct, used once at build time and never on the fill path.
+  C# also threads a zeroed native allocation/free pair through arena, packing
   and native numbering scratch; its managed authoring classes use the CLR. Other
   backends allocate inside their runtime and say so. No port contorts itself
   toward zero allocation for a variable-length table.

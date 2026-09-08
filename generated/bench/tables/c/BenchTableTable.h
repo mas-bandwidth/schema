@@ -4840,7 +4840,7 @@ static SCHEMA_UNUSED int table_mixed_load_body( TableReader * r, TableMixed * va
                             value->entities_count = (int32_t) i + 1;
                         }
                         end_entities: ;
-                        { int32_t tail; for (tail=value->entities_count;tail<previous_count;tail++) {
+                        { uint32_t tail; for (tail=(uint32_t)value->entities_count;tail<(uint32_t)previous_count && tail<8;tail++) {
                          table_entity_reset(&value->entities[tail]);
                         } }
                     }
@@ -4880,7 +4880,7 @@ static SCHEMA_UNUSED int table_mixed_load_body( TableReader * r, TableMixed * va
                             value->stats_count = (int32_t) i + 1;
                         }
                         end_stats: ;
-                        { int32_t tail; for (tail=value->stats_count;tail<previous_count;tail++) {
+                        { uint32_t tail; for (tail=(uint32_t)value->stats_count;tail<(uint32_t)previous_count && tail<80;tail++) {
                          table_stat_reset(&value->stats[tail]);
                         } }
                     }
