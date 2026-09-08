@@ -83,11 +83,13 @@ type wireRoot struct {
 	// paths (docs/SPEC-TABLES.md §6.6)
 	retain bool
 	// the C ABI storage each node type commands (docs/SPEC-TABLES.md §6.5,
-	// §20.3), by wire type id, eight-aligned as a reader's LoadMeasure rounds it
+	// §20.3), by wire type id, rounded to the unit alignment as a reader's LoadMeasure rounds it
 	storage               map[uint64]int64
 	rootStorage           int64
+	align                 int64
 	maxStorage            int64
-	bytesEdge, stringEdge bool
+	maxElement            int64
+	blobBytes, blobString bool
 }
 
 // nodeDirEntryBytes is one attribution entry (§6.3): a u64 offset and a u64
@@ -96,9 +98,9 @@ const nodeDirEntryBytes = int64(16)
 
 // nodeRecordHeaderBytes is the least a record costs on the wire (§3.1): its
 // type id and its length. It bounds how many records a wire can carry.
-const nodeRecordHeaderBytes = int64(12)
+const nodeRecordHeaderBytes = int64(2)
 
-func alignUp8(n int64) int64 { return (n + 7) &^ 7 }
+func (r *wireRoot) roundStorage(n int64) int64 { return (n + r.align - 1) & -r.align }
 
 // THE RETENTION ARM'S TWO CAPACITIES (docs/SPEC-TABLES.md §6.6), and they are
 // declared LARGE ON PURPOSE.
@@ -141,8 +143,23 @@ func newWireRoot(u *units, unitKey, rootName string, message, retain bool) (*wir
 			return nil, fmt.Errorf("unit %s: its own announcement was refused: %w", unitKey, err)
 		}
 	}
-	r.bytesEdge, r.stringEdge = ir.PointerReachableBlobs(def)
-	r.rootStorage = alignUp8(ir.RecordLayout(unit, def).Size)
+	for name := range ir.TableClosure(unit) {
+		st := m.Lookup(name)
+		if st == nil {
+			continue
+		}
+		for _, f := range st.Fields {
+			if f.IsList() {
+				size, _ := ir.ListElementLayout(unit, f)
+				r.maxElement = max(r.maxElement, size)
+			} else if f.IsMap() {
+				r.maxElement = max(r.maxElement, ir.RecordLayout(unit, f.MapEntry).Size)
+			}
+		}
+	}
+	r.align = ir.TableRegionAlign(unit)
+	r.rootStorage = r.roundStorage(ir.RecordLayout(unit, def).Size)
+	r.blobBytes, r.blobString = ir.PointerReachableBlobs(def)
 	// THE STORAGE A RECORD COMMANDS is its type's, and only for a type THIS
 	// ROOT can place: a table no pointer below the root targets is a node the
 	// reader cannot name, so it commands none (docs/SPEC-TABLES.md §3.1,
@@ -153,7 +170,7 @@ func newWireRoot(u *units, unitKey, rootName string, message, retain bool) (*wir
 		if st == nil {
 			continue
 		}
-		size := alignUp8(ir.RecordLayout(unit, st).Size)
+		size := r.roundStorage(ir.RecordLayout(unit, st).Size)
 		r.storage[ir.TableTypeId(st.WireName())] = size
 		if size > r.maxStorage {
 			r.maxStorage = size
@@ -185,8 +202,9 @@ type oracleAnswer struct {
 	encFail bool
 	// the region bytes a variable-class reader owes: exact when the node
 	// table read whole, else the most the framing could have commanded
-	exact bool
-	bytes int64
+	exact          bool
+	measureRefused bool
+	bytes          int64
 	// the same two counters from the engine
 	retained   int
 	retainLost int
@@ -198,20 +216,29 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 			err = fmt.Errorf("the oracle PANICKED on the mutant: %v\n%s", p, debug.Stack())
 		}
 	}()
+	// A region caller measures before decoding. A storage refusal ends that
+	// path; a header that merely crosses its L is still decoded below using
+	// the region's recovery rules rather than the builder's count refusal.
+	if r.variable && !r.message {
+		if _, _, refused := tablewire.FileRegionMeasure(r.model.Unit, r.def, data); refused {
+			ans.measureRefused, ans.encFail, ans.bytes = true, true, -1
+			return ans, nil
+		}
+	}
 	inst := r.model.New(r.def)
 	var rep tabletext.Report
 	// THE MESSAGE FORM's mutants are read against the CONNECTION's table and
 	// written back the same way (docs/SPEC-TABLES.md §3.3). Every other rule
 	// of the read is §3's and §4's, unchanged, so the branch is here and
 	// nowhere else in this file.
-	decode := func() (bool, error) { return tablewire.Decode(r.model, inst, data, &rep) }
+	decode := func() (bool, error) { return tablewire.DecodeRegion(r.model, inst, data, &rep) }
 	encode := func() ([]byte, error) { return tablewire.Encode(r.model, inst) }
 	if r.retain {
 		// THE RETENTION ARM (docs/SPEC-TABLES.md §6.6): the same mutant read
 		// and written back through the retaining pair, with the two stores the
 		// arm declares.
 		retain := tablewire.Retain{Capacity: retainFuzzCapacity, IdCapacity: retainFuzzIdCapacity}
-		decode = func() (bool, error) { return tablewire.DecodeRetain(r.model, inst, data, &retain, &rep) }
+		decode = func() (bool, error) { return tablewire.DecodeRegionRetain(r.model, inst, data, &retain, &rep) }
 		encode = func() ([]byte, error) {
 			var saved tabletext.Report
 			out, err := tablewire.EncodeRetain(r.model, inst, &retain, &saved)
@@ -276,28 +303,22 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 			r.sizeBatch(&ans, data)
 			return ans, nil
 		}
-		records, whole := tablewire.FileNodeRecords(data)
+		measured, whole, refused := tablewire.FileRegionMeasure(r.model.Unit, r.def, data)
+		if refused {
+			ans.bytes = -1
+			ans.measureRefused = true
+			return ans, nil
+		}
 		if whole {
 			ans.exact = true
-			ans.bytes = r.rootStorage + (int64(len(records))+1)*nodeDirEntryBytes
-			for _, record := range records {
-				if (r.bytesEdge && record.TypeId == ir.BytesWireTypeId) || (r.stringEdge && record.TypeId == ir.StringWireTypeId) {
-					terminator := int64(0)
-					if record.TypeId == ir.StringWireTypeId {
-						terminator = 1
-					}
-					ans.bytes += alignUp8(8 + record.Length + terminator)
-					continue
-				}
-				ans.bytes += r.storage[record.TypeId] // a type id this build cannot name commands none
-			}
+			ans.bytes = measured
 		} else {
 			records := int64(len(data))/nodeRecordHeaderBytes + 1
-			storage := r.maxStorage
-			if r.bytesEdge || r.stringEdge {
-				storage += alignUp8(int64(len(data)) + 9)
+			ans.bytes = r.rootStorage + records*(r.maxStorage+nodeDirEntryBytes)
+			ans.bytes += int64(len(data)) * (r.maxElement + 16)
+			if r.blobBytes || r.blobString {
+				ans.bytes += int64(len(data)) + records*16
 			}
-			ans.bytes = r.rootStorage + records*(storage+nodeDirEntryBytes)
 		}
 	}
 	return ans, nil
@@ -463,12 +484,15 @@ func wireVerdict(root *wireRoot, reply legReply, ans oracleAnswer) string {
 			// measure and the oracle reads body one and counts one malformed.
 			// Requiring the tuples to match would require one of those two
 			// sentences to be false.
-			if !ans.report.Malformed && !ans.report.Refused {
+			if !ans.measureRefused && !ans.report.Malformed && !ans.report.Refused {
 				return "the leg's LoadMeasure refused the framing; the oracle read the same bytes cleanly"
 			}
 			return ""
 		}
 		return "the leg returned no root — its LoadMeasure sized a region its Load then refused"
+	}
+	if ans.measureRefused {
+		return "the leg loaded a wire whose container framing requires refusal"
 	}
 	if reply.report != ans.report {
 		return fmt.Sprintf("the report differs: the leg says %s, the oracle says %s", reply.report, ans.report)
@@ -888,7 +912,7 @@ func (r *wireRoot) sizeBatch(ans *oracleAnswer, data []byte) {
 				if rec.TypeId == ir.StringWireTypeId {
 					terminator = 1
 				}
-				ans.bytes += alignUp8(8 + rec.Length + terminator)
+				ans.bytes += r.roundStorage(8 + rec.Length + terminator)
 				continue
 			}
 			ans.bytes += r.storage[rec.TypeId] // a type id this build cannot name commands none

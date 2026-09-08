@@ -5,6 +5,8 @@ package tablewire_test
 
 import (
 	"bytes"
+	"encoding/hex"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -381,4 +383,74 @@ func fieldByName(t *testing.T, inst *tabletext.Instance, name string) *tabletext
 	}
 	t.Fatalf("%s declares no field %s", inst.Def.Name, name)
 	return nil
+}
+
+func TestListFileRegionMeasureUsesFraming(t *testing.T) {
+	m := listModel(t, listUnit)
+	inst := place(t, m, "Save", listText)
+	wire, err := tablewire.Encode(m, inst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	size, whole, refused := tablewire.FileRegionMeasure(m.Unit, inst.Def, wire)
+	// Root 48, placement array24, pointer array24, scores12: rounded112.
+	// One shared LogEntry rounds to8, and two directory entries add32.
+	if size != 152 || !whole || refused {
+		t.Fatalf("list measure: %d whole=%v refused=%v", size, whole, refused)
+	}
+	scalar := listModel(t, "package probe\ntable Root { values []int32 }\n")
+	v := place(t, scalar, "Root", `{"values":[1,2,3]}`)
+	data, err := tablewire.Encode(scalar, v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := listModel(t, "package probe\ntable Root { values []int8 }\n")
+	narrow, err := tablewire.Encode(source, place(t, source, "Root", `{"values":[-128,0,127]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	widened, whole, refused := tablewire.FileRegionMeasure(scalar.Unit, v.Def, narrow)
+	if widened != 48 || !whole || refused {
+		t.Fatalf("widened list measure: %d whole=%v refused=%v", widened, whole, refused)
+	}
+	if data[5] != 3 {
+		t.Fatalf("count moved: %x", data)
+	}
+	data[5] = 4
+	size, whole, refused = tablewire.FileRegionMeasure(scalar.Unit, v.Def, data)
+	if size != -1 || !whole || !refused {
+		t.Fatalf("count over length: %d whole=%v refused=%v", size, whole, refused)
+	}
+}
+
+// The value pass reads a count against its enclosing buffer; the extent pass
+// stops at the field's L. This pinned mutant therefore measures a small region
+// but reaches an oversized count only while decoding into that region.
+func TestListCountCrossesLength(t *testing.T) {
+	m := listModel(t, `package listdemo
+ table Photo { width uint32
+ height uint32 }
+ table Album { photos []*Photo
+ cover *Photo }
+ `)
+	wire, err := hex.DecodeString("01010e0511b1968cb6ab8703020200470c1001030d0408800200000000000030b13aff4ad9b140ffffffffffffffffc3648950d28da7f1bfe9d12f93cddadb2272347df60b72170500000000000000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := m.Lookup("Album")
+	size, whole, refused := tablewire.FileRegionMeasure(m.Unit, root, wire)
+	if size != 40 || !whole || refused {
+		t.Fatalf("extent %d %v %v", size, whole, refused)
+	}
+	var report tabletext.Report
+	ok, err := tablewire.DecodeRegion(m, m.New(root), wire, &report)
+	if err != nil || ok || report != (tabletext.Report{Malformed: true}) {
+		t.Fatalf("region: %v %v %+v", ok, err, report)
+	}
+	report = tabletext.Report{Unknown: 3}
+	ok, err = tablewire.Decode(m, m.New(root), wire, &report)
+	var capRefusal *tablewire.CountRefusal
+	if ok || !errors.As(err, &capRefusal) || report != (tabletext.Report{Unknown: 3}) {
+		t.Fatalf("builder: %v %v %+v", ok, err, report)
+	}
 }

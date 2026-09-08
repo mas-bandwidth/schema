@@ -126,9 +126,8 @@ func widenableElement(f *ir.Field) bool {
 	if f.Type.Pointer || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString {
 		return false
 	}
-	if f.Type.Ref != nil {
-		return false
-	}
+	// Flags are named declarations but ride as kind 9. The kind pair alone
+	// decides widening, including flags elements (SPEC-TABLES §4).
 	return widenable(tableScalarKind(f))
 }
 

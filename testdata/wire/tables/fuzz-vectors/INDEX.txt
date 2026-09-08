@@ -136,3 +136,33 @@ message_blob_ill_formed_text blobdemo Catalog testdata/wire/tables/fuzz-vectors/
 # ill-formed sequence, or only the interior zero, goes red on one of them and
 # not the other.
 message_blob_zero_byte blobdemo Catalog testdata/wire/tables/fuzz-vectors/message_blob_zero_byte.bin message
+
+# A list's wire elements widen while its region uses the declared width.
+# Before schema#713, C++ LoadMeasure omitted this extent, then Load reported
+# a valid widening as malformed. The shared report row also checks counters.
+list_scalar_widen listdemo Save testdata/wire/tables/fuzz-vectors/list_scalar_widen.bin
+
+# placements count 2147483648: both storage paths refuse without a malformed event.
+list_count_cap listdemo Save testdata/wire/tables/fuzz-vectors/list_count_cap.bin
+
+# One key changes width; its map, rather than both map and entry, counts the event (#716).
+map_key_widen mapdemo Chunks testdata/wire/tables/fuzz-vectors/map_key_widen.bin
+
+# A scalar's truncated widened payload never lands, so it contributes no Widened event.
+list_map_truncated_widen listdemo Army testdata/wire/tables/fuzz-vectors/list_map_truncated_widen.bin
+
+# A skipped incompatible map repeat preserves the earlier decoded occurrence.
+map_repeat_mismatch mapdemo Crews testdata/wire/tables/fuzz-vectors/map_repeat_mismatch.bin
+
+# The enclosing count crosses L: the extent is 40 bytes, and the region load
+# empties photos and marks damage. The builder path refuses its partial value.
+list_count_cross_length listdemo Album testdata/wire/tables/fuzz-vectors/list_count_cross_length.bin
+
+# Flags accept unsigned scalar widening in positional collections (#717).
+list_flags_widen listdemo Mixed testdata/wire/tables/fuzz-vectors/list_flags_widen.bin
+
+# A truncated message bytes payload fails before any length clamp is counted.
+message_bytes_truncated backenddemo LoginRequest testdata/wire/tables/fuzz-vectors/message_bytes_truncated.bin message
+
+# The key scan reads through an incompatible occurrence; the final key kind wins.
+map_key_repeat_kind mapdemo Slots testdata/wire/tables/fuzz-vectors/map_key_repeat_kind.bin

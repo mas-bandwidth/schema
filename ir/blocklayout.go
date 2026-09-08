@@ -421,6 +421,23 @@ func RegionAlignOf(aligns ...int64) int64 {
 	return a
 }
 
+// TableRegionAlign is the canonical table arena alignment for the unit's
+// complete closure, including indirect records, union arms and containers.
+// Native-layout ports may use their own record alignment for wire regions.
+func TableRegionAlign(u *Unit) int64 {
+	align := RegionAlignFloor
+	for name := range TableClosure(u) {
+		st := u.Tables[name]
+		if st == nil {
+			st = u.Structs[name]
+		}
+		if st != nil {
+			align = max(align, RecordLayout(u, st).Align)
+		}
+	}
+	return align
+}
+
 // FieldPieces is one field's contiguous storage members in order, as the
 // generated record declares them: a `string(N)` is a `char[N+1]` buffer AND an
 // int32 used length, a counted array is its elements AND an int32 count, an

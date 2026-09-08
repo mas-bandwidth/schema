@@ -65,6 +65,24 @@
 #include "W2Table.h"
 #include "R1Table.h"
 #include "R2Table.h"
+#include "CellsTable.h"
+#include "ChunksTable.h"
+#include "CrewsTable.h"
+#include "DepthTable.h"
+#include "DocsTable.h"
+#include "FleetTable.h"
+#include "PairsTable.h"
+#include "RowsTable.h"
+#include "RunsTable.h"
+#include "SlotsTable.h"
+#include "SpansTable.h"
+#include "TextTable.h"
+#include "TrailsTable.h"
+#include "SaveTable.h"
+#include "HoldersTable.h"
+#include "SharedTable.h"
+#include "MigrateTable.h"
+#include "ReportTable.h"
 
 struct Reply
 {
@@ -390,6 +408,30 @@ static const Codec codecs[] = {
     // sites to plant at (§4.2)
     FIXED( "widedemo", wide, Caption ),
     FIXED( "widedemo", wide, Stamp ),
+    VARIABLE( "mapdemo", mapdemo, Cells ),
+    VARIABLE( "mapdemo", mapdemo, Chunks ),
+    VARIABLE( "mapdemo", mapdemo, Crews ),
+    VARIABLE( "mapdemo", mapdemo, Depth ),
+    VARIABLE( "mapdemo", mapdemo, Docs ),
+    VARIABLE( "mapdemo", mapdemo, Fleet ),
+    VARIABLE( "mapdemo", mapdemo, Pairs ),
+    VARIABLE( "mapdemo", mapdemo, Slots ),
+    VARIABLE( "mapdemo", mapdemo, Spans ),
+    VARIABLE( "mapdemo", mapdemo, Text ),
+    VARIABLE( "mapdemo", mapdemo, Trails ),
+    VARIABLE( "mapdemo", mapdemo, Runs ),
+    VARIABLE( "mapdemo", mapdemo, Row ),
+    VARIABLE( "mapdemo", mapdemo, WideRow ),
+    VARIABLE( "mapdemo", mapdemo, EdgeRow ),
+    VARIABLE( "listdemo", listdemo, Save ),
+    VARIABLE( "listdemo", listdemo, Mixed ),
+    VARIABLE( "listdemo", listdemo, Album ),
+    VARIABLE( "listdemo", listdemo, Sheet ),
+    VARIABLE( "listdemo", listdemo, Army ),
+    VARIABLE( "listdemo", listdemo, Unbounded ),
+    VARIABLE( "listdemo", listdemo, Ints ),
+    VARIABLE( "listdemo", listdemo, Floats ),
+    VARIABLE( "listdemo", listdemo, Bytes ),
     VARIABLE( "graphdemo", graphdemo, Scene ),
     VARIABLE( "blobdemo", blobdemo, Catalog ),
     VARIABLE( "tblp2", tblp2, Chain ),

@@ -875,7 +875,15 @@ func DecodeRetain(m *tabletext.Model, inst *tabletext.Instance, data []byte, ret
 		return Decode(m, inst, data, report)
 	}
 	rt := newRetainState(m, retain)
-	return decodeWith(m, inst, data, report, rt)
+	return decodeWith(m, inst, data, report, rt, false)
+}
+
+// DecodeRegionRetain is DecodeRegion with the caller's retention store.
+func DecodeRegionRetain(m *tabletext.Model, inst *tabletext.Instance, data []byte, retain *Retain, report *tabletext.Report) (bool, error) {
+	if retain == nil {
+		return DecodeRegion(m, inst, data, report)
+	}
+	return decodeWith(m, inst, data, report, newRetainState(m, retain), true)
 }
 
 // EncodeRetain is [Encode] from the same tree, with the retained fields

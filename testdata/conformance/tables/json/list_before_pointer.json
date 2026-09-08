@@ -1,0 +1,16 @@
+{
+  "photos": [
+    {
+      "width": 2,
+      "height": 0
+    },
+    {
+      "&node": 1,
+      "width": 1,
+      "height": 0
+    }
+  ],
+  "cover": {
+    "&node": 1
+  }
+}

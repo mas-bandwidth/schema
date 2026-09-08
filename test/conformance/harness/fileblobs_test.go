@@ -31,7 +31,7 @@ func TestFileBlobSizingIncludesPayloads(t *testing.T) {
 			if record.TypeId == ir.StringWireTypeId {
 				extra = 1
 			}
-			blobBytes += alignUp8(8 + record.Length + extra)
+			blobBytes += root.roundStorage(8 + record.Length + extra)
 		}
 	}
 	if blobBytes != 72 {

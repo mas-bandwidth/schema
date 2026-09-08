@@ -389,6 +389,9 @@ func (d *bitDecoder) nodeTable(inst *tabletext.Instance, st *decodeState) bool {
 				// no storage, its bytes are the ones the framing already
 				// stepped over, and ONE unknown counts at the node (§2.5)
 				d.report.Unknown++
+				if d.rt != nil {
+					d.rt.lost(d.report)
+				}
 				continue
 			}
 			// A TEXT BLOB'S CONTENT IS REFUSED ON THE SAME TERMS as a kind 12
@@ -410,6 +413,9 @@ func (d *bitDecoder) nodeTable(inst *tabletext.Instance, st *decodeState) bool {
 			// and every pointer naming it reads null. The unknown is counted
 			// once, at the node, not once per pointer.
 			d.report.Unknown++
+			if d.rt != nil {
+				d.rt.lost(d.report)
+			}
 			continue
 		}
 		st.nodes[i] = Node{Inst: d.m.New(sd)}
@@ -419,7 +425,7 @@ func (d *bitDecoder) nodeTable(inst *tabletext.Instance, st *decodeState) bool {
 		if st.nodes[i].Inst == nil {
 			continue
 		}
-		sub := &bitDecoder{m: d.m, v: d.v, report: d.report, refBits: d.refBits, indexBits: d.indexBits, st: st, spots: d.spots,
+		sub := &bitDecoder{m: d.m, v: d.v, report: d.report, refBits: d.refBits, indexBits: d.indexBits, st: st, spots: d.spots, rt: d.rt,
 			r: &bitReader{b: d.r.b, n: rec.end, off: rec.start}}
 		if !sub.body(st.nodes[i].Inst) {
 			return false
