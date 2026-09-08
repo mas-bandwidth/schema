@@ -29,7 +29,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"sort"
 	"strings"
 )
@@ -150,8 +149,12 @@ func aggregateCmd(files []string) {
 	// a bench OR PATH missing from the lists would silently vanish from the
 	// pass, which is exactly what happened to round_trip when the gen
 	// bench_mixed rows went data-driven (#191).
-	// Printed keys are counted and any straggler REFUSES the aggregation.
-	printed := 0
+	// Printed keys are REMEMBERED and any straggler REFUSES the aggregation,
+	// named: the diagnostic walks the accumulated keys against the printed
+	// set, not against the lists, so a row on any unknown dimension — lang
+	// included, which the old bench-or-path filter named nothing for
+	// (#693) — is the one the message shows.
+	printed := map[key]bool{}
 	for _, l := range langs {
 		for _, b := range order {
 			for _, p := range paths {
@@ -161,7 +164,7 @@ func aggregateCmd(files []string) {
 					if !ok {
 						continue
 					}
-					printed++
+					printed[k] = true
 					rates := append([]float64{}, a.rates...)
 					sort.Float64s(rates)
 					n := len(rates)
@@ -184,10 +187,18 @@ func aggregateCmd(files []string) {
 			}
 		}
 	}
-	if printed != len(acc) {
-		fmt.Fprintf(os.Stderr, "aggregate: REFUSING: %d row key(s) accumulated but not printed — the bench or path lists do not know every row the rounds measured (bench: %s; path: %s):\n", len(acc)-printed, strings.Join(order, ", "), strings.Join(paths, ", "))
+	if len(printed) != len(acc) {
+		langKeys := make([]string, 0, len(langs))
+		for _, l := range langs {
+			langKeys = append(langKeys, l.key)
+		}
+		codecKeys := make([]string, 0, len(codecs))
+		for _, c := range codecs {
+			codecKeys = append(codecKeys, fmt.Sprintf("%q", c))
+		}
+		fmt.Fprintf(os.Stderr, "aggregate: REFUSING: %d row key(s) accumulated but not printed — the lang, bench, path or codec lists do not know every row the rounds measured (lang: %s; bench: %s; path: %s; codec: %s):\n", len(acc)-len(printed), strings.Join(langKeys, ", "), strings.Join(order, ", "), strings.Join(paths, ", "), strings.Join(codecKeys, ", "))
 		for _, k := range keys {
-			if !slices.Contains(order, k.bench) || !slices.Contains(paths, k.path) {
+			if !printed[k] {
 				fmt.Fprintf(os.Stderr, "    %s/%s/%s\n", k.lang, k.bench, k.path)
 			}
 		}

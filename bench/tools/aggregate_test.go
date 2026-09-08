@@ -140,6 +140,23 @@ func TestAggregateRefusesAPathTheListDoesNotKnow(t *testing.T) {
 	}
 }
 
+// The other negative control (#693): a row whose LANGUAGE the list does not
+// know is a straggler too, and the refusal must name it. The old diagnostic
+// loop filtered on bench and path alone, so a lang-only straggler produced
+// the "accumulated but not printed" heading over an empty list.
+func TestAggregateRefusesALanguageTheListDoesNotKnowByName(t *testing.T) {
+	dir := t.TempDir()
+	r0 := writeRound(t, dir, "round-0-zig.csv", "0",
+		"zig,bench_mixed,write,4000000,100,1,9000000,9000000,9000000,3759.77,0.00,6b213fbfa1a03a99,gen,hdr,removed,O3,unknown")
+	out, errOut, code := runTool(t, "aggregate", r0)
+	if code != 2 {
+		t.Fatalf("aggregate accepted a row in an unknown language (exit %d)\n--- stdout ---\n%s--- stderr ---\n%s", code, out, errOut)
+	}
+	if !strings.Contains(errOut, "accumulated but not printed") || !strings.Contains(errOut, "zig/bench_mixed/write") {
+		t.Errorf("the straggler refusal did not fire naming the lang-only row:\n%s", errOut)
+	}
+}
+
 // bands reads its PRIOR files from its second argument onward. The same
 // shadow class that broke aggregate was recreated here by the first rename
 // (the loop kept reading `paths[1:]`, which had become the column list), so

@@ -1,0 +1,82 @@
+0xab01029b01ed159e
+schema-build-version 3
+protocol 6f357df726f08bc5
+byteorder little
+block prologue=magic:8,build_version:8,byte_order:8
+record Album sizeof=24 alignof=8
+    field 40b1d94aff3ab130 kind=14 offset=0 size=16 type=Photo elem=8 array=unbounded
+    field aa19a78e404dea20 kind=17 offset=16 size=8 type=Photo
+record Army sizeof=24 alignof=8
+    field 7848019b0c02a926 kind=14 offset=0 size=16 type=Squad elem=24 array=unbounded
+    field bf82010f6f71eae9 kind=4 offset=16 size=4
+record Bounded sizeof=40 alignof=4
+    field 3e7884bf4f412c6f kind=13 offset=0 size=36 type=Unit elem=4 array=bounded bound=8
+    field 56d7ab194448a4f3 kind=4 offset=36 size=4
+block Bounded sizeof=48 alignof=8
+    slot 3e7884bf4f412c6f offset=24 size=16 out_of_line stride=4
+    slot 56d7ab194448a4f3 offset=40 size=4
+record Bytes sizeof=24 alignof=8
+    field 855b556730a34a05 kind=14 offset=0 size=16 elem=1 array=unbounded
+    field bf82010f6f71eae9 kind=4 offset=16 size=4
+record Deck sizeof=80 alignof=8
+    field 81b46a69304ee2c9 kind=13 offset=0 size=76 type=Row elem=24 array=bounded bound=3
+    field bf82010f6f71eae9 kind=4 offset=76 size=4
+record Floats sizeof=24 alignof=8
+    field 21277bcf1a4d67fb kind=14 offset=0 size=16 elem=4 array=unbounded
+    field bf82010f6f71eae9 kind=4 offset=16 size=4
+record Ints sizeof=24 alignof=8
+    field 21277bcf1a4d67fb kind=14 offset=0 size=16 elem=4 array=unbounded
+    field bf82010f6f71eae9 kind=4 offset=16 size=4
+record Item sizeof=4 alignof=4
+    field b1e5e28e4479a274 kind=4 offset=0 size=4
+record LogEntry sizeof=4 alignof=4
+    field 1e7683ef2ebc7684 kind=8 offset=0 size=4
+record Mixed sizeof=64 alignof=8
+    field d90a4e7682f799c5 kind=14 offset=0 size=16 enum=Grade elem=1 array=unbounded
+    field 4af2ed8470862ea8 kind=14 offset=16 size=16 elem=8 array=unbounded
+    field 732dfbcc9b0cf0bb kind=14 offset=32 size=16 union=Hit elem=12 array=unbounded
+    field 52f60c4caef0b768 kind=14 offset=48 size=16 elem=4 array=unbounded min=0 max=100
+record Photo sizeof=8 alignof=4
+    field dbdacd932fd1e9bf kind=8 offset=0 size=4
+    field 17720bf67d347222 kind=8 offset=4 size=4
+record Placement sizeof=12 alignof=4
+    field af63f54c86021707 kind=10 offset=0 size=4
+    field af63f44c86021554 kind=10 offset=4 size=4
+    field 9de543933e6e703a kind=8 offset=8 size=4
+record Point sizeof=8 alignof=4
+    field af63f54c86021707 kind=4 offset=0 size=4
+    field af63f44c86021554 kind=4 offset=4 size=4
+record Row sizeof=24 alignof=8
+    field 3e7884bf4f412c6f kind=14 offset=0 size=16 type=Sample elem=4 array=unbounded
+    field 39f7fcec8fcb623d kind=4 offset=16 size=4
+record Sample sizeof=4 alignof=4
+    field af63eb4c86020609 kind=4 offset=0 size=4
+record Save sizeof=48 alignof=8
+    field d24733aa574d4b09 kind=14 offset=0 size=16 type=Placement elem=12 array=unbounded
+    field 125073191daf5431 kind=14 offset=16 size=16 type=LogEntry elem=8 array=unbounded
+    field 01986b0b27400fb2 kind=14 offset=32 size=16 elem=4 array=unbounded
+record Sheet sizeof=24 alignof=8
+    field a3a7061ff10a8138 kind=14 offset=0 size=16 type=Row elem=24 array=unbounded
+    field 5f82477707ad620f kind=17 offset=16 size=8 type=Row
+record Squad sizeof=24 alignof=8
+    field 1c84390d304f4f42 kind=14 offset=0 size=16 elem=8 array=map
+    field c4bcadba8e631b86 kind=4 offset=16 size=4
+record Unbounded sizeof=24 alignof=8
+    field 3e7884bf4f412c6f kind=14 offset=0 size=16 type=Unit elem=4 array=unbounded
+    field 56d7ab194448a4f3 kind=4 offset=16 size=4
+record Unit sizeof=4 alignof=4
+    field af63eb4c86020609 kind=4 offset=0 size=4
+record ec07a2f760550a91.1c84390d304f4f42 sizeof=8 alignof=4
+    field 3dc94a19365b10ec kind=6 offset=0 size=1
+    field 7ce4fd9430e80cea kind=13 offset=4 size=4 type=Item
+enum Grade
+    variant 1 A
+    variant 2 B
+    variant 3 C
+flags Perm
+    variant 0 Read
+    variant 1 Write
+    variant 2 Own
+union Hit
+    arm 1 point payload=Point
+    arm 2 damage kind=4 offset=4 size=4
