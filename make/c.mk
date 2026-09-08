@@ -293,6 +293,8 @@ tables-c: tables-c-wire-fuzz build/conformance-c build/conformance-c-asan tables
 	$(MAKE) tables-js-fuzz
 	$(MAKE) tables-c-keyed-none-refusal-ndebug
 	$(MAKE) tables-c-keyed-none-refusal-negative-control
+	$(MAKE) tables-c-keyed-max-refusal-ndebug
+	$(MAKE) tables-c-keyed-max-refusal-negative-control
 	$(MAKE) tables-c-soak SOAK_SECONDS=20
 	$(MAKE) tables-c-soak-negative-control
 
@@ -490,6 +492,42 @@ tables-c-keyed-none-refusal-negative-control: bin/schema test/c-tables/keyed_non
 		  cat build/c-keyed-sabotage/log; exit 1; }
 	@echo "negative control: deleting the C accessor's abort turns the None-refusal gate RED"
 
+# THE OTHER END OF THE SAME REFUSAL, C side (docs/SPEC-TABLES.md §2.4). C++ has
+# tables-keyed-max-refusal-ndebug; C had only TestCTableKeyedBounds (longjmp).
+# A shipped -DNDEBUG build must still die on a key past Max.
+.PHONY: tables-c-keyed-max-refusal-ndebug
+tables-c-keyed-max-refusal-ndebug: build/tables-generated-c/.stamp test/c-tables/keyed_max_ndebug_main.c
+	@mkdir -p build
+	$(CC) $(TABLES_CFLAGS) -DNDEBUG -Ibuild/tables-generated-c/examples \
+		test/c-tables/keyed_max_ndebug_main.c -o build/schema_test_c_keyed_max_ndebug -lm
+	./build/schema_test_c_keyed_max_ndebug
+
+# and its NEGATIVE CONTROL: put the accessor back to the None-ONLY compare —
+# what it refused before both ends stood — and the gate above must go RED.
+.PHONY: tables-c-keyed-max-refusal-negative-control
+tables-c-keyed-max-refusal-negative-control: bin/schema test/c-tables/keyed_max_ndebug_main.c
+	@rm -rf build/c-keyed-max-sabotage && mkdir -p build/c-keyed-max-sabotage
+	@sed 's|    if ( (uint32_t) key - 1u >= count )|    if ( key == 0 ) /* SABOTAGED: the None-only compare again */|' \
+		internal/codegen/ctable/ctable.go > build/c-keyed-max-sabotage/ctable.go.txt
+	@cmp -s internal/codegen/ctable/ctable.go build/c-keyed-max-sabotage/ctable.go.txt && \
+		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/ctable/ctable.go":"%s/build/c-keyed-max-sabotage/ctable.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/c-keyed-max-sabotage/overlay.json
+	go build -overlay build/c-keyed-max-sabotage/overlay.json -o build/c-keyed-max-sabotage/schema ./cmd/schema
+	build/c-keyed-max-sabotage/schema generate --lang c --out build/c-keyed-max-sabotage/generated tables/examples
+	@grep -q "SABOTAGED" build/c-keyed-max-sabotage/generated/KeyedTable.h || \
+		{ echo "NEGATIVE CONTROL: the sabotaged emitter emitted an unsabotaged accessor"; exit 1; }
+	$(CC) $(TABLES_CFLAGS) -Wno-error -DNDEBUG -Ibuild/c-keyed-max-sabotage/generated \
+		test/c-tables/keyed_max_ndebug_main.c -o build/c-keyed-max-sabotage/probe -lm
+	@if ./build/c-keyed-max-sabotage/probe > build/c-keyed-max-sabotage/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a None-only compare left the past-Max gate GREEN"; \
+		cat build/c-keyed-max-sabotage/log; exit 1; \
+	fi
+	@grep -q "the refusal was compiled out" build/c-keyed-max-sabotage/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the refusal"; \
+		  cat build/c-keyed-max-sabotage/log; exit 1; }
+	@echo "negative control: the None-only compare turns the C past-Max refusal gate red"
+
 # THE VARIABLE-LENGTH CLASS, end to end (docs/SPEC-TABLES.md §2, §6, §9). The
 # conformance corpus reaches every FIXED surface and none of this one: its
 # instances are all fixed, because the harness's wire goldens are. So the
@@ -650,6 +688,8 @@ test-c: build/schema_test_c build/schema_test_c_ludicrous build/schema_test_benc
 	$(MAKE) tables-c-variable
 	$(MAKE) tables-c-keyed-none-refusal-ndebug
 	$(MAKE) tables-c-keyed-none-refusal-negative-control
+	$(MAKE) tables-c-keyed-max-refusal-ndebug
+	$(MAKE) tables-c-keyed-max-refusal-negative-control
 	$(MAKE) tables-c-soak SOAK_SECONDS=2
 	$(MAKE) tables-c-soak-negative-control
 	# and the whole matrix again under ASan + UBSan: the sanitized run is the
