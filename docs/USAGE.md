@@ -3922,7 +3922,10 @@ The `MeasureReason`, `LoadMeasureReason`, `CookMeasureReason`, and builder
 `PackMeasureReason` variants return `(int64, error)`. Success returns a literal
 `nil`; refusals carry `TableRefuseReason`, usable with `errors.As` or direct
 comparison. The existing integer measure and boolean open calls remain available.
-Cook and block handles also provide `Open(base, bytes) error`.
+Cook and block handles also provide `Open(base, bytes) error`. A damaged file
+trailer returns `TableRefuseWireDamaged` (`wire_damaged`) from
+`LoadMeasureReason`; this is distinct from a format refusal and from the
+accelerator-only `truncated` reason.
 
 This complete example uses the `tables/pointers` generated package; `make
 tables-go-usage` runs it directly from this page.

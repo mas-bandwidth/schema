@@ -1,7 +1,7 @@
 package gotable
 
 const tableRefusalSource = `
-// TableRefuseReason is the typed error shared by file and accelerator refusals.
+// TableRefuseReason is the typed error shared by file and accelerator failures.
 // A successful call returns nil; a failure returns its first failing clause.
 type TableRefuseReason uint8
 const (
@@ -21,6 +21,7 @@ TableRefuseBlobOverSizeCap
 TableRefuseDataCycle
 TableRefuseInvalidValue
 TableRefuseAllocationFailed
+TableRefuseWireDamaged
 )
 func(r TableRefuseReason) Error()string{switch r {
 case TableRefuseOk:return "ok"
@@ -39,6 +40,7 @@ case TableRefuseBlobOverSizeCap:return "blob_over_size_cap"
 case TableRefuseDataCycle:return "data_cycle"
 case TableRefuseInvalidValue:return "invalid_value"
 case TableRefuseAllocationFailed:return "allocation_failed"
+case TableRefuseWireDamaged:return "wire_damaged"
 };return "invalid refusal reason"}
 func tableRefuseError(reason TableRefuseReason)error{if reason==TableRefuseOk{return nil};return reason}
 `

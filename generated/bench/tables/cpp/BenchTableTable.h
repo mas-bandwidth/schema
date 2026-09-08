@@ -5036,6 +5036,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.entities_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -5067,6 +5068,9 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                         decoded = i + 1;
                     }
                     value.entities_count = (int32_t) decoded;
+                    for ( int32_t tail = value.entities_count; tail < previous_count; tail++ ) {
+                        TableEntityReset( value.entities[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -5090,6 +5094,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.stats_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -5121,6 +5126,9 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                         decoded = i + 1;
                     }
                     value.stats_count = (int32_t) decoded;
+                    for ( int32_t tail = value.stats_count; tail < previous_count; tail++ ) {
+                        TableStatReset( value.stats[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length

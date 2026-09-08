@@ -1,6 +1,7 @@
 package gotable
 
 import (
+	"bytes"
 	"os"
 	"testing"
 )
@@ -20,4 +21,41 @@ func TestRepeatedArrayTailDefaults(t *testing.T) {
  var b HandBuilder;if !b.Init(){t.Fatal("init")};defer b.Shutdown();report=TableReport{};if !HandLoadBuilder(&b,wire,&report){t.Fatal("builder")};check(b.GetRoot());if HandCookMeasure(b.GetRoot(),&b.Arena)<0||!b.Lock(){t.Fatal("stale tail prevents cook or lock")}
  }
  `)
+}
+
+// Count reset calls instead of timing: entry reset visits the declared bound
+// once; repeated one-element fields may only visit their live prefixes.
+func TestCountedTailResetWork(t *testing.T) {
+	out, err := runGeneratedEdited(t, `package probe
+ table Child { n int32 = 7 }
+ table Root { values [..32000]Child }
+ `, `package probe
+ import("testing";"encoding/binary";"bytes")
+ func TestResetWork(t *testing.T){
+ var value Root;RootReset(&value);value.ValuesCount=1;value.Values[0].N=9
+ base:=make([]byte,RootMeasure(&value));RootSave(&value,base)
+ count:=binary.LittleEndian.Uint64(base[len(base)-8:]);tail:=len(base)-8-int(count)*8
+ if base[tail-1]!=0 {t.Fatal("source terminator")}
+ const repeats=64
+ wire:=append([]byte{1},bytes.Repeat(base[1:tail-1],repeats)...);wire=append(wire,0);wire=append(wire,base[tail:]...)
+ childResetCalls=0;var got Root;var report TableReport
+ if !RootLoad(&got,wire,&report)||report!=(TableReport{})||got.ValuesCount!=1||got.Values[0].N!=9||got.Values[31999].N!=7{t.Fatalf("load: %+v",report)}
+ if childResetCalls!=32000+repeats{t.Fatalf("counted tail reset work: %d calls, want %d",childResetCalls,32000+repeats)}
+ }
+ `, func(files map[string][]byte) {
+		old := []byte("func ChildReset(value *Child) {")
+		matches := 0
+		for name, source := range files {
+			if n := bytes.Count(source, old); n != 0 {
+				matches += n
+				files[name] = bytes.ReplaceAll(source, old, []byte("var childResetCalls int\nfunc ChildReset(value *Child) {\nchildResetCalls++"))
+			}
+		}
+		if matches != 1 {
+			t.Fatalf("reset counter hook matched %d declarations", matches)
+		}
+	})
+	if err != nil {
+		t.Fatalf("generated reset work: %v\n%s", err, out)
+	}
 }

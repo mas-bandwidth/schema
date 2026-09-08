@@ -3113,6 +3113,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.weights_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -3140,6 +3141,9 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                         decoded = i + 1;
                     }
                     value.weights_count = (int32_t) decoded;
+                    for ( int32_t tail = value.weights_count; tail < previous_count; tail++ ) {
+                        value.weights[tail] = uint16_t();
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -3220,6 +3224,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.seeds_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -3244,6 +3249,9 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                             widened_decoded = widened_i + 1;
                         }
                         value.seeds_count = (int32_t) widened_decoded;
+                        for ( int32_t tail = value.seeds_count; tail < previous_count; tail++ ) {
+                            value.seeds[tail] = serialize::uint128_t();
+                        }
                     }
                     else
                     {
@@ -3264,6 +3272,9 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                         decoded = i + 1;
                     }
                     value.seeds_count = (int32_t) decoded;
+                    for ( int32_t tail = value.seeds_count; tail < previous_count; tail++ ) {
+                        value.seeds[tail] = serialize::uint128_t();
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length

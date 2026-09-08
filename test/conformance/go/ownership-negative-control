@@ -6,6 +6,8 @@ out=build/go-ownership-control-$mode
 mkdir -p "$out"
 test=TestAllocatorOwnershipAndStandaloneWriters
 case "$mode" in
+wire-damage) source=regions.go; sabotage=go-measure-wire-damage; test=TestMeasureRefusalReasons; expected="file reason -1 truncated" ;;
+counted-work) source=read.go; sabotage=go-counted-tail-work; test=TestCountedTailResetWork; expected="counted tail reset work" ;;
 arm-framing) source=read.go; sabotage=go-arm-reference-framing; test=TestPointerArmLengthBeforeResolution; expected="arm framing must precede resolution" ;;
 message-reserved) source=message.go; sabotage=go-message-measure-reserved; test=TestMessageMeasureReservedFraming; expected="reserved framing extent 192 want 960" ;;
 counted-tail) source=read.go; sabotage=go-counted-tail-reset; test=TestRepeatedArrayTailDefaults; expected="counted tail not reset" ;;

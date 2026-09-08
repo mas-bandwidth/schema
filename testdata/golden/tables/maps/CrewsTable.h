@@ -5391,7 +5391,6 @@ inline TableMapFill<Entry> TableMapFillBegin( const TableNodeMap & nodes, TableM
     map.entries.value = 0;
     map.count = 0;
     if ( nodes.carve == NULL ) { return fill; }
-    // The count companion is int32 in both wire forms (SPEC-TABLES §2.8, §2.9).
     if ( n > (uint64_t) INT32_MAX )
     {
         fill.refused = nodes.carve->worker != NULL;
@@ -6833,6 +6832,7 @@ inline bool CrewsMembersEntryLoadBody( TableReader & r, const TableNodeMap & nod
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.value_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -6861,6 +6861,9 @@ inline bool CrewsMembersEntryLoadBody( TableReader & r, const TableNodeMap & nod
                         decoded = i + 1;
                     }
                     value.value_count = (int32_t) decoded;
+                    for ( int32_t tail = value.value_count; tail < previous_count; tail++ ) {
+                        value.value[tail] = TableRef();
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -8982,6 +8985,7 @@ inline bool CrewsMembersEntryLoadBodyRetain( TableReader & r, const TableNodeMap
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.value_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -9010,6 +9014,9 @@ inline bool CrewsMembersEntryLoadBodyRetain( TableReader & r, const TableNodeMap
                         decoded = i + 1;
                     }
                     value.value_count = (int32_t) decoded;
+                    for ( int32_t tail = value.value_count; tail < previous_count; tail++ ) {
+                        value.value[tail] = TableRef();
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length

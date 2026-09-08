@@ -1,10 +1,11 @@
 package tablewire_test
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"os"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 func TestRetainedMapReplacementAfterDamage(t *testing.T) {
@@ -39,7 +40,7 @@ func TestRetainedMapReplacementAfterDamage(t *testing.T) {
 				t.Fatalf("load: %v %v %+v", ok, err, read)
 			}
 			out, err := tablewire.EncodeRetain(m, value, keep, &save)
-			if err != nil || len(out) == 0 || int(save.RetainLost) != tc.lost {
+			if err != nil || len(out) == 0 || save.RetainLost != tc.lost {
 				t.Fatalf("save: %v %+v, want lost %d", err, save, tc.lost)
 			}
 		})

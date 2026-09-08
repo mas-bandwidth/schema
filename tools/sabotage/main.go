@@ -26,9 +26,11 @@ type edit struct{ old, new string }
 // sabotages maps a control's name to what it breaks. Each entry names the
 // rule it removes, so a reader of a red control knows what was taken away.
 var sabotages = map[string][]edit{
+	"go-measure-wire-damage":      {{old: "reason:=TableRefuseWireDamaged;if verdict==TableOpenRefused", new: "reason:=TableRefuseTruncated /* SABOTAGED: borrow an accelerator clause */;if verdict==TableOpenRefused"}},
+	"go-counted-tail-work":        {{old: "g.pf(\"%sfor i:=decoded;i<previous;i++{%sReset(&%s[i])}\\n\", i, f.Type.Name, expr)", new: "g.pf(\"%s_ = previous;for i:=decoded;i<%d;i++{/* SABOTAGED: reset unused capacity */%sReset(&%s[i])}\\n\", i, bound, f.Type.Name, expr)"}},
 	"go-arm-reference-framing":    {{old: "if f.Type.Pointer || enumRef(f) != nil {", new: "if false { // SABOTAGED: resolve before validating an arm reference length"}},
 	"go-message-measure-reserved": {{old: "e,ok:=v.Entry(ref);if !ok||!tableMessageSkip(r,v,indexBits,e,depth){return false}", new: "e,ok:=v.Entry(ref);if !ok||e.Id>=0xfffffffffffffffd||!tableMessageSkip(r,v,indexBits,e,depth){return false} /* SABOTAGED */"}},
-	"go-counted-tail-reset":       {{old: "g.pf(\"%sfor i:=decoded;i<%d;i++{%s[i].Type=%sTypeNone}\\n\", i, bound, expr, f.Type.Name)", new: "// SABOTAGED: retain the union tags beyond the replacement prefix"}},
+	"go-counted-tail-reset":       {{old: "g.pf(\"%sfor i:=decoded;i<previous;i++{%s[i].Type=%sTypeNone}\\n\", i, expr, f.Type.Name)", new: "g.pf(\"%s_ = previous // SABOTAGED: retain union tails\\n\", i)"}},
 
 	"go-measure-cycle-reason":      {{old: "n.reason=TableRefuseDataCycle;return false", new: "n.reason=TableRefuseInvalidValue;return false /* SABOTAGED */"}},
 	"go-measure-count-reason":      {{old: "if count>math.MaxInt32{return TableRefuseCountOverExtentCap}", new: "if count>math.MaxInt32{return TableRefuseCountOverLength} /* SABOTAGED */"}},

@@ -160,7 +160,11 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 		g.pf("%skeep := count; if keep > %d { keep = %d; r.Report.Clamped++ }\n", i, bound, bound)
 		counted := f.Array == ir.ArrayCounted || f.Type.Kind == ir.TBytes
 		if counted {
-			g.pf("%sdecoded := int32(0)\n", i)
+			companion := expr + "Count"
+			if f.Type.Kind == ir.TBytes {
+				companion = expr + "Length"
+			}
+			g.pf("%sprevious := %s; decoded := int32(0)\n", i, companion)
 		}
 		g.pf("%sfor i := uint64(0); i < keep; i++ {\n", i)
 		j := i + "\t"
@@ -182,15 +186,15 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 		}
 		g.pf("%s}\n", i)
 		if counted {
-			// An accepted replacement owns its decoded prefix. Restore all
-			// other slots so packing and cooking cannot see an older value.
+			// Entry reset initializes the unused tail. Only previously live
+			// slots need resetting after an accepted shorter replacement.
 			switch {
 			case !f.Type.Pointer && isStructRef(f.Type):
-				g.pf("%sfor i:=decoded;i<%d;i++{%sReset(&%s[i])}\n", i, bound, f.Type.Name, expr)
+				g.pf("%sfor i:=decoded;i<previous;i++{%sReset(&%s[i])}\n", i, f.Type.Name, expr)
 			case !f.Type.Pointer && isUnionRef(f.Type):
-				g.pf("%sfor i:=decoded;i<%d;i++{%s[i].Type=%sTypeNone}\n", i, bound, expr, f.Type.Name)
+				g.pf("%sfor i:=decoded;i<previous;i++{%s[i].Type=%sTypeNone}\n", i, expr, f.Type.Name)
 			default:
-				g.pf("%sclear(%s[decoded:])\n", i, expr)
+				g.pf("%sif decoded<previous{clear(%s[decoded:previous])}\n", i, expr)
 			}
 		}
 		if f.Type.Kind == ir.TBytes && !f.Type.Pointer {

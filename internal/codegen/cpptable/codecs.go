@@ -1865,6 +1865,9 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s// count, so fewer than two bytes — is INERT (§4): the field keeps the\n", ind)
 		g.pf("%s// value it has, no counter is raised, and the walk continues past L.\n", ind)
 		g.pf("%sif ( body_len >= 2 )\n%s{\n", ind, ind)
+		if f.Array == ir.ArrayCounted {
+			g.pf("%s    const int32_t previous_count = value.%s_count;\n", ind, f.Name)
+		}
 		g.pf("%s    uint8_t elem_kind = r.get8();\n", ind)
 		g.pf("%s    uint64_t count = 0;\n", ind)
 		g.pf("%s    const bool counted_ok = r.getleb( count );\n", ind)
@@ -1887,6 +1890,9 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 				countLvalue = fmt.Sprintf("value.%s_count", f.Name)
 			}
 			g.emitWidenedElements(f, ir.TableWireElemKind(f), "elem_kind", "value."+f.Name+"[%s]", countLvalue, "widened_keep", ind+"        ", "widened_sub")
+			if f.Array == ir.ArrayCounted {
+				g.emitCountedTailReset(f, ind+"        ")
+			}
 			g.pf("%s    }\n", ind)
 		} else {
 			g.pf("%s    else if ( elem_kind != %d ) { r.report->kind_mismatch++; r.offset = body_end; break; }\n", ind, ir.TableWireElemKind(f))
@@ -1913,6 +1919,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 			g.pf("%s    value.%s_length = (int32_t) decoded;\n", ind, f.Name)
 		} else if f.Array == ir.ArrayCounted {
 			g.pf("%s    value.%s_count = (int32_t) decoded;\n", ind, f.Name)
+			g.emitCountedTailReset(f, ind+"    ")
 		}
 		g.pf("%s    }\n", ind)
 		g.pf("%s}\n", ind)
@@ -2716,4 +2723,19 @@ func (g *tableGen) emitBytesDefaultLocal(f *ir.Field) {
 	if hasByteDefault(f) && f.Type.Kind == ir.TBytes {
 		g.pf("    static const uint8_t %s_default[%d] = %s;\n", f.Name, len(f.DefBytes), byteListLit(f.DefBytes))
 	}
+}
+
+// A replacement can shorten a counted array, including by damage. Every
+// slot above the decoded prefix must have its declared default (#725).
+func (g *tableGen) emitCountedTailReset(f *ir.Field, ind string) {
+	typ, _ := g.cppFieldType(f.Type)
+	if f.Type.Pointer {
+		typ = "TableRef"
+	}
+	g.pf("%sfor ( int32_t tail = value.%s_count; tail < previous_count; tail++ ) {\n", ind, f.Name)
+	saved := g.indent
+	g.indent += ind
+	g.emitTableResetOne("value."+f.Name+"[tail]", typ, f)
+	g.indent = saved
+	g.pf("%s}\n", ind)
 }

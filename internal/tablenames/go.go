@@ -349,6 +349,7 @@ func init() {
 		Name{Name: "tableViewPacketUnions", What: "the optional unit view registry and packet storage descriptors"},
 		Name{Name: "TableRefuseInvalidValue", What: "typed file and authoring refusal reasons"},
 		Name{Name: "TableRefuseAllocationFailed", What: "typed file and authoring refusal reasons"},
+		Name{Name: "TableRefuseWireDamaged", What: "damage while measuring a table file, separate from accelerator refusal clauses"},
 		Name{Name: "tableRefuseError", What: "typed file and authoring refusal reasons"},
 		Name{Name: "tableRegionSaveReason", What: "typed file and authoring refusal reasons"},
 		Name{Name: "tableNodeStorageReason", What: "typed file and authoring refusal reasons"},

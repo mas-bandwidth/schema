@@ -378,7 +378,7 @@ tables-go-builders: build/conformance-harness build/conformance-go
 tables-go-builders-negative-control:
 	sh test/conformance/go/ownership-negative-control builder-union
 tables-go-typed-refusals:
-	go test ./internal/codegen/gotable -run '^Test(AcceleratorTypedRefusals|MeasureRefusalReasons)$$' -count=1
+	GOTOOLCHAIN=go1.26.0 go test ./internal/codegen/gotable -run '^Test(AcceleratorTypedRefusals|MeasureRefusalReasons)$$' -count=1
 
 test-go: tables-go-builders tables-go-builders-negative-control tables-go-typed-refusals
 
@@ -393,7 +393,7 @@ test-go: tables-go-view tables-go-view-negative-controls
 
 .PHONY: tables-go-measure-negative-controls tables-go-retain-wire-fuzz
 tables-go-measure-negative-controls:
-	@set -e; for mode in measure-cycle measure-count message-reserved counted-tail arm-framing; do sh test/conformance/go/ownership-negative-control $$mode; done
+	@set -e; for mode in measure-cycle measure-count wire-damage message-reserved counted-tail counted-work arm-framing; do sh test/conformance/go/ownership-negative-control $$mode; done
 tables-go-retain-wire-fuzz: build/conformance-harness build/conformance-go
 	./build/conformance-harness wire-fuzz --retain --driver 'build/conformance-go wire-fuzz' --seed $(SEED) --n $(N)
 test-go: tables-go-measure-negative-controls tables-go-retain-wire-fuzz

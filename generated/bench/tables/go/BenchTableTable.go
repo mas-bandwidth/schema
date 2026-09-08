@@ -264,7 +264,7 @@ type TableTypeInfo struct {
 	Tags    []string
 }
 
-// TableRefuseReason is the typed error shared by file and accelerator refusals.
+// TableRefuseReason is the typed error shared by file and accelerator failures.
 // A successful call returns nil; a failure returns its first failing clause.
 type TableRefuseReason uint8
 
@@ -285,6 +285,7 @@ const (
 	TableRefuseDataCycle
 	TableRefuseInvalidValue
 	TableRefuseAllocationFailed
+	TableRefuseWireDamaged
 )
 
 func (r TableRefuseReason) Error() string {
@@ -321,6 +322,8 @@ func (r TableRefuseReason) Error() string {
 		return "invalid_value"
 	case TableRefuseAllocationFailed:
 		return "allocation_failed"
+	case TableRefuseWireDamaged:
+		return "wire_damaged"
 	}
 	return "invalid refusal reason"
 }
@@ -4329,6 +4332,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 						keep = 8
 						r.Report.Clamped++
 					}
+					previous := value.EntitiesCount
 					decoded := int32(0)
 					for i := uint64(0); i < keep; i++ {
 						elem, ok := sub.Body()
@@ -4343,7 +4347,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 						}
 						decoded = int32(i + 1)
 					}
-					for i := decoded; i < 8; i++ {
+					for i := decoded; i < previous; i++ {
 						TableEntityReset(&value.Entities[i])
 					}
 					value.EntitiesCount = decoded
@@ -4381,6 +4385,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 						keep = 80
 						r.Report.Clamped++
 					}
+					previous := value.StatsCount
 					decoded := int32(0)
 					for i := uint64(0); i < keep; i++ {
 						elem, ok := sub.Body()
@@ -4395,7 +4400,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 						}
 						decoded = int32(i + 1)
 					}
-					for i := decoded; i < 80; i++ {
+					for i := decoded; i < previous; i++ {
 						TableStatReset(&value.Stats[i])
 					}
 					value.StatsCount = decoded
@@ -4578,6 +4583,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 						keep = 16
 						r.Report.Clamped++
 					}
+					previous := value.PayloadLength
 					decoded := int32(0)
 					for i := uint64(0); i < keep; i++ {
 						if !sub.Has(tableKindBytes(elemKind)) {
@@ -4590,7 +4596,9 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 						}
 						decoded = int32(i + 1)
 					}
-					clear(value.Payload[decoded:])
+					if decoded < previous {
+						clear(value.Payload[decoded:previous])
+					}
 					value.PayloadLength = decoded
 				}
 			}

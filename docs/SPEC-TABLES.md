@@ -10253,6 +10253,11 @@ in build version (§20.5).
   `TableRefuseReason` on refusal. Builder `PackMeasureReason` follows the
   same rule. `invalid_value` and `allocation_failed` distinguish Go
   authoring failures from file count, form, blob-size, and cycle refusals.
+  A damaged file trailer returns Go's `TableRefuseWireDamaged`
+  (`wire_damaged`), since an error return cannot express the C++ measure's
+  untouched reason out-parameter. It is damage, separate from the file refusal
+  clauses and the accelerator-only `truncated` reason. Builder
+  `PackMeasureReason` is a method, so it adds no package-level name claim.
 
   Go spells message region sizing `<T>LoadMessagesMeasure(vocabulary, data)`
   because its file sizing verb `<T>LoadMeasure(wire)` cannot be overloaded.

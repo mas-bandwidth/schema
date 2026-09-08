@@ -20,6 +20,11 @@ func runGenerated(t *testing.T, schema, testSource string) {
 
 func runGeneratedResult(t *testing.T, schema, testSource string, flags ...string) ([]byte, error) {
 	t.Helper()
+	return runGeneratedEdited(t, schema, testSource, nil, flags...)
+}
+
+func runGeneratedEdited(t *testing.T, schema, testSource string, edit func(map[string][]byte), flags ...string) ([]byte, error) {
+	t.Helper()
 	u := unitFrom(t, schema)
 	files, err := golang.Generate(u)
 	if err != nil {
@@ -30,6 +35,9 @@ func runGeneratedResult(t *testing.T, schema, testSource string, flags ...string
 		t.Fatal(err)
 	}
 	maps.Copy(files, tables)
+	if edit != nil {
+		edit(files)
+	}
 	dir := t.TempDir()
 	runtime, err := filepath.Abs("../../../../serialize.go")
 	if err != nil {

@@ -5663,6 +5663,7 @@ inline bool ChunkLoadBody( TableReader & r, const TableNodeMap & nodes, Chunk & 
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.links_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -5691,6 +5692,9 @@ inline bool ChunkLoadBody( TableReader & r, const TableNodeMap & nodes, Chunk & 
                         decoded = i + 1;
                     }
                     value.links_count = (int32_t) decoded;
+                    for ( int32_t tail = value.links_count; tail < previous_count; tail++ ) {
+                        value.links[tail] = TableRef();
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -6326,6 +6330,7 @@ inline bool FeedLoadBody( TableReader & r, const TableNodeMap & nodes, Feed & va
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.parts_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -6354,6 +6359,9 @@ inline bool FeedLoadBody( TableReader & r, const TableNodeMap & nodes, Feed & va
                         decoded = i + 1;
                     }
                     value.parts_count = (int32_t) decoded;
+                    for ( int32_t tail = value.parts_count; tail < previous_count; tail++ ) {
+                        value.parts[tail] = TableRef();
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -9395,6 +9403,7 @@ inline bool ChunkLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ch
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.links_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -9423,6 +9432,9 @@ inline bool ChunkLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ch
                         decoded = i + 1;
                     }
                     value.links_count = (int32_t) decoded;
+                    for ( int32_t tail = value.links_count; tail < previous_count; tail++ ) {
+                        value.links[tail] = TableRef();
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -9999,6 +10011,7 @@ inline bool FeedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fee
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.parts_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -10027,6 +10040,9 @@ inline bool FeedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fee
                         decoded = i + 1;
                     }
                     value.parts_count = (int32_t) decoded;
+                    for ( int32_t tail = value.parts_count; tail < previous_count; tail++ ) {
+                        value.parts[tail] = TableRef();
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
