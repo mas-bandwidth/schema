@@ -210,6 +210,7 @@
         "tables-go-blob-span-negative-control",
         "tables-c-fuzz-negative-control",
         "tables-c-keyed-none-refusal-negative-control",
+        "tables-c-keyed-max-refusal-negative-control",
         "tables-c-soak-negative-control",
         "tables-cook-fuzz-negative-control",
         "tables-cook-open-lengths-negative-control",
