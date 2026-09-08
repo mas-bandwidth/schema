@@ -151,3 +151,42 @@ func TestRetainedMessageMapReplacementAfterKeyMismatch(t *testing.T) {
 		})
 	}
 }
+
+func TestMessageMapRepeatedKeyKeepsWidening(t *testing.T) {
+	m := listModel(t, `package mapkeep
+ table Root { names map[uint32]int32
+ narrow map[uint8]int32 }
+ `)
+	source := place(t, m, "Root", `{"names":{"2":7},"narrow":{"1":0}}`)
+	entry := source.Fields[0].Entries[0].Tab
+	key := source.Fields[1].Entries[0].Tab.Fields[0]
+	entry.Fields = append([]tabletext.Field{key}, entry.Fields...)
+	source.Fields[1].Entries = nil
+	source.Fields[1].Count = 0
+	batch, err := tablewire.EncodeMessages(m, []*tabletext.Instance{source})
+	if err != nil {
+		t.Fatal(err)
+	}
+	vocabulary := &tablewire.Vocabulary{}
+	if err := vocabulary.AnnounceRead(tablewire.Announce(m.Unit), &tabletext.Report{}); err != nil {
+		t.Fatal(err)
+	}
+	value := m.New(m.Lookup("Root"))
+	var report tabletext.Report
+	n, ok, err := tablewire.DecodeMessages(m, []*tabletext.Instance{value}, batch, vocabulary, &report)
+	if n != 1 || !ok || err != nil || report.Malformed || report.Widened != 1 {
+		t.Fatalf("load: %d %v %v %+v", n, ok, err, report)
+	}
+	expected := place(t, m, "Root", `{"names":{"2":7}}`)
+	got, err := tablewire.Encode(m, value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := tablewire.Encode(m, expected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("got %x want %x", got, want)
+	}
+}

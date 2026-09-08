@@ -1016,7 +1016,7 @@ func (d *bitDecoder) mapEntryKey(f *ir.Field) (key tabletext.MapKey, bad, widene
 			continue
 		}
 		bad = int(entry.Kind) != want && !ir.TableKindWidens(int(entry.Kind), want)
-		widened = int(entry.Kind) != want && !bad
+		widened = widened || int(entry.Kind) != want && !bad
 		if bad {
 			if !scan.skip(entry) {
 				return key, bad, widened, false
