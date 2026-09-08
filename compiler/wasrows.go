@@ -8,6 +8,7 @@ package compiler
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -19,6 +20,9 @@ var wasRowTargets = []string{"cpp", "cs"}
 // refuseWasRows is the named refusal every target without the form gives a
 // unit whose table closure carries a variant, arm or type-field `was`.
 func refuseWasRows(u *ir.Unit, target string) error {
+	if slices.Contains(wasRowTargets, target) {
+		return nil
+	}
 	names := ir.WasRows(u)
 	if len(names) == 0 {
 		return nil

@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package benchtable — the BLOCK FORM (docs/SPEC-TABLES.md §19): the READ half.
+// package benchtable — the BLOCK FORM (docs/SPEC-TABLES.md §19): producer and consumer.
 //
 // NOTHING DECLARES THIS FORM. Every fixed table has one, and it is emitted on
-// the side: compile this file only if you read a block. The unit's
+// the side: compile this file when you build or read a block. The unit's
 // <Base>Table.go carries not one symbol of it.
 //
 // It is UNSAFE by nature, not by taste: a block is memory another language
@@ -20,6 +20,7 @@
 package benchtable
 
 import (
+	"encoding/binary"
 	"fmt"
 	"unsafe"
 )
@@ -74,6 +75,7 @@ type TableBlockRows[T any] struct {
 	Stride int32
 }
 
+// ---- block fill path: begin ----
 // Len is the row count the instance carries.
 func (r TableBlockRows[T]) Len() int32 { return r.Count }
 
@@ -82,6 +84,8 @@ func (r TableBlockRows[T]) Len() int32 { return r.Count }
 func (r TableBlockRows[T]) At(i int32) *T {
 	return (*T)(unsafe.Add(r.Base, uintptr(i)*uintptr(r.Stride)))
 }
+
+// ---- block fill path: end ----
 
 // ---- reflection over a block (docs/SPEC-TABLES.md §8, §19.2) ----
 //
@@ -139,6 +143,28 @@ type TableBlockInfo struct {
 	Align        uint32
 	NumFields    int32
 	Fields       []TableBlockFieldInfo
+}
+
+// TableBlockAllocator supplies exactly one allocation per storage lifetime.
+// Both functions are required; the free receives the original, unsliced buffer.
+type TableBlockAllocator struct {
+	Alloc func(int64) []byte
+	Free  func([]byte)
+}
+
+func TableBlockDefaultAllocator() TableBlockAllocator {
+	return TableBlockAllocator{Alloc: func(n int64) []byte {
+		if n <= 0 || uint64(n) > uint64(^uint(0)>>1) {
+			return nil
+		}
+		return make([]byte, int(n))
+	}, Free: func([]byte) {}}
+}
+
+// TableBlockRefusal names the producer count that violates its declared bound.
+type TableBlockRefusal struct {
+	Array          string
+	Count, Maximum int64
 }
 
 // The BLITTABLE records: one per record the block form touches, laid out to
@@ -327,55 +353,118 @@ type TableEntityBlock struct {
 	Bytes      int64                       // the extent in use
 }
 
-// TableEntityBlockOpen checks once and points, and this is the WHOLE check
-// (docs/SPEC-TABLES.md §19.2): the magic read in the machine's own order, the
-// BYTE ORDER the prologue carries against this build's own, the BUILD VERSION
-// against this build's own, each array's pitch, its offset, its COUNT against
-// the declared maximum and its extent inside the block, the used extent
-// against the bytes the caller passed, and the base's alignment. On a match
-// the bytes are what a build with this layout wrote, so there is nothing to
-// validate and nothing to fix up. On any failure it returns false and points
-// at nothing.
-//
-// There is ONE entry point and no tolerant twin: the block form is same-build
-// by construction — both sides generated from one declaration at one build —
-// so a consumer older than its producer is not a case. A mismatch is a
-// refusal; regenerate both sides. Data that must outlive the build that wrote
-// it takes the wire (§3), which this same table still has.
+// ---- block fill path: begin ----
+// ---- block fill path: end ----
+// TableEntityBlockOpen is the bool convenience for the handle's typed Open error.
 func TableEntityBlockOpen(block *TableEntityBlock, base unsafe.Pointer, bytes int64) bool {
+	return block.Open(base, bytes) == nil
+}
+
+// Open reads all prologue and layout words bytewise before the final base
+// alignment check. Every refusal names the first failed clause in SPEC §19.2.
+func (block *TableEntityBlock) Open(base unsafe.Pointer, bytes int64) error {
 	*block = TableEntityBlock{}
-	if base == nil || bytes < 88 {
-		return false
+	if base == nil {
+		return TableRefuseUnalignedBase
 	}
-	if uintptr(base)%64 != 0 {
-		return false // the base's alignment
+	if bytes < 88 {
+		return TableRefuseTruncated
 	}
-	// the prologue read in the machine's own order: a byte-swapped magic is a
-	// FOREIGN BYTE ORDER, and anything else is not a block at all. Both refuse.
-	if *(*uint64)(base) != TableBlockMagic {
-		return false
+	header := unsafe.Slice((*byte)(base), 88)
+	magic := binary.NativeEndian.Uint64(header)
+	if magic != TableBlockMagic {
+		if magic == 0x5343484d41424c4b {
+			return TableRefuseForeignOrder
+		}
+		return TableRefuseNotACook
 	}
-	if *(*uint64)(unsafe.Add(base, 8)) != BuildVersion {
-		return false
+	if binary.NativeEndian.Uint64(header[16:]) != TableBlockByteOrder {
+		return TableRefuseNotACook
 	}
-	if *(*uint64)(unsafe.Add(base, 16)) != TableBlockByteOrder {
-		return false // a block of the other byte order: the fix-up path is a named obligation
+	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
+		return TableRefuseWrongBuildVersion
 	}
-	projection := (*TableEntityBlockProjection)(base)
 	used := int64(88)
-	// the used extent, rounded to 64 WITHOUT the rounding itself wrapping: used
-	// is already inside bytes, and the padding is paid out of the slack that is
-	// left rather than added and compared after.
 	padding := (64 - (used % 64)) % 64
 	if padding > bytes-used {
-		return false
+		return TableRefuseTruncated
 	}
 	used += padding
+	if uintptr(base)%64 != 0 {
+		return TableRefuseUnalignedBase
+	}
 	block.Base = base
-	block.Projection = projection
+	block.Projection = (*TableEntityBlockProjection)(base)
 	block.Bytes = used
+	return nil
+}
+
+// TableEntityCounts is gathered before Begin; clamping is the caller's policy.
+type TableEntityCounts struct {
+}
+
+// TableEntityBlockStorage owns a maximum-sized extent. Do not copy an initialized storage.
+type TableEntityBlockStorage struct {
+	base       unsafe.Pointer
+	allocation []byte
+	allocator  TableBlockAllocator
+}
+
+func (s *TableEntityBlockStorage) Create(a TableBlockAllocator) bool {
+	if s == nil || s.allocation != nil || a.Alloc == nil || a.Free == nil {
+		return false
+	}
+	raw := a.Alloc(TableEntityBlockMaxBytes + 63)
+	if int64(len(raw)) < TableEntityBlockMaxBytes+63 {
+		if raw != nil {
+			a.Free(raw)
+		}
+		return false
+	}
+	s.allocation = raw
+	s.allocator = a
+	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
+	s.base = unsafe.Pointer(&raw[offset])
 	return true
 }
+func (s *TableEntityBlockStorage) Destroy() {
+	if s != nil && s.allocation != nil {
+		s.allocator.Free(s.allocation)
+		*s = TableEntityBlockStorage{}
+	}
+}
+
+// ---- block fill path: begin ----
+// TableEntityBlockBegin writes only the prologue and triples, never rows or padding.
+// Storage and all counts are checked before any byte of the extent changes.
+func TableEntityBlockBegin(b *TableEntityBlock, s *TableEntityBlockStorage, c TableEntityCounts, refusal *TableBlockRefusal) bool {
+	if refusal != nil {
+		*refusal = TableBlockRefusal{}
+	}
+	if b == nil {
+		return false
+	}
+	if s == nil || s.base == nil {
+		return false
+	}
+	p := (*TableEntityBlockProjection)(s.base)
+	p.Magic = TableBlockMagic
+	p.BuildVersion = BuildVersion
+	p.ByteOrder = TableBlockByteOrder
+	offset := int64(88)
+	*b = TableEntityBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)}
+	return true
+}
+
+func TableEntityBlockBytes(b *TableEntityBlock) int64 {
+	if b == nil || b.Projection == nil {
+		return 0
+	}
+	used := int64(88)
+	return (used + 63) &^ int64(63)
+}
+
+// ---- block fill path: end ----
 
 // Type is this block's descriptors: constant data, so a reflective read costs
 // a lookup and not a parse. The row layouts hang off the element column
@@ -404,55 +493,118 @@ type TableStatBlock struct {
 	Bytes      int64                     // the extent in use
 }
 
-// TableStatBlockOpen checks once and points, and this is the WHOLE check
-// (docs/SPEC-TABLES.md §19.2): the magic read in the machine's own order, the
-// BYTE ORDER the prologue carries against this build's own, the BUILD VERSION
-// against this build's own, each array's pitch, its offset, its COUNT against
-// the declared maximum and its extent inside the block, the used extent
-// against the bytes the caller passed, and the base's alignment. On a match
-// the bytes are what a build with this layout wrote, so there is nothing to
-// validate and nothing to fix up. On any failure it returns false and points
-// at nothing.
-//
-// There is ONE entry point and no tolerant twin: the block form is same-build
-// by construction — both sides generated from one declaration at one build —
-// so a consumer older than its producer is not a case. A mismatch is a
-// refusal; regenerate both sides. Data that must outlive the build that wrote
-// it takes the wire (§3), which this same table still has.
+// ---- block fill path: begin ----
+// ---- block fill path: end ----
+// TableStatBlockOpen is the bool convenience for the handle's typed Open error.
 func TableStatBlockOpen(block *TableStatBlock, base unsafe.Pointer, bytes int64) bool {
+	return block.Open(base, bytes) == nil
+}
+
+// Open reads all prologue and layout words bytewise before the final base
+// alignment check. Every refusal names the first failed clause in SPEC §19.2.
+func (block *TableStatBlock) Open(base unsafe.Pointer, bytes int64) error {
 	*block = TableStatBlock{}
-	if base == nil || bytes < 32 {
-		return false
+	if base == nil {
+		return TableRefuseUnalignedBase
 	}
-	if uintptr(base)%64 != 0 {
-		return false // the base's alignment
+	if bytes < 32 {
+		return TableRefuseTruncated
 	}
-	// the prologue read in the machine's own order: a byte-swapped magic is a
-	// FOREIGN BYTE ORDER, and anything else is not a block at all. Both refuse.
-	if *(*uint64)(base) != TableBlockMagic {
-		return false
+	header := unsafe.Slice((*byte)(base), 32)
+	magic := binary.NativeEndian.Uint64(header)
+	if magic != TableBlockMagic {
+		if magic == 0x5343484d41424c4b {
+			return TableRefuseForeignOrder
+		}
+		return TableRefuseNotACook
 	}
-	if *(*uint64)(unsafe.Add(base, 8)) != BuildVersion {
-		return false
+	if binary.NativeEndian.Uint64(header[16:]) != TableBlockByteOrder {
+		return TableRefuseNotACook
 	}
-	if *(*uint64)(unsafe.Add(base, 16)) != TableBlockByteOrder {
-		return false // a block of the other byte order: the fix-up path is a named obligation
+	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
+		return TableRefuseWrongBuildVersion
 	}
-	projection := (*TableStatBlockProjection)(base)
 	used := int64(32)
-	// the used extent, rounded to 64 WITHOUT the rounding itself wrapping: used
-	// is already inside bytes, and the padding is paid out of the slack that is
-	// left rather than added and compared after.
 	padding := (64 - (used % 64)) % 64
 	if padding > bytes-used {
-		return false
+		return TableRefuseTruncated
 	}
 	used += padding
+	if uintptr(base)%64 != 0 {
+		return TableRefuseUnalignedBase
+	}
 	block.Base = base
-	block.Projection = projection
+	block.Projection = (*TableStatBlockProjection)(base)
 	block.Bytes = used
+	return nil
+}
+
+// TableStatCounts is gathered before Begin; clamping is the caller's policy.
+type TableStatCounts struct {
+}
+
+// TableStatBlockStorage owns a maximum-sized extent. Do not copy an initialized storage.
+type TableStatBlockStorage struct {
+	base       unsafe.Pointer
+	allocation []byte
+	allocator  TableBlockAllocator
+}
+
+func (s *TableStatBlockStorage) Create(a TableBlockAllocator) bool {
+	if s == nil || s.allocation != nil || a.Alloc == nil || a.Free == nil {
+		return false
+	}
+	raw := a.Alloc(TableStatBlockMaxBytes + 63)
+	if int64(len(raw)) < TableStatBlockMaxBytes+63 {
+		if raw != nil {
+			a.Free(raw)
+		}
+		return false
+	}
+	s.allocation = raw
+	s.allocator = a
+	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
+	s.base = unsafe.Pointer(&raw[offset])
 	return true
 }
+func (s *TableStatBlockStorage) Destroy() {
+	if s != nil && s.allocation != nil {
+		s.allocator.Free(s.allocation)
+		*s = TableStatBlockStorage{}
+	}
+}
+
+// ---- block fill path: begin ----
+// TableStatBlockBegin writes only the prologue and triples, never rows or padding.
+// Storage and all counts are checked before any byte of the extent changes.
+func TableStatBlockBegin(b *TableStatBlock, s *TableStatBlockStorage, c TableStatCounts, refusal *TableBlockRefusal) bool {
+	if refusal != nil {
+		*refusal = TableBlockRefusal{}
+	}
+	if b == nil {
+		return false
+	}
+	if s == nil || s.base == nil {
+		return false
+	}
+	p := (*TableStatBlockProjection)(s.base)
+	p.Magic = TableBlockMagic
+	p.BuildVersion = BuildVersion
+	p.ByteOrder = TableBlockByteOrder
+	offset := int64(32)
+	*b = TableStatBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)}
+	return true
+}
+
+func TableStatBlockBytes(b *TableStatBlock) int64 {
+	if b == nil || b.Projection == nil {
+		return 0
+	}
+	used := int64(32)
+	return (used + 63) &^ int64(63)
+}
+
+// ---- block fill path: end ----
 
 // Type is this block's descriptors: constant data, so a reflective read costs
 // a lookup and not a parse. The row layouts hang off the element column

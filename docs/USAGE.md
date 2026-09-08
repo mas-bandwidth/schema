@@ -1337,6 +1337,34 @@ each read zero under `testing.AllocsPerRun`, and a soak over the whole corpus
 holds the allocation counter at zero. A nil `*TableReport` is allowed and every
 tolerance event still decides the same way.
 
+Variable tables add an arena for authoring and a caller-buffer region for
+reading. `RootBuilder.Init(pair)` uses a `TableAllocator` with paired `Alloc`
+and `Free` callbacks; omitting it uses Go-owned storage. `Alloc` returns zeroed,
+aligned bytes and may return an oversized slice. `Free` receives that exact
+original slice. `PackMeasure` releases its temporary numbering before `Lock`
+starts a separate numbering pass and packs the used region. Failed packing
+preserves the authoring graph; `Shutdown` releases its storage and is repeatable.
+
+For a loaded or locked root, pass `&pair` as the final argument to wire,
+message and cook writers to supply temporary storage. The same argument accepts
+`&builder.Arena` for authoring references. `TableWriteContext` selects these two
+existing inputs without treating an allocator as an address space. JSON and
+retaining file writers take the pair directly as their final argument.
+Every buffer whose size grows with the graph goes through that pair. With
+caller-backed scratch on Go 1.26.0, JSON and cook measurement and writing
+allocate zero Go objects; wire, message and retaining file measurement and
+writing allocate one typed activation frame per call. Those frames remain
+visible to Go's garbage collector. Loads, retaining loads and block filling
+allocate zero. `tables-go-allocator` certifies these counts on that exact
+toolchain and refuses to certify another version.
+
+Cook and block handles also expose `Open(base, length) error`. A successful
+open returns `nil`; a refusal returns a `TableRefuseReason`, such as
+`TableRefuseWrongBuildVersion` or `TableRefuseUnalignedBase`. Its `Error()`
+method uses the shared diagnostic spelling. The package functions `RootOpen`
+and `RootBlockOpen` remain boolean conveniences over that same check. Both
+forms clear the handle on failure and allocate nothing on success.
+
 `string(N)` and `bytes(N)` are an `[N]byte` beside an `int32` used length,
 arrays an `[N]T` beside an `int32` used count, `?T` a value beside a
 `<Name>Present` bool, and a union its tag beside one arm per variant.
@@ -3875,8 +3903,77 @@ phase, as measured. Two further costs are the JIT's and never AOT's: a
 `float32` carrying a NaN with a payload costs one boxed double, and a 64-bit
 integer field holding a value outside ±2⁶² costs one boxed integer per read.
 
-**Go** — accessors avoid allocation; reads and writes run on caller-owned
-buffers.
+**Go** — accessors, file/message loads and block fill avoid allocation and
+operate on caller-owned buffers. Variable table builders own a `TableArena`;
+the arena occupies 163,888 bytes on a 64-bit target, including 163,840 bytes
+of embedded segment descriptors.
+Stop readers and workers before calling `Shutdown`. An allocator pair owns
+all node-proportional and temporary numbering storage; `Free` receives the
+original returned slice, even when its length exceeds the request.
+
+With caller-backed scratch on Go 1.26.0, wire, message and retaining-file
+measure/save each use one collector-visible activation frame; JSON and cook
+measure/save use none. The frame includes the unit's id table, so its byte
+size varies with the schema (2,240 bytes in the lists unit). `make
+tables-go-allocator` certifies the pinned toolchain. Set
+`SCHEMA_GO_ALLOC_ANY_GO=1` only to observe another version without certifying it.
+
+The `MeasureReason`, `LoadMeasureReason`, `CookMeasureReason`, and builder
+`PackMeasureReason` variants return `(int64, error)`. Success returns a literal
+`nil`; refusals carry `TableRefuseReason`, usable with `errors.As` or direct
+comparison. The existing integer measure and boolean open calls remain available.
+Cook and block handles also provide `Open(base, bytes) error`. A damaged file
+trailer returns `TableRefuseWireDamaged` (`wire_damaged`) from
+`LoadMeasureReason`; this is distinct from a format refusal and from the
+accelerator-only `truncated` reason.
+
+This complete example uses the `tables/pointers` generated package; `make
+tables-go-usage` runs it directly from this page.
+
+<!-- go-table-usage -->
+```go
+package main
+
+import "graphdemo"
+
+func main() {
+    var source graphdemo.SceneBuilder
+    if !source.Init() { panic("builder allocation failed") }
+    defer source.Shutdown()
+    source.GetRoot().Version = 7
+
+    size, err := graphdemo.SceneMeasureReason(source.GetRoot(), &source.Arena)
+    if err != nil { panic(err) }
+    wire := make([]byte, size)
+    if graphdemo.SceneSave(source.GetRoot(), wire, &source.Arena) != size {
+        panic("save failed")
+    }
+
+    var loaded graphdemo.SceneBuilder
+    if !loaded.Init() { panic("builder allocation failed") }
+    defer loaded.Shutdown()
+    var report graphdemo.TableReport
+    if !graphdemo.SceneLoadBuilder(&loaded, wire, &report) || report.Malformed {
+        panic("load failed")
+    }
+    if !loaded.Lock() { panic("packing failed") }
+    if loaded.AsConst().Version != 7 { panic("round trip changed the value") }
+    if _, err := graphdemo.SceneCookMeasureReason(loaded.AsConst()); err != nil {
+        panic(err)
+    }
+}
+```
+<!-- /go-table-usage -->
+
+`UnitView()` returns the generated registry: name-ordered types, tables,
+enums, flags, unions and constants, with annotations and field descriptors.
+Treat its data as immutable. `ViewVariant.Payload` and `.Field` are functions
+that return descriptors without allocating, avoiding Go initialization cycles.
+An outside packet type's descriptor follows its native Go storage; nested
+packet dependencies have private descriptors when a table `Row` has different
+offsets. `DeclaredTypeName` carries the complete schema spelling. The
+`<Package>View.go` file is optional and no codec depends on it; table-free
+units remain the separate packet-view follow-on.
 
 **Elixir** — Elixir 1.20 on Erlang/OTP 29, built to issue #167's measured
 directives from the serialize.elixir port. Generated code is

@@ -65,10 +65,10 @@ func TestWideTextInATableClosureReachesTheTableEmitter(t *testing.T) {
 	}
 }
 
-// TestWideTextInATableClosureIsRefusedByTheOtherSeven is the same unit against
+// TestWideTextInATableClosureRefusesMissingCarriers is the same unit against
 // a target that carries neither wire's half: the refusal names the field, so
 // no port emits a member it never laid out (SPEC.md §4.12).
-func TestWideTextInATableClosureIsRefusedByTheOtherSeven(t *testing.T) {
+func TestWideTextInATableClosureRefusesMissingCarriers(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "Wide.schema")
 	if err := os.WriteFile(path, []byte(wideTextInATableClosure), 0o644); err != nil {
@@ -79,7 +79,7 @@ func TestWideTextInATableClosureIsRefusedByTheOtherSeven(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load refused a wstring(N) inside a table closure: %v", err)
 	}
-	for _, target := range []string{"c", "go", "rust", "java", "js", "dart", "elixir"} {
+	for _, target := range []string{"c", "rust", "java", "js", "dart", "elixir"} {
 		_, err := c.Generate(u, target, Options{})
 		if err == nil {
 			t.Errorf("%s took a wstring(N) it does not carry", target)

@@ -510,7 +510,7 @@ tables-doctags-negative-controls: bin/schema test/tables/doctags_main.cpp
 # each entry is <generated dir>:<package>
 VIEW_CORPUS := examples:tabledemo pointers:graphdemo block:blockdemo blockhome:blockhome \
 	messages:messagedemo stream:streamdemo blobs:blobdemo scalars:scalardemo \
-	maps:mapdemo lists:listdemo arms:armdemo backend:backenddemo vocab:vocabdemo vocab9:vocab9demo
+	maps:mapdemo lists:listdemo arms:armdemo backend:backenddemo vocab:vocabdemo vocab9:vocab9demo wide:wide
 
 .PHONY: tables-view
 tables-view: build/tables-generated/.stamp test/tables/view_main.cpp

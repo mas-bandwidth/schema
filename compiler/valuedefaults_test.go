@@ -1,5 +1,5 @@
 // A string, bytes or flags default (SPEC §4.2) has separate packet and table
-// carriers. C++ carries both; C and Go carry packet-only defaults.
+// carriers. C++ and Go carry both; the remaining packet carriers refuse table defaults.
 package compiler
 
 import (
@@ -39,6 +39,23 @@ func TestTableValueDefaultsCarriers(t *testing.T) {
 		if target == "cs" {
 			if err != nil {
 				t.Fatalf("cs refused table defaults: %v", err)
+			}
+			continue
+		}
+		if target == "go" {
+			if err != nil {
+				t.Fatalf("go refused supported table defaults: %v", err)
+			}
+			fixed := unitFromSource(t, strings.ReplaceAll(valueDefaultsUnit, "flagship *Ship", "flagship Ship"))
+			goFiles, err := c.Generate(fixed, target, Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			code := string(goFiles["ProbeTable.go"])
+			for _, want := range []string{`copy(value.Label[:], "new")`, `copy(value.Name[:], "untitled")`, `copy(value.Tag[:], "ab")`, `value.Caps = 3`} {
+				if !strings.Contains(code, want) {
+					t.Errorf("go default output lacks %q", want)
+				}
 			}
 			continue
 		}

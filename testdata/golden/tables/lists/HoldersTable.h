@@ -8810,7 +8810,8 @@ inline bool SquadLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                     uint64_t count = 0;
                     if ( !r.get( count, TableBitsRequired( entry.min, entry.max ) ) ) { report->malformed = true; return false; }
                     count += (uint64_t) entry.min;
-                    TableMapFill<SquadRosterEntry> fill = TableMapFillBegin( nodes, value.roster, (uint32_t) count );
+                    TableMapFill<SquadRosterEntry> fill = TableMapFillBegin( nodes, value.roster, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     uint8_t last_key = 0;
                     bool landed = false;
@@ -9425,6 +9426,7 @@ inline bool DeckLoadBody( TableReader & r, const TableNodeMap & nodes, Deck & va
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.hands_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -9457,6 +9459,9 @@ inline bool DeckLoadBody( TableReader & r, const TableNodeMap & nodes, Deck & va
                         decoded = i + 1;
                     }
                     value.hands_count = (int32_t) decoded;
+                    for ( int32_t tail = value.hands_count; tail < previous_count; tail++ ) {
+                        RowReset( value.hands[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -16683,7 +16688,8 @@ inline bool SquadLoadMessageBodyRetain( TableBitReader & r, const TableVocabular
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
                     TableRetainDiscardField( retain, path, 0 );
-                    TableMapFill<SquadRosterEntry> fill = TableMapFillBegin( nodes, value.roster, (uint32_t) count );
+                    TableMapFill<SquadRosterEntry> fill = TableMapFillBegin( nodes, value.roster, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     uint8_t last_key = 0;
                     bool landed = false;
@@ -17243,6 +17249,7 @@ inline bool DeckLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Dec
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.hands_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -17278,6 +17285,9 @@ inline bool DeckLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Dec
                         decoded = i + 1;
                     }
                     value.hands_count = (int32_t) decoded;
+                    for ( int32_t tail = value.hands_count; tail < previous_count; tail++ ) {
+                        RowReset( value.hands[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length

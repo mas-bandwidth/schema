@@ -94,23 +94,27 @@ func foreign(data []byte) []byte {
 // the extent the caller claims, its base `lead` bytes past a 64-byte-aligned
 // address, or absent entirely.
 func openBlockForged(name string, data []byte, extent int64, lead int, nilBuffer bool) (bool, error) {
+	reason, err := openBlockForgedReason(name, data, extent, lead, nilBuffer)
+	return reason == nil, err
+}
+func openBlockForgedReason(name string, data []byte, extent int64, lead int, nilBuffer bool) (error, error) {
 	base, bytes, keep := place(data, extent, lead, 64)
 	if nilBuffer {
 		base = nil
 	}
-	opened := false
+	var refusal error
 	switch {
 	case strings.HasPrefix(name, "block_render"):
 		var block blockdemo.RenderFrameBlock
-		opened = blockdemo.RenderFrameBlockOpen(&block, base, bytes)
+		refusal = block.Open(base, bytes)
 	case strings.HasPrefix(name, "block_padded"):
 		var block blockdemo.PaddedFrameBlock
-		opened = blockdemo.PaddedFrameBlockOpen(&block, base, bytes)
+		refusal = block.Open(base, bytes)
 	default:
-		return false, fmt.Errorf("no block named %s", name)
+		return nil, fmt.Errorf("no block named %s", name)
 	}
 	// the block handle points into `keep`, and nothing else references it by
 	// now: hold it live across the Open above
 	keepAlive(keep)
-	return opened, nil
+	return refusal, nil
 }

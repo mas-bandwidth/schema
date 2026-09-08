@@ -6961,6 +6961,7 @@ inline bool HandLoadBody( TableReader & r, const TableNodeMap & nodes, Hand & va
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.entries_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -7043,6 +7044,9 @@ inline bool HandLoadBody( TableReader & r, const TableNodeMap & nodes, Hand & va
                         decoded = i + 1;
                     }
                     value.entries_count = (int32_t) decoded;
+                    for ( int32_t tail = value.entries_count; tail < previous_count; tail++ ) {
+                        value.entries[tail] = Carry();
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -8294,6 +8298,19 @@ inline bool HandExtentAt( const Ctx & ctx, const Hand & value, int64_t & at )
         default: break;
     }
     }
+    if (value.entries_count < 0 || value.entries_count > 2) { return false; }
+    for (int32_t i = value.entries_count; i < 2; i++) // hidden union slots have no extent placement
+    {
+        switch ( value.entries[i].type ) // entries: the set arm is the edge
+        {
+            case CarryType::Leaf:
+            {
+                if (!TableExtentUnreachedEmpty(LeafExtent(ctx,value.entries[i].leaf))) { return false; }
+                break;
+            }
+            default: break;
+        }
+    }
     return true;
 }
 
@@ -8324,6 +8341,19 @@ inline bool HandExtentPack( const Ctx & ctx, const Hand & src, Hand & dst, uint8
         }
         default: break;
     }
+    }
+    if (src.entries_count < 0 || src.entries_count > 2) { return false; }
+    for (int32_t i = src.entries_count; i < 2; i++) // hidden union slots have no extent placement
+    {
+        switch ( src.entries[i].type ) // entries: the set arm is the edge
+        {
+            case CarryType::Leaf:
+            {
+                if (!TableExtentUnreachedEmpty(LeafExtent(ctx,src.entries[i].leaf))) { return false; }
+                break;
+            }
+            default: break;
+        }
     }
     return true;
 }
@@ -13444,6 +13474,7 @@ inline bool HandLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Han
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.entries_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -13529,6 +13560,9 @@ inline bool HandLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Han
                         decoded = i + 1;
                     }
                     value.entries_count = (int32_t) decoded;
+                    for ( int32_t tail = value.entries_count; tail < previous_count; tail++ ) {
+                        value.entries[tail] = Carry();
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -16452,6 +16486,19 @@ template <typename Ctx> inline bool HandCookExtent( const Ctx & ctx, const Table
         }
         default: break;
     }
+    }
+    if (value.entries_count < 0 || value.entries_count > 2) { return false; }
+    for (int32_t i = value.entries_count; i < 2; i++) // hidden union slots have no extent placement
+    {
+        switch ( value.entries[i].type ) // entries: the set arm is the edge
+        {
+            case CarryType::Leaf:
+            {
+                if (!TableExtentUnreachedEmpty(LeafExtent(ctx,value.entries[i].leaf))) { return false; }
+                break;
+            }
+            default: break;
+        }
     }
     return true;
 }

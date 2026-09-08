@@ -7337,7 +7337,8 @@ inline bool ChunksLoadMessageBody( TableBitReader & r, const TableVocabulary & v
                     uint64_t count = 0;
                     if ( !r.get( count, TableBitsRequired( entry.min, entry.max ) ) ) { report->malformed = true; return false; }
                     count += (uint64_t) entry.min;
-                    TableMapFill<ChunksBlobsEntry> fill = TableMapFillBegin( nodes, value.blobs, (uint32_t) count );
+                    TableMapFill<ChunksBlobsEntry> fill = TableMapFillBegin( nodes, value.blobs, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     int32_t last_key = 0;
                     bool landed = false;
@@ -9286,7 +9287,8 @@ inline bool ChunksLoadMessageBodyRetain( TableBitReader & r, const TableVocabula
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
                     TableRetainDiscardField( retain, path, 0 );
-                    TableMapFill<ChunksBlobsEntry> fill = TableMapFillBegin( nodes, value.blobs, (uint32_t) count );
+                    TableMapFill<ChunksBlobsEntry> fill = TableMapFillBegin( nodes, value.blobs, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     int32_t last_key = 0;
                     bool landed = false;

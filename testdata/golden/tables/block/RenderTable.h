@@ -10649,6 +10649,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.cameras_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -10680,6 +10681,9 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                         decoded = i + 1;
                     }
                     value.cameras_count = (int32_t) decoded;
+                    for ( int32_t tail = value.cameras_count; tail < previous_count; tail++ ) {
+                        RenderCameraReset( value.cameras[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -10703,6 +10707,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.ships_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -10734,6 +10739,9 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                         decoded = i + 1;
                     }
                     value.ships_count = (int32_t) decoded;
+                    for ( int32_t tail = value.ships_count; tail < previous_count; tail++ ) {
+                        RenderShipReset( value.ships[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -10757,6 +10765,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.turrets_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -10788,6 +10797,9 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                         decoded = i + 1;
                     }
                     value.turrets_count = (int32_t) decoded;
+                    for ( int32_t tail = value.turrets_count; tail < previous_count; tail++ ) {
+                        RenderTurretReset( value.turrets[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -10811,6 +10823,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.missiles_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -10842,6 +10855,9 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                         decoded = i + 1;
                     }
                     value.missiles_count = (int32_t) decoded;
+                    for ( int32_t tail = value.missiles_count; tail < previous_count; tail++ ) {
+                        RenderMissileReset( value.missiles[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -10865,6 +10881,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.dynamic_props_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -10896,6 +10913,9 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                         decoded = i + 1;
                     }
                     value.dynamic_props_count = (int32_t) decoded;
+                    for ( int32_t tail = value.dynamic_props_count; tail < previous_count; tail++ ) {
+                        RenderDynamicPropReset( value.dynamic_props[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -10919,6 +10939,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.static_props_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -10950,6 +10971,9 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                         decoded = i + 1;
                     }
                     value.static_props_count = (int32_t) decoded;
+                    for ( int32_t tail = value.static_props_count; tail < previous_count; tail++ ) {
+                        RenderStaticPropReset( value.static_props[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -10973,6 +10997,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.cosmetic_props_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -11004,6 +11029,9 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                         decoded = i + 1;
                     }
                     value.cosmetic_props_count = (int32_t) decoded;
+                    for ( int32_t tail = value.cosmetic_props_count; tail < previous_count; tail++ ) {
+                        RenderCosmeticPropReset( value.cosmetic_props[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -11027,6 +11055,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.lasers_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -11058,6 +11087,9 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                         decoded = i + 1;
                     }
                     value.lasers_count = (int32_t) decoded;
+                    for ( int32_t tail = value.lasers_count; tail < previous_count; tail++ ) {
+                        RenderLaserReset( value.lasers[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -11081,6 +11113,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.explosions_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -11112,6 +11145,9 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                         decoded = i + 1;
                     }
                     value.explosions_count = (int32_t) decoded;
+                    for ( int32_t tail = value.explosions_count; tail < previous_count; tail++ ) {
+                        RenderExplosionReset( value.explosions[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length

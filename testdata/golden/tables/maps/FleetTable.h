@@ -9360,7 +9360,8 @@ inline bool FleetLoadoutsEntryLoadMessageBody( TableBitReader & r, const TableVo
                     uint64_t count = 0;
                     if ( !r.get( count, TableBitsRequired( entry.min, entry.max ) ) ) { report->malformed = true; return false; }
                     count += (uint64_t) entry.min;
-                    TableMapFill<FleetLoadoutsEntryValueEntry> fill = TableMapFillBegin( nodes, value.value, (uint32_t) count );
+                    TableMapFill<FleetLoadoutsEntryValueEntry> fill = TableMapFillBegin( nodes, value.value, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     uint8_t last_key = 0;
                     bool landed = false;
@@ -10579,7 +10580,8 @@ inline bool FleetLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                     uint64_t count = 0;
                     if ( !r.get( count, TableBitsRequired( entry.min, entry.max ) ) ) { report->malformed = true; return false; }
                     count += (uint64_t) entry.min;
-                    TableMapFill<FleetShipsEntry> fill = TableMapFillBegin( nodes, value.ships, (uint32_t) count );
+                    TableMapFill<FleetShipsEntry> fill = TableMapFillBegin( nodes, value.ships, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     const char * last_key = NULL; int32_t last_length = 0;
                     bool landed = false;
@@ -10641,7 +10643,8 @@ inline bool FleetLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                     uint64_t count = 0;
                     if ( !r.get( count, TableBitsRequired( entry.min, entry.max ) ) ) { report->malformed = true; return false; }
                     count += (uint64_t) entry.min;
-                    TableMapFill<FleetByIdEntry> fill = TableMapFillBegin( nodes, value.by_id, (uint32_t) count );
+                    TableMapFill<FleetByIdEntry> fill = TableMapFillBegin( nodes, value.by_id, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     uint32_t last_key = 0;
                     bool landed = false;
@@ -10721,7 +10724,8 @@ inline bool FleetLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                     uint64_t count = 0;
                     if ( !r.get( count, TableBitsRequired( entry.min, entry.max ) ) ) { report->malformed = true; return false; }
                     count += (uint64_t) entry.min;
-                    TableMapFill<FleetLoadoutsEntry> fill = TableMapFillBegin( nodes, value.loadouts, (uint32_t) count );
+                    TableMapFill<FleetLoadoutsEntry> fill = TableMapFillBegin( nodes, value.loadouts, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     const char * last_key = NULL; int32_t last_length = 0;
                     bool landed = false;
@@ -10783,7 +10787,8 @@ inline bool FleetLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                     uint64_t count = 0;
                     if ( !r.get( count, TableBitsRequired( entry.min, entry.max ) ) ) { report->malformed = true; return false; }
                     count += (uint64_t) entry.min;
-                    TableMapFill<FleetTiersEntry> fill = TableMapFillBegin( nodes, value.tiers, (uint32_t) count );
+                    TableMapFill<FleetTiersEntry> fill = TableMapFillBegin( nodes, value.tiers, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     int16_t last_key = 0;
                     bool landed = false;
@@ -14422,7 +14427,8 @@ inline bool FleetLoadoutsEntryLoadMessageBodyRetain( TableBitReader & r, const T
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
                     TableRetainDiscardField( retain, path, 1 );
-                    TableMapFill<FleetLoadoutsEntryValueEntry> fill = TableMapFillBegin( nodes, value.value, (uint32_t) count );
+                    TableMapFill<FleetLoadoutsEntryValueEntry> fill = TableMapFillBegin( nodes, value.value, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     uint8_t last_key = 0;
                     bool landed = false;
@@ -15418,7 +15424,8 @@ inline bool FleetLoadMessageBodyRetain( TableBitReader & r, const TableVocabular
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
                     TableRetainDiscardField( retain, path, 0 );
-                    TableMapFill<FleetShipsEntry> fill = TableMapFillBegin( nodes, value.ships, (uint32_t) count );
+                    TableMapFill<FleetShipsEntry> fill = TableMapFillBegin( nodes, value.ships, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     const char * last_key = NULL; int32_t last_length = 0;
                     bool landed = false;
@@ -15483,7 +15490,8 @@ inline bool FleetLoadMessageBodyRetain( TableBitReader & r, const TableVocabular
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
                     TableRetainDiscardField( retain, path, 1 );
-                    TableMapFill<FleetByIdEntry> fill = TableMapFillBegin( nodes, value.by_id, (uint32_t) count );
+                    TableMapFill<FleetByIdEntry> fill = TableMapFillBegin( nodes, value.by_id, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     uint32_t last_key = 0;
                     bool landed = false;
@@ -15566,7 +15574,8 @@ inline bool FleetLoadMessageBodyRetain( TableBitReader & r, const TableVocabular
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
                     TableRetainDiscardField( retain, path, 3 );
-                    TableMapFill<FleetLoadoutsEntry> fill = TableMapFillBegin( nodes, value.loadouts, (uint32_t) count );
+                    TableMapFill<FleetLoadoutsEntry> fill = TableMapFillBegin( nodes, value.loadouts, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     const char * last_key = NULL; int32_t last_length = 0;
                     bool landed = false;
@@ -15631,7 +15640,8 @@ inline bool FleetLoadMessageBodyRetain( TableBitReader & r, const TableVocabular
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
                     TableRetainDiscardField( retain, path, 4 );
-                    TableMapFill<FleetTiersEntry> fill = TableMapFillBegin( nodes, value.tiers, (uint32_t) count );
+                    TableMapFill<FleetTiersEntry> fill = TableMapFillBegin( nodes, value.tiers, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     int16_t last_key = 0;
                     bool landed = false;

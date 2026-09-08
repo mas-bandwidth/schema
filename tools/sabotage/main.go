@@ -26,12 +26,42 @@ type edit struct{ old, new string }
 // sabotages maps a control's name to what it breaks. Each entry names the
 // rule it removes, so a reader of a red control knows what was taken away.
 var sabotages = map[string][]edit{
+	"go-measure-wire-damage":      {{old: "reason:=TableRefuseWireDamaged;if verdict==TableOpenRefused", new: "reason:=TableRefuseTruncated /* SABOTAGED: borrow an accelerator clause */;if verdict==TableOpenRefused"}},
+	"go-counted-tail-work":        {{old: "g.pf(\"%sfor i:=decoded;i<previous;i++{%sReset(&%s[i])}\\n\", i, f.Type.Name, expr)", new: "g.pf(\"%s_ = previous;for i:=decoded;i<%d;i++{/* SABOTAGED: reset unused capacity */%sReset(&%s[i])}\\n\", i, bound, f.Type.Name, expr)"}},
+	"go-arm-reference-framing":    {{old: "if f.Type.Pointer || enumRef(f) != nil {", new: "if false { // SABOTAGED: resolve before validating an arm reference length"}},
+	"go-message-measure-reserved": {{old: "e,ok:=v.Entry(ref);if !ok||!tableMessageSkip(r,v,indexBits,e,depth){return false}", new: "e,ok:=v.Entry(ref);if !ok||e.Id>=0xfffffffffffffffd||!tableMessageSkip(r,v,indexBits,e,depth){return false} /* SABOTAGED */"}},
+	"go-counted-tail-reset":       {{old: "g.pf(\"%sfor i:=decoded;i<previous;i++{%s[i].Type=%sTypeNone}\\n\", i, expr, f.Type.Name)", new: "g.pf(\"%s_ = previous // SABOTAGED: retain union tails\\n\", i)"}},
+
+	"go-measure-cycle-reason":      {{old: "n.reason=TableRefuseDataCycle;return false", new: "n.reason=TableRefuseInvalidValue;return false /* SABOTAGED */"}},
+	"go-measure-count-reason":      {{old: "if count>math.MaxInt32{return TableRefuseCountOverExtentCap}", new: "if count>math.MaxInt32{return TableRefuseCountOverLength} /* SABOTAGED */"}},
+	"go-retain-unknown-node":       {{old: "report.Unknown+=unknown;if retain!=nil{report.RetainLost+=unknown}", new: "report.Unknown+=unknown;if retain!=nil{/* SABOTAGED */}"}},
+	"go-view-arm-offset":           {{old: "PayloadOffset:uint32(unsafe.Offsetof(%sRow{}.Payload)),", new: "PayloadOffset:uint32(unsafe.Offsetof(%sRow{}.Payload))+1,/* SABOTAGED */"}},
+	"go-view-packet-offset":        {{old: "offset := fmt.Sprintf(\"uint32(unsafe.Offsetof(%s{}.%s))\", g.storageName(st.Name), name)", new: "offset := fmt.Sprintf(\"uint32(unsafe.Offsetof(%s{}.%s))\", g.storageName(st.Name), name)\n if g.viewPacket != nil {offset += \"+1\"} // SABOTAGED"}},
+	"go-view-outside-identity":     {{old: "id = 0\n\t\tjson = \"\"", new: "id = 1 // SABOTAGED: grant an outside field wire identity\n\t\tjson = \"\""}},
 	"reference-wide-union-include": {{old: "for name := range ir.TableClosureVocabulary(u) {", new: "for name := range map[string]bool{} { // SABOTAGED: miss union-only wide storage"}},
 	"reference-wide-alignment":     {{old: "static const uint32_t kTableAlign       = ` + fmt.Sprint(align) + `;", new: "static const uint32_t kTableAlign       = 8; // SABOTAGED ` + fmt.Sprint(align) + `;"}},
 	"reference-flags-widen":        {{old: "// decides widening, including flags elements (SPEC-TABLES §4).\n\treturn widenable(tableScalarKind(f))", new: "// decides widening, including flags elements (SPEC-TABLES §4).\n\tif f.Type.Ref != nil { return false } // SABOTAGED\n\treturn widenable(tableScalarKind(f))"}},
 	"reference-map-widen-count":    {{old: "if !st.IsMapEntry() || f.Name != ir.MapKeyFieldName {", new: "if true { // SABOTAGED: count each widened key twice"}},
 	"reference-list-widen-extent":  {{old: "        if ( !TableKindWidens( wire_kind, elem_kind ) ) { return true; }\n        // Load accepts the widening ladder.", new: "        if ( wire_kind != elem_kind ) { return true; } // SABOTAGED\n        // Load accepts the widening ladder."}},
+	"go-builder-union-refusal":     {{old: "g.pf(\"%s%sLoadBody(&%s,&%s)\\n\", ind, v.Type, rdr, expr)\n\t\tg.emitCarveReturn(\"r\", rdr, ind)", new: "g.pf(\"%s%sLoadBody(&%s,&%s)\\n\", ind, v.Type, rdr, expr)\n\t\t// SABOTAGED: inspect payload length before propagating refusal"}},
 	"map-builder-count-oracle":     {{old: "\t\tif count > uint64(math.MaxInt32) {\n\t\t\tr.off = end\n\t\t\treturn r.collectionCap()\n\t\t}\n\t\tsub := r.subTo(end)", new: "\t\tif false && count > uint64(math.MaxInt32) { // SABOTAGED\n\t\t\tr.off = end\n\t\t\treturn r.collectionCap()\n\t\t}\n\t\tsub := r.subTo(end)"}},
+	// Go ownership, managed activation frames, and bounded retention.
+	"go-allocator-original-slice": {
+		{old: ";return b}", new: ";return b[:n] /* SABOTAGED */}"},
+	},
+	"go-allocator-pair": {
+		{old: "if len(allocator)>0{n.allocator=allocator[0]}", new: "if len(allocator)>0{n.allocator=TableAllocator{}} /* SABOTAGED */"},
+	},
+	"go-allocator-frame": {
+		{old: "type tableWireFrame struct", new: "var tableAllocationProbe []byte // SABOTAGED\ntype tableWireFrame struct"},
+		{old: "frame:=tableWireFrame{};var ok bool", new: "frame:=tableWireFrame{};tableAllocationProbe=make([]byte,64);var ok bool"},
+	},
+	"go-retain-file-count-floor": {
+		{old: "||count>uint64(max(int64(0),s.limit-s.w.Offset)/minimum)", new: "/* SABOTAGED */"},
+	},
+	"go-retain-message-depth": {
+		{old: "case 13,14,16:return s.framed(e,depth+1)", new: "case 13,14,16:return s.framed(e,depth) /* SABOTAGED */"},
+	},
 	// Packet defaults: remove only the constructor byte copy.
 	"packet-defaults-c-constructor-bytes": {{
 		old: "\t\t\tg.pf(\" };\\n        memcpy( value.%s, bytes, sizeof( bytes ) );\\n    }\\n\", f.Name)",

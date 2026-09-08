@@ -6902,6 +6902,7 @@ LISTDEMO_TABLE_INLINE bool BoundedLoadBody( TableReader & r, Bounded & value )
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.items_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -6933,6 +6934,9 @@ LISTDEMO_TABLE_INLINE bool BoundedLoadBody( TableReader & r, Bounded & value )
                         decoded = i + 1;
                     }
                     value.items_count = (int32_t) decoded;
+                    for ( int32_t tail = value.items_count; tail < previous_count; tail++ ) {
+                        UnitReset( value.items[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -9008,6 +9012,7 @@ LISTDEMO_TABLE_INLINE bool BoundedLoadBodyRetain( TableReader & r, Bounded & val
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.items_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -9042,6 +9047,9 @@ LISTDEMO_TABLE_INLINE bool BoundedLoadBodyRetain( TableReader & r, Bounded & val
                         decoded = i + 1;
                     }
                     value.items_count = (int32_t) decoded;
+                    for ( int32_t tail = value.items_count; tail < previous_count; tail++ ) {
+                        UnitReset( value.items[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length

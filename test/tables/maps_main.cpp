@@ -1385,6 +1385,10 @@ static void test_depth()
         static uint8_t rides[1u << 16];
         const int64_t measured_past = DepthMeasure( past );
         CHECK_EQ( DepthSave( past, rides, sizeof( rides ) ), measured_past );
+        CHECK_EQ( DepthCookMeasure( past ), -1 );
+        memset( rides, 0xa5, sizeof( rides ) );
+        CHECK( !DepthCook( past, rides, sizeof( rides ), TableByteOrder::Little ) );
+        for ( size_t byte = 0; byte < sizeof( rides ); byte++ ) { CHECK_EQ( rides[byte], 0xa5 ); }
         CHECK( !past.Lock() );
         CHECK( past.AsConst() == NULL ); // nothing partial
     }

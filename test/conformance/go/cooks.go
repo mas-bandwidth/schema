@@ -46,42 +46,46 @@ func cookAlignment(source []byte) int64 {
 // openCookForged opens one cooked file by root name over a forged placement:
 // the buffer is exactly the extent the caller claims, its base `lead` bytes
 // past an aligned address, or absent entirely.
-func openCookForged(root string, data []byte, extent int64, lead int, nilBuffer bool) (bool, error) {
+func openCookForged(name string, data []byte, extent int64, lead int, nilBuffer bool) (bool, error) {
+	reason, err := openCookForgedReason(name, data, extent, lead, nilBuffer)
+	return reason == nil, err
+}
+func openCookForgedReason(root string, data []byte, extent int64, lead int, nilBuffer bool) (error, error) {
 	base, bytes, keep := place(data, extent, lead, cookAlignment(data))
 	if nilBuffer {
 		base = nil
 	}
-	opened := false
+	var refusal error
 	switch root {
 	case "Scene":
 		var c graphdemo.SceneCook
-		opened = graphdemo.SceneOpen(&c, base, bytes)
+		refusal = c.Open(base, bytes)
 	case "Depot":
 		var c graphdemo.DepotCook
-		opened = graphdemo.DepotOpen(&c, base, bytes)
+		refusal = c.Open(base, bytes)
 	case "Album":
 		var c graphdemo.AlbumCook
-		opened = graphdemo.AlbumOpen(&c, base, bytes)
+		refusal = c.Open(base, bytes)
 	case "TreeNode":
 		var c graphdemo.TreeNodeCook
-		opened = graphdemo.TreeNodeOpen(&c, base, bytes)
+		refusal = c.Open(base, bytes)
 	case "ListNode":
 		var c graphdemo.ListNodeCook
-		opened = graphdemo.ListNodeOpen(&c, base, bytes)
+		refusal = c.Open(base, bytes)
 	case "Settings":
 		var c graphdemo.SettingsCook
-		opened = graphdemo.SettingsOpen(&c, base, bytes)
+		refusal = c.Open(base, bytes)
 	case "Meta":
 		var c graphdemo.MetaCook
-		opened = graphdemo.MetaOpen(&c, base, bytes)
+		refusal = c.Open(base, bytes)
 	case "Layer":
 		var c graphdemo.LayerCook
-		opened = graphdemo.LayerOpen(&c, base, bytes)
+		refusal = c.Open(base, bytes)
 	default:
-		return false, fmt.Errorf("no cook root named %s", root)
+		return nil, fmt.Errorf("no cook root named %s", root)
 	}
 	keepAlive(keep)
-	return opened, nil
+	return refusal, nil
 }
 
 // openCook opens one cooked file by root name and hands back its region, the

@@ -62,8 +62,8 @@ func readManifest(path string) ([]line, error) {
 // shape of its own and each row copies into it.
 
 type report struct {
-	unknown, kindMismatch, clamped, duplicate int32
-	malformed                                 bool
+	unknown, kindMismatch, widened, clamped, duplicate int32
+	malformed, refused                                 bool
 }
 
 type codec struct {
@@ -71,14 +71,17 @@ type codec struct {
 	root string
 	// reset returns the value to its declared defaults and hands back the
 	// opaque handle the rest of the row takes
-	fresh   func() any
-	load    func(value any, wire []byte, rep *report) bool
-	measure func(value any) int64
-	save    func(value any, buffer []byte) int64
+	loadMeasure func([]byte) int64
+	fresh       func() any
+	load        func(value any, wire []byte, rep *report) bool
+	measure     func(value any) int64
+	save        func(value any, buffer []byte) int64
 	// the TEXT form (docs/SPEC-TABLES.md §16); nil where a backend has none
 	fromJson      func(value any, text []byte, rep *report) bool
 	toJsonMeasure func(value any) int64
 	toJson        func(value any, buffer []byte) int64
+	cookMeasure   func(any) int64
+	cook          func(any, []byte, bool) bool
 }
 
 // row binds one generated table's surface into the erased shape above. One
@@ -89,7 +92,7 @@ type codec struct {
 // R is the UNIT's own TableReport — the generated surface is per package, so
 // there are as many report types as units — and `snap` narrows it to the one
 // shape the harness's five counters need.
-func row[T any, R any](
+func row[T any, R any, O ~uint8](
 	unit, root string,
 	reset func(*T),
 	load func(*T, []byte, *R) bool,
@@ -98,11 +101,21 @@ func row[T any, R any](
 	fromJson func(*T, []byte, *R) bool,
 	toJsonMeasure func(*T) int64,
 	toJson func(*T, []byte) int64,
+	cookMeasure func(*T) int64,
+	cook func(*T, []byte, O) bool,
 	snap func(*R) report,
 ) codec {
 	var storage T
 	return codec{
 		unit: unit, root: root,
+		cookMeasure: func(value any) int64 { return cookMeasure(value.(*T)) },
+		cook: func(value any, buffer []byte, big bool) bool {
+			order := O(1)
+			if big {
+				order = 2
+			}
+			return cook(value.(*T), buffer, order)
+		},
 		fresh: func() any { reset(&storage); return &storage },
 		load: func(value any, wire []byte, rep *report) bool {
 			var inner R
@@ -220,10 +233,14 @@ func surfaceReport(lines []line, out string) error {
 		var rep report
 		ok := c.load(value, wire, &rep)
 		malformed := "false"
-		if rep.malformed || !ok {
+		if rep.malformed || !ok && !rep.refused {
 			malformed = "true"
 		}
-		text := fmt.Sprintf("%d,%d,%d,%d,%s\n", rep.unknown, rep.kindMismatch, rep.clamped, rep.duplicate, malformed)
+		verdict := "read"
+		if rep.refused {
+			verdict = "refused"
+		}
+		text := fmt.Sprintf("%d,%d,%d,%d,%d,%s,%s\n", rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate, malformed, verdict)
 		if err := spill(out, f[1], []byte(text)); err != nil {
 			return err
 		}
@@ -352,6 +369,9 @@ func blockVerdicts(lines []line, out string, swap bool) error {
 // — `0` an aligned base, `1`..`63` that many bytes past one, `null` no buffer
 // at all. Neither is a fact a file can carry, which is why both are columns.
 func surfaceForgery(kind string, lines []line, out string) error {
+	return surfaceForgeryResult(kind, lines, out, false)
+}
+func surfaceForgeryResult(kind string, lines []line, out string, reasons bool) error {
 	for _, f := range lines {
 		if f[0] != "forgery" || f[2] != kind {
 			continue
@@ -370,18 +390,24 @@ func surfaceForgery(kind string, lines []line, out string) error {
 		} else if lead, err = strconv.Atoi(f[6]); err != nil {
 			return err
 		}
-		var opened bool
+		var refusal error
 		if kind == "block" {
-			opened, err = openBlockForged(f[3], data, extent, lead, nilBuffer)
+			refusal, err = openBlockForgedReason(f[3], data, extent, lead, nilBuffer)
 		} else {
-			opened, err = openCookForged(f[3], data, extent, lead, nilBuffer)
+			refusal, err = openCookForgedReason(f[3], data, extent, lead, nilBuffer)
 		}
 		if err != nil {
 			return err
 		}
 		verdict := "refuse\n"
-		if opened {
+		if refusal == nil {
 			verdict = "open\n"
+		}
+		if reasons {
+			verdict = "ok\n"
+			if refusal != nil {
+				verdict = refusal.Error() + "\n"
+			}
 		}
 		if err := spill(out, f[1], []byte(verdict)); err != nil {
 			return err
@@ -415,7 +441,7 @@ func surfaceJsonHostile(lines []line, out string) error {
 		ok := c.fromJson(value, text, &rep)
 		verdict := "refused\n"
 		if ok && !rep.malformed {
-			verdict = fmt.Sprintf("%d,%d,%d,%d,false\n", rep.unknown, rep.kindMismatch, rep.clamped, rep.duplicate)
+			verdict = fmt.Sprintf("%d,%d,%d,%d,%d,false,read\n", rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate)
 		}
 		if err := spill(out, f[1], []byte(verdict)); err != nil {
 			return err
@@ -425,6 +451,13 @@ func surfaceJsonHostile(lines []line, out string) error {
 }
 
 func main() {
+	if len(os.Args) == 2 && (os.Args[1] == "wire-fuzz" || os.Args[1] == "wire-fuzz-builder") {
+		if err := wireFuzz(os.Args[1] == "wire-fuzz-builder"); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	if len(os.Args) < 3 {
 		fmt.Fprintf(os.Stderr, "usage: %s <manifest> list\n       %s <manifest> <surface> <outdir>\n", os.Args[0], os.Args[0])
 		os.Exit(2)
@@ -448,6 +481,12 @@ func main() {
 	out := os.Args[3]
 	var run func([]line, string) error
 	switch surface {
+	case "retain":
+		run = surfaceRetain
+	case "retain-save":
+		run = surfaceRetainSave
+	case "message":
+		run = surfaceMessage
 	case "wire":
 		run = surfaceWire
 	case "report":
@@ -456,6 +495,8 @@ func main() {
 		run = surfaceJsonRead
 	case "json-write":
 		run = surfaceJsonWrite
+	case "cook-write":
+		run = surfaceCookWrite
 	case "cook":
 		run = surfaceCook
 	case "json-hostile":
@@ -470,6 +511,10 @@ func main() {
 		run = surfaceBlockDump
 	case "forgery":
 		run = func(lines []line, out string) error { return surfaceForgery("block", lines, out) }
+	case "cook-reason":
+		run = func(lines []line, out string) error { return surfaceForgeryResult("cook", lines, out, true) }
+	case "block-reason":
+		run = func(lines []line, out string) error { return surfaceForgeryResult("block", lines, out, true) }
 	case "cook-forgery":
 		run = func(lines []line, out string) error { return surfaceForgery("cook", lines, out) }
 	default:

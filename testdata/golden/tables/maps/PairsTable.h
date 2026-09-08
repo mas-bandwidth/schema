@@ -7399,7 +7399,8 @@ inline bool PairsLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                     uint64_t count = 0;
                     if ( !r.get( count, TableBitsRequired( entry.min, entry.max ) ) ) { report->malformed = true; return false; }
                     count += (uint64_t) entry.min;
-                    TableMapFill<PairsSlotsEntry> fill = TableMapFillBegin( nodes, value.slots, (uint32_t) count );
+                    TableMapFill<PairsSlotsEntry> fill = TableMapFillBegin( nodes, value.slots, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     uint32_t last_key = 0;
                     bool landed = false;
@@ -9437,7 +9438,8 @@ inline bool PairsLoadMessageBodyRetain( TableBitReader & r, const TableVocabular
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
                     TableRetainDiscardField( retain, path, 0 );
-                    TableMapFill<PairsSlotsEntry> fill = TableMapFillBegin( nodes, value.slots, (uint32_t) count );
+                    TableMapFill<PairsSlotsEntry> fill = TableMapFillBegin( nodes, value.slots, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     uint32_t last_key = 0;
                     bool landed = false;

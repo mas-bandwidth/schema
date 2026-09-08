@@ -8,7 +8,7 @@ SERIALIZE_GO ?= ../serialize.go
 
 build/packet-text/go/.stamp: bin/schema test/packet-text/Narrow.schema make/go.mk
 	./bin/schema generate --lang go --out build/packet-text/go test/packet-text/Narrow.schema
-	@printf 'module packettext\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => %s/$(SERIALIZE_GO)\n' "$(CURDIR)" > build/packet-text/go/go.mod
+	@printf 'module packettext\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => "%s/$(SERIALIZE_GO)"\n' "$(CURDIR)" > build/packet-text/go/go.mod
 	@touch $@
 
 .PHONY: packet-utf8-go packet-utf8-go-negative-control
@@ -83,12 +83,10 @@ tables-go-json-walk: build/tables-generated-go/.stamp
 # a generated package names its schema's `package` and Go resolves an import by
 # module path — so the conformance leg's go.mod replaces one path per unit,
 # exactly as test/go/go.mod already does for the packet corpus.
-build/tables-generated-go/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema
+build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema $(wildcard test/tables/[MAKR][12].schema) tables/scalars/Scalars.schema test/tables/Scalars2.schema $(wildcard examples-wide/*.schema) tables/messages/Messages.schema tables/backend/Backend.schema tables/vocab/Vocab.schema tables/vocab9/Vocab9.schema $(wildcard tables/stream/*.schema tables/blobs/*.schema tables/lists/*.schema tables/maps/*.schema)
 	@mkdir -p build/tables-generated-go
 	./bin/schema generate --lang go --out build/tables-generated-go/examples tables/examples
-	# the POINTERED unit: its Go WIRE surface is refused by name (§11) and its
-	# two ACCELERATORS are emitted all the same, because neither needs a codec
-	# (§7, §19). This is where the cook's Go read side comes from.
+	# The pointer corpus exercises the wire, region and cook read surfaces.
 	./bin/schema generate --lang go --out build/tables-generated-go/pointers tables/pointers
 	./bin/schema generate --lang go --out build/tables-generated-go/block tables/block
 	./bin/schema generate --lang go --out build/tables-generated-go/blockhome tables/blockhome
@@ -96,6 +94,44 @@ build/tables-generated-go/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_
 	./bin/schema generate --lang go --out build/tables-generated-go/v2 test/tables/V2.schema
 	./bin/schema generate --lang go --out build/tables-generated-go/p1 test/tables/P1.schema
 	./bin/schema generate --lang go --out build/tables-generated-go/p3 test/tables/P3.schema
+	./bin/schema generate --lang go --out build/tables-generated-go/p2 test/tables/P2.schema
+	$(call go_table_module,p2,tblp2)
+	./bin/schema generate --lang go --out build/tables-generated-go/w1 test/tables/W1.schema
+	$(call go_table_module,w1,tblw1)
+	./bin/schema generate --lang go --out build/tables-generated-go/w2 test/tables/W2.schema
+	$(call go_table_module,w2,tblw2)
+	./bin/schema generate --lang go --out build/tables-generated-go/g1 test/tables/G1.schema
+	$(call go_table_module,g1,tblg1)
+	./bin/schema generate --lang go --out build/tables-generated-go/m1 test/tables/M1.schema
+	./bin/schema generate --lang go --out build/tables-generated-go/m2 test/tables/M2.schema
+	./bin/schema generate --lang go --out build/tables-generated-go/a1 test/tables/A1.schema
+	./bin/schema generate --lang go --out build/tables-generated-go/a2 test/tables/A2.schema
+	./bin/schema generate --lang go --out build/tables-generated-go/k1 test/tables/K1.schema
+	./bin/schema generate --lang go --out build/tables-generated-go/k2 test/tables/K2.schema
+	./bin/schema generate --lang go --out build/tables-generated-go/r1 test/tables/R1.schema
+	./bin/schema generate --lang go --out build/tables-generated-go/r2 test/tables/R2.schema
+	./bin/schema generate --lang go --out build/tables-generated-go/scalars tables/scalars
+	./bin/schema generate --lang go --out build/tables-generated-go/scalars2 test/tables/Scalars2.schema
+	./bin/schema generate --lang go --out build/tables-generated-go/wide examples-wide
+	$(call go_table_module,wide,widedemo)
+	./bin/schema generate --lang go --out build/tables-generated-go/messages tables/messages
+	./bin/schema generate --lang go --out build/tables-generated-go/stream tables/stream
+	$(call go_table_module,stream,streamdemo)
+	./bin/schema generate --lang go --out build/tables-generated-go/blobs tables/blobs
+	$(call go_table_module,blobs,blobdemo)
+	./bin/schema generate --lang go --out build/tables-generated-go/lists tables/lists
+	$(call go_table_module,lists,listdemo)
+	./bin/schema generate --lang go --out build/tables-generated-go/maps tables/maps
+	$(call go_table_module,maps,mapdemo)
+	./bin/schema generate --lang go --out build/tables-generated-go/backend tables/backend
+	$(call go_table_module,backend,backenddemo)
+	./bin/schema generate --lang go --out build/tables-generated-go/vocab tables/vocab
+	$(call go_table_module,vocab,vocabdemo)
+	./bin/schema generate --lang go --out build/tables-generated-go/vocab9 tables/vocab9
+	$(call go_table_module,vocab9,vocab9demo)
+	./bin/schema generate --lang go --out build/tables-generated-go/rt1 test/tables/RT1.schema
+	$(call go_table_module,rt1,tblrt1)
+	$(call go_table_module,messages,messagedemo)
 	$(call go_table_module,examples,tabledemo)
 	$(call go_table_module,pointers,graphdemo)
 	$(call go_table_module,block,blockdemo)
@@ -104,6 +140,16 @@ build/tables-generated-go/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_
 	$(call go_table_module,v2,tblv2)
 	$(call go_table_module,p1,tblp1)
 	$(call go_table_module,p3,tblp3)
+	$(call go_table_module,scalars,scalardemo)
+	$(call go_table_module,scalars2,tblscalars2)
+	$(call go_table_module,m1,tblm1)
+	$(call go_table_module,m2,tblm2)
+	$(call go_table_module,a1,tbla1)
+	$(call go_table_module,a2,tbla2)
+	$(call go_table_module,k1,tblk1)
+	$(call go_table_module,k2,tblk2)
+	$(call go_table_module,r1,tblr1)
+	$(call go_table_module,r2,tblr2)
 	@touch $@
 
 # one generated unit's module wiring (build wiring, not schema output — the
@@ -151,8 +197,8 @@ define go_fuzz_sabotage
 	./build/go-fuzz-$(1)/schema generate --lang go --out build/go-fuzz-$(1)/generated/pointers tables/pointers
 	@printf 'module blockdemo\n\ngo 1.23\n' > build/go-fuzz-$(1)/generated/block/go.mod
 	@printf 'module graphdemo\n\ngo 1.23\n' > build/go-fuzz-$(1)/generated/pointers/go.mod
-	@sed -e 's|=> ../../build/tables-generated-go/block|=> $(CURDIR)/build/go-fuzz-$(1)/generated/block|' \
-	     -e 's|=> ../../build/tables-generated-go/pointers|=> $(CURDIR)/build/go-fuzz-$(1)/generated/pointers|' \
+	@sed -e 's|=> ../../build/tables-generated-go/block|=> "$(CURDIR)/build/go-fuzz-$(1)/generated/block"|' \
+	     -e 's|=> ../../build/tables-generated-go/pointers|=> "$(CURDIR)/build/go-fuzz-$(1)/generated/pointers"|' \
 	     test/go-tables/go.mod > build/go-fuzz-$(1)/go.mod.txt
 	@printf '{"Replace":{"%s/test/go-tables/go.mod":"%s/build/go-fuzz-$(1)/go.mod.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/go-fuzz-$(1)/modoverlay.json
@@ -220,12 +266,12 @@ conformance-big-endian: build/conformance-harness build/conformance-go-be
 # so an interrupt cannot leave a sabotaged working tree — and the matrix must go
 # red, on that surface and on no other.
 .PHONY: conformance-negative-control-go
-conformance-negative-control-go:
-	@echo "conformance-negative-control-go: dormant — the surface it turns red is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#511)"
+conformance-negative-control-go: build/conformance-harness build/conformance-go
+	sh test/conformance/go/negative-control wire
 
 .PHONY: conformance-negative-control-go-walk
-conformance-negative-control-go-walk:
-	@echo "conformance-negative-control-go-walk: dormant — the surface it turns red is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#511)"
+conformance-negative-control-go-walk: build/conformance-harness build/conformance-go
+	sh test/conformance/go/negative-control walk
 
 # THE GO LEG of `make test`: the two conformance negative controls, THE GO
 # PORT's own instruments (docs/SPEC-TABLES.md) — the allocation gate and its
@@ -254,7 +300,7 @@ BENCH_TABLES_LEGS += generated/bench/tables/go/.stamp
 build/packet-wide/go/.stamp: bin/schema build/packet-wide/source/WideText.schema test/packet-wide/Shapes.schema make/go.mk
 	./bin/schema generate --lang go --out build/packet-wide/go build/packet-wide/source/WideText.schema
 	./bin/schema generate --lang go --out build/packet-wide/go/shapes test/packet-wide/Shapes.schema
-	@printf 'module packetwide\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => %s/$(SERIALIZE_GO)\n' "$(CURDIR)" > build/packet-wide/go/go.mod
+	@printf 'module packetwide\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => "%s/$(SERIALIZE_GO)"\n' "$(CURDIR)" > build/packet-wide/go/go.mod
 	@touch $@
 
 .PHONY: packet-wide-go packet-wide-go-negative-control
@@ -275,3 +321,105 @@ packet-wide-go-negative-control: packet-wide-go
 	@echo 'packet wide Go negative control: removed pairing fails bit-flip agreement'
 
 test-go: packet-wide-go packet-wide-go-negative-control
+
+.PHONY: tables-go-wire-fuzz tables-go-wire-fuzz-negative-control
+tables-go-wire-fuzz: build/conformance-harness build/conformance-go
+	./build/conformance-harness wire-fuzz --driver 'build/conformance-go wire-fuzz' --seed $(SEED) --n $(N)
+
+tables-go-wire-fuzz-negative-control: build/conformance-harness build/conformance-go
+	sh test/conformance/go/negative-control leb
+
+test-go: tables-go-wire-fuzz tables-go-wire-fuzz-negative-control
+
+.PHONY: tables-go-containers tables-go-containers-negative-controls
+tables-go-containers:
+	go test ./internal/codegen/gotable -run 'Test(RegionLists|ListsThroughUnionArrays|BuilderCountRecovery|NestedTerminationAndStringDefault|RegionMaps|MapReadReports|MapJsonKeyDomains)'
+tables-go-containers-negative-controls:
+	@set -e; for mode in sort ascending duplicate key-domain dead cap; do sh test/conformance/go/container-negative-control $$mode; done
+
+test-go: tables-go-containers tables-go-containers-negative-controls
+
+# The disjoint fill is held under Go's thread sanitizer. Its control makes
+# every worker fill the whole array; byte identity alone cannot see that race.
+.PHONY: tables-go-block-build tables-go-block-race-negative-control tables-go-block-fill-refuser tables-go-block-fill-refuser-negative-control
+tables-go-block-build:
+	go test ./internal/codegen/gotable -run '^TestBlockBuilderStorageAndParallelFill$$' -count=1
+tables-go-block-race-negative-control:
+	go test ./internal/codegen/gotable -run '^TestBlockBuilderRaceNegativeControl$$' -count=1
+tables-go-block-fill-refuser:
+	go test ./internal/codegen/gotable -run '^TestBlockFillRefuser$$' -count=1
+tables-go-block-fill-refuser-negative-control:
+	go test ./internal/codegen/gotable -run '^TestBlockFillRefuserNegativeControl$$' -count=1
+
+test-go: tables-go-block-build tables-go-block-fill-refuser
+
+.PHONY: tables-go-retain
+tables-go-retain:
+	go test ./internal/codegen/gotable -run '^TestRetain' -count=1
+test-go: tables-go-retain
+
+.PHONY: tables-go-allocator tables-go-allocator-negative-controls tables-go-allocator-runtime-negative-control tables-go-retain-negative-controls
+tables-go-allocator:
+	@if [ "$${SCHEMA_GO_ALLOC_ANY_GO:-}" = 1 ]; then echo "Go allocation observation mode: NOT CERTIFIED"; fi
+	GOTOOLCHAIN=go1.26.0 go test ./internal/codegen/gotable -run '^TestAllocatorOwnershipAndStandaloneWriters$$' -count=1
+tables-go-allocator-negative-controls:
+	@set -e; for mode in original-slice pair frame; do sh test/conformance/go/ownership-negative-control $$mode; done
+tables-go-allocator-runtime-negative-control:
+	sh test/conformance/go/ownership-negative-control runtime
+tables-go-retain-negative-controls:
+	@set -e; for mode in file-count-floor message-depth unknown-node; do sh test/conformance/go/ownership-negative-control $$mode; done
+
+test-go: tables-go-allocator tables-go-allocator-negative-controls tables-go-allocator-runtime-negative-control tables-go-retain-negative-controls
+
+.PHONY: tables-go-builders tables-go-builders-negative-control tables-go-typed-refusals
+tables-go-builders: build/conformance-harness build/conformance-go
+	go test ./internal/codegen/gotable -run '^TestBuilderRefusalThroughUnion$$' -count=1
+	./build/conformance-harness wire-fuzz --builder --driver 'build/conformance-go wire-fuzz-builder' --seed $(SEED) --n $(N)
+tables-go-builders-negative-control:
+	sh test/conformance/go/ownership-negative-control builder-union
+tables-go-typed-refusals:
+	GOTOOLCHAIN=go1.26.0 go test ./internal/codegen/gotable -run '^Test(AcceleratorTypedRefusals|MeasureRefusalReasons)$$' -count=1
+
+test-go: tables-go-builders tables-go-builders-negative-control tables-go-typed-refusals
+
+.PHONY: tables-go-view tables-go-view-negative-controls
+tables-go-view:
+	go test ./compiler -run '^TestGoUnitViewCorpus$$' -count=1
+	go test ./internal/codegen/gotable -run '^TestUnitViewPacketStorage$$' -count=1
+tables-go-view-negative-controls:
+	@set -e; for mode in identity packet-offset arm-offset; do sh test/tables/view-go-control $$mode; done
+
+test-go: tables-go-view tables-go-view-negative-controls
+
+.PHONY: tables-go-measure-negative-controls tables-go-retain-wire-fuzz
+tables-go-measure-negative-controls:
+	@set -e; for mode in measure-cycle measure-count wire-damage message-reserved counted-tail counted-work arm-framing; do sh test/conformance/go/ownership-negative-control $$mode; done
+tables-go-retain-wire-fuzz: build/conformance-harness build/conformance-go
+	./build/conformance-harness wire-fuzz --retain --driver 'build/conformance-go wire-fuzz' --seed $(SEED) --n $(N)
+test-go: tables-go-measure-negative-controls tables-go-retain-wire-fuzz
+
+# Release certification reuses the PR checks at a second seed, a longer soak,
+# and a larger allocation sample. Local invocations may shorten GO_SOAK.
+GO_SOAK ?= 1h
+GO_RELEASE_SEED ?= 68719476731
+.PHONY: tables-go-release tables-go-clean tables-go-bench-gate
+tables-go-release: build/conformance-harness build/conformance-go tables-go-bench-gate tables-go-clean
+	$(MAKE) tables-go-wire-fuzz tables-go-retain-wire-fuzz tables-go-builders N=100000 SEED=$(GO_RELEASE_SEED)
+	$(MAKE) tables-go-wire-fuzz-negative-control
+	cd test/go-tables && GOTOOLCHAIN=go1.26.0 go test -run '^TestSoak$$' -count=1 -timeout 2h -soak $(GO_SOAK)
+	SCHEMA_GO_ALLOC_RUNS=200 GOTOOLCHAIN=go1.26.0 go test ./internal/codegen/gotable -run '^TestAllocatorOwnershipAndStandaloneWriters$$' -count=1
+tables-go-clean: build/tables-generated-go/.stamp
+	@set -e; for d in build/tables-generated-go/*; do \
+		[ -f "$$d/go.mod" ] || continue; \
+		bad=$$(gofmt -l "$$d"/*.go); [ -z "$$bad" ] || { echo "noncanonical generated Go: $$bad"; exit 1; }; \
+		(cd "$$d" && go vet ./...); \
+	done
+tables-go-bench-gate: generated/bench/tables/go/.stamp
+	bench/tables/go/leg build
+	bench/tables/go/leg run --gate
+test-go: tables-go-clean tables-go-bench-gate
+
+.PHONY: tables-go-usage
+tables-go-usage: build/tables-generated-go/.stamp
+	cd test/go-tables && go test -run '^TestUsage$$' -count=1
+test-go: tables-go-usage

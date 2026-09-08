@@ -1,0 +1,19 @@
+#!/bin/sh
+set -eu
+mode=$1
+out=build/go-view-control-$mode
+mkdir -p "$out"
+case "$mode" in
+identity) source=codecs.go; sabotage=go-view-outside-identity; package=./internal/codegen/gotable; test=TestUnitViewPacketStorage; expected='outside packet gained wire identity or codec' ;;
+packet-offset) source=codecs.go; sabotage=go-view-packet-offset; package=./internal/codegen/gotable; test=TestUnitViewPacketStorage; expected='outside packet field offset' ;;
+arm-offset) source=view.go; sabotage=go-view-arm-offset; package=./compiler; test='TestGoUnitViewCorpus/arms'; expected='unit view listing differs' ;;
+*) echo "unknown view control: $mode" >&2;exit 1 ;;
+esac
+source=internal/codegen/gotable/$source
+go run ./tools/sabotage -name "$sabotage" -out "$out/source.gotext" "$source"
+root=$(pwd)
+printf '{"Replace":{"%s/%s":"%s/%s/source.gotext"}}\n' "$root" "$source" "$root" "$out" > "$out/overlay.json"
+if go test -overlay "$out/overlay.json" "$package" -run "^$test\$" -count=1 > "$out/log" 2>&1; then echo "view control stayed green: $mode" >&2;exit 1;fi
+if grep -q '\[build failed\]' "$out/log";then cat "$out/log";exit 1;fi
+grep -Fq "$expected" "$out/log" || { cat "$out/log";exit 1; }
+echo "Go view control: $mode detected"

@@ -885,7 +885,7 @@ func (d *bitDecoder) keyed(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 
 // mapField decodes one map (docs/SPEC-TABLES.md §2.8, §3.3): the count at the
 // thirty-two bits the data decides, then the generated `{ key, value }`
-// bodies, each decoded whole and then placed by its key: ascending against
+// bodies, each key scanned before its body is decoded: ascending against
 // the key of the last entry that LANDED, a duplicate replacing the slot it
 // took, a key that does not fit dropped whole and counted `clamped`. A
 // DESCENDING key is damage the batch cannot recover from, because there is no
@@ -905,6 +905,7 @@ func (d *bitDecoder) mapField(fv *tabletext.Field, entry ir.TableVocabularyEntry
 	// A SECOND OCCURRENCE OF A MAP REPLACES IT WHOLE (docs/SPEC-TABLES.md
 	// §6.6): every record under an entry the earlier occurrence held goes with
 	// the entry, and the discard moves neither counter.
+	d.rt.forgetMap(fv)
 	for i := range fv.Entries {
 		d.rt.forgetCellRecords(&fv.Entries[i])
 	}
@@ -915,20 +916,38 @@ func (d *bitDecoder) mapField(fv *tabletext.Field, entry ir.TableVocabularyEntry
 	// carry it, exactly as the `kind_mismatch` it replaces counted once.
 	keyWidened := false
 	for i := uint64(0); i < n; i++ {
-		decoded := d.m.NewMapEntry(f)
-		d.mapKey = &keyWidened
-		ok := d.body(decoded)
-		d.mapKey = nil
+		key, kindBad, widened, ok := d.mapEntryKey(f)
 		if !ok {
+			d.report.Malformed = true
 			return false
 		}
-		key := tabletext.MapKeyOf(f, decoded)
+		if widened && !keyWidened {
+			keyWidened = true
+			d.report.Widened++
+		}
+		if kindBad {
+			// A map with a key of the wrong kind is empty. Earlier entry
+			// events stand, and the unframed remainder still has to be walked.
+			fv.Entries = nil
+			fv.Count = 0
+			d.report.KindMismatch++
+			for ; i < n; i++ {
+				if !d.skipBody() {
+					d.report.Malformed = true
+					return false
+				}
+			}
+			return true
+		}
 		if !tabletext.MapKeyFits(f, key) {
-			// KEYS NEVER CLAMP: the entry is dropped whole, one count per entry.
-			// A record the decode captured under it is one the save's walk will
-			// not reach, and it counts its `retain_lost` THERE, exactly as the
-			// file form's own dropped entry does (§6.6).
+			// The key chooses the slot before any value is decoded (§2.8).
+			// An oversized key drops the whole entry, including its unknown
+			// fields: there is no body occurrence to capture under (§6.6).
 			d.report.Clamped++
+			if !d.skipBody() {
+				d.report.Malformed = true
+				return false
+			}
 			continue
 		}
 		order := -1
@@ -937,6 +956,16 @@ func (d *bitDecoder) mapField(fv *tabletext.Field, entry ir.TableVocabularyEntry
 		}
 		if order > 0 {
 			d.report.Malformed = true // DESCENDING: not a body any conforming writer produced
+			return false
+		}
+		decoded := d.m.NewMapEntry(f)
+		// The probe already counted this map's key widening. The body flag
+		// suppresses a second count without suppressing nested value events.
+		d.mapKey = &keyWidened
+		ok = d.body(decoded)
+		d.mapKey = nil
+		d.rt.builtMapEntry(fv, decoded)
+		if !ok {
 			return false
 		}
 		if order == 0 {
@@ -952,11 +981,66 @@ func (d *bitDecoder) mapField(fv *tabletext.Field, entry ir.TableVocabularyEntry
 		fv.Entries = append(fv.Entries, tabletext.Cell{Tab: decoded})
 		last = decoded
 	}
-	if keyWidened {
-		d.report.Widened++
-	}
 	fv.Count = len(fv.Entries)
 	return true
+}
+
+// mapEntryKey scans an entry without decoding its values or recording events.
+// Like the file key scan, it keeps the raw key until the caller chooses a slot.
+// The main walk subsequently records each reference exactly once, including
+// entries that are skipped because their key does not fit.
+func (d *bitDecoder) mapEntryKey(f *ir.Field) (key tabletext.MapKey, bad, widened, ok bool) {
+	bits := *d.r
+	scan := *d
+	scan.r = &bits
+	scan.report = &tabletext.Report{}
+	scan.rt, scan.spots, scan.mapKey = nil, nil, nil
+	keyField := ir.MapKeyField(f)
+	want := ir.TableWireScalarKind(keyField)
+	for {
+		ref, good := scan.reference()
+		if !good {
+			return key, bad, widened, false
+		}
+		if ref == 0 {
+			return key, bad, widened, true
+		}
+		entry, named := scan.entry(ref)
+		if !named || entry.Id >= ir.TableMessageVocabularyWireId {
+			return key, bad, widened, false
+		}
+		if entry.Id != ir.MapKeyWireId {
+			if !scan.skip(entry) {
+				return key, bad, widened, false
+			}
+			continue
+		}
+		bad = int(entry.Kind) != want && !ir.TableKindWidens(int(entry.Kind), want)
+		widened = widened || int(entry.Kind) != want && !bad
+		if bad {
+			if !scan.skip(entry) {
+				return key, bad, widened, false
+			}
+			continue
+		}
+		if keyField.Type.Kind == ir.TString {
+			n, good := scan.r.get(ir.TableMessageBitsRequired(0, entry.Shape.Max))
+			if !good || !scan.r.align() || !scan.r.has(int(n)*8) {
+				return key, bad, widened, false
+			}
+			raw, _ := scan.r.bytes(int(n))
+			if !textValid(raw) {
+				return key, bad, widened, false
+			}
+			key.Str = raw
+		} else {
+			var cell tabletext.Cell
+			if !scan.scalar(&cell, keyField, entry.Kind, entry.Shape) {
+				return key, bad, widened, false
+			}
+			key.I, key.U = cell.I, cell.U
+		}
+	}
 }
 
 // unionCell reads a union: the ARM's reference, and then the payload a FIELD

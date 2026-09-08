@@ -8543,7 +8543,8 @@ inline bool TextLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                     uint64_t count = 0;
                     if ( !r.get( count, TableBitsRequired( entry.min, entry.max ) ) ) { report->malformed = true; return false; }
                     count += (uint64_t) entry.min;
-                    TableMapFill<TextNamesEntry> fill = TableMapFillBegin( nodes, value.names, (uint32_t) count );
+                    TableMapFill<TextNamesEntry> fill = TableMapFillBegin( nodes, value.names, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     const char * last_key = NULL; int32_t last_length = 0;
                     bool landed = false;
@@ -8605,7 +8606,8 @@ inline bool TextLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                     uint64_t count = 0;
                     if ( !r.get( count, TableBitsRequired( entry.min, entry.max ) ) ) { report->malformed = true; return false; }
                     count += (uint64_t) entry.min;
-                    TableMapFill<TextWideEntry> fill = TableMapFillBegin( nodes, value.wide, (uint32_t) count );
+                    TableMapFill<TextWideEntry> fill = TableMapFillBegin( nodes, value.wide, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     uint16_t last_key = 0;
                     bool landed = false;
@@ -8667,7 +8669,8 @@ inline bool TextLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                     uint64_t count = 0;
                     if ( !r.get( count, TableBitsRequired( entry.min, entry.max ) ) ) { report->malformed = true; return false; }
                     count += (uint64_t) entry.min;
-                    TableMapFill<TextBlobsEntry> fill = TableMapFillBegin( nodes, value.blobs, (uint32_t) count );
+                    TableMapFill<TextBlobsEntry> fill = TableMapFillBegin( nodes, value.blobs, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     int32_t last_key = 0;
                     bool landed = false;
@@ -11432,7 +11435,8 @@ inline bool TextLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
                     TableRetainDiscardField( retain, path, 0 );
-                    TableMapFill<TextNamesEntry> fill = TableMapFillBegin( nodes, value.names, (uint32_t) count );
+                    TableMapFill<TextNamesEntry> fill = TableMapFillBegin( nodes, value.names, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     const char * last_key = NULL; int32_t last_length = 0;
                     bool landed = false;
@@ -11497,7 +11501,8 @@ inline bool TextLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
                     TableRetainDiscardField( retain, path, 1 );
-                    TableMapFill<TextWideEntry> fill = TableMapFillBegin( nodes, value.wide, (uint32_t) count );
+                    TableMapFill<TextWideEntry> fill = TableMapFillBegin( nodes, value.wide, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     uint16_t last_key = 0;
                     bool landed = false;
@@ -11562,7 +11567,8 @@ inline bool TextLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
                     TableRetainDiscardField( retain, path, 2 );
-                    TableMapFill<TextBlobsEntry> fill = TableMapFillBegin( nodes, value.blobs, (uint32_t) count );
+                    TableMapFill<TextBlobsEntry> fill = TableMapFillBegin( nodes, value.blobs, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     int32_t last_key = 0;
                     bool landed = false;

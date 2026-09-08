@@ -227,6 +227,7 @@ func (g *tableGen) emitExtentWalk(st *ir.Struct, base edgeVisitor, v extentVisit
 				continue
 			}
 			g.emitVariableUnionWalk(f, g.extentArmVisitor(ev, v))
+			g.emitUnreachedUnionExtentRefusal(f, ev)
 		}
 	}
 }
@@ -953,4 +954,19 @@ func alignOfList(u *ir.Unit, f *ir.Field) int64 {
 		return align
 	}
 	return 8
+}
+
+// A union element has the same hidden-slot obligation as a nested table.
+// Walk its set arm solely to ask whether its by-value containers are empty.
+func (g *tableGen) emitUnreachedUnionExtentRefusal(f *ir.Field, ev edgeVisitor) {
+	if f.Array != ir.ArrayCounted {
+		return
+	}
+	g.pf("    if (%s.%s_count < 0 || %s.%s_count > %d) { return false; }\n", ev.read, f.Name, ev.read, f.Name, f.ArrayBound)
+	g.pf("    for (int32_t i = %s.%s_count; i < %d; i++) // hidden union slots have no extent placement\n    {\n", ev.read, f.Name, f.ArrayBound)
+	probe := extentVisitor{descend: func(table string, expr edgeExpr, ind string) {
+		g.pf("%sif (!TableExtentUnreachedEmpty(%sExtent(ctx,%s))) { return false; }\n", ind, table, expr.Src)
+	}}
+	g.emitUnionArmWalk(f.Type.Ref.(*ir.Union), g.elementExpr(ev, f, "i"), g.extentArmVisitor(ev, probe), f.Name, "        ")
+	g.pf("    }\n")
 }

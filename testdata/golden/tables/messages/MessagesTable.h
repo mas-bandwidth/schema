@@ -4416,6 +4416,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.origins_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -4531,6 +4532,9 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                         decoded = i + 1;
                     }
                     value.origins_count = (int32_t) decoded;
+                    for ( int32_t tail = value.origins_count; tail < previous_count; tail++ ) {
+                        value.origins[tail] = Origin();
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -4554,6 +4558,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.modes_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -4588,6 +4593,9 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                         decoded = i + 1;
                     }
                     value.modes_count = (int32_t) decoded;
+                    for ( int32_t tail = value.modes_count; tail < previous_count; tail++ ) {
+                        value.modes[tail] = Mode();
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -7956,6 +7964,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.edits_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -7987,6 +7996,9 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                         decoded = i + 1;
                     }
                     value.edits_count = (int32_t) decoded;
+                    for ( int32_t tail = value.edits_count; tail < previous_count; tail++ ) {
+                        EditReset( value.edits[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -10430,6 +10442,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.history_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -10701,6 +10714,9 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                         decoded = i + 1;
                     }
                     value.history_count = (int32_t) decoded;
+                    for ( int32_t tail = value.history_count; tail < previous_count; tail++ ) {
+                        value.history[tail] = ToolBody();
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -10724,6 +10740,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.trace_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -10755,6 +10772,9 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                         decoded = i + 1;
                     }
                     value.trace_count = (int32_t) decoded;
+                    for ( int32_t tail = value.trace_count; tail < previous_count; tail++ ) {
+                        ScriptReset( value.trace[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length

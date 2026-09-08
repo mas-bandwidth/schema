@@ -144,8 +144,11 @@ reach.
   is allocation with the caller holding the pointer. The BLOCK form (§19.1) is
   the one surface that takes a caller-provided allocator with malloc semantics,
   and there it is real: C++ takes an alloc/free pair with a context, C the same
-  three as a struct, used once at build time and never on the fill path. C# also threads a zeroed native allocation/free pair through arena, packing
-  and native numbering scratch; its managed authoring classes use the CLR. Other
+  three as a struct, used once at build time and never on the fill path. C#
+  threads a zeroed native allocation/free pair through arena, packing and
+  native numbering scratch; its managed authoring classes use the CLR. Go
+  accepts allocation/free pairs for arenas, packing, numbering and block
+  construction, with managed activation costs stated in PORTING.md. Other
   backends allocate inside their runtime and say so. No port contorts itself
   toward zero allocation for a variable-length table.
 - **EVERY READ PATH ALLOCATES NOTHING**, in every class, on every form. A
@@ -158,12 +161,20 @@ reach.
 C-like dialect of `serialize.h`, with library calls behind hooks (§13.9).
 C++ and C carry both storage classes. C# carries both classes and the current
 id-table file and bitpacked message forms, JSON, runtime cook writing, block
-construction, native regions, builders, retain-unknown and UnitView. C, Dart,
-Go, Rust, Java, JavaScript and Elixir still carry their previously recorded
-wire surface at this checkpoint; their current-form work is tracked separately.
-Dart, Go, Rust, Java, JavaScript and Elixir's fixed-class ports refuse pointers
+construction, native regions, builders, retain-unknown and UnitView. Go carries
+these surfaces too, with its storage contracts described below. C, Dart, Rust,
+Java, JavaScript and Elixir still carry their previously recorded wire surface
+at this checkpoint; their current-form work is tracked separately.
+Dart, Rust, Java, JavaScript and Elixir's fixed-class ports refuse pointers
 by name until their variable-class carry lands. Every generated language has
 a table backend; refusal is scoped to a construct, never the table declaration.
+
+**The Go backend carries fixed and variable tables.** Its file and announced
+message codecs use §3's id-table wire form. Caller-owned regions, mutable arena
+builders, bounded retention, runtime cook writers, block storage and UnitView
+are covered by `test-go`, `tables-go-release` and all eighteen conformance
+surfaces. `ROADMAP.md` records feature status; the porting register distinguishes
+implemented functionality from remaining optimization and instrumentation work.
 
 **The C# storage surfaces are explicit.** Managed classes are authoring values;
 their variable reads allocate managed storage. Native loads fill caller-owned
@@ -2507,8 +2518,9 @@ first, each the one an array already raises:
 - **AN ELEMENT KIND THAT DISAGREES** with the reader's declaration is §3's
   element-kind rule: the field is skipped whole by its `L`, and one
   `kind_mismatch` counts. A first occurrence leaves the default empty array;
-  an incompatible repeat preserves the value an earlier occurrence placed. `[]int32` read into a `[]float32`
-  field, `[]T` read into a `[]*T` field and the reverse are all this event.
+  an incompatible repeat preserves the value an earlier occurrence placed.
+  `[]int32` read into a `[]float32` field, `[]T` read into a `[]*T` field and the
+  reverse are all this event.
 - **A DAMAGED ELEMENT** inside a good count is that element's own framing
   damage, and the array keeps what it decoded, exactly as a bounded array's
   elements do.
@@ -5888,7 +5900,13 @@ tolerance is the versioning model:
   checked, so a repeat under the field id leaves no arm an earlier
   occurrence decoded standing: the last occurrence wins whole even when its
   own framing is damaged, and the element reads `None`. An element the body
-  cannot reach at all, with no byte left for an arm id, is not touched.
+  cannot reach at all, with no byte left for an arm id, is not touched while
+  it remains inside the live range (or belongs to a fixed array). After an
+  accepted counted-array occurrence, slots beyond its recovered live count
+  are restored to the value-initialized element (§7.2). An implementation
+  need only reset the previously live slots: entry reset already established
+  the unused tail, so a short repeated field does not require a walk over the
+  declared maximum.
   An ARRAY body too short to carry its own header, which is the element kind
   byte and the count and so fewer than two bytes, is **INERT**: no element is
   decoded, no counter fires, and the field keeps the value it has. On a first
@@ -6658,6 +6676,10 @@ const Scene * scene = builder.AsConst();       // CONST: one packed region
   representation `Lock` does, so a locked structure and a loaded one are
   read through one view API.
 
+The arena and region use one alignment for the unit: eight bytes, or sixteen
+when any record in the table closure requires sixteen-byte alignment, including
+a 128-bit integer or fixed-point field. Every node starts at that alignment.
+
 Reading a pointer is `NodeAt( node->next )` — one add (§6.3), NULL when
 the reference is null.
 
@@ -6812,7 +6834,7 @@ each, and the terminating ZERO UNIT is what `wstring(N)`'s `char16_t[N + 1]`
 storage carries for the same reason (§7.2). The units begin at offset eight,
 so they are two-aligned by construction and a region hands back a terminated
 `char16_t` string with no copy. Its
-alignment is eight and its extent runs to the next entry as every node's
+alignment is the unit's and its extent runs to the next entry as every node's
 does; its directory entry carries the reserved type id of §3.1. A `*bytes`
 slot is the same eight-byte self-relative delta every pointer slot is, and it
 resolves to the header: `data` is the header plus eight, and `length` is the
@@ -7204,11 +7226,12 @@ and wins whole (§3, §4). The records retained under the earlier occurrence go
 with the values it held: **when a known ancestor body is reset or replaced by
 a later legal occurrence on the same wire, every record retained under the
 earlier occurrence is discarded before the later one is read, and only the
-winning occurrence's records survive to the save.** The occurrences are four,
+winning occurrence's records survive to the save.** The occurrences are five,
 and each is a body the wire lets a writer put down again: a repeated TABLE
 field, by value or under `?`, a UNION whose arm is written again, the same arm
-or another, a MAP's duplicate key (§2.8), and a KEYED-ARRAY slot written again
-(§3.2). The path is the reader's own address for the body (below), so both
+or another, a repeated MAP field, a MAP's duplicate key (§2.8), and a
+KEYED-ARRAY slot written again (§3.2). The path is the reader's own address
+for the body (below), so both
 occurrences of `child` name one path, and a record that outlived its occurrence
 would be appended into the winner's body at save as if the winner had carried
 it. It did not, and a save that resurrected `future = 7` beside `known = 2`
@@ -10198,32 +10221,51 @@ in build version (§20.5).
   types share one symbol table (§13.1), which is what makes the generated
   surface unprefixed and collision-free — so every name a closure member
   claims is refused to everything else. A member `X` claims `X` followed by
-  each of these **53 suffixes**, and a declaration spelling one of them is
+  each of the suffixes listed here, and a declaration spelling one of them is
   refused naming the collision — the block form's nine and the C backend's
-  seven follow below, for **69 in all**:
+  seven follow below. The registry and its two-way name gate hold the complete set:
 
   ```
   Measure  MeasureBody  Save  SaveBody  SaveBodyFields  Load  LoadBody
-  SaveInto  Reset  LoadMeasure  LoadBuilder  TableType  Builder
-  At  Emplace  Pack  PackMeasure
+  SaveInto  Reset  LoadMeasure  LoadMeasureReason  LoadBuilder  TableType  Builder
+  At  Emplace  Pack  PackMeasure  MeasureReason
   Number  NumberFrom  MeasureWire  SaveWire
   NodeStorage  NodePlace  NodeAlloc  NodeBody
-  Cook  CookMeasure  CookBody  CookLayout  CookMeasureFrom  CookFrom
+  Cook  CookMeasure  CookMeasureReason  CookBody  CookLayout  CookMeasureFrom  CookFrom
   Open  TableFields  TableInfo
   FromJson  ToJson  ToJsonMeasure  Table
   MeasureMessages  SaveMessages  LoadMessages
-  LoadRetain  MeasureRetain  SaveRetain  LoadRetainMessages  SaveRetainMessages
-  LoadBodyRetain  MeasureBodyRetain  SaveBodyRetain  SaveBodyFieldsRetain
+  LoadMessagesMeasure  SaveMessageBody  LoadMessageBody
+  LoadRetain LoadRetainBuilder  MeasureRetain  SaveRetain  LoadRetainMessages  SaveRetainMessages
+  LoadBodyRetain LoadMessageBodyRetain  MeasureBodyRetain  SaveBodyRetain  SaveBodyFieldsRetain
   MeasureWireRetain  SaveWireRetain  NodeBodyRetain
   ```
 
   The set is claimed for EVERY closure member, not only pointer-bearing
   ones: a table gains or loses pointers as an edit, and a name that was
   free yesterday must not become a collision tomorrow. That list is the
-  checker's own, and this section is held to it: the three lists here, 53, then
-  the block form's nine, then the C backend's seven, are `tableGeneratedVerbs`
-  entire, spelling for spelling and 69 in all, because a claim the page states
-  and the checker does not make is a name a user may take.
+  checker's own, and this section is held to it: the base, block and C-backend
+  suffix lists are `tableGeneratedVerbs` entire, spelling for spelling, because
+  a claim the page states and the checker does not make is a name a user may take.
+
+  Go adds `MeasureReason`, `LoadMeasureReason` (variable roots), and
+  `CookMeasureReason` alongside its integer-returning measure calls. They
+  return `(int64, error)`, with literal `nil` on success and a typed
+  `TableRefuseReason` on refusal. Builder `PackMeasureReason` follows the
+  same rule. `invalid_value` and `allocation_failed` distinguish Go
+  authoring failures from file count, form, blob-size, and cycle refusals.
+  A damaged file trailer returns Go's `TableRefuseWireDamaged`
+  (`wire_damaged`), since an error return cannot express the C++ measure's
+  untouched reason out-parameter. It is damage, separate from the file refusal
+  clauses and the accelerator-only `truncated` reason. Builder
+  `PackMeasureReason` is a method, so it adds no package-level name claim.
+
+  Go spells message region sizing `<T>LoadMessagesMeasure(vocabulary, data)`
+  because its file sizing verb `<T>LoadMeasure(wire)` cannot be overloaded.
+  `<T>LoadMessages` takes a slice of values for a fixed root, or a slice of
+  root pointers plus one caller-owned region for a variable root. Its
+  `SaveMessageBody` and `LoadMessageBody` helpers are package-level functions,
+  so their suffixes are claimed too.
 
   **RETAIN-UNKNOWN'S TWELVE ARE THREE AND NINE** (§6.6). `LoadRetain`,
   `MeasureRetain` and `SaveRetain` are the SURFACE the feature owes this

@@ -6832,6 +6832,7 @@ inline bool CrewsMembersEntryLoadBody( TableReader & r, const TableNodeMap & nod
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.value_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -6860,6 +6861,9 @@ inline bool CrewsMembersEntryLoadBody( TableReader & r, const TableNodeMap & nod
                         decoded = i + 1;
                     }
                     value.value_count = (int32_t) decoded;
+                    for ( int32_t tail = value.value_count; tail < previous_count; tail++ ) {
+                        value.value[tail] = TableRef();
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -7396,7 +7400,8 @@ inline bool CrewsLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                     uint64_t count = 0;
                     if ( !r.get( count, TableBitsRequired( entry.min, entry.max ) ) ) { report->malformed = true; return false; }
                     count += (uint64_t) entry.min;
-                    TableMapFill<CrewsMembersEntry> fill = TableMapFillBegin( nodes, value.members, (uint32_t) count );
+                    TableMapFill<CrewsMembersEntry> fill = TableMapFillBegin( nodes, value.members, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     uint32_t last_key = 0;
                     bool landed = false;
@@ -8980,6 +8985,7 @@ inline bool CrewsMembersEntryLoadBodyRetain( TableReader & r, const TableNodeMap
                 // value it has, no counter is raised, and the walk continues past L.
                 if ( body_len >= 2 )
                 {
+                    const int32_t previous_count = value.value_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
@@ -9008,6 +9014,9 @@ inline bool CrewsMembersEntryLoadBodyRetain( TableReader & r, const TableNodeMap
                         decoded = i + 1;
                     }
                     value.value_count = (int32_t) decoded;
+                    for ( int32_t tail = value.value_count; tail < previous_count; tail++ ) {
+                        value.value[tail] = TableRef();
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -9432,7 +9441,8 @@ inline bool CrewsLoadMessageBodyRetain( TableBitReader & r, const TableVocabular
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
                     TableRetainDiscardField( retain, path, 0 );
-                    TableMapFill<CrewsMembersEntry> fill = TableMapFillBegin( nodes, value.members, (uint32_t) count );
+                    TableMapFill<CrewsMembersEntry> fill = TableMapFillBegin( nodes, value.members, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     uint32_t last_key = 0;
                     bool landed = false;

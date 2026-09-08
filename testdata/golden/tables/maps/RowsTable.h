@@ -7847,7 +7847,8 @@ inline bool RowLoadMessageBody( TableBitReader & r, const TableVocabulary & voca
                     uint64_t count = 0;
                     if ( !r.get( count, TableBitsRequired( entry.min, entry.max ) ) ) { report->malformed = true; return false; }
                     count += (uint64_t) entry.min;
-                    TableMapFill<RowEntriesEntry> fill = TableMapFillBegin( nodes, value.entries, (uint32_t) count );
+                    TableMapFill<RowEntriesEntry> fill = TableMapFillBegin( nodes, value.entries, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     const char * last_key = NULL; int32_t last_length = 0;
                     bool landed = false;
@@ -8561,7 +8562,8 @@ inline bool WideRowLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                     uint64_t count = 0;
                     if ( !r.get( count, TableBitsRequired( entry.min, entry.max ) ) ) { report->malformed = true; return false; }
                     count += (uint64_t) entry.min;
-                    TableMapFill<WideRowEntriesEntry> fill = TableMapFillBegin( nodes, value.entries, (uint32_t) count );
+                    TableMapFill<WideRowEntriesEntry> fill = TableMapFillBegin( nodes, value.entries, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     uint32_t last_key = 0;
                     bool landed = false;
@@ -9698,7 +9700,8 @@ inline bool EdgeRowLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                     uint64_t count = 0;
                     if ( !r.get( count, TableBitsRequired( entry.min, entry.max ) ) ) { report->malformed = true; return false; }
                     count += (uint64_t) entry.min;
-                    TableMapFill<EdgeRowNamesEntry> fill = TableMapFillBegin( nodes, value.names, (uint32_t) count );
+                    TableMapFill<EdgeRowNamesEntry> fill = TableMapFillBegin( nodes, value.names, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     const char * last_key = NULL; int32_t last_length = 0;
                     bool landed = false;
@@ -9760,7 +9763,8 @@ inline bool EdgeRowLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                     uint64_t count = 0;
                     if ( !r.get( count, TableBitsRequired( entry.min, entry.max ) ) ) { report->malformed = true; return false; }
                     count += (uint64_t) entry.min;
-                    TableMapFill<EdgeRowIdsEntry> fill = TableMapFillBegin( nodes, value.ids, (uint32_t) count );
+                    TableMapFill<EdgeRowIdsEntry> fill = TableMapFillBegin( nodes, value.ids, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     uint64_t last_key = 0;
                     bool landed = false;
@@ -13870,7 +13874,8 @@ inline bool RowLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary 
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
                     TableRetainDiscardField( retain, path, 0 );
-                    TableMapFill<RowEntriesEntry> fill = TableMapFillBegin( nodes, value.entries, (uint32_t) count );
+                    TableMapFill<RowEntriesEntry> fill = TableMapFillBegin( nodes, value.entries, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     const char * last_key = NULL; int32_t last_length = 0;
                     bool landed = false;
@@ -14491,7 +14496,8 @@ inline bool WideRowLoadMessageBodyRetain( TableBitReader & r, const TableVocabul
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
                     TableRetainDiscardField( retain, path, 0 );
-                    TableMapFill<WideRowEntriesEntry> fill = TableMapFillBegin( nodes, value.entries, (uint32_t) count );
+                    TableMapFill<WideRowEntriesEntry> fill = TableMapFillBegin( nodes, value.entries, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     uint32_t last_key = 0;
                     bool landed = false;
@@ -15463,7 +15469,8 @@ inline bool EdgeRowLoadMessageBodyRetain( TableBitReader & r, const TableVocabul
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
                     TableRetainDiscardField( retain, path, 0 );
-                    TableMapFill<EdgeRowNamesEntry> fill = TableMapFillBegin( nodes, value.names, (uint32_t) count );
+                    TableMapFill<EdgeRowNamesEntry> fill = TableMapFillBegin( nodes, value.names, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     const char * last_key = NULL; int32_t last_length = 0;
                     bool landed = false;
@@ -15528,7 +15535,8 @@ inline bool EdgeRowLoadMessageBodyRetain( TableBitReader & r, const TableVocabul
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
                     TableRetainDiscardField( retain, path, 1 );
-                    TableMapFill<EdgeRowIdsEntry> fill = TableMapFillBegin( nodes, value.ids, (uint32_t) count );
+                    TableMapFill<EdgeRowIdsEntry> fill = TableMapFillBegin( nodes, value.ids, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     uint64_t last_key = 0;
                     bool landed = false;

@@ -6,10 +6,8 @@
 // matches the header and returns the root where it lies. There is no walk, no
 // fix-up and no allocation, which is what makes Open O(1) in the file's size.
 //
-// It reaches FURTHER than the wire half does, and that is the design rather
-// than an exception to it: a cook is POINTED AT, not parsed, so it needs not
-// one line of the codec the variable class is missing. A pointered unit gets no
-// <Base>Table.go and its cooked assets still open in full (§11).
+// The variable wire and cook use the same canonical POD rows. A cook opens
+// the packed region directly; the wire decodes into one.
 //
 // THE MEMORY IS THE CONSUMER'S, and it must stay put and stay aligned for as
 // long as the handle lives: an mmap, or a []byte the consumer keeps. This side
@@ -19,6 +17,7 @@ package gotable
 import (
 	"fmt"
 	"go/format"
+	"math/bits"
 	"sort"
 	"strings"
 
@@ -45,7 +44,7 @@ func generateCookFiles(u *ir.Unit, blocks *ir.BlockUnit) (map[string][]byte, err
 		return out, nil
 	}
 	ck := cookUnitOf(u)
-	if len(ck.tables) == 0 && len(ck.skipped) == 0 {
+	if len(ck.tables) == 0 {
 		return out, nil
 	}
 	// THE COOK HOME is the first file, by declaration order, that declares a
@@ -80,7 +79,6 @@ type cookUnit struct {
 	tables  []*ir.Struct                // every table with a Go Open, sorted by name
 	members map[string]*ir.MemberLayout // every record the cook closure reaches
 	order   []string                    // those record names, sorted
-	skipped map[string]string           // table -> why it has no Go Open
 	align   int64                       // the unit's region alignment (§7.1)
 	// every record's slot in the unit's ONE descriptor graph, so no descriptor
 	// takes a name derived from a declaration's own spelling (§11)
@@ -112,14 +110,10 @@ func (c *cookUnit) opens(name string) bool {
 	return false
 }
 
-// cookUnitOf computes the surface. A ROOT IS ANY TABLE (§7) and every table
-// gets one — with one absence this backend states rather than hides: a closure
-// carrying a UNION has no blittable spelling under the C ABI record rule the
-// accelerators are pinned to (§19.3), which is the same reason a union keeps a
-// table out of the block form, and it is a named follow-on rather than a
-// refusal.
+// Every table has a cooked view. Unions use the same canonical overlay as
+// the variable table storage; their active arm is exposed through accessors.
 func cookUnitOf(u *ir.Unit) *cookUnit {
-	c := &cookUnit{members: map[string]*ir.MemberLayout{}, skipped: map[string]string{}}
+	c := &cookUnit{members: map[string]*ir.MemberLayout{}}
 	names := make([]string, 0, len(u.Tables))
 	for name := range u.Tables {
 		names = append(names, name)
@@ -127,8 +121,7 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 	sort.Strings(names)
 	for _, name := range names {
 		st := u.Tables[name]
-		if why := cookableClosure(u, st); why != "" {
-			c.skipped[name] = why
+		if st.IsMapEntry() {
 			continue
 		}
 		c.tables = append(c.tables, st)
@@ -159,58 +152,40 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 func cookWalk(u *ir.Unit, name string, visit func(string, *ir.MemberLayout)) {
 	seen := map[string]bool{}
 	var walk func(string)
+	field := func(f *ir.Field) {
+		if f.IsMap() {
+			walk(f.MapEntry.Name)
+			return
+		}
+		if f.Type.Kind == ir.TNamed {
+			walk(f.Type.Name)
+		}
+	}
 	walk = func(n string) {
 		if seen[n] {
 			return
 		}
-		st := cookMember(u, n)
-		if st == nil {
+		seen[n] = true
+		if st := cookMember(u, n); st != nil {
+			visit(n, ir.RecordLayout(u, st))
+			for _, f := range st.Fields {
+				field(f)
+			}
 			return
 		}
-		seen[n] = true
-		visit(n, ir.RecordLayout(u, st))
-		for _, f := range st.Fields {
-			if f.Type.Kind != ir.TNamed {
-				continue
-			}
-			if ref, ok := f.Type.Ref.(*ir.Struct); ok {
-				walk(ref.Name)
+		un := u.Unions[n]
+		if un == nil {
+			un = u.TableUnions[n]
+		}
+		if un != nil {
+			for _, v := range un.Variants {
+				if !v.Void() {
+					field(v.F)
+				}
 			}
 		}
 	}
 	walk(name)
-}
-
-// cookableClosure answers whether Go can spell one table's whole cooked region
-// blittably, and why not when it cannot.
-func cookableClosure(u *ir.Unit, st *ir.Struct) string {
-	seen := map[string]bool{}
-	var walk func(string) string
-	walk = func(name string) string {
-		if seen[name] {
-			return ""
-		}
-		seen[name] = true
-		member := cookMember(u, name)
-		if member == nil {
-			return ""
-		}
-		for _, f := range member.Fields {
-			if f.Type.Kind != ir.TNamed {
-				continue
-			}
-			switch ref := f.Type.Ref.(type) {
-			case *ir.Union:
-				return name + "." + f.Name + " is a union, and a cooked record's blittable form is a C ABI record with generated padding, which cannot overlay arms"
-			case *ir.Struct:
-				if why := walk(ref.Name); why != "" {
-					return why
-				}
-			}
-		}
-		return ""
-	}
-	return walk(st.Name)
 }
 
 func cookMember(u *ir.Unit, name string) *ir.Struct {
@@ -280,11 +255,7 @@ func (g *cookGen) emit() {
 	for _, st := range g.file.Tables {
 		if g.cook.opens(st.Name) {
 			g.emitCookHandle(st)
-			continue
 		}
-		g.hf("// table %s has NO Go cook Open: %s (docs/SPEC-TABLES.md §7, §19.3).\n", st.Name, g.cook.skipped[st.Name])
-		g.hf("// Its wire (§3) and its cook are unaffected — only this backend's reader is\n")
-		g.hf("// absent, and it is absent by construction rather than by refusal.\n\n")
 	}
 }
 
@@ -324,6 +295,9 @@ func (g *cookGen) assemble() ([]byte, error) {
 	}
 	if g.needsUnsafe {
 		imports = append(imports, `"unsafe"`)
+	}
+	if strings.Contains(g.structs.String(), "serialize.") {
+		imports = append(imports, `"github.com/mas-bandwidth/serialize.go"`)
 	}
 	h.WriteString(goImports(imports))
 	h.WriteString(g.runtime.String())
@@ -398,13 +372,24 @@ func (g *cookGen) emitBlittableField(f *ir.Field, w *cookWriter) {
 	name := ir.GoExportName(f.Name)
 	next := w.next
 	switch {
-	case f.Type.Pointer:
+	case f.IsMap():
+		next()
+		g.sf("\t%s TableMap[%s]\n", name, containerElementType(g.unit, f))
+	case f.IsList():
+		next()
+		g.sf("\t%s TableList[%s]\n", name, containerElementType(g.unit, f))
+	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		// A *T SLOT IS EIGHT BYTES AT EIGHT (docs/SPEC-TABLES.md §6.3, §7.2),
 		// holding the SIGNED SELF-RELATIVE delta from the slot's own address,
 		// and NULL IS ZERO. It is not a Go pointer and never becomes one:
 		// <T>At is the one add that resolves it.
 		next()
 		g.sf("\t%s int64 // *%s: signed self-relative delta, zero is null (§6.3)\n", name, f.Type.Name)
+	case f.Type.Kind == ir.TWString:
+		next()
+		g.sf("\t%s [%d]uint16\n", name, f.Type.Size+1)
+		next()
+		g.sf("\t%sLength int32\n", name)
 	case f.Type.Kind == ir.TString:
 		next()
 		g.sf("\t%s [%d]byte // string(%d): buffer, used length beside it\n", name, f.Type.Size+1, f.Type.Size)
@@ -438,6 +423,11 @@ func (g *cookGen) emitBlittableField(f *ir.Field, w *cookWriter) {
 // goCookBlittableType is goBlittableType with one difference: a pointer
 // field's storage is the delta slot, never the target's record.
 func goCookBlittableType(u *ir.Unit, t ir.FieldType) string {
+	if t.Kind == ir.TNamed {
+		if _, ok := t.Ref.(*ir.Flags); ok {
+			return t.Name
+		}
+	}
 	if t.Pointer {
 		return "int64"
 	}
@@ -486,7 +476,10 @@ func (g *cookGen) emitRecordCheck(name string) {
 	}
 	spelled := name + "Row"
 	g.hf("\ttableCookLayoutSize(%q, unsafe.Sizeof(%s{}), %d)\n", spelled, spelled, ml.Size)
-	g.hf("\ttableCookLayoutSize(%q, unsafe.Alignof(%s{}), %d)\n", spelled+" alignment", spelled, ml.Align)
+	// Go caps native struct alignment at eight. Explicit padding preserves
+	// every model offset and stride; Open enforces the model's stronger
+	// alignment on the caller-owned byte region before exposing any row.
+	g.hf("\ttableCookLayoutSize(%q, unsafe.Alignof(%s{}), %d)\n", spelled+" alignment", spelled, min(ml.Align, 8))
 	for _, fl := range ml.Fields {
 		g.hf("\ttableCookLayoutOffset(%q, unsafe.Offsetof(%s{}.%s), %d)\n",
 			spelled+"."+ir.GoExportName(fl.Field.Name), spelled, ir.GoExportName(fl.Field.Name), fl.Offset)
@@ -539,89 +532,30 @@ func (g *cookGen) emitCookHandle(st *ir.Struct) {
 
 func (g *cookGen) emitOpen(st *ir.Struct, ml *ir.MemberLayout) {
 	name := st.Name
-	g.hf("// %sOpen checks the header and POINTS, and this is the WHOLE check\n", name)
-	g.hf("// (docs/SPEC-TABLES.md §7): the magic read in the machine's own order, the byte\n")
-	g.hf("// order it establishes, the build version, every RESERVED word zero, the region\n")
-	g.hf("// ALIGNMENT the header names, the two part lengths against the length the\n")
-	g.hf("// caller passed — a truncated file refuses — the ROOT's own storage inside the\n")
-	g.hf("// data part, and the alignment of the base. Nothing per node, ever: that is\n")
-	g.hf("// what makes this O(1) in the file's size.\n")
-	g.hf("//\n")
-	g.hf("// On a match the bytes ARE what this build wrote, in this build's layout and\n")
-	g.hf("// this build's byte order, so there is nothing to validate and nothing to fix\n")
-	g.hf("// up. On any failure it returns false and points at nothing, and the caller\n")
-	g.hf("// falls back to a wire load — the path that carries every version.\n")
-	g.hf("//\n")
-	g.hf("// EVERY NUMBER BELOW COMES OUT OF THE FILE, so all of the arithmetic is\n")
-	g.hf("// UNSIGNED and each term is BOUNDED BEFORE IT IS ADDED. A signed length would\n")
-	g.hf("// put one signed value into that arithmetic and one negative case into every\n")
-	g.hf("// comparison; a caller holding a length from a stat casts once, at the call\n")
-	g.hf("// site, where the sign is still its own business.\n")
-	g.hf("func %sOpen(cook *%sCook, base unsafe.Pointer, length int64) bool {\n", name, name)
-	g.hf("\t*cook = %sCook{}\n", name)
-	g.hf("\tif base == nil || length < %d {\n\t\treturn false\n\t}\n", cookHeaderBytes)
-	g.hf("\tbytes := uint64(length)\n\n")
-	g.hf("\t// THE MAGIC, read before anything else: it is what establishes the byte\n")
-	g.hf("\t// order every other header word is written in. A cook of the other order\n")
-	g.hf("\t// reads back this constant byte-reversed and refuses HERE, rather than\n")
-	g.hf("\t// reaching a fix-up pass this design does not have.\n")
-	g.hf("\t//\n")
-	g.hf("\t// The header is read through encoding/binary's NATIVE order — the memcpy\n")
-	g.hf("\t// the C++ side reads it with — and not through a typed load, because the\n")
-	g.hf("\t// BASE's own alignment is not checked until further down: a typed load\n")
-	g.hf("\t// before that check is an unaligned load on a target that does not allow\n")
-	g.hf("\t// one, and the caller's buffer is the thing under test.\n")
-	g.hf("\theader := unsafe.Slice((*byte)(base), %d)\n", cookHeaderBytes)
-	g.hf("\tif binary.NativeEndian.Uint64(header) != TableCookMagic {\n\t\treturn false\n\t}\n")
-	g.hf("\t// and the ORDER WORD does the other job: it RECORDS which order wrote the\n")
-	g.hf("\t// file, so a refusal names the order rather than inferring it.\n")
-	g.hf("\tif binary.NativeEndian.Uint64(header[16:]) != TableCookByteOrder {\n\t\treturn false\n\t}\n")
-	g.hf("\t// THE BUILD VERSION: under the match-and-point rule a matching id means Open\n")
-	g.hf("\t// checks nothing further, so it is the sole guard between this runtime and a\n")
-	g.hf("\t// foreign region (§20).\n")
-	g.hf("\tif binary.NativeEndian.Uint64(header[8:]) != BuildVersion {\n\t\treturn false\n\t}\n")
-	g.hf("\t// THE RESERVED WORDS: a non-zero one means a writer used a form this build\n")
-	g.hf("\t// does not understand, and Open refuses rather than ignoring it.\n")
-	g.hf("\tif binary.NativeEndian.Uint64(header[48:]) != 0 {\n\t\treturn false\n\t}\n")
-	g.hf("\tif binary.NativeEndian.Uint64(header[56:]) != 0 {\n\t\treturn false\n\t}\n\n")
-	g.hf("\t// THE ALIGNMENT WORD is the one field the check COMPUTES WITH rather than\n")
-	g.hf("\t// only compares against — the data part begins at align_up(64, alignment)\n")
-	g.hf("\t// and the base is measured against it — so a word that is not an alignment\n")
-	g.hf("\t// rounds nothing and aligns nothing. A zero there is a division by zero\n")
-	g.hf("\t// inside the check, which is the defect the check prevents.\n")
-	g.hf("\talignment := binary.NativeEndian.Uint64(header[40:])\n")
-	g.hf("\tif alignment < %d || alignment > %d {\n\t\treturn false\n\t}\n", ir.RegionAlignFloor, cookMaxAlign)
-	g.hf("\tif alignment&(alignment-1) != 0 {\n\t\treturn false // a power of two\n\t}\n")
-	g.hf("\tif alignment%%%d != 0 {\n\t\treturn false // and a multiple of the ROOT's own alignof\n\t}\n\n", ml.Align)
-	g.hf("\t// THE DATA OFFSET IS DERIVED, never a header field: a fact a reader computes\n")
-	g.hf("\t// is a fact two writers cannot disagree about, and it is 64 for every unit\n")
-	g.hf("\t// this language can declare.\n")
-	g.hf("\tdataOffset := (uint64(%d) + alignment - 1) &^ (alignment - 1)\n\n", cookHeaderBytes)
-	g.hf("\t// THE TWO PART LENGTHS against the length the caller passed. The whole file\n")
-	g.hf("\t// is dataOffset + data + attribution, and a size that is not exactly that\n")
-	g.hf("\t// refuses: a truncated file and a file with trailing bytes are the same\n")
-	g.hf("\t// refusal. Each term is bounded before it is added, so nothing here can wrap\n")
-	g.hf("\t// past the top of the type and land back inside the buffer.\n")
-	g.hf("\tdataLength := binary.NativeEndian.Uint64(header[24:])\n")
-	g.hf("\tattribution := binary.NativeEndian.Uint64(header[32:])\n")
-	g.hf("\tif dataLength > bytes || attribution > bytes-dataLength {\n\t\treturn false\n\t}\n")
-	g.hf("\tif dataOffset > bytes-dataLength-attribution {\n\t\treturn false\n\t}\n")
-	g.hf("\tif dataOffset+dataLength+attribution != bytes {\n\t\treturn false\n\t}\n\n")
-	g.hf("\t// THE DATA PART MUST HOLD THE ROOT. The part lengths frame the FILE; they do\n")
-	g.hf("\t// not say the region is at least sizeof(root). Without this a forged short\n")
-	g.hf("\t// data part describes a root partly outside the file, and a match-and-point\n")
-	g.hf("\t// reader would hand back storage the caller never gave it — the one way this\n")
-	g.hf("\t// design could read past the length it was passed.\n")
-	g.hf("\tif dataLength < %d {\n\t\treturn false\n\t}\n\n", ml.Size)
-	g.hf("\t// THE ALIGNMENT OF THE BASE. The header pads the data part to the region's\n")
-	g.hf("\t// alignment, so a base an allocator or mmap gave you is already aligned; one\n")
-	g.hf("\t// that is not is a caller's buffer this form cannot be read out of. The\n")
-	g.hf("\t// alignment divides 64, so the derived data offset carries the property from\n")
-	g.hf("\t// the file's base to the region's.\n")
-	g.hf("\tif uint64(uintptr(base))%%alignment != 0 {\n\t\treturn false\n\t}\n\n")
-	g.hf("\tcook.Region = unsafe.Add(base, uintptr(dataOffset))\n")
-	g.hf("\tcook.RegionLength = int64(dataLength)\n")
-	g.hf("\treturn true\n}\n\n")
+	g.hf(`// %sOpen is the bool convenience for the typed Open error on the handle.
+func %sOpen(cook *%sCook,base unsafe.Pointer,length int64)bool{return cook.Open(base,length)==nil}
+// Open checks the header in SPEC §7 order, bytewise until base alignment is
+// established. A successful match points at the region and allocates nothing.
+func(cook *%sCook)Open(base unsafe.Pointer,length int64)error{
+ *cook=%sCook{}
+ if base==nil{return TableRefuseUnalignedBase}
+ if length<64{return TableRefuseTruncated}
+ header:=unsafe.Slice((*byte)(base),64)
+ magic:=binary.NativeEndian.Uint64(header)
+ if magic!=TableCookMagic {if magic==0x%016x{return TableRefuseForeignOrder};return TableRefuseNotACook}
+ if binary.NativeEndian.Uint64(header[16:])!=TableCookByteOrder{return TableRefuseNotACook}
+ if binary.NativeEndian.Uint64(header[8:])!=BuildVersion{return TableRefuseWrongBuildVersion}
+ if binary.NativeEndian.Uint64(header[48:])!=0||binary.NativeEndian.Uint64(header[56:])!=0{return TableRefuseReservedNotZero}
+ alignment:=binary.NativeEndian.Uint64(header[40:])
+ if alignment<8||alignment>64||alignment&(alignment-1)!=0||alignment%%%d!=0{return TableRefuseBadAlignment}
+ bytes:=uint64(length);dataOffset:=(uint64(64)+alignment-1)&^(alignment-1)
+ dataLength:=binary.NativeEndian.Uint64(header[24:]);attribution:=binary.NativeEndian.Uint64(header[32:])
+ if dataOffset>bytes||dataLength>bytes-dataOffset||attribution!=bytes-dataOffset-dataLength||dataLength<%d{return TableRefuseTruncated}
+ if uint64(uintptr(base))%%alignment!=0{return TableRefuseUnalignedBase}
+ cook.Region=unsafe.Add(base,uintptr(dataOffset));cook.RegionLength=int64(dataLength)
+ return nil
+}
+`, name, name, name, name, name, bits.ReverseBytes64(cookMagic), ml.Align, ml.Size)
 }
 
 func (g *cookGen) emitAt(st *ir.Struct) {
@@ -635,7 +569,13 @@ func (g *cookGen) emitAt(st *ir.Struct) {
 	g.hf("//\n")
 	g.hf("// It takes the SLOT and not its value, because a self-relative delta means\n")
 	g.hf("// nothing without the address it is relative to.\n")
-	g.hf("func %sAt(slot *int64) *%sRow {\n", name, name)
+	if len(variableTableNames(g.unit)) > 0 {
+		g.hf("func %sAt(slot *int64, arena ...*TableArena) *%sRow {\n", name, name)
+		g.hf("if len(arena)>0 && arena[0]!=nil { return (*%sRow)(arena[0].At(*slot)) }\n", name)
+	} else {
+		g.hf("func %sAt(slot *int64) *%sRow {\n", name, name)
+	}
+
 	g.hf("\tdelta := *slot\n")
 	g.hf("\tif delta == 0 {\n\t\treturn nil\n\t}\n")
 	g.hf("\treturn (*%sRow)(unsafe.Add(unsafe.Pointer(slot), uintptr(delta)))\n}\n\n", name)
@@ -702,18 +642,18 @@ func (g *cookGen) emitRecordDescriptor(record string) {
 				countOffset = pieces[len(pieces)-2].Offset
 			}
 		}
-		if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
+		if !f.Type.Pointer && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) {
 			pieces := ir.FieldPieces(g.unit, f, fl.Offset)
 			countOffset = pieces[1].Offset
 		}
-		isArray := f.KeyEnum != "" || f.Array != ir.ArrayNone
+		isArray := f.KeyEnum != "" || f.Array != ir.ArrayNone && !f.IsList()
 		bound := int64(1)
 		elemSize := fl.Size
 		if isArray {
 			bound = f.ArrayBound
 			elemSize = ir.FieldPieces(g.unit, f, fl.Offset)[0].Size / bound
 		}
-		if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
+		if !f.Type.Pointer && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) {
 			// the COUNT COMPANION of a string or a `bytes` bounds a walker just
 			// as an array's does (§7.4), and the bound is the declared length
 			bound = f.Type.Size
