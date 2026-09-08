@@ -4386,7 +4386,12 @@ namespace Wide
                     return r.Offset == r.Buffer.Length || Damage(report);
                 }
                 if (kind == 15) { return ReadElement(ref r, value, f, 0, kind, report, true); }
-                if (kind == 17) { if (!ReadElement(ref r, value, f, 0, kind, report, true)) { return false; } return r.Offset == r.Buffer.Length || Damage(report); }
+                if (kind == 17)
+                {
+                    if (!r.Var(out ulong indexValue) || r.Offset != r.Buffer.Length) { return Damage(report); }
+                    f.SetChild(value, 0, r.Graph == null ? null : r.Graph.Resolve(indexValue, f, report));
+                    return true;
+                }
                 if (kind == 12 || kind == 33)
                 {
                     ResetArm(value, f);
