@@ -498,7 +498,7 @@ inline void TableJsonWriteBase64( TableJsonOut & out, const uint8_t * data, int3
     const char * alphabet = TableJsonBase64Alphabet();
     out.put( '"' );
     int32_t i = 0;
-    for ( ; i + 3 <= length; i += 3 )
+    for ( ; length - i >= 3; i += 3 )
     {
         uint32_t triple = ( uint32_t( data[i] ) << 16 ) | ( uint32_t( data[i+1] ) << 8 ) | uint32_t( data[i+2] );
         char quad[4] = { alphabet[ ( triple >> 18 ) & 0x3f ], alphabet[ ( triple >> 12 ) & 0x3f ],

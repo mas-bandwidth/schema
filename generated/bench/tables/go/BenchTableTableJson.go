@@ -338,7 +338,7 @@ func tableJsonWriteBase64(out *tableJsonOut, data []byte) {
 	out.put('"')
 	var quad [4]byte
 	i := 0
-	for ; i+3 <= len(data); i += 3 {
+	for ; len(data)-i >= 3; i += 3 {
 		triple := uint32(data[i])<<16 | uint32(data[i+1])<<8 | uint32(data[i+2])
 		quad[0] = tableJsonBase64Alphabet[(triple>>18)&0x3f]
 		quad[1] = tableJsonBase64Alphabet[(triple>>12)&0x3f]
