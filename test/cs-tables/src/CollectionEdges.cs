@@ -5,8 +5,49 @@ using B=Cscollections2;
 
 static partial class Program
 {
+    static unsafe void TestKnownZeroBitSizing()
+    {
+        var vocabulary=new B.TableVocabulary();
+        B.Schema.AnnounceRead(vocabulary,B.Schema.Announce(),new B.TableReport());
+        byte[] Message(uint count)
+        {
+            byte[] wire=new byte[16]; wire[0]=2; int at=16;
+            void Put(ulong value,int bits) { for(int i=0;i<bits;i++,at++) { if(((value>>i)&1)!=0) { wire[at/8]|=(byte)(1<<(at%8)); } } }
+            Put((ulong)B.Schema.RowTableType().Fields[0].MessageSlot,vocabulary.RefBits);
+            Put(count,32); Put(0,vocabulary.RefBits);
+            Array.Resize(ref wire,(at+7)/8); return wire;
+        }
+        byte[] large=Message(int.MaxValue);
+        long need=B.Schema.RowLoadMeasure(vocabulary,large,out long data,out long attribution);
+        Check(need==data+attribution && data>=8L*int.MaxValue && attribution==16,"known zero-bit list measures its declared storage without allocating it");
+        Check(MeasureCalls(()=>B.Schema.RowLoadMeasure(vocabulary,large))==0,"large known zero-bit measure allocates no GC storage");
+        byte* region=(byte*)NativeMemory.AlignedAlloc(128,64);
+        try
+        {
+            new Span<byte>(region,128).Fill(0xa5); Span<IntPtr> roots=stackalloc IntPtr[1];
+            var report=new B.TableReport();
+            var verdict=B.Schema.RowLoadMessages((IntPtr)region,128,roots,large,vocabulary,report,out int count);
+            Check(verdict==B.Schema.TableWire.Verdict.Refused && count==0 && roots[0]==IntPtr.Zero,"insufficient capacity refuses before expanding a known zero-bit list");
+            for(int i=0;i<128;i++) { Check(region[i]==0xa5,"capacity refusal preserves the entire caller buffer"); }
+        }
+        finally { NativeMemory.AlignedFree(region); }
+        // As in the C++ message batch scanner, root-body damage sizes only
+        // the bounded prefix so earlier complete bodies can still be delivered.
+        byte[] over=Message((uint)int.MaxValue+1);
+        long prefix=B.Schema.RowLoadMeasure(vocabulary,over);
+        Check(prefix>0 && prefix<128,"count above the int32 cap reserves no list storage");
+        region=(byte*)NativeMemory.AlignedAlloc(128,64);
+        try
+        {
+            Span<IntPtr> roots=stackalloc IntPtr[1]; var report=new B.TableReport();
+            var verdict=B.Schema.RowLoadMessages((IntPtr)region,128,roots,over,vocabulary,report,out int count);
+            Check(verdict==B.Schema.TableWire.Verdict.Damaged && report.Malformed && count==0,"count above the int32 cap damages this message body without expanding the list");
+        }
+        finally { NativeMemory.AlignedFree(region); }
+    }
     static unsafe void TestCollectionEdges()
     {
+        TestKnownZeroBitSizing();
         byte[] wrongArm=ReadGolden("map_depth");
         long armExtent=Mapdemo.Schema.DepthLoadMeasure(wrongArm);
         int armAt=wrongArm.AsSpan().IndexOf(new byte[]{9,15,10,13,21});

@@ -49,7 +49,7 @@ const tableRegionMessageLoadSource = `
                         ReadOnlySpan<byte> blob=bytes.Slice((int)(scan.At/8),(int)length);
                         if(named.Id==StringTypeId && !TextValid(blob)) { Damage(report); return Finish(report,Verdict.Damaged); }
                         offset=at; at+=Align(8+(long)length+(named.Id==StringTypeId?1:0),type.RegionAlign);
-                        NativePut(body+offset,length,8); blob.CopyTo(new Span<byte>(body+offset+8,(int)length));
+                        NativePut(body+offset,length,4); blob.CopyTo(new Span<byte>(body+offset+8,(int)length));
                     }
                     scan.Skip((long)length*8);
                 }

@@ -2484,8 +2484,9 @@ static partial class Program
             Report report = new Report();
             bool message = forms[index] == 2;
             long need = message ? (codec.MessageLoadMeasure == null ? -1 : codec.MessageLoadMeasure(bytes)) : codec.LoadMeasure == null ? -1 : codec.LoadMeasure(bytes);
+            builderLoaded = null;
             object value = message ? codec.MessageLoad(codec.Announcement, bytes, report) : codec.PartialLoad(bytes, report);
-            bool loaded = builder ? builderLoaded : (message ? codec.MessageLoadMeasure == null : codec.LoadMeasure == null) || need >= 0;
+            bool loaded = builder ? (builderLoaded ?? throw new InvalidOperationException("builder codec did not report completion")) : (message ? codec.MessageLoadMeasure == null : codec.LoadMeasure == null) || need >= 0;
             output.Write((byte)(loaded ? 1 : 0));
             output.Write(report.Unknown); output.Write(report.KindMismatch); output.Write(report.Widened);
             output.Write(report.Clamped); output.Write(report.Duplicate);

@@ -2,7 +2,7 @@ using System;
 
 static partial class Program
 {
-    static bool builderLoaded;
+    static bool? builderLoaded;
     static unsafe void RegisterBuilders()
     {
         Find("listdemo","Unbounded").PartialLoad=(bytes,report)=>

@@ -139,6 +139,7 @@ public sealed unsafe class TableWorker
         byte* p=Raw(8+length+terminator);
         if(p==null) { return default; }
         *(uint*)p=(uint)length;
+        *(uint*)(p+4)=0;
         return new TableBlobSlot { Pointer=(IntPtr)p,Length=length,ByteLength=length };
     }
 }

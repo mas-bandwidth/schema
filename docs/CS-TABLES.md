@@ -19,6 +19,11 @@ ordinary relocated region's measure/save. A negative measure is a refusal and
 must be checked before allocating or loading. `LoadVerdict` and `TableReport`
 distinguish damage, evolution events and named refusals.
 
+Message sizing reports expanded storage without allocating it, including known
+constant list elements that occupy zero bits on the wire. Check the measured
+size against the caller's capacity budget; native load refuses insufficient
+capacity before filling the region. Managed authoring reads allocate their values.
+
 Native offsets are relative to their slots. Move the entire data region as a
 unit, then reacquire its root and derived pointers. A loaded collection's spare
 word is padding, never authoring capacity. `CopyFrom` imports a native region
