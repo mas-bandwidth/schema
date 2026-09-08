@@ -525,6 +525,8 @@ func tableFieldTypeName(f *ir.Field) string {
 		return ir.TableTypeSpelling(f)
 	case ir.TBytes:
 		return "bytes"
+	case ir.TMap:
+		return ir.TableTypeSpelling(f)
 	case ir.TNamed:
 		return f.Type.Name
 	}

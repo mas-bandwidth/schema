@@ -30,6 +30,16 @@ static partial class Program
             if(wireSize<0) { return; }
             byte[] back=new byte[wireSize];
             Check(fileSave(value,back)==wireSize && back.AsSpan().SequenceEqual(bytes),name+" relocated region reproduces C++ wire");
+            Type builderType=typeof(T).Assembly.GetType(typeof(T).Namespace+"."+typeof(T).Name+"Builder");
+            Type allocatorType=typeof(T).Assembly.GetType(typeof(T).Namespace+".TableAllocator");
+            using(IDisposable builder=(IDisposable)Activator.CreateInstance(builderType,new object[] { Activator.CreateInstance(allocatorType) }))
+            {
+                Check((bool)builderType.GetMethod("CopyFrom").Invoke(builder,new object[] {(IntPtr)relocated}),name+" native builder copies a region");
+                Check((bool)builderType.GetMethod("Lock").Invoke(builder,null),name+" native builder locks");
+                IntPtr packed=(IntPtr)builderType.GetProperty("Region").GetValue(builder);
+                long packedSize=regionMeasure(packed); byte[] packedWire=new byte[packedSize];
+                Check(regionSave(packed,packedWire)==bytes.Length && packedWire.AsSpan().SequenceEqual(bytes),name+" locked builder reproduces C++ wire");
+            }
             long allocated=MeasureCalls(() => { load(p,n,bytes,report); });
             Check(allocated==0,name+" native load allocates zero (observed "+allocated+")");
         }

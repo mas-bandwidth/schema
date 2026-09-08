@@ -951,7 +951,7 @@ public static class TableJson
     // C++'s NULL destination.
     static bool ScanString(ReadOnlySpan<byte> text, ref In input, Span<byte> destination, bool keep, out int length)
     { return ScanText(text, ref input, destination, Span<char>.Empty, false, keep, out length); }
-    static bool ScanText(ReadOnlySpan<byte> text, ref In input, Span<byte> destination, Span<char> chars, bool wide, bool keep, out int length)
+    static bool ScanText(ReadOnlySpan<byte> text, ref In input, Span<byte> destination, Span<char> chars, bool wide, bool keep, out int length, bool measure = false)
     {
         length = 0;
         if (Peek(text, ref input) != '"') { input.Bad = true; return false; }
@@ -1032,7 +1032,12 @@ public static class TableJson
                     unitLength = EncodeUtf8(0xfffd, unit);
                 }
             }
-            if (keep && wide)
+            if(measure)
+            {
+                if(placed>int.MaxValue-unitLength) { input.Bad=true; return false; }
+                placed+=unitLength;
+            }
+            else if (keep && wide)
             {
                 int code = Utf8(unit.Slice(0, unitLength), 0, out _);
                 int n = code > 0xffff ? 2 : 1;

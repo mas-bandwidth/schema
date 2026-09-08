@@ -1255,12 +1255,17 @@ namespace Wide
                 f.SetChild(owner, index, null);
                 if (f.BlobKind == 12)
                 {
-                    byte[] data = new byte[checked((text.Length - input.Pos) * 3)];
-                    if (!ScanString(text, ref input, data, true, out int used)) { return false; }
-                    Array.Resize(ref data, used); f.SetChild(owner, index, new TableBlob(data)); return true;
+                    In probe=input;
+                    if(!ScanText(text,ref probe,Span<byte>.Empty,Span<char>.Empty,false,false,out int size,true)) { input=probe; return false; }
+                    byte[] data=new byte[size];
+                    if (!ScanString(text, ref input, data, true, out _)) { return false; }
+                    f.SetChild(owner, index, new TableBlob(data)); return true;
                 }
                 if (Peek(text, ref input) != '"') { input.Bad = true; return false; }
-                input.Pos++; byte[] bytes = new byte[text.Length - input.Pos]; int count = 0, held = 0; uint accumulator = 0;
+                input.Pos++;
+                int tokenBytes=text.Slice(input.Pos).IndexOf((byte)'"');
+                if(tokenBytes<0) { input.Bad=true; return false; }
+                byte[] bytes=new byte[(int)((long)tokenBytes*3/4)]; int count = 0, held = 0; uint accumulator = 0;
                 bool malformed = false;
                 for (;;)
                 {
@@ -1499,7 +1504,7 @@ namespace Wide
             // C++'s NULL destination.
             static bool ScanString(ReadOnlySpan<byte> text, ref In input, Span<byte> destination, bool keep, out int length)
             { return ScanText(text, ref input, destination, Span<char>.Empty, false, keep, out length); }
-            static bool ScanText(ReadOnlySpan<byte> text, ref In input, Span<byte> destination, Span<char> chars, bool wide, bool keep, out int length)
+            static bool ScanText(ReadOnlySpan<byte> text, ref In input, Span<byte> destination, Span<char> chars, bool wide, bool keep, out int length, bool measure = false)
             {
                 length = 0;
                 if (Peek(text, ref input) != '"') { input.Bad = true; return false; }
@@ -1580,7 +1585,12 @@ namespace Wide
                             unitLength = EncodeUtf8(0xfffd, unit);
                         }
                     }
-                    if (keep && wide)
+                    if(measure)
+                    {
+                        if(placed>int.MaxValue-unitLength) { input.Bad=true; return false; }
+                        placed+=unitLength;
+                    }
+                    else if (keep && wide)
                     {
                         int code = Utf8(unit.Slice(0, unitLength), 0, out _);
                         int n = code > 0xffff ? 2 : 1;

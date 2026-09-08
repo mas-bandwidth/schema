@@ -65,12 +65,17 @@ const tableVariableJsonSource = `
         f.SetChild(owner, index, null);
         if (f.BlobKind == 12)
         {
-            byte[] data = new byte[checked((text.Length - input.Pos) * 3)];
-            if (!ScanString(text, ref input, data, true, out int used)) { return false; }
-            Array.Resize(ref data, used); f.SetChild(owner, index, new TableBlob(data)); return true;
+            In probe=input;
+            if(!ScanText(text,ref probe,Span<byte>.Empty,Span<char>.Empty,false,false,out int size,true)) { input=probe; return false; }
+            byte[] data=new byte[size];
+            if (!ScanString(text, ref input, data, true, out _)) { return false; }
+            f.SetChild(owner, index, new TableBlob(data)); return true;
         }
         if (Peek(text, ref input) != '"') { input.Bad = true; return false; }
-        input.Pos++; byte[] bytes = new byte[text.Length - input.Pos]; int count = 0, held = 0; uint accumulator = 0;
+        input.Pos++;
+        int tokenBytes=text.Slice(input.Pos).IndexOf((byte)'"');
+        if(tokenBytes<0) { input.Bad=true; return false; }
+        byte[] bytes=new byte[(int)((long)tokenBytes*3/4)]; int count = 0, held = 0; uint accumulator = 0;
         bool malformed = false;
         for (;;)
         {

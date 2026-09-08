@@ -70,6 +70,7 @@ static partial class Program
 
     sealed class Codec
     {
+        public Func<byte[],bool,byte[]> NativeCook;
         public Func<object, long> CookMeasure;
         public Func<object, byte[], bool, bool> Cook;
         public Func<byte[], byte[], Report, object> MessageLoad;
@@ -558,6 +559,13 @@ static partial class Program
             foreach (bool big in new bool[] { false, true })
             {
                 if (!codec.Cook(value, bytes, big)) { Console.Error.WriteLine("cook failed: " + f[1]); return 1; }
+                if(codec.NativeCook!=null)
+                {
+                    byte[] native;
+                    try { native=codec.NativeCook(File.ReadAllBytes(instance[4]),big); }
+                    catch(Exception error) { Console.Error.WriteLine("native cook failed: "+f[1]+" ("+(big?"big":"little")+"): "+error); return 1; }
+                    if(native==null || !native.AsSpan().SequenceEqual(bytes)) { Console.Error.WriteLine("native cook differs: "+f[1]); return 1; }
+                }
                 File.WriteAllBytes(Path.Combine(outDir, f[1] + (big ? "-be" : "")), bytes);
             }
         }
@@ -2483,6 +2491,7 @@ static partial class Program
     static int Main(string[] args)
     {
         RegisterMessages();
+        RegisterNativeCooks();
         if(args.Length==1 && args[0]=="wire-fuzz-region") { RegisterRegions(); return WireFuzz(); }
         if (args.Length == 1 && args[0] == "wire-fuzz") { return WireFuzz(); }
         if (args.Length < 2)

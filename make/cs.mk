@@ -377,7 +377,26 @@ update-goldens-cs: build/tables-generated-cs/.stamp
 # from its wire golden, re-saved and byte-compared, and every §16 text read and
 # written beside it. It is the C# twin of tables-js-leg.
 #
-.PHONY: tables-cs-leg tables-cs-wire-fuzz tables-cs-region-fuzz tables-cs-retain-fuzz
+.PHONY: tables-cs-view tables-cs-leg tables-cs-wire-fuzz tables-cs-region-fuzz tables-cs-retain-fuzz
+tables-cs-view: build/tables-generated-cs/.stamp
+	@mkdir -p build/view-cs
+	@set -e; for entry in $(VIEW_CORPUS); do \
+		dir=$${entry%%:*}; pkg=$${entry##*:}; \
+		cap=$$(printf '%s' "$$pkg" | cut -c1 | tr 'a-z' 'A-Z')$$(printf '%s' "$$pkg" | cut -c2-); \
+		./bin/schema generate --lang cs --out build/view-cs/generated/$$dir tables/$$dir; \
+		printf 'global using U = %s;\n' "$$cap" > build/view-cs/Unit.cs; \
+		$(DOTNET) build test/cs-view -v q --nologo \
+			-p:ViewAliasFile="$$PWD/build/view-cs/Unit.cs" -p:ViewGeneratedDir="$$PWD/build/view-cs/generated/$$dir" > build/view-cs/$$pkg.log 2>&1 || { cat build/view-cs/$$pkg.log; exit 1; }; \
+		$(DOTNET) test/cs-view/bin/Debug/net10.0/schema-view.dll > build/view-cs/$$pkg.listing; \
+		if [ "$$pkg" = tabledemo ]; then $(DOTNET) test/cs-view/bin/Debug/net10.0/schema-view.dll unflattened > build/view-cs/unflattened.listing; fi; \
+	done
+	SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view-cs go test ./internal/viewlisting -run TestUnitViewListingMatchesTheIR
+	@mkdir -p build/view-cs/negative
+	@cp build/view-cs/unflattened.listing build/view-cs/negative/tabledemo.listing
+	@if SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view-cs/negative SCHEMA_VIEW_LISTING_UNITS=tabledemo go test ./internal/viewlisting -run TestUnitViewListingMatchesTheIR > build/view-cs/negative.log 2>&1; then echo "C# UnitView negative control escaped"; exit 1; fi
+	@grep -q "listing is not the compiler's" build/view-cs/negative.log
+	@echo "C# UnitView: $(words $(VIEW_CORPUS)) generated registries match the IR; damaged documentation is detected"
+
 tables-cs-leg: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run
 	cd test/cs-tables && $(DOTNET) run -c Release
@@ -404,6 +423,7 @@ test-cs: toolchain-cs build/tables-generated-cs/.stamp generated/bench/tables/cs
 	$(MAKE) tables-cs-json-walk
 	$(MAKE) tables-cs-standalone
 	$(MAKE) tables-cs-variable-surface
+	$(MAKE) tables-cs-view
 	$(MAKE) tables-cs-leg
 	$(MAKE) tables-cs-wire-fuzz
 	$(MAKE) tables-cs-region-fuzz

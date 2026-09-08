@@ -1704,6 +1704,9 @@ static partial class Program
         TestCollections();
         TestSurfaces();
         TestRegions();
+        TestAllocators();
+        TestBuilders();
+        TestBlobJsonAllocation();
         TestNativeMessages();
         TestRetention();
         TestRetentionContracts();

@@ -4,6 +4,7 @@ package cstable
 // Descriptor factories avoid partial-class initialization order dependencies.
 import (
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 
@@ -99,12 +100,8 @@ func generateView(u *ir.Unit, closure map[string]bool) []byte {
 		flags = append(flags, vocab(f.Name, int64(len(f.Variants)-1), bits, f.Doc, f.Tags, rows))
 	}
 	allUnions := make(map[string]*ir.Union)
-	for n, un := range u.Unions {
-		allUnions[n] = un
-	}
-	for n, un := range u.TableUnions {
-		allUnions[n] = un
-	}
+	maps.Copy(allUnions, u.Unions)
+	maps.Copy(allUnions, u.TableUnions)
 	names = nil
 	for n := range allUnions {
 		names = append(names, n)

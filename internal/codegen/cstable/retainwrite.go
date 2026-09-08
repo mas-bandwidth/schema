@@ -12,18 +12,18 @@ func tableRetainWriteSource() string {
 	begin := tableSourceIndex(s, "    static bool RetainCollectElement")
 	end := tableSourceIndex(s, "    static long RetainPayloadSize")
 	s = s[:begin] + s[end:]
-	s = strings.ReplaceAll(s, "        return true;\n    }\n    static bool RetainRides", "        return !RetainHas(value.Store,value.Path);\n    }\n    static bool RetainRides")
-	s = strings.ReplaceAll(s, "            long n = RetainPayloadSize(union.Arm(f), arm.Field, ref ids);\n            return VarSize(ids.Reference(f.VariantId(tag)))", "            ulong reference=ids.Reference(f.VariantId(tag));\n            long n = RetainPayloadSize(union.Arm(f), arm.Field, ref ids);\n            return VarSize(reference)")
-	s = strings.ReplaceAll(s, "                long elem = RetainElementSize", "                ulong reference=ids.Reference(f.KeyId((ulong)i+1));\n                long elem = RetainElementSize")
-	s = strings.ReplaceAll(s, "n += VarSize(ids.Reference(f.KeyId((ulong)i + 1)))", "n += VarSize(reference)")
-	s = strings.ReplaceAll(s, "        return n;\n    }\n    static void RetainWriteElement", "        return n+RetainTailMeasure(ref ids,value.Path);\n    }\n    static void RetainWriteElement")
-	s = strings.ReplaceAll(s, "        if (root) { RetainWriteNodes", "        RetainTailSave(ref w,ref ids,value.Path);\n        if (root) { RetainWriteNodes")
-	s = strings.ReplaceAll(s, "node.Value,ids.RootType.PointerType(node.TypeId)", "new RetainValue(node.Value.Base,node.Value.At,ids.Store,0),ids.RootType.PointerType(node.TypeId)")
-	s = strings.ReplaceAll(s, "            long n=node.BlobKind", "            ulong reference=ids.Reference(node.TypeId);\n            long n=node.BlobKind")
-	s = strings.ReplaceAll(s, "size+=VarSize(ids.Reference(node.TypeId))", "size+=VarSize(reference)")
-	s = strings.ReplaceAll(s, "                ulong reference=ids.Reference(f.KeyId((ulong)i+1));", "                int mark=ids.Count; ulong reference=ids.Reference(f.KeyId((ulong)i+1));")
-	s = strings.ReplaceAll(s, "                n += VarSize(reference) + VarSize((ulong)elem) + elem;", "                if(f.Kind==13 && elem==1) { ids.Truncate(mark); continue; }\n                n += VarSize(reference) + VarSize((ulong)elem) + elem;")
-	s = strings.ReplaceAll(s, `            n += VarSize(ids.Reference(f.Id)) + 1;
+	s = tableReplace(s, "        return true;\n    }\n    static bool RetainRides", "        return !RetainHas(value.Store,value.Path);\n    }\n    static bool RetainRides")
+	s = tableReplace(s, "            long n = RetainPayloadSize(union.Arm(f), arm.Field, ref ids);\n            return VarSize(ids.Reference(f.VariantId(tag)))", "            ulong reference=ids.Reference(f.VariantId(tag));\n            long n = RetainPayloadSize(union.Arm(f), arm.Field, ref ids);\n            return VarSize(reference)")
+	s = tableReplace(s, "                long elem = RetainElementSize", "                ulong reference=ids.Reference(f.KeyId((ulong)i+1));\n                long elem = RetainElementSize")
+	s = tableReplace(s, "n += VarSize(ids.Reference(f.KeyId((ulong)i + 1)))", "n += VarSize(reference)")
+	s = tableReplace(s, "        return n;\n    }\n    static void RetainWriteElement", "        return n+RetainTailMeasure(ref ids,value.Path);\n    }\n    static void RetainWriteElement")
+	s = tableReplace(s, "        if (root) { RetainWriteNodes", "        RetainTailSave(ref w,ref ids,value.Path);\n        if (root) { RetainWriteNodes")
+	s = tableReplace(s, "node.Value,ids.RootType.PointerType(node.TypeId)", "new RetainValue(node.Value.Base,node.Value.At,ids.Store,0),ids.RootType.PointerType(node.TypeId)")
+	s = tableReplace(s, "            long n=node.BlobKind", "            ulong reference=ids.Reference(node.TypeId);\n            long n=node.BlobKind")
+	s = tableReplace(s, "size+=VarSize(ids.Reference(node.TypeId))", "size+=VarSize(reference)")
+	s = tableReplace(s, "                ulong reference=ids.Reference(f.KeyId((ulong)i+1));", "                int mark=ids.Count; ulong reference=ids.Reference(f.KeyId((ulong)i+1));")
+	s = tableReplace(s, "                n += VarSize(reference) + VarSize((ulong)elem) + elem;", "                if(f.Kind==13 && elem==1) { ids.Truncate(mark); continue; }\n                n += VarSize(reference) + VarSize((ulong)elem) + elem;")
+	s = tableReplace(s, `            n += VarSize(ids.Reference(f.Id)) + 1;
             if (f.IsArray) { long a = RetainArraySize(value, f, ref ids); n += VarSize((ulong)a) + a; }
             else if (f.Kind == 12 || f.Kind == 33) { long s = RetainPayloadSize(value, f, ref ids); n += VarSize((ulong)s) + s; }
             else { n += RetainElementSize(value, f, 0, ref ids, true); }`,
@@ -33,15 +33,15 @@ func tableRetainWriteSource() string {
             { ids.Truncate(mark); continue; }
             n+=VarSize(reference)+1+payload;
             if(f.IsArray || f.Kind==12 || f.Kind==33 || f.Kind==13) { n+=VarSize((ulong)payload); }`)
-	s = strings.ReplaceAll(s, "            w.Var(ids.Reference(f.Id)); w.Byte(Kind(f));", `            if(!f.Optional && (f.Kind==13 && !f.IsArray && RetainPayloadSize(value,f,ref ids)==1 || f.KeyId!=null && RetainArraySize(value,f,ref ids)==2)) { continue; }
+	s = tableReplace(s, "            w.Var(ids.Reference(f.Id)); w.Byte(Kind(f));", `            if(!f.Optional && (f.Kind==13 && !f.IsArray && RetainPayloadSize(value,f,ref ids)==1 || f.KeyId!=null && RetainArraySize(value,f,ref ids)==2)) { continue; }
             w.Var(ids.Reference(f.Id)); w.Byte(Kind(f));`)
 	// On the emit pass the trailer is already settled. A slot whose only
 	// retained content could not be placed is its default again.
 	start := tableSourceIndex(s, "    static void RetainWritePayload")
 	payloadEnd := start + tableSourceIndex(s[start:], "    static void RetainWriteBody")
 	payload := s[start:payloadEnd]
-	payload = strings.ReplaceAll(payload, "!RetainDefaultElement(value, f, i)", "RetainSlotRides(value,f,i,ref ids)")
-	payload = strings.ReplaceAll(payload, "RetainDefaultElement(value, f, i)", "!RetainSlotRides(value,f,i,ref ids)")
+	payload = tableReplace(payload, "!RetainDefaultElement(value, f, i)", "RetainSlotRides(value,f,i,ref ids)")
+	payload = tableReplace(payload, "RetainDefaultElement(value, f, i)", "!RetainSlotRides(value,f,i,ref ids)")
 	s = s[:start] + payload + s[payloadEnd:]
 	s += `    static bool RetainSlotRides(RetainValue value,TableFieldInfo f,int i,ref RetainIds ids)
     { return !RetainDefaultElement(value,f,i) && (f.Kind!=13 || RetainBodySize(value.Child(f,i),f.Table,ref ids)>1); }
@@ -50,11 +50,11 @@ func tableRetainWriteSource() string {
 }
 
 const tableRetainSaveSource = `
-    public static long SaveRetainRegion(IntPtr pointer,TableTypeInfo type,Span<byte> buffer,Span<ulong> vocabulary,Span<int> slots,ref TableRetain store,TableReport report,bool measure)
+    public static long SaveRetainRegion(IntPtr pointer,TableTypeInfo type,Span<byte> buffer,Span<ulong> vocabulary,Span<int> slots,ref TableRetain store,TableReport report,bool measure,TableAllocator allocator=default)
     {
         if(pointer==IntPtr.Zero || !measure && report==null) { return -1; }
         NativeValue native=new NativeValue((byte*)pointer,0);
-        RegionGraph graph=RegionNumber(native,type); if(!graph.Valid) { return -1; }
+        RegionGraph graph=RegionNumber(native,type,allocator); if(!graph.Valid) { return -1; }
         try
         {
         RegionIds validate=new RegionIds(vocabulary) { Graph=graph,RootType=type };

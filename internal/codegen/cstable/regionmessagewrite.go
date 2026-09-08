@@ -63,7 +63,7 @@ const tableRegionMessageWriteSource = `
         else if (shape.Packing == 1) { bits = unchecked(bits - shape.Base); }
         w.Put(bits, ValueBits(f.Kind, shape));
     }
-    public static unsafe long SaveMessageRegion(ReadOnlySpan<IntPtr> values, TableTypeInfo type, Span<byte> bytes, bool measure)
+    public static unsafe long SaveMessageRegion(ReadOnlySpan<IntPtr> values, TableTypeInfo type, Span<byte> bytes, bool measure,TableAllocator allocator=default)
     {
         if (values.Length < 1 || values.Length > 256) { return -1; }
         // Validate the graph and every enum/tag before touching the output.
@@ -74,7 +74,7 @@ const tableRegionMessageWriteSource = `
         for (int i = 0; i < values.Length; i++)
         {
             if (values[i] == IntPtr.Zero) { return -1; }
-            if (type.Variable) { graphs[i] = RegionNumber(new NativeValue((byte*)values[i],0), type); if (!graphs[i].Valid) { return -1; } }
+            if (type.Variable) { graphs[i] = RegionNumber(new NativeValue((byte*)values[i],0), type,allocator); if (!graphs[i].Valid) { return -1; } }
             RegionIds ids = new RegionIds(storage) { Graph = graphs[i],RootType=type };
             if (!RegionCollect(new NativeValue((byte*)values[i],0), type, ref ids) || !RegionCollectNodes(ref ids)) { return -1; }
         }

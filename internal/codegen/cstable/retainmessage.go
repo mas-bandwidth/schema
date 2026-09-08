@@ -1,31 +1,29 @@
 package cstable
 
-import "strings"
-
 func tableRetainMessageSource() string {
 	s := tableRegionMessageReadSource + tableRegionMessageLoadSource[tableSourceIndex(tableRegionMessageLoadSource, "    static unsafe Verdict NativeLoadMessageRegion"):]
-	s = strings.ReplaceAll(s, "Native", "Retain")
-	s = strings.ReplaceAll(s, "InteropServices.RetainMemory", "InteropServices.NativeMemory")
-	s = strings.ReplaceAll(s, "if(value.Base!=null) { RetainReset(value,type); }", "if(value.Base!=null) { RetainDiscard(value.Store,value.Path); RetainReset(value,type); }")
-	s = strings.ReplaceAll(s, "{ d.Report.Unknown++; if (!MessageSkip(ref r, d, entry.Kind, entry.Shape)) { return false; } continue; }", `{
+	s = tableReplace(s, "Native", "Retain")
+	s = tableReplace(s, "InteropServices.RetainMemory", "InteropServices.NativeMemory")
+	s = tableReplace(s, "if(value.Base!=null) { RetainReset(value,type); }", "if(value.Base!=null) { RetainDiscard(value.Store,value.Path); RetainReset(value,type); }")
+	s = tableReplace(s, "{ d.Report.Unknown++; if (!MessageSkip(ref r, d, entry.Kind, entry.Shape)) { return false; } continue; }", `{
                 d.Report.Unknown++; long start=r.At;
                 if (!MessageSkip(ref r, d, entry.Kind, entry.Shape)) { return false; }
                 RetainMessageCapture(value.Store,value.Path,r,d,entry,start); continue;
             }`)
-	s = strings.ReplaceAll(s, "{ d.Report.Unknown++; }", "{ d.Report.Unknown++; if(value.Store!=null) { d.Report.RetainLost++; } }")
-	s = strings.ReplaceAll(s, "d.Report.Unknown++; return MessageSkip", "d.Report.Unknown++; if(value.Store!=null) { d.Report.RetainLost++; } return MessageSkip")
-	s = strings.ReplaceAll(s, "if(union.Base!=null) { union.SetTag(f,(ulong)tag); }", "if(union.Base!=null) { union.DiscardUnion(); union.SetTag(f,0); union.SetTag(f,(ulong)tag); }")
-	s = strings.ReplaceAll(s, "int kept = (int)Math.Min(n, (ulong)f.ArrayBound);", "RetainDiscard(value.Store,value.Path,f.Ordinal);\n            int kept = (int)Math.Min(n, (ulong)f.ArrayBound);")
-	s = strings.ReplaceAll(s, "TableReport report,out int count)", "TableReport report,TableRetain* retains,int retainCapacity,out int count)")
-	s = strings.ReplaceAll(s, "total>roots.Length", "total>roots.Length || total>retainCapacity")
-	s = strings.ReplaceAll(s, "byte* body=data+dataAt; byte* dir=directory+dirAt;", `byte* body=data+dataAt; byte* dir=directory+dirAt;
+	s = tableReplace(s, "{ d.Report.Unknown++; }", "{ d.Report.Unknown++; if(value.Store!=null) { d.Report.RetainLost++; } }")
+	s = tableReplace(s, "d.Report.Unknown++; return MessageSkip", "d.Report.Unknown++; if(value.Store!=null) { d.Report.RetainLost++; } return MessageSkip")
+	s = tableReplace(s, "if(union.Base!=null) { union.SetTag(f,(ulong)tag); }", "if(union.Base!=null) { union.DiscardUnion(); union.SetTag(f,0); union.SetTag(f,(ulong)tag); }")
+	s = tableReplace(s, "int kept = (int)Math.Min(n, (ulong)f.ArrayBound);", "RetainDiscard(value.Store,value.Path,f.Ordinal);\n            int kept = (int)Math.Min(n, (ulong)f.ArrayBound);")
+	s = tableReplace(s, "TableReport report,out int count)", "TableReport report,TableRetain* retains,int retainCapacity,out int count)")
+	s = tableReplace(s, "total>roots.Length", "total>roots.Length || total>retainCapacity")
+	s = tableReplace(s, "byte* body=data+dataAt; byte* dir=directory+dirAt;", `byte* body=data+dataAt; byte* dir=directory+dirAt;
             TableRetain* retain=retains+count;
             retain->Used=0; retain->IdUsed=0; retain->Count=0; retain->Base=body; retain->Directory=dir; retain->DirectoryCount=nodes+1L;`)
-	s = strings.ReplaceAll(s, "if(offset<0) { report.Unknown++; }", "if(offset<0) { report.Unknown++; report.RetainLost++; }")
-	s = strings.ReplaceAll(s, "d,new RetainValue(body,offset),node", "d,new RetainValue(body,offset,retain,(uint)i+2),node")
-	s = strings.ReplaceAll(s, "d,new RetainValue(body,0),type", "d,new RetainValue(body,0,retain,1),type")
-	s = strings.ReplaceAll(s, "if(union.Base!=null) { union.SetTag(f,0); }", "if(union.Base!=null) { union.DiscardUnion(); union.SetTag(f,0); }")
-	s = strings.ReplaceAll(s, "RetainDiscard(value.Store,value.Path,f.Ordinal)", "value.DiscardField(f)")
+	s = tableReplace(s, "if(offset<0) { report.Unknown++; }", "if(offset<0) { report.Unknown++; report.RetainLost++; }")
+	s = tableReplace(s, "d,new RetainValue(body,offset),node", "d,new RetainValue(body,offset,retain,(uint)i+2),node")
+	s = tableReplace(s, "d,new RetainValue(body,0),type", "d,new RetainValue(body,0,retain,1),type")
+	s = tableReplace(s, "if(union.Base!=null) { union.SetTag(f,0); }", "if(union.Base!=null) { union.DiscardUnion(); union.SetTag(f,0); }")
+	s = tableReplace(s, "RetainDiscard(value.Store,value.Path,f.Ordinal)", "value.DiscardField(f)")
 	return s + tableRetainMessageCaptureSource
 }
 

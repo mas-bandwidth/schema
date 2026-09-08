@@ -99,6 +99,7 @@ namespace Wide
     {
         public long Reference;
         public int Count;
+        internal int Capacity; // mutable arena only; zero in regions and cooks
     }
 
     // Schema carries every generated function and constant of the unit — C# has no

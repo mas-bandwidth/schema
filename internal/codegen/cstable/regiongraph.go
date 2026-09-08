@@ -5,6 +5,7 @@ const tableRegionGraphSource = `
     {
         public NativeValue Value;
         public ulong TypeId;
+        public long NativeOffset;
         public byte BlobKind;
         public bool Open;
         public ReadOnlySpan<byte> Blob { get { return new ReadOnlySpan<byte>(Value.Base+Value.At+8,checked((int)NativeWord(Value.Base+Value.At,8))); } }
@@ -17,12 +18,13 @@ const tableRegionGraphSource = `
         public int* Hash;
         public int Count,Capacity;
         public bool Valid;
+        public TableAllocator Allocator;
         public ReadOnlySpan<RegionNode> Nodes { get { return new ReadOnlySpan<RegionNode>(Entries,Count); } }
         static uint Mix(long at)
         { unchecked { ulong x=(ulong)at; x^=x>>33; x*=0xff51afd7ed558ccdUL; x^=x>>33; return (uint)x; } }
         public int Find(long at)
         {
-            if(at<0) { return 0; } if(at==0) { return 1; }
+            if(at==long.MinValue) { return 0; } if(at==0) { return 1; }
             if(Capacity==0) { return 0; }
             int mask=Capacity*2-1,slot=(int)(Mix(at)&(uint)mask);
             for(;;)
@@ -40,19 +42,19 @@ const tableRegionGraphSource = `
             {
                 if(Capacity>int.MaxValue/8) { return false; }
                 int capacity=Capacity==0?256:Capacity*4;
-                RegionNode* entries=(RegionNode*)System.Runtime.InteropServices.NativeMemory.Alloc((nuint)capacity,(nuint)sizeof(RegionNode));
-                int* hash=(int*)System.Runtime.InteropServices.NativeMemory.AllocZeroed((nuint)capacity*2,(nuint)sizeof(int));
+                RegionNode* entries=(RegionNode*)Allocator.Get((long)capacity*sizeof(RegionNode));
+                int* hash=(int*)Allocator.Get((long)capacity*2*sizeof(int));
                 if(entries==null || hash==null)
-                { System.Runtime.InteropServices.NativeMemory.Free(entries); System.Runtime.InteropServices.NativeMemory.Free(hash); return false; }
+                { Allocator.Release(entries); Allocator.Release(hash); return false; }
                 Nodes.CopyTo(new Span<RegionNode>(entries,Count));
-                System.Runtime.InteropServices.NativeMemory.Free(Entries); System.Runtime.InteropServices.NativeMemory.Free(Hash);
+                Allocator.Release(Entries); Allocator.Release(Hash);
                 Entries=entries; Hash=hash; Capacity=capacity;
                 for(int i=0;i<Count;i++) { Place(i+2); }
             }
             Entries[Count++]=node; Place(Count+1); return true;
         }
         public void Dispose()
-        { System.Runtime.InteropServices.NativeMemory.Free(Entries); System.Runtime.InteropServices.NativeMemory.Free(Hash); this=default; }
+        { Allocator.Release(Entries); Allocator.Release(Hash); this=default; }
     }
     ref struct RegionIds
     {
@@ -66,9 +68,9 @@ const tableRegionGraphSource = `
         public bool Add(ulong id)
         { if(Reference(id)!=0) { return true; } if(Count==Values.Length) { return false; } Values[Count++]=id; return true; }
     }
-    static RegionGraph RegionNumber(NativeValue root,TableTypeInfo type)
+    static RegionGraph RegionNumber(NativeValue root,TableTypeInfo type,TableAllocator allocator=default)
     {
-        RegionGraph graph=new RegionGraph { Valid=true };
+        RegionGraph graph=new RegionGraph { Valid=true,Allocator=allocator };
         if(!RegionVisit(root,type,ref graph)) { graph.Dispose(); return default; } return graph;
     }
     static bool RegionVisit(NativeValue value,TableTypeInfo type,ref RegionGraph graph)
@@ -99,12 +101,12 @@ const tableRegionGraphSource = `
             }
             else if(f.Kind==17)
             {
-                long at=value.Pointer(f,i); if(at<0) { continue; }
+                long at=value.Pointer(f,i); if(at==long.MinValue) { continue; }
                 int index=graph.Find(at);
                 if(index==1 || index>=2 && graph.Entries[index-2].Open) { return false; }
                 if(index>=2)
                 { if(graph.Entries[index-2].TypeId!=f.PointerTypeId) { return false; } continue; }
-                var child=new NativeValue(value.Base,at);
+                var child=new NativeValue(value.Base,at) { Mutable=value.Mutable };
                 if(f.BlobKind!=0 && NativeWord(child.Base+at,8)>int.MaxValue) { return false; }
                 int entry=graph.Count;
                 if(!graph.Add(new RegionNode { Value=child,TypeId=f.PointerTypeId,BlobKind=f.BlobKind,Open=true })) { return false; }

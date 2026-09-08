@@ -5,6 +5,17 @@ const Cs Backend = 1 << 1
 
 func init() {
 	define(Cs,
+		Name{Name: "TableBuilderType", What: "native row descriptor lookup inside Schema", Scoped: true},
+		Name{Name: "TableListStorage", What: "native mutable collections"},
+		Name{Name: "TableList", What: "native mutable collections"},
+		Name{Name: "TableMap", What: "native mutable collections"},
+
+		Name{Name: "TableArena", What: "native builder lifecycle"},
+		Name{Name: "TableWorker", What: "native builder lifecycle"},
+		Name{Name: "TableBlobSlot", What: "native builder lifecycle"},
+		Name{Name: "TableBuilder", What: "native builder lifecycle"},
+
+		Name{Name: "TableAllocator", What: "native table allocation callbacks and context"},
 		Name{Name: "TableRefuseReason", What: "the first failing clause of a file refusal"},
 		Name{Name: "TableBlockStorage", What: "owned aligned block allocation"},
 		Name{Name: "TableBlockAllocator", What: "block allocation callbacks"},

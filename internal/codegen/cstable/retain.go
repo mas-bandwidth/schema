@@ -17,6 +17,13 @@ func tableSourceIndex(source, marker string) int {
 	return at
 }
 
+func tableReplace(source, old, replacement string) string {
+	if !strings.Contains(source, old) {
+		panic("missing table retention anchor: " + old)
+	}
+	return strings.ReplaceAll(source, old, replacement)
+}
+
 // Retention is emitted as a parallel family, so the ordinary native walk has
 // no retention branches, path storage, or allocation cost.
 func (g *tableGen) emitRetain() {

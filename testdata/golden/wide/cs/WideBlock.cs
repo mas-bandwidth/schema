@@ -179,7 +179,7 @@ namespace Wide
             get { return BitConverter.IsLittleEndian ? 1UL : 2UL; }
         }
 
-        public static unsafe ulong TableBlockRead64(byte* p) { return *(ulong*) p; }
+        public static unsafe ulong TableBlockRead64(byte* p) { return System.Runtime.CompilerServices.Unsafe.ReadUnaligned<ulong>(p); }
     }
 
 

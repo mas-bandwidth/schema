@@ -3,7 +3,7 @@ package cstable
 const tableRegionWriteSource = `
     static bool RegionDefaultElement(NativeValue value, TableFieldInfo f, int i)
     {
-        if (f.Kind == 17) { return value.Pointer(f,i)<0; }
+        if (f.Kind == 17) { return value.Pointer(f,i)==long.MinValue; }
         if (f.Kind == 13) { return RegionEmpty(value.Child(f,i), f.Table); }
         if (f.Kind == 15) { return value.Child(f,i).Tag(f) == 0; }
         if (f.GetWide != null) { return value.Wide(f,i) == f.DefaultWide; }
@@ -205,12 +205,12 @@ const tableRegionWriteSource = `
         if (root) { RegionWriteNodes(ref w, ref ids); }
         w.Var(0);
     }
-    public static unsafe long SaveRegion(IntPtr pointer, TableTypeInfo type, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
+    public static unsafe long SaveRegion(IntPtr pointer, TableTypeInfo type, Span<byte> buffer, Span<ulong> vocabulary, bool measure,TableAllocator allocator=default,bool mutable=false)
     {
         if(pointer==IntPtr.Zero) { return -1; }
-        NativeValue value=new NativeValue((byte*)pointer,0);
+        NativeValue value=new NativeValue((byte*)pointer,0) { Mutable=mutable };
         RegionIds ids = new RegionIds(vocabulary) { RootType=type };
-        if (type.Variable) { ids.Graph = RegionNumber(value, type); if (!ids.Graph.Valid) { return -1; } }
+        if (type.Variable) { ids.Graph = RegionNumber(value, type,allocator); if (!ids.Graph.Valid) { return -1; } }
         try
         {
         if (!RegionCollect(value, type, ref ids) || !RegionCollectNodes(ref ids)) { return -1; }
