@@ -17,7 +17,6 @@ package elixirtable
 import (
 	"fmt"
 	"maps"
-	"sort"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -79,13 +78,33 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// lives in its own module so a consumer that never opens a block pays only
 	// for a module it never calls (docs/SPEC-TABLES.md §19).
 	if blocks != nil {
-		blockOut, err := generateBlocks(u, ns, blocks, "")
+		blockOut, err := generateBlocks(u, ns, blocks)
 		if err != nil {
 			return nil, err
 		}
 		maps.Copy(out, blockOut)
 	}
 	return out, nil
+}
+
+// buildVersionModule carries the unit's BUILD VERSION and nothing else (§20):
+// one digest answering "which build?" and not "which form?", so it belongs to
+// neither accelerator. Both of them compare against it.
+func buildVersionModule(u *ir.Unit, ns string) []byte {
+	var b strings.Builder
+	b.WriteString(header(BuildVersionModule, u.Package, "the unit's build version (docs/SPEC-TABLES.md §20)"))
+	b.WriteString("\n")
+	fmt.Fprintf(&b, "defmodule %s.BuildVersion do\n", ns)
+	b.WriteString("  @moduledoc \"\"\"\n")
+	b.WriteString("  The unit's BUILD VERSION: one digest over every fact a pointed-at form\n")
+	b.WriteString("  depends on (docs/SPEC-TABLES.md §20). A block image or a cooked file whose\n")
+	b.WriteString("  header carries a different one is refused, because its bytes were laid out\n")
+	b.WriteString("  by a build this one does not agree with.\n")
+	b.WriteString("  \"\"\"\n\n")
+	fmt.Fprintf(&b, "  @build_version 0x%016X\n\n", ir.BuildVersion(u))
+	b.WriteString("  def build_version, do: @build_version\n")
+	b.WriteString("end\n")
+	return []byte(b.String())
 }
 
 // gen carries one schema file's emission state: the unit, its module
@@ -95,7 +114,6 @@ type gen struct {
 	ns      string
 	file    *ir.File
 	closure map[string]bool
-	banner  string
 
 	body   strings.Builder
 	indent string
@@ -135,37 +153,7 @@ func header(base, pkg, what string) string {
 	return b.String()
 }
 
-// elixirName maps an exported member/constant/variant name into Elixir's
-// snake_case, the same mapping the packet emitter uses (ir.RustSnake over
-// ir.GoExportName), so the two backends spell one declaration one way.
-func elixirName(name string) string {
-	return ir.RustSnake(ir.GoExportName(name))
-}
-
-func fn(verb, typeName string) string { return verb + "_" + ir.RustSnake(typeName) }
-
-func (g *gen) mod(name string) string { return g.ns + "." + name }
-
 func moduleBase(base string) string { return ir.GoExportName(base) }
-
-// fileMod is the module a declaration's codecs live in: the <Base>Table module
-// of the file that DECLARES it, so a unit with several files defines each once.
-func (g *gen) fileMod(name string) string {
-	base, ok := g.unit.DeclFile[name]
-	if !ok {
-		base = g.file.Base
-	}
-	return g.ns + "." + moduleBase(base) + "Table"
-}
-
-// call renders a call to one of a closure member's codecs, qualified when the
-// member is declared in another file of the unit.
-func (g *gen) call(verb, typeName string) string {
-	if home, ok := g.unit.DeclFile[typeName]; ok && home != g.file.Base {
-		return g.ns + "." + moduleBase(home) + "Table." + fn(verb, typeName)
-	}
-	return fn(verb, typeName)
-}
 
 func isStruct(f *ir.Field) bool {
 	if f.Type.Kind != ir.TNamed {
@@ -173,21 +161,6 @@ func isStruct(f *ir.Field) bool {
 	}
 	_, ok := f.Type.Ref.(*ir.Struct)
 	return ok
-}
-
-// members is the file's table declarations, ordered so a same-file table
-// precedes its by-value users — Elixir compiles a struct default of `%Other{}`
-// only where Other is already compiled — plus every closure type declared in
-// the file.
-func (g *gen) members() []*ir.Struct {
-	var members []*ir.Struct
-	members = append(members, orderTables(g.file.Tables)...)
-	for _, d := range g.file.Decls {
-		if st, ok := d.(*ir.Struct); ok && g.closure[st.Name] {
-			members = append(members, st)
-		}
-	}
-	return members
 }
 
 // orderTables returns a file's tables with every same-file table preceding its
@@ -240,17 +213,3 @@ func orderTables(tables []*ir.Struct) []*ir.Struct {
 	}
 	return order
 }
-
-// place renders the store of one decoded value into the instance, threading
-// the optional's presence: `nil` is the absence, so placing a value IS the
-// presence.
-func place(f *ir.Field, expr string) string {
-	return fmt.Sprintf("%%{value | %s: %s}", f.Name, expr)
-}
-
-// tag renders the two framing bytes a field opens with: its id and its kind.
-func tag(f *ir.Field) string {
-	return fmt.Sprintf("<<0x%04X::little-unsigned-16, %d::little-unsigned-8>>",
-		ir.TableFieldId(f), ir.TableFieldKind(f))
-}
-

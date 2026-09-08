@@ -281,7 +281,9 @@ class Program {
 
 	t.Run("emitted_text", func(t *testing.T) {
 		uNoDefault := unitFromSource(t, "package p\ntable Ship { tag bytes(4)\n after int32 }\n")
-		for _, lang := range []string{"cpp", "c", "go", "cs", "java", "js", "dart", "elixir"} {
+		// elixir emits no text form: its previous-form table wire was removed and
+		// only the block and cook readers remain (schema#515 brings the current wire).
+		for _, lang := range []string{"cpp", "c", "go", "cs", "java", "js", "dart"} {
 			files, err := c.Generate(uNoDefault, lang, Options{})
 			if err != nil {
 				t.Fatalf("generate %s: %v", lang, err)

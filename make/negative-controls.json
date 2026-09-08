@@ -499,16 +499,13 @@
     {
       "name": "elixir",
       "when": "pull-request",
-      "why": "the Elixir port's controls and its three packet families. Measured 1 s over 8 controls, on a host carrying no such SDK, so that is a floor and not the job's cost.",
+      "why": "the Elixir port's controls and its three packet families. Measured 1 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost.",
       "targets": [
-        "conformance-negative-control-elixir",
         "packet-defaults-elixir-negative-control",
         "packet-utf8-elixir-negative-control",
         "packet-wide-elixir-negative-control",
-        "tables-elixir-alloc-negative-control",
         "tables-elixir-block-lead-negative-control",
-        "tables-elixir-fuzz-negative-control",
-        "tables-elixir-soak-negative-control"
+        "tables-elixir-fuzz-negative-control"
       ],
       "otp": "29.0.5",
       "elixir": "1.20.4"
