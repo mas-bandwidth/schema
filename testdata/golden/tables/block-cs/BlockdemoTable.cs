@@ -16,6 +16,7 @@
 // Nothing here allocates: the caller owns the value, the span and the report.
 
 using System;
+using System.Runtime.CompilerServices;
 
 namespace Blockdemo
 {
@@ -397,22 +398,27 @@ namespace Blockdemo
         // test.
         public const string TableDocNone = "";
 
-        // the IEEE-754 bit patterns the wire carries for f32 and f64 (docs/SPEC-TABLES.md §3)
+        // the IEEE-754 bit patterns the wire carries for f32 and f64 (docs/SPEC-TABLES.md §3).
+        // Forced inline so a float never crosses a call the JIT might not inline (M3).
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static float TableBitsToFloat(uint bits)
         {
             return BitConverter.Int32BitsToSingle(unchecked((int)bits));
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static uint TableFloatToBits(float value)
         {
             return unchecked((uint)BitConverter.SingleToInt32Bits(value));
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static double TableBitsToDouble(ulong bits)
         {
             return BitConverter.Int64BitsToDouble(unchecked((long)bits));
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong TableDoubleToBits(double value)
         {
             return unchecked((ulong)BitConverter.DoubleToInt64Bits(value));
