@@ -188,10 +188,12 @@ bench-tables` generates it (`docs/CONTRIBUTING.md`, "Adding a language").
 3. Generate the unit in `make/<lang>.mk` and add its stamp to
    `BENCH_TABLES_LEGS` there.
 
-Compare absolute time per operation and throughput, with variation beside the
-headline. Cross-language results guide investigation; the implementation target
-is the fastest correct code for each language. A measured performance gap needs
-an explanation and an optimization candidate, not an assumed cause.
+The results page shows one blended percentage per language: the fastest
+measured implementation is 100%, and twice its cost is 200%. Use the best
+round-trip rate, as the packet README does; do not add write to round-trip.
+Keep the page to the two-column table. Raw timings, spread and methodology
+live in a separate supporting record. The implementation target remains the
+fastest correct code for each language.
 
 ## The board
 
@@ -210,9 +212,9 @@ Stated so a reader knows what is not here, and why:
   than borrowing C++'s spelling. `linkage` is `pkg`: the generated table codec
   is ordinary package code in the leg's binary and names no runtime at all.
 
-- **`relative rel` is C-referenced.** A ratio is a comparison of this corpus
-  on this machine, not a language's implementation target. Publish absolute
-  times and throughput first, with the measurement spread.
+- **`relative rel` is C-referenced.** This historical
+  tool convention does not select the results page's reference: that page
+  normalizes to the fastest measured implementation for its own bench.
 - **The tables emitters are not LOCKed** the way `bench/LOCK` locks the type
   emitters. The lock is a ruling about a profiling round, not a side effect of
   a board existing; it belongs to the round the owner opens after the first
