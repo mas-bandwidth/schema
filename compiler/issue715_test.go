@@ -281,9 +281,9 @@ class Program {
 
 	t.Run("emitted_text", func(t *testing.T) {
 		uNoDefault := unitFromSource(t, "package p\ntable Ship { tag bytes(4)\n after int32 }\n")
-		// dart emits no text form: its previous-form table wire was removed and
-		// only the block and cook readers remain (schema#514 brings the current wire).
-		for _, lang := range []string{"cpp", "c", "go", "cs", "java", "js", "rust", "elixir"} {
+		// Rust and Dart emit no text form: their previous-form table wire was
+		// removed; only the block and cook readers remain (#518 and #514).
+		for _, lang := range []string{"cpp", "c", "go", "cs", "java", "js", "elixir"} {
 			files, err := c.Generate(uNoDefault, lang, Options{})
 			if err != nil {
 				t.Fatalf("generate %s: %v", lang, err)

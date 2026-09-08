@@ -11,23 +11,28 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
 )
 
-// TestRustEmitsTableModules: the rust target adds the table modules beside the
-// packet ones for a unit with tables, declares them in the generated crate
-// root, and adds NOTHING for a unit without — the same contract the cpp and cs
-// targets hold.
+// TestRustEmitsTableModules: the rust target adds the table accelerator
+// modules beside the packet ones for a unit with tables, declares them in the
+// generated crate root, and adds NOTHING for a unit without — the same
+// contract the other targets hold.
 func TestRustEmitsTableModules(t *testing.T) {
 	c := New()
 	with, err := c.Generate(unitFromSource(t, tableSrc), "rust", Options{})
 	if err != nil {
 		t.Fatalf("--lang rust: %v", err)
 	}
-	for _, want := range []string{"probe_table.rs", "table_runtime.rs", "probe_block.rs", "probe_cook.rs"} {
+	for _, unwanted := range []string{"probe_table.rs", "table_runtime.rs"} {
+		if _, ok := with[unwanted]; ok {
+			t.Errorf("--lang rust emitted dead wire surface %s", unwanted)
+		}
+	}
+	for _, want := range []string{"probe_block.rs", "probe_cook.rs", "probe_records.rs", "block_runtime.rs", "cook_runtime.rs", "build_version.rs"} {
 		if _, ok := with[want]; !ok {
 			t.Errorf("--lang rust emitted no %s for a unit with tables; got %d files", want, len(with))
 		}
 	}
 	lib := string(with["lib.rs"])
-	for _, want := range []string{"mod probe_table;", "mod table_runtime;", "pub use probe_table::*;"} {
+	for _, want := range []string{"mod probe_block;", "mod probe_cook;", "mod probe_records;", "mod block_runtime;", "mod cook_runtime;", "mod build_version;"} {
 		if !strings.Contains(lib, want) {
 			t.Errorf("the generated crate root does not declare the table surface: %q missing", want)
 		}
@@ -62,12 +67,9 @@ func TestRustEmitsTableModules(t *testing.T) {
 	}
 }
 
-// TestRustRefusesPointeredTables: the Rust variable-class refusal is a refusal
-// of the WIRE SURFACE and of nothing else (docs/SPEC-TABLES.md §11), exactly as
-// the C# one is. The wire codec is the half the variable class is missing — the
-// arena, the builder, the region, the node table — and the two ACCELERATORS
-// need none of it: a block and a cook are POINTED AT, not parsed.
-func TestRustRefusesPointeredTables(t *testing.T) {
+// TestRustPointeredTablesEmitAccelerators: pointered tables emit their cook
+// reader and records without wire codecs.
+func TestRustPointeredTablesEmitAccelerators(t *testing.T) {
 	c := New()
 	u := unitFromSource(t, packetSrc+`
 table Node
@@ -78,25 +80,15 @@ table Node
 `)
 	files, err := c.Generate(u, "rust", Options{})
 	if err != nil {
-		t.Fatalf("--lang rust refused a pointered unit outright — the accelerators need no codec: %v", err)
+		t.Fatalf("--lang rust refused a pointered unit outright: %v", err)
 	}
 	cooks := 0
-	for name, data := range files {
+	for name := range files {
 		if strings.HasSuffix(name, "_table.rs") || name == "table_runtime.rs" {
 			t.Errorf("--lang rust emitted the WIRE surface %s for a pointered unit", name)
 		}
-		if !strings.HasSuffix(name, "_cook.rs") && !strings.HasSuffix(name, "_block.rs") {
-			continue
-		}
 		if strings.HasSuffix(name, "_cook.rs") {
 			cooks++
-		}
-		text := string(data)
-		if !strings.Contains(text, "THE RUST WIRE SURFACE OF THIS UNIT IS REFUSED, BY NAME") {
-			t.Errorf("%s carries no refusal banner", name)
-		}
-		if !strings.Contains(text, "Node") || !strings.Contains(text, "named follow-on") {
-			t.Errorf("%s does not name the table and the follow-on", name)
 		}
 	}
 	if cooks == 0 {

@@ -62,7 +62,7 @@ commit_of() {
     sha="$(git -C "$1" rev-parse --short HEAD 2>/dev/null || echo unknown)"
     branch="$(git -C "$1" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
     dirty=""
-    if [ "$sha" != "unknown" ] && ! git -C "$1" diff-index --quiet HEAD -- 2>/dev/null; then
+    if [ "$sha" != "unknown" ] && ! git -C "$1" diff --quiet HEAD -- 2>/dev/null; then
         dirty="-dirty"
     fi
     echo "$sha$dirty ($branch)"

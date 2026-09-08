@@ -49,35 +49,6 @@ generated/rust/.stamp: bin/schema $(SCHEMAS)
 	@printf '[package]\nname = "example"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../$(SERIALIZE_RS)" }\n' > generated/rust/Cargo.toml
 	@touch $@
 
-# The GENERIC-WALK GATE (docs/SPEC-TABLES.md §16): the text form is ONE walk over
-# the reflection descriptors, not a per-table codec — that is the property
-# which makes it schema's rather than a packer's. The walker's source must
-# therefore be the SAME BYTES in every generated .cpp of the corpus, whose
-# units disagree about packages, tables, kinds and pointer modes. The package
-# name lives in the guard and the namespace, outside the markers, so this is a
-# strict byte comparison with nothing normalised away. (It moved from the
-# headers to the .cpp files with the walker itself — docs/SPEC-TABLES.md §16.1.)
-# THE RUST GENERIC-WALK GATE (docs/SPEC-TABLES.md §16), the Rust twin of the
-# one above: the text form is ONE walk over the reflection descriptors, and
-# the Rust backend emits it as ONE MODULE PER UNIT. Its bytes must therefore
-# not vary with what a unit declares — the units below disagree about
-# packages, tables, kinds, keyed arrays and pointer modes — so this is a strict
-# byte comparison of table_runtime.rs across the whole corpus, with nothing
-# normalised away except the generated banner, which names the schema file.
-.PHONY: tables-rust-walk
-tables-rust-walk: build/tables-generated-rust/.stamp
-	@rm -rf build/rust-walk && mkdir -p build/rust-walk
-	@for f in build/tables-generated-rust/*/src/table_runtime.rs; do \
-		out=build/rust-walk/$$(echo $$f | tr / _); \
-		tail -n +6 $$f > $$out; \
-		if [ ! -s $$out ]; then echo "RUST GENERIC-WALK GATE FAILED: no runtime in $$f"; exit 1; fi; \
-	done
-	@first=""; for f in build/rust-walk/*; do \
-		if [ -z "$$first" ]; then first=$$f; else \
-			cmp -s $$first $$f || { echo "RUST GENERIC-WALK GATE FAILED: the runtime in $$f is not the runtime in $$first"; exit 1; }; \
-		fi; \
-	done
-	@echo "rust generic-walk gate: one table runtime, the same bytes in every unit"
 
 # THE RUST FORGERY FUZZER (docs/SPEC-TABLES.md §19.5, §7): the block half over
 # the C++ leg's seed blocks, and a COOK half over test/cookgen's fixtures. It
@@ -143,7 +114,7 @@ tables-rust-features: build/tables-generated-rust/.stamp
 		( cd $$unit && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --no-default-features --features cook ) || exit 1; \
 		( cd $$unit && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --no-default-features --features block ) || exit 1; \
 	done
-	@echo "rust feature gate: wire-only, cook-only, block-only and everything all build"
+	@echo "rust feature gate: minimal, cook-only, block-only and everything all build"
 
 .PHONY: tables-rust-clippy
 tables-rust-clippy: build/tables-generated-rust/.stamp
@@ -185,65 +156,6 @@ tables-rust-big-endian: build/tables-generated-rust/.stamp
 		cargo check --quiet --target $(RUST_BE_TARGET) && \
 		echo "big-endian: the generated Rust table surface checks for $(RUST_BE_TARGET), every layout const assert with it"
 
-# It reads the DERIVED manifest the harness writes, so `conformance` is the
-# dependency: a soak over a corpus whose matrix is red would be timing a
-# defect.
-.PHONY: tables-rust-soak
-tables-rust-soak: conformance
-	./build/conformance-rust build/conformance/manifest.txt soak $(SOAK_SECONDS)
-
-# THE ALLOCATION AUDIT: every instance of the corpus, every generated read and
-# write path, counted at the global allocator with this driver's own buffers
-# hoisted out of the measured region — so what the number measures is the
-# CODEC. The claim it holds is docs/USAGE.md's: the generated code allocates
-# nothing beyond the value and the buffers the caller passed.
-.PHONY: tables-rust-alloc-audit
-tables-rust-alloc-audit: conformance
-	./build/conformance-rust build/conformance/manifest.txt alloc-audit
-
-# THE RUST LEG OF THE MATRIX, ALONE, and the derived manifest a run leaves
-# behind. `conformance` builds and runs all nine legs, so it needs every pinned
-# SDK on the box; the harness derives the manifest before it runs any driver,
-# and the rust driver is the only one this file's instruments read. So a target
-# that wants the rust driver and the manifest asks for exactly that.
-#
-# The soak and the audit keep `conformance` as their prerequisite deliberately,
-# because a NUMBER measured over a corpus whose matrix is red is a number about
-# a defect. The negative control below is not a number: it asks whether the
-# gate fires under one planted allocation, and that answer does not change with
-# the other eight legs' verdicts. Which is what lets it ride the pull request
-# in one job carrying one SDK, inside the owner's one-to-two-minute rule,
-# rather than one job carrying seven.
-.PHONY: conformance-rust
-conformance-rust: build/conformance-harness build/conformance-rust
-	$(CONFORMANCE_ENV) ./build/conformance-harness run --only rust
-
-# ITS NEGATIVE CONTROL, and the soak's. A gate that has never fired proves
-# nothing, and the LIVE-BYTE gate could not fire on this class at all: live
-# bytes answer "does this leak", and a path that allocates and frees the same
-# bytes every iteration reads +0 there forever, however many allocations it
-# makes. SOAK_SABOTAGE puts ONE allocation per iteration inside the measured
-# region and both gates must go red on it.
-.PHONY: tables-rust-alloc-negative-control
-tables-rust-alloc-negative-control: conformance-rust
-	@if SOAK_SABOTAGE=1 ./build/conformance-rust build/conformance/manifest.txt alloc-audit \
-			> build/rust-alloc-control.log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the allocation audit stayed green with one allocation per iteration"; \
-		exit 1; \
-	fi
-	@grep -q "allocates on a read or write path" build/rust-alloc-control.log || \
-		{ echo "NEGATIVE CONTROL FAILED: the audit went red, but not on the allocation"; \
-		  cat build/rust-alloc-control.log; exit 1; }
-	@if SOAK_SABOTAGE=1 ./build/conformance-rust build/conformance/manifest.txt soak 5 \
-			> build/rust-soak-control.log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the soak stayed green with one allocation per iteration"; \
-		exit 1; \
-	fi
-	@grep -q "allocation(s) on the read and write paths" build/rust-soak-control.log || \
-		{ echo "NEGATIVE CONTROL FAILED: the soak went red, but not on the allocation"; \
-		  cat build/rust-soak-control.log; exit 1; }
-	@grep -m1 "allocation(s) on the read and write paths" build/rust-soak-control.log
-	@echo "rust allocation negative control: one allocation per iteration turns BOTH gates red"
 
 .PHONY: tables-rust-fuzz
 tables-rust-fuzz: build/block-fuzz/.stamp build/cook-fuzz/.stamp build/tables-generated-rust/.stamp
@@ -338,32 +250,14 @@ build/conformance-rust: build/tables-generated-rust/.stamp test/conformance/rust
 	            # running corrupts it in place, and a long soak runs this one
 	cp test/conformance/rust/target/debug/conformance-rust $@
 
-# THE RUST SOAK (docs/SPEC-TABLES.md: "every read path allocates nothing").
-# Every instance of the conformance corpus, wire-loaded and re-saved and
-# text-read and text-written, in a loop, with the bytes compared every
-# iteration — so a run that drifted stops rather than merely getting slower —
-# and with LIVE ALLOCATED BYTES as the instrument.
-#
-# The instrument is the point. RSS answers a different question, and an
-# allocator that grew by one byte per iteration would take a very long time to
-# show up in it; the driver installs a counting global allocator, takes a
-# baseline after a warm pass, and REFUSES the run if the number moved.
-#
-# It is a by-hand gate at an hour (the Makefile's SOAK_SECONDS); the number
-# the port was landed on is 3600.
-
-# THE RUST LEG of `make test`: the walk, clippy and feature gates, the names
-# control, the allocation audit and its control, the big-endian check, the
-# bench crates' compile gates, and the packet tests — the corpus binaries in
-# BOTH build modes (see below).
+# THE RUST LEG of `make test`: the clippy and feature gates, the names
+# control, the big-endian check, the bench crates' compile gates, and the
+# packet tests — the corpus binaries in BOTH build modes (see below).
 .PHONY: test-rust
 test-rust: generated/rust/.stamp generated/rust-ludicrous/.stamp generated/bench/rust/.stamp
-	$(MAKE) tables-rust-walk
 	$(MAKE) tables-rust-clippy
 	$(MAKE) tables-rust-features
 	$(MAKE) tables-rust-names-negative-control
-	$(MAKE) tables-rust-alloc-audit
-	$(MAKE) tables-rust-alloc-negative-control
 	# the generated Rust table surface CHECKED for a big-endian target, layout
 	# const asserts and all. It SKIPS cleanly where the target is not
 	# installed, so it costs a machine without it nothing.
