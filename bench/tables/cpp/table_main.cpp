@@ -31,7 +31,16 @@
 #include <string>
 #include <vector>
 
+#if defined(BENCH_MATCHED)
+#include "BenchTable.h"
+namespace benchtable = bench;
+#define TableMixed BenchMixed
+#define TableMixedReset BenchMixedReset
+#define TableMixedSave BenchMixedSave
+#define TableMixedLoad BenchMixedLoad
+#else
 #include "BenchTableTable.h"
+#endif
 
 static volatile uint64_t g_sink = 0;    // defeats dead code elimination of computed values
 
@@ -66,6 +75,8 @@ const long IterScale = 8;
 
 static bool g_csv = false;
 static bool g_gate = false;
+static bool g_indexed = false;
+static int64_t g_lengths[NumVariants];
 static const char * g_wire_dir = "testdata/wire";
 static const char * g_variant_dir = "bench/corpus/variants";
 
@@ -203,7 +214,7 @@ static RunStats run_stats( double * rates, int n )
     return s;
 }
 
-static void report( const char * bench, const char * path, long iters, int64_t bytes_per_op, const RunStats & s )
+static void report( const char * bench, const char * path, long iters, double bytes_per_op, const RunStats & s )
 {
     const double mbps = s.median_rate * double( bytes_per_op ) / ( 1024.0 * 1024.0 );
     fprintf( stderr, "%-18s %-11s %10.3f M msg/s %10.1f MB/s   (min %.3f, max %.3f, spread %.1f%%)\n",
@@ -211,46 +222,53 @@ static void report( const char * bench, const char * path, long iters, int64_t b
     if ( g_csv )
     {
         char row[256];
-        snprintf( row, sizeof( row ), "cpp,%s,%s,%ld,%lld,%d,%.0f,%.0f,%.0f,%.2f,%.2f",
-                  bench, path, iters, (long long) bytes_per_op, g_num_runs,
+        snprintf( row, sizeof( row ), "cpp,%s,%s,%ld,%.17g,%d,%.0f,%.0f,%.0f,%.2f,%.2f",
+                  bench, path, iters, bytes_per_op, g_num_runs,
                   s.median_rate, s.min_rate, s.max_rate, mbps, s.spread_pct );
         g_csv_rows.push_back( { row, "table" } );
     }
 }
 
-// Loads <variant-dir>/<name>.variants.bin into the NumVariants staggered
-// slots and returns the record size, or -1. Records are fixed-width by
-// construction — test/bench/table_main.cpp refuses to emit a corpus whose
-// records differ — so the record size IS file size / NumVariants.
-static int64_t load_variants( const char * name )
+// Load 64 concatenated records. --indexed requires a 64-entry uint32
+// length index; otherwise retain the historical fixed-stride format.
+// Return the exact mean encoded bytes; padding is never counted.
+static double load_variants( const char * name )
 {
     char path[512];
     snprintf( path, sizeof( path ), "%s/%s.variants.bin", g_variant_dir, name );
     std::vector<uint8_t> packed;
-    if ( !read_file( path, packed ) )
+    if ( !read_file( path, packed ) ) return -1;
+    const size_t size = packed.size();
+    g_goldens_loaded[std::string( name ) + ".variants.bin"] = packed;
+    if ( g_indexed )
     {
-        fprintf( stderr, "missing variant data %s — run `make bench-table-corpus`, and run from the schema repo root (or pass --variant-dir)\n", path );
-        return -1;
+        snprintf( path, sizeof( path ), "%s/%s.lengths", g_variant_dir, name );
+        std::vector<uint8_t> lengths;
+        if ( !read_file( path, lengths ) || lengths.size() != NumVariants * 4 ) return -1;
+        g_goldens_loaded[std::string( name ) + ".lengths"] = lengths;
+        for ( int k = 0; k < NumVariants; ++k )
+        {
+            uint32_t n = 0;
+            for ( unsigned j = 0; j < 4; ++j ) n |= uint32_t( lengths[k * 4 + j] ) << (j * 8);
+            g_lengths[k] = n;
+        }
     }
-    if ( packed.size() == 0 || packed.size() % NumVariants != 0 )
+    else
     {
-        fprintf( stderr, "variant data %s is %zu bytes, not a multiple of %d records — refusing to bench data whose stride is not the record size\n",
-                 path, packed.size(), NumVariants );
-        return -1;
+        if ( size == 0 || size % NumVariants ) return -1;
+        for ( int k = 0; k < NumVariants; ++k ) g_lengths[k] = size / NumVariants;
     }
-    const size_t record = packed.size() / NumVariants;
-    if ( record > (size_t) BufferSize )
+    g_variants.assign( (size_t) NumVariants * VariantStride, 0 );
+    size_t offset = 0;
+    for ( int k = 0; k < NumVariants; ++k )
     {
-        fprintf( stderr, "variant data %s has %zu-byte records, over the %d-byte buffer\n", path, record, BufferSize );
-        return -1;
+        const int64_t n = g_lengths[k];
+        if ( n <= 0 || n > BufferSize || (size_t) n > size - offset ) return -1;
+        memcpy( variant(k), packed.data() + offset, (size_t) n );
+        offset += (size_t) n;
     }
-    g_variants.assign( (size_t) NumVariants * (size_t) VariantStride, 0 );
-    for ( int k = 0; k < NumVariants; k++ )
-        memcpy( variant( k ), packed.data() + k * record, record );
-
-    const char * base = strrchr( path, '/' );
-    g_goldens_loaded[std::string( base ? base + 1 : path )] = packed;
-    return (int64_t) record;
+    if ( offset != size ) return -1;
+    return double( size ) / NumVariants;
 }
 
 // ------------------------------------------------------------------------------------------
@@ -269,7 +287,7 @@ static void bench_table( const char * name, const char * golden, long base_iters
 {
     const long iters = base_iters / IterScale;
 
-    const int64_t bytes_per_op = load_variants( name );
+    const double bytes_per_op = load_variants( name );
     if ( bytes_per_op < 0 )
     {
         failed = true;
@@ -277,7 +295,7 @@ static void bench_table( const char * name, const char * golden, long base_iters
     }
 
     // gate 1 (§1.5): variant 0 IS the pinned instance.
-    if ( !check_golden( golden, variant( 0 ), bytes_per_op ) )
+    if ( !check_golden( golden, variant( 0 ), g_lengths[0] ) )
     {
         failed = true;
         return;
@@ -289,13 +307,13 @@ static void bench_table( const char * name, const char * golden, long base_iters
     for ( int k = 0; k < NumVariants; k++ )
     {
         reset_fn( instances[k] );
-        if ( !load_fn( instances[k], variant( k ), bytes_per_op ) )
+        if ( !load_fn( instances[k], variant( k ), g_lengths[k] ) )
         {
             fail( name, "load of a variant failed" );
             return;
         }
         const int64_t wrote = save_fn( instances[k], g_twin, BufferSize );
-        if ( wrote != bytes_per_op || memcmp( g_twin, variant( k ), (size_t) bytes_per_op ) != 0 )
+        if ( wrote != g_lengths[k] || memcmp( g_twin, variant( k ), (size_t) g_lengths[k] ) != 0 )
         {
             fail( name, "variant round-trip bytes differ — refusing to bench a codec that does not reproduce the corpus" );
             return;
@@ -317,7 +335,7 @@ static void bench_table( const char * name, const char * golden, long base_iters
         for ( long i = 0; i < iters; i++ )
         {
             const int64_t wrote = save_fn( instances[i & ( NumVariants - 1 )], g_buffer, BufferSize );
-            if ( wrote != bytes_per_op )
+            if ( wrote != g_lengths[i & ( NumVariants - 1 )] )
             {
                 fail( name, "save failed in loop" );
                 return;
@@ -341,13 +359,13 @@ static void bench_table( const char * name, const char * golden, long base_iters
         for ( long i = 0; i < iters; i++ )
         {
             reset_fn( out );
-            if ( !load_fn( out, variant( i & ( NumVariants - 1 ) ), bytes_per_op ) )
+            if ( !load_fn( out, variant( i & ( NumVariants - 1 ) ), g_lengths[i & ( NumVariants - 1 )] ) )
             {
                 fail( name, "load failed in loop" );
                 return;
             }
             const int64_t wrote = save_fn( out, g_buffer, BufferSize );
-            if ( wrote != bytes_per_op )
+            if ( wrote != g_lengths[i & ( NumVariants - 1 )] )
             {
                 fail( name, "re-save failed in loop" );
                 return;
@@ -380,7 +398,8 @@ int main( int argc, char ** argv )
 {
     for ( int i = 1; i < argc; i++ )
     {
-        if ( strcmp( argv[i], "--gate" ) == 0 ) { g_gate = true; }
+        if ( strcmp( argv[i], "--indexed" ) == 0 ) { g_indexed = 1; }
+        else if ( strcmp( argv[i], "--gate" ) == 0 ) { g_gate = true; }
         else if ( strcmp( argv[i], "--csv" ) == 0 )
             g_csv = true;
         else if ( strcmp( argv[i], "--wire-dir" ) == 0 && i + 1 < argc )
@@ -400,7 +419,7 @@ int main( int argc, char ** argv )
         }
         else
         {
-            fprintf( stderr, "usage: %s [--gate] [--csv] [--round K] [--wire-dir <dir>] [--variant-dir <dir>]\n", argv[0] );
+            fprintf( stderr, "usage: %s [--indexed] [--gate] [--csv] [--round K] [--wire-dir <dir>] [--variant-dir <dir>]\n", argv[0] );
             return 1;
         }
     }

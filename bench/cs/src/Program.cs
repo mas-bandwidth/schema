@@ -30,6 +30,7 @@ using Serialize;
 static partial class Program
 {
     const int MaxNumRuns = 7;   // median of 7 (N >= 5), after 1 warmup run
+    static bool gGate = false;
     static bool gQuick = false; // --quick: bench_mixed only, 3 measured runs
     static int gNumRuns = MaxNumRuns; // --round K drops this to 1 (§2.4: one warmup +
                                       // one measured run per round; the driver
@@ -325,6 +326,8 @@ static partial class Program
             }
         }
 
+        if (gGate) return;
+
         double[] writeRates = new double[gNumRuns];
         double[] roundtripRates = new double[gNumRuns];
 
@@ -460,7 +463,8 @@ static partial class Program
 
         for (int i = 0; i < args.Length; i++)
         {
-            if (args[i] == "--csv")
+            if (args[i] == "--gate") { gGate = true; }
+            else if (args[i] == "--csv")
             {
                 gCsv = true;
             }
@@ -490,7 +494,7 @@ static partial class Program
             }
             else
             {
-                Console.Error.WriteLine("usage: schemabench [--csv] [--round K] [--quick] [--wire-dir <dir>] [--variant-dir <dir>]");
+                Console.Error.WriteLine("usage: schemabench [--gate] [--csv] [--round K] [--quick] [--wire-dir <dir>] [--variant-dir <dir>]");
                 return 1;
             }
         }
@@ -541,7 +545,7 @@ static partial class Program
         BenchDataDriven<Bench.BenchMixed>("bench_mixed", "bench_mixed", 4000000, Bench.Schema.WriteBenchMixed, Bench.Schema.ReadBenchMixed);
 
         // family bits (§1.4): the one bitpacker workload in the estate
-        if (!gQuick)
+        if (!gQuick && !gGate)
         {
             BenchBitpacker(24576);
         }

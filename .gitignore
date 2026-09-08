@@ -83,3 +83,7 @@ erl_crash.dump
 # Table JSON Base64 test driver
 /test/table-base64/cs/bin/
 /test/table-base64/cs/obj/
+
+# Matched packet/table benchmark build products.
+/bench/paired/cs/bin/
+/bench/paired/cs/obj/

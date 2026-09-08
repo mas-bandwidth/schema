@@ -1,5 +1,11 @@
 # bench/tables — the tables bench
 
+For the current four-language **Fixed Table vs Packet Wire** comparison, use
+[`bench/paired`](../paired/README.md). It carries identical logical data on both
+wires. This page documents the retained representative table corpus and its
+historical passes; their independent values cannot supply the paired ratio.
+
+
 **One measured shape: a representative fixed table, written and read on the
 tolerant wire.** That is the whole leg, and it is the tables layer's
 per-language release gate.

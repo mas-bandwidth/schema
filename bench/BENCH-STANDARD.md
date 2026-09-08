@@ -547,6 +547,27 @@ under the same measure-first rule.
 
 ### §1.9 The tables corpus and family `table`
 
+**The paired four-language comparison is `bench/paired/`.** It generates table
+codecs for the unchanged `BenchMixed` type and derives every table record from
+the canonical packet corpus. The producer verifies packet → table → packet
+byte identity before any clock. Table elision can change record lengths across
+those unchanged values, so paired table runners consume an exact 64-entry
+length index and report the mean encoded bytes per operation. They never pad
+the wire or change the input values to force equal encoded lengths. The normal
+packet runners retain their existing generated storage and timed loops.
+
+Only the paired driver may divide these two families, bound by its shared-data
+oracle, binary/corpus hashes and one interleaved sitting. Its compact report is
+`Language | Fixed Table % | vs Packet Wire %`: fastest table is 100%, and each
+language's own packet wire is 100% in the second column. Both ratios use the
+best round-trip rate; details retain medians, absolute costs and spread. Results
+on different architectures are separate pages. Existing cross-family refusal
+rules in the general tools remain unchanged.
+
+The following describes the retained historical representative corpus. Its
+logical-type substitutions and independent value producer mean its rows do
+**not** supply the new paired ratio.
+
 **A second corpus, a second pass, a second board — and family `table` so the
 two can never be divided by accident.** `bench/corpus/BenchTable.schema`
 declares ONE measured shape, `TableMixed`: a representative fixed table

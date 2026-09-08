@@ -21,6 +21,15 @@
 // THIS FILE IS SHAPE-BLIND: it names the generated type at its call sites and
 // nothing else — no field, no pinned value, no wire size.
 
+#if BENCH_MATCHED
+using BenchValue = Bench.BenchMixed;
+using BenchSchema = Bench.Schema;
+using BenchReport = Bench.TableReport;
+#else
+using BenchValue = Benchtable.TableMixed;
+using BenchSchema = Benchtable.Schema;
+using BenchReport = Benchtable.TableReport;
+#endif
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -30,6 +39,8 @@ using System.IO;
 static class Program
 {
     const int MaxNumRuns = 7;           // median of 7 (N >= 5), after 1 warmup run
+    static bool gIndexed;
+    static readonly int[] gLengths = new int[NumVariants];
     static int gNumRuns = MaxNumRuns;   // --round K drops this to 1 (§2.4)
     const int NumVariants = 64;         // read-path variant buffers
 
@@ -135,7 +146,7 @@ static class Program
         };
     }
 
-    static void Report(string bench, string path, long iters, long bytesPerOp, RunStats s)
+    static void Report(string bench, string path, long iters, double bytesPerOp, RunStats s)
     {
         double mbps = s.Median * bytesPerOp / (1024.0 * 1024.0);
         Console.Error.WriteLine(string.Format(CultureInfo.InvariantCulture,
@@ -175,36 +186,45 @@ static class Program
         return true;
     }
 
-    // Records are fixed-width by construction — test/bench/table_main.cpp
-    // refuses to emit a corpus whose records differ — so the record size IS
-    // file size / NumVariants.
-    static long LoadVariants(string name)
+    // Load 64 concatenated records. --indexed requires a 64-entry uint32
+    // length index; otherwise retain the historical fixed-stride format.
+    // Return the exact mean encoded bytes; padding is never counted.
+    static double LoadVariants(string name)
     {
         string path = Path.Combine(gVariantDir, name + ".variants.bin");
-        if (!File.Exists(path))
-        {
-            Console.Error.WriteLine("missing variant data " + path + " — run `make bench-table-corpus`, and run from the schema repo root (or pass --variant-dir)");
-            return -1;
-        }
+        if (!File.Exists(path)) return -1;
         byte[] packed = File.ReadAllBytes(path);
-        if (packed.Length == 0 || packed.Length % NumVariants != 0)
+        if (gIndexed)
         {
-            Console.Error.WriteLine("variant data " + path + " is " + packed.Length + " bytes, not a multiple of " + NumVariants + " records");
-            return -1;
+            string index = Path.Combine(gVariantDir, name + ".lengths");
+            if (!File.Exists(index)) return -1;
+            byte[] lengths = File.ReadAllBytes(index);
+            if (lengths.Length != NumVariants * 4) return -1;
+            gGoldensLoaded[name + ".lengths"] = lengths;
+            for (int k = 0; k < NumVariants; k++)
+            {
+                uint n = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(lengths.AsSpan(k * 4, 4));
+                if (n == 0 || n > BufferSize) return -1;
+                gLengths[k] = (int)n;
+            }
         }
-        int record = packed.Length / NumVariants;
-        if (record > BufferSize)
+        else
         {
-            Console.Error.WriteLine("variant data " + path + " has " + record + "-byte records, over the " + BufferSize + "-byte buffer");
-            return -1;
+            if (packed.Length == 0 || packed.Length % NumVariants != 0) return -1;
+            Array.Fill(gLengths, packed.Length / NumVariants);
         }
+        int offset = 0;
         for (int k = 0; k < NumVariants; k++)
         {
+            int n = gLengths[k];
+            if (n <= 0 || n > BufferSize || n > packed.Length - offset) return -1;
             gVariants[k] = new byte[VariantStride];
-            Array.Copy(packed, k * record, gVariants[k], 0, record);
+            Array.Copy(packed, offset, gVariants[k], 0, n);
+            offset += n;
         }
+        if (offset != packed.Length) return -1;
         gGoldensLoaded[Path.GetFileName(path)] = packed;
-        return record;
+        return (double)packed.Length / NumVariants;
     }
 
     // ------------------------------------------------------------------
@@ -221,7 +241,7 @@ static class Program
     {
         long iters = baseIters;
 
-        long bytesPerOp = LoadVariants(name);
+        double bytesPerOp = LoadVariants(name);
         if (bytesPerOp < 0)
         {
             failed = true;
@@ -229,7 +249,7 @@ static class Program
         }
 
         // gate 1 (§1.5): variant 0 IS the pinned instance.
-        if (!CheckGolden(golden, gVariants[0], bytesPerOp))
+        if (!CheckGolden(golden, gVariants[0], gLengths[0]))
         {
             failed = true;
             return;
@@ -242,18 +262,18 @@ static class Program
         {
             instances[k] = make();
             reset(instances[k]);
-            if (!load(instances[k], new ReadOnlySpan<byte>(gVariants[k], 0, (int)bytesPerOp)))
+            if (!load(instances[k], new ReadOnlySpan<byte>(gVariants[k], 0, gLengths[k])))
             {
                 Fail(name, "load of a variant failed");
                 return;
             }
             long wrote = save(instances[k], new Span<byte>(gTwin));
-            if (wrote != bytesPerOp)
+            if (wrote != gLengths[k])
             {
                 Fail(name, "variant round-trip length differs — refusing to bench a codec that does not reproduce the corpus");
                 return;
             }
-            for (int i = 0; i < bytesPerOp; i++)
+            for (int i = 0; i < gLengths[k]; i++)
             {
                 if (gTwin[i] != gVariants[k][i])
                 {
@@ -275,7 +295,7 @@ static class Program
             for (long i = 0; i < iters; i++)
             {
                 long wrote = save(instances[(int)(i & (NumVariants - 1))], new Span<byte>(gBuffer));
-                if (wrote != bytesPerOp)
+                if (wrote != gLengths[(int)(i & (NumVariants - 1))])
                 {
                     Fail(name, "save failed in loop");
                     return;
@@ -299,13 +319,13 @@ static class Program
             for (long i = 0; i < iters; i++)
             {
                 reset(outValue);
-                if (!load(outValue, new ReadOnlySpan<byte>(gVariants[(int)(i & (NumVariants - 1))], 0, (int)bytesPerOp)))
+                if (!load(outValue, new ReadOnlySpan<byte>(gVariants[(int)(i & (NumVariants - 1))], 0, gLengths[(int)(i & (NumVariants - 1))])))
                 {
                     Fail(name, "load failed in loop");
                     return;
                 }
                 long wrote = save(outValue, new Span<byte>(gBuffer));
-                if (wrote != bytesPerOp)
+                if (wrote != gLengths[(int)(i & (NumVariants - 1))])
                 {
                     Fail(name, "re-save failed in loop");
                     return;
@@ -339,7 +359,8 @@ static class Program
     {
         for (int i = 0; i < args.Length; i++)
         {
-            if (args[i] == "--gate")
+            if (args[i] == "--indexed") { gIndexed = true; }
+            else if (args[i] == "--gate")
             {
                 gGate = true;
             }
@@ -366,7 +387,7 @@ static class Program
             }
             else
             {
-                Console.Error.WriteLine("usage: schematablesbench [--gate] [--csv] [--round K] [--wire-dir <dir>] [--variant-dir <dir>]");
+                Console.Error.WriteLine("usage: schematablesbench [--indexed] [--gate] [--csv] [--round K] [--wire-dir <dir>] [--variant-dir <dir>]");
                 return 1;
             }
         }
@@ -380,13 +401,18 @@ static class Program
 
         // The one measured shape, named once — the generated type at the call
         // site and nothing else about it (bench/SHAPE-GATE.allow).
-        Benchtable.TableReport report = new Benchtable.TableReport();
-        BenchTable<Benchtable.TableMixed>(
+        BenchReport report = new BenchReport();
+        BenchTable<BenchValue>(
             "bench_table", "bench_table", 400000L,
-            () => new Benchtable.TableMixed(),
-            v => Benchtable.Schema.TableReset(v),
-            (v, b) => Benchtable.Schema.TableMixedSave(v, b),
-            (v, b) => Benchtable.Schema.TableMixedLoad(v, b, report) && !report.Malformed);
+            () => new BenchValue(),
+            v => BenchSchema.TableReset(v),
+#if BENCH_MATCHED
+            (v, b) => BenchSchema.BenchMixedSave(v, b),
+            (v, b) => BenchSchema.BenchMixedLoad(v, b, report) && !report.Malformed);
+#else
+            (v, b) => BenchSchema.TableMixedSave(v, b),
+            (v, b) => BenchSchema.TableMixedLoad(v, b, report) && !report.Malformed);
+#endif
 
         FlushCsv();
 

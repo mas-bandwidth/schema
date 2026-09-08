@@ -39,7 +39,7 @@ import (
 	"strconv"
 	"time"
 
-	"benchtable"
+	"encoding/binary"
 )
 
 // sink defeats dead-code elimination of the computed lengths. It is written
@@ -161,43 +161,55 @@ func stats(rates []float64) runStats {
 	return s
 }
 
-func report(bench, path string, iters int64, bytesPerOp int64, s runStats) {
+func report(bench, path string, iters int64, bytesPerOp float64, s runStats) {
 	mbps := s.median * float64(bytesPerOp) / (1024.0 * 1024.0)
 	fmt.Fprintf(os.Stderr, "%-18s %-11s %10.3f M msg/s %10.1f MB/s   (min %.3f, max %.3f, spread %.1f%%)\n",
 		bench, path, s.median/1e6, mbps, s.min/1e6, s.max/1e6, s.spreadPct)
 	if csv {
-		csvRows = append(csvRows, fmt.Sprintf("go,%s,%s,%d,%d,%d,%.0f,%.0f,%.0f,%.2f,%.2f",
+		csvRows = append(csvRows, fmt.Sprintf("go,%s,%s,%d,%.17g,%d,%.0f,%.0f,%.0f,%.2f,%.2f",
 			bench, path, iters, bytesPerOp, numRuns, s.median, s.min, s.max, mbps, s.spreadPct))
 	}
 }
 
-// loadVariants loads <variant-dir>/<name>.variants.bin into the numVariants
-// staggered slots and returns the record size, or -1. Records are fixed-width
-// by construction — test/bench/table_main.cpp refuses to emit a corpus whose
-// records differ — so the record size IS file size / numVariants.
-func loadVariants(name string) int64 {
-	path := variantDir + "/" + name + ".variants.bin"
-	packed, err := os.ReadFile(path)
+// Load 64 concatenated records. --indexed requires a 64-entry uint32
+// length index; otherwise retain the historical fixed-stride format.
+// Return the exact mean encoded bytes; padding is never counted.
+func loadVariants(name string) float64 {
+	packed, err := os.ReadFile(variantDir + "/" + name + ".variants.bin")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "missing variant data %s — run `make bench-table-corpus`, and run from the schema repo root (or pass --variant-dir)\n", path)
 		return -1
 	}
-	if len(packed) == 0 || len(packed)%numVariants != 0 {
-		fmt.Fprintf(os.Stderr, "variant data %s is %d bytes, not a multiple of %d records — refusing to bench data whose stride is not the record size\n",
-			path, len(packed), numVariants)
-		return -1
-	}
-	record := len(packed) / numVariants
-	if record > bufferSize {
-		fmt.Fprintf(os.Stderr, "variant data %s has %d-byte records, over the %d-byte buffer\n", path, record, bufferSize)
-		return -1
+	if indexed {
+		index, err := os.ReadFile(variantDir + "/" + name + ".lengths")
+		if err != nil || len(index) != numVariants*4 {
+			return -1
+		}
+		goldensLoaded[name+".lengths"] = index
+		for k := range lengths {
+			lengths[k] = int64(binary.LittleEndian.Uint32(index[k*4:]))
+		}
+	} else {
+		if len(packed) == 0 || len(packed)%numVariants != 0 {
+			return -1
+		}
+		for k := range lengths {
+			lengths[k] = int64(len(packed) / numVariants)
+		}
 	}
 	variants = make([]byte, numVariants*variantStride)
-	for k := 0; k < numVariants; k++ {
-		copy(variant(k), packed[k*record:(k+1)*record])
+	offset := int64(0)
+	for k, n := range lengths {
+		if n <= 0 || n > bufferSize || n > int64(len(packed))-offset {
+			return -1
+		}
+		copy(variant(k), packed[offset:offset+n])
+		offset += n
+	}
+	if offset != int64(len(packed)) {
+		return -1
 	}
 	goldensLoaded[name+".variants.bin"] = packed
-	return int64(record)
+	return float64(len(packed)) / numVariants
 }
 
 // benchTable is the data-driven table driver.
@@ -219,7 +231,7 @@ func benchTable[T any](name, golden string, baseIters int64,
 	}
 
 	// gate 1 (§1.5): variant 0 IS the pinned instance.
-	if !checkGolden(golden, variant(0)[:bytesPerOp]) {
+	if !checkGolden(golden, variant(0)[:lengths[0]]) {
 		failed = true
 		return
 	}
@@ -229,12 +241,12 @@ func benchTable[T any](name, golden string, baseIters int64,
 	instances := make([]T, numVariants)
 	for k := 0; k < numVariants; k++ {
 		reset(&instances[k])
-		if !load(&instances[k], variant(k)[:bytesPerOp]) {
+		if !load(&instances[k], variant(k)[:lengths[k]]) {
 			fail(name, "load of a variant failed")
 			return
 		}
 		wrote := save(&instances[k], twin[:])
-		if wrote != bytesPerOp || string(twin[:bytesPerOp]) != string(variant(k)[:bytesPerOp]) {
+		if wrote != lengths[k] || string(twin[:lengths[k]]) != string(variant(k)[:lengths[k]]) {
 			fail(name, "variant round-trip bytes differ — refusing to bench a codec that does not reproduce the corpus")
 			return
 		}
@@ -255,7 +267,7 @@ func benchTable[T any](name, golden string, baseIters int64,
 		start := time.Now()
 		for i := int64(0); i < iters; i++ {
 			wrote := save(&instances[i&(numVariants-1)], buffer[:])
-			if wrote != bytesPerOp {
+			if wrote != lengths[i&(numVariants-1)] {
 				fail(name, "save failed in loop")
 				return
 			}
@@ -277,12 +289,12 @@ func benchTable[T any](name, golden string, baseIters int64,
 		start := time.Now()
 		for i := int64(0); i < iters; i++ {
 			reset(&out)
-			if !load(&out, variant(int(i & (numVariants - 1)))[:bytesPerOp]) {
+			if !load(&out, variant(int(i & (numVariants - 1)))[:lengths[i&(numVariants-1)]]) {
 				fail(name, "load failed in loop")
 				return
 			}
 			wrote := save(&out, buffer[:])
-			if wrote != bytesPerOp {
+			if wrote != lengths[i&(numVariants-1)] {
 				fail(name, "re-save failed in loop")
 				return
 			}
@@ -311,11 +323,15 @@ func benchTable[T any](name, golden string, baseIters int64,
 }
 
 var gateOnly bool
+var indexed bool
+var lengths [numVariants]int64
 
 func main() {
 	args := os.Args[1:]
 	for i := 0; i < len(args); i++ {
 		switch {
+		case args[i] == "--indexed":
+			indexed = true
 		case args[i] == "--gate":
 			gateOnly = true
 		case args[i] == "--csv":
@@ -334,7 +350,7 @@ func main() {
 			}
 			numRuns = 1
 		default:
-			fmt.Fprintf(os.Stderr, "usage: %s [--gate] [--csv] [--round K] [--wire-dir <dir>] [--variant-dir <dir>]\n", os.Args[0])
+			fmt.Fprintf(os.Stderr, "usage: %s [--indexed] [--gate] [--csv] [--round K] [--wire-dir <dir>] [--variant-dir <dir>]\n", os.Args[0])
 			os.Exit(1)
 		}
 	}
@@ -347,14 +363,7 @@ func main() {
 
 	// The one measured shape, named once — the generated type at the call site
 	// and nothing else about it (bench/SHAPE-GATE.allow).
-	benchTable[benchtable.TableMixed](
-		"bench_table", "bench_table", 400000,
-		benchtable.TableMixedReset,
-		benchtable.TableMixedSave,
-		func(v *benchtable.TableMixed, b []byte) bool {
-			var report benchtable.TableReport
-			return benchtable.TableMixedLoad(v, b, &report) && !report.Malformed
-		})
+	runShape()
 
 	flushCSV()
 
