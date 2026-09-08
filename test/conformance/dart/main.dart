@@ -35,6 +35,17 @@ void readManifest(String path) {
 Iterable<List<String>> kind(String want) => lines.where((f) => f[0] == want);
 
 
+Uint8List blockBuffer(Uint8List image, int extent, int pointer) {
+  // A CLAIM SHORTER THAN THE IMAGE IS A TRUNCATION, so the buffer is the claim
+  // in that direction too and only what fits is copied.
+  final claim = extent < 0 ? image.length : extent;
+  final base = pointer < 0 ? 0 : pointer;
+  final buffer = Uint8List(base + claim);
+  final copy = claim < image.length ? claim : image.length;
+  buffer.setRange(base, base + copy, image);
+  return buffer;
+}
+
 String openBlock(String name, Uint8List image, int extent, int pointer) {
   if (pointer < 0) {
     return 'refuse\n'; // no buffer at all
