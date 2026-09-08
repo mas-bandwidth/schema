@@ -926,7 +926,9 @@ refusal block_extent_padding      truncated
 # SHORT of the last record: a record's byte cost is the port's own, so the
 # short row is stated as a rule a leg applies rather than as a number two
 # layouts would read differently. `ids` is `full` or the ENTRIES the caller's
-# retained-id list holds, which is a COUNT and is comparable.
+# retained-id list holds, which is a COUNT and is comparable. A `retain-message`
+# row's capacity is `full` only: `short` is one buffer's rule and a batch takes
+# one buffer a body, so the loader refuses the pair by name (schema#681).
 unit tblrt1 test/tables/RT1.schema
 unit tblrt2 test/tables/RT2.schema
 unit tblrt3 test/tables/RT3.schema

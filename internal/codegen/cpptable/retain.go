@@ -1898,11 +1898,16 @@ func (g *tableGen) emitRetainRoot(st *ir.Struct) {
 // and the anchor the round trip rests on does not exist.
 //
 // The refusal is IN THE SOURCE THE UNIT DOES EMIT rather than a missing symbol
-// (§11's rule for a surface a class does not carry): the three names are
-// declared, and naming one is a compile error that says why.
+// (§11's rule for a surface a class does not carry): the five names are
+// declared, and naming one is a compile error that says why. The MESSAGE
+// form's two ride beside the file form's three (§3.3, schema#680): a
+// variable-class root carries LoadRetainMessages and refuses
+// SaveRetainMessages by name, and a fixed-class root that declared neither
+// would answer a caller with a missing symbol, which is the one answer §11
+// refuses.
 //
 // It lands in EVERY unit, including one whose tables are all fixed-class. The
-// three names are function templates that define nothing and instantiate
+// five names are function templates that define nothing and instantiate
 // nothing until one is called, so they cost a unit that carries no retention
 // machinery exactly nothing and §2.2's zero-cost gate scans for the pointer,
 // map and list symbols, none of which is here. A fixed-class root's answer to
@@ -1920,11 +1925,12 @@ func (g *tableGen) emitRetainRefusals(members []*ir.Struct) {
 			g.pf("%s\n", RetainRefusalOpen)
 			g.pf("//\n")
 			g.pf("// A fixed-class root is a VALUE: no region, no node directory, and so no\n")
-			g.pf("// anchor for a retained record's path. The three names are declared here so\n")
-			g.pf("// that naming one is a refusal that says why, rather than a symbol a linker\n")
-			g.pf("// could not find. The suffixes stay claimed on every closure member all the\n")
-			g.pf("// same (§11): a table gains or loses pointers as an edit, and a name that is\n")
-			g.pf("// free today must not become a collision tomorrow.\n")
+			g.pf("// anchor for a retained record's path. The five names, the file form's three\n")
+			g.pf("// and the message form's two (§3.3), are declared here so that naming one is\n")
+			g.pf("// a refusal that says why, rather than a symbol a linker could not find. The\n")
+			g.pf("// suffixes stay claimed on every closure member all the same (§11): a table\n")
+			g.pf("// gains or loses pointers as an edit, and a name that is free today must not\n")
+			g.pf("// become a collision tomorrow.\n")
 			g.pf("//\n")
 			g.pf("// NOTHING BETWEEN THESE TWO MARKERS IS MACHINERY. Each name is a function\n")
 			g.pf("// template that defines nothing and instantiates nothing until it is called,\n")
@@ -1933,8 +1939,8 @@ func (g *tableGen) emitRetainRefusals(members []*ir.Struct) {
 			g.pf("// rather than by the absence of the word \"template\".\n\n")
 			first = false
 		}
-		why := fmt.Sprintf("%s is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it.", st.Name)
-		for _, verb := range []string{"LoadRetain", "MeasureRetain", "SaveRetain"} {
+		why := fmt.Sprintf("%s is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it.", st.Name)
+		for _, verb := range []string{"LoadRetain", "MeasureRetain", "SaveRetain", "LoadRetainMessages", "SaveRetainMessages"} {
 			g.pf("template <typename... Args>\ninline void %s%s( Args &&... )\n{\n", st.Name, verb)
 			g.pf("    static_assert( sizeof...( Args ) == (size_t) -1,\n        \"%s\" );\n}\n\n", why)
 		}

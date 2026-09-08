@@ -207,7 +207,9 @@ same absence the `message` and `wire` surfaces already carry one grain up: a
 port carries no retention at all, so `LoadRetain`, `MeasureRetain` and
 `SaveRetain` are a missing FEATURE and not a failing test, and §6.6's own
 backend status says so. A `retain-message` row needs the form-2 read beside
-them, which no port has either.
+them, which no port has either, and its capacity is `full` only: `short` is one
+buffer's rule, a batch takes one buffer a body, and the manifest loader refuses
+the pair by name rather than let each leg read it its own way (schema#681).
 
 **`cook-write` IS THE ONE SURFACE WHERE A LANGUAGE WRITES AN ACCELERATOR RATHER
 THAN READING ONE, and the expectation is the TOOL's file.** Every other cook

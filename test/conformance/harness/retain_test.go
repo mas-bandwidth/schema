@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
@@ -138,5 +140,37 @@ func TestTheOracleAnswersEveryRetainRow(t *testing.T) {
 					len(saved), len(want), firstDifference(saved, want))
 			}
 		})
+	}
+}
+
+// TestAMessageRowRefusesShortByName is the loader's own control
+// (docs/SPEC-TABLES.md §6.6, §3.3, schema#681). `short` is ONE BUFFER's rule,
+// one byte short of the last record of one port's one store, and a batch takes
+// one buffer a body with no rule on the page for which body's record that is.
+// A message row carrying it would be answered by each leg's own reading, so the
+// loader refuses the pair by name, and the same row at `full` still loads: what
+// is refused is the pair and not the row.
+func TestAMessageRowRefusesShortByName(t *testing.T) {
+	dir := t.TempDir()
+	row := func(capacity string) string {
+		return "unit u test/tables/RT1.schema\n" +
+			"connection c u 0x0 c.bin\n" +
+			"retain-message m c u Node m.bin " + capacity + " full 0,0,0 0 -\n"
+	}
+	short := filepath.Join(dir, "short.txt")
+	writeFile(t, short, row("short"))
+	if _, err := ReadManifest(short, dir); err == nil {
+		t.Fatal("a retain-message row carrying short loaded")
+	} else if !strings.Contains(err.Error(), "short is one buffer's rule") {
+		t.Fatalf("the refusal does not say why: %v", err)
+	}
+	full := filepath.Join(dir, "full.txt")
+	writeFile(t, full, row("full"))
+	m, err := ReadManifest(full, dir)
+	if err != nil {
+		t.Fatalf("the same row at full is refused: %v", err)
+	}
+	if len(m.Retains) != 1 || !m.Retains[0].Message || m.Retains[0].Short {
+		t.Fatalf("the full row did not load as a message row at full capacity: %+v", m.Retains)
 	}
 }
