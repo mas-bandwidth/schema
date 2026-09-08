@@ -1,7 +1,7 @@
 # Compiled closure and widening regressions from the shared reference review.
 .PHONY: tables-reference-review
 tables-reference-review:
-	go test ./compiler -run '^Test(CppVariableWideAlignment|CppCollectionWidening|FlagsElementWidening)$$' -count=1
+	go test ./compiler -run '^Test(CppVariableWideAlignment|CppCollectionWidening|FlagsElementWidening|CppHiddenUnionExtentRefusal)$$' -count=1
 
 test: tables-reference-review
 
@@ -24,3 +24,7 @@ tables-reference-alignment-negative-control:
 .PHONY: tables-reference-include-negative-control
 tables-reference-include-negative-control:
 	sh test/tables/reference-review-control include
+
+.PHONY: tables-reference-hidden-union-negative-control
+tables-reference-hidden-union-negative-control:
+	sh test/tables/reference-review-control hidden
