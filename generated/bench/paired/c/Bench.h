@@ -48,7 +48,7 @@ typedef struct BenchPacket {
     uint32_t bits7;
     uint32_t bits13;
     uint32_t bits23;
-    int flag;
+    uint8_t flag;
     float x;
     float y;
     float z;
@@ -277,8 +277,8 @@ typedef struct MixedEntity {
     int32_t health;
     MixedWeapon weapon;
     MixedDamage damage;
-    int moving;
-    int firing;
+    uint8_t moving;
+    uint8_t firing;
 } MixedEntity;
 
 #define MIXED_ENTITY_MAX_BITS 135   /* longest wire path; align pads at worst case (SPEC §6.1) */
@@ -300,7 +300,7 @@ typedef struct MixedHitEvent {
     uint32_t target_id;
     int32_t damage;
     int32_t hit_kind;
-    int crit;
+    uint8_t crit;
 } MixedHitEvent;
 
 #define MIXED_HIT_EVENT_MAX_BITS 28   /* longest wire path; align pads at worst case (SPEC §6.1) */
@@ -393,7 +393,7 @@ typedef struct BenchMixed {
     SCHEMA_C_ALIGN16     serialize_int128_t flux;
     uint16_t ping;
     uint32_t crc_hint;
-    int has_extra;
+    uint8_t has_extra;
     int32_t extra;
     int32_t idle_ticks;
 } BenchMixed;
