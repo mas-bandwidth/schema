@@ -166,3 +166,6 @@ message_bytes_truncated backenddemo LoginRequest testdata/wire/tables/fuzz-vecto
 
 # The key scan reads through an incompatible occurrence; the final key kind wins.
 map_key_repeat_kind mapdemo Slots testdata/wire/tables/fuzz-vectors/map_key_repeat_kind.bin
+
+# A later map occurrence supersedes retained bodies even after a damaged key cleared its value.
+map_retained_replaced mapdemo Text testdata/wire/tables/fuzz-vectors/map_retained_replaced.bin

@@ -118,6 +118,9 @@ type retainState struct {
 	// arm whose own framing was damaged leaves no body on the cell at all, so
 	// the handle is held here instead of being read back off the value.
 	arms map[*tabletext.Cell]*tabletext.Instance
+	// A damaged map may clear Entries after earlier entries retained fields.
+	// Keep those bodies until a later occurrence supersedes the whole map.
+	maps map[*tabletext.Field][]*tabletext.Instance
 }
 
 func newRetainState(m *tabletext.Model, store *Retain) *retainState {
@@ -126,7 +129,7 @@ func newRetainState(m *tabletext.Model, store *Retain) *retainState {
 	for _, id := range ir.TableWireIds(m.Unit) {
 		known[id] = true
 	}
-	return &retainState{store: store, known: known, arms: map[*tabletext.Cell]*tabletext.Instance{}}
+	return &retainState{store: store, known: known, arms: map[*tabletext.Cell]*tabletext.Instance{}, maps: map[*tabletext.Field][]*tabletext.Instance{}}
 }
 
 // forget DISCARDS every record held under a body the wire is about to write
@@ -150,6 +153,7 @@ func (rt *retainState) forget(inst *tabletext.Instance) {
 	delete(rt.store.records, inst)
 	for i := range inst.Fields {
 		fv := &inst.Fields[i]
+		rt.forgetMap(fv)
 		rt.forgetCell(&fv.Cell)
 		for j := range fv.Elems {
 			rt.forgetCell(&fv.Elems[j])
@@ -157,6 +161,23 @@ func (rt *retainState) forget(inst *tabletext.Instance) {
 		for j := range fv.Entries {
 			rt.forgetCell(&fv.Entries[j])
 		}
+	}
+}
+
+func (rt *retainState) builtMapEntry(fv *tabletext.Field, entry *tabletext.Instance) {
+	if rt != nil {
+		rt.maps[fv] = append(rt.maps[fv], entry)
+	}
+}
+
+func (rt *retainState) forgetMap(fv *tabletext.Field) {
+	if rt == nil {
+		return
+	}
+	entries := rt.maps[fv]
+	delete(rt.maps, fv)
+	for _, entry := range entries {
+		rt.forget(entry)
 	}
 }
 
