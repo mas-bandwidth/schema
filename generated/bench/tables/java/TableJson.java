@@ -224,7 +224,7 @@ public final class TableJson {
     private static void writeBase64(Out o, byte[] data, int length) {
         o.put('"');
         int i = 0;
-        for (; i + 3 <= length; i += 3) {
+        for (; length - i >= 3; i += 3) {
             int triple = ((data[i] & 0xff) << 16) | ((data[i + 1] & 0xff) << 8) | (data[i + 2] & 0xff);
             o.put(BASE64.charAt((triple >> 18) & 0x3f));
             o.put(BASE64.charAt((triple >> 12) & 0x3f));

@@ -461,7 +461,7 @@ static SCHEMA_UNUSED void table_json_write_base64( TableJsonOut * out, const uin
     const char * alphabet = table_json_base64_alphabet();
     int32_t i = 0;
     table_json_put( out, '"' );
-    for ( ; i + 3 <= length; i += 3 )
+    for ( ; length - i >= 3; i += 3 )
     {
         uint32_t triple = ( (uint32_t) data[i] << 16 ) | ( (uint32_t) data[i+1] << 8 ) | (uint32_t) data[i+2];
         char quad[4];

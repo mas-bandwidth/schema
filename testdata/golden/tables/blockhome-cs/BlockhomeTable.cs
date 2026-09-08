@@ -670,7 +670,7 @@ namespace Blockhome
             {
                 o.Put((byte)'"');
                 int i = 0;
-                for (; i + 3 <= data.Length; i += 3)
+                for (; data.Length - i >= 3; i += 3)
                 {
                     uint triple = ((uint)data[i] << 16) | ((uint)data[i + 1] << 8) | (uint)data[i + 2];
                     o.Put((byte)Base64Alphabet[(int)((triple >> 18) & 0x3f)]);
