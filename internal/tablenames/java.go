@@ -5,25 +5,6 @@ const Java Backend = 1 << 4
 
 func init() {
 	define(Java,
-		Name{Name: "TableReport", What: "the read report — the permissive contract's ledger"},
-		Name{Name: "TableWriter", What: "the wire writer over the caller's buffer"},
-		Name{Name: "TableReader", What: "the wire reader over the caller's buffer"},
-		Name{Name: "TableTypeInfo", What: "a table's reflection descriptor"},
-		Name{Name: "TableFieldInfo", What: "a field's reflection descriptor"},
-		// THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1, §8.7): every field row
-		// and every declaration row with no `///` block names this ONE
-		// definition, so absence costs a unit no string data and a printer
-		// concatenates doc columns with no null test. Every descriptor row a
-		// VIEW FILE writes names it too, so it is claimed in EVERY unit
-		// beside the descriptor primitives above (docs/SPEC-TABLES.md §8.2,
-		// §11) rather than only where a table rides.
-		Name{Name: "TableDocNone", What: "the one shared empty doc every unannotated descriptor row names"},
-		Name{Name: "TableUnionInfo", What: "a union field's tag and its arms"},
-		Name{Name: "TableUnionArmInfo", What: "one union arm's payload and descriptor"},
-		Name{Name: "TableEnumId", What: "an enum value -> its table-wire variant id"},
-		Name{Name: "TableEnumValue", What: "a table-wire variant id -> its enum value"},
-		Name{Name: "TableKeyed", What: "an enum-keyed array's slot storage"},
-		Name{Name: "TableJson", What: "the text form's generic walk. C# spells it a nested class of Schema, which claims nothing; Java puts it at package scope, Dart at library scope and JavaScript at module scope — an ES module is one scope, with no nested class to hide a walk in — so the claim is the UNION and the name is claimed"},
 		// JAVA's byte-access primitive. C++ reads a record through its type, C#
 		// through a pointer cast and Rust through a transmute; Java has none of
 		// those, so every multi-byte read of a block or a cook goes through one

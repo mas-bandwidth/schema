@@ -132,8 +132,7 @@ func emitRowFiles(u *ir.Unit, set *records, blocks *ir.BlockUnit, ck *cookUnit) 
 	for _, name := range set.order {
 		g := &rowGen{unit: u, set: set}
 		g.emitRow(name, set.layout[name], blocks, ck)
-		out[name+"Row.java"] = javaFile(u, name+"Row",
-			"one record of the two accelerators, read where it lies (docs/SPEC-TABLES.md §7, §19).", g.b.String())
+		out[name+"Row.java"] = javaFile(u, "one record of the two accelerators, read where it lies (docs/SPEC-TABLES.md §7, §19).", g.b.String())
 	}
 	return out
 }

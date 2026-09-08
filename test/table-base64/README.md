@@ -17,7 +17,7 @@ Run from the repository root with the usual language toolchain variables:
 
 ```sh
 make table-base64-cpp table-base64-c table-base64-go table-base64-rust \
-     table-base64-cs table-base64-java table-base64-js table-base64-dart \
+     table-base64-cs table-base64-js table-base64-dart \
      table-base64-elixir
 ```
 

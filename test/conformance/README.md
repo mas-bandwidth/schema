@@ -30,7 +30,6 @@ goes red everywhere localises nothing:
 | `conformance-negative-control-cs` | the C# walker, in the emitter | `cs / json-read` | `json-write` |
 | `conformance-negative-control-go` | the Go leg, in the emitter | its own surface | the rest |
 | `conformance-negative-control-go-walk` | the Go walk's field offset | `go / json-read` | `json-write` |
-| `conformance-negative-control-java` | the Java walk's field index | `java / json-read` | `json-write` |
 | `conformance-negative-control-java-block` | the array PITCH CHECK in the Java `open` | `java / forgery` | `block`, `block-dump` |
 
 Two of those rows are the reason two surfaces exist at all. The row-dump one is

@@ -104,8 +104,8 @@ Dart, JavaScript), the limit is the technique in its stated form.
 **Reference.** `internal/codegen/cpptable/cpptable.go:524-538` (the reader is
 `buffer/size/offset`); the stack sub-reader at
 `internal/codegen/cpptable/codecs.go:1113`. The limit form:
-`internal/codegen/javatable/runtime.go:151-186`, with the reason written at
-`:151-158`.
+`internal/codegen/jstable/jstable.go:960` (Java's, the first, went with its
+previous-form wire; schema#517 brings it back with the id-table form).
 
 **Proven in.** C++; the limit form in Java, then JavaScript and Dart.
 
@@ -122,7 +122,7 @@ red on the one row it was planted in.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/codecs.go:1113` | ✅ `internal/codegen/ctable/codecs.go:1074` | ✅ `internal/codegen/rusttable/runtime.go:364` | ✅ `internal/codegen/gotable/wire.go:178-187` | ✅ `internal/codegen/cstable/cstable.go:958` (a `ref struct`) | ✅ `internal/codegen/javatable/codecs.go:1016` (the limit) | ✅ `internal/codegen/jstable/jstable.go:960` (the limit) | ✅ `internal/codegen/darttable/codecs.go:762` (the limit) | — a decoded BEAM term is an allocation and no buffer is caller-owned; the leg pins the per-case COUNT instead (`tables-elixir-alloc-audit`, docs/SPEC-TABLES.md) |
+| ✅ `internal/codegen/cpptable/codecs.go:1113` | ✅ `internal/codegen/ctable/codecs.go:1074` | ✅ `internal/codegen/rusttable/runtime.go:364` | ✅ `internal/codegen/gotable/wire.go:178-187` | ✅ `internal/codegen/cstable/cstable.go:958` (a `ref struct`) | ❌ #517 | ✅ `internal/codegen/jstable/jstable.go:960` (the limit) | ✅ `internal/codegen/darttable/codecs.go:762` (the limit) | — a decoded BEAM term is an allocation and no buffer is caller-owned; the leg pins the per-case COUNT instead (`tables-elixir-alloc-audit`, docs/SPEC-TABLES.md) |
 
 ### M2 — 64-bit values without boxing
 
@@ -151,7 +151,7 @@ per edge to 0.7 bytes per iteration (ceiling 8) once the delta was composed.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/cpptable.go:513` | ✅ `internal/codegen/ctable/ctable.go:514-518` | ✅ `internal/codegen/rusttable/runtime.go:352-356` (one `from_le_bytes`; nothing boxes) | ✅ `internal/codegen/gotable/wire.go:152` | ✅ `internal/codegen/cstable/cstable.go:986-991` | ✅ `internal/codegen/javatable/runtime.go:206-210` | — the accelerator paths compose (`internal/codegen/jstable/block.go:384`, `cook.go:513`); a 64-bit wire FIELD's value is a BigInt or loses precision, so those rows read one under a stated ceiling (`test/js-tables/main.mjs`, the RootConfig rows) | — an `int` is a 64-bit machine word and nothing boxes (`internal/codegen/darttable/block.go:213`) | ❌ #403 |
+| ✅ `internal/codegen/cpptable/cpptable.go:513` | ✅ `internal/codegen/ctable/ctable.go:514-518` | ✅ `internal/codegen/rusttable/runtime.go:352-356` (one `from_le_bytes`; nothing boxes) | ✅ `internal/codegen/gotable/wire.go:152` | ✅ `internal/codegen/cstable/cstable.go:986-991` | ❌ #517 | — the accelerator paths compose (`internal/codegen/jstable/block.go:384`, `cook.go:513`); a 64-bit wire FIELD's value is a BigInt or loses precision, so those rows read one under a stated ceiling (`test/js-tables/main.mjs`, the RootConfig rows) | — an `int` is a 64-bit machine word and nothing boxes (`internal/codegen/darttable/block.go:213`) | ❌ #403 |
 
 ### M3 — A float never crosses a call
 
@@ -179,7 +179,7 @@ reads as bytes per iteration on the pinned runtime.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/cpptable.go:572-573` | ✅ `internal/codegen/ctable/ctable.go:565-568` | ✅ `internal/codegen/rusttable/runtime.go:181-199` | ✅ `internal/codegen/gotable/read.go` (`emitReadScalar`) | ✅ `TestCsFloatBitCastIsAtTheAssignment` (`BitConverter` at the store; helpers `[MethodImpl(AggressiveInlining)]`) | ✅ `internal/codegen/javatable/codecs.go:919-921` | ✅ `internal/codegen/jstable/codecs.go:1209-1219` | ❌ #404 | — a BEAM float is a boxed term whatever the call shape; `R.f32_bits` costs what the term costs |
+| ✅ `internal/codegen/cpptable/cpptable.go:572-573` | ✅ `internal/codegen/ctable/ctable.go:565-568` | ✅ `internal/codegen/rusttable/runtime.go:181-199` | ✅ `internal/codegen/gotable/read.go` (`emitReadScalar`) | ✅ `TestCsFloatBitCastIsAtTheAssignment` (`BitConverter` at the store; helpers `[MethodImpl(AggressiveInlining)]`) | ❌ #517 | ✅ `internal/codegen/jstable/codecs.go:1209-1219` | ❌ #404 | — a BEAM float is a boxed term whatever the call shape; `R.f32_bits` costs what the term costs |
 
 ### M4 — The codec is shaped for the optimizer
 
@@ -389,7 +389,7 @@ offset arithmetic and requires red.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-json-walk` `tables-json-graph-walk` | ✅ `tables-c-json-walk` | ✅ `tables-rust-walk` | ✅ `tables-go-json-walk` | ✅ `tables-cs-json-walk` | ✅ `tables-java-json-walk` | ✅ `tables-js-json-walk` | ✅ `tables-dart-json-walk` | ✅ `tables-elixir-walk` |
+| ✅ `tables-json-walk` `tables-json-graph-walk` | ✅ `tables-c-json-walk` | ✅ `tables-rust-walk` | ✅ `tables-go-json-walk` | ✅ `tables-cs-json-walk` | ❌ #517 | ✅ `tables-js-json-walk` | ✅ `tables-dart-json-walk` | ✅ `tables-elixir-walk` |
 
 ### M10 — Hooks and the allocator contract
 
@@ -435,7 +435,7 @@ original-slice guarantee, bypass the pair, and add a managed allocation.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-hooks` | ✅ `TestCTableWireAllocatorFailures` `tables-c-soak` | — no allocating path exists: a pointered unit's wire is refused and the fixed class allocates nothing (`tables-rust-alloc-audit`) | ✅ `tables-go-allocator` `tables-go-allocator-negative-controls` (typed activation frames stated below) | ✅ `tables-cs-leg` (`TableAllocator` pairs, growth failures and native scratch ownership) | — the runtime allocates inside itself and says so; where it does is named per path at `tables-java-alloc` | — the runtime allocates inside itself and says so; every unavoidable allocation is named in the floor (docs/SPEC-TABLES.md) | — the runtime allocates inside itself and says so (docs/SPEC-TABLES.md) | — the BEAM allocates every term; the count is pinned instead (docs/SPEC-TABLES.md) |
+| ✅ `tables-hooks` | ✅ `TestCTableWireAllocatorFailures` `tables-c-soak` | — no allocating path exists: a pointered unit's wire is refused and the fixed class allocates nothing (`tables-rust-alloc-audit`) | ✅ `tables-go-allocator` `tables-go-allocator-negative-controls` (typed activation frames stated below) | ✅ `tables-cs-leg` (`TableAllocator` pairs, growth failures and native scratch ownership) | ❌ #517 | — the runtime allocates inside itself and says so; every unavoidable allocation is named in the floor (docs/SPEC-TABLES.md) | — the runtime allocates inside itself and says so (docs/SPEC-TABLES.md) | — the BEAM allocates every term; the count is pinned instead (docs/SPEC-TABLES.md) |
 
 ### M11 — The layout contract is asserted in generated code
 
@@ -500,8 +500,8 @@ null, store back, no lock) is banned by name.
 
 **Reference.** `testdata/golden/tables/examples/KeyedTable.h:2245-2249`
 (`static const` inside an `inline` accessor). The safe-publication form:
-`internal/codegen/javatable/codecs.go:1334` (the holder class), gated by
-`TestJavaDescriptorsAreSafelyPublished`.
+`internal/codegen/javatable/rows.go` (the `BlockInfoHolder` and
+`CookInfoHolder` classes), gated by `TestJavaDescriptorsAreSafelyPublished`.
 
 **Proven in.** C++; the publication hazard found and fixed in Java.
 
@@ -955,14 +955,15 @@ records. Elixir: heap words within ±11 of the pin against a tolerance of 64.
 
 **Negative control.** One planted allocation per record, and LOCALIZATION:
 the row it was planted in goes red and the row beside it stays green
-(`tables-java-alloc-negative-control` requires wire-read red and wire-save
-green; Go's `TestAllocationGateCanGoRed` plants two escapes and must see both).
+(Java's `tables-java-alloc-negative-control` required wire-read red and
+wire-save green until it went with the previous-form wire; Go's
+`TestAllocationGateCanGoRed` plants two escapes and must see both).
 
 **Targets:** alloc, alloc-negative-control
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #412 (the cook WRITE is counted under `tables-cook-write`; the read path is a static scan) | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ✅ `tables-rust-alloc-audit` `tables-rust-alloc-negative-control` | ✅ `TestLoadAllocatesNothing` `TestRoundTripAllocatesNothing` `TestAllocationGateCanGoRed` | ❌ #412 | ✅ `tables-java-alloc` `tables-java-alloc-negative-control` | ✅ `tables-js-alloc` `tables-js-alloc-negative-control` | ✅ `tables-dart-alloc` `tables-dart-alloc-negative-control` | ✅ `tables-elixir-alloc-audit` `tables-elixir-alloc-negative-control` |
+| ❌ #412 (the cook WRITE is counted under `tables-cook-write`; the read path is a static scan) | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ✅ `tables-rust-alloc-audit` `tables-rust-alloc-negative-control` | ✅ `TestLoadAllocatesNothing` `TestRoundTripAllocatesNothing` `TestAllocationGateCanGoRed` | ❌ #412 | ❌ #517 | ✅ `tables-js-alloc` `tables-js-alloc-negative-control` | ✅ `tables-dart-alloc` `tables-dart-alloc-negative-control` | ✅ `tables-elixir-alloc-audit` `tables-elixir-alloc-negative-control` |
 
 ### I2 — Emitter sabotage through `go build -overlay`
 
@@ -1047,7 +1048,7 @@ reference leg never registers.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| — the reference leg may not answer absent (`test/conformance/README.md`) | ✅ `test/conformance/c/main.c:224-230` | ✅ `test/conformance/rust/src/main.rs:337-342` | ✅ `test/conformance/go/main.go:147` | ✅ `test/conformance/cs/src/Program.cs:54` | ✅ `test/conformance/java/src/Driver.java:216` | ✅ `test/conformance/js/main.mjs:74-76` | ✅ `test/conformance/dart/main.dart:337` | ✅ `test/conformance/elixir/driver_impl.ex:687` |
+| — the reference leg may not answer absent (`test/conformance/README.md`) | ✅ `test/conformance/c/main.c:224-230` | ✅ `test/conformance/rust/src/main.rs:337-342` | ✅ `test/conformance/go/main.go:147` | ✅ `test/conformance/cs/src/Program.cs:54` | ✅ `test/conformance/java/src/Driver.java:646-649` (the five wire surfaces, absent at the `list` grain) | ✅ `test/conformance/js/main.mjs:74-76` | ✅ `test/conformance/dart/main.dart:337` | ✅ `test/conformance/elixir/driver_impl.ex:687` |
 
 ### I5 — The block lead gate
 
@@ -1169,8 +1170,7 @@ release act.
 
 **Reference.** `test/c-tables/soak_main.c:262-334` (allocator calls counted
 over the measured loop); `test/go-tables/soak_test.go:216-264` (`Mallocs`
-with site classification); `tables-java-soak`'s comment in the Makefile;
-`test/js-tables/main.mjs:1457` (the rate before and after);
+with site classification); `test/js-tables/main.mjs:1457` (the rate before and after);
 `test/conformance/elixir/driver_impl.ex:922-964` (the floors).
 
 **Proven in.** C.
@@ -1187,7 +1187,7 @@ audit's freed one, and requires both floors to rise.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #416 | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ❌ #416 (`tables-rust-soak` gates on the count; nothing runs it) | ✅ `TestSoak` `TestSoakIdentifierCanGoRed` | ❌ #416 | ✅ `tables-java-soak` `tables-java-soak-negative-control` | ✅ `tables-js-soak` | ✅ `tables-dart-soak` `tables-dart-soak-negative-control` (correctness under reuse; the allocation gate runs inside it) | ✅ `tables-elixir-soak` `tables-elixir-soak-negative-control` |
+| ❌ #416 | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ❌ #416 (`tables-rust-soak` gates on the count; nothing runs it) | ✅ `TestSoak` `TestSoakIdentifierCanGoRed` | ❌ #416 | ❌ #517 | ✅ `tables-js-soak` | ✅ `tables-dart-soak` `tables-dart-soak-negative-control` (correctness under reuse; the allocation gate runs inside it) | ✅ `tables-elixir-soak` `tables-elixir-soak-negative-control` |
 
 ### I10 — The zero-cost gate
 
@@ -1234,7 +1234,7 @@ table of controls.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #417 (`conformance-negative-control` sabotages a copy of the driver) | ✅ `conformance-negative-control-c` | ❌ #417 (no conformance control) | ✅ `conformance-negative-control-go-walk` | ✅ `conformance-negative-control-cs` | ✅ `conformance-negative-control-java` | ✅ `conformance-negative-control-js` | ✅ `conformance-negative-control-dart` | ✅ `conformance-negative-control-elixir` |
+| ❌ #417 (`conformance-negative-control` sabotages a copy of the driver) | ✅ `conformance-negative-control-c` | ❌ #417 (no conformance control) | ✅ `conformance-negative-control-go-walk` | ✅ `conformance-negative-control-cs` | ❌ #517 | ✅ `conformance-negative-control-js` | ✅ `conformance-negative-control-dart` | ✅ `conformance-negative-control-elixir` |
 
 ### I12 — The documented surface compiles and runs
 

@@ -2536,20 +2536,21 @@ or a file per declaration where the language demands one.
   (SPEC-TABLES.md §11). A table-free unit grows none of it, and its packet
   libraries are byte-identical either way.
 - **Java:** one `.java` file per schema file for the packet half, in
-  `package <package>`. A unit that declares TABLES emits `<Base>Table.java`
-  per schema file with the table wire's codecs and its reflection
-  descriptors, and then FANS OUT: **a public Java type lives in a file of its
-  own name**, so the two accelerators are one file per declaration rather
-  than one per schema file — `<Name>Block.java` (SPEC-TABLES.md §19) and
-  `<Name>Cook.java` (§7) per table, and `<Name>Row.java` for every blittable
-  record in the closure, plain `type` members included (§20.3). The shared
-  runtime fans out the same way, one file per runtime type
-  (`TableReader.java`, `TableReport.java`, `TableJson.java` and the rest),
-  which is file-order independent by construction rather than by a rule and
-  is why this port needs no named home; each of those spellings is claimed
-  for every backend (SPEC-TABLES.md §11). `BuildVersion.java` is always
-  emitted beside them and belongs to neither accelerator (§20). A table-free
-  unit grows none of it.
+  `package <package>`. A unit that declares TABLES FANS OUT: **a public Java
+  type lives in a file of its own name**, so the two accelerators are one
+  file per declaration rather than one per schema file — `<Name>Block.java`
+  (SPEC-TABLES.md §19) and `<Name>Cook.java` (§7) per table, and
+  `<Name>Row.java` for every blittable record in the closure, plain `type`
+  members included (§20.3). The shared runtime fans out the same way, one
+  file per runtime type (`TableBytes.java`, `TableBlockInfo.java`,
+  `TableCookInfo.java` and the rest), which is file-order independent by
+  construction rather than by a rule and is why this port needs no named
+  home; each of those spellings is claimed for every backend (SPEC-TABLES.md
+  §11). `BuildVersion.java` is always emitted beside them and belongs to
+  neither accelerator (§20). Java emits no table-wire source
+  (`<Base>Table.java`): its port of the table wire wrote the form that
+  preceded the id-table wire and was removed; schema#517 brings the current
+  wire to Java. A table-free unit grows none of it.
 - **Elixir:** one `.ex` file per schema file, carrying one `defmodule` per
   declaration under the unit's own namespace plus the file-scope module
   `<Ns>.<Base>` for constants, flags masks and the file's codecs. A unit that

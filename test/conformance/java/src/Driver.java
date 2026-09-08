@@ -7,11 +7,15 @@
 //   driver <manifest> list
 //   driver <manifest> <surface> <outdir>
 //
-// It answers ALL TEN surfaces from ONE binary, cook and cook-forgery included.
-// The C# leg splits those two off into a second project because its cook side
-// lives in another assembly; Java's generated units are packages of one
-// classpath, so the wire units, the block unit and the pointered unit compile
-// together and one JVM start-up answers every surface.
+// It answers every surface this port carries from ONE binary — the block
+// surfaces and the cook surfaces, cook-forgery included. The five WIRE-CARRYING
+// surfaces (wire, report, json-read, json-write, json-hostile) are ABSENT:
+// Java emits no table wire, because the port that wrote the wire's previous
+// form was removed rather than carried (schema#517 brings the id-table form).
+// The C# leg splits the cook surfaces off into a second project because its
+// cook side lives in another assembly; Java's generated units are packages of
+// one classpath, so the corpus units, the block unit and the pointered unit
+// compile together and one JVM start-up answers every surface.
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -48,330 +52,12 @@ public final class Driver {
         return out;
     }
 
-    // ---- the codec table: one row per (unit, root) the corpus names
-
-    private static final class Report {
-        int unknown, kindMismatch, clamped, duplicate;
-        boolean malformed;
-    }
-
-    private interface Maker<V> { V make(); }
-    private interface Reporter<R> { R make(); }
-    private interface Copier<R> { void copy(R from, Report to); }
-    private interface Loader<V, R> { boolean load(V value, byte[] bytes, R report); }
-    private interface Measurer<V> { long measure(V value); }
-    private interface Saver<V> { long save(V value, byte[] buffer); }
-
-    private interface LoadInto { Object load(byte[] bytes, Report report); }
-    private interface MeasureOf { long measure(Object value); }
-    private interface SaveOf { long save(Object value, byte[] buffer); }
-
-    private static final class Codec {
-        String unit;
-        String root;
-        LoadInto load;
-        MeasureOf measure;
-        SaveOf save;
-        LoadInto fromJson;
-        MeasureOf toJsonMeasure;
-        SaveOf toJson;
-    }
-
-    // Each unit declares its own TableReport, so the driver carries one report
-    // shape and every row copies into it — five counters is the whole of §4.
-    private static void copyDemo(tabledemo.TableReport r, Report to) {
-        to.unknown = r.unknown; to.kindMismatch = r.kindMismatch; to.clamped = r.clamped;
-        to.duplicate = r.duplicate; to.malformed = r.malformed;
-    }
-    private static void copyV1(tblv1.TableReport r, Report to) {
-        to.unknown = r.unknown; to.kindMismatch = r.kindMismatch; to.clamped = r.clamped;
-        to.duplicate = r.duplicate; to.malformed = r.malformed;
-    }
-    private static void copyV2(tblv2.TableReport r, Report to) {
-        to.unknown = r.unknown; to.kindMismatch = r.kindMismatch; to.clamped = r.clamped;
-        to.duplicate = r.duplicate; to.malformed = r.malformed;
-    }
-    private static void copyP1(tblp1.TableReport r, Report to) {
-        to.unknown = r.unknown; to.kindMismatch = r.kindMismatch; to.clamped = r.clamped;
-        to.duplicate = r.duplicate; to.malformed = r.malformed;
-    }
-    private static void copyP3(tblp3.TableReport r, Report to) {
-        to.unknown = r.unknown; to.kindMismatch = r.kindMismatch; to.clamped = r.clamped;
-        to.duplicate = r.duplicate; to.malformed = r.malformed;
-    }
-
-    // ONE row of the codec table, for any unit. The value type and the unit's own
-    // TableReport are the two type parameters; `make` and `copy` are the two
-    // things that cannot be generic, because each unit declares its own report
-    // class and Java has no structural typing to unify five identical shapes.
-    private static <V, R> Codec row(
-            String unit, String root,
-            Maker<V> make, Reporter<R> newReport, Copier<R> copy,
-            Loader<V, R> load, Measurer<V> measure, Saver<V> save,
-            Loader<V, R> fromJson, Measurer<V> toJsonMeasure, Saver<V> toJson) {
-        Codec c = new Codec();
-        c.unit = unit;
-        c.root = root;
-        c.load = (bytes, report) -> {
-            V value = make.make();
-            R inner = newReport.make();
-            boolean ok = load.load(value, bytes, inner);
-            copy.copy(inner, report);
-            return ok ? value : null;
-        };
-        c.measure = v -> measure.measure(cast(v));
-        c.save = (v, buffer) -> save.save(cast(v), buffer);
-        c.fromJson = (text, report) -> {
-            V value = make.make();
-            R inner = newReport.make();
-            boolean ok = fromJson.load(value, text, inner);
-            copy.copy(inner, report);
-            return ok ? value : null;
-        };
-        c.toJsonMeasure = v -> toJsonMeasure.measure(cast(v));
-        c.toJson = (v, buffer) -> toJson.save(cast(v), buffer);
-        return c;
-    }
-
-    @SuppressWarnings("unchecked")
-    private static <V> V cast(Object v) { return (V) v; }
-
-    private static final List<Codec> codecs = new ArrayList<>();
-
-    static {
-        codecs.add(row("tabledemo", "RootConfig",
-                tabledemo.TablesTable.RootConfig::new, tabledemo.TableReport::new, Driver::copyDemo,
-                tabledemo.TablesTable::rootConfigLoad, tabledemo.TablesTable::rootConfigMeasure,
-                tabledemo.TablesTable::rootConfigSave, tabledemo.TablesTable::rootConfigFromJson,
-                tabledemo.TablesTable::rootConfigToJsonMeasure, tabledemo.TablesTable::rootConfigToJson));
-        codecs.add(row("tabledemo", "ProfileConfig",
-                tabledemo.TablesTable.ProfileConfig::new, tabledemo.TableReport::new, Driver::copyDemo,
-                tabledemo.TablesTable::profileConfigLoad, tabledemo.TablesTable::profileConfigMeasure,
-                tabledemo.TablesTable::profileConfigSave, tabledemo.TablesTable::profileConfigFromJson,
-                tabledemo.TablesTable::profileConfigToJsonMeasure, tabledemo.TablesTable::profileConfigToJson));
-        codecs.add(row("tabledemo", "LoadoutConfig",
-                tabledemo.TablesTable.LoadoutConfig::new, tabledemo.TableReport::new, Driver::copyDemo,
-                tabledemo.TablesTable::loadoutConfigLoad, tabledemo.TablesTable::loadoutConfigMeasure,
-                tabledemo.TablesTable::loadoutConfigSave, tabledemo.TablesTable::loadoutConfigFromJson,
-                tabledemo.TablesTable::loadoutConfigToJsonMeasure, tabledemo.TablesTable::loadoutConfigToJson));
-        codecs.add(row("tabledemo", "WideBlob",
-                tabledemo.WideTable.WideBlob::new, tabledemo.TableReport::new, Driver::copyDemo,
-                tabledemo.WideTable::wideBlobLoad, tabledemo.WideTable::wideBlobMeasure,
-                tabledemo.WideTable::wideBlobSave, tabledemo.WideTable::wideBlobFromJson,
-                tabledemo.WideTable::wideBlobToJsonMeasure, tabledemo.WideTable::wideBlobToJson));
-        codecs.add(row("tabledemo", "ArchiveConfig",
-                tabledemo.NestedTable.ArchiveConfig::new, tabledemo.TableReport::new, Driver::copyDemo,
-                tabledemo.NestedTable::archiveConfigLoad, tabledemo.NestedTable::archiveConfigMeasure,
-                tabledemo.NestedTable::archiveConfigSave, tabledemo.NestedTable::archiveConfigFromJson,
-                tabledemo.NestedTable::archiveConfigToJsonMeasure, tabledemo.NestedTable::archiveConfigToJson));
-        codecs.add(row("tabledemo", "KeyedConfig",
-                tabledemo.KeyedTable.KeyedConfig::new, tabledemo.TableReport::new, Driver::copyDemo,
-                tabledemo.KeyedTable::keyedConfigLoad, tabledemo.KeyedTable::keyedConfigMeasure,
-                tabledemo.KeyedTable::keyedConfigSave, tabledemo.KeyedTable::keyedConfigFromJson,
-                tabledemo.KeyedTable::keyedConfigToJsonMeasure, tabledemo.KeyedTable::keyedConfigToJson));
-        codecs.add(row("tabledemo", "PackConfig",
-                tabledemo.PackTable.PackConfig::new, tabledemo.TableReport::new, Driver::copyDemo,
-                tabledemo.PackTable::packConfigLoad, tabledemo.PackTable::packConfigMeasure,
-                tabledemo.PackTable::packConfigSave, tabledemo.PackTable::packConfigFromJson,
-                tabledemo.PackTable::packConfigToJsonMeasure, tabledemo.PackTable::packConfigToJson));
-        codecs.add(row("tblv1", "Cfg",
-                tblv1.V1Table.Cfg::new, tblv1.TableReport::new, Driver::copyV1,
-                tblv1.V1Table::cfgLoad, tblv1.V1Table::cfgMeasure, tblv1.V1Table::cfgSave,
-                tblv1.V1Table::cfgFromJson, tblv1.V1Table::cfgToJsonMeasure, tblv1.V1Table::cfgToJson));
-        codecs.add(row("tblv2", "Cfg",
-                tblv2.V2Table.Cfg::new, tblv2.TableReport::new, Driver::copyV2,
-                tblv2.V2Table::cfgLoad, tblv2.V2Table::cfgMeasure, tblv2.V2Table::cfgSave,
-                tblv2.V2Table::cfgFromJson, tblv2.V2Table::cfgToJsonMeasure, tblv2.V2Table::cfgToJson));
-        codecs.add(row("tblp1", "Chain",
-                tblp1.P1Table.Chain::new, tblp1.TableReport::new, Driver::copyP1,
-                tblp1.P1Table::chainLoad, tblp1.P1Table::chainMeasure, tblp1.P1Table::chainSave,
-                tblp1.P1Table::chainFromJson, tblp1.P1Table::chainToJsonMeasure, tblp1.P1Table::chainToJson));
-        codecs.add(row("tblp3", "Chain",
-                tblp3.P3Table.Chain::new, tblp3.TableReport::new, Driver::copyP3,
-                tblp3.P3Table::chainLoad, tblp3.P3Table::chainMeasure, tblp3.P3Table::chainSave,
-                tblp3.P3Table::chainFromJson, tblp3.P3Table::chainToJsonMeasure, tblp3.P3Table::chainToJson));
-    }
-
-    private static Codec find(String unit, String root) {
-        for (Codec c : codecs) {
-            if (c.unit.equals(unit) && c.root.equals(root)) {
-                return c;
-            }
-        }
-        return null;
-    }
-
     private static void spill(String out, String name, byte[] body) throws IOException {
         Files.write(Path.of(out, name), body);
     }
 
     private static void spill(String out, String name, String body) throws IOException {
         spill(out, name, body.getBytes(StandardCharsets.UTF_8));
-    }
-
-    // spillAbsent says this backend cannot answer THIS CASE — a feature it
-    // lacks, not a test it failed. The harness counts it and the matrix prints
-    // it beside what the leg did answer (test/conformance/README.md).
-    private static void spillAbsent(String out, String name) throws IOException {
-        spill(out, name + ".absent", new byte[0]);
-    }
-
-    // noText marks an instance the corpus carries on the WIRE only — past the
-    // text form's depth cap by the form's own rule (docs/SPEC-TABLES.md 16.7) —
-    // so no leg is asked for its text.
-    private static boolean noText(String[] f) {
-        return f.length > 5 && f[5].equals("no-text");
-    }
-
-    private static String counters(Report r, boolean malformed) {
-        if (malformed) {
-            return r.unknown + "," + r.kindMismatch + "," + r.clamped + "," + r.duplicate + ",true\n";
-        }
-        return r.unknown + "," + r.kindMismatch + "," + r.clamped + "," + r.duplicate + ",false\n";
-    }
-
-    // ---- the surfaces
-
-    private static int surfaceWire(String out) throws IOException {
-        for (String[] f : kind("instance")) {
-            Codec codec = find(f[2], f[3]);
-            if (codec == null) {
-                // Java refuses a pointered unit's wire by name (11), so it has
-                // no codec here and says so per case
-                spillAbsent(out, f[1]);
-                continue;
-            }
-            byte[] wire = Files.readAllBytes(Paths.get(f[4]));
-            Report report = new Report();
-            Object value = codec.load.load(wire, report);
-            if (value == null) {
-                System.err.println("driver: " + f[1] + " does not load");
-                return 1;
-            }
-            long size = codec.measure.measure(value);
-            if (size < 0) {
-                System.err.println("driver: " + f[1] + " measures as unsaveable");
-                return 1;
-            }
-            byte[] buffer = new byte[(int) size];
-            if (codec.save.save(value, buffer) != size) {
-                System.err.println("driver: " + f[1] + " saves a size its measure did not name");
-                return 1;
-            }
-            spill(out, f[1], buffer);
-        }
-        return 0;
-    }
-
-    // json-read: the text is the input and the WIRE is the answer, so the pass
-    // proves the reader against bytes this driver did not write.
-    private static int surfaceJsonRead(String out) throws IOException {
-        for (String[] f : kind("instance")) {
-            if (noText(f)) {
-                continue;
-            }
-            Codec codec = find(f[2], f[3]);
-            if (codec == null) {
-                // Java refuses a pointered unit's wire by name (11), so it has
-                // no codec here and says so per case
-                spillAbsent(out, f[1]);
-                continue;
-            }
-            byte[] text = Files.readAllBytes(Paths.get("testdata", "conformance", "tables", "json", f[1] + ".json"));
-            Report report = new Report();
-            Object value = codec.fromJson.load(text, report);
-            if (value == null) {
-                System.err.println("driver: " + f[1] + " does not read as JSON");
-                return 1;
-            }
-            long size = codec.measure.measure(value);
-            if (size < 0) {
-                System.err.println("driver: " + f[1] + " measures as unsaveable after a clean read");
-                return 1;
-            }
-            byte[] buffer = new byte[(int) size];
-            if (codec.save.save(value, buffer) != size) {
-                System.err.println("driver: " + f[1] + " saves a size its measure did not name");
-                return 1;
-            }
-            spill(out, f[1], buffer);
-        }
-        return 0;
-    }
-
-    // json-write: the wire is the input and the TEXT is the answer, compared
-    // against a text a third implementation wrote.
-    private static int surfaceJsonWrite(String out) throws IOException {
-        for (String[] f : kind("instance")) {
-            if (noText(f)) {
-                continue;
-            }
-            Codec codec = find(f[2], f[3]);
-            if (codec == null) {
-                // Java refuses a pointered unit's wire by name (11), so it has
-                // no codec here and says so per case
-                spillAbsent(out, f[1] + ".json");
-                continue;
-            }
-            byte[] wire = Files.readAllBytes(Paths.get(f[4]));
-            Report report = new Report();
-            Object value = codec.load.load(wire, report);
-            if (value == null) {
-                System.err.println("driver: " + f[1] + " does not load");
-                return 1;
-            }
-            long size = codec.toJsonMeasure.measure(value);
-            if (size < 0) {
-                System.err.println("driver: " + f[1] + " holds a value ToJson refuses");
-                return 1;
-            }
-            byte[] text = new byte[(int) size];
-            if (codec.toJson.save(value, text) != size) {
-                System.err.println("driver: " + f[1] + " writes a text its measure did not name");
-                return 1;
-            }
-            spill(out, f[1] + ".json", text);
-        }
-        return 0;
-    }
-
-    // json-hostile: one tree per rule the text form states (§16.2, §16.3, §17.5).
-    // The answer is the REPORT the read produces, or `refused`.
-    private static int surfaceJsonHostile(String out) throws IOException {
-        for (String[] f : kind("json-hostile")) {
-            Codec codec = find(f[2], f[3]);
-            if (codec == null) {
-                // Java refuses a pointered unit's wire by name (11), so it has
-                // no codec here and says so per case
-                spillAbsent(out, f[1]);
-                continue;
-            }
-            // the tree is what `schema pack` reads, so the text is
-            // <tree>/<root>.json (§17)
-            byte[] text = Files.readAllBytes(Path.of(f[4], f[3] + ".json"));
-            Report report = new Report();
-            Object value = codec.fromJson.load(text, report);
-            String verdict = value == null || report.malformed ? "refused\n" : counters(report, false);
-            spill(out, f[1], verdict);
-        }
-        return 0;
-    }
-
-    private static int surfaceReport(String out) throws IOException {
-        for (String[] f : kind("report")) {
-            Codec codec = find(f[2], f[3]);
-            if (codec == null) {
-                // Java refuses a pointered unit's wire by name (11), so it has
-                // no codec here and says so per case
-                spillAbsent(out, f[1]);
-                continue;
-            }
-            byte[] wire = Files.readAllBytes(Paths.get(f[4]));
-            Report report = new Report();
-            Object value = codec.load.load(wire, report);
-            spill(out, f[1], counters(report, report.malformed || value == null));
-        }
-        return 0;
     }
 
     // ---- the block surfaces
@@ -957,9 +643,8 @@ public final class Driver {
         readManifest(args[0]);
         String surface = args[1];
         if (surface.equals("list")) {
-            // the five WIRE-CARRYING surfaces are ABSENT: this port writes the
-            // wire's PREVIOUS form and the corpus is pinned in the id-table form
-            // (docs/SPEC-TABLES.md §3). schema#517 is the port's row.
+            // the five WIRE-CARRYING surfaces are ABSENT: Java emits no table
+            // wire (docs/SPEC-TABLES.md §3); schema#517 is the port's row.
             System.out.print("block\nblock-foreign\n"
                     + "block-dump\nforgery\ncook\ncook-foreign\ncook-forgery\n");
             return 0;
@@ -970,11 +655,6 @@ public final class Driver {
         }
         String out = args[2];
         switch (surface) {
-            case "wire": return surfaceWire(out);
-            case "report": return surfaceReport(out);
-            case "json-read": return surfaceJsonRead(out);
-            case "json-write": return surfaceJsonWrite(out);
-            case "json-hostile": return surfaceJsonHostile(out);
             case "block": return surfaceBlock(out);
             case "block-foreign": return surfaceBlockForeign(out);
             case "block-dump": return surfaceBlockDump(out);

@@ -24,24 +24,42 @@ func javaFiles(t *testing.T, src string) map[string][]byte {
 	return files
 }
 
-// TestJavaEmitsTableSources: the java target adds <Base>Table.java plus the
-// unit's shared runtime for a unit with tables, and adds NOTHING for one
-// without — the zero-cost property, at the grain Java has it. Java's unit scope
-// is the PACKAGE and a public type lives in a file of its own name, so the
-// runtime is one file per type rather than one home file, and "nothing" means
-// not one of them.
+// TestJavaEmitsTableSources: the java target adds the BLOCK and COOK read
+// halves — <Table>Block.java and <Table>Cook.java, the <Name>Row.java accessors
+// the two share, and the runtime types they need, one public type per file —
+// beside the packet classes for a unit with tables, and adds NOTHING for one
+// without — the zero-cost property, at the grain Java has it. It emits no
+// <Base>Table.java at all: the table wire's Java port wrote the form that
+// preceded the id-table wire and was removed rather than carried (schema#517
+// brings the current wire to Java).
 func TestJavaEmitsTableSources(t *testing.T) {
 	with := javaFiles(t, tableSrc)
-	if _, ok := with["ProbeTable.java"]; !ok {
-		t.Fatalf("--lang java emitted no ProbeTable.java for a unit with tables; got %d files", len(with))
+	blocks, cooks := 0, 0
+	for name := range with {
+		switch {
+		case strings.HasSuffix(name, "Table.java"):
+			t.Errorf("--lang java emitted %s: the previous-form table wire was removed and nothing emits <Base>Table.java", name)
+		case strings.HasSuffix(name, "Block.java"):
+			blocks++
+		case strings.HasSuffix(name, "Cook.java"):
+			cooks++
+		}
+	}
+	if blocks == 0 || cooks == 0 {
+		t.Fatalf("--lang java emitted %d Block.java and %d Cook.java files for a unit with tables; both halves are owed", blocks, cooks)
 	}
 	for _, want := range []string{
-		"TableReport.java", "TableWriter.java", "TableReader.java", "TableTypeInfo.java",
-		"TableFieldInfo.java", "TableJson.java", "TableEnumId.java", "TableEnumValue.java",
-		"TableBytes.java", "BuildVersion.java", "TableCookLayout.java",
+		"TableBytes.java", "BuildVersion.java", "TableCookLayout.java", "TableBlockLayout.java",
+		"TableBlockInfo.java", "TableBlockFieldInfo.java", "TableBlockRows.java",
+		"TableCookInfo.java", "TableCookFieldInfo.java", "TableCookStorage.java",
 	} {
 		if _, ok := with[want]; !ok {
 			t.Errorf("--lang java emitted no %s for a unit with tables", want)
+		}
+	}
+	for _, gone := range []string{"TableReport.java", "TableReader.java", "TableWriter.java", "TableJson.java", "TableTypeInfo.java"} {
+		if _, ok := with[gone]; ok {
+			t.Errorf("--lang java emitted %s: the previous-form wire runtime was removed", gone)
 		}
 	}
 	without := javaFiles(t, packetSrc)
@@ -72,16 +90,12 @@ func TestJavaTablesMoveNoGeneratedPacketByte(t *testing.T) {
 	}
 }
 
-// TestJavaRefusesPointeredTables: the Java variable-class refusal is a refusal of
-// the WIRE SURFACE and of nothing else (docs/SPEC-TABLES.md §11), exactly as the
-// C# one is. The two ACCELERATORS need no codec — a block and a cook are read
-// where they lie — so both are emitted and the cook's <Root>Cook.open opens this
-// unit's cooked assets in full.
-//
-// NAMED, NEVER SILENT is what this holds: no Table source at all, and every
-// source the unit does emit opening with a banner that names each refused table
-// and the follow-on.
-func TestJavaRefusesPointeredTables(t *testing.T) {
+// TestJavaPointeredUnitGetsCooks: a pointered unit is served in full by the two
+// ACCELERATORS, because neither needs a codec — a block and a cook are read
+// where they lie (docs/SPEC-TABLES.md §7, §19) — so the cook's <Root>Cook.open
+// opens this unit's cooked assets, and no <Base>Table.java is emitted for it or
+// for any other unit.
+func TestJavaPointeredUnitGetsCooks(t *testing.T) {
 	files := javaFiles(t, packetSrc+`
 table Node
 {
@@ -90,25 +104,12 @@ table Node
 }
 `)
 	var cooks int
-	for name, data := range files {
+	for name := range files {
 		if strings.HasSuffix(name, "Table.java") {
-			t.Errorf("--lang java emitted the WIRE surface %s for a pointered unit", name)
-		}
-		if name == "TableJson.java" || name == "TableReader.java" || name == "TableWriter.java" {
-			t.Errorf("--lang java emitted the wire runtime %s for a pointered unit", name)
-		}
-		if !strings.HasSuffix(name, "Cook.java") && !strings.HasSuffix(name, "Block.java") {
-			continue
+			t.Errorf("--lang java emitted %s for a pointered unit: nothing emits <Base>Table.java", name)
 		}
 		if strings.HasSuffix(name, "Cook.java") {
 			cooks++
-		}
-		text := string(data)
-		if !strings.Contains(text, "THE JAVA WIRE SURFACE OF THIS UNIT IS REFUSED, BY NAME") {
-			t.Errorf("%s carries no refusal banner", name)
-		}
-		if !strings.Contains(text, "Node") || !strings.Contains(text, "is a named follow-on") {
-			t.Errorf("%s does not name the table and the follow-on", name)
 		}
 	}
 	if cooks == 0 {
@@ -228,10 +229,10 @@ func TestJavaRuntimeNameScanGoesRed(t *testing.T) {
 // unit that declares a table, must be refused by the front end — because the
 // generated Java would otherwise carry two public types of that name and not
 // compile. TestTableRuntimeNamesAreClaimed already walks every claimed name;
-// this pins the two the Java port ADDED to the claim, so a later edit that
-// narrowed either would fail here by name rather than silently.
+// this pins three the Java port puts at package level, so a later edit that
+// narrowed any of them would fail here by name rather than silently.
 func TestJavaRuntimeNamesAreRefusedByTheChecker(t *testing.T) {
-	for _, name := range []string{"TableBytes", "TableJson", "TableBlockLayout"} {
+	for _, name := range []string{"TableBytes", "TableBlockInfo", "TableBlockLayout"} {
 		if !tablenames.Registered(name) {
 			t.Fatalf("%s is not registered at all", name)
 		}
@@ -271,15 +272,15 @@ func TestJavaRuntimeNamesAreRefusedByTheChecker(t *testing.T) {
 // one-public-class-per-file rule creates and no other backend has: the CHECKER
 // claims declaration names, and a schema FILE's basename is not a declaration —
 // it is what names the packet emitter's class. A unit with a table and a file
-// called TableReport.schema would have two TableReport.java to write, so the
+// called TableBytes.schema would have two TableBytes.java to write, so the
 // backend refuses by name rather than letting one clobber the other.
 func TestJavaRefusesAFileNamedForARuntimeType(t *testing.T) {
-	f, perrs := parser.Parse("TableReport.schema", []byte(tableSrc))
+	f, perrs := parser.Parse("TableBytes.schema", []byte(tableSrc))
 	if len(perrs) > 0 {
 		t.Fatalf("parse: %v", perrs[0])
 	}
 	u, cerrs := check.Unit([]check.SourceFile{{
-		Path: "TableReport.schema", Name: "TableReport.schema", Base: "TableReport",
+		Path: "TableBytes.schema", Name: "TableBytes.schema", Base: "TableBytes",
 		Bytes: []byte(tableSrc), AST: f,
 	}})
 	if len(cerrs) > 0 {
@@ -289,7 +290,7 @@ func TestJavaRefusesAFileNamedForARuntimeType(t *testing.T) {
 	if err == nil {
 		t.Fatal("--lang java accepted a unit whose file basename is a runtime type's — one of the two would clobber the other")
 	}
-	if !strings.Contains(err.Error(), "TableReport.java") {
+	if !strings.Contains(err.Error(), "TableBytes.java") {
 		t.Errorf("the refusal does not name the file it collides with: %v", err)
 	}
 	// the CONTROL: the same source under any other basename generates
@@ -324,9 +325,9 @@ func TestJavaRefusesAFileNamedForARuntimeType(t *testing.T) {
 // build, on every host.
 func TestJavaDescriptorsAreSafelyPublished(t *testing.T) {
 	files := javaFiles(t, runtimeSrc)
-	// the four sites: the wire descriptor, the block projection, and a record's
-	// block and cook descriptors
-	accessors := regexp.MustCompile(`public static Table(?:Type|Block|Cook)Info ([A-Za-z0-9_]+)\(\) \{([^}]*)\}`)
+	// the three sites: the block projection, and a record's block and cook
+	// descriptors
+	accessors := regexp.MustCompile(`public static Table(?:Block|Cook)Info ([A-Za-z0-9_]+)\(\) \{([^}]*)\}`)
 	holders := 0
 	for name, data := range files {
 		text := string(data)
@@ -369,16 +370,19 @@ func TestJavaDescriptorsAreSafelyPublished(t *testing.T) {
 
 // TestJavaGeneratedMethodsAreLowerCamel: Java has one naming rule and the
 // generated table surface follows it, as this backend's own packet half already
-// does (writeVec3, readVec3). §6.1's NAME-FIRST order is untouched — the method
-// is the declaration's name and then the verb — so only the case is the port's,
-// and it is the language's rather than C++'s.
+// does (writeVec3, readVec3). The generated classes are the <Name>Row accessors
+// and the <Table>Block and <Table>Cook readers; a runtime TYPE is UpperCamel in
+// Java, and the runtime files are types, so they are not scanned.
 func TestJavaGeneratedMethodsAreLowerCamel(t *testing.T) {
 	files := javaFiles(t, runtimeSrc)
 	decl := regexp.MustCompile(`^\s*public static [A-Za-z0-9_.\[\]<>]+ ([A-Za-z0-9_]+)\(`)
 	seen := 0
 	for name, data := range files {
-		if !strings.HasSuffix(name, "Table.java") {
+		if strings.HasPrefix(name, "Table") || name == "BuildVersion.java" {
 			continue // the runtime types are types, and a TYPE is UpperCamel in Java
+		}
+		if !strings.HasSuffix(name, "Row.java") && !strings.HasSuffix(name, "Block.java") && !strings.HasSuffix(name, "Cook.java") {
+			continue // the packet emitter's own classes
 		}
 		for line := range strings.SplitSeq(string(data), "\n") {
 			m := decl.FindStringSubmatch(line)
