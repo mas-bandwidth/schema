@@ -161,12 +161,9 @@ C-like dialect of `serialize.h`, with library calls behind hooks (§13.9).
 C++ and C carry both storage classes. C# carries both classes and the current
 id-table file and bitpacked message forms, JSON, runtime cook writing, block
 construction, native regions, builders, retain-unknown and UnitView. Go carries
-these surfaces too. Dart, Rust, Java and JavaScript still carry their previously recorded
-wire surface at this checkpoint; their current-form work is tracked separately.
-Elixir carries no table wire: it emits the block and cook read halves only
-(schema#515 brings the id-table wire to Elixir). Dart, Rust, Java and
-JavaScript's fixed-class ports refuse pointers by name until their
-variable-class carry lands. Every generated language has
+these surfaces too. Rust, Dart, JavaScript, Elixir and Java carry no table
+wire: each emits the block and cook read halves only (schema#518, #514, #516,
+#515 and #517 bring the id-table wire to those ports). Every generated language has
 a table backend; refusal is scoped to a construct, never the table declaration.
 
 **WIRE FORM STATUS.** Section 3's id-table form is carried by the C++
@@ -183,9 +180,8 @@ reasons and const block handles. Its UnitView registry includes table-free
 units. C also reads and writes bitpacked message batches, with caller-owned
 resolved announcement entries and native regions for graphs and collections.
 C retains unknown fields in caller-owned storage for variable file roots and
-message loads, and writes retained file roots (§6.6). Java still writes the
-earlier form in this tree; that code is dead and is being removed. Rust, Dart,
-JavaScript and Elixir write no table wire: they carry the block and cook read
+message loads, and writes retained file roots (§6.6). Rust, Dart, JavaScript,
+Elixir and Java write no table wire: each carries the block and cook read
 halves only. [ROADMAP.md](../ROADMAP.md) records coverage by construct and form.
 
 The C report has added `widened`, `retained`, `retain_lost`, `refused` and `reason` members after
@@ -340,26 +336,23 @@ generic array extent. Its layout contract is a generated `init()` that REFUSES,
 naming the record, the field and both numbers, where C++ has `static_assert`,
 Rust has a const assert and C# a check at type initialization.
 
-**JAVA's six divergences**, each forced by the language and each named where it
-is spelled. **The method names are lowerCamelCase** — `patrolMeasure`,
-`patrolSave`, `patrolLoad`, `patrolReset` — which leaves §6.1's NAME-FIRST order
-exactly as it is and spells the case the way Java's one naming rule and this
-backend's own packet half (`writeVec3`, `readVec3`) already do. **The unit's namespace is the PACKAGE and a public type lives in
-a file of its own name**, so the shared runtime is ONE FILE PER TYPE —
-`TableReport.java`, `TableReader.java`, `TableJson.java` and the rest — rather
-than one home file: file-order independent by construction rather than by a
-rule, and a table-free unit emits not one of them. **There are no unsigned
-types**, so a decode local widens to the smallest signed type holding the wire
-kind's whole range (u8/u16 to `int`, u32 to `long`) and u64 compares through
-`Long.compareUnsigned`, while storage stays bit-transparent in the same-width
-signed type, the packet emitter's own convention. **There are no ref structs**,
-so a nested body is bounded by MOVING THE READER'S LIMIT rather than by slicing
-a sub-reader — which is what lets a hoisted reader allocate nothing at all.
-And **there are no structs and no pointers**: a block row and a cooked record
-have no Java type to lay out, so `<Name>Row`'s generated accessors read each
-field at its offset out of the caller's `byte[]`, and the base's ALIGNMENT is
-the OFFSET's residue rather than an address's — the same arithmetic, so the
-same refusals.
+**JAVA emits the two accelerators and no table wire.** A unit that declares
+tables gets `<Table>Block.java` (§19) and `<Table>Cook.java` (§7) per table,
+`<Name>Row.java` for every blittable record in the closure, and the runtime
+types those need; it gets no `<Base>Table.java`. The Java port of the table
+wire wrote the form that preceded the id-table wire, which this specification
+does not describe and the C++ reference does not open, and it was removed
+rather than carried (schema#517 brings the current wire to Java; ROADMAP.md
+marks the cells). **JAVA's divergences**, each forced by the language and each
+named where it is spelled: **the unit's namespace is the PACKAGE and a public
+type lives in a file of its own name**, so the shared runtime is ONE FILE PER
+TYPE — `TableBytes.java`, `TableBlockInfo.java`, `TableCookInfo.java` and the
+rest — rather than one home file: file-order independent by construction rather
+than by a rule, and a table-free unit emits not one of them. And **there are no
+structs and no pointers**: a block row and a cooked record have no Java type to
+lay out, so `<Name>Row`'s generated accessors read each field at its offset out
+of the caller's `byte[]`, and the base's ALIGNMENT is the OFFSET's residue
+rather than an address's — the same arithmetic, so the same refusals.
 
 **Which makes Java's half of the layout contract a DIFFERENT half, and it says
 so rather than pretending.** C++, C# and Rust each have a runtime layout that

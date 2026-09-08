@@ -66,9 +66,12 @@ generated/java-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 
 # ---------------------------------------------------------------------------
 # The JAVA table backend (internal/codegen/javatable, docs/SPEC-TABLES.md). The
-# READING TIER: the tolerant wire, the text form, the reflection descriptors,
-# and the two accelerators' read halves. The C++ backend is the reference and
-# the C# one is the worked managed-language port; this leg mirrors both.
+# two ACCELERATORS' read halves — the block form (§19) and the cook (§7), their
+# record accessors and reflection descriptors — and the build-version check.
+# Java emits no table wire: the port that wrote the wire's previous form was
+# removed (schema#517 brings the id-table form). The C++ backend is the
+# reference and the C# one is the worked managed-language port; this leg
+# mirrors both.
 #
 # Java's unit scope is the PACKAGE and a public type lives in a file of its own
 # name, so the shared runtime is one file per type rather than one home file —
@@ -79,14 +82,13 @@ generated/java-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # The same corpus through the Java table backend: the tables corpus plus the
 # evolution pair, generated at build time into build/ — test-only, never part of
 # the committed generated/ tree. The full unit is generated (packet .java +
-# <Base>Table.java + the runtime), because a table's closure decodes into the
-# packet emitter's own classes.
+# <Table>Block.java + <Table>Cook.java + the Row accessors and the runtime
+# types), because a record's descriptors name the packet emitter's own enums.
 build/tables-generated-java/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema
 	@mkdir -p build/tables-generated-java
 	./bin/schema generate --lang java --out build/tables-generated-java/examples tables/examples
-	# the POINTERED unit: its Java WIRE surface is refused by name (§11) and its
-	# two ACCELERATORS are emitted all the same, because neither needs a codec
-	# (§7, §19). This is where the cook's Java read side comes from.
+	# the POINTERED unit: its cook readers are the reason it is here — the two
+	# ACCELERATORS need no codec (§7, §19), so a pointered unit's cooks open.
 	./bin/schema generate --lang java --out build/tables-generated-java/pointers tables/pointers
 	./bin/schema generate --lang java --out build/tables-generated-java/block tables/block
 	./bin/schema generate --lang java --out build/tables-generated-java/blockhome tables/blockhome
@@ -96,81 +98,27 @@ build/tables-generated-java/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLE
 	./bin/schema generate --lang java --out build/tables-generated-java/p3 test/tables/P3.schema
 	@touch $@
 
-# THE GENERIC-WALK GATE, Java side (docs/SPEC-TABLES.md §16). One walker per unit
-# and every walker in the corpus the same bytes — the property the C++ and C#
-# gates hold, over the shape Java forces: the walk is a public class, so its
-# home is TableJson.java and there is exactly one of them per package.
-.PHONY: tables-java-json-walk
-tables-java-json-walk: build/tables-generated-java/.stamp
-	@rm -rf build/json-walk-java && mkdir -p build/json-walk-java
-	@for d in build/tables-generated-java/*/; do \
-		unit=$$(basename $$d); \
-		[ -e "$$d/TableJson.java" ] || continue; \
-		awk '/---- json walk: begin ----/,/---- json walk: end ----/' $$d/TableJson.java > build/json-walk-java/$$unit; \
-		[ -s build/json-walk-java/$$unit ] || \
-			{ echo "GENERIC-WALK GATE FAILED: unit $$unit carries a TableJson.java with no walker in it"; exit 1; }; \
-		n=$$(ls $$d*Table.java 2>/dev/null | wc -l | tr -d ' '); \
-		[ "$$n" -gt 0 ] || \
-			{ echo "GENERIC-WALK GATE FAILED: unit $$unit has a walker and no table source"; exit 1; }; \
-	done
-	@if [ -z "$$(ls build/json-walk-java 2>/dev/null)" ]; then \
-		echo "GENERIC-WALK GATE FAILED: no walker in any generated .java"; exit 1; fi
-	@first=""; for f in build/json-walk-java/*; do \
-		if [ -z "$$first" ]; then first=$$f; else \
-			cmp -s $$first $$f || { echo "GENERIC-WALK GATE FAILED: the walker in $$f is not the walker in $$first"; exit 1; }; \
-		fi; \
-	done
-	@echo "tables Java generic-walk gate: one walker per unit, byte-identical across $$(ls build/json-walk-java | wc -l | tr -d ' ') units"
-
 # The Java twin of the C++ "no serialize include path" build: a generated
-# <Base>Table.java must stand alone on the JDK, so nothing in it may name the
-# serialize runtime — and nothing may name a THIRD-PARTY JSON library either,
-# because the text form is this backend's own walk over the descriptors (§16).
+# <Table>Block.java or <Table>Cook.java must stand alone on the JDK, so nothing
+# in it may name the serialize runtime — and nothing may name a THIRD-PARTY JSON
+# library either: the readers are this backend's own, over the descriptors.
 .PHONY: tables-java-standalone
 tables-java-standalone: build/tables-generated-java/.stamp
-	@n=$$(ls build/tables-generated-java/*/*Table.java 2>/dev/null | wc -l | tr -d ' '); \
-		if [ "$$n" -lt 8 ]; then \
-			echo "STANDALONE GATE FAILED: found $$n generated Table sources, expected 8 — the glob, not the property, is what broke"; exit 1; \
+	@n=$$(ls build/tables-generated-java/*/*Block.java build/tables-generated-java/*/*Cook.java 2>/dev/null | wc -l | tr -d ' '); \
+		if [ "$$n" -lt 12 ]; then \
+			echo "STANDALONE GATE FAILED: found $$n generated Block and Cook sources, expected at least 12 — the glob, not the property, is what broke"; exit 1; \
 		fi
-	@for f in build/tables-generated-java/*/*Table.java build/tables-generated-java/*/TableJson.java; do \
+	@for f in build/tables-generated-java/*/*Block.java build/tables-generated-java/*/*Cook.java build/tables-generated-java/*/*Row.java; do \
 		[ -e "$$f" ] || continue; \
 		if grep -n "Serialize\|com\.fasterxml\|com\.google\.gson\|org\.json" $$f; then \
 			echo "STANDALONE GATE FAILED: a runtime dependency leaked into $$f"; exit 1; \
 		fi; \
 	done
-	@echo "tables Java standalone gate: generated Table sources name no runtime and no JSON library"
-
-# The Java VARIABLE-CLASS REFUSAL (docs/SPEC-TABLES.md §2.2, §11), the C# gate's
-# twin: no Table source at all for a pointered unit, and every source the unit
-# does emit opening with a banner that names each refused table and the
-# follow-on. The two ACCELERATORS need no codec, so the cooks still open.
-.PHONY: tables-java-refuses-pointers
-tables-java-refuses-pointers: bin/schema
-	@rm -rf build/tables-java-refusal && mkdir -p build
-	./bin/schema generate --lang java --out build/tables-java-refusal tables/pointers
-	@if ls build/tables-java-refusal/*Table.java >/dev/null 2>&1; then \
-		echo "REFUSAL GATE FAILED: the Java backend emitted a wire surface for a pointered unit"; exit 1; \
-	fi
-	@if [ -e build/tables-java-refusal/TableJson.java ] || [ -e build/tables-java-refusal/TableReader.java ]; then \
-		echo "REFUSAL GATE FAILED: the Java backend emitted the wire runtime for a pointered unit"; exit 1; \
-	fi
-	@for f in build/tables-java-refusal/*Cook.java build/tables-java-refusal/*Block.java; do \
-		grep -q "THE JAVA WIRE SURFACE OF THIS UNIT IS REFUSED, BY NAME" $$f || \
-			{ echo "REFUSAL GATE FAILED: $$f does not carry the refusal banner"; exit 1; }; \
-		grep -q "is a named follow-on" $$f || \
-			{ echo "REFUSAL GATE FAILED: $$f does not name the follow-on"; exit 1; }; \
-		grep -q "Album, Depot, Layer, ListNode, Marker, Scene and TreeNode" $$f || \
-			{ echo "REFUSAL GATE FAILED: $$f does not name every refused table"; exit 1; }; \
-	done
-	@n=$$(ls build/tables-java-refusal/*Cook.java | wc -l | tr -d ' '); \
-		if [ "$$n" -lt 3 ]; then \
-			echo "REFUSAL GATE FAILED: found $$n Cook sources for the pointered unit, expected 3 — the glob, not the property, is what broke"; exit 1; \
-		fi
-	@echo "tables Java refusal gate: a pointered unit's WIRE half is refused by name, in every source it does emit, and its cooks still open"
+	@echo "tables Java standalone gate: generated Block, Cook and Row sources name no runtime and no JSON library"
 
 # THE ZERO-COST GATE, Java side (docs/SPEC-TABLES.md §2.2): a unit that declares
-# no table emits not one byte of table code — no <Base>Table.java, no runtime
-# type, no Row, no Block, no Cook — so a consumer that never wrote `table` pays
+# no table emits not one byte of table code — no runtime type, no Row, no
+# Block, no Cook, no BuildVersion — so a consumer that never wrote `table` pays
 # nothing for the form existing.
 .PHONY: tables-java-zero-cost
 tables-java-zero-cost: bin/schema
@@ -222,55 +170,15 @@ tables-java-compile-all: build/tables-generated-java/.stamp
 	done
 	@echo "tables Java compile gate: every generated unit compiles under -Xlint:all -Werror"
 
-# THE JAVA TABLES LEG (test/java-tables/src/Main.java): the three gates the
+# THE JAVA TABLES LEG (test/java-tables/src/Main.java): the gates the
 # conformance harness does not hold, because none of them is a case — the
-# readers' fuzz oracle, the allocation measurement and the soak.
+# readers' fuzz oracle, the reference extent gate and the byte-order leg.
 build/java-tables/.stamp: build/tables-generated-java/.stamp test/java-tables/src/Main.java
 	@rm -rf build/java-tables && mkdir -p build/java-tables
 	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-tables \
 		build/tables-generated-java/examples/*.java build/tables-generated-java/pointers/*.java \
 		build/tables-generated-java/block/*.java test/java-tables/src/Main.java
 	@touch $@
-
-# THE ALLOCATION GATE, and it is a MEASUREMENT of a COUNT rather than an
-# inference from a heap.
-#
-# A gate on heap drift is a LEAK instrument: it sees storage that is RETAINED and
-# is blind to a per-iteration allocation that is collected — which on a read path
-# is the defect that matters, because a codec allocating a byte per field keeps a
-# flat heap and ruins a frame budget. So the number here is BYTES PER RECORD,
-# from the JVM's own per-thread allocation counter, over a window that follows a
-# warm-up, with a NAMED floor per path:
-#
-#   the tolerant wire's read and save        EXACTLY 0
-#   the block's row walk, the cook's read    EXACTLY 0
-#   either accelerator's open                one handle, per FILE not per row
-#   the text form (§16)                      a stated ceiling: it allocates by
-#                                            nature, and what it allocates is
-#                                            named in the source
-#
-# The exact zeros are the contract (§3): the caller owns the value, the buffer
-# and the report, and this port adds the READER and the WRITER to that list,
-# because a nested body moves the reader's limit instead of slicing a sub-reader.
-# SCHEMA_ALLOC_SCALE sizes the measured window. The default is what a per-build
-# gate needs — enough passes to carry every path past its tiers and read a
-# steady number; a release pass raises it.
-JAVA_ALLOC_SCALE ?= 25
-.PHONY: tables-java-alloc
-tables-java-alloc:
-	@echo "tables-java-alloc: dormant — the corpus it gates against is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#517)"
-
-# ITS NEGATIVE CONTROL: ONE extra allocation per record on the wire read path —
-# a `new byte[1]`, the smallest thing the language can be asked for — and the
-# exact-zero floor must catch it. A gate that could not see twenty-four bytes a
-# record is a gate that would not have seen the defect it exists for.
-#
-# The other half is the localisation, as it is for every control here: the wire
-# READ row goes red and every other row stays green, so the gate says WHICH path
-# allocated rather than "something did".
-.PHONY: tables-java-alloc-negative-control
-tables-java-alloc-negative-control:
-	@echo "tables-java-alloc-negative-control: dormant — the surface it turns red is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#517)"
 
 # THE READERS' ORACLE (docs/SPEC-TABLES.md §7.5, §19.2). Mutants of a block image
 # and a cooked file go to the generated Open, and the answer must be a REFUSAL or
@@ -369,52 +277,23 @@ tables-java-cook-extent-negative-control: build/cook-open/.stamp
 	@grep -m1 "FAILED:" $(JAVA_EXTENT_SABOTAGE)/log
 	@echo "negative control: bounding a reference's START rather than its RECORD turns the extent gate RED"
 
-# THE SOAK's OWN NEGATIVE CONTROL. The soak is the gate this port leads with, and
-# its planted allocation was unreachable from soak mode — the flag was read
-# inside the alloc mode alone, so SCHEMA_ALLOC_SABOTAGE was a silent no-op here
-# and the gate had never once been red. A short soak is enough to prove it fires:
-# the plant is per-record and the first sample lands after warm-up.
-.PHONY: tables-java-soak-negative-control
-tables-java-soak-negative-control:
-	@echo "tables-java-soak-negative-control: dormant — the surface it turns red is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#517)"
-
-# THE SOAK, and what it gates on is the ALLOCATION TABLE re-measured at every
-# sample, not only the heap — a heap-flat gate cannot see a per-iteration
-# allocation that is collected, and an allocation that appears an hour in (a
-# descriptor rebuilt, a cache that grew a wrapper) is exactly the case it would
-# miss. The heap check stands beside it as the second, weaker instrument: it is
-# the one that sees RETENTION.
-#
-# `make test` runs a short one so the property is exercised on every
-# build; the RELEASE soak is an hour and is run by hand:
-#
-#     make tables-java-soak JAVA_SOAK_SECONDS=3600
-#
-JAVA_SOAK_SECONDS ?= 60
-.PHONY: tables-java-soak
-tables-java-soak:
-	@echo "tables-java-soak: dormant — the corpus it gates against is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#517)"
-
 # THE JAVA LEG's RELEASE PASS: everything `make test` cannot afford.
 #
 # `make test` on CI sits at about fourteen minutes against a fifteen-minute
 # timeout, and that headroom was thin before this backend existed — this leg's
-# gates cost about twenty seconds there and the soak alone would cost thirty
-# more. So the expensive half is here, by name, and the cheap half rides every
-# build. The split is a budget decision and is written down as one rather than
-# left as an absence.
+# gates cost about twenty seconds there. So the expensive half is here, by
+# name — every unit compiled under -Werror, and the three planted controls,
+# each of which rebuilds the compiler over a sabotaged emitter — and the cheap
+# half rides every build. The split is a budget decision and is written down
+# as one rather than left as an absence.
 #
-#     make tables-java-release                     the default 60 s soak
-#     make tables-java-release JAVA_SOAK_SECONDS=3600   the hour
+#     make tables-java-release
 .PHONY: tables-java-release
 tables-java-release:
 	$(MAKE) tables-java-compile-all
 	$(MAKE) conformance-negative-control-java-block
 	$(MAKE) tables-java-fuzz-negative-control
 	$(MAKE) tables-java-cook-extent-negative-control
-	$(MAKE) tables-java-soak-negative-control
-	$(MAKE) tables-java-alloc JAVA_ALLOC_SCALE=100
-	$(MAKE) tables-java-soak JAVA_SOAK_SECONDS=$(JAVA_SOAK_SECONDS)
 
 generated/bench/tables/java/.stamp: bin/schema bench/corpus/BenchTable.schema
 	@mkdir -p generated/bench/tables/java
@@ -451,10 +330,12 @@ build/java-bench/.stamp: generated/bench/java/.stamp bench/java/Main.java
 		generated/bench/java/*.java bench/java/Main.java
 	@touch $@
 
-# THE JAVA LEG. One command answers all ten surfaces: the wire units, the block
-# unit and the pointered unit are packages of ONE classpath, so a single JVM
-# start-up covers the cook's node dump and the cook forgery battery too — which
-# the C# leg hands to a second project because its cook side is a second
+# THE JAVA LEG. One command answers every surface this port carries — the
+# block surfaces and the cook surfaces; the five wire-carrying surfaces are
+# ABSENT, because Java emits no table wire (schema#517). The corpus units, the
+# block unit and the pointered unit are packages of ONE classpath, so a single
+# JVM start-up covers the cook's node dump and the cook forgery battery too —
+# which the C# leg hands to a second project because its cook side is a second
 # assembly. `blockhome` is not on this classpath and does not need to be; the
 # tables-java-compile gate is what proves it builds.
 .PHONY: build-conformance-java
@@ -466,25 +347,8 @@ build-conformance-java: build/tables-generated-java/.stamp test/conformance/java
 		build/tables-generated-java/v2/*.java build/tables-generated-java/p1/*.java \
 		build/tables-generated-java/p3/*.java test/conformance/java/src/Driver.java
 
-# THE JAVA LEG's NEGATIVE CONTROL, and it is the C# one's twin because the two
-# ports have the same shape: the walk is EMITTER SOURCE — one constant in
-# internal/codegen/javatable/json.go — so the sabotage lands in the emitter and
-# the leg is generated afresh from it. No tracked file is written to: the sed
-# lands in build/, a Go build overlay points the compiler at it, and the driver
-# below is compiled against what that compiler generated.
-#
-# THE SABOTAGE is the C# control's: the FIELD INDEX the read path looks a
-# descriptor up by, so one key's value lands in its neighbour's field. It is
-# bounded on purpose, so a table with an odd field count cannot turn the control
-# into an exception rather than a wrong answer, and it touches the READ path
-# only — which is what makes json-write staying green the statement that the
-# break is the READER's.
-.PHONY: conformance-negative-control-java
-conformance-negative-control-java:
-	@echo "conformance-negative-control-java: dormant — the surface it turns red is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#517)"
-
-# THE SECOND JAVA NEGATIVE CONTROL, and it localises a DIFFERENT reader: the
-# block form's Open. The three controls above all move a value; this one removes
+# THE JAVA CONFORMANCE NEGATIVE CONTROL, and it localises the block form's
+# Open. The fuzz and extent controls above each remove a bound; this one removes
 # a CHECK — the array's pitch against this build's own — so the forged image
 # `block_pitch` opens where it must refuse.
 #
@@ -534,20 +398,16 @@ conformance-negative-control-java-block: build/conformance-harness
 	@grep -m1 "java / forgery" $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/log
 	@echo "negative control: one missing pitch check in the Java block Open turns the harness RED on forgery alone"
 
-# THE JAVA LEG of `make test`. ONE conformance negative control rides here, the
-# C# and Go legs' twin; the second one, the fuzz oracle's control and the SOAK
-# are `make tables-java-release`, because `make test` has no budget for them
-# (see that target). Then the packet tests, with and without -ea.
+# THE JAVA LEG of `make test`: the compile, standalone and zero-cost gates, the
+# readers' fuzz oracle, the byte-order leg and the reference extent gate. The
+# three planted controls are `make tables-java-release`, because `make test`
+# has no budget for them (see that target). Then the packet tests, with and
+# without -ea.
 .PHONY: test-java
 test-java: toolchain-java generated/java/.stamp generated/java-ludicrous/.stamp generated/bench/java/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
-	$(MAKE) conformance-negative-control-java
 	$(MAKE) tables-java-compile
-	$(MAKE) tables-java-json-walk
 	$(MAKE) tables-java-standalone
-	$(MAKE) tables-java-refuses-pointers
 	$(MAKE) tables-java-zero-cost
-	$(MAKE) tables-java-alloc
-	$(MAKE) tables-java-alloc-negative-control
 	$(MAKE) tables-java-fuzz
 	$(MAKE) tables-java-order
 	$(MAKE) tables-java-cook-extent
