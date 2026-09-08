@@ -65,6 +65,7 @@ const long IterScale = 8;
 #endif
 
 static bool g_csv = false;
+static bool g_gate = false;
 static const char * g_wire_dir = "testdata/wire";
 static const char * g_variant_dir = "bench/corpus/variants";
 
@@ -301,6 +302,8 @@ static void bench_table( const char * name, const char * golden, long base_iters
         }
     }
 
+    if ( g_gate ) return;
+
     double write_rates[MaxNumRuns];
     double roundtrip_rates[MaxNumRuns];
 
@@ -377,7 +380,8 @@ int main( int argc, char ** argv )
 {
     for ( int i = 1; i < argc; i++ )
     {
-        if ( strcmp( argv[i], "--csv" ) == 0 )
+        if ( strcmp( argv[i], "--gate" ) == 0 ) { g_gate = true; }
+        else if ( strcmp( argv[i], "--csv" ) == 0 )
             g_csv = true;
         else if ( strcmp( argv[i], "--wire-dir" ) == 0 && i + 1 < argc )
             g_wire_dir = argv[++i];
@@ -396,7 +400,7 @@ int main( int argc, char ** argv )
         }
         else
         {
-            fprintf( stderr, "usage: %s [--csv] [--round K] [--wire-dir <dir>] [--variant-dir <dir>]\n", argv[0] );
+            fprintf( stderr, "usage: %s [--gate] [--csv] [--round K] [--wire-dir <dir>] [--variant-dir <dir>]\n", argv[0] );
             return 1;
         }
     }

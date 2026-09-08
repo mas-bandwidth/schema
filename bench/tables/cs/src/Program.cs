@@ -106,6 +106,7 @@ static class Program
 
     static ulong gSink; // defeats dead code elimination of computed values
     static bool gCsv;
+    static bool gGate;
     static string gWireDir = Path.Combine("testdata", "wire");
     static string gVariantDir = Path.Combine("bench", "corpus", "variants");
     static bool failed;
@@ -262,6 +263,8 @@ static class Program
             }
         }
 
+        if (gGate) return;
+
         double[] writeRates = new double[gNumRuns];
         double[] roundtripRates = new double[gNumRuns];
 
@@ -336,7 +339,11 @@ static class Program
     {
         for (int i = 0; i < args.Length; i++)
         {
-            if (args[i] == "--csv")
+            if (args[i] == "--gate")
+            {
+                gGate = true;
+            }
+            else if (args[i] == "--csv")
             {
                 gCsv = true;
             }
@@ -359,7 +366,7 @@ static class Program
             }
             else
             {
-                Console.Error.WriteLine("usage: schematablesbench [--csv] [--round K] [--wire-dir <dir>] [--variant-dir <dir>]");
+                Console.Error.WriteLine("usage: schematablesbench [--gate] [--csv] [--round K] [--wire-dir <dir>] [--variant-dir <dir>]");
                 return 1;
             }
         }

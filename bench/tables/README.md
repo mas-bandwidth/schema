@@ -12,47 +12,39 @@ flatbuffers has a number for this, because it is the same job: a message of
 scalars, strings, an enum, a union, a nested record and bounded arrays of
 records, framed by ids, kinds and lengths.
 
-## What it measures, and what it does not
+## Scope and performance standard
 
-| | measured here | where it lives instead |
-|---|---|---|
-| tolerant wire, write + read | **yes — every language** | this leg |
-| block form fill and read | no | `make tables-block-gate2` (§12.1), and the game, on real render data |
-| cook open cost | no | `test/tables/cook_main.cpp`'s open-cost gate (§7.5) |
-| the JSON walk, `schema pack` | no, by design | tooling; not a hot path |
+The current profile is the fixed table's file form in **C, C++, C# and Go**.
+Glenn's September 8 direction is the **fastest correct implementation for each
+language**. The shared workload fixes the work being measured; each language may
+use its best correct representation, compiler and runtime techniques. Optimize
+from profiles and confirm gains with paired measurements and correctness checks.
 
-That split is the owner's scope ruling on the same issue: *"I think that's
-sufficient for now for the profiling, the rest can be C++/C# specific with
-render data tables as we work in space."* The per-language board is the
-tolerant wire. Block and cook numbers stay C++/C#, taken in the game on real
-render data, because that is where the render path actually is.
+The next representative corpus is a variable table. Message form, block form,
+and cooked save/load follow as separate measured operations. They do not acquire
+a performance result from this fixed-table pass.
 
 ## The corpus
 
-`bench/corpus/BenchTable.schema` declares `TableMixed`, and it **mirrors
-`BenchMixed`** — the type corpus's one measured shape — field for field: same
-field count, same kinds, same nesting, same bounds, same pinned structure. The
-owner's sizing rule, and his reason for it: *"Make the fixed table roughly
-equivalent to the profiled type in size"* … *"so we don't hyper-fixate on
-serializing a few fields and it's all memcpy."*
+[`bench/corpus/BenchTable.schema`](../corpus/BenchTable.schema) declares
+`TableMixed`, the existing fixed-table counterpart of the representative
+[`BenchMixed`](../corpus/Bench.schema) packet workload: eight nested entity
+updates, eighty statistic records, a tagged event, bounded text and payload,
+and mixed scalar fields. Every language generates its codec from this one file.
+The runners name the generated root once and do not duplicate its fields.
 
-Four of BenchMixed's declarations are refused in a table body by name
-(docs/SPEC-TABLES.md §11) and each is replaced by the nearest kind that does
-the same per-field work; the schema file lists all of them in its header, with
-the two that drop and why. The mirror is what makes the two boards
-comparable: the same shape on the bitpacked type wire and on the tolerant
-table wire, so the ratio between them is the price of tolerance and nothing
-else.
+This retained corpus predates wide table scalars. It substitutes compressed
+floats for the packet's fixed-point fields and 64-bit integers for its 128-bit
+fields, and replaces/drops packet framing declarations. Those are properties of
+this benchmark version, **not current language limitations**. Its range/default
+and enum-presence choices keep all variants the same length. It therefore
+measures a representative counterpart, not an identical scalar payload or the
+isolated cost of tolerance. A future corpus that restores these kinds needs its
+own version and golden identity; do not silently reinterpret older results.
 
-Pinned wire: **2391 bytes**, against BenchMixed's 438 — the ids, kinds and
-lengths, made visible. **1487 of those 2391, or 62%, are framing**: field id
-references, kind bytes, lengths, element counts and body terminators, not
-values. That count is the price of tolerance, stated as a number so the ratio
-is a measurement rather than an impression, and it is the figure
-docs/SPEC-TABLES.md's performance ladder cites from this page. What it does
-not license is a codec slower than those bytes require: the per-BYTE cost is
-this leg's own obligation, so a per-byte gap is a defect to explain or close
-and never the wire's price.
+The current pinned file is **2,147 bytes** per record. `bench-table-check`
+reconstructs all 64 records and compares them byte-for-byte before profiling.
+The packet corpus and its historical measurements are unchanged.
 
 ## The data, and why no runner builds an instance
 
@@ -127,34 +119,43 @@ cross-family division refuses on its own (§5.3) — a tolerant-wire number and 
 bitpacked-wire number are not the same measurement and the tools say so
 without anyone remembering to.
 
-## The legs, and what each one's number means
+## The four-language pass
 
-| leg | tier | what the number is |
-|---|---|---|
-| `cpp` | the reference | the bar every other row divides against |
-| `cs`, `go`, `rust` | native or JIT | same shape, same corpus, a codec compiled to machine code |
-| `elixir` | the READING TIER | what the BEAM costs: `save` allocates its own result because there is no caller-owned buffer, and `load` builds a term per field. About 37x C++ on write and 33x on round-trip, measured — a PAIRING CHECK, not a sitting (`results/2026-09-03-pairing-elixir-arm64-macbook.md`), with the lever named against #174 |
+C and C++ use their generated fixed codecs in release builds. Go uses its
+generated package in the ordinary optimized build. C# currently uses generated
+managed authoring values with reused output storage. The configuration is part
+of every result; a different representation or JIT setting must be measured
+and identified as a separate candidate before being called faster.
 
-**A reading-tier row is a number to be REPORTED, not a number to be matched.**
-The ladder in docs/SPEC-TABLES.md sets the bar for a language that can hold
-bytes; a language whose values are the runtime's holds a different one, and
-saying so is the point of the row.
+A passing shared corpus is required before any timing. The broader table
+conformance, unit, ownership and wire checks remain independent acceptance
+evidence. A passing fixed-table corpus does not clear an unrelated failing
+message or variable-table check.
 
 ## Running
 
     bench/tables/run.sh                    every registered leg -> bench/tables/results/
-    bench/tables/run.sh --only cs          one leg
+    bench/tables/run.sh --only c,cpp,cs,go --gate --bare
+                                          build and check all four, no timing
+    bench/tables/run.sh --only c,cpp,cs,go --rounds 7 --tag fixed
+                                          the four-language interleaved pass
+    bench/tables/run.sh --only cs          one required leg
     bench/tables/run.sh --rounds 5         interleaved rounds (§2.4)
     bench/tables/run.sh --tag pairing      name the sitting in the file name
     bench/tables/run.sh --bare             rows only, no preamble, stdout
 
-`make bench-tables` runs the default pass.
+`make bench-tables` runs the default pass. An explicitly selected language that
+cannot build is a failure, not a skipped row. All selected legs build before
+measurement. For multiple rounds, every language runs once before the next
+round begins; the packet benchmark's aggregation tool checks measurement
+identity and computes the combined statistics. A failed leg emits no completed
+pass: stdout and the result file are published only after every round succeeds.
 
-**A publishable number is a BOX sitting**, not a laptop run: core 15, the
-server stopped, not live, one bench at a time, blessed per run. A run on a
-shared interactive machine is a pairing check — it tells you the legs agree
-and roughly where they stand, and it certifies nothing. Say which one a board
-is, in the board.
+Record the machine, toolchains, optimization settings, revision, corpus and
+noise for every pass. Run one benchmark at a time and coordinate a quiet window
+on a shared machine. A Studio result is a local measurement; it is not a
+production-server certification. A server deployment or server benchmark keeps
+its own access and operational approval requirements.
 
 ## Registering a port
 
@@ -170,7 +171,7 @@ bench-tables` generates it (`docs/CONTRIBUTING.md`, "Adding a language").
        leg build            build the leg; exit 2 if its toolchain or
                             generated sources are not present (that prints
                             SKIP and is not a failure)
-       leg run [args...]    run the runner: --csv, --round K, --wire-dir,
+       leg run [args...]    run the runner: --gate (no timing), --csv, --round K, --wire-dir,
                             --variant-dir
 
 2. Write the runner itself in `bench/tables/<lang>/`. Port
@@ -187,10 +188,10 @@ bench-tables` generates it (`docs/CONTRIBUTING.md`, "Adding a language").
 3. Generate the unit in `make/<lang>.mk` and add its stamp to
    `BENCH_TABLES_LEGS` there.
 
-**The ratio to C++ is the port's speed bar** — *same speed, or not
-significantly slower* — the same bar the ladder sets for every rung
-(docs/SPEC-TABLES.md, the performance ladder). A port that lands wide of it
-has a defect to explain or close, not a trade to license.
+Compare absolute time per operation and throughput, with variation beside the
+headline. Cross-language results guide investigation; the implementation target
+is the fastest correct code for each language. A measured performance gap needs
+an explanation and an optimization candidate, not an assumed cause.
 
 ## The board
 
