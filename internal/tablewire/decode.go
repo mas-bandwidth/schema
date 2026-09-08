@@ -637,6 +637,7 @@ func (r *wireReader) mapField(fv *tabletext.Field) bool {
 		// Commit a replacement only after its array header is readable and
 		// compatible. A skipped repeat preserves the earlier occurrence, as
 		// for every other skipped field (§4 and the C++ map reader).
+		r.rt.forgetMap(fv)
 		for i := range fv.Entries {
 			r.rt.forget(fv.Entries[i].Tab)
 		}
@@ -702,6 +703,7 @@ func (r *wireReader) mapField(fv *tabletext.Field) bool {
 			whole.off = 0
 			decoded := r.m.NewMapEntry(f)
 			whole.bodyAt(decoded, true)
+			r.rt.builtMapEntry(fv, decoded)
 			if r.countRefused() {
 				return false
 			}
