@@ -10,11 +10,13 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
 )
 
-// TestJsEmitsTableSources: the js target adds the three table modules beside
+// TestJsEmitsTableSources: the js target adds the table accelerator modules beside
 // the packet modules for a unit with tables, and adds NOTHING for one without —
-// the same contract the cpp and cs targets hold, under both spellings of the
+// the same contract the other targets hold, under both spellings of the
 // target name.
 func TestJsEmitsTableSources(t *testing.T) {
 	c := New()
@@ -23,7 +25,12 @@ func TestJsEmitsTableSources(t *testing.T) {
 		if err != nil {
 			t.Fatalf("--lang %s: %v", target, err)
 		}
-		for _, want := range []string{"ProbeTable.js", "ProbeBlock.js", "ProbeCook.js"} {
+		for _, unwanted := range []string{"ProbeTable.js"} {
+			if _, ok := with[unwanted]; ok {
+				t.Fatalf("--lang %s emitted unwanted dead wire surface %s", target, unwanted)
+			}
+		}
+		for _, want := range []string{"ProbeBlock.js", "ProbeCook.js"} {
 			if _, ok := with[want]; !ok {
 				t.Fatalf("--lang %s emitted no %s for a unit with tables; got %d files", target, want, len(with))
 			}
@@ -41,7 +48,7 @@ func TestJsEmitsTableSources(t *testing.T) {
 		}
 		// ZERO COST: a table moves NO packet byte. Every module a table-free
 		// unit emits is byte-identical in the unit that adds a table, and the
-		// only modules a table adds are the three table ones.
+		// only modules a table adds are the accelerator ones.
 		for name, data := range without {
 			got, ok := with[name]
 			if !ok {
@@ -56,20 +63,16 @@ func TestJsEmitsTableSources(t *testing.T) {
 			if _, ok := without[name]; ok {
 				continue
 			}
-			if !strings.HasSuffix(name, "Table.js") && !strings.HasSuffix(name, "Block.js") &&
-				!strings.HasSuffix(name, "Cook.js") {
+			if !strings.HasSuffix(name, "Block.js") && !strings.HasSuffix(name, "Cook.js") {
 				t.Errorf("--lang %s: adding a table grew unexpected non-table module %s", target, name)
 			}
 		}
 	}
 }
 
-// TestJsRefusesPointeredTables: the JavaScript variable-class refusal is a
-// refusal of the WIRE SURFACE and of nothing else (docs/SPEC-TABLES.md §11), the
-// same shape the C# one takes. The two ACCELERATORS are POINTED AT, not parsed,
-// so both are emitted and the cook's Open opens this unit's cooked assets in
-// full.
-func TestJsRefusesPointeredTables(t *testing.T) {
+// TestJsPointeredTablesEmitAccelerators: pointered tables emit their cook
+// and block accelerators without wire codecs.
+func TestJsPointeredTablesEmitAccelerators(t *testing.T) {
 	c := New()
 	u := unitFromSource(t, packetSrc+`
 table Node
@@ -83,26 +86,25 @@ table Node
 		t.Fatalf("--lang js refused a pointered unit outright — the accelerators need no codec: %v", err)
 	}
 	var cooks int
-	for name, data := range files {
+	for name := range files {
 		if strings.HasSuffix(name, "Table.js") {
 			t.Errorf("--lang js emitted the WIRE surface %s for a pointered unit", name)
-		}
-		if !strings.HasSuffix(name, "Cook.js") && !strings.HasSuffix(name, "Block.js") {
-			continue
 		}
 		if strings.HasSuffix(name, "Cook.js") {
 			cooks++
 		}
-		text := string(data)
-		if !strings.Contains(text, "THE JAVASCRIPT WIRE SURFACE OF THIS UNIT IS REFUSED, BY NAME") {
-			t.Errorf("%s carries no refusal banner", name)
-		}
-		if !strings.Contains(text, "Node") || !strings.Contains(text, "named follow-on") {
-			t.Errorf("%s's banner does not name the table and the follow-on", name)
-		}
 	}
 	if cooks == 0 {
 		t.Error("--lang js emitted no cook reader for a pointered unit — a cook needs no codec")
+	}
+	for name, data := range files {
+		if !strings.HasSuffix(name, "Cook.js") {
+			continue
+		}
+		text := string(data)
+		if !strings.Contains(text, "export const NodeCook") {
+			t.Errorf("%s declares no NodeCook", name)
+		}
 	}
 }
 
@@ -239,5 +241,10 @@ func TestJsTableModuleScopeNamesAreClaimed(t *testing.T) {
 					"internal/check (docs/SPEC-TABLES.md §11)", name)
 			}
 		})
+	}
+	for _, name := range tablenames.DefinedBy(tablenames.Js) {
+		if !emitted[name] {
+			t.Errorf("internal/tablenames says the JS backend defines %s, but nothing in the emitted JS names it", name)
+		}
 	}
 }
