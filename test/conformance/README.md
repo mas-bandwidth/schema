@@ -529,3 +529,13 @@ Named, with the reason, so a port knows what it is not being asked for:
 - **The block form's fuzzers** (`test/tables/block_fuzz_main.cpp` and its C#
   twin) and the cook's. A fuzzer is a search, not a case, and the finds it
   produces land here as forgery rows — `block_offset_overflow` is one.
+
+The optional `wire-fuzz --builder` arm compares mutable file readers with
+`tablewire.Decode`. Its roster contains variable-class file roots. The driver
+reports its load result in the existing loaded byte, the accumulated report,
+and canonical saved bytes only after a successful read. A failed read emits a
+save failure (`-1`); the partial value must be discarded. This arm does not
+preflight or compare region extents. In particular, an int32 list count-cap
+refusal stops without inventing the region reader's malformed-data event.
+`--builder` cannot be combined with `--message` or `--retain`. The existing
+region and retention arms retain their measurement and bounds checks.
