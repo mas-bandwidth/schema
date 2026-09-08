@@ -1,0 +1,5 @@
+{}
+{"selected":{"pointer":{"value":17}},"pair":[{"value":1},null],"counted":[null,{"value":9}],"optional":{"value":3},"enabled":true,"guarded":{"value":4}}
+{"selected":{"body":{"value":2,"next":{"value":3}}},"edges":[{"pointer":{"&node":1,"value":20}},{"body":{"next":{"&node":1}}},{"pointers":[{"&node":1},null,{"value":30}]}],"pair":[{"&node":1},null],"counted":[{"&node":1}],"enabled":true,"guarded":{"&node":1}}
+{"edges":[{"empty":null},{"pointers":[null,{"value":6},null]},{"body":{}}],"optional":null,"enabled":false,"guarded":{"value":100}}
+{"selected":{"data":"AAECAw=="},"edges":[{"caption":"hello \uD83D\uDE00"},{"data":""},{}]}

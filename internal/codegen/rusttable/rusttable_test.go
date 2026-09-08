@@ -146,25 +146,18 @@ table Wide
 	}
 }
 
-// TestPointeredUnitRefusesTheWireSurface: the variable class's refusal is a
-// refusal of the WIRE surface and of nothing else (§11). The two ACCELERATORS
-// need no codec, so both are emitted, and every file that IS emitted opens
-// with a banner naming the refused tables and the follow-on.
-func TestPointeredUnitRefusesTheWireSurface(t *testing.T) {
+// The variable class now emits its wire beside the existing accelerators.
+func TestPointeredUnitCarriesWire(t *testing.T) {
 	out := generate(t, pointered)
-	for name, data := range out {
-		if strings.HasSuffix(name, "_table.rs") || name == RuntimeModule+".rs" {
-			t.Errorf("a pointered unit emitted the wire surface %s", name)
-		}
-		if !strings.Contains(string(data), "REFUSED, BY NAME") {
-			t.Errorf("%s carries no refusal banner", name)
-		}
-		if !strings.Contains(string(data), "Node") {
-			t.Errorf("%s does not name the refused table", name)
+	for _, name := range []string{"probe_table.rs", "table_runtime.rs", "probe_cook.rs"} {
+		if len(out[name]) == 0 {
+			t.Errorf("missing %s", name)
 		}
 	}
-	if _, ok := out["probe_cook.rs"]; !ok {
-		t.Error("a pointered unit emitted no cook reader — a root is any table (§7)")
+	for _, snippet := range []string{"TableRef<Node>", "node_load_measure", "node_save", "node_load", "node_from_json"} {
+		if !strings.Contains(string(out["probe_table.rs"]), snippet) {
+			t.Errorf("missing %s", snippet)
+		}
 	}
 }
 

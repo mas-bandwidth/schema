@@ -34,7 +34,7 @@ func TestListsAreRefusedByEveryPort(t *testing.T) {
 	for _, target := range c.Targets() {
 		t.Run(target, func(t *testing.T) {
 			_, err := c.Generate(u, target, Options{})
-			if target == "cpp" {
+			if target == "cpp" || target == "rust" {
 				if err != nil {
 					t.Fatalf("--lang cpp refused an unbounded array: the reference carries the codec (schema#531): %v", err)
 				}
@@ -55,8 +55,8 @@ func TestListsAreRefusedByEveryPort(t *testing.T) {
 // TestListCarrierIsTheReferenceAlone: exactly one target carries the
 // construct, and it is the C++ reference (docs/SPEC-TABLES.md §2.9, §15).
 func TestListCarrierIsTheReferenceAlone(t *testing.T) {
-	if len(listTargets) != 1 || listTargets[0] != "cpp" {
-		t.Fatalf("listTargets = %v, want exactly [cpp]: the variable class is the reference's (docs/SPEC-TABLES.md §2.9, §15)", listTargets)
+	if len(listTargets) != 2 || listTargets[0] != "cpp" || listTargets[1] != "rust" {
+		t.Fatalf("listTargets = %v, want exactly [cpp rust]: these backends carry unbounded arrays (docs/SPEC-TABLES.md §2.9, §15)", listTargets)
 	}
 }
 
@@ -97,7 +97,7 @@ func TestListRefusalNamesTheCarrier(t *testing.T) {
 	if err == nil {
 		t.Fatalf("refuseLists accepted a list-bearing unit for a non-carrier")
 	}
-	for _, want := range []string{"a []T is cpp only today", "Save.placements", "--lang cpp"} {
+	for _, want := range []string{"a []T is cpp and rust only today", "Save.placements", "--lang cpp"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the carrier-form refusal does not name %q: %v", want, err)
 		}

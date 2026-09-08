@@ -1,0 +1,20 @@
+package rustlist
+
+enum Grade { A, B, C }
+union Hit {
+ damage int32
+ body Row
+ empty
+}
+table Row {
+ values []int32
+ next *Row
+}
+table Root {
+    rows []Row
+    refs []*Row
+    grades []Grade
+    hits []Hit
+    bounded []int32 | min = 0, max = 100
+    after int32
+}

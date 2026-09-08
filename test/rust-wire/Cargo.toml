@@ -4,5 +4,12 @@ version = "0.0.0"
 edition = "2024"
 
 [dependencies]
+rustlist = {path="../../build/rust-list/rust"}
+blobdemo = {path="../../build/tables-generated-rust/blobdemo"}
+rustgraph = { path = "../../build/rust-graph/rust" }
+graphdemo = { path = "../../build/tables-generated-rust/graphdemo" }
 rustarms = { path = "../../build/rust-arms/rust" }
 rustwire = { path = "../../build/rust-wire/rust" }
+
+mapdemo = {path="../../build/tables-generated-rust/mapdemo"}
+listdemo = {path="../../build/tables-generated-rust/listdemo"}

@@ -131,6 +131,8 @@ fn spill(dir: &str, name: &str, data: &[u8]) {
 
 #[derive(Default, Clone, Copy)]
 struct Report {
+    measure: Option<i64>,
+    measure_reason: u32,
     unknown: i32,
     kind_mismatch: i32,
     widened: i32,
@@ -141,6 +143,7 @@ struct Report {
 }
 
 struct Codec {
+    native_layout: Option<fn() -> Vec<u8>>,
     unit: &'static str,
     root: &'static str,
     // Load the wire bytes, then measure and save: the bytes a round trip
@@ -169,6 +172,7 @@ macro_rules! codec {
      $measure:path, $save:path, $load:path,
      $from_json:path, $to_json_measure:path, $to_json:path) => {
         Codec {
+            native_layout: None,
             unit: $unit,
             root: $root,
             probe: |bytes, out| {
@@ -278,8 +282,562 @@ fn write_measured(measure: impl Fn() -> i64, write: impl Fn(&mut [u8]) -> i64) -
     Some(buffer)
 }
 
+macro_rules! variable_codec {
+    ($unit:literal,$root:literal,$krate:ident,$ty:ty,$layout:path,$measure:path,$save:path,$load_measure:path,$load:path,$from_json:path,$to_json_measure:path,$to_json:path) => {
+        Codec {
+            unit: $unit,
+            root: $root,
+            native_layout: Some(|| {
+                fn visit(
+                    info: &'static $krate::TableTypeInfo,
+                    seen: &mut std::collections::HashSet<u64>,
+                    rows: &mut Vec<&'static $krate::TableTypeInfo>,
+                ) {
+                    if !seen.insert(info.id) {
+                        return;
+                    }
+                    rows.push(info);
+                    fn field(
+                        f: &'static $krate::TableFieldInfo,
+                        seen: &mut std::collections::HashSet<u64>,
+                        rows: &mut Vec<&'static $krate::TableTypeInfo>,
+                    ) {
+                        if let Some(table) = f.table {
+                            visit(table(), seen, rows);
+                        }
+                        if let Some(arms) = f.arms {
+                            for arm in arms().arms {
+                                if let Some(f) = arm.field {
+                                    field(f, seen, rows);
+                                }
+                            }
+                        }
+                    }
+                    for f in info.fields {
+                        field(f, seen, rows);
+                    }
+                }
+                let mut rows = Vec::new();
+                let mut seen = std::collections::HashSet::new();
+                for info in $layout() {
+                    visit(info(), &mut seen, &mut rows);
+                }
+                let mut out = Vec::new();
+                out.extend(2u32.to_le_bytes());
+                out.extend(($krate::TABLE_REGION_ALIGNMENT as u32).to_le_bytes());
+                out.extend((rows.len() as u32).to_le_bytes());
+                for info in rows {
+                    out.extend(info.id.to_le_bytes());
+                    out.extend((info.size as u64).to_le_bytes());
+                    out.extend(
+                        (info.fields.iter().filter(|f| f.sequence.is_some()).count() as u32)
+                            .to_le_bytes(),
+                    );
+                    for f in info.fields {
+                        if let Some(seq) = f.sequence {
+                            let seq = seq();
+                            out.extend(f.id.to_le_bytes());
+                            out.extend((seq.size as u64).to_le_bytes());
+                            out.extend((seq.align as u32).to_le_bytes());
+                        }
+                    }
+                }
+                out
+            }),
+            probe: |bytes, out| {
+                let size = match $load_measure(bytes) {
+                    Ok(n) => n,
+                    Err(error) => {
+                        if let $krate::TableLoadError::Refused(reason) = error {
+                            out.measure_reason = reason as u32;
+                        }
+                        out.measure = Some(-1);
+                        return (false, None);
+                    }
+                };
+                out.measure = Some((size.data_bytes + size.attribution_bytes) as i64);
+                let mut data =
+                    vec![$krate::TableStorageWord::zeroed(); size.data_bytes.max(1).div_ceil(16)];
+                let mut directory =
+                    vec![$krate::TableNodeDirEntry::default(); size.directory_entries()];
+                let mut report = $krate::TableReport::default();
+                let region = $load(&mut data, &mut directory, bytes, &mut report).unwrap();
+                copy_report!(report, out);
+                (
+                    true,
+                    write_measured(
+                        || $measure(region.root(), region.context()).unwrap_or(-1),
+                        |b| $save(region.root(), region.context(), b).unwrap_or(-1),
+                    ),
+                )
+            },
+            wire: |bytes, out| {
+                let size = $load_measure(bytes).ok()?;
+                let mut data =
+                    vec![$krate::TableStorageWord::zeroed(); size.data_bytes.max(1).div_ceil(16)];
+                let mut directory =
+                    vec![$krate::TableNodeDirEntry::default(); size.directory_entries()];
+                let mut report = $krate::TableReport::default();
+                let region = $load(&mut data, &mut directory, bytes, &mut report).ok()?;
+                copy_report!(report, out);
+                write_measured(
+                    || $measure(region.root(), region.context()).unwrap_or(-1),
+                    |b| $save(region.root(), region.context(), b).unwrap_or(-1),
+                )
+            },
+            json_read: |text, out| {
+                let mut builder = $krate::TableBuilder::<$ty>::new();
+                let mut report = $krate::TableReport::default();
+                let ok = $from_json(&mut builder, text, &mut report);
+                copy_report!(report, out);
+                if !ok {
+                    return None;
+                }
+                write_measured(
+                    || $measure(builder.root(), builder.context()).unwrap_or(-1),
+                    |b| $save(builder.root(), builder.context(), b).unwrap_or(-1),
+                )
+            },
+            json_write: |bytes, out| {
+                let size = $load_measure(bytes).ok()?;
+                let mut data =
+                    vec![$krate::TableStorageWord::zeroed(); size.data_bytes.max(1).div_ceil(16)];
+                let mut directory =
+                    vec![$krate::TableNodeDirEntry::default(); size.directory_entries()];
+                let mut report = $krate::TableReport::default();
+                let region = $load(&mut data, &mut directory, bytes, &mut report).ok()?;
+                copy_report!(report, out);
+                write_measured(
+                    || $to_json_measure(region.root(), region.context()),
+                    |b| $to_json(region.root(), region.context(), b),
+                )
+            },
+            // Authoring (including numbering and text identity) may allocate.
+            // Only the caller-owned region load path carries the zero-allocation rule.
+            audit: |wire, _text, _buffer| {
+                let size = $load_measure(wire).unwrap();
+                let mut data =
+                    vec![$krate::TableStorageWord::zeroed(); size.data_bytes.max(1).div_ceil(16)];
+                let mut directory =
+                    vec![$krate::TableNodeDirEntry::default(); size.directory_entries()];
+                let mut report = $krate::TableReport::default();
+                let before = TOTAL_ALLOCATIONS.load(Ordering::Relaxed);
+                let _ = black_box($load_measure(wire));
+                let _ = black_box($load(&mut data, &mut directory, wire, &mut report));
+                TOTAL_ALLOCATIONS.load(Ordering::Relaxed) - before
+            },
+        }
+    };
+}
+
 fn codecs() -> Vec<Codec> {
     vec![
+        variable_codec!(
+            "mapdemo",
+            "Cells",
+            mapdemo,
+            mapdemo::Cells,
+            mapdemo::cells_node_layout,
+            mapdemo::cells_measure,
+            mapdemo::cells_save,
+            mapdemo::cells_load_measure,
+            mapdemo::cells_load,
+            mapdemo::cells_from_json,
+            mapdemo::cells_to_json_measure,
+            mapdemo::cells_to_json
+        ),
+        variable_codec!(
+            "mapdemo",
+            "Chunks",
+            mapdemo,
+            mapdemo::Chunks,
+            mapdemo::chunks_node_layout,
+            mapdemo::chunks_measure,
+            mapdemo::chunks_save,
+            mapdemo::chunks_load_measure,
+            mapdemo::chunks_load,
+            mapdemo::chunks_from_json,
+            mapdemo::chunks_to_json_measure,
+            mapdemo::chunks_to_json
+        ),
+        variable_codec!(
+            "mapdemo",
+            "Crews",
+            mapdemo,
+            mapdemo::Crews,
+            mapdemo::crews_node_layout,
+            mapdemo::crews_measure,
+            mapdemo::crews_save,
+            mapdemo::crews_load_measure,
+            mapdemo::crews_load,
+            mapdemo::crews_from_json,
+            mapdemo::crews_to_json_measure,
+            mapdemo::crews_to_json
+        ),
+        variable_codec!(
+            "mapdemo",
+            "Depth",
+            mapdemo,
+            mapdemo::Depth,
+            mapdemo::depth_node_layout,
+            mapdemo::depth_measure,
+            mapdemo::depth_save,
+            mapdemo::depth_load_measure,
+            mapdemo::depth_load,
+            mapdemo::depth_from_json,
+            mapdemo::depth_to_json_measure,
+            mapdemo::depth_to_json
+        ),
+        variable_codec!(
+            "mapdemo",
+            "Docs",
+            mapdemo,
+            mapdemo::Docs,
+            mapdemo::docs_node_layout,
+            mapdemo::docs_measure,
+            mapdemo::docs_save,
+            mapdemo::docs_load_measure,
+            mapdemo::docs_load,
+            mapdemo::docs_from_json,
+            mapdemo::docs_to_json_measure,
+            mapdemo::docs_to_json
+        ),
+        variable_codec!(
+            "mapdemo",
+            "Fleet",
+            mapdemo,
+            mapdemo::Fleet,
+            mapdemo::fleet_node_layout,
+            mapdemo::fleet_measure,
+            mapdemo::fleet_save,
+            mapdemo::fleet_load_measure,
+            mapdemo::fleet_load,
+            mapdemo::fleet_from_json,
+            mapdemo::fleet_to_json_measure,
+            mapdemo::fleet_to_json
+        ),
+        variable_codec!(
+            "mapdemo",
+            "Pairs",
+            mapdemo,
+            mapdemo::Pairs,
+            mapdemo::pairs_node_layout,
+            mapdemo::pairs_measure,
+            mapdemo::pairs_save,
+            mapdemo::pairs_load_measure,
+            mapdemo::pairs_load,
+            mapdemo::pairs_from_json,
+            mapdemo::pairs_to_json_measure,
+            mapdemo::pairs_to_json
+        ),
+        variable_codec!(
+            "mapdemo",
+            "Row",
+            mapdemo,
+            mapdemo::Row,
+            mapdemo::row_node_layout,
+            mapdemo::row_measure,
+            mapdemo::row_save,
+            mapdemo::row_load_measure,
+            mapdemo::row_load,
+            mapdemo::row_from_json,
+            mapdemo::row_to_json_measure,
+            mapdemo::row_to_json
+        ),
+        variable_codec!(
+            "mapdemo",
+            "WideRow",
+            mapdemo,
+            mapdemo::WideRow,
+            mapdemo::wide_row_node_layout,
+            mapdemo::wide_row_measure,
+            mapdemo::wide_row_save,
+            mapdemo::wide_row_load_measure,
+            mapdemo::wide_row_load,
+            mapdemo::wide_row_from_json,
+            mapdemo::wide_row_to_json_measure,
+            mapdemo::wide_row_to_json
+        ),
+        variable_codec!(
+            "mapdemo",
+            "EdgeRow",
+            mapdemo,
+            mapdemo::EdgeRow,
+            mapdemo::edge_row_node_layout,
+            mapdemo::edge_row_measure,
+            mapdemo::edge_row_save,
+            mapdemo::edge_row_load_measure,
+            mapdemo::edge_row_load,
+            mapdemo::edge_row_from_json,
+            mapdemo::edge_row_to_json_measure,
+            mapdemo::edge_row_to_json
+        ),
+        variable_codec!(
+            "mapdemo",
+            "Runs",
+            mapdemo,
+            mapdemo::Runs,
+            mapdemo::runs_node_layout,
+            mapdemo::runs_measure,
+            mapdemo::runs_save,
+            mapdemo::runs_load_measure,
+            mapdemo::runs_load,
+            mapdemo::runs_from_json,
+            mapdemo::runs_to_json_measure,
+            mapdemo::runs_to_json
+        ),
+        variable_codec!(
+            "mapdemo",
+            "Slots",
+            mapdemo,
+            mapdemo::Slots,
+            mapdemo::slots_node_layout,
+            mapdemo::slots_measure,
+            mapdemo::slots_save,
+            mapdemo::slots_load_measure,
+            mapdemo::slots_load,
+            mapdemo::slots_from_json,
+            mapdemo::slots_to_json_measure,
+            mapdemo::slots_to_json
+        ),
+        variable_codec!(
+            "mapdemo",
+            "Spans",
+            mapdemo,
+            mapdemo::Spans,
+            mapdemo::spans_node_layout,
+            mapdemo::spans_measure,
+            mapdemo::spans_save,
+            mapdemo::spans_load_measure,
+            mapdemo::spans_load,
+            mapdemo::spans_from_json,
+            mapdemo::spans_to_json_measure,
+            mapdemo::spans_to_json
+        ),
+        variable_codec!(
+            "mapdemo",
+            "Text",
+            mapdemo,
+            mapdemo::Text,
+            mapdemo::text_node_layout,
+            mapdemo::text_measure,
+            mapdemo::text_save,
+            mapdemo::text_load_measure,
+            mapdemo::text_load,
+            mapdemo::text_from_json,
+            mapdemo::text_to_json_measure,
+            mapdemo::text_to_json
+        ),
+        variable_codec!(
+            "mapdemo",
+            "Trails",
+            mapdemo,
+            mapdemo::Trails,
+            mapdemo::trails_node_layout,
+            mapdemo::trails_measure,
+            mapdemo::trails_save,
+            mapdemo::trails_load_measure,
+            mapdemo::trails_load,
+            mapdemo::trails_from_json,
+            mapdemo::trails_to_json_measure,
+            mapdemo::trails_to_json
+        ),
+        variable_codec!(
+            "listdemo",
+            "Row",
+            listdemo,
+            listdemo::Row,
+            listdemo::row_node_layout,
+            listdemo::row_measure,
+            listdemo::row_save,
+            listdemo::row_load_measure,
+            listdemo::row_load,
+            listdemo::row_from_json,
+            listdemo::row_to_json_measure,
+            listdemo::row_to_json
+        ),
+        variable_codec!(
+            "listdemo",
+            "Sheet",
+            listdemo,
+            listdemo::Sheet,
+            listdemo::sheet_node_layout,
+            listdemo::sheet_measure,
+            listdemo::sheet_save,
+            listdemo::sheet_load_measure,
+            listdemo::sheet_load,
+            listdemo::sheet_from_json,
+            listdemo::sheet_to_json_measure,
+            listdemo::sheet_to_json
+        ),
+        variable_codec!(
+            "listdemo",
+            "Army",
+            listdemo,
+            listdemo::Army,
+            listdemo::army_node_layout,
+            listdemo::army_measure,
+            listdemo::army_save,
+            listdemo::army_load_measure,
+            listdemo::army_load,
+            listdemo::army_from_json,
+            listdemo::army_to_json_measure,
+            listdemo::army_to_json
+        ),
+        variable_codec!(
+            "listdemo",
+            "Deck",
+            listdemo,
+            listdemo::Deck,
+            listdemo::deck_node_layout,
+            listdemo::deck_measure,
+            listdemo::deck_save,
+            listdemo::deck_load_measure,
+            listdemo::deck_load,
+            listdemo::deck_from_json,
+            listdemo::deck_to_json_measure,
+            listdemo::deck_to_json
+        ),
+        variable_codec!(
+            "listdemo",
+            "Unbounded",
+            listdemo,
+            listdemo::Unbounded,
+            listdemo::unbounded_node_layout,
+            listdemo::unbounded_measure,
+            listdemo::unbounded_save,
+            listdemo::unbounded_load_measure,
+            listdemo::unbounded_load,
+            listdemo::unbounded_from_json,
+            listdemo::unbounded_to_json_measure,
+            listdemo::unbounded_to_json
+        ),
+        variable_codec!(
+            "listdemo",
+            "Bytes",
+            listdemo,
+            listdemo::Bytes,
+            listdemo::bytes_node_layout,
+            listdemo::bytes_measure,
+            listdemo::bytes_save,
+            listdemo::bytes_load_measure,
+            listdemo::bytes_load,
+            listdemo::bytes_from_json,
+            listdemo::bytes_to_json_measure,
+            listdemo::bytes_to_json
+        ),
+        variable_codec!(
+            "listdemo",
+            "Ints",
+            listdemo,
+            listdemo::Ints,
+            listdemo::ints_node_layout,
+            listdemo::ints_measure,
+            listdemo::ints_save,
+            listdemo::ints_load_measure,
+            listdemo::ints_load,
+            listdemo::ints_from_json,
+            listdemo::ints_to_json_measure,
+            listdemo::ints_to_json
+        ),
+        variable_codec!(
+            "listdemo",
+            "Floats",
+            listdemo,
+            listdemo::Floats,
+            listdemo::floats_node_layout,
+            listdemo::floats_measure,
+            listdemo::floats_save,
+            listdemo::floats_load_measure,
+            listdemo::floats_load,
+            listdemo::floats_from_json,
+            listdemo::floats_to_json_measure,
+            listdemo::floats_to_json
+        ),
+        variable_codec!(
+            "listdemo",
+            "Save",
+            listdemo,
+            listdemo::Save,
+            listdemo::save_node_layout,
+            listdemo::save_measure,
+            listdemo::save_save,
+            listdemo::save_load_measure,
+            listdemo::save_load,
+            listdemo::save_from_json,
+            listdemo::save_to_json_measure,
+            listdemo::save_to_json
+        ),
+        variable_codec!(
+            "listdemo",
+            "Mixed",
+            listdemo,
+            listdemo::Mixed,
+            listdemo::mixed_node_layout,
+            listdemo::mixed_measure,
+            listdemo::mixed_save,
+            listdemo::mixed_load_measure,
+            listdemo::mixed_load,
+            listdemo::mixed_from_json,
+            listdemo::mixed_to_json_measure,
+            listdemo::mixed_to_json
+        ),
+        variable_codec!(
+            "listdemo",
+            "Album",
+            listdemo,
+            listdemo::Album,
+            listdemo::album_node_layout,
+            listdemo::album_measure,
+            listdemo::album_save,
+            listdemo::album_load_measure,
+            listdemo::album_load,
+            listdemo::album_from_json,
+            listdemo::album_to_json_measure,
+            listdemo::album_to_json
+        ),
+        variable_codec!(
+            "blobdemo",
+            "Catalog",
+            blobdemo,
+            blobdemo::Catalog,
+            blobdemo::catalog_node_layout,
+            blobdemo::catalog_measure,
+            blobdemo::catalog_save,
+            blobdemo::catalog_load_measure,
+            blobdemo::catalog_load,
+            blobdemo::catalog_from_json,
+            blobdemo::catalog_to_json_measure,
+            blobdemo::catalog_to_json
+        ),
+        variable_codec!(
+            "graphdemo",
+            "Scene",
+            graphdemo,
+            graphdemo::Scene,
+            graphdemo::scene_node_layout,
+            graphdemo::scene_measure,
+            graphdemo::scene_save,
+            graphdemo::scene_load_measure,
+            graphdemo::scene_load,
+            graphdemo::scene_from_json,
+            graphdemo::scene_to_json_measure,
+            graphdemo::scene_to_json
+        ),
+        variable_codec!(
+            "tblp2",
+            "Chain",
+            tblp2,
+            tblp2::Chain,
+            tblp2::chain_node_layout,
+            tblp2::chain_measure,
+            tblp2::chain_save,
+            tblp2::chain_load_measure,
+            tblp2::chain_load,
+            tblp2::chain_from_json,
+            tblp2::chain_to_json_measure,
+            tblp2::chain_to_json
+        ),
         codec!(
             "widedemo",
             "Caption",
@@ -1600,7 +2158,7 @@ fn surface_alloc_audit(manifest: &Manifest) {
         fail("the generated code allocates on a read or write path");
     }
     println!(
-        "alloc audit: load, measure, save, from_json, to_json_measure and to_json — 0 allocations, every instance"
+        "alloc audit: fixed codecs and variable region measure/load — 0 allocations, every instance"
     );
 }
 
@@ -1685,7 +2243,12 @@ fn wire_fuzz() {
         } else {
             None
         };
-        output.write_all(&[u8::from(row.is_some())]).unwrap();
+        if let Some(layout) = row.and_then(|r| r.native_layout) {
+            output.write_all(&[2]).unwrap();
+            output.write_all(&layout()).unwrap();
+        } else {
+            output.write_all(&[u8::from(row.is_some())]).unwrap();
+        }
         roster.push(row);
     }
     output.flush().unwrap();
@@ -1715,11 +2278,18 @@ fn wire_fuzz() {
         output
             .write_all(&[u8::from(report.malformed), u8::from(report.refused)])
             .unwrap();
-        output.write_all(&(-1i64).to_le_bytes()).unwrap();
+        output
+            .write_all(&report.measure.unwrap_or(-1).to_le_bytes())
+            .unwrap();
         output.write_all(&[0; 8]).unwrap(); // retained, retain_lost
         output
             .write_all(&saved.as_ref().map_or(-1, |v| v.len() as i64).to_le_bytes())
             .unwrap();
+        if codec.native_layout.is_some() {
+            output
+                .write_all(&report.measure_reason.to_le_bytes())
+                .unwrap();
+        }
         if let Some(saved) = saved {
             output.write_all(&saved).unwrap();
         }

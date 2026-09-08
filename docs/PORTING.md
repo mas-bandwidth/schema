@@ -415,7 +415,7 @@ a managed backend allocates inside its runtime and says so.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-hooks` | ❌ #410 (raw `calloc`/`free` on the pointer path) | — no allocating path exists: a pointered unit's wire is refused and the fixed class allocates nothing (`tables-rust-alloc-audit`) | — the runtime allocates inside itself and says so (docs/SPEC-TABLES.md, "who calls the allocator is per form") | — the runtime allocates inside itself and says so (docs/SPEC-TABLES.md) | — the runtime allocates inside itself and says so; where it does is named per path at `tables-java-alloc` | — the runtime allocates inside itself and says so; every unavoidable allocation is named in the floor (docs/SPEC-TABLES.md) | — the runtime allocates inside itself and says so (docs/SPEC-TABLES.md) | — the BEAM allocates every term; the count is pinned instead (docs/SPEC-TABLES.md) |
+| ✅ `tables-hooks` | ❌ #410 (raw `calloc`/`free` on the pointer path) | — authoring uses the Rust global allocator for worker slabs, numbering and packed storage; region reads allocate nothing (`tables-rust-alloc-audit`) | — the runtime allocates inside itself and says so (docs/SPEC-TABLES.md, "who calls the allocator is per form") | — the runtime allocates inside itself and says so (docs/SPEC-TABLES.md) | — the runtime allocates inside itself and says so; where it does is named per path at `tables-java-alloc` | — the runtime allocates inside itself and says so; every unavoidable allocation is named in the floor (docs/SPEC-TABLES.md) | — the runtime allocates inside itself and says so (docs/SPEC-TABLES.md) | — the BEAM allocates every term; the count is pinned instead (docs/SPEC-TABLES.md) |
 
 ### M11 — The layout contract is asserted in generated code
 
@@ -835,7 +835,7 @@ through `go build -overlay` and each turning the fuzzer red on its own verdict.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ❌ #512 | ❌ #518 (fixed-class form 1: `tables-rust-wire-boundaries`; messages and the variable class remain) | ❌ #511 | ❌ #513 | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 |
+| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ❌ #512 | ❌ #518 (fixed and variable form 1: `tables-rust-wire-boundaries`; message and retention completion remains) | ❌ #511 | ❌ #513 | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 |
 
 ### M21 — A float crosses two widths by bit surgery, never by conversion
 
@@ -1309,7 +1309,7 @@ check removed reds on the report.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ❌ #492 | ✅ `tables-rust-wire-fuzz` `tables-rust-wire-fuzz-negative-control` (fixed-class form 1; other roots answer absent) | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 |
+| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ❌ #492 | ✅ `tables-rust-wire-fuzz` `tables-rust-wire-fuzz-negative-control` (fixed and variable form 1; native sizes and refusal reasons are independently checked; other roots answer absent) | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 |
 
 ### J1 — Accessor and descriptor agreement
 
@@ -1429,3 +1429,15 @@ the Dart leg's `WIRE GOLDEN MISMATCH` in `bench/tables/dart/leg`.
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
 | ❌ #425 | ❌ #425 | ❌ #425 | ❌ #425 | ❌ #425 | ❌ #425 | ❌ #425 | ✅ `bench/tables/dart/leg` | ✅ `tables-elixir-bench-gate` |
+
+A wire region uses the target language's native records; a cooked region uses the canonical C ABI records. Rust's wire-fuzz driver reports a compile-time native-size table, and the harness derives each mutant's region extent from that table and its framing. Byte counts need not match C++; measured bounds, refusal reasons and decoded behavior must agree.
+
+Rust variable authoring uses independent `TableArena` workers, each with a
+64 KiB slab front. Large blobs own a separate span. A worker can move to a
+thread; `join` transfers ownership after that thread finishes, preserving
+node addresses and collection element handles. `lock` consumes the builder
+and removes arena slack. A loaded `TableRegion` borrows data and attribution
+separately; `release_attribution` returns a data-only view. Caller buffers are
+`TableStorageWord` (`MaybeUninit<u128>`) so native struct padding is represented
+correctly. Native records are `Send + Sync` and descriptors bind their types;
+unsafe callback implementations must uphold that contract.

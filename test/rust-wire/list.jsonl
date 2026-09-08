@@ -1,0 +1,4 @@
+{}
+{"rows":[{"values":[1,2,3]},{"values":[4]}],"after":42}
+{"refs":[{"&node":1,"values":[7]},null,{"&node":1}],"grades":["A","B","C"]}
+{"hits":[{"body":{"values":[8,9]}},{"damage":7},{"empty":{}},{}],"bounded":[-1,50,101]}

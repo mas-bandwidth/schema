@@ -2,8 +2,7 @@ package rusttable
 
 // Wide text follows C++ TableJsonReadWide/WriteWide exactly, using native
 // u128 arithmetic. Fixed-point fractions are exact dyadic values, never f64.
-const wideRuntime = `
-fn table_json_wide_signed(kind: u8) -> bool {
+const wideRuntime = `fn table_json_wide_signed(kind: u8) -> bool {
     kind == 18 || (20..=24).contains(&kind)
 }
 unsafe fn table_json_wide_load(storage: *const u8, f: &TableFieldInfo) -> u128 {

@@ -62,59 +62,20 @@ func TestRustEmitsTableModules(t *testing.T) {
 	}
 }
 
-// TestRustRefusesPointeredTables: the Rust variable-class refusal is a refusal
-// of the WIRE SURFACE and of nothing else (docs/SPEC-TABLES.md §11), exactly as
-// the C# one is. The wire codec is the half the variable class is missing — the
-// arena, the builder, the region, the node table — and the two ACCELERATORS
-// need none of it: a block and a cook are POINTED AT, not parsed.
-func TestRustRefusesPointeredTables(t *testing.T) {
-	c := New()
-	u := unitFromSource(t, packetSrc+`
-table Node
-{
-    value int32
-    next  *Node
+// Pointered units carry both their wire and accelerator surfaces.
+func TestRustCarriesPointeredTables(t *testing.T) {
+	files, err := New().Generate(unitFromSource(t, packetSrc+`
+table Node {
+ value int32
+ next *Node
 }
-`)
-	files, err := c.Generate(u, "rust", Options{})
+`), "rust", Options{})
 	if err != nil {
-		t.Fatalf("--lang rust refused a pointered unit outright — the accelerators need no codec: %v", err)
+		t.Fatal(err)
 	}
-	cooks := 0
-	for name, data := range files {
-		if strings.HasSuffix(name, "_table.rs") || name == "table_runtime.rs" {
-			t.Errorf("--lang rust emitted the WIRE surface %s for a pointered unit", name)
-		}
-		if !strings.HasSuffix(name, "_cook.rs") && !strings.HasSuffix(name, "_block.rs") {
-			continue
-		}
-		if strings.HasSuffix(name, "_cook.rs") {
-			cooks++
-		}
-		text := string(data)
-		if !strings.Contains(text, "THE RUST WIRE SURFACE OF THIS UNIT IS REFUSED, BY NAME") {
-			t.Errorf("%s carries no refusal banner", name)
-		}
-		if !strings.Contains(text, "Node") || !strings.Contains(text, "named follow-on") {
-			t.Errorf("%s does not name the table and the follow-on", name)
-		}
-	}
-	if cooks == 0 {
-		t.Error("--lang rust emitted no cook reader for a pointered unit — a root is any table (docs/SPEC-TABLES.md §7)")
-	}
-	for name, data := range files {
-		if !strings.HasSuffix(name, "_cook.rs") {
-			continue
-		}
-		text := string(data)
-		if !strings.Contains(text, "pub struct NodeCook") {
-			t.Errorf("%s declares no NodeCook", name)
-		}
-		if !strings.Contains(text, "pub unsafe fn open(bytes: *const u8, length: u64) -> Option<NodeCook>") {
-			t.Errorf("%s declares NodeCook without the pointer-and-length open", name)
-		}
-		if !strings.Contains(text, "pub unsafe fn node_at(slot: *const i64) -> *const NodeRow") {
-			t.Errorf("%s declares NodeCook without node_at, which is how a reference is dereferenced (§6.3)", name)
+	for _, name := range []string{"table_runtime.rs", "probe_table.rs", "probe_cook.rs"} {
+		if len(files[name]) == 0 {
+			t.Errorf("missing %s", name)
 		}
 	}
 }

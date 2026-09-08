@@ -16,17 +16,6 @@ type rustTarget struct{}
 func (rustTarget) Names() []string { return []string{"rust"} }
 
 func (rustTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
-	for _, check := range []func(*ir.Unit, string) error{refuseBlobs} {
-		if err := check(u, "rust"); err != nil {
-			return nil, err
-		}
-	}
-	if err := refuseMaps(u, "rust"); err != nil {
-		return nil, err
-	}
-	if err := refuseLists(u, "rust"); err != nil {
-		return nil, err
-	}
 	files, err := rust.Generate(u)
 	if err != nil {
 		return nil, err
@@ -58,11 +47,13 @@ func (rustTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 }
 
 func init() {
+	registerListCarrier("rust")
+	registerMapCarrier("rust")
 	registerWideTextCarrier("rust")
 	registerTableWideTextCarrier("rust")
 	registerPacketValueDefaultCarrier("rust")
 	registerOptionalArrayCarrier("rust")
 	valueDefaultTargets = append(valueDefaultTargets, "rust")
 	wasRowTargets = append(wasRowTargets, "rust")
-	registerBuiltin(rustTarget{}, true, true, true, false)
+	registerBuiltin(rustTarget{}, true, true, true, true)
 }

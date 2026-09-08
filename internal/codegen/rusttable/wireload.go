@@ -8,7 +8,7 @@ import (
 
 func (g *gen) emitLoad(st *ir.Struct) {
 	g.pf("#[inline(always)]\npub fn %s(r: &mut TableReader, report: &mut TableReport, value: &mut %s) -> bool {\n", fn(st.Name, "load_body"), st.Name)
-	g.pf("    %s(value);\n    loop {\n", fn(st.Name, "reset"))
+	g.pf("    %s(value);\n    loop {\n        if r.builder_refused(){return false;}\n", fn(st.Name, "reset"))
 	g.pf("        let field_id = match r.getid() {\n            Some(None) => return true,\n            Some(Some(id)) => id,\n            None => { report.malformed = true; return false; }\n        };\n")
 	g.pf("        if r.reserved(field_id) || !r.has(1) { report.malformed = true; return false; }\n        let kind = r.get8();\n        match field_id {\n")
 	for _, f := range st.Fields {
@@ -34,7 +34,13 @@ func (g *gen) emitLoad(st *ir.Struct) {
 		}
 		g.pf("                }\n            }\n")
 	}
+	if g.variable[st.Name] {
+		g.pf("            u64::MAX if r.is_root() => { if !r.skip(kind) { report.malformed=true; return false; } }\n")
+	}
 	g.pf("            _ => {\n                report.unknown += 1;\n                if !r.skip(kind) { report.malformed = true; return false; }\n            }\n        }\n    }\n}\n\n")
+	if g.variable[st.Name] {
+		return
+	}
 	g.pf("pub fn %s(value: &mut %s, bytes: &[u8], report: &mut TableReport) -> TableOpenVerdict {\n", fn(st.Name, "load_verdict"), st.Name)
 	g.pf("    let mut r = match TableReader::open(bytes) {\n        Ok(r) => r,\n        Err(verdict) => {\n            %s(value);\n            report.verdict = verdict;\n            if verdict == TableOpenVerdict::Damaged { report.malformed = true; }\n            return verdict;\n        }\n    };\n", fn(st.Name, "reset"))
 	g.pf("    report.verdict = if %s(&mut r, report, value) { TableOpenVerdict::Ok } else { TableOpenVerdict::BodyStopped };\n    report.verdict\n}\n\n", fn(st.Name, "load_body"))
@@ -49,12 +55,18 @@ func (g *gen) takeBody(reader, name, onBad string) {
 
 func (g *gen) emitLoadPayload(f *ir.Field) {
 	switch {
+	case f.IsList() || f.IsMap():
+		g.pf("if !unsafe{table_sequence_load(r,report,&mut value.%s as *mut _ as *mut u8,%s())}{return false;}\n", f.Name, sequenceName(g.owner, f))
+	case f.Type.Pointer && f.Array == ir.ArrayNone:
+		g.emitLoadElement(f, "r", "value."+f.Name, true, readBad)
 	case f.Type.Kind == ir.TWString:
 		g.pf("let text = match r.take() { Some(text) => text, None => { %s } };\n", readBad)
 		g.pf("match text.utf16(&mut value.%s) { Some(keep) => { value.%s_length = keep as i32; if text.buffer.len()/2 > %d { report.clamped += 1; } }, None => { report.malformed = true; value.%s_length = 0; } }\n", f.Name, f.Name, f.Type.Size, f.Name)
 	case f.Type.Kind == ir.TString:
 		g.pf("let text = match r.take() { Some(r) => r, None => { %s } };\n", readBad)
-		g.pf("if text.buffer.contains(&0) || core::str::from_utf8(text.buffer).is_err() {\n    report.malformed = true;\n    value.%s_length = 0;\n} else {\n", f.Name)
+		g.pf("if text.buffer.contains(&0) || core::str::from_utf8(text.buffer).is_err() {\n    report.malformed = true;\n")
+		g.emitResetField(f)
+		g.pf("} else {\n")
 		g.pf("    let mut keep = text.buffer.len();\n    if keep > %d {\n        keep = %d;\n        while keep > 0 && text.buffer[keep] & 0xc0 == 0x80 { keep -= 1; }\n        report.clamped += 1;\n    }\n", f.Type.Size, f.Type.Size)
 		g.pf("    value.%s[..keep].copy_from_slice(&text.buffer[..keep]);\n    value.%s_length = keep as i32;\n}\n", f.Name, f.Name)
 	case f.KeyEnum != "":
@@ -68,15 +80,15 @@ func (g *gen) emitLoadPayload(f *ir.Field) {
 
 func (g *gen) emitLoadElement(f *ir.Field, r, target string, framed bool, onBad string) {
 	switch {
+	case f.Type.Pointer:
+		g.pf("let index = match %s.getleb() { Some(index)=>index,None=>{ %s } };\n%s.reference(&mut %s,index,report);\n", r, onBad, r, target)
 	case isStruct(f):
 		if framed {
 			g.takeBody(r, "element", onBad)
 			r = "element"
 		}
-		g.pf("%s(&mut %s, report, &mut %s);\n", fn(f.Type.Name, "load_body"), r, target)
-		if f.Array == ir.ArrayNone && f.KeyEnum == "" {
-			g.pf("if %s.offset != %s.buffer.len() { report.malformed = true; %s(&mut %s); }\n", r, r, fn(f.Type.Name, "reset"), target)
-		}
+		g.pf("%s(&mut %s, report, &mut %s);\nif %s.builder_refused(){return false;}\n", fn(f.Type.Name, "load_body"), r, target, r)
+		g.pf("if %s.offset != %s.buffer.len() { report.malformed = true; %s(&mut %s); }\n", r, r, fn(f.Type.Name, "reset"), target)
 	case isEnum(f):
 		g.pf("%s = match %s.getid() {\n    Some(None) => %s::NONE,\n    Some(Some(id)) => match %s::table_value(id) { Some(v) => v, None => { report.unknown += 1; %s::NONE } },\n    None => { %s }\n};\n", target, r, f.Type.Name, f.Type.Name, f.Type.Name, onBad)
 	case isUnion(f):
@@ -144,7 +156,7 @@ func (g *gen) emitLoadUnion(f *ir.Field, r, target, onBad string) {
 	if r == "r" {
 		r = "*r"
 	}
-	g.pf("if !%s(&mut %s, report, &mut %s, %v) { %s }\n", fn(f.Type.Name, "load_union"), r, target, f.Array != ir.ArrayNone, onBad)
+	g.pf("if !%s(&mut %s, report, &mut %s, %v) { if (%s).builder_refused(){return false;} %s }\n", fn(f.Type.Name, "load_union"), r, target, f.Array != ir.ArrayNone, r, onBad)
 }
 
 func (g *gen) emitElementKindCheck(f *ir.Field, kind int) {

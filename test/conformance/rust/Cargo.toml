@@ -13,6 +13,10 @@ name = "conformance-rust"
 path = "src/main.rs"
 
 [dependencies]
+mapdemo = { path = "../../../build/tables-generated-rust/mapdemo" }
+listdemo = { path = "../../../build/tables-generated-rust/listdemo" }
+blobdemo = { path = "../../../build/tables-generated-rust/blobdemo" }
+tblp2 = { path = "../../../build/tables-generated-rust/tblp2" }
 widedemo = { path = "../../../build/tables-generated-rust/widedemo" }
 scalardemo = { path = "../../../build/tables-generated-rust/scalardemo" }
 scalardemo2 = { path = "../../../build/tables-generated-rust/scalardemo2" }

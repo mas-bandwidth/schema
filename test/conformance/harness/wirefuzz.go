@@ -85,6 +85,7 @@ type wireRoot struct {
 	// the C ABI storage each node type commands (docs/SPEC-TABLES.md §6.5,
 	// §20.3), by wire type id, eight-aligned as a reader's LoadMeasure rounds it
 	storage     map[uint64]int64
+	native      *nativeLayout
 	rootStorage int64
 	maxStorage  int64
 }
@@ -163,11 +164,12 @@ func newWireRoot(u *units, unitKey, rootName string, message, retain bool) (*wir
 // legReply is what a leg answers for one mutant (test/conformance/README.md,
 // "The wire-fuzz driver").
 type legReply struct {
-	loaded   bool
-	report   Counts
-	measure  int64
-	saved    []byte
-	saveFail bool
+	loaded        bool
+	report        Counts
+	measure       int64
+	measureReason uint32
+	saved         []byte
+	saveFail      bool
 	// RETENTION'S TWO COUNTERS (docs/SPEC-TABLES.md §6.6). They ride beside
 	// Counts rather than inside it, because Counts is the MANIFEST's own
 	// report spelling, which every port's `report` surface prints and which
@@ -183,8 +185,9 @@ type oracleAnswer struct {
 	encFail bool
 	// the region bytes a variable-class reader owes: exact when the node
 	// table read whole, else the most the framing could have commanded
-	exact bool
-	bytes int64
+	exact         bool
+	bytes         int64
+	measureReason uint32
 	// the same two counters from the engine
 	retained   int
 	retainLost int
@@ -196,6 +199,9 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 			err = fmt.Errorf("the oracle PANICKED on the mutant: %v\n%s", p, debug.Stack())
 		}
 	}()
+	if r.native != nil && !r.message {
+		defer func() { ans.bytes, ans.measureReason = r.nativeMeasure(data); ans.exact = true }()
+	}
 	inst := r.model.New(r.def)
 	var rep tabletext.Report
 	// THE MESSAGE FORM's mutants are read against the CONNECTION's table and
@@ -270,6 +276,9 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 		ans.encoded = encoded
 	}
 	if r.variable {
+		if r.native != nil && !r.message {
+			return ans, nil
+		}
 		if r.message {
 			r.sizeBatch(&ans, data)
 			return ans, nil
@@ -361,6 +370,13 @@ func startWireLeg(command string, roots []*wireRoot) (*wireLeg, error) {
 			return nil, fmt.Errorf("the leg did not answer the roster: %w\n%s", err, leg.stderr.String())
 		}
 		leg.known[i] = b != 0
+		if b == 2 {
+			layout, err := readNativeLayout(leg.stdout)
+			if err != nil {
+				return nil, err
+			}
+			roots[i].native = layout
+		}
 	}
 	return leg, nil
 }
@@ -376,7 +392,7 @@ func (l *wireLeg) send(rootIndex int, data []byte) error {
 	return err
 }
 
-func (l *wireLeg) receive() (legReply, error) {
+func (l *wireLeg) receive(native bool) (legReply, error) {
 	var rep legReply
 	// loaded, the five counters, malformed, the REFUSAL VERDICT (§3), the
 	// measure and the saved length
@@ -397,6 +413,11 @@ func (l *wireLeg) receive() (legReply, error) {
 	// entry that does not retain (docs/SPEC-TABLES.md §6.6)
 	rep.retained = int(int32(binary.LittleEndian.Uint32(head[31:])))
 	rep.retainLost = int(int32(binary.LittleEndian.Uint32(head[35:])))
+	if native {
+		if err := binary.Read(l.stdout, binary.LittleEndian, &rep.measureReason); err != nil {
+			return rep, err
+		}
+	}
 	n := int64(binary.LittleEndian.Uint64(head[39:]))
 	if n < 0 {
 		rep.saveFail = true
@@ -430,6 +451,15 @@ func (l *wireLeg) kill() {
 // wireVerdict compares one leg reply with the oracle's answer and names the
 // first disagreement, or "" when there is none.
 func wireVerdict(root *wireRoot, reply legReply, ans oracleAnswer) string {
+	if root.native != nil && reply.measureReason != ans.measureReason {
+		return fmt.Sprintf("the native measure reason differs: leg %d, oracle %d", reply.measureReason, ans.measureReason)
+	}
+	if root.native != nil && ans.exact && ans.bytes < 0 {
+		if reply.measure >= 0 {
+			return "the native framing measure should refuse"
+		}
+		return ""
+	}
 	if !reply.loaded {
 		if root.variable && reply.measure < 0 {
 			// LOADMEASURE REFUSED THE FRAMING, so there was no region to load
@@ -693,7 +723,7 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 	enumeratedCount := 0
 	for mut := range sent {
 		root := roots[seedRoot[mut.seed]]
-		reply, err := leg.receive()
+		reply, err := leg.receive(root.native != nil)
 		if err != nil {
 			leg.kill()
 			return wireFailure(opts, mut, total, fmt.Sprintf("the leg died on the mutant (%v)", err), leg.stderr.String())

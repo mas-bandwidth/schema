@@ -138,13 +138,13 @@ func TestMapsAreLegal(t *testing.T) {
 // Every port refuses the UNIT, naming the fields, naming the carrier and
 // naming the flag that generates. A codec that never met the entry, its sort
 // or its ascending check must not be emitted anywhere.
-func TestMapsAreRefusedByEveryPort(t *testing.T) {
+func TestMapsAreRefusedByNonCarriers(t *testing.T) {
 	u := unitFromSource(t, mapSrc)
 	c := New()
 	for _, target := range c.Targets() {
 		t.Run(target, func(t *testing.T) {
 			_, err := c.Generate(u, target, Options{})
-			if target == "cpp" {
+			if target == "cpp" || target == "rust" {
 				if err != nil {
 					t.Fatalf("--lang cpp refused a map: the reference carries the codec (schema#380): %v", err)
 				}
@@ -166,9 +166,9 @@ func TestMapsAreRefusedByEveryPort(t *testing.T) {
 // and it is the C++ reference (docs/SPEC-TABLES.md §2.8, §15). A port that
 // registers here without its codec would turn every refusal below into a
 // silent acceptance.
-func TestMapCarrierIsTheReferenceAlone(t *testing.T) {
-	if len(mapTargets) != 1 || mapTargets[0] != "cpp" {
-		t.Fatalf("mapTargets = %v, want exactly [cpp] — the variable class is the reference's (docs/SPEC-TABLES.md §2.8, §15)", mapTargets)
+func TestMapCarriers(t *testing.T) {
+	if len(mapTargets) != 2 || mapTargets[0] != "cpp" || mapTargets[1] != "rust" {
+		t.Fatalf("mapTargets = %v, want exactly [cpp rust] (docs/SPEC-TABLES.md §2.8, §15)", mapTargets)
 	}
 }
 
@@ -197,7 +197,7 @@ func TestMapRefusalNamesTheCarrier(t *testing.T) {
 	if err == nil {
 		t.Fatalf("refuseMaps accepted a map-bearing unit for a non-carrier")
 	}
-	for _, want := range []string{"a map is cpp only today", "Fleet.ships", "--lang cpp"} {
+	for _, want := range []string{"a map is cpp and rust only today", "Fleet.ships", "--lang cpp"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the carrier-form refusal does not name %q: %v", want, err)
 		}

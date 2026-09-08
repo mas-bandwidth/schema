@@ -35,6 +35,9 @@ func (g *gen) emitSave(st *ir.Struct) {
 		}
 	}
 	g.pf("    w.putleb(0);\n    !w.overflow\n}\n\n")
+	if g.variable[st.Name] {
+		return
+	}
 	g.pf("pub fn %s(value: &%s, buffer: &mut [u8]) -> i64 {\n", fn(st.Name, "save"), st.Name)
 	g.pf("    let mut ids = [0u64; %d];\n", ir.TableWireIdCapacity(g.unit))
 	g.pf("    let mut w = TableWriter::new(Some(buffer), &mut ids);\n")
@@ -45,16 +48,20 @@ func (g *gen) emitSave(st *ir.Struct) {
 func (g *gen) emitSaveField(f *ir.Field) {
 	// Validate live counts before slicing, in both the measure and save walks.
 	switch {
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes:
+	case !f.Type.Pointer && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes):
 		g.pf("    if value.%s_length < 0 || value.%s_length > %d { return false; }\n", f.Name, f.Name, f.Type.Size)
 	case f.Array == ir.ArrayCounted:
 		g.pf("    if value.%s_count < 0 || value.%s_count > %d { return false; }\n", f.Name, f.Name, f.ArrayBound)
 	}
 	cond := g.nonDefaultTest(f)
 	switch {
+	case f.IsList() || f.IsMap():
+		cond = "!value." + f.Name + ".is_empty()"
+	case f.Type.Pointer && f.Array == ir.ArrayNone:
+		cond = "!value." + f.Name + ".is_null()"
 	case f.Type.Optional:
 		cond = "value." + f.Name + "_present"
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes:
+	case !f.Type.Pointer && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes):
 		cond = "value." + f.Name + "_length > 0"
 		if len(f.DefBytes) > 0 {
 			cond = fmt.Sprintf("value.%s_length != %d || value.%s[..value.%s_length as usize] != %s", f.Name, len(f.DefBytes), f.Name, f.Name, rustBytes(f.DefBytes))
@@ -67,7 +74,7 @@ func (g *gen) emitSaveField(f *ir.Field) {
 	case f.Array == ir.ArrayCounted:
 		cond = "value." + f.Name + "_count > 0"
 	case f.Array == ir.ArrayFixed:
-		if isStruct(f) {
+		if isStruct(f) && !f.Type.Pointer {
 			cond = "true"
 		} else {
 			cond = fmt.Sprintf("value.%s.iter().any(|v| *v != %s)", f.Name, g.arrayElementDefault(f))
@@ -75,12 +82,16 @@ func (g *gen) emitSaveField(f *ir.Field) {
 	case isUnion(f):
 		cond = "value." + f.Name + " != " + f.Type.Name + "::None"
 	case isStruct(f):
-		g.pf("    let size = %s(&value.%s);\n    if size < 0 { return false; }\n", fn(f.Type.Name, "measure"), f.Name)
-		cond = "size > 10" // empty form: form + terminator + zero entry count
+		g.pf("    let size = w.body_size(|w| %s(w, &value.%s));\n    if size < 0 { return false; }\n", fn(f.Type.Name, "save_body"), f.Name)
+		cond = "size > 1" // empty form: form + terminator + zero entry count
 	}
 	g.pf("    if %s {\n", cond)
 	g.pf("        w.putid(0x%016x);\n        w.put8(%d); // %s\n", ir.TableFieldWireId(f), ir.TableWireFieldKind(f), f.Name)
 	switch {
+	case f.IsList() || f.IsMap():
+		g.pf("if !unsafe{table_sequence_save(w, &value.%s as *const _ as *const u8,%s())}{return false;}\n", f.Name, sequenceName(g.owner, f))
+	case f.Type.Pointer && f.Array == ir.ArrayNone:
+		g.emitSaveElement(f, "value."+f.Name, true)
 	case f.Type.Kind == ir.TWString:
 		g.pf("w.putleb(value.%s_length as u64 * 2);\nfor &unit in &value.%s[..value.%s_length as usize] { w.put16(unit); }\n", f.Name, f.Name, f.Name)
 	case f.Type.Kind == ir.TString:
@@ -116,6 +127,8 @@ func (g *gen) emitSaveElement(f *ir.Field, expr string, framed bool) {
 		expr = "(*arm)"
 	}
 	switch {
+	case f.Type.Pointer:
+		g.pf("if !w.putref(&(%s)) { return false; }\n", expr)
 	case isStruct(f):
 		if framed {
 			g.pf("        if !w.framed(|w| %s(w, &%s)) { return false; }\n", fn(f.Type.Name, "save_body"), expr)
@@ -135,7 +148,7 @@ func (g *gen) emitSaveElement(f *ir.Field, expr string, framed bool) {
 
 func (g *gen) emitKeyedSlotSkip(f *ir.Field) {
 	if isStruct(f) {
-		g.pf("        let size = %s(&%s[i]);\n        if size < 0 { return false; }\n        if size == 10 { continue; }\n", fn(f.Type.Name, "measure"), g.keyedSlots(f))
+		g.pf("        let size = w.body_size(|w| %s(w, &%s[i]));\n        if size < 0 { return false; }\n        if size == 1 { continue; }\n", fn(f.Type.Name, "save_body"), g.keyedSlots(f))
 	} else {
 		g.pf("        if %s[i] == %s { continue; }\n", g.keyedSlots(f), zeroScalar(f))
 	}

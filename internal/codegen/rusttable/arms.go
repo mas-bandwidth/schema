@@ -10,11 +10,11 @@ import (
 // A union remains a Rust enum. Only payloads with a live length need a
 // wrapper; scalar and fixed-array arms keep their natural Rust type.
 func armCounted(f *ir.Field) bool {
-	return f != nil && (f.Array == ir.ArrayCounted || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes)
+	return f != nil && (f.Array == ir.ArrayCounted || !f.Type.Pointer && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes))
 }
 func armType(f *ir.Field) string {
 	t := rustFieldType(f.Type)
-	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes {
+	if !f.Type.Pointer && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes) {
 		t = fmt.Sprintf("[%s; %d]", t, f.Type.Size)
 	} else if f.Array != ir.ArrayNone {
 		t = fmt.Sprintf("[%s; %d]", t, f.ArrayBound)
@@ -26,7 +26,7 @@ func armType(f *ir.Field) string {
 }
 func armZero(f *ir.Field) string {
 	z := zeroScalar(f)
-	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes {
+	if !f.Type.Pointer && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes) {
 		z = fmt.Sprintf("[0; %d]", f.Type.Size)
 	} else if f.Array != ir.ArrayNone {
 		z = fmt.Sprintf("[%s; %d]", z, f.ArrayBound)
@@ -188,6 +188,8 @@ func (g *gen) emitUnionWire(u *ir.Union) {
 }
 func (g *gen) emitSaveArm(f *ir.Field) {
 	switch {
+	case f.Type.Pointer && f.Array == ir.ArrayNone:
+		g.emitSaveElement(f, "*arm", false)
 	case f.Type.Kind == ir.TWString:
 		g.pf("if arm.length < 0 || arm.length > %d { return false; }\nfor &unit in &arm.value[..arm.length as usize] { w.put16(unit); }\n", f.Type.Size)
 	case f.Type.Kind == ir.TString:
@@ -212,6 +214,9 @@ func (g *gen) emitSaveArm(f *ir.Field) {
 func (g *gen) emitLoadArm(f *ir.Field) {
 	bad := "report.malformed = true; return true;"
 	switch {
+	case f.Type.Pointer && f.Array == ir.ArrayNone:
+		g.emitLoadElement(f, "body", "arm", false, bad)
+		g.pf("if body.offset != body.buffer.len() { %s }\n", bad)
 	case f.Type.Kind == ir.TWString:
 		g.pf("arm.length = match body.utf16(&mut arm.value) { Some(keep) => keep as i32, None => { %s } };\nif body.buffer.len()/2 > %d { report.clamped += 1; }\n", bad, f.Type.Size)
 	case f.Type.Kind == ir.TString:

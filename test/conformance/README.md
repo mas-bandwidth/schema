@@ -350,7 +350,7 @@ driver is.
 | direction | what | when |
 |---|---|---|
 | in | `u32` roster count, then per root: `u16 n`, the unit key, `u16 n`, the root table's name, `u8` the FORM, `u8` RETAIN | once, first |
-| out | one byte per roster entry: `1` when this leg has a codec for it, else `0` | once, in reply |
+| out | one byte per roster entry: `0` absent, `1` supported with C record layout, or `2` supported with native layout followed by the versioned native-size table below | once, in reply |
 | in | per mutant: `u32` roster index, `u32` length, the bytes | until EOF |
 | out | per mutant: `u8 loaded`; `i32 unknown, kind_mismatch, widened, clamped, duplicate`; `u8 malformed`; `u8 refused`; `i64 measure`; `i32 retained, retain_lost`; `i64 saved`, then that many bytes | one reply per mutant, flushed before the next is read |
 
@@ -516,3 +516,26 @@ Named, with the reason, so a port knows what it is not being asked for:
 - **The block form's fuzzers** (`test/tables/block_fuzz_main.cpp` and its C#
   twin) and the cook's. A fuzzer is a search, not a case, and the finds it
   produces land here as forgery rows — `block_offset_overflow` is one.
+
+The native-size table (roster answer `2`) contains `u32 version=2`, `u32
+region_alignment`, and `u32 record_count`, followed by each record's `u64
+wire_type_id`, `u64 native_size`, `u32 sequence_count`, then that record's
+sequence fields as `(u64 field_id, u64 element_size, u32 element_alignment)`.
+Every integer is little-endian. The records include the root, pointer targets,
+and records reachable by value; the driver derives this table from compile-time
+reflection before any mutants arrive. The oracle combines these static facts
+with field framing and declared counts. Blob extents follow their reserved
+wire type IDs and framed lengths. This describes native storage without
+changing the canonical cooked layout or taking a mutant's measured size on
+trust.
+
+For a roster entry answered with `2`, each mutant reply also carries a
+little-endian `u32 measure_reason` immediately after the usual fixed reply
+header, before saved bytes. Values follow the native refusal vocabulary:
+0 for success or framing damage, 1 not_a_cook, 2 foreign_order,
+3 wrong_build_version, 4 reserved_not_zero, 5 bad_alignment, 6 truncated,
+7 unaligned_base, 8 bad_layout, 9 unknown_form, 10 count_over_length,
+11 count_over_extent_cap, 12 blob_over_size_cap, 13 data_cycle. A negative
+measure and reason zero denotes damage. The independent framing scan checks
+the reason even when no region can be loaded. This extension is negotiated
+by the roster; existing drivers keep the original reply layout.

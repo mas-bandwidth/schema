@@ -1,0 +1,28 @@
+package rustgraph
+
+table Node {
+    value int32 = 7
+    next *Node
+}
+union Edge {
+    pointer *Node
+    body Node
+    pointers [..3]*Node
+    empty
+    data *bytes
+    caption *string
+}
+table Meta {
+    value int32
+}
+table Root {
+    selected Edge
+    edges [3]Edge
+    pair [2]*Node
+    counted [..3]*Node
+    optional ?Meta
+    enabled bool
+    if enabled {
+        guarded *Node
+    }
+}

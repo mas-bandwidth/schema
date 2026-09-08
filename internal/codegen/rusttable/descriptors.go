@@ -53,7 +53,13 @@ func (g *gen) emitDescriptor(st *ir.Struct) {
 	}
 	g.pf("    ];\n")
 	g.pf("    static INFO: TableTypeInfo = TableTypeInfo {\n")
-	g.pf("        name: %q,\n", st.Name)
+	extent := "None"
+	if hasExtentStruct(st) {
+		extent = "Some(" + fn(st.Name, "wire_extent") + ")"
+	}
+	g.pf("wire_extent:%s,\n", extent)
+	g.pf("        name: %q, blob: 0,\n", st.Name)
+	g.pf("id: 0x%016x, align: core::mem::align_of::<%s>() as u32,\n initialize: |p| unsafe { (p as *mut %s).write(%s::default()); },\n save_body: |w,p| unsafe { %s(w,&*(p as *const %s)) },\n load_body: |r,report,p| unsafe { %s(r,report,&mut *(p as *mut %s)) },\n visit_refs: %s, rewrite_refs: %s,\n", ir.TableWireId(st.WireName()), st.Name, st.Name, st.Name, fn(st.Name, "save_body"), st.Name, fn(st.Name, "load_body"), st.Name, fn(st.Name, "visit_refs"), fn(st.Name, "rewrite_refs"))
 	g.pf("        size: core::mem::size_of::<%s>() as u32,\n", st.Name)
 	g.pf("        num_fields: %d,\n", len(st.Fields))
 	g.pf("        fields: &FIELDS,\n")
@@ -114,7 +120,11 @@ func (g *gen) resetAdapter(st *ir.Struct) string {
 
 // descriptorRow renders one TableFieldInfo literal.
 func (g *gen) descriptorRow(st *ir.Struct, f *ir.Field, guard string) string {
-	return g.descriptorRowAt(f, guard, "reset_"+f.Name, func(member string) string { return offsetOf(st.Name, member) })
+	row := g.descriptorRowAt(f, guard, "reset_"+f.Name, func(member string) string { return offsetOf(st.Name, member) })
+	if f.IsList() || f.IsMap() {
+		row = strings.Replace(row, "sequence: None,", "sequence: Some("+sequenceName(st, f)+"),", 1)
+	}
+	return row
 }
 func (g *gen) descriptorRowAt(f *ir.Field, guard, reset string, offset func(string) string) string {
 	var b strings.Builder
@@ -123,7 +133,10 @@ func (g *gen) descriptorRowAt(f *ir.Field, guard, reset string, offset func(stri
 	// and its element kind is what tells the text form it is base64 rather
 	// than a positional array of numbers.
 	kind := ir.TableWireScalarKind(f)
-	if f.Type.Kind == ir.TBytes {
+	if f.IsMap() {
+		kind = ir.TableKindTable
+	}
+	if !f.Type.Pointer && f.Type.Kind == ir.TBytes {
 		kind = ir.TableElemKind(f)
 	}
 
@@ -132,10 +145,14 @@ func (g *gen) descriptorRowAt(f *ir.Field, guard, reset string, offset func(stri
 	counted := "false"
 	countOffset := "u32::MAX"
 	presentOffset := "u32::MAX"
-	elemSize := fmt.Sprintf("core::mem::size_of::<%s>() as u32", rustFieldType(f.Type))
+	elemSize := fmt.Sprintf("core::mem::size_of::<%s>() as u32", sequenceType(f))
 
 	switch {
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString:
+	case f.IsList() || f.IsMap():
+		isArray, counted = "true", "true"
+		countOffset = "(" + offset(f.Name) + " + 8)"
+	case f.Type.Pointer && f.Array == ir.ArrayNone:
+	case !f.Type.Pointer && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString):
 		arrayBound = fmt.Sprint(f.Type.Size)
 		counted = "true"
 		countOffset = offset(f.Name + "_length")
@@ -192,6 +209,10 @@ func (g *gen) descriptorRowAt(f *ir.Field, guard, reset string, offset func(stri
 	arms := "None"
 	table := "None"
 	switch {
+	case f.IsMap():
+		table = fmt.Sprintf("Some(%s)", fn(f.MapEntry.Name, "table_type"))
+	case f.Type.Blob():
+		table = fmt.Sprintf("Some(%s)", pointeeInfo(f.Type))
 	case isEnum(f):
 		e := enumOf(f)
 		enumMax = fmt.Sprint(e.Max)
@@ -219,7 +240,7 @@ func (g *gen) descriptorRowAt(f *ir.Field, guard, reset string, offset func(stri
 		keyId = fmt.Sprintf("Some(|v| %s(v as %s).table_id().unwrap_or(0))", key.Name, rustUint(key.StorageBits))
 	}
 
-	fmt.Fprintf(&b, "TableFieldInfo {\n            reset: %s,\n", reset)
+	fmt.Fprintf(&b, "TableFieldInfo { sequence: None,\n            reset: %s,\n", reset)
 	fmt.Fprintf(&b, "            name: %q,\n", f.Name)
 	fmt.Fprintf(&b, "            json: %q,\n", ir.TableFieldJsonKey(f))
 	fmt.Fprintf(&b, "            type_name: %q,\n", tableFieldTypeName(f))
@@ -396,6 +417,12 @@ func (g *gen) emitJson(members []*ir.Struct) {
 	g.pf("// runtime, which is what makes the text form schema's rather than a\n")
 	g.pf("// packer's (§16.1).\n\n")
 	for _, st := range members {
+		if g.variable[st.Name] {
+			g.pf("pub fn %s(builder:&mut TableBuilder<%s>,text:&[u8],report:&mut TableReport) -> bool { table_graph_from_json(builder,text,report) }\n", fn(st.Name, "from_json"), st.Name)
+			g.pf("pub fn %s(value:&%s,context:TableContext<'_>) -> i64 { table_graph_to_json(value,context,None) }\n", fn(st.Name, "to_json_measure"), st.Name)
+			g.pf("pub fn %s(value:&%s,context:TableContext<'_>,buffer:&mut[u8]) -> i64 { table_graph_to_json(value,context,Some(buffer)) }\n", fn(st.Name, "to_json"), st.Name)
+			continue
+		}
 		g.pf("// %s fills one caller-owned %s from the §16 text, reporting every\n", fn(st.Name, "from_json"), st.Name)
 		g.pf("// tolerance event. Unknown keys skip, a duplicate key is last-wins, a key\n")
 		g.pf("// with the wrong JSON type is skipped and counted, never coerced.\n")

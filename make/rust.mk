@@ -314,7 +314,7 @@ generated/bench/rust/.stamp: bin/schema $(SCHEMAS_BENCH)
 # way it is a C++ namespace — its own package, its own protocol id, its own
 # table runtime. The crates carry a generated Cargo.toml each; nothing here is
 # checked in.
-RUST_TABLE_UNITS := widedemo:examples-wide scalardemo:tables/scalars scalardemo2:test/tables/Scalars2.schema tblr1:test/tables/R1.schema tblr2:test/tables/R2.schema tblf1:test/tables/F1.schema tblf2:test/tables/F2.schema tbla1:test/tables/A1.schema tbla2:test/tables/A2.schema tblk1:test/tables/K1.schema tblk2:test/tables/K2.schema tabledemo:tables/examples graphdemo:tables/pointers \
+RUST_TABLE_UNITS := mapdemo:tables/maps listdemo:tables/lists blobdemo:tables/blobs widedemo:examples-wide scalardemo:tables/scalars scalardemo2:test/tables/Scalars2.schema tblr1:test/tables/R1.schema tblr2:test/tables/R2.schema tblf1:test/tables/F1.schema tblf2:test/tables/F2.schema tbla1:test/tables/A1.schema tbla2:test/tables/A2.schema tblk1:test/tables/K1.schema tblk2:test/tables/K2.schema tabledemo:tables/examples graphdemo:tables/pointers \
 	blockdemo:tables/block blockhome:tables/blockhome \
 	tblv1:test/tables/V1.schema tblv2:test/tables/V2.schema \
 	tblp1:test/tables/P1.schema tblp2:test/tables/P2.schema \
@@ -474,9 +474,12 @@ build/rust-wire/reference: build/rust-wire/.stamp test/rust-wire/reference.cpp
 	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/rust-wire/cpp test/rust-wire/reference.cpp build/rust-wire/cpp/*Table.cpp -o $@
 
 .PHONY: tables-rust-wire-boundaries
-tables-rust-wire-boundaries: build/rust-wire/reference build/rust-arms/reference
+tables-rust-wire-boundaries: build/rust-wire/reference build/rust-arms/reference build/tables-generated-rust/.stamp
 	./build/rust-wire/reference build/rust-wire/cpp.bin
 	./build/rust-arms/reference test/rust-wire/arms.jsonl build/rust-arms/cpp.bin
+	./build/rust-graph/reference test/rust-wire/graph.jsonl build/rust-graph/cpp.bin
+	./build/rust-list/reference test/rust-wire/list.jsonl build/rust-list/cpp.bin
+	./build/rust-maps/reference test/rust-wire/maps.cases build/rust-maps/cpp.bin
 	PATH="$(RUSTUP_BIN):$$PATH" cargo test --quiet --manifest-path test/rust-wire/Cargo.toml
 	PATH="$(RUSTUP_BIN):$$PATH" cargo test --quiet --release --manifest-path test/rust-wire/Cargo.toml
 
@@ -515,3 +518,35 @@ build/rust-arms/.stamp: build/rust-wire/.stamp bin/schema test/rust-wire/Arms.sc
 
 build/rust-arms/reference: build/rust-wire/.stamp build/rust-arms/.stamp test/rust-wire/arms_reference.cpp
 	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/rust-arms/cpp test/rust-wire/arms_reference.cpp build/rust-arms/cpp/*Table.cpp -o $@
+
+# Pointer fields inside native enums and arrays use the same node directory.
+build/rust-graph/.stamp: bin/schema test/rust-wire/Graph.schema make/rust.mk
+	./bin/schema generate --lang rust --out build/rust-graph/rust/src test/rust-wire/Graph.schema
+	./bin/schema generate --lang cpp --out build/rust-graph/cpp test/rust-wire/Graph.schema
+	@printf '[package]\nname = "rustgraph"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = []\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../$(SERIALIZE_RS)" }\n' > build/rust-graph/rust/Cargo.toml
+	@touch $@
+
+build/rust-graph/reference: build/rust-graph/.stamp test/rust-wire/graph_reference.cpp
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/rust-graph/cpp test/rust-wire/graph_reference.cpp build/rust-graph/cpp/*Table.cpp -o $@
+
+tables-rust-wire-boundaries: build/rust-graph/reference
+
+build/rust-list/.stamp: build/rust-wire/.stamp bin/schema test/rust-wire/List.schema make/rust.mk
+	./bin/schema generate --lang rust --out build/rust-list/rust/src test/rust-wire/List.schema
+	./bin/schema generate --lang cpp --out build/rust-list/cpp test/rust-wire/List.schema
+	@sed 's/name = "rustwire"/name = "rustlist"/' build/rust-wire/rust/Cargo.toml > build/rust-list/rust/Cargo.toml
+	@touch $@
+
+build/rust-list/reference: build/rust-wire/.stamp build/rust-list/.stamp test/rust-wire/list_reference.cpp
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/rust-list/cpp test/rust-wire/list_reference.cpp build/rust-list/cpp/*Table.cpp -o $@
+
+tables-rust-wire-boundaries: build/rust-list/reference
+
+build/rust-maps/.stamp: bin/schema $(wildcard tables/maps/*.schema) make/rust.mk
+	./bin/schema generate --lang cpp --out build/rust-maps/cpp tables/maps
+	@touch $@
+
+build/rust-maps/reference: build/rust-maps/.stamp test/rust-wire/maps_reference.cpp
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/rust-maps/cpp test/rust-wire/maps_reference.cpp build/rust-maps/cpp/*Table.cpp -o $@
+
+tables-rust-wire-boundaries: build/rust-maps/reference

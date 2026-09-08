@@ -22,6 +22,13 @@ func runtimeModule(u *ir.Unit, closure map[string]bool) []byte {
 	b.WriteString(header(runtimeSourceName(u), u.Package, "the TABLE wire's shared runtime (docs/SPEC-TABLES.md)"))
 	b.WriteString(runtimeBanner)
 	b.WriteString(runtimeSource)
+	b.WriteString(arenaRuntime)
+	b.WriteString(builderRuntime)
+	b.WriteString(blobRuntime)
+	b.WriteString(sequenceRuntime)
+	b.WriteString(mapRuntime)
+	b.WriteString(packRuntime)
+	b.WriteString(graphJsonRuntime)
 	return []byte(b.String())
 }
 
@@ -49,10 +56,12 @@ const runtimeBanner = `//
 // Its bytes do not vary with what a unit declares — a port's twin of the
 // generic-walk gate the C++ backend is held to.
 //
-// Nothing here allocates: the caller owns the value, the buffer and the
-// report. There is no serialize dependency, so a table module compiles into
-// any crate.
+// Fixed wire codecs and region reads use caller-owned storage. Variable
+// authoring uses worker slabs and temporary identity maps; reflection JSON
+// for a graph also uses authoring scratch. No serialize dependency is needed.
 
+// Fixed-only units retain the same complete runtime as variable units.
+#![allow(dead_code)]
 #![allow(clippy::needless_range_loop)]
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::manual_range_contains)]
@@ -60,7 +69,6 @@ const runtimeBanner = `//
 #![allow(clippy::comparison_chain)]
 
 use core::ptr;
-
 `
 
 // runtimeSource is the whole Rust runtime. It is source, not a template: no
@@ -72,13 +80,12 @@ const runtimeSource = `// ---- the read report (docs/SPEC-TABLES.md §4) ----
 // (the default) means the data matched this reader's schema exactly.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct TableReport {
-    pub unknown: i32,      // unknown field ids skipped (newer data)
+    pub unknown: i32,       // unknown field ids skipped (newer data)
     pub kind_mismatch: i32, // known id, changed type — skipped, never misdecoded
     pub widened: i32,       // accepted a narrower kind on the same numeric ladder
-    pub clamped: i32,      // out-of-range values clamped to declared bounds
-    // duplicate is the TEXT FORM's counter and the WIRE NEVER RAISES IT
-    // (docs/SPEC-TABLES.md §4, §16.2): a body carrying an id twice is legal input
-    // whose last occurrence wins, silently.
+    pub clamped: i32,       // out-of-range values clamped to declared bounds
+    // Repeated JSON keys and repeated wire map keys replace and count here.
+    // Repeated ordinary wire fields replace silently.
     pub duplicate: i32,
     pub verdict: TableOpenVerdict,
     pub malformed: bool, // framing damage; decode stopped, partial result kept
@@ -200,7 +207,6 @@ pub fn table_bits_to_double(bits: u64) -> f64 {
 pub fn table_double_to_bits(value: f64) -> u64 {
     value.to_bits()
 }
-
 ` + wireRuntime + wideRuntime + `
 // ---- reflection (tables only, docs/SPEC-TABLES.md §8) ----
 //
@@ -249,6 +255,7 @@ pub struct TableUnionInfo {
 pub static TABLE_DOC_NONE: &str = "";
 
 pub struct TableFieldInfo {
+    pub sequence: Option<fn()->&'static TableSequenceInfo>,
     pub frac_bits: u32,
     pub wide_range: bool,
     pub wide_min: u128,
@@ -306,7 +313,17 @@ pub struct TableFieldInfo {
     pub tags: Option<&'static [&'static str]>,
 }
 
+#[allow(clippy::type_complexity)] // type-erased visitors retain their borrow lifetimes
 pub struct TableTypeInfo {
+    pub wire_extent: Option<fn(TableReader,&mut usize)->Result<(),TableRefuseReason>>,
+    pub blob: u8, // 0 record, 1 bytes, 2 UTF-8 string
+    pub id: u64,
+    pub align: u32,
+    pub initialize: unsafe fn(*mut u8),
+    pub save_body: unsafe fn(&mut TableWriter, *const u8) -> bool,
+    pub load_body: unsafe fn(&mut TableReader, &mut TableReport, *mut u8) -> bool,
+    pub visit_refs: unsafe fn(TableContext, *const u8, &mut dyn FnMut(*const i64, &'static TableTypeInfo)),
+    pub rewrite_refs: unsafe fn(*mut u8, *mut u8, &mut dyn FnMut(&mut i64, &'static TableTypeInfo)),
     pub name: &'static str, // schema type name
     pub size: u32,          // size_of the storage struct
     pub num_fields: i32,
@@ -494,6 +511,7 @@ fn table_json_is_enum(f: &TableFieldInfo) -> bool {
 }
 
 fn table_json_shape(f: &TableFieldInfo) -> u8 {
+    if f.sequence.is_some_and(|info|info().map_entry.is_some()){return b'o';}
     if f.kind == 12 || f.kind == 33 {
         return b's'; // string
     }
@@ -509,7 +527,8 @@ fn table_json_shape(f: &TableFieldInfo) -> u8 {
     if f.arms.is_some() {
         return b'o'; // union: an object with ONE key
     }
-    if f.kind == 13 {
+    if f.kind == 17 && f.table.is_some_and(|info| info().blob != 0) { return b's'; }
+    if f.kind == 13 || f.kind == 17 {
         return b'o'; // nested table or type
     }
     if table_json_is_enum(f) {
@@ -526,7 +545,8 @@ fn table_json_shape(f: &TableFieldInfo) -> u8 {
 
 // the ELEMENT shape of an array field — the same classifier one level down
 fn table_json_element_shape(f: &TableFieldInfo) -> u8 {
-    if f.kind == 13 || f.arms.is_some() {
+    if f.kind == 17 && f.table.is_some_and(|info| info().blob != 0) { return b's'; }
+    if f.kind == 13 || f.kind == 17 || f.arms.is_some() {
         return b'o';
     }
     if table_json_is_enum(f) {
@@ -585,6 +605,9 @@ unsafe fn table_json_guard_holds(base: *const u8, info: &TableTypeInfo, guard: &
 // over one code path — so measure and write agree byte for byte, the wire's
 // invariant (§9) carried across.
 struct TableJsonOut<'a> {
+    context: Option<TableContext<'a>>,
+    graph: Option<TableJsonGraphOut>,
+    definition: u64,
     buffer: Option<&'a mut [u8]>,
     offset: i64,
     overflow: bool,
@@ -972,6 +995,15 @@ unsafe fn table_json_write_scalar(
     depth: i32,
 ) -> bool {
     unsafe {
+        if f.kind==17 {
+            let raw=(storage as *const i64).read();
+            if raw==0 {out.raw(b"null");return true;}
+            let Some(context)=out.context else {return false;};
+            let Some(info)=f.table.map(|f|f()) else {return false;};
+            let Some(node)=context.resolve(storage as *const i64,info) else {return false;};
+            return table_json_write_pointer(out,node,info,depth);
+        }
+
         if let Some(arms_of) = f.arms {
             // a union is an object with ONE key, the arm's name; None is {}
             let arms = arms_of();
@@ -1096,6 +1128,9 @@ unsafe fn table_json_write_field(
 ) -> bool {
     unsafe {
         let storage = base.add(f.offset as usize);
+        if f.sequence.is_some_and(|info|info().map_entry.is_some()){return table_json_write_map(out,storage,f,depth);}
+        if f.sequence.is_some() {return table_json_write_sequence(out,storage,f,depth);}
+
         if f.kind == 33 {
             let units=core::slice::from_raw_parts(storage as *const u16,table_json_count(base,f) as usize);
             out.put(b'"');
@@ -1189,7 +1224,12 @@ unsafe fn table_json_write_value(
     depth: i32,
 ) -> bool {
     unsafe {
-        let mut any = false;
+        if depth>TABLE_JSON_MAX_DEPTH {return false;}
+        let label=core::mem::take(&mut out.definition);
+        let mut any=label!=0;
+        if any {out.put(b'{');out.line(depth+1);out.raw(b"\"&node\": ");table_json_write_unsigned(out,label);}
+        let before=out.offset;
+
         for f in info.fields.iter() {
             if !f.guard.is_empty() && !table_json_guard_holds(base, info, f.guard) {
                 continue;
@@ -1213,6 +1253,7 @@ unsafe fn table_json_write_value(
                 return false;
             }
         }
+        if label!=0 && out.offset==before {return false;}
         if !any {
             out.raw(b"{}");
             return true;
@@ -1226,6 +1267,8 @@ unsafe fn table_json_write_value(
 // ---- reading ----
 
 struct TableJsonIn<'a> {
+    arena: Option<&'a mut TableArena>,
+    labels: std::collections::HashMap<u64,TableJsonLabel>,
     text: &'a [u8],
     pos: usize,
     bad: bool, // the text is not JSON: the walk stops and keeps what it placed
@@ -1692,51 +1735,40 @@ impl TableJsonNumber {
     }
 }
 
-fn table_json_skip_container(
-    input: &mut TableJsonIn,
-    close: u8,
-    depth: i32,
-    report: &mut TableReport,
-) -> bool {
-    if depth > TABLE_JSON_MAX_DEPTH {
-        input.bad = true;
-        return false;
-    }
-    input.pos += 1; // the opening bracket
+fn table_json_skip_container(input:&mut TableJsonIn,close:u8,depth:i32,report:&mut TableReport) -> bool {
+    if depth>TABLE_JSON_MAX_DEPTH {input.bad=true;return false;}
+    input.pos+=1;
+    let mut first=true;let mut label=None;
     loop {
-        let mut c = input.peek();
-        if c == close {
-            input.pos += 1;
+        let mut c=input.peek();
+        if c==close {
+            input.pos+=1;
+            if let Some(label)=label {input.labels.get_mut(&label).unwrap().open=false;}
             return true;
         }
-        if c == 0 {
-            input.bad = true;
-            return false;
-        }
-        if close == b'}' {
-            if table_json_scan_string(input, TableJsonSink::Discard, report).is_none() {
-                return false;
+        if c==0 {input.bad=true;return false;}
+        if close==b'}' {
+            let mut key=TableJsonKey::new();
+            if !table_json_scan_key(input,&mut key,report) || input.peek()!=b':' {input.bad=true;return false;}
+            input.pos+=1;
+            if input.arena.is_some() && key.as_str().starts_with('&') {
+                if !first || key.as_str()!="&node" || input.arena.is_none() {input.bad=true;return false;}
+                let Some(n)=table_json_label(input) else {return false;};
+                let previous=input.labels.get(&n).copied();
+                let comma=input.peek()==b',';if comma {input.pos+=1;}
+                if input.peek()==b'}' {
+                    if previous.is_none() || previous.unwrap().open {input.bad=true;return false;}
+                    input.pos+=1;return true;
+                }
+                if previous.is_some() || !comma {input.bad=true;return false;}
+                input.labels.insert(n,TableJsonLabel{reference:0,info:None,open:true});label=Some(n);first=false;continue;
             }
-            if input.peek() != b':' {
-                input.bad = true;
-                return false;
-            }
-            input.pos += 1;
         }
-        if !table_json_skip_value(input, depth + 1, report) {
-            return false;
-        }
-        c = input.peek();
-        if c == b',' {
-            input.pos += 1; // a trailing comma is accepted
-            continue;
-        }
-        if c == close {
-            input.pos += 1;
-            return true;
-        }
-        input.bad = true;
-        return false;
+        first=false;
+        if !table_json_skip_value(input,depth+1,report) {return false;}
+        c=input.peek();
+        if c==b',' {input.pos+=1;continue;}
+        if c!=close {input.bad=true;return false;}
     }
 }
 
@@ -1777,6 +1809,11 @@ unsafe fn table_json_read_scalar(
     report: &mut TableReport,
 ) -> bool {
     unsafe {
+        if f.kind==17 {
+            if input.value_shape()==b'z' { (storage as *mut i64).write(0); return input.literal(b"null"); }
+            let Some(info)=f.table.map(|f|f()) else {return false;};
+            return table_json_read_pointer(input,storage as *mut i64,info,depth,report);
+        }
         if let Some(arms_of) = f.arms {
             // a union is an object with ONE key, the arm's name; {} is None,
             // and two keys is a text this walk will not guess at
@@ -1816,7 +1853,7 @@ unsafe fn table_json_read_scalar(
             } else {
                 let entry = &arms.arms[tag as usize];
                 if let Some(field) = entry.field {
-                    if input.value_shape() != table_json_shape(field) {
+                    if input.value_shape() != table_json_shape(field) && !(field.kind==17 && input.value_shape()==b'z') {
                         report.kind_mismatch += 1;
                         if !table_json_skip_value(input, depth + 1, report) { return false; }
                     } else {
@@ -2081,6 +2118,8 @@ unsafe fn table_json_read_field(
 ) -> bool {
     unsafe {
         let storage = base.add(f.offset as usize);
+        if f.sequence.is_some_and(|info|info().map_entry.is_some()){return table_json_read_map(input,base,f,depth,report);}
+        if f.sequence.is_some() {return table_json_read_sequence(input,base,f,depth,report);}
         if f.kind == 12 || f.kind == 33 {
             let sink = if f.kind==33 { TableJsonSink::WideStorage(storage as *mut u16, f.array_bound as usize) } else { TableJsonSink::Storage(storage, f.array_bound as usize) };
             let length = match table_json_scan_string(input, sink, report) {
@@ -2210,7 +2249,7 @@ unsafe fn table_json_read_field(
                     if !table_json_skip_value(input, depth + 1, report) {
                         return false;
                     }
-                } else if input.value_shape() != shape {
+                } else if input.value_shape() != shape && !(f.kind==17 && input.value_shape()==b'z') {
                     report.kind_mismatch += 1;
                     if !table_json_skip_value(input, depth + 1, report) {
                         return false;
@@ -2269,7 +2308,7 @@ unsafe fn table_json_read_field(
                     if !table_json_skip_value(input, depth + 1, report) {
                         return false;
                     }
-                } else if input.value_shape() != shape {
+                } else if input.value_shape() != shape && !(f.kind==17 && input.value_shape()==b'z') {
                     report.kind_mismatch += 1;
                     if !table_json_skip_value(input, depth + 1, report) {
                         return false;
@@ -2331,6 +2370,11 @@ unsafe fn table_json_read_table(
             return false;
         }
         input.pos += 1;
+        table_json_read_table_keys(input,base,info,depth,report)
+    }
+}
+unsafe fn table_json_read_table_keys(input:&mut TableJsonIn,base:*mut u8,info:&TableTypeInfo,depth:i32,report:&mut TableReport) -> bool {
+    unsafe {
         // duplicate tracking, bounded and allocation-free: a table with more
         // fields than this still reads, its repeats simply stop being counted
         let mut seen = [0u64; 8];
@@ -2397,7 +2441,7 @@ unsafe fn table_json_read_table(
                     (f.reset)(base);
                     table_json_set_raw(base.add(f.present_offset as usize), 1, 0);
                 } else {
-                    if got != table_json_shape(f) {
+                    if got != table_json_shape(f) && !(f.kind==17 && !f.is_array && got==b'z') {
                         // the wrong JSON type for the kind: skipped, never coerced
                         report.kind_mismatch += 1;
                         if !table_json_skip_value(input, depth + 1, report) {
@@ -2436,9 +2480,12 @@ pub unsafe fn table_json_read(
     text: &[u8],
     report: &mut TableReport,
 ) -> bool {
+    unsafe { table_json_read_context(value,info,text,report,None) }
+}
+unsafe fn table_json_read_context(value:*mut u8,info:&TableTypeInfo,text:&[u8],report:&mut TableReport,arena:Option<&mut TableArena>) -> bool {
     unsafe {
         let mut input = TableJsonIn {
-            text,
+            arena, labels:std::collections::HashMap::new(), text,
             pos: 0,
             bad: false,
         };
@@ -2465,9 +2512,13 @@ pub unsafe fn table_json_write(
     info: &TableTypeInfo,
     buffer: Option<&mut [u8]>,
 ) -> i64 {
+    unsafe { table_json_write_context(value,info,buffer,None) }
+}
+unsafe fn table_json_write_context(value:*const u8,info:&TableTypeInfo,buffer:Option<&mut[u8]>,context:Option<TableContext<'_>>) -> i64 {
     unsafe {
+        let graph=match context {Some(context)=>match TableJsonGraphOut::new(context,value,info) {Some(g)=>Some(g),None=>return -1},None=>None};
         let mut out = TableJsonOut {
-            buffer,
+            context, graph, definition:0, buffer,
             offset: 0,
             overflow: false,
         };

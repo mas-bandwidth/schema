@@ -11,8 +11,8 @@
 // a partial result — and every event lands in the TableReport. Plain byte
 // code with no serialize dependency, so a table module compiles into any
 // crate. Measure and save walk the same emitter with one file-wide vocabulary,
-// and nested lengths are measured at their exact first-use position. Generated
-// codecs allocate nothing: the caller owns every buffer.
+// and nested lengths are measured at their exact first-use position. Fixed codecs and region reads allocate nothing. Variable authoring,
+// numbering and packing use arena storage and temporary identity maps.
 //
 // TWO DEVIATIONS FROM THE C++ REFERENCE, both forced by the language and both
 // named here rather than discovered in the source:
@@ -87,28 +87,8 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	closure := ir.TableClosure(u)
 	blocks := ir.Blocks(u)
 
-	// the WIRE surface is refused by name for a unit that declares a
-	// variable-length table, exactly as the C# backend refuses it
-	// (docs/SPEC-TABLES.md §11): the arena, the builder, the region and the
-	// node-table codec are a named follow-on (§15). The two ACCELERATORS need
-	// no codec — a block and a cook are POINTED AT, not parsed — so both are
-	// emitted in full.
-	var refused []string
-	for name := range u.Tables {
-		if variable[name] {
-			refused = append(refused, name)
-		}
-	}
-	sort.Strings(refused)
-
 	banner := ""
-	if len(refused) > 0 {
-		banner = refusalBanner(refused)
-	}
-
-	if len(refused) == 0 {
-		out[RuntimeModule+".rs"] = runtimeModule(u, closure)
-	}
+	out[RuntimeModule+".rs"] = runtimeModule(u, closure)
 	if anyCookable(u, closure) {
 		out[CookRuntimeModule+".rs"] = append([]byte(banner), cookRuntimeModule(u)...)
 	}
@@ -116,10 +96,8 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 
 	for _, f := range u.Files {
 		g := &gen{unit: u, file: f, variable: variable, closure: closure, blocks: blocks, banner: banner}
-		if len(refused) == 0 {
-			if body := g.tableModule(); body != nil {
-				out[strings.ToLower(f.Base)+"_table.rs"] = body
-			}
+		if body := g.tableModule(); body != nil {
+			out[strings.ToLower(f.Base)+"_table.rs"] = body
 		}
 		if body := g.recordsModule(); body != nil {
 			out[strings.ToLower(f.Base)+"_records.rs"] = body
@@ -151,33 +129,6 @@ func Modules(out map[string][]byte) []string {
 	}
 	sort.Strings(names)
 	return names
-}
-
-func refusalBanner(refused []string) string {
-	var b strings.Builder
-	b.WriteString("// THE RUST WIRE SURFACE OF THIS UNIT IS REFUSED, BY NAME (docs/SPEC-TABLES.md §11).\n")
-	b.WriteString("//\n")
-	fmt.Fprintf(&b, "// It declares variable-length tables (%s), and the Rust table\n", englishList(refused))
-	b.WriteString("// backend's VARIABLE CLASS — the arena, the builder, the region and the node-table\n")
-	b.WriteString("// codec — is a named follow-on (§15). No <base>_table.rs is emitted for this unit,\n")
-	b.WriteString("// so a consumer reaching for measure, save or load gets a missing name from its own\n")
-	b.WriteString("// compiler, beside this file, which says why.\n")
-	b.WriteString("//\n")
-	b.WriteString("// What IS emitted is the two ACCELERATORS, because neither needs a codec: a block\n")
-	b.WriteString("// (§19) and a cook (§7) are pointed at, not parsed. A build that loads this unit's\n")
-	b.WriteString("// cooked assets is served in full; one that wants the tolerant wire is not, and\n")
-	b.WriteString("// runs the tool or the C++ backend for it.\n\n")
-	return b.String()
-}
-
-func englishList(names []string) string {
-	switch len(names) {
-	case 0:
-		return ""
-	case 1:
-		return names[0]
-	}
-	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
 }
 
 type gen struct {
@@ -272,6 +223,9 @@ func rustInt(bits int) string {
 // rustFieldType is a field's Rust ELEMENT storage type, matching the packet
 // emitter's column (SPEC §6.1).
 func rustFieldType(t ir.FieldType) string {
+	if t.Pointer {
+		return "TableRef<" + pointeeName(t) + ">"
+	}
 	switch t.Kind {
 	case ir.TInt, ir.TFixed:
 		if t.Signed {
@@ -303,6 +257,17 @@ func rustFieldType(t ir.FieldType) string {
 	}
 	return "u8"
 }
+
+func pointeeName(t ir.FieldType) string {
+	if t.Blob() {
+		if t.Kind == ir.TString {
+			return "TableString"
+		}
+		return "TableBytes"
+	}
+	return t.Name
+}
+func pointeeInfo(t ir.FieldType) string { return fn(pointeeName(t), "table_type") }
 
 // scalarKindWidth is the payload width a table-wire kind carries.
 func tableKindWidth(kind int) int { return ir.TableKindWidth(kind) }

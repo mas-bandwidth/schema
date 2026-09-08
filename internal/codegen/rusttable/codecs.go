@@ -43,7 +43,12 @@ func (g *gen) tableModule() []byte {
 	}
 	for _, st := range members {
 		g.owner = st
-		g.emitMeasure(st)
+		if g.variable[st.Name] {
+			g.emitVariableSurface(st)
+		} else {
+			g.emitMeasure(st)
+		}
+		g.emitRecordRuntime(st)
 		g.emitSave(st)
 		g.emitLoad(st)
 	}
@@ -68,10 +73,11 @@ const tableModuleBanner = `//
 // Measure/Save/Load are name-first free functions: <name>_measure gives the
 // exact wire size, <name>_save writes exactly that many bytes into the
 // caller's slice, <name>_load overlays a value in place and reports every
-// tolerance event. Nothing here allocates: the caller owns the value, the
-// slice and the report.
+// tolerance event. Fixed codecs and region loads use caller-owned storage;
+// graph authoring and save numbering allocate temporary maps.
 
 #![allow(clippy::needless_range_loop)]
+#![allow(clippy::needless_late_init)]
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::manual_range_contains)]
 #![allow(clippy::collapsible_else_if)]
@@ -231,6 +237,10 @@ func (g *gen) emitStorage(st *ir.Struct) {
 func (g *gen) emitStorageField(f *ir.Field) {
 	typ := rustFieldType(f.Type)
 	switch {
+	case f.IsList() || f.IsMap():
+		g.pf("pub %s: %s<%s>,\n", f.Name, sequenceSlotType(f), sequenceType(f))
+	case f.Type.Pointer && f.Array == ir.ArrayNone:
+		g.pf("    pub %s: %s,\n", f.Name, typ)
 	case f.Type.Kind == ir.TWString:
 		g.pf("    pub %s: [u16; %d],\n    pub %s_length: i32,\n", f.Name, f.Type.Size, f.Name)
 	case f.Type.Kind == ir.TString:
@@ -263,6 +273,10 @@ func (g *gen) emitStorageField(f *ir.Field) {
 // lays them over.
 func (g *gen) emitZeroInit(f *ir.Field, ind string) {
 	switch {
+	case f.IsList() || f.IsMap():
+		g.pf("%s%s: %s::default(),\n", ind, f.Name, sequenceSlotType(f))
+	case f.Type.Pointer && f.Array == ir.ArrayNone:
+		g.pf("%s%s: TableRef::NULL,\n", ind, f.Name)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes:
 		g.pf("%s%s: [0; %d],\n", ind, f.Name, f.Type.Size)
 		g.pf("%s%s_length: 0,\n", ind, f.Name)
@@ -282,6 +296,9 @@ func (g *gen) emitZeroInit(f *ir.Field, ind string) {
 }
 
 func zeroScalar(f *ir.Field) string {
+	if f.Type.Pointer {
+		return "TableRef::NULL"
+	}
 	switch f.Type.Kind {
 	case ir.TBool:
 		return "false"
@@ -345,6 +362,10 @@ func (g *gen) emitReset(st *ir.Struct) {
 func (g *gen) emitResetField(f *ir.Field) {
 	name := f.Name
 	switch {
+	case f.IsList() || f.IsMap():
+		g.pf("value.%s=%s::default();\n", name, sequenceSlotType(f))
+	case f.Type.Pointer && f.Array == ir.ArrayNone:
+		g.pf("    value.%s = TableRef::NULL;\n", name)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes:
 		g.pf("    value.%s.fill(0);\n", name)
 		g.pf("    value.%s_length = %d;\n", name, len(f.DefBytes))
@@ -352,7 +373,7 @@ func (g *gen) emitResetField(f *ir.Field) {
 			g.pf("    value.%s[..%d].copy_from_slice(&%s);\n", name, len(f.DefBytes), rustBytes(f.DefBytes))
 		}
 	case f.KeyEnum != "":
-		if isStruct(f) {
+		if isStruct(f) && !f.Type.Pointer {
 			g.pf("    for slot in %s.iter_mut() {\n", g.keyedSlots(f))
 			g.pf("        %s(slot);\n", fn(f.Type.Name, "reset"))
 			g.pf("    }\n")
@@ -361,7 +382,7 @@ func (g *gen) emitResetField(f *ir.Field) {
 		}
 	case f.Array != ir.ArrayNone:
 		switch {
-		case isStruct(f):
+		case isStruct(f) && !f.Type.Pointer:
 			g.pf("    for element in value.%s.iter_mut() {\n", name)
 			g.pf("        %s(element);\n", fn(f.Type.Name, "reset"))
 			g.pf("    }\n")
@@ -373,7 +394,7 @@ func (g *gen) emitResetField(f *ir.Field) {
 		if f.Array == ir.ArrayCounted {
 			g.pf("    value.%s_count = 0;\n", name)
 		}
-	case isStruct(f):
+	case isStruct(f) && !f.Type.Pointer:
 		g.pf("    %s(&mut value.%s);\n", fn(f.Type.Name, "reset"), name)
 	case isUnion(f):
 		g.pf("    value.%s = %s::None;\n", name, f.Type.Name)
@@ -388,6 +409,9 @@ func (g *gen) emitResetField(f *ir.Field) {
 // defaultValue is a field's declared default as a Rust expression — the value
 // the write side elides against and the reset restores.
 func (g *gen) defaultValue(f *ir.Field) string {
+	if f.Type.Pointer {
+		return "TableRef::NULL"
+	}
 	switch f.Type.Kind {
 	case ir.TBool:
 		if f.HasDefault && f.DefBool {
@@ -598,6 +622,9 @@ func (g *gen) emitRelocatabilityAsserts(members []*ir.Struct) {
 // tableFieldTypeName is the schema type name a descriptor and a comment
 // carry for one field.
 func tableFieldTypeName(f *ir.Field) string {
+	if f.IsMap() {
+		return ir.TableTypeSpelling(f)
+	}
 	switch f.Type.Kind {
 	case ir.TFixed:
 		return ir.TableTypeSpelling(f)
