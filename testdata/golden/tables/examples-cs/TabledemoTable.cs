@@ -2230,7 +2230,7 @@ namespace Tabledemo
                 for (int i = 0; i < f.ArrayBound; i++)
                 {
                     if (f.Kind == 13) { f.Table.Reset(f.GetChild(value, i)); }
-                    else if (f.Kind == 15) { f.Arms.SetTag(f.GetChild(value, i), 0); }
+                    else if (f.Kind == 15) { ResetUnion(f.GetChild(value, i), f.Arms); }
                     else if (f.Kind == 17) { f.SetChild(value, i, null); }
                     else if (f.SetWide != null) { f.SetWide(value, i, 0); }
                     else { f.SetRaw(value, i, 0); }
@@ -4379,7 +4379,7 @@ namespace Tabledemo
                             object child = f.GetChild(value, i);
                             foreach (TableFieldInfo field in f.Table.Fields) { ZeroField(child, field); }
                         }
-                        else if (f.Kind == 15) { f.Arms.SetTag(f.GetChild(value, i), 0); }
+                        else if (f.Kind == 15) { ResetUnion(f.GetChild(value, i), f.Arms); }
                         else if (f.Kind == 17) { f.SetChild(value, i, null); }
                         else if (f.SetWide != null) { f.SetWide(value, i, 0); }
                         else { f.SetRaw(value, i, 0); }
@@ -4630,6 +4630,13 @@ namespace Tabledemo
             }
         }
         // ---- form-1 table wire: end ----
+        // TableReset(Effect) restores None and every arm in place, reusing buffers.
+        public static void TableReset(Effect value)
+        {
+            value.Type = EffectType.None;
+            TableReset(value.Buff);
+            TableReset(value.Debuff);
+        }
     }
 
 }

@@ -221,3 +221,26 @@ table Root { history [..8]Choice }
 		t.Error("C# union array reset is still tag-only")
 	}
 }
+
+// Packet unions used as table fields are not File.TableUnions (no table arm)
+// but TableReset(value.effect) still needs the overload (#734).
+func TestCsPacketUnionTableReset(t *testing.T) {
+	u := unitFromSource(t, `package probe
+type Buff { n int32 }
+union Effect { buff Buff }
+table Root { effect Effect }
+`)
+	files, err := New().Generate(u, "cs", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(files["ProbeTable.cs"])
+	for _, want := range []string{
+		"public static void TableReset(Effect value)",
+		"TableReset(value.Effect);",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("C# packet-union table reset lacks %q", want)
+		}
+	}
+}
