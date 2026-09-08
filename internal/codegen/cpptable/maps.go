@@ -631,6 +631,7 @@ inline TableMapFill<Entry> TableMapFillBegin( const TableNodeMap & nodes, TableM
     map.entries.value = 0;
     map.count = 0;
     if ( nodes.carve == NULL ) { return fill; }
+    // The count companion is int32 in both wire forms (SPEC-TABLES §2.8, §2.9).
     if ( n > (uint64_t) INT32_MAX )
     {
         fill.refused = nodes.carve->worker != NULL;

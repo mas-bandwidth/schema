@@ -5380,16 +5380,23 @@ template <typename Entry> struct TableMapFill
     int32_t capacity = 0;
     TableWorker * worker = NULL; // the TOOL's path
     bool ok = false;
+    bool refused = false; // builder count refusal, with no report event
 };
 
 template <typename Entry>
-inline TableMapFill<Entry> TableMapFillBegin( const TableNodeMap & nodes, TableMap<Entry> & map, uint32_t n )
+inline TableMapFill<Entry> TableMapFillBegin( const TableNodeMap & nodes, TableMap<Entry> & map, uint64_t n )
 {
     TableMapFill<Entry> fill;
     fill.map = &map;
     map.entries.value = 0;
     map.count = 0;
     if ( nodes.carve == NULL ) { return fill; }
+    // The count companion is int32 in both wire forms (SPEC-TABLES §2.8, §2.9).
+    if ( n > (uint64_t) INT32_MAX )
+    {
+        fill.refused = nodes.carve->worker != NULL;
+        return fill;
+    }
     if ( nodes.carve->worker != NULL )
     {
         fill.worker = nodes.carve->worker; // the tool's path: the arena carves
@@ -7295,7 +7302,8 @@ inline bool SlotsLoadBody( TableReader & r, const TableNodeMap & nodes, Slots & 
                     // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
                     // kind mismatch of §4, and nothing about a map is special-cased
                     if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
-                    TableMapFill<SlotsSeatsEntry> fill = TableMapFillBegin( nodes, value.seats, (uint32_t) count );
+                    TableMapFill<SlotsSeatsEntry> fill = TableMapFillBegin( nodes, value.seats, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     int32_t last_key = 0;
@@ -7532,7 +7540,8 @@ inline bool SlotsLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                     uint64_t count = 0;
                     if ( !r.get( count, TableBitsRequired( entry.min, entry.max ) ) ) { report->malformed = true; return false; }
                     count += (uint64_t) entry.min;
-                    TableMapFill<SlotsSeatsEntry> fill = TableMapFillBegin( nodes, value.seats, (uint32_t) count );
+                    TableMapFill<SlotsSeatsEntry> fill = TableMapFillBegin( nodes, value.seats, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     int32_t last_key = 0;
                     bool landed = false;
@@ -9261,7 +9270,8 @@ inline bool SlotsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sl
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
                     TableRetainDiscardField( retain, path, 0 );
-                    TableMapFill<SlotsSeatsEntry> fill = TableMapFillBegin( nodes, value.seats, (uint32_t) count );
+                    TableMapFill<SlotsSeatsEntry> fill = TableMapFillBegin( nodes, value.seats, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     int32_t last_key = 0;
@@ -9417,7 +9427,8 @@ inline bool SlotsLoadMessageBodyRetain( TableBitReader & r, const TableVocabular
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
                     TableRetainDiscardField( retain, path, 0 );
-                    TableMapFill<SlotsSeatsEntry> fill = TableMapFillBegin( nodes, value.seats, (uint32_t) count );
+                    TableMapFill<SlotsSeatsEntry> fill = TableMapFillBegin( nodes, value.seats, count );
+                    if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
                     int32_t last_key = 0;
                     bool landed = false;
