@@ -92,7 +92,8 @@
         "tables-maps-cap-negative-control",
         "tables-maps-clamp-negative-control",
         "tables-maps-cook-check-negative-control",
-        "tables-maps-dead-entry-negative-control"
+        "tables-maps-dead-entry-negative-control",
+        "tables-maps-builder-cap-negative-control"
       ]
     },
     {

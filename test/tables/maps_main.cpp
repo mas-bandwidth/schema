@@ -853,6 +853,24 @@ static void report_silent( const TableReport & r, const char * where )
 
 static void test_measure_refusals()
 {
+    // Builder reads have no measurement preflight. Keep the u64 count until
+    // its int32 cap is checked; narrowing to uint32 would accept 2^32.
+    const uint64_t counts[] = { 0x80000000ull, 0x100000000ull, 0x100000001ull };
+    for ( uint64_t count : counts )
+    {
+        Wire w = build_fleet_wire( count, 1 );
+        FleetBuilder b;
+        TableReport report;
+        report.unknown = 3;
+        CHECK( !FleetLoadBuilder( b, w.bytes, w.size, &report ) );
+        CHECK_EQ( report.unknown, 3 );
+        CHECK_EQ( report.kind_mismatch, 0 );
+        CHECK_EQ( report.widened, 0 );
+        CHECK_EQ( report.clamped, 0 );
+        CHECK_EQ( report.duplicate, 0 );
+        CHECK( !report.malformed );
+    }
+
     // a count above the int32 cap: the cap answers first
     {
         Wire w = build_fleet_wire( 0x80000000ull, 1 );
