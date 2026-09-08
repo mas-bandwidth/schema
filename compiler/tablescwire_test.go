@@ -731,3 +731,34 @@ func TestCTableMapEntryNotRoot(t *testing.T) {
 		}
 	}
 }
+
+func TestCTableMapWideningCount(t *testing.T) {
+	source := unitFromSource(t, "package probe\ntable Root { entries map[int8]int8 }\n")
+	target := unitFromSource(t, "package probe\ntable Root { entries map[int32]int32 }\n")
+	m := tabletext.NewModel(source)
+	v := m.New(source.Tables["Root"])
+	var report tabletext.Report
+	if !m.Read(v, []byte(`{"entries":{"-3":-5,"2":9}}`), &report) || !report.Silent() {
+		t.Fatal(report)
+	}
+	wire, err := tablewire.Encode(m, v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = tabletext.NewModel(target)
+	v = m.New(target.Tables["Root"])
+	if ok, err := tablewire.Decode(m, v, wire, &report); err != nil || !ok || report.Widened != 3 {
+		t.Fatalf("oracle: %+v %v", report, err)
+	}
+	want, err := tablewire.Encode(m, v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCTableWireProbe(t, target, fmt.Sprintf(`#include "ProbeTable.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#define CHECK(x) do{if(!(x)){fprintf(stderr,"map widening line %%d: %%s\n",__LINE__,#x);return 1;}}while(0)
+int main(void){const uint8_t wire[]={%s},want[]={%s};TableReport report={0};int64_t n=root_load_measure(wire,sizeof(wire));CHECK(n>0);uint8_t * region=(uint8_t*)malloc((size_t)n);const Root * root=root_load(region,n,wire,sizeof(wire),&report);CHECK(root);CHECK(report.widened==3);CHECK(!report.malformed&&!report.kind_mismatch);uint8_t out[sizeof(want)];CHECK(root_save(NULL,root,out,sizeof(out))==sizeof(out));CHECK(memcmp(out,want,sizeof(out))==0);free(region);return 0;}
+`, cppWire(wire), cppWire(want)))
+}

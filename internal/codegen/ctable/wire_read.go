@@ -141,7 +141,9 @@ func (g *tableGen) emitWireRead(st *ir.Struct) {
 		if plain {
 			g.pf("                    if ( table_kind_widens( kind, %d ) )\n                    {\n", wireKind)
 			g.wireScalarRead(f, "value->"+f.Name, "(*r)", "kind", "                        ", "r->report->malformed = 1; return 0;")
-			g.pf("                        r->report->widened++;\n")
+			if !st.IsMapEntry() || f.Name != ir.MapKeyFieldName {
+				g.pf("                        r->report->widened++;\n")
+			} // map key widening is counted once by the key scan
 
 			if f.Type.Optional {
 				g.pf("                        value->%s_present = 1;\n", f.Name)
