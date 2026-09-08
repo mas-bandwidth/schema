@@ -1705,9 +1705,13 @@ static SCHEMA_UNUSED int table_bit_getbytes(TableBitReader * r,uint8_t * target,
  if((r->offset&7)==0){if(n>0)memcpy(target,r->buffer+r->offset/8,(size_t)n);r->offset+=n*8;return 1;}
  for(i=0;i<n;i++){if(!table_bit_get(r,&by,8))return 0;target[i]=(uint8_t)by;}return 1;
 }
-static SCHEMA_UNUSED int64_t announce_measure(void) {return kTableAnnounceBytes;}
+static SCHEMA_UNUSED int64_t announce_measure(void) {return kTableAnnounceBytes;
+}
 static SCHEMA_UNUSED int64_t announce(uint8_t * buffer,int64_t capacity)
-{if(buffer==NULL || capacity<kTableAnnounceBytes)return -1;memcpy(buffer,kTableAnnounce,kTableAnnounceBytes);return kTableAnnounceBytes;}
+{if(buffer==NULL || capacity<kTableAnnounceBytes)return -1;
+memcpy(buffer,kTableAnnounce,kTableAnnounceBytes);
+return kTableAnnounceBytes;
+}
 static SCHEMA_UNUSED int64_t table_bits_required( int64_t min, int64_t max )
 {
     if ( max <= min ) { return 0; }
@@ -1737,14 +1741,19 @@ static SCHEMA_UNUSED int64_t table_message_kind_bits( uint8_t kind )
 // announcement is a hostile width like any other (§3.3).
 static SCHEMA_UNUSED int table_message_quantization( float qmin, float qmax, float qres, float * delta, uint32_t * count, int64_t * bits )
 {
-    if ( !( qmin < qmax ) || !( qres > 0.0f ) ) { return 0; }
+    if ( !( qmin < qmax ) || !( qres > 0.0f ) ) { return 0;
+    }
     (*delta) = qmax - qmin;
     float values = (*delta) / qres;
-    if ( !( (*delta) - (*delta) == 0.0f ) || !( values - values == 0.0f ) ) { return 0; } // Inf - Inf is NaN
-    if ( !( values >= 1.0f ) ) { values = 1.0f; }
-    else if ( values > 4294967040.0f ) { values = 4294967040.0f; } // the largest float below 2^32
+    if ( !( (*delta) - (*delta) == 0.0f ) || !( values - values == 0.0f ) ) { return 0;
+    } // Inf - Inf is NaN
+    if ( !( values >= 1.0f ) ) { values = 1.0f;
+    }
+    else if ( values > 4294967040.0f ) { values = 4294967040.0f;
+    } // the largest float below 2^32
     (*count) = (uint32_t) values;
-    if ( (float) (*count) < values ) { (*count)++; } // ceil, on a value the cast holds exactly
+    if ( (float) (*count) < values ) { (*count)++;
+    } // ceil, on a value the cast holds exactly
     (*bits) = table_bits_required( 0, (int64_t) (*count) );
     return 1;
 }
@@ -1764,19 +1773,24 @@ static SCHEMA_UNUSED int table_message_quantization( float qmin, float qmax, flo
 static SCHEMA_UNUSED uint32_t table_message_quantize( float value, float qmin, float delta, uint32_t count )
 {
     float normalized = ( value - qmin ) / delta;
-    if ( !( normalized >= 0.0f ) ) { normalized = 0.0f; }
-    else if ( !( normalized <= 1.0f ) ) { normalized = 1.0f; }
+    if ( !( normalized >= 0.0f ) ) { normalized = 0.0f;
+    }
+    else if ( !( normalized <= 1.0f ) ) { normalized = 1.0f;
+    }
     float scaled = normalized * (float) count;
     SCHEMA_TABLE_FLOAT_FORCE_ROUND( scaled );
-    uint32_t index = (uint32_t) ( scaled + 0.5f ); // floor of a non-negative value
-    if ( index > count ) { index = count; }
+    uint32_t index = (uint32_t) ( scaled + 0.5f );
+    // floor of a non-negative value
+    if ( index > count ) { index = count;
+    }
     return index;
 }
 
 // table_message_dequantize is the reader's half: the float an index names.
 static SCHEMA_UNUSED float table_message_dequantize( uint32_t index, float qmin, float delta, uint32_t count )
 {
-    if ( index > count ) { index = count; }
+    if ( index > count ) { index = count;
+    }
     const float normalized = index / (float) count;
     float scaled = normalized * delta;
     SCHEMA_TABLE_FLOAT_FORCE_ROUND( scaled );
@@ -1788,7 +1802,8 @@ static SCHEMA_UNUSED int table_message_integer_kind( uint8_t kind )
     return ( kind >= 2 && kind <= 9 ) || kind == 18 || kind == 19;
 }
 
-static SCHEMA_UNUSED int table_message_fixed_kind( uint8_t kind ) { return kind >= 20 && kind <= 29; }
+static SCHEMA_UNUSED int table_message_fixed_kind( uint8_t kind ) { return kind >= 20 && kind <= 29;
+}
 
 static SCHEMA_UNUSED int table_message_known_kind( uint8_t kind )
 {
@@ -1816,91 +1831,159 @@ static SCHEMA_UNUSED TableVocabulary table_vocabulary(TableMessageEntry * storag
 {TableVocabulary v;memset(&v,0,sizeof(v));v.entries=storage;v.max_entries=capacity;v.max_bytes=65536;return v;}
 static SCHEMA_UNUSED int table_message_leb(const uint8_t * in,int64_t size,int64_t * at,uint64_t * value)
 {
- TableReader r=table_reader_make(in,size,NULL);r.offset=*at;
- if(!table_reader_leb(&r,value))return 0;*at=r.offset;return 1;
+ TableReader r=table_reader_make(in,size,NULL);
+ r.offset=*at;
+ if(!table_reader_leb(&r,value))return 0;
+ *at=r.offset;
+ return 1;
 }
 static SCHEMA_UNUSED int64_t table_message_value_bits(uint8_t kind,uint8_t packing,int64_t bits)
 {
- if(kind==1)return 1;if(kind==11)return 64;if(kind==10)return packing==2?bits:32;
+ if(kind==1)return 1;
+ if(kind==11)return 64;
+ if(kind==10)return packing==2?bits:32;
  if(table_message_integer_kind(kind)||table_message_fixed_kind(kind))return packing==1?bits:table_message_kind_bits(kind);
  return -1;
 }
 static SCHEMA_UNUSED int table_message_shape_read(const uint8_t * in,int64_t size,int64_t * at,uint8_t kind,TableMessageShapeFacts * f)
 {
- uint64_t v=0;int i,k;
+ uint64_t v=0;
+ int i,k;
  if(table_message_integer_kind(kind)||table_message_fixed_kind(kind)||kind==10){
-  if(*at>=size)return 0;f->packing=in[(*at)++];if(f->packing==0)return 1;
+  if(*at>=size)return 0;
+  f->packing=in[(*at)++];
+  if(f->packing==0)return 1;
   if(f->packing==1 && kind!=10){
    if(!table_message_leb(in,size,at,&v)||v>(uint64_t)table_message_kind_bits(kind))return 0;
    f->value_bits=(int64_t)v;
    if(kind==18||kind==19||table_message_fixed_kind(kind)){
-    uint64_t lo=0,hi=0;if(*at>size-16)return 0;
-    for(i=0;i<8;i++){lo|=(uint64_t)in[*at+i]<<(8*i);hi|=(uint64_t)in[*at+8+i]<<(8*i);}
-    f->base_lo=(int64_t)lo;f->base_hi=(int64_t)hi;*at+=16;return 1;
+    uint64_t lo=0,hi=0;
+    if(*at>size-16)return 0;
+    for(i=0;i<8;i++){lo|=(uint64_t)in[*at+i]<<(8*i);
+    hi|=(uint64_t)in[*at+8+i]<<(8*i);
+    }
+    f->base_lo=(int64_t)lo;
+    f->base_hi=(int64_t)hi;
+    *at+=16;
+    return 1;
    }
    if(!table_message_leb(in,size,at,&v))return 0;
-   f->base_lo=kind>=2&&kind<=5?(int64_t)(v>>1)^-(int64_t)(v&1):(int64_t)v;return 1;
+   f->base_lo=kind>=2&&kind<=5?(int64_t)(v>>1)^-(int64_t)(v&1):(int64_t)v;
+   return 1;
   }
   if(f->packing==2 && kind==10){
-   uint32_t raw[3]={0,0,0};if(*at>size-12)return 0;
+   uint32_t raw[3]={0,0,0};
+   if(*at>size-12)return 0;
    for(k=0;k<3;k++)for(i=0;i<4;i++)raw[k]|=(uint32_t)in[*at+4*k+i]<<(8*i);
-   *at+=12;memcpy(&f->qmin,raw,4);memcpy(&f->qmax,raw+1,4);memcpy(&f->qres,raw+2,4);
+   *at+=12;
+   memcpy(&f->qmin,raw,4);
+   memcpy(&f->qmax,raw+1,4);
+   memcpy(&f->qres,raw+2,4);
    return table_message_quantization(f->qmin,f->qmax,f->qres,&f->qdelta,&f->qcount,&f->value_bits);
   }return 0;
  }
- if(kind==12||kind==33){if(!table_message_leb(in,size,at,&v)||v>INT32_MAX)return 0;f->max=(int64_t)v;return 1;}
+ if(kind==12||kind==33){if(!table_message_leb(in,size,at,&v)||v>INT32_MAX)return 0;
+ f->max=(int64_t)v;
+ return 1;
+ }
  if(kind==14||kind==16){
-  if(kind==14){if(!table_message_leb(in,size,at,&v)||v>UINT32_MAX)return 0;f->min=(int64_t)v;}
-  if(!table_message_leb(in,size,at,&v)||v>UINT32_MAX||v<(uint64_t)f->min)return 0;f->max=(int64_t)v;
-  if(*at>=size)return 0;f->elem_kind=in[(*at)++];
+  if(kind==14){if(!table_message_leb(in,size,at,&v)||v>UINT32_MAX)return 0;
+  f->min=(int64_t)v;
+  }
+  if(!table_message_leb(in,size,at,&v)||v>UINT32_MAX||v<(uint64_t)f->min)return 0;
+  f->max=(int64_t)v;
+  if(*at>=size)return 0;
+  f->elem_kind=in[(*at)++];
   return table_message_known_kind(f->elem_kind)&&f->elem_kind!=12&&f->elem_kind!=33;
  }return 1;
 }
 static SCHEMA_UNUSED int table_message_entry_read(const uint8_t * in,int64_t size,int64_t * at,TableMessageEntry * e)
 {
- TableMessageShapeFacts own={0},elem={0};int i;
- if(*at<0||*at>size-9)return 0;memset(e,0,sizeof(*e));e->value_bits=e->elem_value_bits=-1;
- for(i=0;i<8;i++)e->id|=(uint64_t)in[*at+i]<<(8*i);e->kind=in[*at+8];*at+=9;
+ TableMessageShapeFacts own={0},elem={0};
+ int i;
+ if(*at<0||*at>size-9)return 0;
+ memset(e,0,sizeof(*e));
+ e->value_bits=e->elem_value_bits=-1;
+ for(i=0;i<8;i++)e->id|=(uint64_t)in[*at+i]<<(8*i);
+ e->kind=in[*at+8];
+ *at+=9;
  if(!table_message_known_kind(e->kind)||!table_message_shape_read(in,size,at,e->kind,&own))return 0;
- e->packing=own.packing;e->value_bits=(int16_t)table_message_value_bits(e->kind,own.packing,own.value_bits);
- e->min=own.min;e->max=own.max;e->base_lo=own.base_lo;e->base_hi=own.base_hi;e->qmin=own.qmin;e->qdelta=own.qdelta;e->qcount=own.qcount;e->elem_kind=own.elem_kind;
+ e->packing=own.packing;
+ e->value_bits=(int16_t)table_message_value_bits(e->kind,own.packing,own.value_bits);
+ e->min=own.min;
+ e->max=own.max;
+ e->base_lo=own.base_lo;
+ e->base_hi=own.base_hi;
+ e->qmin=own.qmin;
+ e->qdelta=own.qdelta;
+ e->qcount=own.qcount;
+ e->elem_kind=own.elem_kind;
  if(e->kind==14||e->kind==16){
   if(!table_message_shape_read(in,size,at,e->elem_kind,&elem))return 0;
-  e->elem_packing=elem.packing;e->elem_value_bits=(int16_t)table_message_value_bits(e->elem_kind,elem.packing,elem.value_bits);
-  e->elem_max=elem.max;e->elem_base_lo=elem.base_lo;e->elem_base_hi=elem.base_hi;e->elem_qmin=elem.qmin;e->elem_qdelta=elem.qdelta;e->elem_qcount=elem.qcount;
+  e->elem_packing=elem.packing;
+  e->elem_value_bits=(int16_t)table_message_value_bits(e->elem_kind,elem.packing,elem.value_bits);
+  e->elem_max=elem.max;
+  e->elem_base_lo=elem.base_lo;
+  e->elem_base_hi=elem.base_hi;
+  e->elem_qmin=elem.qmin;
+  e->elem_qdelta=elem.qdelta;
+  e->elem_qcount=elem.qcount;
  }return 1;
 }
 
 
 static SCHEMA_UNUSED int table_announce_once(TableVocabulary * v,const uint8_t * buffer,int64_t bytes,TableReport * report)
 {
- TableReader r;int seen_version=0,seen_words=0;const uint8_t * words=NULL;int64_t words_bytes=0,at=0,count=0,nodes=0,touched=0;
+ TableReader r;
+ int seen_version=0,seen_words=0;
+ const uint8_t * words=NULL;
+ int64_t words_bytes=0,at=0,count=0,nodes=0,touched=0;
  if(!table_wire_open(&r,buffer,bytes,report))return 0;
  for(;;){
-  uint64_t ref,id;uint8_t kind;
+  uint64_t ref,id;
+  uint8_t kind;
   if(!table_reader_leb(&r,&ref))goto malformed;
   if(ref==0)break;
   if(ref>r.id_count||!table_reader_has(&r,1))goto malformed;
-  id=table_reader_id_at(&r,ref);kind=table_reader_get8(&r);
+  id=table_reader_id_at(&r,ref);
+  kind=table_reader_get8(&r);
   if(id==UINT64_C(0xfffffffffffffffe)){
    if(kind!=9||!table_reader_has(&r,8))goto malformed;
-   v->build_version=table_reader_get64(&r);seen_version++;continue;
+   v->build_version=table_reader_get64(&r);
+   seen_version++;
+   continue;
   }
   if(id==UINT64_C(0xfffffffffffffffd)){
-   TableReader field;uint64_t n;
+   TableReader field;
+   uint64_t n;
    if(kind!=14||!table_reader_span(&r,&field)||!table_reader_has(&field,1)||table_reader_get8(&field)!=6)goto malformed;
    if(!table_reader_leb(&field,&n)||!table_reader_room(&field,n)||n!=(uint64_t)(field.size-field.offset))goto malformed;
-   if(v->max_bytes<0 || n>(uint64_t)v->max_bytes){report->refused=1;report->reason=SCHEMA_TABLE_VOCABULARY_TOO_LARGE;return 0;}
-   words=field.buffer+field.offset;words_bytes=(int64_t)n;seen_words++;continue;
+   if(v->max_bytes<0 || n>(uint64_t)v->max_bytes){report->refused=1;
+   report->reason=SCHEMA_TABLE_VOCABULARY_TOO_LARGE;
+   return 0;
+   }
+   words=field.buffer+field.offset;
+   words_bytes=(int64_t)n;
+   seen_words++;
+   continue;
   }
-  report->unknown++;if(!table_reader_skip(&r,kind))goto malformed;
+  report->unknown++;
+  if(!table_reader_skip(&r,kind))goto malformed;
  }
  if(seen_version!=1||seen_words!=1||r.offset!=r.size)goto malformed;
  while(at<words_bytes){
-  TableMessageEntry * entry;int64_t i,began=at;
-  if(v->entries==NULL){report->refused=1;report->reason=SCHEMA_TABLE_NO_VOCABULARY;goto refused;}
-  if(count>=v->max_entries){report->refused=1;report->reason=SCHEMA_TABLE_VOCABULARY_TOO_LARGE;goto refused;}
-  entry=&v->entries[count];touched=count+1;
+  TableMessageEntry * entry;
+  int64_t i,began=at;
+  if(v->entries==NULL){report->refused=1;
+  report->reason=SCHEMA_TABLE_NO_VOCABULARY;
+  goto refused;
+  }
+  if(count>=v->max_entries){report->refused=1;
+  report->reason=SCHEMA_TABLE_VOCABULARY_TOO_LARGE;
+  goto refused;
+  }
+  entry=&v->entries[count];
+  touched=count+1;
   if(!table_message_entry_read(words,words_bytes,&at,entry))goto malformed;
   if(entry->id==UINT64_C(0xfffffffffffffffe)||entry->id==UINT64_C(0xfffffffffffffffd))goto malformed;
   if(entry->id==UINT64_MAX && nodes++>0)goto malformed;
@@ -1908,24 +1991,39 @@ static SCHEMA_UNUSED int table_announce_once(TableVocabulary * v,const uint8_t *
      alone can collapse different triples (#722). Until validation finishes,
      min/max temporarily hold the source span; no announcement pointer escapes. */
   for(i=0;i<count;i++){int64_t start=v->entries[i].min,length=v->entries[i].max-start;
-   if(length==at-began && !memcmp(words+start,words+began,(size_t)length))goto malformed;}
-  entry->min=began;entry->max=at;
+   if(length==at-began && !memcmp(words+start,words+began,(size_t)length))goto malformed;
+   }
+  entry->min=began;
+  entry->max=at;
   count++;
  }
  /* Resolve the accepted spans into the caller's final 96-byte entries. */
- at=0;{int64_t i;for(i=0;i<count;i++)if(!table_message_entry_read(words,words_bytes,&at,v->entries+i))goto malformed;}
- v->count=count;v->ref_bits=table_bits_required(0,count);v->announced=1;return 1;
+ at=0;
+ {int64_t i;
+ for(i=0;i<count;i++)if(!table_message_entry_read(words,words_bytes,&at,v->entries+i))goto malformed;
+ }
+ v->count=count;
+ v->ref_bits=table_bits_required(0,count);
+ v->announced=1;
+ return 1;
 malformed:
  report->malformed=1;
 refused:
- if(touched)memset(v->entries,0,(size_t)touched*sizeof(*v->entries));return 0;
+ if(touched)memset(v->entries,0,(size_t)touched*sizeof(*v->entries));
+ return 0;
 }
 static SCHEMA_UNUSED int announce_read(TableVocabulary * v,const uint8_t * buffer,int64_t bytes,TableReport * report)
 {
- TableReport ignored={0};int ok;
+ TableReport ignored={0};
+ int ok;
  if(report==NULL)report=&ignored;
- if(v->announced||v->refused){report->refused=1;report->reason=SCHEMA_TABLE_SECOND_ANNOUNCEMENT;return 0;}
- ok=table_announce_once(v,buffer,bytes,report);if(!ok)v->refused=1;return ok;
+ if(v->announced||v->refused){report->refused=1;
+ report->reason=SCHEMA_TABLE_SECOND_ANNOUNCEMENT;
+ return 0;
+ }
+ ok=table_announce_once(v,buffer,bytes,report);
+ if(!ok)v->refused=1;
+ return ok;
 }
 
 typedef struct TableMessageReader {
@@ -1934,7 +2032,8 @@ typedef struct TableMessageReader {
 } TableMessageReader;
 static SCHEMA_UNUSED int table_message_ref(TableMessageReader * r,const TableMessageEntry ** entry,int name)
 {
- uint64_t ref=0;*entry=NULL;
+ uint64_t ref=0;
+ *entry=NULL;
  if(!table_bit_get(&r->bits,&ref,r->vocabulary->ref_bits))return 0;
  if(ref==0)return 1;
  if(ref>(uint64_t)r->vocabulary->count)return 0;
@@ -1943,9 +2042,18 @@ static SCHEMA_UNUSED int table_message_ref(TableMessageReader * r,const TableMes
 }
 static SCHEMA_UNUSED TableMessageEntry table_message_element(const TableMessageEntry * e)
 {
- TableMessageEntry v;memset(&v,0,sizeof(v));v.kind=e->elem_kind;
- v.packing=e->elem_packing;v.value_bits=e->elem_value_bits;v.base_lo=e->elem_base_lo;v.base_hi=e->elem_base_hi;
- v.max=e->elem_max;v.qmin=e->elem_qmin;v.qdelta=e->elem_qdelta;v.qcount=e->elem_qcount;return v;
+ TableMessageEntry v;
+ memset(&v,0,sizeof(v));
+ v.kind=e->elem_kind;
+ v.packing=e->elem_packing;
+ v.value_bits=e->elem_value_bits;
+ v.base_lo=e->elem_base_lo;
+ v.base_hi=e->elem_base_hi;
+ v.max=e->elem_max;
+ v.qmin=e->elem_qmin;
+ v.qdelta=e->elem_qdelta;
+ v.qcount=e->elem_qcount;
+ return v;
 }
 static SCHEMA_UNUSED int table_message_skip_run(TableMessageReader * r,uint64_t count,int64_t width)
 {
@@ -1972,7 +2080,8 @@ static SCHEMA_UNUSED int table_message_skip_body(TableMessageReader * r)
 }
 static SCHEMA_UNUSED int table_message_skip(TableMessageReader * r,const TableMessageEntry * e)
 {
- uint64_t n,i;const TableMessageEntry * entry;
+ uint64_t n,i;
+ const TableMessageEntry * entry;
  switch(e->kind) {
  case 0:case 32:return 1;
  case 30:return table_message_ref(r,&entry,1);
@@ -2003,12 +2112,14 @@ static SCHEMA_UNUSED int table_message_skip(TableMessageReader * r,const TableMe
 }
 static SCHEMA_UNUSED int table_message_number(TableMessageReader * r,const TableMessageEntry * e,uint64_t * lo,uint64_t * hi)
 {
- int64_t width=e->value_bits;uint64_t before;
+ int64_t width=e->value_bits;
+ uint64_t before;
  *lo=*hi=0;
  if(width<0 || width>128 || !table_bit_get(&r->bits,lo,width<64?width:64))return 0;
  if(width>64 && !table_bit_get(&r->bits,hi,width-64))return 0;
  if(e->packing==1) {
-  before=*lo;*lo+=(uint64_t)e->base_lo;
+  before=*lo;
+  *lo+=(uint64_t)e->base_lo;
   if(table_message_kind_bits(e->kind)>64)*hi+=(uint64_t)e->base_hi+(*lo<before);
  } else if(((e->kind>=2 && e->kind<=5)||(e->kind>=20 && e->kind<=23)) && width>0 && width<64 && (*lo&(UINT64_C(1)<<(width-1)))) {
   *lo|=UINT64_MAX<<width;
@@ -2029,25 +2140,44 @@ static SCHEMA_UNUSED int table_message_float(TableMessageReader * r,const TableM
 static SCHEMA_UNUSED int64_t table_message_open(TableMessageReader * r,const TableVocabulary * v,const uint8_t * buffer,int64_t bytes,TableReport * report)
 {
  uint64_t count;
- memset(r,0,sizeof(*r));r->report=report;r->vocabulary=v;
- if(bytes<1 || buffer==NULL){report->malformed=1;return -1;}
- if(buffer[0]!=2){report->refused=1;report->reason=SCHEMA_TABLE_NEWER_FORM;return -1;}
- if(v==NULL || !v->announced){report->refused=1;report->reason=SCHEMA_TABLE_NO_VOCABULARY;return -1;}
+ memset(r,0,sizeof(*r));
+ r->report=report;
+ r->vocabulary=v;
+ if(bytes<1 || buffer==NULL){report->malformed=1;
+ return -1;
+ }
+ if(buffer[0]!=2){report->refused=1;
+ report->reason=SCHEMA_TABLE_NEWER_FORM;
+ return -1;
+ }
+ if(v==NULL || !v->announced){report->refused=1;
+ report->reason=SCHEMA_TABLE_NO_VOCABULARY;
+ return -1;
+ }
  r->bits=table_bit_reader(buffer+1,bytes-1);
- if(!table_bit_get(&r->bits,&count,8)){report->malformed=1;return -1;}
+ if(!table_bit_get(&r->bits,&count,8)){report->malformed=1;
+ return -1;
+ }
  return (int64_t)count+1;
 }
 static SCHEMA_UNUSED int table_message_close(TableMessageReader * r)
 {
- if(!table_bit_align_read(&r->bits)||r->bits.offset!=r->bits.bits){r->report->malformed=1;return 0;}return 1;
+ if(!table_bit_align_read(&r->bits)||r->bits.offset!=r->bits.bits){r->report->malformed=1;
+ return 0;
+ }return 1;
 }
 
 static SCHEMA_UNUSED int table_message_nodes_open(TableMessageReader * r,uint64_t * count)
 {
- uint64_t ref;int64_t start=r->bits.offset;*count=0;
+ uint64_t ref;
+ int64_t start=r->bits.offset;
+ *count=0;
  if(!table_bit_get(&r->bits,&ref,r->vocabulary->ref_bits))return 0;
  if(ref>(uint64_t)r->vocabulary->count)return 0;
- if(ref==0 || r->vocabulary->entries[ref-1].id!=UINT64_MAX){r->bits.offset=start;r->index_bits=1;return 1;}
+ if(ref==0 || r->vocabulary->entries[ref-1].id!=UINT64_MAX){r->bits.offset=start;
+ r->index_bits=1;
+ return 1;
+ }
  if(!table_bit_get(&r->bits,count,32))return 0;
  r->index_bits=table_bits_required(0,(int64_t)*count+1);
  /* Every record spends at least its type reference. Bound the walk before
@@ -2153,68 +2283,147 @@ typedef struct TableRetainIds {
 typedef struct TableRetainWalk {TableRetain * retain;TableRetainIds * ids;TableRetainPath path;} TableRetainWalk;
 static const uint64_t table_retain_known[]={UINT64_C(0x0a8f12cc5f9a0c03),UINT64_C(0x1e4984ef2e958a4c),UINT64_C(0x24b070ada2041cb0),UINT64_C(0x24f3a319b88552c1),UINT64_C(0x2f2ec0474f1c4fe4),UINT64_C(0x327fe6dc702553fd),UINT64_C(0x39f7fcec8fcb623d),UINT64_C(0x3bf8fbbad1587cdd),UINT64_C(0x4320e9a2e32eac38),UINT64_C(0x4339ee8ab21c8380),UINT64_C(0x4554e34a747022df),UINT64_C(0x4a9a31623ab5f213),UINT64_C(0x509220bb65a646b7),UINT64_C(0x56d7ab194448a4f3),UINT64_C(0x5b25b8ef511eb395),UINT64_C(0x60839e2395be697e),UINT64_C(0x69ff34904242a73d),UINT64_C(0x6dadeaaee49d6d18),UINT64_C(0x704be0d8faaffc58),UINT64_C(0x732dfbcc9b0cf0bb),UINT64_C(0x75d8e97600b296ea),UINT64_C(0x76aaaa535714d805),UINT64_C(0x77af761956600b54),UINT64_C(0x7a8060916400fe66),UINT64_C(0x7ce4fd9430e80cea),UINT64_C(0x7e9d0b96d39e517d),UINT64_C(0x802517e298c70b03),UINT64_C(0x823b8a195ce2133c),UINT64_C(0x9d167ef77aed79b6),UINT64_C(0x9d8b8aa2b404c2c8),UINT64_C(0x9deeefd89ca8a81d),UINT64_C(0xae3b9113b7db93a4),UINT64_C(0xaf63da4c8601e926),UINT64_C(0xaf63df4c8601f1a5),UINT64_C(0xaf63ef4c86020cd5),UINT64_C(0xb97e90a3784c431d),UINT64_C(0xbb62c62c9808ea37),UINT64_C(0xc4bcadba8e631b86),UINT64_C(0xd6458a3eef83d457),UINT64_C(0xd858c2cb7f1514cc),UINT64_C(0xdd9eb981e152e90c),UINT64_C(0xe5316cbaa025f028),UINT64_C(0xeddcb72b15486e77),UINT64_C(0xee5f6d7b48b44de8),UINT64_C(0xee7ba9ad45c64144),UINT64_C(0xf60ec899a5a69fa9),UINT64_C(0xffffffffffffffff),};
 static SCHEMA_UNUSED uint32_t table_retain_u32(const uint8_t * p)
-{return (uint32_t)p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;}
+{return (uint32_t)p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;
+}
 static SCHEMA_UNUSED uint64_t table_retain_u64(const uint8_t * p)
-{return table_retain_u32(p)|(uint64_t)table_retain_u32(p+4)<<32;}
+{return table_retain_u32(p)|(uint64_t)table_retain_u32(p+4)<<32;
+}
 static SCHEMA_UNUSED void table_retain_put32(uint8_t * p,uint32_t v)
-{int i;for(i=0;i<4;i++)p[i]=(uint8_t)(v>>(8*i));}
+{int i;
+for(i=0;i<4;i++)p[i]=(uint8_t)(v>>(8*i));
+}
 static SCHEMA_UNUSED void table_retain_put64(uint8_t * p,uint64_t v)
-{table_retain_put32(p,(uint32_t)v);table_retain_put32(p+4,(uint32_t)(v>>32));}
+{table_retain_put32(p,(uint32_t)v);
+table_retain_put32(p+4,(uint32_t)(v>>32));
+}
 static SCHEMA_UNUSED int64_t table_retain_leb_bytes(uint64_t v)
-{int64_t n=1;while(v>=128){v>>=7;n++;}return n;}
+{int64_t n=1;
+while(v>=128){v>>=7;
+n++;
+}return n;
+}
 static SCHEMA_UNUSED int table_retain_reserved(uint64_t id)
-{return id>=UINT64_MAX-2;}
+{return id>=UINT64_MAX-2;
+}
 static SCHEMA_UNUSED TableRetainPath table_retain_root(const void * at,uint32_t node)
-{TableRetainPath p;memset(&p,0,sizeof(p));p.at=at;p.node=node;return p;}
+{TableRetainPath p;
+memset(&p,0,sizeof(p));
+p.at=at;
+p.node=node;
+return p;
+}
 static SCHEMA_UNUSED TableRetainWalk table_retain_step(TableRetainWalk keep,uint32_t ordinal,uint32_t index)
-{if(keep.path.depth<SCHEMA_TABLE_RETAIN_DEPTH_MAX){keep.path.steps[keep.path.depth].ordinal=ordinal;keep.path.steps[keep.path.depth].index=index;}keep.path.depth++;return keep;}
+{if(keep.path.depth<SCHEMA_TABLE_RETAIN_DEPTH_MAX){keep.path.steps[keep.path.depth].ordinal=ordinal;
+keep.path.steps[keep.path.depth].index=index;
+}keep.path.depth++;
+return keep;
+}
 static SCHEMA_UNUSED TableRetainWalk table_retain_index(TableRetainWalk keep,uint32_t index)
-{if(keep.path.depth>0&&keep.path.depth<=SCHEMA_TABLE_RETAIN_DEPTH_MAX)keep.path.steps[keep.path.depth-1].index=index;return keep;}
+{if(keep.path.depth>0&&keep.path.depth<=SCHEMA_TABLE_RETAIN_DEPTH_MAX)keep.path.steps[keep.path.depth-1].index=index;
+return keep;
+}
 static SCHEMA_UNUSED uint8_t * table_retain_payload(uint8_t * record)
-{return record+SCHEMA_TABLE_RETAIN_HEADER+(int64_t)table_retain_u32(record+8)*8;}
+{return record+SCHEMA_TABLE_RETAIN_HEADER+(int64_t)table_retain_u32(record+8)*8;
+}
 static SCHEMA_UNUSED const void * table_retain_at(const TableRetain * retain,const uint8_t * record)
-{uint32_t node=table_retain_u32(record+4);if(!retain->directory||!node||node>retain->directory_count)return NULL;return retain->base+retain->directory[node-1].offset;}
+{uint32_t node=table_retain_u32(record+4);
+if(!retain->directory||!node||node>retain->directory_count)return NULL;
+return retain->base+retain->directory[node-1].offset;
+}
 static SCHEMA_UNUSED int table_retain_under(const TableRetain * retain,const uint8_t * record,const TableRetainPath * path,int field,uint32_t ordinal)
 {
- uint32_t depth=table_retain_u32(record+8);int32_t i;const uint8_t * steps=record+SCHEMA_TABLE_RETAIN_HEADER;
+ uint32_t depth=table_retain_u32(record+8);
+ int32_t i;
+ const uint8_t * steps=record+SCHEMA_TABLE_RETAIN_HEADER;
  if(path->depth<0||path->depth>SCHEMA_TABLE_RETAIN_DEPTH_MAX||table_retain_at(retain,record)!=path->at)return 0;
  if(depth<(uint32_t)path->depth||(field&&depth==(uint32_t)path->depth))return 0;
  for(i=0;i<path->depth;i++)if(table_retain_u32(steps+8*i)!=path->steps[i].ordinal||table_retain_u32(steps+8*i+4)!=path->steps[i].index)return 0;
  return !field||table_retain_u32(steps+8*path->depth)==ordinal;
 }
 static SCHEMA_UNUSED int table_retain_here(const TableRetain * retain,const uint8_t * record,const TableRetainPath * path)
-{return table_retain_u32(record+8)==(uint32_t)path->depth&&table_retain_under(retain,record,path,0,0);}
+{return table_retain_u32(record+8)==(uint32_t)path->depth&&table_retain_under(retain,record,path,0,0);
+}
 static SCHEMA_UNUSED void table_retain_discard(TableRetainWalk keep,int field,uint32_t ordinal)
 {
- TableRetain * r=keep.retain;int64_t read=0,write=0;int32_t i,kept=0;if(!r||!r->bytes)return;
- for(i=0;i<r->count;i++){uint32_t n=table_retain_u32(r->bytes+read);if(!table_retain_under(r,r->bytes+read,&keep.path,field,ordinal)){if(read!=write)memmove(r->bytes+write,r->bytes+read,n);write+=n;kept++;}read+=n;}r->used=write;r->count=kept;
+ TableRetain * r=keep.retain;
+ int64_t read=0,write=0;
+ int32_t i,kept=0;
+ if(!r||!r->bytes)return;
+ for(i=0;i<r->count;i++){uint32_t n=table_retain_u32(r->bytes+read);
+ if(!table_retain_under(r,r->bytes+read,&keep.path,field,ordinal)){if(read!=write)memmove(r->bytes+write,r->bytes+read,n);
+ write+=n;
+ kept++;
+ }read+=n;
+ }r->used=write;
+ r->count=kept;
 }
 static SCHEMA_UNUSED void table_retain_reset(TableRetain * retain,const TableNodeMap * nodes,const uint8_t * region)
-{if(retain){retain->used=0;retain->id_used=0;retain->count=0;retain->base=region;retain->directory=nodes?nodes->entries:NULL;retain->directory_count=nodes?(int64_t)nodes->count:0;}}
+{if(retain){retain->used=0;
+retain->id_used=0;
+retain->count=0;
+retain->base=region;
+retain->directory=nodes?nodes->entries:NULL;
+retain->directory_count=nodes?(int64_t)nodes->count:0;
+}}
 static SCHEMA_UNUSED int table_retain_nameable(uint64_t id)
-{int64_t lo=0,hi=(int64_t)(sizeof(table_retain_known)/sizeof(table_retain_known[0]))-1;while(lo<=hi){int64_t mid=lo+(hi-lo)/2;if(table_retain_known[mid]==id)return 1;if(table_retain_known[mid]<id)lo=mid+1;else hi=mid-1;}return 0;}
+{int64_t lo=0,hi=(int64_t)(sizeof(table_retain_known)/sizeof(table_retain_known[0]))-1;
+while(lo<=hi){int64_t mid=lo+(hi-lo)/2;
+if(table_retain_known[mid]==id)return 1;
+if(table_retain_known[mid]<id)lo=mid+1;
+else hi=mid-1;
+}return 0;
+}
 static SCHEMA_UNUSED uint64_t table_retain_ref(TableRetainIds * ids,uint64_t id,int record,int * overflow)
 {
- int32_t i;TableRetain * r=ids->retain;TableWriteIds * v=&ids->known;
+ int32_t i;
+ TableRetain * r=ids->retain;
+ TableWriteIds * v=&ids->known;
  if(record&&!table_retain_nameable(id)){
-  if(!r){ids->lost=1;return 0;}for(i=0;i<r->id_used;i++)if(r->ids[i].id==id)return (uint64_t)r->ids[i].slot;
-  if(!r->ids||r->id_used>=r->id_capacity||ids->count==INT32_MAX){ids->lost=1;return 0;}
-  r->ids[r->id_used].id=id;r->ids[r->id_used++].slot=++ids->count;return (uint64_t)ids->count;
+  if(!r){ids->lost=1;
+  return 0;
+  }for(i=0;i<r->id_used;i++)if(r->ids[i].id==id)return (uint64_t)r->ids[i].slot;
+  if(!r->ids||r->id_used>=r->id_capacity||ids->count==INT32_MAX){ids->lost=1;
+  return 0;
+  }
+  r->ids[r->id_used].id=id;
+  r->ids[r->id_used++].slot=++ids->count;
+  return (uint64_t)ids->count;
  }
  for(i=0;i<v->count;i++)if(v->ids[i]==id)return (uint64_t)ids->slots[i];
- if(v->count==(int)(sizeof(v->ids)/sizeof(v->ids[0]))||ids->count==INT32_MAX){*overflow=1;return 0;}
- v->ids[v->count]=id;ids->slots[v->count++]=++ids->count;return (uint64_t)ids->count;
+ if(v->count==(int)(sizeof(v->ids)/sizeof(v->ids[0]))||ids->count==INT32_MAX){*overflow=1;
+ return 0;
+ }
+ v->ids[v->count]=id;
+ ids->slots[v->count++]=++ids->count;
+ return (uint64_t)ids->count;
 }
 static SCHEMA_UNUSED void table_retain_truncate(TableRetainIds * ids,int32_t mark)
-{while(ids->known.count&&ids->slots[ids->known.count-1]>mark)ids->known.count--;if(ids->retain)while(ids->retain->id_used&&ids->retain->ids[ids->retain->id_used-1].slot>mark)ids->retain->id_used--;ids->count=mark;}
+{while(ids->known.count&&ids->slots[ids->known.count-1]>mark)ids->known.count--;
+if(ids->retain)while(ids->retain->id_used&&ids->retain->ids[ids->retain->id_used-1].slot>mark)ids->retain->id_used--;
+ids->count=mark;
+}
 static SCHEMA_UNUSED void table_retain_writer_id(TableWriter * w,uint64_t id,TableRetainWalk keep)
-{table_writer_leb(w,table_retain_ref(keep.ids,id,0,&w->overflow));}
+{table_writer_leb(w,table_retain_ref(keep.ids,id,0,&w->overflow));
+}
 static SCHEMA_UNUSED TableWriter table_retain_probe(const TableWriter * w,TableRetainWalk keep)
-{TableWriter p=*w;p.buffer=NULL;p.capacity=INT64_MAX;p.offset=0;p.overflow=0;p.id_checkpoint=keep.ids->count;return p;}
+{TableWriter p=*w;
+p.buffer=NULL;
+p.capacity=INT64_MAX;
+p.offset=0;
+p.overflow=0;
+p.id_checkpoint=keep.ids->count;
+return p;
+}
 static SCHEMA_UNUSED void table_retain_rewind(const TableWriter * probe,TableRetainWalk keep)
-{table_retain_truncate(keep.ids,probe->id_checkpoint);}
+{table_retain_truncate(keep.ids,probe->id_checkpoint);
+}
 static SCHEMA_UNUSED void table_retain_finish(TableWriter * w,TableRetainIds * ids)
-{int32_t i=0,j=0;TableRetain * r=ids->retain;while(i<ids->known.count||(r&&j<r->id_used)){if(!r||j>=r->id_used||(i<ids->known.count&&ids->slots[i]<r->ids[j].slot))table_writer_put64(w,ids->known.ids[i++]);else table_writer_put64(w,r->ids[j++].id);}table_writer_put64(w,(uint64_t)ids->count);}
+{int32_t i=0,j=0;
+TableRetain * r=ids->retain;
+while(i<ids->known.count||(r&&j<r->id_used)){if(!r||j>=r->id_used||(i<ids->known.count&&ids->slots[i]<r->ids[j].slot))table_writer_put64(w,ids->known.ids[i++]);
+else table_writer_put64(w,r->ids[j++].id);
+}table_writer_put64(w,(uint64_t)ids->count);
+}
 
 /* Capture writes only within the remaining record capacity. Failure leaves
    used/count unchanged; a huge zero-bit message count reaches this bound
@@ -2223,58 +2432,165 @@ typedef struct TableRetainIn {
  TableReader input;uint8_t * out;int64_t capacity,used;int failed;
 } TableRetainIn;
 static SCHEMA_UNUSED int table_retain_raw(TableRetainIn * s,const void * data,int64_t bytes)
-{if(s->failed||bytes<0||s->used>s->capacity||bytes>s->capacity-s->used){s->failed=1;return 0;}if(bytes)memcpy(s->out+s->used,data,(size_t)bytes);s->used+=bytes;return 1;}
+{if(s->failed||bytes<0||s->used>s->capacity||bytes>s->capacity-s->used){s->failed=1;
+return 0;
+}if(bytes)memcpy(s->out+s->used,data,(size_t)bytes);
+s->used+=bytes;
+return 1;
+}
 static SCHEMA_UNUSED int table_retain_leb(TableRetainIn * s,uint64_t v)
-{uint8_t b[10];int n=0;do{b[n++]=(uint8_t)((v&127)|(v>=128?128:0));v>>=7;}while(v);return table_retain_raw(s,b,n);}
+{uint8_t b[10];
+int n=0;
+do{b[n++]=(uint8_t)((v&127)|(v>=128?128:0));
+v>>=7;
+}while(v);
+return table_retain_raw(s,b,n);
+}
 static SCHEMA_UNUSED int table_retain_id(TableRetainIn * s,uint64_t id)
-{uint8_t b[8];table_retain_put64(b,id);return table_retain_raw(s,b,8);}
+{uint8_t b[8];
+table_retain_put64(b,id);
+return table_retain_raw(s,b,8);
+}
 static SCHEMA_UNUSED int table_retain_in_ref(TableRetainIn * s,int zero)
-{uint64_t ref,id;if(!table_reader_leb(&s->input,&ref))return 0;if(!ref)return zero&&table_retain_id(s,0);if(ref>s->input.id_count)return 0;id=table_reader_id_at(&s->input,ref);return id&&!table_retain_reserved(id)&&table_retain_id(s,id);}
+{uint64_t ref,id;
+if(!table_reader_leb(&s->input,&ref))return 0;
+if(!ref)return zero&&table_retain_id(s,0);
+if(ref>s->input.id_count)return 0;
+id=table_reader_id_at(&s->input,ref);
+return id&&!table_retain_reserved(id)&&table_retain_id(s,id);
+}
 static SCHEMA_UNUSED int table_retain_in_payload(TableRetainIn *,uint8_t,int32_t);
 static SCHEMA_UNUSED int table_retain_in_content(TableRetainIn *,uint8_t,int64_t,int32_t);
 static SCHEMA_UNUSED int table_retain_in_frame(TableRetainIn * s,uint8_t kind,int64_t length,int32_t depth)
-{uint8_t zero[8]={0};int64_t mark=s->used;if(!table_retain_raw(s,zero,8)||!table_retain_in_content(s,kind,length,depth))return 0;if(s->used-mark-8>UINT32_MAX)return 0;table_retain_put32(s->out+mark,(uint32_t)(s->used-mark-8));return 1;}
+{uint8_t zero[8]={0};
+int64_t mark=s->used;
+if(!table_retain_raw(s,zero,8)||!table_retain_in_content(s,kind,length,depth))return 0;
+if(s->used-mark-8>UINT32_MAX)return 0;
+table_retain_put32(s->out+mark,(uint32_t)(s->used-mark-8));
+return 1;
+}
 static SCHEMA_UNUSED int table_retain_in_content(TableRetainIn * s,uint8_t kind,int64_t length,int32_t depth)
 {
- int64_t end;TableReader * r=&s->input;if(depth>SCHEMA_TABLE_RETAIN_WALK_MAX||!table_reader_has(r,length))return 0;end=r->offset+length;
+ int64_t end;
+ TableReader * r=&s->input;
+ if(depth>SCHEMA_TABLE_RETAIN_WALK_MAX||!table_reader_has(r,length))return 0;
+ end=r->offset+length;
  switch(kind){
- case 13:for(;;){uint64_t ref;int64_t mark=r->offset;uint8_t k;if(!table_reader_leb(r,&ref))return 0;if(!ref){if(!table_retain_id(s,0))return 0;break;}r->offset=mark;if(!table_retain_in_ref(s,0)||r->offset>=end)return 0;k=table_reader_get8(r);if(!table_retain_raw(s,&k,1)||!table_retain_in_payload(s,k,depth)||r->offset>end)return 0;}break;
- case 14:case 16:{uint8_t elem;uint64_t n,i;if(r->offset>=end)return 0;elem=table_reader_get8(r);if(!table_retain_raw(s,&elem,1)||!table_reader_leb(r,&n)||!table_retain_leb(s,n))return 0;
- for(i=0;i<n;i++){if(kind==16){uint64_t bytes;if(!table_retain_in_ref(s,0)||!table_reader_leb(r,&bytes)||bytes>(uint64_t)(end-r->offset)||!table_retain_in_frame(s,elem,(int64_t)bytes,depth+1))return 0;}else if(!table_retain_in_payload(s,elem,depth))return 0;if(r->offset>end)return 0;}break;}
- case 15:case 30:if(!table_retain_in_payload(s,kind,depth))return 0;break;
+ case 13:for(;;){uint64_t ref;
+ int64_t mark=r->offset;
+ uint8_t k;
+ if(!table_reader_leb(r,&ref))return 0;
+ if(!ref){if(!table_retain_id(s,0))return 0;
+ break;
+ }r->offset=mark;
+ if(!table_retain_in_ref(s,0)||r->offset>=end)return 0;
+ k=table_reader_get8(r);
+ if(!table_retain_raw(s,&k,1)||!table_retain_in_payload(s,k,depth)||r->offset>end)return 0;
+ }break;
+ case 14:case 16:{uint8_t elem;
+ uint64_t n,i;
+ if(r->offset>=end)return 0;
+ elem=table_reader_get8(r);
+ if(!table_retain_raw(s,&elem,1)||!table_reader_leb(r,&n)||!table_retain_leb(s,n))return 0;
+ for(i=0;i<n;i++){if(kind==16){uint64_t bytes;
+ if(!table_retain_in_ref(s,0)||!table_reader_leb(r,&bytes)||bytes>(uint64_t)(end-r->offset)||!table_retain_in_frame(s,elem,(int64_t)bytes,depth+1))return 0;
+ }else if(!table_retain_in_payload(s,elem,depth))return 0;
+ if(r->offset>end)return 0;
+ }break;
+ }
+ case 15:case 30:if(!table_retain_in_payload(s,kind,depth))return 0;
+ break;
  case 17:return 0;
- default:if(!table_retain_raw(s,r->buffer+r->offset,length))return 0;r->offset+=length;break;
+ default:if(!table_retain_raw(s,r->buffer+r->offset,length))return 0;
+ r->offset+=length;
+ break;
  }return r->offset==end;
 }
 static SCHEMA_UNUSED int table_retain_width(uint8_t kind)
-{switch(kind){case 1:case 2:case 6:case 20:case 25:return 1;case 3:case 7:case 21:case 26:return 2;case 4:case 8:case 10:case 22:case 27:return 4;case 5:case 9:case 11:case 23:case 28:return 8;case 18:case 19:case 24:case 29:return 16;default:return 0;}}
+{switch(kind){case 1:case 2:case 6:case 20:case 25:return 1;
+case 3:case 7:case 21:case 26:return 2;
+case 4:case 8:case 10:case 22:case 27:return 4;
+case 5:case 9:case 11:case 23:case 28:return 8;
+case 18:case 19:case 24:case 29:return 16;
+default:return 0;
+}}
 static SCHEMA_UNUSED int table_retain_in_payload(TableRetainIn * s,uint8_t kind,int32_t depth)
 {
- TableReader * r=&s->input;uint64_t length;int width=table_retain_width(kind);
- if(width){if(!table_reader_has(r,width)||!table_retain_raw(s,r->buffer+r->offset,width))return 0;r->offset+=width;return 1;}
+ TableReader * r=&s->input;
+ uint64_t length;
+ int width=table_retain_width(kind);
+ if(width){if(!table_reader_has(r,width)||!table_retain_raw(s,r->buffer+r->offset,width))return 0;
+ r->offset+=width;
+ return 1;
+ }
  switch(kind){
- case 12:case 31:case 32:case 33:if(!table_reader_leb(r,&length)||!table_reader_room(r,length)||!table_retain_leb(s,length)||!table_retain_raw(s,r->buffer+r->offset,(int64_t)length))return 0;r->offset+=(int64_t)length;return 1;
- case 13:case 14:case 16:if(!table_reader_leb(r,&length)||!table_reader_room(r,length))return 0;return table_retain_in_frame(s,kind,(int64_t)length,depth+1);
- case 15:{uint64_t arm;uint8_t k;int64_t mark=r->offset;if(!table_reader_leb(r,&arm))return 0;r->offset=mark;if(!table_retain_in_ref(s,1))return 0;if(!arm)return 1;if(!table_reader_has(r,1))return 0;k=table_reader_get8(r);if(!table_retain_raw(s,&k,1)||!table_reader_leb(r,&length)||!table_reader_room(r,length))return 0;return table_retain_in_frame(s,k,(int64_t)length,depth+1);}
+ case 12:case 31:case 32:case 33:if(!table_reader_leb(r,&length)||!table_reader_room(r,length)||!table_retain_leb(s,length)||!table_retain_raw(s,r->buffer+r->offset,(int64_t)length))return 0;
+ r->offset+=(int64_t)length;
+ return 1;
+ case 13:case 14:case 16:if(!table_reader_leb(r,&length)||!table_reader_room(r,length))return 0;
+ return table_retain_in_frame(s,kind,(int64_t)length,depth+1);
+ case 15:{uint64_t arm;
+ uint8_t k;
+ int64_t mark=r->offset;
+ if(!table_reader_leb(r,&arm))return 0;
+ r->offset=mark;
+ if(!table_retain_in_ref(s,1))return 0;
+ if(!arm)return 1;
+ if(!table_reader_has(r,1))return 0;
+ k=table_reader_get8(r);
+ if(!table_retain_raw(s,&k,1)||!table_reader_leb(r,&length)||!table_reader_room(r,length))return 0;
+ return table_retain_in_frame(s,k,(int64_t)length,depth+1);
+ }
  case 30:return table_retain_in_ref(s,1);
  default:return 0;
  }
 }
 static SCHEMA_UNUSED uint8_t * table_retain_begin(TableRetainWalk keep,uint64_t id,uint8_t kind,TableRetainIn * s)
 {
- TableRetain * r=keep.retain;int64_t header=SCHEMA_TABLE_RETAIN_HEADER+8*(int64_t)keep.path.depth;uint8_t * p;int32_t i;
+ TableRetain * r=keep.retain;
+ int64_t header=SCHEMA_TABLE_RETAIN_HEADER+8*(int64_t)keep.path.depth;
+ uint8_t * p;
+ int32_t i;
  if(table_retain_reserved(id)||!r||!r->bytes||keep.path.depth<0||keep.path.depth>SCHEMA_TABLE_RETAIN_DEPTH_MAX||r->used<0||r->used>r->capacity||header>r->capacity-r->used||r->count==INT32_MAX)return NULL;
- p=r->bytes+r->used;table_retain_put32(p+4,keep.path.node);table_retain_put32(p+8,(uint32_t)keep.path.depth);table_retain_put64(p+16,id);p[24]=kind;p[25]=0;
- for(i=0;i<keep.path.depth;i++){table_retain_put32(p+SCHEMA_TABLE_RETAIN_HEADER+8*i,keep.path.steps[i].ordinal);table_retain_put32(p+SCHEMA_TABLE_RETAIN_HEADER+8*i+4,keep.path.steps[i].index);}
- memset(s,0,sizeof(*s));s->out=p+header;s->capacity=r->capacity-r->used-header;if(s->capacity>UINT32_MAX-header)s->capacity=UINT32_MAX-header;return p;
+ p=r->bytes+r->used;
+ table_retain_put32(p+4,keep.path.node);
+ table_retain_put32(p+8,(uint32_t)keep.path.depth);
+ table_retain_put64(p+16,id);
+ p[24]=kind;
+ p[25]=0;
+ for(i=0;i<keep.path.depth;i++){table_retain_put32(p+SCHEMA_TABLE_RETAIN_HEADER+8*i,keep.path.steps[i].ordinal);
+ table_retain_put32(p+SCHEMA_TABLE_RETAIN_HEADER+8*i+4,keep.path.steps[i].index);
+ }
+ memset(s,0,sizeof(*s));
+ s->out=p+header;
+ s->capacity=r->capacity-r->used-header;
+ if(s->capacity>UINT32_MAX-header)s->capacity=UINT32_MAX-header;
+ return p;
 }
 static SCHEMA_UNUSED void table_retain_commit(TableRetainWalk keep,uint8_t * record,const TableRetainIn * s,TableReport * report)
-{int64_t bytes=SCHEMA_TABLE_RETAIN_HEADER+8*(int64_t)keep.path.depth+s->used;table_retain_put32(record,(uint32_t)bytes);table_retain_put32(record+12,(uint32_t)s->used);keep.retain->used+=bytes;keep.retain->count++;report->retained++;}
+{int64_t bytes=SCHEMA_TABLE_RETAIN_HEADER+8*(int64_t)keep.path.depth+s->used;
+table_retain_put32(record,(uint32_t)bytes);
+table_retain_put32(record+12,(uint32_t)s->used);
+keep.retain->used+=bytes;
+keep.retain->count++;
+report->retained++;
+}
 static SCHEMA_UNUSED int table_retain_capture(TableReader * r,uint64_t id,uint8_t kind,TableRetainWalk keep)
 {
- TableRetainIn s;TableReader source=*r;uint8_t * record;if(!table_reader_skip(r,kind))return 0;if(!keep.retain)return 1;
- record=table_retain_begin(keep,id,kind,&s);if(!record){r->report->retain_lost++;return 1;}source.size=r->offset;s.input=source;
- if(!table_retain_in_payload(&s,kind,0)||s.input.offset!=source.size){r->report->retain_lost++;return 1;}table_retain_commit(keep,record,&s,r->report);return 1;
+ TableRetainIn s;
+ TableReader source=*r;
+ uint8_t * record;
+ if(!table_reader_skip(r,kind))return 0;
+ if(!keep.retain)return 1;
+ record=table_retain_begin(keep,id,kind,&s);
+ if(!record){r->report->retain_lost++;
+ return 1;
+ }source.size=r->offset;
+ s.input=source;
+ if(!table_retain_in_payload(&s,kind,0)||s.input.offset!=source.size){r->report->retain_lost++;
+ return 1;
+ }table_retain_commit(keep,record,&s,r->report);
+ return 1;
 }
 
 
@@ -2282,98 +2598,243 @@ typedef struct TableRetainOut {
  uint8_t * input;int64_t size,at,bytes;TableRetainIds * ids;TableWriter * writer;int overflow;
 } TableRetainOut;
 static SCHEMA_UNUSED int table_retain_out_raw(TableRetainOut * s,const void * data,int64_t bytes)
-{if(bytes<0||bytes>INT64_MAX-s->bytes)return 0;if(s->writer)table_writer_raw(s->writer,data,bytes);s->bytes+=bytes;return !s->writer||!s->writer->overflow;}
+{if(bytes<0||bytes>INT64_MAX-s->bytes)return 0;
+if(s->writer)table_writer_raw(s->writer,data,bytes);
+s->bytes+=bytes;
+return !s->writer||!s->writer->overflow;
+}
 static SCHEMA_UNUSED int table_retain_out_leb(TableRetainOut * s,uint64_t v)
-{if(s->writer)table_writer_leb(s->writer,v);s->bytes+=table_retain_leb_bytes(v);return !s->writer||!s->writer->overflow;}
+{if(s->writer)table_writer_leb(s->writer,v);
+s->bytes+=table_retain_leb_bytes(v);
+return !s->writer||!s->writer->overflow;
+}
 static SCHEMA_UNUSED int table_retain_out_leb_read(TableRetainOut * s,uint64_t * v)
-{TableReader r=table_reader_make(s->input,s->size,NULL);r.offset=s->at;if(!table_reader_leb(&r,v))return 0;s->at=r.offset;return 1;}
+{TableReader r=table_reader_make(s->input,s->size,NULL);
+r.offset=s->at;
+if(!table_reader_leb(&r,v))return 0;
+s->at=r.offset;
+return 1;
+}
 static SCHEMA_UNUSED int table_retain_out_ref(TableRetainOut * s)
-{uint64_t id,ref;if(s->size-s->at<8)return 0;id=table_retain_u64(s->input+s->at);s->at+=8;if(!id)return table_retain_out_leb(s,0);ref=table_retain_ref(s->ids,id,1,&s->overflow);return !s->ids->lost&&!s->overflow&&table_retain_out_leb(s,ref);}
+{uint64_t id,ref;
+if(s->size-s->at<8)return 0;
+id=table_retain_u64(s->input+s->at);
+s->at+=8;
+if(!id)return table_retain_out_leb(s,0);
+ref=table_retain_ref(s->ids,id,1,&s->overflow);
+return !s->ids->lost&&!s->overflow&&table_retain_out_leb(s,ref);
+}
 static SCHEMA_UNUSED int table_retain_out_payload(TableRetainOut *,uint8_t,int32_t);
 static SCHEMA_UNUSED int table_retain_out_content(TableRetainOut *,uint8_t,int64_t,int32_t);
 static SCHEMA_UNUSED int table_retain_out_frame(TableRetainOut * s,uint8_t kind,int32_t depth)
 {
- uint8_t * slot;int64_t resolved,wire,begin;if(s->size-s->at<8)return 0;slot=s->input+s->at;resolved=table_retain_u32(slot);s->at+=8;
- if(!s->writer){begin=s->bytes;if(!table_retain_out_content(s,kind,resolved,depth))return 0;wire=s->bytes-begin;if(wire>UINT32_MAX)return 0;table_retain_put32(slot+4,(uint32_t)wire);s->bytes+=table_retain_leb_bytes((uint64_t)wire);return 1;}
- wire=table_retain_u32(slot+4);if(!table_retain_out_leb(s,(uint64_t)wire))return 0;begin=s->bytes;return table_retain_out_content(s,kind,resolved,depth)&&s->bytes-begin==wire;
+ uint8_t * slot;
+ int64_t resolved,wire,begin;
+ if(s->size-s->at<8)return 0;
+ slot=s->input+s->at;
+ resolved=table_retain_u32(slot);
+ s->at+=8;
+ if(!s->writer){begin=s->bytes;
+ if(!table_retain_out_content(s,kind,resolved,depth))return 0;
+ wire=s->bytes-begin;
+ if(wire>UINT32_MAX)return 0;
+ table_retain_put32(slot+4,(uint32_t)wire);
+ s->bytes+=table_retain_leb_bytes((uint64_t)wire);
+ return 1;
+ }
+ wire=table_retain_u32(slot+4);
+ if(!table_retain_out_leb(s,(uint64_t)wire))return 0;
+ begin=s->bytes;
+ return table_retain_out_content(s,kind,resolved,depth)&&s->bytes-begin==wire;
 }
 static SCHEMA_UNUSED int table_retain_out_content(TableRetainOut * s,uint8_t kind,int64_t length,int32_t depth)
 {
- int64_t end;if(depth>SCHEMA_TABLE_RETAIN_WALK_MAX||length<0||length>s->size-s->at)return 0;end=s->at+length;
+ int64_t end;
+ if(depth>SCHEMA_TABLE_RETAIN_WALK_MAX||length<0||length>s->size-s->at)return 0;
+ end=s->at+length;
  switch(kind){
- case 13:for(;;){uint64_t id;uint8_t k;if(end-s->at<8)return 0;id=table_retain_u64(s->input+s->at);if(!table_retain_out_ref(s))return 0;if(!id)break;if(s->at>=end)return 0;k=s->input[s->at++];if(!table_retain_out_raw(s,&k,1)||!table_retain_out_payload(s,k,depth))return 0;}break;
- case 14:case 16:{uint64_t n,i;uint8_t elem;if(s->at>=end)return 0;elem=s->input[s->at++];if(!table_retain_out_raw(s,&elem,1)||!table_retain_out_leb_read(s,&n)||!table_retain_out_leb(s,n))return 0;
- for(i=0;i<n;i++){if(kind==16){if(!table_retain_out_ref(s)||!table_retain_out_frame(s,elem,depth+1))return 0;}else if(!table_retain_out_payload(s,elem,depth))return 0;}break;}
- case 15:case 30:if(!table_retain_out_payload(s,kind,depth))return 0;break;
+ case 13:for(;;){uint64_t id;
+ uint8_t k;
+ if(end-s->at<8)return 0;
+ id=table_retain_u64(s->input+s->at);
+ if(!table_retain_out_ref(s))return 0;
+ if(!id)break;
+ if(s->at>=end)return 0;
+ k=s->input[s->at++];
+ if(!table_retain_out_raw(s,&k,1)||!table_retain_out_payload(s,k,depth))return 0;
+ }break;
+ case 14:case 16:{uint64_t n,i;
+ uint8_t elem;
+ if(s->at>=end)return 0;
+ elem=s->input[s->at++];
+ if(!table_retain_out_raw(s,&elem,1)||!table_retain_out_leb_read(s,&n)||!table_retain_out_leb(s,n))return 0;
+ for(i=0;i<n;i++){if(kind==16){if(!table_retain_out_ref(s)||!table_retain_out_frame(s,elem,depth+1))return 0;
+ }else if(!table_retain_out_payload(s,elem,depth))return 0;
+ }break;
+ }
+ case 15:case 30:if(!table_retain_out_payload(s,kind,depth))return 0;
+ break;
  case 17:return 0;
- default:if(!table_retain_out_raw(s,s->input+s->at,length))return 0;s->at+=length;break;
+ default:if(!table_retain_out_raw(s,s->input+s->at,length))return 0;
+ s->at+=length;
+ break;
  }return s->at==end;
 }
 static SCHEMA_UNUSED int table_retain_out_payload(TableRetainOut * s,uint8_t kind,int32_t depth)
 {
- int width=table_retain_width(kind);uint64_t length;
- if(width){if(width>s->size-s->at||!table_retain_out_raw(s,s->input+s->at,width))return 0;s->at+=width;return 1;}
+ int width=table_retain_width(kind);
+ uint64_t length;
+ if(width){if(width>s->size-s->at||!table_retain_out_raw(s,s->input+s->at,width))return 0;
+ s->at+=width;
+ return 1;
+ }
  switch(kind){
- case 12:case 31:case 32:case 33:if(!table_retain_out_leb_read(s,&length)||length>(uint64_t)(s->size-s->at)||!table_retain_out_leb(s,length)||!table_retain_out_raw(s,s->input+s->at,(int64_t)length))return 0;s->at+=(int64_t)length;return 1;
+ case 12:case 31:case 32:case 33:if(!table_retain_out_leb_read(s,&length)||length>(uint64_t)(s->size-s->at)||!table_retain_out_leb(s,length)||!table_retain_out_raw(s,s->input+s->at,(int64_t)length))return 0;
+ s->at+=(int64_t)length;
+ return 1;
  case 13:case 14:case 16:return table_retain_out_frame(s,kind,depth+1);
- case 15:{uint64_t arm;uint8_t k;if(s->size-s->at<8)return 0;arm=table_retain_u64(s->input+s->at);if(!table_retain_out_ref(s))return 0;if(!arm)return 1;if(s->at>=s->size)return 0;k=s->input[s->at++];return table_retain_out_raw(s,&k,1)&&table_retain_out_frame(s,k,depth+1);}
+ case 15:{uint64_t arm;
+ uint8_t k;
+ if(s->size-s->at<8)return 0;
+ arm=table_retain_u64(s->input+s->at);
+ if(!table_retain_out_ref(s))return 0;
+ if(!arm)return 1;
+ if(s->at>=s->size)return 0;
+ k=s->input[s->at++];
+ return table_retain_out_raw(s,&k,1)&&table_retain_out_frame(s,k,depth+1);
+ }
  case 30:return table_retain_out_ref(s);
  default:return 0;
  }
 }
 static SCHEMA_UNUSED int64_t table_retain_record_measure(uint8_t * record,TableRetainIds * ids,uint64_t * ref)
 {
- int32_t mark=ids->count;TableRetainOut s;int overflow=0;ids->lost=0;*ref=table_retain_ref(ids,table_retain_u64(record+16),1,&overflow);
- if(!ids->lost&&!overflow){memset(&s,0,sizeof(s));s.input=table_retain_payload(record);s.size=table_retain_u32(record+12);s.ids=ids;if(table_retain_out_payload(&s,record[24],0)&&s.at==s.size)return table_retain_leb_bytes(*ref)+1+s.bytes;}
- table_retain_truncate(ids,mark);ids->lost=0;return -1;
+ int32_t mark=ids->count;
+ TableRetainOut s;
+ int overflow=0;
+ ids->lost=0;
+ *ref=table_retain_ref(ids,table_retain_u64(record+16),1,&overflow);
+ if(!ids->lost&&!overflow){memset(&s,0,sizeof(s));
+ s.input=table_retain_payload(record);
+ s.size=table_retain_u32(record+12);
+ s.ids=ids;
+ if(table_retain_out_payload(&s,record[24],0)&&s.at==s.size)return table_retain_leb_bytes(*ref)+1+s.bytes;
+ }
+ table_retain_truncate(ids,mark);
+ ids->lost=0;
+ return -1;
 }
 static SCHEMA_UNUSED int table_retain_tail(TableWriter * w,TableRetainWalk keep)
 {
- TableRetain * r=keep.retain;int32_t i;int64_t at=0;if(!r||!r->bytes)return 1;
- for(i=0;i<r->count;i++){uint8_t * record=r->bytes+at;uint64_t ref;int64_t bytes;TableRetainOut s;at+=table_retain_u32(record);
+ TableRetain * r=keep.retain;
+ int32_t i;
+ int64_t at=0;
+ if(!r||!r->bytes)return 1;
+ for(i=0;i<r->count;i++){uint8_t * record=r->bytes+at;
+ uint64_t ref;
+ int64_t bytes;
+ TableRetainOut s;
+ at+=table_retain_u32(record);
  if(!table_retain_here(r,record,&keep.path))continue;
- if(w->check_default){w->offset=2;return 1;}
- bytes=table_retain_record_measure(record,keep.ids,&ref);if(bytes<0)continue;
- if(!w->buffer){if(bytes>INT64_MAX-w->offset){w->overflow=1;return 0;}w->offset+=bytes;continue;}
- table_writer_leb(w,ref);table_writer_put8(w,record[24]);memset(&s,0,sizeof(s));s.input=table_retain_payload(record);s.size=table_retain_u32(record+12);s.ids=keep.ids;s.writer=w;
- if(!table_retain_out_payload(&s,record[24],0)||s.at!=s.size)return 0;record[25]=1;
+ if(w->check_default){w->offset=2;
+ return 1;
+ }
+ bytes=table_retain_record_measure(record,keep.ids,&ref);
+ if(bytes<0)continue;
+ if(!w->buffer){if(bytes>INT64_MAX-w->offset){w->overflow=1;
+ return 0;
+ }w->offset+=bytes;
+ continue;
+ }
+ table_writer_leb(w,ref);
+ table_writer_put8(w,record[24]);
+ memset(&s,0,sizeof(s));
+ s.input=table_retain_payload(record);
+ s.size=table_retain_u32(record+12);
+ s.ids=keep.ids;
+ s.writer=w;
+ if(!table_retain_out_payload(&s,record[24],0)||s.at!=s.size)return 0;
+ record[25]=1;
  }return !w->overflow;
 }
 static SCHEMA_UNUSED void table_retain_clear_placed(TableRetain * r)
-{int32_t i;int64_t at=0;if(!r||!r->bytes)return;for(i=0;i<r->count;i++){r->bytes[at+25]=0;at+=table_retain_u32(r->bytes+at);}}
+{int32_t i;
+int64_t at=0;
+if(!r||!r->bytes)return;
+for(i=0;i<r->count;i++){r->bytes[at+25]=0;
+at+=table_retain_u32(r->bytes+at);
+}}
 static SCHEMA_UNUSED void table_retain_count_lost(TableRetain * r,TableReport * report)
-{int32_t i;int64_t at=0;if(!r||!r->bytes)return;for(i=0;i<r->count;i++){if(!r->bytes[at+25])report->retain_lost++;at+=table_retain_u32(r->bytes+at);}}
+{int32_t i;
+int64_t at=0;
+if(!r||!r->bytes)return;
+for(i=0;i<r->count;i++){if(!r->bytes[at+25])report->retain_lost++;
+at+=table_retain_u32(r->bytes+at);
+}}
 
 
 typedef struct TableRetainMessage {TableRetainIn output;TableMessageReader input;} TableRetainMessage;
 static SCHEMA_UNUSED int table_retain_message_payload(TableRetainMessage *,const TableMessageEntry *,int32_t);
 static SCHEMA_UNUSED int table_retain_message_content(TableRetainMessage *,const TableMessageEntry *,int32_t);
 static SCHEMA_UNUSED int table_retain_message_frame(TableRetainMessage * s,const TableMessageEntry * e,int32_t depth)
-{uint8_t zero[8]={0};int64_t mark=s->output.used;if(!table_retain_raw(&s->output,zero,8)||!table_retain_message_content(s,e,depth))return 0;if(s->output.used-mark-8>UINT32_MAX)return 0;table_retain_put32(s->output.out+mark,(uint32_t)(s->output.used-mark-8));return 1;}
+{uint8_t zero[8]={0};
+int64_t mark=s->output.used;
+if(!table_retain_raw(&s->output,zero,8)||!table_retain_message_content(s,e,depth))return 0;
+if(s->output.used-mark-8>UINT32_MAX)return 0;
+table_retain_put32(s->output.out+mark,(uint32_t)(s->output.used-mark-8));
+return 1;
+}
 static SCHEMA_UNUSED int table_retain_message_scalar(TableRetainMessage * s,const TableMessageEntry * e)
 {
- uint64_t lo=0,hi=0;uint8_t bytes[16];int width=table_retain_width(e->kind);if(!width)return 0;
- if(e->kind==10&&e->packing==2){float value;if(!table_message_float(&s->input,e,&value))return 0;lo=table_float_to_bits(value);}
+ uint64_t lo=0,hi=0;
+ uint8_t bytes[16];
+ int width=table_retain_width(e->kind);
+ if(!width)return 0;
+ if(e->kind==10&&e->packing==2){float value;
+ if(!table_message_float(&s->input,e,&value))return 0;
+ lo=table_float_to_bits(value);
+ }
  else if(!table_message_number(&s->input,e,&lo,&hi))return 0;
- table_retain_put64(bytes,lo);table_retain_put64(bytes+8,hi);return table_retain_raw(&s->output,bytes,width);
+ table_retain_put64(bytes,lo);
+ table_retain_put64(bytes+8,hi);
+ return table_retain_raw(&s->output,bytes,width);
 }
 static SCHEMA_UNUSED int table_retain_message_opaque(TableRetainMessage * s,const TableMessageEntry * e,int framed)
 {
- uint64_t n,i;TableMessageReader * r=&s->input;
- if(e->kind==12||e->kind==33){if(!table_bit_get(&r->bits,&n,table_bits_required(0,e->max)))return 0;if(e->kind==33)n*=2;else if(!table_bit_align_read(&r->bits))return 0;}
+ uint64_t n,i;
+ TableMessageReader * r=&s->input;
+ if(e->kind==12||e->kind==33){if(!table_bit_get(&r->bits,&n,table_bits_required(0,e->max)))return 0;
+ if(e->kind==33)n*=2;
+ else if(!table_bit_align_read(&r->bits))return 0;
+ }
  else if(!table_bit_align_read(&r->bits)||!table_bit_get(&r->bits,&n,32))return 0;
  if(n>INT64_MAX/8||!table_bit_has(&r->bits,(int64_t)n*8))return 0;
  if(framed&&!table_retain_leb(&s->output,n))return 0;
  if(n>(uint64_t)(s->output.capacity-s->output.used))return 0;
- for(i=0;i<n;i++){uint64_t v;uint8_t byte;if(!table_bit_get(&r->bits,&v,8))return 0;byte=(uint8_t)v;if(!table_retain_raw(&s->output,&byte,1))return 0;}return 1;
+ for(i=0;i<n;i++){uint64_t v;
+ uint8_t byte;
+ if(!table_bit_get(&r->bits,&v,8))return 0;
+ byte=(uint8_t)v;
+ if(!table_retain_raw(&s->output,&byte,1))return 0;
+ }return 1;
 }
 static SCHEMA_UNUSED int table_retain_message_content(TableRetainMessage * s,const TableMessageEntry * e,int32_t depth)
 {
  if(depth>SCHEMA_TABLE_RETAIN_WALK_MAX)return 0;
  switch(e->kind){
- case 13:for(;;){const TableMessageEntry * f;if(!table_message_ref(&s->input,&f,0))return 0;if(!f)return table_retain_id(&s->output,0);if(!f->id||!table_retain_id(&s->output,f->id)||!table_retain_raw(&s->output,&f->kind,1)||!table_retain_message_payload(s,f,depth))return 0;}
- case 14:case 16:{uint64_t n,i;TableMessageEntry elem=table_message_element(e);if(elem.kind==17||!table_message_count(&s->input,e,&n)||!table_retain_raw(&s->output,&elem.kind,1)||!table_retain_leb(&s->output,n))return 0;
- for(i=0;i<n;i++){if(e->kind==16){const TableMessageEntry * key;if(!table_message_ref(&s->input,&key,1)||!key||!key->id||!table_retain_id(&s->output,key->id)||!table_retain_message_frame(s,&elem,depth+1))return 0;}else if(!table_retain_message_payload(s,&elem,depth))return 0;}return 1;}
+ case 13:for(;;){const TableMessageEntry * f;
+ if(!table_message_ref(&s->input,&f,0))return 0;
+ if(!f)return table_retain_id(&s->output,0);
+ if(!f->id||!table_retain_id(&s->output,f->id)||!table_retain_raw(&s->output,&f->kind,1)||!table_retain_message_payload(s,f,depth))return 0;
+ }
+ case 14:case 16:{uint64_t n,i;
+ TableMessageEntry elem=table_message_element(e);
+ if(elem.kind==17||!table_message_count(&s->input,e,&n)||!table_retain_raw(&s->output,&elem.kind,1)||!table_retain_leb(&s->output,n))return 0;
+ for(i=0;i<n;i++){if(e->kind==16){const TableMessageEntry * key;
+ if(!table_message_ref(&s->input,&key,1)||!key||!key->id||!table_retain_id(&s->output,key->id)||!table_retain_message_frame(s,&elem,depth+1))return 0;
+ }else if(!table_retain_message_payload(s,&elem,depth))return 0;
+ }return 1;
+ }
  case 15:case 30:return table_retain_message_payload(s,e,depth);
  case 32:return 1;
  case 12:case 31:case 33:return table_retain_message_opaque(s,e,0);
@@ -2386,8 +2847,15 @@ static SCHEMA_UNUSED int table_retain_message_payload(TableRetainMessage * s,con
  switch(e->kind){
  case 0:case 17:return 0;
  case 32:return table_retain_leb(&s->output,0);
- case 30:{const TableMessageEntry * entry;if(!table_message_ref(&s->input,&entry,1))return 0;return table_retain_id(&s->output,entry?entry->id:0);}
- case 15:{const TableMessageEntry * arm;if(!table_message_ref(&s->input,&arm,0))return 0;if(!arm)return table_retain_id(&s->output,0);return arm->id&&arm->kind&&table_retain_id(&s->output,arm->id)&&table_retain_raw(&s->output,&arm->kind,1)&&table_retain_message_frame(s,arm,depth+1);}
+ case 30:{const TableMessageEntry * entry;
+ if(!table_message_ref(&s->input,&entry,1))return 0;
+ return table_retain_id(&s->output,entry?entry->id:0);
+ }
+ case 15:{const TableMessageEntry * arm;
+ if(!table_message_ref(&s->input,&arm,0))return 0;
+ if(!arm)return table_retain_id(&s->output,0);
+ return arm->id&&arm->kind&&table_retain_id(&s->output,arm->id)&&table_retain_raw(&s->output,&arm->kind,1)&&table_retain_message_frame(s,arm,depth+1);
+ }
  case 13:case 14:case 16:return table_retain_message_frame(s,e,depth+1);
  case 12:case 31:case 33:return table_retain_message_opaque(s,e,1);
  default:return table_retain_message_scalar(s,e);
@@ -2395,33 +2863,81 @@ static SCHEMA_UNUSED int table_retain_message_payload(TableRetainMessage * s,con
 }
 static SCHEMA_UNUSED int table_retain_message_capture(TableMessageReader * r,const TableMessageEntry * entry,TableRetainWalk keep)
 {
- TableRetainMessage s;uint8_t * record;s.input=*r;if(!table_message_skip(r,entry))return 0;if(!keep.retain)return 1;
+ TableRetainMessage s;
+ uint8_t * record;
+ s.input=*r;
+ if(!table_message_skip(r,entry))return 0;
+ if(!keep.retain)return 1;
  record=table_retain_begin(keep,entry->id,entry->kind,&s.output);
- if(!record||!table_retain_message_payload(&s,entry,0)||s.input.bits.offset!=r->bits.offset){r->report->retain_lost++;return 1;}
- table_retain_commit(keep,record,&s.output,r->report);return 1;
+ if(!record||!table_retain_message_payload(&s,entry,0)||s.input.bits.offset!=r->bits.offset){r->report->retain_lost++;
+ return 1;
+ }
+ table_retain_commit(keep,record,&s.output,r->report);
+ return 1;
 }
 
 typedef int (*TableRetainSaveNode)(TableWriter *,const void *,uint64_t,TableRetainWalk);
 static SCHEMA_UNUSED int table_retain_records(TableWriter * w,TableRetainWalk retention,TableRetainSaveNode save)
 {
- uint64_t i;const TableNumbering * n=w->nodes;table_writer_leb(w,n->count-1);
- for(i=1;i<n->count;i++){const TableNodeEntry * e=n->entries+i;retention.path=table_retain_root(e->value,0);table_retain_writer_id(w,e->type->id,retention);
- if(!w->buffer){int64_t begin=w->offset;if(!save(w,e->value,e->type->id,retention))return 0;table_writer_leb(w,(uint64_t)(w->offset-begin));}
- else {TableWriter probe=table_retain_probe(w,retention);if(!save(&probe,e->value,e->type->id,retention))return 0;table_retain_rewind(&probe,retention);table_writer_leb(w,(uint64_t)probe.offset);if(!save(w,e->value,e->type->id,retention))return 0;}}
+ uint64_t i;
+ const TableNumbering * n=w->nodes;
+ table_writer_leb(w,n->count-1);
+ for(i=1;i<n->count;i++){const TableNodeEntry * e=n->entries+i;
+ retention.path=table_retain_root(e->value,0);
+ table_retain_writer_id(w,e->type->id,retention);
+ if(!w->buffer){int64_t begin=w->offset;
+ if(!save(w,e->value,e->type->id,retention))return 0;
+ table_writer_leb(w,(uint64_t)(w->offset-begin));
+ }
+ else {TableWriter probe=table_retain_probe(w,retention);
+ if(!save(&probe,e->value,e->type->id,retention))return 0;
+ table_retain_rewind(&probe,retention);
+ table_writer_leb(w,(uint64_t)probe.offset);
+ if(!save(w,e->value,e->type->id,retention))return 0;
+ }}
  return !w->overflow;
 }
 static SCHEMA_UNUSED int64_t table_retain_graph_save(const void * root,const TableNodeType * type,TableRetain * retain,uint8_t * buffer,int64_t capacity,TableReport * report,TableAllocator allocator,TableRetainSaveNode save)
 {
- TableNumbering numbering;TableRetainIds ids;TableRetainWalk retention;TableWriter w;int64_t result=-1;
- memset(&ids,0,sizeof(ids));ids.retain=retain;memset(&retention,0,sizeof(retention));retention.retain=retain;retention.ids=&ids;retention.path=table_retain_root(root,1);
- if(retain)retain->id_used=0;if(buffer)table_retain_clear_placed(retain);w=table_writer_make(buffer,capacity,&ids.known);
- if(!table_number_build(&numbering,NULL,root,type,allocator)){table_number_dispose(&numbering);return -1;}w.nodes=&numbering;
- table_writer_put8(&w,1);if(!save(&w,root,type->id,retention))goto done;w.offset--;
- if(numbering.count>1){table_retain_writer_id(&w,UINT64_MAX,retention);table_writer_put8(&w,12);
- if(!buffer){int64_t begin=w.offset;if(!table_retain_records(&w,retention,save))goto done;table_writer_leb(&w,(uint64_t)(w.offset-begin));}
- else {TableWriter probe=table_retain_probe(&w,retention);if(!table_retain_records(&probe,retention,save))goto done;table_retain_rewind(&probe,retention);table_writer_leb(&w,(uint64_t)probe.offset);if(!table_retain_records(&w,retention,save))goto done;}}
- table_writer_put8(&w,0);table_retain_finish(&w,&ids);if(!w.overflow){result=w.offset;if(buffer)table_retain_count_lost(retain,report);}
- done:table_number_dispose(&numbering);return result;
+ TableNumbering numbering;
+ TableRetainIds ids;
+ TableRetainWalk retention;
+ TableWriter w;
+ int64_t result=-1;
+ memset(&ids,0,sizeof(ids));
+ ids.retain=retain;
+ memset(&retention,0,sizeof(retention));
+ retention.retain=retain;
+ retention.ids=&ids;
+ retention.path=table_retain_root(root,1);
+ if(retain)retain->id_used=0;
+ if(buffer)table_retain_clear_placed(retain);
+ w=table_writer_make(buffer,capacity,&ids.known);
+ if(!table_number_build(&numbering,NULL,root,type,allocator)){table_number_dispose(&numbering);
+ return -1;
+ }w.nodes=&numbering;
+ table_writer_put8(&w,1);
+ if(!save(&w,root,type->id,retention))goto done;
+ w.offset--;
+ if(numbering.count>1){table_retain_writer_id(&w,UINT64_MAX,retention);
+ table_writer_put8(&w,12);
+ if(!buffer){int64_t begin=w.offset;
+ if(!table_retain_records(&w,retention,save))goto done;
+ table_writer_leb(&w,(uint64_t)(w.offset-begin));
+ }
+ else {TableWriter probe=table_retain_probe(&w,retention);
+ if(!table_retain_records(&probe,retention,save))goto done;
+ table_retain_rewind(&probe,retention);
+ table_writer_leb(&w,(uint64_t)probe.offset);
+ if(!table_retain_records(&w,retention,save))goto done;
+ }}
+ table_writer_put8(&w,0);
+ table_retain_finish(&w,&ids);
+ if(!w.overflow){result=w.offset;
+ if(buffer)table_retain_count_lost(retain,report);
+ }
+ done:table_number_dispose(&numbering);
+ return result;
 }
 
 #endif
@@ -2680,79 +3196,145 @@ static SCHEMA_UNUSED int stamp_save_message_body(TableBitWriter * w,const Stamp 
  { /* tag */
  if(value->tag_length<0 || value->tag_length>8) return 0;
  if(value->tag_length != 0) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,19,kTableMessageRefBitsHere);
   if(value->tag_length<0 || value->tag_length>8) return 0;
   table_bit_put(w,(uint64_t)value->tag_length,4);
-  table_bit_align_write(w); table_bit_putbytes(w,value->tag,value->tag_length);
+  table_bit_align_write(w);
+  table_bit_putbytes(w,value->tag,value->tag_length);
  }
  }
  { /* seq */
  if(!(value->seq == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,30,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->seq)-UINT64_C(0),10);
  }
  }
- table_bit_put(w,0,kTableMessageRefBitsHere); return !w->overflow;
+ table_bit_put(w,0,kTableMessageRefBitsHere);
+ return !w->overflow;
 }
 static SCHEMA_UNUSED int64_t stamp_measure_messages(const Stamp * values,int64_t count,TableReport * report)
 {
- TableBitWriter w=table_bit_writer(NULL,INT64_MAX); int64_t i;
+ TableBitWriter w=table_bit_writer(NULL,INT64_MAX);
+ int64_t i;
  if(count<1 || values==NULL) return -1;
- if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;}return -1;}
- table_bit_put(&w,2,8); table_bit_put(&w,(uint64_t)(count-1),8);
+ if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;
+ report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;
+ }return -1;
+ }
+ table_bit_put(&w,2,8);
+ table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!stamp_save_message_body(&w,values+i)) return -1;
- table_bit_align_write(&w); return w.overflow ? -1 : w.bits/8;
+ table_bit_align_write(&w);
+ return w.overflow ? -1 : w.bits/8;
 }
 static SCHEMA_UNUSED int64_t stamp_save_messages(const Stamp * values,int64_t count,uint8_t * buffer,int64_t capacity,TableReport * report)
 {
- TableBitWriter w=table_bit_writer(buffer,capacity); int64_t i;
+ TableBitWriter w=table_bit_writer(buffer,capacity);
+ int64_t i;
  if(count<1 || values==NULL) return -1;
- if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;}return -1;}
+ if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;
+ report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;
+ }return -1;
+ }
  if(buffer==NULL || capacity<0) return -1;
- table_bit_put(&w,2,8); table_bit_put(&w,(uint64_t)(count-1),8);
+ table_bit_put(&w,2,8);
+ table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!stamp_save_message_body(&w,values+i)) return -1;
- table_bit_align_write(&w); return w.overflow ? -1 : w.bits/8;
+ table_bit_align_write(&w);
+ return w.overflow ? -1 : w.bits/8;
 }
 static SCHEMA_UNUSED int stamp_load_message_body(TableMessageReader * r,Stamp * value)
 {
- stamp_reset(value);for(;;){const TableMessageEntry * entry;
- if(!table_message_ref(r,&entry,0))goto malformed;if(entry==NULL)return 1;switch(entry->id){
+ stamp_reset(value);
+ for(;;){const TableMessageEntry * entry;
+ if(!table_message_ref(r,&entry,0))goto malformed;
+ if(entry==NULL)return 1;
+ switch(entry->id){
  case UINT64_C(0x56d7ab194448a4f3): {
- if(!(entry->kind==12 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,12)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- {uint64_t n,kept;if(!table_bit_get(&r->bits,&n,table_bits_required(0,entry->max)))goto malformed;
+ if(!(entry->kind==12 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,12)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ {uint64_t n,kept;
+ if(!table_bit_get(&r->bits,&n,table_bits_required(0,entry->max)))goto malformed;
   if(!table_bit_align_read(&r->bits))goto malformed;
   if(n>INT64_MAX/8 || !table_bit_has(&r->bits,(int64_t)n*8))goto malformed;
-  {const uint8_t * text=r->bits.buffer+(r->bits.offset>>3);if(!table_wire_utf8(text,n))goto malformed;kept=table_wire_utf8_clamp(text,n,8);memcpy(value->tag,text,(size_t)kept);value->tag[kept]=0;}
+  {const uint8_t * text=r->bits.buffer+(r->bits.offset>>3);
+  if(!table_wire_utf8(text,n))goto malformed;
+  kept=table_wire_utf8_clamp(text,n,8);
+  memcpy(value->tag,text,(size_t)kept);
+  value->tag[kept]=0;
+  }
   r->bits.offset+=(int64_t)n*8;
-  if(kept<n)r->report->clamped++;value->tag_length=(int32_t)kept; }
- break;}
+  if(kept<n)r->report->clamped++;
+  value->tag_length=(int32_t)kept;
+  }
+ break;
+ }
  case UINT64_C(0x823b8a195ce2133c): {
- if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,4)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  int64_t decoded=(int64_t)lo;(void)hi;
-  if(decoded<0ll){decoded=0ll;r->report->clamped++;}
-  if(decoded>1000ll){decoded=1000ll;r->report->clamped++;}
-  value->seq=(int32_t)decoded; }
- break;}
- default:r->report->unknown++;if(!table_message_skip(r,entry))goto malformed;break;
+ if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,4)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  int64_t decoded=(int64_t)lo;
+  (void)hi;
+  if(decoded<0ll){decoded=0ll;
+  r->report->clamped++;
+  }
+  if(decoded>1000ll){decoded=1000ll;
+  r->report->clamped++;
+  }
+  value->seq=(int32_t)decoded;
+  }
+ break;
+ }
+ default:r->report->unknown++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
  } }
- malformed:r->report->malformed=1;return 0;
+ malformed:r->report->malformed=1;
+ return 0;
 }
 static SCHEMA_UNUSED int stamp_load_messages(Stamp * values,int64_t * count,const TableVocabulary * vocabulary,const uint8_t * buffer,int64_t bytes,TableReport * report)
 {
- TableReport ignored={0};TableMessageReader r;int64_t capacity,bodies,i;if(report==NULL)report=&ignored;
- if(values==NULL||count==NULL){report->malformed=1;return 0;}capacity=*count;*count=0;
- bodies=table_message_open(&r,vocabulary,buffer,bytes,report);if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;return 0;}
- for(i=0;i<bodies;i++){if(!stamp_load_message_body(&r,values+i))return 0;(*count)++;}return table_message_close(&r);
+ TableReport ignored={0};
+ TableMessageReader r;
+ int64_t capacity,bodies,i;
+ if(report==NULL)report=&ignored;
+ if(values==NULL||count==NULL){report->malformed=1;
+ return 0;
+ }capacity=*count;
+ *count=0;
+ bodies=table_message_open(&r,vocabulary,buffer,bytes,report);
+ if(bodies<0)return 0;
+ if(bodies>capacity){*count=bodies;
+ report->refused=1;
+ report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;
+ return 0;
+ }
+ for(i=0;i<bodies;i++){if(!stamp_load_message_body(&r,values+i))return 0;
+ (*count)++;
+ }return table_message_close(&r);
 }
 static SCHEMA_UNUSED int schema_graphdemo_stamp_message_extent_(TableMessageReader * r,int64_t * at)
 {
- (void)at;for(;;){const TableMessageEntry * entry;if(!table_message_ref(r,&entry,0))return 0;if(entry==NULL)return 1;
+ (void)at;
+ for(;;){const TableMessageEntry * entry;
+ if(!table_message_ref(r,&entry,0))return 0;
+ if(entry==NULL)return 1;
  switch(entry->id){
- default:break;}if(!table_message_skip(r,entry))return 0;
+ default:break;
+ }if(!table_message_skip(r,entry))return 0;
  }
 }
 static SCHEMA_UNUSED int colour_save_body( TableWriter * w, const Colour * value )
@@ -2914,88 +3496,160 @@ static SCHEMA_UNUSED int colour_save_message_body(TableBitWriter * w,const Colou
  (void)value;
  { /* r */
  if(!(value->r == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,7,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->r)-UINT64_C(0),8);
  }
  }
  { /* g */
  if(!(value->g == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,8,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->g)-UINT64_C(0),8);
  }
  }
  { /* b */
  if(!(value->b == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,9,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->b)-UINT64_C(0),8);
  }
  }
- table_bit_put(w,0,kTableMessageRefBitsHere); return !w->overflow;
+ table_bit_put(w,0,kTableMessageRefBitsHere);
+ return !w->overflow;
 }
 static SCHEMA_UNUSED int64_t colour_measure_messages(const Colour * values,int64_t count,TableReport * report)
 {
- TableBitWriter w=table_bit_writer(NULL,INT64_MAX); int64_t i;
+ TableBitWriter w=table_bit_writer(NULL,INT64_MAX);
+ int64_t i;
  if(count<1 || values==NULL) return -1;
- if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;}return -1;}
- table_bit_put(&w,2,8); table_bit_put(&w,(uint64_t)(count-1),8);
+ if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;
+ report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;
+ }return -1;
+ }
+ table_bit_put(&w,2,8);
+ table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!colour_save_message_body(&w,values+i)) return -1;
- table_bit_align_write(&w); return w.overflow ? -1 : w.bits/8;
+ table_bit_align_write(&w);
+ return w.overflow ? -1 : w.bits/8;
 }
 static SCHEMA_UNUSED int64_t colour_save_messages(const Colour * values,int64_t count,uint8_t * buffer,int64_t capacity,TableReport * report)
 {
- TableBitWriter w=table_bit_writer(buffer,capacity); int64_t i;
+ TableBitWriter w=table_bit_writer(buffer,capacity);
+ int64_t i;
  if(count<1 || values==NULL) return -1;
- if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;}return -1;}
+ if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;
+ report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;
+ }return -1;
+ }
  if(buffer==NULL || capacity<0) return -1;
- table_bit_put(&w,2,8); table_bit_put(&w,(uint64_t)(count-1),8);
+ table_bit_put(&w,2,8);
+ table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!colour_save_message_body(&w,values+i)) return -1;
- table_bit_align_write(&w); return w.overflow ? -1 : w.bits/8;
+ table_bit_align_write(&w);
+ return w.overflow ? -1 : w.bits/8;
 }
 static SCHEMA_UNUSED int colour_load_message_body(TableMessageReader * r,Colour * value)
 {
- colour_reset(value);for(;;){const TableMessageEntry * entry;
- if(!table_message_ref(r,&entry,0))goto malformed;if(entry==NULL)return 1;switch(entry->id){
+ colour_reset(value);
+ for(;;){const TableMessageEntry * entry;
+ if(!table_message_ref(r,&entry,0))goto malformed;
+ if(entry==NULL)return 1;
+ switch(entry->id){
  case UINT64_C(0xaf63ef4c86020cd5): {
- if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,6)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  uint64_t decoded=(uint64_t)lo;(void)hi;
-  if(decoded>255ull){decoded=255ull;r->report->clamped++;}
-  value->r=(uint8_t)decoded; }
- break;}
+ if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,6)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  uint64_t decoded=(uint64_t)lo;
+  (void)hi;
+  if(decoded>255ull){decoded=255ull;
+  r->report->clamped++;
+  }
+  value->r=(uint8_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0xaf63da4c8601e926): {
- if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,6)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  uint64_t decoded=(uint64_t)lo;(void)hi;
-  if(decoded>255ull){decoded=255ull;r->report->clamped++;}
-  value->g=(uint8_t)decoded; }
- break;}
+ if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,6)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  uint64_t decoded=(uint64_t)lo;
+  (void)hi;
+  if(decoded>255ull){decoded=255ull;
+  r->report->clamped++;
+  }
+  value->g=(uint8_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0xaf63df4c8601f1a5): {
- if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,6)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  uint64_t decoded=(uint64_t)lo;(void)hi;
-  if(decoded>255ull){decoded=255ull;r->report->clamped++;}
-  value->b=(uint8_t)decoded; }
- break;}
- default:r->report->unknown++;if(!table_message_skip(r,entry))goto malformed;break;
+ if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,6)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  uint64_t decoded=(uint64_t)lo;
+  (void)hi;
+  if(decoded>255ull){decoded=255ull;
+  r->report->clamped++;
+  }
+  value->b=(uint8_t)decoded;
+  }
+ break;
+ }
+ default:r->report->unknown++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
  } }
- malformed:r->report->malformed=1;return 0;
+ malformed:r->report->malformed=1;
+ return 0;
 }
 static SCHEMA_UNUSED int colour_load_messages(Colour * values,int64_t * count,const TableVocabulary * vocabulary,const uint8_t * buffer,int64_t bytes,TableReport * report)
 {
- TableReport ignored={0};TableMessageReader r;int64_t capacity,bodies,i;if(report==NULL)report=&ignored;
- if(values==NULL||count==NULL){report->malformed=1;return 0;}capacity=*count;*count=0;
- bodies=table_message_open(&r,vocabulary,buffer,bytes,report);if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;return 0;}
- for(i=0;i<bodies;i++){if(!colour_load_message_body(&r,values+i))return 0;(*count)++;}return table_message_close(&r);
+ TableReport ignored={0};
+ TableMessageReader r;
+ int64_t capacity,bodies,i;
+ if(report==NULL)report=&ignored;
+ if(values==NULL||count==NULL){report->malformed=1;
+ return 0;
+ }capacity=*count;
+ *count=0;
+ bodies=table_message_open(&r,vocabulary,buffer,bytes,report);
+ if(bodies<0)return 0;
+ if(bodies>capacity){*count=bodies;
+ report->refused=1;
+ report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;
+ return 0;
+ }
+ for(i=0;i<bodies;i++){if(!colour_load_message_body(&r,values+i))return 0;
+ (*count)++;
+ }return table_message_close(&r);
 }
 static SCHEMA_UNUSED int schema_graphdemo_colour_message_extent_(TableMessageReader * r,int64_t * at)
 {
- (void)at;for(;;){const TableMessageEntry * entry;if(!table_message_ref(r,&entry,0))return 0;if(entry==NULL)return 1;
+ (void)at;
+ for(;;){const TableMessageEntry * entry;
+ if(!table_message_ref(r,&entry,0))return 0;
+ if(entry==NULL)return 1;
  switch(entry->id){
- default:break;}if(!table_message_skip(r,entry))return 0;
+ default:break;
+ }if(!table_message_skip(r,entry))return 0;
  }
 }
 static SCHEMA_UNUSED int stamp_save_body_retain(TableWriter *,const Stamp *, TableRetainWalk retention);
@@ -3008,7 +3662,8 @@ static SCHEMA_UNUSED int schema_graphdemo_stamp_wire_tag__retain( TableWriter * 
 {
     (void)retention;
 
-    if ( value->tag_length < 0 || value->tag_length > 8 ) { return 0; }
+    if ( value->tag_length < 0 || value->tag_length > 8 ) { return 0;
+    }
     table_writer_raw( w, value->tag, value->tag_length );
     return !w->overflow;
 }
@@ -3021,23 +3676,31 @@ static SCHEMA_UNUSED int stamp_save_body_retain( TableWriter * w, const Stamp * 
     TableRetainWalk body_keep=retention;
     { /* tag */
     retention=table_retain_step(body_keep,0,0);
-        if ( value->tag_length < 0 || value->tag_length > 8 ) { return 0; }
+        if ( value->tag_length < 0 || value->tag_length > 8 ) { return 0;
+        }
         if ( value->tag_length != 0 )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
-            table_retain_writer_id( w, 0x56d7ab194448a4f3ull , retention); table_writer_put8( w, 12 );
+            if ( w->check_default ) { w->offset = 2;
+            return 1;
+            }
+            table_retain_writer_id( w, 0x56d7ab194448a4f3ull , retention);
+            table_writer_put8( w, 12 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
-                if ( !schema_graphdemo_stamp_wire_tag__retain( w, value , retention) ) { return 0; }
+                if ( !schema_graphdemo_stamp_wire_tag__retain( w, value , retention) ) { return 0;
+                }
                 table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
             }
             else
             {
                 TableWriter probe = table_retain_probe( w , retention);
-                if ( !schema_graphdemo_stamp_wire_tag__retain( &probe, value , retention) ) { return 0; }
-                table_retain_rewind(&probe, retention); table_writer_leb( w, (uint64_t) probe.offset );
-                if ( !schema_graphdemo_stamp_wire_tag__retain( w, value , retention) ) { return 0; }
+                if ( !schema_graphdemo_stamp_wire_tag__retain( &probe, value , retention) ) { return 0;
+                }
+                table_retain_rewind(&probe, retention);
+                table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !schema_graphdemo_stamp_wire_tag__retain( w, value , retention) ) { return 0;
+                }
             }
         }
     }
@@ -3045,12 +3708,16 @@ static SCHEMA_UNUSED int stamp_save_body_retain( TableWriter * w, const Stamp * 
     retention=table_retain_step(body_keep,1,0);
         if ( !( value->seq == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
-            table_retain_writer_id( w, 0x823b8a195ce2133cull , retention); table_writer_put8( w, 4 );
+            if ( w->check_default ) { w->offset = 2;
+            return 1;
+            }
+            table_retain_writer_id( w, 0x823b8a195ce2133cull , retention);
+            table_writer_put8( w, 4 );
             table_writer_put32( w, (uint32_t) ( value->seq ) );
         }
     }
-    retention=body_keep;if(!table_retain_tail(w,retention))return 0;
+    retention=body_keep;
+    if(!table_retain_tail(w,retention))return 0;
     table_writer_leb( w, 0 );
     return !w->overflow;
 }
@@ -3060,15 +3727,25 @@ static SCHEMA_UNUSED int stamp_load_body_retain( TableReader * r, Stamp * value 
     (void)retention;
 
     stamp_reset( value );
-    TableRetainWalk body_keep=retention;table_retain_discard(retention,0,0);
+    TableRetainWalk body_keep=retention;
+    table_retain_discard(retention,0,0);
     for ( ;; )
     {
-        uint64_t ref, id; uint8_t kind;
-        if ( !table_reader_leb( r, &ref ) ) { r->report->malformed = 1; return 0; }
-        if ( ref == 0 ) { return 1; }
-        if ( ref > r->id_count || !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        id = table_reader_id_at( r, ref ); kind = table_reader_get8( r );
-        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->malformed = 1; return 0; }
+        uint64_t ref, id;
+        uint8_t kind;
+        if ( !table_reader_leb( r, &ref ) ) { r->report->malformed = 1;
+        return 0;
+        }
+        if ( ref == 0 ) { return 1;
+        }
+        if ( ref > r->id_count || !table_reader_has( r, 1 ) ) { r->report->malformed = 1;
+        return 0;
+        }
+        id = table_reader_id_at( r, ref );
+        kind = table_reader_get8( r );
+        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->malformed = 1;
+        return 0;
+        }
         switch ( id )
         {
             case 0x56d7ab194448a4f3ull: /* tag */
@@ -3076,19 +3753,31 @@ static SCHEMA_UNUSED int stamp_load_body_retain( TableReader * r, Stamp * value 
                 if ( kind != 12 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1;
+                    return 0;
+                    }
                     break;
                 }
                 retention=table_retain_step(body_keep,0,0);
-                TableReader sub; uint64_t keep;
-                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }
+                TableReader sub;
+                uint64_t keep;
+                if ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1;
+                return 0;
+                }
                 if ( !table_wire_utf8( sub.buffer, (uint64_t) sub.size ) )
                 {
-                    r->report->malformed = 1; value->tag[0] = 0; value->tag_length = 0; break;
+                    r->report->malformed = 1;
+                    value->tag[0] = 0;
+                    value->tag_length = 0;
+                    break;
                 }
                 keep = (uint64_t) sub.size;
-                if ( keep > 8 ) { keep = table_wire_utf8_clamp( sub.buffer, keep, 8 ); r->report->clamped++; }
-                memcpy( value->tag, sub.buffer, (size_t) keep ); value->tag[keep] = 0; value->tag_length = (int32_t) keep;
+                if ( keep > 8 ) { keep = table_wire_utf8_clamp( sub.buffer, keep, 8 );
+                r->report->clamped++;
+                }
+                memcpy( value->tag, sub.buffer, (size_t) keep );
+                value->tag[keep] = 0;
+                value->tag_length = (int32_t) keep;
                 break;
             }
             case 0x823b8a195ce2133cull: /* seq */
@@ -3101,40 +3790,61 @@ static SCHEMA_UNUSED int stamp_load_body_retain( TableReader * r, Stamp * value 
                         {
                             case 2:
                             {
-                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1;
+                                return 0;
+                                }
                                 int64_t decoded_wide = (int8_t) table_reader_get8( &(*r) );
-                                if ( decoded_wide < 0ll ) { decoded_wide = 0ll; r->report->clamped++; }
-                                if ( decoded_wide > 1000ll ) { decoded_wide = 1000ll; r->report->clamped++; }
+                                if ( decoded_wide < 0ll ) { decoded_wide = 0ll;
+                                r->report->clamped++;
+                                }
+                                if ( decoded_wide > 1000ll ) { decoded_wide = 1000ll;
+                                r->report->clamped++;
+                                }
                                 value->seq = decoded_wide;
                                 break;
                             }
                             case 3:
                             {
-                                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1;
+                                return 0;
+                                }
                                 int64_t decoded_wide = (int16_t) table_reader_get16( &(*r) );
-                                if ( decoded_wide < 0ll ) { decoded_wide = 0ll; r->report->clamped++; }
-                                if ( decoded_wide > 1000ll ) { decoded_wide = 1000ll; r->report->clamped++; }
+                                if ( decoded_wide < 0ll ) { decoded_wide = 0ll;
+                                r->report->clamped++;
+                                }
+                                if ( decoded_wide > 1000ll ) { decoded_wide = 1000ll;
+                                r->report->clamped++;
+                                }
                                 value->seq = decoded_wide;
                                 break;
                             }
                             case 4:
                             {
-                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1;
+                                return 0;
+                                }
                                 {
                                     int32_t decoded_v = (int32_t) table_reader_get32( &(*r) );
-                                    if ( decoded_v < 0 ) { decoded_v = 0; r->report->clamped++; }
-                                    else if ( decoded_v > 1000 ) { decoded_v = 1000; r->report->clamped++; }
+                                    if ( decoded_v < 0 ) { decoded_v = 0;
+                                    r->report->clamped++;
+                                    }
+                                    else if ( decoded_v > 1000 ) { decoded_v = 1000;
+                                    r->report->clamped++;
+                                    }
                                     value->seq = decoded_v;
                                 }
                                 break;
                             }
-                            default: r->report->malformed = 1; return 0;
+                            default: r->report->malformed = 1;
+                            return 0;
                         }
                         r->report->widened++;
                         break;
                     }
                     r->report->kind_mismatch++;
-                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1;
+                    return 0;
+                    }
                     break;
                 }
                 retention=table_retain_step(body_keep,1,0);
@@ -3142,44 +3852,69 @@ static SCHEMA_UNUSED int stamp_load_body_retain( TableReader * r, Stamp * value 
                 {
                     case 2:
                     {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1;
+                        return 0;
+                        }
                         int64_t decoded_wide = (int8_t) table_reader_get8( &(*r) );
-                        if ( decoded_wide < 0ll ) { decoded_wide = 0ll; r->report->clamped++; }
-                        if ( decoded_wide > 1000ll ) { decoded_wide = 1000ll; r->report->clamped++; }
+                        if ( decoded_wide < 0ll ) { decoded_wide = 0ll;
+                        r->report->clamped++;
+                        }
+                        if ( decoded_wide > 1000ll ) { decoded_wide = 1000ll;
+                        r->report->clamped++;
+                        }
                         value->seq = decoded_wide;
                         break;
                     }
                     case 3:
                     {
-                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1;
+                        return 0;
+                        }
                         int64_t decoded_wide = (int16_t) table_reader_get16( &(*r) );
-                        if ( decoded_wide < 0ll ) { decoded_wide = 0ll; r->report->clamped++; }
-                        if ( decoded_wide > 1000ll ) { decoded_wide = 1000ll; r->report->clamped++; }
+                        if ( decoded_wide < 0ll ) { decoded_wide = 0ll;
+                        r->report->clamped++;
+                        }
+                        if ( decoded_wide > 1000ll ) { decoded_wide = 1000ll;
+                        r->report->clamped++;
+                        }
                         value->seq = decoded_wide;
                         break;
                     }
                     case 4:
                     {
-                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1;
+                        return 0;
+                        }
                         {
                             int32_t decoded_v = (int32_t) table_reader_get32( &(*r) );
-                            if ( decoded_v < 0 ) { decoded_v = 0; r->report->clamped++; }
-                            else if ( decoded_v > 1000 ) { decoded_v = 1000; r->report->clamped++; }
+                            if ( decoded_v < 0 ) { decoded_v = 0;
+                            r->report->clamped++;
+                            }
+                            else if ( decoded_v > 1000 ) { decoded_v = 1000;
+                            r->report->clamped++;
+                            }
                             value->seq = decoded_v;
                         }
                         break;
                     }
-                    default: r->report->malformed = 1; return 0;
+                    default: r->report->malformed = 1;
+                    return 0;
                 }
                 break;
             }
             case UINT64_MAX:
-                if(r->nodes==NULL) { r->report->unknown++;r->report->retain_lost += retention.retain != NULL; }
-                if(!table_reader_skip(r,kind)) { r->report->malformed=1; return 0; }
+                if(r->nodes==NULL) { r->report->unknown++;
+                r->report->retain_lost += retention.retain != NULL;
+                }
+                if(!table_reader_skip(r,kind)) { r->report->malformed=1;
+                return 0;
+                }
                 break;
             default:
                 r->report->unknown += 1;
-                if(!table_retain_capture(r,id,kind,body_keep)){r->report->malformed=1;return 0;}break;
+                if(!table_retain_capture(r,id,kind,body_keep)){r->report->malformed=1;
+                return 0;
+                }break;
         }
     }
 }
@@ -3188,31 +3923,63 @@ static SCHEMA_UNUSED int stamp_load_message_body_retain(TableMessageReader * r,S
 {
     (void)retention;
 
- TableRetainWalk body_keep=retention;table_retain_discard(retention,0,0);
- stamp_reset(value);for(;;){const TableMessageEntry * entry;
- if(!table_message_ref(r,&entry,0))goto malformed;if(entry==NULL)return 1;switch(entry->id){
+ TableRetainWalk body_keep=retention;
+ table_retain_discard(retention,0,0);
+ stamp_reset(value);
+ for(;;){const TableMessageEntry * entry;
+ if(!table_message_ref(r,&entry,0))goto malformed;
+ if(entry==NULL)return 1;
+ switch(entry->id){
  case UINT64_C(0x56d7ab194448a4f3): {
- if(!(entry->kind==12 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,12)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
+ if(!(entry->kind==12 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,12)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
  retention=table_retain_step(body_keep,0,0);
- {uint64_t n,kept;if(!table_bit_get(&r->bits,&n,table_bits_required(0,entry->max)))goto malformed;
+ {uint64_t n,kept;
+ if(!table_bit_get(&r->bits,&n,table_bits_required(0,entry->max)))goto malformed;
   if(!table_bit_align_read(&r->bits))goto malformed;
   if(n>INT64_MAX/8 || !table_bit_has(&r->bits,(int64_t)n*8))goto malformed;
-  {const uint8_t * text=r->bits.buffer+(r->bits.offset>>3);if(!table_wire_utf8(text,n))goto malformed;kept=table_wire_utf8_clamp(text,n,8);memcpy(value->tag,text,(size_t)kept);value->tag[kept]=0;}
+  {const uint8_t * text=r->bits.buffer+(r->bits.offset>>3);
+  if(!table_wire_utf8(text,n))goto malformed;
+  kept=table_wire_utf8_clamp(text,n,8);
+  memcpy(value->tag,text,(size_t)kept);
+  value->tag[kept]=0;
+  }
   r->bits.offset+=(int64_t)n*8;
-  if(kept<n)r->report->clamped++;value->tag_length=(int32_t)kept; }
- break;}
+  if(kept<n)r->report->clamped++;
+  value->tag_length=(int32_t)kept;
+  }
+ break;
+ }
  case UINT64_C(0x823b8a195ce2133c): {
- if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,4)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
+ if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,4)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
  retention=table_retain_step(body_keep,1,0);
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  int64_t decoded=(int64_t)lo;(void)hi;
-  if(decoded<0ll){decoded=0ll;r->report->clamped++;}
-  if(decoded>1000ll){decoded=1000ll;r->report->clamped++;}
-  value->seq=(int32_t)decoded; }
- break;}
- default:r->report->unknown += 1;if(!table_retain_message_capture(r,entry,body_keep))goto malformed;break;
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  int64_t decoded=(int64_t)lo;
+  (void)hi;
+  if(decoded<0ll){decoded=0ll;
+  r->report->clamped++;
+  }
+  if(decoded>1000ll){decoded=1000ll;
+  r->report->clamped++;
+  }
+  value->seq=(int32_t)decoded;
+  }
+ break;
+ }
+ default:r->report->unknown += 1;
+ if(!table_retain_message_capture(r,entry,body_keep))goto malformed;
+ break;
  } }
- malformed:r->report->malformed=1;return 0;
+ malformed:r->report->malformed=1;
+ return 0;
 }
 static SCHEMA_UNUSED int colour_save_body_retain( TableWriter * w, const Colour * value , TableRetainWalk retention)
 {
@@ -3224,8 +3991,11 @@ static SCHEMA_UNUSED int colour_save_body_retain( TableWriter * w, const Colour 
     retention=table_retain_step(body_keep,0,0);
         if ( !( value->r == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
-            table_retain_writer_id( w, 0xaf63ef4c86020cd5ull , retention); table_writer_put8( w, 6 );
+            if ( w->check_default ) { w->offset = 2;
+            return 1;
+            }
+            table_retain_writer_id( w, 0xaf63ef4c86020cd5ull , retention);
+            table_writer_put8( w, 6 );
             table_writer_put8( w, (uint8_t) ( value->r ) );
         }
     }
@@ -3233,8 +4003,11 @@ static SCHEMA_UNUSED int colour_save_body_retain( TableWriter * w, const Colour 
     retention=table_retain_step(body_keep,1,0);
         if ( !( value->g == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
-            table_retain_writer_id( w, 0xaf63da4c8601e926ull , retention); table_writer_put8( w, 6 );
+            if ( w->check_default ) { w->offset = 2;
+            return 1;
+            }
+            table_retain_writer_id( w, 0xaf63da4c8601e926ull , retention);
+            table_writer_put8( w, 6 );
             table_writer_put8( w, (uint8_t) ( value->g ) );
         }
     }
@@ -3242,12 +4015,16 @@ static SCHEMA_UNUSED int colour_save_body_retain( TableWriter * w, const Colour 
     retention=table_retain_step(body_keep,2,0);
         if ( !( value->b == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
-            table_retain_writer_id( w, 0xaf63df4c8601f1a5ull , retention); table_writer_put8( w, 6 );
+            if ( w->check_default ) { w->offset = 2;
+            return 1;
+            }
+            table_retain_writer_id( w, 0xaf63df4c8601f1a5ull , retention);
+            table_writer_put8( w, 6 );
             table_writer_put8( w, (uint8_t) ( value->b ) );
         }
     }
-    retention=body_keep;if(!table_retain_tail(w,retention))return 0;
+    retention=body_keep;
+    if(!table_retain_tail(w,retention))return 0;
     table_writer_leb( w, 0 );
     return !w->overflow;
 }
@@ -3257,15 +4034,25 @@ static SCHEMA_UNUSED int colour_load_body_retain( TableReader * r, Colour * valu
     (void)retention;
 
     colour_reset( value );
-    TableRetainWalk body_keep=retention;table_retain_discard(retention,0,0);
+    TableRetainWalk body_keep=retention;
+    table_retain_discard(retention,0,0);
     for ( ;; )
     {
-        uint64_t ref, id; uint8_t kind;
-        if ( !table_reader_leb( r, &ref ) ) { r->report->malformed = 1; return 0; }
-        if ( ref == 0 ) { return 1; }
-        if ( ref > r->id_count || !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        id = table_reader_id_at( r, ref ); kind = table_reader_get8( r );
-        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->malformed = 1; return 0; }
+        uint64_t ref, id;
+        uint8_t kind;
+        if ( !table_reader_leb( r, &ref ) ) { r->report->malformed = 1;
+        return 0;
+        }
+        if ( ref == 0 ) { return 1;
+        }
+        if ( ref > r->id_count || !table_reader_has( r, 1 ) ) { r->report->malformed = 1;
+        return 0;
+        }
+        id = table_reader_id_at( r, ref );
+        kind = table_reader_get8( r );
+        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->malformed = 1;
+        return 0;
+        }
         switch ( id )
         {
             case 0xaf63ef4c86020cd5ull: /* r */
@@ -3273,7 +4060,9 @@ static SCHEMA_UNUSED int colour_load_body_retain( TableReader * r, Colour * valu
                 if ( kind != 6 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1;
+                    return 0;
+                    }
                     break;
                 }
                 retention=table_retain_step(body_keep,0,0);
@@ -3281,14 +4070,17 @@ static SCHEMA_UNUSED int colour_load_body_retain( TableReader * r, Colour * valu
                 {
                     case 6:
                     {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1;
+                        return 0;
+                        }
                         {
                             uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
                             value->r = decoded_v;
                         }
                         break;
                     }
-                    default: r->report->malformed = 1; return 0;
+                    default: r->report->malformed = 1;
+                    return 0;
                 }
                 break;
             }
@@ -3297,7 +4089,9 @@ static SCHEMA_UNUSED int colour_load_body_retain( TableReader * r, Colour * valu
                 if ( kind != 6 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1;
+                    return 0;
+                    }
                     break;
                 }
                 retention=table_retain_step(body_keep,1,0);
@@ -3305,14 +4099,17 @@ static SCHEMA_UNUSED int colour_load_body_retain( TableReader * r, Colour * valu
                 {
                     case 6:
                     {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1;
+                        return 0;
+                        }
                         {
                             uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
                             value->g = decoded_v;
                         }
                         break;
                     }
-                    default: r->report->malformed = 1; return 0;
+                    default: r->report->malformed = 1;
+                    return 0;
                 }
                 break;
             }
@@ -3321,7 +4118,9 @@ static SCHEMA_UNUSED int colour_load_body_retain( TableReader * r, Colour * valu
                 if ( kind != 6 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1;
+                    return 0;
+                    }
                     break;
                 }
                 retention=table_retain_step(body_keep,2,0);
@@ -3329,24 +4128,33 @@ static SCHEMA_UNUSED int colour_load_body_retain( TableReader * r, Colour * valu
                 {
                     case 6:
                     {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1;
+                        return 0;
+                        }
                         {
                             uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
                             value->b = decoded_v;
                         }
                         break;
                     }
-                    default: r->report->malformed = 1; return 0;
+                    default: r->report->malformed = 1;
+                    return 0;
                 }
                 break;
             }
             case UINT64_MAX:
-                if(r->nodes==NULL) { r->report->unknown++;r->report->retain_lost += retention.retain != NULL; }
-                if(!table_reader_skip(r,kind)) { r->report->malformed=1; return 0; }
+                if(r->nodes==NULL) { r->report->unknown++;
+                r->report->retain_lost += retention.retain != NULL;
+                }
+                if(!table_reader_skip(r,kind)) { r->report->malformed=1;
+                return 0;
+                }
                 break;
             default:
                 r->report->unknown += 1;
-                if(!table_retain_capture(r,id,kind,body_keep)){r->report->malformed=1;return 0;}break;
+                if(!table_retain_capture(r,id,kind,body_keep)){r->report->malformed=1;
+                return 0;
+                }break;
         }
     }
 }
@@ -3355,36 +4163,73 @@ static SCHEMA_UNUSED int colour_load_message_body_retain(TableMessageReader * r,
 {
     (void)retention;
 
- TableRetainWalk body_keep=retention;table_retain_discard(retention,0,0);
- colour_reset(value);for(;;){const TableMessageEntry * entry;
- if(!table_message_ref(r,&entry,0))goto malformed;if(entry==NULL)return 1;switch(entry->id){
+ TableRetainWalk body_keep=retention;
+ table_retain_discard(retention,0,0);
+ colour_reset(value);
+ for(;;){const TableMessageEntry * entry;
+ if(!table_message_ref(r,&entry,0))goto malformed;
+ if(entry==NULL)return 1;
+ switch(entry->id){
  case UINT64_C(0xaf63ef4c86020cd5): {
- if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,6)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
+ if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,6)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
  retention=table_retain_step(body_keep,0,0);
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  uint64_t decoded=(uint64_t)lo;(void)hi;
-  if(decoded>255ull){decoded=255ull;r->report->clamped++;}
-  value->r=(uint8_t)decoded; }
- break;}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  uint64_t decoded=(uint64_t)lo;
+  (void)hi;
+  if(decoded>255ull){decoded=255ull;
+  r->report->clamped++;
+  }
+  value->r=(uint8_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0xaf63da4c8601e926): {
- if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,6)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
+ if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,6)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
  retention=table_retain_step(body_keep,1,0);
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  uint64_t decoded=(uint64_t)lo;(void)hi;
-  if(decoded>255ull){decoded=255ull;r->report->clamped++;}
-  value->g=(uint8_t)decoded; }
- break;}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  uint64_t decoded=(uint64_t)lo;
+  (void)hi;
+  if(decoded>255ull){decoded=255ull;
+  r->report->clamped++;
+  }
+  value->g=(uint8_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0xaf63df4c8601f1a5): {
- if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,6)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
+ if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,6)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
  retention=table_retain_step(body_keep,2,0);
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  uint64_t decoded=(uint64_t)lo;(void)hi;
-  if(decoded>255ull){decoded=255ull;r->report->clamped++;}
-  value->b=(uint8_t)decoded; }
- break;}
- default:r->report->unknown += 1;if(!table_retain_message_capture(r,entry,body_keep))goto malformed;break;
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  uint64_t decoded=(uint64_t)lo;
+  (void)hi;
+  if(decoded>255ull){decoded=255ull;
+  r->report->clamped++;
+  }
+  value->b=(uint8_t)decoded;
+  }
+ break;
+ }
+ default:r->report->unknown += 1;
+ if(!table_retain_message_capture(r,entry,body_keep))goto malformed;
+ break;
  } }
- malformed:r->report->malformed=1;return 0;
+ malformed:r->report->malformed=1;
+ return 0;
 }
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
 #define stamp_load_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))

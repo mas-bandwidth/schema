@@ -160,7 +160,7 @@ func (g *tableGen) emitRetainBodies(members []*ir.Struct, unions []*ir.Union) {
 	}
 	g.retain = false
 	g.owner = nil
-	code := strings.ReplaceAll(g.body.String(), "r->report->unknown++;", "r->report->unknown++;r->report->retain_lost += retention.retain != NULL;")
+	code := g.body.String()
 	g.body.Reset()
 	g.body.WriteString(previous)
 	g.body.WriteString(retainedCode(code, names))
@@ -216,4 +216,13 @@ func (g *tableGen) retainUnionDiscard() string {
 		return "table_retain_discard(retention,0,0);"
 	}
 	return ""
+}
+
+// Unknown enum values, arms and keyed slots are excluded retention classes.
+// Emit their event directly so whitespace changes cannot lose retain_lost.
+func (g *tableGen) unknownEvent() string {
+	if g.retain {
+		return "r->report->unknown++;r->report->retain_lost += retention.retain != NULL;"
+	}
+	return "r->report->unknown++;"
 }

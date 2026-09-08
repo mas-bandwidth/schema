@@ -849,9 +849,13 @@ static SCHEMA_UNUSED int table_bit_getbytes(TableBitReader * r,uint8_t * target,
  if((r->offset&7)==0){if(n>0)memcpy(target,r->buffer+r->offset/8,(size_t)n);r->offset+=n*8;return 1;}
  for(i=0;i<n;i++){if(!table_bit_get(r,&by,8))return 0;target[i]=(uint8_t)by;}return 1;
 }
-static SCHEMA_UNUSED int64_t announce_measure(void) {return kTableAnnounceBytes;}
+static SCHEMA_UNUSED int64_t announce_measure(void) {return kTableAnnounceBytes;
+}
 static SCHEMA_UNUSED int64_t announce(uint8_t * buffer,int64_t capacity)
-{if(buffer==NULL || capacity<kTableAnnounceBytes)return -1;memcpy(buffer,kTableAnnounce,kTableAnnounceBytes);return kTableAnnounceBytes;}
+{if(buffer==NULL || capacity<kTableAnnounceBytes)return -1;
+memcpy(buffer,kTableAnnounce,kTableAnnounceBytes);
+return kTableAnnounceBytes;
+}
 static SCHEMA_UNUSED int64_t table_bits_required( int64_t min, int64_t max )
 {
     if ( max <= min ) { return 0; }
@@ -881,14 +885,19 @@ static SCHEMA_UNUSED int64_t table_message_kind_bits( uint8_t kind )
 // announcement is a hostile width like any other (§3.3).
 static SCHEMA_UNUSED int table_message_quantization( float qmin, float qmax, float qres, float * delta, uint32_t * count, int64_t * bits )
 {
-    if ( !( qmin < qmax ) || !( qres > 0.0f ) ) { return 0; }
+    if ( !( qmin < qmax ) || !( qres > 0.0f ) ) { return 0;
+    }
     (*delta) = qmax - qmin;
     float values = (*delta) / qres;
-    if ( !( (*delta) - (*delta) == 0.0f ) || !( values - values == 0.0f ) ) { return 0; } // Inf - Inf is NaN
-    if ( !( values >= 1.0f ) ) { values = 1.0f; }
-    else if ( values > 4294967040.0f ) { values = 4294967040.0f; } // the largest float below 2^32
+    if ( !( (*delta) - (*delta) == 0.0f ) || !( values - values == 0.0f ) ) { return 0;
+    } // Inf - Inf is NaN
+    if ( !( values >= 1.0f ) ) { values = 1.0f;
+    }
+    else if ( values > 4294967040.0f ) { values = 4294967040.0f;
+    } // the largest float below 2^32
     (*count) = (uint32_t) values;
-    if ( (float) (*count) < values ) { (*count)++; } // ceil, on a value the cast holds exactly
+    if ( (float) (*count) < values ) { (*count)++;
+    } // ceil, on a value the cast holds exactly
     (*bits) = table_bits_required( 0, (int64_t) (*count) );
     return 1;
 }
@@ -908,19 +917,24 @@ static SCHEMA_UNUSED int table_message_quantization( float qmin, float qmax, flo
 static SCHEMA_UNUSED uint32_t table_message_quantize( float value, float qmin, float delta, uint32_t count )
 {
     float normalized = ( value - qmin ) / delta;
-    if ( !( normalized >= 0.0f ) ) { normalized = 0.0f; }
-    else if ( !( normalized <= 1.0f ) ) { normalized = 1.0f; }
+    if ( !( normalized >= 0.0f ) ) { normalized = 0.0f;
+    }
+    else if ( !( normalized <= 1.0f ) ) { normalized = 1.0f;
+    }
     float scaled = normalized * (float) count;
     SCHEMA_TABLE_FLOAT_FORCE_ROUND( scaled );
-    uint32_t index = (uint32_t) ( scaled + 0.5f ); // floor of a non-negative value
-    if ( index > count ) { index = count; }
+    uint32_t index = (uint32_t) ( scaled + 0.5f );
+    // floor of a non-negative value
+    if ( index > count ) { index = count;
+    }
     return index;
 }
 
 // table_message_dequantize is the reader's half: the float an index names.
 static SCHEMA_UNUSED float table_message_dequantize( uint32_t index, float qmin, float delta, uint32_t count )
 {
-    if ( index > count ) { index = count; }
+    if ( index > count ) { index = count;
+    }
     const float normalized = index / (float) count;
     float scaled = normalized * delta;
     SCHEMA_TABLE_FLOAT_FORCE_ROUND( scaled );
@@ -932,7 +946,8 @@ static SCHEMA_UNUSED int table_message_integer_kind( uint8_t kind )
     return ( kind >= 2 && kind <= 9 ) || kind == 18 || kind == 19;
 }
 
-static SCHEMA_UNUSED int table_message_fixed_kind( uint8_t kind ) { return kind >= 20 && kind <= 29; }
+static SCHEMA_UNUSED int table_message_fixed_kind( uint8_t kind ) { return kind >= 20 && kind <= 29;
+}
 
 static SCHEMA_UNUSED int table_message_known_kind( uint8_t kind )
 {
@@ -960,91 +975,159 @@ static SCHEMA_UNUSED TableVocabulary table_vocabulary(TableMessageEntry * storag
 {TableVocabulary v;memset(&v,0,sizeof(v));v.entries=storage;v.max_entries=capacity;v.max_bytes=65536;return v;}
 static SCHEMA_UNUSED int table_message_leb(const uint8_t * in,int64_t size,int64_t * at,uint64_t * value)
 {
- TableReader r=table_reader_make(in,size,NULL);r.offset=*at;
- if(!table_reader_leb(&r,value))return 0;*at=r.offset;return 1;
+ TableReader r=table_reader_make(in,size,NULL);
+ r.offset=*at;
+ if(!table_reader_leb(&r,value))return 0;
+ *at=r.offset;
+ return 1;
 }
 static SCHEMA_UNUSED int64_t table_message_value_bits(uint8_t kind,uint8_t packing,int64_t bits)
 {
- if(kind==1)return 1;if(kind==11)return 64;if(kind==10)return packing==2?bits:32;
+ if(kind==1)return 1;
+ if(kind==11)return 64;
+ if(kind==10)return packing==2?bits:32;
  if(table_message_integer_kind(kind)||table_message_fixed_kind(kind))return packing==1?bits:table_message_kind_bits(kind);
  return -1;
 }
 static SCHEMA_UNUSED int table_message_shape_read(const uint8_t * in,int64_t size,int64_t * at,uint8_t kind,TableMessageShapeFacts * f)
 {
- uint64_t v=0;int i,k;
+ uint64_t v=0;
+ int i,k;
  if(table_message_integer_kind(kind)||table_message_fixed_kind(kind)||kind==10){
-  if(*at>=size)return 0;f->packing=in[(*at)++];if(f->packing==0)return 1;
+  if(*at>=size)return 0;
+  f->packing=in[(*at)++];
+  if(f->packing==0)return 1;
   if(f->packing==1 && kind!=10){
    if(!table_message_leb(in,size,at,&v)||v>(uint64_t)table_message_kind_bits(kind))return 0;
    f->value_bits=(int64_t)v;
    if(kind==18||kind==19||table_message_fixed_kind(kind)){
-    uint64_t lo=0,hi=0;if(*at>size-16)return 0;
-    for(i=0;i<8;i++){lo|=(uint64_t)in[*at+i]<<(8*i);hi|=(uint64_t)in[*at+8+i]<<(8*i);}
-    f->base_lo=(int64_t)lo;f->base_hi=(int64_t)hi;*at+=16;return 1;
+    uint64_t lo=0,hi=0;
+    if(*at>size-16)return 0;
+    for(i=0;i<8;i++){lo|=(uint64_t)in[*at+i]<<(8*i);
+    hi|=(uint64_t)in[*at+8+i]<<(8*i);
+    }
+    f->base_lo=(int64_t)lo;
+    f->base_hi=(int64_t)hi;
+    *at+=16;
+    return 1;
    }
    if(!table_message_leb(in,size,at,&v))return 0;
-   f->base_lo=kind>=2&&kind<=5?(int64_t)(v>>1)^-(int64_t)(v&1):(int64_t)v;return 1;
+   f->base_lo=kind>=2&&kind<=5?(int64_t)(v>>1)^-(int64_t)(v&1):(int64_t)v;
+   return 1;
   }
   if(f->packing==2 && kind==10){
-   uint32_t raw[3]={0,0,0};if(*at>size-12)return 0;
+   uint32_t raw[3]={0,0,0};
+   if(*at>size-12)return 0;
    for(k=0;k<3;k++)for(i=0;i<4;i++)raw[k]|=(uint32_t)in[*at+4*k+i]<<(8*i);
-   *at+=12;memcpy(&f->qmin,raw,4);memcpy(&f->qmax,raw+1,4);memcpy(&f->qres,raw+2,4);
+   *at+=12;
+   memcpy(&f->qmin,raw,4);
+   memcpy(&f->qmax,raw+1,4);
+   memcpy(&f->qres,raw+2,4);
    return table_message_quantization(f->qmin,f->qmax,f->qres,&f->qdelta,&f->qcount,&f->value_bits);
   }return 0;
  }
- if(kind==12||kind==33){if(!table_message_leb(in,size,at,&v)||v>INT32_MAX)return 0;f->max=(int64_t)v;return 1;}
+ if(kind==12||kind==33){if(!table_message_leb(in,size,at,&v)||v>INT32_MAX)return 0;
+ f->max=(int64_t)v;
+ return 1;
+ }
  if(kind==14||kind==16){
-  if(kind==14){if(!table_message_leb(in,size,at,&v)||v>UINT32_MAX)return 0;f->min=(int64_t)v;}
-  if(!table_message_leb(in,size,at,&v)||v>UINT32_MAX||v<(uint64_t)f->min)return 0;f->max=(int64_t)v;
-  if(*at>=size)return 0;f->elem_kind=in[(*at)++];
+  if(kind==14){if(!table_message_leb(in,size,at,&v)||v>UINT32_MAX)return 0;
+  f->min=(int64_t)v;
+  }
+  if(!table_message_leb(in,size,at,&v)||v>UINT32_MAX||v<(uint64_t)f->min)return 0;
+  f->max=(int64_t)v;
+  if(*at>=size)return 0;
+  f->elem_kind=in[(*at)++];
   return table_message_known_kind(f->elem_kind)&&f->elem_kind!=12&&f->elem_kind!=33;
  }return 1;
 }
 static SCHEMA_UNUSED int table_message_entry_read(const uint8_t * in,int64_t size,int64_t * at,TableMessageEntry * e)
 {
- TableMessageShapeFacts own={0},elem={0};int i;
- if(*at<0||*at>size-9)return 0;memset(e,0,sizeof(*e));e->value_bits=e->elem_value_bits=-1;
- for(i=0;i<8;i++)e->id|=(uint64_t)in[*at+i]<<(8*i);e->kind=in[*at+8];*at+=9;
+ TableMessageShapeFacts own={0},elem={0};
+ int i;
+ if(*at<0||*at>size-9)return 0;
+ memset(e,0,sizeof(*e));
+ e->value_bits=e->elem_value_bits=-1;
+ for(i=0;i<8;i++)e->id|=(uint64_t)in[*at+i]<<(8*i);
+ e->kind=in[*at+8];
+ *at+=9;
  if(!table_message_known_kind(e->kind)||!table_message_shape_read(in,size,at,e->kind,&own))return 0;
- e->packing=own.packing;e->value_bits=(int16_t)table_message_value_bits(e->kind,own.packing,own.value_bits);
- e->min=own.min;e->max=own.max;e->base_lo=own.base_lo;e->base_hi=own.base_hi;e->qmin=own.qmin;e->qdelta=own.qdelta;e->qcount=own.qcount;e->elem_kind=own.elem_kind;
+ e->packing=own.packing;
+ e->value_bits=(int16_t)table_message_value_bits(e->kind,own.packing,own.value_bits);
+ e->min=own.min;
+ e->max=own.max;
+ e->base_lo=own.base_lo;
+ e->base_hi=own.base_hi;
+ e->qmin=own.qmin;
+ e->qdelta=own.qdelta;
+ e->qcount=own.qcount;
+ e->elem_kind=own.elem_kind;
  if(e->kind==14||e->kind==16){
   if(!table_message_shape_read(in,size,at,e->elem_kind,&elem))return 0;
-  e->elem_packing=elem.packing;e->elem_value_bits=(int16_t)table_message_value_bits(e->elem_kind,elem.packing,elem.value_bits);
-  e->elem_max=elem.max;e->elem_base_lo=elem.base_lo;e->elem_base_hi=elem.base_hi;e->elem_qmin=elem.qmin;e->elem_qdelta=elem.qdelta;e->elem_qcount=elem.qcount;
+  e->elem_packing=elem.packing;
+  e->elem_value_bits=(int16_t)table_message_value_bits(e->elem_kind,elem.packing,elem.value_bits);
+  e->elem_max=elem.max;
+  e->elem_base_lo=elem.base_lo;
+  e->elem_base_hi=elem.base_hi;
+  e->elem_qmin=elem.qmin;
+  e->elem_qdelta=elem.qdelta;
+  e->elem_qcount=elem.qcount;
  }return 1;
 }
 
 
 static SCHEMA_UNUSED int table_announce_once(TableVocabulary * v,const uint8_t * buffer,int64_t bytes,TableReport * report)
 {
- TableReader r;int seen_version=0,seen_words=0;const uint8_t * words=NULL;int64_t words_bytes=0,at=0,count=0,nodes=0,touched=0;
+ TableReader r;
+ int seen_version=0,seen_words=0;
+ const uint8_t * words=NULL;
+ int64_t words_bytes=0,at=0,count=0,nodes=0,touched=0;
  if(!table_wire_open(&r,buffer,bytes,report))return 0;
  for(;;){
-  uint64_t ref,id;uint8_t kind;
+  uint64_t ref,id;
+  uint8_t kind;
   if(!table_reader_leb(&r,&ref))goto malformed;
   if(ref==0)break;
   if(ref>r.id_count||!table_reader_has(&r,1))goto malformed;
-  id=table_reader_id_at(&r,ref);kind=table_reader_get8(&r);
+  id=table_reader_id_at(&r,ref);
+  kind=table_reader_get8(&r);
   if(id==UINT64_C(0xfffffffffffffffe)){
    if(kind!=9||!table_reader_has(&r,8))goto malformed;
-   v->build_version=table_reader_get64(&r);seen_version++;continue;
+   v->build_version=table_reader_get64(&r);
+   seen_version++;
+   continue;
   }
   if(id==UINT64_C(0xfffffffffffffffd)){
-   TableReader field;uint64_t n;
+   TableReader field;
+   uint64_t n;
    if(kind!=14||!table_reader_span(&r,&field)||!table_reader_has(&field,1)||table_reader_get8(&field)!=6)goto malformed;
    if(!table_reader_leb(&field,&n)||!table_reader_room(&field,n)||n!=(uint64_t)(field.size-field.offset))goto malformed;
-   if(v->max_bytes<0 || n>(uint64_t)v->max_bytes){report->refused=1;report->reason=SCHEMA_TABLE_VOCABULARY_TOO_LARGE;return 0;}
-   words=field.buffer+field.offset;words_bytes=(int64_t)n;seen_words++;continue;
+   if(v->max_bytes<0 || n>(uint64_t)v->max_bytes){report->refused=1;
+   report->reason=SCHEMA_TABLE_VOCABULARY_TOO_LARGE;
+   return 0;
+   }
+   words=field.buffer+field.offset;
+   words_bytes=(int64_t)n;
+   seen_words++;
+   continue;
   }
-  report->unknown++;if(!table_reader_skip(&r,kind))goto malformed;
+  report->unknown++;
+  if(!table_reader_skip(&r,kind))goto malformed;
  }
  if(seen_version!=1||seen_words!=1||r.offset!=r.size)goto malformed;
  while(at<words_bytes){
-  TableMessageEntry * entry;int64_t i,began=at;
-  if(v->entries==NULL){report->refused=1;report->reason=SCHEMA_TABLE_NO_VOCABULARY;goto refused;}
-  if(count>=v->max_entries){report->refused=1;report->reason=SCHEMA_TABLE_VOCABULARY_TOO_LARGE;goto refused;}
-  entry=&v->entries[count];touched=count+1;
+  TableMessageEntry * entry;
+  int64_t i,began=at;
+  if(v->entries==NULL){report->refused=1;
+  report->reason=SCHEMA_TABLE_NO_VOCABULARY;
+  goto refused;
+  }
+  if(count>=v->max_entries){report->refused=1;
+  report->reason=SCHEMA_TABLE_VOCABULARY_TOO_LARGE;
+  goto refused;
+  }
+  entry=&v->entries[count];
+  touched=count+1;
   if(!table_message_entry_read(words,words_bytes,&at,entry))goto malformed;
   if(entry->id==UINT64_C(0xfffffffffffffffe)||entry->id==UINT64_C(0xfffffffffffffffd))goto malformed;
   if(entry->id==UINT64_MAX && nodes++>0)goto malformed;
@@ -1052,24 +1135,39 @@ static SCHEMA_UNUSED int table_announce_once(TableVocabulary * v,const uint8_t *
      alone can collapse different triples (#722). Until validation finishes,
      min/max temporarily hold the source span; no announcement pointer escapes. */
   for(i=0;i<count;i++){int64_t start=v->entries[i].min,length=v->entries[i].max-start;
-   if(length==at-began && !memcmp(words+start,words+began,(size_t)length))goto malformed;}
-  entry->min=began;entry->max=at;
+   if(length==at-began && !memcmp(words+start,words+began,(size_t)length))goto malformed;
+   }
+  entry->min=began;
+  entry->max=at;
   count++;
  }
  /* Resolve the accepted spans into the caller's final 96-byte entries. */
- at=0;{int64_t i;for(i=0;i<count;i++)if(!table_message_entry_read(words,words_bytes,&at,v->entries+i))goto malformed;}
- v->count=count;v->ref_bits=table_bits_required(0,count);v->announced=1;return 1;
+ at=0;
+ {int64_t i;
+ for(i=0;i<count;i++)if(!table_message_entry_read(words,words_bytes,&at,v->entries+i))goto malformed;
+ }
+ v->count=count;
+ v->ref_bits=table_bits_required(0,count);
+ v->announced=1;
+ return 1;
 malformed:
  report->malformed=1;
 refused:
- if(touched)memset(v->entries,0,(size_t)touched*sizeof(*v->entries));return 0;
+ if(touched)memset(v->entries,0,(size_t)touched*sizeof(*v->entries));
+ return 0;
 }
 static SCHEMA_UNUSED int announce_read(TableVocabulary * v,const uint8_t * buffer,int64_t bytes,TableReport * report)
 {
- TableReport ignored={0};int ok;
+ TableReport ignored={0};
+ int ok;
  if(report==NULL)report=&ignored;
- if(v->announced||v->refused){report->refused=1;report->reason=SCHEMA_TABLE_SECOND_ANNOUNCEMENT;return 0;}
- ok=table_announce_once(v,buffer,bytes,report);if(!ok)v->refused=1;return ok;
+ if(v->announced||v->refused){report->refused=1;
+ report->reason=SCHEMA_TABLE_SECOND_ANNOUNCEMENT;
+ return 0;
+ }
+ ok=table_announce_once(v,buffer,bytes,report);
+ if(!ok)v->refused=1;
+ return ok;
 }
 
 typedef struct TableMessageReader {
@@ -1078,7 +1176,8 @@ typedef struct TableMessageReader {
 } TableMessageReader;
 static SCHEMA_UNUSED int table_message_ref(TableMessageReader * r,const TableMessageEntry ** entry,int name)
 {
- uint64_t ref=0;*entry=NULL;
+ uint64_t ref=0;
+ *entry=NULL;
  if(!table_bit_get(&r->bits,&ref,r->vocabulary->ref_bits))return 0;
  if(ref==0)return 1;
  if(ref>(uint64_t)r->vocabulary->count)return 0;
@@ -1087,9 +1186,18 @@ static SCHEMA_UNUSED int table_message_ref(TableMessageReader * r,const TableMes
 }
 static SCHEMA_UNUSED TableMessageEntry table_message_element(const TableMessageEntry * e)
 {
- TableMessageEntry v;memset(&v,0,sizeof(v));v.kind=e->elem_kind;
- v.packing=e->elem_packing;v.value_bits=e->elem_value_bits;v.base_lo=e->elem_base_lo;v.base_hi=e->elem_base_hi;
- v.max=e->elem_max;v.qmin=e->elem_qmin;v.qdelta=e->elem_qdelta;v.qcount=e->elem_qcount;return v;
+ TableMessageEntry v;
+ memset(&v,0,sizeof(v));
+ v.kind=e->elem_kind;
+ v.packing=e->elem_packing;
+ v.value_bits=e->elem_value_bits;
+ v.base_lo=e->elem_base_lo;
+ v.base_hi=e->elem_base_hi;
+ v.max=e->elem_max;
+ v.qmin=e->elem_qmin;
+ v.qdelta=e->elem_qdelta;
+ v.qcount=e->elem_qcount;
+ return v;
 }
 static SCHEMA_UNUSED int table_message_skip_run(TableMessageReader * r,uint64_t count,int64_t width)
 {
@@ -1116,7 +1224,8 @@ static SCHEMA_UNUSED int table_message_skip_body(TableMessageReader * r)
 }
 static SCHEMA_UNUSED int table_message_skip(TableMessageReader * r,const TableMessageEntry * e)
 {
- uint64_t n,i;const TableMessageEntry * entry;
+ uint64_t n,i;
+ const TableMessageEntry * entry;
  switch(e->kind) {
  case 0:case 32:return 1;
  case 30:return table_message_ref(r,&entry,1);
@@ -1147,12 +1256,14 @@ static SCHEMA_UNUSED int table_message_skip(TableMessageReader * r,const TableMe
 }
 static SCHEMA_UNUSED int table_message_number(TableMessageReader * r,const TableMessageEntry * e,uint64_t * lo,uint64_t * hi)
 {
- int64_t width=e->value_bits;uint64_t before;
+ int64_t width=e->value_bits;
+ uint64_t before;
  *lo=*hi=0;
  if(width<0 || width>128 || !table_bit_get(&r->bits,lo,width<64?width:64))return 0;
  if(width>64 && !table_bit_get(&r->bits,hi,width-64))return 0;
  if(e->packing==1) {
-  before=*lo;*lo+=(uint64_t)e->base_lo;
+  before=*lo;
+  *lo+=(uint64_t)e->base_lo;
   if(table_message_kind_bits(e->kind)>64)*hi+=(uint64_t)e->base_hi+(*lo<before);
  } else if(((e->kind>=2 && e->kind<=5)||(e->kind>=20 && e->kind<=23)) && width>0 && width<64 && (*lo&(UINT64_C(1)<<(width-1)))) {
   *lo|=UINT64_MAX<<width;
@@ -1173,25 +1284,44 @@ static SCHEMA_UNUSED int table_message_float(TableMessageReader * r,const TableM
 static SCHEMA_UNUSED int64_t table_message_open(TableMessageReader * r,const TableVocabulary * v,const uint8_t * buffer,int64_t bytes,TableReport * report)
 {
  uint64_t count;
- memset(r,0,sizeof(*r));r->report=report;r->vocabulary=v;
- if(bytes<1 || buffer==NULL){report->malformed=1;return -1;}
- if(buffer[0]!=2){report->refused=1;report->reason=SCHEMA_TABLE_NEWER_FORM;return -1;}
- if(v==NULL || !v->announced){report->refused=1;report->reason=SCHEMA_TABLE_NO_VOCABULARY;return -1;}
+ memset(r,0,sizeof(*r));
+ r->report=report;
+ r->vocabulary=v;
+ if(bytes<1 || buffer==NULL){report->malformed=1;
+ return -1;
+ }
+ if(buffer[0]!=2){report->refused=1;
+ report->reason=SCHEMA_TABLE_NEWER_FORM;
+ return -1;
+ }
+ if(v==NULL || !v->announced){report->refused=1;
+ report->reason=SCHEMA_TABLE_NO_VOCABULARY;
+ return -1;
+ }
  r->bits=table_bit_reader(buffer+1,bytes-1);
- if(!table_bit_get(&r->bits,&count,8)){report->malformed=1;return -1;}
+ if(!table_bit_get(&r->bits,&count,8)){report->malformed=1;
+ return -1;
+ }
  return (int64_t)count+1;
 }
 static SCHEMA_UNUSED int table_message_close(TableMessageReader * r)
 {
- if(!table_bit_align_read(&r->bits)||r->bits.offset!=r->bits.bits){r->report->malformed=1;return 0;}return 1;
+ if(!table_bit_align_read(&r->bits)||r->bits.offset!=r->bits.bits){r->report->malformed=1;
+ return 0;
+ }return 1;
 }
 
 static SCHEMA_UNUSED int table_message_nodes_open(TableMessageReader * r,uint64_t * count)
 {
- uint64_t ref;int64_t start=r->bits.offset;*count=0;
+ uint64_t ref;
+ int64_t start=r->bits.offset;
+ *count=0;
  if(!table_bit_get(&r->bits,&ref,r->vocabulary->ref_bits))return 0;
  if(ref>(uint64_t)r->vocabulary->count)return 0;
- if(ref==0 || r->vocabulary->entries[ref-1].id!=UINT64_MAX){r->bits.offset=start;r->index_bits=1;return 1;}
+ if(ref==0 || r->vocabulary->entries[ref-1].id!=UINT64_MAX){r->bits.offset=start;
+ r->index_bits=1;
+ return 1;
+ }
  if(!table_bit_get(&r->bits,count,32))return 0;
  r->index_bits=table_bits_required(0,(int64_t)*count+1);
  /* Every record spends at least its type reference. Bound the walk before
@@ -2658,112 +2788,144 @@ static SCHEMA_UNUSED int ranged_signed_save_message_body(TableBitWriter * w,cons
  (void)value;
  { /* i8_span */
  if(!(value->i8_span == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,51,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->i8_span)-UINT64_C(18446744073709551488),8);
  }
  }
  { /* i8_low */
  if(!(value->i8_low == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,52,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->i8_low)-UINT64_C(18446744073709551488),8);
  }
  }
  { /* i8_high */
  if(!(value->i8_high == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,53,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->i8_high)-UINT64_C(18446744073709551489),8);
  }
  }
  { /* i8_inside */
  if(!(value->i8_inside == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,54,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->i8_inside)-UINT64_C(18446744073709551489),8);
  }
  }
  { /* i16_span */
  if(!(value->i16_span == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,55,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->i16_span)-UINT64_C(18446744073709518848),16);
  }
  }
  { /* i16_low */
  if(!(value->i16_low == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,56,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->i16_low)-UINT64_C(18446744073709518848),16);
  }
  }
  { /* i16_high */
  if(!(value->i16_high == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,57,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->i16_high)-UINT64_C(18446744073709518849),16);
  }
  }
  { /* i16_inside */
  if(!(value->i16_inside == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,58,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->i16_inside)-UINT64_C(18446744073709518849),16);
  }
  }
  { /* i32_span */
  if(!(value->i32_span == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,59,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->i32_span)-UINT64_C(18446744071562067968),32);
  }
  }
  { /* i32_low */
  if(!(value->i32_low == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,60,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->i32_low)-UINT64_C(18446744071562067968),32);
  }
  }
  { /* i32_high */
  if(!(value->i32_high == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,61,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->i32_high)-UINT64_C(18446744071562067969),32);
  }
  }
  { /* i32_inside */
  if(!(value->i32_inside == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,62,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->i32_inside)-UINT64_C(18446744071562067969),32);
  }
  }
  { /* i64_span */
  if(!(value->i64_span == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,63,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->i64_span)-UINT64_C(9223372036854775808),64);
  }
  }
  { /* i64_low */
  if(!(value->i64_low == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,64,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->i64_low)-UINT64_C(9223372036854775808),64);
  }
  }
  { /* i64_high */
  if(!(value->i64_high == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,65,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->i64_high)-UINT64_C(9223372036854775809),64);
  }
  }
  { /* i64_inside */
  if(!(value->i64_inside == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,66,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->i64_inside)-UINT64_C(9223372036854775809),64);
  }
@@ -2771,195 +2933,437 @@ static SCHEMA_UNUSED int ranged_signed_save_message_body(TableBitWriter * w,cons
  { /* edges */
  if(value->edges_count<0 || value->edges_count>4) return 0;
  if(value->edges_count>0) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,67,kTableMessageRefBitsHere);
   if(value->edges_count<0 || value->edges_count>4) return 0;
   table_bit_put(w,(uint64_t)value->edges_count-0,3);
-  { int32_t i; for(i=0;i<value->edges_count;i++) {
+  { int32_t i;
+  for(i=0;i<value->edges_count;i++) {
     table_bit_put(w,(uint64_t)(value->edges[i])-UINT64_C(18446744073709518848),16);
   } }
  }
  }
- table_bit_put(w,0,kTableMessageRefBitsHere); return !w->overflow;
+ table_bit_put(w,0,kTableMessageRefBitsHere);
+ return !w->overflow;
 }
 static SCHEMA_UNUSED int64_t ranged_signed_measure_messages(const RangedSigned * values,int64_t count,TableReport * report)
 {
- TableBitWriter w=table_bit_writer(NULL,INT64_MAX); int64_t i;
+ TableBitWriter w=table_bit_writer(NULL,INT64_MAX);
+ int64_t i;
  if(count<1 || values==NULL) return -1;
- if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;}return -1;}
- table_bit_put(&w,2,8); table_bit_put(&w,(uint64_t)(count-1),8);
+ if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;
+ report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;
+ }return -1;
+ }
+ table_bit_put(&w,2,8);
+ table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!ranged_signed_save_message_body(&w,values+i)) return -1;
- table_bit_align_write(&w); return w.overflow ? -1 : w.bits/8;
+ table_bit_align_write(&w);
+ return w.overflow ? -1 : w.bits/8;
 }
 static SCHEMA_UNUSED int64_t ranged_signed_save_messages(const RangedSigned * values,int64_t count,uint8_t * buffer,int64_t capacity,TableReport * report)
 {
- TableBitWriter w=table_bit_writer(buffer,capacity); int64_t i;
+ TableBitWriter w=table_bit_writer(buffer,capacity);
+ int64_t i;
  if(count<1 || values==NULL) return -1;
- if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;}return -1;}
+ if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;
+ report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;
+ }return -1;
+ }
  if(buffer==NULL || capacity<0) return -1;
- table_bit_put(&w,2,8); table_bit_put(&w,(uint64_t)(count-1),8);
+ table_bit_put(&w,2,8);
+ table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!ranged_signed_save_message_body(&w,values+i)) return -1;
- table_bit_align_write(&w); return w.overflow ? -1 : w.bits/8;
+ table_bit_align_write(&w);
+ return w.overflow ? -1 : w.bits/8;
 }
 static SCHEMA_UNUSED int ranged_signed_load_message_body(TableMessageReader * r,RangedSigned * value)
 {
- ranged_signed_reset(value);for(;;){const TableMessageEntry * entry;
- if(!table_message_ref(r,&entry,0))goto malformed;if(entry==NULL)return 1;switch(entry->id){
+ ranged_signed_reset(value);
+ for(;;){const TableMessageEntry * entry;
+ if(!table_message_ref(r,&entry,0))goto malformed;
+ if(entry==NULL)return 1;
+ switch(entry->id){
  case UINT64_C(0x48121511bf702eb5): {
- if(!(entry->kind==2 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,2)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  int64_t decoded=(int64_t)lo;(void)hi;
-  if(decoded<-128ll){decoded=-128ll;r->report->clamped++;}
-  if(decoded>127ll){decoded=127ll;r->report->clamped++;}
-  value->i8_span=(int8_t)decoded; }
- break;}
+ if(!(entry->kind==2 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,2)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  int64_t decoded=(int64_t)lo;
+  (void)hi;
+  if(decoded<-128ll){decoded=-128ll;
+  r->report->clamped++;
+  }
+  if(decoded>127ll){decoded=127ll;
+  r->report->clamped++;
+  }
+  value->i8_span=(int8_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0x942bfe3168090f7d): {
- if(!(entry->kind==2 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,2)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  int64_t decoded=(int64_t)lo;(void)hi;
-  if(decoded<-128ll){decoded=-128ll;r->report->clamped++;}
-  if(decoded>126ll){decoded=126ll;r->report->clamped++;}
-  value->i8_low=(int8_t)decoded; }
- break;}
+ if(!(entry->kind==2 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,2)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  int64_t decoded=(int64_t)lo;
+  (void)hi;
+  if(decoded<-128ll){decoded=-128ll;
+  r->report->clamped++;
+  }
+  if(decoded>126ll){decoded=126ll;
+  r->report->clamped++;
+  }
+  value->i8_low=(int8_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0xd182acd105b55dd1): {
- if(!(entry->kind==2 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,2)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  int64_t decoded=(int64_t)lo;(void)hi;
-  if(decoded<-127ll){decoded=-127ll;r->report->clamped++;}
-  if(decoded>127ll){decoded=127ll;r->report->clamped++;}
-  value->i8_high=(int8_t)decoded; }
- break;}
+ if(!(entry->kind==2 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,2)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  int64_t decoded=(int64_t)lo;
+  (void)hi;
+  if(decoded<-127ll){decoded=-127ll;
+  r->report->clamped++;
+  }
+  if(decoded>127ll){decoded=127ll;
+  r->report->clamped++;
+  }
+  value->i8_high=(int8_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0xef9ded23c8912a81): {
- if(!(entry->kind==2 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,2)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  int64_t decoded=(int64_t)lo;(void)hi;
-  if(decoded<-127ll){decoded=-127ll;r->report->clamped++;}
-  if(decoded>126ll){decoded=126ll;r->report->clamped++;}
-  value->i8_inside=(int8_t)decoded; }
- break;}
+ if(!(entry->kind==2 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,2)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  int64_t decoded=(int64_t)lo;
+  (void)hi;
+  if(decoded<-127ll){decoded=-127ll;
+  r->report->clamped++;
+  }
+  if(decoded>126ll){decoded=126ll;
+  r->report->clamped++;
+  }
+  value->i8_inside=(int8_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0xb655574ea23760b4): {
- if(!(entry->kind==3 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,3)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  int64_t decoded=(int64_t)lo;(void)hi;
-  if(decoded<-32768ll){decoded=-32768ll;r->report->clamped++;}
-  if(decoded>32767ll){decoded=32767ll;r->report->clamped++;}
-  value->i16_span=(int16_t)decoded; }
- break;}
+ if(!(entry->kind==3 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,3)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  int64_t decoded=(int64_t)lo;
+  (void)hi;
+  if(decoded<-32768ll){decoded=-32768ll;
+  r->report->clamped++;
+  }
+  if(decoded>32767ll){decoded=32767ll;
+  r->report->clamped++;
+  }
+  value->i16_span=(int16_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0xd217b3af8d7a2bde): {
- if(!(entry->kind==3 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,3)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  int64_t decoded=(int64_t)lo;(void)hi;
-  if(decoded<-32768ll){decoded=-32768ll;r->report->clamped++;}
-  if(decoded>32766ll){decoded=32766ll;r->report->clamped++;}
-  value->i16_low=(int16_t)decoded; }
- break;}
+ if(!(entry->kind==3 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,3)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  int64_t decoded=(int64_t)lo;
+  (void)hi;
+  if(decoded<-32768ll){decoded=-32768ll;
+  r->report->clamped++;
+  }
+  if(decoded>32766ll){decoded=32766ll;
+  r->report->clamped++;
+  }
+  value->i16_low=(int16_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0x90652f70c9127900): {
- if(!(entry->kind==3 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,3)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  int64_t decoded=(int64_t)lo;(void)hi;
-  if(decoded<-32767ll){decoded=-32767ll;r->report->clamped++;}
-  if(decoded>32767ll){decoded=32767ll;r->report->clamped++;}
-  value->i16_high=(int16_t)decoded; }
- break;}
+ if(!(entry->kind==3 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,3)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  int64_t decoded=(int64_t)lo;
+  (void)hi;
+  if(decoded<-32767ll){decoded=-32767ll;
+  r->report->clamped++;
+  }
+  if(decoded>32767ll){decoded=32767ll;
+  r->report->clamped++;
+  }
+  value->i16_high=(int16_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0x6a659d7c354db158): {
- if(!(entry->kind==3 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,3)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  int64_t decoded=(int64_t)lo;(void)hi;
-  if(decoded<-32767ll){decoded=-32767ll;r->report->clamped++;}
-  if(decoded>32766ll){decoded=32766ll;r->report->clamped++;}
-  value->i16_inside=(int16_t)decoded; }
- break;}
+ if(!(entry->kind==3 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,3)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  int64_t decoded=(int64_t)lo;
+  (void)hi;
+  if(decoded<-32767ll){decoded=-32767ll;
+  r->report->clamped++;
+  }
+  if(decoded>32766ll){decoded=32766ll;
+  r->report->clamped++;
+  }
+  value->i16_inside=(int16_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0xe693bd88532c91d6): {
- if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,4)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  int64_t decoded=(int64_t)lo;(void)hi;
-  if(decoded<-2147483648ll){decoded=-2147483648ll;r->report->clamped++;}
-  if(decoded>2147483647ll){decoded=2147483647ll;r->report->clamped++;}
-  value->i32_span=(int32_t)decoded; }
- break;}
+ if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,4)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  int64_t decoded=(int64_t)lo;
+  (void)hi;
+  if(decoded<-2147483648ll){decoded=-2147483648ll;
+  r->report->clamped++;
+  }
+  if(decoded>2147483647ll){decoded=2147483647ll;
+  r->report->clamped++;
+  }
+  value->i32_span=(int32_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0x065ee827cf99fbb4): {
- if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,4)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  int64_t decoded=(int64_t)lo;(void)hi;
-  if(decoded<-2147483648ll){decoded=-2147483648ll;r->report->clamped++;}
-  if(decoded>2147483646ll){decoded=2147483646ll;r->report->clamped++;}
-  value->i32_low=(int32_t)decoded; }
- break;}
+ if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,4)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  int64_t decoded=(int64_t)lo;
+  (void)hi;
+  if(decoded<-2147483648ll){decoded=-2147483648ll;
+  r->report->clamped++;
+  }
+  if(decoded>2147483646ll){decoded=2147483646ll;
+  r->report->clamped++;
+  }
+  value->i32_low=(int32_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0xc9b121c4c2a186ee): {
- if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,4)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  int64_t decoded=(int64_t)lo;(void)hi;
-  if(decoded<-2147483647ll){decoded=-2147483647ll;r->report->clamped++;}
-  if(decoded>2147483647ll){decoded=2147483647ll;r->report->clamped++;}
-  value->i32_high=(int32_t)decoded; }
- break;}
+ if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,4)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  int64_t decoded=(int64_t)lo;
+  (void)hi;
+  if(decoded<-2147483647ll){decoded=-2147483647ll;
+  r->report->clamped++;
+  }
+  if(decoded>2147483647ll){decoded=2147483647ll;
+  r->report->clamped++;
+  }
+  value->i32_high=(int32_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0xd363dfa465acf27a): {
- if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,4)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  int64_t decoded=(int64_t)lo;(void)hi;
-  if(decoded<-2147483647ll){decoded=-2147483647ll;r->report->clamped++;}
-  if(decoded>2147483646ll){decoded=2147483646ll;r->report->clamped++;}
-  value->i32_inside=(int32_t)decoded; }
- break;}
+ if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,4)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  int64_t decoded=(int64_t)lo;
+  (void)hi;
+  if(decoded<-2147483647ll){decoded=-2147483647ll;
+  r->report->clamped++;
+  }
+  if(decoded>2147483646ll){decoded=2147483646ll;
+  r->report->clamped++;
+  }
+  value->i32_inside=(int32_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0x7549c70700c49d6f): {
- if(!(entry->kind==5 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,5)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  int64_t decoded=(int64_t)lo;(void)hi;
-  value->i64_span=(int64_t)decoded; }
- break;}
+ if(!(entry->kind==5 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,5)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  int64_t decoded=(int64_t)lo;
+  (void)hi;
+  value->i64_span=(int64_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0x1cce6617419771db): {
- if(!(entry->kind==5 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,5)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  int64_t decoded=(int64_t)lo;(void)hi;
-  if(decoded>9223372036854775806ll){decoded=9223372036854775806ll;r->report->clamped++;}
-  value->i64_low=(int64_t)decoded; }
- break;}
+ if(!(entry->kind==5 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,5)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  int64_t decoded=(int64_t)lo;
+  (void)hi;
+  if(decoded>9223372036854775806ll){decoded=9223372036854775806ll;
+  r->report->clamped++;
+  }
+  value->i64_low=(int64_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0x3b54fa60620b5597): {
- if(!(entry->kind==5 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,5)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  int64_t decoded=(int64_t)lo;(void)hi;
-  if(decoded<-9223372036854775807ll){decoded=-9223372036854775807ll;r->report->clamped++;}
-  value->i64_high=(int64_t)decoded; }
- break;}
+ if(!(entry->kind==5 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,5)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  int64_t decoded=(int64_t)lo;
+  (void)hi;
+  if(decoded<-9223372036854775807ll){decoded=-9223372036854775807ll;
+  r->report->clamped++;
+  }
+  value->i64_high=(int64_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0xd308fcb98ece5d23): {
- if(!(entry->kind==5 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,5)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  int64_t decoded=(int64_t)lo;(void)hi;
-  if(decoded<-9223372036854775807ll){decoded=-9223372036854775807ll;r->report->clamped++;}
-  if(decoded>9223372036854775806ll){decoded=9223372036854775806ll;r->report->clamped++;}
-  value->i64_inside=(int64_t)decoded; }
- break;}
+ if(!(entry->kind==5 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,5)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  int64_t decoded=(int64_t)lo;
+  (void)hi;
+  if(decoded<-9223372036854775807ll){decoded=-9223372036854775807ll;
+  r->report->clamped++;
+  }
+  if(decoded>9223372036854775806ll){decoded=9223372036854775806ll;
+  r->report->clamped++;
+  }
+  value->i64_inside=(int64_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0xc70cde6b85b6197d): {
- if(!(entry->kind==14 && entry->elem_kind==3)){if(entry->kind==14 && table_kind_widens(entry->elem_kind,3)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- {uint64_t n,kept,walk,i;TableMessageEntry element_shape=table_message_element(entry);const TableMessageEntry * element_entry=&element_shape;(void)element_entry;
-  if(!table_message_count(r,entry,&n))goto malformed;kept=n>4?4:n;if(kept<n)r->report->clamped++;
-  walk=element_entry->value_bits>=0?kept:n;for(i=0;i<walk;i++){int16_t scratch; int16_t * item=i<kept ? &value->edges[i] : &scratch;
-  { uint64_t lo,hi;if(!table_message_number(r,element_entry,&lo,&hi))goto malformed;
-   int64_t decoded=(int64_t)lo;(void)hi;
-   if(decoded<-32768ll){decoded=-32768ll;r->report->clamped++;}
-   if(decoded>32767ll){decoded=32767ll;r->report->clamped++;}
-   (*item)=(int16_t)decoded; }
+ if(!(entry->kind==14 && entry->elem_kind==3)){if(entry->kind==14 && table_kind_widens(entry->elem_kind,3)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ {uint64_t n,kept,walk,i;
+ TableMessageEntry element_shape=table_message_element(entry);
+ const TableMessageEntry * element_entry=&element_shape;
+ (void)element_entry;
+  if(!table_message_count(r,entry,&n))goto malformed;
+  kept=n>4?4:n;
+  if(kept<n)r->report->clamped++;
+  walk=element_entry->value_bits>=0?kept:n;
+  for(i=0;i<walk;i++){int16_t scratch;
+  int16_t * item=i<kept ? &value->edges[i] : &scratch;
+  { uint64_t lo,hi;
+  if(!table_message_number(r,element_entry,&lo,&hi))goto malformed;
+   int64_t decoded=(int64_t)lo;
+   (void)hi;
+   if(decoded<-32768ll){decoded=-32768ll;
+   r->report->clamped++;
+   }
+   if(decoded>32767ll){decoded=32767ll;
+   r->report->clamped++;
+   }
+   (*item)=(int16_t)decoded;
+   }
   }if(walk<n && !table_message_skip_run(r,n-walk,element_entry->value_bits))goto malformed;
   value->edges_count=(int32_t)kept;
  }
- break;}
- default:r->report->unknown++;if(!table_message_skip(r,entry))goto malformed;break;
+ break;
+ }
+ default:r->report->unknown++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
  } }
- malformed:r->report->malformed=1;return 0;
+ malformed:r->report->malformed=1;
+ return 0;
 }
 static SCHEMA_UNUSED int ranged_signed_load_messages(RangedSigned * values,int64_t * count,const TableVocabulary * vocabulary,const uint8_t * buffer,int64_t bytes,TableReport * report)
 {
- TableReport ignored={0};TableMessageReader r;int64_t capacity,bodies,i;if(report==NULL)report=&ignored;
- if(values==NULL||count==NULL){report->malformed=1;return 0;}capacity=*count;*count=0;
- bodies=table_message_open(&r,vocabulary,buffer,bytes,report);if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;return 0;}
- for(i=0;i<bodies;i++){if(!ranged_signed_load_message_body(&r,values+i))return 0;(*count)++;}return table_message_close(&r);
+ TableReport ignored={0};
+ TableMessageReader r;
+ int64_t capacity,bodies,i;
+ if(report==NULL)report=&ignored;
+ if(values==NULL||count==NULL){report->malformed=1;
+ return 0;
+ }capacity=*count;
+ *count=0;
+ bodies=table_message_open(&r,vocabulary,buffer,bytes,report);
+ if(bodies<0)return 0;
+ if(bodies>capacity){*count=bodies;
+ report->refused=1;
+ report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;
+ return 0;
+ }
+ for(i=0;i<bodies;i++){if(!ranged_signed_load_message_body(&r,values+i))return 0;
+ (*count)++;
+ }return table_message_close(&r);
 }
 static SCHEMA_UNUSED int schema_tabledemo_ranged_signed_message_extent_(TableMessageReader * r,int64_t * at)
 {
- (void)at;for(;;){const TableMessageEntry * entry;if(!table_message_ref(r,&entry,0))return 0;if(entry==NULL)return 1;
+ (void)at;
+ for(;;){const TableMessageEntry * entry;
+ if(!table_message_ref(r,&entry,0))return 0;
+ if(entry==NULL)return 1;
  switch(entry->id){
- default:break;}if(!table_message_skip(r,entry))return 0;
+ default:break;
+ }if(!table_message_skip(r,entry))return 0;
  }
 }
 static SCHEMA_UNUSED int schema_tabledemo_ranged_unsigned_wire_counts_( TableWriter * w, const RangedUnsigned * value )
@@ -4262,112 +4666,144 @@ static SCHEMA_UNUSED int ranged_unsigned_save_message_body(TableBitWriter * w,co
  (void)value;
  { /* u8_span */
  if(!(value->u8_span == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,68,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->u8_span)-UINT64_C(0),8);
  }
  }
  { /* u8_low */
  if(!(value->u8_low == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,69,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->u8_low)-UINT64_C(0),8);
  }
  }
  { /* u8_high */
  if(!(value->u8_high == 1)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,70,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->u8_high)-UINT64_C(1),8);
  }
  }
  { /* u8_inside */
  if(!(value->u8_inside == 1)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,71,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->u8_inside)-UINT64_C(1),8);
  }
  }
  { /* u16_span */
  if(!(value->u16_span == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,72,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->u16_span)-UINT64_C(0),16);
  }
  }
  { /* u16_low */
  if(!(value->u16_low == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,73,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->u16_low)-UINT64_C(0),16);
  }
  }
  { /* u16_high */
  if(!(value->u16_high == 1)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,74,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->u16_high)-UINT64_C(1),16);
  }
  }
  { /* u16_inside */
  if(!(value->u16_inside == 1)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,75,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->u16_inside)-UINT64_C(1),16);
  }
  }
  { /* u32_span */
  if(!(value->u32_span == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,76,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->u32_span)-UINT64_C(0),32);
  }
  }
  { /* u32_low */
  if(!(value->u32_low == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,77,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->u32_low)-UINT64_C(0),32);
  }
  }
  { /* u32_high */
  if(!(value->u32_high == 1)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,78,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->u32_high)-UINT64_C(1),32);
  }
  }
  { /* u32_inside */
  if(!(value->u32_inside == 1)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,79,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->u32_inside)-UINT64_C(1),32);
  }
  }
  { /* u64_span */
  if(!(value->u64_span == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,80,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->u64_span)-UINT64_C(0),64);
  }
  }
  { /* u64_low */
  if(!(value->u64_low == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,81,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->u64_low)-UINT64_C(0),64);
  }
  }
  { /* u64_high */
  if(!(value->u64_high == 1ull)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,82,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->u64_high)-UINT64_C(1),64);
  }
  }
  { /* u64_inside */
  if(!(value->u64_inside == 1ull)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,83,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->u64_inside)-UINT64_C(1),64);
  }
@@ -4375,187 +4811,413 @@ static SCHEMA_UNUSED int ranged_unsigned_save_message_body(TableBitWriter * w,co
  { /* counts */
  if(value->counts_count<0 || value->counts_count>4) return 0;
  if(value->counts_count>0) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,84,kTableMessageRefBitsHere);
   if(value->counts_count<0 || value->counts_count>4) return 0;
   table_bit_put(w,(uint64_t)value->counts_count-0,3);
-  { int32_t i; for(i=0;i<value->counts_count;i++) {
+  { int32_t i;
+  for(i=0;i<value->counts_count;i++) {
     table_bit_put(w,(uint64_t)(value->counts[i])-UINT64_C(0),64);
   } }
  }
  }
- table_bit_put(w,0,kTableMessageRefBitsHere); return !w->overflow;
+ table_bit_put(w,0,kTableMessageRefBitsHere);
+ return !w->overflow;
 }
 static SCHEMA_UNUSED int64_t ranged_unsigned_measure_messages(const RangedUnsigned * values,int64_t count,TableReport * report)
 {
- TableBitWriter w=table_bit_writer(NULL,INT64_MAX); int64_t i;
+ TableBitWriter w=table_bit_writer(NULL,INT64_MAX);
+ int64_t i;
  if(count<1 || values==NULL) return -1;
- if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;}return -1;}
- table_bit_put(&w,2,8); table_bit_put(&w,(uint64_t)(count-1),8);
+ if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;
+ report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;
+ }return -1;
+ }
+ table_bit_put(&w,2,8);
+ table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!ranged_unsigned_save_message_body(&w,values+i)) return -1;
- table_bit_align_write(&w); return w.overflow ? -1 : w.bits/8;
+ table_bit_align_write(&w);
+ return w.overflow ? -1 : w.bits/8;
 }
 static SCHEMA_UNUSED int64_t ranged_unsigned_save_messages(const RangedUnsigned * values,int64_t count,uint8_t * buffer,int64_t capacity,TableReport * report)
 {
- TableBitWriter w=table_bit_writer(buffer,capacity); int64_t i;
+ TableBitWriter w=table_bit_writer(buffer,capacity);
+ int64_t i;
  if(count<1 || values==NULL) return -1;
- if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;}return -1;}
+ if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;
+ report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;
+ }return -1;
+ }
  if(buffer==NULL || capacity<0) return -1;
- table_bit_put(&w,2,8); table_bit_put(&w,(uint64_t)(count-1),8);
+ table_bit_put(&w,2,8);
+ table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!ranged_unsigned_save_message_body(&w,values+i)) return -1;
- table_bit_align_write(&w); return w.overflow ? -1 : w.bits/8;
+ table_bit_align_write(&w);
+ return w.overflow ? -1 : w.bits/8;
 }
 static SCHEMA_UNUSED int ranged_unsigned_load_message_body(TableMessageReader * r,RangedUnsigned * value)
 {
- ranged_unsigned_reset(value);for(;;){const TableMessageEntry * entry;
- if(!table_message_ref(r,&entry,0))goto malformed;if(entry==NULL)return 1;switch(entry->id){
+ ranged_unsigned_reset(value);
+ for(;;){const TableMessageEntry * entry;
+ if(!table_message_ref(r,&entry,0))goto malformed;
+ if(entry==NULL)return 1;
+ switch(entry->id){
  case UINT64_C(0x0f8897557f37c021): {
- if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,6)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  uint64_t decoded=(uint64_t)lo;(void)hi;
-  if(decoded>255ull){decoded=255ull;r->report->clamped++;}
-  value->u8_span=(uint8_t)decoded; }
- break;}
+ if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,6)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  uint64_t decoded=(uint64_t)lo;
+  (void)hi;
+  if(decoded>255ull){decoded=255ull;
+  r->report->clamped++;
+  }
+  value->u8_span=(uint8_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0x2e17553f8200a2a1): {
- if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,6)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  uint64_t decoded=(uint64_t)lo;(void)hi;
-  if(decoded>254ull){decoded=254ull;r->report->clamped++;}
-  value->u8_low=(uint8_t)decoded; }
- break;}
+ if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,6)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  uint64_t decoded=(uint64_t)lo;
+  (void)hi;
+  if(decoded>254ull){decoded=254ull;
+  r->report->clamped++;
+  }
+  value->u8_low=(uint8_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0xa0e5c60df9301b7d): {
- if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,6)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  uint64_t decoded=(uint64_t)lo;(void)hi;
-  if(decoded<1ull){decoded=1ull;r->report->clamped++;}
-  if(decoded>255ull){decoded=255ull;r->report->clamped++;}
-  value->u8_high=(uint8_t)decoded; }
- break;}
+ if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,6)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  uint64_t decoded=(uint64_t)lo;
+  (void)hi;
+  if(decoded<1ull){decoded=1ull;
+  r->report->clamped++;
+  }
+  if(decoded>255ull){decoded=255ull;
+  r->report->clamped++;
+  }
+  value->u8_high=(uint8_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0x1cb2c073a6f5844d): {
- if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,6)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  uint64_t decoded=(uint64_t)lo;(void)hi;
-  if(decoded<1ull){decoded=1ull;r->report->clamped++;}
-  if(decoded>254ull){decoded=254ull;r->report->clamped++;}
-  value->u8_inside=(uint8_t)decoded; }
- break;}
+ if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,6)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  uint64_t decoded=(uint64_t)lo;
+  (void)hi;
+  if(decoded<1ull){decoded=1ull;
+  r->report->clamped++;
+  }
+  if(decoded>254ull){decoded=254ull;
+  r->report->clamped++;
+  }
+  value->u8_inside=(uint8_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0x4ca0c150b1790960): {
- if(!(entry->kind==7 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,7)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  uint64_t decoded=(uint64_t)lo;(void)hi;
-  if(decoded>65535ull){decoded=65535ull;r->report->clamped++;}
-  value->u16_span=(uint16_t)decoded; }
- break;}
+ if(!(entry->kind==7 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,7)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  uint64_t decoded=(uint64_t)lo;
+  (void)hi;
+  if(decoded>65535ull){decoded=65535ull;
+  r->report->clamped++;
+  }
+  value->u16_span=(uint16_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0xf252136836b04cb2): {
- if(!(entry->kind==7 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,7)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  uint64_t decoded=(uint64_t)lo;(void)hi;
-  if(decoded>65534ull){decoded=65534ull;r->report->clamped++;}
-  value->u16_low=(uint16_t)decoded; }
- break;}
+ if(!(entry->kind==7 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,7)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  uint64_t decoded=(uint64_t)lo;
+  (void)hi;
+  if(decoded>65534ull){decoded=65534ull;
+  r->report->clamped++;
+  }
+  value->u16_low=(uint16_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0x4f37e1f216e7610c): {
- if(!(entry->kind==7 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,7)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  uint64_t decoded=(uint64_t)lo;(void)hi;
-  if(decoded<1ull){decoded=1ull;r->report->clamped++;}
-  if(decoded>65535ull){decoded=65535ull;r->report->clamped++;}
-  value->u16_high=(uint16_t)decoded; }
- break;}
+ if(!(entry->kind==7 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,7)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  uint64_t decoded=(uint64_t)lo;
+  (void)hi;
+  if(decoded<1ull){decoded=1ull;
+  r->report->clamped++;
+  }
+  if(decoded>65535ull){decoded=65535ull;
+  r->report->clamped++;
+  }
+  value->u16_high=(uint16_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0xd176b605978f3304): {
- if(!(entry->kind==7 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,7)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  uint64_t decoded=(uint64_t)lo;(void)hi;
-  if(decoded<1ull){decoded=1ull;r->report->clamped++;}
-  if(decoded>65534ull){decoded=65534ull;r->report->clamped++;}
-  value->u16_inside=(uint16_t)decoded; }
- break;}
+ if(!(entry->kind==7 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,7)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  uint64_t decoded=(uint64_t)lo;
+  (void)hi;
+  if(decoded<1ull){decoded=1ull;
+  r->report->clamped++;
+  }
+  if(decoded>65534ull){decoded=65534ull;
+  r->report->clamped++;
+  }
+  value->u16_inside=(uint16_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0x200b924de7479cda): {
- if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,8)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  uint64_t decoded=(uint64_t)lo;(void)hi;
-  if(decoded>4294967295ull){decoded=4294967295ull;r->report->clamped++;}
-  value->u32_span=(uint32_t)decoded; }
- break;}
+ if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,8)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  uint64_t decoded=(uint64_t)lo;
+  (void)hi;
+  if(decoded>4294967295ull){decoded=4294967295ull;
+  r->report->clamped++;
+  }
+  value->u32_span=(uint32_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0xa53d2f2a31b5acb0): {
- if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,8)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  uint64_t decoded=(uint64_t)lo;(void)hi;
-  if(decoded>4294967294ull){decoded=4294967294ull;r->report->clamped++;}
-  value->u32_low=(uint32_t)decoded; }
- break;}
+ if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,8)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  uint64_t decoded=(uint64_t)lo;
+  (void)hi;
+  if(decoded>4294967294ull){decoded=4294967294ull;
+  r->report->clamped++;
+  }
+  value->u32_low=(uint32_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0x9759be8ea1a4e3d2): {
- if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,8)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  uint64_t decoded=(uint64_t)lo;(void)hi;
-  if(decoded<1ull){decoded=1ull;r->report->clamped++;}
-  if(decoded>4294967295ull){decoded=4294967295ull;r->report->clamped++;}
-  value->u32_high=(uint32_t)decoded; }
- break;}
+ if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,8)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  uint64_t decoded=(uint64_t)lo;
+  (void)hi;
+  if(decoded<1ull){decoded=1ull;
+  r->report->clamped++;
+  }
+  if(decoded>4294967295ull){decoded=4294967295ull;
+  r->report->clamped++;
+  }
+  value->u32_high=(uint32_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0x8dc515fc082e3c0e): {
- if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,8)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  uint64_t decoded=(uint64_t)lo;(void)hi;
-  if(decoded<1ull){decoded=1ull;r->report->clamped++;}
-  if(decoded>4294967294ull){decoded=4294967294ull;r->report->clamped++;}
-  value->u32_inside=(uint32_t)decoded; }
- break;}
+ if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,8)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  uint64_t decoded=(uint64_t)lo;
+  (void)hi;
+  if(decoded<1ull){decoded=1ull;
+  r->report->clamped++;
+  }
+  if(decoded>4294967294ull){decoded=4294967294ull;
+  r->report->clamped++;
+  }
+  value->u32_inside=(uint32_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0xbeecef11dbdf8973): {
- if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,9)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  uint64_t decoded=(uint64_t)lo;(void)hi;
-  value->u64_span=(uint64_t)decoded; }
- break;}
+ if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,9)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  uint64_t decoded=(uint64_t)lo;
+  (void)hi;
+  value->u64_span=(uint64_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0x0117ad66e0fff227): {
- if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,9)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  uint64_t decoded=(uint64_t)lo;(void)hi;
-  if(decoded>18446744073709551614ull){decoded=18446744073709551614ull;r->report->clamped++;}
-  value->u64_low=(uint64_t)decoded; }
- break;}
+ if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,9)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  uint64_t decoded=(uint64_t)lo;
+  (void)hi;
+  if(decoded>18446744073709551614ull){decoded=18446744073709551614ull;
+  r->report->clamped++;
+  }
+  value->u64_low=(uint64_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0xf2b45af3b50689db): {
- if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,9)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  uint64_t decoded=(uint64_t)lo;(void)hi;
-  if(decoded<1ull){decoded=1ull;r->report->clamped++;}
-  value->u64_high=(uint64_t)decoded; }
- break;}
+ if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,9)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  uint64_t decoded=(uint64_t)lo;
+  (void)hi;
+  if(decoded<1ull){decoded=1ull;
+  r->report->clamped++;
+  }
+  value->u64_high=(uint64_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0x713e12017eebcaf7): {
- if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,9)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  uint64_t decoded=(uint64_t)lo;(void)hi;
-  if(decoded<1ull){decoded=1ull;r->report->clamped++;}
-  if(decoded>18446744073709551614ull){decoded=18446744073709551614ull;r->report->clamped++;}
-  value->u64_inside=(uint64_t)decoded; }
- break;}
+ if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,9)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  uint64_t decoded=(uint64_t)lo;
+  (void)hi;
+  if(decoded<1ull){decoded=1ull;
+  r->report->clamped++;
+  }
+  if(decoded>18446744073709551614ull){decoded=18446744073709551614ull;
+  r->report->clamped++;
+  }
+  value->u64_inside=(uint64_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0xc341febe5aae51e5): {
- if(!(entry->kind==14 && entry->elem_kind==9)){if(entry->kind==14 && table_kind_widens(entry->elem_kind,9)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- {uint64_t n,kept,walk,i;TableMessageEntry element_shape=table_message_element(entry);const TableMessageEntry * element_entry=&element_shape;(void)element_entry;
-  if(!table_message_count(r,entry,&n))goto malformed;kept=n>4?4:n;if(kept<n)r->report->clamped++;
-  walk=element_entry->value_bits>=0?kept:n;for(i=0;i<walk;i++){uint64_t scratch; uint64_t * item=i<kept ? &value->counts[i] : &scratch;
-  { uint64_t lo,hi;if(!table_message_number(r,element_entry,&lo,&hi))goto malformed;
-   uint64_t decoded=(uint64_t)lo;(void)hi;
-   (*item)=(uint64_t)decoded; }
+ if(!(entry->kind==14 && entry->elem_kind==9)){if(entry->kind==14 && table_kind_widens(entry->elem_kind,9)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ {uint64_t n,kept,walk,i;
+ TableMessageEntry element_shape=table_message_element(entry);
+ const TableMessageEntry * element_entry=&element_shape;
+ (void)element_entry;
+  if(!table_message_count(r,entry,&n))goto malformed;
+  kept=n>4?4:n;
+  if(kept<n)r->report->clamped++;
+  walk=element_entry->value_bits>=0?kept:n;
+  for(i=0;i<walk;i++){uint64_t scratch;
+  uint64_t * item=i<kept ? &value->counts[i] : &scratch;
+  { uint64_t lo,hi;
+  if(!table_message_number(r,element_entry,&lo,&hi))goto malformed;
+   uint64_t decoded=(uint64_t)lo;
+   (void)hi;
+   (*item)=(uint64_t)decoded;
+   }
   }if(walk<n && !table_message_skip_run(r,n-walk,element_entry->value_bits))goto malformed;
   value->counts_count=(int32_t)kept;
  }
- break;}
- default:r->report->unknown++;if(!table_message_skip(r,entry))goto malformed;break;
+ break;
+ }
+ default:r->report->unknown++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
  } }
- malformed:r->report->malformed=1;return 0;
+ malformed:r->report->malformed=1;
+ return 0;
 }
 static SCHEMA_UNUSED int ranged_unsigned_load_messages(RangedUnsigned * values,int64_t * count,const TableVocabulary * vocabulary,const uint8_t * buffer,int64_t bytes,TableReport * report)
 {
- TableReport ignored={0};TableMessageReader r;int64_t capacity,bodies,i;if(report==NULL)report=&ignored;
- if(values==NULL||count==NULL){report->malformed=1;return 0;}capacity=*count;*count=0;
- bodies=table_message_open(&r,vocabulary,buffer,bytes,report);if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;return 0;}
- for(i=0;i<bodies;i++){if(!ranged_unsigned_load_message_body(&r,values+i))return 0;(*count)++;}return table_message_close(&r);
+ TableReport ignored={0};
+ TableMessageReader r;
+ int64_t capacity,bodies,i;
+ if(report==NULL)report=&ignored;
+ if(values==NULL||count==NULL){report->malformed=1;
+ return 0;
+ }capacity=*count;
+ *count=0;
+ bodies=table_message_open(&r,vocabulary,buffer,bytes,report);
+ if(bodies<0)return 0;
+ if(bodies>capacity){*count=bodies;
+ report->refused=1;
+ report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;
+ return 0;
+ }
+ for(i=0;i<bodies;i++){if(!ranged_unsigned_load_message_body(&r,values+i))return 0;
+ (*count)++;
+ }return table_message_close(&r);
 }
 static SCHEMA_UNUSED int schema_tabledemo_ranged_unsigned_message_extent_(TableMessageReader * r,int64_t * at)
 {
- (void)at;for(;;){const TableMessageEntry * entry;if(!table_message_ref(r,&entry,0))return 0;if(entry==NULL)return 1;
+ (void)at;
+ for(;;){const TableMessageEntry * entry;
+ if(!table_message_ref(r,&entry,0))return 0;
+ if(entry==NULL)return 1;
  switch(entry->id){
- default:break;}if(!table_message_skip(r,entry))return 0;
+ default:break;
+ }if(!table_message_skip(r,entry))return 0;
  }
 }
 static SCHEMA_UNUSED int ranged_widths_save_body( TableWriter * w, const RangedWidths * value )
@@ -5054,129 +5716,235 @@ static SCHEMA_UNUSED int ranged_widths_save_message_body(TableBitWriter * w,cons
  (void)value;
  { /* b8 */
  if(!(value->b8 == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,85,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->b8)-UINT64_C(0),8);
  }
  }
  { /* b16 */
  if(!(value->b16 == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,86,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->b16)-UINT64_C(0),16);
  }
  }
  { /* b32 */
  if(!(value->b32 == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,87,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->b32)-UINT64_C(0),32);
  }
  }
  { /* b64 */
  if(!(value->b64 == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,88,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->b64)-UINT64_C(0),64);
  }
  }
  { /* b12 */
  if(!(value->b12 == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,89,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->b12)-UINT64_C(0),12);
  }
  }
  { /* b48 */
  if(!(value->b48 == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,90,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->b48)-UINT64_C(0),48);
  }
  }
- table_bit_put(w,0,kTableMessageRefBitsHere); return !w->overflow;
+ table_bit_put(w,0,kTableMessageRefBitsHere);
+ return !w->overflow;
 }
 static SCHEMA_UNUSED int64_t ranged_widths_measure_messages(const RangedWidths * values,int64_t count,TableReport * report)
 {
- TableBitWriter w=table_bit_writer(NULL,INT64_MAX); int64_t i;
+ TableBitWriter w=table_bit_writer(NULL,INT64_MAX);
+ int64_t i;
  if(count<1 || values==NULL) return -1;
- if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;}return -1;}
- table_bit_put(&w,2,8); table_bit_put(&w,(uint64_t)(count-1),8);
+ if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;
+ report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;
+ }return -1;
+ }
+ table_bit_put(&w,2,8);
+ table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!ranged_widths_save_message_body(&w,values+i)) return -1;
- table_bit_align_write(&w); return w.overflow ? -1 : w.bits/8;
+ table_bit_align_write(&w);
+ return w.overflow ? -1 : w.bits/8;
 }
 static SCHEMA_UNUSED int64_t ranged_widths_save_messages(const RangedWidths * values,int64_t count,uint8_t * buffer,int64_t capacity,TableReport * report)
 {
- TableBitWriter w=table_bit_writer(buffer,capacity); int64_t i;
+ TableBitWriter w=table_bit_writer(buffer,capacity);
+ int64_t i;
  if(count<1 || values==NULL) return -1;
- if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;}return -1;}
+ if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;
+ report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;
+ }return -1;
+ }
  if(buffer==NULL || capacity<0) return -1;
- table_bit_put(&w,2,8); table_bit_put(&w,(uint64_t)(count-1),8);
+ table_bit_put(&w,2,8);
+ table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!ranged_widths_save_message_body(&w,values+i)) return -1;
- table_bit_align_write(&w); return w.overflow ? -1 : w.bits/8;
+ table_bit_align_write(&w);
+ return w.overflow ? -1 : w.bits/8;
 }
 static SCHEMA_UNUSED int ranged_widths_load_message_body(TableMessageReader * r,RangedWidths * value)
 {
- ranged_widths_reset(value);for(;;){const TableMessageEntry * entry;
- if(!table_message_ref(r,&entry,0))goto malformed;if(entry==NULL)return 1;switch(entry->id){
+ ranged_widths_reset(value);
+ for(;;){const TableMessageEntry * entry;
+ if(!table_message_ref(r,&entry,0))goto malformed;
+ if(entry==NULL)return 1;
+ switch(entry->id){
  case UINT64_C(0x08a60c07b54d8dc7): {
- if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,6)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  uint64_t decoded=(uint64_t)lo;(void)hi;
-  if(decoded>255ull){decoded=255ull;r->report->clamped++;}
-  value->b8=(uint32_t)decoded; }
- break;}
+ if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,6)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  uint64_t decoded=(uint64_t)lo;
+  (void)hi;
+  if(decoded>255ull){decoded=255ull;
+  r->report->clamped++;
+  }
+  value->b8=(uint32_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0xff95701912ad97be): {
- if(!(entry->kind==7 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,7)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  uint64_t decoded=(uint64_t)lo;(void)hi;
-  if(decoded>65535ull){decoded=65535ull;r->report->clamped++;}
-  value->b16=(uint32_t)decoded; }
- break;}
+ if(!(entry->kind==7 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,7)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  uint64_t decoded=(uint64_t)lo;
+  (void)hi;
+  if(decoded>65535ull){decoded=65535ull;
+  r->report->clamped++;
+  }
+  value->b16=(uint32_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0xff9c5c1912b39470): {
- if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,8)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  uint64_t decoded=(uint64_t)lo;(void)hi;
-  if(decoded>4294967295ull){decoded=4294967295ull;r->report->clamped++;}
-  value->b32=(uint32_t)decoded; }
- break;}
+ if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,8)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  uint64_t decoded=(uint64_t)lo;
+  (void)hi;
+  if(decoded>4294967295ull){decoded=4294967295ull;
+  r->report->clamped++;
+  }
+  value->b32=(uint32_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0xff92701912ab61e7): {
- if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,9)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  uint64_t decoded=(uint64_t)lo;(void)hi;
-  value->b64=(uint64_t)decoded; }
- break;}
+ if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,9)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  uint64_t decoded=(uint64_t)lo;
+  (void)hi;
+  value->b64=(uint64_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0xff95741912ad9e8a): {
- if(!(entry->kind==7 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,7)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  uint64_t decoded=(uint64_t)lo;(void)hi;
-  if(decoded>4095ull){decoded=4095ull;r->report->clamped++;}
-  value->b12=(uint32_t)decoded; }
- break;}
+ if(!(entry->kind==7 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,7)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  uint64_t decoded=(uint64_t)lo;
+  (void)hi;
+  if(decoded>4095ull){decoded=4095ull;
+  r->report->clamped++;
+  }
+  value->b12=(uint32_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0xff8b681912a535a1): {
- if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,9)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  uint64_t decoded=(uint64_t)lo;(void)hi;
-  if(decoded>281474976710655ull){decoded=281474976710655ull;r->report->clamped++;}
-  value->b48=(uint64_t)decoded; }
- break;}
- default:r->report->unknown++;if(!table_message_skip(r,entry))goto malformed;break;
+ if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,9)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  uint64_t decoded=(uint64_t)lo;
+  (void)hi;
+  if(decoded>281474976710655ull){decoded=281474976710655ull;
+  r->report->clamped++;
+  }
+  value->b48=(uint64_t)decoded;
+  }
+ break;
+ }
+ default:r->report->unknown++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
  } }
- malformed:r->report->malformed=1;return 0;
+ malformed:r->report->malformed=1;
+ return 0;
 }
 static SCHEMA_UNUSED int ranged_widths_load_messages(RangedWidths * values,int64_t * count,const TableVocabulary * vocabulary,const uint8_t * buffer,int64_t bytes,TableReport * report)
 {
- TableReport ignored={0};TableMessageReader r;int64_t capacity,bodies,i;if(report==NULL)report=&ignored;
- if(values==NULL||count==NULL){report->malformed=1;return 0;}capacity=*count;*count=0;
- bodies=table_message_open(&r,vocabulary,buffer,bytes,report);if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;return 0;}
- for(i=0;i<bodies;i++){if(!ranged_widths_load_message_body(&r,values+i))return 0;(*count)++;}return table_message_close(&r);
+ TableReport ignored={0};
+ TableMessageReader r;
+ int64_t capacity,bodies,i;
+ if(report==NULL)report=&ignored;
+ if(values==NULL||count==NULL){report->malformed=1;
+ return 0;
+ }capacity=*count;
+ *count=0;
+ bodies=table_message_open(&r,vocabulary,buffer,bytes,report);
+ if(bodies<0)return 0;
+ if(bodies>capacity){*count=bodies;
+ report->refused=1;
+ report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;
+ return 0;
+ }
+ for(i=0;i<bodies;i++){if(!ranged_widths_load_message_body(&r,values+i))return 0;
+ (*count)++;
+ }return table_message_close(&r);
 }
 static SCHEMA_UNUSED int schema_tabledemo_ranged_widths_message_extent_(TableMessageReader * r,int64_t * at)
 {
- (void)at;for(;;){const TableMessageEntry * entry;if(!table_message_ref(r,&entry,0))return 0;if(entry==NULL)return 1;
+ (void)at;
+ for(;;){const TableMessageEntry * entry;
+ if(!table_message_ref(r,&entry,0))return 0;
+ if(entry==NULL)return 1;
  switch(entry->id){
- default:break;}if(!table_message_skip(r,entry))return 0;
+ default:break;
+ }if(!table_message_skip(r,entry))return 0;
  }
 }
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */

@@ -179,14 +179,17 @@ field-by-field padding normalization, and exposes named cook/block refusal
 reasons and const block handles. Its UnitView registry includes table-free
 units. C also reads and writes bitpacked message batches, with caller-owned
 resolved announcement entries and native regions for graphs and collections.
-Retention remains C port work. C#, Dart, Go, Rust, Java, JavaScript and Elixir still write
+C retains unknown fields in caller-owned storage for variable file roots and
+message loads, and writes retained file roots (§6.6). C#, Dart, Go, Rust, Java, JavaScript and Elixir still write
 the earlier form in this tree. [ROADMAP.md](../ROADMAP.md) records coverage by
 construct and form.
 
-The C report has added `widened`, `refused` and `reason` members after
+The C report has added `widened`, `retained`, `retain_lost`, `refused` and `reason` members after
 `malformed`. Recompile callers with their generated headers and initialize a
 fresh report with `{0}` or designated members; positional initializers must
-account for the complete current structure.
+account for the complete current structure. C refusal enum values are a local
+generated API, not wire codes or a numeric ABI shared with C++. Compare the
+named constants from the generated header rather than persisting their numbers.
 
 **ELIXIR IS THE READING TIER, and the tier is a property of the LANGUAGE rather
 than of the port.** A BEAM term has no layout a producer could write, so this
@@ -9653,7 +9656,8 @@ here?" — §2.2's own distinction between machinery and columns.
 ### 8.5 On the side
 
 **The view is one generated file per UNIT, not per schema file** —
-`<Package>View.h` and `<Package>View.cpp` in C++, `<Package>View.cs` in C#.
+`<Package>View.h` and `<Package>View.cpp` in C++, `<Package>View.h` and
+`<Package>View.c` in C, `<Package>View.cs` in C#.
 **The name is `capitalize(package)` followed by `View`** in every target
 that emits one: `package tabledemo` gives `TabledemoView.h`. It is a FILE
 name, and generated file names are basename-shaped in every target, so it
@@ -11463,15 +11467,16 @@ inspects everything in the schema built:
   reachable. Closing it is the same one-line predicate the pair rule is
   already spelled as, plus a corpus unit per spelling; the page's rule is
   already the one above and nothing about it is undecided.
-- **THE UNIT REGISTRY IN THE EIGHT PORTS** (§8.3, §8.7). The C++ reference
-  emits `UnitView()` and the eight ports do not, so in those eight an enum
+- **THE UNIT REGISTRY IN THE SEVEN REMAINING PORTS** (§8.3, §8.7). C++ and C
+  emit the registry; the remaining seven ports do not in this tree, so an enum
   VARIANT's, a flags BIT's and a record-naming ARM's `doc` and `tags` reach
   the IR and the generated comments and no descriptor column. What a port
   lands is `ViewConstant`, `ViewVariant`, `ViewVocabulary` and `ViewType` with
   their three annotation members, and its own program byte-compared against
   the same pin — the corpus listing gate and the two same-declaration pairs
   are written once, against the IR, and every backend answers to them.
-- **THE VIEW OF A TABLE-FREE UNIT** (§8.2, §8.5). The C++ view is emitted by
+- **THE VIEW OF A TABLE-FREE UNIT IN C++** (§8.2, §8.5). C emits its unit
+  registry for table-free units. The C++ view is emitted by
   the TABLE backend, so a unit that declares no table gets none — and a
   packet-only unit's `type` declarations therefore carry no descriptor at all
   today. Landing it is the type view in the packet backend: the descriptor

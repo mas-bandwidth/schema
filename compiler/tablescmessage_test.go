@@ -277,7 +277,7 @@ func TestCTableAnnouncementFailureClearsEntries(t *testing.T) {
 	u := unitFromSource(t, "package probe\ntable Root { a int32\nb string(8)\nc bool }\n")
 	runCTableWireProbe(t, u, `#include "ProbeTable.h"
  int main(void){uint8_t wire[2048];TableMessageEntry entries[1];TableVocabulary v;TableReport report={0};int64_t n=announce(wire,sizeof(wire));size_t i;
- if(n<=0)return 1;memset(entries,0xa5,sizeof(entries));v=table_vocabulary(entries,1);
+ if(n<=0){return 1;}memset(entries,0xa5,sizeof(entries));v=table_vocabulary(entries,1);
  if(announce_read(&v,wire,n,&report)||!report.refused||report.reason!=SCHEMA_TABLE_VOCABULARY_TOO_LARGE)return 2;
  for(i=0;i<sizeof(entries);i++)if(((uint8_t*)entries)[i])return 3;
  v=table_vocabulary(NULL,1);memset(&report,0,sizeof(report));if(announce_read(&v,wire,n,&report)||report.reason!=SCHEMA_TABLE_NO_VOCABULARY)return 4;

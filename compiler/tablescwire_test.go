@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -136,7 +138,9 @@ func runCTableWireProbe(t *testing.T, u *ir.Unit, source string) {
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, output)
 	}
-	if output, err := exec.Command(filepath.Join(dir, "probe")).CombinedOutput(); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if output, err := exec.CommandContext(ctx, filepath.Join(dir, "probe")).CombinedOutput(); err != nil {
 		t.Fatalf("execute: %v\n%s", err, output)
 	}
 }
@@ -474,7 +478,7 @@ static int exercise(Counts * counts) {
  if(!root_builder_lock(&b))goto done;
  if(root_measure_with_allocator(NULL,(const Root *)(const void *)b.region,a)!=n)goto done;
  memset(wire,0xa5,sizeof(wire));result=root_save_with_allocator(NULL,(const Root *)(const void *)b.region,wire,n,a);
- if(!tail_intact(wire,n,sizeof(wire)))abort();if(result!=n)goto done;
+ if(!tail_intact(wire,n,sizeof(wire))){abort();}if(result!=n)goto done;
  m=root_to_json_measure_with_allocator((const Root *)(const void *)b.region,a);if(m<=0 || m>1024)goto done;
  if(root_to_json_with_allocator((const Root *)(const void *)b.region,text,m,a)!=m)goto done;
  m=root_cook_measure_with_allocator(NULL,(const Root *)(const void *)b.region,a);if(m<=0 || m>4096)goto done;
@@ -486,7 +490,7 @@ static int exercise(Counts * counts) {
  batch[0]=(const Root *)(const void *)b.region;batch[1]=batch[0];
  m=root_measure_messages_with_allocator(batch,2,&report,a);if(m<=0||m>4096)goto done;
  memset(messages,0xa5,sizeof(messages));result=root_save_messages_with_allocator(batch,2,messages,m,&report,a);
- if(!tail_intact(messages,m,sizeof(messages)))abort();if(result!=m)goto done;
+ if(!tail_intact(messages,m,sizeof(messages))){abort();}if(result!=m)goto done;
  have_copy=1;if(!root_builder_init_with_allocator(&copy,a))goto done;
  if(!root_load_builder(&copy,wire,n,&report) || !root_builder_lock(&copy))goto done;
  if(node_at(NULL,&((const Root *)(const void *)copy.region)->first)!=node_at(NULL,&((const Root *)(const void *)copy.region)->second))goto done;
@@ -530,7 +534,7 @@ static jmp_buf fatal;
 #include "ProbeTable.h"
 static void assign(Root * root, int32_t key) { SCHEMA_PROBE_ROOT_SLOTS_AT(*root,key)=17; }
 int main(void) {
- Root root; int i; static const int32_t invalid[]={INT32_MIN,-1,0,KEY_MAX+1,INT32_MAX};
+ Root root; volatile int i; static const int32_t invalid[]={INT32_MIN,-1,0,KEY_MAX+1,INT32_MAX};
  root_reset(&root);
  assign(&root,KEY_FIRST);assign(&root,KEY_THIRD);
  if(root.slots[0]!=17 || root.slots[1]!=0 || root.slots[2]!=17) return 1;

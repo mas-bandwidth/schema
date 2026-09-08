@@ -190,7 +190,7 @@ func (g *tableGen) emitUnionWire(un *ir.Union) {
 		}
 		g.pf("            break;\n        }\n")
 	}
-	g.pf("        default: r->report->unknown++; break;\n    }\n    return 1;\n}\n\n")
+	g.pf("%s", "        default: "+g.unknownEvent()+" break;\n    }\n    return 1;\n}\n\n")
 }
 
 // An arm's L is its field payload's frame: no second length surrounds it.

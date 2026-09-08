@@ -1,6 +1,7 @@
 package ctable
 
 import (
+	"fmt"
 	"strconv"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -55,7 +56,11 @@ func (g *tableGen) messageScalar(f *ir.Field, kind uint8, shape ir.TableMessageS
 			lo, hi = low.Uint64(), high.Uint64()
 		}
 		if f.Type.Width == 128 {
-			g.pf("%s{ uint64_t low=(%s).lo-UINT64_C(%d), high=(%s).hi-UINT64_C(%d)-((%s).lo<UINT64_C(%d));\n", ind, expr, lo, expr, hi, expr, lo)
+			borrow := "0"
+			if lo != 0 {
+				borrow = fmt.Sprintf("((%s).lo<UINT64_C(%d))", expr, lo)
+			}
+			g.pf("%s{ uint64_t low=(%s).lo-UINT64_C(%d), high=(%s).hi-UINT64_C(%d)-%s;\n", ind, expr, lo, expr, hi, borrow)
 			g.pf("%s (void)high; table_bit_put(w,low,%d);\n", ind, min(bits, 64))
 			if bits > 64 {
 				g.pf("%s table_bit_put(w,high,%d);\n", ind, bits-64)

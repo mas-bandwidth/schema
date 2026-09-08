@@ -149,6 +149,8 @@ static int spill( const char * dir, const char * name, const void * data, size_t
 typedef const ConformanceCodec * ( *UnitFn )( int * count );
 
 static const UnitFn units[] = {
+    conformance_codecs_tblw1,
+    conformance_codecs_tblw2,
     conformance_codecs_messagedemo,
     conformance_codecs_tblm1,
     conformance_codecs_tblm2,

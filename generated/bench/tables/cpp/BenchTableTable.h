@@ -5067,6 +5067,9 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                         decoded = i + 1;
                     }
                     value.entities_count = (int32_t) decoded;
+                    for ( int32_t tail = value.entities_count; tail < 8; tail++ ) {
+                        TableEntityReset( value.entities[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -5121,6 +5124,9 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                         decoded = i + 1;
                     }
                     value.stats_count = (int32_t) decoded;
+                    for ( int32_t tail = value.stats_count; tail < 80; tail++ ) {
+                        TableStatReset( value.stats[tail] );
+                    }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length

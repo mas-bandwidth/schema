@@ -273,7 +273,7 @@ enum answered `undefined` before the guard was made symmetric.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-keyed-none-refusal-ndebug` `tables-keyed-max-refusal-ndebug` | ❌ #377 (None refused; past Max is an unchecked plain array) | ✅ `internal/codegen/rusttable/runtime.go:133-169` (panics in every build) | ✅ `TestKeyedRefusesNone` `TestKeyedRefusesPastMax` `TestKeyedPlacesByKey` | ✅ `test/cs-tables/src/Program.cs:1672` (None refused; past Max is the CLR's, always on) | ❌ #407 (refuses both ends; no test holds it) | ✅ `tables-js-keyed-negative-control` | ❌ #407 (refuses both ends; no test holds it) | ❌ #407 (guards refuse both ends; no test holds it) |
+| ✅ `tables-keyed-none-refusal-ndebug` `tables-keyed-max-refusal-ndebug` | ✅ `TestCTableKeyedBounds` `tables-c-keyed-none-refusal-negative-control` | ✅ `internal/codegen/rusttable/runtime.go:133-169` (panics in every build) | ✅ `TestKeyedRefusesNone` `TestKeyedRefusesPastMax` `TestKeyedPlacesByKey` | ✅ `test/cs-tables/src/Program.cs:1672` (None refused; past Max is the CLR's, always on) | ❌ #407 (refuses both ends; no test holds it) | ✅ `tables-js-keyed-negative-control` | ❌ #407 (refuses both ends; no test holds it) | ❌ #407 (guards refuse both ends; no test holds it) |
 
 ### M6 — The variable class on the wire: a flat node table and an identity map
 
@@ -306,7 +306,7 @@ in post-order in the emitter and requires the lock red;
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-flat-wire` `tables-flat-wire-negative-control` | ❌ #408 (the earlier nested form: a depth cap, no identity map) | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 |
+| ✅ `tables-flat-wire` `tables-flat-wire-negative-control` | ✅ `TestCTableWireGraphIdentity` `tables-c-wire-fuzz` `tables-c-wire-fuzz-negative-control` | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 |
 
 ### M7 — A block row is reached by stride, with no per-row object
 
@@ -415,7 +415,7 @@ a managed backend allocates inside its runtime and says so.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-hooks` | ❌ #410 (raw `calloc`/`free` on the pointer path) | — no allocating path exists: a pointered unit's wire is refused and the fixed class allocates nothing (`tables-rust-alloc-audit`) | — the runtime allocates inside itself and says so (docs/SPEC-TABLES.md, "who calls the allocator is per form") | — the runtime allocates inside itself and says so (docs/SPEC-TABLES.md) | — the runtime allocates inside itself and says so; where it does is named per path at `tables-java-alloc` | — the runtime allocates inside itself and says so; every unavoidable allocation is named in the floor (docs/SPEC-TABLES.md) | — the runtime allocates inside itself and says so (docs/SPEC-TABLES.md) | — the BEAM allocates every term; the count is pinned instead (docs/SPEC-TABLES.md) |
+| ✅ `tables-hooks` | ✅ `TestCTableWireAllocatorFailures` `tables-c-soak` | — no allocating path exists: a pointered unit's wire is refused and the fixed class allocates nothing (`tables-rust-alloc-audit`) | — the runtime allocates inside itself and says so (docs/SPEC-TABLES.md, "who calls the allocator is per form") | — the runtime allocates inside itself and says so (docs/SPEC-TABLES.md) | — the runtime allocates inside itself and says so; where it does is named per path at `tables-java-alloc` | — the runtime allocates inside itself and says so; every unavoidable allocation is named in the floor (docs/SPEC-TABLES.md) | — the runtime allocates inside itself and says so (docs/SPEC-TABLES.md) | — the BEAM allocates every term; the count is pinned instead (docs/SPEC-TABLES.md) |
 
 ### M11 — The layout contract is asserted in generated code
 
@@ -517,7 +517,7 @@ adapters; `tables-json-graph-walk`.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-json-graph-walk` | ❌ #408 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 |
+| ✅ `tables-json-graph-walk` | ✅ `TestCTableWireGraphIdentity` `TestCTableWireBlobIdentity` | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 |
 
 ### M15 — One walk for the numbering, the pack measure and the pack
 
@@ -558,7 +558,7 @@ post-order numbering the same way.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/pointers.go:150` `conformance` | ❌ #433 (its `pack_measure` and `pack` take every pointer field before every by-value nesting, `internal/codegen/ctable/pointers.go:220`, `:280`) | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 |
+| ✅ `internal/codegen/cpptable/pointers.go:150` `conformance` | ✅ `internal/codegen/ctable/graph.go:24` `TestCTableCookCanonical` `tables-c-wire-fuzz` | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 |
 
 ### M16 — The presence companion rides beside the array walks
 
@@ -599,7 +599,7 @@ on the corpus rows that carry it.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/codecs.go:588` `test/tables/main.cpp:6814` `TestReportRowsDecodeThroughTheEngine` | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 |
+| ✅ `internal/codegen/cpptable/codecs.go:588` `test/tables/main.cpp:6814` `TestReportRowsDecodeThroughTheEngine` | ✅ `TestCTableWireDefaultRecovery` `tables-c-wire-fuzz` | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 |
 ### M17 — A node larger than a slab takes a span of the address space
 
 **Method.** An arena hands out nodes by bumping inside a fixed-size slab, and a
@@ -635,7 +635,7 @@ reads it back after the nodes allocated behind it and the bytes are gone.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-blob-span-negative-control` | ❌ #259 | ❌ #259 | ❌ #259 | ❌ #259 | ❌ #259 | ❌ #259 | ❌ #259 | ❌ #259 |
+| ✅ `tables-blob-span-negative-control` | ✅ `internal/codegen/ctable/arena.go:312` `TestCTableWireBlobIdentity` | ❌ #259 | ❌ #259 | ❌ #259 | ❌ #259 | ❌ #259 | ❌ #259 | ❌ #259 |
 
 
 ### M18 — A union arm is a field line
@@ -689,7 +689,7 @@ payload's last byte, decodes a body that ends inside its own length.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/arms.go` `tables-wire-fuzz-arm-width-negative-control` `tables-wire-fuzz-arm-terminator-negative-control` | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 |
+| ✅ `internal/codegen/cpptable/arms.go` `tables-wire-fuzz-arm-width-negative-control` `tables-wire-fuzz-arm-terminator-negative-control` | ✅ `tables-c-collections-fuzz` `tables-c-wire-fuzz` | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 |
 
 ### M19 — A map is a sorted entry array in the holder's node extent
 
@@ -759,7 +759,7 @@ shared control.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-maps` `tables-json-map-walk` `tables-maps-negative-controls` `tables-maps-cook-check-negative-control`, and the TOOL's wire and text halves and its cook-check clause (`TestTheToolWritesTheReferencesMapBytes`, `TestCookCheckMapSlot`) | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 |
+| ✅ `tables-maps` `tables-json-map-walk` `tables-maps-negative-controls` `tables-maps-cook-check-negative-control`, and the TOOL's wire and text halves and its cook-check clause (`TestTheToolWritesTheReferencesMapBytes`, `TestCookCheckMapSlot`) | ✅ `TestCTableWireMaps` `TestCTableMapWideningCount` `tables-c-collections-fuzz` | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 |
 
 ### M20 — The id-table wire
 
@@ -805,7 +805,10 @@ three, the message overload of `LoadMeasure` for a pointered batch's one region,
 convention. **The verbs are PLURAL** because the form's primitive is a batch of
 bodies of one root and a single message is the batch of one. C++, C and the
 independent tool engine carry the bitpacked form-`2` path. The C conformance
-and mutation drivers exercise fixed and variable message roots. The BODY's
+and mutation drivers exercise fixed and variable message roots. Retained
+unknowns use caller-owned byte and identity stores; `tables-c-retain` checks
+file/message load retention and retained file saves, and
+`tables-c-retain-negative-control` drops a field and fails the public report. The BODY's
 rules are the ones a port already has,
 read off a bit stream instead of a byte one: references resolve against the
 announced vocabulary instead of a trailer, elision and every tolerance rule
@@ -889,7 +892,7 @@ read back as `0x7ff8000020000000`, which is the quiet bit the conversion set.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-float-nan` `tables-float-nan-negative-control`, and the TOOL's two engines (`TestOracleCarriesTheFloatBitPattern`, `TestOracleWidensTheFloatBitPattern`, `TestACookCarriesAFloatBitPattern`) | ❌ #366 | ❌ #366 | ❌ #366 | ❌ #366 | ❌ #366 | ❌ #366 | ❌ #366 | ❌ #366 |
+| ✅ `tables-float-nan` `tables-float-nan-negative-control`, and the TOOL's two engines (`TestOracleCarriesTheFloatBitPattern`, `TestOracleWidensTheFloatBitPattern`, `TestACookCarriesAFloatBitPattern`) | ✅ `TestCTableWireWidening` `tables-c-wire-fuzz` | ❌ #366 | ❌ #366 | ❌ #366 | ❌ #366 | ❌ #366 | ❌ #366 | ❌ #366 |
 
 ### I1 — The independent allocation gate
 
@@ -1309,7 +1312,7 @@ check removed reds on the report.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 |
+| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ✅ `tables-c-wire-fuzz` `tables-c-wire-fuzz-negative-control` | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 |
 
 ### J1 — Accessor and descriptor agreement
 

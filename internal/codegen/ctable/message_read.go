@@ -128,7 +128,7 @@ func (g *tableGen) messageReadEnum(e *ir.Enum, dst, ind string) {
 	for i, v := range e.Variants {
 		g.pf("%s case UINT64_C(0x%016x): %s=%s;break;\n", ind, ir.TableWireId(e.VariantWireName(i)), dst, enumConst(e.Name, v))
 	}
-	g.pf("%s default:%s=%s;r->report->unknown++;break;\n%s } }\n", ind, dst, enumNoneConst(e.Name), ind)
+	g.pf("%s default:%s=%s;"+g.unknownEvent()+"break;\n%s } }\n", ind, dst, enumNoneConst(e.Name), ind)
 }
 
 func (g *tableGen) messageReadScalar(f *ir.Field, dst, e, ind string) {
@@ -276,7 +276,7 @@ func (g *tableGen) messageReadValue(f *ir.Field, dst, count, e, ind string) {
 			g.pf("%s case UINT64_C(0x%016x):slot=%d;break;\n", ind, ir.TableWireId(f.KeyEnumRef.VariantWireName(i)), i)
 			_ = v
 		}
-		g.pf("%s default:break;} if(slot<0){r->report->unknown++;\n%s { %s scratch;memset(&scratch,0,sizeof(scratch));\n", ind, ind, g.sequenceType(f))
+		g.pf("%s default:break;} if(slot<0){"+g.unknownEvent()+"\n%s { %s scratch;memset(&scratch,0,sizeof(scratch));\n", ind, ind, g.sequenceType(f))
 		if g.retain {
 			g.pf("%s TableRetainWalk named_retention=retention;retention.retain=NULL;\n", ind)
 		}
@@ -348,7 +348,7 @@ func (g *tableGen) emitMessageUnionRead(un *ir.Union) {
 		}
 		g.pf(" value->type=%s;break;}\n", enumConst(un.Name+"Type", v.Name))
 	}
-	g.pf(" default:r->report->unknown++;if(!table_message_skip(r,entry))goto malformed;break;\n }return 1;\n malformed:r->report->malformed=1;return 0;\n}\n")
+	g.pf("%s", " default:"+g.unknownEvent()+"if(!table_message_skip(r,entry))goto malformed;break;\n }return 1;\n malformed:r->report->malformed=1;return 0;\n}\n")
 }
 
 func (g *tableGen) emitMessageRead(st *ir.Struct) {
@@ -374,7 +374,7 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 	if g.retain {
 		g.pf(" default:r->report->unknown += 1;if(!table_retain_message_capture(r,entry,body_keep))goto malformed;break;\n } }\n malformed:r->report->malformed=1;return 0;\n}\n")
 	} else {
-		g.pf(" default:r->report->unknown++;if(!table_message_skip(r,entry))goto malformed;break;\n } }\n malformed:r->report->malformed=1;return 0;\n}\n")
+		g.pf("%s", " default:"+g.unknownEvent()+"if(!table_message_skip(r,entry))goto malformed;break;\n } }\n malformed:r->report->malformed=1;return 0;\n}\n")
 	}
 	if !g.retain && !g.isVar(st.Name) && !st.IsMapEntry() {
 		g.emitFixedMessageRead(st)

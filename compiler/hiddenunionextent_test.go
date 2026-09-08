@@ -33,6 +33,7 @@ func TestCppHiddenUnionExtentRefusal(t *testing.T) {
 			}
 			source := `#include "ProbeTable.h"
 #include <cstdio>
+#include <cstring>
 using namespace probe;
 #define CHECK(x) do {if(!(x)){std::fprintf(stderr,"line %d: %s\n",__LINE__,#x);return 1;}}while(0)
 int main(){RootBuilder builder;Root * r=builder.GetRoot();CHECK(r);` + setup + `

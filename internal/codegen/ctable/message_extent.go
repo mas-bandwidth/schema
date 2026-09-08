@@ -2,6 +2,7 @@ package ctable
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -96,12 +97,7 @@ func (g *tableGen) messageExtentElement(f *ir.Field, e, ind string) {
 }
 
 func (g *tableGen) messageHasExtent(st *ir.Struct) bool {
-	for _, f := range st.Fields {
-		if g.messageFieldHasExtent(f) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(st.Fields, g.messageFieldHasExtent)
 }
 func (g *tableGen) messageFieldHasExtent(f *ir.Field) bool {
 	if f.IsMap() || f.IsList() {

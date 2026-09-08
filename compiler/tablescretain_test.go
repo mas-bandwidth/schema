@@ -112,7 +112,7 @@ func TestCTableRetainFramedDepth(t *testing.T) {
 			var schema, fixture strings.Builder
 			schema.WriteString("package probe\ntable Root { next *Root\nextra T0 }\n")
 			fixture.WriteString(`{"extra":`)
-			for i := 0; i < depth; i++ {
+			for i := range depth {
 				if i+1 < depth {
 					fmt.Fprintf(&schema, "table T%d { nested T%d }\n", i, i+1)
 					fixture.WriteString(`{"nested":`)
@@ -133,6 +133,11 @@ func TestCTableRetainFramedDepth(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			batch, err := tablewire.EncodeMessages(m, []*tabletext.Instance{value})
+			if err != nil {
+				t.Fatal(err)
+			}
+			announcement := tablewire.Announce(future)
 			var octets strings.Builder
 			for _, b := range wire {
 				fmt.Fprintf(&octets, "0x%02x,", b)
@@ -145,6 +150,15 @@ func TestCTableRetainFramedDepth(t *testing.T) {
 static const uint8_t wire[]={%s};
 int main(void){TableRetain retain={0};TableRetainId ids[256];TableReport report={0};uint8_t store[8192],out[8192];const Root * root;int64_t need=root_load_measure(wire,sizeof(wire)),bytes;uint8_t * region;if(need<0)return 1;region=(uint8_t *)malloc((size_t)need);if(!region)return 2;retain.bytes=store;retain.capacity=sizeof(store);retain.ids=ids;retain.id_capacity=256;root=root_load_retain(region,need,wire,sizeof(wire),&retain,&report);if(!root||report.malformed||report.refused||report.unknown!=1||report.retained!=%d||report.retain_lost!=%d)return 3;bytes=root_measure_retain(root,&retain);if(bytes<0||root_save_retain(root,&retain,out,sizeof(out),&report)!=bytes)return 4;free(region);return 0;}
 `, octets.String(), kept, 1-kept))
+			runCTableWireProbe(t, old, fmt.Sprintf(`#include "ProbeTable.h"
+#include <stdio.h>
+#define CHECK(x) do{if(!(x)){fprintf(stderr,"message depth line %%d: %%s\n",__LINE__,#x);return 1;}}while(0)
+static const uint8_t batch[]={%s},announcement[]={%s},wire[]={%s};
+int main(void){TableMessageEntry entries[256];TableVocabulary vocabulary=table_vocabulary(entries,256);TableReport report={0};TableRetain retain={0};TableRetainId ids[256];uint8_t store[8192],out[8192];const Root * roots[1];int64_t need,count=1,bytes;uint8_t * region;
+CHECK(announce_read(&vocabulary,announcement,sizeof(announcement),&report));need=root_load_measure_messages(&vocabulary,batch,sizeof(batch));CHECK(need>0);region=(uint8_t*)malloc((size_t)need);CHECK(region);retain.bytes=store;retain.capacity=sizeof(store);retain.ids=ids;retain.id_capacity=256;
+CHECK(root_load_retain_messages(roots,&count,region,need,&vocabulary,batch,sizeof(batch),&retain,&report));CHECK(count==1&&!report.malformed&&!report.refused&&report.unknown==1&&report.retained==%d&&report.retain_lost==%d);bytes=root_measure_retain(roots[0],&retain);CHECK(bytes>0);CHECK(root_save_retain(roots[0],&retain,out,sizeof(out),&report)==bytes);if(report.retained){CHECK(bytes==sizeof(wire));CHECK(memcmp(wire,out,sizeof(wire))==0);}free(region);return 0;}
+`, cppWire(batch), cppWire(announcement), cppWire(wire), kept, 1-kept))
+
 		})
 	}
 }

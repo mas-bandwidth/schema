@@ -63,6 +63,7 @@ package ctable
 
 import (
 	"fmt"
+	"maps"
 	"sort"
 	"strconv"
 	"strings"
@@ -812,8 +813,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			out[f.Base+"Table.c"] = tableSource(u, f, g, cg, members)
 		}
 	}
-	for name, data := range generateViewFiles(u, closure, variable, targets, anyKeyed, anyList, anyMap) {
-		out[name] = data
+	maps.Copy(out, generateViewFiles(u, closure, variable, targets, anyKeyed, anyList, anyMap))
+	for name, data := range out {
+		out[name] = []byte(formatCompactCFunctions(string(data)))
 	}
 	return out, nil
 }

@@ -849,9 +849,13 @@ static SCHEMA_UNUSED int table_bit_getbytes(TableBitReader * r,uint8_t * target,
  if((r->offset&7)==0){if(n>0)memcpy(target,r->buffer+r->offset/8,(size_t)n);r->offset+=n*8;return 1;}
  for(i=0;i<n;i++){if(!table_bit_get(r,&by,8))return 0;target[i]=(uint8_t)by;}return 1;
 }
-static SCHEMA_UNUSED int64_t announce_measure(void) {return kTableAnnounceBytes;}
+static SCHEMA_UNUSED int64_t announce_measure(void) {return kTableAnnounceBytes;
+}
 static SCHEMA_UNUSED int64_t announce(uint8_t * buffer,int64_t capacity)
-{if(buffer==NULL || capacity<kTableAnnounceBytes)return -1;memcpy(buffer,kTableAnnounce,kTableAnnounceBytes);return kTableAnnounceBytes;}
+{if(buffer==NULL || capacity<kTableAnnounceBytes)return -1;
+memcpy(buffer,kTableAnnounce,kTableAnnounceBytes);
+return kTableAnnounceBytes;
+}
 static SCHEMA_UNUSED int64_t table_bits_required( int64_t min, int64_t max )
 {
     if ( max <= min ) { return 0; }
@@ -881,14 +885,19 @@ static SCHEMA_UNUSED int64_t table_message_kind_bits( uint8_t kind )
 // announcement is a hostile width like any other (§3.3).
 static SCHEMA_UNUSED int table_message_quantization( float qmin, float qmax, float qres, float * delta, uint32_t * count, int64_t * bits )
 {
-    if ( !( qmin < qmax ) || !( qres > 0.0f ) ) { return 0; }
+    if ( !( qmin < qmax ) || !( qres > 0.0f ) ) { return 0;
+    }
     (*delta) = qmax - qmin;
     float values = (*delta) / qres;
-    if ( !( (*delta) - (*delta) == 0.0f ) || !( values - values == 0.0f ) ) { return 0; } // Inf - Inf is NaN
-    if ( !( values >= 1.0f ) ) { values = 1.0f; }
-    else if ( values > 4294967040.0f ) { values = 4294967040.0f; } // the largest float below 2^32
+    if ( !( (*delta) - (*delta) == 0.0f ) || !( values - values == 0.0f ) ) { return 0;
+    } // Inf - Inf is NaN
+    if ( !( values >= 1.0f ) ) { values = 1.0f;
+    }
+    else if ( values > 4294967040.0f ) { values = 4294967040.0f;
+    } // the largest float below 2^32
     (*count) = (uint32_t) values;
-    if ( (float) (*count) < values ) { (*count)++; } // ceil, on a value the cast holds exactly
+    if ( (float) (*count) < values ) { (*count)++;
+    } // ceil, on a value the cast holds exactly
     (*bits) = table_bits_required( 0, (int64_t) (*count) );
     return 1;
 }
@@ -908,19 +917,24 @@ static SCHEMA_UNUSED int table_message_quantization( float qmin, float qmax, flo
 static SCHEMA_UNUSED uint32_t table_message_quantize( float value, float qmin, float delta, uint32_t count )
 {
     float normalized = ( value - qmin ) / delta;
-    if ( !( normalized >= 0.0f ) ) { normalized = 0.0f; }
-    else if ( !( normalized <= 1.0f ) ) { normalized = 1.0f; }
+    if ( !( normalized >= 0.0f ) ) { normalized = 0.0f;
+    }
+    else if ( !( normalized <= 1.0f ) ) { normalized = 1.0f;
+    }
     float scaled = normalized * (float) count;
     SCHEMA_TABLE_FLOAT_FORCE_ROUND( scaled );
-    uint32_t index = (uint32_t) ( scaled + 0.5f ); // floor of a non-negative value
-    if ( index > count ) { index = count; }
+    uint32_t index = (uint32_t) ( scaled + 0.5f );
+    // floor of a non-negative value
+    if ( index > count ) { index = count;
+    }
     return index;
 }
 
 // table_message_dequantize is the reader's half: the float an index names.
 static SCHEMA_UNUSED float table_message_dequantize( uint32_t index, float qmin, float delta, uint32_t count )
 {
-    if ( index > count ) { index = count; }
+    if ( index > count ) { index = count;
+    }
     const float normalized = index / (float) count;
     float scaled = normalized * delta;
     SCHEMA_TABLE_FLOAT_FORCE_ROUND( scaled );
@@ -932,7 +946,8 @@ static SCHEMA_UNUSED int table_message_integer_kind( uint8_t kind )
     return ( kind >= 2 && kind <= 9 ) || kind == 18 || kind == 19;
 }
 
-static SCHEMA_UNUSED int table_message_fixed_kind( uint8_t kind ) { return kind >= 20 && kind <= 29; }
+static SCHEMA_UNUSED int table_message_fixed_kind( uint8_t kind ) { return kind >= 20 && kind <= 29;
+}
 
 static SCHEMA_UNUSED int table_message_known_kind( uint8_t kind )
 {
@@ -960,91 +975,159 @@ static SCHEMA_UNUSED TableVocabulary table_vocabulary(TableMessageEntry * storag
 {TableVocabulary v;memset(&v,0,sizeof(v));v.entries=storage;v.max_entries=capacity;v.max_bytes=65536;return v;}
 static SCHEMA_UNUSED int table_message_leb(const uint8_t * in,int64_t size,int64_t * at,uint64_t * value)
 {
- TableReader r=table_reader_make(in,size,NULL);r.offset=*at;
- if(!table_reader_leb(&r,value))return 0;*at=r.offset;return 1;
+ TableReader r=table_reader_make(in,size,NULL);
+ r.offset=*at;
+ if(!table_reader_leb(&r,value))return 0;
+ *at=r.offset;
+ return 1;
 }
 static SCHEMA_UNUSED int64_t table_message_value_bits(uint8_t kind,uint8_t packing,int64_t bits)
 {
- if(kind==1)return 1;if(kind==11)return 64;if(kind==10)return packing==2?bits:32;
+ if(kind==1)return 1;
+ if(kind==11)return 64;
+ if(kind==10)return packing==2?bits:32;
  if(table_message_integer_kind(kind)||table_message_fixed_kind(kind))return packing==1?bits:table_message_kind_bits(kind);
  return -1;
 }
 static SCHEMA_UNUSED int table_message_shape_read(const uint8_t * in,int64_t size,int64_t * at,uint8_t kind,TableMessageShapeFacts * f)
 {
- uint64_t v=0;int i,k;
+ uint64_t v=0;
+ int i,k;
  if(table_message_integer_kind(kind)||table_message_fixed_kind(kind)||kind==10){
-  if(*at>=size)return 0;f->packing=in[(*at)++];if(f->packing==0)return 1;
+  if(*at>=size)return 0;
+  f->packing=in[(*at)++];
+  if(f->packing==0)return 1;
   if(f->packing==1 && kind!=10){
    if(!table_message_leb(in,size,at,&v)||v>(uint64_t)table_message_kind_bits(kind))return 0;
    f->value_bits=(int64_t)v;
    if(kind==18||kind==19||table_message_fixed_kind(kind)){
-    uint64_t lo=0,hi=0;if(*at>size-16)return 0;
-    for(i=0;i<8;i++){lo|=(uint64_t)in[*at+i]<<(8*i);hi|=(uint64_t)in[*at+8+i]<<(8*i);}
-    f->base_lo=(int64_t)lo;f->base_hi=(int64_t)hi;*at+=16;return 1;
+    uint64_t lo=0,hi=0;
+    if(*at>size-16)return 0;
+    for(i=0;i<8;i++){lo|=(uint64_t)in[*at+i]<<(8*i);
+    hi|=(uint64_t)in[*at+8+i]<<(8*i);
+    }
+    f->base_lo=(int64_t)lo;
+    f->base_hi=(int64_t)hi;
+    *at+=16;
+    return 1;
    }
    if(!table_message_leb(in,size,at,&v))return 0;
-   f->base_lo=kind>=2&&kind<=5?(int64_t)(v>>1)^-(int64_t)(v&1):(int64_t)v;return 1;
+   f->base_lo=kind>=2&&kind<=5?(int64_t)(v>>1)^-(int64_t)(v&1):(int64_t)v;
+   return 1;
   }
   if(f->packing==2 && kind==10){
-   uint32_t raw[3]={0,0,0};if(*at>size-12)return 0;
+   uint32_t raw[3]={0,0,0};
+   if(*at>size-12)return 0;
    for(k=0;k<3;k++)for(i=0;i<4;i++)raw[k]|=(uint32_t)in[*at+4*k+i]<<(8*i);
-   *at+=12;memcpy(&f->qmin,raw,4);memcpy(&f->qmax,raw+1,4);memcpy(&f->qres,raw+2,4);
+   *at+=12;
+   memcpy(&f->qmin,raw,4);
+   memcpy(&f->qmax,raw+1,4);
+   memcpy(&f->qres,raw+2,4);
    return table_message_quantization(f->qmin,f->qmax,f->qres,&f->qdelta,&f->qcount,&f->value_bits);
   }return 0;
  }
- if(kind==12||kind==33){if(!table_message_leb(in,size,at,&v)||v>INT32_MAX)return 0;f->max=(int64_t)v;return 1;}
+ if(kind==12||kind==33){if(!table_message_leb(in,size,at,&v)||v>INT32_MAX)return 0;
+ f->max=(int64_t)v;
+ return 1;
+ }
  if(kind==14||kind==16){
-  if(kind==14){if(!table_message_leb(in,size,at,&v)||v>UINT32_MAX)return 0;f->min=(int64_t)v;}
-  if(!table_message_leb(in,size,at,&v)||v>UINT32_MAX||v<(uint64_t)f->min)return 0;f->max=(int64_t)v;
-  if(*at>=size)return 0;f->elem_kind=in[(*at)++];
+  if(kind==14){if(!table_message_leb(in,size,at,&v)||v>UINT32_MAX)return 0;
+  f->min=(int64_t)v;
+  }
+  if(!table_message_leb(in,size,at,&v)||v>UINT32_MAX||v<(uint64_t)f->min)return 0;
+  f->max=(int64_t)v;
+  if(*at>=size)return 0;
+  f->elem_kind=in[(*at)++];
   return table_message_known_kind(f->elem_kind)&&f->elem_kind!=12&&f->elem_kind!=33;
  }return 1;
 }
 static SCHEMA_UNUSED int table_message_entry_read(const uint8_t * in,int64_t size,int64_t * at,TableMessageEntry * e)
 {
- TableMessageShapeFacts own={0},elem={0};int i;
- if(*at<0||*at>size-9)return 0;memset(e,0,sizeof(*e));e->value_bits=e->elem_value_bits=-1;
- for(i=0;i<8;i++)e->id|=(uint64_t)in[*at+i]<<(8*i);e->kind=in[*at+8];*at+=9;
+ TableMessageShapeFacts own={0},elem={0};
+ int i;
+ if(*at<0||*at>size-9)return 0;
+ memset(e,0,sizeof(*e));
+ e->value_bits=e->elem_value_bits=-1;
+ for(i=0;i<8;i++)e->id|=(uint64_t)in[*at+i]<<(8*i);
+ e->kind=in[*at+8];
+ *at+=9;
  if(!table_message_known_kind(e->kind)||!table_message_shape_read(in,size,at,e->kind,&own))return 0;
- e->packing=own.packing;e->value_bits=(int16_t)table_message_value_bits(e->kind,own.packing,own.value_bits);
- e->min=own.min;e->max=own.max;e->base_lo=own.base_lo;e->base_hi=own.base_hi;e->qmin=own.qmin;e->qdelta=own.qdelta;e->qcount=own.qcount;e->elem_kind=own.elem_kind;
+ e->packing=own.packing;
+ e->value_bits=(int16_t)table_message_value_bits(e->kind,own.packing,own.value_bits);
+ e->min=own.min;
+ e->max=own.max;
+ e->base_lo=own.base_lo;
+ e->base_hi=own.base_hi;
+ e->qmin=own.qmin;
+ e->qdelta=own.qdelta;
+ e->qcount=own.qcount;
+ e->elem_kind=own.elem_kind;
  if(e->kind==14||e->kind==16){
   if(!table_message_shape_read(in,size,at,e->elem_kind,&elem))return 0;
-  e->elem_packing=elem.packing;e->elem_value_bits=(int16_t)table_message_value_bits(e->elem_kind,elem.packing,elem.value_bits);
-  e->elem_max=elem.max;e->elem_base_lo=elem.base_lo;e->elem_base_hi=elem.base_hi;e->elem_qmin=elem.qmin;e->elem_qdelta=elem.qdelta;e->elem_qcount=elem.qcount;
+  e->elem_packing=elem.packing;
+  e->elem_value_bits=(int16_t)table_message_value_bits(e->elem_kind,elem.packing,elem.value_bits);
+  e->elem_max=elem.max;
+  e->elem_base_lo=elem.base_lo;
+  e->elem_base_hi=elem.base_hi;
+  e->elem_qmin=elem.qmin;
+  e->elem_qdelta=elem.qdelta;
+  e->elem_qcount=elem.qcount;
  }return 1;
 }
 
 
 static SCHEMA_UNUSED int table_announce_once(TableVocabulary * v,const uint8_t * buffer,int64_t bytes,TableReport * report)
 {
- TableReader r;int seen_version=0,seen_words=0;const uint8_t * words=NULL;int64_t words_bytes=0,at=0,count=0,nodes=0,touched=0;
+ TableReader r;
+ int seen_version=0,seen_words=0;
+ const uint8_t * words=NULL;
+ int64_t words_bytes=0,at=0,count=0,nodes=0,touched=0;
  if(!table_wire_open(&r,buffer,bytes,report))return 0;
  for(;;){
-  uint64_t ref,id;uint8_t kind;
+  uint64_t ref,id;
+  uint8_t kind;
   if(!table_reader_leb(&r,&ref))goto malformed;
   if(ref==0)break;
   if(ref>r.id_count||!table_reader_has(&r,1))goto malformed;
-  id=table_reader_id_at(&r,ref);kind=table_reader_get8(&r);
+  id=table_reader_id_at(&r,ref);
+  kind=table_reader_get8(&r);
   if(id==UINT64_C(0xfffffffffffffffe)){
    if(kind!=9||!table_reader_has(&r,8))goto malformed;
-   v->build_version=table_reader_get64(&r);seen_version++;continue;
+   v->build_version=table_reader_get64(&r);
+   seen_version++;
+   continue;
   }
   if(id==UINT64_C(0xfffffffffffffffd)){
-   TableReader field;uint64_t n;
+   TableReader field;
+   uint64_t n;
    if(kind!=14||!table_reader_span(&r,&field)||!table_reader_has(&field,1)||table_reader_get8(&field)!=6)goto malformed;
    if(!table_reader_leb(&field,&n)||!table_reader_room(&field,n)||n!=(uint64_t)(field.size-field.offset))goto malformed;
-   if(v->max_bytes<0 || n>(uint64_t)v->max_bytes){report->refused=1;report->reason=SCHEMA_TABLE_VOCABULARY_TOO_LARGE;return 0;}
-   words=field.buffer+field.offset;words_bytes=(int64_t)n;seen_words++;continue;
+   if(v->max_bytes<0 || n>(uint64_t)v->max_bytes){report->refused=1;
+   report->reason=SCHEMA_TABLE_VOCABULARY_TOO_LARGE;
+   return 0;
+   }
+   words=field.buffer+field.offset;
+   words_bytes=(int64_t)n;
+   seen_words++;
+   continue;
   }
-  report->unknown++;if(!table_reader_skip(&r,kind))goto malformed;
+  report->unknown++;
+  if(!table_reader_skip(&r,kind))goto malformed;
  }
  if(seen_version!=1||seen_words!=1||r.offset!=r.size)goto malformed;
  while(at<words_bytes){
-  TableMessageEntry * entry;int64_t i,began=at;
-  if(v->entries==NULL){report->refused=1;report->reason=SCHEMA_TABLE_NO_VOCABULARY;goto refused;}
-  if(count>=v->max_entries){report->refused=1;report->reason=SCHEMA_TABLE_VOCABULARY_TOO_LARGE;goto refused;}
-  entry=&v->entries[count];touched=count+1;
+  TableMessageEntry * entry;
+  int64_t i,began=at;
+  if(v->entries==NULL){report->refused=1;
+  report->reason=SCHEMA_TABLE_NO_VOCABULARY;
+  goto refused;
+  }
+  if(count>=v->max_entries){report->refused=1;
+  report->reason=SCHEMA_TABLE_VOCABULARY_TOO_LARGE;
+  goto refused;
+  }
+  entry=&v->entries[count];
+  touched=count+1;
   if(!table_message_entry_read(words,words_bytes,&at,entry))goto malformed;
   if(entry->id==UINT64_C(0xfffffffffffffffe)||entry->id==UINT64_C(0xfffffffffffffffd))goto malformed;
   if(entry->id==UINT64_MAX && nodes++>0)goto malformed;
@@ -1052,24 +1135,39 @@ static SCHEMA_UNUSED int table_announce_once(TableVocabulary * v,const uint8_t *
      alone can collapse different triples (#722). Until validation finishes,
      min/max temporarily hold the source span; no announcement pointer escapes. */
   for(i=0;i<count;i++){int64_t start=v->entries[i].min,length=v->entries[i].max-start;
-   if(length==at-began && !memcmp(words+start,words+began,(size_t)length))goto malformed;}
-  entry->min=began;entry->max=at;
+   if(length==at-began && !memcmp(words+start,words+began,(size_t)length))goto malformed;
+   }
+  entry->min=began;
+  entry->max=at;
   count++;
  }
  /* Resolve the accepted spans into the caller's final 96-byte entries. */
- at=0;{int64_t i;for(i=0;i<count;i++)if(!table_message_entry_read(words,words_bytes,&at,v->entries+i))goto malformed;}
- v->count=count;v->ref_bits=table_bits_required(0,count);v->announced=1;return 1;
+ at=0;
+ {int64_t i;
+ for(i=0;i<count;i++)if(!table_message_entry_read(words,words_bytes,&at,v->entries+i))goto malformed;
+ }
+ v->count=count;
+ v->ref_bits=table_bits_required(0,count);
+ v->announced=1;
+ return 1;
 malformed:
  report->malformed=1;
 refused:
- if(touched)memset(v->entries,0,(size_t)touched*sizeof(*v->entries));return 0;
+ if(touched)memset(v->entries,0,(size_t)touched*sizeof(*v->entries));
+ return 0;
 }
 static SCHEMA_UNUSED int announce_read(TableVocabulary * v,const uint8_t * buffer,int64_t bytes,TableReport * report)
 {
- TableReport ignored={0};int ok;
+ TableReport ignored={0};
+ int ok;
  if(report==NULL)report=&ignored;
- if(v->announced||v->refused){report->refused=1;report->reason=SCHEMA_TABLE_SECOND_ANNOUNCEMENT;return 0;}
- ok=table_announce_once(v,buffer,bytes,report);if(!ok)v->refused=1;return ok;
+ if(v->announced||v->refused){report->refused=1;
+ report->reason=SCHEMA_TABLE_SECOND_ANNOUNCEMENT;
+ return 0;
+ }
+ ok=table_announce_once(v,buffer,bytes,report);
+ if(!ok)v->refused=1;
+ return ok;
 }
 
 typedef struct TableMessageReader {
@@ -1078,7 +1176,8 @@ typedef struct TableMessageReader {
 } TableMessageReader;
 static SCHEMA_UNUSED int table_message_ref(TableMessageReader * r,const TableMessageEntry ** entry,int name)
 {
- uint64_t ref=0;*entry=NULL;
+ uint64_t ref=0;
+ *entry=NULL;
  if(!table_bit_get(&r->bits,&ref,r->vocabulary->ref_bits))return 0;
  if(ref==0)return 1;
  if(ref>(uint64_t)r->vocabulary->count)return 0;
@@ -1087,9 +1186,18 @@ static SCHEMA_UNUSED int table_message_ref(TableMessageReader * r,const TableMes
 }
 static SCHEMA_UNUSED TableMessageEntry table_message_element(const TableMessageEntry * e)
 {
- TableMessageEntry v;memset(&v,0,sizeof(v));v.kind=e->elem_kind;
- v.packing=e->elem_packing;v.value_bits=e->elem_value_bits;v.base_lo=e->elem_base_lo;v.base_hi=e->elem_base_hi;
- v.max=e->elem_max;v.qmin=e->elem_qmin;v.qdelta=e->elem_qdelta;v.qcount=e->elem_qcount;return v;
+ TableMessageEntry v;
+ memset(&v,0,sizeof(v));
+ v.kind=e->elem_kind;
+ v.packing=e->elem_packing;
+ v.value_bits=e->elem_value_bits;
+ v.base_lo=e->elem_base_lo;
+ v.base_hi=e->elem_base_hi;
+ v.max=e->elem_max;
+ v.qmin=e->elem_qmin;
+ v.qdelta=e->elem_qdelta;
+ v.qcount=e->elem_qcount;
+ return v;
 }
 static SCHEMA_UNUSED int table_message_skip_run(TableMessageReader * r,uint64_t count,int64_t width)
 {
@@ -1116,7 +1224,8 @@ static SCHEMA_UNUSED int table_message_skip_body(TableMessageReader * r)
 }
 static SCHEMA_UNUSED int table_message_skip(TableMessageReader * r,const TableMessageEntry * e)
 {
- uint64_t n,i;const TableMessageEntry * entry;
+ uint64_t n,i;
+ const TableMessageEntry * entry;
  switch(e->kind) {
  case 0:case 32:return 1;
  case 30:return table_message_ref(r,&entry,1);
@@ -1147,12 +1256,14 @@ static SCHEMA_UNUSED int table_message_skip(TableMessageReader * r,const TableMe
 }
 static SCHEMA_UNUSED int table_message_number(TableMessageReader * r,const TableMessageEntry * e,uint64_t * lo,uint64_t * hi)
 {
- int64_t width=e->value_bits;uint64_t before;
+ int64_t width=e->value_bits;
+ uint64_t before;
  *lo=*hi=0;
  if(width<0 || width>128 || !table_bit_get(&r->bits,lo,width<64?width:64))return 0;
  if(width>64 && !table_bit_get(&r->bits,hi,width-64))return 0;
  if(e->packing==1) {
-  before=*lo;*lo+=(uint64_t)e->base_lo;
+  before=*lo;
+  *lo+=(uint64_t)e->base_lo;
   if(table_message_kind_bits(e->kind)>64)*hi+=(uint64_t)e->base_hi+(*lo<before);
  } else if(((e->kind>=2 && e->kind<=5)||(e->kind>=20 && e->kind<=23)) && width>0 && width<64 && (*lo&(UINT64_C(1)<<(width-1)))) {
   *lo|=UINT64_MAX<<width;
@@ -1173,25 +1284,44 @@ static SCHEMA_UNUSED int table_message_float(TableMessageReader * r,const TableM
 static SCHEMA_UNUSED int64_t table_message_open(TableMessageReader * r,const TableVocabulary * v,const uint8_t * buffer,int64_t bytes,TableReport * report)
 {
  uint64_t count;
- memset(r,0,sizeof(*r));r->report=report;r->vocabulary=v;
- if(bytes<1 || buffer==NULL){report->malformed=1;return -1;}
- if(buffer[0]!=2){report->refused=1;report->reason=SCHEMA_TABLE_NEWER_FORM;return -1;}
- if(v==NULL || !v->announced){report->refused=1;report->reason=SCHEMA_TABLE_NO_VOCABULARY;return -1;}
+ memset(r,0,sizeof(*r));
+ r->report=report;
+ r->vocabulary=v;
+ if(bytes<1 || buffer==NULL){report->malformed=1;
+ return -1;
+ }
+ if(buffer[0]!=2){report->refused=1;
+ report->reason=SCHEMA_TABLE_NEWER_FORM;
+ return -1;
+ }
+ if(v==NULL || !v->announced){report->refused=1;
+ report->reason=SCHEMA_TABLE_NO_VOCABULARY;
+ return -1;
+ }
  r->bits=table_bit_reader(buffer+1,bytes-1);
- if(!table_bit_get(&r->bits,&count,8)){report->malformed=1;return -1;}
+ if(!table_bit_get(&r->bits,&count,8)){report->malformed=1;
+ return -1;
+ }
  return (int64_t)count+1;
 }
 static SCHEMA_UNUSED int table_message_close(TableMessageReader * r)
 {
- if(!table_bit_align_read(&r->bits)||r->bits.offset!=r->bits.bits){r->report->malformed=1;return 0;}return 1;
+ if(!table_bit_align_read(&r->bits)||r->bits.offset!=r->bits.bits){r->report->malformed=1;
+ return 0;
+ }return 1;
 }
 
 static SCHEMA_UNUSED int table_message_nodes_open(TableMessageReader * r,uint64_t * count)
 {
- uint64_t ref;int64_t start=r->bits.offset;*count=0;
+ uint64_t ref;
+ int64_t start=r->bits.offset;
+ *count=0;
  if(!table_bit_get(&r->bits,&ref,r->vocabulary->ref_bits))return 0;
  if(ref>(uint64_t)r->vocabulary->count)return 0;
- if(ref==0 || r->vocabulary->entries[ref-1].id!=UINT64_MAX){r->bits.offset=start;r->index_bits=1;return 1;}
+ if(ref==0 || r->vocabulary->entries[ref-1].id!=UINT64_MAX){r->bits.offset=start;
+ r->index_bits=1;
+ return 1;
+ }
  if(!table_bit_get(&r->bits,count,32))return 0;
  r->index_bits=table_bits_required(0,(int64_t)*count+1);
  /* Every record spends at least its type reference. Bound the walk before
@@ -1583,7 +1713,9 @@ static SCHEMA_UNUSED int patrol_save_message_body(TableBitWriter * w,const Patro
  (void)value;
  { /* active */
  if(!(value->active == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,32,kTableMessageRefBitsHere);
   table_bit_put(w,value->active ? 1 : 0,1);
  }
@@ -1591,7 +1723,9 @@ static SCHEMA_UNUSED int patrol_save_message_body(TableBitWriter * w,const Patro
  { /* speed */
  if(value->active) {
  if(!(value->speed == 1.0f)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,33,kTableMessageRefBitsHere);
   table_bit_put(w,table_float_to_bits(value->speed),32);
  }
@@ -1600,7 +1734,9 @@ static SCHEMA_UNUSED int patrol_save_message_body(TableBitWriter * w,const Patro
  { /* has_target */
  if(value->active) {
  if(!(value->has_target == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,34,kTableMessageRefBitsHere);
   table_bit_put(w,value->has_target ? 1 : 0,1);
  }
@@ -1609,7 +1745,9 @@ static SCHEMA_UNUSED int patrol_save_message_body(TableBitWriter * w,const Patro
  { /* target_id */
  if(value->active && value->has_target) {
  if(!(value->target_id == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,35,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->target_id)-UINT64_C(0),10);
  }
@@ -1618,7 +1756,9 @@ static SCHEMA_UNUSED int patrol_save_message_body(TableBitWriter * w,const Patro
  { /* wander */
  if(value->active && !value->has_target) {
  if(!(value->wander == 0.5f)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,36,kTableMessageRefBitsHere);
   table_bit_put(w,table_float_to_bits(value->wander),32);
  }
@@ -1628,93 +1768,197 @@ static SCHEMA_UNUSED int patrol_save_message_body(TableBitWriter * w,const Patro
  if(!value->active) {
  if(value->note_length<0 || value->note_length>8) return 0;
  if(value->note_length != 0) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}
+  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
+  return 1;
+  }
   table_bit_put(w,37,kTableMessageRefBitsHere);
   if(value->note_length<0 || value->note_length>8) return 0;
   table_bit_put(w,(uint64_t)value->note_length,4);
-  table_bit_align_write(w); table_bit_putbytes(w,value->note,value->note_length);
+  table_bit_align_write(w);
+  table_bit_putbytes(w,value->note,value->note_length);
  }
  }
  }
- table_bit_put(w,0,kTableMessageRefBitsHere); return !w->overflow;
+ table_bit_put(w,0,kTableMessageRefBitsHere);
+ return !w->overflow;
 }
 static SCHEMA_UNUSED int64_t patrol_measure_messages(const Patrol * values,int64_t count,TableReport * report)
 {
- TableBitWriter w=table_bit_writer(NULL,INT64_MAX); int64_t i;
+ TableBitWriter w=table_bit_writer(NULL,INT64_MAX);
+ int64_t i;
  if(count<1 || values==NULL) return -1;
- if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;}return -1;}
- table_bit_put(&w,2,8); table_bit_put(&w,(uint64_t)(count-1),8);
+ if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;
+ report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;
+ }return -1;
+ }
+ table_bit_put(&w,2,8);
+ table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!patrol_save_message_body(&w,values+i)) return -1;
- table_bit_align_write(&w); return w.overflow ? -1 : w.bits/8;
+ table_bit_align_write(&w);
+ return w.overflow ? -1 : w.bits/8;
 }
 static SCHEMA_UNUSED int64_t patrol_save_messages(const Patrol * values,int64_t count,uint8_t * buffer,int64_t capacity,TableReport * report)
 {
- TableBitWriter w=table_bit_writer(buffer,capacity); int64_t i;
+ TableBitWriter w=table_bit_writer(buffer,capacity);
+ int64_t i;
  if(count<1 || values==NULL) return -1;
- if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;}return -1;}
+ if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;
+ report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;
+ }return -1;
+ }
  if(buffer==NULL || capacity<0) return -1;
- table_bit_put(&w,2,8); table_bit_put(&w,(uint64_t)(count-1),8);
+ table_bit_put(&w,2,8);
+ table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!patrol_save_message_body(&w,values+i)) return -1;
- table_bit_align_write(&w); return w.overflow ? -1 : w.bits/8;
+ table_bit_align_write(&w);
+ return w.overflow ? -1 : w.bits/8;
 }
 static SCHEMA_UNUSED int patrol_load_message_body(TableMessageReader * r,Patrol * value)
 {
- patrol_reset(value);for(;;){const TableMessageEntry * entry;
- if(!table_message_ref(r,&entry,0))goto malformed;if(entry==NULL)return 1;switch(entry->id){
+ patrol_reset(value);
+ for(;;){const TableMessageEntry * entry;
+ if(!table_message_ref(r,&entry,0))goto malformed;
+ if(entry==NULL)return 1;
+ switch(entry->id){
  case UINT64_C(0x6580790b036f0c6f): {
- if(!(entry->kind==1 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,1)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  value->active=lo!=0; }
- break;}
+ if(!(entry->kind==1 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,1)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  value->active=lo!=0;
+  }
+ break;
+ }
  case UINT64_C(0x2281498aa0200e40): {
- if(!(entry->kind==10 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,10)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { float decoded; if(entry->kind==10) {float narrow;if(!table_message_float(r,entry,&narrow))goto malformed;decoded=narrow;} else {uint64_t raw;if(!table_bit_get(&r->bits,&raw,64))goto malformed;decoded=(float)table_bits_to_double(raw);}
-  value->speed=decoded; }
- break;}
+ if(!(entry->kind==10 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,10)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { float decoded;
+ if(entry->kind==10) {float narrow;
+ if(!table_message_float(r,entry,&narrow))goto malformed;
+ decoded=narrow;
+ } else {uint64_t raw;
+ if(!table_bit_get(&r->bits,&raw,64))goto malformed;
+ decoded=(float)table_bits_to_double(raw);
+ }
+  value->speed=decoded;
+  }
+ break;
+ }
  case UINT64_C(0x247f0e7f55aacfbd): {
- if(!(entry->kind==1 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,1)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  value->has_target=lo!=0; }
- break;}
+ if(!(entry->kind==1 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,1)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  value->has_target=lo!=0;
+  }
+ break;
+ }
  case UINT64_C(0xb7bc9ac015a25050): {
- if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,4)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { uint64_t lo,hi;if(!table_message_number(r,entry,&lo,&hi))goto malformed;
-  int64_t decoded=(int64_t)lo;(void)hi;
-  if(decoded<0ll){decoded=0ll;r->report->clamped++;}
-  if(decoded>1000ll){decoded=1000ll;r->report->clamped++;}
-  value->target_id=(int32_t)decoded; }
- break;}
+ if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,4)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { uint64_t lo,hi;
+ if(!table_message_number(r,entry,&lo,&hi))goto malformed;
+  int64_t decoded=(int64_t)lo;
+  (void)hi;
+  if(decoded<0ll){decoded=0ll;
+  r->report->clamped++;
+  }
+  if(decoded>1000ll){decoded=1000ll;
+  r->report->clamped++;
+  }
+  value->target_id=(int32_t)decoded;
+  }
+ break;
+ }
  case UINT64_C(0xb8c758d8bd1845d4): {
- if(!(entry->kind==10 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,10)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- { float decoded; if(entry->kind==10) {float narrow;if(!table_message_float(r,entry,&narrow))goto malformed;decoded=narrow;} else {uint64_t raw;if(!table_bit_get(&r->bits,&raw,64))goto malformed;decoded=(float)table_bits_to_double(raw);}
-  value->wander=decoded; }
- break;}
+ if(!(entry->kind==10 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,10)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ { float decoded;
+ if(entry->kind==10) {float narrow;
+ if(!table_message_float(r,entry,&narrow))goto malformed;
+ decoded=narrow;
+ } else {uint64_t raw;
+ if(!table_bit_get(&r->bits,&raw,64))goto malformed;
+ decoded=(float)table_bits_to_double(raw);
+ }
+  value->wander=decoded;
+  }
+ break;
+ }
  case UINT64_C(0x3bf8fbbad1587cdd): {
- if(!(entry->kind==12 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,12)){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}
- {uint64_t n,kept;if(!table_bit_get(&r->bits,&n,table_bits_required(0,entry->max)))goto malformed;
+ if(!(entry->kind==12 && entry->elem_kind==0)){if(entry->elem_kind==0 && table_kind_widens(entry->kind,12)){r->report->widened++;
+ }else{r->report->kind_mismatch++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
+ }}
+ {uint64_t n,kept;
+ if(!table_bit_get(&r->bits,&n,table_bits_required(0,entry->max)))goto malformed;
   if(!table_bit_align_read(&r->bits))goto malformed;
   if(n>INT64_MAX/8 || !table_bit_has(&r->bits,(int64_t)n*8))goto malformed;
-  {const uint8_t * text=r->bits.buffer+(r->bits.offset>>3);if(!table_wire_utf8(text,n))goto malformed;kept=table_wire_utf8_clamp(text,n,8);memcpy(value->note,text,(size_t)kept);value->note[kept]=0;}
+  {const uint8_t * text=r->bits.buffer+(r->bits.offset>>3);
+  if(!table_wire_utf8(text,n))goto malformed;
+  kept=table_wire_utf8_clamp(text,n,8);
+  memcpy(value->note,text,(size_t)kept);
+  value->note[kept]=0;
+  }
   r->bits.offset+=(int64_t)n*8;
-  if(kept<n)r->report->clamped++;value->note_length=(int32_t)kept; }
- break;}
- default:r->report->unknown++;if(!table_message_skip(r,entry))goto malformed;break;
+  if(kept<n)r->report->clamped++;
+  value->note_length=(int32_t)kept;
+  }
+ break;
+ }
+ default:r->report->unknown++;
+ if(!table_message_skip(r,entry))goto malformed;
+ break;
  } }
- malformed:r->report->malformed=1;return 0;
+ malformed:r->report->malformed=1;
+ return 0;
 }
 static SCHEMA_UNUSED int patrol_load_messages(Patrol * values,int64_t * count,const TableVocabulary * vocabulary,const uint8_t * buffer,int64_t bytes,TableReport * report)
 {
- TableReport ignored={0};TableMessageReader r;int64_t capacity,bodies,i;if(report==NULL)report=&ignored;
- if(values==NULL||count==NULL){report->malformed=1;return 0;}capacity=*count;*count=0;
- bodies=table_message_open(&r,vocabulary,buffer,bytes,report);if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;return 0;}
- for(i=0;i<bodies;i++){if(!patrol_load_message_body(&r,values+i))return 0;(*count)++;}return table_message_close(&r);
+ TableReport ignored={0};
+ TableMessageReader r;
+ int64_t capacity,bodies,i;
+ if(report==NULL)report=&ignored;
+ if(values==NULL||count==NULL){report->malformed=1;
+ return 0;
+ }capacity=*count;
+ *count=0;
+ bodies=table_message_open(&r,vocabulary,buffer,bytes,report);
+ if(bodies<0)return 0;
+ if(bodies>capacity){*count=bodies;
+ report->refused=1;
+ report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;
+ return 0;
+ }
+ for(i=0;i<bodies;i++){if(!patrol_load_message_body(&r,values+i))return 0;
+ (*count)++;
+ }return table_message_close(&r);
 }
 static SCHEMA_UNUSED int schema_tabledemo_patrol_message_extent_(TableMessageReader * r,int64_t * at)
 {
- (void)at;for(;;){const TableMessageEntry * entry;if(!table_message_ref(r,&entry,0))return 0;if(entry==NULL)return 1;
+ (void)at;
+ for(;;){const TableMessageEntry * entry;
+ if(!table_message_ref(r,&entry,0))return 0;
+ if(entry==NULL)return 1;
  switch(entry->id){
- default:break;}if(!table_message_skip(r,entry))return 0;
+ default:break;
+ }if(!table_message_skip(r,entry))return 0;
  }
 }
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */

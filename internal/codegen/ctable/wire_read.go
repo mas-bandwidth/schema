@@ -23,7 +23,7 @@ func (g *tableGen) wireEnumRead(e *ir.Enum, dst, rdr, ind, onBad string) {
 	for i, v := range e.Variants {
 		g.pf("%s            case 0x%016xull: %s = %s; break;\n", ind, ir.TableWireId(e.VariantWireName(i)), dst, enumConst(e.Name, v))
 	}
-	g.pf("%s            default: %s = %s; r->report->unknown++; break;\n", ind, dst, enumNoneConst(e.Name))
+	g.pf("%s            default: %s = %s; "+g.unknownEvent()+" break;\n", ind, dst, enumNoneConst(e.Name))
 	g.pf("%s        }\n%s    }\n%s}\n", ind, ind, ind)
 }
 
@@ -159,12 +159,12 @@ func (g *tableGen) emitWireRead(st *ir.Struct) {
 		g.pf("                break;\n            }\n")
 	}
 	if g.anyVariable {
-		g.pf("            case UINT64_MAX:\n                if(r->nodes==NULL) { r->report->unknown++; }\n                if(!table_reader_skip(r,kind)) { r->report->malformed=1; return 0; }\n                break;\n")
+		g.pf("%s", "            case UINT64_MAX:\n                if(r->nodes==NULL) { "+g.unknownEvent()+" }\n                if(!table_reader_skip(r,kind)) { r->report->malformed=1; return 0; }\n                break;\n")
 	}
 	if g.retain {
 		g.pf("            default:\n                r->report->unknown += 1;\n                if(!table_retain_capture(r,id,kind,body_keep)){r->report->malformed=1;return 0;}break;\n        }\n    }\n}\n\n")
 	} else {
-		g.pf("            default:\n                r->report->unknown++;\n                if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }\n                break;\n        }\n    }\n}\n\n")
+		g.pf("%s", "            default:\n                "+g.unknownEvent()+"\n                if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }\n                break;\n        }\n    }\n}\n\n")
 	}
 	if g.retain || g.isVar(st.Name) || st.IsMapEntry() {
 		return
@@ -284,7 +284,7 @@ func (g *tableGen) wireReadKeyed(f *ir.Field, kind int, ind string) {
 	for i := range f.KeyEnumRef.Variants {
 		g.pf("%s            case 0x%016xull: slot = %d; break;\n", ind, ir.TableWireId(f.KeyEnumRef.VariantWireName(i)), i)
 	}
-	g.pf("%s            default: r->report->unknown++; break;\n%s        }\n%s        if ( slot < 0 ) { continue; }\n", ind, ind, ind)
+	g.pf("%s            default: "+g.unknownEvent()+" break;\n%s        }\n%s        if ( slot < 0 ) { continue; }\n", ind, ind, ind)
 	g.retainIndex(f, "slot", ind+"        ")
 	dst := fmt.Sprintf("value->%s[slot]", f.Name)
 	if kind == tkTable {

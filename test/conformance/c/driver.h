@@ -93,6 +93,8 @@ const ConformanceCodec * conformance_codecs_armdemo(int * count);
 const ConformanceCodec * conformance_codecs_mapdemo(int * count);
 const ConformanceCodec * conformance_codecs_listdemo(int * count);
 const ConformanceCodec * conformance_codecs_streamdemo(int * count);
+const ConformanceCodec * conformance_codecs_tblw1(int * count);
+const ConformanceCodec * conformance_codecs_tblw2(int * count);
 const ConformanceCodec * conformance_codecs_tblp2(int * count);
 const ConformanceCodec * conformance_codecs_tblg1(int * count);
 const ConformanceCodec * conformance_codecs_blobdemo( int * count );

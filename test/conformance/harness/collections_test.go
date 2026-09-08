@@ -122,7 +122,7 @@ func cCollectionDifferential(t *testing.T, mode string) {
 	for i, s := range seeds {
 		enumerated(s, func(pass string, wire []byte) { check(s, indexes[i], pass, wire) })
 	}
-	for i := 0; i < 20000; i++ {
+	for i := range 20000 {
 		m := randomMutant(seeds, 1, i)
 		index := 0
 		for j, s := range seeds {
