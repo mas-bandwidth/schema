@@ -76,8 +76,9 @@ schema v2.4.0-148-gbafdb69 (go1.27.0)
 
 Write that number down. The language moves, and a diagnostic that cites a
 specification section cites it as it stands in the build that printed the
-diagnostic — so such a diagnostic ends with one more line, `schema <version>`,
-naming that build. When this page and your binary disagree, that line (or
+diagnostic. A refusal from the checker that cites a section ends with one
+more line, `schema <version>`, naming that build; a parse error does not
+carry it yet. When this page and your binary disagree, that line (or
 `schema version`) is the first thing to check.
 
 **Two more checkouts, before Part 3.** The generated C++ and C read and write
