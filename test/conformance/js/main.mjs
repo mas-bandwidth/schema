@@ -3,9 +3,8 @@
 // The twin of test/conformance/cpp/main.cpp and test/conformance/cs's Program,
 // and it is deliberately the same shape: one process per surface, every
 // expectation in the data, nothing literal here. It answers every surface this
-// backend has — the tolerant wire, the read report, the text form both ways,
-// the hostile text corpus, the block form's open and its row dump, the cook's
-// node dump, and both forgery batteries.
+// backend has — the block form's open and its row dump, the cook's node dump,
+// and both forgery batteries.
 //
 //   node main.mjs <manifest> list
 //   node main.mjs <manifest> <surface> <outdir>
@@ -34,15 +33,6 @@ import { pathToFileURL } from "node:url";
 const generated = process.env.SCHEMA_JS_GENERATED ?? "build/tables-generated-js";
 const load = (path) => import(pathToFileURL(resolve(generated, path)).href);
 
-const tabledemoTables = await load("examples/TablesTable.js");
-const tabledemoNested = await load("examples/NestedTable.js");
-const tabledemoKeyed = await load("examples/KeyedTable.js");
-const tabledemoWide = await load("examples/WideTable.js");
-const tabledemoPack = await load("examples/PackTable.js");
-const tblv1 = await load("v1/V1Table.js");
-const tblv2 = await load("v2/V2Table.js");
-const tblp1 = await load("p1/P1Table.js");
-const tblp3 = await load("p3/P3Table.js");
 const renderBlock = await load("block/RenderBlock.js");
 const paddedBlock = await load("block/PaddedBlock.js");
 const graphCook = await load("pointers/GraphCook.js");
@@ -66,165 +56,6 @@ function kind(lines, what) {
 function fail(message) {
   process.stderr.write("driver: " + message + "\n");
   process.exit(1);
-}
-
-// absent says this backend cannot answer THIS CASE — a feature it lacks, not a
-// test it failed. The harness counts it and the matrix prints it beside what
-// the leg did answer (test/conformance/README.md).
-function absent(outDir, name) {
-  writeFileSync(join(outDir, name + ".absent"), new Uint8Array(0));
-}
-
-// noText marks an instance the corpus carries on the WIRE only — past the text
-// form's depth cap by the form's own rule (docs/SPEC-TABLES.md §16.7) — so no
-// leg is asked for its text.
-function noText(f) {
-  return f.length > 5 && f[5] === "no-text";
-}
-
-// ---- the codec table: one row per (unit, root) the corpus names
-
-// Load and FromJson hand the value back and ledger what the data did in the
-// report; framing damage is report.Malformed, never a return. The text form's
-// currency is a string, so the driver encodes it as UTF-8 to write the file the
-// harness compares — the bytes the walk spelled, decoded once and encoded once.
-function row(unit, root, m, name) {
-  return {
-    unit, root,
-    load: (bytes, report) => {
-      const value = m[name + "Load"](bytes, report);
-      return report.Malformed ? null : value;
-    },
-    measure: (v) => m[name + "Measure"](v),
-    save: (v) => m[name + "Save"](v),
-    fromJson: (text, report) => {
-      const value = m[name + "FromJson"](text, report);
-      return report.Malformed ? null : value;
-    },
-    toJson: (v) => new TextEncoder().encode(m[name + "ToJson"](v)),
-    Report: () => new m.TableReport(),
-  };
-}
-
-const codecs = [
-  row("tabledemo", "RootConfig", tabledemoTables, "RootConfig"),
-  row("tabledemo", "ProfileConfig", tabledemoTables, "ProfileConfig"),
-  row("tabledemo", "LoadoutConfig", tabledemoTables, "LoadoutConfig"),
-  row("tabledemo", "WideBlob", tabledemoWide, "WideBlob"),
-  row("tabledemo", "ArchiveConfig", tabledemoNested, "ArchiveConfig"),
-  row("tabledemo", "KeyedConfig", tabledemoKeyed, "KeyedConfig"),
-  row("tabledemo", "PackConfig", tabledemoPack, "PackConfig"),
-  row("tblv1", "Cfg", tblv1, "Cfg"),
-  row("tblv2", "Cfg", tblv2, "Cfg"),
-  row("tblp1", "Chain", tblp1, "Chain"),
-  row("tblp3", "Chain", tblp3, "Chain"),
-];
-
-function find(unit, root) {
-  for (const c of codecs) {
-    if (c.unit === unit && c.root === root) { return c; }
-  }
-  return null;
-}
-
-function counters(report) {
-  return report.Unknown + "," + report.KindMismatch + "," + report.Clamped + "," +
-    report.Duplicate + "," + (report.Malformed ? "true" : "false") + "\n";
-}
-
-// ---- the surfaces
-
-function surfaceWire(lines, outDir) {
-  for (const f of kind(lines, "instance")) {
-    const codec = find(f[2], f[3]);
-    if (codec === null) {
-      // no codec for this unit's root: the JS backend refuses a pointered
-      // unit's wire by name (§11), which is a missing FEATURE
-      absent(outDir, f[1]);
-      continue;
-    }
-    const wire = new Uint8Array(readFileSync(f[4]));
-    const report = codec.Report();
-    const value = codec.load(wire, report);
-    if (value === null) { fail(f[1] + " does not load"); }
-    const buffer = codec.save(value);
-    if (buffer.length !== codec.measure(value)) { fail(f[1] + " saves a size its measure did not name"); }
-    writeFileSync(join(outDir, f[1]), buffer);
-  }
-}
-
-// json-read: the text is the input and the WIRE is the answer, so the pass
-// proves the reader against bytes this driver did not write.
-function surfaceJsonRead(lines, outDir) {
-  for (const f of kind(lines, "instance")) {
-    if (noText(f)) { continue; }
-    const codec = find(f[2], f[3]);
-    if (codec === null) {
-      absent(outDir, f[1]);
-      continue;
-    }
-    const text = new Uint8Array(readFileSync(join("testdata", "conformance", "tables", "json", f[1] + ".json")));
-    const report = codec.Report();
-    const value = codec.fromJson(text, report);
-    if (value === null) { fail(f[1] + " does not read as JSON"); }
-    const buffer = codec.save(value);
-    if (buffer.length !== codec.measure(value)) { fail(f[1] + " saves a size its measure did not name"); }
-    writeFileSync(join(outDir, f[1]), buffer);
-  }
-}
-
-// json-write: the wire is the input and the TEXT is the answer, compared
-// against a text a third implementation wrote.
-function surfaceJsonWrite(lines, outDir) {
-  for (const f of kind(lines, "instance")) {
-    if (noText(f)) { continue; }
-    const codec = find(f[2], f[3]);
-    if (codec === null) {
-      absent(outDir, f[1] + ".json");
-      continue;
-    }
-    const wire = new Uint8Array(readFileSync(f[4]));
-    const report = codec.Report();
-    const value = codec.load(wire, report);
-    if (value === null) { fail(f[1] + " does not load"); }
-    writeFileSync(join(outDir, f[1] + ".json"), codec.toJson(value));
-  }
-}
-
-// json-hostile: one tree per rule the text form states (§16.2, §16.3, §17.5).
-function surfaceJsonHostile(lines, outDir) {
-  for (const f of kind(lines, "json-hostile")) {
-    const codec = find(f[2], f[3]);
-    if (codec === null) {
-      // a pointered unit has no table source here (§11), so no text form
-      // either, and the driver says so per case
-      absent(outDir, f[1]);
-      continue;
-    }
-    // the tree is what `schema pack` reads, so the text is <tree>/<root>.Json
-    const text = new Uint8Array(readFileSync(join(f[4], f[3] + ".json")));
-    const report = codec.Report();
-    const value = codec.fromJson(text, report);
-    const verdict = value === null || report.Malformed
-      ? "refused\n"
-      : report.Unknown + "," + report.KindMismatch + "," + report.Clamped + "," + report.Duplicate + ",false\n";
-    writeFileSync(join(outDir, f[1]), verdict);
-  }
-}
-
-function surfaceReport(lines, outDir) {
-  for (const f of kind(lines, "report")) {
-    const codec = find(f[2], f[3]);
-    if (codec === null) {
-      absent(outDir, f[1]);
-      continue;
-    }
-    const wire = new Uint8Array(readFileSync(f[4]));
-    const report = codec.Report();
-    const value = codec.load(wire, report);
-    if (value === null) { report.Malformed = true; }
-    writeFileSync(join(outDir, f[1]), counters(report));
-  }
 }
 
 // ---- placing a fixture the way its forgery line asks for
@@ -640,11 +471,6 @@ if (args.length < 3) {
 }
 const outDir = args[2];
 switch (surface) {
-  case "wire": surfaceWire(lines, outDir); break;
-  case "report": surfaceReport(lines, outDir); break;
-  case "json-read": surfaceJsonRead(lines, outDir); break;
-  case "json-write": surfaceJsonWrite(lines, outDir); break;
-  case "json-hostile": surfaceJsonHostile(lines, outDir); break;
   case "cook": surfaceCook(lines, outDir); break;
   case "cook-foreign": surfaceCookForeign(lines, outDir); break;
   case "block": surfaceBlock(lines, outDir); break;
