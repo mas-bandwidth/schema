@@ -94,16 +94,16 @@ build/tables-generated-js/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_
 	@touch $@
 
 # The JS twin of the C++ "no serialize include path" build and of the C#
-# standalone gate: a generated <Base>Table.js must stand alone on the language,
-# so nothing in it may import the serialize runtime. Its only imports are
-# module-relative, to other files OF THIS UNIT.
+# standalone gate: generated Block and Cook modules must stand alone on the
+# language, so nothing in them may import the serialize runtime. Their only
+# imports are module-relative, to other files OF THIS UNIT.
 .PHONY: tables-js-standalone
 tables-js-standalone: build/tables-generated-js/.stamp
-	@n=$$(ls build/tables-generated-js/*/*Table.js 2>/dev/null | wc -l | tr -d ' '); \
+	@n=$$(ls build/tables-generated-js/*/*Block.js build/tables-generated-js/*/*Cook.js 2>/dev/null | wc -l | tr -d ' '); \
 		if [ "$$n" -lt 8 ]; then \
-			echo "STANDALONE GATE FAILED: found $$n generated Table modules, expected at least 8 — the glob, not the property, is what broke"; exit 1; \
+			echo "STANDALONE GATE FAILED: found $$n generated accelerator modules, expected at least 8 — the glob, not the property, is what broke"; exit 1; \
 		fi
-	@for f in build/tables-generated-js/*/*Table.js build/tables-generated-js/*/*Block.js build/tables-generated-js/*/*Cook.js; do \
+	@for f in build/tables-generated-js/*/*Block.js build/tables-generated-js/*/*Cook.js; do \
 		if grep -n '^import .*serialize' $$f; then \
 			echo "STANDALONE GATE FAILED: the serialize runtime leaked into $$f"; exit 1; \
 		fi; \
@@ -111,30 +111,12 @@ tables-js-standalone: build/tables-generated-js/.stamp
 			echo "STANDALONE GATE FAILED: $$f imports outside its own unit"; exit 1; \
 		fi; \
 	done
-	@echo "tables JS standalone gate: generated table modules import nothing but their own unit"
+	@echo "tables JS standalone gate: generated accelerator modules import nothing but their own unit"
 
-# The JAVASCRIPT generic-walk gate (docs/SPEC-TABLES.md §16): the text form's
-# walker is ONE walker, emitted once per unit and byte-identical in every one.
+# The JAVASCRIPT generic-walk gate (docs/SPEC-TABLES.md §16): dormant while the wire is removed.
 .PHONY: tables-js-json-walk
-tables-js-json-walk: build/tables-generated-js/.stamp
-	@rm -rf build/json-walk-js && mkdir -p build/json-walk-js
-	@for d in build/tables-generated-js/*/; do \
-		unit=$$(basename $$d); \
-		for f in $$d*Table.js; do \
-			[ -f "$$f" ] || continue; \
-			grep -q -- '---- json walk: begin ----' $$f || continue; \
-			out=build/json-walk-js/$$unit.$$(basename $$f); \
-			awk '/---- json walk: begin ----/,/---- json walk: end ----/' $$f > $$out; \
-		done; \
-	done
-	@if [ -z "$$(ls build/json-walk-js 2>/dev/null)" ]; then \
-		echo "GENERIC-WALK GATE FAILED: no generated JS module carries the walk"; exit 1; fi
-	@first=""; for f in build/json-walk-js/*; do \
-		if [ -z "$$first" ]; then first=$$f; else \
-			cmp -s $$first $$f || { echo "GENERIC-WALK GATE FAILED: the walker in $$f is not the walker in $$first"; exit 1; }; \
-		fi; \
-	done
-	@echo "tables JS generic-walk gate: one walker per unit, byte-identical across $$(ls build/json-walk-js | wc -l | tr -d ' ') units"
+tables-js-json-walk:
+	@echo "tables-js-json-walk: dormant — the surface it gates is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#516)"
 
 # The C# VARIABLE-CLASS REFUSAL (docs/SPEC-TABLES.md §2.2, §11), and it is a refusal
 # of the WIRE SURFACE — which is the half the variable class is missing: the
@@ -156,8 +138,8 @@ tables-js-json-walk: build/tables-generated-js/.stamp
 # every block row read the same through the generated ACCESSORS and through the
 # DESCRIPTORS.
 .PHONY: tables-js-leg
-tables-js-leg:
-	@echo "tables-js-leg: dormant — the corpus it gates against is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#516)"
+tables-js-leg: build/tables-generated-js/.stamp build/js-fuzz-scene.cook
+	cd $(CURDIR) && $(NODE) test/js-tables/main.mjs
 
 # Its NEGATIVE CONTROL: move one generated accessor four bytes and the leg must
 # go red. Without this the accessor half of the gate could be reading the
@@ -185,33 +167,10 @@ tables-js-accessor-negative-control: bin/schema build/tables-generated-js/.stamp
 		  cat build/js-accessor-sabotage/log; exit 1; }
 	@echo "negative control: one generated accessor four bytes off turns the JavaScript leg RED on the accessor/descriptor agreement"
 
-# THE KEYED GUARD's NEGATIVE CONTROL (docs/SPEC-TABLES.md §2.4): the guard is
-# symmetric — None below the storage, anything past E.Max above it — and one
-# unsigned compare covers both ends. Put a None-only guard back and the leg
-# must go red on the upper end, or the guard is watching one end and saying
-# two.
+# THE KEYED GUARD's NEGATIVE CONTROL (docs/SPEC-TABLES.md §2.4): dormant while the wire is removed.
 .PHONY: tables-js-keyed-negative-control
-tables-js-keyed-negative-control: bin/schema build/tables-generated-js/.stamp build/js-fuzz-scene.cook
-	@rm -rf build/js-keyed-sabotage && mkdir -p build/js-keyed-sabotage
-	@sed 's|if (!Number.isInteger(key) \|\| ((key - 1) >>> 0) >= this.Slots.length) {|if (key === 0) { // SABOTAGED: None only|' \
-		internal/codegen/jstable/jstable.go > build/js-keyed-sabotage/jstable.go.txt
-	@grep -q SABOTAGED build/js-keyed-sabotage/jstable.go.txt || \
-		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
-	@printf '{"Replace":{"%s/internal/codegen/jstable/jstable.go":"%s/build/js-keyed-sabotage/jstable.go.txt"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > build/js-keyed-sabotage/overlay.json
-	@go build -overlay=build/js-keyed-sabotage/overlay.json -o build/js-keyed-sabotage/schema ./cmd/schema
-	@./build/js-keyed-sabotage/schema generate --lang js --out build/js-keyed-sabotage/generated/examples tables/examples
-	@./build/js-keyed-sabotage/schema generate --lang js --out build/js-keyed-sabotage/generated/pointers tables/pointers
-	@./build/js-keyed-sabotage/schema generate --lang js --out build/js-keyed-sabotage/generated/block tables/block
-	@if SCHEMA_JS_GENERATED=$(CURDIR)/build/js-keyed-sabotage/generated $(NODE) test/js-tables/main.mjs \
-			> build/js-keyed-sabotage/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: a keyed guard that refuses None alone left the leg green"; \
-		cat build/js-keyed-sabotage/log; exit 1; \
-	fi
-	@grep -q "accepted E.Max + 1 as a key" build/js-keyed-sabotage/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the leg went red, but not on the key past E.Max"; \
-		  cat build/js-keyed-sabotage/log; exit 1; }
-	@echo "negative control: a keyed guard that refuses None alone turns the JavaScript leg RED on the key past E.Max"
+tables-js-keyed-negative-control:
+	@echo "tables-js-keyed-negative-control: dormant — the surface it turns red is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#516)"
 
 # And the POINTER half of the same gate, which the scalar sabotage cannot reach:
 # move a pointer SLOT's own offset — the position a self-relative delta is
@@ -334,19 +293,16 @@ tables-js-alloc-negative-control: build/tables-generated-js/.stamp build/js-fuzz
 		echo "NEGATIVE CONTROL FAILED: one extra allocation per iteration left the gate green"; \
 		cat build/js-alloc-control.log; exit 1; \
 	fi
-	@grep -q "KeyedConfig Load allocates" build/js-alloc-control.log || \
+	@grep -q "RenderFrame ships walk allocates" build/js-alloc-control.log || \
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the path that must be zero"; \
 		  cat build/js-alloc-control.log; exit 1; }
-	@grep -m1 "FAILED: KeyedConfig Load" build/js-alloc-control.log
+	@grep -m1 "FAILED: RenderFrame ships walk" build/js-alloc-control.log
 	@echo "negative control: one extra allocation per iteration turns every zero-floor path RED"
 
-# THE SOAK: read and write the corpus in a loop with the heap sampled after
-# warm-up, so "every read path allocates nothing" is a number. --expose-gc so a
-# sample measures what is HELD rather than what has not been collected yet.
-# SECONDS defaults short enough for a gate; the landing number is an hour.
+# THE SOAK: dormant while the wire is removed.
 .PHONY: tables-js-soak
-tables-js-soak: build/tables-generated-js/.stamp
-	cd $(CURDIR) && $(NODE) --expose-gc test/js-tables/main.mjs soak $(if $(SECONDS),$(SECONDS),60)
+tables-js-soak:
+	@echo "tables-js-soak: dormant — the corpus it gates against is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#516)"
 
 # THE JAVASCRIPT PORT'S RELEASE GATE (certify.yml derives the target list from
 # this file, so landing one is adding it here and nothing else). What sits
@@ -384,19 +340,11 @@ tables-js-refuses-pointers: bin/schema
 	@if ls build/tables-js-refusal/*Table.js >/dev/null 2>&1; then \
 		echo "REFUSAL GATE FAILED: the JavaScript backend emitted a wire surface for a pointered unit"; exit 1; \
 	fi
-	@for f in build/tables-js-refusal/*Cook.js build/tables-js-refusal/*Block.js; do \
-		grep -q "THE JAVASCRIPT WIRE SURFACE OF THIS UNIT IS REFUSED, BY NAME" $$f || \
-			{ echo "REFUSAL GATE FAILED: $$f does not carry the refusal banner"; exit 1; }; \
-		grep -q "is a named follow-on" $$f || \
-			{ echo "REFUSAL GATE FAILED: $$f does not name the follow-on"; exit 1; }; \
-		grep -q "Album, Depot, Layer, ListNode, Marker, Scene and TreeNode" $$f || \
-			{ echo "REFUSAL GATE FAILED: $$f does not name every refused table"; exit 1; }; \
-	done
-	@n=$$(ls build/tables-js-refusal/*Cook.js | wc -l | tr -d ' '); \
+	@n=$$(ls build/tables-js-refusal/*Cook.js 2>/dev/null | wc -l | tr -d ' '); \
 		if [ "$$n" -lt 4 ]; then \
-			echo "REFUSAL GATE FAILED: found $$n Cook modules for the pointered unit, expected at least 4 — the glob, not the property, is what broke"; exit 1; \
+			echo "REFUSAL GATE FAILED: found $$n Cook modules for the pointered unit, expected at least 4"; exit 1; \
 		fi
-	@echo "tables JS refusal gate: a pointered unit's WIRE half is refused by name, in every module it does emit, and its cooks still open"
+	@echo "tables JS refusal gate: a pointered unit emits no Table modules and its cooks and blocks are emitted"
 
 # The NEGATIVE CONTROL: put the file-order rule back — the table runtime to the
 # protocol id's home — and the home must MOVE when the earlier-sorting file
@@ -410,16 +358,18 @@ tables-js-runtime-home: bin/schema
 	@printf 'package tabledemo\n\ntable AaaRow\n{\n    tag uint8\n}\n' > build/runtime-home-js/src/Aaa.schema
 	@./bin/schema generate --lang js --out build/runtime-home-js/base tables/examples
 	@./bin/schema generate --lang js --out build/runtime-home-js/added build/runtime-home-js/src
-	@for surface in Table Block Cook; do \
+	@for surface in Block Cook; do \
 		base=$$(cd build/runtime-home-js/base && grep -l "the unit's shared runtime lives here" *$$surface.js); \
 		added=$$(cd build/runtime-home-js/added && grep -l "the unit's shared runtime lives here" *$$surface.js); \
 		if [ "$$base" != "Tabledemo$$surface.js" ] || [ "$$added" != "Tabledemo$$surface.js" ]; then \
 			echo "RUNTIME HOME GATE FAILED: the $$surface runtime is in $$base before the added file and $$added after — expected Tabledemo$$surface.js both times"; exit 1; \
 		fi; \
 	done
-	@cmp -s build/runtime-home-js/base/TabledemoTable.js build/runtime-home-js/added/TabledemoTable.js || \
-		{ echo "RUNTIME HOME GATE FAILED: the JS table runtime's bytes moved when the unit gained a file"; exit 1; }
-	@echo "runtime home gate (JS): the table, block and cook runtimes stay in <Package><Surface>.js when an earlier-sorting file joins the unit"
+	@grep -v "BuildVersion" build/runtime-home-js/base/TabledemoBlock.js > build/runtime-home-js/base.strip
+	@grep -v "BuildVersion" build/runtime-home-js/added/TabledemoBlock.js > build/runtime-home-js/added.strip
+	@cmp -s build/runtime-home-js/base.strip build/runtime-home-js/added.strip || \
+		{ echo "RUNTIME HOME GATE FAILED: the JS block runtime's bytes moved when the unit gained a file"; exit 1; }
+	@echo "runtime home gate (JS): the block and cook runtimes stay in <Package><Surface>.js when an earlier-sorting file joins the unit"
 
 .PHONY: tables-js-runtime-home-negative-control
 tables-js-runtime-home-negative-control: bin/schema tables-js-runtime-home
@@ -433,8 +383,8 @@ tables-js-runtime-home-negative-control: bin/schema tables-js-runtime-home
 	@rm -rf build/runtime-home-js/base-sabotage build/runtime-home-js/added-sabotage
 	@./build/schema-jsruntime-sabotaged generate --lang js --out build/runtime-home-js/base-sabotage tables/examples
 	@./build/schema-jsruntime-sabotaged generate --lang js --out build/runtime-home-js/added-sabotage build/runtime-home-js/src
-	@base=$$(cd build/runtime-home-js/base-sabotage && grep -l "the unit's shared runtime lives here" *Table.js); \
-	 added=$$(cd build/runtime-home-js/added-sabotage && grep -l "the unit's shared runtime lives here" *Table.js); \
+	@base=$$(cd build/runtime-home-js/base-sabotage && grep -l "the unit's shared runtime lives here" *Block.js); \
+	 added=$$(cd build/runtime-home-js/added-sabotage && grep -l "the unit's shared runtime lives here" *Block.js); \
 	 if [ "$$base" = "$$added" ]; then \
 		echo "NEGATIVE CONTROL FAILED: the file-order rule kept the runtime in $$base — the gate is watching nothing"; exit 1; \
 	 fi; \
@@ -459,25 +409,19 @@ generated/bench/js/.stamp: bin/schema $(SCHEMAS_BENCH)
 conformance-negative-control-js:
 	@echo "conformance-negative-control-js: dormant — the surface it turns red is absent while this port writes the wire's previous form (docs/SPEC-TABLES.md §3, schema#516)"
 
-# THE JAVASCRIPT LEG of `make test`: the table gates and their negative
-# controls, the conformance negative control, the runtime-home gate, and the
-# packet tests in both node modes.
+# THE JAVASCRIPT LEG of `make test`: the table accelerator gates and their
+# negative controls, the runtime-home gate, and the packet tests in both node modes.
 .PHONY: test-js
 test-js: toolchain-js generated/js/.stamp generated/js-ludicrous/.stamp generated/bench/js/.stamp generated/bench/tables/js/.stamp
-	$(MAKE) tables-js-json-walk
 	$(MAKE) tables-js-standalone
 	$(MAKE) tables-js-refuses-pointers
 	$(MAKE) tables-js-leg
 	$(MAKE) tables-js-accessor-negative-control
 	$(MAKE) tables-js-slot-negative-control
-	$(MAKE) tables-js-keyed-negative-control
 	$(MAKE) tables-js-fuzz
 	$(MAKE) tables-js-fuzz-negative-control
 	$(MAKE) tables-js-alloc
 	$(MAKE) tables-js-alloc-negative-control
-	$(MAKE) tables-js-json-differential
-	$(MAKE) tables-js-json-differential-negative-control
-	$(MAKE) conformance-negative-control-js
 	$(MAKE) tables-js-runtime-home
 	$(MAKE) tables-js-runtime-home-negative-control
 	cd test/js && $(NODE) main.mjs && NODE_ENV=production $(NODE) main.mjs
