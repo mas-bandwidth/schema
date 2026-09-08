@@ -59,13 +59,14 @@ func (g *tableGen) wireColumns(f *ir.Field) string {
 		}
 		fmt.Fprintf(&b, ", PointerTypeId = 0x%016xul, BlobKind = %d", id, blob)
 	}
+	ownerType := "global::" + capitalize(g.unit.Package) + "." + g.owner.Name
 	guards := tableGuardExprs(g.owner)
 	if guard := guards[f.Name]; guard != "" {
-		fmt.Fprintf(&b, ", WireGuard = delegate(object o) { var value = (%s)o; return %s; }", g.owner.Name, guard)
+		fmt.Fprintf(&b, ", WireGuard = delegate(object o) { var value = (%s)o; return %s; }", ownerType, guard)
 	}
 	reset := &tableGen{owner: g.owner, unit: g.unit}
 	reset.emitTableResetField(f)
-	fmt.Fprintf(&b, ", ResetField = delegate(object o) { var value = (%s)o; %s }", g.owner.Name, strings.Join(strings.Fields(reset.schema.String()), " "))
+	fmt.Fprintf(&b, ", ResetField = delegate(object o) { var value = (%s)o; %s }", ownerType, strings.Join(strings.Fields(reset.schema.String()), " "))
 	if len(f.DefBytes) > 0 {
 		fmt.Fprintf(&b, ", DefaultBytes = new byte[] { %s }", byteLiterals(f.DefBytes))
 	}
@@ -76,7 +77,11 @@ func (g *tableGen) wireColumns(f *ir.Field) string {
 	if f.IsMap() || f.Type.Pointer || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes || isClassRef(f.Type) {
 		return b.String()
 	}
-	fmt.Fprintf(&b, ", DefaultRaw = %s", csRawGet(fieldDefaultExpr(f), f.Type))
+	defaultExpr := fieldDefaultExpr(f)
+	if enumRef(f) != nil {
+		defaultExpr = "global::" + capitalize(g.unit.Package) + "." + defaultExpr
+	}
+	fmt.Fprintf(&b, ", DefaultRaw = %s", csRawGet(defaultExpr, f.Type))
 	kind := tableScalarKind(f)
 	if kind == tkBool || enumRef(f) != nil {
 		return b.String()

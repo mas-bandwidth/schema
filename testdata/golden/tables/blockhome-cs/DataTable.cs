@@ -179,121 +179,145 @@ namespace Blockhome
 
         // ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----
 
-        private static TableTypeInfo ArmorPlateTableInfo;
+        private static class ArmorPlateTableInfo
+        {
+            internal static readonly TableTypeInfo Instance = Build();
+
+            private static TableTypeInfo Build()
+            {
+                TableTypeInfo info = new TableTypeInfo();
+                info.Name = "ArmorPlate";
+                info.Id = 0x6993400379bdc520ul;
+                info.NumFields = 3;
+                info.Create = delegate { return new global::Blockhome.ArmorPlate(); };
+                info.StorageSize = 16; info.StorageAlign = 8; info.RegionAlign = 8;
+                info.Variable = false;
+                info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+                info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.BytesEdge = false; info.StringEdge = false;
+                info.Fields = new TableFieldInfo[]
+                {
+                    new TableFieldInfo { Name = "thickness", Json = "thickness", TypeName = "float64", Id = 0xdbae65ca25b4f315, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return unchecked((ulong)BitConverter.DoubleToInt64Bits(((global::Blockhome.ArmorPlate)o).Thickness)); }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockhome.ArmorPlate)o).Thickness = BitConverter.Int64BitsToDouble(unchecked((long)r)); }, MessageSlot = 5, Ordinal = 0, NativeOffset = 0, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockhome.ArmorPlate)o; value.Thickness = 0.0; }, DefaultRaw = unchecked((ulong)BitConverter.DoubleToInt64Bits(0.0)), ClampRaw = delegate(ulong raw, TableReport r) { double v = BitConverter.Int64BitsToDouble(unchecked((long)raw)); return unchecked((ulong)BitConverter.DoubleToInt64Bits(v)); } },
+                    new TableFieldInfo { Name = "material", Json = "material", TypeName = "uint32", Id = 0x026f7568983161e0, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockhome.ArmorPlate)o).Material; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockhome.ArmorPlate)o).Material = unchecked((uint)r); }, MessageSlot = 6, Ordinal = 1, NativeOffset = 8, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockhome.ArmorPlate)o; value.Material = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "layer", Json = "layer", TypeName = "uint8", Id = 0x84e39fec29768c56, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockhome.ArmorPlate)o).Layer; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockhome.ArmorPlate)o).Layer = unchecked((byte)r); }, MessageSlot = 7, Ordinal = 2, NativeOffset = 12, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockhome.ArmorPlate)o; value.Layer = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { byte v = unchecked((byte)raw); return (ulong)v; } },
+                };
+                info.Reset = delegate(object o) { TableReset((global::Blockhome.ArmorPlate)o); };
+                info.Doc = TableDocNone;
+                info.NumTags = 0;
+                info.Tags = null;
+                return info;
+            }
+        }
+
         public static TableTypeInfo ArmorPlateTableType()
         {
-            TableTypeInfo info = ArmorPlateTableInfo;
-            if (info != null) { return info; }
-            info = new TableTypeInfo();
-            info.Name = "ArmorPlate";
-            info.Id = 0x6993400379bdc520ul;
-            info.NumFields = 3;
-            info.Create = delegate { return new ArmorPlate(); };
-            info.StorageSize = 16; info.StorageAlign = 8; info.RegionAlign = 8;
-            info.Variable = false;
-            info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
-            info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
-            info.BytesEdge = false; info.StringEdge = false;
-            info.Fields = new TableFieldInfo[]
-            {
-                new TableFieldInfo { Name = "thickness", Json = "thickness", TypeName = "float64", Id = 0xdbae65ca25b4f315, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return unchecked((ulong)BitConverter.DoubleToInt64Bits(((ArmorPlate)o).Thickness)); }, SetRaw = delegate(object o, int i, ulong r) { ((ArmorPlate)o).Thickness = BitConverter.Int64BitsToDouble(unchecked((long)r)); }, MessageSlot = 5, Ordinal = 0, NativeOffset = 0, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (ArmorPlate)o; value.Thickness = 0.0; }, DefaultRaw = unchecked((ulong)BitConverter.DoubleToInt64Bits(0.0)), ClampRaw = delegate(ulong raw, TableReport r) { double v = BitConverter.Int64BitsToDouble(unchecked((long)raw)); return unchecked((ulong)BitConverter.DoubleToInt64Bits(v)); } },
-                new TableFieldInfo { Name = "material", Json = "material", TypeName = "uint32", Id = 0x026f7568983161e0, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((ArmorPlate)o).Material; }, SetRaw = delegate(object o, int i, ulong r) { ((ArmorPlate)o).Material = unchecked((uint)r); }, MessageSlot = 6, Ordinal = 1, NativeOffset = 8, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (ArmorPlate)o; value.Material = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
-                new TableFieldInfo { Name = "layer", Json = "layer", TypeName = "uint8", Id = 0x84e39fec29768c56, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((ArmorPlate)o).Layer; }, SetRaw = delegate(object o, int i, ulong r) { ((ArmorPlate)o).Layer = unchecked((byte)r); }, MessageSlot = 7, Ordinal = 2, NativeOffset = 12, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (ArmorPlate)o; value.Layer = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { byte v = unchecked((byte)raw); return (ulong)v; } },
-            };
-            info.Reset = delegate(object o) { TableReset((ArmorPlate)o); };
-            info.Doc = TableDocNone;
-            info.NumTags = 0;
-            info.Tags = null;
-            ArmorPlateTableInfo = info;
-            return info;
+            return ArmorPlateTableInfo.Instance;
         }
 
-        private static TableTypeInfo ArmorConfigTableInfo;
+        private static class ArmorConfigTableInfo
+        {
+            internal static readonly TableTypeInfo Instance = Build();
+
+            private static TableTypeInfo Build()
+            {
+                TableTypeInfo info = new TableTypeInfo();
+                info.Name = "ArmorConfig";
+                info.Id = 0xe8a7e2d995bb4cd2ul;
+                info.NumFields = 4;
+                info.Create = delegate { return new global::Blockhome.ArmorConfig(); };
+                info.StorageSize = 40; info.StorageAlign = 8; info.RegionAlign = 8;
+                info.Variable = false;
+                info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+                info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.BytesEdge = false; info.StringEdge = false;
+                info.Fields = new TableFieldInfo[]
+                {
+                    new TableFieldInfo { Name = "front", Json = "front", TypeName = "ArmorPlate", Id = 0x538b8c566e9e4b38, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return ArmorPlateTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Blockhome.ArmorConfig)o).Front; }, MessageSlot = 1, Ordinal = 0, NativeOffset = 0, NativeElementSize = 16, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockhome.ArmorConfig)o; TableReset(value.Front); } },
+                    new TableFieldInfo { Name = "rear", Json = "rear", TypeName = "ArmorPlate", Id = 0x4ce65d1fbfdde703, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return ArmorPlateTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Blockhome.ArmorConfig)o).Rear; }, MessageSlot = 2, Ordinal = 1, NativeOffset = 16, NativeElementSize = 16, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockhome.ArmorConfig)o; TableReset(value.Rear); } },
+                    new TableFieldInfo { Name = "rating", Json = "rating", TypeName = "float32", Id = 0x4e79ecbefe5ff4d0, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((global::Blockhome.ArmorConfig)o).Rating)); }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockhome.ArmorConfig)o).Rating = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, MessageSlot = 3, Ordinal = 2, NativeOffset = 32, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockhome.ArmorConfig)o; value.Rating = 0.0f; }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(0.0f)), ClampRaw = delegate(ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
+                    new TableFieldInfo { Name = "tier", Json = "tier", TypeName = "uint8", Id = 0x1e6f84ef2eb65989, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockhome.ArmorConfig)o).Tier; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockhome.ArmorConfig)o).Tier = unchecked((byte)r); }, MessageSlot = 4, Ordinal = 3, NativeOffset = 36, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockhome.ArmorConfig)o; value.Tier = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { byte v = unchecked((byte)raw); return (ulong)v; } },
+                };
+                info.Reset = delegate(object o) { TableReset((global::Blockhome.ArmorConfig)o); };
+                info.Doc = TableDocNone;
+                info.NumTags = 0;
+                info.Tags = null;
+                return info;
+            }
+        }
+
         public static TableTypeInfo ArmorConfigTableType()
         {
-            TableTypeInfo info = ArmorConfigTableInfo;
-            if (info != null) { return info; }
-            info = new TableTypeInfo();
-            info.Name = "ArmorConfig";
-            info.Id = 0xe8a7e2d995bb4cd2ul;
-            info.NumFields = 4;
-            info.Create = delegate { return new ArmorConfig(); };
-            info.StorageSize = 40; info.StorageAlign = 8; info.RegionAlign = 8;
-            info.Variable = false;
-            info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
-            info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
-            info.BytesEdge = false; info.StringEdge = false;
-            info.Fields = new TableFieldInfo[]
-            {
-                new TableFieldInfo { Name = "front", Json = "front", TypeName = "ArmorPlate", Id = 0x538b8c566e9e4b38, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return ArmorPlateTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((ArmorConfig)o).Front; }, MessageSlot = 1, Ordinal = 0, NativeOffset = 0, NativeElementSize = 16, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (ArmorConfig)o; TableReset(value.Front); } },
-                new TableFieldInfo { Name = "rear", Json = "rear", TypeName = "ArmorPlate", Id = 0x4ce65d1fbfdde703, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return ArmorPlateTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((ArmorConfig)o).Rear; }, MessageSlot = 2, Ordinal = 1, NativeOffset = 16, NativeElementSize = 16, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (ArmorConfig)o; TableReset(value.Rear); } },
-                new TableFieldInfo { Name = "rating", Json = "rating", TypeName = "float32", Id = 0x4e79ecbefe5ff4d0, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((ArmorConfig)o).Rating)); }, SetRaw = delegate(object o, int i, ulong r) { ((ArmorConfig)o).Rating = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, MessageSlot = 3, Ordinal = 2, NativeOffset = 32, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (ArmorConfig)o; value.Rating = 0.0f; }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(0.0f)), ClampRaw = delegate(ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
-                new TableFieldInfo { Name = "tier", Json = "tier", TypeName = "uint8", Id = 0x1e6f84ef2eb65989, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((ArmorConfig)o).Tier; }, SetRaw = delegate(object o, int i, ulong r) { ((ArmorConfig)o).Tier = unchecked((byte)r); }, MessageSlot = 4, Ordinal = 3, NativeOffset = 36, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (ArmorConfig)o; value.Tier = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { byte v = unchecked((byte)raw); return (ulong)v; } },
-            };
-            info.Reset = delegate(object o) { TableReset((ArmorConfig)o); };
-            info.Doc = TableDocNone;
-            info.NumTags = 0;
-            info.Tags = null;
-            ArmorConfigTableInfo = info;
-            return info;
+            return ArmorConfigTableInfo.Instance;
         }
 
-        private static TableTypeInfo FiringGroupTableInfo;
+        private static class FiringGroupTableInfo
+        {
+            internal static readonly TableTypeInfo Instance = Build();
+
+            private static TableTypeInfo Build()
+            {
+                TableTypeInfo info = new TableTypeInfo();
+                info.Name = "FiringGroup";
+                info.Id = 0x98a368eb20d65c7dul;
+                info.NumFields = 2;
+                info.Create = delegate { return new global::Blockhome.FiringGroup(); };
+                info.StorageSize = 8; info.StorageAlign = 4; info.RegionAlign = 8;
+                info.Variable = false;
+                info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+                info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.BytesEdge = false; info.StringEdge = false;
+                info.Fields = new TableFieldInfo[]
+                {
+                    new TableFieldInfo { Name = "barrel", Json = "barrel", TypeName = "uint32", Id = 0x8ece059ad360b651, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockhome.FiringGroup)o).Barrel; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockhome.FiringGroup)o).Barrel = unchecked((uint)r); }, MessageSlot = 8, Ordinal = 0, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockhome.FiringGroup)o; value.Barrel = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "cooldown", Json = "cooldown", TypeName = "float32", Id = 0xdc2cbe6953343d48, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((global::Blockhome.FiringGroup)o).Cooldown)); }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockhome.FiringGroup)o).Cooldown = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, MessageSlot = 9, Ordinal = 1, NativeOffset = 4, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockhome.FiringGroup)o; value.Cooldown = 0.0f; }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(0.0f)), ClampRaw = delegate(ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
+                };
+                info.Reset = delegate(object o) { TableReset((global::Blockhome.FiringGroup)o); };
+                info.Doc = TableDocNone;
+                info.NumTags = 0;
+                info.Tags = null;
+                return info;
+            }
+        }
+
         public static TableTypeInfo FiringGroupTableType()
         {
-            TableTypeInfo info = FiringGroupTableInfo;
-            if (info != null) { return info; }
-            info = new TableTypeInfo();
-            info.Name = "FiringGroup";
-            info.Id = 0x98a368eb20d65c7dul;
-            info.NumFields = 2;
-            info.Create = delegate { return new FiringGroup(); };
-            info.StorageSize = 8; info.StorageAlign = 4; info.RegionAlign = 8;
-            info.Variable = false;
-            info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
-            info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
-            info.BytesEdge = false; info.StringEdge = false;
-            info.Fields = new TableFieldInfo[]
-            {
-                new TableFieldInfo { Name = "barrel", Json = "barrel", TypeName = "uint32", Id = 0x8ece059ad360b651, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((FiringGroup)o).Barrel; }, SetRaw = delegate(object o, int i, ulong r) { ((FiringGroup)o).Barrel = unchecked((uint)r); }, MessageSlot = 8, Ordinal = 0, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (FiringGroup)o; value.Barrel = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
-                new TableFieldInfo { Name = "cooldown", Json = "cooldown", TypeName = "float32", Id = 0xdc2cbe6953343d48, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((FiringGroup)o).Cooldown)); }, SetRaw = delegate(object o, int i, ulong r) { ((FiringGroup)o).Cooldown = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, MessageSlot = 9, Ordinal = 1, NativeOffset = 4, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (FiringGroup)o; value.Cooldown = 0.0f; }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(0.0f)), ClampRaw = delegate(ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
-            };
-            info.Reset = delegate(object o) { TableReset((FiringGroup)o); };
-            info.Doc = TableDocNone;
-            info.NumTags = 0;
-            info.Tags = null;
-            FiringGroupTableInfo = info;
-            return info;
+            return FiringGroupTableInfo.Instance;
         }
 
-        private static TableTypeInfo GunnerSettingsTableInfo;
+        private static class GunnerSettingsTableInfo
+        {
+            internal static readonly TableTypeInfo Instance = Build();
+
+            private static TableTypeInfo Build()
+            {
+                TableTypeInfo info = new TableTypeInfo();
+                info.Name = "GunnerSettings";
+                info.Id = 0xb76842b2253337aful;
+                info.NumFields = 4;
+                info.Create = delegate { return new global::Blockhome.GunnerSettings(); };
+                info.StorageSize = 304; info.StorageAlign = 4; info.RegionAlign = 8;
+                info.Variable = false;
+                info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+                info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.BytesEdge = false; info.StringEdge = false;
+                info.Fields = new TableFieldInfo[]
+                {
+                    new TableFieldInfo { Name = "firing_groups", Json = "firing_groups", TypeName = "FiringGroup", Id = 0x260b8ca6b0c3db7f, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 32, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return FiringGroupTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Blockhome.GunnerSettings)o).FiringGroups[i]; }, GetCount = delegate(object o) { return ((global::Blockhome.GunnerSettings)o).FiringGroupsCount; }, SetCount = delegate(object o, int n) { ((global::Blockhome.GunnerSettings)o).FiringGroupsCount = n; }, MessageSlot = 10, Ordinal = 0, NativeOffset = 0, NativeElementSize = 8, NativeCountOffset = 256, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockhome.GunnerSettings)o; for (int i = 0; i < value.FiringGroups.Length; i++) { TableReset(value.FiringGroups[i]); } value.FiringGroupsCount = 0; } },
+                    new TableFieldInfo { Name = "missile_groups", Json = "missile_groups", TypeName = "FiringGroup", Id = 0x3c99105aa087f6bc, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 4, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return FiringGroupTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Blockhome.GunnerSettings)o).MissileGroups[i]; }, GetCount = delegate(object o) { return ((global::Blockhome.GunnerSettings)o).MissileGroupsCount; }, SetCount = delegate(object o, int n) { ((global::Blockhome.GunnerSettings)o).MissileGroupsCount = n; }, MessageSlot = 11, Ordinal = 1, NativeOffset = 260, NativeElementSize = 8, NativeCountOffset = 292, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockhome.GunnerSettings)o; for (int i = 0; i < value.MissileGroups.Length; i++) { TableReset(value.MissileGroups[i]); } value.MissileGroupsCount = 0; } },
+                    new TableFieldInfo { Name = "reload_seconds", Json = "reload_seconds", TypeName = "float32", Id = 0xad9b64728ea52486, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((global::Blockhome.GunnerSettings)o).ReloadSeconds)); }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockhome.GunnerSettings)o).ReloadSeconds = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, MessageSlot = 12, Ordinal = 2, NativeOffset = 296, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockhome.GunnerSettings)o; value.ReloadSeconds = 0.0f; }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(0.0f)), ClampRaw = delegate(ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
+                    new TableFieldInfo { Name = "gunner_id", Json = "gunner_id", TypeName = "uint32", Id = 0xbd9be53180256e02, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockhome.GunnerSettings)o).GunnerId; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockhome.GunnerSettings)o).GunnerId = unchecked((uint)r); }, MessageSlot = 13, Ordinal = 3, NativeOffset = 300, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockhome.GunnerSettings)o; value.GunnerId = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
+                };
+                info.Reset = delegate(object o) { TableReset((global::Blockhome.GunnerSettings)o); };
+                info.Doc = TableDocNone;
+                info.NumTags = 0;
+                info.Tags = null;
+                return info;
+            }
+        }
+
         public static TableTypeInfo GunnerSettingsTableType()
         {
-            TableTypeInfo info = GunnerSettingsTableInfo;
-            if (info != null) { return info; }
-            info = new TableTypeInfo();
-            info.Name = "GunnerSettings";
-            info.Id = 0xb76842b2253337aful;
-            info.NumFields = 4;
-            info.Create = delegate { return new GunnerSettings(); };
-            info.StorageSize = 304; info.StorageAlign = 4; info.RegionAlign = 8;
-            info.Variable = false;
-            info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
-            info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
-            info.BytesEdge = false; info.StringEdge = false;
-            info.Fields = new TableFieldInfo[]
-            {
-                new TableFieldInfo { Name = "firing_groups", Json = "firing_groups", TypeName = "FiringGroup", Id = 0x260b8ca6b0c3db7f, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 32, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return FiringGroupTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((GunnerSettings)o).FiringGroups[i]; }, GetCount = delegate(object o) { return ((GunnerSettings)o).FiringGroupsCount; }, SetCount = delegate(object o, int n) { ((GunnerSettings)o).FiringGroupsCount = n; }, MessageSlot = 10, Ordinal = 0, NativeOffset = 0, NativeElementSize = 8, NativeCountOffset = 256, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (GunnerSettings)o; for (int i = 0; i < value.FiringGroups.Length; i++) { TableReset(value.FiringGroups[i]); } value.FiringGroupsCount = 0; } },
-                new TableFieldInfo { Name = "missile_groups", Json = "missile_groups", TypeName = "FiringGroup", Id = 0x3c99105aa087f6bc, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 4, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return FiringGroupTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((GunnerSettings)o).MissileGroups[i]; }, GetCount = delegate(object o) { return ((GunnerSettings)o).MissileGroupsCount; }, SetCount = delegate(object o, int n) { ((GunnerSettings)o).MissileGroupsCount = n; }, MessageSlot = 11, Ordinal = 1, NativeOffset = 260, NativeElementSize = 8, NativeCountOffset = 292, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (GunnerSettings)o; for (int i = 0; i < value.MissileGroups.Length; i++) { TableReset(value.MissileGroups[i]); } value.MissileGroupsCount = 0; } },
-                new TableFieldInfo { Name = "reload_seconds", Json = "reload_seconds", TypeName = "float32", Id = 0xad9b64728ea52486, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((GunnerSettings)o).ReloadSeconds)); }, SetRaw = delegate(object o, int i, ulong r) { ((GunnerSettings)o).ReloadSeconds = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, MessageSlot = 12, Ordinal = 2, NativeOffset = 296, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (GunnerSettings)o; value.ReloadSeconds = 0.0f; }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(0.0f)), ClampRaw = delegate(ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
-                new TableFieldInfo { Name = "gunner_id", Json = "gunner_id", TypeName = "uint32", Id = 0xbd9be53180256e02, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((GunnerSettings)o).GunnerId; }, SetRaw = delegate(object o, int i, ulong r) { ((GunnerSettings)o).GunnerId = unchecked((uint)r); }, MessageSlot = 13, Ordinal = 3, NativeOffset = 300, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (GunnerSettings)o; value.GunnerId = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
-            };
-            info.Reset = delegate(object o) { TableReset((GunnerSettings)o); };
-            info.Doc = TableDocNone;
-            info.NumTags = 0;
-            info.Tags = null;
-            GunnerSettingsTableInfo = info;
-            return info;
+            return GunnerSettingsTableInfo.Instance;
         }
 
         // ---- the text form: JSON in and out of one table (docs/SPEC-TABLES.md §16) ----

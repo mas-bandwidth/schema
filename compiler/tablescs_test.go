@@ -3,6 +3,8 @@
 package compiler
 
 import (
+	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -242,5 +244,135 @@ table Root { effect Effect }
 		if !strings.Contains(src, want) {
 			t.Errorf("C# packet-union table reset lacks %q", want)
 		}
+	}
+}
+
+// csFiles generates the cs target's whole output for one source.
+func csFiles(t *testing.T, src string) map[string][]byte {
+	t.Helper()
+	files, err := New().Generate(unitFromSource(t, src), "cs", Options{})
+	if err != nil {
+		t.Fatalf("--lang cs: %v", err)
+	}
+	return files
+}
+
+// TestCsDescriptorsAreSafelyPublished asserts the structural shape of safe
+// descriptor publication (schema#411).
+//
+// Under the CLI memory model on weakly ordered architectures (ARM64), a plain
+// cache write allows reordering where a non-null reference can be read before
+// the descriptor fields are fully written.
+//
+// Every generated descriptor accessor must be paired with its own nested static
+// holder's static readonly Instance field (<Name>TableInfo.Instance), holders
+// must be private static class, and the plain `if (info != null)` cache idiom
+// must be completely absent.
+func TestCsDescriptorsAreSafelyPublished(t *testing.T) {
+	for _, src := range []string{runtimeSrc, pointerSrc} {
+		files := csFiles(t, src)
+		accessors := regexp.MustCompile(`public static TableTypeInfo ([A-Za-z0-9_]+)TableType\(\)\s*\{([^}]*)\}`)
+		holders := 0
+		for name, data := range files {
+			text := string(data)
+			for _, m := range accessors.FindAllStringSubmatch(text, -1) {
+				holders++
+				typeName := m[1]
+				body := strings.TrimSpace(m[2])
+				expectedReturn := fmt.Sprintf("return %sTableInfo.Instance;", typeName)
+				if !strings.Contains(body, expectedReturn) {
+					t.Errorf("%s: %sTableType() does not read its matching holder's Instance field — its body is %q, expected %q; "+
+						"a plain cache publishes a mutable descriptor unsafely", name, typeName, body, expectedReturn)
+				}
+				expectedHolder := fmt.Sprintf("private static class %sTableInfo", typeName)
+				if !strings.Contains(text, expectedHolder) {
+					t.Errorf("%s: missing matching holder class for %sTableType(): expected %q",
+						name, typeName, expectedHolder)
+				}
+			}
+			for line := range strings.SplitSeq(text, "\n") {
+				if strings.Contains(line, "if (info != null)") {
+					t.Errorf("%s carries the plain-cache idiom: %q", name, strings.TrimSpace(line))
+				}
+			}
+		}
+		if holders == 0 {
+			t.Fatal("the scan found no descriptor accessor at all — the scan, not the emitter, is what broke")
+		}
+		for name, data := range files {
+			text := string(data)
+			for line := range strings.SplitSeq(text, "\n") {
+				if strings.Contains(line, "TableInfo") && strings.Contains(line, "class") && !strings.Contains(line, "private static class") {
+					t.Errorf("%s: a descriptor holder is not a private static class: %q", name, strings.TrimSpace(line))
+				}
+				if strings.Contains(line, "Instance =") && !strings.Contains(line, "internal static readonly TableTypeInfo Instance = Build();") {
+					t.Errorf("%s: a holder's Instance is not internal static readonly: %q", name, strings.TrimSpace(line))
+				}
+			}
+		}
+	}
+}
+
+// TestCsDescriptorUserVocabularyScope verifies that user types and enums named
+// `Instance` or `Build` do not collide with the holder class members (schema#411).
+func TestCsDescriptorUserVocabularyScope(t *testing.T) {
+	const src = `package vocab
+
+enum Instance {
+    Alpha
+    Beta
+}
+
+enum Build {
+    First
+    Second
+}
+
+table Subject {
+    keyed [Instance]int32
+    active Instance
+    state Build = Second
+}
+`
+	files := csFiles(t, src)
+	subjectCs, ok := files["ProbeTable.cs"]
+	if !ok {
+		t.Fatalf("ProbeTable.cs not found in generated output; got keys: %v", files)
+	}
+	text := string(subjectCs)
+	if !strings.Contains(text, "private static class SubjectTableInfo") {
+		t.Errorf("expected SubjectTableInfo holder class in generated output")
+	}
+	if !strings.Contains(text, "(int)global::Vocab.Instance.Max") {
+		t.Errorf("expected qualified (int)global::Vocab.Instance.Max, got:\n%s", text)
+	}
+	if !strings.Contains(text, "global::Vocab.Build.Second") {
+		t.Errorf("expected qualified global::Vocab.Build.Second in default, got:\n%s", text)
+	}
+	if !strings.Contains(text, "global::Vocab.Instance.None") {
+		t.Errorf("expected qualified global::Vocab.Instance.None in default, got:\n%s", text)
+	}
+
+	holderStart := strings.Index(text, "private static class SubjectTableInfo")
+	if holderStart == -1 {
+		t.Fatalf("SubjectTableInfo not found in generated output")
+	}
+	holderEnd := strings.Index(text[holderStart:], "public static TableTypeInfo SubjectTableType()")
+	if holderEnd == -1 {
+		t.Fatalf("SubjectTableType accessor not found after SubjectTableInfo")
+	}
+	holderBody := text[holderStart : holderStart+holderEnd]
+
+	// Strip every properly qualified reference `global::Vocab.Build.` and `global::Vocab.Instance.`,
+	// then assert no bare `Build.` or `Instance.` member access remains inside the holder class body.
+	// Bare member access would bind to the holder's `private static TableTypeInfo Build()` method or
+	// `internal static readonly TableTypeInfo Instance` field.
+	stripped := strings.ReplaceAll(holderBody, "global::Vocab.Build.", "")
+	stripped = strings.ReplaceAll(stripped, "global::Vocab.Instance.", "")
+	if strings.Contains(stripped, "Build.") {
+		t.Errorf("found bare Build. in SubjectTableInfo holder body:\n%s", holderBody)
+	}
+	if strings.Contains(stripped, "Instance.") {
+		t.Errorf("found bare Instance. in SubjectTableInfo holder body:\n%s", holderBody)
 	}
 }

@@ -483,7 +483,11 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 			g.pf("    TableReset(value.%s);\n", name)
 			return
 		}
-		g.pf("    value.%s = %s;\n", name, fieldDefaultExpr(f))
+		defaultExpr := fieldDefaultExpr(f)
+		if enumRef(f) != nil {
+			defaultExpr = "global::" + capitalize(g.unit.Package) + "." + defaultExpr
+		}
+		g.pf("    value.%s = %s;\n", name, defaultExpr)
 	}
 }
 
@@ -561,23 +565,38 @@ func bigToDouble(v *big.Int) string {
 }
 
 // emitTableDescriptor emits <X>TableType() — the reflection descriptor, built
-// once on first use and cached. The build is idempotent, so the benign race
-// two threads can run on first use produces two equivalent descriptors and
-// then one; nothing mutable is ever published.
+// once on first use and published through the nested static holder idiom
+// (schema#411).
+//
+// A descriptor is a mutable object with non-final fields, so under the CLI/CLR
+// memory model on weakly ordered architectures (such as ARM64), an unsynchronized
+// plain cache write could permit a concurrent caller to read the non-null cache
+// reference before the descriptor's fields are fully initialized.
+//
+// The nested static class holder guarantees thread-safe, one-time
+// initialization by the runtime (ECMA-335 §II.10.5.3), with all writes in Build()
+// ordered happens-before any read of Instance. All self-referential / pointer
+// metadata in Build() is captured in delegates, preventing recursive static
+// initialization cycles.
 func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	guards := tableGuardStrings(st)
+	holder := st.Name + "TableInfo"
+	g.pf("private static class %s\n{\n", holder)
 	// the TAG lists (docs/SPEC-TABLES.md §8.1), one static per tagged field and
 	// one for a tagged declaration, named from the descriptor row the way the
 	// cached descriptor itself is
+	var tagged bool
 	for _, f := range st.Fields {
-		g.emitTagsStatic(tagsSymbol(st.Name, f.Name), f.Tags)
+		tagged = g.emitTagsStatic(tagsSymbol(st.Name, f.Name), f.Tags) || tagged
 	}
-	g.emitTagsStatic(tagsSymbol(st.Name, ""), st.Tags)
-	g.pf("private static TableTypeInfo %sTableInfo;\n", st.Name)
-	g.pf("public static TableTypeInfo %sTableType()\n{\n", st.Name)
-	g.pf("    TableTypeInfo info = %sTableInfo;\n", st.Name)
-	g.pf("    if (info != null) { return info; }\n")
-	g.pf("    info = new TableTypeInfo();\n")
+	tagged = g.emitTagsStatic(tagsSymbol(st.Name, ""), st.Tags) || tagged
+	if tagged {
+		g.pf("\n")
+	}
+	g.pf("    internal static readonly TableTypeInfo Instance = Build();\n\n")
+	g.pf("    private static TableTypeInfo Build()\n    {\n")
+	g.indent = "    "
+	g.pf("    TableTypeInfo info = new TableTypeInfo();\n")
 	g.pf("    info.Name = \"%s\";\n", st.Name)
 	identity := ir.TableWireId(st.WireName())
 	if g.outside {
@@ -585,7 +604,7 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	}
 	g.pf("    info.Id = 0x%016xul;\n", identity)
 	g.pf("    info.NumFields = %d;\n", len(st.Fields))
-	g.pf("    info.Create = delegate { return new %s(); };\n", st.Name)
+	g.pf("    info.Create = delegate { return new global::%s.%s(); };\n", capitalize(g.unit.Package), st.Name)
 	layout := ir.RecordLayout(g.unit, st)
 	align := int64(8)
 	for _, table := range g.unit.Tables {
@@ -595,16 +614,21 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	}
 	g.pf("    info.StorageSize = %d; info.StorageAlign = %d; info.RegionAlign = %d;\n", layout.Size, layout.Align, align)
 	g.pf("    info.Variable = %t;\n", ir.VariableTables(g.unit)[st.Name])
-	g.pf("    info.PointerType = delegate(ulong id) { switch(id) { ")
+	var pt strings.Builder
+	pt.WriteString("info.PointerType = delegate(ulong id) { switch(id) { ")
 	for _, target := range ir.PointerReachable(st) {
-		g.pf("case 0x%016xul: return %sTableType(); ", ir.TableWireId(target.WireName()), target.Name)
+		fmt.Fprintf(&pt, "case 0x%016xul: return %sTableType(); ", ir.TableWireId(target.WireName()), target.Name)
 	}
-	g.pf("default: return null; } };\n")
-	g.pf("    info.PointerTypes = delegate { return new TableTypeInfo[] { ")
+	pt.WriteString("default: return null; } };\n")
+	g.pf("    %s", pt.String())
+
+	var pts strings.Builder
+	pts.WriteString("info.PointerTypes = delegate { return new TableTypeInfo[] { ")
 	for _, target := range ir.PointerReachable(st) {
-		g.pf("%sTableType(), ", target.Name)
+		fmt.Fprintf(&pts, "%sTableType(), ", target.Name)
 	}
-	g.pf("}; };\n")
+	pts.WriteString("}; };\n")
+	g.pf("    %s", pts.String())
 	bytesEdge, stringEdge := ir.PointerReachableBlobs(st)
 	g.pf("    info.BytesEdge = %t; info.StringEdge = %t;\n", bytesEdge, stringEdge)
 	if len(st.Fields) == 0 {
@@ -620,7 +644,7 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	// cannot express without a function — a generic walker that FILLS a value
 	// establishes an absent field's defaults through it, holding no type to
 	// spell. It is TableReset, the prefill the wire's read path already calls.
-	g.pf("    info.Reset = delegate(object o) { TableReset((%s)o); };\n", st.Name)
+	g.pf("    info.Reset = delegate(object o) { TableReset((global::%s.%s)o); };\n", capitalize(g.unit.Package), st.Name)
 	// the declaration's own doc and tags (docs/SPEC-TABLES.md §8.1), on the same
 	// terms as a field's: the shared empty doc and a null list where the
 	// declaration carries none.
@@ -628,8 +652,13 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	g.pf("    info.Doc = %s;\n", doc)
 	g.pf("    info.NumTags = %s;\n", numTags)
 	g.pf("    info.Tags = %s;\n", tags)
-	g.pf("    %sTableInfo = info;\n", st.Name)
-	g.pf("    return info;\n}\n\n")
+	g.pf("    return info;\n")
+	g.indent = ""
+	g.pf("    }\n")
+	g.pf("}\n\n")
+	g.pf("public static TableTypeInfo %sTableType()\n{\n", st.Name)
+	g.pf("    return %s.Instance;\n", holder)
+	g.pf("}\n\n")
 }
 
 // tagsSymbol names the tag-list static one descriptor row points at: a
@@ -644,11 +673,13 @@ func tagsSymbol(owner, field string) string {
 // (docs/SPEC-TABLES.md §8.1), and nothing at all for an item with no tags:
 // absence is 0 and null in the row, never a per-row empty array. Built once
 // with the descriptor and never mutated, so a walk over it allocates nothing.
-func (g *tableGen) emitTagsStatic(name string, tags []string) {
+// It reports whether anything was emitted.
+func (g *tableGen) emitTagsStatic(name string, tags []string) bool {
 	if len(tags) == 0 {
-		return
+		return false
 	}
-	g.pf("private static readonly string[] %s = { %s };\n", name, ir.QuotedTags(tags))
+	g.pf("    private static readonly string[] %s = { %s };\n", name, ir.QuotedTags(tags))
+	return true
 }
 
 // annotationColumns renders a row's Doc, NumTags and Tags columns: the shared
@@ -672,7 +703,7 @@ func annotationColumns(doc string, tags []string, tagsName string) (string, stri
 // .Slots on a table and are a plain array on a closure `type` (§2.4), and
 // keyedSlots already knows which.
 func (g *tableGen) storageExpr(f *ir.Field) string {
-	return g.keyedSlots(fmt.Sprintf("((%s)o).", g.owner.Name), f)
+	return g.keyedSlots(fmt.Sprintf("((global::%s.%s)o).", capitalize(g.unit.Package), g.owner.Name), f)
 }
 
 // elementExpr is storageExpr indexed where the field is an array, and
@@ -770,7 +801,8 @@ func csElemWidth(t ir.FieldType) int {
 func (g *tableGen) tableStorageColumns(f *ir.Field) string {
 	var b strings.Builder
 	name := member(f)
-	cast := fmt.Sprintf("((%s)o).", g.owner.Name)
+	ownerType := "global::" + capitalize(g.unit.Package) + "." + g.owner.Name
+	cast := fmt.Sprintf("((%s)o).", ownerType)
 	switch {
 	case f.Type.Pointer, f.IsMap():
 		typ := csFieldType(f.Type)
@@ -803,9 +835,9 @@ func (g *tableGen) tableStorageColumns(f *ir.Field) string {
 			typ = f.MapEntry.Name
 			class = true
 		}
-		fmt.Fprintf(&b, ", EnsureCount = delegate(object o, int n) { var value = (%s)o; if (value.%s.Length < n) { Array.Resize(ref value.%s, Math.Max(n, Math.Max(4, value.%s.Length * 2))); }", g.owner.Name, name, name, name)
+		fmt.Fprintf(&b, ", EnsureCount = delegate(object o, int n) { var value = (%s)o; if (value.%s.Length < n) { Array.Resize(ref value.%s, Math.Max(n, Math.Max(4, value.%s.Length * 2))); }", ownerType, name, name, name)
 		if class {
-			fmt.Fprintf(&b, " for (int i = 0; i < n; i++) { if (value.%s[i] == null) { value.%s[i] = new %s(); } }", name, name, typ)
+			fmt.Fprintf(&b, " for (int i = 0; i < n; i++) { if (value.%s[i] == null) { value.%s[i] = new global::%s.%s(); } }", name, name, capitalize(g.unit.Package), typ)
 		}
 		b.WriteString(" }")
 	}
@@ -836,7 +868,7 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 	case f.IsMap(), f.IsList():
 		bound = "int.MaxValue"
 	case f.KeyEnum != "":
-		bound = fmt.Sprintf("(int)%s.Max", f.KeyEnum)
+		bound = fmt.Sprintf("(int)global::%s.%s.Max", capitalize(g.unit.Package), f.KeyEnum)
 	case f.Array != ir.ArrayNone:
 		bound = strconv.FormatInt(f.ArrayBound, 10)
 	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString:
@@ -861,7 +893,7 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 	if f.KeyEnum != "" {
 		keyTypeName = fmt.Sprintf("%q", f.KeyEnum)
 		keyName = fmt.Sprintf("delegate(ulong v) { return EnumName%s(v); }", f.KeyEnum)
-		keyId = fmt.Sprintf("delegate(ulong v) { ulong id; TableEnumId((%s)v, out id); return id; }", f.KeyEnum)
+		keyId = fmt.Sprintf("delegate(ulong v) { ulong id; TableEnumId((global::%s.%s)v, out id); return id; }", capitalize(g.unit.Package), f.KeyEnum)
 	}
 
 	hasRange := "false"
@@ -897,7 +929,7 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 		if f.Type.Kind == ir.TNamed {
 			enumMax = fmt.Sprintf("%d", ref.Max)
 			enumName = fmt.Sprintf("delegate(ulong v) { return EnumName%s(v); }", f.Type.Name)
-			variantId = fmt.Sprintf("delegate(ulong v) { ulong id; TableEnumId((%s)v, out id); return id; }", f.Type.Name)
+			variantId = fmt.Sprintf("delegate(ulong v) { ulong id; TableEnumId((global::%s.%s)v, out id); return id; }", capitalize(g.unit.Package), f.Type.Name)
 		}
 	case *ir.Flags:
 		if f.Type.Kind == ir.TNamed {
