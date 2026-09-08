@@ -1415,7 +1415,7 @@ tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/
 # C# message and cook writers read the announcement's BuildVersion property;
 # the accelerator constant itself still belongs in the Block/Cook runtime.
 	@for f in build/tables-generated-cs/*/*Table.cs; do \
-		if grep -nE "public const ulong BuildVersion" $$f; then \
+		if grep -nE "(^|[[:space:]])(const|readonly)([[:space:]]+static)?[[:space:]]+ulong[[:space:]]+BuildVersion([[:space:]]|=|;)" $$f; then \
 			echo "BLOCK ZERO-COST GATE FAILED: the C# Table sources declare the accelerator BuildVersion constant: $$f"; exit 1; \
 		fi; \
 	done

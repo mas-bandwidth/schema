@@ -5,6 +5,10 @@ The generated unit targets the pinned .NET SDK in `.github/dotnet-version` and
 uses `unsafe` for native rows, regions, cooks and builders. The packet surface
 continues to use the same generated files.
 
+Compile each generated `*Table.cs` together with its unit's `*Region.cs` files.
+The region runtime owns the shared announcement and vocabulary definitions
+used by managed tables as well as native storage.
+
 ## Choosing storage
 
 Generated classes are convenient managed authoring values. They carry variable
