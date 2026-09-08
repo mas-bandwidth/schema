@@ -127,8 +127,8 @@ func TestTableRefusals(t *testing.T) {
 		// future-incompatible.
 		{name: "a lowercase const lowering onto a runtime constant", want: "TABLE_COOK_MAGIC",
 			src: "package t\ntable Tab { x int32 }\nconst table_cook_magic = 1\n"},
-		{name: "a SCREAMING const lowering onto a runtime constant", want: "TABLE_JSON_MAX_DEPTH",
-			src: "package t\ntable Tab { x int32 }\nconst TABLE_JSON_MAX_DEPTH = 1\n"},
+		{name: "a SCREAMING const lowering onto a runtime constant", want: "TABLE_BLOCK_MAGIC",
+			src: "package t\ntable Tab { x int32 }\nconst TABLE_BLOCK_MAGIC = 1\n"},
 		{name: "a lowercase const lowering onto the build version", want: "BUILD_VERSION",
 			src: "package t\ntable Tab { x int32 }\nconst build_version = 1\n"},
 		{name: "a lowercase const lowering onto a table's block extent", want: "TAB_BLOCK_MAX_BYTES",
@@ -498,7 +498,7 @@ func TestTableRuntimeClaimSplitsOnTheViewFile(t *testing.T) {
 	}
 	// and the RUST CONSTANT SPACE is claimed on the same terms as the
 	// spelling it lowers from: beside a table, and not before
-	for _, name := range []string{"table_cook_magic", "TABLE_JSON_MAX_DEPTH", "build_version"} {
+	for _, name := range []string{"table_cook_magic", "TABLE_BLOCK_MAGIC", "build_version"} {
 		free := "package t\nconst " + name + " = 1\ntype P { x int32 }\n"
 		if errs := runUnit(t, map[string]string{"T.schema": free}); len(errs) > 0 {
 			t.Errorf("a table-free unit must keep %s: %v", name, errs)

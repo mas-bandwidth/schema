@@ -440,15 +440,6 @@
       "rust": "stable"
     },
     {
-      "name": "rust-alloc",
-      "when": "pull-request",
-      "why": "the Rust allocation audit's control, alone, because its prerequisite is a conformance run. That prerequisite is `conformance-rust`, the rust leg and the derived manifest the control reads, so this row installs one SDK where the bare `conformance` target's nine legs want all seven. Measured 5 s on a host carrying no such SDK.",
-      "targets": [
-        "tables-rust-alloc-negative-control"
-      ],
-      "rust": "stable"
-    },
-    {
       "name": "js",
       "when": "pull-request",
       "why": "the JavaScript port's controls, the packet arm-default oracle's two JS legs, and the three newer packet families: ten controls after the previous-form table legs were removed. Measured 9 s over 13 controls before that, on a host carrying no such SDK, so that is a floor and not the job's cost.",
