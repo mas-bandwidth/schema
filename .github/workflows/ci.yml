@@ -393,6 +393,55 @@ jobs:
       - name: the ${{ matrix.lang }} leg over every surface
         run: env ${{ matrix.env }} ./build/conformance-harness run --only ${{ matrix.lang }}
 
+  # C# WIRE AND REGION FUZZ (issue #751).
+  #
+  # The C# table wire is one of the four live table-wire languages on the roadmap
+  # (#748). Issue #751 found a wire-fuzz divergence in pointer arm trailing bytes.
+  # In accordance with the owner's rule, tests that fit under 2 minutes belong on
+  # the per-PR CI gate rather than solely in nightly certification.
+  #
+  # Running as its own matrix rows keeps each fuzz target well under 1 minute
+  # (wire fuzz ~26 s, region fuzz ~39 s) without bloating the conformance (cs)
+  # leg over the 2-minute ceiling.
+  cs-fuzz:
+    name: C# fuzz (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: tables-cs-wire-fuzz
+            name: wire
+          - target: tables-cs-region-fuzz
+            name: region
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check out the serialize.cs runtime (pinned release)
+        run: |
+          git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git ../serialize.cs
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+
+      - name: read the .NET SDK pin
+        run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_PIN }}
+
+      - name: build the harness and the C# driver
+        run: make build/conformance-harness build-conformance-cs
+
+      - name: run C# ${{ matrix.name }} fuzz
+        run: make ${{ matrix.target }}
+
+
   # DOGFOOD BIG-ENDIAN (issue #303). docs/SPEC-TABLES.md §3 says the wire is
   # little-endian and byte-oriented throughout; §7 says a cook is produced in
   # the byte order of the build it is cooked for, and that Open refuses any
