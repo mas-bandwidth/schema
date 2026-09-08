@@ -2230,7 +2230,25 @@ namespace Blockdemo
                 for (int i = 0; i < f.ArrayBound; i++)
                 {
                     if (f.Kind == 13) { f.Table.Reset(f.GetChild(value, i)); }
-                    else if (f.Kind == 15) { ResetUnion(f.GetChild(value, i), f.Arms); }
+                    else if (f.Kind == 15)
+                    {
+                        // TableJson cannot see the wire reader's ResetUnion (sibling
+                        // nested class). Tag plus each arm's ResetField is the same
+                        // in-place whole element (#734).
+                        object child = f.GetChild(value, i);
+                        if (child != null && f.Arms != null)
+                        {
+                            f.Arms.SetTag(child, 0);
+                            if (f.Arms.Arms != null)
+                            {
+                                for (int a = 1; a < f.Arms.Arms.Length; a++)
+                                {
+                                    TableFieldInfo payload = f.Arms.Arms[a].Field;
+                                    if (payload != null) { payload.ResetField(child); }
+                                }
+                            }
+                        }
+                    }
                     else if (f.Kind == 17) { f.SetChild(value, i, null); }
                     else if (f.SetWide != null) { f.SetWide(value, i, 0); }
                     else { f.SetRaw(value, i, 0); }
