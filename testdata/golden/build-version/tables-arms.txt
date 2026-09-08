@@ -1,0 +1,56 @@
+0xdafcc33c5f3de681
+schema-build-version 3
+protocol 727cea182a6959a7
+byteorder little
+block prologue=magic:8,build_version:8,byte_order:8
+record Chain sizeof=24 alignof=8
+    field 5cc201a9f1b8274e kind=14 offset=0 size=16 union=Carry elem=24 array=unbounded
+    field bf82010f6f71eae9 kind=4 offset=16 size=4
+record Gate sizeof=24 alignof=8
+    field 891da1f305deb858 kind=15 offset=0 size=16 union=Reach
+    field bf82010f6f71eae9 kind=4 offset=16 size=4
+record Hand sizeof=56 alignof=8
+    field c5b2a72c0845a253 kind=15 offset=0 size=52 union=Carry elem=24 array=bounded bound=2
+    field bf82010f6f71eae9 kind=4 offset=52 size=4
+record Holder sizeof=40 alignof=8
+    field afcd9a3b099f8ef0 kind=15 offset=0 size=24 union=Carry
+    field d94c56ef0798d723 kind=14 offset=24 size=16 elem=4 array=unbounded
+record Leaf sizeof=16 alignof=8
+    field 3e7884bf4f412c6f kind=14 offset=0 size=16 elem=4 array=unbounded
+record Nest sizeof=48 alignof=8
+    field 30e6ed678f5e1bd4 kind=15 offset=0 size=32 union=Outer
+    field d94c56ef0798d723 kind=14 offset=32 size=16 elem=4 array=unbounded
+record Node sizeof=4 alignof=4
+    field af63eb4c86020609 kind=4 offset=0 size=4
+record Only sizeof=4 alignof=4
+    field af63ea4c86020456 kind=4 offset=0 size=4
+record Rack sizeof=24 alignof=8
+    field 3e7884bf4f412c6f kind=14 offset=0 size=16 union=Slots elem=32 array=unbounded
+    field bf82010f6f71eae9 kind=4 offset=16 size=4
+record Ring sizeof=24 alignof=8
+    field 3e7884bf4f412c6f kind=14 offset=0 size=16 union=Slot elem=16 array=unbounded
+    field bf82010f6f71eae9 kind=4 offset=16 size=4
+record Tray sizeof=72 alignof=8
+    field c5b2a72c0845a253 kind=15 offset=0 size=68 union=Slots elem=32 array=bounded bound=2
+    field bf82010f6f71eae9 kind=4 offset=68 size=4
+record Twig sizeof=24 alignof=8
+    field 2d4c068f5f889287 kind=15 offset=0 size=24 union=Inner
+union Carry
+    arm 1 leaf payload=Leaf
+    arm 2 plain kind=4 offset=8 size=4
+union Inner
+    arm 1 leaf payload=Leaf
+    arm 2 plain kind=4 offset=8 size=4
+union Outer
+    arm 1 inner kind=15 offset=8 size=24 union=Inner
+    arm 2 plain kind=4 offset=8 size=4
+union Reach
+    arm 1 only kind=17 offset=8 size=8 type=Only
+    arm 2 text kind=17 offset=8 size=8 type=string
+    arm 3 plain kind=4 offset=8 size=4
+union Slot
+    arm 1 node kind=17 offset=8 size=8 type=Node
+    arm 2 plain kind=4 offset=8 size=4
+union Slots
+    arm 1 many kind=17 offset=8 size=24 type=Node elem=10 array=bounded bound=2
+    arm 2 plain kind=4 offset=8 size=4

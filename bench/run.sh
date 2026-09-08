@@ -208,7 +208,29 @@ DART_BIN="${DART:-$PWD/dist/dart-sdk-3.13.2/bin/dart}"
 BEAM_PATH="${BEAM_PATH:-$PWD/dist/otp-29.0.5/bin:$PWD/dist/elixir-1.20.4/bin}"
 JAVA_VERSION="$("$JAVA_BIN" --version 2>/dev/null | head -1 || true)"
 DART_VERSION="$("$DART_BIN" --version 2>/dev/null | head -1 || true)"
-ELIXIR_VERSION="$(PATH="$BEAM_PATH:$PATH" elixir --short-version 2>/dev/null | head -1 || true)"
+# beam_pinned: true only when an executable named $1 sits in one of
+# BEAM_PATH's OWN directories. The elixir leg REQUIRES the pin the way java
+# and dart require their absolute $JAVAC_BIN and $DART_BIN: a `command -v`
+# under PATH="$BEAM_PATH:$PATH" prepends rather than requires, so with dist/
+# absent and a Homebrew or asdf elixir on the caller's PATH the leg ran on
+# the system toolchain instead of skipping (#693).
+beam_pinned() {
+    local dir rest="$BEAM_PATH:"
+    while [ -n "$rest" ]; do
+        dir="${rest%%:*}"
+        rest="${rest#*:}"
+        if [ -n "$dir" ] && [ -x "$dir/$1" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+# the version line records the pin, or "not present" — never a system elixir
+# the leg would refuse to run on
+ELIXIR_VERSION=""
+if beam_pinned elixir && beam_pinned erl; then
+    ELIXIR_VERSION="$(PATH="$BEAM_PATH:$PATH" elixir --short-version 2>/dev/null | head -1 || true)"
+fi
 
 # Release flags: the schema repo's own flags (-std=c++17 -Wall -Wextra -Werror
 # -ffp-contract=off) plus the serialize repo's Release bench configuration
@@ -556,11 +578,14 @@ fi
 # ---- Elixir (generated codecs over the Bench corpus; pinned BEAM toolchain) ----
 if [ -z "$ONLY" ] || [ "$ONLY" = elixir ]; then
     if [ -f bench/elixir/main.exs ]; then
-        if PATH="$BEAM_PATH:$PATH" command -v elixir >/dev/null 2>&1; then
+        # both pinned binaries, tested on BEAM_PATH alone (beam_pinned above);
+        # the run still prepends, because the elixir launcher is a shell
+        # script that needs the system's coreutils beside the pinned erl
+        if beam_pinned elixir && beam_pinned erl; then
             echo "== elixir: run ==" >&2
             ( cd bench/elixir && $PIN env PATH="$BEAM_PATH:$PATH" elixir main.exs $RUNNER_ARGS ) >> "$OUT"
         else
-            skip_leg elixir "runner present but no elixir on $BEAM_PATH (populate dist/ per the Makefile, or set BEAM_PATH)"
+            skip_leg elixir "runner present but no pinned elixir+erl on $BEAM_PATH (populate dist/ per the Makefile, or set BEAM_PATH)"
         fi
     else
         skip_leg elixir "runner not landed yet (bench/elixir/main.exs)"

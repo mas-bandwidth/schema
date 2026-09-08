@@ -376,23 +376,168 @@ func pinDir(t *testing.T, dir string, files map[string][]byte) {
 	}
 }
 
-// pinnedUnits is every compilation unit this package pins, by the name its
-// golden files are stored under.
-var pinnedUnits = []struct {
-	name string
-	dir  string
-}{
-	{"examples", corpusDir},
-	{"examples128", corpus128Dir},
-	{"examples-wide", corpusWideDir},
-	{"tables-examples", "../../tables/examples"},
-	{"tables-pointers", "../../tables/pointers"},
-	{"tables-block", "../../tables/block"},
-	{"tables-blockhome", "../../tables/blockhome"},
-	{"tables-messages", "../../tables/messages"},
-	{"tables-stream", "../../tables/stream"},
-	{"tables-blobs", "../../tables/blobs"},
-	{"tables-scalars", "../../tables/scalars"},
+// tableGoldenDir is the tables units' Table-source pins: one directory per
+// (unit, target), written by `make update-goldens` from build/tables-generated
+// and its C and C# siblings (Makefile update-goldens, make/c.mk, make/cs.mk).
+const tableGoldenDir = goldenDir + "/tables"
+
+// tableUnit is one directory under testdata/golden/tables: the unit it pins
+// and the target that emitted it.
+type tableUnit struct {
+	name   string // the golden directory's name
+	dir    string // the unit's source directory
+	target string
+}
+
+// tableUnits derives the pinned tables units FROM THE DIRECTORY LISTING, so a
+// directory of goldens nobody compares cannot exist: a hand-kept list of the
+// units is how six maps headers went stale on main across two merges (#683 —
+// tables/maps, tables/arms, tables/lists and wide were pinned and compared by
+// nothing here). The names map by rule: `<unit>` is tables/<unit> emitted by
+// the C++ reference, `<unit>-c` and `<unit>-cs` are the same unit emitted by
+// the C and C# targets (make/c.mk, make/cs.mk), and `wide` is the one
+// directory whose unit lives outside tables/ — its home is examples-wide
+// (Makefile tables_generate). A directory that fits no rule is still a unit
+// under tables/, so a planted one is loaded and fails loudly rather than
+// being skipped.
+func tableUnits(goldenTables string) ([]tableUnit, error) {
+	entries, err := os.ReadDir(goldenTables)
+	if err != nil {
+		return nil, err
+	}
+	var units []tableUnit
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		unit := tableUnit{name: name, target: "cpp"}
+		switch {
+		case name == "wide":
+			unit.dir = corpusWideDir
+		case strings.HasSuffix(name, "-cs"):
+			unit.dir, unit.target = "../../tables/"+strings.TrimSuffix(name, "-cs"), "cs"
+		case strings.HasSuffix(name, "-c"):
+			unit.dir, unit.target = "../../tables/"+strings.TrimSuffix(name, "-c"), "c"
+		default:
+			unit.dir = "../../tables/" + name
+		}
+		units = append(units, unit)
+	}
+	return units, nil
+}
+
+// TestGoldenTableSource pins every tables unit's emitted Table sources
+// byte-for-byte (SPEC §7.2 gate 1), one directory of testdata/golden/tables
+// at a time, the set derived from the listing. What each directory pins is
+// the Makefile's choice (update-goldens copies *Table.h and *Table.cpp; the
+// C and C# legs their own sets); what this gate holds is that EVERY pinned
+// file in EVERY directory is what the compiler emits today — so a Table
+// emitter change that moves a pinned file is red on the PR that made it,
+// whichever unit it landed in.
+func TestGoldenTableSource(t *testing.T) {
+	units, err := tableUnits(tableGoldenDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, unit := range units {
+		t.Run(unit.name, func(t *testing.T) {
+			u := loadCorpusDir(t, unit.dir)
+			files := generate(t, u, unit.target, nil)
+			dir := filepath.Join(tableGoldenDir, unit.name)
+			entries, err := os.ReadDir(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			pinned := map[string][]byte{}
+			for _, e := range entries {
+				if e.IsDir() {
+					continue
+				}
+				got, ok := files[e.Name()]
+				if !ok {
+					t.Errorf("%s pins %s and the %s target no longer emits it for %s — a pinned file the emitter dropped is stop-the-line, not a stale pin", dir, e.Name(), unit.target, unit.dir)
+					continue
+				}
+				pinned[e.Name()] = got
+			}
+			pinDir(t, dir, pinned)
+		})
+	}
+}
+
+// TestGoldenTablesAreDerivedFromTheListing holds tableUnits to its rule: a
+// planted directory enters the compared set (there is no list to leave it off
+// of), and the four units #683 found uncompared are in the real set.
+func TestGoldenTablesAreDerivedFromTheListing(t *testing.T) {
+	planted := t.TempDir()
+	for _, name := range []string{"maps", "planted", "planted-c", "planted-cs", "wide"} {
+		if err := os.Mkdir(filepath.Join(planted, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(planted, "id.txt"), []byte("not a directory\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := tableUnits(planted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []tableUnit{
+		{"maps", "../../tables/maps", "cpp"},
+		{"planted", "../../tables/planted", "cpp"},
+		{"planted-c", "../../tables/planted", "c"},
+		{"planted-cs", "../../tables/planted", "cs"},
+		{"wide", corpusWideDir, "cpp"},
+	}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("tableUnits over a planted listing = %v, want %v", got, want)
+	}
+	if _, err := os.Stat("../../tables/planted"); err == nil {
+		t.Fatal("tables/planted exists — the planted directory has a unit behind it and this test no longer plants anything")
+	}
+
+	real, err := tableUnits(tableGoldenDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"maps", "arms", "lists", "wide"} {
+		found := false
+		for _, unit := range real {
+			if unit.name == name {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("testdata/golden/tables/%s is not in the compared set — #683's uncompared unit is uncompared again", name)
+		}
+	}
+}
+
+// pinnedUnits is every compilation unit this package pins by the name its
+// golden files are stored under: the three corpora, then every tables unit
+// the goldens listing names (tableUnits), once each. The C and C# directories
+// are the SAME unit emitted by another target and `wide` IS examples-wide, so
+// those fold into the unit already named — excluded explicitly here, not by a
+// list that has to remember them.
+func pinnedUnits(t *testing.T) []struct{ name, dir string } {
+	t.Helper()
+	units := []struct{ name, dir string }{
+		{"examples", corpusDir},
+		{"examples128", corpus128Dir},
+		{"examples-wide", corpusWideDir},
+	}
+	tables, err := tableUnits(tableGoldenDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, unit := range tables {
+		if unit.target != "cpp" || unit.dir == corpusWideDir {
+			continue
+		}
+		units = append(units, struct{ name, dir string }{"tables-" + unit.name, unit.dir})
+	}
+	return units
 }
 
 // TestWireLawBumpMovesEveryId holds the promise the codec law line is for
@@ -405,7 +550,7 @@ var pinnedUnits = []struct {
 func TestWireLawBumpMovesEveryId(t *testing.T) {
 	law := fmt.Sprintf("schema-wire-law %d\n", ir.WireLaw)
 	next := fmt.Sprintf("schema-wire-law %d\n", ir.WireLaw+1)
-	for _, unit := range pinnedUnits {
+	for _, unit := range pinnedUnits(t) {
 		t.Run(unit.name, func(t *testing.T) {
 			u := loadCorpusDir(t, unit.dir)
 			text := ir.WireProjection(u)
@@ -440,7 +585,7 @@ func digest(projection string) uint64 {
 // header lines alone, which is the case a reader has to be able to check by
 // eye.
 func TestGoldenBuildVersion(t *testing.T) {
-	for _, unit := range pinnedUnits {
+	for _, unit := range pinnedUnits(t) {
 		t.Run(unit.name, func(t *testing.T) {
 			u := loadCorpusDir(t, unit.dir)
 			got := fmt.Sprintf("0x%016x\n%s", ir.BuildVersion(u), ir.CookProjection(u))
