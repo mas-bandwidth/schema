@@ -511,7 +511,8 @@
         "tables-go-block-fill-refuser-negative-control",
         "tables-go-allocator-negative-controls",
         "tables-go-allocator-runtime-negative-control",
-        "tables-go-retain-negative-controls"
+        "tables-go-retain-negative-controls",
+        "tables-go-builders-negative-control"
       ]
     }
   ],

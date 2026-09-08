@@ -244,7 +244,9 @@ func (g *tableGen) emitReadArm(v ir.UnionVariant, expr, rdr, kind, ind, none str
 	}
 	f := v.F
 	if v.Body() && !v.F.Type.Pointer {
-		g.pf("%s%sLoadBody(&%s,&%s)\n%sif %s.Offset != int64(len(%s.Buffer)) { %s }\n", ind, v.Type, rdr, expr, ind, rdr, rdr, bad)
+		g.pf("%s%sLoadBody(&%s,&%s)\n", ind, v.Type, rdr, expr)
+		g.emitCarveReturn("r", rdr, ind)
+		g.pf("%sif %s.Offset != int64(len(%s.Buffer)) { %s }\n", ind, rdr, rdr, bad)
 		return
 	}
 	if f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes && !f.Type.Pointer {

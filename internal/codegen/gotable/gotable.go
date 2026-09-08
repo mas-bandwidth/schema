@@ -169,7 +169,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		if g.home {
 			g.needsMath = true
 			g.needsUnsafe() // the descriptor surface's reset column takes an unsafe.Pointer
-			g.pf("%s", tableRuntimeForUnit(regional)+tableWireRuntime(u)+tableMessageRuntime(u))
+			g.pf("%s", tableRuntimeForUnit(regional)+tableRefusalSource+tableWireRuntime(u)+tableMessageRuntime(u))
 			g.pf("%s", tableCookWriteSource(u))
 			if regional {
 				g.emitRegionRuntime(blocks)

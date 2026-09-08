@@ -1350,6 +1350,13 @@ visible to Go's garbage collector. Loads, retaining loads and block filling
 allocate zero. `tables-go-allocator` certifies these counts on that exact
 toolchain and refuses to certify another version.
 
+Cook and block handles also expose `Open(base, length) error`. A successful
+open returns `nil`; a refusal returns a `TableRefuseReason`, such as
+`TableRefuseWrongBuildVersion` or `TableRefuseUnalignedBase`. Its `Error()`
+method uses the shared diagnostic spelling. The package functions `RootOpen`
+and `RootBlockOpen` remain boolean conveniences over that same check. Both
+forms clear the handle on failure and allocate nothing on success.
+
 `string(N)` and `bytes(N)` are an `[N]byte` beside an `int32` used length,
 arrays an `[N]T` beside an `int32` used count, `?T` a value beside a
 `<Name>Present` bool, and a union its tag beside one arm per variant.

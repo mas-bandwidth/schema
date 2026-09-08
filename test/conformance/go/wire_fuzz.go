@@ -10,7 +10,7 @@ import (
 
 // The harness owns the mutations and oracle. This process only binds a
 // roster entry to its generated codec and returns the report and saved value.
-func wireFuzz() error {
+func wireFuzz(builder bool) error {
 	in, out := bufio.NewReader(os.Stdin), bufio.NewWriter(os.Stdout)
 	read := func(v any) error { return binary.Read(in, binary.LittleEndian, v) }
 	write := func(v any) error { return binary.Write(out, binary.LittleEndian, v) }
@@ -29,6 +29,7 @@ func wireFuzz() error {
 	}
 	roster := make([]*codec, count)
 	messages := make([]*messageCodec, count)
+	builders := make([]*builderCodec, count)
 	for i := range roster {
 		unit, err := text()
 		if err != nil {
@@ -47,13 +48,17 @@ func wireFuzz() error {
 			return err
 		}
 		if form == 1 && retain == 0 {
-			roster[i] = findCodec(unit, root)
+			if builder {
+				builders[i] = findBuilderCodec(unit, root)
+			} else {
+				roster[i] = findCodec(unit, root)
+			}
 		}
-		if form == 2 && retain == 0 {
+		if form == 2 && retain == 0 && !builder {
 			messages[i] = findMessageCodec(unit, root)
 		}
 		available := byte(0)
-		if roster[i] != nil || messages[i] != nil {
+		if roster[i] != nil || messages[i] != nil || builders[i] != nil {
 			available = 1
 		}
 		if err := out.WriteByte(available); err != nil {
@@ -74,7 +79,7 @@ func wireFuzz() error {
 		if err := read(&size); err != nil {
 			return err
 		}
-		if uint64(index) >= uint64(len(roster)) || roster[index] == nil && messages[index] == nil {
+		if uint64(index) >= uint64(len(roster)) || roster[index] == nil && messages[index] == nil && builders[index] == nil {
 			return fmt.Errorf("unsupported roster index %d", index)
 		}
 		wire := make([]byte, size)
@@ -86,7 +91,12 @@ func wireFuzz() error {
 		regionBytes := int64(-1)
 		saved := int64(-1)
 		var buffer []byte
-		if m := messages[index]; m != nil {
+		if b := builders[index]; b != nil {
+			buffer, rep, loaded = b.run(wire)
+			if buffer != nil {
+				saved = int64(len(buffer))
+			}
+		} else if m := messages[index]; m != nil {
 			var available bool
 			buffer, rep, available = m.run(nil, wire, true)
 			if m.loadMeasure != nil {

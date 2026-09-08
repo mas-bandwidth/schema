@@ -20,6 +20,7 @@
 package benchtable
 
 import (
+	"encoding/binary"
 	"fmt"
 	"unsafe"
 )
@@ -354,54 +355,48 @@ type TableEntityBlock struct {
 
 // ---- block fill path: begin ----
 // ---- block fill path: end ----
-// TableEntityBlockOpen checks once and points, and this is the WHOLE check
-// (docs/SPEC-TABLES.md §19.2): the magic read in the machine's own order, the
-// BYTE ORDER the prologue carries against this build's own, the BUILD VERSION
-// against this build's own, each array's pitch, its offset, its COUNT against
-// the declared maximum and its extent inside the block, the used extent
-// against the bytes the caller passed, and the base's alignment. On a match
-// the bytes are what a build with this layout wrote, so there is nothing to
-// validate and nothing to fix up. On any failure it returns false and points
-// at nothing.
-//
-// There is ONE entry point and no tolerant twin: the block form is same-build
-// by construction — both sides generated from one declaration at one build —
-// so a consumer older than its producer is not a case. A mismatch is a
-// refusal; regenerate both sides. Data that must outlive the build that wrote
-// it takes the wire (§3), which this same table still has.
+// TableEntityBlockOpen is the bool convenience for the handle's typed Open error.
 func TableEntityBlockOpen(block *TableEntityBlock, base unsafe.Pointer, bytes int64) bool {
+	return block.Open(base, bytes) == nil
+}
+
+// Open reads all prologue and layout words bytewise before the final base
+// alignment check. Every refusal names the first failed clause in SPEC §19.2.
+func (block *TableEntityBlock) Open(base unsafe.Pointer, bytes int64) error {
 	*block = TableEntityBlock{}
-	if base == nil || bytes < 88 {
-		return false
+	if base == nil {
+		return TableRefuseUnalignedBase
 	}
-	if uintptr(base)%64 != 0 {
-		return false // the base's alignment
+	if bytes < 88 {
+		return TableRefuseTruncated
 	}
-	// the prologue read in the machine's own order: a byte-swapped magic is a
-	// FOREIGN BYTE ORDER, and anything else is not a block at all. Both refuse.
-	if *(*uint64)(base) != TableBlockMagic {
-		return false
+	header := unsafe.Slice((*byte)(base), 88)
+	magic := binary.NativeEndian.Uint64(header)
+	if magic != TableBlockMagic {
+		if magic == 0x5343484d41424c4b {
+			return TableRefuseForeignOrder
+		}
+		return TableRefuseNotACook
 	}
-	if *(*uint64)(unsafe.Add(base, 8)) != BuildVersion {
-		return false
+	if binary.NativeEndian.Uint64(header[16:]) != TableBlockByteOrder {
+		return TableRefuseNotACook
 	}
-	if *(*uint64)(unsafe.Add(base, 16)) != TableBlockByteOrder {
-		return false // a block of the other byte order: the fix-up path is a named obligation
+	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
+		return TableRefuseWrongBuildVersion
 	}
-	projection := (*TableEntityBlockProjection)(base)
 	used := int64(88)
-	// the used extent, rounded to 64 WITHOUT the rounding itself wrapping: used
-	// is already inside bytes, and the padding is paid out of the slack that is
-	// left rather than added and compared after.
 	padding := (64 - (used % 64)) % 64
 	if padding > bytes-used {
-		return false
+		return TableRefuseTruncated
 	}
 	used += padding
+	if uintptr(base)%64 != 0 {
+		return TableRefuseUnalignedBase
+	}
 	block.Base = base
-	block.Projection = projection
+	block.Projection = (*TableEntityBlockProjection)(base)
 	block.Bytes = used
-	return true
+	return nil
 }
 
 // TableEntityCounts is gathered before Begin; clamping is the caller's policy.
@@ -500,54 +495,48 @@ type TableStatBlock struct {
 
 // ---- block fill path: begin ----
 // ---- block fill path: end ----
-// TableStatBlockOpen checks once and points, and this is the WHOLE check
-// (docs/SPEC-TABLES.md §19.2): the magic read in the machine's own order, the
-// BYTE ORDER the prologue carries against this build's own, the BUILD VERSION
-// against this build's own, each array's pitch, its offset, its COUNT against
-// the declared maximum and its extent inside the block, the used extent
-// against the bytes the caller passed, and the base's alignment. On a match
-// the bytes are what a build with this layout wrote, so there is nothing to
-// validate and nothing to fix up. On any failure it returns false and points
-// at nothing.
-//
-// There is ONE entry point and no tolerant twin: the block form is same-build
-// by construction — both sides generated from one declaration at one build —
-// so a consumer older than its producer is not a case. A mismatch is a
-// refusal; regenerate both sides. Data that must outlive the build that wrote
-// it takes the wire (§3), which this same table still has.
+// TableStatBlockOpen is the bool convenience for the handle's typed Open error.
 func TableStatBlockOpen(block *TableStatBlock, base unsafe.Pointer, bytes int64) bool {
+	return block.Open(base, bytes) == nil
+}
+
+// Open reads all prologue and layout words bytewise before the final base
+// alignment check. Every refusal names the first failed clause in SPEC §19.2.
+func (block *TableStatBlock) Open(base unsafe.Pointer, bytes int64) error {
 	*block = TableStatBlock{}
-	if base == nil || bytes < 32 {
-		return false
+	if base == nil {
+		return TableRefuseUnalignedBase
 	}
-	if uintptr(base)%64 != 0 {
-		return false // the base's alignment
+	if bytes < 32 {
+		return TableRefuseTruncated
 	}
-	// the prologue read in the machine's own order: a byte-swapped magic is a
-	// FOREIGN BYTE ORDER, and anything else is not a block at all. Both refuse.
-	if *(*uint64)(base) != TableBlockMagic {
-		return false
+	header := unsafe.Slice((*byte)(base), 32)
+	magic := binary.NativeEndian.Uint64(header)
+	if magic != TableBlockMagic {
+		if magic == 0x5343484d41424c4b {
+			return TableRefuseForeignOrder
+		}
+		return TableRefuseNotACook
 	}
-	if *(*uint64)(unsafe.Add(base, 8)) != BuildVersion {
-		return false
+	if binary.NativeEndian.Uint64(header[16:]) != TableBlockByteOrder {
+		return TableRefuseNotACook
 	}
-	if *(*uint64)(unsafe.Add(base, 16)) != TableBlockByteOrder {
-		return false // a block of the other byte order: the fix-up path is a named obligation
+	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
+		return TableRefuseWrongBuildVersion
 	}
-	projection := (*TableStatBlockProjection)(base)
 	used := int64(32)
-	// the used extent, rounded to 64 WITHOUT the rounding itself wrapping: used
-	// is already inside bytes, and the padding is paid out of the slack that is
-	// left rather than added and compared after.
 	padding := (64 - (used % 64)) % 64
 	if padding > bytes-used {
-		return false
+		return TableRefuseTruncated
 	}
 	used += padding
+	if uintptr(base)%64 != 0 {
+		return TableRefuseUnalignedBase
+	}
 	block.Base = base
-	block.Projection = projection
+	block.Projection = (*TableStatBlockProjection)(base)
 	block.Bytes = used
-	return true
+	return nil
 }
 
 // TableStatCounts is gathered before Begin; clamping is the caller's policy.

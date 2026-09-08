@@ -17,6 +17,7 @@ package gotable
 import (
 	"fmt"
 	"go/format"
+	"math/bits"
 	"sort"
 	"strings"
 
@@ -533,89 +534,30 @@ func (g *cookGen) emitCookHandle(st *ir.Struct) {
 
 func (g *cookGen) emitOpen(st *ir.Struct, ml *ir.MemberLayout) {
 	name := st.Name
-	g.hf("// %sOpen checks the header and POINTS, and this is the WHOLE check\n", name)
-	g.hf("// (docs/SPEC-TABLES.md §7): the magic read in the machine's own order, the byte\n")
-	g.hf("// order it establishes, the build version, every RESERVED word zero, the region\n")
-	g.hf("// ALIGNMENT the header names, the two part lengths against the length the\n")
-	g.hf("// caller passed — a truncated file refuses — the ROOT's own storage inside the\n")
-	g.hf("// data part, and the alignment of the base. Nothing per node, ever: that is\n")
-	g.hf("// what makes this O(1) in the file's size.\n")
-	g.hf("//\n")
-	g.hf("// On a match the bytes ARE what this build wrote, in this build's layout and\n")
-	g.hf("// this build's byte order, so there is nothing to validate and nothing to fix\n")
-	g.hf("// up. On any failure it returns false and points at nothing, and the caller\n")
-	g.hf("// falls back to a wire load — the path that carries every version.\n")
-	g.hf("//\n")
-	g.hf("// EVERY NUMBER BELOW COMES OUT OF THE FILE, so all of the arithmetic is\n")
-	g.hf("// UNSIGNED and each term is BOUNDED BEFORE IT IS ADDED. A signed length would\n")
-	g.hf("// put one signed value into that arithmetic and one negative case into every\n")
-	g.hf("// comparison; a caller holding a length from a stat casts once, at the call\n")
-	g.hf("// site, where the sign is still its own business.\n")
-	g.hf("func %sOpen(cook *%sCook, base unsafe.Pointer, length int64) bool {\n", name, name)
-	g.hf("\t*cook = %sCook{}\n", name)
-	g.hf("\tif base == nil || length < %d {\n\t\treturn false\n\t}\n", cookHeaderBytes)
-	g.hf("\tbytes := uint64(length)\n\n")
-	g.hf("\t// THE MAGIC, read before anything else: it is what establishes the byte\n")
-	g.hf("\t// order every other header word is written in. A cook of the other order\n")
-	g.hf("\t// reads back this constant byte-reversed and refuses HERE, rather than\n")
-	g.hf("\t// reaching a fix-up pass this design does not have.\n")
-	g.hf("\t//\n")
-	g.hf("\t// The header is read through encoding/binary's NATIVE order — the memcpy\n")
-	g.hf("\t// the C++ side reads it with — and not through a typed load, because the\n")
-	g.hf("\t// BASE's own alignment is not checked until further down: a typed load\n")
-	g.hf("\t// before that check is an unaligned load on a target that does not allow\n")
-	g.hf("\t// one, and the caller's buffer is the thing under test.\n")
-	g.hf("\theader := unsafe.Slice((*byte)(base), %d)\n", cookHeaderBytes)
-	g.hf("\tif binary.NativeEndian.Uint64(header) != TableCookMagic {\n\t\treturn false\n\t}\n")
-	g.hf("\t// and the ORDER WORD does the other job: it RECORDS which order wrote the\n")
-	g.hf("\t// file, so a refusal names the order rather than inferring it.\n")
-	g.hf("\tif binary.NativeEndian.Uint64(header[16:]) != TableCookByteOrder {\n\t\treturn false\n\t}\n")
-	g.hf("\t// THE BUILD VERSION: under the match-and-point rule a matching id means Open\n")
-	g.hf("\t// checks nothing further, so it is the sole guard between this runtime and a\n")
-	g.hf("\t// foreign region (§20).\n")
-	g.hf("\tif binary.NativeEndian.Uint64(header[8:]) != BuildVersion {\n\t\treturn false\n\t}\n")
-	g.hf("\t// THE RESERVED WORDS: a non-zero one means a writer used a form this build\n")
-	g.hf("\t// does not understand, and Open refuses rather than ignoring it.\n")
-	g.hf("\tif binary.NativeEndian.Uint64(header[48:]) != 0 {\n\t\treturn false\n\t}\n")
-	g.hf("\tif binary.NativeEndian.Uint64(header[56:]) != 0 {\n\t\treturn false\n\t}\n\n")
-	g.hf("\t// THE ALIGNMENT WORD is the one field the check COMPUTES WITH rather than\n")
-	g.hf("\t// only compares against — the data part begins at align_up(64, alignment)\n")
-	g.hf("\t// and the base is measured against it — so a word that is not an alignment\n")
-	g.hf("\t// rounds nothing and aligns nothing. A zero there is a division by zero\n")
-	g.hf("\t// inside the check, which is the defect the check prevents.\n")
-	g.hf("\talignment := binary.NativeEndian.Uint64(header[40:])\n")
-	g.hf("\tif alignment < %d || alignment > %d {\n\t\treturn false\n\t}\n", ir.RegionAlignFloor, cookMaxAlign)
-	g.hf("\tif alignment&(alignment-1) != 0 {\n\t\treturn false // a power of two\n\t}\n")
-	g.hf("\tif alignment%%%d != 0 {\n\t\treturn false // and a multiple of the ROOT's own alignof\n\t}\n\n", ml.Align)
-	g.hf("\t// THE DATA OFFSET IS DERIVED, never a header field: a fact a reader computes\n")
-	g.hf("\t// is a fact two writers cannot disagree about, and it is 64 for every unit\n")
-	g.hf("\t// this language can declare.\n")
-	g.hf("\tdataOffset := (uint64(%d) + alignment - 1) &^ (alignment - 1)\n\n", cookHeaderBytes)
-	g.hf("\t// THE TWO PART LENGTHS against the length the caller passed. The whole file\n")
-	g.hf("\t// is dataOffset + data + attribution, and a size that is not exactly that\n")
-	g.hf("\t// refuses: a truncated file and a file with trailing bytes are the same\n")
-	g.hf("\t// refusal. Each term is bounded before it is added, so nothing here can wrap\n")
-	g.hf("\t// past the top of the type and land back inside the buffer.\n")
-	g.hf("\tdataLength := binary.NativeEndian.Uint64(header[24:])\n")
-	g.hf("\tattribution := binary.NativeEndian.Uint64(header[32:])\n")
-	g.hf("\tif dataLength > bytes || attribution > bytes-dataLength {\n\t\treturn false\n\t}\n")
-	g.hf("\tif dataOffset > bytes-dataLength-attribution {\n\t\treturn false\n\t}\n")
-	g.hf("\tif dataOffset+dataLength+attribution != bytes {\n\t\treturn false\n\t}\n\n")
-	g.hf("\t// THE DATA PART MUST HOLD THE ROOT. The part lengths frame the FILE; they do\n")
-	g.hf("\t// not say the region is at least sizeof(root). Without this a forged short\n")
-	g.hf("\t// data part describes a root partly outside the file, and a match-and-point\n")
-	g.hf("\t// reader would hand back storage the caller never gave it — the one way this\n")
-	g.hf("\t// design could read past the length it was passed.\n")
-	g.hf("\tif dataLength < %d {\n\t\treturn false\n\t}\n\n", ml.Size)
-	g.hf("\t// THE ALIGNMENT OF THE BASE. The header pads the data part to the region's\n")
-	g.hf("\t// alignment, so a base an allocator or mmap gave you is already aligned; one\n")
-	g.hf("\t// that is not is a caller's buffer this form cannot be read out of. The\n")
-	g.hf("\t// alignment divides 64, so the derived data offset carries the property from\n")
-	g.hf("\t// the file's base to the region's.\n")
-	g.hf("\tif uint64(uintptr(base))%%alignment != 0 {\n\t\treturn false\n\t}\n\n")
-	g.hf("\tcook.Region = unsafe.Add(base, uintptr(dataOffset))\n")
-	g.hf("\tcook.RegionLength = int64(dataLength)\n")
-	g.hf("\treturn true\n}\n\n")
+	g.hf(`// %sOpen is the bool convenience for the typed Open error on the handle.
+func %sOpen(cook *%sCook,base unsafe.Pointer,length int64)bool{return cook.Open(base,length)==nil}
+// Open checks the header in SPEC §7 order, bytewise until base alignment is
+// established. A successful match points at the region and allocates nothing.
+func(cook *%sCook)Open(base unsafe.Pointer,length int64)error{
+ *cook=%sCook{}
+ if base==nil{return TableRefuseUnalignedBase}
+ if length<64{return TableRefuseTruncated}
+ header:=unsafe.Slice((*byte)(base),64)
+ magic:=binary.NativeEndian.Uint64(header)
+ if magic!=TableCookMagic {if magic==0x%016x{return TableRefuseForeignOrder};return TableRefuseNotACook}
+ if binary.NativeEndian.Uint64(header[16:])!=TableCookByteOrder{return TableRefuseNotACook}
+ if binary.NativeEndian.Uint64(header[8:])!=BuildVersion{return TableRefuseWrongBuildVersion}
+ if binary.NativeEndian.Uint64(header[48:])!=0||binary.NativeEndian.Uint64(header[56:])!=0{return TableRefuseReservedNotZero}
+ alignment:=binary.NativeEndian.Uint64(header[40:])
+ if alignment<8||alignment>64||alignment&(alignment-1)!=0||alignment%%%d!=0{return TableRefuseBadAlignment}
+ bytes:=uint64(length);dataOffset:=(uint64(64)+alignment-1)&^(alignment-1)
+ dataLength:=binary.NativeEndian.Uint64(header[24:]);attribution:=binary.NativeEndian.Uint64(header[32:])
+ if dataOffset>bytes||dataLength>bytes-dataOffset||attribution!=bytes-dataOffset-dataLength||dataLength<%d{return TableRefuseTruncated}
+ if uint64(uintptr(base))%%alignment!=0{return TableRefuseUnalignedBase}
+ cook.Region=unsafe.Add(base,uintptr(dataOffset));cook.RegionLength=int64(dataLength)
+ return nil
+}
+`, name, name, name, name, name, bits.ReverseBytes64(cookMagic), ml.Align, ml.Size)
 }
 
 func (g *cookGen) emitAt(st *ir.Struct) {

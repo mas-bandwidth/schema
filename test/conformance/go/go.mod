@@ -80,3 +80,12 @@ replace vocab9demo => ../../../build/tables-generated-go/vocab9
 
 require tblrt1 v0.0.0
 replace tblrt1 => ../../../build/tables-generated-go/rt1
+
+require tblp2 v0.0.0
+replace tblp2 => ../../../build/tables-generated-go/p2
+require tblw1 v0.0.0
+replace tblw1 => ../../../build/tables-generated-go/w1
+require tblw2 v0.0.0
+replace tblw2 => ../../../build/tables-generated-go/w2
+require tblg1 v0.0.0
+replace tblg1 => ../../../build/tables-generated-go/g1

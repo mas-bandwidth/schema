@@ -83,7 +83,7 @@ tables-go-json-walk: build/tables-generated-go/.stamp
 # a generated package names its schema's `package` and Go resolves an import by
 # module path — so the conformance leg's go.mod replaces one path per unit,
 # exactly as test/go/go.mod already does for the packet corpus.
-build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema $(wildcard test/tables/[MAKR][12].schema) tables/scalars/Scalars.schema test/tables/Scalars2.schema $(wildcard examples-wide/*.schema) tables/messages/Messages.schema tables/backend/Backend.schema tables/vocab/Vocab.schema tables/vocab9/Vocab9.schema $(wildcard tables/stream/*.schema tables/blobs/*.schema tables/lists/*.schema tables/maps/*.schema)
+build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema $(wildcard test/tables/[MAKR][12].schema) tables/scalars/Scalars.schema test/tables/Scalars2.schema $(wildcard examples-wide/*.schema) tables/messages/Messages.schema tables/backend/Backend.schema tables/vocab/Vocab.schema tables/vocab9/Vocab9.schema $(wildcard tables/stream/*.schema tables/blobs/*.schema tables/lists/*.schema tables/maps/*.schema)
 	@mkdir -p build/tables-generated-go
 	./bin/schema generate --lang go --out build/tables-generated-go/examples tables/examples
 	# The pointer corpus exercises the wire, region and cook read surfaces.
@@ -94,6 +94,14 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema $
 	./bin/schema generate --lang go --out build/tables-generated-go/v2 test/tables/V2.schema
 	./bin/schema generate --lang go --out build/tables-generated-go/p1 test/tables/P1.schema
 	./bin/schema generate --lang go --out build/tables-generated-go/p3 test/tables/P3.schema
+	./bin/schema generate --lang go --out build/tables-generated-go/p2 test/tables/P2.schema
+	$(call go_table_module,p2,tblp2)
+	./bin/schema generate --lang go --out build/tables-generated-go/w1 test/tables/W1.schema
+	$(call go_table_module,w1,tblw1)
+	./bin/schema generate --lang go --out build/tables-generated-go/w2 test/tables/W2.schema
+	$(call go_table_module,w2,tblw2)
+	./bin/schema generate --lang go --out build/tables-generated-go/g1 test/tables/G1.schema
+	$(call go_table_module,g1,tblg1)
 	./bin/schema generate --lang go --out build/tables-generated-go/m1 test/tables/M1.schema
 	./bin/schema generate --lang go --out build/tables-generated-go/m2 test/tables/M2.schema
 	./bin/schema generate --lang go --out build/tables-generated-go/a1 test/tables/A1.schema
@@ -360,4 +368,15 @@ tables-go-allocator-runtime-negative-control:
 tables-go-retain-negative-controls:
 	@set -e; for mode in file-count-floor message-depth; do sh test/conformance/go/ownership-negative-control $$mode; done
 
-test-go: tables-go-allocator
+test-go: tables-go-allocator tables-go-allocator-negative-controls tables-go-allocator-runtime-negative-control tables-go-retain-negative-controls
+
+.PHONY: tables-go-builders tables-go-builders-negative-control tables-go-typed-refusals
+tables-go-builders: build/conformance-harness build/conformance-go
+	go test ./internal/codegen/gotable -run '^TestBuilderRefusalThroughUnion$$' -count=1
+	./build/conformance-harness wire-fuzz --builder --driver 'build/conformance-go wire-fuzz-builder' --seed $(SEED) --n $(N)
+tables-go-builders-negative-control:
+	sh test/conformance/go/ownership-negative-control builder-union
+tables-go-typed-refusals:
+	go test ./internal/codegen/gotable -run '^TestAcceleratorTypedRefusals$$' -count=1
+
+test-go: tables-go-builders tables-go-builders-negative-control tables-go-typed-refusals

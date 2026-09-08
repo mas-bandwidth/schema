@@ -369,6 +369,9 @@ func blockVerdicts(lines []line, out string, swap bool) error {
 // — `0` an aligned base, `1`..`63` that many bytes past one, `null` no buffer
 // at all. Neither is a fact a file can carry, which is why both are columns.
 func surfaceForgery(kind string, lines []line, out string) error {
+	return surfaceForgeryResult(kind, lines, out, false)
+}
+func surfaceForgeryResult(kind string, lines []line, out string, reasons bool) error {
 	for _, f := range lines {
 		if f[0] != "forgery" || f[2] != kind {
 			continue
@@ -387,18 +390,24 @@ func surfaceForgery(kind string, lines []line, out string) error {
 		} else if lead, err = strconv.Atoi(f[6]); err != nil {
 			return err
 		}
-		var opened bool
+		var refusal error
 		if kind == "block" {
-			opened, err = openBlockForged(f[3], data, extent, lead, nilBuffer)
+			refusal, err = openBlockForgedReason(f[3], data, extent, lead, nilBuffer)
 		} else {
-			opened, err = openCookForged(f[3], data, extent, lead, nilBuffer)
+			refusal, err = openCookForgedReason(f[3], data, extent, lead, nilBuffer)
 		}
 		if err != nil {
 			return err
 		}
 		verdict := "refuse\n"
-		if opened {
+		if refusal == nil {
 			verdict = "open\n"
+		}
+		if reasons {
+			verdict = "ok\n"
+			if refusal != nil {
+				verdict = refusal.Error() + "\n"
+			}
 		}
 		if err := spill(out, f[1], []byte(verdict)); err != nil {
 			return err
@@ -442,8 +451,8 @@ func surfaceJsonHostile(lines []line, out string) error {
 }
 
 func main() {
-	if len(os.Args) == 2 && os.Args[1] == "wire-fuzz" {
-		if err := wireFuzz(); err != nil {
+	if len(os.Args) == 2 && (os.Args[1] == "wire-fuzz" || os.Args[1] == "wire-fuzz-builder") {
+		if err := wireFuzz(os.Args[1] == "wire-fuzz-builder"); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
@@ -502,6 +511,10 @@ func main() {
 		run = surfaceBlockDump
 	case "forgery":
 		run = func(lines []line, out string) error { return surfaceForgery("block", lines, out) }
+	case "cook-reason":
+		run = func(lines []line, out string) error { return surfaceForgeryResult("cook", lines, out, true) }
+	case "block-reason":
+		run = func(lines []line, out string) error { return surfaceForgeryResult("block", lines, out, true) }
 	case "cook-forgery":
 		run = func(lines []line, out string) error { return surfaceForgery("cook", lines, out) }
 	default:

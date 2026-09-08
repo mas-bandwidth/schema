@@ -26,6 +26,7 @@ type edit struct{ old, new string }
 // sabotages maps a control's name to what it breaks. Each entry names the
 // rule it removes, so a reader of a red control knows what was taken away.
 var sabotages = map[string][]edit{
+	"go-builder-union-refusal": {{old: "g.pf(\"%s%sLoadBody(&%s,&%s)\\n\", ind, v.Type, rdr, expr)\n\t\tg.emitCarveReturn(\"r\", rdr, ind)", new: "g.pf(\"%s%sLoadBody(&%s,&%s)\\n\", ind, v.Type, rdr, expr)\n\t\t// SABOTAGED: inspect payload length before propagating refusal"}},
 	"map-builder-count-oracle": {{old: "\t\tif count > uint64(math.MaxInt32) {\n\t\t\tr.off = end\n\t\t\treturn r.collectionCap()\n\t\t}\n\t\tsub := r.subTo(end)", new: "\t\tif false && count > uint64(math.MaxInt32) { // SABOTAGED\n\t\t\tr.off = end\n\t\t\treturn r.collectionCap()\n\t\t}\n\t\tsub := r.subTo(end)"}},
 	// Go ownership, managed activation frames, and bounded retention.
 	"go-allocator-original-slice": {

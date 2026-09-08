@@ -448,124 +448,55 @@ func (c TableEntityCook) RootAlign() int64       { return 8 }
 // copy: a cooked graph is walked by adding deltas to slot addresses.
 func (c TableEntityCook) Root() *TableEntityRow { return (*TableEntityRow)(c.Region) }
 
-// TableEntityOpen checks the header and POINTS, and this is the WHOLE check
-// (docs/SPEC-TABLES.md §7): the magic read in the machine's own order, the byte
-// order it establishes, the build version, every RESERVED word zero, the region
-// ALIGNMENT the header names, the two part lengths against the length the
-// caller passed — a truncated file refuses — the ROOT's own storage inside the
-// data part, and the alignment of the base. Nothing per node, ever: that is
-// what makes this O(1) in the file's size.
-//
-// On a match the bytes ARE what this build wrote, in this build's layout and
-// this build's byte order, so there is nothing to validate and nothing to fix
-// up. On any failure it returns false and points at nothing, and the caller
-// falls back to a wire load — the path that carries every version.
-//
-// EVERY NUMBER BELOW COMES OUT OF THE FILE, so all of the arithmetic is
-// UNSIGNED and each term is BOUNDED BEFORE IT IS ADDED. A signed length would
-// put one signed value into that arithmetic and one negative case into every
-// comparison; a caller holding a length from a stat casts once, at the call
-// site, where the sign is still its own business.
+// TableEntityOpen is the bool convenience for the typed Open error on the handle.
 func TableEntityOpen(cook *TableEntityCook, base unsafe.Pointer, length int64) bool {
+	return cook.Open(base, length) == nil
+}
+
+// Open checks the header in SPEC §7 order, bytewise until base alignment is
+// established. A successful match points at the region and allocates nothing.
+func (cook *TableEntityCook) Open(base unsafe.Pointer, length int64) error {
 	*cook = TableEntityCook{}
-	if base == nil || length < 64 {
-		return false
+	if base == nil {
+		return TableRefuseUnalignedBase
+	}
+	if length < 64 {
+		return TableRefuseTruncated
+	}
+	header := unsafe.Slice((*byte)(base), 64)
+	magic := binary.NativeEndian.Uint64(header)
+	if magic != TableCookMagic {
+		if magic == 0x5343484d434f4f4b {
+			return TableRefuseForeignOrder
+		}
+		return TableRefuseNotACook
+	}
+	if binary.NativeEndian.Uint64(header[16:]) != TableCookByteOrder {
+		return TableRefuseNotACook
+	}
+	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
+		return TableRefuseWrongBuildVersion
+	}
+	if binary.NativeEndian.Uint64(header[48:]) != 0 || binary.NativeEndian.Uint64(header[56:]) != 0 {
+		return TableRefuseReservedNotZero
+	}
+	alignment := binary.NativeEndian.Uint64(header[40:])
+	if alignment < 8 || alignment > 64 || alignment&(alignment-1) != 0 || alignment%8 != 0 {
+		return TableRefuseBadAlignment
 	}
 	bytes := uint64(length)
-
-	// THE MAGIC, read before anything else: it is what establishes the byte
-	// order every other header word is written in. A cook of the other order
-	// reads back this constant byte-reversed and refuses HERE, rather than
-	// reaching a fix-up pass this design does not have.
-	//
-	// The header is read through encoding/binary's NATIVE order — the memcpy
-	// the C++ side reads it with — and not through a typed load, because the
-	// BASE's own alignment is not checked until further down: a typed load
-	// before that check is an unaligned load on a target that does not allow
-	// one, and the caller's buffer is the thing under test.
-	header := unsafe.Slice((*byte)(base), 64)
-	if binary.NativeEndian.Uint64(header) != TableCookMagic {
-		return false
-	}
-	// and the ORDER WORD does the other job: it RECORDS which order wrote the
-	// file, so a refusal names the order rather than inferring it.
-	if binary.NativeEndian.Uint64(header[16:]) != TableCookByteOrder {
-		return false
-	}
-	// THE BUILD VERSION: under the match-and-point rule a matching id means Open
-	// checks nothing further, so it is the sole guard between this runtime and a
-	// foreign region (§20).
-	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
-		return false
-	}
-	// THE RESERVED WORDS: a non-zero one means a writer used a form this build
-	// does not understand, and Open refuses rather than ignoring it.
-	if binary.NativeEndian.Uint64(header[48:]) != 0 {
-		return false
-	}
-	if binary.NativeEndian.Uint64(header[56:]) != 0 {
-		return false
-	}
-
-	// THE ALIGNMENT WORD is the one field the check COMPUTES WITH rather than
-	// only compares against — the data part begins at align_up(64, alignment)
-	// and the base is measured against it — so a word that is not an alignment
-	// rounds nothing and aligns nothing. A zero there is a division by zero
-	// inside the check, which is the defect the check prevents.
-	alignment := binary.NativeEndian.Uint64(header[40:])
-	if alignment < 8 || alignment > 64 {
-		return false
-	}
-	if alignment&(alignment-1) != 0 {
-		return false // a power of two
-	}
-	if alignment%8 != 0 {
-		return false // and a multiple of the ROOT's own alignof
-	}
-
-	// THE DATA OFFSET IS DERIVED, never a header field: a fact a reader computes
-	// is a fact two writers cannot disagree about, and it is 64 for every unit
-	// this language can declare.
 	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1)
-
-	// THE TWO PART LENGTHS against the length the caller passed. The whole file
-	// is dataOffset + data + attribution, and a size that is not exactly that
-	// refuses: a truncated file and a file with trailing bytes are the same
-	// refusal. Each term is bounded before it is added, so nothing here can wrap
-	// past the top of the type and land back inside the buffer.
 	dataLength := binary.NativeEndian.Uint64(header[24:])
 	attribution := binary.NativeEndian.Uint64(header[32:])
-	if dataLength > bytes || attribution > bytes-dataLength {
-		return false
+	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 64 {
+		return TableRefuseTruncated
 	}
-	if dataOffset > bytes-dataLength-attribution {
-		return false
-	}
-	if dataOffset+dataLength+attribution != bytes {
-		return false
-	}
-
-	// THE DATA PART MUST HOLD THE ROOT. The part lengths frame the FILE; they do
-	// not say the region is at least sizeof(root). Without this a forged short
-	// data part describes a root partly outside the file, and a match-and-point
-	// reader would hand back storage the caller never gave it — the one way this
-	// design could read past the length it was passed.
-	if dataLength < 64 {
-		return false
-	}
-
-	// THE ALIGNMENT OF THE BASE. The header pads the data part to the region's
-	// alignment, so a base an allocator or mmap gave you is already aligned; one
-	// that is not is a caller's buffer this form cannot be read out of. The
-	// alignment divides 64, so the derived data offset carries the property from
-	// the file's base to the region's.
 	if uint64(uintptr(base))%alignment != 0 {
-		return false
+		return TableRefuseUnalignedBase
 	}
-
 	cook.Region = unsafe.Add(base, uintptr(dataOffset))
 	cook.RegionLength = int64(dataLength)
-	return true
+	return nil
 }
 
 // TableEntityAt dereferences a reference, and it is the same call in a locked region
@@ -617,124 +548,55 @@ func (c TableStatCook) RootAlign() int64       { return 4 }
 // copy: a cooked graph is walked by adding deltas to slot addresses.
 func (c TableStatCook) Root() *TableStatRow { return (*TableStatRow)(c.Region) }
 
-// TableStatOpen checks the header and POINTS, and this is the WHOLE check
-// (docs/SPEC-TABLES.md §7): the magic read in the machine's own order, the byte
-// order it establishes, the build version, every RESERVED word zero, the region
-// ALIGNMENT the header names, the two part lengths against the length the
-// caller passed — a truncated file refuses — the ROOT's own storage inside the
-// data part, and the alignment of the base. Nothing per node, ever: that is
-// what makes this O(1) in the file's size.
-//
-// On a match the bytes ARE what this build wrote, in this build's layout and
-// this build's byte order, so there is nothing to validate and nothing to fix
-// up. On any failure it returns false and points at nothing, and the caller
-// falls back to a wire load — the path that carries every version.
-//
-// EVERY NUMBER BELOW COMES OUT OF THE FILE, so all of the arithmetic is
-// UNSIGNED and each term is BOUNDED BEFORE IT IS ADDED. A signed length would
-// put one signed value into that arithmetic and one negative case into every
-// comparison; a caller holding a length from a stat casts once, at the call
-// site, where the sign is still its own business.
+// TableStatOpen is the bool convenience for the typed Open error on the handle.
 func TableStatOpen(cook *TableStatCook, base unsafe.Pointer, length int64) bool {
+	return cook.Open(base, length) == nil
+}
+
+// Open checks the header in SPEC §7 order, bytewise until base alignment is
+// established. A successful match points at the region and allocates nothing.
+func (cook *TableStatCook) Open(base unsafe.Pointer, length int64) error {
 	*cook = TableStatCook{}
-	if base == nil || length < 64 {
-		return false
+	if base == nil {
+		return TableRefuseUnalignedBase
+	}
+	if length < 64 {
+		return TableRefuseTruncated
+	}
+	header := unsafe.Slice((*byte)(base), 64)
+	magic := binary.NativeEndian.Uint64(header)
+	if magic != TableCookMagic {
+		if magic == 0x5343484d434f4f4b {
+			return TableRefuseForeignOrder
+		}
+		return TableRefuseNotACook
+	}
+	if binary.NativeEndian.Uint64(header[16:]) != TableCookByteOrder {
+		return TableRefuseNotACook
+	}
+	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
+		return TableRefuseWrongBuildVersion
+	}
+	if binary.NativeEndian.Uint64(header[48:]) != 0 || binary.NativeEndian.Uint64(header[56:]) != 0 {
+		return TableRefuseReservedNotZero
+	}
+	alignment := binary.NativeEndian.Uint64(header[40:])
+	if alignment < 8 || alignment > 64 || alignment&(alignment-1) != 0 || alignment%4 != 0 {
+		return TableRefuseBadAlignment
 	}
 	bytes := uint64(length)
-
-	// THE MAGIC, read before anything else: it is what establishes the byte
-	// order every other header word is written in. A cook of the other order
-	// reads back this constant byte-reversed and refuses HERE, rather than
-	// reaching a fix-up pass this design does not have.
-	//
-	// The header is read through encoding/binary's NATIVE order — the memcpy
-	// the C++ side reads it with — and not through a typed load, because the
-	// BASE's own alignment is not checked until further down: a typed load
-	// before that check is an unaligned load on a target that does not allow
-	// one, and the caller's buffer is the thing under test.
-	header := unsafe.Slice((*byte)(base), 64)
-	if binary.NativeEndian.Uint64(header) != TableCookMagic {
-		return false
-	}
-	// and the ORDER WORD does the other job: it RECORDS which order wrote the
-	// file, so a refusal names the order rather than inferring it.
-	if binary.NativeEndian.Uint64(header[16:]) != TableCookByteOrder {
-		return false
-	}
-	// THE BUILD VERSION: under the match-and-point rule a matching id means Open
-	// checks nothing further, so it is the sole guard between this runtime and a
-	// foreign region (§20).
-	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
-		return false
-	}
-	// THE RESERVED WORDS: a non-zero one means a writer used a form this build
-	// does not understand, and Open refuses rather than ignoring it.
-	if binary.NativeEndian.Uint64(header[48:]) != 0 {
-		return false
-	}
-	if binary.NativeEndian.Uint64(header[56:]) != 0 {
-		return false
-	}
-
-	// THE ALIGNMENT WORD is the one field the check COMPUTES WITH rather than
-	// only compares against — the data part begins at align_up(64, alignment)
-	// and the base is measured against it — so a word that is not an alignment
-	// rounds nothing and aligns nothing. A zero there is a division by zero
-	// inside the check, which is the defect the check prevents.
-	alignment := binary.NativeEndian.Uint64(header[40:])
-	if alignment < 8 || alignment > 64 {
-		return false
-	}
-	if alignment&(alignment-1) != 0 {
-		return false // a power of two
-	}
-	if alignment%4 != 0 {
-		return false // and a multiple of the ROOT's own alignof
-	}
-
-	// THE DATA OFFSET IS DERIVED, never a header field: a fact a reader computes
-	// is a fact two writers cannot disagree about, and it is 64 for every unit
-	// this language can declare.
 	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1)
-
-	// THE TWO PART LENGTHS against the length the caller passed. The whole file
-	// is dataOffset + data + attribution, and a size that is not exactly that
-	// refuses: a truncated file and a file with trailing bytes are the same
-	// refusal. Each term is bounded before it is added, so nothing here can wrap
-	// past the top of the type and land back inside the buffer.
 	dataLength := binary.NativeEndian.Uint64(header[24:])
 	attribution := binary.NativeEndian.Uint64(header[32:])
-	if dataLength > bytes || attribution > bytes-dataLength {
-		return false
+	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 8 {
+		return TableRefuseTruncated
 	}
-	if dataOffset > bytes-dataLength-attribution {
-		return false
-	}
-	if dataOffset+dataLength+attribution != bytes {
-		return false
-	}
-
-	// THE DATA PART MUST HOLD THE ROOT. The part lengths frame the FILE; they do
-	// not say the region is at least sizeof(root). Without this a forged short
-	// data part describes a root partly outside the file, and a match-and-point
-	// reader would hand back storage the caller never gave it — the one way this
-	// design could read past the length it was passed.
-	if dataLength < 8 {
-		return false
-	}
-
-	// THE ALIGNMENT OF THE BASE. The header pads the data part to the region's
-	// alignment, so a base an allocator or mmap gave you is already aligned; one
-	// that is not is a caller's buffer this form cannot be read out of. The
-	// alignment divides 64, so the derived data offset carries the property from
-	// the file's base to the region's.
 	if uint64(uintptr(base))%alignment != 0 {
-		return false
+		return TableRefuseUnalignedBase
 	}
-
 	cook.Region = unsafe.Add(base, uintptr(dataOffset))
 	cook.RegionLength = int64(dataLength)
-	return true
+	return nil
 }
 
 // TableStatAt dereferences a reference, and it is the same call in a locked region
@@ -786,124 +648,55 @@ func (c TableMixedCook) RootAlign() int64       { return 8 }
 // copy: a cooked graph is walked by adding deltas to slot addresses.
 func (c TableMixedCook) Root() *TableMixedRow { return (*TableMixedRow)(c.Region) }
 
-// TableMixedOpen checks the header and POINTS, and this is the WHOLE check
-// (docs/SPEC-TABLES.md §7): the magic read in the machine's own order, the byte
-// order it establishes, the build version, every RESERVED word zero, the region
-// ALIGNMENT the header names, the two part lengths against the length the
-// caller passed — a truncated file refuses — the ROOT's own storage inside the
-// data part, and the alignment of the base. Nothing per node, ever: that is
-// what makes this O(1) in the file's size.
-//
-// On a match the bytes ARE what this build wrote, in this build's layout and
-// this build's byte order, so there is nothing to validate and nothing to fix
-// up. On any failure it returns false and points at nothing, and the caller
-// falls back to a wire load — the path that carries every version.
-//
-// EVERY NUMBER BELOW COMES OUT OF THE FILE, so all of the arithmetic is
-// UNSIGNED and each term is BOUNDED BEFORE IT IS ADDED. A signed length would
-// put one signed value into that arithmetic and one negative case into every
-// comparison; a caller holding a length from a stat casts once, at the call
-// site, where the sign is still its own business.
+// TableMixedOpen is the bool convenience for the typed Open error on the handle.
 func TableMixedOpen(cook *TableMixedCook, base unsafe.Pointer, length int64) bool {
+	return cook.Open(base, length) == nil
+}
+
+// Open checks the header in SPEC §7 order, bytewise until base alignment is
+// established. A successful match points at the region and allocates nothing.
+func (cook *TableMixedCook) Open(base unsafe.Pointer, length int64) error {
 	*cook = TableMixedCook{}
-	if base == nil || length < 64 {
-		return false
+	if base == nil {
+		return TableRefuseUnalignedBase
+	}
+	if length < 64 {
+		return TableRefuseTruncated
+	}
+	header := unsafe.Slice((*byte)(base), 64)
+	magic := binary.NativeEndian.Uint64(header)
+	if magic != TableCookMagic {
+		if magic == 0x5343484d434f4f4b {
+			return TableRefuseForeignOrder
+		}
+		return TableRefuseNotACook
+	}
+	if binary.NativeEndian.Uint64(header[16:]) != TableCookByteOrder {
+		return TableRefuseNotACook
+	}
+	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
+		return TableRefuseWrongBuildVersion
+	}
+	if binary.NativeEndian.Uint64(header[48:]) != 0 || binary.NativeEndian.Uint64(header[56:]) != 0 {
+		return TableRefuseReservedNotZero
+	}
+	alignment := binary.NativeEndian.Uint64(header[40:])
+	if alignment < 8 || alignment > 64 || alignment&(alignment-1) != 0 || alignment%8 != 0 {
+		return TableRefuseBadAlignment
 	}
 	bytes := uint64(length)
-
-	// THE MAGIC, read before anything else: it is what establishes the byte
-	// order every other header word is written in. A cook of the other order
-	// reads back this constant byte-reversed and refuses HERE, rather than
-	// reaching a fix-up pass this design does not have.
-	//
-	// The header is read through encoding/binary's NATIVE order — the memcpy
-	// the C++ side reads it with — and not through a typed load, because the
-	// BASE's own alignment is not checked until further down: a typed load
-	// before that check is an unaligned load on a target that does not allow
-	// one, and the caller's buffer is the thing under test.
-	header := unsafe.Slice((*byte)(base), 64)
-	if binary.NativeEndian.Uint64(header) != TableCookMagic {
-		return false
-	}
-	// and the ORDER WORD does the other job: it RECORDS which order wrote the
-	// file, so a refusal names the order rather than inferring it.
-	if binary.NativeEndian.Uint64(header[16:]) != TableCookByteOrder {
-		return false
-	}
-	// THE BUILD VERSION: under the match-and-point rule a matching id means Open
-	// checks nothing further, so it is the sole guard between this runtime and a
-	// foreign region (§20).
-	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
-		return false
-	}
-	// THE RESERVED WORDS: a non-zero one means a writer used a form this build
-	// does not understand, and Open refuses rather than ignoring it.
-	if binary.NativeEndian.Uint64(header[48:]) != 0 {
-		return false
-	}
-	if binary.NativeEndian.Uint64(header[56:]) != 0 {
-		return false
-	}
-
-	// THE ALIGNMENT WORD is the one field the check COMPUTES WITH rather than
-	// only compares against — the data part begins at align_up(64, alignment)
-	// and the base is measured against it — so a word that is not an alignment
-	// rounds nothing and aligns nothing. A zero there is a division by zero
-	// inside the check, which is the defect the check prevents.
-	alignment := binary.NativeEndian.Uint64(header[40:])
-	if alignment < 8 || alignment > 64 {
-		return false
-	}
-	if alignment&(alignment-1) != 0 {
-		return false // a power of two
-	}
-	if alignment%8 != 0 {
-		return false // and a multiple of the ROOT's own alignof
-	}
-
-	// THE DATA OFFSET IS DERIVED, never a header field: a fact a reader computes
-	// is a fact two writers cannot disagree about, and it is 64 for every unit
-	// this language can declare.
 	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1)
-
-	// THE TWO PART LENGTHS against the length the caller passed. The whole file
-	// is dataOffset + data + attribution, and a size that is not exactly that
-	// refuses: a truncated file and a file with trailing bytes are the same
-	// refusal. Each term is bounded before it is added, so nothing here can wrap
-	// past the top of the type and land back inside the buffer.
 	dataLength := binary.NativeEndian.Uint64(header[24:])
 	attribution := binary.NativeEndian.Uint64(header[32:])
-	if dataLength > bytes || attribution > bytes-dataLength {
-		return false
+	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 1352 {
+		return TableRefuseTruncated
 	}
-	if dataOffset > bytes-dataLength-attribution {
-		return false
-	}
-	if dataOffset+dataLength+attribution != bytes {
-		return false
-	}
-
-	// THE DATA PART MUST HOLD THE ROOT. The part lengths frame the FILE; they do
-	// not say the region is at least sizeof(root). Without this a forged short
-	// data part describes a root partly outside the file, and a match-and-point
-	// reader would hand back storage the caller never gave it — the one way this
-	// design could read past the length it was passed.
-	if dataLength < 1352 {
-		return false
-	}
-
-	// THE ALIGNMENT OF THE BASE. The header pads the data part to the region's
-	// alignment, so a base an allocator or mmap gave you is already aligned; one
-	// that is not is a caller's buffer this form cannot be read out of. The
-	// alignment divides 64, so the derived data offset carries the property from
-	// the file's base to the region's.
 	if uint64(uintptr(base))%alignment != 0 {
-		return false
+		return TableRefuseUnalignedBase
 	}
-
 	cook.Region = unsafe.Add(base, uintptr(dataOffset))
 	cook.RegionLength = int64(dataLength)
-	return true
+	return nil
 }
 
 // TableMixedAt dereferences a reference, and it is the same call in a locked region

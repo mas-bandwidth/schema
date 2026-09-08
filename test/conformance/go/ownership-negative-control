@@ -6,6 +6,7 @@ out=build/go-ownership-control-$mode
 mkdir -p "$out"
 test=TestAllocatorOwnershipAndStandaloneWriters
 case "$mode" in
+builder-union) source=read.go; sabotage=go-builder-union-refusal; test=TestBuilderRefusalThroughUnion; expected="union count refusal became damage or continued" ;;
 original-slice) source=allocator.go; sabotage=go-allocator-original-slice; expected='Free must receive original slice' ;;
 pair) source=regions.go; sabotage=go-allocator-pair; expected='standalone pair not used or leaked' ;;
 frame) source=regions.go; sabotage=go-allocator-frame; expected='Go allocations outside caller-backed scratch' ;;
