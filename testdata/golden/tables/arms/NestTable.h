@@ -4539,7 +4539,7 @@ inline int64_t TableMessageRetainElements( TableMessageRetainIn & s, const Table
             uint64_t key = 0;
             if ( !TableMessageRetainRef( s, key ) ) { return -1; }
             TableRetainInId( s.out, key );
-            if ( TableMessageRetainFramed( s, element, depth ) < 0 ) { return -1; }
+            if ( TableMessageRetainFramed( s, element, depth + 1 ) < 0 ) { return -1; }
             continue;
         }
         if ( TableMessageRetainPayload( s, element, depth ) < 0 ) { return -1; }
@@ -4603,11 +4603,11 @@ inline int64_t TableMessageRetainPayload( TableMessageRetainIn & s, const TableM
             if ( !TableMessageArmEntry( *s.vocabulary, ref, arm ) || TableRetainReservedId( arm.id ) ) { return -1; }
             TableRetainInId( s.out, arm.id );
             TableRetainInRaw( s.out, &arm.kind, 1 );
-            if ( TableMessageRetainFramed( s, arm, depth ) < 0 ) { return -1; }
+            if ( TableMessageRetainFramed( s, arm, depth + 1 ) < 0 ) { return -1; }
             break;
         }
         case 13: case 14: case 16:
-            if ( TableMessageRetainFramed( s, entry, depth ) < 0 ) { return -1; }
+            if ( TableMessageRetainFramed( s, entry, depth + 1 ) < 0 ) { return -1; }
             break;
         case 12: case 31: case 33:
             if ( !TableMessageRetainOpaque( s, entry, true ) ) { return -1; }
