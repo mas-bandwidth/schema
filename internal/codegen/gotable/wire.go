@@ -291,11 +291,13 @@ func tableOpen(data []byte, report *TableReport) (TableReader, TableOpenVerdict)
 	start := len(data)-8-int(n)*8
 	r.Buffer, r.Ids = data[1:start], data[start:len(data)-8]
 	// Count is attacker-capped by (bytes-9)/8. The open-addressed path runs
-	// only at n<=256 with 512 slots, compares the stored id not the hash, and
-	// caps probes at the slot count. Exhausted probes and n>256 keep the
-	// pairwise walk, which is the same verdict. The mix is C's table_writer_id.
+	// only at 8<=n<=256 with 512 slots, compares the stored id not the hash,
+	// and caps probes at the slot count. n<8 stays pairwise: 21 comparisons
+	// at 7 versus 4.6 KiB of slot zeroing on every open, including a two-entry
+	// trailer. Exhausted probes and n>256 keep the pairwise walk, which is
+	// the same verdict. The mix is C's table_writer_id.
 	if n > 1 {
-		pairwise := n > 256
+		pairwise := n < 8 || n > 256
 		if !pairwise {
 			var seen [512]uint64
 			var used [512]uint8
