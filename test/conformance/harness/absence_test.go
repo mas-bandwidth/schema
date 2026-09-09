@@ -124,19 +124,14 @@ func (c fakeCorpus) committed(t *testing.T, legs map[string]fakeLeg) string {
 // is not the reference.
 func (c fakeCorpus) substituted(t *testing.T, lang string, leg fakeLeg) string {
 	t.Helper()
-	dir := t.TempDir()
+	dir := filepath.Join(t.TempDir(), "registry with spaces")
 	script := filepath.Join(dir, "driver")
 	c.driverScript(t, script, leg)
 	path := filepath.Join(dir, "drivers.txt")
-	cwd, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	command, err := filepath.Rel(cwd, script)
-	if err != nil {
-		t.Fatal(err)
-	}
-	writeFile(t, path, lang+" "+command+"\n")
+	// Registry commands are whitespace-delimited. Keep the fixture's command
+	// legal even when its host path contains spaces; Chdir restores at cleanup.
+	t.Chdir(dir)
+	writeFile(t, path, lang+" ./driver\n")
 	return path
 }
 
@@ -276,6 +271,10 @@ func TestPortAbsenceStaysAllowed(t *testing.T) {
 
 	// A run handed a SUBSTITUTED registry is one leg of a port and not the
 	// matrix, so its first line is not the reference however it goes absent.
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Run("the first leg of a substituted registry", func(t *testing.T) {
 		c := newFakeCorpus(t)
 		out, ok := c.runHarness(t, c.substituted(t, referenceLang, absences))
@@ -284,4 +283,11 @@ func TestPortAbsenceStaysAllowed(t *testing.T) {
 		}
 		mustSay(t, out, []string{footer, "absent"}, []string{"REFERENCE leg", "FAIL"})
 	})
+	after, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after != cwd {
+		t.Fatalf("substituted registry leaked its working directory: got %q, want %q", after, cwd)
+	}
 }
