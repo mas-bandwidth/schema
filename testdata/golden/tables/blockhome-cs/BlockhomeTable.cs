@@ -2584,6 +2584,7 @@ namespace Blockhome
                 }
                 public void Var(ulong v)
                 {
+                    if (v < 128) { Byte((byte)v); return; }
                     while (v >= 128) { Byte((byte)(v | 128)); v >>= 7; }
                     Byte((byte)v);
                 }
@@ -2617,6 +2618,16 @@ namespace Blockhome
                 }
                 public bool Var(out ulong v)
                 {
+                    if ((uint)Offset < (uint)Buffer.Length)
+                    {
+                        byte b0 = Buffer[Offset];
+                        if (b0 < 128)
+                        {
+                            Offset++;
+                            v = b0;
+                            return true;
+                        }
+                    }
                     v = 0;
                     int start = Offset;
                     for (int i = 0; i < 10; i++)
@@ -4625,6 +4636,40 @@ namespace Blockhome
                     if (field.Optional && placed) { field.SetPresent(value, true); }
                 }
             }
+            static bool DistinctVocabulary(ReadOnlySpan<byte> vocabulary)
+            {
+                int count = vocabulary.Length / 8;
+                if (count >= 16 && count <= 256)
+                {
+                    // One KiB, independent of the input's claimed count. Slots store
+                    // ordinal+1, so the identity zero remains an ordinary identity.
+                    // At most 256 entries occupy 512 slots: even deliberately colliding
+                    // identities reach an empty slot after at most 256 occupied probes.
+                    Span<ushort> slots = stackalloc ushort[512];
+                    slots.Clear();
+                    for (int i = 0; i < count; i++)
+                    {
+                        ulong id = Read64(vocabulary, i * 8);
+                        int slot = (int)(unchecked(id * 0x9e3779b97f4a7c15ul) >> 55);
+                        while (slots[slot] != 0)
+                        {
+                            if (id == Read64(vocabulary, (slots[slot] - 1) * 8)) { return false; }
+                            slot = (slot + 1) & 511;
+                        }
+                        slots[slot] = (ushort)(i + 1);
+                    }
+                    return true;
+                }
+                // Tiny vocabularies avoid scratch initialization. Larger foreign
+                // vocabularies keep the existing allocation-free validation path.
+                for (int i = 0; i < vocabulary.Length; i += 8)
+                {
+                    ulong id = Read64(vocabulary, i);
+                    for (int j = 0; j < i; j += 8)
+                    { if (id == Read64(vocabulary, j)) { return false; } }
+                }
+                return true;
+            }
             static Verdict Finish(TableReport report, Verdict verdict) { report.Verdict = verdict; return verdict; }
             public static Verdict Load(object value, TableTypeInfo type, ReadOnlySpan<byte> bytes, TableReport report)
             {
@@ -4643,12 +4688,7 @@ namespace Blockhome
                 if (count > (ulong)(bytes.Length - 9) / 8) { Damage(report); return Finish(report, Verdict.Damaged); }
                 int end = bytes.Length - 8 - (int)count * 8;
                 ReadOnlySpan<byte> vocabulary = bytes.Slice(end, (int)count * 8);
-                for (int i = 0; i < vocabulary.Length; i += 8)
-                {
-                    ulong id = Read64(vocabulary, i);
-                    for (int j = 0; j < i; j += 8)
-                    { if (id == Read64(vocabulary, j)) { Damage(report); return Finish(report, Verdict.Damaged); } }
-                }
+                if (!DistinctVocabulary(vocabulary)) { Damage(report); return Finish(report, Verdict.Damaged); }
                 Reader r = new Reader(bytes.Slice(1, end - 1), vocabulary);
                 if (EndsEarly(r)) { Damage(report); return Finish(report, Verdict.Damaged); }
                 if (type.Variable) { if (LoadMeasure(type, bytes, out _) < 0) { Damage(report); return Finish(report, Verdict.Damaged); } r.Graph = ReadGraph(r, value, type, report); }
