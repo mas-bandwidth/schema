@@ -840,59 +840,6 @@ inline int64_t TableUtf8Clamp( const uint8_t * bytes, uint64_t length, int64_t b
     return cut;
 }
 
-// ONE CODE UNIT off the wire: two bytes LITTLE-ENDIAN, this wire's order for
-// every fixed-width number (docs/SPEC-TABLES.md §3). No unit can exceed
-// 0xFFFF, because two bytes cannot spell one.
-inline uint16_t TableUtf16Unit( const uint8_t * bytes, int64_t index )
-{
-    return uint16_t( uint16_t( bytes[index * 2] ) | ( uint16_t( bytes[index * 2 + 1] ) << 8 ) );
-}
-
-// ILL-FORMED WIDE TEXT IS DAMAGE (docs/SPEC-TABLES.md §3, §4): a kind 33
-// payload carrying an UNPAIRED SURROGATE or a ZERO CODE UNIT among its units,
-// checked AS IT ARRIVES and before the reader's own bound, on the rule kind 12
-// takes for UTF-8. An ODD L is framing damage and the caller rejects it ahead
-// of this, because units is L / 2. SPEC.md §4.12 refuses the same content
-// TERMINALLY on the packet wire; here the field reads its declared default,
-// one malformed counts, and the parent reads on past L.
-inline bool TableUtf16Valid( const uint8_t * bytes, int64_t units )
-{
-    int64_t i = 0;
-    while ( i < units )
-    {
-        const uint16_t unit = TableUtf16Unit( bytes, i );
-        if ( unit == 0 ) { return false; }
-        if ( unit >= 0xD800 && unit <= 0xDBFF )
-        {
-            if ( i + 1 >= units ) { return false; } // a high surrogate with no low half
-            const uint16_t low = TableUtf16Unit( bytes, i + 1 );
-            if ( low < 0xDC00 || low > 0xDFFF ) { return false; }
-            i += 2;
-            continue;
-        }
-        if ( unit >= 0xDC00 && unit <= 0xDFFF ) { return false; } // a low surrogate first
-        i++;
-    }
-    return true;
-}
-
-// A CLAMP CUTS AT A CODE UNIT BOUNDARY AND NEVER SPLITS A PAIR (§3, §16.2):
-// the first bound units of a payload the check above already accepted, and
-// where the last kept unit is a HIGH SURROGATE whose low half did not fit,
-// that unit is dropped with it. So a clamp can never invent an unpaired
-// surrogate, exactly as kind 12's clamp can never invent a broken sequence.
-inline int64_t TableUtf16Clamp( const uint8_t * bytes, int64_t units, int64_t bound )
-{
-    if ( units <= bound ) { return units; }
-    int64_t cut = bound;
-    if ( cut > 0 )
-    {
-        const uint16_t last = TableUtf16Unit( bytes, cut - 1 );
-        if ( last >= 0xD800 && last <= 0xDBFF ) { cut--; }
-    }
-    return cut;
-}
-
 // The RESERVED node-table id, the one id the language holds back
 // (docs/SPEC-TABLES.md §3.1, §5). It rides in every unit, pointered or not,
 // because every body has to know that a NESTED body claiming one is damaged.
@@ -3102,38 +3049,6 @@ inline bool TableNodeMessageSaveThunk( const void * ctx, const TableNumbering & 
 static const uint64_t kTableBytesTypeId = 0x2f2ec0474f1c4fe4ull;  // fnv1a64( "bytes" )
 static const uint64_t kTableStringTypeId = 0x704be0d8faaffc58ull; // fnv1a64( "string" )
 
-template <typename Ctx>
-inline int64_t TableBlobMeasureThunk( const void *, const TableNumbering &, TableIds &, const void * node )
-{
-    return (int64_t) ( (const TableBlob *) node )->length;
-}
-
-template <typename Ctx>
-inline bool TableBlobSaveThunk( const void *, const TableNumbering &, TableWriter & w, TableIds &, const void * node )
-{
-    const TableBlob * blob = (const TableBlob *) node;
-    w.raw( (const void *) ( blob + 1 ), (int64_t) blob->length );
-    return true;
-}
-
-// and the same two on the MESSAGE FORM (§3.3): a blob record is its length at
-// thirty-two raw bits, an ALIGN, then the bytes verbatim
-template <typename Ctx>
-inline int64_t TableBlobMessageMeasureThunk( const void *, const TableNumbering &, int64_t, int64_t at, const void * node )
-{
-    const int64_t length = (int64_t) ( (const TableBlob *) node )->length;
-    return 32 + TableAlignBits( at + 32 ) + length * 8;
-}
-
-template <typename Ctx>
-inline bool TableBlobMessageSaveThunk( const void *, const TableNumbering &, int64_t, TableBitWriter & w, const void * node )
-{
-    const TableBlob * blob = (const TableBlob *) node;
-    w.put( (uint64_t) blob->length, 32 );
-    w.align();
-    w.putbytes( (const uint8_t *) ( blob + 1 ), (int64_t) blob->length );
-    return !w.overflow;
-}
 // TableNodeTableMeasure and TableNodeTableSave are the framing, and they are
 // ONE fill rule written twice — measure derives it from the graph and save
 // derives the same one, which is what makes measure == save hold across a

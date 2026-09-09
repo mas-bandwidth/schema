@@ -524,7 +524,7 @@ struct TableKeyed
 // same way would be a redefinition.
 func tableInlineMacro(pkg string) string { return strings.ToUpper(pkg) + "_TABLE_INLINE" }
 
-func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool, idCap int, u *ir.Unit) string {
+func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool, anyWide bool, idCap int, u *ir.Unit) string {
 	// THE ID TABLE'S CAPACITY IS A COMPILE-TIME FACT of the unit (§3): the
 	// distinct names its table closure can spell, so a save allocates nothing.
 	// The bucket count is the next power of two at twice the capacity, so the
@@ -550,6 +550,17 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool
 	keyedStorage := ""
 	if anyKeyed {
 		keyedStorage = tableKeyedStorage
+	}
+	// KIND 33's runtime, and only where a kind 33 payload can arrive
+	// (docs/SPEC-TABLES.md §3, §2.2): the three wide-text helpers have exactly
+	// two call sites in this emitter — a wstring field and a wstring arm — and
+	// both are behind ir.TWString, so a unit whose census names no wide-text
+	// field cannot reach one of them. C++ is the only target handed such a
+	// unit at all; the other eight refuse it (compiler/widetext.go), which is
+	// why this is the only emitter that ever carried the block.
+	wideText := ""
+	if anyWide {
+		wideText = tableWideTextRuntime
 	}
 	guard := strings.ToUpper(pkg) + "_SCHEMA_TABLE_PRIMITIVES"
 	forceInline := tableInlineMacro(pkg)
@@ -1209,7 +1220,7 @@ struct TableReader
     }
 };
 
-` + tableWidenRuntime + tableTextRuntime + `
+` + tableWidenRuntime + tableTextRuntime + wideText + `
 // The RESERVED node-table id, the one id the language holds back
 // (docs/SPEC-TABLES.md §3.1, §5). It rides in every unit, pointered or not,
 // because every body has to know that a NESTED body claiming one is damaged.
@@ -1386,6 +1397,13 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	anyMap := unitHasMap(u, closure)
 	anyList := unitHasList(u, closure)
 	anyExtent := anyMap || anyList
+	// WIDE TEXT is a unit-level fact, not a per-file one, because the
+	// primitives block sits behind ONE package-scoped guard: whichever
+	// <Base>Table.h a translation unit includes first defines the runtime for
+	// every other file of the package, so the kind 33 helpers have to be in
+	// or out for the whole unit. ir.WideTextFields is the census every other
+	// target refuses on (compiler/widetext.go), taken over both wires.
+	anyWide := len(ir.WideTextFields(u)) > 0
 	blocks := ir.Blocks(u)
 
 	// The BLOCK FORM (docs/SPEC-TABLES.md §19) is emitted ON THE SIDE, into
@@ -1578,7 +1596,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			fmt.Fprintf(&h, "#include \"%s\"\n", n)
 		}
 		h.WriteString("\n")
-		h.WriteString(tablePrimitives(u.Package, anyVariable, anyKeyed, anyExtent, ir.TableWireIdCapacity(u), u))
+		h.WriteString(tablePrimitives(u.Package, anyVariable, anyKeyed, anyExtent, anyWide, ir.TableWireIdCapacity(u), u))
 		if anyVariable {
 			h.WriteString("\n")
 			h.WriteString(tableArenaRuntime(u, anyExtent))
