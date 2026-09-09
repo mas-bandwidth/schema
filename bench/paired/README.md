@@ -43,6 +43,12 @@ round trips do not need that reset. Each row must exceed 200 ms; a spread above
 15% refuses publication of the complete pass. ARM and x64 are separate sittings
 and separate results pages.
 
+Table round trips recorded before `16f0603a` included an additional caller reset
+and must not be compared as the same timed operation. The reused-target gate
+checks the pinned corpus; its ability to detect a missing reset depends on which
+fields that corpus elides. Broader default/refusal correctness belongs to the
+language table suites, not to this performance corpus alone.
+
 The comparison deliberately retains each packet runner's fastest release mode.
 The CSV semantics match `bench/tools/relative.go`: `removed` means debug asserts
 and bounds/range checks compile out; `always` means bounds, range and sticky-error
