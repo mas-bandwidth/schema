@@ -100,7 +100,7 @@ func assembleLib(u *ir.Unit, modules map[string]string, extra []string) []byte {
 		has := f.Base == home
 		for _, d := range f.Decls {
 			switch d.(type) {
-			case *ir.Const, *ir.Enum, *ir.Flags, *ir.Struct:
+			case *ir.Const, *ir.Enum, *ir.Flags, *ir.Struct, *ir.Union:
 				has = true
 			}
 		}

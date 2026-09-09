@@ -135,3 +135,45 @@ func TestRenderArgOverflowGate(t *testing.T) {
 		t.Errorf("foldArg64(nil, -30000) = %q, want %q", got, "-30000_i64")
 	}
 }
+
+// TestAssembleLibExportsUnionModule verifies that a module declaring ONLY a
+// union is re-exported via `pub use <mod>::*;` rather than marked as documentation-only.
+func TestAssembleLibExportsUnionModule(t *testing.T) {
+	const srcHome = `package unionexport
+type Marker {
+    x int32
+}
+`
+	const srcUnion = `package unionexport
+union Event {
+    first
+    second
+}
+`
+	f1, perrs := parser.Parse("Home.schema", []byte(srcHome))
+	if len(perrs) > 0 {
+		t.Fatalf("parse Home: %v", perrs[0])
+	}
+	f2, perrs := parser.Parse("Types.schema", []byte(srcUnion))
+	if len(perrs) > 0 {
+		t.Fatalf("parse Types: %v", perrs[0])
+	}
+	u, cerrs := check.Unit([]check.SourceFile{
+		{Path: "Home.schema", Name: "Home.schema", Base: "Home", Bytes: []byte(srcHome), AST: f1},
+		{Path: "Types.schema", Name: "Types.schema", Base: "Types", Bytes: []byte(srcUnion), AST: f2},
+	})
+	if len(cerrs) > 0 {
+		t.Fatalf("check: %v", cerrs[0])
+	}
+
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	lib := string(files["lib.rs"])
+	want := "mod types;\npub use types::*;\n"
+	if !strings.Contains(lib, want) {
+		t.Fatalf("lib.rs does not export union module types:\n%s", lib)
+	}
+}
