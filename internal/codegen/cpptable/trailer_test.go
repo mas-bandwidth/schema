@@ -29,7 +29,7 @@ func TestTableIdsWriteBulkProperties(t *testing.T) {
 	}
 
 	u := &ir.Unit{Package: "bench"}
-	src := tablePrimitives("bench", false, false, false, false, 64, u)
+	src := tablePrimitives("bench", false, false, false, false, widenCensus{}, 64, u)
 	for _, snip := range requiredSnippets {
 		if !strings.Contains(src, snip) {
 			t.Errorf("tablePrimitives missing required trailer snippet: %q", snip)

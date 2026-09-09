@@ -524,7 +524,7 @@ struct TableKeyed
 // same way would be a redefinition.
 func tableInlineMacro(pkg string) string { return strings.ToUpper(pkg) + "_TABLE_INLINE" }
 
-func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool, anyWide bool, idCap int, u *ir.Unit) string {
+func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool, anyWide bool, widen widenCensus, idCap int, u *ir.Unit) string {
 	// THE ID TABLE'S CAPACITY IS A COMPILE-TIME FACT of the unit (§3): the
 	// distinct names its table closure can spell, so a save allocates nothing.
 	// The bucket count is the next power of two at twice the capacity, so the
@@ -562,6 +562,13 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool
 	if anyWide {
 		wideText = tableWideTextRuntime
 	}
+	// THE WIDENING RUNTIME, minus the helpers no kind in this unit's closure
+	// declares (docs/SPEC-TABLES.md §2.2, §4): the ladder predicate always,
+	// and TableKindWidth, TableReadSignedAt, TableReadUnsignedAt and
+	// TableWidenF32 each where the census could not rule its call sites out.
+	// The census is a SAFE SUPERSET of the emitter's own shape tests — see
+	// unitWidenCensus.
+	widenRuntime := widen.runtime()
 	guard := strings.ToUpper(pkg) + "_SCHEMA_TABLE_PRIMITIVES"
 	forceInline := tableInlineMacro(pkg)
 	messageForm := tableMessageForm(u, anyVariable)
@@ -1220,7 +1227,7 @@ struct TableReader
     }
 };
 
-` + tableWidenRuntime + tableTextRuntime + wideText + `
+` + widenRuntime + tableTextRuntime + wideText + `
 // The RESERVED node-table id, the one id the language holds back
 // (docs/SPEC-TABLES.md §3.1, §5). It rides in every unit, pointered or not,
 // because every body has to know that a NESTED body claiming one is damaged.
@@ -1404,6 +1411,11 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// or out for the whole unit. ir.WideTextFields is the census every other
 	// target refuses on (compiler/widetext.go), taken over both wires.
 	anyWide := len(ir.WideTextFields(u)) > 0
+	// THE WIDENING HELPERS take their census the same way and for the same
+	// reason (docs/SPEC-TABLES.md §4): a unit carries the runtime for the
+	// kinds it DECLARES, and the list runtime's own extent term is one more
+	// call site for the width.
+	widen := unitWidenCensus(u, closure, anyList)
 	blocks := ir.Blocks(u)
 
 	// The BLOCK FORM (docs/SPEC-TABLES.md §19) is emitted ON THE SIDE, into
@@ -1596,7 +1608,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			fmt.Fprintf(&h, "#include \"%s\"\n", n)
 		}
 		h.WriteString("\n")
-		h.WriteString(tablePrimitives(u.Package, anyVariable, anyKeyed, anyExtent, anyWide, ir.TableWireIdCapacity(u), u))
+		h.WriteString(tablePrimitives(u.Package, anyVariable, anyKeyed, anyExtent, anyWide, widen, ir.TableWireIdCapacity(u), u))
 		if anyVariable {
 			h.WriteString("\n")
 			h.WriteString(tableArenaRuntime(u, anyExtent))

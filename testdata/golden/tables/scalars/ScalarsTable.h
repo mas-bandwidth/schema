@@ -693,22 +693,6 @@ inline bool TableKindWidens( uint8_t kind, uint8_t declared )
     return false;
 }
 
-// a fixed-width kind's payload width, for the one place the width is a
-// runtime fact: an arm whose kind byte the reader widens, whose L must be the
-// wire kind's own width (§3)
-inline int64_t TableKindWidth( uint8_t kind )
-{
-    switch ( kind )
-    {
-        case 1: case 2: case 6: case 20: case 25: return 1;
-        case 3: case 7: case 21: case 26: return 2;
-        case 4: case 8: case 10: case 22: case 27: return 4;
-        case 5: case 9: case 11: case 23: case 28: return 8;
-        case 18: case 19: case 24: case 29: return 16;
-    }
-    return 0;
-}
-
 // the payload of a kind on the SIGNED ladder (2 to 5), sign-extended to
 // sixty-four bits; false = the body cannot cover it, which is framing damage
 inline bool TableReadSignedAt( TableReader & r, uint8_t kind, int64_t & out )
@@ -732,20 +716,6 @@ inline bool TableReadUnsignedAt( TableReader & r, uint8_t kind, uint64_t & out )
         case 8: if ( !r.has( 4 ) ) { return false; } out = r.get32(); return true;
         default: if ( !r.has( 8 ) ) { return false; } out = r.get64(); return true;
     }
-}
-
-// f32 into f64, exact: a NaN's payload is data and rides on the bits, since
-// the hardware conversion would set the quiet bit (§4)
-inline double TableWidenF32( uint32_t bits )
-{
-    if ( ( bits & 0x7F800000u ) == 0x7F800000u && ( bits & 0x007FFFFFu ) != 0 )
-    {
-        const uint64_t sign = (uint64_t) ( bits >> 31 ) << 63;
-        const uint64_t payload = (uint64_t) ( bits & 0x007FFFFFu ) << 29;
-        const uint64_t nan_bits = sign | 0x7FF0000000000000ull | payload;
-        double d; memcpy( &d, &nan_bits, 8 ); return d;
-    }
-    float f; memcpy( &f, &bits, 4 ); return (double) f;
 }
 
 // ILL-FORMED TEXT IS DAMAGE (docs/SPEC-TABLES.md §3, §4): a kind 12 payload is

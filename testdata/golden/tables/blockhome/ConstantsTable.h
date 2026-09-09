@@ -674,35 +674,6 @@ inline bool TableKindWidens( uint8_t kind, uint8_t declared )
     return false;
 }
 
-// a fixed-width kind's payload width, for the one place the width is a
-// runtime fact: an arm whose kind byte the reader widens, whose L must be the
-// wire kind's own width (§3)
-inline int64_t TableKindWidth( uint8_t kind )
-{
-    switch ( kind )
-    {
-        case 1: case 2: case 6: case 20: case 25: return 1;
-        case 3: case 7: case 21: case 26: return 2;
-        case 4: case 8: case 10: case 22: case 27: return 4;
-        case 5: case 9: case 11: case 23: case 28: return 8;
-        case 18: case 19: case 24: case 29: return 16;
-    }
-    return 0;
-}
-
-// the payload of a kind on the SIGNED ladder (2 to 5), sign-extended to
-// sixty-four bits; false = the body cannot cover it, which is framing damage
-inline bool TableReadSignedAt( TableReader & r, uint8_t kind, int64_t & out )
-{
-    switch ( kind )
-    {
-        case 2: if ( !r.has( 1 ) ) { return false; } out = (int8_t) r.get8(); return true;
-        case 3: if ( !r.has( 2 ) ) { return false; } out = (int16_t) r.get16(); return true;
-        case 4: if ( !r.has( 4 ) ) { return false; } out = (int32_t) r.get32(); return true;
-        default: if ( !r.has( 8 ) ) { return false; } out = (int64_t) r.get64(); return true;
-    }
-}
-
 // the payload of a kind on the UNSIGNED ladder (6 to 9), zero-extended
 inline bool TableReadUnsignedAt( TableReader & r, uint8_t kind, uint64_t & out )
 {
