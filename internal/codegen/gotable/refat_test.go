@@ -26,9 +26,10 @@ func TestRefAtShape(t *testing.T) {
 	}
 	for _, want := range []string{
 		"[tableIdCapacity]uint32",
+		"ordinalOf [tableIdCapacity]int32",
 		"func (ids *TableIds) RefAt(ordinal int, id uint64)",
 		"func (w *TableWriter) IdAt(ordinal int, id uint64)",
-		"ids.slot[i] = 0",
+		"ids.slot[o] = 0",
 		"w.IdAt(",
 	} {
 		if !strings.Contains(body, want) {
