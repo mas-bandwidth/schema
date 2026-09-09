@@ -633,10 +633,20 @@ func tableOpen(data []byte, report *TableReport) (TableReader, TableOpenVerdict)
 			}
 		}
 	}
-	if r.EndsEarly() {
+	return r, TableOpenOk
+}
+
+// tableOpenFramed is tableOpen plus the framing pre-walk. Variable-class Load,
+// LoadMeasure, LoadBuilder and the announcement still answer an early end this
+// way; their real walk is a node scan or the announcement, a different question.
+// schema #773 left those sites with the pre-walk. The fixed root Load does not
+// use this: it answers the early end from its own cursor after LoadBody.
+func tableOpenFramed(data []byte, report *TableReport) (TableReader, TableOpenVerdict) {
+	r, verdict := tableOpen(data, report)
+	if verdict == TableOpenOk && r.EndsEarly() {
 		return r, TableOpenDamaged
 	}
-	return r, TableOpenOk
+	return r, verdict
 }
 
 func tableKindWidens(from, to uint8) bool {
@@ -1000,7 +1010,7 @@ func AnnounceRead(v *TableVocabulary, data []byte, report *TableReport) bool {
 	return ok
 }
 func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) bool {
-	r, verdict := tableOpen(data, report)
+	r, verdict := tableOpenFramed(data, report)
 	if verdict != TableOpenOk {
 		if verdict == TableOpenRefused {
 			reason := "newer_form"
@@ -2323,8 +2333,38 @@ func MixedEntityLoad(value *MixedEntity, data []byte, report *TableReport) bool 
 		}
 		return false
 	}
+	// The root read answers its own early end after the walk, not before it.
+	// A body that returned at its zero reference left the cursor on the byte
+	// after that reference. Every field leaves the cursor where skip would, so
+	// r.Offset != len(r.Buffer) is the old EndsEarly on the true path.
+	// Nothing is decoded on the damaged path: the value goes back to defaults
+	// and the report goes back to what the caller handed in, so an early end
+	// counts no unknown, no kind mismatch and no clamp — as when the framing
+	// walk refused before the reader had seen one byte.
+	before := *report
 	if !MixedEntityLoadBody(&r, value) {
+		// The reading walk stops on rules the framing walk has no opinion about
+		// — a reserved id in a file body is the one that matters — so a body
+		// that stopped is still asked the framing question from the start of
+		// the body, and a body whose framing ends early is damage whatever else
+		// was wrong with it.
+		probe := r
+		probe.Offset = 0
+		if probe.EndsEarly() {
+			MixedEntityReset(value)
+			*report = before
+			report.Malformed = true
+			report.Verdict = TableOpenDamaged
+			return false
+		}
 		report.Verdict = TableOpenBodyStopped
+		return false
+	}
+	if r.Offset != int64(len(r.Buffer)) {
+		MixedEntityReset(value)
+		*report = before
+		report.Malformed = true
+		report.Verdict = TableOpenDamaged
 		return false
 	}
 	return true
@@ -3245,8 +3285,38 @@ func MixedStatLoad(value *MixedStat, data []byte, report *TableReport) bool {
 		}
 		return false
 	}
+	// The root read answers its own early end after the walk, not before it.
+	// A body that returned at its zero reference left the cursor on the byte
+	// after that reference. Every field leaves the cursor where skip would, so
+	// r.Offset != len(r.Buffer) is the old EndsEarly on the true path.
+	// Nothing is decoded on the damaged path: the value goes back to defaults
+	// and the report goes back to what the caller handed in, so an early end
+	// counts no unknown, no kind mismatch and no clamp — as when the framing
+	// walk refused before the reader had seen one byte.
+	before := *report
 	if !MixedStatLoadBody(&r, value) {
+		// The reading walk stops on rules the framing walk has no opinion about
+		// — a reserved id in a file body is the one that matters — so a body
+		// that stopped is still asked the framing question from the start of
+		// the body, and a body whose framing ends early is damage whatever else
+		// was wrong with it.
+		probe := r
+		probe.Offset = 0
+		if probe.EndsEarly() {
+			MixedStatReset(value)
+			*report = before
+			report.Malformed = true
+			report.Verdict = TableOpenDamaged
+			return false
+		}
 		report.Verdict = TableOpenBodyStopped
+		return false
+	}
+	if r.Offset != int64(len(r.Buffer)) {
+		MixedStatReset(value)
+		*report = before
+		report.Malformed = true
+		report.Verdict = TableOpenDamaged
 		return false
 	}
 	return true
@@ -3676,8 +3746,38 @@ func MixedHitEventLoad(value *MixedHitEvent, data []byte, report *TableReport) b
 		}
 		return false
 	}
+	// The root read answers its own early end after the walk, not before it.
+	// A body that returned at its zero reference left the cursor on the byte
+	// after that reference. Every field leaves the cursor where skip would, so
+	// r.Offset != len(r.Buffer) is the old EndsEarly on the true path.
+	// Nothing is decoded on the damaged path: the value goes back to defaults
+	// and the report goes back to what the caller handed in, so an early end
+	// counts no unknown, no kind mismatch and no clamp — as when the framing
+	// walk refused before the reader had seen one byte.
+	before := *report
 	if !MixedHitEventLoadBody(&r, value) {
+		// The reading walk stops on rules the framing walk has no opinion about
+		// — a reserved id in a file body is the one that matters — so a body
+		// that stopped is still asked the framing question from the start of
+		// the body, and a body whose framing ends early is damage whatever else
+		// was wrong with it.
+		probe := r
+		probe.Offset = 0
+		if probe.EndsEarly() {
+			MixedHitEventReset(value)
+			*report = before
+			report.Malformed = true
+			report.Verdict = TableOpenDamaged
+			return false
+		}
 		report.Verdict = TableOpenBodyStopped
+		return false
+	}
+	if r.Offset != int64(len(r.Buffer)) {
+		MixedHitEventReset(value)
+		*report = before
+		report.Malformed = true
+		report.Verdict = TableOpenDamaged
 		return false
 	}
 	return true
@@ -4134,8 +4234,38 @@ func MixedChatEventLoad(value *MixedChatEvent, data []byte, report *TableReport)
 		}
 		return false
 	}
+	// The root read answers its own early end after the walk, not before it.
+	// A body that returned at its zero reference left the cursor on the byte
+	// after that reference. Every field leaves the cursor where skip would, so
+	// r.Offset != len(r.Buffer) is the old EndsEarly on the true path.
+	// Nothing is decoded on the damaged path: the value goes back to defaults
+	// and the report goes back to what the caller handed in, so an early end
+	// counts no unknown, no kind mismatch and no clamp — as when the framing
+	// walk refused before the reader had seen one byte.
+	before := *report
 	if !MixedChatEventLoadBody(&r, value) {
+		// The reading walk stops on rules the framing walk has no opinion about
+		// — a reserved id in a file body is the one that matters — so a body
+		// that stopped is still asked the framing question from the start of
+		// the body, and a body whose framing ends early is damage whatever else
+		// was wrong with it.
+		probe := r
+		probe.Offset = 0
+		if probe.EndsEarly() {
+			MixedChatEventReset(value)
+			*report = before
+			report.Malformed = true
+			report.Verdict = TableOpenDamaged
+			return false
+		}
 		report.Verdict = TableOpenBodyStopped
+		return false
+	}
+	if r.Offset != int64(len(r.Buffer)) {
+		MixedChatEventReset(value)
+		*report = before
+		report.Malformed = true
+		report.Verdict = TableOpenDamaged
 		return false
 	}
 	return true
@@ -4502,8 +4632,38 @@ func MixedPickupEventLoad(value *MixedPickupEvent, data []byte, report *TableRep
 		}
 		return false
 	}
+	// The root read answers its own early end after the walk, not before it.
+	// A body that returned at its zero reference left the cursor on the byte
+	// after that reference. Every field leaves the cursor where skip would, so
+	// r.Offset != len(r.Buffer) is the old EndsEarly on the true path.
+	// Nothing is decoded on the damaged path: the value goes back to defaults
+	// and the report goes back to what the caller handed in, so an early end
+	// counts no unknown, no kind mismatch and no clamp — as when the framing
+	// walk refused before the reader had seen one byte.
+	before := *report
 	if !MixedPickupEventLoadBody(&r, value) {
+		// The reading walk stops on rules the framing walk has no opinion about
+		// — a reserved id in a file body is the one that matters — so a body
+		// that stopped is still asked the framing question from the start of
+		// the body, and a body whose framing ends early is damage whatever else
+		// was wrong with it.
+		probe := r
+		probe.Offset = 0
+		if probe.EndsEarly() {
+			MixedPickupEventReset(value)
+			*report = before
+			report.Malformed = true
+			report.Verdict = TableOpenDamaged
+			return false
+		}
 		report.Verdict = TableOpenBodyStopped
+		return false
+	}
+	if r.Offset != int64(len(r.Buffer)) {
+		MixedPickupEventReset(value)
+		*report = before
+		report.Malformed = true
+		report.Verdict = TableOpenDamaged
 		return false
 	}
 	return true
@@ -6083,8 +6243,38 @@ func BenchMixedLoad(value *BenchMixed, data []byte, report *TableReport) bool {
 		}
 		return false
 	}
+	// The root read answers its own early end after the walk, not before it.
+	// A body that returned at its zero reference left the cursor on the byte
+	// after that reference. Every field leaves the cursor where skip would, so
+	// r.Offset != len(r.Buffer) is the old EndsEarly on the true path.
+	// Nothing is decoded on the damaged path: the value goes back to defaults
+	// and the report goes back to what the caller handed in, so an early end
+	// counts no unknown, no kind mismatch and no clamp — as when the framing
+	// walk refused before the reader had seen one byte.
+	before := *report
 	if !BenchMixedLoadBody(&r, value) {
+		// The reading walk stops on rules the framing walk has no opinion about
+		// — a reserved id in a file body is the one that matters — so a body
+		// that stopped is still asked the framing question from the start of
+		// the body, and a body whose framing ends early is damage whatever else
+		// was wrong with it.
+		probe := r
+		probe.Offset = 0
+		if probe.EndsEarly() {
+			BenchMixedReset(value)
+			*report = before
+			report.Malformed = true
+			report.Verdict = TableOpenDamaged
+			return false
+		}
 		report.Verdict = TableOpenBodyStopped
+		return false
+	}
+	if r.Offset != int64(len(r.Buffer)) {
+		BenchMixedReset(value)
+		*report = before
+		report.Malformed = true
+		report.Verdict = TableOpenDamaged
 		return false
 	}
 	return true
