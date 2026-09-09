@@ -323,8 +323,21 @@ struct TableWriter
                          uint8_t( v >> 32 ), uint8_t( v >> 40 ), uint8_t( v >> 48 ), uint8_t( v >> 56 ) };
         raw( b, 8 );
     }
-    // a 128-bit value as two lanes, the low half first (docs/SPEC-TABLES.md §3)
-    STREAMDEMO_TABLE_INLINE void put128( uint64_t lo, uint64_t hi ) { put64( lo ); put64( hi ); }
+    // A 128-BIT VALUE IS TWO LANES, THE LOW HALF FIRST (docs/SPEC-TABLES.md §3):
+    // THE SAME SIXTEEN BYTES two put64 wrote, assembled once and handed to raw
+    // once. One capacity test rather than two, and NOT ONE FEWER — raw still
+    // asks before it copies, so an undersized buffer still raises the overflow
+    // flag and Save still answers -1. A pair that does not fit now leaves the
+    // buffer alone rather than writing the low lane first; nothing reads those
+    // bytes, because the caller that overflowed answers -1.
+    STREAMDEMO_TABLE_INLINE void put128( uint64_t lo, uint64_t hi )
+    {
+        uint8_t b[16] = { uint8_t( lo ), uint8_t( lo >> 8 ), uint8_t( lo >> 16 ), uint8_t( lo >> 24 ),
+                          uint8_t( lo >> 32 ), uint8_t( lo >> 40 ), uint8_t( lo >> 48 ), uint8_t( lo >> 56 ),
+                          uint8_t( hi ), uint8_t( hi >> 8 ), uint8_t( hi >> 16 ), uint8_t( hi >> 24 ),
+                          uint8_t( hi >> 32 ), uint8_t( hi >> 40 ), uint8_t( hi >> 48 ), uint8_t( hi >> 56 ) };
+        raw( b, 16 );
+    }
     // EVERY LENGTH, COUNT, INDEX AND ID REFERENCE IS ONE CANONICAL UNSIGNED
     // LEB128 (docs/SPEC-TABLES.md §3): seven value bits a byte, the lowest
     // group first, the high bit set on every byte but the last. One value has
@@ -345,6 +358,30 @@ struct TableWriter
         while ( v >= 0x80 ) { b[n++] = uint8_t( v ) | 0x80; v >>= 7; }
         b[n++] = uint8_t( v );
         raw( b, n );
+    }
+    // A FIELD HEADER IS A REFERENCE AND THE KIND BYTE BEHIND IT
+    // (docs/SPEC-TABLES.md §3), and nearly every one of them is two bytes: a
+    // reference below 128 is a single LEB128 byte, so the pair assembles in a
+    // two-byte stack buffer and goes to raw once. A reference at 128 or above
+    // still goes through putleb then put8 — the same two calls, the same bytes.
+    // Both arms write what the two-call spelling wrote, byte for byte.
+    //
+    // NOTHING IS HOISTED AND NO TEST IS REMOVED: raw still asks before it
+    // copies, so a header that does not fit still raises the overflow flag and
+    // Save still answers -1 — including a capacity that would cut the two-byte
+    // header in half. What differs is only on that failing path: a header that
+    // does not fit now leaves the buffer alone rather than writing the
+    // reference first, and nothing reads those bytes.
+    STREAMDEMO_TABLE_INLINE void header( uint64_t ref, uint8_t kind )
+    {
+        if ( ref < 128 )
+        {
+            uint8_t b[2] = { uint8_t( ref ), kind };
+            raw( b, 2 );
+            return;
+        }
+        putleb( ref );
+        put8( kind );
     }
 };
 
@@ -2988,8 +3025,7 @@ inline bool TableNodeTableSave( const Ctx & ctx, TableWriter & w, TableIds & ids
     const uint64_t ref = ids.ref( kTableNodeTableFieldId );
     const int64_t payload = TableNodeTablePayload( ctx, ids, n );
     if ( payload < 0 ) { return false; }
-    w.putleb( ref );
-    w.put8( 12 ); // kind 12 is the opaque byte payload: a reader that cannot name the id skips by L
+    w.header( ref, 12 ); // kind 12 is the opaque byte payload: a reader that cannot name the id skips by L
     w.putleb( (uint64_t) payload );
     w.putleb( (uint64_t) n.count );
     for ( int64_t k = 0; k < n.count; k++ )
@@ -4262,8 +4298,7 @@ inline bool TableRetainTailSave( TableRetain * retain, TableRetainIds & ids, Tab
         if ( !TableRetainRecordHere( *retain, record, path ) ) { continue; }
         uint64_t ref = 0;
         if ( TableRetainRecordWire( record, ids, ref ) < 0 ) { continue; }
-        w.putleb( ref );
-        w.put8( TableRetainRecordKind( record ) );
+        w.header( ref, TableRetainRecordKind( record ) );
         TableRetainOut s;
         s.in = TableRetainRecordPayload( record );
         s.size = TableRetainRecordPayloadBytes( record );
@@ -4345,8 +4380,7 @@ inline bool TableNodeTableSaveRetain( const Ctx & ctx, TableWriter & w, TableRet
     const uint64_t ref = ids.ref( kTableNodeTableFieldId );
     const int64_t payload = TableNodeTablePayloadRetain( ctx, ids, n, retain, measure );
     if ( payload < 0 ) { return false; }
-    w.putleb( ref );
-    w.put8( 12 ); // kind 12 is the opaque byte payload, exactly as the plain save writes it
+    w.header( ref, 12 ); // kind 12 is the opaque byte payload, exactly as the plain save writes it
     w.putleb( (uint64_t) payload );
     w.putleb( (uint64_t) n.count );
     for ( int64_t k = 0; k < n.count; k++ )
@@ -5356,7 +5390,7 @@ STREAMDEMO_TABLE_INLINE bool HeaderSaveBody( TableWriter & w, TableIds & ids, co
     if ( value.name_length < 0 || value.name_length > 16 ) { return false; } // storage invariant
     if ( value.name_length > 0 )
     {
-        w.putleb( ids.ref_at( 13, 0xc4bcadba8e631b86ull ) ); w.put8( 12 ); // name
+        w.header( ids.ref_at( 13, 0xc4bcadba8e631b86ull ), 12 ); // name
         w.putleb( (uint64_t) value.name_length );
         w.raw( value.name, value.name_length );
     }
@@ -5704,7 +5738,7 @@ inline bool ChunkSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
     if ( value.data_length > 0 )
     {
         const int64_t body_data = 1 + TableLebBytes( (uint64_t) value.data_length ) + value.data_length;
-        w.putleb( ids.ref_at( 11, 0x855b556730a34a05ull ) ); w.put8( 14 ); // data
+        w.header( ids.ref_at( 11, 0x855b556730a34a05ull ), 14 ); // data
         w.putleb( (uint64_t) body_data );
         w.put8( 6 ); w.putleb( (uint64_t) value.data_length );
         w.raw( value.data, value.data_length );
@@ -5715,7 +5749,7 @@ inline bool ChunkSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
         {
             uint64_t index_next = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_next, index_next ) ) { return false; }
-            w.putleb( ids.ref_at( 16, 0xe5316cbaa025f028ull ) ); w.put8( 17 ); // next — a NODE INDEX into the flat node table
+            w.header( ids.ref_at( 16, 0xe5316cbaa025f028ull ), 17 ); // next — a NODE INDEX into the flat node table
             w.putleb( index_next );
         }
     }
@@ -5734,7 +5768,7 @@ inline bool ChunkSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
                 body_links += TableLebBytes( slot_index );
             }
         }
-        w.putleb( ref_links ); w.put8( 14 ); w.putleb( (uint64_t) body_links ); // links
+        w.header( ref_links, 14 ); w.putleb( (uint64_t) body_links ); // links
         w.put8( 17 ); w.putleb( (uint64_t) ( value.links_count ) );
         for ( int32_t elem_i = 0; elem_i < value.links_count; elem_i++ )
         {
@@ -6217,12 +6251,12 @@ inline bool FeedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
 {
     if ( value.id != 0 )
     {
-        w.putleb( ids.ref_at( 1, 0x08b72e07b55c3ac0ull ) ); w.put8( 8 ); // id
+        w.header( ids.ref_at( 1, 0x08b72e07b55c3ac0ull ), 8 ); // id
         w.put32( uint32_t( value.id ) );
     }
     if ( value.frame.type != FrameType::None )
     {
-        w.putleb( ids.ref_at( 15, 0xd8d4335628b35226ull ) ); w.put8( 15 ); // frame
+        w.header( ids.ref_at( 15, 0xd8d4335628b35226ull ), 15 ); // frame
         switch ( value.frame.type )
         {
             case FrameType::Header:
@@ -6234,7 +6268,7 @@ inline bool FeedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                     if ( arm_body < 0 ) { return false; }
                     arm_payload += arm_body; // the arm's own table body (§3)
                 }
-                w.putleb( arm_ref ); w.put8( 13 ); w.putleb( (uint64_t) arm_payload ); // header
+                w.header( arm_ref, 13 ); w.putleb( (uint64_t) arm_payload ); // header
                 if ( !HeaderSaveBody( w, ids, value.frame.header ) ) { return false; }
                 break;
             }
@@ -6247,7 +6281,7 @@ inline bool FeedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                     if ( arm_body < 0 ) { return false; }
                     arm_payload += arm_body; // the arm's own table body (§3)
                 }
-                w.putleb( arm_ref ); w.put8( 13 ); w.putleb( (uint64_t) arm_payload ); // chunk
+                w.header( arm_ref, 13 ); w.putleb( (uint64_t) arm_payload ); // chunk
                 if ( !ChunkSaveBody( ctx, numbering, w, ids, value.frame.chunk ) ) { return false; }
                 break;
             }
@@ -6261,7 +6295,7 @@ inline bool FeedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                     if ( arm_pointee != NULL && !TableNumberingIndex( numbering, (const void *) arm_pointee, arm_index ) ) { return false; }
                     arm_payload += TableLebBytes( arm_index ); // a node index, null as 0 (§3.1)
                 }
-                w.putleb( arm_ref ); w.put8( 17 ); w.putleb( (uint64_t) arm_payload ); // link
+                w.header( arm_ref, 17 ); w.putleb( (uint64_t) arm_payload ); // link
                 {
                     const Chunk * arm_pointee = ChunkAt( ctx, value.frame.link );
                     uint64_t arm_index = 0;
@@ -6275,7 +6309,7 @@ inline bool FeedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                 const uint64_t arm_ref = ids.ref_at( 7, 0x56d7ab194448a4f3ull );
                 int64_t arm_payload = 0;
                 arm_payload += 4; // uint32
-                w.putleb( arm_ref ); w.put8( 8 ); w.putleb( (uint64_t) arm_payload ); // tag
+                w.header( arm_ref, 8 ); w.putleb( (uint64_t) arm_payload ); // tag
                 w.put32( uint32_t( value.frame.tag ) );
                 break;
             }
@@ -6297,7 +6331,7 @@ inline bool FeedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                 body_parts += TableLebBytes( slot_index );
             }
         }
-        w.putleb( ref_parts ); w.put8( 14 ); w.putleb( (uint64_t) body_parts ); // parts
+        w.header( ref_parts, 14 ); w.putleb( (uint64_t) body_parts ); // parts
         w.put8( 17 ); w.putleb( (uint64_t) ( value.parts_count ) );
         for ( int32_t elem_i = 0; elem_i < value.parts_count; elem_i++ )
         {
@@ -6326,7 +6360,7 @@ inline bool FeedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                     body_pair += TableLebBytes( slot_index );
                 }
             }
-            w.putleb( ref_pair ); w.put8( 14 ); w.putleb( (uint64_t) body_pair ); // pair
+            w.header( ref_pair, 14 ); w.putleb( (uint64_t) body_pair ); // pair
             w.put8( 17 ); w.putleb( (uint64_t) ( 2 ) );
             for ( int32_t elem_i = 0; elem_i < 2; elem_i++ )
             {
@@ -9241,7 +9275,7 @@ STREAMDEMO_TABLE_INLINE bool HeaderSaveBodyRetain( TableWriter & w, TableRetainI
     if ( value.name_length < 0 || value.name_length > 16 ) { return false; } // storage invariant
     if ( value.name_length > 0 )
     {
-        w.putleb( ids.ref_at( 13, 0xc4bcadba8e631b86ull ) ); w.put8( 12 ); // name
+        w.header( ids.ref_at( 13, 0xc4bcadba8e631b86ull ), 12 ); // name
         w.putleb( (uint64_t) value.name_length );
         w.raw( value.name, value.name_length );
     }
@@ -9438,7 +9472,7 @@ inline bool ChunkSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
     if ( value.data_length > 0 )
     {
         const int64_t body_data = 1 + TableLebBytes( (uint64_t) value.data_length ) + value.data_length;
-        w.putleb( ids.ref_at( 11, 0x855b556730a34a05ull ) ); w.put8( 14 ); // data
+        w.header( ids.ref_at( 11, 0x855b556730a34a05ull ), 14 ); // data
         w.putleb( (uint64_t) body_data );
         w.put8( 6 ); w.putleb( (uint64_t) value.data_length );
         w.raw( value.data, value.data_length );
@@ -9449,7 +9483,7 @@ inline bool ChunkSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
         {
             uint64_t index_next = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_next, index_next ) ) { return false; }
-            w.putleb( ids.ref_at( 16, 0xe5316cbaa025f028ull ) ); w.put8( 17 ); // next — a NODE INDEX into the flat node table
+            w.header( ids.ref_at( 16, 0xe5316cbaa025f028ull ), 17 ); // next — a NODE INDEX into the flat node table
             w.putleb( index_next );
         }
     }
@@ -9468,7 +9502,7 @@ inline bool ChunkSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
                 body_links += TableLebBytes( slot_index );
             }
         }
-        w.putleb( ref_links ); w.put8( 14 ); w.putleb( (uint64_t) body_links ); // links
+        w.header( ref_links, 14 ); w.putleb( (uint64_t) body_links ); // links
         w.put8( 17 ); w.putleb( (uint64_t) ( value.links_count ) );
         for ( int32_t elem_i = 0; elem_i < value.links_count; elem_i++ )
         {
@@ -9891,12 +9925,12 @@ inline bool FeedSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
 {
     if ( value.id != 0 )
     {
-        w.putleb( ids.ref_at( 1, 0x08b72e07b55c3ac0ull ) ); w.put8( 8 ); // id
+        w.header( ids.ref_at( 1, 0x08b72e07b55c3ac0ull ), 8 ); // id
         w.put32( uint32_t( value.id ) );
     }
     if ( value.frame.type != FrameType::None )
     {
-        w.putleb( ids.ref_at( 15, 0xd8d4335628b35226ull ) ); w.put8( 15 ); // frame
+        w.header( ids.ref_at( 15, 0xd8d4335628b35226ull ), 15 ); // frame
         switch ( value.frame.type )
         {
             case FrameType::Header:
@@ -9908,7 +9942,7 @@ inline bool FeedSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                     if ( arm_body < 0 ) { return false; }
                     arm_payload += arm_body; // the arm's own table body (§3)
                 }
-                w.putleb( arm_ref ); w.put8( 13 ); w.putleb( (uint64_t) arm_payload ); // header
+                w.header( arm_ref, 13 ); w.putleb( (uint64_t) arm_payload ); // header
                 if ( !HeaderSaveBodyRetain( w, ids, value.frame.header, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) ) ) { return false; }
                 break;
             }
@@ -9921,7 +9955,7 @@ inline bool FeedSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                     if ( arm_body < 0 ) { return false; }
                     arm_payload += arm_body; // the arm's own table body (§3)
                 }
-                w.putleb( arm_ref ); w.put8( 13 ); w.putleb( (uint64_t) arm_payload ); // chunk
+                w.header( arm_ref, 13 ); w.putleb( (uint64_t) arm_payload ); // chunk
                 if ( !ChunkSaveBodyRetain( ctx, numbering, w, ids, value.frame.chunk, retain, TableRetainStepInto( path, 1, (uint32_t) ( 1 ) ) ) ) { return false; }
                 break;
             }
@@ -9935,7 +9969,7 @@ inline bool FeedSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                     if ( arm_pointee != NULL && !TableNumberingIndex( numbering, (const void *) arm_pointee, arm_index ) ) { return false; }
                     arm_payload += TableLebBytes( arm_index ); // a node index, null as 0 (§3.1)
                 }
-                w.putleb( arm_ref ); w.put8( 17 ); w.putleb( (uint64_t) arm_payload ); // link
+                w.header( arm_ref, 17 ); w.putleb( (uint64_t) arm_payload ); // link
                 {
                     const Chunk * arm_pointee = ChunkAt( ctx, value.frame.link );
                     uint64_t arm_index = 0;
@@ -9949,7 +9983,7 @@ inline bool FeedSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                 const uint64_t arm_ref = ids.ref_at( 7, 0x56d7ab194448a4f3ull );
                 int64_t arm_payload = 0;
                 arm_payload += 4; // uint32
-                w.putleb( arm_ref ); w.put8( 8 ); w.putleb( (uint64_t) arm_payload ); // tag
+                w.header( arm_ref, 8 ); w.putleb( (uint64_t) arm_payload ); // tag
                 w.put32( uint32_t( value.frame.tag ) );
                 break;
             }
@@ -9971,7 +10005,7 @@ inline bool FeedSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                 body_parts += TableLebBytes( slot_index );
             }
         }
-        w.putleb( ref_parts ); w.put8( 14 ); w.putleb( (uint64_t) body_parts ); // parts
+        w.header( ref_parts, 14 ); w.putleb( (uint64_t) body_parts ); // parts
         w.put8( 17 ); w.putleb( (uint64_t) ( value.parts_count ) );
         for ( int32_t elem_i = 0; elem_i < value.parts_count; elem_i++ )
         {
@@ -10000,7 +10034,7 @@ inline bool FeedSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                     body_pair += TableLebBytes( slot_index );
                 }
             }
-            w.putleb( ref_pair ); w.put8( 14 ); w.putleb( (uint64_t) body_pair ); // pair
+            w.header( ref_pair, 14 ); w.putleb( (uint64_t) body_pair ); // pair
             w.put8( 17 ); w.putleb( (uint64_t) ( 2 ) );
             for ( int32_t elem_i = 0; elem_i < 2; elem_i++ )
             {

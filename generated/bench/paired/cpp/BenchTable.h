@@ -291,8 +291,21 @@ struct TableWriter
                          uint8_t( v >> 32 ), uint8_t( v >> 40 ), uint8_t( v >> 48 ), uint8_t( v >> 56 ) };
         raw( b, 8 );
     }
-    // a 128-bit value as two lanes, the low half first (docs/SPEC-TABLES.md §3)
-    BENCH_TABLE_INLINE void put128( uint64_t lo, uint64_t hi ) { put64( lo ); put64( hi ); }
+    // A 128-BIT VALUE IS TWO LANES, THE LOW HALF FIRST (docs/SPEC-TABLES.md §3):
+    // THE SAME SIXTEEN BYTES two put64 wrote, assembled once and handed to raw
+    // once. One capacity test rather than two, and NOT ONE FEWER — raw still
+    // asks before it copies, so an undersized buffer still raises the overflow
+    // flag and Save still answers -1. A pair that does not fit now leaves the
+    // buffer alone rather than writing the low lane first; nothing reads those
+    // bytes, because the caller that overflowed answers -1.
+    BENCH_TABLE_INLINE void put128( uint64_t lo, uint64_t hi )
+    {
+        uint8_t b[16] = { uint8_t( lo ), uint8_t( lo >> 8 ), uint8_t( lo >> 16 ), uint8_t( lo >> 24 ),
+                          uint8_t( lo >> 32 ), uint8_t( lo >> 40 ), uint8_t( lo >> 48 ), uint8_t( lo >> 56 ),
+                          uint8_t( hi ), uint8_t( hi >> 8 ), uint8_t( hi >> 16 ), uint8_t( hi >> 24 ),
+                          uint8_t( hi >> 32 ), uint8_t( hi >> 40 ), uint8_t( hi >> 48 ), uint8_t( hi >> 56 ) };
+        raw( b, 16 );
+    }
     // EVERY LENGTH, COUNT, INDEX AND ID REFERENCE IS ONE CANONICAL UNSIGNED
     // LEB128 (docs/SPEC-TABLES.md §3): seven value bits a byte, the lowest
     // group first, the high bit set on every byte but the last. One value has
@@ -313,6 +326,30 @@ struct TableWriter
         while ( v >= 0x80 ) { b[n++] = uint8_t( v ) | 0x80; v >>= 7; }
         b[n++] = uint8_t( v );
         raw( b, n );
+    }
+    // A FIELD HEADER IS A REFERENCE AND THE KIND BYTE BEHIND IT
+    // (docs/SPEC-TABLES.md §3), and nearly every one of them is two bytes: a
+    // reference below 128 is a single LEB128 byte, so the pair assembles in a
+    // two-byte stack buffer and goes to raw once. A reference at 128 or above
+    // still goes through putleb then put8 — the same two calls, the same bytes.
+    // Both arms write what the two-call spelling wrote, byte for byte.
+    //
+    // NOTHING IS HOISTED AND NO TEST IS REMOVED: raw still asks before it
+    // copies, so a header that does not fit still raises the overflow flag and
+    // Save still answers -1 — including a capacity that would cut the two-byte
+    // header in half. What differs is only on that failing path: a header that
+    // does not fit now leaves the buffer alone rather than writing the
+    // reference first, and nothing reads those bytes.
+    BENCH_TABLE_INLINE void header( uint64_t ref, uint8_t kind )
+    {
+        if ( ref < 128 )
+        {
+            uint8_t b[2] = { uint8_t( ref ), kind };
+            raw( b, 2 );
+            return;
+        }
+        putleb( ref );
+        put8( kind );
     }
 };
 
@@ -2701,52 +2738,52 @@ BENCH_TABLE_INLINE bool MixedEntitySaveBody( TableWriter & w, TableIds & ids, co
 {
     if ( value.entity_id != 0 )
     {
-        w.putleb( ids.ref_at( 11, 0x23fcfd6678e36712ull ) ); w.put8( 7 ); // entity_id
+        w.header( ids.ref_at( 11, 0x23fcfd6678e36712ull ), 7 ); // entity_id
         w.put16( uint16_t( value.entity_id ) );
     }
     if ( value.pos_x != 0 )
     {
-        w.putleb( ids.ref_at( 65, 0xcb4b37357667310eull ) ); w.put8( 4 ); // pos_x
+        w.header( ids.ref_at( 65, 0xcb4b37357667310eull ), 4 ); // pos_x
         w.put32( uint32_t( value.pos_x ) );
     }
     if ( value.pos_y != 0 )
     {
-        w.putleb( ids.ref_at( 66, 0xcb4b3835766732c1ull ) ); w.put8( 4 ); // pos_y
+        w.header( ids.ref_at( 66, 0xcb4b3835766732c1ull ), 4 ); // pos_y
         w.put32( uint32_t( value.pos_y ) );
     }
     if ( value.pos_z != 0 )
     {
-        w.putleb( ids.ref_at( 64, 0xcb4b353576672da8ull ) ); w.put8( 4 ); // pos_z
+        w.header( ids.ref_at( 64, 0xcb4b353576672da8ull ), 4 ); // pos_z
         w.put32( uint32_t( value.pos_z ) );
     }
     if ( value.yaw != 0 )
     {
-        w.putleb( ids.ref_at( 58, 0xb54d8e19798e16e8ull ) ); w.put8( 7 ); // yaw
+        w.header( ids.ref_at( 58, 0xb54d8e19798e16e8ull ), 7 ); // yaw
         w.put16( uint16_t( value.yaw ) );
     }
     if ( value.pitch != 0 )
     {
-        w.putleb( ids.ref_at( 22, 0x53a9f665a90cc1b1ull ) ); w.put8( 7 ); // pitch
+        w.header( ids.ref_at( 22, 0x53a9f665a90cc1b1ull ), 7 ); // pitch
         w.put16( uint16_t( value.pitch ) );
     }
     if ( value.vel_x != 0 )
     {
-        w.putleb( ids.ref_at( 27, 0x6cede6b6eb60ee67ull ) ); w.put8( 4 ); // vel_x
+        w.header( ids.ref_at( 27, 0x6cede6b6eb60ee67ull ), 4 ); // vel_x
         w.put32( uint32_t( value.vel_x ) );
     }
     if ( value.vel_y != 0 )
     {
-        w.putleb( ids.ref_at( 26, 0x6cede5b6eb60ecb4ull ) ); w.put8( 4 ); // vel_y
+        w.header( ids.ref_at( 26, 0x6cede5b6eb60ecb4ull ), 4 ); // vel_y
         w.put32( uint32_t( value.vel_y ) );
     }
     if ( value.vel_z != 0 )
     {
-        w.putleb( ids.ref_at( 28, 0x6cede8b6eb60f1cdull ) ); w.put8( 4 ); // vel_z
+        w.header( ids.ref_at( 28, 0x6cede8b6eb60f1cdull ), 4 ); // vel_z
         w.put32( uint32_t( value.vel_z ) );
     }
     if ( value.health != 0 )
     {
-        w.putleb( ids.ref_at( 37, 0x7f69d4b5288ba9cfull ) ); w.put8( 4 ); // health
+        w.header( ids.ref_at( 37, 0x7f69d4b5288ba9cfull ), 4 ); // health
         w.put32( uint32_t( value.health ) );
     }
     if ( value.weapon != MixedWeapon::None )
@@ -2755,21 +2792,21 @@ BENCH_TABLE_INLINE bool MixedEntitySaveBody( TableWriter & w, TableIds & ids, co
         const uint64_t ref_weapon = ids.ref_at( 52, 0xa0b610205f2c6e01ull );
         uint64_t variant_weapon = 0;
         if ( !TableEnumRef( ids, value.weapon, variant_weapon ) ) { return false; }
-        w.putleb( ref_weapon ); w.put8( 30 ); w.putleb( variant_weapon ); // weapon
+        w.header( ref_weapon, 30 ); w.putleb( variant_weapon ); // weapon
     }
     if ( value.damage != 0 )
     {
-        w.putleb( ids.ref_at( 36, 0x7f6308be8ab37fc0ull ) ); w.put8( 9 ); // damage
+        w.header( ids.ref_at( 36, 0x7f6308be8ab37fc0ull ), 9 ); // damage
         w.put64( uint64_t( value.damage ) );
     }
     if ( value.moving != false )
     {
-        w.putleb( ids.ref_at( 5, 0x11a44fc1d1243da7ull ) ); w.put8( 1 ); // moving
+        w.header( ids.ref_at( 5, 0x11a44fc1d1243da7ull ), 1 ); // moving
         w.put8( value.moving ? 1 : 0 );
     }
     if ( value.firing != false )
     {
-        w.putleb( ids.ref_at( 32, 0x7674cfd19b9031caull ) ); w.put8( 1 ); // firing
+        w.header( ids.ref_at( 32, 0x7674cfd19b9031caull ), 1 ); // firing
         w.put8( value.firing ? 1 : 0 );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -4085,12 +4122,12 @@ BENCH_TABLE_INLINE bool MixedStatSaveBody( TableWriter & w, TableIds & ids, cons
 {
     if ( value.stat_id != 0 )
     {
-        w.putleb( ids.ref_at( 38, 0x80ab75f0866dbf65ull ) ); w.put8( 6 ); // stat_id
+        w.header( ids.ref_at( 38, 0x80ab75f0866dbf65ull ), 6 ); // stat_id
         w.put8( uint8_t( value.stat_id ) );
     }
     if ( value.delta != 0 )
     {
-        w.putleb( ids.ref_at( 21, 0x52076675ec13a0c1ull ) ); w.put8( 4 ); // delta
+        w.header( ids.ref_at( 21, 0x52076675ec13a0c1ull ), 4 ); // delta
         w.put32( uint32_t( value.delta ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -4476,22 +4513,22 @@ BENCH_TABLE_INLINE bool MixedHitEventSaveBody( TableWriter & w, TableIds & ids, 
 {
     if ( value.target_id != 0 )
     {
-        w.putleb( ids.ref_at( 59, 0xb7bc9ac015a25050ull ) ); w.put8( 7 ); // target_id
+        w.header( ids.ref_at( 59, 0xb7bc9ac015a25050ull ), 7 ); // target_id
         w.put16( uint16_t( value.target_id ) );
     }
     if ( value.damage != 0 )
     {
-        w.putleb( ids.ref_at( 36, 0x7f6308be8ab37fc0ull ) ); w.put8( 4 ); // damage
+        w.header( ids.ref_at( 36, 0x7f6308be8ab37fc0ull ), 4 ); // damage
         w.put32( uint32_t( value.damage ) );
     }
     if ( value.hit_kind != 0 )
     {
-        w.putleb( ids.ref_at( 1, 0x01fbc365b059b925ull ) ); w.put8( 4 ); // hit_kind
+        w.header( ids.ref_at( 1, 0x01fbc365b059b925ull ), 4 ); // hit_kind
         w.put32( uint32_t( value.hit_kind ) );
     }
     if ( value.crit != false )
     {
-        w.putleb( ids.ref_at( 6, 0x126167908c9aa52dull ) ); w.put8( 1 ); // crit
+        w.header( ids.ref_at( 6, 0x126167908c9aa52dull ), 1 ); // crit
         w.put8( value.crit ? 1 : 0 );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -5033,12 +5070,12 @@ BENCH_TABLE_INLINE bool MixedChatEventSaveBody( TableWriter & w, TableIds & ids,
 {
     if ( value.channel != 0 )
     {
-        w.putleb( ids.ref_at( 54, 0xa5013e9ad5caeda4ull ) ); w.put8( 4 ); // channel
+        w.header( ids.ref_at( 54, 0xa5013e9ad5caeda4ull ), 4 ); // channel
         w.put32( uint32_t( value.channel ) );
     }
     if ( value.speaker != 0 )
     {
-        w.putleb( ids.ref_at( 76, 0xfbf1ac4d96ebd022ull ) ); w.put8( 7 ); // speaker
+        w.header( ids.ref_at( 76, 0xfbf1ac4d96ebd022ull ), 7 ); // speaker
         w.put16( uint16_t( value.speaker ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -5452,12 +5489,12 @@ BENCH_TABLE_INLINE bool MixedPickupEventSaveBody( TableWriter & w, TableIds & id
 {
     if ( value.item_id != 0 )
     {
-        w.putleb( ids.ref_at( 48, 0x9e7fd06d864fbd56ull ) ); w.put8( 7 ); // item_id
+        w.header( ids.ref_at( 48, 0x9e7fd06d864fbd56ull ), 7 ); // item_id
         w.put16( uint16_t( value.item_id ) );
     }
     if ( value.amount != 0 )
     {
-        w.putleb( ids.ref_at( 39, 0x8113fe7ea2b16969ull ) ); w.put8( 4 ); // amount
+        w.header( ids.ref_at( 39, 0x8113fe7ea2b16969ull ), 4 ); // amount
         w.put32( uint32_t( value.amount ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -5989,47 +6026,47 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
 {
     if ( value.sequence != 0 )
     {
-        w.putleb( ids.ref_at( 56, 0xaa38aca481f528a8ull ) ); w.put8( 7 ); // sequence
+        w.header( ids.ref_at( 56, 0xaa38aca481f528a8ull ), 7 ); // sequence
         w.put16( uint16_t( value.sequence ) );
     }
     if ( value.ack_sequence != 0 )
     {
-        w.putleb( ids.ref_at( 4, 0x0dbe005c56697c3eull ) ); w.put8( 4 ); // ack_sequence
+        w.header( ids.ref_at( 4, 0x0dbe005c56697c3eull ), 4 ); // ack_sequence
         w.put32( uint32_t( value.ack_sequence ) );
     }
     if ( value.ack_bits != 0 )
     {
-        w.putleb( ids.ref_at( 46, 0x9bae0da8b829ee03ull ) ); w.put8( 8 ); // ack_bits
+        w.header( ids.ref_at( 46, 0x9bae0da8b829ee03ull ), 8 ); // ack_bits
         w.put32( uint32_t( value.ack_bits ) );
     }
     if ( value.session_id != 0 )
     {
-        w.putleb( ids.ref_at( 60, 0xb7d7b5650a590b05ull ) ); w.put8( 9 ); // session_id
+        w.header( ids.ref_at( 60, 0xb7d7b5650a590b05ull ), 9 ); // session_id
         w.put64( uint64_t( value.session_id ) );
     }
     if ( value.client_id != 0 )
     {
-        w.putleb( ids.ref_at( 29, 0x6d7b98e2d095967eull ) ); w.put8( 8 ); // client_id
+        w.header( ids.ref_at( 29, 0x6d7b98e2d095967eull ), 8 ); // client_id
         w.put32( uint32_t( value.client_id ) );
     }
     if ( value.nonce != 0 )
     {
-        w.putleb( ids.ref_at( 31, 0x73a94c71d60dc0d8ull ) ); w.put8( 9 ); // nonce
+        w.header( ids.ref_at( 31, 0x73a94c71d60dc0d8ull ), 9 ); // nonce
         w.put64( uint64_t( value.nonce ) );
     }
     if ( value.world_time != 0 )
     {
-        w.putleb( ids.ref_at( 20, 0x3eee6b51be54fc85ull ) ); w.put8( 5 ); // world_time
+        w.header( ids.ref_at( 20, 0x3eee6b51be54fc85ull ), 5 ); // world_time
         w.put64( uint64_t( value.world_time ) );
     }
     if ( value.frame_tick != 0 )
     {
-        w.putleb( ids.ref_at( 34, 0x7bbc035f7b6d0112ull ) ); w.put8( 9 ); // frame_tick
+        w.header( ids.ref_at( 34, 0x7bbc035f7b6d0112ull ), 9 ); // frame_tick
         w.put64( uint64_t( value.frame_tick ) );
     }
     if ( value.server_time != 0 )
     {
-        w.putleb( ids.ref_at( 18, 0x3c460475f9be69c6ull ) ); w.put8( 22 ); // server_time
+        w.header( ids.ref_at( 18, 0x3c460475f9be69c6ull ), 22 ); // server_time
         w.put32( uint32_t( value.server_time ) );
     }
     if ( value.entities_count < 0 || value.entities_count > 8 ) { return false; } // storage invariant
@@ -6049,7 +6086,7 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
             if ( elem_i < 8 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_entities += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
-        w.putleb( ref_entities ); w.put8( 14 ); w.putleb( (uint64_t) body_entities ); // entities
+        w.header( ref_entities, 14 ); w.putleb( (uint64_t) body_entities ); // entities
         w.put8( 13 ); w.putleb( (uint64_t) ( value.entities_count ) );
         for ( int32_t elem_i = 0; elem_i < value.entities_count; elem_i++ )
         {
@@ -6078,7 +6115,7 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
             if ( elem_i < 64 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_stats += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
-        w.putleb( ref_stats ); w.put8( 14 ); w.putleb( (uint64_t) body_stats ); // stats
+        w.header( ref_stats, 14 ); w.putleb( (uint64_t) body_stats ); // stats
         w.put8( 13 ); w.putleb( (uint64_t) ( value.stats_count ) );
         for ( int32_t elem_i = 0; elem_i < value.stats_count; elem_i++ )
         {
@@ -6092,7 +6129,7 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
     }
     if ( value.game_event.type != MixedEventType::None )
     {
-        w.putleb( ids.ref_at( 14, 0x2e35dc5321aa5790ull ) ); w.put8( 15 ); // game_event
+        w.header( ids.ref_at( 14, 0x2e35dc5321aa5790ull ), 15 ); // game_event
         switch ( value.game_event.type )
         {
             case MixedEventType::Hit:
@@ -6104,7 +6141,7 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
                     if ( arm_body < 0 ) { return false; }
                     arm_payload += arm_body; // the arm's own table body (§3)
                 }
-                w.putleb( arm_ref ); w.put8( 13 ); w.putleb( (uint64_t) arm_payload ); // hit
+                w.header( arm_ref, 13 ); w.putleb( (uint64_t) arm_payload ); // hit
                 if ( !MixedHitEventSaveBody( w, ids, value.game_event.hit ) ) { return false; }
                 break;
             }
@@ -6117,7 +6154,7 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
                     if ( arm_body < 0 ) { return false; }
                     arm_payload += arm_body; // the arm's own table body (§3)
                 }
-                w.putleb( arm_ref ); w.put8( 13 ); w.putleb( (uint64_t) arm_payload ); // chat
+                w.header( arm_ref, 13 ); w.putleb( (uint64_t) arm_payload ); // chat
                 if ( !MixedChatEventSaveBody( w, ids, value.game_event.chat ) ) { return false; }
                 break;
             }
@@ -6130,7 +6167,7 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
                     if ( arm_body < 0 ) { return false; }
                     arm_payload += arm_body; // the arm's own table body (§3)
                 }
-                w.putleb( arm_ref ); w.put8( 13 ); w.putleb( (uint64_t) arm_payload ); // pickup
+                w.header( arm_ref, 13 ); w.putleb( (uint64_t) arm_payload ); // pickup
                 if ( !MixedPickupEventSaveBody( w, ids, value.game_event.pickup ) ) { return false; }
                 break;
             }
@@ -6146,7 +6183,7 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
             int64_t body_loadout = 0;
             body_loadout += 1 + TableLebBytes( (uint64_t) ( 4 ) ); // the element kind byte and the count
             body_loadout += (int64_t) ( 4 ) * 1;
-            w.putleb( ref_loadout ); w.put8( 14 ); w.putleb( (uint64_t) body_loadout ); // loadout
+            w.header( ref_loadout, 14 ); w.putleb( (uint64_t) body_loadout ); // loadout
             w.put8( 6 ); w.putleb( (uint64_t) ( 4 ) );
             for ( int32_t elem_i = 0; elem_i < 4; elem_i++ )
             {
@@ -6157,7 +6194,7 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
     if ( value.player_name_length < 0 || value.player_name_length > 15 ) { return false; } // storage invariant
     if ( value.player_name_length > 0 )
     {
-        w.putleb( ids.ref_at( 7, 0x13a62f542cf8e86eull ) ); w.put8( 12 ); // player_name
+        w.header( ids.ref_at( 7, 0x13a62f542cf8e86eull ), 12 ); // player_name
         w.putleb( (uint64_t) value.player_name_length );
         w.raw( value.player_name, value.player_name_length );
     }
@@ -6165,66 +6202,66 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
     if ( value.payload_length > 0 )
     {
         const int64_t body_payload = 1 + TableLebBytes( (uint64_t) value.payload_length ) + value.payload_length;
-        w.putleb( ids.ref_at( 67, 0xcfb8a9d063b5e9e5ull ) ); w.put8( 14 ); // payload
+        w.header( ids.ref_at( 67, 0xcfb8a9d063b5e9e5ull ), 14 ); // payload
         w.putleb( (uint64_t) body_payload );
         w.put8( 6 ); w.putleb( (uint64_t) value.payload_length );
         w.raw( value.payload, value.payload_length );
     }
     if ( value.aim_x != 0.0f )
     {
-        w.putleb( ids.ref_at( 72, 0xdbaf7be5e24296c9ull ) ); w.put8( 10 ); // aim_x
+        w.header( ids.ref_at( 72, 0xdbaf7be5e24296c9ull ), 10 ); // aim_x
         w.put32( table_float_to_bits( value.aim_x ) );
     }
     if ( value.aim_y != 0.0f )
     {
-        w.putleb( ids.ref_at( 71, 0xdbaf7ae5e2429516ull ) ); w.put8( 10 ); // aim_y
+        w.header( ids.ref_at( 71, 0xdbaf7ae5e2429516ull ), 10 ); // aim_y
         w.put32( table_float_to_bits( value.aim_y ) );
     }
     if ( value.aim_z != 0.0f )
     {
-        w.putleb( ids.ref_at( 70, 0xdbaf79e5e2429363ull ) ); w.put8( 10 ); // aim_z
+        w.header( ids.ref_at( 70, 0xdbaf79e5e2429363ull ), 10 ); // aim_z
         w.put32( table_float_to_bits( value.aim_z ) );
     }
     if ( value.recoil != 0.0f )
     {
-        w.putleb( ids.ref_at( 47, 0x9cef31fff7e2e457ull ) ); w.put8( 10 ); // recoil
+        w.header( ids.ref_at( 47, 0x9cef31fff7e2e457ull ), 10 ); // recoil
         w.put32( table_float_to_bits( value.recoil ) );
     }
     if ( value.drift != 0.0 )
     {
-        w.putleb( ids.ref_at( 25, 0x5ab3f9c9341f6c04ull ) ); w.put8( 11 ); // drift
+        w.header( ids.ref_at( 25, 0x5ab3f9c9341f6c04ull ), 11 ); // drift
         w.put64( table_double_to_bits( value.drift ) );
     }
     if ( value.wide_key != 0 )
     {
-        w.putleb( ids.ref_at( 53, 0xa3348580461faf16ull ) ); w.put8( 19 ); // wide_key
+        w.header( ids.ref_at( 53, 0xa3348580461faf16ull ), 19 ); // wide_key
         { serialize::uint128_t raw_v = serialize::uint128_t( value.wide_key ); w.put128( uint64_t( raw_v ), uint64_t( raw_v >> 64 ) ); }
     }
     if ( value.flux != 0 )
     {
-        w.putleb( ids.ref_at( 68, 0xd61bdd7908af2642ull ) ); w.put8( 18 ); // flux
+        w.header( ids.ref_at( 68, 0xd61bdd7908af2642ull ), 18 ); // flux
         { serialize::uint128_t raw_v = serialize::uint128_t( value.flux ); w.put128( uint64_t( raw_v ), uint64_t( raw_v >> 64 ) ); }
     }
     if ( value.ping != 0 )
     {
-        w.putleb( ids.ref_at( 61, 0xbf30e00dc53307a9ull ) ); w.put8( 26 ); // ping
+        w.header( ids.ref_at( 61, 0xbf30e00dc53307a9ull ), 26 ); // ping
         w.put16( uint16_t( value.ping ) );
     }
     if ( value.crc_hint != 0 )
     {
-        w.putleb( ids.ref_at( 23, 0x560d6527ccd8515full ) ); w.put8( 8 ); // crc_hint
+        w.header( ids.ref_at( 23, 0x560d6527ccd8515full ), 8 ); // crc_hint
         w.put32( uint32_t( value.crc_hint ) );
     }
     if ( value.has_extra != true )
     {
-        w.putleb( ids.ref_at( 62, 0xc08292176cfd8672ull ) ); w.put8( 1 ); // has_extra
+        w.header( ids.ref_at( 62, 0xc08292176cfd8672ull ), 1 ); // has_extra
         w.put8( value.has_extra ? 1 : 0 );
     }
     if ( value.has_extra )
     {
         if ( value.extra != 0 )
         {
-            w.putleb( ids.ref_at( 77, 0xfd29ee12a979cb69ull ) ); w.put8( 4 ); // extra
+            w.header( ids.ref_at( 77, 0xfd29ee12a979cb69ull ), 4 ); // extra
             w.put32( uint32_t( value.extra ) );
         }
     }
@@ -6232,7 +6269,7 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
     {
         if ( value.idle_ticks != 0 )
         {
-            w.putleb( ids.ref_at( 33, 0x78101ac0aa8cbcfeull ) ); w.put8( 4 ); // idle_ticks
+            w.header( ids.ref_at( 33, 0x78101ac0aa8cbcfeull ), 4 ); // idle_ticks
             w.put32( uint32_t( value.idle_ticks ) );
         }
     }

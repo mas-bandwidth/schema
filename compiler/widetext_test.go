@@ -54,10 +54,11 @@ func TestWideTextInATableClosureReachesTheTableEmitter(t *testing.T) {
 	if !strings.Contains(text, "char16_t title[6 + 1]") {
 		t.Errorf("the record does not carry wide text's storage (docs/SPEC-TABLES.md §7.2)")
 	}
-	if !strings.Contains(text, "w.put8( 33 ); // title") {
+	// the reference and the kind ride as ONE header call (TableWriter::header)
+	if !strings.Contains(text, "), 33 ); // title") {
 		t.Errorf("the writer does not put kind 33 for the table's own field (docs/SPEC-TABLES.md §3)")
 	}
-	if !strings.Contains(text, "w.put8( 33 ); // name") {
+	if !strings.Contains(text, "), 33 ); // name") {
 		t.Errorf("the writer does not put kind 33 for the type's field (docs/SPEC-TABLES.md §3)")
 	}
 	if !strings.Contains(text, "TableUtf16Valid") {

@@ -344,8 +344,21 @@ struct TableWriter
                          uint8_t( v >> 32 ), uint8_t( v >> 40 ), uint8_t( v >> 48 ), uint8_t( v >> 56 ) };
         raw( b, 8 );
     }
-    // a 128-bit value as two lanes, the low half first (docs/SPEC-TABLES.md §3)
-    GRAPHDEMO_TABLE_INLINE void put128( uint64_t lo, uint64_t hi ) { put64( lo ); put64( hi ); }
+    // A 128-BIT VALUE IS TWO LANES, THE LOW HALF FIRST (docs/SPEC-TABLES.md §3):
+    // THE SAME SIXTEEN BYTES two put64 wrote, assembled once and handed to raw
+    // once. One capacity test rather than two, and NOT ONE FEWER — raw still
+    // asks before it copies, so an undersized buffer still raises the overflow
+    // flag and Save still answers -1. A pair that does not fit now leaves the
+    // buffer alone rather than writing the low lane first; nothing reads those
+    // bytes, because the caller that overflowed answers -1.
+    GRAPHDEMO_TABLE_INLINE void put128( uint64_t lo, uint64_t hi )
+    {
+        uint8_t b[16] = { uint8_t( lo ), uint8_t( lo >> 8 ), uint8_t( lo >> 16 ), uint8_t( lo >> 24 ),
+                          uint8_t( lo >> 32 ), uint8_t( lo >> 40 ), uint8_t( lo >> 48 ), uint8_t( lo >> 56 ),
+                          uint8_t( hi ), uint8_t( hi >> 8 ), uint8_t( hi >> 16 ), uint8_t( hi >> 24 ),
+                          uint8_t( hi >> 32 ), uint8_t( hi >> 40 ), uint8_t( hi >> 48 ), uint8_t( hi >> 56 ) };
+        raw( b, 16 );
+    }
     // EVERY LENGTH, COUNT, INDEX AND ID REFERENCE IS ONE CANONICAL UNSIGNED
     // LEB128 (docs/SPEC-TABLES.md §3): seven value bits a byte, the lowest
     // group first, the high bit set on every byte but the last. One value has
@@ -366,6 +379,30 @@ struct TableWriter
         while ( v >= 0x80 ) { b[n++] = uint8_t( v ) | 0x80; v >>= 7; }
         b[n++] = uint8_t( v );
         raw( b, n );
+    }
+    // A FIELD HEADER IS A REFERENCE AND THE KIND BYTE BEHIND IT
+    // (docs/SPEC-TABLES.md §3), and nearly every one of them is two bytes: a
+    // reference below 128 is a single LEB128 byte, so the pair assembles in a
+    // two-byte stack buffer and goes to raw once. A reference at 128 or above
+    // still goes through putleb then put8 — the same two calls, the same bytes.
+    // Both arms write what the two-call spelling wrote, byte for byte.
+    //
+    // NOTHING IS HOISTED AND NO TEST IS REMOVED: raw still asks before it
+    // copies, so a header that does not fit still raises the overflow flag and
+    // Save still answers -1 — including a capacity that would cut the two-byte
+    // header in half. What differs is only on that failing path: a header that
+    // does not fit now leaves the buffer alone rather than writing the
+    // reference first, and nothing reads those bytes.
+    GRAPHDEMO_TABLE_INLINE void header( uint64_t ref, uint8_t kind )
+    {
+        if ( ref < 128 )
+        {
+            uint8_t b[2] = { uint8_t( ref ), kind };
+            raw( b, 2 );
+            return;
+        }
+        putleb( ref );
+        put8( kind );
     }
 };
 
@@ -3138,8 +3175,7 @@ inline bool TableNodeTableSave( const Ctx & ctx, TableWriter & w, TableIds & ids
     const uint64_t ref = ids.ref( kTableNodeTableFieldId );
     const int64_t payload = TableNodeTablePayload( ctx, ids, n );
     if ( payload < 0 ) { return false; }
-    w.putleb( ref );
-    w.put8( 12 ); // kind 12 is the opaque byte payload: a reader that cannot name the id skips by L
+    w.header( ref, 12 ); // kind 12 is the opaque byte payload: a reader that cannot name the id skips by L
     w.putleb( (uint64_t) payload );
     w.putleb( (uint64_t) n.count );
     for ( int64_t k = 0; k < n.count; k++ )
@@ -4419,8 +4455,7 @@ inline bool TableRetainTailSave( TableRetain * retain, TableRetainIds & ids, Tab
         if ( !TableRetainRecordHere( *retain, record, path ) ) { continue; }
         uint64_t ref = 0;
         if ( TableRetainRecordWire( record, ids, ref ) < 0 ) { continue; }
-        w.putleb( ref );
-        w.put8( TableRetainRecordKind( record ) );
+        w.header( ref, TableRetainRecordKind( record ) );
         TableRetainOut s;
         s.in = TableRetainRecordPayload( record );
         s.size = TableRetainRecordPayloadBytes( record );
@@ -4502,8 +4537,7 @@ inline bool TableNodeTableSaveRetain( const Ctx & ctx, TableWriter & w, TableRet
     const uint64_t ref = ids.ref( kTableNodeTableFieldId );
     const int64_t payload = TableNodeTablePayloadRetain( ctx, ids, n, retain, measure );
     if ( payload < 0 ) { return false; }
-    w.putleb( ref );
-    w.put8( 12 ); // kind 12 is the opaque byte payload, exactly as the plain save writes it
+    w.header( ref, 12 ); // kind 12 is the opaque byte payload, exactly as the plain save writes it
     w.putleb( (uint64_t) payload );
     w.putleb( (uint64_t) n.count );
     for ( int64_t k = 0; k < n.count; k++ )
@@ -5800,13 +5834,13 @@ GRAPHDEMO_TABLE_INLINE bool MetaSaveBody( TableWriter & w, TableIds & ids, const
 {
     if ( value.build != 1 )
     {
-        w.putleb( ids.ref_at( 26, 0x802517e298c70b03ull ) ); w.put8( 4 ); // build
+        w.header( ids.ref_at( 26, 0x802517e298c70b03ull ), 4 ); // build
         w.put32( uint32_t( value.build ) );
     }
     if ( value.tag_length < 0 || value.tag_length > 8 ) { return false; } // storage invariant
     if ( value.tag_length > 0 )
     {
-        w.putleb( ids.ref_at( 13, 0x56d7ab194448a4f3ull ) ); w.put8( 12 ); // tag
+        w.header( ids.ref_at( 13, 0x56d7ab194448a4f3ull ), 12 ); // tag
         w.putleb( (uint64_t) value.tag_length );
         w.raw( value.tag, value.tag_length );
     }
@@ -6214,13 +6248,13 @@ GRAPHDEMO_TABLE_INLINE bool SettingsSaveBody( TableWriter & w, TableIds & ids, c
 {
     if ( value.quality != 2 )
     {
-        w.putleb( ids.ref_at( 23, 0x7a8060916400fe66ull ) ); w.put8( 4 ); // quality
+        w.header( ids.ref_at( 23, 0x7a8060916400fe66ull ), 4 ); // quality
         w.put32( uint32_t( value.quality ) );
     }
     if ( value.label_length < 0 || value.label_length > 16 ) { return false; } // storage invariant
     if ( value.label_length > 0 )
     {
-        w.putleb( ids.ref_at( 6, 0x39f7fcec8fcb623dull ) ); w.put8( 12 ); // label
+        w.header( ids.ref_at( 6, 0x39f7fcec8fcb623dull ), 12 ); // label
         w.putleb( (uint64_t) value.label_length );
         w.raw( value.label, value.label_length );
     }
@@ -6636,13 +6670,13 @@ inline bool ListNodeSaveBodyFields( const Ctx & ctx, const TableNumbering & numb
 {
     if ( value.value != 0 )
     {
-        w.putleb( ids.ref_at( 24, 0x7ce4fd9430e80ceaull ) ); w.put8( 4 ); // value
+        w.header( ids.ref_at( 24, 0x7ce4fd9430e80ceaull ), 4 ); // value
         w.put32( uint32_t( value.value ) );
     }
     if ( value.name_length < 0 || value.name_length > 12 ) { return false; } // storage invariant
     if ( value.name_length > 0 )
     {
-        w.putleb( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ); w.put8( 12 ); // name
+        w.header( ids.ref_at( 37, 0xc4bcadba8e631b86ull ), 12 ); // name
         w.putleb( (uint64_t) value.name_length );
         w.raw( value.name, value.name_length );
     }
@@ -6652,7 +6686,7 @@ inline bool ListNodeSaveBodyFields( const Ctx & ctx, const TableNumbering & numb
         {
             uint64_t index_next = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_next, index_next ) ) { return false; }
-            w.putleb( ids.ref_at( 41, 0xe5316cbaa025f028ull ) ); w.put8( 17 ); // next — a NODE INDEX into the flat node table
+            w.header( ids.ref_at( 41, 0xe5316cbaa025f028ull ), 17 ); // next — a NODE INDEX into the flat node table
             w.putleb( index_next );
         }
     }
@@ -7018,7 +7052,7 @@ inline bool TreeNodeSaveBodyFields( const Ctx & ctx, const TableNumbering & numb
     if ( value.label_length < 0 || value.label_length > 12 ) { return false; } // storage invariant
     if ( value.label_length > 0 )
     {
-        w.putleb( ids.ref_at( 6, 0x39f7fcec8fcb623dull ) ); w.put8( 12 ); // label
+        w.header( ids.ref_at( 6, 0x39f7fcec8fcb623dull ), 12 ); // label
         w.putleb( (uint64_t) value.label_length );
         w.raw( value.label, value.label_length );
     }
@@ -7028,7 +7062,7 @@ inline bool TreeNodeSaveBodyFields( const Ctx & ctx, const TableNumbering & numb
         {
             uint64_t index_left = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_left, index_left ) ) { return false; }
-            w.putleb( ids.ref_at( 2, 0x24b070ada2041cb0ull ) ); w.put8( 17 ); // left — a NODE INDEX into the flat node table
+            w.header( ids.ref_at( 2, 0x24b070ada2041cb0ull ), 17 ); // left — a NODE INDEX into the flat node table
             w.putleb( index_left );
         }
     }
@@ -7038,7 +7072,7 @@ inline bool TreeNodeSaveBodyFields( const Ctx & ctx, const TableNumbering & numb
         {
             uint64_t index_right = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_right, index_right ) ) { return false; }
-            w.putleb( ids.ref_at( 21, 0x76aaaa535714d805ull ) ); w.put8( 17 ); // right — a NODE INDEX into the flat node table
+            w.header( ids.ref_at( 21, 0x76aaaa535714d805ull ), 17 ); // right — a NODE INDEX into the flat node table
             w.putleb( index_right );
         }
     }
@@ -7360,7 +7394,7 @@ inline bool LayerSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
 {
     if ( value.depth != 0 )
     {
-        w.putleb( ids.ref_at( 20, 0x75d8e97600b296eaull ) ); w.put8( 4 ); // depth
+        w.header( ids.ref_at( 20, 0x75d8e97600b296eaull ), 4 ); // depth
         w.put32( uint32_t( value.depth ) );
     }
     {
@@ -7369,7 +7403,7 @@ inline bool LayerSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
         {
             uint64_t index_head = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_head, index_head ) ) { return false; }
-            w.putleb( ids.ref_at( 0, 0x0a8f12cc5f9a0c03ull ) ); w.put8( 17 ); // head — a NODE INDEX into the flat node table
+            w.header( ids.ref_at( 0, 0x0a8f12cc5f9a0c03ull ), 17 ); // head — a NODE INDEX into the flat node table
             w.putleb( index_head );
         }
     }
@@ -7728,13 +7762,13 @@ inline bool SceneSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
     if ( value.name_length < 0 || value.name_length > 24 ) { return false; } // storage invariant
     if ( value.name_length > 0 )
     {
-        w.putleb( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ); w.put8( 12 ); // name
+        w.header( ids.ref_at( 37, 0xc4bcadba8e631b86ull ), 12 ); // name
         w.putleb( (uint64_t) value.name_length );
         w.raw( value.name, value.name_length );
     }
     if ( value.version != 1 )
     {
-        w.putleb( ids.ref_at( 36, 0xbb62c62c9808ea37ull ) ); w.put8( 4 ); // version
+        w.header( ids.ref_at( 36, 0xbb62c62c9808ea37ull ), 4 ); // version
         w.put32( uint32_t( value.version ) );
     }
     {
@@ -7743,7 +7777,7 @@ inline bool SceneSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
         {
             uint64_t index_head = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_head, index_head ) ) { return false; }
-            w.putleb( ids.ref_at( 0, 0x0a8f12cc5f9a0c03ull ) ); w.put8( 17 ); // head — a NODE INDEX into the flat node table
+            w.header( ids.ref_at( 0, 0x0a8f12cc5f9a0c03ull ), 17 ); // head — a NODE INDEX into the flat node table
             w.putleb( index_head );
         }
     }
@@ -7753,7 +7787,7 @@ inline bool SceneSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
         {
             uint64_t index_tree = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_tree, index_tree ) ) { return false; }
-            w.putleb( ids.ref_at( 14, 0x5b25b8ef511eb395ull ) ); w.put8( 17 ); // tree — a NODE INDEX into the flat node table
+            w.header( ids.ref_at( 14, 0x5b25b8ef511eb395ull ), 17 ); // tree — a NODE INDEX into the flat node table
             w.putleb( index_tree );
         }
     }
@@ -7763,7 +7797,7 @@ inline bool SceneSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
         {
             uint64_t index_settings = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_settings, index_settings ) ) { return false; }
-            w.putleb( ids.ref_at( 43, 0xee5f6d7b48b44de8ull ) ); w.put8( 17 ); // settings — a NODE INDEX into the flat node table
+            w.header( ids.ref_at( 43, 0xee5f6d7b48b44de8ull ), 17 ); // settings — a NODE INDEX into the flat node table
             w.putleb( index_settings );
         }
     }
@@ -7773,7 +7807,7 @@ inline bool SceneSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
         {
             uint64_t index_alias = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_alias, index_alias ) ) { return false; }
-            w.putleb( ids.ref_at( 12, 0x509220bb65a646b7ull ) ); w.put8( 17 ); // alias — a NODE INDEX into the flat node table
+            w.header( ids.ref_at( 12, 0x509220bb65a646b7ull ), 17 ); // alias — a NODE INDEX into the flat node table
             w.putleb( index_alias );
         }
     }
@@ -7784,7 +7818,7 @@ inline bool SceneSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
         if ( body_ground < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_ground > 1 ) // all-default nested elides
         {
-            w.putleb( ref_ground ); w.put8( 13 ); w.putleb( (uint64_t) body_ground ); // ground
+            w.header( ref_ground, 13 ); w.putleb( (uint64_t) body_ground ); // ground
             if ( !LayerSaveBody( ctx, numbering, w, ids, value.ground ) ) return false;
         }
         else { ids.truncate( mark_ground ); }
@@ -7806,7 +7840,7 @@ inline bool SceneSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
             if ( elem_i < 4 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_layers += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
-        w.putleb( ref_layers ); w.put8( 14 ); w.putleb( (uint64_t) body_layers ); // layers
+        w.header( ref_layers, 14 ); w.putleb( (uint64_t) body_layers ); // layers
         w.put8( 13 ); w.putleb( (uint64_t) ( value.layers_count ) );
         for ( int32_t elem_i = 0; elem_i < value.layers_count; elem_i++ )
         {
@@ -7825,7 +7859,7 @@ inline bool SceneSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
         if ( body_meta < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_meta > 1 ) // all-default nested elides
         {
-            w.putleb( ref_meta ); w.put8( 13 ); w.putleb( (uint64_t) body_meta ); // meta
+            w.header( ref_meta, 13 ); w.putleb( (uint64_t) body_meta ); // meta
             if ( !MetaSaveBody( w, ids, value.meta ) ) return false;
         }
         else { ids.truncate( mark_meta ); }
@@ -8611,7 +8645,7 @@ inline bool DepotSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
     if ( value.name_length < 0 || value.name_length > 12 ) { return false; } // storage invariant
     if ( value.name_length > 0 )
     {
-        w.putleb( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ); w.put8( 12 ); // name
+        w.header( ids.ref_at( 37, 0xc4bcadba8e631b86ull ), 12 ); // name
         w.putleb( (uint64_t) value.name_length );
         w.raw( value.name, value.name_length );
     }
@@ -8635,7 +8669,7 @@ inline bool DepotSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
             // incompatible, so a reader of the other kind must see a kind
             // mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2)
             const int64_t whole_banks = 1 + TableLebBytes( (uint64_t) pairs_banks ) + body_banks;
-            w.putleb( ref_banks ); w.put8( 16 ); w.putleb( (uint64_t) whole_banks ); // banks (keyed by Tier)
+            w.header( ref_banks, 16 ); w.putleb( (uint64_t) whole_banks ); // banks (keyed by Tier)
             w.put8( 13 ); w.putleb( (uint64_t) pairs_banks );
             // ASCENDING BY VARIANT ORDINAL, which is slot order — this
             // writer's choice, and a reader must not rely on it: every
@@ -8660,7 +8694,7 @@ inline bool DepotSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
         const uint64_t ref_spare = ids.ref_at( 9, 0x4339ee8ab21c8380ull );
         const int64_t body_spare = MetaMeasureBody( ids, value.spare );
         if ( body_spare < 0 ) return false; // storage invariant, refused as measure refuses it
-        w.putleb( ref_spare ); w.put8( 13 ); w.putleb( (uint64_t) body_spare ); // spare
+        w.header( ref_spare, 13 ); w.putleb( (uint64_t) body_spare ); // spare
         if ( !MetaSaveBody( w, ids, value.spare ) ) return false;
     }
     {
@@ -8669,7 +8703,7 @@ inline bool DepotSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
         {
             uint64_t index_head = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_head, index_head ) ) { return false; }
-            w.putleb( ids.ref_at( 0, 0x0a8f12cc5f9a0c03ull ) ); w.put8( 17 ); // head — a NODE INDEX into the flat node table
+            w.header( ids.ref_at( 0, 0x0a8f12cc5f9a0c03ull ), 17 ); // head — a NODE INDEX into the flat node table
             w.putleb( index_head );
         }
     }
@@ -9171,7 +9205,7 @@ inline bool AlbumSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
     if ( value.name_length < 0 || value.name_length > 16 ) { return false; } // storage invariant
     if ( value.name_length > 0 )
     {
-        w.putleb( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ); w.put8( 12 ); // name
+        w.header( ids.ref_at( 37, 0xc4bcadba8e631b86ull ), 12 ); // name
         w.putleb( (uint64_t) value.name_length );
         w.raw( value.name, value.name_length );
     }
@@ -9182,7 +9216,7 @@ inline bool AlbumSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
         if ( body_tint < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_tint > 1 ) // all-default nested elides
         {
-            w.putleb( ref_tint ); w.put8( 13 ); w.putleb( (uint64_t) body_tint ); // tint
+            w.header( ref_tint, 13 ); w.putleb( (uint64_t) body_tint ); // tint
             if ( !ColourSaveBody( w, ids, value.tint ) ) return false;
         }
         else { ids.truncate( mark_tint ); }
@@ -9194,7 +9228,7 @@ inline bool AlbumSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
         if ( body_stamp < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_stamp > 1 ) // all-default nested elides
         {
-            w.putleb( ref_stamp ); w.put8( 13 ); w.putleb( (uint64_t) body_stamp ); // stamp
+            w.header( ref_stamp, 13 ); w.putleb( (uint64_t) body_stamp ); // stamp
             if ( !StampSaveBody( w, ids, value.stamp ) ) return false;
         }
         else { ids.truncate( mark_stamp ); }
@@ -9206,7 +9240,7 @@ inline bool AlbumSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
         if ( body_marker < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_marker > 1 ) // all-default nested elides
         {
-            w.putleb( ref_marker ); w.put8( 13 ); w.putleb( (uint64_t) body_marker ); // marker
+            w.header( ref_marker, 13 ); w.putleb( (uint64_t) body_marker ); // marker
             if ( !MarkerSaveBody( ctx, numbering, w, ids, value.marker ) ) return false;
         }
         else { ids.truncate( mark_marker ); }
@@ -9217,7 +9251,7 @@ inline bool AlbumSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
         {
             uint64_t index_pin = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_pin, index_pin ) ) { return false; }
-            w.putleb( ids.ref_at( 22, 0x77af761956600b54ull ) ); w.put8( 17 ); // pin — a NODE INDEX into the flat node table
+            w.header( ids.ref_at( 22, 0x77af761956600b54ull ), 17 ); // pin — a NODE INDEX into the flat node table
             w.putleb( index_pin );
         }
     }
@@ -9227,7 +9261,7 @@ inline bool AlbumSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
         {
             uint64_t index_head = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_head, index_head ) ) { return false; }
-            w.putleb( ids.ref_at( 0, 0x0a8f12cc5f9a0c03ull ) ); w.put8( 17 ); // head — a NODE INDEX into the flat node table
+            w.header( ids.ref_at( 0, 0x0a8f12cc5f9a0c03ull ), 17 ); // head — a NODE INDEX into the flat node table
             w.putleb( index_head );
         }
     }
@@ -15850,13 +15884,13 @@ GRAPHDEMO_TABLE_INLINE bool MetaSaveBodyRetain( TableWriter & w, TableRetainIds 
 {
     if ( value.build != 1 )
     {
-        w.putleb( ids.ref_at( 26, 0x802517e298c70b03ull ) ); w.put8( 4 ); // build
+        w.header( ids.ref_at( 26, 0x802517e298c70b03ull ), 4 ); // build
         w.put32( uint32_t( value.build ) );
     }
     if ( value.tag_length < 0 || value.tag_length > 8 ) { return false; } // storage invariant
     if ( value.tag_length > 0 )
     {
-        w.putleb( ids.ref_at( 13, 0x56d7ab194448a4f3ull ) ); w.put8( 12 ); // tag
+        w.header( ids.ref_at( 13, 0x56d7ab194448a4f3ull ), 12 ); // tag
         w.putleb( (uint64_t) value.tag_length );
         w.raw( value.tag, value.tag_length );
     }
@@ -16095,13 +16129,13 @@ GRAPHDEMO_TABLE_INLINE bool SettingsSaveBodyRetain( TableWriter & w, TableRetain
 {
     if ( value.quality != 2 )
     {
-        w.putleb( ids.ref_at( 23, 0x7a8060916400fe66ull ) ); w.put8( 4 ); // quality
+        w.header( ids.ref_at( 23, 0x7a8060916400fe66ull ), 4 ); // quality
         w.put32( uint32_t( value.quality ) );
     }
     if ( value.label_length < 0 || value.label_length > 16 ) { return false; } // storage invariant
     if ( value.label_length > 0 )
     {
-        w.putleb( ids.ref_at( 6, 0x39f7fcec8fcb623dull ) ); w.put8( 12 ); // label
+        w.header( ids.ref_at( 6, 0x39f7fcec8fcb623dull ), 12 ); // label
         w.putleb( (uint64_t) value.label_length );
         w.raw( value.label, value.label_length );
     }
@@ -16356,13 +16390,13 @@ inline bool ListNodeSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering 
 {
     if ( value.value != 0 )
     {
-        w.putleb( ids.ref_at( 24, 0x7ce4fd9430e80ceaull ) ); w.put8( 4 ); // value
+        w.header( ids.ref_at( 24, 0x7ce4fd9430e80ceaull ), 4 ); // value
         w.put32( uint32_t( value.value ) );
     }
     if ( value.name_length < 0 || value.name_length > 12 ) { return false; } // storage invariant
     if ( value.name_length > 0 )
     {
-        w.putleb( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ); w.put8( 12 ); // name
+        w.header( ids.ref_at( 37, 0xc4bcadba8e631b86ull ), 12 ); // name
         w.putleb( (uint64_t) value.name_length );
         w.raw( value.name, value.name_length );
     }
@@ -16372,7 +16406,7 @@ inline bool ListNodeSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering 
         {
             uint64_t index_next = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_next, index_next ) ) { return false; }
-            w.putleb( ids.ref_at( 41, 0xe5316cbaa025f028ull ) ); w.put8( 17 ); // next — a NODE INDEX into the flat node table
+            w.header( ids.ref_at( 41, 0xe5316cbaa025f028ull ), 17 ); // next — a NODE INDEX into the flat node table
             w.putleb( index_next );
         }
     }
@@ -16688,7 +16722,7 @@ inline bool TreeNodeSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering 
     if ( value.label_length < 0 || value.label_length > 12 ) { return false; } // storage invariant
     if ( value.label_length > 0 )
     {
-        w.putleb( ids.ref_at( 6, 0x39f7fcec8fcb623dull ) ); w.put8( 12 ); // label
+        w.header( ids.ref_at( 6, 0x39f7fcec8fcb623dull ), 12 ); // label
         w.putleb( (uint64_t) value.label_length );
         w.raw( value.label, value.label_length );
     }
@@ -16698,7 +16732,7 @@ inline bool TreeNodeSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering 
         {
             uint64_t index_left = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_left, index_left ) ) { return false; }
-            w.putleb( ids.ref_at( 2, 0x24b070ada2041cb0ull ) ); w.put8( 17 ); // left — a NODE INDEX into the flat node table
+            w.header( ids.ref_at( 2, 0x24b070ada2041cb0ull ), 17 ); // left — a NODE INDEX into the flat node table
             w.putleb( index_left );
         }
     }
@@ -16708,7 +16742,7 @@ inline bool TreeNodeSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering 
         {
             uint64_t index_right = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_right, index_right ) ) { return false; }
-            w.putleb( ids.ref_at( 21, 0x76aaaa535714d805ull ) ); w.put8( 17 ); // right — a NODE INDEX into the flat node table
+            w.header( ids.ref_at( 21, 0x76aaaa535714d805ull ), 17 ); // right — a NODE INDEX into the flat node table
             w.putleb( index_right );
         }
     }
@@ -16970,7 +17004,7 @@ inline bool LayerSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
 {
     if ( value.depth != 0 )
     {
-        w.putleb( ids.ref_at( 20, 0x75d8e97600b296eaull ) ); w.put8( 4 ); // depth
+        w.header( ids.ref_at( 20, 0x75d8e97600b296eaull ), 4 ); // depth
         w.put32( uint32_t( value.depth ) );
     }
     {
@@ -16979,7 +17013,7 @@ inline bool LayerSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
         {
             uint64_t index_head = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_head, index_head ) ) { return false; }
-            w.putleb( ids.ref_at( 0, 0x0a8f12cc5f9a0c03ull ) ); w.put8( 17 ); // head — a NODE INDEX into the flat node table
+            w.header( ids.ref_at( 0, 0x0a8f12cc5f9a0c03ull ), 17 ); // head — a NODE INDEX into the flat node table
             w.putleb( index_head );
         }
     }
@@ -17304,13 +17338,13 @@ inline bool SceneSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
     if ( value.name_length < 0 || value.name_length > 24 ) { return false; } // storage invariant
     if ( value.name_length > 0 )
     {
-        w.putleb( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ); w.put8( 12 ); // name
+        w.header( ids.ref_at( 37, 0xc4bcadba8e631b86ull ), 12 ); // name
         w.putleb( (uint64_t) value.name_length );
         w.raw( value.name, value.name_length );
     }
     if ( value.version != 1 )
     {
-        w.putleb( ids.ref_at( 36, 0xbb62c62c9808ea37ull ) ); w.put8( 4 ); // version
+        w.header( ids.ref_at( 36, 0xbb62c62c9808ea37ull ), 4 ); // version
         w.put32( uint32_t( value.version ) );
     }
     {
@@ -17319,7 +17353,7 @@ inline bool SceneSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
         {
             uint64_t index_head = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_head, index_head ) ) { return false; }
-            w.putleb( ids.ref_at( 0, 0x0a8f12cc5f9a0c03ull ) ); w.put8( 17 ); // head — a NODE INDEX into the flat node table
+            w.header( ids.ref_at( 0, 0x0a8f12cc5f9a0c03ull ), 17 ); // head — a NODE INDEX into the flat node table
             w.putleb( index_head );
         }
     }
@@ -17329,7 +17363,7 @@ inline bool SceneSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
         {
             uint64_t index_tree = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_tree, index_tree ) ) { return false; }
-            w.putleb( ids.ref_at( 14, 0x5b25b8ef511eb395ull ) ); w.put8( 17 ); // tree — a NODE INDEX into the flat node table
+            w.header( ids.ref_at( 14, 0x5b25b8ef511eb395ull ), 17 ); // tree — a NODE INDEX into the flat node table
             w.putleb( index_tree );
         }
     }
@@ -17339,7 +17373,7 @@ inline bool SceneSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
         {
             uint64_t index_settings = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_settings, index_settings ) ) { return false; }
-            w.putleb( ids.ref_at( 43, 0xee5f6d7b48b44de8ull ) ); w.put8( 17 ); // settings — a NODE INDEX into the flat node table
+            w.header( ids.ref_at( 43, 0xee5f6d7b48b44de8ull ), 17 ); // settings — a NODE INDEX into the flat node table
             w.putleb( index_settings );
         }
     }
@@ -17349,7 +17383,7 @@ inline bool SceneSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
         {
             uint64_t index_alias = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_alias, index_alias ) ) { return false; }
-            w.putleb( ids.ref_at( 12, 0x509220bb65a646b7ull ) ); w.put8( 17 ); // alias — a NODE INDEX into the flat node table
+            w.header( ids.ref_at( 12, 0x509220bb65a646b7ull ), 17 ); // alias — a NODE INDEX into the flat node table
             w.putleb( index_alias );
         }
     }
@@ -17360,7 +17394,7 @@ inline bool SceneSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
         if ( body_ground < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_ground > 1 ) // all-default nested elides
         {
-            w.putleb( ref_ground ); w.put8( 13 ); w.putleb( (uint64_t) body_ground ); // ground
+            w.header( ref_ground, 13 ); w.putleb( (uint64_t) body_ground ); // ground
             if ( !LayerSaveBodyRetain( ctx, numbering, w, ids, value.ground, retain, TableRetainStepInto( path, 6, (uint32_t) ( 0 ) ) ) ) return false;
         }
         else { ids.truncate( mark_ground ); }
@@ -17377,7 +17411,7 @@ inline bool SceneSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
             if ( elem_bytes < 0 ) { return false; }
             body_layers += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
-        w.putleb( ref_layers ); w.put8( 14 ); w.putleb( (uint64_t) body_layers ); // layers
+        w.header( ref_layers, 14 ); w.putleb( (uint64_t) body_layers ); // layers
         w.put8( 13 ); w.putleb( (uint64_t) ( value.layers_count ) );
         for ( int32_t elem_i = 0; elem_i < value.layers_count; elem_i++ )
         {
@@ -17396,7 +17430,7 @@ inline bool SceneSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
         if ( body_meta < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_meta > 1 ) // all-default nested elides
         {
-            w.putleb( ref_meta ); w.put8( 13 ); w.putleb( (uint64_t) body_meta ); // meta
+            w.header( ref_meta, 13 ); w.putleb( (uint64_t) body_meta ); // meta
             if ( !MetaSaveBodyRetain( w, ids, value.meta, retain, TableRetainStepInto( path, 8, (uint32_t) ( 0 ) ) ) ) return false;
         }
         else { ids.truncate( mark_meta ); }
@@ -18021,7 +18055,7 @@ inline bool DepotSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
     if ( value.name_length < 0 || value.name_length > 12 ) { return false; } // storage invariant
     if ( value.name_length > 0 )
     {
-        w.putleb( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ); w.put8( 12 ); // name
+        w.header( ids.ref_at( 37, 0xc4bcadba8e631b86ull ), 12 ); // name
         w.putleb( (uint64_t) value.name_length );
         w.raw( value.name, value.name_length );
     }
@@ -18045,7 +18079,7 @@ inline bool DepotSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
             // incompatible, so a reader of the other kind must see a kind
             // mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2)
             const int64_t whole_banks = 1 + TableLebBytes( (uint64_t) pairs_banks ) + body_banks;
-            w.putleb( ref_banks ); w.put8( 16 ); w.putleb( (uint64_t) whole_banks ); // banks (keyed by Tier)
+            w.header( ref_banks, 16 ); w.putleb( (uint64_t) whole_banks ); // banks (keyed by Tier)
             w.put8( 13 ); w.putleb( (uint64_t) pairs_banks );
             // ASCENDING BY VARIANT ORDINAL, which is slot order — this
             // writer's choice, and a reader must not rely on it: every
@@ -18070,7 +18104,7 @@ inline bool DepotSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
         const uint64_t ref_spare = ids.ref_at( 9, 0x4339ee8ab21c8380ull );
         const int64_t body_spare = MetaMeasureBodyRetain( ids, value.spare, retain, TableRetainStepInto( path, 2, (uint32_t) ( 0 ) ) );
         if ( body_spare < 0 ) return false; // storage invariant, refused as measure refuses it
-        w.putleb( ref_spare ); w.put8( 13 ); w.putleb( (uint64_t) body_spare ); // spare
+        w.header( ref_spare, 13 ); w.putleb( (uint64_t) body_spare ); // spare
         if ( !MetaSaveBodyRetain( w, ids, value.spare, retain, TableRetainStepInto( path, 2, (uint32_t) ( 0 ) ) ) ) return false;
     }
     {
@@ -18079,7 +18113,7 @@ inline bool DepotSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
         {
             uint64_t index_head = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_head, index_head ) ) { return false; }
-            w.putleb( ids.ref_at( 0, 0x0a8f12cc5f9a0c03ull ) ); w.put8( 17 ); // head — a NODE INDEX into the flat node table
+            w.header( ids.ref_at( 0, 0x0a8f12cc5f9a0c03ull ), 17 ); // head — a NODE INDEX into the flat node table
             w.putleb( index_head );
         }
     }
@@ -18471,7 +18505,7 @@ inline bool AlbumSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
     if ( value.name_length < 0 || value.name_length > 16 ) { return false; } // storage invariant
     if ( value.name_length > 0 )
     {
-        w.putleb( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ); w.put8( 12 ); // name
+        w.header( ids.ref_at( 37, 0xc4bcadba8e631b86ull ), 12 ); // name
         w.putleb( (uint64_t) value.name_length );
         w.raw( value.name, value.name_length );
     }
@@ -18482,7 +18516,7 @@ inline bool AlbumSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
         if ( body_tint < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_tint > 1 ) // all-default nested elides
         {
-            w.putleb( ref_tint ); w.put8( 13 ); w.putleb( (uint64_t) body_tint ); // tint
+            w.header( ref_tint, 13 ); w.putleb( (uint64_t) body_tint ); // tint
             if ( !ColourSaveBodyRetain( w, ids, value.tint, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) ) ) return false;
         }
         else { ids.truncate( mark_tint ); }
@@ -18494,7 +18528,7 @@ inline bool AlbumSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
         if ( body_stamp < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_stamp > 1 ) // all-default nested elides
         {
-            w.putleb( ref_stamp ); w.put8( 13 ); w.putleb( (uint64_t) body_stamp ); // stamp
+            w.header( ref_stamp, 13 ); w.putleb( (uint64_t) body_stamp ); // stamp
             if ( !StampSaveBodyRetain( w, ids, value.stamp, retain, TableRetainStepInto( path, 2, (uint32_t) ( 0 ) ) ) ) return false;
         }
         else { ids.truncate( mark_stamp ); }
@@ -18506,7 +18540,7 @@ inline bool AlbumSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
         if ( body_marker < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_marker > 1 ) // all-default nested elides
         {
-            w.putleb( ref_marker ); w.put8( 13 ); w.putleb( (uint64_t) body_marker ); // marker
+            w.header( ref_marker, 13 ); w.putleb( (uint64_t) body_marker ); // marker
             if ( !MarkerSaveBodyRetain( ctx, numbering, w, ids, value.marker, retain, TableRetainStepInto( path, 3, (uint32_t) ( 0 ) ) ) ) return false;
         }
         else { ids.truncate( mark_marker ); }
@@ -18517,7 +18551,7 @@ inline bool AlbumSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
         {
             uint64_t index_pin = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_pin, index_pin ) ) { return false; }
-            w.putleb( ids.ref_at( 22, 0x77af761956600b54ull ) ); w.put8( 17 ); // pin — a NODE INDEX into the flat node table
+            w.header( ids.ref_at( 22, 0x77af761956600b54ull ), 17 ); // pin — a NODE INDEX into the flat node table
             w.putleb( index_pin );
         }
     }
@@ -18527,7 +18561,7 @@ inline bool AlbumSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
         {
             uint64_t index_head = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_head, index_head ) ) { return false; }
-            w.putleb( ids.ref_at( 0, 0x0a8f12cc5f9a0c03ull ) ); w.put8( 17 ); // head — a NODE INDEX into the flat node table
+            w.header( ids.ref_at( 0, 0x0a8f12cc5f9a0c03ull ), 17 ); // head — a NODE INDEX into the flat node table
             w.putleb( index_head );
         }
     }
