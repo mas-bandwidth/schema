@@ -342,12 +342,23 @@ struct TableIds
     uint64_t ids[ kCapacity ];
     int32_t chain[ kCapacity ];
     int32_t head[ kBuckets ];
+    // THE ORDINAL SLOT CACHE (§3). Every id a generated field header names is
+    // a COMPILE-TIME CONSTANT of the unit, so it has an ORDINAL: its index in
+    // the unit's id vocabulary, the same ascending set kCapacity counts. slot
+    // holds the ENTRY that ordinal's id took, -1 for one not interned yet, and
+    // ordinal_of is its inverse over the entries — the ordinal an entry was
+    // taken under, -1 for an entry a RUNTIME id took, which has no ordinal.
+    // The pair is what lets truncate undo the cache in O(popped) rather than
+    // walking the whole vocabulary.
+    int32_t slot[ kCapacity ];
+    int16_t ordinal_of[ kCapacity ];
     int32_t count;
     bool overflow;
 
     TableIds() : count( 0 ), overflow( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
+        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; }
     }
 
     static TABLEDEMO_TABLE_INLINE uint32_t bucket_of( uint64_t id )
@@ -366,18 +377,41 @@ struct TableIds
             if ( ids[i] == id ) { return uint64_t( i ) + 1; }
         }
         if ( count >= kCapacity ) { overflow = true; return 1; }
-        ids[count] = id; chain[count] = head[b]; head[b] = count; count++;
+        ids[count] = id; chain[count] = head[b]; ordinal_of[count] = -1; head[b] = count; count++;
         return uint64_t( count );
     }
 
+    // ref FOR AN ID THE EMITTER KNEW, which is every id a generated field
+    // header, union arm header or blob header names. A REPEAT answers from
+    // slot[ordinal]; a MISS falls through to ref, so THE APPEND STILL HAPPENS
+    // ONLY THERE and first-use order — which is the trailer's order — is the
+    // order it always was. An id reached through both this and ref carries the
+    // ordinal from here, so truncate can always undo the cache.
+    TABLEDEMO_TABLE_INLINE uint64_t ref_at( int32_t ordinal, uint64_t id )
+    {
+        const int32_t at = slot[ordinal];
+        if ( at >= 0 ) { return uint64_t( at ) + 1; }
+        const uint64_t r = ref( id );
+        // AN OVERFLOWED TABLE RECORDS NOTHING: ref appended no entry and
+        // answered 1, which is not this id's reference (§3).
+        if ( overflow ) { return r; }
+        slot[ordinal] = int32_t( r ) - 1;
+        ordinal_of[ int32_t( r ) - 1 ] = int16_t( ordinal );
+        return r;
+    }
+
     // undo every entry appended since mark. An entry removed is the most
-    // recent one in its bucket, so it sits at that bucket's head.
+    // recent one in its bucket, so it sits at that bucket's head — and its
+    // ORDINAL SLOT goes with it, or a later ref_at would answer with an entry
+    // this call just popped.
     void truncate( int32_t mark )
     {
         while ( count > mark )
         {
             count--;
             head[ bucket_of( ids[count] ) ] = chain[count];
+            const int32_t o = ordinal_of[count];
+            if ( o >= 0 ) { slot[o] = -1; }
         }
     }
 };
@@ -2477,27 +2511,27 @@ TABLEDEMO_TABLE_INLINE bool PatrolLoadBody( TableReader & r, Patrol & value );
 inline int64_t PatrolMeasureBody( TableIds & ids, const Patrol & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.active != false ) { bytes += TableLebBytes( ids.ref( 0x6580790b036f0c6full ) ) + 1 + 1; } // active
+    if ( value.active != false ) { bytes += TableLebBytes( ids.ref_at( 57, 0x6580790b036f0c6full ) ) + 1 + 1; } // active
     if ( value.active )
     {
-        if ( value.speed != 1.0f ) { bytes += TableLebBytes( ids.ref( 0x2281498aa0200e40ull ) ) + 1 + 4; } // speed
+        if ( value.speed != 1.0f ) { bytes += TableLebBytes( ids.ref_at( 22, 0x2281498aa0200e40ull ) ) + 1 + 4; } // speed
     }
     if ( value.active )
     {
-        if ( value.has_target != false ) { bytes += TableLebBytes( ids.ref( 0x247f0e7f55aacfbdull ) ) + 1 + 1; } // has_target
+        if ( value.has_target != false ) { bytes += TableLebBytes( ids.ref_at( 23, 0x247f0e7f55aacfbdull ) ) + 1 + 1; } // has_target
     }
     if ( value.active && value.has_target )
     {
-        if ( value.target_id != 0 ) { bytes += TableLebBytes( ids.ref( 0xb7bc9ac015a25050ull ) ) + 1 + 4; } // target_id
+        if ( value.target_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 103, 0xb7bc9ac015a25050ull ) ) + 1 + 4; } // target_id
     }
     if ( value.active && !value.has_target )
     {
-        if ( value.wander != 0.5f ) { bytes += TableLebBytes( ids.ref( 0xb8c758d8bd1845d4ull ) ) + 1 + 4; } // wander
+        if ( value.wander != 0.5f ) { bytes += TableLebBytes( ids.ref_at( 104, 0xb8c758d8bd1845d4ull ) ) + 1 + 4; } // wander
     }
     if ( !value.active )
     {
         if ( value.note_length < 0 || value.note_length > 8 ) { return -1; } // storage invariant
-        if ( value.note_length > 0 ) { bytes += TableLebBytes( ids.ref( 0x3bf8fbbad1587cddull ) ) + 1 + TableLebBytes( (uint64_t) ( value.note_length ) ) + ( value.note_length ); } // note
+        if ( value.note_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0x3bf8fbbad1587cddull ) ) + 1 + TableLebBytes( (uint64_t) ( value.note_length ) ) + ( value.note_length ); } // note
     }
     return bytes;
 }
@@ -2514,14 +2548,14 @@ TABLEDEMO_TABLE_INLINE bool PatrolSaveBody( TableWriter & w, TableIds & ids, con
 {
     if ( value.active != false )
     {
-        w.putleb( ids.ref( 0x6580790b036f0c6full ) ); w.put8( 1 ); // active
+        w.putleb( ids.ref_at( 57, 0x6580790b036f0c6full ) ); w.put8( 1 ); // active
         w.put8( value.active ? 1 : 0 );
     }
     if ( value.active )
     {
         if ( value.speed != 1.0f )
         {
-            w.putleb( ids.ref( 0x2281498aa0200e40ull ) ); w.put8( 10 ); // speed
+            w.putleb( ids.ref_at( 22, 0x2281498aa0200e40ull ) ); w.put8( 10 ); // speed
             w.put32( table_float_to_bits( value.speed ) );
         }
     }
@@ -2529,7 +2563,7 @@ TABLEDEMO_TABLE_INLINE bool PatrolSaveBody( TableWriter & w, TableIds & ids, con
     {
         if ( value.has_target != false )
         {
-            w.putleb( ids.ref( 0x247f0e7f55aacfbdull ) ); w.put8( 1 ); // has_target
+            w.putleb( ids.ref_at( 23, 0x247f0e7f55aacfbdull ) ); w.put8( 1 ); // has_target
             w.put8( value.has_target ? 1 : 0 );
         }
     }
@@ -2537,7 +2571,7 @@ TABLEDEMO_TABLE_INLINE bool PatrolSaveBody( TableWriter & w, TableIds & ids, con
     {
         if ( value.target_id != 0 )
         {
-            w.putleb( ids.ref( 0xb7bc9ac015a25050ull ) ); w.put8( 4 ); // target_id
+            w.putleb( ids.ref_at( 103, 0xb7bc9ac015a25050ull ) ); w.put8( 4 ); // target_id
             w.put32( uint32_t( value.target_id ) );
         }
     }
@@ -2545,7 +2579,7 @@ TABLEDEMO_TABLE_INLINE bool PatrolSaveBody( TableWriter & w, TableIds & ids, con
     {
         if ( value.wander != 0.5f )
         {
-            w.putleb( ids.ref( 0xb8c758d8bd1845d4ull ) ); w.put8( 10 ); // wander
+            w.putleb( ids.ref_at( 104, 0xb8c758d8bd1845d4ull ) ); w.put8( 10 ); // wander
             w.put32( table_float_to_bits( value.wander ) );
         }
     }
@@ -2554,7 +2588,7 @@ TABLEDEMO_TABLE_INLINE bool PatrolSaveBody( TableWriter & w, TableIds & ids, con
         if ( value.note_length < 0 || value.note_length > 8 ) { return false; } // storage invariant
         if ( value.note_length > 0 )
         {
-            w.putleb( ids.ref( 0x3bf8fbbad1587cddull ) ); w.put8( 12 ); // note
+            w.putleb( ids.ref_at( 37, 0x3bf8fbbad1587cddull ) ); w.put8( 12 ); // note
             w.putleb( (uint64_t) value.note_length );
             w.raw( value.note, value.note_length );
         }

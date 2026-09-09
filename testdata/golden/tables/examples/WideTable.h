@@ -342,12 +342,23 @@ struct TableIds
     uint64_t ids[ kCapacity ];
     int32_t chain[ kCapacity ];
     int32_t head[ kBuckets ];
+    // THE ORDINAL SLOT CACHE (§3). Every id a generated field header names is
+    // a COMPILE-TIME CONSTANT of the unit, so it has an ORDINAL: its index in
+    // the unit's id vocabulary, the same ascending set kCapacity counts. slot
+    // holds the ENTRY that ordinal's id took, -1 for one not interned yet, and
+    // ordinal_of is its inverse over the entries — the ordinal an entry was
+    // taken under, -1 for an entry a RUNTIME id took, which has no ordinal.
+    // The pair is what lets truncate undo the cache in O(popped) rather than
+    // walking the whole vocabulary.
+    int32_t slot[ kCapacity ];
+    int16_t ordinal_of[ kCapacity ];
     int32_t count;
     bool overflow;
 
     TableIds() : count( 0 ), overflow( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
+        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; }
     }
 
     static TABLEDEMO_TABLE_INLINE uint32_t bucket_of( uint64_t id )
@@ -366,18 +377,41 @@ struct TableIds
             if ( ids[i] == id ) { return uint64_t( i ) + 1; }
         }
         if ( count >= kCapacity ) { overflow = true; return 1; }
-        ids[count] = id; chain[count] = head[b]; head[b] = count; count++;
+        ids[count] = id; chain[count] = head[b]; ordinal_of[count] = -1; head[b] = count; count++;
         return uint64_t( count );
     }
 
+    // ref FOR AN ID THE EMITTER KNEW, which is every id a generated field
+    // header, union arm header or blob header names. A REPEAT answers from
+    // slot[ordinal]; a MISS falls through to ref, so THE APPEND STILL HAPPENS
+    // ONLY THERE and first-use order — which is the trailer's order — is the
+    // order it always was. An id reached through both this and ref carries the
+    // ordinal from here, so truncate can always undo the cache.
+    TABLEDEMO_TABLE_INLINE uint64_t ref_at( int32_t ordinal, uint64_t id )
+    {
+        const int32_t at = slot[ordinal];
+        if ( at >= 0 ) { return uint64_t( at ) + 1; }
+        const uint64_t r = ref( id );
+        // AN OVERFLOWED TABLE RECORDS NOTHING: ref appended no entry and
+        // answered 1, which is not this id's reference (§3).
+        if ( overflow ) { return r; }
+        slot[ordinal] = int32_t( r ) - 1;
+        ordinal_of[ int32_t( r ) - 1 ] = int16_t( ordinal );
+        return r;
+    }
+
     // undo every entry appended since mark. An entry removed is the most
-    // recent one in its bucket, so it sits at that bucket's head.
+    // recent one in its bucket, so it sits at that bucket's head — and its
+    // ORDINAL SLOT goes with it, or a later ref_at would answer with an entry
+    // this call just popped.
     void truncate( int32_t mark )
     {
         while ( count > mark )
         {
             count--;
             head[ bucket_of( ids[count] ) ] = chain[count];
+            const int32_t o = ordinal_of[count];
+            if ( o >= 0 ) { slot[o] = -1; }
         }
     }
 };
@@ -2464,17 +2498,17 @@ inline int64_t WideBlobMeasureBody( TableIds & ids, const WideBlob & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.label_length < 0 || value.label_length > 70000 ) { return -1; } // storage invariant
-    if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref( 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
+    if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 35, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
     if ( value.payload_length < 0 || value.payload_length > 70000 ) { return -1; } // storage invariant
     if ( value.payload_length > 0 )
     {
         const int64_t body_payload = 1 + TableLebBytes( (uint64_t) value.payload_length ) + value.payload_length;
-        bytes += TableLebBytes( ids.ref( 0xcfb8a9d063b5e9e5ull ) ) + 1 + TableLebBytes( (uint64_t) ( body_payload ) ) + ( body_payload ); // payload
+        bytes += TableLebBytes( ids.ref_at( 122, 0xcfb8a9d063b5e9e5ull ) ) + 1 + TableLebBytes( (uint64_t) ( body_payload ) ) + ( body_payload ); // payload
     }
     if ( value.samples_count < 0 || value.samples_count > 70000 ) { return -1; } // storage invariant
     if ( value.samples_count > 0 )
     {
-        const uint64_t ref_samples = ids.ref( 0xe3b1ca6a3b48dddcull );
+        const uint64_t ref_samples = ids.ref_at( 136, 0xe3b1ca6a3b48dddcull );
         int64_t body_samples = 0;
         body_samples += 1 + TableLebBytes( (uint64_t) ( value.samples_count ) ); // the element kind byte and the count
         body_samples += (int64_t) ( value.samples_count ) * 2;
@@ -2496,7 +2530,7 @@ TABLEDEMO_TABLE_INLINE bool WideBlobSaveBody( TableWriter & w, TableIds & ids, c
     if ( value.label_length < 0 || value.label_length > 70000 ) { return false; } // storage invariant
     if ( value.label_length > 0 )
     {
-        w.putleb( ids.ref( 0x39f7fcec8fcb623dull ) ); w.put8( 12 ); // label
+        w.putleb( ids.ref_at( 35, 0x39f7fcec8fcb623dull ) ); w.put8( 12 ); // label
         w.putleb( (uint64_t) value.label_length );
         w.raw( value.label, value.label_length );
     }
@@ -2504,7 +2538,7 @@ TABLEDEMO_TABLE_INLINE bool WideBlobSaveBody( TableWriter & w, TableIds & ids, c
     if ( value.payload_length > 0 )
     {
         const int64_t body_payload = 1 + TableLebBytes( (uint64_t) value.payload_length ) + value.payload_length;
-        w.putleb( ids.ref( 0xcfb8a9d063b5e9e5ull ) ); w.put8( 14 ); // payload
+        w.putleb( ids.ref_at( 122, 0xcfb8a9d063b5e9e5ull ) ); w.put8( 14 ); // payload
         w.putleb( (uint64_t) body_payload );
         w.put8( 6 ); w.putleb( (uint64_t) value.payload_length );
         w.raw( value.payload, value.payload_length );
@@ -2512,7 +2546,7 @@ TABLEDEMO_TABLE_INLINE bool WideBlobSaveBody( TableWriter & w, TableIds & ids, c
     if ( value.samples_count < 0 || value.samples_count > 70000 ) { return false; } // storage invariant
     if ( value.samples_count > 0 )
     {
-        const uint64_t ref_samples = ids.ref( 0xe3b1ca6a3b48dddcull );
+        const uint64_t ref_samples = ids.ref_at( 136, 0xe3b1ca6a3b48dddcull );
         int64_t body_samples = 0;
         body_samples += 1 + TableLebBytes( (uint64_t) ( value.samples_count ) ); // the element kind byte and the count
         body_samples += (int64_t) ( value.samples_count ) * 2;

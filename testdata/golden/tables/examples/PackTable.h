@@ -342,12 +342,23 @@ struct TableIds
     uint64_t ids[ kCapacity ];
     int32_t chain[ kCapacity ];
     int32_t head[ kBuckets ];
+    // THE ORDINAL SLOT CACHE (§3). Every id a generated field header names is
+    // a COMPILE-TIME CONSTANT of the unit, so it has an ORDINAL: its index in
+    // the unit's id vocabulary, the same ascending set kCapacity counts. slot
+    // holds the ENTRY that ordinal's id took, -1 for one not interned yet, and
+    // ordinal_of is its inverse over the entries — the ordinal an entry was
+    // taken under, -1 for an entry a RUNTIME id took, which has no ordinal.
+    // The pair is what lets truncate undo the cache in O(popped) rather than
+    // walking the whole vocabulary.
+    int32_t slot[ kCapacity ];
+    int16_t ordinal_of[ kCapacity ];
     int32_t count;
     bool overflow;
 
     TableIds() : count( 0 ), overflow( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
+        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; }
     }
 
     static TABLEDEMO_TABLE_INLINE uint32_t bucket_of( uint64_t id )
@@ -366,18 +377,41 @@ struct TableIds
             if ( ids[i] == id ) { return uint64_t( i ) + 1; }
         }
         if ( count >= kCapacity ) { overflow = true; return 1; }
-        ids[count] = id; chain[count] = head[b]; head[b] = count; count++;
+        ids[count] = id; chain[count] = head[b]; ordinal_of[count] = -1; head[b] = count; count++;
         return uint64_t( count );
     }
 
+    // ref FOR AN ID THE EMITTER KNEW, which is every id a generated field
+    // header, union arm header or blob header names. A REPEAT answers from
+    // slot[ordinal]; a MISS falls through to ref, so THE APPEND STILL HAPPENS
+    // ONLY THERE and first-use order — which is the trailer's order — is the
+    // order it always was. An id reached through both this and ref carries the
+    // ordinal from here, so truncate can always undo the cache.
+    TABLEDEMO_TABLE_INLINE uint64_t ref_at( int32_t ordinal, uint64_t id )
+    {
+        const int32_t at = slot[ordinal];
+        if ( at >= 0 ) { return uint64_t( at ) + 1; }
+        const uint64_t r = ref( id );
+        // AN OVERFLOWED TABLE RECORDS NOTHING: ref appended no entry and
+        // answered 1, which is not this id's reference (§3).
+        if ( overflow ) { return r; }
+        slot[ordinal] = int32_t( r ) - 1;
+        ordinal_of[ int32_t( r ) - 1 ] = int16_t( ordinal );
+        return r;
+    }
+
     // undo every entry appended since mark. An entry removed is the most
-    // recent one in its bucket, so it sits at that bucket's head.
+    // recent one in its bucket, so it sits at that bucket's head — and its
+    // ORDINAL SLOT goes with it, or a later ref_at would answer with an entry
+    // this call just popped.
     void truncate( int32_t mark )
     {
         while ( count > mark )
         {
             count--;
             head[ bucket_of( ids[count] ) ] = chain[count];
+            const int32_t o = ordinal_of[count];
+            if ( o >= 0 ) { slot[o] = -1; }
         }
     }
 };
@@ -2673,10 +2707,10 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBody( TableReader & r, PackConfig & va
 inline int64_t GunnerSettingsMeasureBody( TableIds & ids, const GunnerSettings & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.reaction != 0.2f ) { bytes += TableLebBytes( ids.ref( 0xb75aa3662201646aull ) ) + 1 + 4; } // reaction
-    if ( value.tracking != false ) { bytes += TableLebBytes( ids.ref( 0xa6bf719a4602b0bcull ) ) + 1 + 1; } // tracking
+    if ( value.reaction != 0.2f ) { bytes += TableLebBytes( ids.ref_at( 101, 0xb75aa3662201646aull ) ) + 1 + 4; } // reaction
+    if ( value.tracking != false ) { bytes += TableLebBytes( ids.ref_at( 90, 0xa6bf719a4602b0bcull ) ) + 1 + 1; } // tracking
     if ( value.callsign_length < 0 || value.callsign_length > 24 ) { return -1; } // storage invariant
-    if ( value.callsign_length > 0 ) { bytes += TableLebBytes( ids.ref( 0x5bc44627b9848818ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.callsign_length ) ) + ( value.callsign_length ); } // callsign
+    if ( value.callsign_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 53, 0x5bc44627b9848818ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.callsign_length ) ) + ( value.callsign_length ); } // callsign
     return bytes;
 }
 
@@ -2692,18 +2726,18 @@ TABLEDEMO_TABLE_INLINE bool GunnerSettingsSaveBody( TableWriter & w, TableIds & 
 {
     if ( value.reaction != 0.2f )
     {
-        w.putleb( ids.ref( 0xb75aa3662201646aull ) ); w.put8( 10 ); // reaction
+        w.putleb( ids.ref_at( 101, 0xb75aa3662201646aull ) ); w.put8( 10 ); // reaction
         w.put32( table_float_to_bits( value.reaction ) );
     }
     if ( value.tracking != false )
     {
-        w.putleb( ids.ref( 0xa6bf719a4602b0bcull ) ); w.put8( 1 ); // tracking
+        w.putleb( ids.ref_at( 90, 0xa6bf719a4602b0bcull ) ); w.put8( 1 ); // tracking
         w.put8( value.tracking ? 1 : 0 );
     }
     if ( value.callsign_length < 0 || value.callsign_length > 24 ) { return false; } // storage invariant
     if ( value.callsign_length > 0 )
     {
-        w.putleb( ids.ref( 0x5bc44627b9848818ull ) ); w.put8( 12 ); // callsign
+        w.putleb( ids.ref_at( 53, 0x5bc44627b9848818ull ) ); w.put8( 12 ); // callsign
         w.putleb( (uint64_t) value.callsign_length );
         w.raw( value.callsign, value.callsign_length );
     }
@@ -3096,13 +3130,13 @@ inline int64_t ShipEntryMeasureBody( TableIds & ids, const ShipEntry & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.display_name_length < 0 || value.display_name_length > 32 ) { return -1; } // storage invariant
-    if ( value.display_name_length > 0 ) { bytes += TableLebBytes( ids.ref( 0x2d21d7cd66bd5a5dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.display_name_length ) ) + ( value.display_name_length ); } // display_name
-    if ( value.health != 100.0f ) { bytes += TableLebBytes( ids.ref( 0x7f69d4b5288ba9cfull ) ) + 1 + 4; } // health
-    if ( value.mass != 1.0f ) { bytes += TableLebBytes( ids.ref( 0x1f3757a2ce7b0ab1ull ) ) + 1 + 4; } // mass
+    if ( value.display_name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 27, 0x2d21d7cd66bd5a5dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.display_name_length ) ) + ( value.display_name_length ); } // display_name
+    if ( value.health != 100.0f ) { bytes += TableLebBytes( ids.ref_at( 67, 0x7f69d4b5288ba9cfull ) ) + 1 + 4; } // health
+    if ( value.mass != 1.0f ) { bytes += TableLebBytes( ids.ref_at( 20, 0x1f3757a2ce7b0ab1ull ) ) + 1 + 4; } // mass
     if ( value.hardpoints_count < 0 || value.hardpoints_count > 4 ) { return -1; } // storage invariant
     if ( value.hardpoints_count > 0 )
     {
-        const uint64_t ref_hardpoints = ids.ref( 0x95d0cce09ca82b73ull );
+        const uint64_t ref_hardpoints = ids.ref_at( 77, 0x95d0cce09ca82b73ull );
         int64_t body_hardpoints = 0;
         body_hardpoints += 1 + TableLebBytes( (uint64_t) ( value.hardpoints_count ) ); // the element kind byte and the count
         body_hardpoints += (int64_t) ( value.hardpoints_count ) * 4;
@@ -3110,7 +3144,7 @@ inline int64_t ShipEntryMeasureBody( TableIds & ids, const ShipEntry & value )
     }
     if ( value.gunner_present ) // ?GunnerSettings: presence decides, not content
     {
-        const uint64_t ref_gunner = ids.ref( 0x40dbb648c0cd44aaull );
+        const uint64_t ref_gunner = ids.ref_at( 38, 0x40dbb648c0cd44aaull );
         const int64_t body_gunner = GunnerSettingsMeasureBody( ids, value.gunner );
         if ( body_gunner < 0 ) { return -1; }
         bytes += TableLebBytes( ref_gunner ) + 1 + TableLebBytes( (uint64_t) ( body_gunner ) ) + ( body_gunner ); // gunner
@@ -3131,24 +3165,24 @@ TABLEDEMO_TABLE_INLINE bool ShipEntrySaveBody( TableWriter & w, TableIds & ids, 
     if ( value.display_name_length < 0 || value.display_name_length > 32 ) { return false; } // storage invariant
     if ( value.display_name_length > 0 )
     {
-        w.putleb( ids.ref( 0x2d21d7cd66bd5a5dull ) ); w.put8( 12 ); // display_name
+        w.putleb( ids.ref_at( 27, 0x2d21d7cd66bd5a5dull ) ); w.put8( 12 ); // display_name
         w.putleb( (uint64_t) value.display_name_length );
         w.raw( value.display_name, value.display_name_length );
     }
     if ( value.health != 100.0f )
     {
-        w.putleb( ids.ref( 0x7f69d4b5288ba9cfull ) ); w.put8( 10 ); // health
+        w.putleb( ids.ref_at( 67, 0x7f69d4b5288ba9cfull ) ); w.put8( 10 ); // health
         w.put32( table_float_to_bits( value.health ) );
     }
     if ( value.mass != 1.0f )
     {
-        w.putleb( ids.ref( 0x1f3757a2ce7b0ab1ull ) ); w.put8( 10 ); // mass
+        w.putleb( ids.ref_at( 20, 0x1f3757a2ce7b0ab1ull ) ); w.put8( 10 ); // mass
         w.put32( table_float_to_bits( value.mass ) );
     }
     if ( value.hardpoints_count < 0 || value.hardpoints_count > 4 ) { return false; } // storage invariant
     if ( value.hardpoints_count > 0 )
     {
-        const uint64_t ref_hardpoints = ids.ref( 0x95d0cce09ca82b73ull );
+        const uint64_t ref_hardpoints = ids.ref_at( 77, 0x95d0cce09ca82b73ull );
         int64_t body_hardpoints = 0;
         body_hardpoints += 1 + TableLebBytes( (uint64_t) ( value.hardpoints_count ) ); // the element kind byte and the count
         body_hardpoints += (int64_t) ( value.hardpoints_count ) * 4;
@@ -3161,7 +3195,7 @@ TABLEDEMO_TABLE_INLINE bool ShipEntrySaveBody( TableWriter & w, TableIds & ids, 
     }
     if ( value.gunner_present ) // ?GunnerSettings
     {
-        const uint64_t ref_gunner = ids.ref( 0x40dbb648c0cd44aaull );
+        const uint64_t ref_gunner = ids.ref_at( 38, 0x40dbb648c0cd44aaull );
         const int64_t body_gunner = GunnerSettingsMeasureBody( ids, value.gunner );
         if ( body_gunner < 0 ) return false; // storage invariant, refused as measure refuses it
         w.putleb( ref_gunner ); w.put8( 13 ); w.putleb( (uint64_t) body_gunner ); // gunner
@@ -3817,23 +3851,23 @@ inline bool ShipEntryLoadMessages( ShipEntry * values, int64_t * count, const Ta
 inline int64_t GlobalSettingsMeasureBody( TableIds & ids, const GlobalSettings & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.tick_rate != 60 ) { bytes += TableLebBytes( ids.ref( 0xa65f859b617deaf3ull ) ) + 1 + 4; } // tick_rate
+    if ( value.tick_rate != 60 ) { bytes += TableLebBytes( ids.ref_at( 88, 0xa65f859b617deaf3ull ) ) + 1 + 4; } // tick_rate
     if ( value.difficulty != Difficulty::Normal )
     {
         if ( !TableEnumNamed( value.difficulty ) ) { return -1; } // no variant names this value
-        const uint64_t ref_difficulty = ids.ref( 0x467f35a74c6e4a70ull );
+        const uint64_t ref_difficulty = ids.ref_at( 41, 0x467f35a74c6e4a70ull );
         uint64_t variant_difficulty = 0;
         if ( !TableEnumRef( ids, value.difficulty, variant_difficulty ) ) { return -1; }
         bytes += TableLebBytes( ref_difficulty ) + 1 + TableLebBytes( variant_difficulty ); // difficulty: the variant's reference
     }
     if ( value.build_note_length < 0 || value.build_note_length > 48 ) { return -1; } // storage invariant
-    if ( value.build_note_length > 0 ) { bytes += TableLebBytes( ids.ref( 0x14ec921cc2549d60ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.build_note_length ) ) + ( value.build_note_length ); } // build_note
+    if ( value.build_note_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 11, 0x14ec921cc2549d60ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.build_note_length ) ) + ( value.build_note_length ); } // build_note
     {
         bool all_default_spawn_delays = true;
         for ( int32_t i = 0; i < 3; i++ ) { if ( value.spawn_delays[i] != 0.0f ) { all_default_spawn_delays = false; break; } }
         if ( !all_default_spawn_delays )
         {
-            const uint64_t ref_spawn_delays = ids.ref( 0x09ae5613b0051271ull );
+            const uint64_t ref_spawn_delays = ids.ref_at( 7, 0x09ae5613b0051271ull );
             int64_t body_spawn_delays = 0;
             body_spawn_delays += 1 + TableLebBytes( (uint64_t) ( 3 ) ); // the element kind byte and the count
             body_spawn_delays += (int64_t) ( 3 ) * 4;
@@ -3855,13 +3889,13 @@ TABLEDEMO_TABLE_INLINE bool GlobalSettingsSaveBody( TableWriter & w, TableIds & 
 {
     if ( value.tick_rate != 60 )
     {
-        w.putleb( ids.ref( 0xa65f859b617deaf3ull ) ); w.put8( 8 ); // tick_rate
+        w.putleb( ids.ref_at( 88, 0xa65f859b617deaf3ull ) ); w.put8( 8 ); // tick_rate
         w.put32( uint32_t( value.tick_rate ) );
     }
     if ( value.difficulty != Difficulty::Normal )
     {
         if ( !TableEnumNamed( value.difficulty ) ) { return false; }
-        const uint64_t ref_difficulty = ids.ref( 0x467f35a74c6e4a70ull );
+        const uint64_t ref_difficulty = ids.ref_at( 41, 0x467f35a74c6e4a70ull );
         uint64_t variant_difficulty = 0;
         if ( !TableEnumRef( ids, value.difficulty, variant_difficulty ) ) { return false; }
         w.putleb( ref_difficulty ); w.put8( 30 ); w.putleb( variant_difficulty ); // difficulty
@@ -3869,7 +3903,7 @@ TABLEDEMO_TABLE_INLINE bool GlobalSettingsSaveBody( TableWriter & w, TableIds & 
     if ( value.build_note_length < 0 || value.build_note_length > 48 ) { return false; } // storage invariant
     if ( value.build_note_length > 0 )
     {
-        w.putleb( ids.ref( 0x14ec921cc2549d60ull ) ); w.put8( 12 ); // build_note
+        w.putleb( ids.ref_at( 11, 0x14ec921cc2549d60ull ) ); w.put8( 12 ); // build_note
         w.putleb( (uint64_t) value.build_note_length );
         w.raw( value.build_note, value.build_note_length );
     }
@@ -3878,7 +3912,7 @@ TABLEDEMO_TABLE_INLINE bool GlobalSettingsSaveBody( TableWriter & w, TableIds & 
         for ( int32_t i = 0; i < 3; i++ ) { if ( value.spawn_delays[i] != 0.0f ) { all_default_spawn_delays = false; break; } }
         if ( !all_default_spawn_delays )
         {
-            const uint64_t ref_spawn_delays = ids.ref( 0x09ae5613b0051271ull );
+            const uint64_t ref_spawn_delays = ids.ref_at( 7, 0x09ae5613b0051271ull );
             int64_t body_spawn_delays = 0;
             body_spawn_delays += 1 + TableLebBytes( (uint64_t) ( 3 ) ); // the element kind byte and the count
             body_spawn_delays += (int64_t) ( 3 ) * 4;
@@ -4443,10 +4477,10 @@ inline bool GlobalSettingsLoadMessages( GlobalSettings * values, int64_t * count
 inline int64_t PackConfigMeasureBody( TableIds & ids, const PackConfig & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.version != 1 ) { bytes += TableLebBytes( ids.ref( 0xbb62c62c9808ea37ull ) ) + 1 + 4; } // version
+    if ( value.version != 1 ) { bytes += TableLebBytes( ids.ref_at( 107, 0xbb62c62c9808ea37ull ) ) + 1 + 4; } // version
     {
         const int32_t mark_global = ids.count;
-        const uint64_t ref_global = ids.ref( 0x7fb43557b54149ceull );
+        const uint64_t ref_global = ids.ref_at( 68, 0x7fb43557b54149ceull );
         const int64_t body_global = GlobalSettingsMeasureBody( ids, value.global );
         if ( body_global < 0 ) { return -1; }
         if ( body_global > 1 ) { bytes += TableLebBytes( ref_global ) + 1 + TableLebBytes( (uint64_t) ( body_global ) ) + ( body_global ); } // global
@@ -4454,7 +4488,7 @@ inline int64_t PackConfigMeasureBody( TableIds & ids, const PackConfig & value )
     }
     {
         const int32_t mark_ships = ids.count;
-        const uint64_t ref_ships = ids.ref( 0x294a5c4913e1ad44ull );
+        const uint64_t ref_ships = ids.ref_at( 25, 0x294a5c4913e1ad44ull );
         int64_t pairs_ships = 0, body_ships = 0;
         for ( int32_t i = 0; i < 3; i++ ) // [ShipType]: every stored slot is a named variant's
         {
@@ -4475,7 +4509,7 @@ inline int64_t PackConfigMeasureBody( TableIds & ids, const PackConfig & value )
     }
     {
         const int32_t mark_thresholds = ids.count;
-        const uint64_t ref_thresholds = ids.ref( 0x9cda940a344e1571ull );
+        const uint64_t ref_thresholds = ids.ref_at( 80, 0x9cda940a344e1571ull );
         int64_t pairs_thresholds = 0, body_thresholds = 0;
         for ( int32_t i = 0; i < 3; i++ ) // [Difficulty]: every stored slot is a named variant's
         {
@@ -4494,7 +4528,7 @@ inline int64_t PackConfigMeasureBody( TableIds & ids, const PackConfig & value )
     if ( value.reserves_count < 0 || value.reserves_count > 3 ) { return -1; } // storage invariant
     if ( value.reserves_count > 0 )
     {
-        const uint64_t ref_reserves = ids.ref( 0x77707fccd201c228ull );
+        const uint64_t ref_reserves = ids.ref_at( 64, 0x77707fccd201c228ull );
         int64_t body_reserves = 0;
         body_reserves += 1 + TableLebBytes( (uint64_t) ( value.reserves_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.reserves_count; elem_i++ )
@@ -4520,12 +4554,12 @@ TABLEDEMO_TABLE_INLINE bool PackConfigSaveBody( TableWriter & w, TableIds & ids,
 {
     if ( value.version != 1 )
     {
-        w.putleb( ids.ref( 0xbb62c62c9808ea37ull ) ); w.put8( 8 ); // version
+        w.putleb( ids.ref_at( 107, 0xbb62c62c9808ea37ull ) ); w.put8( 8 ); // version
         w.put32( uint32_t( value.version ) );
     }
     {
         const int32_t mark_global = ids.count;
-        const uint64_t ref_global = ids.ref( 0x7fb43557b54149ceull );
+        const uint64_t ref_global = ids.ref_at( 68, 0x7fb43557b54149ceull );
         const int64_t body_global = GlobalSettingsMeasureBody( ids, value.global );
         if ( body_global < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_global > 1 ) // all-default nested elides
@@ -4537,7 +4571,7 @@ TABLEDEMO_TABLE_INLINE bool PackConfigSaveBody( TableWriter & w, TableIds & ids,
     }
     {
         const int32_t mark_ships = ids.count;
-        const uint64_t ref_ships = ids.ref( 0x294a5c4913e1ad44ull );
+        const uint64_t ref_ships = ids.ref_at( 25, 0x294a5c4913e1ad44ull );
         int64_t pairs_ships = 0, body_ships = 0;
         for ( int32_t i = 0; i < 3; i++ ) // [ShipType]: every stored slot is a named variant's
         {
@@ -4577,7 +4611,7 @@ TABLEDEMO_TABLE_INLINE bool PackConfigSaveBody( TableWriter & w, TableIds & ids,
     }
     {
         const int32_t mark_thresholds = ids.count;
-        const uint64_t ref_thresholds = ids.ref( 0x9cda940a344e1571ull );
+        const uint64_t ref_thresholds = ids.ref_at( 80, 0x9cda940a344e1571ull );
         int64_t pairs_thresholds = 0, body_thresholds = 0;
         for ( int32_t i = 0; i < 3; i++ ) // [Difficulty]: every stored slot is a named variant's
         {
@@ -4612,7 +4646,7 @@ TABLEDEMO_TABLE_INLINE bool PackConfigSaveBody( TableWriter & w, TableIds & ids,
     if ( value.reserves_count < 0 || value.reserves_count > 3 ) { return false; } // storage invariant
     if ( value.reserves_count > 0 )
     {
-        const uint64_t ref_reserves = ids.ref( 0x77707fccd201c228ull );
+        const uint64_t ref_reserves = ids.ref_at( 64, 0x77707fccd201c228ull );
         int64_t body_reserves = 0;
         body_reserves += 1 + TableLebBytes( (uint64_t) ( value.reserves_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.reserves_count; elem_i++ )

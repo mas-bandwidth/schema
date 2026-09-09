@@ -343,12 +343,23 @@ struct TableIds
     uint64_t ids[ kCapacity ];
     int32_t chain[ kCapacity ];
     int32_t head[ kBuckets ];
+    // THE ORDINAL SLOT CACHE (§3). Every id a generated field header names is
+    // a COMPILE-TIME CONSTANT of the unit, so it has an ORDINAL: its index in
+    // the unit's id vocabulary, the same ascending set kCapacity counts. slot
+    // holds the ENTRY that ordinal's id took, -1 for one not interned yet, and
+    // ordinal_of is its inverse over the entries — the ordinal an entry was
+    // taken under, -1 for an entry a RUNTIME id took, which has no ordinal.
+    // The pair is what lets truncate undo the cache in O(popped) rather than
+    // walking the whole vocabulary.
+    int32_t slot[ kCapacity ];
+    int16_t ordinal_of[ kCapacity ];
     int32_t count;
     bool overflow;
 
     TableIds() : count( 0 ), overflow( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
+        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; }
     }
 
     static SCALARDEMO_TABLE_INLINE uint32_t bucket_of( uint64_t id )
@@ -367,18 +378,41 @@ struct TableIds
             if ( ids[i] == id ) { return uint64_t( i ) + 1; }
         }
         if ( count >= kCapacity ) { overflow = true; return 1; }
-        ids[count] = id; chain[count] = head[b]; head[b] = count; count++;
+        ids[count] = id; chain[count] = head[b]; ordinal_of[count] = -1; head[b] = count; count++;
         return uint64_t( count );
     }
 
+    // ref FOR AN ID THE EMITTER KNEW, which is every id a generated field
+    // header, union arm header or blob header names. A REPEAT answers from
+    // slot[ordinal]; a MISS falls through to ref, so THE APPEND STILL HAPPENS
+    // ONLY THERE and first-use order — which is the trailer's order — is the
+    // order it always was. An id reached through both this and ref carries the
+    // ordinal from here, so truncate can always undo the cache.
+    SCALARDEMO_TABLE_INLINE uint64_t ref_at( int32_t ordinal, uint64_t id )
+    {
+        const int32_t at = slot[ordinal];
+        if ( at >= 0 ) { return uint64_t( at ) + 1; }
+        const uint64_t r = ref( id );
+        // AN OVERFLOWED TABLE RECORDS NOTHING: ref appended no entry and
+        // answered 1, which is not this id's reference (§3).
+        if ( overflow ) { return r; }
+        slot[ordinal] = int32_t( r ) - 1;
+        ordinal_of[ int32_t( r ) - 1 ] = int16_t( ordinal );
+        return r;
+    }
+
     // undo every entry appended since mark. An entry removed is the most
-    // recent one in its bucket, so it sits at that bucket's head.
+    // recent one in its bucket, so it sits at that bucket's head — and its
+    // ORDINAL SLOT goes with it, or a later ref_at would answer with an entry
+    // this call just popped.
     void truncate( int32_t mark )
     {
         while ( count > mark )
         {
             count--;
             head[ bucket_of( ids[count] ) ] = chain[count];
+            const int32_t o = ordinal_of[count];
+            if ( o >= 0 ) { slot[o] = -1; }
         }
     }
 };
@@ -2483,26 +2517,26 @@ SCALARDEMO_TABLE_INLINE bool PoseLoadBody( TableReader & r, Pose & value );
 inline int64_t SimStateMeasureBody( TableIds & ids, const SimState & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.tilt != 0 ) { bytes += TableLebBytes( ids.ref( 0x1e5088ef2e9bafc6ull ) ) + 1 + 1; } // tilt
-    if ( value.angle != 0 ) { bytes += TableLebBytes( ids.ref( 0x401ab8cd06158638ull ) ) + 1 + 4; } // angle
-    if ( value.position != 0 ) { bytes += TableLebBytes( ids.ref( 0x4cbf3a26fca1d74aull ) ) + 1 + 8; } // position
-    if ( value.reach != 0 ) { bytes += TableLebBytes( ids.ref( 0x891da1f305deb858ull ) ) + 1 + 16; } // reach
-    if ( value.ticks != 0 ) { bytes += TableLebBytes( ids.ref( 0x7fd9266c6a3e25b5ull ) ) + 1 + 4; } // ticks
-    if ( value.ratio != 0 ) { bytes += TableLebBytes( ids.ref( 0xfbc924118177ade4ull ) ) + 1 + 1; } // ratio
-    if ( value.speed != 0 ) { bytes += TableLebBytes( ids.ref( 0x2281498aa0200e40ull ) ) + 1 + 4; } // speed
-    if ( value.span != 0 ) { bytes += TableLebBytes( ids.ref( 0x8b7dc019093cd0e1ull ) ) + 1 + 8; } // span
-    if ( value.mass != 0 ) { bytes += TableLebBytes( ids.ref( 0x1f3757a2ce7b0ab1ull ) ) + 1 + 16; } // mass
-    if ( value.frames != 0 ) { bytes += TableLebBytes( ids.ref( 0x23e5906728b4e66full ) ) + 1 + 4; } // frames
-    if ( value.flux != 0 ) { bytes += TableLebBytes( ids.ref( 0xd61bdd7908af2642ull ) ) + 1 + 16; } // flux
-    if ( value.energy != serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744073709551366ull ) ) ) { bytes += TableLebBytes( ids.ref( 0xf2fd4f9140ef2f15ull ) ) + 1 + 16; } // energy
-    if ( value.entity_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x23fcfd6678e36712ull ) ) + 1 + 16; } // entity_id
-    if ( value.scale != 65536 ) { bytes += TableLebBytes( ids.ref( 0x6aacb9fbb71a1d91ull ) ) + 1 + 4; } // scale
+    if ( value.tilt != 0 ) { bytes += TableLebBytes( ids.ref_at( 0, 0x1e5088ef2e9bafc6ull ) ) + 1 + 1; } // tilt
+    if ( value.angle != 0 ) { bytes += TableLebBytes( ids.ref_at( 7, 0x401ab8cd06158638ull ) ) + 1 + 4; } // angle
+    if ( value.position != 0 ) { bytes += TableLebBytes( ids.ref_at( 9, 0x4cbf3a26fca1d74aull ) ) + 1 + 8; } // position
+    if ( value.reach != 0 ) { bytes += TableLebBytes( ids.ref_at( 14, 0x891da1f305deb858ull ) ) + 1 + 16; } // reach
+    if ( value.ticks != 0 ) { bytes += TableLebBytes( ids.ref_at( 13, 0x7fd9266c6a3e25b5ull ) ) + 1 + 4; } // ticks
+    if ( value.ratio != 0 ) { bytes += TableLebBytes( ids.ref_at( 29, 0xfbc924118177ade4ull ) ) + 1 + 1; } // ratio
+    if ( value.speed != 0 ) { bytes += TableLebBytes( ids.ref_at( 2, 0x2281498aa0200e40ull ) ) + 1 + 4; } // speed
+    if ( value.span != 0 ) { bytes += TableLebBytes( ids.ref_at( 15, 0x8b7dc019093cd0e1ull ) ) + 1 + 8; } // span
+    if ( value.mass != 0 ) { bytes += TableLebBytes( ids.ref_at( 1, 0x1f3757a2ce7b0ab1ull ) ) + 1 + 16; } // mass
+    if ( value.frames != 0 ) { bytes += TableLebBytes( ids.ref_at( 3, 0x23e5906728b4e66full ) ) + 1 + 4; } // frames
+    if ( value.flux != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0xd61bdd7908af2642ull ) ) + 1 + 16; } // flux
+    if ( value.energy != serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744073709551366ull ) ) ) { bytes += TableLebBytes( ids.ref_at( 28, 0xf2fd4f9140ef2f15ull ) ) + 1 + 16; } // energy
+    if ( value.entity_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 4, 0x23fcfd6678e36712ull ) ) + 1 + 16; } // entity_id
+    if ( value.scale != 65536 ) { bytes += TableLebBytes( ids.ref_at( 11, 0x6aacb9fbb71a1d91ull ) ) + 1 + 4; } // scale
     {
         bool all_default_samples = true;
         for ( int32_t i = 0; i < 3; i++ ) { if ( value.samples[i] != 0 ) { all_default_samples = false; break; } }
         if ( !all_default_samples )
         {
-            const uint64_t ref_samples = ids.ref( 0xe3b1ca6a3b48dddcull );
+            const uint64_t ref_samples = ids.ref_at( 27, 0xe3b1ca6a3b48dddcull );
             int64_t body_samples = 0;
             body_samples += 1 + TableLebBytes( (uint64_t) ( 3 ) ); // the element kind byte and the count
             body_samples += (int64_t) ( 3 ) * 4;
@@ -2512,7 +2546,7 @@ inline int64_t SimStateMeasureBody( TableIds & ids, const SimState & value )
     if ( value.weights_count < 0 || value.weights_count > 4 ) { return -1; } // storage invariant
     if ( value.weights_count > 0 )
     {
-        const uint64_t ref_weights = ids.ref( 0xb1494b6ef08a411eull );
+        const uint64_t ref_weights = ids.ref_at( 23, 0xb1494b6ef08a411eull );
         int64_t body_weights = 0;
         body_weights += 1 + TableLebBytes( (uint64_t) ( value.weights_count ) ); // the element kind byte and the count
         body_weights += (int64_t) ( value.weights_count ) * 2;
@@ -2520,7 +2554,7 @@ inline int64_t SimStateMeasureBody( TableIds & ids, const SimState & value )
     }
     {
         const int32_t mark_axes = ids.count;
-        const uint64_t ref_axes = ids.ref( 0x32969e840d9c67b8ull );
+        const uint64_t ref_axes = ids.ref_at( 6, 0x32969e840d9c67b8ull );
         int64_t pairs_axes = 0, body_axes = 0;
         for ( int32_t i = 0; i < 3; i++ ) // [Axis]: every stored slot is a named variant's
         {
@@ -2539,7 +2573,7 @@ inline int64_t SimStateMeasureBody( TableIds & ids, const SimState & value )
     if ( value.seeds_count < 0 || value.seeds_count > 2 ) { return -1; } // storage invariant
     if ( value.seeds_count > 0 )
     {
-        const uint64_t ref_seeds = ids.ref( 0x5af1ac301b4ae16dull );
+        const uint64_t ref_seeds = ids.ref_at( 10, 0x5af1ac301b4ae16dull );
         int64_t body_seeds = 0;
         body_seeds += 1 + TableLebBytes( (uint64_t) ( value.seeds_count ) ); // the element kind byte and the count
         body_seeds += (int64_t) ( value.seeds_count ) * 16;
@@ -2547,7 +2581,7 @@ inline int64_t SimStateMeasureBody( TableIds & ids, const SimState & value )
     }
     {
         const int32_t mark_pose = ids.count;
-        const uint64_t ref_pose = ids.ref( 0x8c2fd80da8957064ull );
+        const uint64_t ref_pose = ids.ref_at( 16, 0x8c2fd80da8957064ull );
         const int64_t body_pose = PoseMeasureBody( ids, value.pose );
         if ( body_pose < 0 ) { return -1; }
         if ( body_pose > 1 ) { bytes += TableLebBytes( ref_pose ) + 1 + TableLebBytes( (uint64_t) ( body_pose ) ) + ( body_pose ); } // pose
@@ -2555,7 +2589,7 @@ inline int64_t SimStateMeasureBody( TableIds & ids, const SimState & value )
     }
     if ( value.spawn_present ) // ?Pose: presence decides, not content
     {
-        const uint64_t ref_spawn = ids.ref( 0x4328f78ab20e1f98ull );
+        const uint64_t ref_spawn = ids.ref_at( 8, 0x4328f78ab20e1f98ull );
         const int64_t body_spawn = PoseMeasureBody( ids, value.spawn );
         if ( body_spawn < 0 ) { return -1; }
         bytes += TableLebBytes( ref_spawn ) + 1 + TableLebBytes( (uint64_t) ( body_spawn ) ) + ( body_spawn ); // spawn
@@ -2575,72 +2609,72 @@ SCALARDEMO_TABLE_INLINE bool SimStateSaveBody( TableWriter & w, TableIds & ids, 
 {
     if ( value.tilt != 0 )
     {
-        w.putleb( ids.ref( 0x1e5088ef2e9bafc6ull ) ); w.put8( 20 ); // tilt
+        w.putleb( ids.ref_at( 0, 0x1e5088ef2e9bafc6ull ) ); w.put8( 20 ); // tilt
         w.put8( uint8_t( value.tilt ) );
     }
     if ( value.angle != 0 )
     {
-        w.putleb( ids.ref( 0x401ab8cd06158638ull ) ); w.put8( 22 ); // angle
+        w.putleb( ids.ref_at( 7, 0x401ab8cd06158638ull ) ); w.put8( 22 ); // angle
         w.put32( uint32_t( value.angle ) );
     }
     if ( value.position != 0 )
     {
-        w.putleb( ids.ref( 0x4cbf3a26fca1d74aull ) ); w.put8( 23 ); // position
+        w.putleb( ids.ref_at( 9, 0x4cbf3a26fca1d74aull ) ); w.put8( 23 ); // position
         w.put64( uint64_t( value.position ) );
     }
     if ( value.reach != 0 )
     {
-        w.putleb( ids.ref( 0x891da1f305deb858ull ) ); w.put8( 24 ); // reach
+        w.putleb( ids.ref_at( 14, 0x891da1f305deb858ull ) ); w.put8( 24 ); // reach
         { serialize::uint128_t raw_v = serialize::uint128_t( value.reach ); w.put128( uint64_t( raw_v ), uint64_t( raw_v >> 64 ) ); }
     }
     if ( value.ticks != 0 )
     {
-        w.putleb( ids.ref( 0x7fd9266c6a3e25b5ull ) ); w.put8( 22 ); // ticks
+        w.putleb( ids.ref_at( 13, 0x7fd9266c6a3e25b5ull ) ); w.put8( 22 ); // ticks
         w.put32( uint32_t( value.ticks ) );
     }
     if ( value.ratio != 0 )
     {
-        w.putleb( ids.ref( 0xfbc924118177ade4ull ) ); w.put8( 25 ); // ratio
+        w.putleb( ids.ref_at( 29, 0xfbc924118177ade4ull ) ); w.put8( 25 ); // ratio
         w.put8( uint8_t( value.ratio ) );
     }
     if ( value.speed != 0 )
     {
-        w.putleb( ids.ref( 0x2281498aa0200e40ull ) ); w.put8( 27 ); // speed
+        w.putleb( ids.ref_at( 2, 0x2281498aa0200e40ull ) ); w.put8( 27 ); // speed
         w.put32( uint32_t( value.speed ) );
     }
     if ( value.span != 0 )
     {
-        w.putleb( ids.ref( 0x8b7dc019093cd0e1ull ) ); w.put8( 28 ); // span
+        w.putleb( ids.ref_at( 15, 0x8b7dc019093cd0e1ull ) ); w.put8( 28 ); // span
         w.put64( uint64_t( value.span ) );
     }
     if ( value.mass != 0 )
     {
-        w.putleb( ids.ref( 0x1f3757a2ce7b0ab1ull ) ); w.put8( 29 ); // mass
+        w.putleb( ids.ref_at( 1, 0x1f3757a2ce7b0ab1ull ) ); w.put8( 29 ); // mass
         { serialize::uint128_t raw_v = serialize::uint128_t( value.mass ); w.put128( uint64_t( raw_v ), uint64_t( raw_v >> 64 ) ); }
     }
     if ( value.frames != 0 )
     {
-        w.putleb( ids.ref( 0x23e5906728b4e66full ) ); w.put8( 27 ); // frames
+        w.putleb( ids.ref_at( 3, 0x23e5906728b4e66full ) ); w.put8( 27 ); // frames
         w.put32( uint32_t( value.frames ) );
     }
     if ( value.flux != 0 )
     {
-        w.putleb( ids.ref( 0xd61bdd7908af2642ull ) ); w.put8( 18 ); // flux
+        w.putleb( ids.ref_at( 25, 0xd61bdd7908af2642ull ) ); w.put8( 18 ); // flux
         { serialize::uint128_t raw_v = serialize::uint128_t( value.flux ); w.put128( uint64_t( raw_v ), uint64_t( raw_v >> 64 ) ); }
     }
     if ( value.energy != serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744073709551366ull ) ) )
     {
-        w.putleb( ids.ref( 0xf2fd4f9140ef2f15ull ) ); w.put8( 18 ); // energy
+        w.putleb( ids.ref_at( 28, 0xf2fd4f9140ef2f15ull ) ); w.put8( 18 ); // energy
         { serialize::uint128_t raw_v = serialize::uint128_t( value.energy ); w.put128( uint64_t( raw_v ), uint64_t( raw_v >> 64 ) ); }
     }
     if ( value.entity_id != 0 )
     {
-        w.putleb( ids.ref( 0x23fcfd6678e36712ull ) ); w.put8( 19 ); // entity_id
+        w.putleb( ids.ref_at( 4, 0x23fcfd6678e36712ull ) ); w.put8( 19 ); // entity_id
         { serialize::uint128_t raw_v = serialize::uint128_t( value.entity_id ); w.put128( uint64_t( raw_v ), uint64_t( raw_v >> 64 ) ); }
     }
     if ( value.scale != 65536 )
     {
-        w.putleb( ids.ref( 0x6aacb9fbb71a1d91ull ) ); w.put8( 22 ); // scale
+        w.putleb( ids.ref_at( 11, 0x6aacb9fbb71a1d91ull ) ); w.put8( 22 ); // scale
         w.put32( uint32_t( value.scale ) );
     }
     {
@@ -2648,7 +2682,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateSaveBody( TableWriter & w, TableIds & ids, 
         for ( int32_t i = 0; i < 3; i++ ) { if ( value.samples[i] != 0 ) { all_default_samples = false; break; } }
         if ( !all_default_samples )
         {
-            const uint64_t ref_samples = ids.ref( 0xe3b1ca6a3b48dddcull );
+            const uint64_t ref_samples = ids.ref_at( 27, 0xe3b1ca6a3b48dddcull );
             int64_t body_samples = 0;
             body_samples += 1 + TableLebBytes( (uint64_t) ( 3 ) ); // the element kind byte and the count
             body_samples += (int64_t) ( 3 ) * 4;
@@ -2663,7 +2697,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateSaveBody( TableWriter & w, TableIds & ids, 
     if ( value.weights_count < 0 || value.weights_count > 4 ) { return false; } // storage invariant
     if ( value.weights_count > 0 )
     {
-        const uint64_t ref_weights = ids.ref( 0xb1494b6ef08a411eull );
+        const uint64_t ref_weights = ids.ref_at( 23, 0xb1494b6ef08a411eull );
         int64_t body_weights = 0;
         body_weights += 1 + TableLebBytes( (uint64_t) ( value.weights_count ) ); // the element kind byte and the count
         body_weights += (int64_t) ( value.weights_count ) * 2;
@@ -2676,7 +2710,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateSaveBody( TableWriter & w, TableIds & ids, 
     }
     {
         const int32_t mark_axes = ids.count;
-        const uint64_t ref_axes = ids.ref( 0x32969e840d9c67b8ull );
+        const uint64_t ref_axes = ids.ref_at( 6, 0x32969e840d9c67b8ull );
         int64_t pairs_axes = 0, body_axes = 0;
         for ( int32_t i = 0; i < 3; i++ ) // [Axis]: every stored slot is a named variant's
         {
@@ -2711,7 +2745,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateSaveBody( TableWriter & w, TableIds & ids, 
     if ( value.seeds_count < 0 || value.seeds_count > 2 ) { return false; } // storage invariant
     if ( value.seeds_count > 0 )
     {
-        const uint64_t ref_seeds = ids.ref( 0x5af1ac301b4ae16dull );
+        const uint64_t ref_seeds = ids.ref_at( 10, 0x5af1ac301b4ae16dull );
         int64_t body_seeds = 0;
         body_seeds += 1 + TableLebBytes( (uint64_t) ( value.seeds_count ) ); // the element kind byte and the count
         body_seeds += (int64_t) ( value.seeds_count ) * 16;
@@ -2724,7 +2758,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateSaveBody( TableWriter & w, TableIds & ids, 
     }
     {
         const int32_t mark_pose = ids.count;
-        const uint64_t ref_pose = ids.ref( 0x8c2fd80da8957064ull );
+        const uint64_t ref_pose = ids.ref_at( 16, 0x8c2fd80da8957064ull );
         const int64_t body_pose = PoseMeasureBody( ids, value.pose );
         if ( body_pose < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_pose > 1 ) // all-default nested elides
@@ -2736,7 +2770,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateSaveBody( TableWriter & w, TableIds & ids, 
     }
     if ( value.spawn_present ) // ?Pose
     {
-        const uint64_t ref_spawn = ids.ref( 0x4328f78ab20e1f98ull );
+        const uint64_t ref_spawn = ids.ref_at( 8, 0x4328f78ab20e1f98ull );
         const int64_t body_spawn = PoseMeasureBody( ids, value.spawn );
         if ( body_spawn < 0 ) return false; // storage invariant, refused as measure refuses it
         w.putleb( ref_spawn ); w.put8( 13 ); w.putleb( (uint64_t) body_spawn ); // spawn
@@ -4467,9 +4501,9 @@ inline bool SimStateLoadMessages( SimState * values, int64_t * count, const Tabl
 inline int64_t PoseMeasureBody( TableIds & ids, const Pose & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.x != 32768ll ) { bytes += TableLebBytes( ids.ref( 0xaf63f54c86021707ull ) ) + 1 + 8; } // x
-    if ( value.y != 0 ) { bytes += TableLebBytes( ids.ref( 0xaf63f44c86021554ull ) ) + 1 + 8; } // y
-    if ( value.heading != 0 ) { bytes += TableLebBytes( ids.ref( 0xb128829190ca0f75ull ) ) + 1 + 4; } // heading
+    if ( value.x != 32768ll ) { bytes += TableLebBytes( ids.ref_at( 18, 0xaf63f54c86021707ull ) ) + 1 + 8; } // x
+    if ( value.y != 0 ) { bytes += TableLebBytes( ids.ref_at( 17, 0xaf63f44c86021554ull ) ) + 1 + 8; } // y
+    if ( value.heading != 0 ) { bytes += TableLebBytes( ids.ref_at( 22, 0xb128829190ca0f75ull ) ) + 1 + 4; } // heading
     return bytes;
 }
 
@@ -4485,17 +4519,17 @@ SCALARDEMO_TABLE_INLINE bool PoseSaveBody( TableWriter & w, TableIds & ids, cons
 {
     if ( value.x != 32768ll )
     {
-        w.putleb( ids.ref( 0xaf63f54c86021707ull ) ); w.put8( 23 ); // x
+        w.putleb( ids.ref_at( 18, 0xaf63f54c86021707ull ) ); w.put8( 23 ); // x
         w.put64( uint64_t( value.x ) );
     }
     if ( value.y != 0 )
     {
-        w.putleb( ids.ref( 0xaf63f44c86021554ull ) ); w.put8( 23 ); // y
+        w.putleb( ids.ref_at( 17, 0xaf63f44c86021554ull ) ); w.put8( 23 ); // y
         w.put64( uint64_t( value.y ) );
     }
     if ( value.heading != 0 )
     {
-        w.putleb( ids.ref( 0xb128829190ca0f75ull ) ); w.put8( 27 ); // heading
+        w.putleb( ids.ref_at( 22, 0xb128829190ca0f75ull ) ); w.put8( 27 ); // heading
         w.put32( uint32_t( value.heading ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body

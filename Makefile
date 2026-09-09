@@ -3072,6 +3072,11 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	$(MAKE) projection-union-arm-order-negative-control
 	./build/schema_test_tables
 	./build/schema_test_tables_asan
+	# THE ORDINAL SLOT CACHE (docs/SPEC-TABLES.md §3): a save that answers a
+	# repeat header out of slot[ordinal] is held to main's own bytes by
+	# compiler/tablerefordinal_test.go, and the ONE rule a green pin cannot be
+	# read for is truncate taking the slot back — so its control is here.
+	$(MAKE) tables-ref-ordinal-negative-control
 	# THE WIRE FUZZER (docs/SPEC-TABLES.md §4.2): the tolerant read on hostile
 	# bytes against the engine, plain and sanitized, at a short random pass —
 	# the enumerated passes run whole whatever N is — and its two controls at
@@ -4508,6 +4513,34 @@ define wire_fuzz_control
 	@grep -m1 "FAILED" build/wire-fuzz-nc-$(1)/log
 	@echo "negative control: removing the $(1) check from the emitter turns the wire fuzzer RED"
 endef
+
+# THE ORDINAL SLOT CACHE'S OWN CONTROL (docs/SPEC-TABLES.md §3). Every id a
+# generated field header names is a compile-time constant, so it carries an
+# ORDINAL and TableIds::ref_at answers a repeat out of slot[ordinal]. What
+# keeps that honest is truncate: an ELIDED field interns its ids and gives them
+# back, and a slot left standing over a POPPED entry hands out a reference to
+# an entry the file no longer carries. Remove that one clause and
+# compiler/tablerefordinal_test.go's byte pin — taken from the emitter that had
+# no cache — must go RED. Through `go build -overlay`, so no tracked file moves.
+.PHONY: tables-ref-ordinal-negative-control
+tables-ref-ordinal-negative-control:
+	@rm -rf build/ref-ordinal-nc && mkdir -p build/ref-ordinal-nc
+	@sed -e 's|if ( o >= 0 ) { slot\[o\] = -1; }|if ( false \&\& o >= 0 ) { slot[o] = -1; } // NEGATIVE CONTROL: the slot is not taken back|' \
+		internal/codegen/cpptable/cpptable.go > build/ref-ordinal-nc/emitter.go.txt
+	@cmp -s internal/codegen/cpptable/cpptable.go build/ref-ordinal-nc/emitter.go.txt && \
+		{ echo "NEGATIVE CONTROL: the truncate sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/ref-ordinal-nc/emitter.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/ref-ordinal-nc/overlay.json
+	@if go test -overlay build/ref-ordinal-nc/overlay.json -count=1 ./compiler \
+			-run TestCppTableRefOrdinalBytes > build/ref-ordinal-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: truncate leaves the ordinal slot standing and the byte pin stayed green"; \
+		cat build/ref-ordinal-nc/log; exit 1; \
+	fi
+	@grep -qE "ROUND TRIP MOVED|THE SAVED BYTES MOVED" build/ref-ordinal-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the byte pin went red, but not on the file the save wrote"; \
+		  cat build/ref-ordinal-nc/log; exit 1; }
+	@grep -m1 -E "ROUND TRIP MOVED|THE SAVED BYTES MOVED" build/ref-ordinal-nc/log
+	@echo "negative control: a truncate that leaves the ordinal slot standing names a POPPED entry — the file stops round-tripping"
 
 # THE C++ RELEASE GATE: the wire fuzzer at a long random pass, both builds,
 # and the retention leg beside it at the same length (docs/SPEC-TABLES.md
