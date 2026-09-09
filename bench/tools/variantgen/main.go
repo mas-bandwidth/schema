@@ -125,6 +125,7 @@ func pinGenMixed() bench.BenchMixed {
 	in.CrcHint = 0xABCDEF
 	in.HasExtra = true
 	in.Extra = 200
+	in.IdleTicks = 9
 	return in
 }
 
@@ -174,6 +175,7 @@ func varyGenMixed(f *bench.BenchMixed, rng uint64) {
 	f.Ping = uint16((rng >> 40) & 0x7FFF)             // raw UQ8.8 <= 250 << 8
 	f.CrcHint = uint32((rng >> 24) & 0xFFFFFF)
 	f.Extra = int32((rng >> 52) & 255)
+	f.IdleTicks = int32((rng >> 60) & 15)
 }
 
 func encode(buffer []byte, value *bench.BenchMixed) ([]byte, error) {

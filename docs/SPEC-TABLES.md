@@ -2980,10 +2980,13 @@ aligned and nothing is padded.
 
 **A saved table is THREE PARTS in this order: the FORM BYTE, the ROOT BODY,
 and the ID TABLE.** That is the FILE FORM, form byte `1`, and it is what this
-section describes throughout. §3.3 defines the one other form, the MESSAGE
-FORM, form byte `2`, which is a BATCH of BITPACKED bodies under a vocabulary
+section describes throughout. §3.3 and §3.4 define the two other forms. The MESSAGE
+FORM, form byte `2`, is a BATCH of BITPACKED bodies under a vocabulary
 the connection announced once, and none of this section's byte framing rides
-in it.
+in it. The FIXED FORM, form byte `3`, is a hash and a record of values at their
+bounds under a vocabulary block, and none of this section's framing rides in it
+either. **The three numbers are the whole registry and §3.4 carries it**, with
+the rule for adding a fourth.
 
 - **The FORM BYTE is `1` for a file, and it is the whole header.** It versions
   the FRAMING this section describes. A reader that meets a byte it does not know
@@ -5729,6 +5732,364 @@ table Envelope
 - **The pinned byte counts are the table above.** A vector whose count moves is a
   wire that moved.
 
+### 3.4 The fixed form: a record of values under a vocabulary block
+
+**THE DESIGN STATEMENT, in the owner's words.** *"Fixed tables are meant to be
+the fast equivalent of types, in table form."* And the standard the shape is
+held to: *"nothing is perfect until there is nothing left to take away."* The
+fixed form is what is left of §3's body when every byte a reader does not need
+is taken away: no field references, no kind bytes, no lengths, no terminators,
+no trailer. **A FIXED-TABLE RECORD IS AN EIGHT-BYTE HASH OF THE WRITER'S
+VOCABULARY BLOCK, AND THEN THE VALUES IN DECLARED ORDER, EVERY FIELD AT ITS
+BOUND.** Everything else the reader needs is in the block, and the block is sent
+once.
+
+**FORM BYTE `3` IS THE FIXED FORM.** Form bytes `1` and `2` do not move, and
+nothing in this subsection touches a file of §3 or a batch of §3.3.
+
+---
+
+#### THE VERSIONING INVARIANT, FIRST
+
+**"WE MUST NOT EVER BREAK VERSIONING IN FIXED TABLES"** — the project owner,
+ruling on this form. That is the constraint every rule below is shaped to meet,
+so it is stated before the wire it constrains, and it is four sentences:
+
+- **THE FORM IS POSITIONAL, AND THE POSITIONS ARE THE BLOCK'S, NEVER THE
+  READER'S.** A record's bytes mean what the block that stamped them says they
+  mean. A reader never reads a record against its own layout unless the record's
+  hash says the two layouts are the same bytes. Positional is what makes this
+  form fast; **positional-BY-PLAN, where the plan came from the writer's own
+  block**, is what keeps it from being the ordinal wire §3.3 refuses.
+- **THE BLOCK IS ALWAYS OBTAINABLE.** A file always carries it. A stream
+  announces it before the first record and again for any hash not yet announced.
+  **A RECORD WHOSE HASH NAMES NO BLOCK THIS READER HOLDS IS A REFUSAL BY NAME,
+  never a guess and never damage**: nothing is decoded, no counter moves,
+  `malformed` does not fire. A form that guessed here would be a form that reads
+  a stranger's bytes against its own field order, which is the one class this
+  whole wire exists to make impossible (§4).
+- **THE BLOCK'S OWN FORMAT NEVER MOVES.** The entry is a fixed seventeen bytes
+  and the block is a count and a run of them, forever. A later major that wants
+  to say more says it in a new form byte, not in a wider entry, because the
+  block is the one thing a reader must be able to parse before it knows anything
+  at all. **A LATER MAJOR'S BLOCK IS THEREFORE STILL PARSEABLE BY THIS ONE**,
+  which is what lets an older reader skip a kind it does not know by the size the
+  entry states rather than refuse the whole record.
+- **EVERY REFUSAL IS BY NAME.** `newer_form` for a form byte this build does not
+  carry, `no_block` for a hash with no block, `block_malformed` for a block whose
+  bytes are not a block. None of them is one of §4's six events, because in each
+  of them nothing was decoded and there is nothing to count.
+
+**WHAT §4's EVOLUTION TABLE COSTS ON THIS FORM, and it costs nothing.** An
+unknown field is stepped over by the size its entry states and counted
+`unknown`. A missing field takes its declared default, from the reader's own
+prefill, and nothing counts. A renamed field arrives under the id its `was`
+names and resolves like any other (§5). A widened field decodes at the writer's
+width and lands, counting `widened`. A value outside the reader's own range
+clamps and counts `clamped`. **Every one of those is a decision the PLAN
+COMPILER makes ONCE, per writer, and none of them is a decision the read loop
+makes per record.** That is the answer to the owner's third question, below.
+
+---
+
+#### THE OWNER'S THREE QUESTIONS, AND THE ANSWER THIS FORM IS
+
+The three questions this form was shaped by, verbatim:
+
+> *"does this complexity reduce the amount of code we have?"*
+> *"does this complexity speed up read/write so much it is worth it?"*
+> *"is it good to have read/write being fast or slow depending on the
+> versioning?"*
+
+— the project owner. His answer to the third is **no**, and *"the last one is the
+kicker."*
+
+**SO THERE IS ONE READER PATH AND NOT TWO.** A form that read its own version
+down a straight line and everybody else's down a walk would be a form whose cost
+moved when a peer shipped, which is a performance cliff at exactly the moment a
+deployment cannot afford one. **The same loop runs over the same plan whether
+the writer is this build or another**, and the only thing that differs is which
+plan it was handed. There is no strict flag, no fast path, no second reader to
+keep honest against the first, and one row on the board.
+
+---
+
+#### THE VOCABULARY BLOCK
+
+**THE BLOCK IS THE WRITER'S WHOLE TYPE, FLATTENED: ids, kinds, constant sizes,
+in the writer's declared order, for the root and every nested type.** It is the
+only self-description this form has and it is sent once.
+
+```
+block := entry count (u32 LE) , entry count ENTRIES
+
+entry := id            (u64 LE)     fnv1a64( name ) — §5's id and nothing else
+         kind          (u8)         §3's closed set, or 0
+         constant size (u32 LE)     the bytes this entry occupies in a record
+         child count   (u32 LE)     how many entries describe its parts
+```
+
+**AN ENTRY IS SEVENTEEN BYTES AND THE BLOCK IS A COUNT AND A RUN OF THEM.**
+There is no LEB128 anywhere in a block: the block is read once per connection
+and never in a loop, so the byte a variable width would save is not worth a
+second integer rule on a page that already has one. **Every number is little-
+endian**, as everything on every one of these wires is.
+
+**THE ENTRIES ARE A PRE-ORDER WALK OF THE ROOT'S CLOSURE, IN THE WRITER'S
+DECLARED ORDER.** Entry `0` is the ROOT, at kind `13`, carrying the root's
+constant size and its field count. Every entry is followed immediately by its
+`child count` children, each of which is followed by its own:
+
+  | an entry at kind | its children, in declared order |
+  |---|---|
+  | `13` table | its FIELDS |
+  | `14` array | ONE child, the ELEMENT |
+  | `15` union | its ARMS, the arm's ordinal being its position from `1` |
+  | `16` enum-keyed array | TWO children, the KEY ENUM then the ELEMENT |
+  | `30` enum | its VARIANTS, each at kind `32`, size `0`, the variant's ordinal being its position from `1` |
+  | anything else | none |
+
+A field's `id` is the field name's; a variant's is the variant name's; an arm's
+is the arm name's; a table entry's is the TYPE name's. **A NESTED TYPE'S ENTRIES
+ARE WRITTEN AT EVERY PLACE IT APPEARS**, not once with a back reference, because
+the block has no references and adding them would buy bytes in a structure sent
+once and cost the reader the one thing it has, a straight walk.
+
+**THE HASH IS `fnv1a64` OVER THE BLOCK'S BYTES, EXACTLY AS WRITTEN, and it is
+the eight bytes every record carries.** Two writers whose blocks agree byte for
+byte agree on every id, kind, size and position in the closure, which is the
+whole of what a reader needs; two writers whose blocks differ anywhere get
+different hashes and neither reads the other's record against its own layout.
+The hash is a wire identity and not a security claim (§5's note on the same
+function).
+
+**THE BLOCK IS A COMPILE-TIME CONSTANT OF THE UNIT.** Every byte is settled by
+the compiler, so a backend emits it as a constant byte array and its length, and
+the hash as a constant, exactly as §3.3's announcement is emitted.
+
+---
+
+#### THE RECORD
+
+```
+record := hash (u64 LE, 8 bytes) , the ROOT's BODY
+body   := the type's fields, IN DECLARED ORDER, each at its constant size
+```
+
+**NO PER-FIELD REFERENCE, NO KIND BYTE, NO LENGTH, NO TERMINATOR, AND NO
+TRAILER.** A body's every byte is a value or the declared slack behind one.
+
+**EVERY FIELD RIDES AS ITS DECLARED STORAGE IMAGE, LITTLE-ENDIAN, AT ITS
+DECLARED STORAGE WIDTH, AND NOTHING IS PADDED BETWEEN FIELDS.** That is one
+rule and it covers every kind. **The width is the DECLARATION's, which SPEC.md
+fixes identically in every port** — a `bits(12)` is a `uint32` in all nine, a
+`ufixed(8, 8)` a `uint16`, an enum of fifteen variants a `uint8` — so the record
+is a language fact and not a backend's. It is the reason the reader's plan is a
+copy rather than a conversion, and it is the one place this form spends bytes to
+buy code: a `bits(12)` costs four bytes here where §3 spends two.
+
+**THE CONSTANT SIZE, KIND BY KIND.** `C(f)` is a field's constant size and
+`C(T)` a type's, which is the sum of its fields'. Every one is a compile-time
+constant, so **`MeasureBody` IS A `constexpr` AND NOT A FUNCTION THAT READS THE
+VALUE.**
+
+  | field | `C` |
+  |---|---|
+  | `bool` | 1 |
+  | `int8`/`uint8` … `int64`/`uint64` | 1, 2, 4, 8 — the declared storage width |
+  | `bits(N)` | the declared storage width, 4 for `N <= 32` and 8 above |
+  | a RANGED integer | its own storage width; the bounds do not ride and clamp on load, as they do in §3 |
+  | `float32`, `float64` | 4, 8 — the IEEE-754 bit pattern, with no canonicalisation (§3) |
+  | a COMPRESSED float | 4 — it rides as the float, not as a quantized index; this form is not optimized for bandwidth |
+  | `int128`/`uint128` | 16, the low 64-bit half then the high |
+  | `fixed(I, F)`, `ufixed(I, F)` | the storage width, the raw scaled integer |
+  | `flags` | 8, the raw mask, as §3 carries it |
+  | an ENUM | the ordinal's storage width, 1, 2 or 4; **the ORDINAL is the variant's POSITION IN THE BLOCK, from `1`, and `0` is `None`** |
+  | a nested `table` or `type` `T` | `C(T)`, INLINE — no length and no terminator |
+  | `[N]T` | `N * C(T)`; no count rides, because `min` equals `max` |
+  | `[Min..Max]T` | 4 (the count, `int32` LE) + `Max * C(T)` — **the count, then MAX elements**, the slack zero-filled |
+  | `string(N)` | 4 (the length in bytes, `int32` LE) + `N` bytes, the slack zero-filled |
+  | `wstring(N)` | 4 (the length in CODE UNITS) + `2N` bytes |
+  | `bytes(N)` | 4 (the length) + `N` bytes |
+  | a UNION | the tag ordinal at its tag type's storage width + `max` over the arms of `C(arm)` — **tag, then the WIDEST ARM**, the slack behind a narrower arm zero-filled |
+  | `?T` | 1 (the PRESENT FLAG, `0` or `1`) + `C(T)` — **the payload rides WHOLE whether or not it is present** |
+  | `[Enum]T` | `slots * C(T)` — **every slot is written**, in the key enum's declared order, and no key rides |
+  | `const`, `reserved`, `align` | refused in a table body already (§11) |
+
+**THE PADDING IS ZERO AND NO READER READS IT.** A count, a length, a present
+flag or a union tag always stands in front of it. This is §3's "nothing is
+aligned and nothing is padded" holding for ALIGNMENT and departing for SLACK,
+and the departure is the whole form: slack at a declared bound is what makes a
+size constant.
+
+**WHAT A FIXED TABLE CANNOT CARRY, and each is refused by name rather than
+framed.** A POINTER, a MAP and an UNBOUNDED `[]T` have no bound to be constant
+at — they are what makes a table VARIABLE (§2.2), and a variable table keeps §3
+entirely. A GUARDED BRANCH is refused for the owner's own reason: *"the intent
+of the lookback conditional is to make it variable size … so that is a
+disqualifying thing for a fixed table. not supported. only variable."*
+
+**THE FIXED FORM DOES NOT REPLACE FORM `1` FOR A FIXED TABLE.** A generated
+reader for a fixed-table type accepts BOTH, by the form byte, and form `1` is
+what an old file on a disk is. Nothing about form `1` moves, for fixed tables or
+for anything else.
+
+---
+
+#### THE ONE READER PATH: A PLAN
+
+**A PLAN IS A FLAT ARRAY OF ENTRIES, AND A READ IS ONE LOOP OVER IT.**
+
+```
+plan entry := src  (u32)   a byte offset into the RECORD's body
+              dst  (u32)   a byte offset into the READER's own storage
+              size (u32)   the run's bytes, or the field's bound
+              aux  (u32)   a second destination, or a table index
+              op   (u8)
+```
+
+**THE OPS ARE THE WHOLE SET**, and a plan for a record of plain scalars carries
+only the first:
+
+  | op | what the loop does |
+  |---|---|
+  | `copy` | move `size` bytes from `src` to `dst` |
+  | `count` | read the count, clamp it to the reader's own `Max` (`size`), store it; `clamped` counts if it fired |
+  | `text` | `count`'s work on the length, then the units, then terminate at the used length; the content rules of §3 apply and a violation is `malformed` |
+  | `union` | read the tag, resolve it to the reader's own arm, run that arm's sub-plan |
+  | `widen` | decode a narrower source at its own width into a wider destination, `widened` counts |
+  | `clamp` | reconstruct against the writer's declared range and apply the reader's own, `clamped` counts if it fired |
+  | `ordinal` | resolve a variant ordinal through the plan's own remap table at `aux` |
+
+**A READ IS A PREFILL AND A LOOP, AND NOTHING ELSE.**
+
+```
+Reset( value );                     // the declared defaults, one prefill
+for ( entry : plan ) { … }          // the loop above
+```
+
+**THE PREFILL IS WHAT ANSWERS "ABSENT FIELD".** A field this record does not
+carry has NO PLAN ENTRY at all, so it keeps the default the prefill put there
+and the loop never learns it existed. **THE ABSENCE OF AN ENTRY IS ALSO WHAT
+ANSWERS "UNKNOWN FIELD"**: a field of the writer's this reader cannot name is
+simply never a source, and the bytes it occupies are stepped over because the
+next entry's `src` is past them. **Skipping costs nothing, because skipping is
+not an act.** An unknown NESTED TYPE is skipped the same way and by the same
+arithmetic, its whole constant size being one entry's worth of `src` advance.
+
+**THE IDENTITY PLAN IS A STATIC CONSTANT BAKED INTO THE GENERATED READER.** When
+a record's hash equals the reader's own, the plan is the one the compiler
+already wrote: every entry a `copy`, with **ADJACENT RUNS COALESCED** — two
+neighbouring fields whose source and destination both advance together are one
+entry, so a record whose declared order matches its storage layout collapses to
+a handful of runs. Coalescing is the only optimization a plan compiler performs
+and it is performed identically on both sides.
+
+**FOR ANY OTHER HASH THE SAME LOOP RUNS OVER A PLAN COMPILED ONCE FROM THE
+WRITER'S BLOCK, AND CACHED BY HASH.** The compiler walks the block against the
+reader's own descriptors, resolves each id to a field of its own or to nothing,
+and emits an entry per landing field with the op the two declarations call for.
+It is the same array, read by the same loop, and the cost of the compile is paid
+once per peer rather than once per record.
+
+**THE PLAN'S STORAGE IS THE CALLER'S, DECLARED BY CAPACITY, AND THE CODEC NEVER
+ALLOCATES.** That is §3.3's rule for a resolved vocabulary and it holds here
+unchanged: a caller hands the reader an array of plan entries with its capacity,
+and a block whose plan does not fit is a refusal by name.
+
+---
+
+#### THE WRITE: A TEMPLATE
+
+**THE WRITER IS THE TYPE'S CONSTANT BYTES `memcpy`'d, AND THEN VALUE STORES AT
+CONSTANT OFFSETS.** The template is a compile-time constant of the type: the
+hash in the first eight bytes and zero everywhere a value lands, which is also
+what zero-fills every byte of declared slack without the writer touching it. A
+generated `Save` is one `memcpy` and a straight line of stores, `MeasureBody` is
+a `constexpr`, and there is no measuring pass, no id interning, no trailer and
+no second walk.
+
+---
+
+#### WHAT A FILE CARRIES, AND WHAT A STREAM CARRIES
+
+**A FILE ALWAYS CARRIES THE BLOCK.** A file is read by somebody who was not
+there when it was written, so the alternative is a file that cannot be read.
+
+```
+form byte 3
+block length (u32 LE), then the block
+records, back to back, to the end of the file
+```
+
+- **THE RECORDS FILL THE REST OF THE FILE and there is no count.** A reader
+  knows the record size from the block, so the count is arithmetic; **BYTES LEFT
+  OVER ARE `malformed`**, which is §3's rule for the same reason, that the two
+  ends of the file have met.
+- **A ONE-RECORD FILE PAYS FOR THE WHOLE BLOCK**, and that is stated rather than
+  hidden: this form is for many records of one small type, which is what the
+  owner said it was for — *"effectively, fixed tables should only be used for
+  small things."*
+
+**A STREAM CARRIES THE BLOCK ON FIRST SIGHT AND ON AN UNKNOWN HASH, AND
+OTHERWISE CARRIES THE HASH ALONE.** The block rides §3.3's announcement
+machinery — once, reliably, before the first record — and a stream record is the
+hash and the body with no form byte in front of it, because the stream framed it.
+
+- **A PEER MAY ANNOUNCE MORE THAN ONE BLOCK, ONE PER HASH.** This is where this
+  form departs from §3.3's "NO RE-ANNOUNCEMENT, EVER", and the reason is the
+  hash: §3.3's vocabulary is unnamed, so a second one could only replace the
+  first, while a block is NAMED BY ITS HASH and a second block for a second hash
+  amends nothing. A second block for a hash already held is refused by name and
+  changes nothing, which is §3.3's rule surviving where it still applies.
+- **A RECORD WHOSE HASH NAMES NO HELD BLOCK IS `no_block`**, a refusal by name.
+  The reader states the hash so the application can ask for that block.
+
+---
+
+#### THE FORM-BYTE REGISTRY
+
+| form | what it is | where |
+|---|---|---|
+| `0` | never assigned; a reader refuses it | §3 |
+| `1` | **the FILE form** — form byte, root body, id table | §3 |
+| `2` | **the MESSAGE form** — a batch of bitpacked bodies under an announced vocabulary | §3.3 |
+| `3` | **the FIXED form** — a hash and a record of values under a vocabulary block | this section |
+
+**THE RULE FOR ADDING ONE, restated from §3.3's own precedent.** A form byte
+with no reader outside the tree that defines it is a number, not a wire, and its
+body may be replaced under the number it holds; a form that HAS shipped takes the
+NEXT number, forever. **Forms `1` and `2` are both live**: form `1` is read by
+all nine ports and by every file on a disk, and form `2`'s bitpacked body is the
+released one. **So the fixed form takes `3`**, and no existing byte is
+reinterpreted.
+
+**§4.2'S UNKNOWN-FORM NEGATIVE CONTROL MOVES FROM `3` TO `4`.** It plants a byte
+that must be a named refusal and never damage, and the byte it plants has to be
+one no form defines, which `3` no longer is. `4` is the next such byte and the
+reason is the one §4.2 already gives for not planting `2`.
+
+---
+
+#### HELD BY TEST
+
+- **THE VERSIONING CONFORMANCE SET**, which is what the invariant above is worth
+  if it is not measured: a SAME-SCHEMA read (the identity plan), an OLDER
+  WRITER's record (a field this reader has, defaulted), a NEWER WRITER's record
+  (a field this reader does not have, stepped over by its size; and an unknown
+  NESTED TYPE, stepped over by its block size), a RENAMED field arriving under
+  `was =`, and a WIDENED field. Every one of them is a clean read with exactly
+  the counters §4 names.
+- **THE NEGATIVE CONTROL: A READER GIVEN THE WRONG PLAN FOR A RECORD GOES RED.**
+  The plan is the whole of this form's safety, so a test that never watched a
+  wrong plan fail is a test that never checked the right one worked.
+- **THE PAIRED CORPUS**, sixty-four logical records on the packet wire and on
+  this one, whose per-record byte account is a published row.
+- **THE MEASUREMENT, and it is the reason this form has one reader and not
+  two.** The plan-driven read running its identity plan, against straight-line
+  constant-offset loads generated directly, over the same records on one host.
+  Red if the ratio moves past the bound the owner's ruling set.
+
 ## 4. Versioning is wire tolerance
 
 There are no version declarations — no fences, no version numbers, no
@@ -6236,11 +6597,12 @@ has:
   ONE `malformed`, leave the field at its declared default and let the parent
   read on past `L` (§3, §4). **A leg that stores any of them fails the value
   requirement below**, which is what makes this a gate and not a wish;
-- **the FORM BYTE** set to `0`, to `3`, and to `0xFF`, which must be a named
-  refusal and never damage (§3). It is `3` and not `2` because `2` is a KNOWN
-  form with rules of its own (§3.3), so planting it would pin the message
-  form's behavior rather than the unknown-form refusal this strategy exists
-  for;
+- **the FORM BYTE** set to `0`, to `4`, and to `0xFF`, which must be a named
+  refusal and never damage (§3). It is `4` and neither `2` nor `3` because both
+  of those are KNOWN forms with rules of their own (§3.3, §3.4), so planting one
+  would pin that form's behavior rather than the unknown-form refusal this
+  strategy exists for. **It was `3` until the fixed form took that number**, and
+  moving it is what §3.4's registry rule costs when a form is added;
 - **the REFERENCE class** (§3), which is this form's own attack surface:
   every reference in the wire set to `0`, to the entry count, to the count
   plus one, and to the two values the sign bit spells; every reference,
@@ -6956,6 +7318,9 @@ The builder is designed to go wide, lock-free by ownership:
   |---|---|
   | `unknown_form` | a form byte THIS CALL does not carry (§3). The read never begins, so it is a refusal and not damage, which is what §3 already says of it. **A FILE'S MEASURE ANSWERS IT FOR ANY BYTE THAT IS NOT THE FILE FORM**, form `2` included: a build that carries the message form carries it through the message surface (§3.3), and a batch handed to a file root is a form its file measure does not read. The `Load` beside it distinguishes the two, answering `message_form_as_file` where the byte is `2` and `newer_form` otherwise, because a report has room to say which and a `-1` has one value |
   | `count_over_length` | an array or map count whose elements cannot fit the field's own `L` (§2.8, §2.9) |
+  | `no_block` | a FIXED-form record whose hash names no vocabulary block this reader holds (§3.4). Nothing is decoded and no counter moves; the reader states the hash so the application can ask for that block |
+  | `block_malformed` | bytes handed to the fixed form as a vocabulary block that are not one — a count that overruns, an entry at a kind outside §3's closed set, a constant size that does not sum, a child count that does not close (§3.4). The block is refused WHOLE and sets nothing |
+  | `plan_too_large` | a fixed-form block whose compiled plan does not fit the plan storage the caller declared (§3.4), which is the announced vocabulary's `vocabulary_too_large` for the same reason and on the same rule: this codec never allocates |
   | `count_over_extent_cap` | a count above the `int32` extent cap (§2.2), which no region can hold whatever its size |
   | `blob_over_size_cap` | a blob whose length is past the derived-size cap (§3.1, §11) |
   | `data_cycle` | a data cycle reached from a builder, which is the AUTHORING side's `-1` and the one value here that is not about a wire (§3.1, §7.6) |
