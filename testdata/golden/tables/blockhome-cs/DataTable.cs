@@ -36,9 +36,9 @@ namespace Blockhome
         public static long ArmorPlateBodySizeTyped(ArmorPlate v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
-            if (v.Thickness != 0.0) { n += TableWire.VarSize(ids.Reference(0xdbae65ca25b4f315ul)) + 9; }
-            if (v.Material != 0) { n += TableWire.VarSize(ids.Reference(0x026f7568983161e0ul)) + 5; }
-            if (v.Layer != 0) { n += TableWire.VarSize(ids.Reference(0x84e39fec29768c56ul)) + 2; }
+            if (v.Thickness != 0.0) { n += TableWire.VarSize(ids.RefAt(24, 0xdbae65ca25b4f315ul)) + 9; }
+            if (v.Material != 0) { n += TableWire.VarSize(ids.RefAt(0, 0x026f7568983161e0ul)) + 5; }
+            if (v.Layer != 0) { n += TableWire.VarSize(ids.RefAt(16, 0x84e39fec29768c56ul)) + 2; }
             return n;
         }
 
@@ -46,17 +46,17 @@ namespace Blockhome
         {
             if (v.Thickness != 0.0)
             {
-                w.Header(ids.Reference(0xdbae65ca25b4f315ul), 11);
+                w.HeaderAt(24, 0xdbae65ca25b4f315ul, 11, ref ids);
                 w.Fixed(unchecked((ulong)BitConverter.DoubleToInt64Bits(v.Thickness)), 8);
             }
             if (v.Material != 0)
             {
-                w.Header(ids.Reference(0x026f7568983161e0ul), 8);
+                w.HeaderAt(0, 0x026f7568983161e0ul, 8, ref ids);
                 w.Fixed((ulong)v.Material, 4);
             }
             if (v.Layer != 0)
             {
-                w.Header(ids.Reference(0x84e39fec29768c56ul), 6);
+                w.HeaderAt(16, 0x84e39fec29768c56ul, 6, ref ids);
                 w.Fixed((ulong)v.Layer, 1);
             }
             w.Var(0);
@@ -72,7 +72,9 @@ namespace Blockhome
                 while (slots < vocabulary.Length * 2) { slots <<= 1; }
             }
             Span<int> index = stackalloc int[slots];
-            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;
+            Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index, ordinalSlots, ordinalOf);
             if (!ArmorPlateCollectTyped(value, ref ids)) { return -1; }
             int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
             Span<long> rootPayloadSizes = stackalloc long[cachedFields];
@@ -146,8 +148,8 @@ namespace Blockhome
             if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[0] = payload_0; }
             n += TableWire.BodySizeField(v, fields[1], ref ids, default, out long payload_1);
             if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[1] = payload_1; }
-            if (v.Rating != 0.0f) { n += TableWire.VarSize(ids.Reference(0x4e79ecbefe5ff4d0ul)) + 5; }
-            if (v.Tier != 0) { n += TableWire.VarSize(ids.Reference(0x1e6f84ef2eb65989ul)) + 2; }
+            if (v.Rating != 0.0f) { n += TableWire.VarSize(ids.RefAt(10, 0x4e79ecbefe5ff4d0ul)) + 5; }
+            if (v.Tier != 0) { n += TableWire.VarSize(ids.RefAt(3, 0x1e6f84ef2eb65989ul)) + 2; }
             return n;
         }
 
@@ -160,12 +162,12 @@ namespace Blockhome
             TableWire.WriteBodyField(ref w, v, fields[1], ref ids, default, payload_1);
             if (v.Rating != 0.0f)
             {
-                w.Header(ids.Reference(0x4e79ecbefe5ff4d0ul), 10);
+                w.HeaderAt(10, 0x4e79ecbefe5ff4d0ul, 10, ref ids);
                 w.Fixed((ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v.Rating)), 4);
             }
             if (v.Tier != 0)
             {
-                w.Header(ids.Reference(0x1e6f84ef2eb65989ul), 6);
+                w.HeaderAt(3, 0x1e6f84ef2eb65989ul, 6, ref ids);
                 w.Fixed((ulong)v.Tier, 1);
             }
             w.Var(0);
@@ -181,7 +183,9 @@ namespace Blockhome
                 while (slots < vocabulary.Length * 2) { slots <<= 1; }
             }
             Span<int> index = stackalloc int[slots];
-            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;
+            Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index, ordinalSlots, ordinalOf);
             if (!ArmorConfigCollectTyped(value, ref ids)) { return -1; }
             int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
             Span<long> rootPayloadSizes = stackalloc long[cachedFields];
@@ -245,8 +249,8 @@ namespace Blockhome
         public static long FiringGroupBodySizeTyped(FiringGroup v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
-            if (v.Barrel != 0) { n += TableWire.VarSize(ids.Reference(0x8ece059ad360b651ul)) + 5; }
-            if (v.Cooldown != 0.0f) { n += TableWire.VarSize(ids.Reference(0xdc2cbe6953343d48ul)) + 5; }
+            if (v.Barrel != 0) { n += TableWire.VarSize(ids.RefAt(17, 0x8ece059ad360b651ul)) + 5; }
+            if (v.Cooldown != 0.0f) { n += TableWire.VarSize(ids.RefAt(25, 0xdc2cbe6953343d48ul)) + 5; }
             return n;
         }
 
@@ -254,12 +258,12 @@ namespace Blockhome
         {
             if (v.Barrel != 0)
             {
-                w.Header(ids.Reference(0x8ece059ad360b651ul), 8);
+                w.HeaderAt(17, 0x8ece059ad360b651ul, 8, ref ids);
                 w.Fixed((ulong)v.Barrel, 4);
             }
             if (v.Cooldown != 0.0f)
             {
-                w.Header(ids.Reference(0xdc2cbe6953343d48ul), 10);
+                w.HeaderAt(25, 0xdc2cbe6953343d48ul, 10, ref ids);
                 w.Fixed((ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v.Cooldown)), 4);
             }
             w.Var(0);
@@ -275,7 +279,9 @@ namespace Blockhome
                 while (slots < vocabulary.Length * 2) { slots <<= 1; }
             }
             Span<int> index = stackalloc int[slots];
-            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;
+            Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index, ordinalSlots, ordinalOf);
             if (!FiringGroupCollectTyped(value, ref ids)) { return -1; }
             int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
             Span<long> rootPayloadSizes = stackalloc long[cachedFields];
@@ -388,7 +394,7 @@ namespace Blockhome
                     nChild_0 += TableWire.VarSize((ulong)childBody) + childBody;
                 }
                 long payload_0 = 1 + TableWire.VarSize((ulong)count_0) + nChild_0;
-                n += TableWire.VarSize(ids.Reference(0x260b8ca6b0c3db7ful)) + 1 + TableWire.VarSize((ulong)payload_0) + payload_0;
+                n += TableWire.VarSize(ids.RefAt(4, 0x260b8ca6b0c3db7ful)) + 1 + TableWire.VarSize((ulong)payload_0) + payload_0;
                 if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[0] = payload_0; }
             }
             int count_1 = v.MissileGroupsCount;
@@ -409,11 +415,11 @@ namespace Blockhome
                     nChild_1 += TableWire.VarSize((ulong)childBody) + childBody;
                 }
                 long payload_1 = 1 + TableWire.VarSize((ulong)count_1) + nChild_1;
-                n += TableWire.VarSize(ids.Reference(0x3c99105aa087f6bcul)) + 1 + TableWire.VarSize((ulong)payload_1) + payload_1;
+                n += TableWire.VarSize(ids.RefAt(7, 0x3c99105aa087f6bcul)) + 1 + TableWire.VarSize((ulong)payload_1) + payload_1;
                 if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[1] = payload_1; }
             }
-            if (v.ReloadSeconds != 0.0f) { n += TableWire.VarSize(ids.Reference(0xad9b64728ea52486ul)) + 5; }
-            if (v.GunnerId != 0) { n += TableWire.VarSize(ids.Reference(0xbd9be53180256e02ul)) + 5; }
+            if (v.ReloadSeconds != 0.0f) { n += TableWire.VarSize(ids.RefAt(19, 0xad9b64728ea52486ul)) + 5; }
+            if (v.GunnerId != 0) { n += TableWire.VarSize(ids.RefAt(22, 0xbd9be53180256e02ul)) + 5; }
             return n;
         }
 
@@ -423,7 +429,7 @@ namespace Blockhome
             int count_0 = v.FiringGroupsCount;
             if (count_0 > 0)
             {
-                w.Header(ids.Reference(0x260b8ca6b0c3db7ful), 14);
+                w.HeaderAt(4, 0x260b8ca6b0c3db7ful, 14, ref ids);
                 scoped ReadOnlySpan<long> elemCache_0 = default;
                 if (!rootElemSizes.IsEmpty)
                 {
@@ -455,7 +461,7 @@ namespace Blockhome
             int count_1 = v.MissileGroupsCount;
             if (count_1 > 0)
             {
-                w.Header(ids.Reference(0x3c99105aa087f6bcul), 14);
+                w.HeaderAt(7, 0x3c99105aa087f6bcul, 14, ref ids);
                 scoped ReadOnlySpan<long> elemCache_1 = default;
                 if (!rootElemSizes.IsEmpty)
                 {
@@ -486,12 +492,12 @@ namespace Blockhome
             }
             if (v.ReloadSeconds != 0.0f)
             {
-                w.Header(ids.Reference(0xad9b64728ea52486ul), 10);
+                w.HeaderAt(19, 0xad9b64728ea52486ul, 10, ref ids);
                 w.Fixed((ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v.ReloadSeconds)), 4);
             }
             if (v.GunnerId != 0)
             {
-                w.Header(ids.Reference(0xbd9be53180256e02ul), 8);
+                w.HeaderAt(22, 0xbd9be53180256e02ul, 8, ref ids);
                 w.Fixed((ulong)v.GunnerId, 4);
             }
             w.Var(0);
@@ -507,7 +513,9 @@ namespace Blockhome
                 while (slots < vocabulary.Length * 2) { slots <<= 1; }
             }
             Span<int> index = stackalloc int[slots];
-            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;
+            Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index, ordinalSlots, ordinalOf);
             if (!GunnerSettingsCollectTyped(value, ref ids)) { return -1; }
             int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
             Span<long> rootPayloadSizes = stackalloc long[cachedFields];

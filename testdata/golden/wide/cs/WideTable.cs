@@ -2533,11 +2533,41 @@ namespace Wide
             {
                 public Span<ulong> Values;
                 public Span<int> Slots;
+                public Span<uint> OrdinalSlots;
+                public Span<int> OrdinalOf;
                 public int Count;
                 internal Graph Graph;
-                public Ids(Span<ulong> values) { Values = values; Slots = default; Count = 0; Graph = null; }
+                public Ids(Span<ulong> values)
+                {
+                    Values = values;
+                    Slots = default;
+                    OrdinalSlots = default;
+                    OrdinalOf = default;
+                    Count = 0;
+                    Graph = null;
+                }
                 public Ids(Span<ulong> values, Span<int> slots)
-                { Values = values; Slots = slots; Slots.Clear(); Count = 0; Graph = null; }
+                {
+                    Values = values;
+                    Slots = slots;
+                    if (!Slots.IsEmpty) { Slots.Clear(); }
+                    OrdinalSlots = default;
+                    OrdinalOf = default;
+                    Count = 0;
+                    Graph = null;
+                }
+                public Ids(Span<ulong> values, Span<int> slots, Span<uint> ordinalSlots, Span<int> ordinalOf)
+                {
+                    Values = values;
+                    Slots = slots;
+                    if (!Slots.IsEmpty) { Slots.Clear(); }
+                    OrdinalSlots = ordinalSlots;
+                    if (!OrdinalSlots.IsEmpty) { OrdinalSlots.Clear(); }
+                    OrdinalOf = ordinalOf;
+                    if (!OrdinalOf.IsEmpty) { OrdinalOf.Fill(-1); }
+                    Count = 0;
+                    Graph = null;
+                }
                 int Slot(ulong id)
                 {
                     int mask = Slots.Length - 1;
@@ -2545,11 +2575,56 @@ namespace Wide
                     while (Slots[slot] != 0 && Values[Slots[slot] - 1] != id) { slot = (slot + 1) & mask; }
                     return slot;
                 }
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
                 public ulong Reference(ulong id)
                 {
                     if (!Slots.IsEmpty) { return (ulong)Slots[Slot(id)]; }
                     for (int i = 0; i < Count; i++) { if (Values[i] == id) { return (ulong)i + 1; } }
                     return 0;
+                }
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                public ulong Ref(ulong id)
+                {
+                    if (!Slots.IsEmpty)
+                    {
+                        int slot = Slot(id);
+                        if (Slots[slot] != 0) { return (ulong)Slots[slot]; }
+                        if (Count == Values.Length) { return 0; }
+                        Values[Count] = id;
+                        if (!OrdinalOf.IsEmpty && Count < OrdinalOf.Length) { OrdinalOf[Count] = -1; }
+                        Count++;
+                        Slots[slot] = Count;
+                        return (ulong)Count;
+                    }
+                    for (int i = 0; i < Count; i++) { if (Values[i] == id) { return (ulong)i + 1; } }
+                    if (Count == Values.Length) { return 0; }
+                    Values[Count] = id;
+                    if (!OrdinalOf.IsEmpty && Count < OrdinalOf.Length) { OrdinalOf[Count] = -1; }
+                    Count++;
+                    return (ulong)Count;
+                }
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                public ulong RefAt(int ordinal, ulong id)
+                {
+                    if (!OrdinalSlots.IsEmpty && (uint)ordinal < (uint)OrdinalSlots.Length)
+                    {
+                        uint s = OrdinalSlots[ordinal];
+                        if (s != 0) { return (ulong)s; }
+                    }
+                    return RefAtMiss(ordinal, id);
+                }
+                ulong RefAtMiss(int ordinal, ulong id)
+                {
+                    ulong r = Ref(id);
+                    if (r != 0 && !OrdinalSlots.IsEmpty && (uint)ordinal < (uint)OrdinalSlots.Length)
+                    {
+                        OrdinalSlots[ordinal] = (uint)r;
+                        if (!OrdinalOf.IsEmpty && (int)(r - 1) < OrdinalOf.Length)
+                        {
+                            OrdinalOf[(int)(r - 1)] = ordinal;
+                        }
+                    }
+                    return r;
                 }
                 public bool Add(ulong id)
                 {
@@ -2558,13 +2633,39 @@ namespace Wide
                         int slot = Slot(id);
                         if (Slots[slot] != 0) { return true; }
                         if (Count == Values.Length) { return false; }
-                        Values[Count++] = id; Slots[slot] = Count;
+                        Values[Count] = id;
+                        if (!OrdinalOf.IsEmpty && Count < OrdinalOf.Length) { OrdinalOf[Count] = -1; }
+                        Count++;
+                        Slots[slot] = Count;
                         return true;
                     }
                     if (Reference(id) != 0) { return true; }
                     if (Count == Values.Length) { return false; }
-                    Values[Count++] = id;
+                    Values[Count] = id;
+                    if (!OrdinalOf.IsEmpty && Count < OrdinalOf.Length) { OrdinalOf[Count] = -1; }
+                    Count++;
                     return true;
+                }
+                public void Truncate(int mark)
+                {
+                    while (Count > 0 && Count > mark)
+                    {
+                        Count--;
+                        if (!Slots.IsEmpty)
+                        {
+                            int slot = Slot(Values[Count]);
+                            Slots[slot] = 0;
+                        }
+                        if (!OrdinalOf.IsEmpty && Count < OrdinalOf.Length)
+                        {
+                            int o = OrdinalOf[Count];
+                            if (o >= 0 && !OrdinalSlots.IsEmpty && (uint)o < (uint)OrdinalSlots.Length)
+                            {
+                                OrdinalSlots[o] = 0;
+                            }
+                            OrdinalOf[Count] = -1;
+                        }
+                    }
                 }
             }
 
@@ -2600,6 +2701,11 @@ namespace Wide
                         return;
                     }
                     Var(reference); Byte(kind);
+                }
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                public void HeaderAt(int ordinal, ulong id, byte kind, ref Ids ids)
+                {
+                    Header(ids.RefAt(ordinal, id), kind);
                 }
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
                 public void Var(ulong v)
@@ -4343,7 +4449,9 @@ namespace Wide
                     while (slots < vocabulary.Length * 2) { slots <<= 1; }
                 }
                 Span<int> index = stackalloc int[slots];
-                Ids ids = new Ids(vocabulary, index);
+                Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;
+                Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;
+                Ids ids = new Ids(vocabulary, index, ordinalSlots, ordinalOf);
                 if (type.Variable) { ids.Graph = Number(value, type); if (ids.Graph == null) { return -1; } }
                 if (!Collect(value, type, ref ids) || !CollectNodes(ref ids)) { return -1; }
                 // Reuse the root's measured length prefixes while writing its fields,

@@ -64,7 +64,9 @@ namespace Bench
                 while (slots < vocabulary.Length * 2) { slots <<= 1; }
             }
             Span<int> index = stackalloc int[slots];
-            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;
+            Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index, ordinalSlots, ordinalOf);
             if (!FixedTableCollectTyped(value, ref ids)) { return -1; }
             int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
             Span<long> rootPayloadSizes = stackalloc long[cachedFields];

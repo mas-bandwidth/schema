@@ -116,9 +116,24 @@ type tableGen struct {
 	home     bool       // this file carries the unit's shared table runtime
 	anyKeyed bool       // the unit declares at least one enum-keyed array
 	owner    *ir.Struct // the closure member whose codec is being emitted
+	idOrdinal map[uint64]int // compile-time slot of each id TableWireIds names
 	types    strings.Builder
 	schema   strings.Builder
 	indent   string // extra per-line indent while emitting inside a branch guard
+}
+
+func (g *tableGen) knownOrdinal(id uint64) int {
+	if g.idOrdinal == nil {
+		g.idOrdinal = make(map[uint64]int)
+		for i, known := range ir.TableWireIds(g.unit) {
+			g.idOrdinal[known] = i
+		}
+	}
+	ord, ok := g.idOrdinal[id]
+	if !ok {
+		panic(fmt.Sprintf("table id 0x%016x is not in the unit's vocabulary (ir.TableWireIds)", id))
+	}
+	return ord
 }
 
 // tf prints into the namespace-level region (storage classes).

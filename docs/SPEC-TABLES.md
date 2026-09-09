@@ -9041,6 +9041,8 @@ element size, array bound and count-companion offset, declared bounds,
 branch guards, and the nested table's descriptor. `<Name>TableType()`
 returns that table's descriptor.
 
+**The C# Table Serialization Contract.** In C#, generated typed `<Name>Save` entry points perform direct typed field reads and compile-time ordinal indexing, and therefore do not observe runtime mutations of TableFieldInfo / TableTypeInfo descriptors (such as getter swapping, custom defaults, guard overrides, or field id alterations). Polymorphic `TableWire.Save(object)` remains the descriptor-driven entry point that observes runtime descriptor mutations.
+
 **A type descriptor also carries a RESET hook** — put one instance back at
 its declared defaults, in place. A generic walker that FILLS a value has to
 be able to establish the defaults an absent field takes, and it holds no

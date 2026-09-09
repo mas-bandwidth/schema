@@ -461,7 +461,7 @@ table Subject {
 	// 5. If dotnet is available, compile and run end-to-end wire equivalence verification.
 	dotnet := findDotnet()
 	if dotnet == "" {
-		return
+		t.Skip("dotnet not found on PATH; skipping C# runtime equivalence execution")
 	}
 
 	runtime, err := filepath.Abs("../../serialize.cs")
@@ -580,6 +580,194 @@ static class Program
         s9.OptCountedCount = 2;
         s9.OptCounted[0].Value = 90; s9.OptCounted[1].Value = 100;
         AssertEqual("opt counted present with count=2", s9);
+    }
+}
+`
+	if err := os.WriteFile(filepath.Join(dir, "Program.cs"), []byte(programCs), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command(dotnet, "run", "--configuration", "Release", "-property:UseSharedCompilation=false")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("dotnet run failed: %v\n%s", err, out)
+	}
+}
+
+// TestCsRefAt tests that compile-time known ordinals (CS-ORDINAL-SLOTS) match
+// dynamic Ref interning across misses, hits, out-of-range ordinals, and empty
+// OrdinalSlots, and that Truncate restores OrdinalSlots and Slots cleanly.
+func TestCsRefAt(t *testing.T) {
+	const src = `package probe
+
+type Leaf {
+    value int32 = 0
+}
+
+table Subject {
+    scalar int32
+    child Leaf
+    arr [2]Leaf
+}
+`
+	files := csFiles(t, src)
+	subjectCs, ok := files["ProbeTable.cs"]
+	if !ok {
+		t.Fatalf("ProbeTable.cs not found in generated output; got keys: %v", files)
+	}
+	text := string(subjectCs)
+
+	// 1. Structural checks
+	for _, want := range []string{
+		"ids.RefAt(",
+		"w.HeaderAt(",
+		"public ulong RefAt(int ordinal, ulong id)",
+		"public void HeaderAt(int ordinal, ulong id, byte kind, ref Ids ids)",
+		"public void Truncate(int mark)",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("expected %q in generated output", want)
+		}
+	}
+
+	dotnet := findDotnet()
+	if dotnet == "" {
+		t.Skip("dotnet not found on PATH; skipping C# runtime execution")
+	}
+
+	runtime, err := filepath.Abs("../../serialize.cs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(runtime, "src", "Serialize.cs")); err != nil {
+		t.Skip("serialize.cs unavailable")
+	}
+
+	dir := t.TempDir()
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	csproj := `<Project Sdk="Microsoft.NET.Sdk">
+<PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><AllowUnsafeBlocks>true</AllowUnsafeBlocks></PropertyGroup>
+<ItemGroup><Compile Include="` + filepath.ToSlash(runtime) + `/src/Serialize.cs" /><Compile Include="` + filepath.ToSlash(runtime) + `/src/Int128Pair.cs" /></ItemGroup>
+</Project>`
+	if err := os.WriteFile(filepath.Join(dir, "probe.csproj"), []byte(csproj), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	const programCs = `using System;
+using Probe;
+
+static class Program
+{
+    static void Fail(string msg)
+    {
+        Console.Error.WriteLine(msg);
+        Environment.Exit(1);
+    }
+
+    static void Main()
+    {
+        Span<ulong> vocab = stackalloc ulong[16];
+        Span<int> slots = stackalloc int[32];
+        Span<uint> ordinalSlots = stackalloc uint[16];
+        Span<int> ordinalOf = stackalloc int[16];
+
+        Schema.TableWire.Ids ids = new Schema.TableWire.Ids(vocab, slots, ordinalSlots, ordinalOf);
+
+        // 1. Initial miss: RefAt assigns new reference, records in OrdinalSlots & OrdinalOf
+        ulong r1 = ids.RefAt(0, 1001);
+        if (r1 != 1) Fail($"r1 expected 1, got {r1}");
+        if (ids.OrdinalSlots[0] != 1) Fail($"OrdinalSlots[0] expected 1, got {ids.OrdinalSlots[0]}");
+        if (ids.OrdinalOf[0] != 0) Fail($"OrdinalOf[0] expected 0, got {ids.OrdinalOf[0]}");
+        if (ids.Count != 1) Fail($"Count expected 1, got {ids.Count}");
+
+        // 2. Hit: RefAt returns cached slot without touching linear / hash table
+        ulong r1Hit = ids.RefAt(0, 1001);
+        if (r1Hit != 1) Fail($"r1Hit expected 1, got {r1Hit}");
+
+        // 3. Matching Ref call returns same reference
+        ulong r1Ref = ids.Ref(1001);
+        if (r1Ref != 1) Fail($"r1Ref expected 1, got {r1Ref}");
+        if (ids.Count != 1) Fail($"Count after r1Ref expected 1, got {ids.Count}");
+
+        // 4. Ref first, then RefAt hit
+        ulong r2Ref = ids.Ref(2002);
+        if (r2Ref != 2) Fail($"r2Ref expected 2, got {r2Ref}");
+        ulong r2At = ids.RefAt(1, 2002);
+        if (r2At != 2) Fail($"r2At expected 2, got {r2At}");
+        if (ids.OrdinalSlots[1] != 2) Fail($"OrdinalSlots[1] expected 2, got {ids.OrdinalSlots[1]}");
+        if (ids.OrdinalOf[1] != 1) Fail($"OrdinalOf[1] expected 1, got {ids.OrdinalOf[1]}");
+
+        // 5. Out-of-range ordinal (negative or >= OrdinalSlots.Length) falls back to Ref
+        ulong r3Negative = ids.RefAt(-1, 3003);
+        if (r3Negative != 3) Fail($"r3Negative expected 3, got {r3Negative}");
+        ulong r4Large = ids.RefAt(9999, 4004);
+        if (r4Large != 4) Fail($"r4Large expected 4, got {r4Large}");
+        if (ids.Ref(3003) != 3) Fail("Ref(3003) expected 3");
+        if (ids.Ref(4004) != 4) Fail("Ref(4004) expected 4");
+
+        // 6. Empty OrdinalSlots falls back to Ref
+        Span<ulong> vocabEmpty = stackalloc ulong[8];
+        Span<int> slotsEmpty = stackalloc int[16];
+        Schema.TableWire.Ids idsEmpty = new Schema.TableWire.Ids(vocabEmpty, slotsEmpty, Span<uint>.Empty, Span<int>.Empty);
+        ulong rEmpty = idsEmpty.RefAt(0, 5005);
+        if (rEmpty != 1) Fail($"rEmpty expected 1, got {rEmpty}");
+        if (idsEmpty.RefAt(0, 5005) != 1) Fail("rEmpty hit expected 1");
+        if (idsEmpty.Ref(5005) != 1) Fail("idsEmpty.Ref expected 1");
+
+        // 7. Truncate: clearing resets OrdinalSlots, OrdinalOf, and hash Slots
+        int mark = ids.Count; // currently 4
+        ulong r5 = ids.RefAt(4, 5555);
+        ulong r6 = ids.Ref(6666);
+        ulong r7 = ids.RefAt(5, 7777);
+        if (ids.Count != mark + 3) Fail($"Count expected {mark + 3}, got {ids.Count}");
+        if (ids.OrdinalSlots[4] != 5) Fail($"OrdinalSlots[4] expected 5, got {ids.OrdinalSlots[4]}");
+        if (ids.OrdinalSlots[5] != 7) Fail($"OrdinalSlots[5] expected 7, got {ids.OrdinalSlots[5]}");
+
+        ids.Truncate(mark);
+        if (ids.Count != mark) Fail($"Count after Truncate expected {mark}, got {ids.Count}");
+        if (ids.OrdinalSlots[4] != 0) Fail($"OrdinalSlots[4] after Truncate expected 0, got {ids.OrdinalSlots[4]}");
+        if (ids.OrdinalSlots[5] != 0) Fail($"OrdinalSlots[5] after Truncate expected 0, got {ids.OrdinalSlots[5]}");
+        if (ids.OrdinalOf[4] != -1) Fail($"OrdinalOf[4] after Truncate expected -1, got {ids.OrdinalOf[4]}");
+        if (ids.OrdinalOf[6] != -1) Fail($"OrdinalOf[6] after Truncate expected -1, got {ids.OrdinalOf[6]}");
+
+        // Existing entries before mark remain intact
+        if (ids.RefAt(0, 1001) != 1) Fail("pre-mark entry 1001 corrupted");
+        if (ids.Ref(2002) != 2) Fail("pre-mark entry 2002 corrupted");
+
+        // Re-adding truncated items interns cleanly without collisions or stale hits
+        ulong r5Re = ids.RefAt(4, 5555);
+        if (r5Re != (ulong)mark + 1) Fail($"r5Re expected {mark + 1}, got {r5Re}");
+
+        // 8. HeaderAt vs Header byte equivalence
+        Span<ulong> vocabH1 = stackalloc ulong[8];
+        Span<int> slotsH1 = stackalloc int[16];
+        Span<uint> ordH1 = stackalloc uint[8];
+        Span<int> ordOfH1 = stackalloc int[8];
+        Schema.TableWire.Ids idsH1 = new Schema.TableWire.Ids(vocabH1, slotsH1, ordH1, ordOfH1);
+
+        Span<ulong> vocabH2 = stackalloc ulong[8];
+        Span<int> slotsH2 = stackalloc int[16];
+        Span<uint> ordH2 = stackalloc uint[8];
+        Span<int> ordOfH2 = stackalloc int[8];
+        Schema.TableWire.Ids idsH2 = new Schema.TableWire.Ids(vocabH2, slotsH2, ordH2, ordOfH2);
+
+        Span<byte> buf1 = stackalloc byte[64];
+        Span<byte> buf2 = stackalloc byte[64];
+        Schema.TableWire.Writer w1 = new Schema.TableWire.Writer(buf1);
+        Schema.TableWire.Writer w2 = new Schema.TableWire.Writer(buf2);
+
+        // Emit via HeaderAt on w1 and Header on w2
+        w1.HeaderAt(0, 8888, 3, ref idsH1);
+        w2.Header(idsH2.Ref(8888), 3);
+
+        if (w1.Offset != w2.Offset) Fail($"HeaderAt offset {w1.Offset} != Header offset {w2.Offset}");
+        if (!buf1.Slice(0, w1.Offset).SequenceEqual(buf2.Slice(0, w2.Offset)))
+            Fail("HeaderAt output bytes != Header output bytes");
     }
 }
 `

@@ -180,7 +180,7 @@ namespace Tabledemo
         {
             long n = 1;
             TableFieldInfo[] fields = TeamConfigTableType().Fields;
-            if (v.SpawnCount != 4) { n += TableWire.VarSize(ids.Reference(0xceec99e2d65db674ul)) + 5; }
+            if (v.SpawnCount != 4) { n += TableWire.VarSize(ids.RefAt(120, 0xceec99e2d65db674ul)) + 5; }
             n += TableWire.BodySizeField(v, fields[1], ref ids, default, out long payload_1);
             if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[1] = payload_1; }
             return n;
@@ -191,7 +191,7 @@ namespace Tabledemo
             TableFieldInfo[] fields = TeamConfigTableType().Fields;
             if (v.SpawnCount != 4)
             {
-                w.Header(ids.Reference(0xceec99e2d65db674ul), 4);
+                w.HeaderAt(120, 0xceec99e2d65db674ul, 4, ref ids);
                 w.Fixed((ulong)(long)v.SpawnCount, 4);
             }
             long payload_1 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[1] : -1;
@@ -209,7 +209,9 @@ namespace Tabledemo
                 while (slots < vocabulary.Length * 2) { slots <<= 1; }
             }
             Span<int> index = stackalloc int[slots];
-            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;
+            Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index, ordinalSlots, ordinalOf);
             if (!TeamConfigCollectTyped(value, ref ids)) { return -1; }
             int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
             Span<long> rootPayloadSizes = stackalloc long[cachedFields];
@@ -273,8 +275,8 @@ namespace Tabledemo
         public static long GunnerConfigBodySizeTyped(GunnerConfig v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
-            if (v.Reaction != 0.2f) { n += TableWire.VarSize(ids.Reference(0xb75aa3662201646aul)) + 5; }
-            if (v.Tracking != false) { n += TableWire.VarSize(ids.Reference(0xa6bf719a4602b0bcul)) + 2; }
+            if (v.Reaction != 0.2f) { n += TableWire.VarSize(ids.RefAt(101, 0xb75aa3662201646aul)) + 5; }
+            if (v.Tracking != false) { n += TableWire.VarSize(ids.RefAt(90, 0xa6bf719a4602b0bcul)) + 2; }
             return n;
         }
 
@@ -282,12 +284,12 @@ namespace Tabledemo
         {
             if (v.Reaction != 0.2f)
             {
-                w.Header(ids.Reference(0xb75aa3662201646aul), 10);
+                w.HeaderAt(101, 0xb75aa3662201646aul, 10, ref ids);
                 w.Fixed((ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v.Reaction)), 4);
             }
             if (v.Tracking != false)
             {
-                w.Header(ids.Reference(0xa6bf719a4602b0bcul), 1);
+                w.HeaderAt(90, 0xa6bf719a4602b0bcul, 1, ref ids);
                 w.Fixed(v.Tracking ? 1ul : 0ul, 1);
             }
             w.Var(0);
@@ -303,7 +305,9 @@ namespace Tabledemo
                 while (slots < vocabulary.Length * 2) { slots <<= 1; }
             }
             Span<int> index = stackalloc int[slots];
-            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;
+            Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index, ordinalSlots, ordinalOf);
             if (!GunnerConfigCollectTyped(value, ref ids)) { return -1; }
             int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
             Span<long> rootPayloadSizes = stackalloc long[cachedFields];
@@ -372,8 +376,8 @@ namespace Tabledemo
         {
             long n = 1;
             TableFieldInfo[] fields = TurretConfigTableType().Fields;
-            if (v.Damage != 10.0f) { n += TableWire.VarSize(ids.Reference(0x7f6308be8ab37fc0ul)) + 5; }
-            if (v.Cooldown != 0.5f) { n += TableWire.VarSize(ids.Reference(0xdc2cbe6953343d48ul)) + 5; }
+            if (v.Damage != 10.0f) { n += TableWire.VarSize(ids.RefAt(66, 0x7f6308be8ab37fc0ul)) + 5; }
+            if (v.Cooldown != 0.5f) { n += TableWire.VarSize(ids.RefAt(133, 0xdc2cbe6953343d48ul)) + 5; }
             n += TableWire.BodySizeField(v, fields[2], ref ids, default, out long payload_2);
             if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[2] = payload_2; }
             return n;
@@ -384,12 +388,12 @@ namespace Tabledemo
             TableFieldInfo[] fields = TurretConfigTableType().Fields;
             if (v.Damage != 10.0f)
             {
-                w.Header(ids.Reference(0x7f6308be8ab37fc0ul), 10);
+                w.HeaderAt(66, 0x7f6308be8ab37fc0ul, 10, ref ids);
                 w.Fixed((ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v.Damage)), 4);
             }
             if (v.Cooldown != 0.5f)
             {
-                w.Header(ids.Reference(0xdc2cbe6953343d48ul), 10);
+                w.HeaderAt(133, 0xdc2cbe6953343d48ul, 10, ref ids);
                 w.Fixed((ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v.Cooldown)), 4);
             }
             long payload_2 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[2] : -1;
@@ -407,7 +411,9 @@ namespace Tabledemo
                 while (slots < vocabulary.Length * 2) { slots <<= 1; }
             }
             Span<int> index = stackalloc int[slots];
-            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;
+            Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index, ordinalSlots, ordinalOf);
             if (!TurretConfigCollectTyped(value, ref ids)) { return -1; }
             int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
             Span<long> rootPayloadSizes = stackalloc long[cachedFields];
@@ -478,8 +484,8 @@ namespace Tabledemo
         {
             long n = 1;
             TableFieldInfo[] fields = HullConfigTableType().Fields;
-            if (v.Health != 100.0f) { n += TableWire.VarSize(ids.Reference(0x7f69d4b5288ba9cful)) + 5; }
-            if (v.Mass != 1.0f) { n += TableWire.VarSize(ids.Reference(0x1f3757a2ce7b0ab1ul)) + 5; }
+            if (v.Health != 100.0f) { n += TableWire.VarSize(ids.RefAt(67, 0x7f69d4b5288ba9cful)) + 5; }
+            if (v.Mass != 1.0f) { n += TableWire.VarSize(ids.RefAt(20, 0x1f3757a2ce7b0ab1ul)) + 5; }
             n += TableWire.BodySizeField(v, fields[2], ref ids, default, out long payload_2);
             if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[2] = payload_2; }
             return n;
@@ -490,12 +496,12 @@ namespace Tabledemo
             TableFieldInfo[] fields = HullConfigTableType().Fields;
             if (v.Health != 100.0f)
             {
-                w.Header(ids.Reference(0x7f69d4b5288ba9cful), 10);
+                w.HeaderAt(67, 0x7f69d4b5288ba9cful, 10, ref ids);
                 w.Fixed((ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v.Health)), 4);
             }
             if (v.Mass != 1.0f)
             {
-                w.Header(ids.Reference(0x1f3757a2ce7b0ab1ul), 10);
+                w.HeaderAt(20, 0x1f3757a2ce7b0ab1ul, 10, ref ids);
                 w.Fixed((ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v.Mass)), 4);
             }
             long payload_2 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[2] : -1;
@@ -513,7 +519,9 @@ namespace Tabledemo
                 while (slots < vocabulary.Length * 2) { slots <<= 1; }
             }
             Span<int> index = stackalloc int[slots];
-            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;
+            Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index, ordinalSlots, ordinalOf);
             if (!HullConfigCollectTyped(value, ref ids)) { return -1; }
             int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
             Span<long> rootPayloadSizes = stackalloc long[cachedFields];
@@ -618,7 +626,9 @@ namespace Tabledemo
                 while (slots < vocabulary.Length * 2) { slots <<= 1; }
             }
             Span<int> index = stackalloc int[slots];
-            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;
+            Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index, ordinalSlots, ordinalOf);
             if (!KeyedConfigCollectTyped(value, ref ids)) { return -1; }
             int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
             Span<long> rootPayloadSizes = stackalloc long[cachedFields];
@@ -705,7 +715,9 @@ namespace Tabledemo
                 while (slots < vocabulary.Length * 2) { slots <<= 1; }
             }
             Span<int> index = stackalloc int[slots];
-            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;
+            Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index, ordinalSlots, ordinalOf);
             if (!ScoreBoardCollectTyped(value, ref ids)) { return -1; }
             int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
             Span<long> rootPayloadSizes = stackalloc long[cachedFields];
