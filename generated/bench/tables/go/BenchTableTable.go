@@ -516,6 +516,17 @@ func (r *TableReader) Get64() uint64 {
 // A rejected integer leaves the cursor unchanged. Its spelling must be
 // minimal and fit in 64 bits, including the tenth byte's single value bit.
 func (r *TableReader) Leb() (uint64, bool) {
+	// One byte below 128 is a complete canonical value: the continuation bit
+	// is clear, it is the first byte so the redundant-continuation rule has
+	// nothing to say, and one byte is neither overlong nor past ten. No rule
+	// is relaxed; every other number goes to the loop with all of its checks.
+	if uint64(r.Offset) < uint64(len(r.Buffer)) {
+		b := r.Buffer[r.Offset]
+		if b < 128 {
+			r.Offset++
+			return uint64(b), true
+		}
+	}
 	at := r.Offset
 	var v uint64
 	for i := 0; i < 10; i++ {
