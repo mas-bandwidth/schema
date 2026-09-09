@@ -302,14 +302,15 @@ func generateBlockFiles(u *ir.Unit, blocks *ir.BlockUnit, variable, targets map[
 	if blocks == nil {
 		return out
 	}
+	idOrdinal := wireIdOrdinals(u)
 	for _, f := range u.Files {
 		if len(f.Tables) == 0 {
 			continue
 		}
 		g := &tableGen{unit: u, file: f, blocks: blocks, variable: variable, targets: targets,
-			includes: map[string]bool{}, nativeIncludes: map[string]bool{}}
+			includes: map[string]bool{}, nativeIncludes: map[string]bool{}, idOrdinal: idOrdinal}
 		c := &tableGen{unit: u, file: f, blocks: blocks, variable: variable, targets: targets,
-			includes: map[string]bool{}, nativeIncludes: map[string]bool{}}
+			includes: map[string]bool{}, nativeIncludes: map[string]bool{}, idOrdinal: idOrdinal}
 
 		var formed []*ir.BlockLayout
 		for _, st := range f.Tables {

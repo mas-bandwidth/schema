@@ -3072,6 +3072,19 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	$(MAKE) projection-union-arm-order-negative-control
 	./build/schema_test_tables
 	./build/schema_test_tables_asan
+	# THE ORDINAL SLOT CACHE (docs/SPEC-TABLES.md §3): a save that answers a
+	# repeat header out of slot[ordinal] is held to main's own bytes by
+	# compiler/tablerefordinal_test.go, and the ONE rule a green pin cannot be
+	# read for is truncate taking the slot back — so its control is here.
+	$(MAKE) tables-ref-ordinal-negative-control
+	$(MAKE) tables-ref-ordinal-shared-negative-control
+	# THE ID TABLE'S DISTINCTNESS GATE (docs/SPEC-TABLES.md §3): TableOpen
+	# answers "one id in two entries" two ways, and the corpus above takes
+	# only one of them, so the gate below builds the other one's tables by
+	# hand and holds both against a pairwise reference. Its control removes
+	# the probe's comparison and requires the gate to go red.
+	$(MAKE) tables-distinctness
+	$(MAKE) tables-distinctness-negative-control
 	# THE WIRE FUZZER (docs/SPEC-TABLES.md §4.2): the tolerant read on hostile
 	# bytes against the engine, plain and sanitized, at a short random pass —
 	# the enumerated passes run whole whatever N is — and its two controls at
@@ -4467,6 +4480,65 @@ build/wire-fuzz-cpp-asan: build/tables-generated/.stamp test/tables/wire_fuzz_ma
 		-fno-omit-frame-pointer -g $(CONFORMANCE_INCLUDES) test/tables/wire_fuzz_main.cpp \
 		$(CONFORMANCE_SOURCES) -o $@
 
+# THE ID TABLE'S DISTINCTNESS GATE (docs/SPEC-TABLES.md §3): a table that
+# carries one id twice is malformed, and TableOpen answers that question TWO
+# ways — a hashed PROBE over a stack array up to kTableProbeBound entries, the
+# pairwise walk above it. The property is that a READER CANNOT TELL WHICH ONE
+# RAN, and a corpus cannot say so on its own, because every table this schema
+# writes is small and takes the same walk. So this gate builds tables BY HAND,
+# drives TableOpen directly and compares every verdict against an independent
+# pairwise reference: both sides of the bound, a repeat planted at every
+# position, and the ALL-COLLIDING table a hostile writer builds by inverting
+# the multiply.
+#
+# It is built THREE ways because the check is READ SIDE and a read-side check
+# never compiles out (§3.4): the debug build, an NDEBUG release build that has
+# to reach the same verdict on the same bytes, and a sanitized one, for the
+# reason the wire fuzzer carries its own — the probe indexes a stack array.
+# The generated header is the whole dependency, which is also what "the codec
+# is header-only and names no runtime" means when a leg says it.
+.PHONY: tables-distinctness
+tables-distinctness: build/tables-generated/.stamp test/tables/distinct_main.cpp
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/examples \
+		test/tables/distinct_main.cpp -o build/schema_test_distinct
+	./build/schema_test_distinct
+	$(CXX) $(TABLES_CXXFLAGS) -DNDEBUG -O2 -Ibuild/tables-generated/examples \
+		test/tables/distinct_main.cpp -o build/schema_test_distinct_ndebug
+	./build/schema_test_distinct_ndebug
+	$(CXX) $(TABLES_CXXFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all \
+		-fno-omit-frame-pointer -g -Ibuild/tables-generated/examples \
+		test/tables/distinct_main.cpp -o build/schema_test_distinct_asan
+	./build/schema_test_distinct_asan
+	@echo "distinctness gate: one verdict across both walks, debug, release and sanitized"
+
+# ITS NEGATIVE CONTROL. A gate over a check that is correct TWICE cannot be
+# read for which walk earned the green: the pairwise walk alone would answer
+# every case in this test correctly if the bound never sent anything down the
+# fast path. So this removes the PROBE's comparison from a copy of the emitter,
+# leaves the pairwise walk untouched, and requires the gate to go red ON THE
+# PROBE'S OWN CASES — which is also the standing proof that the bound is live.
+.PHONY: tables-distinctness-negative-control
+tables-distinctness-negative-control: bin/schema test/tables/distinct_main.cpp
+	@rm -rf build/distinct-nc && mkdir -p build/distinct-nc
+	@sed -e 's|if ( seen\[s\] == id ) { return TableOpenDamaged; }|if ( false \&\& seen[s] == id ) { return TableOpenDamaged; } // SABOTAGED|' \
+		internal/codegen/cpptable/cpptable.go > build/distinct-nc/cpptable.go.txt
+	@cmp -s build/distinct-nc/cpptable.go.txt internal/codegen/cpptable/cpptable.go && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/distinct-nc/cpptable.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/distinct-nc/overlay.json
+	go build -overlay=build/distinct-nc/overlay.json -o build/distinct-nc/schema ./cmd/schema
+	./build/distinct-nc/schema generate --lang cpp --out build/distinct-nc/examples tables/examples
+	@grep -q SABOTAGED build/distinct-nc/examples/TablesTable.h || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter did not reach the header"; exit 1; }
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/distinct-nc/examples \
+		test/tables/distinct_main.cpp -o build/distinct-nc/schema_test_distinct
+	@if ./build/distinct-nc/schema_test_distinct > build/distinct-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the gate stayed green with the probe's comparison removed"; exit 1; \
+	fi
+	@grep -q "^FAIL probe:" build/distinct-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on a probe case"; cat build/distinct-nc/log; exit 1; }
+	@echo "negative control: removing the probe's comparison turns the distinctness gate RED on the probe's own cases"
+
 .PHONY: tables-wire-fuzz
 tables-wire-fuzz: build/conformance-harness build/wire-fuzz-cpp build/wire-fuzz-cpp-asan
 	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp --seed $(SEED) --n $(N)
@@ -4508,6 +4580,63 @@ define wire_fuzz_control
 	@grep -m1 "FAILED" build/wire-fuzz-nc-$(1)/log
 	@echo "negative control: removing the $(1) check from the emitter turns the wire fuzzer RED"
 endef
+
+# THE ORDINAL SLOT CACHE'S OWN CONTROL (docs/SPEC-TABLES.md §3). Every id a
+# generated field header names is a compile-time constant, so it carries an
+# ORDINAL and TableIds::ref_at answers a repeat out of slot[ordinal]. What
+# keeps that honest is truncate: an ELIDED field interns its ids and gives them
+# back, and a slot left standing over a POPPED entry hands out a reference to
+# an entry the file no longer carries. Remove that one clause and
+# compiler/tablerefordinal_test.go's byte pin — taken from the emitter that had
+# no cache — must go RED. Through `go build -overlay`, so no tracked file moves.
+.PHONY: tables-ref-ordinal-negative-control
+tables-ref-ordinal-negative-control:
+	@rm -rf build/ref-ordinal-nc && mkdir -p build/ref-ordinal-nc
+	@sed -e 's|if ( o >= 0 ) { slot\[o\] = -1; }|if ( false \&\& o >= 0 ) { slot[o] = -1; } // NEGATIVE CONTROL: the slot is not taken back|' \
+		internal/codegen/cpptable/cpptable.go > build/ref-ordinal-nc/emitter.go.txt
+	@cmp -s internal/codegen/cpptable/cpptable.go build/ref-ordinal-nc/emitter.go.txt && \
+		{ echo "NEGATIVE CONTROL: the truncate sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/ref-ordinal-nc/emitter.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/ref-ordinal-nc/overlay.json
+	@if go test -overlay build/ref-ordinal-nc/overlay.json -count=1 ./compiler \
+			-run TestCppTableRefOrdinalBytes > build/ref-ordinal-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: truncate leaves the ordinal slot standing and the byte pin stayed green"; \
+		cat build/ref-ordinal-nc/log; exit 1; \
+	fi
+	@grep -qE "ROUND TRIP MOVED|THE SAVED BYTES MOVED" build/ref-ordinal-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the byte pin went red, but not on the file the save wrote"; \
+		  cat build/ref-ordinal-nc/log; exit 1; }
+	@grep -m1 -E "ROUND TRIP MOVED|THE SAVED BYTES MOVED" build/ref-ordinal-nc/log
+	@echo "negative control: a truncate that leaves the ordinal slot standing names a POPPED entry — the file stops round-tripping"
+
+# THE SECOND HALF OF THE SAME RULE. An id can be interned by the GENERAL path
+# first — an enum-keyed array interns its key before it measures the slot's
+# element, and a field's wire id is the same hash as a variant of the same name
+# — so the ref_at that follows only HITS. Record the ordinal on the miss alone
+# and truncate has nothing to clear when that slot elides: the next slot's
+# field header answers out of a stale cache and names the entry the popped one
+# was replaced by, which is the following KEY. The file stays self-consistent
+# and the value is silently gone, so compiler/tablerefordinal_test.go's
+# shared-id driver is what has to go RED.
+.PHONY: tables-ref-ordinal-shared-negative-control
+tables-ref-ordinal-shared-negative-control:
+	@rm -rf build/ref-ordinal-shared-nc && mkdir -p build/ref-ordinal-shared-nc
+	@sed -e 's|const uint64_t r = ref( id );|const int32_t nc_before = count; const uint64_t r = ref( id );|; s|ordinal_of\[ int32_t( r ) - 1 \] = ` + ordinalType + `( ordinal );|if ( count != nc_before ) { ordinal_of[ int32_t( r ) - 1 ] = ` + ordinalType + `( ordinal ); } // NEGATIVE CONTROL: only a fresh append records its ordinal|' \
+		internal/codegen/cpptable/cpptable.go > build/ref-ordinal-shared-nc/emitter.go.txt
+	@cmp -s internal/codegen/cpptable/cpptable.go build/ref-ordinal-shared-nc/emitter.go.txt && \
+		{ echo "NEGATIVE CONTROL: the hit-path sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/ref-ordinal-shared-nc/emitter.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/ref-ordinal-shared-nc/overlay.json
+	@if go test -overlay build/ref-ordinal-shared-nc/overlay.json -count=1 ./compiler \
+			-run TestCppTableRefOrdinalSharedId > build/ref-ordinal-shared-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: only the miss path records the ordinal and the shared-id driver stayed green"; \
+		cat build/ref-ordinal-shared-nc/log; exit 1; \
+	fi
+	@grep -q "not undone by truncate" build/ref-ordinal-shared-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the driver went red, but not on the shared id"; \
+		  cat build/ref-ordinal-shared-nc/log; exit 1; }
+	@grep -m1 "VALUES MOVED" build/ref-ordinal-shared-nc/log
+	@echo "negative control: an ordinal recorded on the MISS alone loses the field an eliding keyed slot shares its id with"
 
 # THE C++ RELEASE GATE: the wire fuzzer at a long random pass, both builds,
 # and the retention leg beside it at the same length (docs/SPEC-TABLES.md
@@ -5275,6 +5404,8 @@ conformance-negative-control-block-dump: build/conformance-harness build/conform
 .PHONY: tables-ports-refuse-wide-scalars
 tables-ports-refuse-wide-scalars: bin/schema
 	@rm -rf build/tables-wide-refusal && mkdir -p build/tables-wide-refusal
+	# Successful probe output is a fixture, outside the compiler's Go module.
+	@printf 'module wide-scalar-probe\n\ngo 1.26\n' > build/tables-wide-refusal/go.mod
 	@carry=0; refuse=0; \
 	for lang in $(patsubst make/%.mk,%,$(wildcard make/*.mk)); do \
 		if ./bin/schema generate --lang $$lang --out build/tables-wide-refusal/$$lang tables/scalars > build/tables-wide-refusal/$$lang.log 2>&1; then \

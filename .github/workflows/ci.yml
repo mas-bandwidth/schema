@@ -111,11 +111,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Check out the C, C++ and Go serialize runtimes (pinned releases)
+      - name: Check out the C, C++, C# and Go serialize runtimes (pinned releases)
         run: |
           cd ..
           git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"   https://github.com/mas-bandwidth/serialize.git   serialize
           git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG" https://github.com/mas-bandwidth/serialize.c.git serialize.c
+          git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
           git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -223,9 +224,9 @@ jobs:
   # moment it joins one of them, with no edit to this file. Locally the same
   # check is those two targets and the same `git diff`.
   #
-  # ONE SIBLING, ../serialize, because the legs that write the wire pins are the
-  # C++ reference's and every other language's half of `update-goldens` is
-  # `bin/schema generate` and a copy. Its pin is the shared SERIALIZE_TAG above.
+  # The C++ reference writes the wire pins. The Go and C# sibling runtimes
+  # supply the generated-code fixtures in update-goldens' closing compiler
+  # tests. Each checkout uses its shared release pin above.
   #
   # MEASURED at 1m44s on the run that introduced it (34113070433), against
   # 4m27s for big-endian in the same run: this job is inside the two-minute
@@ -239,10 +240,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Check out the C++ and Go serialize runtimes (pinned releases)
+      - name: Check out the C++, C# and Go serialize runtimes (pinned releases)
         run: |
           cd ..
           git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
           git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0

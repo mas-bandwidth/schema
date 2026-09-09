@@ -700,6 +700,10 @@ func (g *tableGen) emitListWriteField(f *ir.Field) {
 	g.pf("        if ( %s.count > 0 ) // an EMPTY list elides, the by-value rule (§3)\n        {\n", cursor)
 	g.pf("            const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 	g.pf("            int64_t body_%s = 0;\n", f.Name)
+	// a list's count is the ARENA's rather than a declared bound, so the cache
+	// takes its own bound and a longer list measures its tail twice, as before
+	restore := g.openElemCache(f, listElementWireKind(f), 0, "            ", "_"+f.Name)
+	defer restore()
 	g.emitArrayBodyMeasure(f, listElementWireKind(f), "body_"+f.Name, cursor+".count", cursor+"[%s]", "            ", "return false;", "_"+f.Name)
 	g.pf("            w.putleb( ref_%s ); w.put8( %d ); w.putleb( (uint64_t) body_%s ); // %s\n", f.Name, tkArray, f.Name, f.Name)
 	g.emitArrayBodyWrite(f, listElementWireKind(f), cursor+".count", cursor+"[%s]", "            ", "_"+f.Name)

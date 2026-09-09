@@ -3,7 +3,7 @@
     {
       "name": "base",
       "when": "pull-request",
-      "why": "the front-end and projection checks, the doc, view and rename controls, the JSON and block refusers, and the float-NaN widening control beside them: Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. Measured 28 s over 24 controls.",
+      "why": "the front-end and projection checks, the doc, view and rename controls, the JSON and block refusers, the id table's ordinal-slot control, and the float-NaN widening control beside them: Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. Measured 28 s over 24 controls, plus 16 s for the two ordinal-slot controls.",
       "targets": [
         "check-enum-bound-negative-control",
         "check-zero-range-negative-control",
@@ -20,6 +20,8 @@
         "tables-json-keyed-dup-negative-control",
         "tables-json-list-walk-negative-controls",
         "tables-json-negative-control",
+        "tables-ref-ordinal-negative-control",
+        "tables-ref-ordinal-shared-negative-control",
         "tables-retain-fixed-class-negative-control",
         "tables-retain-message-form-negative-control",
         "tables-runtime-home-negative-control",
@@ -265,6 +267,14 @@
         "tables-message-form-emitter-negative-control",
         "tables-message-form-retain-negative-control",
         "tables-message-form-text-negative-control"
+      ]
+    },
+    {
+      "name": "table-distinctness",
+      "when": "pull-request",
+      "why": "the id table's distinctness control, alone, because it is an overlay rebuild: it patches the C++ table emitter's probe, rebuilds the compiler under the overlay, regenerates one unit and requires the distinctness gate to go red on the probe's own cases. It costs what the other overlay rebuilds cost, without the fuzzer's pass on top. Measured about 30 s over 1 control on the author's machine.",
+      "targets": [
+        "tables-distinctness-negative-control"
       ]
     },
     {
