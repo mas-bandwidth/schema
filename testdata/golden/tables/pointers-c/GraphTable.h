@@ -368,6 +368,14 @@ static SCHEMA_UNUSED void table_writer_id_at( TableWriter * w, int32_t ordinal, 
     v->slot[ordinal]=(int32_t)r-1;
     v->ordinal_of[r-1]=(int16_t)ordinal;
 }
+/* A repeated one-byte reference and its kind share one checked little-endian
+   store, as in the C++ Header writer. Misses keep the existing ID append path. */
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void table_writer_header_at( TableWriter * w, int32_t ordinal, uint64_t id, uint8_t kind )
+{
+    const int32_t at=w->vocabulary->slot[ordinal];
+    if(at>=0 && at<127) { table_writer_put16(w,(uint16_t)((uint16_t)(at+1)|((uint16_t)kind<<8))); return; }
+    table_writer_id_at(w,ordinal,id); table_writer_put8(w,kind);
+}
 static SCHEMA_UNUSED TableWriter table_writer_probe( const TableWriter * w )
 {
     TableWriter probe = *w;
@@ -3479,7 +3487,7 @@ static SCHEMA_UNUSED int meta_save_body( TableWriter * w, const Meta * value )
         if ( !( value->build == 1 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 26, 0x802517e298c70b03ull ); table_writer_put8( w, 4 );
+            table_writer_header_at( w, 26, 0x802517e298c70b03ull, 4 );
             table_writer_put32( w, (uint32_t) ( value->build ) );
         }
     }
@@ -3488,7 +3496,7 @@ static SCHEMA_UNUSED int meta_save_body( TableWriter * w, const Meta * value )
         if ( value->tag_length != 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 13, 0x56d7ab194448a4f3ull ); table_writer_put8( w, 12 );
+            table_writer_header_at( w, 13, 0x56d7ab194448a4f3ull, 12 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -3824,7 +3832,7 @@ static SCHEMA_UNUSED int settings_save_body( TableWriter * w, const Settings * v
         if ( !( value->quality == 2 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 23, 0x7a8060916400fe66ull ); table_writer_put8( w, 4 );
+            table_writer_header_at( w, 23, 0x7a8060916400fe66ull, 4 );
             table_writer_put32( w, (uint32_t) ( value->quality ) );
         }
     }
@@ -3833,7 +3841,7 @@ static SCHEMA_UNUSED int settings_save_body( TableWriter * w, const Settings * v
         if ( value->label_length != 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 6, 0x39f7fcec8fcb623dull ); table_writer_put8( w, 12 );
+            table_writer_header_at( w, 6, 0x39f7fcec8fcb623dull, 12 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -4169,7 +4177,7 @@ static SCHEMA_UNUSED int list_node_save_body( TableWriter * w, const ListNode * 
         if ( !( value->value == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 24, 0x7ce4fd9430e80ceaull ); table_writer_put8( w, 4 );
+            table_writer_header_at( w, 24, 0x7ce4fd9430e80ceaull, 4 );
             table_writer_put32( w, (uint32_t) ( value->value ) );
         }
     }
@@ -4178,7 +4186,7 @@ static SCHEMA_UNUSED int list_node_save_body( TableWriter * w, const ListNode * 
         if ( value->name_length != 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 37, 0xc4bcadba8e631b86ull ); table_writer_put8( w, 12 );
+            table_writer_header_at( w, 37, 0xc4bcadba8e631b86ull, 12 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -4198,7 +4206,7 @@ static SCHEMA_UNUSED int list_node_save_body( TableWriter * w, const ListNode * 
         if ( !( value->next.value == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 41, 0xe5316cbaa025f028ull ); table_writer_put8( w, 17 );
+            table_writer_header_at( w, 41, 0xe5316cbaa025f028ull, 17 );
             { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->next); uint64_t index=table_number_find(w->nodes,node);
               if(node!=NULL && index==0) { return 0; } table_writer_leb(w,index); }
         }
@@ -4468,7 +4476,7 @@ static SCHEMA_UNUSED int tree_node_save_body( TableWriter * w, const TreeNode * 
         if ( value->label_length != 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 6, 0x39f7fcec8fcb623dull ); table_writer_put8( w, 12 );
+            table_writer_header_at( w, 6, 0x39f7fcec8fcb623dull, 12 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -4488,7 +4496,7 @@ static SCHEMA_UNUSED int tree_node_save_body( TableWriter * w, const TreeNode * 
         if ( !( value->left.value == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 2, 0x24b070ada2041cb0ull ); table_writer_put8( w, 17 );
+            table_writer_header_at( w, 2, 0x24b070ada2041cb0ull, 17 );
             { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->left); uint64_t index=table_number_find(w->nodes,node);
               if(node!=NULL && index==0) { return 0; } table_writer_leb(w,index); }
         }
@@ -4497,7 +4505,7 @@ static SCHEMA_UNUSED int tree_node_save_body( TableWriter * w, const TreeNode * 
         if ( !( value->right.value == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 21, 0x76aaaa535714d805ull ); table_writer_put8( w, 17 );
+            table_writer_header_at( w, 21, 0x76aaaa535714d805ull, 17 );
             { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->right); uint64_t index=table_number_find(w->nodes,node);
               if(node!=NULL && index==0) { return 0; } table_writer_leb(w,index); }
         }
@@ -4698,7 +4706,7 @@ static SCHEMA_UNUSED int layer_save_body( TableWriter * w, const Layer * value )
         if ( !( value->depth == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 20, 0x75d8e97600b296eaull ); table_writer_put8( w, 4 );
+            table_writer_header_at( w, 20, 0x75d8e97600b296eaull, 4 );
             table_writer_put32( w, (uint32_t) ( value->depth ) );
         }
     }
@@ -4706,7 +4714,7 @@ static SCHEMA_UNUSED int layer_save_body( TableWriter * w, const Layer * value )
         if ( !( value->head.value == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 0, 0x0a8f12cc5f9a0c03ull ); table_writer_put8( w, 17 );
+            table_writer_header_at( w, 0, 0x0a8f12cc5f9a0c03ull, 17 );
             { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->head); uint64_t index=table_number_find(w->nodes,node);
               if(node!=NULL && index==0) { return 0; } table_writer_leb(w,index); }
         }
@@ -4958,7 +4966,7 @@ static SCHEMA_UNUSED int scene_save_body( TableWriter * w, const Scene * value )
         if ( value->name_length != 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 37, 0xc4bcadba8e631b86ull ); table_writer_put8( w, 12 );
+            table_writer_header_at( w, 37, 0xc4bcadba8e631b86ull, 12 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -4978,7 +4986,7 @@ static SCHEMA_UNUSED int scene_save_body( TableWriter * w, const Scene * value )
         if ( !( value->version == 1 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 36, 0xbb62c62c9808ea37ull ); table_writer_put8( w, 4 );
+            table_writer_header_at( w, 36, 0xbb62c62c9808ea37ull, 4 );
             table_writer_put32( w, (uint32_t) ( value->version ) );
         }
     }
@@ -4986,7 +4994,7 @@ static SCHEMA_UNUSED int scene_save_body( TableWriter * w, const Scene * value )
         if ( !( value->head.value == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 0, 0x0a8f12cc5f9a0c03ull ); table_writer_put8( w, 17 );
+            table_writer_header_at( w, 0, 0x0a8f12cc5f9a0c03ull, 17 );
             { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->head); uint64_t index=table_number_find(w->nodes,node);
               if(node!=NULL && index==0) { return 0; } table_writer_leb(w,index); }
         }
@@ -4995,7 +5003,7 @@ static SCHEMA_UNUSED int scene_save_body( TableWriter * w, const Scene * value )
         if ( !( value->tree.value == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 14, 0x5b25b8ef511eb395ull ); table_writer_put8( w, 17 );
+            table_writer_header_at( w, 14, 0x5b25b8ef511eb395ull, 17 );
             { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->tree); uint64_t index=table_number_find(w->nodes,node);
               if(node!=NULL && index==0) { return 0; } table_writer_leb(w,index); }
         }
@@ -5004,7 +5012,7 @@ static SCHEMA_UNUSED int scene_save_body( TableWriter * w, const Scene * value )
         if ( !( value->settings.value == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 43, 0xee5f6d7b48b44de8ull ); table_writer_put8( w, 17 );
+            table_writer_header_at( w, 43, 0xee5f6d7b48b44de8ull, 17 );
             { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->settings); uint64_t index=table_number_find(w->nodes,node);
               if(node!=NULL && index==0) { return 0; } table_writer_leb(w,index); }
         }
@@ -5013,7 +5021,7 @@ static SCHEMA_UNUSED int scene_save_body( TableWriter * w, const Scene * value )
         if ( !( value->alias.value == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 12, 0x509220bb65a646b7ull ); table_writer_put8( w, 17 );
+            table_writer_header_at( w, 12, 0x509220bb65a646b7ull, 17 );
             { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->alias); uint64_t index=table_number_find(w->nodes,node);
               if(node!=NULL && index==0) { return 0; } table_writer_leb(w,index); }
         }
@@ -5025,7 +5033,7 @@ static SCHEMA_UNUSED int scene_save_body( TableWriter * w, const Scene * value )
         if ( default_probe.offset > 1 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 15, 0x60839e2395be697eull ); table_writer_put8( w, 13 );
+            table_writer_header_at( w, 15, 0x60839e2395be697eull, 13 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -5046,7 +5054,7 @@ static SCHEMA_UNUSED int scene_save_body( TableWriter * w, const Scene * value )
         if ( value->layers_count > 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 10, 0x4554e34a747022dfull ); table_writer_put8( w, 14 );
+            table_writer_header_at( w, 10, 0x4554e34a747022dfull, 14 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -5069,7 +5077,7 @@ static SCHEMA_UNUSED int scene_save_body( TableWriter * w, const Scene * value )
         if ( default_probe.offset > 1 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 8, 0x4320e9a2e32eac38ull ); table_writer_put8( w, 13 );
+            table_writer_header_at( w, 8, 0x4320e9a2e32eac38ull, 13 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -5669,7 +5677,7 @@ static SCHEMA_UNUSED int depot_save_body( TableWriter * w, const Depot * value )
         if ( value->name_length != 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 37, 0xc4bcadba8e631b86ull ); table_writer_put8( w, 12 );
+            table_writer_header_at( w, 37, 0xc4bcadba8e631b86ull, 12 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -5698,7 +5706,7 @@ static SCHEMA_UNUSED int depot_save_body( TableWriter * w, const Depot * value )
         if ( rides )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 40, 0xdd9eb981e152e90cull ); table_writer_put8( w, 16 );
+            table_writer_header_at( w, 40, 0xdd9eb981e152e90cull, 16 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -5718,7 +5726,7 @@ static SCHEMA_UNUSED int depot_save_body( TableWriter * w, const Depot * value )
         if ( value->spare_present )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 9, 0x4339ee8ab21c8380ull ); table_writer_put8( w, 13 );
+            table_writer_header_at( w, 9, 0x4339ee8ab21c8380ull, 13 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -5738,7 +5746,7 @@ static SCHEMA_UNUSED int depot_save_body( TableWriter * w, const Depot * value )
         if ( !( value->head.value == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 0, 0x0a8f12cc5f9a0c03ull ); table_writer_put8( w, 17 );
+            table_writer_header_at( w, 0, 0x0a8f12cc5f9a0c03ull, 17 );
             { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->head); uint64_t index=table_number_find(w->nodes,node);
               if(node!=NULL && index==0) { return 0; } table_writer_leb(w,index); }
         }
@@ -6060,7 +6068,7 @@ static SCHEMA_UNUSED int album_save_body( TableWriter * w, const Album * value )
         if ( value->name_length != 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 37, 0xc4bcadba8e631b86ull ); table_writer_put8( w, 12 );
+            table_writer_header_at( w, 37, 0xc4bcadba8e631b86ull, 12 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -6083,7 +6091,7 @@ static SCHEMA_UNUSED int album_save_body( TableWriter * w, const Album * value )
         if ( default_probe.offset > 1 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 1, 0x1e4984ef2e958a4cull ); table_writer_put8( w, 13 );
+            table_writer_header_at( w, 1, 0x1e4984ef2e958a4cull, 13 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -6106,7 +6114,7 @@ static SCHEMA_UNUSED int album_save_body( TableWriter * w, const Album * value )
         if ( default_probe.offset > 1 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 44, 0xee7ba9ad45c64144ull ); table_writer_put8( w, 13 );
+            table_writer_header_at( w, 44, 0xee7ba9ad45c64144ull, 13 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -6129,7 +6137,7 @@ static SCHEMA_UNUSED int album_save_body( TableWriter * w, const Album * value )
         if ( default_probe.offset > 1 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 42, 0xeddcb72b15486e77ull ); table_writer_put8( w, 13 );
+            table_writer_header_at( w, 42, 0xeddcb72b15486e77ull, 13 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -6149,7 +6157,7 @@ static SCHEMA_UNUSED int album_save_body( TableWriter * w, const Album * value )
         if ( !( value->pin.value == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 22, 0x77af761956600b54ull ); table_writer_put8( w, 17 );
+            table_writer_header_at( w, 22, 0x77af761956600b54ull, 17 );
             { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->pin); uint64_t index=table_number_find(w->nodes,node);
               if(node!=NULL && index==0) { return 0; } table_writer_leb(w,index); }
         }
@@ -6158,7 +6166,7 @@ static SCHEMA_UNUSED int album_save_body( TableWriter * w, const Album * value )
         if ( !( value->head.value == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 0, 0x0a8f12cc5f9a0c03ull ); table_writer_put8( w, 17 );
+            table_writer_header_at( w, 0, 0x0a8f12cc5f9a0c03ull, 17 );
             { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->head); uint64_t index=table_number_find(w->nodes,node);
               if(node!=NULL && index==0) { return 0; } table_writer_leb(w,index); }
         }

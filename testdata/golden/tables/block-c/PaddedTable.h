@@ -361,6 +361,14 @@ static SCHEMA_UNUSED void table_writer_id_at( TableWriter * w, int32_t ordinal, 
     v->slot[ordinal]=(int32_t)r-1;
     v->ordinal_of[r-1]=(int16_t)ordinal;
 }
+/* A repeated one-byte reference and its kind share one checked little-endian
+   store, as in the C++ Header writer. Misses keep the existing ID append path. */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void table_writer_header_at( TableWriter * w, int32_t ordinal, uint64_t id, uint8_t kind )
+{
+    const int32_t at=w->vocabulary->slot[ordinal];
+    if(at>=0 && at<127) { table_writer_put16(w,(uint16_t)((uint16_t)(at+1)|((uint16_t)kind<<8))); return; }
+    table_writer_id_at(w,ordinal,id); table_writer_put8(w,kind);
+}
 static SCHEMA_UNUSED TableWriter table_writer_probe( const TableWriter * w )
 {
     TableWriter probe = *w;
@@ -1573,7 +1581,7 @@ static SCHEMA_UNUSED int padded_row_save_body( TableWriter * w, const PaddedRow 
         if ( !( value->tag == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 25, 0x56d7ab194448a4f3ull ); table_writer_put8( w, 6 );
+            table_writer_header_at( w, 25, 0x56d7ab194448a4f3ull, 6 );
             table_writer_put8( w, (uint8_t) ( value->tag ) );
         }
     }
@@ -1581,7 +1589,7 @@ static SCHEMA_UNUSED int padded_row_save_body( TableWriter * w, const PaddedRow 
         if ( !( value->value == 0.0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 36, 0x7ce4fd9430e80ceaull ); table_writer_put8( w, 11 );
+            table_writer_header_at( w, 36, 0x7ce4fd9430e80ceaull, 11 );
             table_writer_put64( w, table_double_to_bits( value->value ) );
         }
     }
@@ -1589,7 +1597,7 @@ static SCHEMA_UNUSED int padded_row_save_body( TableWriter * w, const PaddedRow 
         if ( !( value->flag == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 73, 0xd5f2d079088c0b17ull ); table_writer_put8( w, 1 );
+            table_writer_header_at( w, 73, 0xd5f2d079088c0b17ull, 1 );
             table_writer_put8( w, value->flag ? 1 : 0 );
         }
     }
@@ -1597,7 +1605,7 @@ static SCHEMA_UNUSED int padded_row_save_body( TableWriter * w, const PaddedRow 
         if ( !( value->id == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 0, 0x08b72e07b55c3ac0ull ); table_writer_put8( w, 8 );
+            table_writer_header_at( w, 0, 0x08b72e07b55c3ac0ull, 8 );
             table_writer_put32( w, (uint32_t) ( value->id ) );
         }
     }
@@ -1606,7 +1614,7 @@ static SCHEMA_UNUSED int padded_row_save_body( TableWriter * w, const PaddedRow 
         if ( value->label_length != 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 16, 0x39f7fcec8fcb623dull ); table_writer_put8( w, 12 );
+            table_writer_header_at( w, 16, 0x39f7fcec8fcb623dull, 12 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -1628,7 +1636,7 @@ static SCHEMA_UNUSED int padded_row_save_body( TableWriter * w, const PaddedRow 
         if ( rides )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 79, 0xe68c2e6bb1ee5646ull ); table_writer_put8( w, 14 );
+            table_writer_header_at( w, 79, 0xe68c2e6bb1ee5646ull, 14 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -1654,7 +1662,7 @@ static SCHEMA_UNUSED int padded_row_save_body( TableWriter * w, const PaddedRow 
         if ( rides )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 58, 0xbaaeb048a5a8fa6dull ); table_writer_put8( w, 16 );
+            table_writer_header_at( w, 58, 0xbaaeb048a5a8fa6dull, 16 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -1674,7 +1682,7 @@ static SCHEMA_UNUSED int padded_row_save_body( TableWriter * w, const PaddedRow 
         if ( value->counter_present )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 35, 0x77976c7416517c63ull ); table_writer_put8( w, 4 );
+            table_writer_header_at( w, 35, 0x77976c7416517c63ull, 4 );
             table_writer_put32( w, (uint32_t) ( value->counter ) );
         }
     }
@@ -2523,7 +2531,7 @@ static SCHEMA_UNUSED int padded_frame_save_body( TableWriter * w, const PaddedFr
         if ( !( value->marker == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 81, 0xeddcb72b15486e77ull ); table_writer_put8( w, 6 );
+            table_writer_header_at( w, 81, 0xeddcb72b15486e77ull, 6 );
             table_writer_put8( w, (uint8_t) ( value->marker ) );
         }
     }
@@ -2531,7 +2539,7 @@ static SCHEMA_UNUSED int padded_frame_save_body( TableWriter * w, const PaddedFr
         if ( !( value->stamp == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 83, 0xee7ba9ad45c64144ull ); table_writer_put8( w, 9 );
+            table_writer_header_at( w, 83, 0xee7ba9ad45c64144ull, 9 );
             table_writer_put64( w, (uint64_t) ( value->stamp ) );
         }
     }
@@ -2540,7 +2548,7 @@ static SCHEMA_UNUSED int padded_frame_save_body( TableWriter * w, const PaddedFr
         if ( value->rows_count > 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 48, 0xa3a7061ff10a8138ull ); table_writer_put8( w, 14 );
+            table_writer_header_at( w, 48, 0xa3a7061ff10a8138ull, 14 );
             int64_t element_sizes[64]; /* bounded sizing-to-write cache */
             if ( w->buffer == NULL )
             {
@@ -2562,7 +2570,7 @@ static SCHEMA_UNUSED int padded_frame_save_body( TableWriter * w, const PaddedFr
         if ( value->blob_length != 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 64, 0xc573b39bc29148caull ); table_writer_put8( w, 14 );
+            table_writer_header_at( w, 64, 0xc573b39bc29148caull, 14 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;

@@ -366,6 +366,14 @@ static SCHEMA_UNUSED void table_writer_id_at( TableWriter * w, int32_t ordinal, 
     v->slot[ordinal]=(int32_t)r-1;
     v->ordinal_of[r-1]=(int16_t)ordinal;
 }
+/* A repeated one-byte reference and its kind share one checked little-endian
+   store, as in the C++ Header writer. Misses keep the existing ID append path. */
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void table_writer_header_at( TableWriter * w, int32_t ordinal, uint64_t id, uint8_t kind )
+{
+    const int32_t at=w->vocabulary->slot[ordinal];
+    if(at>=0 && at<127) { table_writer_put16(w,(uint16_t)((uint16_t)(at+1)|((uint16_t)kind<<8))); return; }
+    table_writer_id_at(w,ordinal,id); table_writer_put8(w,kind);
+}
 static SCHEMA_UNUSED TableWriter table_writer_probe( const TableWriter * w )
 {
     TableWriter probe = *w;
@@ -3105,7 +3113,7 @@ static SCHEMA_UNUSED int stamp_save_body( TableWriter * w, const Stamp * value )
         if ( value->tag_length != 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 13, 0x56d7ab194448a4f3ull ); table_writer_put8( w, 12 );
+            table_writer_header_at( w, 13, 0x56d7ab194448a4f3ull, 12 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -3125,7 +3133,7 @@ static SCHEMA_UNUSED int stamp_save_body( TableWriter * w, const Stamp * value )
         if ( !( value->seq == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 27, 0x823b8a195ce2133cull ); table_writer_put8( w, 4 );
+            table_writer_header_at( w, 27, 0x823b8a195ce2133cull, 4 );
             table_writer_put32( w, (uint32_t) ( value->seq ) );
         }
     }
@@ -3464,7 +3472,7 @@ static SCHEMA_UNUSED int colour_save_body( TableWriter * w, const Colour * value
         if ( !( value->r == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 34, 0xaf63ef4c86020cd5ull ); table_writer_put8( w, 6 );
+            table_writer_header_at( w, 34, 0xaf63ef4c86020cd5ull, 6 );
             table_writer_put8( w, (uint8_t) ( value->r ) );
         }
     }
@@ -3472,7 +3480,7 @@ static SCHEMA_UNUSED int colour_save_body( TableWriter * w, const Colour * value
         if ( !( value->g == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 32, 0xaf63da4c8601e926ull ); table_writer_put8( w, 6 );
+            table_writer_header_at( w, 32, 0xaf63da4c8601e926ull, 6 );
             table_writer_put8( w, (uint8_t) ( value->g ) );
         }
     }
@@ -3480,7 +3488,7 @@ static SCHEMA_UNUSED int colour_save_body( TableWriter * w, const Colour * value
         if ( !( value->b == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 33, 0xaf63df4c8601f1a5ull ); table_writer_put8( w, 6 );
+            table_writer_header_at( w, 33, 0xaf63df4c8601f1a5ull, 6 );
             table_writer_put8( w, (uint8_t) ( value->b ) );
         }
     }

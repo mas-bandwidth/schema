@@ -43,6 +43,13 @@ func (g *tableGen) wireIdCall(id uint64) string {
 	return fmt.Sprintf("table_writer_id_at( w, %d, 0x%016xull );", g.knownOrdinal(id), id)
 }
 
+func (g *tableGen) wireHeaderCall(id uint64, kind int) string {
+	if g.retain {
+		return fmt.Sprintf("%s table_writer_put8( w, %d );", g.wireIdCall(id), kind)
+	}
+	return fmt.Sprintf("table_writer_header_at( w, %d, 0x%016xull, %d );", g.knownOrdinal(id), id, kind)
+}
+
 func (g *tableGen) wirePrimitives() string {
 	runtime := ""
 	if g.fileWire() {
@@ -188,6 +195,14 @@ static SCHEMA_UNUSED void table_writer_id_at( TableWriter * w, int32_t ordinal, 
     if(r==0) { return; }
     v->slot[ordinal]=(int32_t)r-1;
     v->ordinal_of[r-1]=(@ID_ORD@)ordinal;
+}
+/* A repeated one-byte reference and its kind share one checked little-endian
+   store, as in the C++ Header writer. Misses keep the existing ID append path. */
+static SCHEMA_UNUSED @INLINE@ void table_writer_header_at( TableWriter * w, int32_t ordinal, uint64_t id, uint8_t kind )
+{
+    const int32_t at=w->vocabulary->slot[ordinal];
+    if(at>=0 && at<127) { table_writer_put16(w,(uint16_t)((uint16_t)(at+1)|((uint16_t)kind<<8))); return; }
+    table_writer_id_at(w,ordinal,id); table_writer_put8(w,kind);
 }
 static SCHEMA_UNUSED TableWriter table_writer_probe( const TableWriter * w )
 {
@@ -670,7 +685,7 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 		}
 		g.pf("        if ( %s )\n        {\n", condition)
 		g.pf("            if ( w->check_default ) { w->offset = 2; return 1; }\n")
-		g.pf("            %s table_writer_put8( w, %d );\n", g.wireIdCall(ir.TableFieldWireId(f)), wireKind)
+		g.pf("            %s\n", g.wireHeaderCall(ir.TableFieldWireId(f), wireKind))
 		switch {
 		case framed:
 			if slots := g.wireElementCacheSlots(st, f); slots > 0 {
