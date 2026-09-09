@@ -1,2 +1,3 @@
 {"targets": "build/conformance-harness build/conformance-c table-base64-c",
- "runtime": "serialize.c", "runtime_tag": "SERIALIZE_C_TAG"}
+ "runtime": "serialize.c", "runtime_tag": "SERIALIZE_C_TAG",
+ "seconds": "71"}

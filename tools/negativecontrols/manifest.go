@@ -50,6 +50,22 @@ type Group struct {
 	Why string `json:"why,omitempty"`
 	// Targets are the make targets this row runs, in one invocation.
 	Targets []string `json:"targets"`
+	// Seconds is what this row's controls MEASURED on the runner — the
+	// `every negative control in the <name> group` step, not the job — and it
+	// exists for one purpose: the matrix hands the rows to GitHub in the order
+	// it renders them, and GitHub starts them in that order as runners free
+	// up. On run 34350259348 the fan-out was capacity-bound (82 jobs, about
+	// twenty running at once, the last row starting 179 s in), so the run's
+	// wall time was set by WHICH rows were still going at the end: the 158 s
+	// and 145 s rows started at 139 s and 162 s and were the last two to
+	// finish. Longest first is the classic makespan heuristic, and here it
+	// costs nothing and weakens nothing — the same rows run the same controls.
+	//
+	// A row with no number sorts FIRST, deliberately: an unmeasured row is
+	// assumed heavy, because being wrong that way costs a little wall time and
+	// being wrong the other way costs a tail. Nothing about correctness rides
+	// on this field; a stale number is a slower run and never a weaker one.
+	Seconds int `json:"seconds,omitempty"`
 
 	Rust   string `json:"rust,omitempty"`
 	Dotnet string `json:"dotnet,omitempty"`
@@ -188,11 +204,31 @@ func (m Manifest) matrix(when string) ([]byte, error) {
 	if when != whenPullRequest && when != whenNightly {
 		return nil, fmt.Errorf("%q is not a tier: the tiers are %s and %s", when, whenPullRequest, whenNightly)
 	}
-	rows := make([]row, 0, len(m.Groups))
+	// LONGEST FIRST (see Group.Seconds). The sort is stable on the name so the
+	// rendered matrix is a function of the plan alone: the same file gives the
+	// same order on every run, and a diff of two runs' matrices is a diff of
+	// the plan.
+	groups := make([]Group, 0, len(m.Groups))
 	for _, g := range m.Groups {
-		if g.When != when {
-			continue
+		if g.When == when {
+			groups = append(groups, g)
 		}
+	}
+	sort.SliceStable(groups, func(i, j int) bool {
+		a, b := groups[i].Seconds, groups[j].Seconds
+		if a == 0 {
+			a = 1 << 30
+		}
+		if b == 0 {
+			b = 1 << 30
+		}
+		if a != b {
+			return a > b
+		}
+		return groups[i].Name < groups[j].Name
+	})
+	rows := make([]row, 0, len(groups))
+	for _, g := range groups {
 		rows = append(rows, row{
 			Name:   g.Name,
 			Rust:   g.Rust,

@@ -201,9 +201,20 @@ C_CONFORMANCE_INCLUDES := -Ibuild/tables-generated-c -Ibuild/tables-generated-c/
 	-Ibuild/tables-generated-c/p1 -Ibuild/tables-generated-c/p3 \
 	-Ibuild/tables-generated-c/block -Ibuild/tables-generated-c/pointers
 
+# ONE TRANSLATION UNIT PER make JOB, AND THE LINK AT THE END. The whole source
+# list in a single $(CC) is one process on one core, and this driver is
+# seventy-odd translation units: MEASURED at 118 s of the conformance (c) leg's
+# 136 s on a four-core runner (run 34346307562, job 102448727046), against 2 s
+# for everything else in the job. Compiling to objects is the same compiler,
+# the same flags and the same warnings on the same units — nothing is checked
+# differently, `-Werror` still refuses the same line — and it lets `make -j`
+# spend the other three cores. The link keeps $(TABLES_CFLAGS) because a
+# sanitized variant passes its flags through both halves. `corpus_objects` is
+# the Makefile's, shared with the big-endian and wire-fuzz corpora.
 build/conformance-c: build/tables-generated-c/.stamp $(wildcard test/conformance/c/*.c) $(wildcard test/conformance/c/*.h)
 	@mkdir -p build
-	$(CC) $(TABLES_CFLAGS) $(C_CONFORMANCE_INCLUDES) $(C_CONFORMANCE_SOURCES) -o $@ -lm
+	$(call corpus_objects,$(CC),$(TABLES_CFLAGS) $(C_CONFORMANCE_INCLUDES),build/conformance-c-obj,$(C_CONFORMANCE_SOURCES))
+	$(CC) $(TABLES_CFLAGS) build/conformance-c-obj/*.o -o $@ -lm
 
 # THE ZERO-COST GATE, C side (docs/SPEC-TABLES.md §2.2). A table with no pointer
 # in its by-value closure must pay NOTHING for the pointer machinery — no

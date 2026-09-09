@@ -1,2 +1,3 @@
 {"targets": "build/conformance-harness build/tables-generated-js/.stamp",
- "node": "26", "env": "NODE=node"}
+ "node": "26", "env": "NODE=node",
+ "seconds": "30"}

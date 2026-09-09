@@ -47,7 +47,12 @@ var (
 	makeVarRef      = regexp.MustCompile(`\$\(([A-Za-z_][A-Za-z0-9_]*)\)`)
 	makeRecipeMake  = regexp.MustCompile(`\$\(MAKE\)((?:\s+[^\s;&|]+)+)`)
 	workflowMake    = regexp.MustCompile(`\bmake((?:\s+[^\s;&|]+)+)`)
-	goTestFunc      = regexp.MustCompile(`(?m)^func (Test[A-Za-z0-9_]+)\(`)
+	// a job key, a `key: value` line inside a matrix, and a `${{ matrix.key }}`
+	// reference a step hands to make.
+	workflowJobKey    = regexp.MustCompile(`^  ([A-Za-z0-9_-]+):\s*(#.*)?$`)
+	workflowMapKey    = regexp.MustCompile(`^\s+(?:-\s+)?([A-Za-z0-9_-]+):\s*(\S.*?)\s*$`)
+	workflowMatrixRef = regexp.MustCompile(`"?\$\{\{\s*matrix\.([A-Za-z0-9_-]+)\s*\}\}"?`)
+	goTestFunc        = regexp.MustCompile(`(?m)^func (Test[A-Za-z0-9_]+)\(`)
 )
 
 // parsePortingRegister reads the register's technique sections. A section is
@@ -250,20 +255,107 @@ func makefileReach(texts []string, workflowRoots []string) (exists, reached map[
 	return exists, reached
 }
 
-// workflowMakeTargets reads every `make <target>` a workflow invokes by name.
+// workflowMakeTargets reads every `make <target>` a workflow invokes by name,
+// INCLUDING one a matrix row hands it. A job whose step runs
+// `make ${{ matrix.target }}` runs, by name, every value `target` takes in
+// that job's own `strategy.matrix` — one job per row — and a target reached
+// that way is as run as one spelled on the line. The reference is the job's
+// own matrix and no other's, so deleting a row still takes its target's
+// reachability with it.
 func workflowMakeTargets(workflows []string) []string {
 	var roots []string
 	for _, text := range workflows {
-		for line := range strings.SplitSeq(text, "\n") {
-			if strings.HasPrefix(strings.TrimSpace(line), "#") {
-				continue
-			}
-			for _, m := range workflowMake.FindAllStringSubmatch(line, -1) {
-				roots = append(roots, makeTargetsAfter(m[1])...)
+		for _, job := range workflowJobs(text) {
+			matrix := workflowMatrixValues(job)
+			for line := range strings.SplitSeq(job, "\n") {
+				if strings.HasPrefix(strings.TrimSpace(line), "#") {
+					continue
+				}
+				line = workflowMatrixRef.ReplaceAllStringFunc(line, func(ref string) string {
+					key := workflowMatrixRef.FindStringSubmatch(ref)[1]
+					return strings.Join(matrix[key], " ")
+				})
+				for _, m := range workflowMake.FindAllStringSubmatch(line, -1) {
+					roots = append(roots, makeTargetsAfter(m[1])...)
+				}
 			}
 		}
 	}
 	return roots
+}
+
+// workflowJobs splits a workflow into the body of each job under `jobs:`: a
+// key at exactly two spaces of indent opens one, and the next such key — or
+// the end of the mapping — closes it.
+func workflowJobs(text string) []string {
+	var jobs []string
+	var cur []string
+	inJobs := false
+	flush := func() {
+		if cur != nil {
+			jobs = append(jobs, strings.Join(cur, "\n"))
+			cur = nil
+		}
+	}
+	for line := range strings.SplitSeq(text, "\n") {
+		switch {
+		case strings.HasPrefix(line, "jobs:"):
+			flush()
+			inJobs = true
+		case !inJobs:
+		case strings.TrimSpace(line) == "":
+			if cur != nil {
+				cur = append(cur, line)
+			}
+		case !strings.HasPrefix(line, " "):
+			flush() // a top-level key after `jobs:` ends the mapping
+			inJobs = false
+		case workflowJobKey.MatchString(line):
+			flush()
+			cur = []string{}
+		case cur != nil:
+			cur = append(cur, line)
+		}
+	}
+	flush()
+	return jobs
+}
+
+// workflowMatrixValues reads one job's `strategy.matrix`: every value each
+// key takes, across the `include:` rows and the inline lists alike.
+func workflowMatrixValues(job string) map[string][]string {
+	vals := map[string][]string{}
+	inMatrix, indent := false, 0
+	for line := range strings.SplitSeq(job, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		lead := len(line) - len(strings.TrimLeft(line, " "))
+		if trimmed == "matrix:" {
+			inMatrix, indent = true, lead
+			continue
+		}
+		if inMatrix && lead <= indent {
+			inMatrix = false
+		}
+		if !inMatrix {
+			continue
+		}
+		m := workflowMapKey.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		v := strings.TrimSpace(strings.SplitN(m[2], " #", 2)[0])
+		if strings.HasPrefix(v, "[") && strings.HasSuffix(v, "]") {
+			for one := range strings.SplitSeq(strings.Trim(v, "[]"), ",") {
+				vals[m[1]] = append(vals[m[1]], strings.Trim(strings.TrimSpace(one), `'"`))
+			}
+			continue
+		}
+		vals[m[1]] = append(vals[m[1]], strings.Trim(v, `'"`))
+	}
+	return vals
 }
 
 // discoverDrivers reads the languages the conformance harness registers: one

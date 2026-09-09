@@ -1,3 +1,4 @@
 {"targets": "build/conformance-harness build-conformance-cs build-cs-cook table-base64-cs",
  "runtime": "serialize.cs", "runtime_tag": "SERIALIZE_CS_TAG",
- "dotnet": ".github/dotnet-version"}
+ "dotnet": ".github/dotnet-version",
+ "seconds": "100"}

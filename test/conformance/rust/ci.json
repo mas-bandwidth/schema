@@ -1,3 +1,4 @@
 {"targets": "build/conformance-harness build/conformance-rust",
  "runtime": "serialize.rs", "runtime_tag": "SERIALIZE_RS_TAG",
- "rust": "stable", "env": "RUSTUP_BIN=/usr/bin"}
+ "rust": "stable", "env": "RUSTUP_BIN=/usr/bin",
+ "seconds": "36"}
