@@ -884,6 +884,52 @@ public static partial class TableWire
         }
         return ReadElement(ref r, value, f, 0, kind, report, true);
     }
+    // IndexFields builds a power-of-two open-addressing table over Fields using
+    // the same mix as Ids.Slot. Nested static TableType() Build() calls it
+    // before publishing Instance, so ARM64 sees the index with the descriptor.
+    internal static void IndexFields(TableTypeInfo type)
+    {
+        TableFieldInfo[] fields = type.Fields;
+        if (fields == null || fields.Length == 0)
+        {
+            type.IdIndex = Array.Empty<TableFieldInfo>();
+            type.IdMask = 0;
+            return;
+        }
+        int slots = 1;
+        while (slots < fields.Length * 2) { slots <<= 1; }
+        TableFieldInfo[] index = new TableFieldInfo[slots];
+        int mask = slots - 1;
+        for (int i = 0; i < fields.Length; i++)
+        {
+            TableFieldInfo f = fields[i];
+            int slot = unchecked((int)(f.Id ^ (f.Id >> 32))) & mask;
+            while (index[slot] != null) { slot = (slot + 1) & mask; }
+            index[slot] = f;
+        }
+        type.IdIndex = index;
+        type.IdMask = mask;
+    }
+    internal static TableFieldInfo FindField(TableTypeInfo type, ulong id)
+    {
+        TableFieldInfo[] index = type.IdIndex;
+        if (index != null)
+        {
+            if (index.Length == 0) { return null; }
+            int mask = type.IdMask;
+            int slot = unchecked((int)(id ^ (id >> 32))) & mask;
+            for (;;)
+            {
+                TableFieldInfo f = index[slot];
+                if (f == null) { return null; }
+                if (f.Id == id) { return f; }
+                slot = (slot + 1) & mask;
+            }
+        }
+        if (type.Fields == null) { return null; }
+        foreach (TableFieldInfo f in type.Fields) { if (f.Id == id) { return f; } }
+        return null;
+    }
     static bool ReadBody(ref Reader r, object value, TableTypeInfo type, TableReport report, bool nested)
     {
         // Load resets the root before even the framing checks. Every nested
@@ -896,8 +942,7 @@ public static partial class TableWire
             if ((nested && id == ulong.MaxValue) || id == ulong.MaxValue - 1 || id == ulong.MaxValue - 2) { return Damage(report); }
             if (!r.Has(1)) { return Damage(report); }
             byte kind = r.Byte();
-            TableFieldInfo field = null;
-            foreach (TableFieldInfo f in type.Fields) { if (f.Id == id) { field = f; break; } }
+            TableFieldInfo field = FindField(type, id);
             if (!nested && id == ulong.MaxValue && type.Variable)
             { if (!r.Skip(kind)) { return Damage(report); } continue; }
             if (field == null)

@@ -652,6 +652,7 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	g.pf("    info.Doc = %s;\n", doc)
 	g.pf("    info.NumTags = %s;\n", numTags)
 	g.pf("    info.Tags = %s;\n", tags)
+	g.pf("    TableWire.IndexFields(info);\n")
 	g.pf("    return info;\n")
 	g.indent = ""
 	g.pf("    }\n")
