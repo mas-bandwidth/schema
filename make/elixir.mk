@@ -290,3 +290,123 @@ packet-wide-elixir-negative-control: packet-wide-elixir
 	@echo 'packet wide Elixir negative control: removed pairing fails bit-flip agreement'
 
 test-elixir: packet-wide-elixir packet-wide-elixir-negative-control
+
+# ---------------------------------------------------------------------------
+# THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
+# ---------------------------------------------------------------------------
+#
+# THE BYTES ARE THE C++ REFERENCE'S, and this gate measures that rather than
+# asserting it. `make tables-fixedform-corpus` has the reference write one
+# form-3 FILE per root — FX1, FX2, P1, P3, KeyedConfig and PackConfig, values
+# set by hand — and the leg reads each one, saves it back, and requires the
+# result BYTE FOR BYTE. That reaches every field, the layout, the hash and every
+# byte of declared slack, because a byte this port encodes differently is a byte
+# that does not come back.
+#
+# Beside it rides the VERSIONING CONFORMANCE §3.4 names — a widened field, a
+# rename arriving under `was`, a field this reader cannot name, a field the
+# writer does not carry, a whole nested TYPE stepped over by its layout size, an
+# optional against a value, and an ENUM and a UNION that each gained a variant
+# in the middle so their ordinals SLIDE — and the negative controls, of which
+# the one §3.4 names is a reader given the WRONG PLAN for a record.
+ELIXIR_FIXED_UNITS := fx1:test/tables/FX1.schema fx2:test/tables/FX2.schema \
+	fe1:test/tables/FE1.schema fe2:test/tables/FE2.schema \
+	p1:test/tables/P1.schema p3:test/tables/P3.schema \
+	examples:tables/examples
+
+ELIXIR_FIXED_SCHEMAS := test/tables/FX1.schema test/tables/FX2.schema \
+	test/tables/FE1.schema test/tables/FE2.schema \
+	test/tables/P1.schema test/tables/P3.schema $(SCHEMAS_TABLES)
+
+build/elixir-fixedform/.stamp: bin/schema $(ELIXIR_FIXED_SCHEMAS) make/elixir.mk
+	@rm -rf build/elixir-fixedform
+	@mkdir -p build/elixir-fixedform/ebin
+	@for unit in $(ELIXIR_FIXED_UNITS); do \
+		name=$${unit%%:*}; path=$${unit#*:}; \
+		./bin/schema generate --lang elixir --out build/elixir-fixedform/gen/$$name $$path || exit 1; \
+	done
+	$(ELIXIRC) --warnings-as-errors -o build/elixir-fixedform/ebin build/elixir-fixedform/gen/*/*.ex
+	@touch $@
+
+.PHONY: tables-elixir-fixed-form
+tables-elixir-fixed-form: build/elixir-fixedform/.stamp build/fixedform-corpus/.stamp
+	# THE GENERATED ELIXIR IS `mix format`'s OWN SHAPE, emitted that way rather
+	# than checked afterwards — the emitter breaks every expression where the
+	# formatter would (internal/codegen/elixirtable/fixedrender.go).
+	$(MIX) format --check-formatted build/elixir-fixedform/gen/*/*Fixed.ex \
+		build/elixir-fixedform/gen/*/FixedRuntime.ex test/elixir-fixedform/main.exs
+	$(ELIXIR) -pa build/elixir-fixedform/ebin test/elixir-fixedform/main.exs build/fixedform-corpus
+
+# THE PAIRED CORPUS (docs/SPEC-TABLES.md §3.4): the bench's own sixty-four
+# logical records on the PACKET wire and on this one. The C++ reference writes
+# the form-3 file out of the canonical packet corpus, and the Elixir leg reads
+# the same sixty-four records twice — off the packet corpus with the packet
+# codec, off this file with the fixed one — and requires the two to agree field
+# for field, then writes the fixed file back byte for byte.
+#
+# IT IS ALSO WHERE THE WIDE KINDS ARE MEASURED. BenchMixed carries `int128`,
+# `uint128` and two fixed-point fields, which the two ACCELERATORS refuse in
+# this backend (schema#366) and which §3.4's constant-size table carries fine —
+# so the refusal is scoped to the accelerators and this is the gate that says
+# the scoping was right.
+#
+# The unit's schema files are COPIED under other basenames, and only that: a
+# declaration named FixedTable in a file named FixedTable.schema collides with
+# the module this backend writes for that file (§11), which is the checker
+# working rather than a problem. No declaration moves, so no id and no layout
+# byte moves either.
+build/elixir-fixed-bench/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema make/elixir.mk
+	@rm -rf build/elixir-fixed-bench
+	@mkdir -p build/elixir-fixed-bench/source build/elixir-fixed-bench/ebin
+	cp bench/corpus/Bench.schema build/elixir-fixed-bench/source/Bench.schema
+	cp bench/corpus/FixedTable.schema build/elixir-fixed-bench/source/Wrap.schema
+	./bin/schema generate --lang elixir --out build/elixir-fixed-bench/gen \
+		build/elixir-fixed-bench/source/Bench.schema build/elixir-fixed-bench/source/Wrap.schema
+	$(ELIXIRC) --warnings-as-errors -o build/elixir-fixed-bench/ebin build/elixir-fixed-bench/gen/*.ex
+	@touch $@
+
+build/elixir-fixed-bench/bench_fixed.bin: generated/bench/paired/cpp/.stamp test/bench/fixedform_corpus.cpp bench/corpus/variants/bench_mixed.variants.bin
+	@mkdir -p build/elixir-fixed-bench
+	$(CXX) $(CXXFLAGS) -Igenerated/bench/paired/cpp test/bench/fixedform_corpus.cpp -o build/elixir-fixed-bench/corpus
+	./build/elixir-fixed-bench/corpus bench/corpus/variants/bench_mixed.variants.bin $@
+
+.PHONY: tables-elixir-fixed-bench
+tables-elixir-fixed-bench: build/elixir-fixed-bench/.stamp build/elixir-fixed-bench/bench_fixed.bin
+	$(MIX) format --check-formatted build/elixir-fixed-bench/gen/*Fixed.ex \
+		build/elixir-fixed-bench/gen/FixedRuntime.ex test/elixir-fixedform/bench.exs
+	$(ELIXIR) -pa build/elixir-fixed-bench/ebin test/elixir-fixedform/bench.exs \
+		bench/corpus/variants/bench_mixed.variants.bin build/elixir-fixed-bench/bench_fixed.bin
+
+# ITS NEGATIVE CONTROL: move ONE byte of the write template and the leg must go
+# red against the reference's corpus. Without it the byte comparison could be
+# comparing a file with itself and nobody would know. It sabotages the EMITTER
+# and not the driver, which is what every other Elixir control here does.
+CONFORMANCE_NEGATIVE_ELIXIR_FIXED := build/elixir-fixed-negative
+ELIXIR_FIXED_SED := -e 's|fmt.Sprintf("byte_size(%s)::little-signed-32", name)|fmt.Sprintf("byte_size(%s) + 1::little-signed-32", name)|'
+
+.PHONY: tables-elixir-fixed-form-negative-control
+tables-elixir-fixed-form-negative-control: build/fixedform-corpus/.stamp
+	@rm -rf $(CONFORMANCE_NEGATIVE_ELIXIR_FIXED)
+	@mkdir -p $(CONFORMANCE_NEGATIVE_ELIXIR_FIXED)/ebin
+	@sed $(ELIXIR_FIXED_SED) internal/codegen/elixirtable/fixedelixir.go > $(CONFORMANCE_NEGATIVE_ELIXIR_FIXED)/sabotaged.go.txt
+	@cmp -s internal/codegen/elixirtable/fixedelixir.go $(CONFORMANCE_NEGATIVE_ELIXIR_FIXED)/sabotaged.go.txt && \
+		{ echo "NEGATIVE CONTROL: the sabotage of the fixed emitter did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/elixirtable/fixedelixir.go":"%s/$(CONFORMANCE_NEGATIVE_ELIXIR_FIXED)/sabotaged.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(CONFORMANCE_NEGATIVE_ELIXIR_FIXED)/overlay.json
+	go build -overlay $(CONFORMANCE_NEGATIVE_ELIXIR_FIXED)/overlay.json -o $(CONFORMANCE_NEGATIVE_ELIXIR_FIXED)/schema ./cmd/schema
+	@for unit in $(ELIXIR_FIXED_UNITS); do \
+		name=$${unit%%:*}; path=$${unit#*:}; \
+		$(CONFORMANCE_NEGATIVE_ELIXIR_FIXED)/schema generate --lang elixir --out $(CONFORMANCE_NEGATIVE_ELIXIR_FIXED)/gen/$$name $$path || exit 1; \
+	done
+	$(ELIXIRC) -o $(CONFORMANCE_NEGATIVE_ELIXIR_FIXED)/ebin $(CONFORMANCE_NEGATIVE_ELIXIR_FIXED)/gen/*/*.ex
+	@if $(ELIXIR) -pa $(CONFORMANCE_NEGATIVE_ELIXIR_FIXED)/ebin test/elixir-fixedform/main.exs \
+			build/fixedform-corpus > $(CONFORMANCE_NEGATIVE_ELIXIR_FIXED)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a text length one byte off left the fixed form green"; \
+		cat $(CONFORMANCE_NEGATIVE_ELIXIR_FIXED)/log; exit 1; \
+	fi
+	@grep -q "first byte differing from the C++ reference" $(CONFORMANCE_NEGATIVE_ELIXIR_FIXED)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the fixed form went red for another reason"; \
+		  cat $(CONFORMANCE_NEGATIVE_ELIXIR_FIXED)/log; exit 1; }
+	@echo 'elixir fixed form negative control: one byte off the write template reds the reference byte match'
+
+test-elixir: tables-elixir-fixed-form tables-elixir-fixed-form-negative-control tables-elixir-fixed-bench
