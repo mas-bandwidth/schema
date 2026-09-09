@@ -43,6 +43,21 @@ func TestCTableRuntimeNamesAreClaimed(t *testing.T) {
 	for name, data := range fixed {
 		files["fixed-"+name] = data
 	}
+	// AND A UNIT THAT DECLARES THE GATED CONSTRUCTS. Three of this backend's
+	// runtime blocks follow a CENSUS and are emitted only into a unit that
+	// declares what reaches them — kind 33's UTF-16 helpers, the float rung
+	// table_wire_widen_f32, and the byte buffer's own surface
+	// (compiler/tabledeadc_test.go). The registry's claim is that the C
+	// backend defines those names SOMEWHERE, so the scan is taken over a
+	// corpus that declares all three; a scan over a unit that declares none
+	// would read a gate as an unclaimed registration.
+	census, err := New().Generate(unitFromSource(t, cCensusRuntimeSrc), "c", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range census {
+		files["census-"+name] = data
+	}
 	ident := regexp.MustCompile(`\b(?:(?:Table|kTable|table_|BuildVersion|schema_allocate|schema_release|schema_assert|schema_fatal)[A-Za-z0-9_]*|announce(?:_measure|_read)?)\b`)
 	// the unit's own type names start with Table for a schema that declares one;
 	// the corpus here declares none, and the file base does, so the two file
@@ -158,6 +173,24 @@ func TestCExternalsCarryThePackage(t *testing.T) {
 // a unit that has one. The claim does not vary with that — a name free today
 // must not become a collision the day a table gains a pointer (§11) — so the
 // scan needs a corpus where every name is actually emitted.
+// cCensusRuntimeSrc declares every construct one of the C emitter's THREE
+// CENSUS-GATED runtime blocks is reached from: a `wstring(N)` field for kind
+// 33's helpers, a `float64` for the float rung, and a `*bytes` and a `*string`
+// for the byte buffer's views, reserved ids, accessors and node type.
+const cCensusRuntimeSrc = `package probe
+
+table CensusLeaf { v int32 }
+
+table Census
+{
+    title wstring(4)
+    ratio float64
+    data  *bytes
+    text  *string
+    leaf  *CensusLeaf
+}
+`
+
 const cRuntimeSrc = runtimeSrc + `
 fixed table ScalarLeaf { value uint32 }
 table Node
