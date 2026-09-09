@@ -313,6 +313,11 @@ tables-c: tables-c-wire-fuzz build/conformance-c build/conformance-c-asan tables
 	$(MAKE) tables-c-keyed-max-refusal-negative-control
 	$(MAKE) tables-c-soak SOAK_SECONDS=20
 	$(MAKE) tables-c-soak-negative-control
+	# THE ORDINAL SLOT CACHE (docs/SPEC-TABLES.md §3): a save that answers a
+	# repeat header out of slot[ordinal] is held to main's own bytes by
+	# compiler/ctablerefordinal_test.go, and the ONE rule a green pin cannot be
+	# read for is the rewind taking the slot back — so its control is here.
+	$(MAKE) tables-c-ref-ordinal-negative-control
 
 # THE NEGATIVE CONTROL FOR THE C LEG, and it is the C# control's twin over the
 # C emitter: a green matrix row proves nothing until the row is shown capable
@@ -653,6 +658,66 @@ tables-c-soak-negative-control: build/tables-generated-c/.stamp
 	@grep -m1 "SOAK FAILED" build/c-soak-sabotage/log
 	@echo "negative control: a matched malloc/free pair per iteration is INVISIBLE to the drift gate and turns the CALL COUNT red"
 
+# THE ORDINAL SLOT CACHE'S OWN CONTROL, C LEG (docs/SPEC-TABLES.md §3). Every
+# id a generated field or arm header names is a compile-time constant, so it
+# carries an ORDINAL and table_writer_id_at answers a repeat out of
+# slot[ordinal]. What keeps that honest is the REWIND: an ELIDED field interns
+# its ids and gives them back, and a slot left standing over a POPPED entry
+# hands out a reference to an entry the file no longer carries. Remove that one
+# clause and compiler/ctablerefordinal_test.go's byte pin — taken from the C
+# emitter that had no cache — must go RED. Through `go build -overlay`, so no
+# tracked file moves.
+.PHONY: tables-c-ref-ordinal-negative-control
+tables-c-ref-ordinal-negative-control:
+	@rm -rf build/c-ref-ordinal-nc && mkdir -p build/c-ref-ordinal-nc
+	@sed -e 's|o=v->ordinal_of\[v->count\]; if(o>=0) { v->slot\[o\]=-1; }|o=v->ordinal_of[v->count]; (void)o; /* NEGATIVE CONTROL: the slot is not taken back */|' \
+		internal/codegen/ctable/wire.go > build/c-ref-ordinal-nc/emitter.go.txt
+	@cmp -s internal/codegen/ctable/wire.go build/c-ref-ordinal-nc/emitter.go.txt && \
+		{ echo "NEGATIVE CONTROL: the rewind sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/ctable/wire.go":"%s/build/c-ref-ordinal-nc/emitter.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/c-ref-ordinal-nc/overlay.json
+	@if go test -overlay build/c-ref-ordinal-nc/overlay.json -count=1 ./compiler \
+			-run TestCTableRefOrdinalBytes > build/c-ref-ordinal-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the rewind leaves the ordinal slot standing and the byte pin stayed green"; \
+		cat build/c-ref-ordinal-nc/log; exit 1; \
+	fi
+	@grep -qE "ROUND TRIP MOVED|THE SAVED BYTES MOVED" build/c-ref-ordinal-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the byte pin went red, but not on the file the save wrote"; \
+		  cat build/c-ref-ordinal-nc/log; exit 1; }
+	@grep -m1 -E "ROUND TRIP MOVED|THE SAVED BYTES MOVED" build/c-ref-ordinal-nc/log
+	@echo "negative control: a rewind that leaves the ordinal slot standing names a POPPED entry — the file stops round-tripping"
+
+# THE SECOND HALF OF THE SAME RULE HAS NO C CONTROL, and the reason is a fact
+# about this emitter rather than an omission. C++'s
+# tables-ref-ordinal-shared-negative-control removes the ordinal recording from
+# ref_at's HIT path and its shared-id driver goes red, because a C++ enum-keyed
+# array interns its KEY before it measures the slot's element: the element's
+# ref_at only hits, the entry is truncated when the slot elides, and the slot
+# cache is left naming a popped entry.
+#
+# THE C EMITTER CANNOT REACH THAT STATE. Every rewind here that pops an entry
+# is a FRAME PROBE immediately followed by an IDENTICAL REDO of the same region
+# (internal/codegen/ctable/wire.go, wireFrame and the keyed-array element
+# write), and the probes that are NOT redone — the `check_default` default
+# probe and the keyed `slot_probe` that decide elision — intern NOTHING,
+# because check_default returns at the first riding field BEFORE the header's
+# id is written. A general-path append and the table_writer_id_at that hits it
+# therefore always sit inside one rewound region, in that order, so the redo
+# re-appends at the same index before any id_at can consult the cache. Held
+# empirically as well as by reading: with the hit-path recording removed EXACTLY
+# as C++'s control removes it, and a stale-slot detector compiled into
+# table_writer_id_at, the whole C conformance corpus (18 surfaces, every one
+# passing) and the wire fuzzer at 252,842 mutants stayed green and the detector
+# never fired -- while the SAME detector aborts immediately when the rewind
+# clause above is the one removed, so its silence is a measurement and not a
+# dead check. compiler/ctablerefordinal_test.go's own drivers, both of them,
+# also stay green under that sabotage.
+#
+# The recording stays in table_writer_id_at all the same: it is what makes the
+# cache LOCALLY correct — slot[ordinal] always names a live entry whose
+# ordinal_of points back — rather than correct by an argument about probe/redo
+# pairing that a change to the measure path could quietly retire.
+
 # The C half of `make update-goldens`: the committed generated table sources
 # (testdata/golden/tables/*-c).
 .PHONY: update-goldens-c
@@ -708,6 +773,7 @@ test-c: build/schema_test_c build/schema_test_c_ludicrous build/schema_test_benc
 	$(MAKE) tables-c-keyed-max-refusal-negative-control
 	$(MAKE) tables-c-soak SOAK_SECONDS=2
 	$(MAKE) tables-c-soak-negative-control
+	$(MAKE) tables-c-ref-ordinal-negative-control
 	# and the whole matrix again under ASan + UBSan: the sanitized run is the
 	# strongest gate this leg has, and a gate that only fires under a target
 	# nobody types is not in the chain.

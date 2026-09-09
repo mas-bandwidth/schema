@@ -180,6 +180,16 @@ public static partial class TableWire
             }
             Offset += n;
         }
+        public void Header(ulong reference, byte kind)
+        {
+            if (reference < 128)
+            {
+                System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(Buffer.Slice(Offset), (ushort)(reference | ((ulong)kind << 8)));
+                Offset += 2;
+                return;
+            }
+            Var(reference); Byte(kind);
+        }
         public void Var(ulong v)
         {
             if (v < 128) { Byte((byte)v); return; }
@@ -534,7 +544,7 @@ public static partial class TableWire
         {
             TableFieldInfo f = type.Fields[i];
             if (!Rides(value, f)) { continue; }
-            w.Var(ids.Reference(f.Id)); w.Byte(Kind(f));
+            w.Header(ids.Reference(f.Id), Kind(f));
             scoped ReadOnlySpan<long> elemCache = default;
             if (f.IsArray && f.KeyId == null && f.Kind == 13 && !rootElemSizes.IsEmpty)
             {

@@ -290,8 +290,21 @@ struct TableWriter
                          uint8_t( v >> 32 ), uint8_t( v >> 40 ), uint8_t( v >> 48 ), uint8_t( v >> 56 ) };
         raw( b, 8 );
     }
-    // a 128-bit value as two lanes, the low half first (docs/SPEC-TABLES.md §3)
-    BLOCKHOME_TABLE_INLINE void put128( uint64_t lo, uint64_t hi ) { put64( lo ); put64( hi ); }
+    // A 128-BIT VALUE IS TWO LANES, THE LOW HALF FIRST (docs/SPEC-TABLES.md §3):
+    // THE SAME SIXTEEN BYTES two put64 wrote, assembled once and handed to raw
+    // once. One capacity test rather than two, and NOT ONE FEWER — raw still
+    // asks before it copies, so an undersized buffer still raises the overflow
+    // flag and Save still answers -1. A pair that does not fit now leaves the
+    // buffer alone rather than writing the low lane first; nothing reads those
+    // bytes, because the caller that overflowed answers -1.
+    BLOCKHOME_TABLE_INLINE void put128( uint64_t lo, uint64_t hi )
+    {
+        uint8_t b[16] = { uint8_t( lo ), uint8_t( lo >> 8 ), uint8_t( lo >> 16 ), uint8_t( lo >> 24 ),
+                          uint8_t( lo >> 32 ), uint8_t( lo >> 40 ), uint8_t( lo >> 48 ), uint8_t( lo >> 56 ),
+                          uint8_t( hi ), uint8_t( hi >> 8 ), uint8_t( hi >> 16 ), uint8_t( hi >> 24 ),
+                          uint8_t( hi >> 32 ), uint8_t( hi >> 40 ), uint8_t( hi >> 48 ), uint8_t( hi >> 56 ) };
+        raw( b, 16 );
+    }
     // EVERY LENGTH, COUNT, INDEX AND ID REFERENCE IS ONE CANONICAL UNSIGNED
     // LEB128 (docs/SPEC-TABLES.md §3): seven value bits a byte, the lowest
     // group first, the high bit set on every byte but the last. One value has
@@ -312,6 +325,30 @@ struct TableWriter
         while ( v >= 0x80 ) { b[n++] = uint8_t( v ) | 0x80; v >>= 7; }
         b[n++] = uint8_t( v );
         raw( b, n );
+    }
+    // A FIELD HEADER IS A REFERENCE AND THE KIND BYTE BEHIND IT
+    // (docs/SPEC-TABLES.md §3), and nearly every one of them is two bytes: a
+    // reference below 128 is a single LEB128 byte, so the pair assembles in a
+    // two-byte stack buffer and goes to raw once. A reference at 128 or above
+    // still goes through putleb then put8 — the same two calls, the same bytes.
+    // Both arms write what the two-call spelling wrote, byte for byte.
+    //
+    // NOTHING IS HOISTED AND NO TEST IS REMOVED: raw still asks before it
+    // copies, so a header that does not fit still raises the overflow flag and
+    // Save still answers -1 — including a capacity that would cut the two-byte
+    // header in half. What differs is only on that failing path: a header that
+    // does not fit now leaves the buffer alone rather than writing the
+    // reference first, and nothing reads those bytes.
+    BLOCKHOME_TABLE_INLINE void header( uint64_t ref, uint8_t kind )
+    {
+        if ( ref < 128 )
+        {
+            uint8_t b[2] = { uint8_t( ref ), kind };
+            raw( b, 2 );
+            return;
+        }
+        putleb( ref );
+        put8( kind );
     }
 };
 
@@ -2443,17 +2480,17 @@ BLOCKHOME_TABLE_INLINE bool ArmorPlateSaveBody( TableWriter & w, TableIds & ids,
 {
     if ( value.thickness != 0.0 )
     {
-        w.putleb( ids.ref_at( 24, 0xdbae65ca25b4f315ull ) ); w.put8( 11 ); // thickness
+        w.header( ids.ref_at( 24, 0xdbae65ca25b4f315ull ), 11 ); // thickness
         w.put64( table_double_to_bits( value.thickness ) );
     }
     if ( value.material != 0 )
     {
-        w.putleb( ids.ref_at( 0, 0x026f7568983161e0ull ) ); w.put8( 8 ); // material
+        w.header( ids.ref_at( 0, 0x026f7568983161e0ull ), 8 ); // material
         w.put32( uint32_t( value.material ) );
     }
     if ( value.layer != 0 )
     {
-        w.putleb( ids.ref_at( 16, 0x84e39fec29768c56ull ) ); w.put8( 6 ); // layer
+        w.header( ids.ref_at( 16, 0x84e39fec29768c56ull ), 6 ); // layer
         w.put8( uint8_t( value.layer ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -2909,7 +2946,7 @@ BLOCKHOME_TABLE_INLINE bool ArmorConfigSaveBody( TableWriter & w, TableIds & ids
         if ( body_front < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_front > 1 ) // all-default nested elides
         {
-            w.putleb( ref_front ); w.put8( 13 ); w.putleb( (uint64_t) body_front ); // front
+            w.header( ref_front, 13 ); w.putleb( (uint64_t) body_front ); // front
             if ( !ArmorPlateSaveBody( w, ids, value.front ) ) return false;
         }
         else { ids.truncate( mark_front ); }
@@ -2921,19 +2958,19 @@ BLOCKHOME_TABLE_INLINE bool ArmorConfigSaveBody( TableWriter & w, TableIds & ids
         if ( body_rear < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_rear > 1 ) // all-default nested elides
         {
-            w.putleb( ref_rear ); w.put8( 13 ); w.putleb( (uint64_t) body_rear ); // rear
+            w.header( ref_rear, 13 ); w.putleb( (uint64_t) body_rear ); // rear
             if ( !ArmorPlateSaveBody( w, ids, value.rear ) ) return false;
         }
         else { ids.truncate( mark_rear ); }
     }
     if ( value.rating != 0.0f )
     {
-        w.putleb( ids.ref_at( 10, 0x4e79ecbefe5ff4d0ull ) ); w.put8( 10 ); // rating
+        w.header( ids.ref_at( 10, 0x4e79ecbefe5ff4d0ull ), 10 ); // rating
         w.put32( table_float_to_bits( value.rating ) );
     }
     if ( value.tier != 0 )
     {
-        w.putleb( ids.ref_at( 3, 0x1e6f84ef2eb65989ull ) ); w.put8( 6 ); // tier
+        w.header( ids.ref_at( 3, 0x1e6f84ef2eb65989ull ), 6 ); // tier
         w.put8( uint8_t( value.tier ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -3393,12 +3430,12 @@ BLOCKHOME_TABLE_INLINE bool FiringGroupSaveBody( TableWriter & w, TableIds & ids
 {
     if ( value.barrel != 0 )
     {
-        w.putleb( ids.ref_at( 17, 0x8ece059ad360b651ull ) ); w.put8( 8 ); // barrel
+        w.header( ids.ref_at( 17, 0x8ece059ad360b651ull ), 8 ); // barrel
         w.put32( uint32_t( value.barrel ) );
     }
     if ( value.cooldown != 0.0f )
     {
-        w.putleb( ids.ref_at( 25, 0xdc2cbe6953343d48ull ) ); w.put8( 10 ); // cooldown
+        w.header( ids.ref_at( 25, 0xdc2cbe6953343d48ull ), 10 ); // cooldown
         w.put32( table_float_to_bits( value.cooldown ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -3815,7 +3852,7 @@ BLOCKHOME_TABLE_INLINE bool GunnerSettingsSaveBody( TableWriter & w, TableIds & 
             if ( elem_i < 32 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_firing_groups += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
-        w.putleb( ref_firing_groups ); w.put8( 14 ); w.putleb( (uint64_t) body_firing_groups ); // firing_groups
+        w.header( ref_firing_groups, 14 ); w.putleb( (uint64_t) body_firing_groups ); // firing_groups
         w.put8( 13 ); w.putleb( (uint64_t) ( value.firing_groups_count ) );
         for ( int32_t elem_i = 0; elem_i < value.firing_groups_count; elem_i++ )
         {
@@ -3844,7 +3881,7 @@ BLOCKHOME_TABLE_INLINE bool GunnerSettingsSaveBody( TableWriter & w, TableIds & 
             if ( elem_i < 4 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_missile_groups += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
-        w.putleb( ref_missile_groups ); w.put8( 14 ); w.putleb( (uint64_t) body_missile_groups ); // missile_groups
+        w.header( ref_missile_groups, 14 ); w.putleb( (uint64_t) body_missile_groups ); // missile_groups
         w.put8( 13 ); w.putleb( (uint64_t) ( value.missile_groups_count ) );
         for ( int32_t elem_i = 0; elem_i < value.missile_groups_count; elem_i++ )
         {
@@ -3858,12 +3895,12 @@ BLOCKHOME_TABLE_INLINE bool GunnerSettingsSaveBody( TableWriter & w, TableIds & 
     }
     if ( value.reload_seconds != 0.0f )
     {
-        w.putleb( ids.ref_at( 19, 0xad9b64728ea52486ull ) ); w.put8( 10 ); // reload_seconds
+        w.header( ids.ref_at( 19, 0xad9b64728ea52486ull ), 10 ); // reload_seconds
         w.put32( table_float_to_bits( value.reload_seconds ) );
     }
     if ( value.gunner_id != 0 )
     {
-        w.putleb( ids.ref_at( 22, 0xbd9be53180256e02ull ) ); w.put8( 8 ); // gunner_id
+        w.header( ids.ref_at( 22, 0xbd9be53180256e02ull ), 8 ); // gunner_id
         w.put32( uint32_t( value.gunner_id ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body

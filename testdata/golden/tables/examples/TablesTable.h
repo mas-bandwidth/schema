@@ -308,8 +308,21 @@ struct TableWriter
                          uint8_t( v >> 32 ), uint8_t( v >> 40 ), uint8_t( v >> 48 ), uint8_t( v >> 56 ) };
         raw( b, 8 );
     }
-    // a 128-bit value as two lanes, the low half first (docs/SPEC-TABLES.md §3)
-    TABLEDEMO_TABLE_INLINE void put128( uint64_t lo, uint64_t hi ) { put64( lo ); put64( hi ); }
+    // A 128-BIT VALUE IS TWO LANES, THE LOW HALF FIRST (docs/SPEC-TABLES.md §3):
+    // THE SAME SIXTEEN BYTES two put64 wrote, assembled once and handed to raw
+    // once. One capacity test rather than two, and NOT ONE FEWER — raw still
+    // asks before it copies, so an undersized buffer still raises the overflow
+    // flag and Save still answers -1. A pair that does not fit now leaves the
+    // buffer alone rather than writing the low lane first; nothing reads those
+    // bytes, because the caller that overflowed answers -1.
+    TABLEDEMO_TABLE_INLINE void put128( uint64_t lo, uint64_t hi )
+    {
+        uint8_t b[16] = { uint8_t( lo ), uint8_t( lo >> 8 ), uint8_t( lo >> 16 ), uint8_t( lo >> 24 ),
+                          uint8_t( lo >> 32 ), uint8_t( lo >> 40 ), uint8_t( lo >> 48 ), uint8_t( lo >> 56 ),
+                          uint8_t( hi ), uint8_t( hi >> 8 ), uint8_t( hi >> 16 ), uint8_t( hi >> 24 ),
+                          uint8_t( hi >> 32 ), uint8_t( hi >> 40 ), uint8_t( hi >> 48 ), uint8_t( hi >> 56 ) };
+        raw( b, 16 );
+    }
     // EVERY LENGTH, COUNT, INDEX AND ID REFERENCE IS ONE CANONICAL UNSIGNED
     // LEB128 (docs/SPEC-TABLES.md §3): seven value bits a byte, the lowest
     // group first, the high bit set on every byte but the last. One value has
@@ -330,6 +343,30 @@ struct TableWriter
         while ( v >= 0x80 ) { b[n++] = uint8_t( v ) | 0x80; v >>= 7; }
         b[n++] = uint8_t( v );
         raw( b, n );
+    }
+    // A FIELD HEADER IS A REFERENCE AND THE KIND BYTE BEHIND IT
+    // (docs/SPEC-TABLES.md §3), and nearly every one of them is two bytes: a
+    // reference below 128 is a single LEB128 byte, so the pair assembles in a
+    // two-byte stack buffer and goes to raw once. A reference at 128 or above
+    // still goes through putleb then put8 — the same two calls, the same bytes.
+    // Both arms write what the two-call spelling wrote, byte for byte.
+    //
+    // NOTHING IS HOISTED AND NO TEST IS REMOVED: raw still asks before it
+    // copies, so a header that does not fit still raises the overflow flag and
+    // Save still answers -1 — including a capacity that would cut the two-byte
+    // header in half. What differs is only on that failing path: a header that
+    // does not fit now leaves the buffer alone rather than writing the
+    // reference first, and nothing reads those bytes.
+    TABLEDEMO_TABLE_INLINE void header( uint64_t ref, uint8_t kind )
+    {
+        if ( ref < 128 )
+        {
+            uint8_t b[2] = { uint8_t( ref ), kind };
+            raw( b, 2 );
+            return;
+        }
+        putleb( ref );
+        put8( kind );
     }
 };
 
@@ -2907,32 +2944,32 @@ TABLEDEMO_TABLE_INLINE bool WeaponConfigSaveBody( TableWriter & w, TableIds & id
 {
     if ( value.damage != 21.0f )
     {
-        w.putleb( ids.ref_at( 66, 0x7f6308be8ab37fc0ull ) ); w.put8( 10 ); // damage
+        w.header( ids.ref_at( 66, 0x7f6308be8ab37fc0ull ), 10 ); // damage
         w.put32( table_float_to_bits( value.damage ) );
     }
     if ( value.speed != 500.0f )
     {
-        w.putleb( ids.ref_at( 12, 0x1733055702acb1d2ull ) ); w.put8( 10 ); // speed
+        w.header( ids.ref_at( 12, 0x1733055702acb1d2ull ), 10 ); // speed
         w.put32( table_float_to_bits( value.speed ) );
     }
     if ( value.penetration != 1 )
     {
-        w.putleb( ids.ref_at( 47, 0x4f31c5309e13e932ull ) ); w.put8( 4 ); // penetration
+        w.header( ids.ref_at( 47, 0x4f31c5309e13e932ull ), 4 ); // penetration
         w.put32( uint32_t( value.penetration ) );
     }
     if ( value.channel != 0 )
     {
-        w.putleb( ids.ref_at( 86, 0xa5013e9ad5caeda4ull ) ); w.put8( 6 ); // channel
+        w.header( ids.ref_at( 86, 0xa5013e9ad5caeda4ull ), 6 ); // channel
         w.put8( uint8_t( value.channel ) );
     }
     if ( value.homing != false )
     {
-        w.putleb( ids.ref_at( 94, 0xad6587bc602e3f59ull ) ); w.put8( 1 ); // homing
+        w.header( ids.ref_at( 94, 0xad6587bc602e3f59ull ), 1 ); // homing
         w.put8( value.homing ? 1 : 0 );
     }
     if ( value.effect.type != EffectType::None )
     {
-        w.putleb( ids.ref_at( 33, 0x36c1c83b51f24394ull ) ); w.put8( 15 ); // effect
+        w.header( ids.ref_at( 33, 0x36c1c83b51f24394ull ), 15 ); // effect
         switch ( value.effect.type )
         {
             case EffectType::Buff:
@@ -2944,7 +2981,7 @@ TABLEDEMO_TABLE_INLINE bool WeaponConfigSaveBody( TableWriter & w, TableIds & id
                     if ( arm_body < 0 ) { return false; }
                     arm_payload += arm_body; // the arm's own table body (§3)
                 }
-                w.putleb( arm_ref ); w.put8( 13 ); w.putleb( (uint64_t) arm_payload ); // buff
+                w.header( arm_ref, 13 ); w.putleb( (uint64_t) arm_payload ); // buff
                 if ( !BuffSaveBody( w, ids, value.effect.buff ) ) { return false; }
                 break;
             }
@@ -2957,7 +2994,7 @@ TABLEDEMO_TABLE_INLINE bool WeaponConfigSaveBody( TableWriter & w, TableIds & id
                     if ( arm_body < 0 ) { return false; }
                     arm_payload += arm_body; // the arm's own table body (§3)
                 }
-                w.putleb( arm_ref ); w.put8( 13 ); w.putleb( (uint64_t) arm_payload ); // debuff
+                w.header( arm_ref, 13 ); w.putleb( (uint64_t) arm_payload ); // debuff
                 if ( !DebuffSaveBody( w, ids, value.effect.debuff ) ) { return false; }
                 break;
             }
@@ -3738,7 +3775,7 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBody( TableWriter & w, TableIds & i
         const uint64_t ref_grade = ids.ref_at( 31, 0x32a89b2977c48ad4ull );
         uint64_t variant_grade = 0;
         if ( !TableEnumRef( ids, value.grade, variant_grade ) ) { return false; }
-        w.putleb( ref_grade ); w.put8( 30 ); w.putleb( variant_grade ); // grade
+        w.header( ref_grade, 30 ); w.putleb( variant_grade ); // grade
     }
     if ( value.grades_count < 0 || value.grades_count > 4 ) { return false; } // storage invariant
     if ( value.grades_count > 0 )
@@ -3752,7 +3789,7 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBody( TableWriter & w, TableIds & i
             if ( !TableEnumRef( ids, value.grades[elem_i], elem_ref ) ) { return false; } // no variant names this value
             body_grades += TableLebBytes( elem_ref );
         }
-        w.putleb( ref_grades ); w.put8( 14 ); w.putleb( (uint64_t) body_grades ); // grades
+        w.header( ref_grades, 14 ); w.putleb( (uint64_t) body_grades ); // grades
         w.put8( 30 ); w.putleb( (uint64_t) ( value.grades_count ) );
         for ( int32_t elem_i = 0; elem_i < value.grades_count; elem_i++ )
         {
@@ -3777,7 +3814,7 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBody( TableWriter & w, TableIds & i
                 if ( !TableEnumRef( ids, value.podium[elem_i], elem_ref ) ) { return false; } // no variant names this value
                 body_podium += TableLebBytes( elem_ref );
             }
-            w.putleb( ref_podium ); w.put8( 14 ); w.putleb( (uint64_t) body_podium ); // podium
+            w.header( ref_podium, 14 ); w.putleb( (uint64_t) body_podium ); // podium
             w.put8( 30 ); w.putleb( (uint64_t) ( 3 ) );
             for ( int32_t elem_i = 0; elem_i < 3; elem_i++ )
             {
@@ -3791,7 +3828,7 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBody( TableWriter & w, TableIds & i
     }
     if ( value.perks != 0 )
     {
-        w.putleb( ids.ref_at( 45, 0x4b06f5847096e54aull ) ); w.put8( 9 ); // perks
+        w.header( ids.ref_at( 45, 0x4b06f5847096e54aull ), 9 ); // perks
         w.put64( uint64_t( value.perks ) );
     }
     {
@@ -3801,7 +3838,7 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBody( TableWriter & w, TableIds & i
         if ( body_primary < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_primary > 1 ) // all-default nested elides
         {
-            w.putleb( ref_primary ); w.put8( 13 ); w.putleb( (uint64_t) body_primary ); // primary
+            w.header( ref_primary, 13 ); w.putleb( (uint64_t) body_primary ); // primary
             if ( !WeaponConfigSaveBody( w, ids, value.primary ) ) return false;
         }
         else { ids.truncate( mark_primary ); }
@@ -3821,7 +3858,7 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBody( TableWriter & w, TableIds & i
             if ( elem_i < 2 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_backups += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
-        w.putleb( ref_backups ); w.put8( 14 ); w.putleb( (uint64_t) body_backups ); // backups
+        w.header( ref_backups, 14 ); w.putleb( (uint64_t) body_backups ); // backups
         w.put8( 13 ); w.putleb( (uint64_t) ( 2 ) );
         for ( int32_t elem_i = 0; elem_i < 2; elem_i++ )
         {
@@ -3850,7 +3887,7 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBody( TableWriter & w, TableIds & i
             if ( elem_i < 8 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_attachments += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
-        w.putleb( ref_attachments ); w.put8( 14 ); w.putleb( (uint64_t) body_attachments ); // attachments
+        w.header( ref_attachments, 14 ); w.putleb( (uint64_t) body_attachments ); // attachments
         w.put8( 13 ); w.putleb( (uint64_t) ( value.attachments_count ) );
         for ( int32_t elem_i = 0; elem_i < value.attachments_count; elem_i++ )
         {
@@ -4808,7 +4845,7 @@ TABLEDEMO_TABLE_INLINE bool ProfileConfigSaveBody( TableWriter & w, TableIds & i
     if ( value.name_length < 0 || value.name_length > 32 ) { return false; } // storage invariant
     if ( value.name_length > 0 )
     {
-        w.putleb( ids.ref_at( 116, 0xc4bcadba8e631b86ull ) ); w.put8( 12 ); // name
+        w.header( ids.ref_at( 116, 0xc4bcadba8e631b86ull ), 12 ); // name
         w.putleb( (uint64_t) value.name_length );
         w.raw( value.name, value.name_length );
     }
@@ -4816,49 +4853,49 @@ TABLEDEMO_TABLE_INLINE bool ProfileConfigSaveBody( TableWriter & w, TableIds & i
     if ( value.icon_length > 0 )
     {
         const int64_t body_icon = 1 + TableLebBytes( (uint64_t) value.icon_length ) + value.icon_length;
-        w.putleb( ids.ref_at( 132, 0xdbff4cc56c2092f0ull ) ); w.put8( 14 ); // icon
+        w.header( ids.ref_at( 132, 0xdbff4cc56c2092f0ull ), 14 ); // icon
         w.putleb( (uint64_t) body_icon );
         w.put8( 6 ); w.putleb( (uint64_t) value.icon_length );
         w.raw( value.icon, value.icon_length );
     }
     if ( value.experience != 0 )
     {
-        w.putleb( ids.ref_at( 93, 0xab8b6d521f80b969ull ) ); w.put8( 8 ); // experience
+        w.header( ids.ref_at( 93, 0xab8b6d521f80b969ull ), 8 ); // experience
         w.put32( uint32_t( value.experience ) );
     }
     if ( value.tilt != 0 )
     {
-        w.putleb( ids.ref_at( 19, 0x1e5088ef2e9bafc6ull ) ); w.put8( 2 ); // tilt
+        w.header( ids.ref_at( 19, 0x1e5088ef2e9bafc6ull ), 2 ); // tilt
         w.put8( uint8_t( value.tilt ) );
     }
     if ( value.heading != 0 )
     {
-        w.putleb( ids.ref_at( 96, 0xb128829190ca0f75ull ) ); w.put8( 3 ); // heading
+        w.header( ids.ref_at( 96, 0xb128829190ca0f75ull ), 3 ); // heading
         w.put16( uint16_t( value.heading ) );
     }
     if ( value.timestamp != 0 )
     {
-        w.putleb( ids.ref_at( 54, 0x5ddc92338ef53403ull ) ); w.put8( 5 ); // timestamp
+        w.header( ids.ref_at( 54, 0x5ddc92338ef53403ull ), 5 ); // timestamp
         w.put64( uint64_t( value.timestamp ) );
     }
     if ( value.badge != 0 )
     {
-        w.putleb( ids.ref_at( 9, 0x10bda981fe095518ull ) ); w.put8( 6 ); // badge
+        w.header( ids.ref_at( 9, 0x10bda981fe095518ull ), 6 ); // badge
         w.put8( uint8_t( value.badge ) );
     }
     if ( value.port != 0 )
     {
-        w.putleb( ids.ref_at( 73, 0x8c2cdb0da8933fa6ull ) ); w.put8( 7 ); // port
+        w.header( ids.ref_at( 73, 0x8c2cdb0da8933fa6ull ), 7 ); // port
         w.put16( uint16_t( value.port ) );
     }
     if ( value.epoch != 0 )
     {
-        w.putleb( ids.ref_at( 146, 0xfc9697d1196e6ba6ull ) ); w.put8( 9 ); // epoch
+        w.header( ids.ref_at( 146, 0xfc9697d1196e6ba6ull ), 9 ); // epoch
         w.put64( uint64_t( value.epoch ) );
     }
     if ( value.precision != 0.0 )
     {
-        w.putleb( ids.ref_at( 24, 0x288427f5babd05f7ull ) ); w.put8( 11 ); // precision
+        w.header( ids.ref_at( 24, 0x288427f5babd05f7ull ), 11 ); // precision
         w.put64( table_double_to_bits( value.precision ) );
     }
     {
@@ -4870,7 +4907,7 @@ TABLEDEMO_TABLE_INLINE bool ProfileConfigSaveBody( TableWriter & w, TableIds & i
             int64_t body_ratings = 0;
             body_ratings += 1 + TableLebBytes( (uint64_t) ( 4 ) ); // the element kind byte and the count
             body_ratings += (int64_t) ( 4 ) * 4;
-            w.putleb( ref_ratings ); w.put8( 14 ); w.putleb( (uint64_t) body_ratings ); // ratings
+            w.header( ref_ratings, 14 ); w.putleb( (uint64_t) body_ratings ); // ratings
             w.put8( 10 ); w.putleb( (uint64_t) ( 4 ) );
             for ( int32_t elem_i = 0; elem_i < 4; elem_i++ )
             {
@@ -4880,7 +4917,7 @@ TABLEDEMO_TABLE_INLINE bool ProfileConfigSaveBody( TableWriter & w, TableIds & i
     }
     if ( value.has_loadout != false )
     {
-        w.putleb( ids.ref_at( 83, 0xa06f5e0a148e253cull ) ); w.put8( 1 ); // has_loadout
+        w.header( ids.ref_at( 83, 0xa06f5e0a148e253cull ), 1 ); // has_loadout
         w.put8( value.has_loadout ? 1 : 0 );
     }
     if ( value.has_loadout )
@@ -4892,7 +4929,7 @@ TABLEDEMO_TABLE_INLINE bool ProfileConfigSaveBody( TableWriter & w, TableIds & i
             if ( body_loadout < 0 ) return false; // storage invariant, refused as measure refuses it
             if ( body_loadout > 1 ) // all-default nested elides
             {
-                w.putleb( ref_loadout ); w.put8( 13 ); w.putleb( (uint64_t) body_loadout ); // loadout
+                w.header( ref_loadout, 13 ); w.putleb( (uint64_t) body_loadout ); // loadout
                 if ( !LoadoutConfigSaveBody( w, ids, value.loadout ) ) return false;
             }
             else { ids.truncate( mark_loadout ); }
@@ -6107,7 +6144,7 @@ TABLEDEMO_TABLE_INLINE bool RootConfigSaveBody( TableWriter & w, TableIds & ids,
     if ( value.version_note_length < 0 || value.version_note_length > 16 ) { return false; } // storage invariant
     if ( value.version_note_length > 0 )
     {
-        w.putleb( ids.ref_at( 72, 0x8a67c9728746d394ull ) ); w.put8( 12 ); // version_note
+        w.header( ids.ref_at( 72, 0x8a67c9728746d394ull ), 12 ); // version_note
         w.putleb( (uint64_t) value.version_note_length );
         w.raw( value.version_note, value.version_note_length );
     }
@@ -6128,7 +6165,7 @@ TABLEDEMO_TABLE_INLINE bool RootConfigSaveBody( TableWriter & w, TableIds & ids,
             if ( elem_i < 8 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_weapons += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
-        w.putleb( ref_weapons ); w.put8( 14 ); w.putleb( (uint64_t) body_weapons ); // weapons
+        w.header( ref_weapons, 14 ); w.putleb( (uint64_t) body_weapons ); // weapons
         w.put8( 13 ); w.putleb( (uint64_t) ( value.weapons_count ) );
         for ( int32_t elem_i = 0; elem_i < value.weapons_count; elem_i++ )
         {
@@ -6157,7 +6194,7 @@ TABLEDEMO_TABLE_INLINE bool RootConfigSaveBody( TableWriter & w, TableIds & ids,
             if ( elem_i < 4 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_profiles += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
-        w.putleb( ref_profiles ); w.put8( 14 ); w.putleb( (uint64_t) body_profiles ); // profiles
+        w.header( ref_profiles, 14 ); w.putleb( (uint64_t) body_profiles ); // profiles
         w.put8( 13 ); w.putleb( (uint64_t) ( value.profiles_count ) );
         for ( int32_t elem_i = 0; elem_i < value.profiles_count; elem_i++ )
         {
@@ -6712,12 +6749,12 @@ TABLEDEMO_TABLE_INLINE bool AttachmentSaveBody( TableWriter & w, TableIds & ids,
 {
     if ( value.slot != 0 )
     {
-        w.putleb( ids.ref_at( 59, 0x6a771618f6fe31d1ull ) ); w.put8( 4 ); // slot
+        w.header( ids.ref_at( 59, 0x6a771618f6fe31d1ull ), 4 ); // slot
         w.put32( uint32_t( value.slot ) );
     }
     if ( value.power != 1.0f )
     {
-        w.putleb( ids.ref_at( 140, 0xeef9d1358ae7b4e6ull ) ); w.put8( 10 ); // power
+        w.header( ids.ref_at( 140, 0xeef9d1358ae7b4e6ull ), 10 ); // power
         w.put32( table_float_to_bits( value.power ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -7106,7 +7143,7 @@ TABLEDEMO_TABLE_INLINE bool BuffSaveBody( TableWriter & w, TableIds & ids, const
 {
     if ( value.multiplier != 1.0f )
     {
-        w.putleb( ids.ref_at( 79, 0x9adc623a805c87c6ull ) ); w.put8( 10 ); // multiplier
+        w.header( ids.ref_at( 79, 0x9adc623a805c87c6ull ), 10 ); // multiplier
         w.put32( table_float_to_bits( value.multiplier ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -7405,7 +7442,7 @@ TABLEDEMO_TABLE_INLINE bool DebuffSaveBody( TableWriter & w, TableIds & ids, con
 {
     if ( value.amount != 0 )
     {
-        w.putleb( ids.ref_at( 69, 0x8113fe7ea2b16969ull ) ); w.put8( 4 ); // amount
+        w.header( ids.ref_at( 69, 0x8113fe7ea2b16969ull ), 4 ); // amount
         w.put32( uint32_t( value.amount ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body

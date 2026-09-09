@@ -290,8 +290,21 @@ struct TableWriter
                          uint8_t( v >> 32 ), uint8_t( v >> 40 ), uint8_t( v >> 48 ), uint8_t( v >> 56 ) };
         raw( b, 8 );
     }
-    // a 128-bit value as two lanes, the low half first (docs/SPEC-TABLES.md §3)
-    WIDE_TABLE_INLINE void put128( uint64_t lo, uint64_t hi ) { put64( lo ); put64( hi ); }
+    // A 128-BIT VALUE IS TWO LANES, THE LOW HALF FIRST (docs/SPEC-TABLES.md §3):
+    // THE SAME SIXTEEN BYTES two put64 wrote, assembled once and handed to raw
+    // once. One capacity test rather than two, and NOT ONE FEWER — raw still
+    // asks before it copies, so an undersized buffer still raises the overflow
+    // flag and Save still answers -1. A pair that does not fit now leaves the
+    // buffer alone rather than writing the low lane first; nothing reads those
+    // bytes, because the caller that overflowed answers -1.
+    WIDE_TABLE_INLINE void put128( uint64_t lo, uint64_t hi )
+    {
+        uint8_t b[16] = { uint8_t( lo ), uint8_t( lo >> 8 ), uint8_t( lo >> 16 ), uint8_t( lo >> 24 ),
+                          uint8_t( lo >> 32 ), uint8_t( lo >> 40 ), uint8_t( lo >> 48 ), uint8_t( lo >> 56 ),
+                          uint8_t( hi ), uint8_t( hi >> 8 ), uint8_t( hi >> 16 ), uint8_t( hi >> 24 ),
+                          uint8_t( hi >> 32 ), uint8_t( hi >> 40 ), uint8_t( hi >> 48 ), uint8_t( hi >> 56 ) };
+        raw( b, 16 );
+    }
     // EVERY LENGTH, COUNT, INDEX AND ID REFERENCE IS ONE CANONICAL UNSIGNED
     // LEB128 (docs/SPEC-TABLES.md §3): seven value bits a byte, the lowest
     // group first, the high bit set on every byte but the last. One value has
@@ -312,6 +325,30 @@ struct TableWriter
         while ( v >= 0x80 ) { b[n++] = uint8_t( v ) | 0x80; v >>= 7; }
         b[n++] = uint8_t( v );
         raw( b, n );
+    }
+    // A FIELD HEADER IS A REFERENCE AND THE KIND BYTE BEHIND IT
+    // (docs/SPEC-TABLES.md §3), and nearly every one of them is two bytes: a
+    // reference below 128 is a single LEB128 byte, so the pair assembles in a
+    // two-byte stack buffer and goes to raw once. A reference at 128 or above
+    // still goes through putleb then put8 — the same two calls, the same bytes.
+    // Both arms write what the two-call spelling wrote, byte for byte.
+    //
+    // NOTHING IS HOISTED AND NO TEST IS REMOVED: raw still asks before it
+    // copies, so a header that does not fit still raises the overflow flag and
+    // Save still answers -1 — including a capacity that would cut the two-byte
+    // header in half. What differs is only on that failing path: a header that
+    // does not fit now leaves the buffer alone rather than writing the
+    // reference first, and nothing reads those bytes.
+    WIDE_TABLE_INLINE void header( uint64_t ref, uint8_t kind )
+    {
+        if ( ref < 128 )
+        {
+            uint8_t b[2] = { uint8_t( ref ), kind };
+            raw( b, 2 );
+            return;
+        }
+        putleb( ref );
+        put8( kind );
     }
 };
 
@@ -2542,7 +2579,7 @@ WIDE_TABLE_INLINE bool CaptionSaveBody( TableWriter & w, TableIds & ids, const C
     if ( value.title_length < 0 || value.title_length > 7 ) { return false; } // storage invariant
     if ( value.title_length > 0 )
     {
-        w.putleb( ids.ref_at( 13, 0xda31296c0c1b6029ull ) ); w.put8( 33 ); // title
+        w.header( ids.ref_at( 13, 0xda31296c0c1b6029ull ), 33 ); // title
         w.putleb( (uint64_t) value.title_length * 2 ); // L is a BYTE length (§3)
         for ( int32_t i = 0; i < value.title_length; i++ ) { w.put16( (uint16_t) value.title[i] ); } // two bytes each, little-endian
     }
@@ -2553,7 +2590,7 @@ WIDE_TABLE_INLINE bool CaptionSaveBody( TableWriter & w, TableIds & ids, const C
         if ( body_line < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_line > 1 ) // all-default nested elides
         {
-            w.putleb( ref_line ); w.put8( 13 ); w.putleb( (uint64_t) body_line ); // line
+            w.header( ref_line, 13 ); w.putleb( (uint64_t) body_line ); // line
             if ( !LineSaveBody( w, ids, value.line ) ) return false;
         }
         else { ids.truncate( mark_line ); }
@@ -2575,7 +2612,7 @@ WIDE_TABLE_INLINE bool CaptionSaveBody( TableWriter & w, TableIds & ids, const C
             if ( elem_i < 3 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_lines += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
-        w.putleb( ref_lines ); w.put8( 14 ); w.putleb( (uint64_t) body_lines ); // lines
+        w.header( ref_lines, 14 ); w.putleb( (uint64_t) body_lines ); // lines
         w.put8( 13 ); w.putleb( (uint64_t) ( value.lines_count ) );
         for ( int32_t elem_i = 0; elem_i < value.lines_count; elem_i++ )
         {
@@ -2589,7 +2626,7 @@ WIDE_TABLE_INLINE bool CaptionSaveBody( TableWriter & w, TableIds & ids, const C
     }
     if ( value.body.type != BodyType::None )
     {
-        w.putleb( ids.ref_at( 12, 0xcd4de79bc6c93295ull ) ); w.put8( 15 ); // body
+        w.header( ids.ref_at( 12, 0xcd4de79bc6c93295ull ), 15 ); // body
         switch ( value.body.type )
         {
             case BodyType::Wide:
@@ -2598,7 +2635,7 @@ WIDE_TABLE_INLINE bool CaptionSaveBody( TableWriter & w, TableIds & ids, const C
                 int64_t arm_payload = 0;
                 if ( value.body.wide.value_length < 0 || value.body.wide.value_length > 4 ) { return false; } // storage invariant
                 arm_payload += (int64_t) value.body.wide.value_length * 2; // the code units under the arm's L, which is a BYTE length (§3)
-                w.putleb( arm_ref ); w.put8( 33 ); w.putleb( (uint64_t) arm_payload ); // wide
+                w.header( arm_ref, 33 ); w.putleb( (uint64_t) arm_payload ); // wide
                 if ( value.body.wide.value_length < 0 || value.body.wide.value_length > 4 ) { return false; } // storage invariant
                 for ( int32_t i = 0; i < value.body.wide.value_length; i++ ) { w.put16( (uint16_t) value.body.wide.value[i] ); } // two bytes each, little-endian
                 break;
@@ -2609,7 +2646,7 @@ WIDE_TABLE_INLINE bool CaptionSaveBody( TableWriter & w, TableIds & ids, const C
                 int64_t arm_payload = 0;
                 if ( value.body.narrow.value_length < 0 || value.body.narrow.value_length > 4 ) { return false; } // storage invariant
                 arm_payload += value.body.narrow.value_length; // the string's bytes under the arm's L
-                w.putleb( arm_ref ); w.put8( 12 ); w.putleb( (uint64_t) arm_payload ); // narrow
+                w.header( arm_ref, 12 ); w.putleb( (uint64_t) arm_payload ); // narrow
                 if ( value.body.narrow.value_length < 0 || value.body.narrow.value_length > 4 ) { return false; } // storage invariant
                 w.raw( value.body.narrow.value, value.body.narrow.value_length );
                 break;
@@ -2619,7 +2656,7 @@ WIDE_TABLE_INLINE bool CaptionSaveBody( TableWriter & w, TableIds & ids, const C
                 const uint64_t arm_ref = ids.ref_at( 10, 0xb1e5e28e4479a274ull );
                 int64_t arm_payload = 0;
                 arm_payload += 4; // int32
-                w.putleb( arm_ref ); w.put8( 4 ); w.putleb( (uint64_t) arm_payload ); // tally
+                w.header( arm_ref, 4 ); w.putleb( (uint64_t) arm_payload ); // tally
                 w.put32( uint32_t( value.body.tally ) );
                 break;
             }
@@ -3444,13 +3481,13 @@ WIDE_TABLE_INLINE bool StampSaveBody( TableWriter & w, TableIds & ids, const Sta
     if ( value.label_length < 0 || value.label_length > 4 ) { return false; } // storage invariant
     if ( value.label_length > 0 )
     {
-        w.putleb( ids.ref_at( 1, 0x39f7fcec8fcb623dull ) ); w.put8( 33 ); // label
+        w.header( ids.ref_at( 1, 0x39f7fcec8fcb623dull ), 33 ); // label
         w.putleb( (uint64_t) value.label_length * 2 ); // L is a BYTE length (§3)
         for ( int32_t i = 0; i < value.label_length; i++ ) { w.put16( (uint16_t) value.label[i] ); } // two bytes each, little-endian
     }
     if ( value.seq != 0 )
     {
-        w.putleb( ids.ref_at( 5, 0x823b8a195ce2133cull ) ); w.put8( 8 ); // seq
+        w.header( ids.ref_at( 5, 0x823b8a195ce2133cull ), 8 ); // seq
         w.put32( uint32_t( value.seq ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -3852,7 +3889,7 @@ WIDE_TABLE_INLINE bool LineSaveBody( TableWriter & w, TableIds & ids, const Line
     if ( value.text_length < 0 || value.text_length > 4 ) { return false; } // storage invariant
     if ( value.text_length > 0 )
     {
-        w.putleb( ids.ref_at( 14, 0xfa04f4ef1995407eull ) ); w.put8( 33 ); // text
+        w.header( ids.ref_at( 14, 0xfa04f4ef1995407eull ), 33 ); // text
         w.putleb( (uint64_t) value.text_length * 2 ); // L is a BYTE length (§3)
         for ( int32_t i = 0; i < value.text_length; i++ ) { w.put16( (uint16_t) value.text[i] ); } // two bytes each, little-endian
     }
