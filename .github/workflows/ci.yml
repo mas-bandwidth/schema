@@ -125,6 +125,87 @@ jobs:
           go-version: '1.26'
           cache: false
 
+      # THE GO BUILD CACHE (the two-minute rule, issue #368). Every job in this
+      # file that touches Go begins by compiling the same compiler from the
+      # same sources on a runner that has never seen them. `go build
+      # ./cmd/schema` is about 15 s cold, and this file pays it forty-seven
+      # times over in the negative-control rows alone, again in each
+      # conformance leg, and again in every gate that shells out to `go run`.
+      #
+      # THE THING WORTH CARRYING IS THE BUILD CACHE, NOT THE MODULE CACHE.
+      # This module has no external dependency and no go.sum, so there is
+      # nothing to download and a module cache would cache the empty set.
+      # ~/.cache/go-build — about 100 MB of compiled package archives — is
+      # where the fifteen seconds actually are.
+      #
+      # A STALE ENTRY CANNOT MAKE A WRONG BUILD, and that is the load-bearing
+      # fact about this whole block. Go's build cache is content-addressed:
+      # every entry is keyed by a hash of the source, the compiler's own
+      # identity and the build flags, so a cache carried across a toolchain
+      # bump or a source change serves the parts that still match and is
+      # simply ignored for the parts that do not. The key below is therefore
+      # only ever about the HIT RATE, never about correctness — which is what
+      # lets the last fallback rung be as coarse as it is.
+      #
+      # THE KEY: the runner's OS, the toolchain's identity AS THE INSTALLED
+      # TOOLCHAIN REPORTS IT rather than a version restated here (a literal
+      # '1.26' in fourteen places would be a second home for a pin the
+      # setup-go step above owns), and a hash of every Go source and go.mod.
+      # The path comes from `go env GOCACHE` for the same reason — it is a
+      # different directory on the Windows runners, and reading it beats
+      # knowing it.
+      #
+      # THERE IS EXACTLY ONE FALLBACK RUNG, and the missing one is the point.
+      # `go-build-<os>-<toolchain>-` is the rung that matters: it is the same
+      # toolchain over an older tree, which is what a pull request restores
+      # from main and what makes its first run warm. A rung below that —
+      # `go-build-<os>-` — can only ever match a DIFFERENT toolchain, and a
+      # cache written by another toolchain hits nothing, because every entry
+      # in it is keyed on that compiler's build ID. So it would download
+      # 120 MB to find zero usable entries, every time, and it is not here.
+      #
+      # WHICH IS ALSO A FINDING ABOUT THIS FILE, and this branch measured it:
+      # `go-version: '1.26'` is a RANGE, and setup-go resolves it to whatever
+      # 1.26.x the runner image already carries. One warm run of this file put
+      # 1.26.7 on thirty-one of the forty-six negative-control rows and 1.26.8
+      # on the other fifteen, so only the fifteen could use a cache the
+      # go-test row wrote under 1.26.8. Pinning the patch would make the whole
+      # leg warm and would make what CI proves the same fact twice running;
+      # that is a decision about the toolchain pin rather than about caching,
+      # so it is named here and left for its own change.
+      #
+      # ONE WRITER PER OS, AND IT IS THIS JOB. `actions/cache` saves whenever
+      # the exact key missed, so fifty-five jobs sharing one key would be
+      # fifty-five jobs racing to upload the same 100 MB: GitHub reserves a
+      # key to exactly one of them and the rest warn and drop it. So every job
+      # takes the RESTORE half and exactly one job per OS takes the SAVE half
+      # — `go-test` for Linux, at the bottom of this job, because vet and
+      # `go test ./...` between them compile every package in the module and
+      # its cache is the widest one this tree can produce; and `windows`
+      # below for Windows, which vets and builds the whole module too.
+      #
+      # THE FIRST RUN OF A BRANCH IS ALREADY WARM. A cache written on main is
+      # readable from every branch, so a branch's first run restores main's
+      # entry through the fallback key, recompiles only what its own diff
+      # moved, and writes its own entry for its second run. A pull request
+      # pays for its diff and nothing else.
+      #
+      # THE `generated` GATE TAKES NO CACHE, deliberately. It is the job that
+      # decides whether the committed tree matches what the current compiler
+      # emits, and it is the one place in this file where "the build did no
+      # work" must not be an available explanation for a green.
+      - name: where this runner keeps the Go build cache
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
       - name: go vet
         run: go vet ./...
 
@@ -153,6 +234,16 @@ jobs:
       # a second.
       - name: the toolchain gate goes red without the toolchains it pins
         run: make toolchain-negative-control
+
+      # THE ONE LINUX WRITER, per the block at the top of this job. It is last
+      # so that what it uploads is the cache AFTER vet and the whole test
+      # suite have filled it, which is the widest cache this tree produces.
+      # `actions/cache/save` cannot redden a job: a key another run reserved
+      # first is a logged warning and this step's success.
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
 
   # THE GENERATED TREE IS CURRENT (issue #30). The committed generated/ tree is
   # what this repo treats as ground truth — findings are receipted against its
@@ -253,6 +344,20 @@ jobs:
           go-version: '1.26'
           cache: false
 
+      # The Go build cache, restore only — `go-test` is the one Linux writer.
+      # The block on that job carries the reasoning.
+      - name: where this runner keeps the Go build cache
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
       - name: rewrite every pin under testdata/ from the reference
         run: make -j"$(nproc)" conformance-pin update-goldens
 
@@ -302,6 +407,21 @@ jobs:
         with:
           go-version: '1.26'
           cache: false
+
+      # The Go build cache, restore only — `go-test` is the one Linux writer.
+      # The block on that job carries the reasoning.
+      - name: where this runner keeps the Go build cache
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
       - id: discover
         name: the registry, as a matrix
         run: |
@@ -339,6 +459,20 @@ jobs:
         with:
           go-version: '1.26'
           cache: false
+
+      # The Go build cache, restore only — `go-test` is the one Linux writer.
+      # The block on that job carries the reasoning.
+      - name: where this runner keeps the Go build cache
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
       # One step per toolchain, each keyed on the row's field for it. The
       # version is the leg's to name, and it is the same pin the leg's
@@ -431,6 +565,20 @@ jobs:
           go-version: '1.26'
           cache: false
 
+      # The Go build cache, restore only — `go-test` is the one Linux writer.
+      # The block on that job carries the reasoning.
+      - name: where this runner keeps the Go build cache
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
       - name: read the .NET SDK pin
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
@@ -481,6 +629,20 @@ jobs:
         with:
           go-version: '1.26'
           cache: false
+
+      # The Go build cache, restore only — `go-test` is the one Linux writer.
+      # The block on that job carries the reasoning.
+      - name: where this runner keeps the Go build cache
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
       - name: the pinned cross toolchain and emulator
         run: |
@@ -556,6 +718,21 @@ jobs:
         with:
           go-version: '1.26'
           cache: false
+
+      # The Go build cache, restore only — `go-test` is the one Linux writer.
+      # The block on that job carries the reasoning.
+      - name: where this runner keeps the Go build cache
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
       - name: gofmt
         run: |
           out=$(gofmt -l .)
@@ -618,6 +795,21 @@ jobs:
         with:
           go-version: stable
           cache: false
+
+      # The Go build cache, restore only — `go-test` is the one Linux writer.
+      # The block on that job carries the reasoning.
+      - name: where this runner keeps the Go build cache
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
       # PINNED to a govulncheck release, bumped by hand. What has to change
       # on its own is the VULNERABILITY DATABASE, which the tool fetches at run
       # time — so the pin costs this gate nothing, and a red run can no longer
@@ -637,8 +829,33 @@ jobs:
         with:
           go-version: stable
           cache: false
+
+      # The Go build cache. This job is the Windows half of the pair — it
+      # restores here and saves at the bottom. The block on `go-test` carries
+      # the reasoning. GOCACHE is read rather than written down because on
+      # this runner it is not ~/.cache/go-build at all.
+      - name: where this runner keeps the Go build cache
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
       - run: go vet ./...
       - run: go build ./...
+
+      # THE ONE WINDOWS WRITER. Vet and build above cover the whole module, so
+      # this is the widest Windows cache available, and `msvc` — which builds
+      # bin/schema.exe and nothing else in Go — restores it.
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
 
   # MSVC over the generated corpus (issue #286). The estate's standing rule is
   # that Visual C++ is a hard requirement — emulate extensions, never require
@@ -693,6 +910,20 @@ jobs:
         with:
           go-version: stable
           cache: false
+
+      # The Go build cache, restore only — `windows` is the one Windows
+      # writer. The block on `go-test` carries the reasoning.
+      - name: where this runner keeps the Go build cache
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
       # The one sibling this leg needs, at the same pin every other job uses.
       # Header-only, and only the PACKET headers (<Base>.h / <Base>Wire.h)
@@ -825,6 +1056,21 @@ jobs:
         with:
           go-version: '1.26'
           cache: false
+
+      # The Go build cache, restore only — `go-test` is the one Linux writer.
+      # The block on that job carries the reasoning.
+      - name: where this runner keeps the Go build cache
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
       - name: refuse hand-coded shape measurement
         run: go run ./bench/tools/shapegate
 
@@ -951,6 +1197,20 @@ jobs:
           go-version: '1.26'
           cache: false
 
+      # The Go build cache, restore only — `go-test` is the one Linux writer.
+      # The block on that job carries the reasoning.
+      - name: where this runner keeps the Go build cache
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
       # The enumeration gate, first and on its own, so a control that nothing
       # runs is named here rather than discovered by its absence from a log.
       - name: every negative control the makefiles define is in the plan
@@ -997,6 +1257,20 @@ jobs:
         with:
           go-version: '1.26'
           cache: false
+
+      # The Go build cache, restore only — `go-test` is the one Linux writer.
+      # The block on that job carries the reasoning.
+      - name: where this runner keeps the Go build cache
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
       # One step per toolchain, each keyed on the row's field for it, exactly as
       # the conformance matrix above does. A base row names none of them and
