@@ -3031,48 +3031,16 @@ inline TableOpenVerdict WeaponConfigLoadVerdict( WeaponConfig & value, const uin
     }
     // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
     // MALFORMED, because no field claims it and the two ends of the file
-    // have met: nothing is decoded and one event is counted (§3). THE READ
-    // ITSELF ANSWERS THAT, and it is asked AFTER the walk instead of before
-    // it: a body that returned at its own zero reference left the cursor on
-    // the byte after that reference, and a root body's terminator is its
-    // LAST byte. Every field leaves the cursor exactly where the framing
-    // walk's skip would — a length-framed field ends at its own L, whatever
-    // it did or refused to do inside it — so the two walks find the same
-    // terminator in the same place, and one walk answers what two used to.
-    //
-    // NOTHING IS DECODED ON THE DAMAGED PATH, and that is the whole of it:
-    // the value goes back to its declared defaults and the report goes back
-    // to what the caller handed in, so a body that ends early counts no
-    // unknown, no kind mismatch and no clamp for the fields it happened to
-    // carry before the end — exactly as when the framing walk refused this
-    // file before the reader had seen one byte of it.
-    const TableReport before = *to;
-    TableReader r( buffer + 1, body_bytes, to, &table );
-    r.nested = false; // the ROOT body, the one that may carry a node table
-    if ( !WeaponConfigLoadBody( r, value ) )
-    {
-        // THE READING WALK STOPS ON RULES THE FRAMING WALK HAS NO OPINION
-        // ABOUT — a reserved id in a file body is the one that matters (§3.1,
-        // §3.3) — so a body that stopped is still asked the framing question,
-        // and a body whose framing ends early is damage whatever else was
-        // wrong with it. This is the walk that used to run first, on the one
-        // path where it is not spent for nothing.
-        if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) )
-        {
-            WeaponConfigReset( value );
-            *to = before;
-            to->malformed = true;
-            return TableOpenDamaged;
-        }
-        return TableOpenBodyStopped;
-    }
-    if ( r.offset != body_bytes )
+    // have met: nothing is decoded and one event is counted (§3).
+    if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) )
     {
         WeaponConfigReset( value );
-        *to = before;
         to->malformed = true;
         return TableOpenDamaged;
     }
+    TableReader r( buffer + 1, body_bytes, to, &table );
+    r.nested = false; // the ROOT body, the one that may carry a node table
+    if ( !WeaponConfigLoadBody( r, value ) ) { return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
@@ -4091,48 +4059,16 @@ inline TableOpenVerdict LoadoutConfigLoadVerdict( LoadoutConfig & value, const u
     }
     // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
     // MALFORMED, because no field claims it and the two ends of the file
-    // have met: nothing is decoded and one event is counted (§3). THE READ
-    // ITSELF ANSWERS THAT, and it is asked AFTER the walk instead of before
-    // it: a body that returned at its own zero reference left the cursor on
-    // the byte after that reference, and a root body's terminator is its
-    // LAST byte. Every field leaves the cursor exactly where the framing
-    // walk's skip would — a length-framed field ends at its own L, whatever
-    // it did or refused to do inside it — so the two walks find the same
-    // terminator in the same place, and one walk answers what two used to.
-    //
-    // NOTHING IS DECODED ON THE DAMAGED PATH, and that is the whole of it:
-    // the value goes back to its declared defaults and the report goes back
-    // to what the caller handed in, so a body that ends early counts no
-    // unknown, no kind mismatch and no clamp for the fields it happened to
-    // carry before the end — exactly as when the framing walk refused this
-    // file before the reader had seen one byte of it.
-    const TableReport before = *to;
-    TableReader r( buffer + 1, body_bytes, to, &table );
-    r.nested = false; // the ROOT body, the one that may carry a node table
-    if ( !LoadoutConfigLoadBody( r, value ) )
-    {
-        // THE READING WALK STOPS ON RULES THE FRAMING WALK HAS NO OPINION
-        // ABOUT — a reserved id in a file body is the one that matters (§3.1,
-        // §3.3) — so a body that stopped is still asked the framing question,
-        // and a body whose framing ends early is damage whatever else was
-        // wrong with it. This is the walk that used to run first, on the one
-        // path where it is not spent for nothing.
-        if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) )
-        {
-            LoadoutConfigReset( value );
-            *to = before;
-            to->malformed = true;
-            return TableOpenDamaged;
-        }
-        return TableOpenBodyStopped;
-    }
-    if ( r.offset != body_bytes )
+    // have met: nothing is decoded and one event is counted (§3).
+    if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) )
     {
         LoadoutConfigReset( value );
-        *to = before;
         to->malformed = true;
         return TableOpenDamaged;
     }
+    TableReader r( buffer + 1, body_bytes, to, &table );
+    r.nested = false; // the ROOT body, the one that may carry a node table
+    if ( !LoadoutConfigLoadBody( r, value ) ) { return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
@@ -5208,48 +5144,16 @@ inline TableOpenVerdict ProfileConfigLoadVerdict( ProfileConfig & value, const u
     }
     // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
     // MALFORMED, because no field claims it and the two ends of the file
-    // have met: nothing is decoded and one event is counted (§3). THE READ
-    // ITSELF ANSWERS THAT, and it is asked AFTER the walk instead of before
-    // it: a body that returned at its own zero reference left the cursor on
-    // the byte after that reference, and a root body's terminator is its
-    // LAST byte. Every field leaves the cursor exactly where the framing
-    // walk's skip would — a length-framed field ends at its own L, whatever
-    // it did or refused to do inside it — so the two walks find the same
-    // terminator in the same place, and one walk answers what two used to.
-    //
-    // NOTHING IS DECODED ON THE DAMAGED PATH, and that is the whole of it:
-    // the value goes back to its declared defaults and the report goes back
-    // to what the caller handed in, so a body that ends early counts no
-    // unknown, no kind mismatch and no clamp for the fields it happened to
-    // carry before the end — exactly as when the framing walk refused this
-    // file before the reader had seen one byte of it.
-    const TableReport before = *to;
-    TableReader r( buffer + 1, body_bytes, to, &table );
-    r.nested = false; // the ROOT body, the one that may carry a node table
-    if ( !ProfileConfigLoadBody( r, value ) )
-    {
-        // THE READING WALK STOPS ON RULES THE FRAMING WALK HAS NO OPINION
-        // ABOUT — a reserved id in a file body is the one that matters (§3.1,
-        // §3.3) — so a body that stopped is still asked the framing question,
-        // and a body whose framing ends early is damage whatever else was
-        // wrong with it. This is the walk that used to run first, on the one
-        // path where it is not spent for nothing.
-        if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) )
-        {
-            ProfileConfigReset( value );
-            *to = before;
-            to->malformed = true;
-            return TableOpenDamaged;
-        }
-        return TableOpenBodyStopped;
-    }
-    if ( r.offset != body_bytes )
+    // have met: nothing is decoded and one event is counted (§3).
+    if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) )
     {
         ProfileConfigReset( value );
-        *to = before;
         to->malformed = true;
         return TableOpenDamaged;
     }
+    TableReader r( buffer + 1, body_bytes, to, &table );
+    r.nested = false; // the ROOT body, the one that may carry a node table
+    if ( !ProfileConfigLoadBody( r, value ) ) { return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
@@ -6302,48 +6206,16 @@ inline TableOpenVerdict RootConfigLoadVerdict( RootConfig & value, const uint8_t
     }
     // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
     // MALFORMED, because no field claims it and the two ends of the file
-    // have met: nothing is decoded and one event is counted (§3). THE READ
-    // ITSELF ANSWERS THAT, and it is asked AFTER the walk instead of before
-    // it: a body that returned at its own zero reference left the cursor on
-    // the byte after that reference, and a root body's terminator is its
-    // LAST byte. Every field leaves the cursor exactly where the framing
-    // walk's skip would — a length-framed field ends at its own L, whatever
-    // it did or refused to do inside it — so the two walks find the same
-    // terminator in the same place, and one walk answers what two used to.
-    //
-    // NOTHING IS DECODED ON THE DAMAGED PATH, and that is the whole of it:
-    // the value goes back to its declared defaults and the report goes back
-    // to what the caller handed in, so a body that ends early counts no
-    // unknown, no kind mismatch and no clamp for the fields it happened to
-    // carry before the end — exactly as when the framing walk refused this
-    // file before the reader had seen one byte of it.
-    const TableReport before = *to;
-    TableReader r( buffer + 1, body_bytes, to, &table );
-    r.nested = false; // the ROOT body, the one that may carry a node table
-    if ( !RootConfigLoadBody( r, value ) )
-    {
-        // THE READING WALK STOPS ON RULES THE FRAMING WALK HAS NO OPINION
-        // ABOUT — a reserved id in a file body is the one that matters (§3.1,
-        // §3.3) — so a body that stopped is still asked the framing question,
-        // and a body whose framing ends early is damage whatever else was
-        // wrong with it. This is the walk that used to run first, on the one
-        // path where it is not spent for nothing.
-        if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) )
-        {
-            RootConfigReset( value );
-            *to = before;
-            to->malformed = true;
-            return TableOpenDamaged;
-        }
-        return TableOpenBodyStopped;
-    }
-    if ( r.offset != body_bytes )
+    // have met: nothing is decoded and one event is counted (§3).
+    if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) )
     {
         RootConfigReset( value );
-        *to = before;
         to->malformed = true;
         return TableOpenDamaged;
     }
+    TableReader r( buffer + 1, body_bytes, to, &table );
+    r.nested = false; // the ROOT body, the one that may carry a node table
+    if ( !RootConfigLoadBody( r, value ) ) { return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
@@ -6784,48 +6656,16 @@ inline TableOpenVerdict AttachmentLoadVerdict( Attachment & value, const uint8_t
     }
     // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
     // MALFORMED, because no field claims it and the two ends of the file
-    // have met: nothing is decoded and one event is counted (§3). THE READ
-    // ITSELF ANSWERS THAT, and it is asked AFTER the walk instead of before
-    // it: a body that returned at its own zero reference left the cursor on
-    // the byte after that reference, and a root body's terminator is its
-    // LAST byte. Every field leaves the cursor exactly where the framing
-    // walk's skip would — a length-framed field ends at its own L, whatever
-    // it did or refused to do inside it — so the two walks find the same
-    // terminator in the same place, and one walk answers what two used to.
-    //
-    // NOTHING IS DECODED ON THE DAMAGED PATH, and that is the whole of it:
-    // the value goes back to its declared defaults and the report goes back
-    // to what the caller handed in, so a body that ends early counts no
-    // unknown, no kind mismatch and no clamp for the fields it happened to
-    // carry before the end — exactly as when the framing walk refused this
-    // file before the reader had seen one byte of it.
-    const TableReport before = *to;
-    TableReader r( buffer + 1, body_bytes, to, &table );
-    r.nested = false; // the ROOT body, the one that may carry a node table
-    if ( !AttachmentLoadBody( r, value ) )
-    {
-        // THE READING WALK STOPS ON RULES THE FRAMING WALK HAS NO OPINION
-        // ABOUT — a reserved id in a file body is the one that matters (§3.1,
-        // §3.3) — so a body that stopped is still asked the framing question,
-        // and a body whose framing ends early is damage whatever else was
-        // wrong with it. This is the walk that used to run first, on the one
-        // path where it is not spent for nothing.
-        if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) )
-        {
-            AttachmentReset( value );
-            *to = before;
-            to->malformed = true;
-            return TableOpenDamaged;
-        }
-        return TableOpenBodyStopped;
-    }
-    if ( r.offset != body_bytes )
+    // have met: nothing is decoded and one event is counted (§3).
+    if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) )
     {
         AttachmentReset( value );
-        *to = before;
         to->malformed = true;
         return TableOpenDamaged;
     }
+    TableReader r( buffer + 1, body_bytes, to, &table );
+    r.nested = false; // the ROOT body, the one that may carry a node table
+    if ( !AttachmentLoadBody( r, value ) ) { return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
@@ -7175,48 +7015,16 @@ inline TableOpenVerdict BuffLoadVerdict( Buff & value, const uint8_t * buffer, i
     }
     // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
     // MALFORMED, because no field claims it and the two ends of the file
-    // have met: nothing is decoded and one event is counted (§3). THE READ
-    // ITSELF ANSWERS THAT, and it is asked AFTER the walk instead of before
-    // it: a body that returned at its own zero reference left the cursor on
-    // the byte after that reference, and a root body's terminator is its
-    // LAST byte. Every field leaves the cursor exactly where the framing
-    // walk's skip would — a length-framed field ends at its own L, whatever
-    // it did or refused to do inside it — so the two walks find the same
-    // terminator in the same place, and one walk answers what two used to.
-    //
-    // NOTHING IS DECODED ON THE DAMAGED PATH, and that is the whole of it:
-    // the value goes back to its declared defaults and the report goes back
-    // to what the caller handed in, so a body that ends early counts no
-    // unknown, no kind mismatch and no clamp for the fields it happened to
-    // carry before the end — exactly as when the framing walk refused this
-    // file before the reader had seen one byte of it.
-    const TableReport before = *to;
-    TableReader r( buffer + 1, body_bytes, to, &table );
-    r.nested = false; // the ROOT body, the one that may carry a node table
-    if ( !BuffLoadBody( r, value ) )
-    {
-        // THE READING WALK STOPS ON RULES THE FRAMING WALK HAS NO OPINION
-        // ABOUT — a reserved id in a file body is the one that matters (§3.1,
-        // §3.3) — so a body that stopped is still asked the framing question,
-        // and a body whose framing ends early is damage whatever else was
-        // wrong with it. This is the walk that used to run first, on the one
-        // path where it is not spent for nothing.
-        if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) )
-        {
-            BuffReset( value );
-            *to = before;
-            to->malformed = true;
-            return TableOpenDamaged;
-        }
-        return TableOpenBodyStopped;
-    }
-    if ( r.offset != body_bytes )
+    // have met: nothing is decoded and one event is counted (§3).
+    if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) )
     {
         BuffReset( value );
-        *to = before;
         to->malformed = true;
         return TableOpenDamaged;
     }
+    TableReader r( buffer + 1, body_bytes, to, &table );
+    r.nested = false; // the ROOT body, the one that may carry a node table
+    if ( !BuffLoadBody( r, value ) ) { return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
@@ -7522,48 +7330,16 @@ inline TableOpenVerdict DebuffLoadVerdict( Debuff & value, const uint8_t * buffe
     }
     // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
     // MALFORMED, because no field claims it and the two ends of the file
-    // have met: nothing is decoded and one event is counted (§3). THE READ
-    // ITSELF ANSWERS THAT, and it is asked AFTER the walk instead of before
-    // it: a body that returned at its own zero reference left the cursor on
-    // the byte after that reference, and a root body's terminator is its
-    // LAST byte. Every field leaves the cursor exactly where the framing
-    // walk's skip would — a length-framed field ends at its own L, whatever
-    // it did or refused to do inside it — so the two walks find the same
-    // terminator in the same place, and one walk answers what two used to.
-    //
-    // NOTHING IS DECODED ON THE DAMAGED PATH, and that is the whole of it:
-    // the value goes back to its declared defaults and the report goes back
-    // to what the caller handed in, so a body that ends early counts no
-    // unknown, no kind mismatch and no clamp for the fields it happened to
-    // carry before the end — exactly as when the framing walk refused this
-    // file before the reader had seen one byte of it.
-    const TableReport before = *to;
-    TableReader r( buffer + 1, body_bytes, to, &table );
-    r.nested = false; // the ROOT body, the one that may carry a node table
-    if ( !DebuffLoadBody( r, value ) )
-    {
-        // THE READING WALK STOPS ON RULES THE FRAMING WALK HAS NO OPINION
-        // ABOUT — a reserved id in a file body is the one that matters (§3.1,
-        // §3.3) — so a body that stopped is still asked the framing question,
-        // and a body whose framing ends early is damage whatever else was
-        // wrong with it. This is the walk that used to run first, on the one
-        // path where it is not spent for nothing.
-        if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) )
-        {
-            DebuffReset( value );
-            *to = before;
-            to->malformed = true;
-            return TableOpenDamaged;
-        }
-        return TableOpenBodyStopped;
-    }
-    if ( r.offset != body_bytes )
+    // have met: nothing is decoded and one event is counted (§3).
+    if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) )
     {
         DebuffReset( value );
-        *to = before;
         to->malformed = true;
         return TableOpenDamaged;
     }
+    TableReader r( buffer + 1, body_bytes, to, &table );
+    r.nested = false; // the ROOT body, the one that may carry a node table
+    if ( !DebuffLoadBody( r, value ) ) { return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
