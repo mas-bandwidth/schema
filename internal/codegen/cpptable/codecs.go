@@ -347,13 +347,13 @@ func (g *tableGen) emitTableResetDeclarations(members []*ir.Struct) {
 }
 
 func (g *tableGen) emitTableReset(st *ir.Struct) {
-	if !st.IsTable {
-		// a closure `type` is declared in <Base>.h and bounded by a packet: one
-		// value-init says exactly what its own initializers say, and costs the
-		// size of a packet field to compile
-		g.pf("inline void %sReset( %s & value ) { value = %s(); }\n\n", st.Name, st.Name, st.Name)
-		return
-	}
+	owner := g.owner
+	g.owner = st
+	defer func() { g.owner = owner }()
+	// A closure `type` shares packet storage, but table defaults are this
+	// wire's: an absent counted array is empty even when its packet constructor
+	// starts at a positive minimum. Reset members through the table rules so
+	// that distinction also reaches nested values and every backing array slot.
 	g.pf("inline void %sReset( %s & value )\n{\n", st.Name, st.Name)
 	if len(st.Fields) == 0 {
 		g.pf("    (void) value;\n")
@@ -410,7 +410,7 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 		g.pf("    memset( value.%s, 0, sizeof( value.%s ) );\n", f.Name, f.Name)
 		g.pf("    value.%s_length = 0;\n", f.Name)
 	case f.KeyEnum != "":
-		g.emitTableResetArray("value."+f.Name+".slots", f.ArrayBound, typ, selfInit, f)
+		g.emitTableResetArray(g.keyedSlots("value.", f), f.ArrayBound, typ, selfInit, f)
 	case f.Array == ir.ArrayFixed:
 		g.emitTableResetArray("value."+f.Name, f.ArrayBound, typ, selfInit, f)
 	case f.Array == ir.ArrayCounted:
@@ -754,6 +754,11 @@ func (g *tableGen) emitArrayBodyMeasure(f *ir.Field, elemKind int, into, n, acce
 		g.pf("%sfor ( int32_t %s = 0; %s < %s; %s++ )\n%s{\n", ind, i, i, n, i, ind)
 		g.pf("%s    const int64_t elem_bytes%s = %s;\n", ind, sfx, g.measureCall(f, f.Type.Name, fmt.Sprintf(access, i)))
 		g.pf("%s    if ( elem_bytes%s < 0 ) { %s }\n", ind, sfx, onBad)
+		if g.elemCache != "" {
+			// KEPT FOR THE WRITE LOOP BELOW: the element's own length prefix
+			// is this number, and re-deriving it walks the element again
+			g.pf("%s    if ( %s < %d ) { %s[ %s ] = elem_bytes%s; }\n", ind, i, g.elemCacheSlots, g.elemCache, i, sfx)
+		}
 		g.pf("%s    %s += %s;\n%s}\n", ind, into, framed("elem_bytes"+sfx), ind)
 	case tkEnum:
 		g.pf("%sfor ( int32_t %s = 0; %s < %s; %s++ )\n%s{\n", ind, i, i, n, i, ind)
@@ -1202,12 +1207,48 @@ func (g *tableGen) emitArrayBodyWrite(f *ir.Field, elemKind int, n, access, ind,
 	g.pf("%s}\n", ind)
 }
 
+// openElemCache declares the SIZING LOOP'S SCRATCH for one measure-then-write
+// pair over an array of TABLE elements, and answers a restore. Only that pair
+// takes one: a table element is the only element kind whose length prefix is a
+// measure, and the two loops have to stand in the same scope for the number to
+// cross between them.
+//
+// THE RETAIN FAMILY TAKES NONE, deliberately. Its MeasureBodyRetain is not the
+// pure length function the plain one is: TableRetainRecordWire fills each
+// record's own scratch slots as it measures (internal/codegen/cpptable/
+// retain.go:1108), so a measure there establishes state a later pass reads.
+// The saving is not worth reasoning about that, and the retain family is not
+// the profiled path.
+func (g *tableGen) openElemCache(f *ir.Field, elemKind int, bound int64, ind, sfx string) func() {
+	wasName, wasSlots := g.elemCache, g.elemCacheSlots
+	restore := func() { g.elemCache, g.elemCacheSlots = wasName, wasSlots }
+	if elemKind != tkTable || g.retain {
+		g.elemCache, g.elemCacheSlots = "", 0
+		return restore
+	}
+	slots := int64(kElemCacheSlots)
+	if bound > 0 && bound < slots {
+		slots = bound
+	}
+	g.elemCache, g.elemCacheSlots = "elem_cache"+sfx, slots
+	g.pf("%s// %s: the sizing loop's per-element lengths, kept for the write loop\n", ind, f.Name)
+	g.pf("%s// below — the element's own length prefix is the number the parent's\n", ind)
+	g.pf("%s// body length was built from, so measuring it twice can only agree.\n", ind)
+	g.pf("%sint64_t %s[ %d ];\n", ind, g.elemCache, slots)
+	return restore
+}
+
 // emitArrayField writes a whole array FIELD: the header, the body's own
 // length — measured first, because a canonical LEB128 cannot be patched in
 // place — and the body.
 func (g *tableGen) emitArrayField(f *ir.Field, id uint64, elemKind int, n, access, ind string) {
 	g.pf("%sconst uint64_t ref_%s = %s;\n", ind, f.Name, g.wireRef(id))
 	g.pf("%sint64_t body_%s = 0;\n", ind, f.Name)
+	// the count is bounded by the field's declared bound on every path that
+	// reaches here — a counted array checks it as a storage invariant before
+	// it measures, a fixed one IS the bound — so the cache need be no larger
+	restore := g.openElemCache(f, elemKind, f.ArrayBound, ind, "")
+	defer restore()
 	g.emitArrayBodyMeasure(f, elemKind, "body_"+f.Name, n, access, ind, "return false;", "")
 	g.pf("%sw.putleb( ref_%s ); w.put8( %d ); w.putleb( (uint64_t) body_%s ); // %s\n", ind, f.Name, tkArray, f.Name, f.Name)
 	g.emitArrayBodyWrite(f, elemKind, n, access, ind, "")
@@ -1485,7 +1526,19 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind, sfx s
 	case tkF64:
 		g.pf("%sw.put64( table_double_to_bits( %s ) );\n", ind, expr)
 	case tkTable:
-		g.pf("%s{\n%s    const int64_t elem_len%s = %s;\n", ind, ind, sfx, g.measureCall(f, f.Type.Name, expr))
+		g.pf("%s{\n", ind)
+		if g.elemCache != "" {
+			// THE SIZING LOOP ABOVE ALREADY MEASURED THIS ELEMENT, and its
+			// answer is what the parent's body length was built from — so it
+			// is also the only length prefix that can agree with it. Above the
+			// cache's last slot the element is measured again, which is what
+			// every element did before this cache existed.
+			g.pf("%s    const int64_t elem_len%s = %s < %d ? %s[ %s ] : %s;\n",
+				ind, sfx, g.elemIndex, g.elemCacheSlots, g.elemCache, g.elemIndex,
+				g.measureCall(f, f.Type.Name, expr))
+		} else {
+			g.pf("%s    const int64_t elem_len%s = %s;\n", ind, sfx, g.measureCall(f, f.Type.Name, expr))
+		}
 		g.pf("%s    if ( elem_len%s < 0 ) return false;\n", ind, sfx)
 		g.pf("%s    w.putleb( (uint64_t) elem_len%s );\n", ind, sfx)
 		g.pf("%s    if ( !%s ) return false;\n%s}\n", ind, g.saveCall(f, f.Type.Name, expr), ind)

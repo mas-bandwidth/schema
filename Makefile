@@ -3072,6 +3072,13 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	$(MAKE) projection-union-arm-order-negative-control
 	./build/schema_test_tables
 	./build/schema_test_tables_asan
+	# THE ID TABLE'S DISTINCTNESS GATE (docs/SPEC-TABLES.md §3): TableOpen
+	# answers "one id in two entries" two ways, and the corpus above takes
+	# only one of them, so the gate below builds the other one's tables by
+	# hand and holds both against a pairwise reference. Its control removes
+	# the probe's comparison and requires the gate to go red.
+	$(MAKE) tables-distinctness
+	$(MAKE) tables-distinctness-negative-control
 	# THE WIRE FUZZER (docs/SPEC-TABLES.md §4.2): the tolerant read on hostile
 	# bytes against the engine, plain and sanitized, at a short random pass —
 	# the enumerated passes run whole whatever N is — and its two controls at
@@ -4467,6 +4474,65 @@ build/wire-fuzz-cpp-asan: build/tables-generated/.stamp test/tables/wire_fuzz_ma
 		-fno-omit-frame-pointer -g $(CONFORMANCE_INCLUDES) test/tables/wire_fuzz_main.cpp \
 		$(CONFORMANCE_SOURCES) -o $@
 
+# THE ID TABLE'S DISTINCTNESS GATE (docs/SPEC-TABLES.md §3): a table that
+# carries one id twice is malformed, and TableOpen answers that question TWO
+# ways — a hashed PROBE over a stack array up to kTableProbeBound entries, the
+# pairwise walk above it. The property is that a READER CANNOT TELL WHICH ONE
+# RAN, and a corpus cannot say so on its own, because every table this schema
+# writes is small and takes the same walk. So this gate builds tables BY HAND,
+# drives TableOpen directly and compares every verdict against an independent
+# pairwise reference: both sides of the bound, a repeat planted at every
+# position, and the ALL-COLLIDING table a hostile writer builds by inverting
+# the multiply.
+#
+# It is built THREE ways because the check is READ SIDE and a read-side check
+# never compiles out (§3.4): the debug build, an NDEBUG release build that has
+# to reach the same verdict on the same bytes, and a sanitized one, for the
+# reason the wire fuzzer carries its own — the probe indexes a stack array.
+# The generated header is the whole dependency, which is also what "the codec
+# is header-only and names no runtime" means when a leg says it.
+.PHONY: tables-distinctness
+tables-distinctness: build/tables-generated/.stamp test/tables/distinct_main.cpp
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/examples \
+		test/tables/distinct_main.cpp -o build/schema_test_distinct
+	./build/schema_test_distinct
+	$(CXX) $(TABLES_CXXFLAGS) -DNDEBUG -O2 -Ibuild/tables-generated/examples \
+		test/tables/distinct_main.cpp -o build/schema_test_distinct_ndebug
+	./build/schema_test_distinct_ndebug
+	$(CXX) $(TABLES_CXXFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all \
+		-fno-omit-frame-pointer -g -Ibuild/tables-generated/examples \
+		test/tables/distinct_main.cpp -o build/schema_test_distinct_asan
+	./build/schema_test_distinct_asan
+	@echo "distinctness gate: one verdict across both walks, debug, release and sanitized"
+
+# ITS NEGATIVE CONTROL. A gate over a check that is correct TWICE cannot be
+# read for which walk earned the green: the pairwise walk alone would answer
+# every case in this test correctly if the bound never sent anything down the
+# fast path. So this removes the PROBE's comparison from a copy of the emitter,
+# leaves the pairwise walk untouched, and requires the gate to go red ON THE
+# PROBE'S OWN CASES — which is also the standing proof that the bound is live.
+.PHONY: tables-distinctness-negative-control
+tables-distinctness-negative-control: bin/schema test/tables/distinct_main.cpp
+	@rm -rf build/distinct-nc && mkdir -p build/distinct-nc
+	@sed -e 's|if ( seen\[s\] == id ) { return TableOpenDamaged; }|if ( false \&\& seen[s] == id ) { return TableOpenDamaged; } // SABOTAGED|' \
+		internal/codegen/cpptable/cpptable.go > build/distinct-nc/cpptable.go.txt
+	@cmp -s build/distinct-nc/cpptable.go.txt internal/codegen/cpptable/cpptable.go && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/distinct-nc/cpptable.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/distinct-nc/overlay.json
+	go build -overlay=build/distinct-nc/overlay.json -o build/distinct-nc/schema ./cmd/schema
+	./build/distinct-nc/schema generate --lang cpp --out build/distinct-nc/examples tables/examples
+	@grep -q SABOTAGED build/distinct-nc/examples/TablesTable.h || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter did not reach the header"; exit 1; }
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/distinct-nc/examples \
+		test/tables/distinct_main.cpp -o build/distinct-nc/schema_test_distinct
+	@if ./build/distinct-nc/schema_test_distinct > build/distinct-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the gate stayed green with the probe's comparison removed"; exit 1; \
+	fi
+	@grep -q "^FAIL probe:" build/distinct-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on a probe case"; cat build/distinct-nc/log; exit 1; }
+	@echo "negative control: removing the probe's comparison turns the distinctness gate RED on the probe's own cases"
+
 .PHONY: tables-wire-fuzz
 tables-wire-fuzz: build/conformance-harness build/wire-fuzz-cpp build/wire-fuzz-cpp-asan
 	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp --seed $(SEED) --n $(N)
@@ -5275,6 +5341,8 @@ conformance-negative-control-block-dump: build/conformance-harness build/conform
 .PHONY: tables-ports-refuse-wide-scalars
 tables-ports-refuse-wide-scalars: bin/schema
 	@rm -rf build/tables-wide-refusal && mkdir -p build/tables-wide-refusal
+	# Successful probe output is a fixture, outside the compiler's Go module.
+	@printf 'module wide-scalar-probe\n\ngo 1.26\n' > build/tables-wide-refusal/go.mod
 	@carry=0; refuse=0; \
 	for lang in $(patsubst make/%.mk,%,$(wildcard make/*.mk)); do \
 		if ./bin/schema generate --lang $$lang --out build/tables-wide-refusal/$$lang tables/scalars > build/tables-wide-refusal/$$lang.log 2>&1; then \
