@@ -66,6 +66,7 @@ inline uint64_t bench_rng( uint64_t rng )
 }
 
 const int MaxNumRuns = 7;       // median of 7 (N >= 5), after 1 warmup run
+static long g_iterations = 0; /* explicit diagnostic count; defaults stay standard */
 static int g_num_runs = MaxNumRuns; // --round K drops this to 1 (§2.4: one warmup + one measured run per round; the driver aggregates across rounds)
 static bool g_gate = false;
 static bool g_quick = false;    // --quick: bench_mixed only, 3 measured runs — the iteration instrument, never the certification instrument
@@ -294,7 +295,7 @@ template <typename T, typename WriteFn, typename ReadFn>
 static void bench_datadriven( const char * name, const char * golden, long base_iters,
                               WriteFn write_fn, ReadFn read_fn )
 {
-    const long iters = base_iters / IterScale;
+    const long iters = g_iterations ? g_iterations : base_iters / IterScale;
 
     const int64_t bytes_per_op = load_variants( name );
     if ( bytes_per_op < 0 )
@@ -640,6 +641,17 @@ int main( int argc, char ** argv )
             g_wire_dir = argv[++i];
         else if ( strcmp( argv[i], "--variant-dir" ) == 0 && i + 1 < argc )
             g_variant_dir = argv[++i];
+        else if ( strcmp( argv[i], "--iterations" ) == 0 && i + 1 < argc )
+        {
+            char * end = NULL;
+            long n = strtol( argv[++i], &end, 10 );
+            if ( end == argv[i] || *end != '\0' || n <= 0 || n > 2147483584L || n % NumVariants != 0 )
+            {
+                fprintf( stderr, "--iterations requires a positive multiple of 64 up to 2147483584\n" );
+                return 1;
+            }
+            g_iterations = n;
+        }
         else if ( strcmp( argv[i], "--round" ) == 0 && i + 1 < argc )
         {
             // §2.4: one warmup + one measured run of every benchmark, then
@@ -658,7 +670,7 @@ int main( int argc, char ** argv )
             g_quick = true;
         else
         {
-            fprintf( stderr, "usage: %s [--gate] [--csv] [--round K] [--quick] [--wire-dir <dir>] [--variant-dir <dir>]\n", argv[0] );
+            fprintf( stderr, "usage: %s [--gate] [--csv] [--round K] [--iterations N] [--quick] [--wire-dir <dir>] [--variant-dir <dir>]\n", argv[0] );
             return 1;
         }
     }

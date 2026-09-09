@@ -431,6 +431,14 @@ type sample struct {
 }
 
 func parseRows(data []byte, lang, wire, id string) ([]sample, error) {
+	iterations := int64(4000000)
+	if wire == "table" {
+		iterations = 400000
+	}
+	return parseRowsForIterations(data, lang, wire, id, iterations, 0.2)
+}
+
+func parseRowsForIterations(data []byte, lang, wire, id string, wantIterations int64, minimumSeconds float64) ([]sample, error) {
 	r := csv.NewReader(bytes.NewReader(data))
 	r.FieldsPerRecord = -1
 	rows := []sample{}
@@ -472,14 +480,10 @@ func parseRows(data []byte, lang, wire, id string) ([]sample, error) {
 			return nil, errors.New("invalid bytes/op")
 		}
 		iters, e := strconv.ParseInt(cols[3], 10, 64)
-		wantIterations := int64(4000000)
-		if wire == "table" {
-			wantIterations = 400000
-		}
 		if e != nil || iters != wantIterations {
-			return nil, errors.New("iterations must be 4,000,000 packet or 400,000 table operations")
+			return nil, fmt.Errorf("iterations must match requested count %d", wantIterations)
 		}
-		if float64(iters)/rate < 0.2 {
+		if float64(iters)/rate < minimumSeconds {
 			return nil, fmt.Errorf("%s/%s/%s measured run below 200ms", lang, wire, cols[2])
 		}
 		if cols[6] != cols[8] || cols[7] != cols[8] {
@@ -789,12 +793,17 @@ func renderReport(dir string, writeOutputs bool) error {
 	return nil
 }
 func main() {
-	mode := flag.String("mode", "gate", "build, gate, run, or render")
+	mode := flag.String("mode", "gate", "build, gate, fast diagnostic, run confirmation, or render")
 	out := flag.String("out", "", "new results directory (or existing directory for render)")
 	langsFlag := flag.String("langs", "cpp,c,go,cs", "comma-separated required build/gate languages")
 	rounds := flag.Int("rounds", 7, "interleaved measured rounds")
 	reuse := flag.Bool("reuse-build", false, "use previously hashed binaries and corpus")
 	receipt := flag.String("quiet-window", "", "operator READY/START receipt or reference, required for run")
+	fastRounds := flag.Int("fast-rounds", 1, "complete diagnostic rounds (1..3), fast mode only")
+	packetIters := flag.Int64("packet-iters", 2000000, "initial Packet iterations per warmup/sample, fast mode only")
+	tableIters := flag.Int64("table-iters", 200000, "initial Table iterations per warmup/sample, fast mode only")
+	fastTimeout := flag.Duration("fast-timeout", 5*time.Minute, "whole fast-mode deadline, at most 5m including gates")
+	noise := flag.String("noise-note", "uncontrolled diagnostic; no quiet-window claim", "operator context recorded by fast mode")
 	flag.Parse()
 	fail := func(e error) { fmt.Fprintln(os.Stderr, "paired:", e); os.Exit(1) }
 	if _, e := os.Stat("bench/corpus/Bench.schema"); e != nil {
@@ -814,13 +823,22 @@ func main() {
 		}
 		return
 	}
-	if *mode != "build" && *mode != "gate" && *mode != "run" {
+	if *mode != "build" && *mode != "gate" && *mode != "run" && *mode != "fast" {
 		fail(errors.New("unknown mode"))
 	}
 	if *mode == "run" && strings.TrimSpace(*receipt) == "" {
 		fail(errors.New("run requires -quiet-window with the operator’s READY/START receipt or reference"))
 	}
-	if !*reuse {
+	fast := fastConfig{Rounds: *fastRounds, PacketIterations: *packetIters, TableIterations: *tableIters, Timeout: *fastTimeout, Noise: *noise}
+	if *mode == "fast" {
+		if len(langs) != 4 {
+			fail(errors.New("fast mode requires all four languages"))
+		}
+		if e := fast.validate(); e != nil {
+			fail(e)
+		}
+	}
+	if !*reuse && *mode != "fast" {
 		if e := generateAndBuild(langs); e != nil {
 			fail(e)
 		}
@@ -828,6 +846,12 @@ func main() {
 	info, e := readBuild()
 	if e != nil {
 		fail(e)
+	}
+	if *mode == "fast" {
+		if e := fastMeasure(langs, *out, info, fast); e != nil {
+			fail(e)
+		}
+		return
 	}
 	if *mode == "build" {
 		return

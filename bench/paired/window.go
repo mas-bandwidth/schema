@@ -240,8 +240,12 @@ type quietWindow struct {
 }
 
 func windowSnapshot(phase string) (windowSample, error) {
+	return windowSnapshotContext(context.Background(), phase)
+}
+
+func windowSnapshotContext(parent context.Context, phase string) (windowSample, error) {
 	sample := windowSample{Date: time.Now().UTC().Format(time.RFC3339Nano), Phase: phase}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "ps", "-A", "-o", "pid=,ppid=,pcpu=,stat=,comm=")
 	cmd.Env = append(os.Environ(), "LC_ALL=C")
@@ -254,7 +258,7 @@ func windowSnapshot(phase string) (windowSample, error) {
 		return sample, err
 	}
 	if runtime.GOOS == "darwin" {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(parent, 2*time.Second)
 		defer cancel()
 		data, err = exec.CommandContext(ctx, "sysctl", "-n", "vm.loadavg").Output()
 	} else {

@@ -14,14 +14,62 @@ The driver refuses any different checks axes. Full semantics, raw timings and
 methodology live in the result directory's `DETAILS.md`.
 
 ```sh
-# Build every leg and verify both wires; no timing.
-go run ./bench/paired -mode gate
+# Prepare once per source checkpoint: driver, all legs, and correctness gates.
+go build -o bin/schema-paired ./bench/paired
+bin/schema-paired -mode gate
 
-# During an exclusive measurement window, use those hashed binaries.
-go run ./bench/paired -mode run -reuse-build \
+# Fast iteration on the designated profiling host, reusing the cached build.
+bin/schema-paired -mode fast -out build/paired-fast/<iteration> \
+  -noise-note 'profiling reservation and current background-work context'
+
+# Slower confirmation, during an exclusive measurement window.
+bin/schema-paired -mode run -reuse-build \
   -quiet-window 'operator READY/START coordination reference' \
   -out bench/paired/results/<sitting>
 ```
+
+Fast mode never builds or generates. It requires a clean checkpoint with an
+existing all-language build whose source, host, runtime settings, binaries and
+corpora still match. It runs the existing correctness gates before any clocks,
+then one complete round across all four languages and both wires. Each path
+retains one discarded warmup at its requested sample count. Packet `--quick`
+skips the unrelated bitpacker workload.
+
+The initial counts are 2,000,000 Packet operations and 200,000 Table
+operations, both whole rotations of the unchanged 64 records. `-packet-iters`
+and `-table-iters` override these defaults. Every accepted write and
+round-trip sample still needs at least 200 ms, derived from its recorded
+iterations and measured rate. A short sample raises the count for that wire's
+whole group, never for the short leg alone: BENCH-STANDARD §2.1 fixes one
+count per benchmark, identical across every language, so all four languages
+are measured again at the largest whole-rotation count any of them needed, at
+most three uniform attempts. All attempts remain in the evidence; only those
+at the final count supply a row, so one table cannot mix counts. `fast.json`
+records that final count per wire and the generated `README.md` states it
+once. `-fast-rounds 2` or `3` requests additional complete rounds, rotating
+language order and alternating each language's wire order.
+
+The target is about one minute, with a five-minute deadline including gates.
+The initial duration model halves a previously observed approximately 104-second
+all-eight Space round, then removes Packet bitpacker work; fixed startup/JIT and
+gate costs do not halve. This is an estimate, not a measured guarantee for a new
+machine or revision. `-fast-timeout` can shorten the deadline but cannot exceed
+five minutes. Timeout kills only the current owned runner and retains incomplete
+evidence in the printed temporary directory. Final file bookkeeping may follow
+the deadline. A slow or noisy machine can fail to complete an adequate pass.
+
+`fast.json` records the build, actual commands and counts, measured sample
+durations, attempts, noise warnings and artifact hashes. Process/load
+snapshots use the same bounded calls as confirmation, but foreign work
+qualifies this diagnostic instead of refusing it. `README.md` reports median
+costs and the matched ratios. At one round its Range column is degenerate —
+the single measured value is its own minimum and maximum — so it reads as zero
+variance by construction, not as measured stability. One round does not
+establish stability; a warmup at the requested count does not prove
+managed-runtime steady state. Fast results are explicitly **not certified**:
+no bracketing drift controls, quiet-window verdict or confirmation seal is
+produced. Use the separate seven-round confirmation mode for accepted
+performance claims. Its counts, controls and validation are unchanged.
 
 Run from the repository root. The tool needs the C, C++, Go and .NET toolchains
 and the same sibling serialize runtimes as the standard packet pass. `CC`,
