@@ -473,10 +473,30 @@ func (g *tableGen) wireFieldHelper(st *ir.Struct, f *ir.Field) string {
 	return g.sym(st.Name, "wire_"+f.Name)
 }
 
+// Keep the same bounded per-array sizing scratch as C++: the first 64 plain
+// table elements can reuse their measured length when the array is written.
+// Retained and variable tables keep their existing traversal unchanged.
+func (g *tableGen) wireElementCacheSlots(st *ir.Struct, f *ir.Field) int64 {
+	if g.retain || g.isVar(st.Name) || f.IsList() || f.IsMap() ||
+		f.Array == ir.ArrayNone || f.KeyEnum != "" || f.Type.Pointer ||
+		ir.TableWireScalarKind(f) != tkTable || g.isVar(f.Type.Name) {
+		return 0
+	}
+	if f.ArrayBound < 64 {
+		return f.ArrayBound
+	}
+	return 64
+}
+
 func (g *tableGen) emitWireFieldHelper(st *ir.Struct, f *ir.Field) {
 	expr := "value->" + f.Name
 	kind := ir.TableWireScalarKind(f)
-	g.pf("static SCHEMA_UNUSED int %s( TableWriter * w, const %s * value )\n{\n", g.wireFieldHelper(st, f), st.Name)
+	cacheSlots := g.wireElementCacheSlots(st, f)
+	cacheArg := ""
+	if cacheSlots > 0 {
+		cacheArg = ", int64_t * element_sizes"
+	}
+	g.pf("static SCHEMA_UNUSED int %s( TableWriter * w, const %s * value%s )\n{\n", g.wireFieldHelper(st, f), st.Name, cacheArg)
 	if (f.Type.Kind == ir.TString && !f.Type.Blob()) || f.Type.Kind == ir.TWString || (f.Type.Kind == ir.TBytes && !f.Type.Blob()) {
 		g.pf("    if ( %s_length < 0 || %s_length > %d ) { return 0; }\n", expr, expr, f.Type.Size)
 	} else if f.Array == ir.ArrayCounted {
@@ -520,7 +540,17 @@ func (g *tableGen) emitWireFieldHelper(st *ir.Struct, f *ir.Field) {
 		g.pf("    int32_t i;\n    table_writer_put8( w, %d ); table_writer_leb( w, (uint64_t) %s );\n", kind, n)
 		g.pf("    for ( i = 0; i < %s; i++ )\n    {\n", n)
 		g.retainIndex(f, "i", "        ")
-		g.wirePayload(f, expr+"[i]", "        ")
+		if cacheSlots > 0 {
+			g.pf("        if ( element_sizes != NULL && i < %d )\n        {\n", cacheSlots)
+			g.pf("            if ( w->buffer == NULL )\n            {\n                int64_t begin = w->offset;\n")
+			g.pf("                if ( !%s( w, &%s[i] ) ) { return 0; }\n", g.api(f.Type.Name, "save_body"), expr)
+			g.pf("                element_sizes[i] = w->offset - begin;\n                table_writer_leb( w, (uint64_t) element_sizes[i] );\n            }\n            else\n            {\n")
+			g.pf("                table_writer_leb( w, (uint64_t) element_sizes[i] );\n                if ( !%s( w, &%s[i] ) ) { return 0; }\n            }\n        }\n        else\n        {\n", g.api(f.Type.Name, "save_body"), expr)
+			g.wirePayload(f, expr+"[i]", "            ")
+			g.pf("        }\n")
+		} else {
+			g.wirePayload(f, expr+"[i]", "        ")
+		}
 		g.pf("    }\n")
 	default:
 		panic("wire field helper on unframed field")
@@ -611,7 +641,12 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 		g.pf("            %s table_writer_put8( w, %d );\n", g.wireIdCall(ir.TableFieldWireId(f)), wireKind)
 		switch {
 		case framed:
-			g.wireFrame(fmt.Sprintf("%s( w, value )", g.wireFieldHelper(st, f)), "            ")
+			if slots := g.wireElementCacheSlots(st, f); slots > 0 {
+				g.pf("            int64_t element_sizes[%d]; /* bounded sizing-to-write cache */\n", slots)
+				g.wireFrame(fmt.Sprintf("%s( w, value, w->buffer != NULL ? element_sizes : NULL )", g.wireFieldHelper(st, f)), "            ")
+			} else {
+				g.wireFrame(fmt.Sprintf("%s( w, value )", g.wireFieldHelper(st, f)), "            ")
+			}
 
 		default:
 			g.wirePayload(f, expr, "            ")
