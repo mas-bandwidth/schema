@@ -161,13 +161,23 @@ C-like dialect of `serialize.h`, with library calls behind hooks (§13.9).
 C++ and C carry both storage classes. C# carries both classes and the current
 id-table file and bitpacked message forms, JSON, runtime cook writing, block
 construction, native regions, builders, retain-unknown and UnitView. Go carries
-these surfaces too. Rust, Dart, JavaScript, Elixir and Java carry no table
-wire: each emits the block and cook read halves only (schema#518, #514, #516,
-#515 and #517 bring the id-table wire to those ports). Every generated language has
+these surfaces too. Rust, Dart, Elixir and Java carry no table
+wire: each emits the block and cook read halves only (schema#518, #514,
+#515 and #517 bring the id-table wire to those ports). **JavaScript carries the
+FIXED form (§3.4) and nothing else**: form 3 is that port's first table wire —
+the write template, the plan-driven read and the vocabulary block — and it has
+no form 1 at all until schema#516 brings one. Its fixed form carries the
+fixed-point and 128-bit kinds §15 refuses that port's two ACCELERATORS, because
+§3.4's constant-size table fixes them; a table whose closure holds an OPTIONAL
+field is refused there by name, the JavaScript packet classes having no
+presence member for the present flag. Every generated language has
 a table backend; refusal is scoped to a construct, never the table declaration.
 
 **WIRE FORM STATUS.** Section 3's id-table form is carried by the C++
-reference, the compiler engine (`internal/tablewire`), C, C# and Go. The C codec uses
+reference, the compiler engine (`internal/tablewire`), C, C# and Go. Section
+3.4's FIXED form is carried by the C++ reference and by JavaScript, whose
+block, hash and record bytes are held against the reference's own over the
+paired bench's corpus (`tables-js-fixed-form`). The C codec uses
 full identities, canonical LEB128, first-use references, arm-kind framing,
 flat node records and verdict-bearing reports. Graph JSON, pointer arrays,
 byte/string blobs, wide scalars, fixed-point values, defaults and aliases ride

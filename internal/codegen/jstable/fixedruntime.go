@@ -1,0 +1,592 @@
+package jstable
+
+// fixedRuntime is the FIXED FORM's shared JavaScript runtime
+// (docs/SPEC-TABLES.md §3.4): the plan, the ONE read loop, the block reader,
+// the plan compiler and the sixty-four-bit hash. It is emitted ONCE PER UNIT
+// into the unit's <Package>Table.js, exactly as the block form's runtime is
+// (block.go), and every other module of the unit imports from there.
+//
+// THE READER'S OWN STORAGE IN THIS LANGUAGE IS THE CANONICAL BODY IMAGE.
+// JavaScript has no struct layout — no offsetof, no sizeof, no way to place a
+// field (jstable.go's opening statement) — so where the C++ reference's plan
+// lands bytes at `offsetof( T, member )` inside a struct, this one lands them
+// in a Uint8Array holding THIS BUILD's own declared order at THIS BUILD's own
+// widths. That image IS the wire's layout, so the identity plan's source and
+// destination are the same offsets and it coalesces to a single run; a plan
+// compiled from another writer's block moves, widens, clamps and remaps into
+// the same image through the same loop. A generated straight-line decode then
+// projects the image into the language's own objects, which is the step C++
+// gets for free because there a struct IS its bytes.
+//
+// NOTHING HERE ALLOCATES ON THE READ PATH. The plan's storage is the caller's,
+// declared by capacity, and a block whose plan does not fit is a refusal by
+// name — §3.3's rule for a resolved vocabulary, holding here unchanged.
+const fixedRuntime = `
+// ---------------------------------------------------------------------------
+// THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
+// ---------------------------------------------------------------------------
+
+export const TableFixedForm = 3;
+
+// An entry is SEVENTEEN BYTES and the block is a count and a run of them. THE
+// FORMAT NEVER MOVES, which is what lets a reader of this major parse a later
+// major's block and step over a kind it does not know by the size the entry
+// states.
+export const TableFixedEntryBytes = 17;
+
+// A PLAN ENTRY is eight int32 lanes of one flat Int32Array. A flat array of a
+// fixed stride is what keeps the read loop monomorphic: every lane is a
+// Smi, the loop never touches a property name, and nothing is allocated.
+export const TableFixedLanes = 8;
+const LANE_OP = 0, LANE_SRC = 1, LANE_DST = 2, LANE_SIZE = 3;
+const LANE_AUX = 4, LANE_GUARD = 5, LANE_ARG = 6, LANE_META = 7;
+
+// THE OPS ARE THE WHOLE SET. The IDENTITY plan carries only the first; the
+// others are what a plan compiled from another writer's block adds.
+const OP_COPY = 0;    // move size bytes
+const OP_COUNT = 1;   // a count: clamp it to the reader's own bound
+const OP_TEXT = 2;    // a length, then the units
+const OP_ORDINAL = 3; // a variant ordinal, remapped through the plan's own table
+const OP_WIDEN = 4;   // a narrower source into a wider destination
+const OP_CONST = 5;   // a constant this reader's own storage takes: a remapped union tag
+const OP_WIDENF = 6;  // f32 into f64, SPEC-TABLES §4's float rung
+
+// the flavours an OP_TEXT entry lands its units under
+const TEXT_UTF8 = 1, TEXT_WIDE = 2, TEXT_BYTES = 3;
+
+const NO_GUARD = -1;
+
+// WHY A READ WAS REFUSED, by name. None of these is one of §4's six events:
+// in each of them nothing was decoded and there is nothing to count.
+export const TableFixedRefusal = Object.freeze({
+  None: 0,
+  NewerForm: 1,      // a form byte this build does not carry
+  NoBlock: 2,        // a hash naming no block this reader holds
+  BlockMalformed: 3, // bytes handed to this form as a block that are not one
+  PlanTooLarge: 4,   // a block whose compiled plan does not fit the caller's storage
+  BatchTooLarge: 5,  // more records than the caller's capacity
+});
+
+// A REPORT is §4's six counters and the refusal beside them. The caller owns
+// it and the codec never makes one.
+export class TableFixedReport {
+  constructor() {
+    this.malformed = false;
+    this.refused = 0;
+    this.unknown = 0;
+    this.kindMismatch = 0;
+    this.clamped = 0;
+    this.widened = 0;
+    this.duplicate = 0;
+    this.hashLo = 0;
+    this.hashHi = 0;
+  }
+}
+
+export function TableFixedResetReport(report) {
+  report.malformed = false;
+  report.refused = 0;
+  report.unknown = 0;
+  report.kindMismatch = 0;
+  report.clamped = 0;
+  report.widened = 0;
+  report.duplicate = 0;
+  report.hashLo = 0;
+  report.hashHi = 0;
+  return report;
+}
+
+// THE PLAN'S STORAGE IS THE CALLER'S, DECLARED BY CAPACITY, AND THE CODEC
+// NEVER ALLOCATES. A caller makes one of these per peer and hands it in; a
+// block whose plan does not fit is a refusal by name, never a growth.
+export class TableFixedPlan {
+  constructor(entryCapacity, imageBytes, remapCapacity) {
+    this.entries = new Int32Array(entryCapacity * TableFixedLanes);
+    this.capacity = entryCapacity | 0;
+    this.count = 0;
+    // the reader's own storage: this build's declared order at its own widths
+    this.image = new Uint8Array(imageBytes | 0);
+    this.view = new DataView(this.image.buffer);
+    // the remap tables an OP_ORDINAL entry resolves through, laid down here
+    // rather than above the entries: JavaScript has no pointer to alias two
+    // arrays through, so the pool is its own array and aux is an index into it
+    this.remap = new Int32Array((remapCapacity | 0) || 1024);
+    this.remapUsed = 0;
+    this.recordBytes = 0;
+    this.hashLo = 0;
+    this.hashHi = 0;
+    this.ready = false;
+    this.overflow = false;
+  }
+}
+
+// A CACHE BY HASH: "the cost of the compile is paid once per peer rather than
+// once per record". The caller owns this too.
+export class TableFixedPlanCache {
+  constructor() {
+    this.plans = new Map();
+  }
+  get(hashLo, hashHi) {
+    return this.plans.get(hashHi * 4294967296 + (hashLo >>> 0));
+  }
+  put(hashLo, hashHi, plan) {
+    this.plans.set(hashHi * 4294967296 + (hashLo >>> 0), plan);
+    return plan;
+  }
+}
+
+// ---- the sixty-four-bit hash, without a BigInt -----------------------------
+//
+// THE HASH IS fnv1a64 OVER THE BLOCK'S BYTES, EXACTLY AS WRITTEN, and it is
+// the eight bytes every record carries. It is a wire identity and not a
+// security claim.
+//
+// It is carried as two uint32 lanes and multiplied in sixteen-bit limbs
+// because a BigInt would allocate, and a hash is compared ONCE PER RECORD:
+// getBigUint64 on that path is one allocation per record, which is the same
+// reason the block form reads its own sixty-four-bit fields as two uint32s.
+const TABLE_FIXED_HASH_OUT = new Int32Array(2); // single threaded per realm, consumed in the call that fills it
+
+export function TableFixedHashOf(bytes, at, length) {
+  let hLo = 0x84222325, hHi = 0xcbf29ce4; // the fnv1a64 offset basis
+  for (let i = 0; i < length; i++) {
+    hLo = (hLo ^ bytes[at + i]) >>> 0;
+    // h *= 0x100000001b3, keeping the low sixty-four bits
+    const a0 = hLo & 0xffff, a1 = hLo >>> 16;
+    const p00 = a0 * 0x01b3;
+    const p01 = a0 * 0x0000;
+    const p10 = a1 * 0x01b3;
+    const p11 = a1 * 0x0000;
+    const mid = (p00 >>> 16) + (p01 & 0xffff) + (p10 & 0xffff);
+    const lo = ((p00 & 0xffff) | (mid << 16)) >>> 0;
+    const hi = (p11 + (p01 >>> 16) + (p10 >>> 16) + (mid >>> 16)) >>> 0;
+    hHi = (hi + Math.imul(hLo, 0x00000100) + Math.imul(hHi, 0x000001b3)) >>> 0;
+    hLo = lo;
+  }
+  TABLE_FIXED_HASH_OUT[0] = hLo | 0;
+  TABLE_FIXED_HASH_OUT[1] = hHi | 0;
+  return TABLE_FIXED_HASH_OUT;
+}
+
+// ---- the little-endian reads the framing needs -----------------------------
+
+function getU32(bytes, at) {
+  return (bytes[at] | (bytes[at + 1] << 8) | (bytes[at + 2] << 16) | (bytes[at + 3] << 24)) >>> 0;
+}
+
+// ---- THE ONE READ LOOP -----------------------------------------------------
+//
+// A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE. Which plan it is handed
+// is the only thing that differs between reading this build's own record and
+// reading anybody else's — the owner's ruling, which §3.4 quotes him on: a
+// form whose cost moved when a peer shipped would be a performance cliff at
+// exactly the moment a deployment cannot afford one.
+export function TableFixedRun(plan, entryCount, src, srcAt, dst, remap, report) {
+  const e = plan;
+  for (let i = 0; i < entryCount; i++) {
+    const b = i * TableFixedLanes;
+    const guard = e[b + LANE_GUARD];
+    // an entry belonging to an ARM runs only under its own tag
+    if (guard !== NO_GUARD && src[srcAt + guard] !== e[b + LANE_ARG]) { continue; }
+    const s = srcAt + e[b + LANE_SRC];
+    const d = e[b + LANE_DST];
+    const size = e[b + LANE_SIZE];
+    switch (e[b + LANE_OP]) {
+      case OP_COPY: {
+        // A RUN IS A SMALL, KNOWN NUMBER OF BYTES. The C++ reference writes
+        // this as overlapping unaligned word moves; JavaScript has no unaligned
+        // word move to write it with, so it is the byte loop the language does
+        // have, and set(subarray()) is refused because a subarray allocates a
+        // view PER RECORD on the one path that must not allocate.
+        for (let k = 0; k < size; k++) { dst[d + k] = src[s + k]; }
+        break;
+      }
+      case OP_COUNT: {
+        let v = getU32(src, s) | 0;
+        if (v < 0) { v = 0; report.clamped++; }
+        else if (v > size) { v = size; report.clamped++; }
+        dst[d] = v & 0xff; dst[d + 1] = (v >>> 8) & 0xff;
+        dst[d + 2] = (v >>> 16) & 0xff; dst[d + 3] = (v >>> 24) & 0xff;
+        break;
+      }
+      case OP_TEXT: {
+        const unit = e[b + LANE_ARG] === TEXT_WIDE ? 2 : 1;
+        const cap = (size / unit) | 0;
+        let v = getU32(src, s) | 0;
+        if (v < 0) { v = 0; report.clamped++; }
+        else if (v > cap) { v = cap; report.clamped++; }
+        dst[d] = v & 0xff; dst[d + 1] = (v >>> 8) & 0xff;
+        dst[d + 2] = (v >>> 16) & 0xff; dst[d + 3] = (v >>> 24) & 0xff;
+        const aux = e[b + LANE_AUX];
+        for (let k = 0; k < size; k++) { dst[aux + k] = src[s + 4 + k]; }
+        break;
+      }
+      case OP_ORDINAL: {
+        // A VARIANT ORDINAL IS ITS POSITION IN THE BLOCK, so a writer whose
+        // enum gained a variant IN THE MIDDLE is remapped here and never
+        // reinterpreted.
+        let raw = 0;
+        for (let k = 0; k < size; k++) { raw |= src[s + k] << (8 * k); }
+        raw = raw >>> 0;
+        const table = e[b + LANE_AUX];
+        let v = 0;
+        if (raw !== 0 && raw <= remap[table]) { v = remap[table + raw]; }
+        const width = e[b + LANE_META] & 0xff;
+        for (let k = 0; k < width; k++) { dst[d + k] = (v >>> (8 * k)) & 0xff; }
+        break;
+      }
+      case OP_WIDEN: {
+        // TWO'S COMPLEMENT WIDENS BY ITS SIGN BIT, which is the whole reason a
+        // widen is an op and not a short copy.
+        const width = e[b + LANE_META] & 0xff;
+        const sign = (e[b + LANE_META] >>> 8) & 1;
+        let fill = 0;
+        if (sign !== 0 && (src[s + size - 1] & 0x80) !== 0) { fill = 0xff; }
+        for (let k = 0; k < width; k++) { dst[d + k] = k < size ? src[s + k] : fill; }
+        report.widened++;
+        break;
+      }
+      case OP_WIDENF: {
+        // every f32 value is exactly representable in an f64, infinities and
+        // NaN payloads included, so there is nothing to round and nothing to lose
+        TABLE_FIXED_CONV.setUint8(0, src[s]); TABLE_FIXED_CONV.setUint8(1, src[s + 1]);
+        TABLE_FIXED_CONV.setUint8(2, src[s + 2]); TABLE_FIXED_CONV.setUint8(3, src[s + 3]);
+        TABLE_FIXED_CONV.setFloat64(8, TABLE_FIXED_CONV.getFloat32(0, true), true);
+        for (let k = 0; k < 8; k++) { dst[d + k] = TABLE_FIXED_CONV.getUint8(8 + k); }
+        report.widened++;
+        break;
+      }
+      case OP_CONST: {
+        const v = e[b + LANE_AUX];
+        for (let k = 0; k < size; k++) { dst[d + k] = (v >>> (8 * k)) & 0xff; }
+        break;
+      }
+      default: break;
+    }
+  }
+}
+
+// the sixteen-byte conversion scratch — the flat packet tier's SC twin. Module
+// scope is safe: single threaded per realm, consumed in the same op that fills it.
+const TABLE_FIXED_CONV = new DataView(new ArrayBuffer(16));
+
+// ---- THE BLOCK -------------------------------------------------------------
+
+// A BLOCK VIEW is the bytes and the entry count. Every read of an entry is
+// arithmetic on the seventeen-byte stride, so nothing is parsed twice and
+// nothing is materialised.
+export class TableFixedBlockView {
+  constructor() {
+    this.bytes = null;
+    this.at = 0;
+    this.count = 0;
+  }
+}
+
+// AN ID IS COMPARED, NEVER ARITHMETIC, so it rides as two uint32 lanes and a
+// comparison is two comparisons — no BigInt on a path walked per entry.
+export function TableFixedIdLo(b, i) { return getU32(b.bytes, b.at + 4 + i * TableFixedEntryBytes); }
+export function TableFixedIdHi(b, i) { return getU32(b.bytes, b.at + 8 + i * TableFixedEntryBytes); }
+export function TableFixedKind(b, i) { return b.bytes[b.at + 4 + i * TableFixedEntryBytes + 8]; }
+export function TableFixedSize(b, i) { return getU32(b.bytes, b.at + 4 + i * TableFixedEntryBytes + 9); }
+export function TableFixedChildren(b, i) { return getU32(b.bytes, b.at + 4 + i * TableFixedEntryBytes + 13); }
+
+function sameId(a, ai, b, bi) {
+  return TableFixedIdLo(a, ai) === TableFixedIdLo(b, bi) && TableFixedIdHi(a, ai) === TableFixedIdHi(b, bi);
+}
+
+// TableFixedSubtree is how many entries the subtree rooted at i occupies, so a
+// walk steps over a child it does not want without knowing what is in it.
+// THIS IS WHAT MAKES SKIPPING FREE: an unknown field, and an unknown NESTED
+// TYPE, are stepped over by the size their entry states.
+export function TableFixedSubtree(b, i) {
+  if (i < 0 || i >= b.count) { return 1; }
+  const children = TableFixedChildren(b, i);
+  let n = 1, at = i + 1;
+  for (let c = 0; c < children; c++) {
+    // A CHILD COUNT THAT DOES NOT CLOSE IS block_malformed (§3.4), so the
+    // overrun is SIGNALLED and not stepped around: an entry claiming a child
+    // the block does not hold must fail the whole-block check, or the plan
+    // compiler walks past the last entry it has.
+    if (at >= b.count) { return -1; }
+    const sub = TableFixedSubtree(b, at);
+    if (sub < 0) { return -1; }
+    at += sub;
+    n += sub;
+  }
+  return n;
+}
+
+function unionArmBytes(b, i) {
+  const children = TableFixedChildren(b, i);
+  let widest = 0, at = i + 1;
+  for (let k = 0; k < children; k++) {
+    const s = TableFixedSize(b, at);
+    if (s > widest) { widest = s; }
+    at += TableFixedSubtree(b, at);
+  }
+  return widest;
+}
+
+function tagBytes(b, i) { return TableFixedSize(b, i) - unionArmBytes(b, i); }
+
+// A BLOCK IS REFUSED WHOLE OR NOT AT ALL: a count that overruns, a tree that
+// does not close. It sets nothing on its way out.
+export function TableFixedParseBlock(bytes, at, length, out) {
+  if (bytes === null || length < 4) { return false; }
+  const count = getU32(bytes, at);
+  if (count === 0 || count * TableFixedEntryBytes + 4 !== length) { return false; }
+  out.bytes = bytes;
+  out.at = at;
+  out.count = count;
+  // THE TREE HAS TO CLOSE: the root's subtree is the whole block
+  if (TableFixedSubtree(out, 0) !== out.count) {
+    out.bytes = null; out.at = 0; out.count = 0;
+    return false;
+  }
+  return true;
+}
+
+// ---- THE PLAN COMPILER -----------------------------------------------------
+//
+// The SAME LOOP runs over this plan as over the identity plan. What the
+// compiler does, ONCE PER PEER, is what a read would otherwise do once per
+// record: map the writer's ids onto this reader's fields; leave a field it
+// cannot name OUT of the plan, which is what skips it, by arithmetic that was
+// going to step past it anyway; and leave a field the writer does not carry
+// out too, which is what defaults it, because the prefill already put the
+// declared default there.
+
+// MY SIDE of the block, five int32 lanes per entry of my own block: the
+// storage facts a block entry cannot carry. In C++ these are offsetof rows;
+// here they are offsets into the canonical image.
+const DST_LANES = 5;
+const DST_OFF = 0, DST_STRIDE = 1, DST_AUX = 2, DST_COUNTED = 3, DST_ARG = 4;
+
+function push(plan, op, src, dst, size, aux, guard, arg, meta) {
+  if (plan.count >= plan.capacity) { plan.overflow = true; return; }
+  const b = plan.count * TableFixedLanes;
+  const e = plan.entries;
+  e[b + LANE_OP] = op;
+  e[b + LANE_SRC] = src;
+  e[b + LANE_DST] = dst;
+  e[b + LANE_SIZE] = size;
+  e[b + LANE_AUX] = aux;
+  e[b + LANE_GUARD] = guard;
+  e[b + LANE_ARG] = arg;
+  e[b + LANE_META] = meta;
+  plan.count++;
+}
+
+// §4'S WIDENING RUNGS, and the fixed form spends no rule of its own on them: a
+// kind that GREW since the writer decodes at the writer's width and lands
+// exactly, counting one widened. Coming back DOWN the ladder, or across two of
+// them, is a kind that MOVED and is reported rather than reinterpreted.
+function widens(from, to) {
+  if (from >= 6 && from <= 9 && to >= 6 && to <= 9) { return to > from; } // u8 .. u64
+  if (from >= 2 && from <= 5 && to >= 2 && to <= 5) { return to > from; } // i8 .. i64
+  return from === 10 && to === 11;                                        // f32 -> f64
+}
+
+function signedKind(kind) { return kind >= 2 && kind <= 5; }
+
+function layRemap(plan, values, n) {
+  const need = n + 1;
+  if (plan.remapUsed + need > plan.remap.length) { plan.overflow = true; return 0; }
+  const at = plan.remapUsed;
+  plan.remap[at] = n;
+  for (let i = 0; i < n; i++) { plan.remap[at + 1 + i] = values[i]; }
+  plan.remapUsed += need;
+  return at;
+}
+
+const REMAP_SCRATCH = new Int32Array(256); // an enum's remap, built then laid down
+
+// matchChildren walks a TABLE's children on both sides, by id.
+function matchChildren(plan, theirs, ti, theirAt, mine, mi, dst, myAt, guard, arg, report) {
+  const theirChildren = TableFixedChildren(theirs, ti);
+  const myChildren = TableFixedChildren(mine, mi);
+  let myChild = mi + 1;
+  for (let k = 0; k < myChildren; k++) {
+    let theirChild = ti + 1;
+    let theirOff = theirAt;
+    for (let j = 0; j < theirChildren; j++) {
+      if (sameId(theirs, theirChild, mine, myChild)) {
+        compileEntry(plan, theirs, theirChild, theirOff, mine, myChild, dst, myAt, guard, arg, report);
+        break;
+      }
+      theirOff += TableFixedSize(theirs, theirChild);
+      theirChild += TableFixedSubtree(theirs, theirChild);
+    }
+    myChild += TableFixedSubtree(mine, myChild);
+  }
+  // EVERY FIELD OF THEIRS I COULD NOT NAME IS ONE unknown
+  let tcAt = ti + 1;
+  for (let j = 0; j < theirChildren; j++) {
+    let named = false;
+    let mcAt = mi + 1;
+    for (let k = 0; k < myChildren; k++) {
+      if (sameId(mine, mcAt, theirs, tcAt)) { named = true; break; }
+      mcAt += TableFixedSubtree(mine, mcAt);
+    }
+    if (!named) { report.unknown++; }
+    tcAt += TableFixedSubtree(theirs, tcAt);
+  }
+}
+
+function compileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, guard, arg, report) {
+  const theirKind = TableFixedKind(theirs, ti);
+  const myKind = TableFixedKind(mine, mi);
+  const theirSize = TableFixedSize(theirs, ti);
+  const mySize = TableFixedSize(mine, mi);
+  const row = mi * DST_LANES;
+  const at = myAt + dst[row + DST_OFF];
+  const auxAt = myAt + dst[row + DST_AUX];
+  if (theirKind !== myKind) {
+    if (widens(theirKind, myKind)) {
+      const op = theirKind === 10 ? OP_WIDENF : OP_WIDEN;
+      push(plan, op, theirAt, at, theirSize, 0, guard, arg,
+        (mySize & 0xff) | (signedKind(theirKind) ? 0x100 : 0));
+      return;
+    }
+    // A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4).
+    report.kindMismatch++;
+    return;
+  }
+  switch (myKind) {
+    case 35: { // the OPTIONAL wrapper: the present byte, then the payload whole
+      push(plan, OP_COPY, theirAt, auxAt, 1, 0, guard, arg, 0);
+      compileEntry(plan, theirs, ti + 1, theirAt + 1, mine, mi + 1, dst, myAt, guard, arg, report);
+      break;
+    }
+    case 13: { // a nested table: match its fields
+      matchChildren(plan, theirs, ti, theirAt, mine, mi, dst, at, guard, arg, report);
+      break;
+    }
+    case 14: { // an array: the count, then min( their bound, my bound ) elements
+      const theirElem = TableFixedSize(theirs, ti + 1);
+      const myElem = TableFixedSize(mine, mi + 1);
+      const head = dst[row + DST_COUNTED] ? 4 : 0;
+      const theirN = theirElem ? ((theirSize - head) / theirElem) | 0 : 0;
+      const myN = myElem ? ((mySize - head) / myElem) | 0 : 0;
+      if (dst[row + DST_COUNTED]) {
+        push(plan, OP_COUNT, theirAt, auxAt, myN, 0, guard, arg, 0);
+      }
+      const theirBase = theirAt + head;
+      const n = theirN < myN ? theirN : myN;
+      for (let i = 0; i < n; i++) {
+        compileEntry(plan, theirs, ti + 1, theirBase + i * theirElem,
+          mine, mi + 1, dst, at + i * dst[row + DST_STRIDE], guard, arg, report);
+      }
+      break;
+    }
+    case 16: { // an enum-keyed array: every slot, matched by the KEY's id
+      const theirKeyChildren = TableFixedChildren(theirs, ti + 1);
+      const myKeyChildren = TableFixedChildren(mine, mi + 1);
+      const theirElemAt = ti + 1 + TableFixedSubtree(theirs, ti + 1);
+      const myElemAt = mi + 1 + TableFixedSubtree(mine, mi + 1);
+      const theirElemSize = TableFixedSize(theirs, theirElemAt);
+      for (let k = 0; k < myKeyChildren; k++) {
+        for (let j = 0; j < theirKeyChildren; j++) {
+          if (!sameId(theirs, ti + 2 + j, mine, mi + 2 + k)) { continue; }
+          compileEntry(plan, theirs, theirElemAt, theirAt + j * theirElemSize,
+            mine, myElemAt, dst, at + k * dst[row + DST_STRIDE], guard, arg, report);
+          break;
+        }
+      }
+      break;
+    }
+    case 15: { // a union: the tag, remapped, then each arm matched by id
+      const theirTag = tagBytes(theirs, ti);
+      const myTag = tagBytes(mine, mi);
+      const theirArms = TableFixedChildren(theirs, ti);
+      const myArms = TableFixedChildren(mine, mi);
+      let myArm = mi + 1;
+      for (let k = 0; k < myArms; k++) {
+        let theirArm = ti + 1;
+        for (let j = 0; j < theirArms; j++) {
+          if (sameId(theirs, theirArm, mine, myArm)) {
+            // MY tag value, written under THEIR tag's guard
+            push(plan, OP_CONST, theirAt, auxAt, myTag, k + 1, theirAt, j + 1, 0);
+            compileEntry(plan, theirs, theirArm, theirAt + theirTag,
+              mine, myArm, dst, at, theirAt, j + 1, report);
+            break;
+          }
+          theirArm += TableFixedSubtree(theirs, theirArm);
+        }
+        myArm += TableFixedSubtree(mine, myArm);
+      }
+      break;
+    }
+    case 30: { // an enum: the ordinal is the block's position, so it remaps
+      const theirVariants = TableFixedChildren(theirs, ti);
+      const myVariants = TableFixedChildren(mine, mi);
+      const n = theirVariants < 255 ? theirVariants : 255;
+      for (let j = 0; j < n; j++) {
+        let landed = 0;
+        for (let k = 0; k < myVariants; k++) {
+          if (sameId(mine, mi + 1 + k, theirs, ti + 1 + j)) { landed = k + 1; break; }
+        }
+        REMAP_SCRATCH[j] = landed;
+      }
+      const table = layRemap(plan, REMAP_SCRATCH, n);
+      push(plan, OP_ORDINAL, theirAt, at, theirSize, table, guard, arg, mySize & 0xff);
+      break;
+    }
+    case 12: case 33: { // text
+      const units = (mySize - 4) < (theirSize - 4) ? (mySize - 4) : (theirSize - 4);
+      push(plan, OP_TEXT, theirAt, at, units, auxAt, guard, dst[row + DST_ARG], 0);
+      break;
+    }
+    default: {
+      if (theirSize === mySize) {
+        push(plan, OP_COPY, theirAt, at, mySize, 0, guard, arg, 0);
+      } else if (theirSize < mySize && mySize <= 8) {
+        push(plan, OP_WIDEN, theirAt, at, theirSize, 0, guard, arg, mySize & 0xff);
+      } else {
+        report.kindMismatch++;
+      }
+      break;
+    }
+  }
+}
+
+// THE COALESCER, and it is the only optimization a plan compiler performs: two
+// neighbouring COPY entries whose source and destination both advance together
+// are one entry. It is performed identically on both sides.
+function coalesce(plan) {
+  const e = plan.entries;
+  let out = 0;
+  for (let i = 0; i < plan.count; i++) {
+    const b = i * TableFixedLanes;
+    if (out > 0) {
+      const p = (out - 1) * TableFixedLanes;
+      if (e[p + LANE_OP] === OP_COPY && e[b + LANE_OP] === OP_COPY &&
+          e[p + LANE_GUARD] === e[b + LANE_GUARD] && e[p + LANE_ARG] === e[b + LANE_ARG] &&
+          e[p + LANE_SRC] + e[p + LANE_SIZE] === e[b + LANE_SRC] &&
+          e[p + LANE_DST] + e[p + LANE_SIZE] === e[b + LANE_DST]) {
+        e[p + LANE_SIZE] += e[b + LANE_SIZE];
+        continue;
+      }
+    }
+    const o = out * TableFixedLanes;
+    for (let k = 0; k < TableFixedLanes; k++) { e[o + k] = e[b + k]; }
+    out++;
+  }
+  plan.count = out;
+}
+
+// TableFixedCompile builds the plan for ANOTHER writer's block against my own,
+// and answers how many entries it wrote, or -1 when it did not fit.
+export function TableFixedCompile(theirs, myBlock, myDst, plan, report) {
+  const mine = new TableFixedBlockView();
+  if (!TableFixedParseBlock(myBlock, 0, myBlock.length, mine)) { return -1; }
+  plan.count = 0;
+  plan.remapUsed = 0;
+  plan.overflow = false;
+  matchChildren(plan, theirs, 0, 0, mine, 0, myDst, 0, NO_GUARD, 0, report);
+  if (plan.overflow) { return -1; }
+  coalesce(plan);
+  return plan.count;
+}
+`

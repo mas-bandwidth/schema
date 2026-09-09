@@ -344,6 +344,67 @@ generated/bench/js/.stamp: bin/schema $(SCHEMAS_BENCH)
 	@touch $@
 
 
+# ---------------------------------------------------------------------------
+# THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
+# ---------------------------------------------------------------------------
+#
+# THE BYTES ARE THE C++ REFERENCE'S, and that is the whole point of this gate.
+# The reference writes the paired bench's own sixty-four logical records with
+# its form-3 writer and states their values beside them; the JavaScript leg
+# reads that file, checks every field against those values, writes it back, and
+# the bytes must be IDENTICAL. bench/paired has no JavaScript half to run the
+# matched gate through (bench/paired/{go,cs} are the two it has), so this is
+# that gate's shape for this port: the reference is the oracle, at gate time,
+# over the same corpus.
+#
+# Beside it rides the VERSIONING CONFORMANCE — the FX1/FX2 pair the C++ leg
+# uses (test/tables/fixedform_main.cpp), read the same way here — and the
+# negative controls, of which the one §3.4 names is a reader given the WRONG
+# PLAN for a record, which must come out wrong.
+build/js-fixed-corpus/.stamp: generated/bench/paired/cpp/.stamp test/bench/fixedform_corpus.cpp bench/corpus/variants/bench_mixed.variants.bin
+	@mkdir -p build/js-fixed-corpus
+	$(CXX) $(CXXFLAGS) -Igenerated/bench/paired/cpp test/bench/fixedform_corpus.cpp -o build/js-fixed-corpus/corpus
+	./build/js-fixed-corpus/corpus bench/corpus/variants/bench_mixed.variants.bin \
+		build/js-fixed-corpus/bench_fixed.bin build/js-fixed-corpus/bench_fixed.oracle.json
+	@touch $@
+
+build/js-fixed/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema test/tables/FX1.schema test/tables/FX2.schema make/js.mk
+	@mkdir -p build/js-fixed
+	./bin/schema generate --lang js --out build/js-fixed/bench bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	./bin/schema generate --lang js --out build/js-fixed/fx1 test/tables/FX1.schema
+	./bin/schema generate --lang js --out build/js-fixed/fx2 test/tables/FX2.schema
+	@touch $@
+
+.PHONY: tables-js-fixed-form
+tables-js-fixed-form: build/js-fixed/.stamp build/js-fixed-corpus/.stamp
+	cd $(CURDIR) && $(NODE) test/js-tables/fixedform.mjs build/js-fixed build/js-fixed-corpus
+
+# ITS NEGATIVE CONTROL: move one byte of the write template and the leg must go
+# red against the reference's corpus. Without this the byte comparison could be
+# comparing a file with itself and nobody would know.
+.PHONY: tables-js-fixed-form-negative-control
+tables-js-fixed-form-negative-control: bin/schema build/js-fixed-corpus/.stamp
+	@rm -rf build/js-fixed-sabotage && mkdir -p build/js-fixed-sabotage
+	@sed 's|g.pf("%sview.setInt32(%s, %s.%sLength, true);\\n", ind, off(base, at), val, name)|g.pf("%sview.setInt32(%s, %s.%sLength + 1, true);\\n", ind, off(base, at), val, name) // SABOTAGED|' \
+		internal/codegen/jstable/fixedjs.go > build/js-fixed-sabotage/fixedjs.go.txt
+	@grep -q SABOTAGED build/js-fixed-sabotage/fixedjs.go.txt || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/jstable/fixedjs.go":"%s/build/js-fixed-sabotage/fixedjs.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/js-fixed-sabotage/overlay.json
+	@go build -overlay=build/js-fixed-sabotage/overlay.json -o build/js-fixed-sabotage/schema ./cmd/schema
+	@./build/js-fixed-sabotage/schema generate --lang js --out build/js-fixed-sabotage/bench bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	@./build/js-fixed-sabotage/schema generate --lang js --out build/js-fixed-sabotage/fx1 test/tables/FX1.schema
+	@./build/js-fixed-sabotage/schema generate --lang js --out build/js-fixed-sabotage/fx2 test/tables/FX2.schema
+	@if $(NODE) test/js-tables/fixedform.mjs build/js-fixed-sabotage build/js-fixed-corpus \
+			> build/js-fixed-sabotage/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a string length one byte off left the fixed form green"; \
+		cat build/js-fixed-sabotage/log; exit 1; \
+	fi
+	@grep -q "first byte differing from the C++ reference" build/js-fixed-sabotage/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the fixed form went red for another reason"; cat build/js-fixed-sabotage/log; exit 1; }
+	@echo 'tables JS fixed form negative control: one byte off the write template reds the reference byte match'
+
+
 # THE JAVASCRIPT LEG of `make test`: the table accelerator gates and their
 # negative controls, the runtime-home gate, and the packet tests in both node modes.
 .PHONY: test-js
@@ -359,6 +420,8 @@ test-js: toolchain-js generated/js/.stamp generated/js-ludicrous/.stamp generate
 	$(MAKE) tables-js-alloc-negative-control
 	$(MAKE) tables-js-runtime-home
 	$(MAKE) tables-js-runtime-home-negative-control
+	$(MAKE) tables-js-fixed-form
+	$(MAKE) tables-js-fixed-form-negative-control
 	cd test/js && $(NODE) main.mjs && NODE_ENV=production $(NODE) main.mjs
 	cd test/js-ludicrous && $(NODE) main.mjs && NODE_ENV=production $(NODE) main.mjs
 
