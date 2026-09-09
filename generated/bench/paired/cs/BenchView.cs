@@ -7,6 +7,8 @@
 // unit's protocol id.
 
 using System;
+using System.Buffers.Binary;
+using System.Runtime.InteropServices;
 
 namespace Bench
 {
@@ -262,7 +264,7 @@ namespace Bench
             return BenchPacketTableInfo.Instance;
         }
 
-        private static readonly UnitViewInfo tableUnitView = new UnitViewInfo { Package = "bench", ProtocolId = 0x8d12c3149393f40ful,
+        private static readonly UnitViewInfo tableUnitView = new UnitViewInfo { Package = "bench", ProtocolId = 0xc93127c82f083edful,
         Types = new ViewType[] { new ViewType { Name = "BenchBits", File = "Bench.schema", Table = false, TypeRef = BenchBitsTableType, Doc = "", Tags = new string[] {  } },
         new ViewType { Name = "BenchInts", File = "Bench.schema", Table = false, TypeRef = BenchIntsTableType, Doc = "", Tags = new string[] {  } },
         new ViewType { Name = "BenchMixed", File = "Bench.schema", Table = false, TypeRef = BenchMixedTableType, Doc = "", Tags = new string[] {  } },

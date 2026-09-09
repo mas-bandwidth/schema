@@ -269,7 +269,7 @@ func fastMeasure(langs []string, out string, info buildInfo, config fastConfig) 
 	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
 		return errors.New("fast process monitoring requires Linux or macOS")
 	}
-	if info.Dirty || gitValue(".", "status", "--porcelain") != "" {
+	if len(langs) == 4 && (info.Dirty || gitValue(".", "status", "--porcelain") != "") {
 		return errors.New("fast mode requires a clean source/build checkpoint")
 	}
 	if out == "" {
@@ -278,10 +278,10 @@ func fastMeasure(langs []string, out string, info buildInfo, config fastConfig) 
 	if _, err := os.Stat(out); !os.IsNotExist(err) {
 		return errors.New("refusing to overwrite diagnostic directory")
 	}
-	for _, lang := range languages {
+	for _, lang := range langs {
 		for _, wire := range []string{"packet", "table"} {
 			if info.Binaries[binary(wire, lang)] == "" {
-				return fmt.Errorf("cached build lacks %s/%s; run the all-language gate first", lang, wire)
+				return fmt.Errorf("cached build lacks %s/%s; run the gate first", lang, wire)
 			}
 		}
 	}
@@ -383,7 +383,7 @@ func fastMeasure(langs []string, out string, info buildInfo, config fastConfig) 
 	if rel, err := filepath.Rel(abs("."), abs(tmp)); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		statusArgs = append(statusArgs, ":(exclude,top,literal)"+filepath.ToSlash(rel))
 	}
-	if gitValue(".", statusArgs...) != "" {
+	if len(langs) == 4 && gitValue(".", statusArgs...) != "" {
 		return errors.New("source changed during fast diagnostic")
 	}
 	if err := writeFastSummary(tmp, f.evidence); err != nil {
@@ -437,8 +437,20 @@ func writeFastSummary(dir string, e fastEvidence) error {
 	}
 	median := map[string]float64{}
 	var text strings.Builder
-	fmt.Fprintf(&text, "# Fast iteration diagnostic — not certified\n\n%s\n\nOperator context: %s\n\n%d observed noise warnings; see fast.json and process-samples.jsonl. Every accepted sample is at least 200ms. Short attempts are retained but excluded below. Costs use the median of the adequate rounds; one round does not establish stability.\n\nOne iteration count per wire, identical across all four languages and every round (BENCH-STANDARD §2.1): %s Packet and %s Table operations per warmup and per measured sample. A short leg raised the count for its whole group, never for itself alone. At one round the Range column is degenerate — the single value is its own minimum and maximum — so it reads as zero variance by construction, not as measured stability.\n\n| Language | Wire | Path | Median µs/op | Range µs/op |\n|---|---|---|---:|---:|\n", e.Qualification, e.Config.Noise, len(e.Noise), grouped(e.FinalCounts["packet"]), grouped(e.FinalCounts["table"]))
+	var langs []string
 	for _, lang := range languages {
+		for _, attempt := range e.Attempts {
+			if attempt.Language == lang {
+				langs = append(langs, lang)
+				break
+			}
+		}
+	}
+	if len(langs) == 0 {
+		langs = languages
+	}
+	fmt.Fprintf(&text, "# Fast iteration diagnostic — not certified\n\n%s\n\nOperator context: %s\n\n%d observed noise warnings; see fast.json and process-samples.jsonl. Every accepted sample is at least 200ms. Short attempts are retained but excluded below. Costs use the median of the adequate rounds; one round does not establish stability.\n\nOne iteration count per wire, identical across all four languages and every round (BENCH-STANDARD §2.1): %s Packet and %s Table operations per warmup and per measured sample. A short leg raised the count for its whole group, never for itself alone. At one round the Range column is degenerate — the single value is its own minimum and maximum — so it reads as zero variance by construction, not as measured stability.\n\n| Language | Wire | Path | Median µs/op | Range µs/op |\n|---|---|---|---:|---:|\n", e.Qualification, e.Config.Noise, len(e.Noise), grouped(e.FinalCounts["packet"]), grouped(e.FinalCounts["table"]))
+	for _, lang := range langs {
 		for _, wire := range []string{"packet", "table"} {
 			for _, path := range []string{"write", "round_trip"} {
 				key := lang + "/" + wire + "/" + path
@@ -458,14 +470,15 @@ func writeFastSummary(dir string, e fastEvidence) error {
 		}
 	}
 	fastest := math.Inf(1)
-	for _, lang := range languages {
+	for _, lang := range langs {
 		fastest = math.Min(fastest, median[lang+"/table/round_trip"])
 	}
 	text.WriteString("\n| Language | Fixed Table % | vs Packet Wire % |\n|---|---:|---:|\n")
-	for _, lang := range languages {
+	for _, lang := range langs {
 		table := median[lang+"/table/round_trip"]
 		fmt.Fprintf(&text, "| %s | %.1f%% | %.1f%% |\n", names[lang], 100*table/fastest, 100*table/median[lang+"/packet/round_trip"])
 	}
 	text.WriteString("\n" + checksDetails + "\n\nConfirmation remains the separate seven-round `-mode run` protocol. This directory has no confirmation seal.\n")
+	fmt.Print(text.String())
 	return os.WriteFile(filepath.Join(dir, "README.md"), []byte(text.String()), 0644)
 }
