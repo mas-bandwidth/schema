@@ -191,7 +191,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		if g.home {
 			g.needsMath = true
 			g.needsUnsafe() // the descriptor surface's reset column takes an unsafe.Pointer
-			g.pf("%s", tableRuntimeForUnit(regional)+tableRefusalSource+tableWireRuntime(u)+tableMessageRuntime(u))
+			g.pf("%s", tableRuntimeForUnit(regional)+tableRefusalSource+tableWireRuntime(u)+tableMessageRuntime(u)+tableFixedRuntime)
 			g.pf("%s", tableCookWriteSource(u))
 			if regional {
 				g.emitRegionRuntime(blocks)
@@ -258,6 +258,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 				}
 			}
 		}
+		g.emitFixedForm(members)
 		if len(members) > 0 {
 			g.pf("// ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----\n\n")
 			for _, st := range members {

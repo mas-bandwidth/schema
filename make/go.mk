@@ -55,6 +55,11 @@ generated/go/.stamp: bin/schema $(SCHEMAS)
 # is ONE walk, and the way to hold that is to compare the emitted bytes. One
 # walker per unit — Go emits it into <Home>TableJson.go — and the same bytes in
 # every unit of the corpus.
+.PHONY: tables-go-fixedform
+tables-go-fixedform:
+	go test ./internal/codegen/gotable -run 'TestFixedForm' -count=1
+test-go: tables-go-fixedform
+
 .PHONY: tables-go-json-walk
 tables-go-json-walk: build/tables-generated-go/.stamp
 	@rm -rf build/json-walk-go && mkdir -p build/json-walk-go
