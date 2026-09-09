@@ -77,7 +77,7 @@ func (g *tableGen) emitWireField(f *ir.Field, expr, ind string) {
 		if !f.Type.Optional {
 			cond = g.emitFieldRides(f, expr, i)
 		}
-		g.pf("%sif %s {\n%s w.IdAt(%d, 0x%016x); w.Put8(%d)\n", i, cond, i, g.knownOrdinal(ir.TableFieldWireId(f)), ir.TableFieldWireId(f), kind)
+		g.pf("%sif %s {\n%s w.Header(w.Ids.RefAt(%d, 0x%016x), %d)\n", i, cond, i, g.knownOrdinal(ir.TableFieldWireId(f)), ir.TableFieldWireId(f), kind)
 		g.emitWireValue(f, expr, "w", i+"\t", true)
 		g.pf("%s}\n%s}\n", i, ind)
 		return
@@ -96,7 +96,7 @@ func (g *tableGen) emitWireField(f *ir.Field, expr, ind string) {
 	if f.Type.Optional {
 		cond = "true"
 	}
-	g.pf("%sif %s {\n%s if w.Measuring { w.Advance(tableLebBytes(ref)+1+payload.Offset) } else {\n%s  w.Ids.Truncate(start); w.PutLeb(ref); w.Put8(%d)\n", i, cond, i, i, kind)
+	g.pf("%sif %s {\n%s if w.Measuring { w.Advance(tableLebBytes(ref)+1+payload.Offset) } else {\n%s  w.Ids.Truncate(start); w.Header(ref, %d)\n", i, cond, i, i, kind)
 	g.emitWireValue(f, expr, "w", i+"\t\t", true)
 	g.pf("%s }\n%s} else { w.Ids.Truncate(mark) }\n%s}\n", i, i, ind)
 }
@@ -334,7 +334,7 @@ func (g *tableGen) emitWireUnion(un *ir.Union, expr, writer, ind string) {
 		}
 		g.pf("%sref := %s.Ids.RefAt(%d, 0x%016x)\n", i, writer, g.knownOrdinal(ir.TableWireId(v.WireName())), ir.TableWireId(v.WireName()))
 		if v.Void() {
-			g.pf("%s%s.PutLeb(ref); %s.Put8(32); %s.PutLeb(0)\n", i, writer, writer, writer)
+			g.pf("%s%s.Header(ref, 32); %s.PutLeb(0)\n", i, writer, writer)
 			continue
 		}
 		savedIndex, savedArm := g.retainIndex, g.retainArm
@@ -348,7 +348,7 @@ func (g *tableGen) emitWireUnion(un *ir.Union, expr, writer, ind string) {
 		arm := g.unionArmExpr(un, v, expr)
 		g.pf("%sstart := %s.Ids.Count; %s := TableWriter{Measuring:true, Ids:%s.Ids}\n", i, writer, payload, writer)
 		g.emitWireValue(v.F, arm, payload, i, false)
-		g.pf("%sif %s.Overflow { return false }; %s.PutLeb(ref); %s.Put8(%d); %s.PutLeb(uint64(%s.Offset))\n", i, payload, writer, writer, kind, writer, payload)
+		g.pf("%sif %s.Overflow { return false }; %s.Header(ref, %d); %s.PutLeb(uint64(%s.Offset))\n", i, payload, writer, kind, writer, payload)
 		g.pf("%sif %s.Measuring { %s.Advance(%s.Offset) } else {\n%s %s.Ids.Truncate(start)\n", i, writer, writer, payload, i, writer)
 		g.emitWireValue(v.F, arm, writer, i+"\t", false)
 		g.pf("%s}\n", i)
@@ -384,7 +384,7 @@ func (g *tableGen) emitWireScalar(f *ir.Field, expr, writer, ind string) {
 	default:
 		width := ir.TableKindWidth(kind) * 8
 		if width == 128 {
-			g.pf("%s%s.Put64(%s.Lo); %s.Put64(%s.Hi)\n", ind, writer, expr, writer, expr)
+			g.pf("%s%s.Put128(%s.Lo, %s.Hi)\n", ind, writer, expr, expr)
 		} else {
 			g.pf("%s%s.Put%d(uint%d(%s))\n", ind, writer, width, width, expr)
 		}

@@ -30,7 +30,7 @@ func TestRefAtShape(t *testing.T) {
 		"func (ids *TableIds) RefAt(ordinal int, id uint64)",
 		"func (w *TableWriter) IdAt(ordinal int, id uint64)",
 		"ids.slot[o] = 0",
-		"w.IdAt(",
+		"w.Header(w.Ids.RefAt(",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("RefAt is missing %q", want)

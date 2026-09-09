@@ -81,8 +81,7 @@ func FixedTableSaveBody(w *TableWriter, value *FixedTable) bool {
 				w.Advance(tableLebBytes(ref) + 1 + payload.Offset)
 			} else {
 				w.Ids.Truncate(start)
-				w.PutLeb(ref)
-				w.Put8(13)
+				w.Header(ref, 13)
 				{
 					mark := w.Ids.Count
 					n := BenchMixedMeasureBody(&value.Value, w.Ids)
