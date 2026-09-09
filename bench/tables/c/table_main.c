@@ -19,6 +19,10 @@
  * Output: a human table on stderr; with --csv, CSV v2 rows on stdout.
  */
 
+#if defined( __linux__ ) && !defined( _POSIX_C_SOURCE )
+#define _POSIX_C_SOURCE 199309L
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

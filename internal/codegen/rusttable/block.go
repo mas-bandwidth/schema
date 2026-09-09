@@ -37,7 +37,7 @@ func generateBlocks(u *ir.Unit, blocks *ir.BlockUnit, banner string) (map[string
 	}
 	for base, tables := range byFile {
 		sort.Slice(tables, func(i, j int) bool { return tables[i].Table.Name < tables[j].Table.Name })
-		b := &blockGen{unit: u, blocks: blocks}
+		b := &blockGen{unit: u}
 		for _, bl := range tables {
 			b.emitBlock(bl)
 		}
@@ -174,7 +174,6 @@ pub struct TableBlockInfo {
 
 type blockGen struct {
 	unit           *ir.Unit
-	blocks         *ir.BlockUnit
 	body           strings.Builder
 	emittedRecords map[string]bool // one descriptor per record per module
 }

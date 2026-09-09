@@ -1752,7 +1752,7 @@ static SCHEMA_UNUSED int schema_tabledemo_effect_wire_save_( TableWriter * w, co
     {
         case EFFECT_TYPE_NONE: table_writer_leb( w, 0 ); break;
         case EFFECT_TYPE_BUFF:
-            table_writer_id_at( w, 153, 0xffb5be9be2e469ccull ); table_writer_put8( w, 13 );
+            table_writer_header_at( w, 153, 0xffb5be9be2e469ccull, 13 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -1768,7 +1768,7 @@ static SCHEMA_UNUSED int schema_tabledemo_effect_wire_save_( TableWriter * w, co
             }
             break;
         case EFFECT_TYPE_DEBUFF:
-            table_writer_id_at( w, 10, 0x13cdc5ede73d2fd7ull ); table_writer_put8( w, 13 );
+            table_writer_header_at( w, 10, 0x13cdc5ede73d2fd7ull, 13 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
