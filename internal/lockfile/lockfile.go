@@ -1001,11 +1001,11 @@ func parseHex(tok, key string) (uint64, error) {
 func parseHeld(val string) (string, uint64, error) {
 	name, rest, ok := strings.Cut(val, "@")
 	if !ok || name == "" {
-		return "", 0, fmt.Errorf("held=%q is not Name@0x...", val)
+		return "", 0, fmt.Errorf("held=%q is not Name@0x plus a hash", val)
 	}
 	h, err := strconv.ParseUint(strings.TrimPrefix(rest, "0x"), 16, 64)
 	if err != nil {
-		return "", 0, fmt.Errorf("held=%q is not Name@0x...", val)
+		return "", 0, fmt.Errorf("held=%q is not Name@0x plus a hash", val)
 	}
 	return name, h, nil
 }
