@@ -138,6 +138,15 @@ func (w *TableWriter) Put64(v uint64) {
 	if w.Advance(8) && !w.Measuring { binary.LittleEndian.PutUint64(w.Buffer[at:], v) }
 }
 
+// Put128 writes two little-endian lanes, low first, under one Advance.
+func (w *TableWriter) Put128(lo, hi uint64) {
+	at := w.Offset
+	if w.Advance(16) && !w.Measuring {
+		binary.LittleEndian.PutUint64(w.Buffer[at:], lo)
+		binary.LittleEndian.PutUint64(w.Buffer[at+8:], hi)
+	}
+}
+
 func (w *TableWriter) PutLeb(v uint64) {
 	// Groups assemble in a ten-byte stack buffer and go to Raw once. Spelling
 	// is the old loop's, group for group. One Advance covers the value; raw's
@@ -153,6 +162,19 @@ func (w *TableWriter) PutLeb(v uint64) {
 
 func (w *TableWriter) Id(id uint64) { w.PutLeb(w.Ids.Ref(id)) }
 func (w *TableWriter) IdAt(ordinal int, id uint64) { w.PutLeb(w.Ids.RefAt(ordinal, id)) }
+
+// Header writes a field's reference and kind. A reference below 128 is one
+// LEB byte, so the pair is one two-byte store. Larger references still go
+// through PutLeb then Put8. Bytes match that two-call spelling; a pair that
+// does not fit now leaves the buffer alone, and Save answers -1.
+func (w *TableWriter) Header(ref uint64, kind uint8) {
+	if ref < 128 {
+		w.Put16(uint16(ref) | uint16(kind)<<8)
+		return
+	}
+	w.PutLeb(ref)
+	w.Put8(kind)
+}
 
 func (w *TableWriter) Trailer() {
 	for i := 0; i < w.Ids.Count; i++ { w.Put64(w.Ids.Values[i]) }
