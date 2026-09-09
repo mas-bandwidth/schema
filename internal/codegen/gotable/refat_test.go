@@ -60,6 +60,29 @@ func TestRefAtSharedFieldAndEnumKeyId(t *testing.T) {
 	runGenerated(t, refAtSharedIdSchema, refAtSharedIdTest)
 }
 
+func TestEnumWriterUsesRefAt(t *testing.T) {
+	files := generate(t, refAtSharedIdSchema)
+	body := ""
+	for name, data := range files {
+		if strings.HasSuffix(name, "Table.go") {
+			body += string(data)
+		}
+	}
+	save := body
+	if i := strings.Index(save, "func RootSaveBody"); i >= 0 {
+		save = save[i:]
+		if j := strings.Index(save[1:], "\nfunc "); j >= 0 {
+			save = save[:j+1]
+		}
+	}
+	if !strings.Contains(save, "w.IdAt(") {
+		t.Fatal("enum field writer does not intern through IdAt")
+	}
+	if strings.Contains(save, "TableEnumId()") && strings.Contains(save, ".Id(id)") {
+		t.Fatal("enum field writer still hashes through TableEnumId then Id")
+	}
+}
+
 const refAtWireTest = `package probe
 import ("bytes"; "encoding/binary"; "testing")
 
