@@ -39,7 +39,7 @@ func TestHeaderAndPut128Shape(t *testing.T) {
 		"func (w *TableWriter) Header(ref uint64, kind uint8)",
 		"func (w *TableWriter) headerPair(ref uint64, kind uint8) bool",
 		"PutUint16(w.Buffer[at:]",
-		"w.Ids.RefAt(",
+		"w.Ids.refAtHit(",
 		"w.headerPair(ref,",
 		"func (w *TableWriter) Put128(lo, hi uint64)",
 		"w.Advance(16)",

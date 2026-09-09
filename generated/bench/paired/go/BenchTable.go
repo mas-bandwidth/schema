@@ -303,9 +303,20 @@ func (ids *TableIds) Ref(id uint64) uint64 {
 // RefAt is Ref for a compile-time-constant id. The ordinal is that id's index
 // in TableWireIds. A hit is one load and one compare; first-use order is
 // still append order. Truncate clears the ordinal in O(popped) so a
-// speculative intern does not leak into the next walk. The hit indexes slot
-// directly: the ordinal is a compile-time TableWireIds index, in range.
+// speculative intern does not leak into the next walk. An ordinal outside
+// the slot range falls back to Ref; it does not index slot.
 func (ids *TableIds) RefAt(ordinal int, id uint64) uint64 {
+	if uint(ordinal) < uint(len(ids.slot)) {
+		if s := ids.slot[ordinal]; s != 0 {
+			return uint64(s)
+		}
+	}
+	return ids.refAtMiss(ordinal, id)
+}
+
+// refAtHit is RefAt for a generated knownOrdinal. The hit indexes slot
+// directly: the ordinal is a compile-time TableWireIds index, in range.
+func (ids *TableIds) refAtHit(ordinal int, id uint64) uint64 {
 	if s := ids.slot[ordinal]; s != 0 {
 		return uint64(s)
 	}
@@ -1910,7 +1921,7 @@ func MixedEntityMeasureReason(value *MixedEntity) (int64, error) {
 func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 	{
 		if value.EntityId != 0 {
-			if ref := w.Ids.RefAt(11, 0x23fcfd6678e36712); !w.headerPair(ref, 7) {
+			if ref := w.Ids.refAtHit(11, 0x23fcfd6678e36712); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
 			}
 			w.Put16(uint16(value.EntityId))
@@ -1918,7 +1929,7 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 	}
 	{
 		if value.PosX != 0 {
-			if ref := w.Ids.RefAt(65, 0xcb4b37357667310e); !w.headerPair(ref, 4) {
+			if ref := w.Ids.refAtHit(65, 0xcb4b37357667310e); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
 			w.Put32(uint32(value.PosX))
@@ -1926,7 +1937,7 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 	}
 	{
 		if value.PosY != 0 {
-			if ref := w.Ids.RefAt(66, 0xcb4b3835766732c1); !w.headerPair(ref, 4) {
+			if ref := w.Ids.refAtHit(66, 0xcb4b3835766732c1); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
 			w.Put32(uint32(value.PosY))
@@ -1934,7 +1945,7 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 	}
 	{
 		if value.PosZ != 0 {
-			if ref := w.Ids.RefAt(64, 0xcb4b353576672da8); !w.headerPair(ref, 4) {
+			if ref := w.Ids.refAtHit(64, 0xcb4b353576672da8); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
 			w.Put32(uint32(value.PosZ))
@@ -1942,7 +1953,7 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 	}
 	{
 		if value.Yaw != 0 {
-			if ref := w.Ids.RefAt(58, 0xb54d8e19798e16e8); !w.headerPair(ref, 7) {
+			if ref := w.Ids.refAtHit(58, 0xb54d8e19798e16e8); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
 			}
 			w.Put16(uint16(value.Yaw))
@@ -1950,7 +1961,7 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 	}
 	{
 		if value.Pitch != 0 {
-			if ref := w.Ids.RefAt(22, 0x53a9f665a90cc1b1); !w.headerPair(ref, 7) {
+			if ref := w.Ids.refAtHit(22, 0x53a9f665a90cc1b1); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
 			}
 			w.Put16(uint16(value.Pitch))
@@ -1958,7 +1969,7 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 	}
 	{
 		if value.VelX != 0 {
-			if ref := w.Ids.RefAt(27, 0x6cede6b6eb60ee67); !w.headerPair(ref, 4) {
+			if ref := w.Ids.refAtHit(27, 0x6cede6b6eb60ee67); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
 			w.Put32(uint32(value.VelX))
@@ -1966,7 +1977,7 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 	}
 	{
 		if value.VelY != 0 {
-			if ref := w.Ids.RefAt(26, 0x6cede5b6eb60ecb4); !w.headerPair(ref, 4) {
+			if ref := w.Ids.refAtHit(26, 0x6cede5b6eb60ecb4); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
 			w.Put32(uint32(value.VelY))
@@ -1974,7 +1985,7 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 	}
 	{
 		if value.VelZ != 0 {
-			if ref := w.Ids.RefAt(28, 0x6cede8b6eb60f1cd); !w.headerPair(ref, 4) {
+			if ref := w.Ids.refAtHit(28, 0x6cede8b6eb60f1cd); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
 			w.Put32(uint32(value.VelZ))
@@ -1982,7 +1993,7 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 	}
 	{
 		if value.Health != 0 {
-			if ref := w.Ids.RefAt(37, 0x7f69d4b5288ba9cf); !w.headerPair(ref, 4) {
+			if ref := w.Ids.refAtHit(37, 0x7f69d4b5288ba9cf); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
 			w.Put32(uint32(value.Health))
@@ -1990,7 +2001,7 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 	}
 	{
 		if value.Weapon != MixedWeaponNone {
-			if ref := w.Ids.RefAt(52, 0xa0b610205f2c6e01); !w.headerPair(ref, 30) {
+			if ref := w.Ids.refAtHit(52, 0xa0b610205f2c6e01); !w.headerPair(ref, 30) {
 				w.headerRest(ref, 30)
 			}
 			switch value.Weapon {
@@ -2035,7 +2046,7 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 	}
 	{
 		if value.Damage != 0 {
-			if ref := w.Ids.RefAt(36, 0x7f6308be8ab37fc0); !w.headerPair(ref, 9) {
+			if ref := w.Ids.refAtHit(36, 0x7f6308be8ab37fc0); !w.headerPair(ref, 9) {
 				w.headerRest(ref, 9)
 			}
 			w.Put64(uint64(value.Damage))
@@ -2043,7 +2054,7 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 	}
 	{
 		if value.Moving != false {
-			if ref := w.Ids.RefAt(5, 0x11a44fc1d1243da7); !w.headerPair(ref, 1) {
+			if ref := w.Ids.refAtHit(5, 0x11a44fc1d1243da7); !w.headerPair(ref, 1) {
 				w.headerRest(ref, 1)
 			}
 			if value.Moving {
@@ -2055,7 +2066,7 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 	}
 	{
 		if value.Firing != false {
-			if ref := w.Ids.RefAt(32, 0x7674cfd19b9031ca); !w.headerPair(ref, 1) {
+			if ref := w.Ids.refAtHit(32, 0x7674cfd19b9031ca); !w.headerPair(ref, 1) {
 				w.headerRest(ref, 1)
 			}
 			if value.Firing {
@@ -3317,7 +3328,7 @@ func MixedStatMeasureReason(value *MixedStat) (int64, error) {
 func MixedStatSaveBody(w *TableWriter, value *MixedStat) bool {
 	{
 		if value.StatId != 0 {
-			if ref := w.Ids.RefAt(38, 0x80ab75f0866dbf65); !w.headerPair(ref, 6) {
+			if ref := w.Ids.refAtHit(38, 0x80ab75f0866dbf65); !w.headerPair(ref, 6) {
 				w.headerRest(ref, 6)
 			}
 			w.Put8(uint8(value.StatId))
@@ -3325,7 +3336,7 @@ func MixedStatSaveBody(w *TableWriter, value *MixedStat) bool {
 	}
 	{
 		if value.Delta != 0 {
-			if ref := w.Ids.RefAt(21, 0x52076675ec13a0c1); !w.headerPair(ref, 4) {
+			if ref := w.Ids.refAtHit(21, 0x52076675ec13a0c1); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
 			w.Put32(uint32(value.Delta))
@@ -3717,7 +3728,7 @@ func MixedHitEventMeasureReason(value *MixedHitEvent) (int64, error) {
 func MixedHitEventSaveBody(w *TableWriter, value *MixedHitEvent) bool {
 	{
 		if value.TargetId != 0 {
-			if ref := w.Ids.RefAt(59, 0xb7bc9ac015a25050); !w.headerPair(ref, 7) {
+			if ref := w.Ids.refAtHit(59, 0xb7bc9ac015a25050); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
 			}
 			w.Put16(uint16(value.TargetId))
@@ -3725,7 +3736,7 @@ func MixedHitEventSaveBody(w *TableWriter, value *MixedHitEvent) bool {
 	}
 	{
 		if value.Damage != 0 {
-			if ref := w.Ids.RefAt(36, 0x7f6308be8ab37fc0); !w.headerPair(ref, 4) {
+			if ref := w.Ids.refAtHit(36, 0x7f6308be8ab37fc0); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
 			w.Put32(uint32(value.Damage))
@@ -3733,7 +3744,7 @@ func MixedHitEventSaveBody(w *TableWriter, value *MixedHitEvent) bool {
 	}
 	{
 		if value.HitKind != 0 {
-			if ref := w.Ids.RefAt(1, 0x01fbc365b059b925); !w.headerPair(ref, 4) {
+			if ref := w.Ids.refAtHit(1, 0x01fbc365b059b925); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
 			w.Put32(uint32(value.HitKind))
@@ -3741,7 +3752,7 @@ func MixedHitEventSaveBody(w *TableWriter, value *MixedHitEvent) bool {
 	}
 	{
 		if value.Crit != false {
-			if ref := w.Ids.RefAt(6, 0x126167908c9aa52d); !w.headerPair(ref, 1) {
+			if ref := w.Ids.refAtHit(6, 0x126167908c9aa52d); !w.headerPair(ref, 1) {
 				w.headerRest(ref, 1)
 			}
 			if value.Crit {
@@ -4273,7 +4284,7 @@ func MixedChatEventMeasureReason(value *MixedChatEvent) (int64, error) {
 func MixedChatEventSaveBody(w *TableWriter, value *MixedChatEvent) bool {
 	{
 		if value.Channel != 0 {
-			if ref := w.Ids.RefAt(54, 0xa5013e9ad5caeda4); !w.headerPair(ref, 4) {
+			if ref := w.Ids.refAtHit(54, 0xa5013e9ad5caeda4); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
 			w.Put32(uint32(value.Channel))
@@ -4281,7 +4292,7 @@ func MixedChatEventSaveBody(w *TableWriter, value *MixedChatEvent) bool {
 	}
 	{
 		if value.Speaker != 0 {
-			if ref := w.Ids.RefAt(76, 0xfbf1ac4d96ebd022); !w.headerPair(ref, 7) {
+			if ref := w.Ids.refAtHit(76, 0xfbf1ac4d96ebd022); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
 			}
 			w.Put16(uint16(value.Speaker))
@@ -4676,7 +4687,7 @@ func MixedPickupEventMeasureReason(value *MixedPickupEvent) (int64, error) {
 func MixedPickupEventSaveBody(w *TableWriter, value *MixedPickupEvent) bool {
 	{
 		if value.ItemId != 0 {
-			if ref := w.Ids.RefAt(48, 0x9e7fd06d864fbd56); !w.headerPair(ref, 7) {
+			if ref := w.Ids.refAtHit(48, 0x9e7fd06d864fbd56); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
 			}
 			w.Put16(uint16(value.ItemId))
@@ -4684,7 +4695,7 @@ func MixedPickupEventSaveBody(w *TableWriter, value *MixedPickupEvent) bool {
 	}
 	{
 		if value.Amount != 0 {
-			if ref := w.Ids.RefAt(39, 0x8113fe7ea2b16969); !w.headerPair(ref, 4) {
+			if ref := w.Ids.refAtHit(39, 0x8113fe7ea2b16969); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
 			w.Put32(uint32(value.Amount))
@@ -5113,7 +5124,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 	var arrayLengths [80]int64
 	{
 		if value.Sequence != 0 {
-			if ref := w.Ids.RefAt(56, 0xaa38aca481f528a8); !w.headerPair(ref, 7) {
+			if ref := w.Ids.refAtHit(56, 0xaa38aca481f528a8); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
 			}
 			w.Put16(uint16(value.Sequence))
@@ -5121,7 +5132,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 	}
 	{
 		if value.AckSequence != 0 {
-			if ref := w.Ids.RefAt(4, 0x0dbe005c56697c3e); !w.headerPair(ref, 4) {
+			if ref := w.Ids.refAtHit(4, 0x0dbe005c56697c3e); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
 			w.Put32(uint32(value.AckSequence))
@@ -5129,7 +5140,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 	}
 	{
 		if value.AckBits != 0 {
-			if ref := w.Ids.RefAt(46, 0x9bae0da8b829ee03); !w.headerPair(ref, 8) {
+			if ref := w.Ids.refAtHit(46, 0x9bae0da8b829ee03); !w.headerPair(ref, 8) {
 				w.headerRest(ref, 8)
 			}
 			w.Put32(uint32(value.AckBits))
@@ -5137,7 +5148,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 	}
 	{
 		if value.SessionId != 0 {
-			if ref := w.Ids.RefAt(60, 0xb7d7b5650a590b05); !w.headerPair(ref, 9) {
+			if ref := w.Ids.refAtHit(60, 0xb7d7b5650a590b05); !w.headerPair(ref, 9) {
 				w.headerRest(ref, 9)
 			}
 			w.Put64(uint64(value.SessionId))
@@ -5145,7 +5156,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 	}
 	{
 		if value.ClientId != 0 {
-			if ref := w.Ids.RefAt(29, 0x6d7b98e2d095967e); !w.headerPair(ref, 8) {
+			if ref := w.Ids.refAtHit(29, 0x6d7b98e2d095967e); !w.headerPair(ref, 8) {
 				w.headerRest(ref, 8)
 			}
 			w.Put32(uint32(value.ClientId))
@@ -5153,7 +5164,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 	}
 	{
 		if value.Nonce != 0 {
-			if ref := w.Ids.RefAt(31, 0x73a94c71d60dc0d8); !w.headerPair(ref, 9) {
+			if ref := w.Ids.refAtHit(31, 0x73a94c71d60dc0d8); !w.headerPair(ref, 9) {
 				w.headerRest(ref, 9)
 			}
 			w.Put64(uint64(value.Nonce))
@@ -5161,7 +5172,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 	}
 	{
 		if value.WorldTime != 0 {
-			if ref := w.Ids.RefAt(20, 0x3eee6b51be54fc85); !w.headerPair(ref, 5) {
+			if ref := w.Ids.refAtHit(20, 0x3eee6b51be54fc85); !w.headerPair(ref, 5) {
 				w.headerRest(ref, 5)
 			}
 			w.Put64(uint64(value.WorldTime))
@@ -5169,7 +5180,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 	}
 	{
 		if value.FrameTick != 0 {
-			if ref := w.Ids.RefAt(34, 0x7bbc035f7b6d0112); !w.headerPair(ref, 9) {
+			if ref := w.Ids.refAtHit(34, 0x7bbc035f7b6d0112); !w.headerPair(ref, 9) {
 				w.headerRest(ref, 9)
 			}
 			w.Put64(uint64(value.FrameTick))
@@ -5177,7 +5188,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 	}
 	{
 		if value.ServerTime != 0 {
-			if ref := w.Ids.RefAt(18, 0x3c460475f9be69c6); !w.headerPair(ref, 22) {
+			if ref := w.Ids.refAtHit(18, 0x3c460475f9be69c6); !w.headerPair(ref, 22) {
 				w.headerRest(ref, 22)
 			}
 			w.Put32(uint32(value.ServerTime))
@@ -5188,7 +5199,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 			return false
 		}
 		if value.EntitiesCount > 0 {
-			if ref := w.Ids.RefAt(43, 0x935d0fb07bb3822a); !w.headerPair(ref, 14) {
+			if ref := w.Ids.refAtHit(43, 0x935d0fb07bb3822a); !w.headerPair(ref, 14) {
 				w.headerRest(ref, 14)
 			}
 			if value.EntitiesCount < 0 || value.EntitiesCount > 8 {
@@ -5242,7 +5253,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 			return false
 		}
 		if value.StatsCount > 0 {
-			if ref := w.Ids.RefAt(74, 0xee639cad45b1994c); !w.headerPair(ref, 14) {
+			if ref := w.Ids.refAtHit(74, 0xee639cad45b1994c); !w.headerPair(ref, 14) {
 				w.headerRest(ref, 14)
 			}
 			if value.StatsCount < 0 || value.StatsCount > 80 {
@@ -5293,7 +5304,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 	}
 	{
 		if value.GameEvent.Type != MixedEventTypeNone {
-			if ref := w.Ids.RefAt(14, 0x2e35dc5321aa5790); !w.headerPair(ref, 15) {
+			if ref := w.Ids.refAtHit(14, 0x2e35dc5321aa5790); !w.headerPair(ref, 15) {
 				w.headerRest(ref, 15)
 			}
 			{
@@ -5304,7 +5315,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 						w.putLebWide(0)
 					}
 				case MixedEventTypeHit:
-					ref := w.Ids.RefAt(16, 0x33732819300680aa)
+					ref := w.Ids.refAtHit(16, 0x33732819300680aa)
 					start := w.Ids.Count
 					payload31 := TableWriter{Measuring: true, Ids: w.Ids}
 					if !MixedHitEventSaveBody(&payload31, &payload30.Hit) {
@@ -5328,7 +5339,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 						}
 					}
 				case MixedEventTypeChat:
-					ref := w.Ids.RefAt(75, 0xf2a38d910b5b348b)
+					ref := w.Ids.refAtHit(75, 0xf2a38d910b5b348b)
 					start := w.Ids.Count
 					payload32 := TableWriter{Measuring: true, Ids: w.Ids}
 					if !MixedChatEventSaveBody(&payload32, &payload30.Chat) {
@@ -5352,7 +5363,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 						}
 					}
 				case MixedEventTypePickup:
-					ref := w.Ids.RefAt(50, 0x9fa3a41c86ecb765)
+					ref := w.Ids.refAtHit(50, 0x9fa3a41c86ecb765)
 					start := w.Ids.Count
 					payload33 := TableWriter{Measuring: true, Ids: w.Ids}
 					if !MixedPickupEventSaveBody(&payload33, &payload30.Pickup) {
@@ -5390,7 +5401,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 			}
 		}
 		if !allDefault {
-			if ref := w.Ids.RefAt(24, 0x5759ce7586bbb5a3); !w.headerPair(ref, 14) {
+			if ref := w.Ids.refAtHit(24, 0x5759ce7586bbb5a3); !w.headerPair(ref, 14) {
 				w.headerRest(ref, 14)
 			}
 			{
@@ -5428,7 +5439,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 			return false
 		}
 		if value.PlayerNameLength > 0 {
-			if ref := w.Ids.RefAt(7, 0x13a62f542cf8e86e); !w.headerPair(ref, 12) {
+			if ref := w.Ids.refAtHit(7, 0x13a62f542cf8e86e); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
 			if value.PlayerNameLength < 0 || value.PlayerNameLength > 15 {
@@ -5445,7 +5456,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 			return false
 		}
 		if value.PayloadLength > 0 {
-			if ref := w.Ids.RefAt(67, 0xcfb8a9d063b5e9e5); !w.headerPair(ref, 14) {
+			if ref := w.Ids.refAtHit(67, 0xcfb8a9d063b5e9e5); !w.headerPair(ref, 14) {
 				w.headerRest(ref, 14)
 			}
 			if value.PayloadLength < 0 || value.PayloadLength > 16 {
@@ -5483,7 +5494,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 	}
 	{
 		if value.AimX != 0.0 {
-			if ref := w.Ids.RefAt(72, 0xdbaf7be5e24296c9); !w.headerPair(ref, 10) {
+			if ref := w.Ids.refAtHit(72, 0xdbaf7be5e24296c9); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
 			w.Put32(math.Float32bits(value.AimX))
@@ -5491,7 +5502,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 	}
 	{
 		if value.AimY != 0.0 {
-			if ref := w.Ids.RefAt(71, 0xdbaf7ae5e2429516); !w.headerPair(ref, 10) {
+			if ref := w.Ids.refAtHit(71, 0xdbaf7ae5e2429516); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
 			w.Put32(math.Float32bits(value.AimY))
@@ -5499,7 +5510,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 	}
 	{
 		if value.AimZ != 0.0 {
-			if ref := w.Ids.RefAt(70, 0xdbaf79e5e2429363); !w.headerPair(ref, 10) {
+			if ref := w.Ids.refAtHit(70, 0xdbaf79e5e2429363); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
 			w.Put32(math.Float32bits(value.AimZ))
@@ -5507,7 +5518,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 	}
 	{
 		if value.Recoil != 0.0 {
-			if ref := w.Ids.RefAt(47, 0x9cef31fff7e2e457); !w.headerPair(ref, 10) {
+			if ref := w.Ids.refAtHit(47, 0x9cef31fff7e2e457); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
 			w.Put32(math.Float32bits(value.Recoil))
@@ -5515,7 +5526,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 	}
 	{
 		if value.Drift != 0.0 {
-			if ref := w.Ids.RefAt(25, 0x5ab3f9c9341f6c04); !w.headerPair(ref, 11) {
+			if ref := w.Ids.refAtHit(25, 0x5ab3f9c9341f6c04); !w.headerPair(ref, 11) {
 				w.headerRest(ref, 11)
 			}
 			w.Put64(math.Float64bits(value.Drift))
@@ -5523,7 +5534,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 	}
 	{
 		if value.WideKey != (serialize.Uint128{Lo: 0, Hi: 0}) {
-			if ref := w.Ids.RefAt(53, 0xa3348580461faf16); !w.headerPair(ref, 19) {
+			if ref := w.Ids.refAtHit(53, 0xa3348580461faf16); !w.headerPair(ref, 19) {
 				w.headerRest(ref, 19)
 			}
 			w.Put128(value.WideKey.Lo, value.WideKey.Hi)
@@ -5531,7 +5542,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 	}
 	{
 		if value.Flux != (serialize.Int128{Lo: 0, Hi: 0}) {
-			if ref := w.Ids.RefAt(68, 0xd61bdd7908af2642); !w.headerPair(ref, 18) {
+			if ref := w.Ids.refAtHit(68, 0xd61bdd7908af2642); !w.headerPair(ref, 18) {
 				w.headerRest(ref, 18)
 			}
 			w.Put128(value.Flux.Lo, value.Flux.Hi)
@@ -5539,7 +5550,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 	}
 	{
 		if value.Ping != 0 {
-			if ref := w.Ids.RefAt(61, 0xbf30e00dc53307a9); !w.headerPair(ref, 26) {
+			if ref := w.Ids.refAtHit(61, 0xbf30e00dc53307a9); !w.headerPair(ref, 26) {
 				w.headerRest(ref, 26)
 			}
 			w.Put16(uint16(value.Ping))
@@ -5547,7 +5558,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 	}
 	{
 		if value.CrcHint != 0 {
-			if ref := w.Ids.RefAt(23, 0x560d6527ccd8515f); !w.headerPair(ref, 8) {
+			if ref := w.Ids.refAtHit(23, 0x560d6527ccd8515f); !w.headerPair(ref, 8) {
 				w.headerRest(ref, 8)
 			}
 			w.Put32(uint32(value.CrcHint))
@@ -5555,7 +5566,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 	}
 	{
 		if value.HasExtra != true {
-			if ref := w.Ids.RefAt(62, 0xc08292176cfd8672); !w.headerPair(ref, 1) {
+			if ref := w.Ids.refAtHit(62, 0xc08292176cfd8672); !w.headerPair(ref, 1) {
 				w.headerRest(ref, 1)
 			}
 			if value.HasExtra {
@@ -5568,7 +5579,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 	if value.HasExtra {
 		{
 			if value.Extra != 0 {
-				if ref := w.Ids.RefAt(77, 0xfd29ee12a979cb69); !w.headerPair(ref, 4) {
+				if ref := w.Ids.refAtHit(77, 0xfd29ee12a979cb69); !w.headerPair(ref, 4) {
 					w.headerRest(ref, 4)
 				}
 				w.Put32(uint32(value.Extra))
@@ -5578,7 +5589,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 	if !value.HasExtra {
 		{
 			if value.IdleTicks != 0 {
-				if ref := w.Ids.RefAt(33, 0x78101ac0aa8cbcfe); !w.headerPair(ref, 4) {
+				if ref := w.Ids.refAtHit(33, 0x78101ac0aa8cbcfe); !w.headerPair(ref, 4) {
 					w.headerRest(ref, 4)
 				}
 				w.Put32(uint32(value.IdleTicks))

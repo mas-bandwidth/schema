@@ -85,14 +85,14 @@ func (g *tableGen) emitWireField(f *ir.Field, expr, ind string) {
 		if !f.Type.Optional {
 			cond = g.emitFieldRides(f, expr, i)
 		}
-		g.pf("%sif %s {\n%s if ref := w.Ids.RefAt(%d, 0x%016x); !w.headerPair(ref, %d) { w.headerRest(ref, %d) }\n", i, cond, i, g.knownOrdinal(ir.TableFieldWireId(f)), ir.TableFieldWireId(f), kind, kind)
+		g.pf("%sif %s {\n%s if ref := w.Ids.refAtHit(%d, 0x%016x); !w.headerPair(ref, %d) { w.headerRest(ref, %d) }\n", i, cond, i, g.knownOrdinal(ir.TableFieldWireId(f)), ir.TableFieldWireId(f), kind, kind)
 		g.emitWireValue(f, expr, "w", i+"\t", true)
 		g.pf("%s}\n%s}\n", i, ind)
 		return
 	}
 	g.pf("%s{\n", ind)
 	i := ind + "\t"
-	g.pf("%smark := w.Ids.Count; ref := w.Ids.RefAt(%d, 0x%016x); start := w.Ids.Count\n", i, g.knownOrdinal(ir.TableFieldWireId(f)), ir.TableFieldWireId(f))
+	g.pf("%smark := w.Ids.Count; ref := w.Ids.refAtHit(%d, 0x%016x); start := w.Ids.Count\n", i, g.knownOrdinal(ir.TableFieldWireId(f)), ir.TableFieldWireId(f))
 	g.pf("%spayload := TableWriter{Measuring:true, Ids:w.Ids}\n", i)
 	g.emitWireValue(f, expr, "payload", i, true)
 	g.pf("%sif payload.Overflow || w.Ids.Overflow { return false }\n", i)
@@ -351,7 +351,7 @@ func (g *tableGen) emitWireUnion(un *ir.Union, expr, writer, ind string) {
 		if !v.Void() {
 			kind = ir.TableWireFieldKind(v.F)
 		}
-		g.pf("%sref := %s.Ids.RefAt(%d, 0x%016x)\n", i, writer, g.knownOrdinal(ir.TableWireId(v.WireName())), ir.TableWireId(v.WireName()))
+		g.pf("%sref := %s.Ids.refAtHit(%d, 0x%016x)\n", i, writer, g.knownOrdinal(ir.TableWireId(v.WireName())), ir.TableWireId(v.WireName()))
 		if v.Void() {
 			g.emitHeader(i, writer, "ref", "32")
 			g.emitPutLeb(i, writer, "0")

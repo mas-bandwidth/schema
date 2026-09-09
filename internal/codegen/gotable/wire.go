@@ -56,9 +56,20 @@ func (ids *TableIds) Ref(id uint64) uint64 {
 // RefAt is Ref for a compile-time-constant id. The ordinal is that id's index
 // in TableWireIds. A hit is one load and one compare; first-use order is
 // still append order. Truncate clears the ordinal in O(popped) so a
-// speculative intern does not leak into the next walk. The hit indexes slot
-// directly: the ordinal is a compile-time TableWireIds index, in range.
+// speculative intern does not leak into the next walk. An ordinal outside
+// the slot range falls back to Ref; it does not index slot.
 func (ids *TableIds) RefAt(ordinal int, id uint64) uint64 {
+	if uint(ordinal) < uint(len(ids.slot)) {
+		if s := ids.slot[ordinal]; s != 0 {
+			return uint64(s)
+		}
+	}
+	return ids.refAtMiss(ordinal, id)
+}
+
+// refAtHit is RefAt for a generated knownOrdinal. The hit indexes slot
+// directly: the ordinal is a compile-time TableWireIds index, in range.
+func (ids *TableIds) refAtHit(ordinal int, id uint64) uint64 {
 	if s := ids.slot[ordinal]; s != 0 {
 		return uint64(s)
 	}
