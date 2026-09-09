@@ -761,32 +761,6 @@ inline bool TableReadSignedAt( TableReader & r, uint8_t kind, int64_t & out )
     }
 }
 
-// the payload of a kind on the UNSIGNED ladder (6 to 9), zero-extended
-inline bool TableReadUnsignedAt( TableReader & r, uint8_t kind, uint64_t & out )
-{
-    switch ( kind )
-    {
-        case 6: if ( !r.has( 1 ) ) { return false; } out = r.get8(); return true;
-        case 7: if ( !r.has( 2 ) ) { return false; } out = r.get16(); return true;
-        case 8: if ( !r.has( 4 ) ) { return false; } out = r.get32(); return true;
-        default: if ( !r.has( 8 ) ) { return false; } out = r.get64(); return true;
-    }
-}
-
-// f32 into f64, exact: a NaN's payload is data and rides on the bits, since
-// the hardware conversion would set the quiet bit (§4)
-inline double TableWidenF32( uint32_t bits )
-{
-    if ( ( bits & 0x7F800000u ) == 0x7F800000u && ( bits & 0x007FFFFFu ) != 0 )
-    {
-        const uint64_t sign = (uint64_t) ( bits >> 31 ) << 63;
-        const uint64_t payload = (uint64_t) ( bits & 0x007FFFFFu ) << 29;
-        const uint64_t nan_bits = sign | 0x7FF0000000000000ull | payload;
-        double d; memcpy( &d, &nan_bits, 8 ); return d;
-    }
-    float f; memcpy( &f, &bits, 4 ); return (double) f;
-}
-
 // ILL-FORMED TEXT IS DAMAGE (docs/SPEC-TABLES.md §3, §4): a kind 12 payload is
 // well-formed UTF-8 with no zero byte among its bytes, checked AS IT ARRIVES
 // and before the reader's own bound, because a payload that is not text is not
