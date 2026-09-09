@@ -339,6 +339,17 @@ public final class Main {
     // THE NEGATIVE CONTROLS
     // ------------------------------------------------------------------
 
+    static void checkForm(byte[] file, byte formByte, tblfx1.TableFixed.Reason want, String what) {
+        final byte[] other = file.clone();
+        other[0] = formByte;
+        final tblfx1.FxRootFixed.Value[] v = { new tblfx1.FxRootFixed.Value() };
+        final tblfx1.TableFixed.Report r = new tblfx1.TableFixed.Report();
+        final int n = tblfx1.FxRootFixed.load(v, 1, other,
+                tblfx1.TableFixed.plan(1024), new short[1024], tblfx1.FxRootFixed.image(), r);
+        check(n < 0 && r.refused && r.reason == want, what + " (got " + r.reason + ")");
+        check(!r.malformed, what + ": never damage");
+    }
+
     static void negativeControls(String dir) {
         final byte[] fx2 = slurp(dir, "fx2.bin");
         final byte[] fx1 = slurp(dir, "fx1.bin");
@@ -372,17 +383,34 @@ public final class Main {
                     "NEGATIVE CONTROL: the loader compiles a plan from the layout and gets it right");
         }
 
-        // 2. A FORM BYTE THIS READER DOES NOT CARRY IS A REFUSAL AND NEVER DAMAGE
+        // 2. A FORM BYTE THIS READER DOES NOT CARRY IS A REFUSAL AND NEVER
+        //    DAMAGE — AND THE REFUSAL SAYS WHICH DIRECTION (§3). The registry
+        //    is ordered, so one word for both directions is one word too few:
+        //    the variable form is OLDER, a batch handed to a file root is
+        //    somewhere else entirely, and only a byte no form defines is newer.
+        //    6 is the first byte that is neither defined nor reserved.
         {
-            final byte[] future = fx2.clone();
-            future[0] = 6;
+            checkForm(fx2, (byte) 6, tblfx1.TableFixed.Reason.newerForm,
+                    "REFUSED BY NAME: newer_form for a byte no form defines");
+            checkForm(fx2, (byte) 1, tblfx1.TableFixed.Reason.previousForm,
+                    "REFUSED BY NAME: previous_form for the VARIABLE form, which is older");
+            checkForm(fx2, (byte) 2, tblfx1.TableFixed.Reason.messageFormAsFile,
+                    "REFUSED BY NAME: message_form_as_file for a batch handed to a file root");
+        }
+
+        // 2b. A HEADER WHOSE HASH IS NOT THE HASH OF THE LAYOUT BEHIND IT is
+        //     refused (§3), and it is checked LAST so a broken layout is never
+        //     reported as a lying header.
+        {
+            final byte[] lying = fx2.clone();
+            lying[tblfx1.TableFixed.hashAt] ^= (byte) 0xFF;
             final tblfx1.FxRootFixed.Value[] v = { new tblfx1.FxRootFixed.Value() };
             final tblfx1.TableFixed.Report r = new tblfx1.TableFixed.Report();
-            final int n = tblfx1.FxRootFixed.load(v, 1, future,
+            final int n = tblfx1.FxRootFixed.load(v, 1, lying,
                     tblfx1.TableFixed.plan(1024), new short[1024], tblfx1.FxRootFixed.image(), r);
-            check(n < 0 && r.refused && r.reason == tblfx1.TableFixed.Reason.newerForm,
-                    "REFUSED BY NAME: newer_form for a form byte this build does not carry");
-            check(!r.malformed, "REFUSED BY NAME: never damage");
+            check(n < 0 && r.refused && r.reason == tblfx1.TableFixed.Reason.layoutMalformed,
+                    "REFUSED BY NAME: a header that names a layout it does not carry");
+            check(!r.malformed, "a lying header is a refusal and never damage");
         }
 
         // 3. A PLAN THAT DOES NOT FIT THE CALLER'S STORAGE IS A REFUSAL BY
@@ -427,11 +455,13 @@ public final class Main {
     // rule below runs BEFORE a single record byte is touched, each refuses
     // under ITS OWN NAME, and a layout that fails any of them SETS NOTHING.
     //
-    // The file is `form byte, u32 layout length, layout, records`, so the
-    // layout starts at byte 5, the entry count is the four bytes there, and
-    // entry k is the seventeen bytes at 5 + 4 + 17k.
+    // THE FILE HEADER IS §3's, ONE RULE FOR ALL FIVE FORMS: the form byte at 0,
+    // seven reserved zero bytes, the LAYOUT HASH at 8, and the body at 16. So
+    // the layout length is the four bytes at 16, the layout starts at 20, the
+    // entry count is the four bytes there, and entry k is the seventeen bytes
+    // at 20 + 4 + 17k.
 
-    private static final int LAYOUT_AT = 5;
+    private static final int LAYOUT_AT = 20;
     private static final int ENTRY_0 = LAYOUT_AT + 4;
 
     static int entryAt(int k) { return ENTRY_0 + k * 17; }
@@ -457,13 +487,17 @@ public final class Main {
         out.write(e, 0, e.length);
     }
 
-    // a FILE around a hand-built layout: the form byte, the layout's length,
-    // the layout, and no records — every rule below refuses before one is read
+    // a FILE around a hand-built layout: §3's header with an HONEST hash, the
+    // layout's length, the layout, and no records — every rule below refuses
+    // before a record is reached, and the honest hash is what keeps each case
+    // to the ONE break it makes.
     static byte[] fileOf(byte[] layout) {
-        final byte[] out = new byte[5 + layout.length];
+        final byte[] out = new byte[20 + layout.length];
         out[0] = 3;
-        tblfx1.TableFixed.put32(out, 1, layout.length);
-        System.arraycopy(layout, 0, out, 5, layout.length);
+        tblfx1.TableFixed.put64(out, tblfx1.TableFixed.hashAt,
+                tblfx1.TableFixed.hash(layout, 0, layout.length));
+        tblfx1.TableFixed.put32(out, tblfx1.TableFixed.fileHeaderBytes, layout.length);
+        System.arraycopy(layout, 0, out, 20, layout.length);
         return out;
     }
 

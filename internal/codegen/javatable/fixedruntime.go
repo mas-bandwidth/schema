@@ -157,16 +157,34 @@ public final class TableFixed {
 
     // ---- THE FILE HEADER, IN ONE PLACE --------------------------------------
     //
-    // THE FORM BYTE AND THE LAYOUT EACH APPEAR ONCE PER CARRIER, and a record
-    // carries only the hash (docs/SPEC-TABLES.md §3.4). A FILE's header is the
-    // form byte, a u32 layout length and the layout; a stream framed its own
-    // and announces the layout instead. Both halves of a file's header live
-    // behind ONE function on each side — this one and the generated
-    // writeHeader — so the day the page moves a byte of it there is one
-    // place in this port to move.
+    // THE FIRST BYTE, ONE RULE FOR ALL FIVE FORMS (docs/SPEC-TABLES.md §3). A
+    // schema file is a UNION OF FIVE ARMS and the form byte is its tag. A
+    // form's header is the form byte, seven RESERVED ZERO bytes, its eight-byte
+    // hash at 8, and the body at 16, so a memory-mapped body keeps its
+    // alignment:
+    //
+    //     offset  0        the form byte, 3
+    //     offsets 1 .. 7   reserved, zero
+    //     offsets 8 .. 15  the LAYOUT HASH (u64 LE)
+    //     offset  16       the layout length (u32 LE), then the layout,
+    //                      then the records to the end of the file
+    //
+    // Both halves live behind ONE function on each side — this one and the
+    // generated writeHeader — so the day the page moves a byte of it there is
+    // one place in this port to move.
 
-    /** what a file's header says: where the layout is, what it hashes to, and
-     *  where the records start. */
+    /** the header every form carries: the form byte, seven reserved zero bytes, the hash at 8. */
+    public static final int fileHeaderBytes = 16;
+    /** where the form's own eight-byte hash sits. */
+    public static final int hashAt = 8;
+
+    /** form byte 1, the VARIABLE form (docs/SPEC-TABLES.md §3): older than this one. */
+    public static final byte variableForm = 1;
+    /** form byte 2, the MESSAGE form (§3.3): a batch, not a file. */
+    public static final byte messageForm = 2;
+
+    /** what a file's header says: where the layout is, what it hashes to, what
+     *  the header CLAIMS it hashes to, and where the records start. */
     public static final class Header {
         /** where the layout begins. */
         public int layoutAt;
@@ -174,22 +192,37 @@ public final class TableFixed {
         public int layoutLength;
         /** fnv1a64 over those bytes, which is what every record must carry. */
         public long hash;
+        /** the hash the HEADER states, which the loader checks LAST. */
+        public long declaredHash;
         /** where the first record begins. */
         public int recordsAt;
     }
 
-    /** read a file's header. Answers false and a named refusal: a form byte
-     *  this build does not carry is newerForm and never damage, and a layout
-     *  length that does not fit the file is layoutMalformed. */
+    /** read a file's header. Answers false and a named refusal.
+     *
+     *  A FORM BYTE'S REFUSAL SAYS WHICH DIRECTION: the registry is ordered, so
+     *  one word for both directions would be one word too few — previousForm
+     *  for the variable form, which is OLDER, messageFormAsFile for a batch
+     *  handed to a file root, and newerForm only for a byte no form defines.
+     *
+     *  THE HEADER'S HASH IS NOT CHECKED HERE. It is checked LAST, by the
+     *  caller, after the layout's own rules have each had their say, so a
+     *  broken layout is never reported as a lying header (§3). */
     public static boolean readHeader(byte[] data, Header out, Report report) {
-        if (data == null || data.length < 5) { report.malformed = true; return false; }
-        if (data[0] != form) { report.refuse(Reason.newerForm); return false; }
-        final long length = get32(data, 1) & 0xFFFFFFFFL;
-        if (length + 5 > data.length) { report.refuse(Reason.layoutMalformed); return false; }
-        out.layoutAt = 5;
+        if (data == null || data.length < fileHeaderBytes + 4) { report.malformed = true; return false; }
+        if (data[0] != form) {
+            report.refuse(data[0] == variableForm ? Reason.previousForm
+                    : data[0] == messageForm ? Reason.messageFormAsFile
+                    : Reason.newerForm);
+            return false;
+        }
+        final long length = get32(data, fileHeaderBytes) & 0xFFFFFFFFL;
+        if (length + fileHeaderBytes + 4 > data.length) { report.refuse(Reason.layoutMalformed); return false; }
+        out.layoutAt = fileHeaderBytes + 4;
         out.layoutLength = (int) length;
-        out.hash = hash(data, 5, (int) length);
-        out.recordsAt = 5 + (int) length;
+        out.hash = hash(data, out.layoutAt, (int) length);
+        out.declaredHash = get64(data, hashAt);
+        out.recordsAt = out.layoutAt + (int) length;
         return true;
     }
 
@@ -260,8 +293,12 @@ public final class TableFixed {
     public enum Reason {
         /** no refusal. */
         none,
-        /** a form byte this build does not carry. */
+        /** a form byte PAST this form in the registry, which no build here carries. */
         newerForm,
+        /** a form byte BEFORE this one: the variable form is OLDER, not newer. */
+        previousForm,
+        /** a form 2 wire where a FILE was expected: its table is somewhere else. */
+        messageFormAsFile,
         /** a record whose hash names no layout this reader holds. */
         noLayout,
         /** bytes handed to this form as a layout that are not one, after the seven named rules. */
