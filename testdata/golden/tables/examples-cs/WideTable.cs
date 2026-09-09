@@ -84,6 +84,7 @@ namespace Tabledemo
                 info.Create = delegate { return new global::Tabledemo.WideBlob(); };
                 info.StorageSize = 280016; info.StorageAlign = 4; info.RegionAlign = 8;
                 info.Variable = false;
+                info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;

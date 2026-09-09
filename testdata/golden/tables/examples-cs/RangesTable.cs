@@ -238,6 +238,7 @@ namespace Tabledemo
                 info.Create = delegate { return new global::Tabledemo.RangedSigned(); };
                 info.StorageSize = 80; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
+                info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
@@ -288,6 +289,7 @@ namespace Tabledemo
                 info.Create = delegate { return new global::Tabledemo.RangedUnsigned(); };
                 info.StorageSize = 104; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
+                info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
@@ -338,6 +340,7 @@ namespace Tabledemo
                 info.Create = delegate { return new global::Tabledemo.RangedWidths(); };
                 info.StorageSize = 40; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
+                info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;

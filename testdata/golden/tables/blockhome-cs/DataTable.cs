@@ -192,6 +192,7 @@ namespace Blockhome
                 info.Create = delegate { return new global::Blockhome.ArmorPlate(); };
                 info.StorageSize = 16; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
+                info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
@@ -228,6 +229,7 @@ namespace Blockhome
                 info.Create = delegate { return new global::Blockhome.ArmorConfig(); };
                 info.StorageSize = 40; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
+                info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
@@ -265,6 +267,7 @@ namespace Blockhome
                 info.Create = delegate { return new global::Blockhome.FiringGroup(); };
                 info.StorageSize = 8; info.StorageAlign = 4; info.RegionAlign = 8;
                 info.Variable = false;
+                info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
@@ -300,6 +303,7 @@ namespace Blockhome
                 info.Create = delegate { return new global::Blockhome.GunnerSettings(); };
                 info.StorageSize = 304; info.StorageAlign = 4; info.RegionAlign = 8;
                 info.Variable = false;
+                info.RootElemSlots = 36;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
