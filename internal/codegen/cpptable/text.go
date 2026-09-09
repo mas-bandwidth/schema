@@ -6,9 +6,16 @@ import "github.com/mas-bandwidth/schema/v2/ir"
 // text kinds: a kind 12 payload is well-formed UTF-8 with no zero byte and a
 // kind 33 payload is paired UTF-16 with no zero unit, each checked as it
 // arrives and before the reader's own bound, and each clamp cuts at a boundary
-// its own content rule keeps whole. Emitted after TableReader in every unit,
-// and reached from a text field, a text arm, a string map key, a text map
-// value and a *string blob record.
+// its own content rule keeps whole.
+//
+// THE TWO KINDS ARE TWO RUNTIMES, because they reach two different sets of
+// units. tableTextRuntime below is kind 12's, emitted after TableReader in
+// EVERY unit, and reached from a text field, a text arm, a string map key, a
+// text map value and a *string blob record — a unit with none of those still
+// carries it, because TableJsonScanUnit in the generic walk reads it, and that
+// walk is ONE artifact, byte-identical in every generated .cpp.
+// tableWideTextRuntime is kind 33's, and it is emitted only into a unit that
+// declares wide text.
 const tableTextRuntime = `
 // ILL-FORMED TEXT IS DAMAGE (docs/SPEC-TABLES.md §3, §4): a kind 12 payload is
 // well-formed UTF-8 with no zero byte among its bytes, checked AS IT ARRIVES
@@ -66,7 +73,17 @@ inline int64_t TableUtf8Clamp( const uint8_t * bytes, uint64_t length, int64_t b
     while ( cut > 0 && ( bytes[cut] & 0xC0 ) == 0x80 ) { cut--; }
     return cut;
 }
+`
 
+// tableWideTextRuntime is the KIND 33 half, and it is emitted ONLY into a unit
+// that declares a `wstring(N)` somewhere — the census ir.WideTextFields takes,
+// which is the same one every other target refuses the unit on. Nothing but a
+// wide-text field, a wide-text arm or a wide-text map value reads a kind 33
+// payload (docs/SPEC-TABLES.md §3), so a unit with no wide text has no call
+// site for these three and carried forty-seven lines it could not reach. Split
+// out for the reason the map, list and arena runtimes are: a unit pays for the
+// construct it declares (§2.2).
+const tableWideTextRuntime = `
 // ONE CODE UNIT off the wire: two bytes LITTLE-ENDIAN, this wire's order for
 // every fixed-width number (docs/SPEC-TABLES.md §3). No unit can exceed
 // 0xFFFF, because two bytes cannot spell one.
