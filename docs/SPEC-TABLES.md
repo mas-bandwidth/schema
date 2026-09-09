@@ -5983,6 +5983,25 @@ Reset( value );                     // the declared defaults, one prefill
 for ( entry : plan ) { … }          // the loop above
 ```
 
+**A PLAN IS PARTITIONED: EVERY UNGUARDED ENTRY FIRST, THEN THE UNION ARMS',
+AND THE PLAN SAYS WHERE THE SECOND HALF STARTS.** Entries are independent —
+each writes its own bytes, and a union's arms are mutually exclusive — so the
+order is free, and what it buys is that the entries that are nearly all of a
+plan never test a guard at all. **THIS IS A REQUIREMENT AND NOT AN
+OPTIMIZATION**, on the same footing as the run copy: under a per-entry guard
+test the paired unit's read is 63.5 ns against 55, and the ruling's ratio goes
+from 1.37x to 1.64x, which is the wrong side of the bound the ruling set.
+
+**TWO MORE PROPERTIES A PORT OWES, and each was bought with a measurement
+rather than a preference** (`test/bench/fixedform_measure.cpp`):
+
+- **THE RUN COPY IS OVERLAPPING UNALIGNED WORD MOVES AND NOT A CALL.** With a
+  runtime-length `memcpy` per entry the same read is 3.1x straight-line instead
+  of 1.37x.
+- **THE LOOP'S BODY IS INLINE IN BOTH HALVES.** Written as a call it is 87 ns
+  against 55, which is worse than the per-entry guard it was meant to remove.
+
+
 **THE PREFILL IS WHAT ANSWERS "ABSENT FIELD".** A field this record does not
 carry has NO PLAN ENTRY at all, so it keeps the default the prefill put there
 and the loop never learns it existed. **THE ABSENCE OF AN ENTRY IS ALSO WHAT
@@ -6098,16 +6117,39 @@ reason is the one §4.2 already gives for not planting `2`.
 - **THE NEGATIVE CONTROL: A READER GIVEN THE WRONG PLAN FOR A RECORD GOES RED.**
   The plan is the whole of this form's safety, so a test that never watched a
   wrong plan fail is a test that never checked the right one worked.
+- **A BYTE-FLIP FUZZ OVER A WHOLE FILE, UNDER A SANITIZER, and it is not
+  optional.** A record carries no lengths and no terminators, so EVERY OFFSET
+  THIS READER USES IS ARITHMETIC OVER SIZES A STRANGER WROTE DOWN — a block
+  whose child sizes do not sum to its parent's, or whose tree is a chain ten
+  thousand deep, is one flipped byte away. Every byte of a form-`3` file,
+  flipped one bit at a time, must be answered ONE OF THREE WAYS AND NEVER A
+  FOURTH: a refusal by name, a `malformed` read, or a read that lands values.
+  **"The reader never leaves the buffer" is a claim only a sanitizer can
+  hold**, so the leg runs plain and under one. The rules that make it true are
+  four: an index past the entries is ANSWERED and not read, every walk over a
+  block is bounded by its entry count, the nesting a block can ask for is
+  capped and its subtree walk is iterative so a chain cannot pick a stack
+  depth, and **EVERY COMPILED PLAN ENTRY IS BOUNDED BY THE WRITER'S OWN
+  DECLARED RECORD SIZE**. A block that reaches past it is refused whole and
+  never partly compiled.
 - **THE PAIRED CORPUS**, sixty-four logical records on the packet wire and on
   this one, whose per-record byte account is a published row.
-- **A REFERENCE BOUND, named because it is the REFERENCE's and not the WIRE's.**
-  The C++ reference builds its identity plan at COMPILE TIME, in an array the
-  compiler sizes, so a type whose leaves do not fit one does not carry the form
-  in that backend. **AN ARRAY OF A FLAT TYPE IS ONE LEAF** — a type whose
-  storage image is its wire image, which is most of them — so the bound is
-  reached only by a large array of a type carrying text, a count, a union or an
-  optional. Nothing in §3.4 stops such a type, and the follow-on is a plan built
-  at load time instead of at compile time, through the same loop.
+- **A GENERATOR BOUND, named because it is the GENERATOR's and not the WIRE's.**
+  THE IDENTITY PLAN IS BUILT BY THE SCHEMA COMPILER, once, and every backend
+  lays the finished array down as static data — one answer for every port
+  rather than one per language, and the only way a port whose language has no
+  compile-time evaluation carries this form at all. The walk is bounded, so a
+  type whose leaves do not fit one plan does not carry the form. **AN ARRAY OF
+  A FLAT TYPE IS ONE LEAF** — a type whose storage image is its wire image,
+  which is most of them — so the bound is reached only by a large array of a
+  type carrying text, a count, a union or an optional. Nothing in §3.4 stops
+  such a type, and the follow-on is a plan built at load time instead, through
+  the same loop.
+- **THE PLAN'S DESTINATIONS ARE ASSERTED AGAINST THE LANGUAGE'S OWN ABI.** A
+  plan the schema compiler laid down carries offsets the schema compiler
+  computed, so every backend emits those offsets back as build-time assertions
+  against its own compiler's `offsetof` and `sizeof`. A layout the generator
+  ever got wrong is a build error and never a misplaced value.
 - **THE MEASUREMENT, and it is the reason this form has one reader and not
   two.** The plan-driven read running its identity plan, against straight-line
   constant-offset loads generated directly, over the same records on one host.
@@ -10670,7 +10712,19 @@ in build version (§20.5).
   LoadRetain LoadRetainBuilder  MeasureRetain  SaveRetain  LoadRetainMessages  SaveRetainMessages
   LoadBodyRetain LoadMessageBodyRetain  MeasureBodyRetain  SaveBodyRetain  SaveBodyFieldsRetain
   MeasureWireRetain  SaveWireRetain  NodeBodyRetain
+  FixedMeasure  FixedSave  FixedLoad  FixedWriteBody  FixedLeaves
+  FixedBodyBytes  FixedRecordBytes  FixedHash  FixedVocab  FixedVocabBytes
+  FixedDst  FixedPlan  FixedPlanCount  FixedPlanGuarded
   ```
+
+  The `Fixed` row is §3.4's, and it is claimed on this list's own rule:
+  nothing declares the fixed form, every table whose closure §3.4 lays out
+  carries it, and a table gains and loses the form as its closure gains and
+  loses a pointer — so a name that is free today must not become a collision
+  tomorrow. `FixedPlanCount` and `FixedPlanGuarded` are the C backend's, which
+  has no struct to hang a plan's two numbers on and spells them as two more
+  file-scope constants; the whole row is one claim across the ports, spelled
+  `<name>_fixed_save` in C and Rust and `<Name>FixedSave` elsewhere.
 
   The set is claimed for EVERY closure member, not only pointer-bearing
   ones: a table gains or loses pointers as an edit, and a name that was
