@@ -409,6 +409,7 @@ namespace Tabledemo
                 info.Create = delegate { return new global::Tabledemo.TeamConfig(); };
                 info.StorageSize = 28; info.StorageAlign = 4; info.RegionAlign = 8;
                 info.Variable = false;
+                info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
@@ -444,6 +445,7 @@ namespace Tabledemo
                 info.Create = delegate { return new global::Tabledemo.GunnerConfig(); };
                 info.StorageSize = 8; info.StorageAlign = 4; info.RegionAlign = 8;
                 info.Variable = false;
+                info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
@@ -479,6 +481,7 @@ namespace Tabledemo
                 info.Create = delegate { return new global::Tabledemo.TurretConfig(); };
                 info.StorageSize = 20; info.StorageAlign = 4; info.RegionAlign = 8;
                 info.Variable = false;
+                info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
@@ -515,6 +518,7 @@ namespace Tabledemo
                 info.Create = delegate { return new global::Tabledemo.HullConfig(); };
                 info.StorageSize = 68; info.StorageAlign = 4; info.RegionAlign = 8;
                 info.Variable = false;
+                info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
@@ -551,6 +555,7 @@ namespace Tabledemo
                 info.Create = delegate { return new global::Tabledemo.KeyedConfig(); };
                 info.StorageSize = 300; info.StorageAlign = 4; info.RegionAlign = 8;
                 info.Variable = false;
+                info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
@@ -587,6 +592,7 @@ namespace Tabledemo
                 info.Create = delegate { return new global::Tabledemo.ScoreBoard(); };
                 info.StorageSize = 12; info.StorageAlign = 4; info.RegionAlign = 8;
                 info.Variable = false;
+                info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;

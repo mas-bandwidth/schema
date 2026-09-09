@@ -74,6 +74,7 @@ namespace Bench
                 info.Create = delegate { return new global::Bench.FixedTable(); };
                 info.StorageSize = 1376; info.StorageAlign = 16; info.RegionAlign = 16;
                 info.Variable = false;
+                info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;

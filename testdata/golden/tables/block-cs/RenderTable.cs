@@ -911,6 +911,7 @@ namespace Blockdemo
                 info.Create = delegate { return new global::Blockdemo.RenderFrame(); };
                 info.StorageSize = 7879320; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
+                info.RootElemSlots = 256;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
@@ -954,6 +955,7 @@ namespace Blockdemo
                 info.Create = delegate { return new global::Blockdemo.RenderCamera(); };
                 info.StorageSize = 72; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
+                info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
@@ -993,6 +995,7 @@ namespace Blockdemo
                 info.Create = delegate { return new global::Blockdemo.RenderShip(); };
                 info.StorageSize = 88; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
+                info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
@@ -1037,6 +1040,7 @@ namespace Blockdemo
                 info.Create = delegate { return new global::Blockdemo.RenderTurret(); };
                 info.StorageSize = 64; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
+                info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
@@ -1079,6 +1083,7 @@ namespace Blockdemo
                 info.Create = delegate { return new global::Blockdemo.RenderMissile(); };
                 info.StorageSize = 72; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
+                info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
@@ -1119,6 +1124,7 @@ namespace Blockdemo
                 info.Create = delegate { return new global::Blockdemo.RenderDynamicProp(); };
                 info.StorageSize = 72; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
+                info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
@@ -1159,6 +1165,7 @@ namespace Blockdemo
                 info.Create = delegate { return new global::Blockdemo.RenderStaticProp(); };
                 info.StorageSize = 80; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
+                info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
@@ -1199,6 +1206,7 @@ namespace Blockdemo
                 info.Create = delegate { return new global::Blockdemo.RenderCosmeticProp(); };
                 info.StorageSize = 80; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
+                info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
@@ -1240,6 +1248,7 @@ namespace Blockdemo
                 info.Create = delegate { return new global::Blockdemo.RenderLaser(); };
                 info.StorageSize = 64; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
+                info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
@@ -1279,6 +1288,7 @@ namespace Blockdemo
                 info.Create = delegate { return new global::Blockdemo.RenderExplosion(); };
                 info.StorageSize = 80; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
+                info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
@@ -1319,6 +1329,7 @@ namespace Blockdemo
                 info.Create = delegate { return new global::Blockdemo.RenderVector3(); };
                 info.StorageSize = 24; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
+                info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
@@ -1355,6 +1366,7 @@ namespace Blockdemo
                 info.Create = delegate { return new global::Blockdemo.RenderQuaternion(); };
                 info.StorageSize = 32; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
+                info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;

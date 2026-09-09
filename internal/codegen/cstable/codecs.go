@@ -614,6 +614,7 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	}
 	g.pf("    info.StorageSize = %d; info.StorageAlign = %d; info.RegionAlign = %d;\n", layout.Size, layout.Align, align)
 	g.pf("    info.Variable = %t;\n", ir.VariableTables(g.unit)[st.Name])
+	g.pf("    info.RootElemSlots = %d;\n", rootElemSlots(st))
 	var pt strings.Builder
 	pt.WriteString("info.PointerType = delegate(ulong id) { switch(id) { ")
 	for _, target := range ir.PointerReachable(st) {
@@ -978,4 +979,22 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 		f.Name, jsonName, tableFieldTypeName(f), id, kind, isArray, counted, f.Type.Optional, bound,
 		csElemWidth(f.Type), hasRange, rangeMin, rangeMax, enumMax, enumName, variantId,
 		keyTypeName, keyName, keyId, guard, tableRef, arms, doc, numTags, tags, g.tableStorageColumns(f)+g.wireColumns(f))
+}
+
+func rootElemSlots(st *ir.Struct) int {
+	slots := int64(0)
+	for _, f := range st.Fields {
+		if f.KeyEnum == "" && tableScalarKind(f) == ir.TableKindTable {
+			if f.IsList() || f.ArrayBound >= 256 {
+				return 256
+			}
+			if f.Array != ir.ArrayNone && f.ArrayBound > 0 {
+				slots += f.ArrayBound
+				if slots >= 256 {
+					return 256
+				}
+			}
+		}
+	}
+	return int(slots)
 }

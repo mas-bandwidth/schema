@@ -587,7 +587,7 @@ public static partial class TableWire
         // validation still precedes the first output byte.
         int cachedFields = !measure && !type.Variable && type.Fields.Length <= 256 ? type.Fields.Length : 0;
         Span<long> rootPayloadSizes = stackalloc long[cachedFields];
-        int cachedElemSlots = !measure && !type.Variable ? 256 : 0;
+        int cachedElemSlots = !measure && !type.Variable ? type.RootElemSlots : 0;
         Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
         long n = 1 + BodySize(value, type, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
         long nodes = NodesSize(ref ids);

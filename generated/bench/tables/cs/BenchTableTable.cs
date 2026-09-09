@@ -223,6 +223,7 @@ namespace Benchtable
         public Func<object> Create;
         public int StorageSize, StorageAlign, RegionAlign;
         public bool Variable;
+        internal int RootElemSlots;
         public Func<TableTypeInfo[]> PointerTypes;
         public Func<ulong,TableTypeInfo> PointerType;
         public bool BytesEdge, StringEdge;
@@ -4392,7 +4393,7 @@ namespace Benchtable
                 // validation still precedes the first output byte.
                 int cachedFields = !measure && !type.Variable && type.Fields.Length <= 256 ? type.Fields.Length : 0;
                 Span<long> rootPayloadSizes = stackalloc long[cachedFields];
-                int cachedElemSlots = !measure && !type.Variable ? 256 : 0;
+                int cachedElemSlots = !measure && !type.Variable ? type.RootElemSlots : 0;
                 Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
                 long n = 1 + BodySize(value, type, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
                 long nodes = NodesSize(ref ids);
@@ -5228,6 +5229,7 @@ namespace Benchtable
                 info.Create = delegate { return new global::Benchtable.TableEntity(); };
                 info.StorageSize = 64; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
+                info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
@@ -5275,6 +5277,7 @@ namespace Benchtable
                 info.Create = delegate { return new global::Benchtable.TableStat(); };
                 info.StorageSize = 8; info.StorageAlign = 4; info.RegionAlign = 8;
                 info.Variable = false;
+                info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
@@ -5310,6 +5313,7 @@ namespace Benchtable
                 info.Create = delegate { return new global::Benchtable.TableMixed(); };
                 info.StorageSize = 1352; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
+                info.RootElemSlots = 88;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
@@ -5371,6 +5375,7 @@ namespace Benchtable
                 info.Create = delegate { return new global::Benchtable.TableHitEvent(); };
                 info.StorageSize = 16; info.StorageAlign = 4; info.RegionAlign = 8;
                 info.Variable = false;
+                info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
@@ -5408,6 +5413,7 @@ namespace Benchtable
                 info.Create = delegate { return new global::Benchtable.TableChatEvent(); };
                 info.StorageSize = 8; info.StorageAlign = 4; info.RegionAlign = 8;
                 info.Variable = false;
+                info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
@@ -5443,6 +5449,7 @@ namespace Benchtable
                 info.Create = delegate { return new global::Benchtable.TablePickupEvent(); };
                 info.StorageSize = 8; info.StorageAlign = 4; info.RegionAlign = 8;
                 info.Variable = false;
+                info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;

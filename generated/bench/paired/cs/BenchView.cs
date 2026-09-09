@@ -109,6 +109,7 @@ namespace Bench
                 info.Create = delegate { return new global::Bench.BenchBits(); };
                 info.StorageSize = 40; info.StorageAlign = 8; info.RegionAlign = 16;
                 info.Variable = false;
+                info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
@@ -166,6 +167,7 @@ namespace Bench
                 info.Create = delegate { return new global::Bench.BenchInts(); };
                 info.StorageSize = 40; info.StorageAlign = 4; info.RegionAlign = 16;
                 info.Variable = false;
+                info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
@@ -227,6 +229,7 @@ namespace Bench
                 info.Create = delegate { return new global::Bench.BenchPacket(); };
                 info.StorageSize = 72; info.StorageAlign = 8; info.RegionAlign = 16;
                 info.Variable = false;
+                info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;

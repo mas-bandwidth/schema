@@ -311,6 +311,7 @@ namespace Tabledemo
                 info.Create = delegate { return new global::Tabledemo.GunnerSettings(); };
                 info.StorageSize = 36; info.StorageAlign = 4; info.RegionAlign = 8;
                 info.Variable = false;
+                info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
@@ -347,6 +348,7 @@ namespace Tabledemo
                 info.Create = delegate { return new global::Tabledemo.ShipEntry(); };
                 info.StorageSize = 108; info.StorageAlign = 4; info.RegionAlign = 8;
                 info.Variable = false;
+                info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
@@ -385,6 +387,7 @@ namespace Tabledemo
                 info.Create = delegate { return new global::Tabledemo.GlobalSettings(); };
                 info.StorageSize = 72; info.StorageAlign = 4; info.RegionAlign = 8;
                 info.Variable = false;
+                info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
@@ -422,6 +425,7 @@ namespace Tabledemo
                 info.Create = delegate { return new global::Tabledemo.PackConfig(); };
                 info.StorageSize = 740; info.StorageAlign = 4; info.RegionAlign = 8;
                 info.Variable = false;
+                info.RootElemSlots = 3;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
