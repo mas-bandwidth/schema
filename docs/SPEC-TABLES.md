@@ -33,6 +33,90 @@ The two contracts never mix. Flatbuffers- and protobuf-class evolution
 ideas apply here, to tables — they do not apply to `type`, whose wire is
 hardcoded under the protocol id, and nothing in this document changes that.
 
+## The three wires
+
+**There are THREE WIRES over the same struct, and each is a different
+bargain.** In the owner's words: *"I also like that there are three quite
+different tables now, the type, the fixed table, the variable table"* —
+*"they are all pretty cool and unique. the tradeoffs are clear."*
+
+- **TYPE — the fastest wire.** Bitpacked, hardcoded, and it knows only
+  itself: the bytes are ONE BUILD'S PRIVATE LAYOUT, guarded by the protocol
+  id, same-or-refuse (SPEC.md). A type is NOT VERSIONED, and that refusal
+  is the whole of what it buys — nothing is negotiated because nothing may
+  differ. Where versioning would cost more than it is worth, the type is
+  the answer: *"if somebody really cares about this, they use a type
+  instead (no versioning)."*
+- **FIXED TABLE — the type's speed, in table form** (the FIXED FORM, form
+  byte `3`, §3.4 — lands with the fixed-form batch). *"Fixed tables are
+  meant to be the fast equivalent of types, in table form."* A record is an
+  EIGHT-BYTE HASH of the writer's LAYOUT and then the VALUES IN DECLARED
+  ORDER, EVERY FIELD AT ITS BOUND — the type's own field order, with THE
+  LAYOUT sent once beside it. (The fixed form's once-per-file description
+  is THE LAYOUT; form `1`'s VOCABULARY BLOCK is a different thing and keeps
+  its name.)
+  The class is DECLARED, `fixed table` (§2.2), and the compiler REFUSES in
+  its by-value closure anything that would make a body variable size,
+  naming the field and the table (§11): a pointer, a byte buffer at its
+  used size, a map, an unbounded array, a guarded (`if`) branch, or a
+  nested plain `table`. So the body is ONE CONSTANT SIZE PER TYPE and no
+  branch is guarded: ONE read path and ONE write path, whose cost DOES NOT
+  DEPEND ON VERSION SKEW. Skew is paid for whether or not the peers
+  differ, which is the trade — *"it's more honest, and predictable."* It
+  versions by APPEND-ONLY evolution with DEPRECATION IN PLACE, and that
+  versioning is load-bearing: **we must not ever break versioning in fixed
+  tables.** Writing at the bound is why it is for SMALL THINGS —
+  *"effectively, fixed tables should only be used for small things."*
+- **VARIABLE TABLE — the tolerant wire** (the VARIABLE FORM, form byte `1`,
+  §3). Maps, lists, pointers, per-field guards, default elision, and a
+  record that DESCRIBES ITSELF every time: ids, kinds and lengths ride
+  with the values, so any reader reads any data and the differences are
+  reported, never fatal. It pays framing bytes and, in one narrow case, an
+  allocation, and it is the wire for anything LARGE, SPARSE or FREE-FORM —
+  everything the other two refuse to carry.
+
+**THE FIRST BYTE OF EVERY SCHEMA FILE IS THE FORM BYTE**, and the registry is
+three: `1` the VARIABLE FORM, `2` the MESSAGE FORM, `3` the FIXED FORM.
+
+**ONE FORM BYTE PER CLASS.** Form `3` is the FIXED table's wire and form `1`
+is the VARIABLE table's, and neither reads for the other. Form `1` does not
+move: it is what §3 describes, it is what every variable table writes, and it
+is what an old file on a disk is. The form-`1` machinery a FIXED table
+currently carries — the emitted reader and writer a fixed-size table has on
+the variable wire, from the days when both classes rode form `1` — is
+SCHEDULED FOR REMOVAL once form `3` lands, so that a fixed table has one wire
+and one pair of paths and not two of each.
+
+**The variable table is the ESCAPE HATCH THAT LETS THE OTHER TWO BE
+STRICT.** A fixed table refuses what would make it variable; a type
+refuses to version; and neither refusal strands anyone, because —
+*"if you are ever constrained by type or fixed table, table (variable
+table) is there for you."*
+
+**The MESSAGE FORM (form byte `2`, §3.3) is the fixed table on the wire
+between peers**: a BATCH of fixed tables under ONE ANNOUNCED BLOCK, each
+body packed through the type's own codec. It is a fixed table's and nobody
+else's — a message-form request naming a plain `table` is REFUSED naming the
+table (§2.2, §11), because a message is a bitpacked body under one announced
+vocabulary and the shape has to be one the declaration fixes.
+
+**NEITHER CLASS BORROWS THE OTHER'S FORM.** A declared `fixed table` encodes
+as form `3`, ALWAYS; a plain `table` encodes as form `1`, always; and a reader
+emitted for one REFUSES the other BY NAME. A form-`1` file handed to a fixed
+root is `previous_form` — a NAMED REFUSAL, never a slow read down the variable
+wire — exactly as a form-`3` file handed to a variable root is refused by name.
+A variable root is form `1`'s, and that is where it goes.
+
+**How to choose.**
+
+- **One build on both ends, and speed above all** — `type`. No versioning,
+  no hash, no vocabulary; the protocol id refuses anything else.
+- **Small, dense, every field bounded, and it must cross builds** —
+  `fixed table`. A constant-size body and a skew-independent cost, versioned
+  by appending and deprecating in place.
+- **Large, sparse, free-form, or you cannot bound it** — `table`. Pay the
+  framing and keep every reader.
+
 ## The performance ladder
 
 **Tables are LESS performant than types**, and that is the trade they exist
@@ -6217,6 +6301,25 @@ Reset( value );                     // the declared defaults, one prefill
 for ( entry : plan ) { … }          // the loop above
 ```
 
+**A PLAN IS PARTITIONED: EVERY UNGUARDED ENTRY FIRST, THEN THE UNION ARMS',
+AND THE PLAN SAYS WHERE THE SECOND HALF STARTS.** Entries are independent —
+each writes its own bytes, and a union's arms are mutually exclusive — so the
+order is free, and what it buys is that the entries that are nearly all of a
+plan never test a guard at all. **THIS IS A REQUIREMENT AND NOT AN
+OPTIMIZATION**, on the same footing as the run copy: under a per-entry guard
+test the paired unit's read is 63.5 ns against 55, and the ruling's ratio goes
+from 1.37x to 1.64x, which is the wrong side of the bound the ruling set.
+
+**TWO MORE PROPERTIES A PORT OWES, and each was bought with a measurement
+rather than a preference** (`test/bench/fixedform_measure.cpp`):
+
+- **THE RUN COPY IS OVERLAPPING UNALIGNED WORD MOVES AND NOT A CALL.** With a
+  runtime-length `memcpy` per entry the same read is 3.1x straight-line instead
+  of 1.37x.
+- **THE LOOP'S BODY IS INLINE IN BOTH HALVES.** Written as a call it is 87 ns
+  against 55, which is worse than the per-entry guard it was meant to remove.
+
+
 **THE PREFILL IS WHAT ANSWERS "ABSENT FIELD".** A field this record does not
 carry has NO PLAN ENTRY at all, so it keeps the default the prefill put there
 and the loop never learns it existed. **THE ABSENCE OF AN ENTRY IS ALSO WHAT
@@ -6413,16 +6516,39 @@ added moves it without anyone remembering to.
   answers `FORM <n> <name>` before it says anything else about the file, or
   refuses the byte by name, over every row of the registry and over a file with
   no first byte at all.
+- **A BYTE-FLIP FUZZ OVER A WHOLE FILE, UNDER A SANITIZER, and it is not
+  optional.** A record carries no lengths and no terminators, so EVERY OFFSET
+  THIS READER USES IS ARITHMETIC OVER SIZES A STRANGER WROTE DOWN — a layout
+  whose child sizes do not sum to its parent's, or whose tree is a chain ten
+  thousand deep, is one flipped byte away. Every byte of a form-`3` file,
+  flipped one bit at a time, must be answered ONE OF THREE WAYS AND NEVER A
+  FOURTH: a refusal by name, a `malformed` read, or a read that lands values.
+  **"The reader never leaves the buffer" is a claim only a sanitizer can
+  hold**, so the leg runs plain and under one. The rules that make it true are
+  four: an index past the entries is ANSWERED and not read, every walk over a
+  layout is bounded by its entry count, the nesting a layout can ask for is
+  capped and its subtree walk is iterative so a chain cannot pick a stack
+  depth, and **EVERY COMPILED PLAN ENTRY IS BOUNDED BY THE WRITER'S OWN
+  DECLARED RECORD SIZE**. A layout that reaches past it is refused whole and
+  never partly compiled.
 - **THE PAIRED CORPUS**, sixty-four logical records on the packet wire and on
   this one, whose per-record byte account is a published row.
-- **A REFERENCE BOUND, named because it is the REFERENCE's and not the WIRE's.**
-  The C++ reference builds its identity plan at COMPILE TIME, in an array the
-  compiler sizes, so a type whose leaves do not fit one does not carry the form
-  in that backend. **AN ARRAY OF A FLAT TYPE IS ONE LEAF** — a type whose
-  storage image is its wire image, which is most of them — so the bound is
-  reached only by a large array of a type carrying text, a count, a union or an
-  optional. Nothing in §3.4 stops such a type, and the follow-on is a plan built
-  at load time instead of at compile time, through the same loop.
+- **A GENERATOR BOUND, named because it is the GENERATOR's and not the WIRE's.**
+  THE IDENTITY PLAN IS BUILT BY THE SCHEMA COMPILER, once, and every backend
+  lays the finished array down as static data — one answer for every port
+  rather than one per language, and the only way a port whose language has no
+  compile-time evaluation carries this form at all. The walk is bounded, so a
+  type whose leaves do not fit one plan does not carry the form. **AN ARRAY OF
+  A FLAT TYPE IS ONE LEAF** — a type whose storage image is its wire image,
+  which is most of them — so the bound is reached only by a large array of a
+  type carrying text, a count, a union or an optional. Nothing in §3.4 stops
+  such a type, and the follow-on is a plan built at load time instead, through
+  the same loop.
+- **THE PLAN'S DESTINATIONS ARE ASSERTED AGAINST THE LANGUAGE'S OWN ABI.** A
+  plan the schema compiler laid down carries offsets the schema compiler
+  computed, so every backend emits those offsets back as build-time assertions
+  against its own compiler's `offsetof` and `sizeof`. A layout the generator
+  ever got wrong is a build error and never a misplaced value.
 - **THE MEASUREMENT, and it is the reason this form has one reader and not
   two.** The plan-driven read running its identity plan, against straight-line
   constant-offset loads generated directly, over the same records on one host.
@@ -9756,7 +9882,7 @@ element size, array bound and count-companion offset, declared bounds,
 branch guards, and the nested table's descriptor. `<Name>TableType()`
 returns that table's descriptor.
 
-**The C# Table Serialization Contract.** In C#, generated typed `<Name>Save` entry points perform direct typed field reads and compile-time ordinal indexing, and therefore do not observe runtime mutations of TableFieldInfo / TableTypeInfo descriptors (such as getter swapping, custom defaults, guard overrides, or field id alterations). Polymorphic `TableWire.Save(object)` remains the descriptor-driven entry point that observes runtime descriptor mutations.
+**The C# Table Serialization Contract.** In C#, generated typed `<Name>Save` entry points read fields directly and use compile-time ordinal indexing: scalar leaves and child scalar arrays are typed; everything else is descriptor-driven. For those direct-read paths (scalar leaves and child scalar arrays), typed `<Name>Save` does not observe runtime mutations of TableFieldInfo / TableTypeInfo descriptors (such as getter swapping, custom defaults, guard overrides, or field id alterations). Polymorphic `TableWire.Save(object)` remains the descriptor-driven entry point that observes runtime descriptor mutations across all fields.
 
 **A type descriptor also carries a RESET hook** — put one instance back at
 its declared defaults, in place. A generic walker that FILLS a value has to
@@ -10997,7 +11123,19 @@ in build version (§20.5).
   LoadRetain LoadRetainBuilder  MeasureRetain  SaveRetain  LoadRetainMessages  SaveRetainMessages
   LoadBodyRetain LoadMessageBodyRetain  MeasureBodyRetain  SaveBodyRetain  SaveBodyFieldsRetain
   MeasureWireRetain  SaveWireRetain  NodeBodyRetain
+  FixedMeasure  FixedSave  FixedLoad  FixedWriteBody  FixedLeaves
+  FixedBodyBytes  FixedRecordBytes  FixedHash  FixedLayout  FixedLayoutBytes
+  FixedDst  FixedPlan  FixedPlanCount  FixedPlanGuarded
   ```
+
+  The `Fixed` row is §3.4's, and it is claimed on this list's own rule:
+  nothing declares the fixed form, every table whose closure §3.4 lays out
+  carries it, and a table gains and loses the form as its closure gains and
+  loses a pointer — so a name that is free today must not become a collision
+  tomorrow. `FixedPlanCount` and `FixedPlanGuarded` are the C backend's, which
+  has no struct to hang a plan's two numbers on and spells them as two more
+  file-scope constants; the whole row is one claim across the ports, spelled
+  `<name>_fixed_save` in C and Rust and `<Name>FixedSave` elsewhere.
 
   The set is claimed for EVERY closure member, not only pointer-bearing
   ones: a table gains or loses pointers as an edit, and a name that was

@@ -347,7 +347,7 @@ func (g *fixedGen) writeElement(f *ir.Field, name string) []wseg {
 // DECLARATION's, which SPEC.md fixes identically in every port, which is why a
 // bits(12) costs four bytes here where §3 spends two.
 func (g *fixedGen) leafSegment(f *ir.Field, name string) string {
-	width := ir.TableFixedStorageBytes(f.Type) * 8
+	width := ir.FixedStorageBytes(f.Type) * 8
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Enum:
@@ -532,7 +532,7 @@ func (g *fixedGen) readElement(out *rseg, f *ir.Field, v, field string) {
 // projection is a pure function of the image and the report never reaches it.
 func (g *fixedGen) leafMatch(f *ir.Field, v string) (string, node) {
 	name := "f_" + v
-	width := ir.TableFixedStorageBytes(f.Type) * 8
+	width := ir.FixedStorageBytes(f.Type) * 8
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Enum:

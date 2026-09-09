@@ -990,6 +990,7 @@ void main() {
     mixed.crcHint = 0xabcdef;
     mixed.hasExtra = true;
     mixed.extra = 200;
+    mixed.idleTicks = 9; // rides now: the branch that gated it is gone
     pin(
       'bench_mixed',
       mixed,

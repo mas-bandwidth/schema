@@ -38,17 +38,17 @@ import (
 // behind it, the layout's own format included.
 const (
 	fixedFormByte     = 3
-	fixedEntryBytes   = ir.TableFixedEntryBytes
-	fixedHeaderBytes  = ir.TableFixedLayoutHeaderBytes
-	fixedCountBytes   = ir.TableFixedCountBytes
-	fixedPresentBytes = ir.TableFixedPresentBytes
+	fixedEntryBytes   = ir.FixedEntryBytes
+	fixedHeaderBytes  = ir.FixedLayoutHeaderBytes
+	fixedCountBytes   = ir.FixedCountBytes
+	fixedPresentBytes = ir.FixedPresentBytes
 	fixedHashBytes    = int64(8)
 )
 
 // fixedKindOptional is the ONE kind §3.4's layout adds to §3's closed set: the
 // OPTIONAL WRAPPER, one child, whose size is one present byte plus the child's.
 // It is a LAYOUT kind and not a WIRE kind — nothing rides under it in a record.
-const fixedKindOptional = ir.TableKindOptional
+const fixedKindOptional = ir.FixedKindOptional
 
 // the flavours a `text` plan entry lands its units under.
 const (
@@ -57,9 +57,9 @@ const (
 	fixedTextBytes = 3
 )
 
-func fixedTypeBytes(st *ir.Struct) int64  { return ir.TableFixedTypeBytes(st) }
-func fixedFieldBytes(f *ir.Field) int64   { return ir.TableFixedFieldBytes(f) }
-func fixedElementBytes(f *ir.Field) int64 { return ir.TableFixedElementBytes(f) }
+func fixedTypeBytes(st *ir.Struct) int64  { return ir.FixedTypeBytes(st) }
+func fixedFieldBytes(f *ir.Field) int64   { return ir.FixedFieldBytes(f) }
+func fixedElementBytes(f *ir.Field) int64 { return ir.FixedElementBytes(f) }
 
 // fixedUnionTagBytes is the storage width of a union's tag ordinal.
 func fixedUnionTagBytes(u *ir.Union) int64 { return int64(ir.StorageBitsFor(u.Max) / 8) }
@@ -328,11 +328,11 @@ func fixedLayoutHash(layout []byte) uint64 {
 // array the compiler sizes, and Elixir builds no plan at compile time — the
 // identity plan is a literal this emitter writes and any other plan is compiled
 // at load time, which is the follow-on §3.4 names for the reference's own
-// bound. The RECORD CEILING is the wire's, so it is kept: ir.TableFixedFormRoots
+// bound. The RECORD CEILING is the wire's, so it is kept: ir.FixedFormRoots
 // applies it and the compiler names every table it costs.
 func fixedRoots(u *ir.Unit) []*ir.Struct {
 	var out []*ir.Struct
-	for _, st := range ir.TableFixedFormRoots(u) {
+	for _, st := range ir.FixedFormRoots(u) {
 		if !fixedSupported(st, 0) {
 			continue
 		}

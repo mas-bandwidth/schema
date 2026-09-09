@@ -513,7 +513,7 @@ plain-cache line.
 |---|---|---|---|---|---|---|---|---|
 | ✅ `testdata/golden/tables/examples/KeyedTable.h:2245-2249` | ✅ `internal/codegen/ctable/ctable.go:45-50` (defined in `<Base>Table.c`) | ❌ #518 | ✅ `internal/codegen/gotable/codecs.go` (`emitTableDescriptor`) | ❌ #411 (the plain-cache idiom) | ✅ `TestJavaDescriptorsAreSafelyPublished` | ❌ #516 | ❌ #514 | ❌ #515 |
 
-**C# Table Serialization Contract.** In C#, generated typed `<Name>Save` entry points perform direct typed field reads and compile-time ordinal indexing, and therefore do not observe runtime mutations of TableFieldInfo / TableTypeInfo descriptors (such as getter swapping, custom defaults, guard overrides, or field id alterations). Polymorphic `TableWire.Save(object)` remains the descriptor-driven entry point that observes runtime descriptor mutations.
+**C# Table Serialization Contract.** In C#, generated typed `<Name>Save` entry points read fields directly and use compile-time ordinal indexing: scalar leaves and child scalar arrays are typed; everything else is descriptor-driven. For those direct-read paths (scalar leaves and child scalar arrays), typed `<Name>Save` does not observe runtime mutations of TableFieldInfo / TableTypeInfo descriptors (such as getter swapping, custom defaults, guard overrides, or field id alterations). Polymorphic `TableWire.Save(object)` remains the descriptor-driven entry point that observes runtime descriptor mutations across all fields.
 
 ### M14 — The `&node` label in the text form
 
@@ -924,15 +924,15 @@ read back as `0x7ff8000020000000`, which is the quiet bit the conversion set.
 
 ### M22 — Typed table serialization fast path
 
-**Method.** Fixed tables emit typed save entry points and bodies (`<Name>Save`, `<Name>CollectTyped`, `<Name>BodySizeTyped`, `<Name>WriteBodyTyped`) that perform direct typed field reads, compile-time ordinal indexing, and pre-sized buffer operations without dynamic reflection or descriptor delegate dispatches. In C#, generated typed `<Name>Save` entry points perform direct typed field reads and compile-time ordinal indexing, and therefore do not observe runtime mutations of TableFieldInfo / TableTypeInfo descriptors. Polymorphic `TableWire.Save(object)` remains the descriptor-driven entry point that observes runtime descriptor mutations.
+**Method.** Fixed tables emit typed save entry points and bodies (`<Name>Save`, `<Name>CollectTyped`, `<Name>BodySizeTyped`, `<Name>WriteBodyTyped`) where scalar leaves and child scalar arrays run with direct typed field reads, compile-time ordinal indexing, and pre-sized buffer operations without dynamic reflection or descriptor delegate dispatches, while everything else remains descriptor-driven. In C#, generated typed `<Name>Save` entry points read fields directly and use compile-time ordinal indexing (scalar leaves and child scalar arrays are typed; everything else is descriptor-driven), and therefore do not observe runtime mutations of TableFieldInfo / TableTypeInfo descriptors for those fields. Polymorphic `TableWire.Save(object)` remains the descriptor-driven entry point that observes runtime descriptor mutations across all fields.
 
 **Reference.** `internal/codegen/cstable/wire.go`
 
-**Proven in.** C# (#814, #815), Go (#795, #803), C (#775), C++ (#775).
+**Proven in.** C# (#814, #816), Go (#795, #803), C (#775), C++ (#775).
 
-**Measured effect.** Bypasses descriptor delegate dispatches and hash probes on repeat lookups, eliminating up to 19% of serialization overhead in C#.
+**Measured effect.** Bypasses descriptor delegate dispatches and hash probes on repeat lookups (committed receipt: `bench/tables/results/2026-09-08-csharp-vocabulary-index-arm64`; official post-merge sitting will record the sealed baseline).
 
-**Negative control.** `TestCsRefAtShape` and `TestCsTypedVsDynamicWireEquivalence`.
+**Negative control.** `TestCsRefAt` and `TestCsTypedVsDynamicWireEquivalence`.
 
 **Targets:** none
 
@@ -1142,6 +1142,8 @@ refuse, under s390x emulation); `tables-java-order`;
 **Measured effect.** Structural.
 
 **Negative control.** `tables-big-endian-negative-control`;
+`tables-c-big-endian-negative-control`;
+`tables-c-little-endian-negative-control`;
 `conformance-negative-control-c-foreign` neuters the byte swap and requires
 both foreign rows red with `cook` and `block` green.
 

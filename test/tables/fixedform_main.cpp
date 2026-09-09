@@ -1,7 +1,7 @@
 // THE FIXED FORM'S VERSIONING CONFORMANCE (docs/SPEC-TABLES.md §3.4, "held by
 // test"). The invariant §3.4 states before anything else is that a fixed
-// record is positional BY PLAN and the positions are the WRITER's LAYOUT, never
-// the reader's own declaration — "we must not ever break versioning in fixed
+// record is positional BY PLAN and the positions are the WRITER's block, never
+// the reader's own layout — "we must not ever break versioning in fixed
 // tables", the project owner. This file is what that sentence is worth.
 //
 // Every case below reads a record through the ONE plan-driven path, and the
@@ -23,14 +23,9 @@
 //   8. THE NEGATIVE CONTROL  a reader given the WRONG PLAN for a record, which
 //                            must come out wrong. A test that never watched
 //                            the wrong plan fail never checked the right one.
-//   9. THE LAYOUT'S OWN      one corrupted-layout case per NAMED RULE §3.4
-//      VALIDATION            holds an untrusted peer's layout to, each
-//                            breaking exactly one thing in a layout this
-//                            reader accepts and each refused under its own
-//                            name with nothing decoded
-//
-// THE LAYOUT is what form 1 called the vocabulary block. It is neither §7's
-// cooked block nor §19's block form.
+//   9. THE LAYOUT'S RULES    every named rule a layout is held to, broken one
+//                            at a time, each refused under ITS OWN NAME
+//  10. THE FUZZ              every byte of a form-3 file, one bit at a time
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -80,7 +75,7 @@ static void fx_case()
                "same schema: a clean read moves no counter" );
     }
 
-    // 2, 4, 5. FX2 READS FX1 — a plan compiled from FX1's layout
+    // 2, 4, 5. FX2 READS FX1 — a plan compiled from FX1's block
     {
         tblfx2::FxRoot back;
         tblfx2::TableReport r;
@@ -224,7 +219,7 @@ static void negative_control()
     tblfx1::FxRoot wrong;
     tblfx1::FxRootReset( wrong );
     tblfx1::TableReport r;
-    tblfx1::TableFixedRun( tblfx1::FxRootFixedPlan.entries, tblfx1::FxRootFixedPlan.count, body, (uint8_t *) &wrong, &r );
+    tblfx1::TableFixedRun( tblfx1::FxRootFixedPlan, tblfx1::FxRootFixedPlanCount, tblfx1::FxRootFixedPlanGuarded, body, (uint8_t *) &wrong, &r );
     const bool intact = wrong.nested.a == 33 && wrong.nested.b == 44 && wrong.renamed == 808;
     check( !intact, "NEGATIVE CONTROL: the wrong plan must NOT reproduce the record" );
 
@@ -258,9 +253,9 @@ static void negative_control()
     // the honest answer for.
     {
         struct { uint8_t form; tblfx1::TableMessageReason want; const char * what; } rows[3] = {
-            { 1, tblfx1::previous_form,      "REFUSED BY NAME: previous_form for the VARIABLE form" },
+            { 1, tblfx1::previous_form,        "REFUSED BY NAME: previous_form for the VARIABLE form" },
             { 2, tblfx1::message_form_as_file, "REFUSED BY NAME: message_form_as_file for a batch" },
-            { 6, tblfx1::newer_form,         "REFUSED BY NAME: newer_form for a byte no form defines" },
+            { 6, tblfx1::newer_form,           "REFUSED BY NAME: newer_form for a byte no form defines" },
         };
         for ( int i = 0; i < 3; ++i )
         {
@@ -334,14 +329,14 @@ static void put_entry( std::vector<uint8_t> & layout, uint64_t id, uint8_t kind,
     tblfx1::TableFixedPut32( layout.data() + at + 13, children );
 }
 
-// a FILE around a hand-built layout: the form byte, the layout's length, the
+// a FILE around a hand-built layout: the header, the layout's length, the
 // layout, and no records — every rule below refuses before a record is reached
 static std::vector<uint8_t> file_of( const std::vector<uint8_t> & layout )
 {
     std::vector<uint8_t> f( (size_t) tblfx1::kTableFixedHeaderBytes + 4, 0 );
     f[0] = 3; // the fixed form's byte
     tblfx1::TableFixedPut64( f.data() + tblfx1::kTableFixedHashAt,
-                             tblfx1::TableFixedHashOf( layout.data(), (uint32_t) layout.size() ) );
+                             tblfx1::TableFixedHashOf( layout.data(), (int64_t) layout.size() ) );
     tblfx1::TableFixedPut32( f.data() + tblfx1::kTableFixedHeaderBytes, (uint32_t) layout.size() );
     f.insert( f.end(), layout.begin(), layout.end() );
     return f;
@@ -489,16 +484,71 @@ static void layout_validation()
     }
 }
 
+// ---------------------------------------------------------------------------
+
+static void fuzz_case()
+{
+    // A LAYOUT IS A STRANGER'S BYTES, AND THAT IS THIS FORM'S WHOLE RISK. The
+    // record carries no lengths and no terminators, so every offset the reader
+    // uses is arithmetic over sizes the WRITER wrote down. A layout whose child
+    // sizes do not sum to its parent's, or whose tree is a chain ten thousand
+    // deep, is not a hypothetical — it is one flipped byte away.
+    //
+    // So: every byte of a form-3 file, flipped one bit at a time, handed to a
+    // reader of the other generation. The reader must answer one of three ways
+    // and never a fourth — a refusal by name, a malformed read, or a read that
+    // lands values. UNDER ASAN "never a fourth" includes never touching a byte
+    // outside the buffer, which is what this is really for.
+    tblfx2::FxRoot two;
+    tblfx2::FxRootReset( two );
+    two.keep = 5150u;
+    two.narrow = 70000u;
+    two.renamed_to = 808;
+    two.added = 909;
+    two.nested.a = 33;
+    two.nested.b = 44;
+    two.extra.x = 55;
+    two.extra.y = 66;
+    std::vector<uint8_t> clean( (size_t) tblfx2::FxRootFixedMeasure( 1 ) );
+    tblfx2::FxRootFixedSave( &two, 1, clean.data(), (int64_t) clean.size() );
+
+    std::vector<tblfx1::TableFixedEntry> plan( 1024 );
+    int64_t refused = 0, damaged = 0, read = 0;
+    for ( size_t at = 0; at < clean.size(); ++at )
+    {
+        for ( int bit = 0; bit < 8; ++bit )
+        {
+            std::vector<uint8_t> hit = clean;
+            hit[at] = (uint8_t) ( hit[at] ^ ( 1u << bit ) );
+            tblfx1::FxRoot v;
+            tblfx1::TableReport r;
+            const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, hit.data(), (int64_t) hit.size(),
+                                                       plan.data(), (int32_t) plan.size(), &r );
+            if ( n < 0 )
+            {
+                if ( r.refused ) { refused++; check( !r.malformed, "fuzz: a refusal is never damage" ); }
+                else { damaged++; check( r.malformed, "fuzz: a negative read that is not a refusal is damage" ); }
+                continue;
+            }
+            read += n;
+            check( !r.refused, "fuzz: a read that returned records was not refused" );
+        }
+    }
+    std::printf( "fuzz: %zu bytes x 8 bits — %lld refused by name, %lld malformed, %lld records read, 0 divergences\n",
+                 clean.size(), (long long) refused, (long long) damaged, (long long) read );
+}
+
 int main()
 {
     std::printf( "FX1 FxRoot: body %lld, layout %lld, identity plan %d entries\n",
                  (long long) tblfx1::FxRootFixedBodyBytes, (long long) tblfx1::FxRootFixedLayoutBytes,
-                 (int) tblfx1::FxRootFixedPlan.count );
+                 (int) tblfx1::FxRootFixedPlanCount );
     fx_case();
     v_case();
     p_case();
     negative_control();
     layout_validation();
+    fuzz_case();
     if ( failures != 0 ) { std::printf( "%d failure(s)\n", failures ); return 1; }
     std::printf( "fixed form: versioning conformance green\n" );
     return 0;

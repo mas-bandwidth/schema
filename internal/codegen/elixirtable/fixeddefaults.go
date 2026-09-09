@@ -97,7 +97,7 @@ func fixedElementDefault(f *ir.Field) []byte {
 			return fixedLeafBytes(v, 8)
 		}
 	}
-	width := ir.TableFixedStorageBytes(f.Type)
+	width := ir.FixedStorageBytes(f.Type)
 	switch f.Type.Kind {
 	case ir.TBool:
 		if f.HasDefault && f.DefBool {

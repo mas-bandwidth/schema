@@ -31,6 +31,10 @@
 
 #if defined(BENCH_MATCHED)
 #include "BenchTable.h"
+/* THE FIXED FORM'S HALF (docs/SPEC-TABLES.md §3.4) rides in the MATCHED build
+   only: the paired generation is the one that carries FixedTable.schema, and
+   the standalone table corpus has no fixed root to measure. */
+#include "FixedTableTable.h"
 #define TableMixed BenchMixed
 #define table_mixed_reset bench_mixed_reset
 #define table_mixed_save bench_mixed_save
@@ -94,7 +98,7 @@ static char g_csv_rows[MaxCsvRows][256];
 static int g_num_csv_rows = 0;
 
 /* the goldens this run LOADED, in sorted basename order, for the corpus id */
-#define MaxGoldens 4
+#define MaxGoldens 6
 typedef struct Golden
 {
     char name[64];
@@ -458,6 +462,170 @@ static void bench_table( const char * name, const char * golden, long base_iters
     }
 }
 
+#if defined(BENCH_MATCHED)
+/* ------------------------------------------------------------------------
+   THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
+   ------------------------------------------------------------------------
+
+   The same 64 logical records, on the same table wire, in the form that spends
+   no byte on ids, kinds, lengths or terminators. A FILE is the unit here and
+   not a record: the layout rides once, the records follow it to the
+   end, and every one of them is the same size — so the write is one call for
+   all 64 and the read is one call back, and an OP is one RECORD of that call.
+
+   The gates before the clock are the same three in a different spelling, plus
+   the one this form adds: THE BLOCK THIS BUILD EMITS IS THE CORPUS'S BLOCK,
+   byte for byte. That is the whole claim a port makes on this form — the
+   record layout, the ids, the kinds and the hash are all in those bytes — so
+   it is checked first and by itself. */
+
+#define FixedCount 64
+static FixedTable g_fixed_values[FixedCount];
+static FixedTable g_fixed_out[FixedCount];
+/* the plan storage the caller owns; the identity path never touches it, and a
+   stranger's block compiles into it (§3.4: this codec never allocates) */
+#define FixedPlanCapacity 4096
+static TableFixedEntry g_fixed_plan[FixedPlanCapacity];
+
+static int64_t fixed_load_all( FixedTable * values, const uint8_t * bytes, int64_t size )
+{
+    TableReport report;
+    memset( &report, 0, sizeof( report ) );
+    return fixed_table_fixed_load( values, FixedCount, bytes, size, g_fixed_plan, FixedPlanCapacity, &report );
+}
+
+static void bench_fixed( const char * name, long base_iters )
+{
+    const long iters = g_iterations ? g_iterations : base_iters / IterScale;
+    char path[512];
+    size_t file_bytes = 0, vocab_bytes = 0;
+    uint8_t * file = NULL;
+    uint8_t * vocab = NULL;
+    uint8_t * twin = NULL;
+    double bytes_per_op;
+    double write_rates[MaxNumRuns];
+    double roundtrip_rates[MaxNumRuns];
+    RunStats w, rt;
+    double read_time;
+    int run, k;
+    long i;
+
+    snprintf( path, sizeof( path ), "%s/bench_fixed.bin", g_variant_dir );
+    file = read_file( path, &file_bytes );
+    snprintf( path, sizeof( path ), "%s/bench_fixed.vocab", g_variant_dir );
+    vocab = read_file( path, &vocab_bytes );
+    if ( file == NULL || vocab == NULL || file_bytes == 0 )
+    {
+        fprintf( stderr, "missing fixed corpus in %s — run from the schema repo root (or pass --variant-dir)\n", g_variant_dir );
+        free( file );
+        free( vocab );
+        failed = 1;
+        return;
+    }
+    remember_golden( "bench_fixed.bin", file, file_bytes );
+    remember_golden( "bench_fixed.vocab", vocab, vocab_bytes );
+    bytes_per_op = (double) file_bytes / FixedCount;
+    twin = (uint8_t *) malloc( file_bytes );
+    if ( twin == NULL ) { free( file ); free( vocab ); failed = 1; return; }
+
+    /* gate 1: THE BLOCK IS THE CORPUS'S BLOCK. Every other fact about the form
+       — the positions, the ids, the kinds, the record's size, the hash every
+       record carries — is settled by these bytes, so this one comparison is
+       what says this leg speaks the reference's form and not a near miss. */
+    if ( vocab_bytes != (size_t) fixed_table_fixed_layout_bytes ||
+         memcmp( vocab, fixed_table_fixed_layout, vocab_bytes ) != 0 )
+    {
+        fail( name, "this build's layout is not the corpus's, byte for byte" );
+        goto done;
+    }
+
+    /* gate 2: the whole file loads clean, and the report stays silent. */
+    if ( fixed_load_all( g_fixed_values, file, (int64_t) file_bytes ) != FixedCount )
+    {
+        fail( name, "the fixed corpus did not load" );
+        goto done;
+    }
+
+    /* gate 3: writing them back reproduces the file, byte for byte. */
+    if ( fixed_table_fixed_save( g_fixed_values, FixedCount, twin, (int64_t) file_bytes ) != (int64_t) file_bytes ||
+         memcmp( twin, file, file_bytes ) != 0 )
+    {
+        fail( name, "round-trip bytes differ — refusing to bench a codec that does not reproduce the corpus" );
+        goto done;
+    }
+
+    /* gate 4: reused storage round-trips too. The load owns the prefill, so
+       nothing is reset between the two passes. */
+    for ( k = 0; k < 2; k++ )
+    {
+        if ( fixed_load_all( g_fixed_out, file, (int64_t) file_bytes ) != FixedCount ||
+             fixed_table_fixed_save( g_fixed_out, FixedCount, twin, (int64_t) file_bytes ) != (int64_t) file_bytes ||
+             memcmp( twin, file, file_bytes ) != 0 )
+        {
+            fail( name, "reused target round-trip bytes differ" );
+            goto done;
+        }
+    }
+
+    if ( g_gate ) { goto done; }
+
+    /* WRITE: one call lays down all 64 records; an op is one record. */
+    for ( run = -1; run < g_num_runs; run++ )
+    {
+        double start = time_now();
+        double elapsed;
+        for ( i = 0; i < iters; i += FixedCount )
+        {
+            const int64_t wrote = fixed_table_fixed_save( g_fixed_values, FixedCount, twin, (int64_t) file_bytes );
+            if ( wrote != (int64_t) file_bytes ) { fail( name, "save failed in loop" ); goto done; }
+            bench_escape( twin );
+            g_sink = g_sink + (uint64_t) wrote;
+        }
+        elapsed = time_now() - start;
+        if ( run >= 0 ) { write_rates[run] = (double) iters / elapsed; }
+    }
+
+    /* ROUND-TRIP: read the file back, then write what came out. */
+    for ( run = -1; run < g_num_runs; run++ )
+    {
+        double start = time_now();
+        double elapsed;
+        for ( i = 0; i < iters; i += FixedCount )
+        {
+            int64_t wrote;
+            if ( fixed_load_all( g_fixed_out, file, (int64_t) file_bytes ) != FixedCount )
+            {
+                fail( name, "load failed in loop" );
+                goto done;
+            }
+            wrote = fixed_table_fixed_save( g_fixed_out, FixedCount, twin, (int64_t) file_bytes );
+            if ( wrote != (int64_t) file_bytes ) { fail( name, "re-save failed in loop" ); goto done; }
+            bench_escape( twin );
+            g_sink = g_sink + (uint64_t) wrote;
+        }
+        elapsed = time_now() - start;
+        if ( run >= 0 ) { roundtrip_rates[run] = (double) iters / elapsed; }
+    }
+
+    w = run_stats( write_rates, g_num_runs );
+    rt = run_stats( roundtrip_rates, g_num_runs );
+    report( name, "write", iters, bytes_per_op, &w );
+    report( name, "round_trip", iters, bytes_per_op, &rt );
+
+    read_time = 1.0 / rt.median_rate - 1.0 / w.median_rate;
+    if ( read_time > 0 )
+    {
+        fprintf( stderr, "%-18s %-11s %10.3f M msg/s   (DERIVED: round-trip minus write, informational — not a measured row)\n",
+                 name, "read", 1e-6 / read_time );
+    }
+
+done:
+    free( file );
+    free( vocab );
+    free( twin );
+}
+#endif /* BENCH_MATCHED */
+
 int main( int argc, char ** argv )
 {
     char id[17];
@@ -509,9 +677,25 @@ int main( int argc, char ** argv )
         printf( "lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline\n" );
     }
 
-    /* The one measured shape, named once — the generated type at the call site
-       and nothing else about it (bench/SHAPE-GATE.allow). */
+    /* The measured shape, named once — the generated type at the call site and
+       nothing else about it (bench/SHAPE-GATE.allow).
+
+       IN THE MATCHED BUILD THE MEASURED WIRE IS THE FIXED FORM (§3.4), and the
+       tolerant form still runs every correctness gate it always ran, without a
+       clock: the corpus is one corpus, both forms carry the same 64 logical
+       records, and a run that stopped loading the tolerant half would report a
+       corpus id the paired driver could not match. */
+#if defined( BENCH_MATCHED )
+    {
+        const int measured = g_gate;
+        g_gate = 1;
+        bench_table( "bench_table", "bench_table", 400000L );
+        g_gate = measured;
+    }
+    bench_fixed( "bench_fixed", 400000L );
+#else
     bench_table( "bench_table", "bench_table", 400000L );
+#endif
 
     flush_csv();
 

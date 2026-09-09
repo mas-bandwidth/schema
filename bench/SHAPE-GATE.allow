@@ -178,3 +178,10 @@ timing test/go-tables/soak_test.go 2 the Go port's allocation soak: the clock BO
 # Matched wire coordinator: existing runners, no field list or timing loop.
 names bench/paired/main.go 3 source filenames passed to the existing compiler; no corpus fields
 paths test/bench/paired_main.cpp 1 shared-data producer and packet/table equivalence oracle; no timing
+timing test/bench/fixedform_measure.cpp 8 THE FIXED FORM'S RULING MEASUREMENT (docs/SPEC-TABLES.md §3.4): one reader path was decided against a ratio, and this is the file that reports it — the plan-driven reader against straight-line constant-offset loads. It is not in `make test` and produces no CSV row; it exists so the ruling's bound stays checkable
+paths test/bench/fixedform_measure.cpp 1 the same file: its path names a measurement because it IS one, and it lives beside the corpus it measures rather than in a runner directory
+
+# THE FIXED FORM'S PAIRED CORPUS, and the two files that produce and check it.
+# Neither measures anything: one WRITES the corpus and one COMPARES it.
+paths test/bench/fixedform_corpus.cpp 1 the C++ reference writing the form-3 half of the paired corpus out of the packet half; its path names a benchmark because the corpus is the bench's, and it reads no clock and reports no time
+paths test/elixir-fixedform/bench.exs 1 the Elixir leg's byte-for-byte check of that corpus against the reference — the two wires' values compared field for field and the file written back; no clock, no row
