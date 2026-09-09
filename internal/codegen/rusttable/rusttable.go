@@ -48,6 +48,13 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if anyCookable(u, closure) {
 		out[CookRuntimeModule+".rs"] = cookRuntimeModule(u)
 	}
+	// THE FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3. It is a WIRE
+	// form and not an accelerator, so it rides unconditionally the way form 1
+	// does in C++ — there is no cargo feature over it, because a wire a
+	// consumer can be handed is not something they opt into.
+	if anyFixedRoot(u, closure) {
+		out[FixedRuntimeModule+".rs"] = fixedRuntimeModule(u)
+	}
 	out[BuildVersionModule+".rs"] = buildVersionModule(u)
 
 	for _, f := range u.Files {
@@ -57,6 +64,10 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		}
 		if body := g.cookModule(); body != nil {
 			out[strings.ToLower(f.Base)+"_cook.rs"] = body
+		}
+
+		if body := g.fixedModule(); body != nil {
+			out[strings.ToLower(f.Base)+"_fixed.rs"] = body
 		}
 	}
 

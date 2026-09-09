@@ -262,3 +262,105 @@ func TestCookLayoutIsAssertedAtCompileTime(t *testing.T) {
 		}
 	}
 }
+
+// ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----------------
+
+// unionReaching is a table whose by-value closure reaches a UNION. Rust spells
+// a union as a real enum with no committed payload layout, so such a record has
+// no blittable Row (cook.go's `cookable`) and therefore no fixed form here —
+// the port's own named follow-on, and the same one the cooked form already
+// names.
+const unionReaching = `package probe
+
+type Boost
+{
+    power int32
+}
+
+type Ward
+{
+    charge float32
+}
+
+union Effect
+{
+    boost Boost
+    ward  Ward
+}
+
+table Holder
+{
+    effect Effect
+}
+`
+
+// variableTable is what §3.4 refuses outright rather than what this port does:
+// a pointer has no bound to be constant at, which is what makes a table
+// VARIABLE, and a variable table keeps §3 entirely.
+func TestFixedFormIsEmittedForAFixedRootAndForNothingElse(t *testing.T) {
+	fixed := generate(t, valueOnly)
+	if _, ok := fixed["probe_fixed.rs"]; !ok {
+		t.Fatalf("no probe_fixed.rs for a unit of fixed tables; got %v", keysOf(fixed))
+	}
+	if _, ok := fixed[FixedRuntimeModule+".rs"]; !ok {
+		t.Errorf("no %s.rs beside the fixed form; the plan compiler and the read loop have no home",
+			FixedRuntimeModule)
+	}
+	body := string(fixed["probe_fixed.rs"])
+	for _, want := range []string{
+		"CONFIG_FIXED_HASH", "CONFIG_FIXED_BLOCK", "CONFIG_FIXED_DEFAULTS",
+		"CONFIG_FIXED_PLAN", "config_fixed_save", "config_fixed_load",
+		"config_fixed_write_body", "config_fixed_scatter",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the fixed form's surface is missing %s", want)
+		}
+	}
+	// THE IDENTITY PLAN IS ONE ENTRY. In the image domain the record's declared
+	// order IS the destination's, so §3.4's coalescing rule takes the whole body
+	// to a single move — and a plan that grew a second entry means the
+	// destination stopped being the image.
+	if !strings.Contains(body, "CONFIG_FIXED_PLAN: [TableFixedEntry; 1]") {
+		t.Error("the identity plan is not ONE entry — the whole body in one move (docs/SPEC-TABLES.md §3.4)")
+	}
+
+	// A UNION reaches no Row here, so it reaches no fixed form either.
+	union := generate(t, unionReaching)
+	if _, ok := union["probe_fixed.rs"]; ok {
+		t.Error("a table whose closure reaches a union got a fixed form; Rust has no committed union layout")
+	}
+	if _, ok := union[FixedRuntimeModule+".rs"]; ok {
+		t.Error("the fixed runtime rode into a unit with no fixed root at all")
+	}
+
+	// A POINTER makes its holder VARIABLE (§2.2), which §3.4 refuses outright:
+	// the ROOT is gone from the fixed form and the fixed table beside it stays.
+	pointerUnit := generate(t, pointered)
+	pbody := string(pointerUnit["probe_fixed.rs"])
+	if strings.Contains(pbody, "NODE_FIXED_HASH") {
+		t.Error("a pointered table got a fixed form; a pointer has no bound to be constant at")
+	}
+	if !strings.Contains(pbody, "CONFIG_FIXED_HASH") {
+		t.Error("a variable table beside a fixed one took the fixed one's form away with it")
+	}
+}
+
+// TestFixedFormHashAndBlockAreDeterministic: the block is the form's whole
+// self-description and its fnv1a64 is the eight bytes every record carries, so
+// a block that moved between two runs of the same compiler over the same source
+// is a wire that moved.
+func TestFixedFormHashAndBlockAreDeterministic(t *testing.T) {
+	first := string(generate(t, valueOnly)["probe_fixed.rs"])
+	second := string(generate(t, valueOnly)["probe_fixed.rs"])
+	if first != second {
+		t.Fatal("the fixed form's emission is not byte-stable across two runs")
+	}
+}
+
+func keysOf(out map[string][]byte) []string {
+	names := make([]string, 0, len(out))
+	for name := range out {
+		names = append(names, name)
+	}
+	return names
+}

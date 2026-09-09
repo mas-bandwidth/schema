@@ -1,0 +1,19 @@
+# THE RUST LEG OF THE FIXED FORM (docs/SPEC-TABLES.md §3.4).
+#
+# The crates are the generated table units the C++ reference's byte oracle
+# writes files for, and this binary holds this port to them.
+[package]
+name = "rust-fixedform"
+version = "0.0.0"
+edition = "2024"
+
+[[bin]]
+name = "rust-fixedform"
+path = "src/main.rs"
+
+[dependencies]
+tblfx1 = { path = "../../build/tables-generated-rust/tblfx1" }
+tblfx2 = { path = "../../build/tables-generated-rust/tblfx2" }
+tblp1 = { path = "../../build/tables-generated-rust/tblp1" }
+tblp3 = { path = "../../build/tables-generated-rust/tblp3" }
+tabledemo = { path = "../../build/tables-generated-rust/tabledemo" }

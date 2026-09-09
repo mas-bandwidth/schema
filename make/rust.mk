@@ -219,9 +219,10 @@ RUST_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	blockdemo:tables/block blockhome:tables/blockhome \
 	tblv1:test/tables/V1.schema tblv2:test/tables/V2.schema \
 	tblp1:test/tables/P1.schema tblp2:test/tables/P2.schema \
-	tblp3:test/tables/P3.schema jsonkeys:test/tables/JsonKeys.schema
+	tblp3:test/tables/P3.schema jsonkeys:test/tables/JsonKeys.schema \
+	tblfx1:test/tables/FX1.schema tblfx2:test/tables/FX2.schema
 
-build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema
+build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/FX1.schema test/tables/FX2.schema
 	@mkdir -p build/tables-generated-rust
 	@for unit in $(RUST_TABLE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \
@@ -231,6 +232,24 @@ build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLE
 			> build/tables-generated-rust/$$name/Cargo.toml; \
 	done
 	@touch $@
+
+# THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4). The C++ reference
+# writes the bytes (`make tables-fixedform-corpus`) and this leg holds Rust to
+# them: every file read and saved back has to come out BYTE FOR BYTE the same,
+# and every cross-schema case reads a record written under ANOTHER block
+# through a plan compiled from it — a widened field, a rename under `was`, a
+# field this reader cannot name, a field the writer does not carry, a whole
+# nested TYPE stepped over by its block size, and an optional against a value.
+# The negative controls ride in the same binary, because a leg that never
+# watched the wrong plan fail never checked the right one worked.
+#
+# BOTH BUILD MODES, for the reason the packet corpus already runs both: the
+# generated writer's caller contracts are debug-only, so debug proves they FIRE
+# and release proves they are GONE and the bytes are still the reference's.
+.PHONY: tables-rust-fixedform
+tables-rust-fixedform: build/tables-generated-rust/.stamp build/fixedform-corpus/.stamp
+	cd test/rust-fixedform && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet -- ../../build/fixedform-corpus
+	cd test/rust-fixedform && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release -- ../../build/fixedform-corpus
 
 build/conformance-rust: build/tables-generated-rust/.stamp test/conformance/rust/src/main.rs test/conformance/rust/Cargo.toml
 	@mkdir -p build
@@ -247,6 +266,8 @@ test-rust: generated/rust/.stamp generated/rust-ludicrous/.stamp generated/bench
 	$(MAKE) tables-rust-clippy
 	$(MAKE) tables-rust-features
 	$(MAKE) tables-rust-names-negative-control
+	# THE FIXED FORM against the C++ reference's own bytes (§3.4)
+	$(MAKE) tables-rust-fixedform
 	# the generated Rust table surface CHECKED for a big-endian target, layout
 	# const asserts and all. It SKIPS cleanly where the target is not
 	# installed, so it costs a machine without it nothing.

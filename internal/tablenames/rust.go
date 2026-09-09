@@ -18,6 +18,21 @@ func init() {
 		Name{Name: "TableCookInfo", What: "a cooked record's reflection descriptor"},
 		Name{Name: "TableCookFieldInfo", What: "a cooked field's reflection descriptor"},
 		Name{Name: "TableCookStorage", What: "what a cooked slot HOLDS, which is not always what the wire carries (§7.2)"},
+		// THE FIXED FORM's runtime (docs/SPEC-TABLES.md §3.4), form byte 3.
+		// Emitted for a unit that carries a fixed root, and claimed beside
+		// any table on this list's own rule: a name free today is a
+		// collision the day a table in that unit becomes a fixed root.
+		Name{Name: "TableFixedForm", What: "the fixed form's form byte", RustConst: true},
+		Name{Name: "TableFixedNoGuard", What: "the guard offset a plan entry that belongs to no union arm carries", RustConst: true},
+		Name{Name: "TableFixedOp", What: "the fixed form's plan ops — the whole set"},
+		Name{Name: "TableFixedEntry", What: "one plan entry: src, dst, size and the op that moves them"},
+		Name{Name: "TableFixedReason", What: "the fixed form's refusals, each one BY NAME"},
+		Name{Name: "TableFixedReport", What: "the fixed form's read report — §4's ledger and this form's refusals"},
+		Name{Name: "TableFixedBlock", What: "a parsed vocabulary block: the bytes and the entry count"},
+		Name{Name: "TableFixedBlockEntry", What: "one block entry — an id, a kind, a constant size and a child count"},
+		Name{Name: "TableFixedHash", What: "fnv1a64 over a block's bytes, which is the eight bytes every record carries", Scoped: true},
+		Name{Name: "TableFixedRun", What: "THE ONE READ LOOP: one plan over one record body", Scoped: true},
+		Name{Name: "TableFixedCompile", What: "the plan compiler, run once per peer and never once per record", Scoped: true},
 		Name{Name: "BuildVersion", What: "the unit's build version (docs/SPEC-TABLES.md §20). C# spells it a member of Schema, which claims nothing; C++, Go, Rust, Java, Elixir and JavaScript put it at unit scope — Java in a file of its own name, Elixir as a module, JavaScript as a module-scope export — so the claim is the union. C does NOT emit this spelling: an object-like macro carrying a common PascalCase identifier rewrites it everywhere in the consumer's own translation unit, which no front end can refuse, so the C backend spells the value SCHEMA_<PKG>_BUILD_VERSION_VALUE under the reserved prefix (internal/check's cReservedMacros)", RustConst: true},
 	)
 }

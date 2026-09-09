@@ -180,3 +180,157 @@ func TestRustTableRuntimeNamesAreClaimed(t *testing.T) {
 		}
 	}
 }
+
+// fixedFormSrc reaches every shape §3.4's constant-size table names that this
+// port carries: scalars at four widths, floats, a bool, an enum, a flags mask,
+// a string and a bytes at their bounds, a fixed array, a counted array, a
+// nested table, an enum-keyed array of a table, an optional section, and
+// declared defaults on top of the lot so the PREFILL image is not all zeros.
+const fixedFormSrc = `package probe
+
+enum Slot { Alpha, Beta, Gamma }
+
+flags Mark { One, Two }
+
+table Leaf
+{
+    a int32 = 7 | min = 0, max = 1000
+    b uint16 = 3
+}
+
+table FixedProbe
+{
+    small   uint8 = 5
+    wide    uint64 = 9
+    negative int16 = -4
+    fl      float32 = 2.5
+    db      float64 = 1.25
+    yes     bool = true
+    slot    Slot = Beta
+    mark    Mark
+    label   string(12)
+    raw     bytes(6)
+    trio    [3]uint32
+    counted [1..4]Leaf
+    nested  Leaf
+    perslot [Slot]Leaf
+    maybe   ?Leaf
+}
+`
+
+// TestRustFixedFormBlockIsTheCppReferenceByteForByte is what keeps this port's
+// §3.4 layout walk from becoming a SECOND WIRE.
+//
+// The vocabulary block is the form's whole self-description and its fnv1a64 is
+// the eight bytes every record carries, so two backends whose blocks differ
+// anywhere are two backends that never read each other's records — silently,
+// as `no_block`, which looks like a deployment problem and is not one. The C++
+// backend is the REFERENCE for this form (internal/codegen/cpptable/
+// fixedform.go), so this generates the SAME unit for both and requires the
+// bytes and the hash to be identical, per root.
+//
+// It is the both-directions form the registry scans already use: every root
+// C++ emits a block for that Rust also emits one for is compared, and the
+// comparison set has to be non-empty or the test, not the emitter, is what
+// broke.
+func TestRustFixedFormBlockIsTheCppReferenceByteForByte(t *testing.T) {
+	unit := unitFromSource(t, fixedFormSrc)
+	cppFiles, err := New().Generate(unit, "cpp", Options{})
+	if err != nil {
+		t.Fatalf("--lang cpp: %v", err)
+	}
+	rustFiles, err := New().Generate(unitFromSource(t, fixedFormSrc), "rust", Options{})
+	if err != nil {
+		t.Fatalf("--lang rust: %v", err)
+	}
+	cppBlocks, cppHashes := cppFixedBlocks(join(cppFiles))
+	rustBlocks, rustHashes := rustFixedBlocks(join(rustFiles))
+	if len(rustBlocks) == 0 {
+		t.Fatal("the Rust backend emitted no fixed-form block at all for a unit of fixed tables — " +
+			"the scan, or the emitter, is what broke")
+	}
+	names := make([]string, 0, len(rustBlocks))
+	for name := range rustBlocks {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	compared := 0
+	for _, name := range names {
+		want, ok := cppBlocks[name]
+		if !ok {
+			t.Errorf("the Rust backend emits a fixed-form block for %s and the C++ REFERENCE does not — "+
+				"a port may carry fewer shapes than the reference, never more", name)
+			continue
+		}
+		compared++
+		if want != rustBlocks[name] {
+			t.Errorf("%s's vocabulary block differs from the C++ reference's:\n  cpp  %s\n  rust %s",
+				name, want, rustBlocks[name])
+		}
+		if cppHashes[name] != rustHashes[name] {
+			t.Errorf("%s's fixed-form hash differs from the C++ reference's: cpp %s, rust %s — "+
+				"a record written by one is `no_block` to the other", name, cppHashes[name], rustHashes[name])
+		}
+	}
+	if compared == 0 {
+		t.Fatal("no root was compared against the reference at all")
+	}
+}
+
+func join(files map[string][]byte) string {
+	var b strings.Builder
+	for _, data := range files {
+		b.Write(data)
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+var (
+	cppFixedBlockRe = regexp.MustCompile(`(?s)constexpr uint8_t (\w+)FixedBlock\[\] = \{(.*?)\};`)
+	cppFixedHashRe  = regexp.MustCompile(`constexpr uint64_t (\w+)FixedHash = (0x[0-9a-f]+)ull;`)
+	rsFixedBlockRe  = regexp.MustCompile(`(?s)pub const ([A-Z0-9_]+)_FIXED_BLOCK: \[u8; \d+\] = \[(.*?)\];`)
+	rsFixedHashRe   = regexp.MustCompile(`pub const ([A-Z0-9_]+)_FIXED_HASH: u64 = (0x[0-9a-f]+);`)
+	fixedByteRe     = regexp.MustCompile(`0x[0-9a-f]{2}`)
+)
+
+// cppFixedBlocks and rustFixedBlocks key on the SCREAMING spelling, which is
+// the one shape both targets can be mapped onto without either one's naming
+// rules leaking into the other's.
+func cppFixedBlocks(text string) (map[string]string, map[string]string) {
+	blocks, hashes := map[string]string{}, map[string]string{}
+	for _, m := range cppFixedBlockRe.FindAllStringSubmatch(text, -1) {
+		blocks[screamingOf(m[1])] = strings.Join(fixedByteRe.FindAllString(m[2], -1), " ")
+	}
+	for _, m := range cppFixedHashRe.FindAllStringSubmatch(text, -1) {
+		hashes[screamingOf(m[1])] = m[2]
+	}
+	return blocks, hashes
+}
+
+func rustFixedBlocks(text string) (map[string]string, map[string]string) {
+	blocks, hashes := map[string]string{}, map[string]string{}
+	for _, m := range rsFixedBlockRe.FindAllStringSubmatch(text, -1) {
+		blocks[m[1]] = strings.Join(fixedByteRe.FindAllString(m[2], -1), " ")
+	}
+	for _, m := range rsFixedHashRe.FindAllStringSubmatch(text, -1) {
+		hashes[m[1]] = m[2]
+	}
+	return blocks, hashes
+}
+
+// screamingOf is ir.RustConstName's rule, spelled here so the test does not
+// borrow the emitter's own helper to check the emitter.
+func screamingOf(name string) string {
+	var b strings.Builder
+	for i, r := range name {
+		if i > 0 && r >= 'A' && r <= 'Z' {
+			b.WriteByte('_')
+		}
+		if r >= 'a' && r <= 'z' {
+			r -= 32
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
