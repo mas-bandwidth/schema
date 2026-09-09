@@ -48,10 +48,13 @@ different tables now, the type, the fixed table, the variable table"* —
   the answer: *"if somebody really cares about this, they use a type
   instead (no versioning)."*
 - **FIXED TABLE — the type's speed, in table form** (the FIXED FORM, form
-  byte `3`, §3.4). *"Fixed tables are meant to be the fast equivalent of
-  types, in table form."* A record is an EIGHT-BYTE HASH of the writer's
-  VOCABULARY BLOCK and then the VALUES IN DECLARED ORDER, EVERY FIELD AT
-  ITS BOUND — the type's own layout, with the block sent once beside it.
+  byte `3`, §3.4 — lands with the fixed-form batch). *"Fixed tables are
+  meant to be the fast equivalent of types, in table form."* A record is an
+  EIGHT-BYTE HASH of the writer's LAYOUT and then the VALUES IN DECLARED
+  ORDER, EVERY FIELD AT ITS BOUND — the type's own field order, with THE
+  LAYOUT sent once beside it. (The fixed form's once-per-file description
+  is THE LAYOUT; form `1`'s VOCABULARY BLOCK is a different thing and keeps
+  its name.)
   The class is DECLARED, `fixed table` (§2.2), and the compiler REFUSES in
   its by-value closure anything that would make a body variable size,
   naming the field and the table (§11): a pointer, a byte buffer at its
@@ -64,13 +67,16 @@ different tables now, the type, the fixed table, the variable table"* —
   versioning is load-bearing: **we must not ever break versioning in fixed
   tables.** Writing at the bound is why it is for SMALL THINGS —
   *"effectively, fixed tables should only be used for small things."*
-- **VARIABLE TABLE — the tolerant wire** (the FILE FORM, form byte `1`,
+- **VARIABLE TABLE — the tolerant wire** (the VARIABLE FORM, form byte `1`,
   §3). Maps, lists, pointers, per-field guards, default elision, and a
   record that DESCRIBES ITSELF every time: ids, kinds and lengths ride
   with the values, so any reader reads any data and the differences are
   reported, never fatal. It pays framing bytes and, in one narrow case, an
   allocation, and it is the wire for anything LARGE, SPARSE or FREE-FORM —
   everything the other two refuse to carry.
+
+**THE FIRST BYTE OF EVERY SCHEMA FILE IS THE FORM BYTE**, and the registry is
+three: `1` the VARIABLE FORM, `2` the MESSAGE FORM, `3` the FIXED FORM.
 
 **ONE FORM BYTE PER CLASS.** Form `3` is the FIXED table's wire and form `1`
 is the VARIABLE table's, and neither reads for the other. Form `1` does not
@@ -92,8 +98,14 @@ between peers**: a BATCH of fixed tables under ONE ANNOUNCED BLOCK, each
 body packed through the type's own codec. It is a fixed table's and nobody
 else's — a message-form request naming a plain `table` is REFUSED naming the
 table (§2.2, §11), because a message is a bitpacked body under one announced
-vocabulary and the shape has to be one the declaration fixes. The FILE form
-is every table's, and is where a variable root goes.
+vocabulary and the shape has to be one the declaration fixes.
+
+**NEITHER CLASS BORROWS THE OTHER'S FORM.** A declared `fixed table` encodes
+as form `3`, ALWAYS; a plain `table` encodes as form `1`, always; and a reader
+emitted for one REFUSES the other BY NAME. A form-`1` file handed to a fixed
+root is `previous_form` — a NAMED REFUSAL, never a slow read down the variable
+wire — exactly as a form-`3` file handed to a variable root is refused by name.
+A variable root is form `1`'s, and that is where it goes.
 
 **How to choose.**
 
