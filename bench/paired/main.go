@@ -157,9 +157,34 @@ func (c command) environment() []string {
 	return append(os.Environ(), c.env...)
 }
 
+// program is argv[0], resolved against the PATH this command CARRIES rather
+// than the driver's own. exec.Command looks a bare name up in the parent's
+// PATH before cmd.Env is ever consulted, so a pinned toolchain reached only
+// through c.env would not be found at all — the leg would fail with "not in
+// $PATH" while sitting in the directory it was pinned to.
+func (c command) program() string {
+	name := c.args[0]
+	if len(c.env) == 0 || strings.ContainsRune(name, filepath.Separator) {
+		return name
+	}
+	for _, kv := range c.env {
+		value, ok := strings.CutPrefix(kv, "PATH=")
+		if !ok {
+			continue
+		}
+		for dir := range strings.SplitSeq(value, string(os.PathListSeparator)) {
+			candidate := filepath.Join(dir, name)
+			if info, err := os.Stat(candidate); err == nil && !info.IsDir() && info.Mode()&0111 != 0 {
+				return candidate
+			}
+		}
+	}
+	return name
+}
+
 func execute(c command) error {
 	fmt.Fprintln(os.Stderr, "+", c.args[0], strings.Join(c.args[1:], " "))
-	cmd := exec.Command(c.args[0], c.args[1:]...)
+	cmd := exec.Command(c.program(), c.args[1:]...)
 	cmd.Dir = c.dir
 	cmd.Env = c.environment()
 	cmd.Stdout = os.Stderr
@@ -167,7 +192,7 @@ func execute(c command) error {
 	return cmd.Run()
 }
 func capture(c command) ([]byte, error) {
-	cmd := exec.Command(c.args[0], c.args[1:]...)
+	cmd := exec.Command(c.program(), c.args[1:]...)
 	cmd.Dir = c.dir
 	cmd.Env = c.environment()
 	cmd.Stderr = os.Stderr

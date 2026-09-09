@@ -237,8 +237,9 @@ func (f *fastCollector) capture(ctx context.Context, c command, phase string) (o
 		return nil, err
 	}
 	defer func() { resultErr = errors.Join(resultErr, log.Close()) }()
-	cmd := exec.CommandContext(ctx, c.args[0], c.args[1:]...)
+	cmd := exec.CommandContext(ctx, c.program(), c.args[1:]...)
 	cmd.Dir = c.dir
+	cmd.Env = c.environment()
 	cmd.WaitDelay = time.Second
 	var stdout bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, log
