@@ -150,10 +150,28 @@ jobs:
       # TOOLCHAIN REPORTS IT rather than a version restated here (a literal
       # '1.26' in fourteen places would be a second home for a pin the
       # setup-go step above owns), and a hash of every Go source and go.mod.
-      # The fallbacks go up one rung at a time: the same toolchain over an
-      # older tree first, then the same OS over any toolchain. The path comes
-      # from `go env GOCACHE` for the same reason — it is a different
-      # directory on the Windows runners, and reading it beats knowing it.
+      # The path comes from `go env GOCACHE` for the same reason — it is a
+      # different directory on the Windows runners, and reading it beats
+      # knowing it.
+      #
+      # THERE IS EXACTLY ONE FALLBACK RUNG, and the missing one is the point.
+      # `go-build-<os>-<toolchain>-` is the rung that matters: it is the same
+      # toolchain over an older tree, which is what a pull request restores
+      # from main and what makes its first run warm. A rung below that —
+      # `go-build-<os>-` — can only ever match a DIFFERENT toolchain, and a
+      # cache written by another toolchain hits nothing, because every entry
+      # in it is keyed on that compiler's build ID. So it would download
+      # 120 MB to find zero usable entries, every time, and it is not here.
+      #
+      # WHICH IS ALSO A FINDING ABOUT THIS FILE, and this branch measured it:
+      # `go-version: '1.26'` is a RANGE, and setup-go resolves it to whatever
+      # 1.26.x the runner image already carries. One warm run of this file put
+      # 1.26.7 on thirty-one of the forty-six negative-control rows and 1.26.8
+      # on the other fifteen, so only the fifteen could use a cache the
+      # go-test row wrote under 1.26.8. Pinning the patch would make the whole
+      # leg warm and would make what CI proves the same fact twice running;
+      # that is a decision about the toolchain pin rather than about caching,
+      # so it is named here and left for its own change.
       #
       # ONE WRITER PER OS, AND IT IS THIS JOB. `actions/cache` saves whenever
       # the exact key missed, so fifty-five jobs sharing one key would be
@@ -185,9 +203,7 @@ jobs:
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
-          restore-keys: |
-            go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
-            go-build-${{ runner.os }}-
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
       - name: go vet
         run: go vet ./...
@@ -339,9 +355,7 @@ jobs:
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
-          restore-keys: |
-            go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
-            go-build-${{ runner.os }}-
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
       - name: rewrite every pin under testdata/ from the reference
         run: make -j"$(nproc)" conformance-pin update-goldens
@@ -405,9 +419,7 @@ jobs:
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
-          restore-keys: |
-            go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
-            go-build-${{ runner.os }}-
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
       - id: discover
         name: the registry, as a matrix
@@ -459,9 +471,7 @@ jobs:
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
-          restore-keys: |
-            go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
-            go-build-${{ runner.os }}-
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
       # One step per toolchain, each keyed on the row's field for it. The
       # version is the leg's to name, and it is the same pin the leg's
@@ -566,9 +576,7 @@ jobs:
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
-          restore-keys: |
-            go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
-            go-build-${{ runner.os }}-
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
       - name: read the .NET SDK pin
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
@@ -633,9 +641,7 @@ jobs:
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
-          restore-keys: |
-            go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
-            go-build-${{ runner.os }}-
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
       - name: the pinned cross toolchain and emulator
         run: |
@@ -718,9 +724,7 @@ jobs:
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
-          restore-keys: |
-            go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
-            go-build-${{ runner.os }}-
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
       - name: gofmt
         run: |
@@ -797,9 +801,7 @@ jobs:
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
-          restore-keys: |
-            go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
-            go-build-${{ runner.os }}-
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
       # PINNED to a govulncheck release, bumped by hand. What has to change
       # on its own is the VULNERABILITY DATABASE, which the tool fetches at run
@@ -835,9 +837,7 @@ jobs:
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
-          restore-keys: |
-            go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
-            go-build-${{ runner.os }}-
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
       - run: go vet ./...
       - run: go build ./...
@@ -916,9 +916,7 @@ jobs:
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
-          restore-keys: |
-            go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
-            go-build-${{ runner.os }}-
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
       # The one sibling this leg needs, at the same pin every other job uses.
       # Header-only, and only the PACKET headers (<Base>.h / <Base>Wire.h)
@@ -1064,9 +1062,7 @@ jobs:
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
-          restore-keys: |
-            go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
-            go-build-${{ runner.os }}-
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
       - name: refuse hand-coded shape measurement
         run: go run ./bench/tools/shapegate
@@ -1206,9 +1202,7 @@ jobs:
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
-          restore-keys: |
-            go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
-            go-build-${{ runner.os }}-
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
       # The enumeration gate, first and on its own, so a control that nothing
       # runs is named here rather than discovered by its absence from a log.
@@ -1269,9 +1263,7 @@ jobs:
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
-          restore-keys: |
-            go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
-            go-build-${{ runner.os }}-
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
       # One step per toolchain, each keyed on the row's field for it, exactly as
       # the conformance matrix above does. A base row names none of them and
