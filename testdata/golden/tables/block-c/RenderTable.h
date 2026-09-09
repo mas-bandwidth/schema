@@ -10161,17 +10161,17 @@ static SCHEMA_UNUSED int render_vector3_save_body( TableWriter * w, const Render
         int64_t payload_bytes = 1; /* the zero reference ending this body */
         if ( !( value->x == 0.0 ) )
         {
-            table_writer_id( w, 0xaf63f54c86021707ull );
+            table_writer_id_at( w, 53, 0xaf63f54c86021707ull );
             payload_bytes += 9; /* kind and fixed-width payload */
         }
         if ( !( value->y == 0.0 ) )
         {
-            table_writer_id( w, 0xaf63f44c86021554ull );
+            table_writer_id_at( w, 52, 0xaf63f44c86021554ull );
             payload_bytes += 9; /* kind and fixed-width payload */
         }
         if ( !( value->z == 0.0 ) )
         {
-            table_writer_id( w, 0xaf63f74c86021a6dull );
+            table_writer_id_at( w, 54, 0xaf63f74c86021a6dull );
             payload_bytes += 9; /* kind and fixed-width payload */
         }
         table_writer_raw( w, NULL, payload_bytes );
@@ -10575,22 +10575,22 @@ static SCHEMA_UNUSED int render_quaternion_save_body( TableWriter * w, const Ren
         int64_t payload_bytes = 1; /* the zero reference ending this body */
         if ( !( value->x == 0.0 ) )
         {
-            table_writer_id( w, 0xaf63f54c86021707ull );
+            table_writer_id_at( w, 53, 0xaf63f54c86021707ull );
             payload_bytes += 9; /* kind and fixed-width payload */
         }
         if ( !( value->y == 0.0 ) )
         {
-            table_writer_id( w, 0xaf63f44c86021554ull );
+            table_writer_id_at( w, 52, 0xaf63f44c86021554ull );
             payload_bytes += 9; /* kind and fixed-width payload */
         }
         if ( !( value->z == 0.0 ) )
         {
-            table_writer_id( w, 0xaf63f74c86021a6dull );
+            table_writer_id_at( w, 54, 0xaf63f74c86021a6dull );
             payload_bytes += 9; /* kind and fixed-width payload */
         }
         if ( !( value->w == 1.0 ) )
         {
-            table_writer_id( w, 0xaf63ea4c86020456ull );
+            table_writer_id_at( w, 51, 0xaf63ea4c86020456ull );
             payload_bytes += 9; /* kind and fixed-width payload */
         }
         table_writer_raw( w, NULL, payload_bytes );

@@ -3204,7 +3204,7 @@ static SCHEMA_UNUSED int tally_save_body( TableWriter * w, const Tally * value )
         int64_t payload_bytes = 1; /* the zero reference ending this body */
         if ( !( value->hits == 0 ) )
         {
-            table_writer_id( w, 0x732dfbcc9b0cf0bbull );
+            table_writer_id_at( w, 19, 0x732dfbcc9b0cf0bbull );
             payload_bytes += 5; /* kind and fixed-width payload */
         }
         table_writer_raw( w, NULL, payload_bytes );

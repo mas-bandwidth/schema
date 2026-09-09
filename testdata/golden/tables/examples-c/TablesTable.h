@@ -5086,12 +5086,12 @@ static SCHEMA_UNUSED int attachment_save_body( TableWriter * w, const Attachment
         int64_t payload_bytes = 1; /* the zero reference ending this body */
         if ( !( value->slot == 0 ) )
         {
-            table_writer_id( w, 0x6a771618f6fe31d1ull );
+            table_writer_id_at( w, 59, 0x6a771618f6fe31d1ull );
             payload_bytes += 5; /* kind and fixed-width payload */
         }
         if ( !( value->power == 1.0f ) )
         {
-            table_writer_id( w, 0xeef9d1358ae7b4e6ull );
+            table_writer_id_at( w, 140, 0xeef9d1358ae7b4e6ull );
             payload_bytes += 5; /* kind and fixed-width payload */
         }
         table_writer_raw( w, NULL, payload_bytes );
@@ -5416,7 +5416,7 @@ static SCHEMA_UNUSED int buff_save_body( TableWriter * w, const Buff * value )
         int64_t payload_bytes = 1; /* the zero reference ending this body */
         if ( !( value->multiplier == 1.0f ) )
         {
-            table_writer_id( w, 0x9adc623a805c87c6ull );
+            table_writer_id_at( w, 79, 0x9adc623a805c87c6ull );
             payload_bytes += 5; /* kind and fixed-width payload */
         }
         table_writer_raw( w, NULL, payload_bytes );
@@ -5623,7 +5623,7 @@ static SCHEMA_UNUSED int debuff_save_body( TableWriter * w, const Debuff * value
         int64_t payload_bytes = 1; /* the zero reference ending this body */
         if ( !( value->amount == 0 ) )
         {
-            table_writer_id( w, 0x8113fe7ea2b16969ull );
+            table_writer_id_at( w, 69, 0x8113fe7ea2b16969ull );
             payload_bytes += 5; /* kind and fixed-width payload */
         }
         table_writer_raw( w, NULL, payload_bytes );

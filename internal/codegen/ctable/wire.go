@@ -592,7 +592,7 @@ func (g *tableGen) emitWireScalarLeafMeasure(st *ir.Struct) {
 			condition = "( " + guard + " ) && " + condition
 		}
 		g.pf("        if ( %s )\n        {\n", condition)
-		g.pf("            table_writer_id( w, 0x%016xull );\n", ir.TableFieldWireId(f))
+		g.pf("            %s\n", g.wireIdCall(ir.TableFieldWireId(f)))
 		g.pf("            payload_bytes += %d; /* kind and fixed-width payload */\n        }\n", 1+tableKindWidth(ir.TableWireScalarKind(f)))
 	}
 	g.pf("        table_writer_raw( w, NULL, payload_bytes );\n        return !w->overflow;\n    }\n")

@@ -5329,32 +5329,32 @@ static SCHEMA_UNUSED int ranged_widths_save_body( TableWriter * w, const RangedW
         int64_t payload_bytes = 1; /* the zero reference ending this body */
         if ( !( value->b8 == 0 ) )
         {
-            table_writer_id( w, 0x08a60c07b54d8dc7ull );
+            table_writer_id_at( w, 6, 0x08a60c07b54d8dc7ull );
             payload_bytes += 2; /* kind and fixed-width payload */
         }
         if ( !( value->b16 == 0 ) )
         {
-            table_writer_id( w, 0xff95701912ad97beull );
+            table_writer_id_at( w, 149, 0xff95701912ad97beull );
             payload_bytes += 3; /* kind and fixed-width payload */
         }
         if ( !( value->b32 == 0 ) )
         {
-            table_writer_id( w, 0xff9c5c1912b39470ull );
+            table_writer_id_at( w, 151, 0xff9c5c1912b39470ull );
             payload_bytes += 5; /* kind and fixed-width payload */
         }
         if ( !( value->b64 == 0 ) )
         {
-            table_writer_id( w, 0xff92701912ab61e7ull );
+            table_writer_id_at( w, 148, 0xff92701912ab61e7ull );
             payload_bytes += 9; /* kind and fixed-width payload */
         }
         if ( !( value->b12 == 0 ) )
         {
-            table_writer_id( w, 0xff95741912ad9e8aull );
+            table_writer_id_at( w, 150, 0xff95741912ad9e8aull );
             payload_bytes += 3; /* kind and fixed-width payload */
         }
         if ( !( value->b48 == 0 ) )
         {
-            table_writer_id( w, 0xff8b681912a535a1ull );
+            table_writer_id_at( w, 147, 0xff8b681912a535a1ull );
             payload_bytes += 9; /* kind and fixed-width payload */
         }
         table_writer_raw( w, NULL, payload_bytes );

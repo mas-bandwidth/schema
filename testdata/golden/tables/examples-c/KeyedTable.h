@@ -1941,12 +1941,12 @@ static SCHEMA_UNUSED int gunner_config_save_body( TableWriter * w, const GunnerC
         int64_t payload_bytes = 1; /* the zero reference ending this body */
         if ( !( value->reaction == 0.2f ) )
         {
-            table_writer_id( w, 0xb75aa3662201646aull );
+            table_writer_id_at( w, 101, 0xb75aa3662201646aull );
             payload_bytes += 5; /* kind and fixed-width payload */
         }
         if ( !( value->tracking == 0 ) )
         {
-            table_writer_id( w, 0xa6bf719a4602b0bcull );
+            table_writer_id_at( w, 90, 0xa6bf719a4602b0bcull );
             payload_bytes += 2; /* kind and fixed-width payload */
         }
         table_writer_raw( w, NULL, payload_bytes );

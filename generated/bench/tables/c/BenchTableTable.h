@@ -3457,12 +3457,12 @@ static SCHEMA_UNUSED int table_stat_save_body( TableWriter * w, const TableStat 
         int64_t payload_bytes = 1; /* the zero reference ending this body */
         if ( !( value->stat_id == 0 ) )
         {
-            table_writer_id( w, 0x80ab75f0866dbf65ull );
+            table_writer_id_at( w, 42, 0x80ab75f0866dbf65ull );
             payload_bytes += 2; /* kind and fixed-width payload */
         }
         if ( !( value->delta == 0 ) )
         {
-            table_writer_id( w, 0x52076675ec13a0c1ull );
+            table_writer_id_at( w, 23, 0x52076675ec13a0c1ull );
             payload_bytes += 5; /* kind and fixed-width payload */
         }
         table_writer_raw( w, NULL, payload_bytes );
@@ -6697,22 +6697,22 @@ static SCHEMA_UNUSED int table_hit_event_save_body( TableWriter * w, const Table
         int64_t payload_bytes = 1; /* the zero reference ending this body */
         if ( !( value->target_id == 0 ) )
         {
-            table_writer_id( w, 0xb7bc9ac015a25050ull );
+            table_writer_id_at( w, 60, 0xb7bc9ac015a25050ull );
             payload_bytes += 3; /* kind and fixed-width payload */
         }
         if ( !( value->damage == 0 ) )
         {
-            table_writer_id( w, 0x7f6308be8ab37fc0ull );
+            table_writer_id_at( w, 40, 0x7f6308be8ab37fc0ull );
             payload_bytes += 5; /* kind and fixed-width payload */
         }
         if ( !( value->hit_kind == 0 ) )
         {
-            table_writer_id( w, 0x01fbc365b059b925ull );
+            table_writer_id_at( w, 1, 0x01fbc365b059b925ull );
             payload_bytes += 5; /* kind and fixed-width payload */
         }
         if ( !( value->crit == 0 ) )
         {
-            table_writer_id( w, 0x126167908c9aa52dull );
+            table_writer_id_at( w, 6, 0x126167908c9aa52dull );
             payload_bytes += 2; /* kind and fixed-width payload */
         }
         table_writer_raw( w, NULL, payload_bytes );
@@ -7242,12 +7242,12 @@ static SCHEMA_UNUSED int table_chat_event_save_body( TableWriter * w, const Tabl
         int64_t payload_bytes = 1; /* the zero reference ending this body */
         if ( !( value->channel == 0 ) )
         {
-            table_writer_id( w, 0xa5013e9ad5caeda4ull );
+            table_writer_id_at( w, 56, 0xa5013e9ad5caeda4ull );
             payload_bytes += 5; /* kind and fixed-width payload */
         }
         if ( !( value->speaker == 0 ) )
         {
-            table_writer_id( w, 0xfbf1ac4d96ebd022ull );
+            table_writer_id_at( w, 75, 0xfbf1ac4d96ebd022ull );
             payload_bytes += 3; /* kind and fixed-width payload */
         }
         table_writer_raw( w, NULL, payload_bytes );
@@ -7610,12 +7610,12 @@ static SCHEMA_UNUSED int table_pickup_event_save_body( TableWriter * w, const Ta
         int64_t payload_bytes = 1; /* the zero reference ending this body */
         if ( !( value->item_id == 0 ) )
         {
-            table_writer_id( w, 0x9e7fd06d864fbd56ull );
+            table_writer_id_at( w, 51, 0x9e7fd06d864fbd56ull );
             payload_bytes += 3; /* kind and fixed-width payload */
         }
         if ( !( value->amount == 0 ) )
         {
-            table_writer_id( w, 0x8113fe7ea2b16969ull );
+            table_writer_id_at( w, 43, 0x8113fe7ea2b16969ull );
             payload_bytes += 5; /* kind and fixed-width payload */
         }
         table_writer_raw( w, NULL, payload_bytes );
