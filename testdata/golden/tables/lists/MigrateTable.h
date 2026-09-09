@@ -338,17 +338,38 @@ struct TableWriter
     LISTDEMO_TABLE_INLINE void put8( uint8_t v )   { raw( &v, 1 ); }
     LISTDEMO_TABLE_INLINE void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
     LISTDEMO_TABLE_INLINE void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
-    LISTDEMO_TABLE_INLINE void put64( uint64_t v ) { put32( uint32_t( v ) ); put32( uint32_t( v >> 32 ) ); }
+    // THE SAME EIGHT BYTES two put32 wrote, assembled once and handed to raw
+    // once: little-endian, lowest byte first. One capacity test rather than
+    // two, and NOT ONE FEWER — raw still asks before it copies, so an
+    // undersized buffer still raises the overflow flag and Save still answers -1.
+    LISTDEMO_TABLE_INLINE void put64( uint64_t v )
+    {
+        uint8_t b[8] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ),
+                         uint8_t( v >> 32 ), uint8_t( v >> 40 ), uint8_t( v >> 48 ), uint8_t( v >> 56 ) };
+        raw( b, 8 );
+    }
     // a 128-bit value as two lanes, the low half first (docs/SPEC-TABLES.md §3)
     LISTDEMO_TABLE_INLINE void put128( uint64_t lo, uint64_t hi ) { put64( lo ); put64( hi ); }
     // EVERY LENGTH, COUNT, INDEX AND ID REFERENCE IS ONE CANONICAL UNSIGNED
     // LEB128 (docs/SPEC-TABLES.md §3): seven value bits a byte, the lowest
     // group first, the high bit set on every byte but the last. One value has
     // one spelling, so two conforming writers agree byte for byte.
+    //
+    // THE GROUPS ARE ASSEMBLED IN A STACK BUFFER AND HANDED TO raw ONCE. Ten
+    // bytes is the whole range: 64 value bits at seven bits a group. The
+    // spelling is the byte-at-a-time loop's, group for group; what changes is
+    // that one capacity test covers the value instead of one per byte. An
+    // undersized buffer still raises the overflow flag — raw's test is untouched —
+    // and a value that does not fit now leaves the buffer alone rather than
+    // filling it to the brim first. Nothing reads those bytes: the caller
+    // that overflowed answers -1.
     LISTDEMO_TABLE_INLINE void putleb( uint64_t v )
     {
-        while ( v >= 0x80 ) { put8( uint8_t( v ) | 0x80 ); v >>= 7; }
-        put8( uint8_t( v ) );
+        uint8_t b[10];
+        int64_t n = 0;
+        while ( v >= 0x80 ) { b[n++] = uint8_t( v ) | 0x80; v >>= 7; }
+        b[n++] = uint8_t( v );
+        raw( b, n );
     }
 };
 
@@ -6842,11 +6863,16 @@ LISTDEMO_TABLE_INLINE bool BoundedSaveBody( TableWriter & w, TableIds & ids, con
     {
         const uint64_t ref_items = ids.ref( 0x3e7884bf4f412c6full );
         int64_t body_items = 0;
+        // items: the sizing loop's per-element lengths, kept for the write loop
+        // below — the element's own length prefix is the number the parent's
+        // body length was built from, so measuring it twice can only agree.
+        int64_t elem_cache[ 8 ];
         body_items += 1 + TableLebBytes( (uint64_t) ( value.items_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.items_count; elem_i++ )
         {
             const int64_t elem_bytes = UnitMeasureBody( ids, value.items[elem_i] );
             if ( elem_bytes < 0 ) { return false; }
+            if ( elem_i < 8 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_items += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         w.putleb( ref_items ); w.put8( 14 ); w.putleb( (uint64_t) body_items ); // items
@@ -6854,7 +6880,7 @@ LISTDEMO_TABLE_INLINE bool BoundedSaveBody( TableWriter & w, TableIds & ids, con
         for ( int32_t elem_i = 0; elem_i < value.items_count; elem_i++ )
         {
             {
-                const int64_t elem_len = UnitMeasureBody( ids, value.items[elem_i] );
+                const int64_t elem_len = elem_i < 8 ? elem_cache[ elem_i ] : UnitMeasureBody( ids, value.items[elem_i] );
                 if ( elem_len < 0 ) return false;
                 w.putleb( (uint64_t) elem_len );
                 if ( !UnitSaveBody( w, ids, value.items[elem_i] ) ) return false;
@@ -7328,11 +7354,16 @@ inline bool UnboundedSaveBodyFields( const Ctx & ctx, const TableNumbering & num
         {
             const uint64_t ref_items = ids.ref( 0x3e7884bf4f412c6full );
             int64_t body_items = 0;
+            // items: the sizing loop's per-element lengths, kept for the write loop
+            // below — the element's own length prefix is the number the parent's
+            // body length was built from, so measuring it twice can only agree.
+            int64_t elem_cache_items[ 64 ];
             body_items += 1 + TableLebBytes( (uint64_t) ( cursor_items.count ) ); // the element kind byte and the count
             for ( int32_t elem_i_items = 0; elem_i_items < cursor_items.count; elem_i_items++ )
             {
                 const int64_t elem_bytes_items = UnitMeasureBody( ids, cursor_items[elem_i_items] );
                 if ( elem_bytes_items < 0 ) { return false; }
+                if ( elem_i_items < 64 ) { elem_cache_items[ elem_i_items ] = elem_bytes_items; }
                 body_items += TableLebBytes( (uint64_t) ( elem_bytes_items ) ) + ( elem_bytes_items );
             }
             w.putleb( ref_items ); w.put8( 14 ); w.putleb( (uint64_t) body_items ); // items
@@ -7340,7 +7371,7 @@ inline bool UnboundedSaveBodyFields( const Ctx & ctx, const TableNumbering & num
             for ( int32_t elem_i_items = 0; elem_i_items < cursor_items.count; elem_i_items++ )
             {
                 {
-                    const int64_t elem_len_items = UnitMeasureBody( ids, cursor_items[elem_i_items] );
+                    const int64_t elem_len_items = elem_i_items < 64 ? elem_cache_items[ elem_i_items ] : UnitMeasureBody( ids, cursor_items[elem_i_items] );
                     if ( elem_len_items < 0 ) return false;
                     w.putleb( (uint64_t) elem_len_items );
                     if ( !UnitSaveBody( w, ids, cursor_items[elem_i_items] ) ) return false;

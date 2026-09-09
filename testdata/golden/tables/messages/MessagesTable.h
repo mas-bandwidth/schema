@@ -280,17 +280,38 @@ struct TableWriter
     MESSAGEDEMO_TABLE_INLINE void put8( uint8_t v )   { raw( &v, 1 ); }
     MESSAGEDEMO_TABLE_INLINE void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
     MESSAGEDEMO_TABLE_INLINE void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
-    MESSAGEDEMO_TABLE_INLINE void put64( uint64_t v ) { put32( uint32_t( v ) ); put32( uint32_t( v >> 32 ) ); }
+    // THE SAME EIGHT BYTES two put32 wrote, assembled once and handed to raw
+    // once: little-endian, lowest byte first. One capacity test rather than
+    // two, and NOT ONE FEWER — raw still asks before it copies, so an
+    // undersized buffer still raises the overflow flag and Save still answers -1.
+    MESSAGEDEMO_TABLE_INLINE void put64( uint64_t v )
+    {
+        uint8_t b[8] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ),
+                         uint8_t( v >> 32 ), uint8_t( v >> 40 ), uint8_t( v >> 48 ), uint8_t( v >> 56 ) };
+        raw( b, 8 );
+    }
     // a 128-bit value as two lanes, the low half first (docs/SPEC-TABLES.md §3)
     MESSAGEDEMO_TABLE_INLINE void put128( uint64_t lo, uint64_t hi ) { put64( lo ); put64( hi ); }
     // EVERY LENGTH, COUNT, INDEX AND ID REFERENCE IS ONE CANONICAL UNSIGNED
     // LEB128 (docs/SPEC-TABLES.md §3): seven value bits a byte, the lowest
     // group first, the high bit set on every byte but the last. One value has
     // one spelling, so two conforming writers agree byte for byte.
+    //
+    // THE GROUPS ARE ASSEMBLED IN A STACK BUFFER AND HANDED TO raw ONCE. Ten
+    // bytes is the whole range: 64 value bits at seven bits a group. The
+    // spelling is the byte-at-a-time loop's, group for group; what changes is
+    // that one capacity test covers the value instead of one per byte. An
+    // undersized buffer still raises the overflow flag — raw's test is untouched —
+    // and a value that does not fit now leaves the buffer alone rather than
+    // filling it to the brim first. Nothing reads those bytes: the caller
+    // that overflowed answers -1.
     MESSAGEDEMO_TABLE_INLINE void putleb( uint64_t v )
     {
-        while ( v >= 0x80 ) { put8( uint8_t( v ) | 0x80 ); v >>= 7; }
-        put8( uint8_t( v ) );
+        uint8_t b[10];
+        int64_t n = 0;
+        while ( v >= 0x80 ) { b[n++] = uint8_t( v ) | 0x80; v >>= 7; }
+        b[n++] = uint8_t( v );
+        raw( b, n );
     }
 };
 
@@ -7657,11 +7678,16 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
     {
         const uint64_t ref_edits = ids.ref( 0x9478d06b697549e6ull );
         int64_t body_edits = 0;
+        // edits: the sizing loop's per-element lengths, kept for the write loop
+        // below — the element's own length prefix is the number the parent's
+        // body length was built from, so measuring it twice can only agree.
+        int64_t elem_cache[ 3 ];
         body_edits += 1 + TableLebBytes( (uint64_t) ( value.edits_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.edits_count; elem_i++ )
         {
             const int64_t elem_bytes = EditMeasureBody( ids, value.edits[elem_i] );
             if ( elem_bytes < 0 ) { return false; }
+            if ( elem_i < 3 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_edits += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         w.putleb( ref_edits ); w.put8( 14 ); w.putleb( (uint64_t) body_edits ); // edits
@@ -7669,7 +7695,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
         for ( int32_t elem_i = 0; elem_i < value.edits_count; elem_i++ )
         {
             {
-                const int64_t elem_len = EditMeasureBody( ids, value.edits[elem_i] );
+                const int64_t elem_len = elem_i < 3 ? elem_cache[ elem_i ] : EditMeasureBody( ids, value.edits[elem_i] );
                 if ( elem_len < 0 ) return false;
                 w.putleb( (uint64_t) elem_len );
                 if ( !EditSaveBody( w, ids, value.edits[elem_i] ) ) return false;
@@ -7871,11 +7897,16 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
     {
         const uint64_t ref_snapshots = ids.ref( 0x99dc6354a681403aull );
         int64_t body_snapshots = 0;
+        // snapshots: the sizing loop's per-element lengths, kept for the write loop
+        // below — the element's own length prefix is the number the parent's
+        // body length was built from, so measuring it twice can only agree.
+        int64_t elem_cache[ 2 ];
         body_snapshots += 1 + TableLebBytes( (uint64_t) ( 2 ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < 2; elem_i++ )
         {
             const int64_t elem_bytes = SelectionMeasureBody( ids, value.snapshots[elem_i] );
             if ( elem_bytes < 0 ) { return false; }
+            if ( elem_i < 2 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_snapshots += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         w.putleb( ref_snapshots ); w.put8( 14 ); w.putleb( (uint64_t) body_snapshots ); // snapshots
@@ -7883,7 +7914,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
         for ( int32_t elem_i = 0; elem_i < 2; elem_i++ )
         {
             {
-                const int64_t elem_len = SelectionMeasureBody( ids, value.snapshots[elem_i] );
+                const int64_t elem_len = elem_i < 2 ? elem_cache[ elem_i ] : SelectionMeasureBody( ids, value.snapshots[elem_i] );
                 if ( elem_len < 0 ) return false;
                 w.putleb( (uint64_t) elem_len );
                 if ( !SelectionSaveBody( w, ids, value.snapshots[elem_i] ) ) return false;
@@ -10033,11 +10064,16 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
         if ( value.trace_count < 0 || value.trace_count > 3 ) { return false; } // storage invariant
         const uint64_t ref_trace = ids.ref( 0xdec59ea6c4eb9aeeull );
         int64_t body_trace = 0;
+        // trace: the sizing loop's per-element lengths, kept for the write loop
+        // below — the element's own length prefix is the number the parent's
+        // body length was built from, so measuring it twice can only agree.
+        int64_t elem_cache[ 3 ];
         body_trace += 1 + TableLebBytes( (uint64_t) ( value.trace_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.trace_count; elem_i++ )
         {
             const int64_t elem_bytes = ScriptMeasureBody( ids, value.trace[elem_i] );
             if ( elem_bytes < 0 ) { return false; }
+            if ( elem_i < 3 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_trace += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         w.putleb( ref_trace ); w.put8( 14 ); w.putleb( (uint64_t) body_trace ); // trace
@@ -10045,7 +10081,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
         for ( int32_t elem_i = 0; elem_i < value.trace_count; elem_i++ )
         {
             {
-                const int64_t elem_len = ScriptMeasureBody( ids, value.trace[elem_i] );
+                const int64_t elem_len = elem_i < 3 ? elem_cache[ elem_i ] : ScriptMeasureBody( ids, value.trace[elem_i] );
                 if ( elem_len < 0 ) return false;
                 w.putleb( (uint64_t) elem_len );
                 if ( !ScriptSaveBody( w, ids, value.trace[elem_i] ) ) return false;

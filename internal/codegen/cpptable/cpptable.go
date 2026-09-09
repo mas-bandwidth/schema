@@ -152,7 +152,27 @@ type tableGen struct {
 	// decoded into a scratch where a file's reader steps over it by its
 	// length, and nothing in that body is a field of this region (§6.6, §3.3).
 	retainGate string
+	// elemCache names the stack array in scope that holds the SIZING LOOP's
+	// per-element measured lengths, and elemCacheSlots is how many it has. An
+	// array of TABLE elements is framed twice — the parent's body length needs
+	// every element's length before the header rides, and each element then
+	// needs its own length prefix — and the second number IS the first one
+	// (docs/SPEC-TABLES.md §3). The two emitters that stand next to each other
+	// in one function, emitArrayBodyMeasure then emitArrayBodyWrite, hand the
+	// number across in this array rather than measuring the element twice.
+	//
+	// Empty everywhere else, INCLUDING every measure with no write beside it:
+	// a measure emitted on its own has nobody to hand the number to.
+	elemCache      string
+	elemCacheSlots int64
 }
+
+// kElemCacheSlots is the most per-element lengths one array field keeps on the
+// stack: 64 int64, half a kilobyte, and an element ABOVE it is measured a
+// second time exactly as every element was before. A bound is what there is:
+// no heap and no VLA on the save path, so a cache that grew with the count
+// could be neither.
+const kElemCacheSlots = 64
 
 // step renders one path step at a child-body descent: the field's ordinal in
 // the body being descended from, and the element index inside that field
@@ -772,17 +792,38 @@ struct TableWriter
     ` + forceInline + ` void put8( uint8_t v )   { raw( &v, 1 ); }
     ` + forceInline + ` void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
     ` + forceInline + ` void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
-    ` + forceInline + ` void put64( uint64_t v ) { put32( uint32_t( v ) ); put32( uint32_t( v >> 32 ) ); }
+    // THE SAME EIGHT BYTES two put32 wrote, assembled once and handed to raw
+    // once: little-endian, lowest byte first. One capacity test rather than
+    // two, and NOT ONE FEWER — raw still asks before it copies, so an
+    // undersized buffer still raises the overflow flag and Save still answers -1.
+    ` + forceInline + ` void put64( uint64_t v )
+    {
+        uint8_t b[8] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ),
+                         uint8_t( v >> 32 ), uint8_t( v >> 40 ), uint8_t( v >> 48 ), uint8_t( v >> 56 ) };
+        raw( b, 8 );
+    }
     // a 128-bit value as two lanes, the low half first (docs/SPEC-TABLES.md §3)
     ` + forceInline + ` void put128( uint64_t lo, uint64_t hi ) { put64( lo ); put64( hi ); }
     // EVERY LENGTH, COUNT, INDEX AND ID REFERENCE IS ONE CANONICAL UNSIGNED
     // LEB128 (docs/SPEC-TABLES.md §3): seven value bits a byte, the lowest
     // group first, the high bit set on every byte but the last. One value has
     // one spelling, so two conforming writers agree byte for byte.
+    //
+    // THE GROUPS ARE ASSEMBLED IN A STACK BUFFER AND HANDED TO raw ONCE. Ten
+    // bytes is the whole range: 64 value bits at seven bits a group. The
+    // spelling is the byte-at-a-time loop's, group for group; what changes is
+    // that one capacity test covers the value instead of one per byte. An
+    // undersized buffer still raises the overflow flag — raw's test is untouched —
+    // and a value that does not fit now leaves the buffer alone rather than
+    // filling it to the brim first. Nothing reads those bytes: the caller
+    // that overflowed answers -1.
     ` + forceInline + ` void putleb( uint64_t v )
     {
-        while ( v >= 0x80 ) { put8( uint8_t( v ) | 0x80 ); v >>= 7; }
-        put8( uint8_t( v ) );
+        uint8_t b[10];
+        int64_t n = 0;
+        while ( v >= 0x80 ) { b[n++] = uint8_t( v ) | 0x80; v >>= 7; }
+        b[n++] = uint8_t( v );
+        raw( b, n );
     }
 };
 

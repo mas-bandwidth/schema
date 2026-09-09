@@ -298,17 +298,38 @@ struct TableWriter
     BLOCKDEMO_TABLE_INLINE void put8( uint8_t v )   { raw( &v, 1 ); }
     BLOCKDEMO_TABLE_INLINE void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
     BLOCKDEMO_TABLE_INLINE void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
-    BLOCKDEMO_TABLE_INLINE void put64( uint64_t v ) { put32( uint32_t( v ) ); put32( uint32_t( v >> 32 ) ); }
+    // THE SAME EIGHT BYTES two put32 wrote, assembled once and handed to raw
+    // once: little-endian, lowest byte first. One capacity test rather than
+    // two, and NOT ONE FEWER — raw still asks before it copies, so an
+    // undersized buffer still raises the overflow flag and Save still answers -1.
+    BLOCKDEMO_TABLE_INLINE void put64( uint64_t v )
+    {
+        uint8_t b[8] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ),
+                         uint8_t( v >> 32 ), uint8_t( v >> 40 ), uint8_t( v >> 48 ), uint8_t( v >> 56 ) };
+        raw( b, 8 );
+    }
     // a 128-bit value as two lanes, the low half first (docs/SPEC-TABLES.md §3)
     BLOCKDEMO_TABLE_INLINE void put128( uint64_t lo, uint64_t hi ) { put64( lo ); put64( hi ); }
     // EVERY LENGTH, COUNT, INDEX AND ID REFERENCE IS ONE CANONICAL UNSIGNED
     // LEB128 (docs/SPEC-TABLES.md §3): seven value bits a byte, the lowest
     // group first, the high bit set on every byte but the last. One value has
     // one spelling, so two conforming writers agree byte for byte.
+    //
+    // THE GROUPS ARE ASSEMBLED IN A STACK BUFFER AND HANDED TO raw ONCE. Ten
+    // bytes is the whole range: 64 value bits at seven bits a group. The
+    // spelling is the byte-at-a-time loop's, group for group; what changes is
+    // that one capacity test covers the value instead of one per byte. An
+    // undersized buffer still raises the overflow flag — raw's test is untouched —
+    // and a value that does not fit now leaves the buffer alone rather than
+    // filling it to the brim first. Nothing reads those bytes: the caller
+    // that overflowed answers -1.
     BLOCKDEMO_TABLE_INLINE void putleb( uint64_t v )
     {
-        while ( v >= 0x80 ) { put8( uint8_t( v ) | 0x80 ); v >>= 7; }
-        put8( uint8_t( v ) );
+        uint8_t b[10];
+        int64_t n = 0;
+        while ( v >= 0x80 ) { b[n++] = uint8_t( v ) | 0x80; v >>= 7; }
+        b[n++] = uint8_t( v );
+        raw( b, n );
     }
 };
 
@@ -10371,11 +10392,16 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
     {
         const uint64_t ref_cameras = ids.ref( 0x0f9222d2ba7aa2a7ull );
         int64_t body_cameras = 0;
+        // cameras: the sizing loop's per-element lengths, kept for the write loop
+        // below — the element's own length prefix is the number the parent's
+        // body length was built from, so measuring it twice can only agree.
+        int64_t elem_cache[ 1 ];
         body_cameras += 1 + TableLebBytes( (uint64_t) ( value.cameras_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.cameras_count; elem_i++ )
         {
             const int64_t elem_bytes = RenderCameraMeasureBody( ids, value.cameras[elem_i] );
             if ( elem_bytes < 0 ) { return false; }
+            if ( elem_i < 1 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_cameras += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         w.putleb( ref_cameras ); w.put8( 14 ); w.putleb( (uint64_t) body_cameras ); // cameras
@@ -10383,7 +10409,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
         for ( int32_t elem_i = 0; elem_i < value.cameras_count; elem_i++ )
         {
             {
-                const int64_t elem_len = RenderCameraMeasureBody( ids, value.cameras[elem_i] );
+                const int64_t elem_len = elem_i < 1 ? elem_cache[ elem_i ] : RenderCameraMeasureBody( ids, value.cameras[elem_i] );
                 if ( elem_len < 0 ) return false;
                 w.putleb( (uint64_t) elem_len );
                 if ( !RenderCameraSaveBody( w, ids, value.cameras[elem_i] ) ) return false;
@@ -10395,11 +10421,16 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
     {
         const uint64_t ref_ships = ids.ref( 0x294a5c4913e1ad44ull );
         int64_t body_ships = 0;
+        // ships: the sizing loop's per-element lengths, kept for the write loop
+        // below — the element's own length prefix is the number the parent's
+        // body length was built from, so measuring it twice can only agree.
+        int64_t elem_cache[ 64 ];
         body_ships += 1 + TableLebBytes( (uint64_t) ( value.ships_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.ships_count; elem_i++ )
         {
             const int64_t elem_bytes = RenderShipMeasureBody( ids, value.ships[elem_i] );
             if ( elem_bytes < 0 ) { return false; }
+            if ( elem_i < 64 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_ships += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         w.putleb( ref_ships ); w.put8( 14 ); w.putleb( (uint64_t) body_ships ); // ships
@@ -10407,7 +10438,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
         for ( int32_t elem_i = 0; elem_i < value.ships_count; elem_i++ )
         {
             {
-                const int64_t elem_len = RenderShipMeasureBody( ids, value.ships[elem_i] );
+                const int64_t elem_len = elem_i < 64 ? elem_cache[ elem_i ] : RenderShipMeasureBody( ids, value.ships[elem_i] );
                 if ( elem_len < 0 ) return false;
                 w.putleb( (uint64_t) elem_len );
                 if ( !RenderShipSaveBody( w, ids, value.ships[elem_i] ) ) return false;
@@ -10419,11 +10450,16 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
     {
         const uint64_t ref_turrets = ids.ref( 0x84f8260bc283608cull );
         int64_t body_turrets = 0;
+        // turrets: the sizing loop's per-element lengths, kept for the write loop
+        // below — the element's own length prefix is the number the parent's
+        // body length was built from, so measuring it twice can only agree.
+        int64_t elem_cache[ 64 ];
         body_turrets += 1 + TableLebBytes( (uint64_t) ( value.turrets_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.turrets_count; elem_i++ )
         {
             const int64_t elem_bytes = RenderTurretMeasureBody( ids, value.turrets[elem_i] );
             if ( elem_bytes < 0 ) { return false; }
+            if ( elem_i < 64 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_turrets += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         w.putleb( ref_turrets ); w.put8( 14 ); w.putleb( (uint64_t) body_turrets ); // turrets
@@ -10431,7 +10467,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
         for ( int32_t elem_i = 0; elem_i < value.turrets_count; elem_i++ )
         {
             {
-                const int64_t elem_len = RenderTurretMeasureBody( ids, value.turrets[elem_i] );
+                const int64_t elem_len = elem_i < 64 ? elem_cache[ elem_i ] : RenderTurretMeasureBody( ids, value.turrets[elem_i] );
                 if ( elem_len < 0 ) return false;
                 w.putleb( (uint64_t) elem_len );
                 if ( !RenderTurretSaveBody( w, ids, value.turrets[elem_i] ) ) return false;
@@ -10443,11 +10479,16 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
     {
         const uint64_t ref_missiles = ids.ref( 0x1c3027194b1ba4d0ull );
         int64_t body_missiles = 0;
+        // missiles: the sizing loop's per-element lengths, kept for the write loop
+        // below — the element's own length prefix is the number the parent's
+        // body length was built from, so measuring it twice can only agree.
+        int64_t elem_cache[ 64 ];
         body_missiles += 1 + TableLebBytes( (uint64_t) ( value.missiles_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.missiles_count; elem_i++ )
         {
             const int64_t elem_bytes = RenderMissileMeasureBody( ids, value.missiles[elem_i] );
             if ( elem_bytes < 0 ) { return false; }
+            if ( elem_i < 64 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_missiles += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         w.putleb( ref_missiles ); w.put8( 14 ); w.putleb( (uint64_t) body_missiles ); // missiles
@@ -10455,7 +10496,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
         for ( int32_t elem_i = 0; elem_i < value.missiles_count; elem_i++ )
         {
             {
-                const int64_t elem_len = RenderMissileMeasureBody( ids, value.missiles[elem_i] );
+                const int64_t elem_len = elem_i < 64 ? elem_cache[ elem_i ] : RenderMissileMeasureBody( ids, value.missiles[elem_i] );
                 if ( elem_len < 0 ) return false;
                 w.putleb( (uint64_t) elem_len );
                 if ( !RenderMissileSaveBody( w, ids, value.missiles[elem_i] ) ) return false;
@@ -10467,11 +10508,16 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
     {
         const uint64_t ref_dynamic_props = ids.ref( 0x43125398a9903d27ull );
         int64_t body_dynamic_props = 0;
+        // dynamic_props: the sizing loop's per-element lengths, kept for the write loop
+        // below — the element's own length prefix is the number the parent's
+        // body length was built from, so measuring it twice can only agree.
+        int64_t elem_cache[ 64 ];
         body_dynamic_props += 1 + TableLebBytes( (uint64_t) ( value.dynamic_props_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.dynamic_props_count; elem_i++ )
         {
             const int64_t elem_bytes = RenderDynamicPropMeasureBody( ids, value.dynamic_props[elem_i] );
             if ( elem_bytes < 0 ) { return false; }
+            if ( elem_i < 64 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_dynamic_props += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         w.putleb( ref_dynamic_props ); w.put8( 14 ); w.putleb( (uint64_t) body_dynamic_props ); // dynamic_props
@@ -10479,7 +10525,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
         for ( int32_t elem_i = 0; elem_i < value.dynamic_props_count; elem_i++ )
         {
             {
-                const int64_t elem_len = RenderDynamicPropMeasureBody( ids, value.dynamic_props[elem_i] );
+                const int64_t elem_len = elem_i < 64 ? elem_cache[ elem_i ] : RenderDynamicPropMeasureBody( ids, value.dynamic_props[elem_i] );
                 if ( elem_len < 0 ) return false;
                 w.putleb( (uint64_t) elem_len );
                 if ( !RenderDynamicPropSaveBody( w, ids, value.dynamic_props[elem_i] ) ) return false;
@@ -10491,11 +10537,16 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
     {
         const uint64_t ref_static_props = ids.ref( 0xc1f8d7edff7fcfd2ull );
         int64_t body_static_props = 0;
+        // static_props: the sizing loop's per-element lengths, kept for the write loop
+        // below — the element's own length prefix is the number the parent's
+        // body length was built from, so measuring it twice can only agree.
+        int64_t elem_cache[ 64 ];
         body_static_props += 1 + TableLebBytes( (uint64_t) ( value.static_props_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.static_props_count; elem_i++ )
         {
             const int64_t elem_bytes = RenderStaticPropMeasureBody( ids, value.static_props[elem_i] );
             if ( elem_bytes < 0 ) { return false; }
+            if ( elem_i < 64 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_static_props += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         w.putleb( ref_static_props ); w.put8( 14 ); w.putleb( (uint64_t) body_static_props ); // static_props
@@ -10503,7 +10554,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
         for ( int32_t elem_i = 0; elem_i < value.static_props_count; elem_i++ )
         {
             {
-                const int64_t elem_len = RenderStaticPropMeasureBody( ids, value.static_props[elem_i] );
+                const int64_t elem_len = elem_i < 64 ? elem_cache[ elem_i ] : RenderStaticPropMeasureBody( ids, value.static_props[elem_i] );
                 if ( elem_len < 0 ) return false;
                 w.putleb( (uint64_t) elem_len );
                 if ( !RenderStaticPropSaveBody( w, ids, value.static_props[elem_i] ) ) return false;
@@ -10515,11 +10566,16 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
     {
         const uint64_t ref_cosmetic_props = ids.ref( 0x33408e39f5f480ffull );
         int64_t body_cosmetic_props = 0;
+        // cosmetic_props: the sizing loop's per-element lengths, kept for the write loop
+        // below — the element's own length prefix is the number the parent's
+        // body length was built from, so measuring it twice can only agree.
+        int64_t elem_cache[ 64 ];
         body_cosmetic_props += 1 + TableLebBytes( (uint64_t) ( value.cosmetic_props_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.cosmetic_props_count; elem_i++ )
         {
             const int64_t elem_bytes = RenderCosmeticPropMeasureBody( ids, value.cosmetic_props[elem_i] );
             if ( elem_bytes < 0 ) { return false; }
+            if ( elem_i < 64 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_cosmetic_props += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         w.putleb( ref_cosmetic_props ); w.put8( 14 ); w.putleb( (uint64_t) body_cosmetic_props ); // cosmetic_props
@@ -10527,7 +10583,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
         for ( int32_t elem_i = 0; elem_i < value.cosmetic_props_count; elem_i++ )
         {
             {
-                const int64_t elem_len = RenderCosmeticPropMeasureBody( ids, value.cosmetic_props[elem_i] );
+                const int64_t elem_len = elem_i < 64 ? elem_cache[ elem_i ] : RenderCosmeticPropMeasureBody( ids, value.cosmetic_props[elem_i] );
                 if ( elem_len < 0 ) return false;
                 w.putleb( (uint64_t) elem_len );
                 if ( !RenderCosmeticPropSaveBody( w, ids, value.cosmetic_props[elem_i] ) ) return false;
@@ -10539,11 +10595,16 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
     {
         const uint64_t ref_lasers = ids.ref( 0xd982b77b3e92d16dull );
         int64_t body_lasers = 0;
+        // lasers: the sizing loop's per-element lengths, kept for the write loop
+        // below — the element's own length prefix is the number the parent's
+        // body length was built from, so measuring it twice can only agree.
+        int64_t elem_cache[ 64 ];
         body_lasers += 1 + TableLebBytes( (uint64_t) ( value.lasers_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.lasers_count; elem_i++ )
         {
             const int64_t elem_bytes = RenderLaserMeasureBody( ids, value.lasers[elem_i] );
             if ( elem_bytes < 0 ) { return false; }
+            if ( elem_i < 64 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_lasers += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         w.putleb( ref_lasers ); w.put8( 14 ); w.putleb( (uint64_t) body_lasers ); // lasers
@@ -10551,7 +10612,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
         for ( int32_t elem_i = 0; elem_i < value.lasers_count; elem_i++ )
         {
             {
-                const int64_t elem_len = RenderLaserMeasureBody( ids, value.lasers[elem_i] );
+                const int64_t elem_len = elem_i < 64 ? elem_cache[ elem_i ] : RenderLaserMeasureBody( ids, value.lasers[elem_i] );
                 if ( elem_len < 0 ) return false;
                 w.putleb( (uint64_t) elem_len );
                 if ( !RenderLaserSaveBody( w, ids, value.lasers[elem_i] ) ) return false;
@@ -10563,11 +10624,16 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
     {
         const uint64_t ref_explosions = ids.ref( 0x876a8c1a85806a69ull );
         int64_t body_explosions = 0;
+        // explosions: the sizing loop's per-element lengths, kept for the write loop
+        // below — the element's own length prefix is the number the parent's
+        // body length was built from, so measuring it twice can only agree.
+        int64_t elem_cache[ 64 ];
         body_explosions += 1 + TableLebBytes( (uint64_t) ( value.explosions_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.explosions_count; elem_i++ )
         {
             const int64_t elem_bytes = RenderExplosionMeasureBody( ids, value.explosions[elem_i] );
             if ( elem_bytes < 0 ) { return false; }
+            if ( elem_i < 64 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_explosions += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         w.putleb( ref_explosions ); w.put8( 14 ); w.putleb( (uint64_t) body_explosions ); // explosions
@@ -10575,7 +10641,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
         for ( int32_t elem_i = 0; elem_i < value.explosions_count; elem_i++ )
         {
             {
-                const int64_t elem_len = RenderExplosionMeasureBody( ids, value.explosions[elem_i] );
+                const int64_t elem_len = elem_i < 64 ? elem_cache[ elem_i ] : RenderExplosionMeasureBody( ids, value.explosions[elem_i] );
                 if ( elem_len < 0 ) return false;
                 w.putleb( (uint64_t) elem_len );
                 if ( !RenderExplosionSaveBody( w, ids, value.explosions[elem_i] ) ) return false;
