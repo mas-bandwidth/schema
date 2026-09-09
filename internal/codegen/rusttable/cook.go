@@ -37,7 +37,6 @@ func (g *gen) cookModule() []byte {
 		return nil
 	}
 	var b strings.Builder
-	b.WriteString(g.banner)
 	b.WriteString(header(g.file.Base, g.unit.Package, "the COOKED FORM (docs/SPEC-TABLES.md §7): the READ half"))
 	b.WriteString(cookModuleBanner)
 	b.WriteString("use crate::*;\n\n")
@@ -73,7 +72,6 @@ func (g *gen) recordsModule() []byte {
 	}
 
 	var b strings.Builder
-	b.WriteString(g.banner)
 	b.WriteString(header(g.file.Base, g.unit.Package,
 		"the BLITTABLE RECORDS both accelerators are built from (docs/SPEC-TABLES.md §7.2, §19.3)"))
 	b.WriteString(recordsModuleBanner)
