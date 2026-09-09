@@ -23,19 +23,21 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		g.pf("\t\tcase 0x%016x: // %s\n", ir.TableFieldWireId(f), f.Name)
 		g.pf("\t\t\tif kind != %d {\n", kind)
 		if wireWidenable(kind) {
-			g.pf("\t\t\t\tif !tableKindWidens(kind, %d) {\n", kind)
-		}
-		g.pf("\t\t\t\tr.Report.KindMismatch++; if !r.Skip(kind) { r.Report.Malformed = true; return false }; break\n")
-		if wireWidenable(kind) {
+			// Widening lives in the mismatch arm so a matching kind reads a constant width (SPEC-TABLES §4).
+			g.pf("\t\t\t\tif tableKindWidens(kind, %d) {\n", kind)
+			g.emitReadScalar(f, "value."+member(f), "r", "kind", "\t\t\t\t\t", "r.Report.Malformed = true; return false")
+			if !st.IsMapEntry() || f.Name != ir.MapKeyFieldName {
+				g.pf("\t\t\t\t\tr.Report.Widened++\n")
+			}
+			if f.Type.Optional {
+				g.pf("\t\t\t\t\tvalue.%sPresent = true\n", member(f))
+			}
+			g.pf("\t\t\t\t\tbreak\n")
 			g.pf("\t\t\t\t}\n")
 		}
+		g.pf("\t\t\t\tr.Report.KindMismatch++; if !r.Skip(kind) { r.Report.Malformed = true; return false }; break\n")
 		g.pf("\t\t\t}\n")
 		g.emitReadField(f, "\t\t\t")
-		// A scalar widening counts only once its payload lands. Arrays and
-		// maps count at their own framing boundary instead (SPEC-TABLES §4).
-		if wireWidenable(kind) && (!st.IsMapEntry() || f.Name != ir.MapKeyFieldName) {
-			g.pf("\t\t\tif kind != %d { r.Report.Widened++ }\n", kind)
-		}
 		if f.Type.Optional {
 			g.pf("\t\t\tvalue.%sPresent = true\n", member(f))
 		}
@@ -100,6 +102,7 @@ func wireWidenable(kind int) bool {
 func (g *tableGen) emitReadField(f *ir.Field, ind string) {
 	expr := "value." + member(f)
 	kind := ir.TableWireScalarKind(f)
+	matched := fmt.Sprintf("%d", kind)
 	switch {
 	case f.IsMap():
 		g.emitMapRead(f, ind)
@@ -110,7 +113,7 @@ func (g *tableGen) emitReadField(f *ir.Field, ind string) {
 	case f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes && !f.Type.Pointer:
 		g.emitReadArray(f, ind, false)
 	case f.Type.Pointer:
-		g.emitReadScalar(f, expr, "r", "kind", ind, "r.Report.Malformed=true;return false")
+		g.emitReadScalar(f, expr, "r", matched, ind, "r.Report.Malformed=true;return false")
 	case f.Type.Kind == ir.TWString:
 		g.pf("%ssub,ok:=r.Body();if !ok {r.Report.Malformed=true;return false}\n", ind)
 		g.emitReadWString(f, expr, "sub", ind, "r.Report.Malformed=true;break")
@@ -128,7 +131,7 @@ func (g *tableGen) emitReadField(f *ir.Field, ind string) {
 		g.retainDiscard("r")
 		g.emitReadUnion(f.Type.Ref.(*ir.Union), expr, "r", ind, "return false")
 	default:
-		g.emitReadScalar(f, expr, "r", "kind", ind, "r.Report.Malformed = true; return false")
+		g.emitReadScalar(f, expr, "r", matched, ind, "r.Report.Malformed = true; return false")
 	}
 }
 
@@ -409,15 +412,23 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 		g.emitReadWide(f, expr, rdr, wireKind, ind, onBad)
 		return
 	}
-	g.pf("%sif !%s.Has(tableKindBytes(%s)) { %s }\n", ind, rdr, wireKind, onBad)
+	// A compile-time kind is Has(N)+GetN; a runtime kind keeps Unsigned/Signed.
+	if n := knownKindWidth(wireKind); n > 0 {
+		g.pf("%sif !%s.Has(%d) { %s }\n", ind, rdr, n, onBad)
+	} else {
+		g.pf("%sif !%s.Has(tableKindBytes(%s)) { %s }\n", ind, rdr, wireKind, onBad)
+	}
 	switch kind {
 	case tkBool:
 		g.pf("%s%s = %s.Get8() != 0\n", ind, expr, rdr)
 	case tkF32, tkF64:
 		g.needsMath = true
-		if kind == tkF32 {
+		switch {
+		case kind == tkF32:
 			g.pf("%s{\n%s\tv := math.Float32frombits(%s.Get32())\n", ind, ind, rdr)
-		} else {
+		case knownKindWidth(wireKind) > 0:
+			g.pf("%s{\n%s\tv := math.Float64frombits(%s.Get64())\n", ind, ind, rdr)
+		default:
 			g.pf("%s{\n%s\tvar v float64\n%s\tif %s == 10 { v = math.Float64frombits(tableWidenFloat(%s.Get32())) } else { v = math.Float64frombits(%s.Get64()) }\n", ind, ind, ind, wireKind, rdr, rdr)
 		}
 		if f.HasFloatRange {
@@ -430,11 +441,7 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 		g.pf("%s\t%s = v\n%s}\n", ind, expr, ind)
 	default:
 		signed := (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) && f.Type.Signed
-		method := "Unsigned"
-		if signed {
-			method = "Signed"
-		}
-		g.pf("%s{\n%s\tv := %s.%s(%s)\n", ind, ind, rdr, method, wireKind)
+		g.pf("%s{\n%s\tv := %s\n", ind, ind, scalarGetExpr(rdr, wireKind, signed))
 		if f.HasIntRange {
 			rlo, rhi, _ := ir.TableRawRange(f)
 			lo, hi := goIntLit(rlo, signed, 8), goIntLit(rhi, signed, 8)
@@ -449,6 +456,46 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 			typ = "byte"
 		}
 		g.pf("%s\t%s = %s(v)\n%s}\n", ind, expr, typ, ind)
+	}
+}
+
+func knownKindWidth(wireKind string) int {
+	if wireKind == "" {
+		return 0
+	}
+	n := 0
+	for i := 0; i < len(wireKind); i++ {
+		c := wireKind[i]
+		if c < '0' || c > '9' {
+			return 0
+		}
+		n = n*10 + int(c-'0')
+	}
+	return ir.TableKindWidth(n)
+}
+
+func scalarGetExpr(rdr, wireKind string, signed bool) string {
+	n := knownKindWidth(wireKind)
+	if n != 1 && n != 2 && n != 4 && n != 8 {
+		method := "Unsigned"
+		if signed {
+			method = "Signed"
+		}
+		return fmt.Sprintf("%s.%s(%s)", rdr, method, wireKind)
+	}
+	get := fmt.Sprintf("%s.Get%d()", rdr, n*8)
+	if !signed {
+		return get
+	}
+	switch n {
+	case 1:
+		return "int8(" + get + ")"
+	case 2:
+		return "int16(" + get + ")"
+	case 4:
+		return "int32(" + get + ")"
+	default:
+		return "int64(" + get + ")"
 	}
 }
 
