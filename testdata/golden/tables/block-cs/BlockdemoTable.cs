@@ -4186,9 +4186,10 @@ namespace Blockdemo
             static bool CollectPayload(object value, TableFieldInfo f, ref Ids ids)
             {
                 if (f == null) { return true; } // selected, payload-free arm
-                if (f.Counted && (Count(value, f) < 0 || Count(value, f) > f.ArrayBound)) { return false; }
+                int count = Count(value, f);
+                if (f.Counted && (count < 0 || count > f.ArrayBound)) { return false; }
                 if (!f.IsArray) { return CollectElement(value, f, 0, ref ids); }
-                for (int i = 0; i < Count(value, f); i++)
+                for (int i = 0; i < count; i++)
                 {
                     if (f.KeyId != null)
                     {
@@ -4244,7 +4245,8 @@ namespace Blockdemo
             static long ArraySize(object value, TableFieldInfo f, ref Ids ids, scoped Span<long> elemCache = default)
             {
                 long n = 0; int count = 0;
-                for (int i = 0; i < Count(value, f); i++)
+                int total = Count(value, f);
+                for (int i = 0; i < total; i++)
                 {
                     if (f.KeyId != null)
                     {
@@ -4325,14 +4327,15 @@ namespace Blockdemo
                 if (f.IsArray)
                 {
                     w.Byte(f.Kind);
-                    int count = Count(value, f);
+                    int total = Count(value, f);
+                    int count = total;
                     if (f.KeyId != null)
                     {
                         count = 0;
                         for (int i = 0; i < f.ArrayBound; i++) { if (!DefaultElement(value, f, i)) { count++; } }
                     }
                     w.Var((ulong)count);
-                    for (int i = 0; i < Count(value, f); i++)
+                    for (int i = 0; i < total; i++)
                     {
                         if (f.KeyId != null)
                         {
@@ -4354,7 +4357,7 @@ namespace Blockdemo
                         }
                     }
                 }
-                else if (f.Kind == 33) { char[] chars = f.GetChars(value); for (int i = 0; i < Count(value, f); i++) { w.Fixed(chars[i], 2); } }
+                else if (f.Kind == 33) { char[] chars = f.GetChars(value); int count = Count(value, f); for (int i = 0; i < count; i++) { w.Fixed(chars[i], 2); } }
                 else if (f.Kind == 12) { w.Raw(f.GetBuffer(value).AsSpan(0, Count(value, f))); }
                 else { WriteElement(ref w, value, f, 0, ref ids, false); }
             }
