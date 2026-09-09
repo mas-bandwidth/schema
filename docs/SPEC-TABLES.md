@@ -33,6 +33,61 @@ The two contracts never mix. Flatbuffers- and protobuf-class evolution
 ideas apply here, to tables — they do not apply to `type`, whose wire is
 hardcoded under the protocol id, and nothing in this document changes that.
 
+## The three wires
+
+**There are THREE WIRES over the same struct, and each is a different
+bargain.** In the owner's words: *"I also like that there are three quite
+different tables now, the type, the fixed table, the variable table"* —
+*"they are all pretty cool and unique. the tradeoffs are clear."*
+
+- **TYPE — the fastest wire.** Bitpacked, hardcoded, and it knows only
+  itself: the bytes are ONE BUILD'S PRIVATE LAYOUT, guarded by the protocol
+  id, same-or-refuse (SPEC.md). A type is NOT VERSIONED, and that refusal
+  is the whole of what it buys — nothing is negotiated because nothing may
+  differ. Where versioning would cost more than it is worth, the type is
+  the answer: *"if somebody really cares about this, they use a type
+  instead (no versioning)."*
+- **FIXED TABLE — the type's speed, in table form.** *"Fixed tables are
+  meant to be the fast equivalent of types, in table form."* It is the
+  TYPE'S OWN LAYOUT with an EIGHT-BYTE HASH in front of it and a
+  VOCABULARY BLOCK beside it, declared `fixed table`. Every field is
+  BOUNDED and every field is WRITTEN AT ITS BOUND, so the body is ONE
+  CONSTANT SIZE PER TYPE and no branch is guarded: ONE read path and ONE
+  write path, whose cost DOES NOT DEPEND ON VERSION SKEW. Skew is paid for
+  whether or not the peers differ, which is the trade — *"it's more
+  honest, and predictable."* It versions by APPEND-ONLY evolution with
+  DEPRECATION IN PLACE, and that versioning is load-bearing: **we must not
+  ever break versioning in fixed tables.** Writing at the bound is why it
+  is for SMALL THINGS — *"effectively, fixed tables should only be used
+  for small things."*
+- **VARIABLE TABLE — the tolerant wire** (the FILE FORM, form byte `1`,
+  §3). Maps, lists, pointers, per-field guards, default elision, and a
+  record that DESCRIBES ITSELF every time: ids, kinds and lengths ride
+  with the values, so any reader reads any data and the differences are
+  reported, never fatal. It pays framing bytes and, in one narrow case, an
+  allocation, and it is the wire for anything LARGE, SPARSE or FREE-FORM —
+  everything the other two refuse to carry.
+
+**The variable table is the ESCAPE HATCH THAT LETS THE OTHER TWO BE
+STRICT.** A fixed table refuses what would make it variable; a type
+refuses to version; and neither refusal strands anyone, because —
+*"if you are ever constrained by type or fixed table, table (variable
+table) is there for you."*
+
+**The MESSAGE FORM (form byte `2`, §3.3) is the fixed table on the wire
+between peers**: a BATCH of fixed tables under ONE ANNOUNCED BLOCK, each
+body packed through the type's own codec.
+
+**How to choose.**
+
+- **One build on both ends, and speed above all** — `type`. No versioning,
+  no hash, no vocabulary; the protocol id refuses anything else.
+- **Small, dense, every field bounded, and it must cross builds** —
+  `fixed table`. A constant-size body and a skew-independent cost, versioned
+  by appending and deprecating in place.
+- **Large, sparse, free-form, or you cannot bound it** — `table`. Pay the
+  framing and keep every reader.
+
 ## The performance ladder
 
 **Tables are LESS performant than types**, and that is the trade they exist
