@@ -383,12 +383,23 @@ struct TableIds
     uint64_t ids[ kCapacity ];
     int32_t chain[ kCapacity ];
     int32_t head[ kBuckets ];
+    // THE ORDINAL SLOT CACHE (§3). Every id a generated field header names is
+    // a COMPILE-TIME CONSTANT of the unit, so it has an ORDINAL: its index in
+    // the unit's id vocabulary, the same ascending set kCapacity counts. slot
+    // holds the ENTRY that ordinal's id took, -1 for one not interned yet, and
+    // ordinal_of is its inverse over the entries — the ordinal an entry was
+    // taken under, -1 for an entry a RUNTIME id took, which has no ordinal.
+    // The pair is what lets truncate undo the cache in O(popped) rather than
+    // walking the whole vocabulary.
+    int32_t slot[ kCapacity ];
+    int16_t ordinal_of[ kCapacity ];
     int32_t count;
     bool overflow;
 
     TableIds() : count( 0 ), overflow( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
+        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; }
     }
 
     static BLOCKHOME_TABLE_INLINE uint32_t bucket_of( uint64_t id )
@@ -407,18 +418,41 @@ struct TableIds
             if ( ids[i] == id ) { return uint64_t( i ) + 1; }
         }
         if ( count >= kCapacity ) { overflow = true; return 1; }
-        ids[count] = id; chain[count] = head[b]; head[b] = count; count++;
+        ids[count] = id; chain[count] = head[b]; ordinal_of[count] = -1; head[b] = count; count++;
         return uint64_t( count );
     }
 
+    // ref FOR AN ID THE EMITTER KNEW, which is every id a generated field
+    // header, union arm header or blob header names. A REPEAT answers from
+    // slot[ordinal]; a MISS falls through to ref, so THE APPEND STILL HAPPENS
+    // ONLY THERE and first-use order — which is the trailer's order — is the
+    // order it always was. An id reached through both this and ref carries the
+    // ordinal from here, so truncate can always undo the cache.
+    BLOCKHOME_TABLE_INLINE uint64_t ref_at( int32_t ordinal, uint64_t id )
+    {
+        const int32_t at = slot[ordinal];
+        if ( at >= 0 ) { return uint64_t( at ) + 1; }
+        const uint64_t r = ref( id );
+        // AN OVERFLOWED TABLE RECORDS NOTHING: ref appended no entry and
+        // answered 1, which is not this id's reference (§3).
+        if ( overflow ) { return r; }
+        slot[ordinal] = int32_t( r ) - 1;
+        ordinal_of[ int32_t( r ) - 1 ] = int16_t( ordinal );
+        return r;
+    }
+
     // undo every entry appended since mark. An entry removed is the most
-    // recent one in its bucket, so it sits at that bucket's head.
+    // recent one in its bucket, so it sits at that bucket's head — and its
+    // ORDINAL SLOT goes with it, or a later ref_at would answer with an entry
+    // this call just popped.
     void truncate( int32_t mark )
     {
         while ( count > mark )
         {
             count--;
             head[ bucket_of( ids[count] ) ] = chain[count];
+            const int32_t o = ordinal_of[count];
+            if ( o >= 0 ) { slot[o] = -1; }
         }
     }
 };
@@ -430,10 +464,38 @@ inline int64_t TableIdsBytes( const TableIds & ids ) { return int64_t( ids.count
 
 // TableIdsWrite puts the trailer where the walk ended: a writer never patches,
 // because first-use order is known only when the walk ends.
+//
+// THE TRAILER IS A CONTIGUOUS RUN OF 64-BIT LITTLE-ENDIAN WORDS (docs/SPEC-TABLES.md §3):
+// the interned entry ids followed by the entry count. A single capacity test
+// covers the entire trailer extent instead of one test per 8-byte put64, and on
+// little-endian architectures the contiguous ids array is bulk-copied in place.
 inline void TableIdsWrite( TableWriter & w, const TableIds & ids )
 {
-    for ( int32_t i = 0; i < ids.count; i++ ) { w.put64( ids.ids[i] ); }
-    w.put64( uint64_t( ids.count ) );
+    const int64_t count = ids.count;
+    const int64_t total_bytes = ( count + 1 ) * 8;
+    if ( w.overflow || w.offset < 0 || w.offset > w.capacity || total_bytes > w.capacity - w.offset )
+    {
+        w.overflow = true;
+        return;
+    }
+    uint8_t * dst = w.buffer + w.offset;
+#if defined( __BYTE_ORDER__ ) && defined( __ORDER_LITTLE_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+    if ( count > 0 )
+    {
+        memcpy( dst, ids.ids, (size_t)( count * 8 ) );
+    }
+    const uint64_t n = uint64_t( count );
+    memcpy( dst + count * 8, &n, 8 );
+#else
+    // Explicit little-endian stores also cover compilers that do not expose
+    // byte-order macros. Native copies require positive little-endian proof.
+    for ( int64_t i = 0; i <= count; i++ )
+    {
+        const uint64_t v = i < count ? ids.ids[i] : uint64_t( count );
+        for ( int j = 0; j < 8; j++ ) { dst[i * 8 + j] = uint8_t( v >> ( j * 8 ) ); }
+    }
+#endif
+    w.offset += total_bytes;
 }
 
 // THE ID TABLE, READER SIDE (docs/SPEC-TABLES.md §3). A reader locates it from
@@ -496,6 +558,21 @@ struct TableReader
     // rule. false = framing damage on the body carrying it.
     bool getleb( uint64_t & value )
     {
+        // ONE BYTE BELOW 0x80 IS A COMPLETE CANONICAL VALUE and there is no
+        // second spelling of it: the continuation bit is clear, so nothing
+        // follows; it is the FIRST byte, so the redundant-continuation rule
+        // ( i > 0 && b == 0 ) has nothing to say about it; and one byte is
+        // neither overlong nor past ten. The general loop below decides this
+        // same byte the same way — this reaches the answer without the cursor
+        // save it would need for the bytes that can still be refused. NO RULE
+        // IS RELAXED HERE: every number this path does not answer, canonical
+        // or not, goes to the loop with all of its checks (§3).
+        if ( offset < size && buffer[offset] < 0x80 )
+        {
+            value = buffer[offset];
+            offset++;
+            return true;
+        }
         // A NUMBER THIS READER REFUSES LEAVES THE CURSOR WHERE IT WAS. The
         // caller's next question is often "did this body end exactly at its
         // L", and a rejected number that had moved the cursor would answer
@@ -2374,7 +2451,7 @@ inline int64_t PartRowMeasureBody( TableIds & ids, const PartRow & value )
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
         const int32_t mark_armor = ids.count;
-        const uint64_t ref_armor = ids.ref( 0xd19988b67e699194ull );
+        const uint64_t ref_armor = ids.ref_at( 23, 0xd19988b67e699194ull );
         const int64_t body_armor = ArmorConfigMeasureBody( ids, value.armor );
         if ( body_armor < 0 ) { return -1; }
         if ( body_armor > 1 ) { bytes += TableLebBytes( ref_armor ) + 1 + TableLebBytes( (uint64_t) ( body_armor ) ) + ( body_armor ); } // armor
@@ -2382,14 +2459,14 @@ inline int64_t PartRowMeasureBody( TableIds & ids, const PartRow & value )
     }
     {
         const int32_t mark_gunner = ids.count;
-        const uint64_t ref_gunner = ids.ref( 0x40dbb648c0cd44aaull );
+        const uint64_t ref_gunner = ids.ref_at( 8, 0x40dbb648c0cd44aaull );
         const int64_t body_gunner = GunnerSettingsMeasureBody( ids, value.gunner );
         if ( body_gunner < 0 ) { return -1; }
         if ( body_gunner > 1 ) { bytes += TableLebBytes( ref_gunner ) + 1 + TableLebBytes( (uint64_t) ( body_gunner ) ) + ( body_gunner ); } // gunner
         else { ids.truncate( mark_gunner ); } // an all-default nested table elides, and costs no entry
     }
-    if ( value.part_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x04d6206b33415104ull ) ) + 1 + 4; } // part_id
-    if ( value.slot != 0 ) { bytes += TableLebBytes( ids.ref( 0x6a771618f6fe31d1ull ) ) + 1 + 1; } // slot
+    if ( value.part_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 1, 0x04d6206b33415104ull ) ) + 1 + 4; } // part_id
+    if ( value.slot != 0 ) { bytes += TableLebBytes( ids.ref_at( 13, 0x6a771618f6fe31d1ull ) ) + 1 + 1; } // slot
     return bytes;
 }
 
@@ -2405,7 +2482,7 @@ BLOCKHOME_TABLE_INLINE bool PartRowSaveBody( TableWriter & w, TableIds & ids, co
 {
     {
         const int32_t mark_armor = ids.count;
-        const uint64_t ref_armor = ids.ref( 0xd19988b67e699194ull );
+        const uint64_t ref_armor = ids.ref_at( 23, 0xd19988b67e699194ull );
         const int64_t body_armor = ArmorConfigMeasureBody( ids, value.armor );
         if ( body_armor < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_armor > 1 ) // all-default nested elides
@@ -2417,7 +2494,7 @@ BLOCKHOME_TABLE_INLINE bool PartRowSaveBody( TableWriter & w, TableIds & ids, co
     }
     {
         const int32_t mark_gunner = ids.count;
-        const uint64_t ref_gunner = ids.ref( 0x40dbb648c0cd44aaull );
+        const uint64_t ref_gunner = ids.ref_at( 8, 0x40dbb648c0cd44aaull );
         const int64_t body_gunner = GunnerSettingsMeasureBody( ids, value.gunner );
         if ( body_gunner < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_gunner > 1 ) // all-default nested elides
@@ -2429,12 +2506,12 @@ BLOCKHOME_TABLE_INLINE bool PartRowSaveBody( TableWriter & w, TableIds & ids, co
     }
     if ( value.part_id != 0 )
     {
-        w.header( ids.ref( 0x04d6206b33415104ull ), 8 ); // part_id
+        w.header( ids.ref_at( 1, 0x04d6206b33415104ull ), 8 ); // part_id
         w.put32( uint32_t( value.part_id ) );
     }
     if ( value.slot != 0 )
     {
-        w.header( ids.ref( 0x6a771618f6fe31d1ull ), 6 ); // slot
+        w.header( ids.ref_at( 13, 0x6a771618f6fe31d1ull ), 6 ); // slot
         w.put8( uint8_t( value.slot ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -2897,11 +2974,11 @@ inline bool PartRowLoadMessages( PartRow * values, int64_t * count, const TableV
 inline int64_t PartFrameMeasureBody( TableIds & ids, const PartFrame & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.version != 0 ) { bytes += TableLebBytes( ids.ref( 0xbb62c62c9808ea37ull ) ) + 1 + 8; } // version
+    if ( value.version != 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0xbb62c62c9808ea37ull ) ) + 1 + 8; } // version
     if ( value.parts_count < 0 || value.parts_count > 32 ) { return -1; } // storage invariant
     if ( value.parts_count > 0 )
     {
-        const uint64_t ref_parts = ids.ref( 0x0c519da7a1f958c5ull );
+        const uint64_t ref_parts = ids.ref_at( 2, 0x0c519da7a1f958c5ull );
         int64_t body_parts = 0;
         body_parts += 1 + TableLebBytes( (uint64_t) ( value.parts_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.parts_count; elem_i++ )
@@ -2927,13 +3004,13 @@ BLOCKHOME_TABLE_INLINE bool PartFrameSaveBody( TableWriter & w, TableIds & ids, 
 {
     if ( value.version != 0 )
     {
-        w.header( ids.ref( 0xbb62c62c9808ea37ull ), 9 ); // version
+        w.header( ids.ref_at( 21, 0xbb62c62c9808ea37ull ), 9 ); // version
         w.put64( uint64_t( value.version ) );
     }
     if ( value.parts_count < 0 || value.parts_count > 32 ) { return false; } // storage invariant
     if ( value.parts_count > 0 )
     {
-        const uint64_t ref_parts = ids.ref( 0x0c519da7a1f958c5ull );
+        const uint64_t ref_parts = ids.ref_at( 2, 0x0c519da7a1f958c5ull );
         int64_t body_parts = 0;
         // parts: the sizing loop's per-element lengths, kept for the write loop
         // below — the element's own length prefix is the number the parent's

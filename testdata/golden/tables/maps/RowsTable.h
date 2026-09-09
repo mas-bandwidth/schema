@@ -441,12 +441,23 @@ struct TableIds
     uint64_t ids[ kCapacity ];
     int32_t chain[ kCapacity ];
     int32_t head[ kBuckets ];
+    // THE ORDINAL SLOT CACHE (§3). Every id a generated field header names is
+    // a COMPILE-TIME CONSTANT of the unit, so it has an ORDINAL: its index in
+    // the unit's id vocabulary, the same ascending set kCapacity counts. slot
+    // holds the ENTRY that ordinal's id took, -1 for one not interned yet, and
+    // ordinal_of is its inverse over the entries — the ordinal an entry was
+    // taken under, -1 for an entry a RUNTIME id took, which has no ordinal.
+    // The pair is what lets truncate undo the cache in O(popped) rather than
+    // walking the whole vocabulary.
+    int32_t slot[ kCapacity ];
+    int16_t ordinal_of[ kCapacity ];
     int32_t count;
     bool overflow;
 
     TableIds() : count( 0 ), overflow( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
+        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; }
     }
 
     static MAPDEMO_TABLE_INLINE uint32_t bucket_of( uint64_t id )
@@ -465,18 +476,41 @@ struct TableIds
             if ( ids[i] == id ) { return uint64_t( i ) + 1; }
         }
         if ( count >= kCapacity ) { overflow = true; return 1; }
-        ids[count] = id; chain[count] = head[b]; head[b] = count; count++;
+        ids[count] = id; chain[count] = head[b]; ordinal_of[count] = -1; head[b] = count; count++;
         return uint64_t( count );
     }
 
+    // ref FOR AN ID THE EMITTER KNEW, which is every id a generated field
+    // header, union arm header or blob header names. A REPEAT answers from
+    // slot[ordinal]; a MISS falls through to ref, so THE APPEND STILL HAPPENS
+    // ONLY THERE and first-use order — which is the trailer's order — is the
+    // order it always was. An id reached through both this and ref carries the
+    // ordinal from here, so truncate can always undo the cache.
+    MAPDEMO_TABLE_INLINE uint64_t ref_at( int32_t ordinal, uint64_t id )
+    {
+        const int32_t at = slot[ordinal];
+        if ( at >= 0 ) { return uint64_t( at ) + 1; }
+        const uint64_t r = ref( id );
+        // AN OVERFLOWED TABLE RECORDS NOTHING: ref appended no entry and
+        // answered 1, which is not this id's reference (§3).
+        if ( overflow ) { return r; }
+        slot[ordinal] = int32_t( r ) - 1;
+        ordinal_of[ int32_t( r ) - 1 ] = int16_t( ordinal );
+        return r;
+    }
+
     // undo every entry appended since mark. An entry removed is the most
-    // recent one in its bucket, so it sits at that bucket's head.
+    // recent one in its bucket, so it sits at that bucket's head — and its
+    // ORDINAL SLOT goes with it, or a later ref_at would answer with an entry
+    // this call just popped.
     void truncate( int32_t mark )
     {
         while ( count > mark )
         {
             count--;
             head[ bucket_of( ids[count] ) ] = chain[count];
+            const int32_t o = ordinal_of[count];
+            if ( o >= 0 ) { slot[o] = -1; }
         }
     }
 };
@@ -488,10 +522,38 @@ inline int64_t TableIdsBytes( const TableIds & ids ) { return int64_t( ids.count
 
 // TableIdsWrite puts the trailer where the walk ended: a writer never patches,
 // because first-use order is known only when the walk ends.
+//
+// THE TRAILER IS A CONTIGUOUS RUN OF 64-BIT LITTLE-ENDIAN WORDS (docs/SPEC-TABLES.md §3):
+// the interned entry ids followed by the entry count. A single capacity test
+// covers the entire trailer extent instead of one test per 8-byte put64, and on
+// little-endian architectures the contiguous ids array is bulk-copied in place.
 inline void TableIdsWrite( TableWriter & w, const TableIds & ids )
 {
-    for ( int32_t i = 0; i < ids.count; i++ ) { w.put64( ids.ids[i] ); }
-    w.put64( uint64_t( ids.count ) );
+    const int64_t count = ids.count;
+    const int64_t total_bytes = ( count + 1 ) * 8;
+    if ( w.overflow || w.offset < 0 || w.offset > w.capacity || total_bytes > w.capacity - w.offset )
+    {
+        w.overflow = true;
+        return;
+    }
+    uint8_t * dst = w.buffer + w.offset;
+#if defined( __BYTE_ORDER__ ) && defined( __ORDER_LITTLE_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+    if ( count > 0 )
+    {
+        memcpy( dst, ids.ids, (size_t)( count * 8 ) );
+    }
+    const uint64_t n = uint64_t( count );
+    memcpy( dst + count * 8, &n, 8 );
+#else
+    // Explicit little-endian stores also cover compilers that do not expose
+    // byte-order macros. Native copies require positive little-endian proof.
+    for ( int64_t i = 0; i <= count; i++ )
+    {
+        const uint64_t v = i < count ? ids.ids[i] : uint64_t( count );
+        for ( int j = 0; j < 8; j++ ) { dst[i * 8 + j] = uint8_t( v >> ( j * 8 ) ); }
+    }
+#endif
+    w.offset += total_bytes;
 }
 
 // THE ID TABLE, READER SIDE (docs/SPEC-TABLES.md §3). A reader locates it from
@@ -554,6 +616,21 @@ struct TableReader
     // rule. false = framing damage on the body carrying it.
     bool getleb( uint64_t & value )
     {
+        // ONE BYTE BELOW 0x80 IS A COMPLETE CANONICAL VALUE and there is no
+        // second spelling of it: the continuation bit is clear, so nothing
+        // follows; it is the FIRST byte, so the redundant-continuation rule
+        // ( i > 0 && b == 0 ) has nothing to say about it; and one byte is
+        // neither overlong nor past ten. The general loop below decides this
+        // same byte the same way — this reaches the answer without the cursor
+        // save it would need for the bytes that can still be refused. NO RULE
+        // IS RELAXED HERE: every number this path does not answer, canonical
+        // or not, goes to the loop with all of its checks (§3).
+        if ( offset < size && buffer[offset] < 0x80 )
+        {
+            value = buffer[offset];
+            offset++;
+            return true;
+        }
         // A NUMBER THIS READER REFUSES LEAVES THE CURSOR WHERE IT WAS. The
         // caller's next question is often "did this body end exactly at its
         // L", and a rejected number that had moved the cursor would answer
@@ -3652,6 +3729,19 @@ struct TableRetainIds
         if ( known.overflow ) { overflow = true; return 1; }
         if ( known.count != before ) { known_slot[ (int32_t) k - 1 ] = ++count; }
         return (uint64_t) known_slot[ (int32_t) k - 1 ];
+    }
+
+    // THE MERGED NUMBERING IS NOT THE GENERATED TABLE'S, so the ordinal slot
+    // cache stops at the store below: known.ref_at would cache known's own
+    // index, and what a caller here needs is the MERGED slot, which moves with
+    // the caller's list as well. The retain family therefore keeps ref's exact
+    // path — same walk, same first-use order, same overflow rule — and the
+    // ordinal is accepted and ignored so ONE emitted codec serves both
+    // families (docs/SPEC-TABLES.md §6.6).
+    uint64_t ref_at( int32_t ordinal, uint64_t id )
+    {
+        (void) ordinal;
+        return ref( id );
     }
 
     // an id from INSIDE a retained record. A retained id takes its entry from
@@ -7392,10 +7482,10 @@ inline int64_t RowEntriesEntryMeasureBody( TableIds & ids, const RowEntriesEntry
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.key_length < 0 || value.key_length > 8 ) { return -1; } // storage invariant
-    if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref( 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
+    if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
     {
         const int32_t mark_value = ids.count;
-        const uint64_t ref_value = ids.ref( 0x7ce4fd9430e80ceaull );
+        const uint64_t ref_value = ids.ref_at( 36, 0x7ce4fd9430e80ceaull );
         const int64_t body_value = ItemMeasureBody( ids, value.value );
         if ( body_value < 0 ) { return -1; }
         if ( body_value > 1 ) { bytes += TableLebBytes( ref_value ) + 1 + TableLebBytes( (uint64_t) ( body_value ) ) + ( body_value ); } // value
@@ -7409,13 +7499,13 @@ MAPDEMO_TABLE_INLINE bool RowEntriesEntrySaveBody( TableWriter & w, TableIds & i
     if ( value.key_length < 0 || value.key_length > 8 ) { return false; } // storage invariant
     if ( value.key_length > 0 )
     {
-        w.header( ids.ref( 0x3dc94a19365b10ecull ), 12 ); // key
+        w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 12 ); // key
         w.putleb( (uint64_t) value.key_length );
         w.raw( value.key, value.key_length );
     }
     {
         const int32_t mark_value = ids.count;
-        const uint64_t ref_value = ids.ref( 0x7ce4fd9430e80ceaull );
+        const uint64_t ref_value = ids.ref_at( 36, 0x7ce4fd9430e80ceaull );
         const int64_t body_value = ItemMeasureBody( ids, value.value );
         if ( body_value < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_value > 1 ) // all-default nested elides
@@ -7650,7 +7740,7 @@ inline int64_t RowMeasureBody( const Ctx & ctx, const TableNumbering & numbering
         if ( !order_entries.ok ) { return -1; } // the sort could not run
         if ( order_entries.count > 0 )
         {
-            const uint64_t ref_entries = ids.ref( 0xc5b2a72c0845a253ull );
+            const uint64_t ref_entries = ids.ref_at( 58, 0xc5b2a72c0845a253ull );
             int64_t body_entries = 1 + TableLebBytes( (uint64_t) order_entries.count ); // the element kind byte and the count
             for ( int32_t i = 0; i < order_entries.count; i++ )
             {
@@ -7662,7 +7752,7 @@ inline int64_t RowMeasureBody( const Ctx & ctx, const TableNumbering & numbering
         }
         TableMapRelease( order_entries );
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref( 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
     return bytes;
 }
 
@@ -7675,7 +7765,7 @@ inline bool RowSaveBodyFields( const Ctx & ctx, const TableNumbering & numbering
         if ( !order_entries.ok ) { return false; }
         if ( order_entries.count > 0 ) // an EMPTY map elides, the by-value rule (§3)
         {
-            const uint64_t ref_entries = ids.ref( 0xc5b2a72c0845a253ull );
+            const uint64_t ref_entries = ids.ref_at( 58, 0xc5b2a72c0845a253ull );
             int64_t body_entries = 1 + TableLebBytes( (uint64_t) order_entries.count );
             for ( int32_t i = 0; i < order_entries.count; i++ )
             {
@@ -7697,7 +7787,7 @@ inline bool RowSaveBodyFields( const Ctx & ctx, const TableNumbering & numbering
     }
     if ( value.after != 0 )
     {
-        w.header( ids.ref( 0xbf82010f6f71eae9ull ), 4 ); // after
+        w.header( ids.ref_at( 56, 0xbf82010f6f71eae9ull ), 4 ); // after
         w.put32( uint32_t( value.after ) );
     }
     return !w.overflow;
@@ -8106,10 +8196,10 @@ inline bool RowLoadMessageBody( TableBitReader & r, const TableVocabulary & voca
 inline int64_t WideRowEntriesEntryMeasureBody( TableIds & ids, const WideRowEntriesEntry & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.key != 0 ) { bytes += TableLebBytes( ids.ref( 0x3dc94a19365b10ecull ) ) + 1 + 4; } // key
+    if ( value.key != 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + 4; } // key
     {
         const int32_t mark_value = ids.count;
-        const uint64_t ref_value = ids.ref( 0x7ce4fd9430e80ceaull );
+        const uint64_t ref_value = ids.ref_at( 36, 0x7ce4fd9430e80ceaull );
         const int64_t body_value = ItemMeasureBody( ids, value.value );
         if ( body_value < 0 ) { return -1; }
         if ( body_value > 1 ) { bytes += TableLebBytes( ref_value ) + 1 + TableLebBytes( (uint64_t) ( body_value ) ) + ( body_value ); } // value
@@ -8122,12 +8212,12 @@ MAPDEMO_TABLE_INLINE bool WideRowEntriesEntrySaveBody( TableWriter & w, TableIds
 {
     if ( value.key != 0 )
     {
-        w.header( ids.ref( 0x3dc94a19365b10ecull ), 8 ); // key
+        w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 8 ); // key
         w.put32( uint32_t( value.key ) );
     }
     {
         const int32_t mark_value = ids.count;
-        const uint64_t ref_value = ids.ref( 0x7ce4fd9430e80ceaull );
+        const uint64_t ref_value = ids.ref_at( 36, 0x7ce4fd9430e80ceaull );
         const int64_t body_value = ItemMeasureBody( ids, value.value );
         if ( body_value < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_value > 1 ) // all-default nested elides
@@ -8365,7 +8455,7 @@ inline int64_t WideRowMeasureBody( const Ctx & ctx, const TableNumbering & numbe
         if ( !order_entries.ok ) { return -1; } // the sort could not run
         if ( order_entries.count > 0 )
         {
-            const uint64_t ref_entries = ids.ref( 0xc5b2a72c0845a253ull );
+            const uint64_t ref_entries = ids.ref_at( 58, 0xc5b2a72c0845a253ull );
             int64_t body_entries = 1 + TableLebBytes( (uint64_t) order_entries.count ); // the element kind byte and the count
             for ( int32_t i = 0; i < order_entries.count; i++ )
             {
@@ -8377,7 +8467,7 @@ inline int64_t WideRowMeasureBody( const Ctx & ctx, const TableNumbering & numbe
         }
         TableMapRelease( order_entries );
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref( 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
     return bytes;
 }
 
@@ -8390,7 +8480,7 @@ inline bool WideRowSaveBodyFields( const Ctx & ctx, const TableNumbering & numbe
         if ( !order_entries.ok ) { return false; }
         if ( order_entries.count > 0 ) // an EMPTY map elides, the by-value rule (§3)
         {
-            const uint64_t ref_entries = ids.ref( 0xc5b2a72c0845a253ull );
+            const uint64_t ref_entries = ids.ref_at( 58, 0xc5b2a72c0845a253ull );
             int64_t body_entries = 1 + TableLebBytes( (uint64_t) order_entries.count );
             for ( int32_t i = 0; i < order_entries.count; i++ )
             {
@@ -8412,7 +8502,7 @@ inline bool WideRowSaveBodyFields( const Ctx & ctx, const TableNumbering & numbe
     }
     if ( value.after != 0 )
     {
-        w.header( ids.ref( 0xbf82010f6f71eae9ull ), 4 ); // after
+        w.header( ids.ref_at( 56, 0xbf82010f6f71eae9ull ), 4 ); // after
         w.put32( uint32_t( value.after ) );
     }
     return !w.overflow;
@@ -8822,10 +8912,10 @@ inline int64_t EdgeRowNamesEntryMeasureBody( TableIds & ids, const EdgeRowNamesE
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.key_length < 0 || value.key_length > 300 ) { return -1; } // storage invariant
-    if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref( 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
+    if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
     {
         const int32_t mark_value = ids.count;
-        const uint64_t ref_value = ids.ref( 0x7ce4fd9430e80ceaull );
+        const uint64_t ref_value = ids.ref_at( 36, 0x7ce4fd9430e80ceaull );
         const int64_t body_value = ItemMeasureBody( ids, value.value );
         if ( body_value < 0 ) { return -1; }
         if ( body_value > 1 ) { bytes += TableLebBytes( ref_value ) + 1 + TableLebBytes( (uint64_t) ( body_value ) ) + ( body_value ); } // value
@@ -8839,13 +8929,13 @@ MAPDEMO_TABLE_INLINE bool EdgeRowNamesEntrySaveBody( TableWriter & w, TableIds &
     if ( value.key_length < 0 || value.key_length > 300 ) { return false; } // storage invariant
     if ( value.key_length > 0 )
     {
-        w.header( ids.ref( 0x3dc94a19365b10ecull ), 12 ); // key
+        w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 12 ); // key
         w.putleb( (uint64_t) value.key_length );
         w.raw( value.key, value.key_length );
     }
     {
         const int32_t mark_value = ids.count;
-        const uint64_t ref_value = ids.ref( 0x7ce4fd9430e80ceaull );
+        const uint64_t ref_value = ids.ref_at( 36, 0x7ce4fd9430e80ceaull );
         const int64_t body_value = ItemMeasureBody( ids, value.value );
         if ( body_value < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_value > 1 ) // all-default nested elides
@@ -9072,10 +9162,10 @@ inline bool EdgeRowNamesEntryLoadMessageBody( TableBitReader & r, const TableVoc
 inline int64_t EdgeRowIdsEntryMeasureBody( TableIds & ids, const EdgeRowIdsEntry & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.key != 0 ) { bytes += TableLebBytes( ids.ref( 0x3dc94a19365b10ecull ) ) + 1 + 8; } // key
+    if ( value.key != 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + 8; } // key
     {
         const int32_t mark_value = ids.count;
-        const uint64_t ref_value = ids.ref( 0x7ce4fd9430e80ceaull );
+        const uint64_t ref_value = ids.ref_at( 36, 0x7ce4fd9430e80ceaull );
         const int64_t body_value = ItemMeasureBody( ids, value.value );
         if ( body_value < 0 ) { return -1; }
         if ( body_value > 1 ) { bytes += TableLebBytes( ref_value ) + 1 + TableLebBytes( (uint64_t) ( body_value ) ) + ( body_value ); } // value
@@ -9088,12 +9178,12 @@ MAPDEMO_TABLE_INLINE bool EdgeRowIdsEntrySaveBody( TableWriter & w, TableIds & i
 {
     if ( value.key != 0 )
     {
-        w.header( ids.ref( 0x3dc94a19365b10ecull ), 9 ); // key
+        w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 9 ); // key
         w.put64( uint64_t( value.key ) );
     }
     {
         const int32_t mark_value = ids.count;
-        const uint64_t ref_value = ids.ref( 0x7ce4fd9430e80ceaull );
+        const uint64_t ref_value = ids.ref_at( 36, 0x7ce4fd9430e80ceaull );
         const int64_t body_value = ItemMeasureBody( ids, value.value );
         if ( body_value < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_value > 1 ) // all-default nested elides
@@ -9329,7 +9419,7 @@ inline int64_t EdgeRowMeasureBody( const Ctx & ctx, const TableNumbering & numbe
         if ( !order_names.ok ) { return -1; } // the sort could not run
         if ( order_names.count > 0 )
         {
-            const uint64_t ref_names = ids.ref( 0xafb728fff268814full );
+            const uint64_t ref_names = ids.ref_at( 51, 0xafb728fff268814full );
             int64_t body_names = 1 + TableLebBytes( (uint64_t) order_names.count ); // the element kind byte and the count
             for ( int32_t i = 0; i < order_names.count; i++ )
             {
@@ -9347,7 +9437,7 @@ inline int64_t EdgeRowMeasureBody( const Ctx & ctx, const TableNumbering & numbe
         if ( !order_ids.ok ) { return -1; } // the sort could not run
         if ( order_ids.count > 0 )
         {
-            const uint64_t ref_ids = ids.ref( 0x2b7dea192bb7be29ull );
+            const uint64_t ref_ids = ids.ref_at( 18, 0x2b7dea192bb7be29ull );
             int64_t body_ids = 1 + TableLebBytes( (uint64_t) order_ids.count ); // the element kind byte and the count
             for ( int32_t i = 0; i < order_ids.count; i++ )
             {
@@ -9359,7 +9449,7 @@ inline int64_t EdgeRowMeasureBody( const Ctx & ctx, const TableNumbering & numbe
         }
         TableMapRelease( order_ids );
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref( 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
     return bytes;
 }
 
@@ -9372,7 +9462,7 @@ inline bool EdgeRowSaveBodyFields( const Ctx & ctx, const TableNumbering & numbe
         if ( !order_names.ok ) { return false; }
         if ( order_names.count > 0 ) // an EMPTY map elides, the by-value rule (§3)
         {
-            const uint64_t ref_names = ids.ref( 0xafb728fff268814full );
+            const uint64_t ref_names = ids.ref_at( 51, 0xafb728fff268814full );
             int64_t body_names = 1 + TableLebBytes( (uint64_t) order_names.count );
             for ( int32_t i = 0; i < order_names.count; i++ )
             {
@@ -9397,7 +9487,7 @@ inline bool EdgeRowSaveBodyFields( const Ctx & ctx, const TableNumbering & numbe
         if ( !order_ids.ok ) { return false; }
         if ( order_ids.count > 0 ) // an EMPTY map elides, the by-value rule (§3)
         {
-            const uint64_t ref_ids = ids.ref( 0x2b7dea192bb7be29ull );
+            const uint64_t ref_ids = ids.ref_at( 18, 0x2b7dea192bb7be29ull );
             int64_t body_ids = 1 + TableLebBytes( (uint64_t) order_ids.count );
             for ( int32_t i = 0; i < order_ids.count; i++ )
             {
@@ -9419,7 +9509,7 @@ inline bool EdgeRowSaveBodyFields( const Ctx & ctx, const TableNumbering & numbe
     }
     if ( value.after != 0 )
     {
-        w.header( ids.ref( 0xbf82010f6f71eae9ull ), 4 ); // after
+        w.header( ids.ref_at( 56, 0xbf82010f6f71eae9ull ), 4 ); // after
         w.put32( uint32_t( value.after ) );
     }
     return !w.overflow;
@@ -13522,10 +13612,10 @@ inline int64_t RowEntriesEntryMeasureBodyRetain( TableRetainIds & ids, const Row
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.key_length < 0 || value.key_length > 8 ) { return -1; } // storage invariant
-    if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref( 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
+    if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
     {
         const int32_t mark_value = ids.count;
-        const uint64_t ref_value = ids.ref( 0x7ce4fd9430e80ceaull );
+        const uint64_t ref_value = ids.ref_at( 36, 0x7ce4fd9430e80ceaull );
         const int64_t body_value = ItemMeasureBodyRetain( ids, value.value, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) );
         if ( body_value < 0 ) { return -1; }
         if ( body_value > 1 ) { bytes += TableLebBytes( ref_value ) + 1 + TableLebBytes( (uint64_t) ( body_value ) ) + ( body_value ); } // value
@@ -13540,13 +13630,13 @@ MAPDEMO_TABLE_INLINE bool RowEntriesEntrySaveBodyRetain( TableWriter & w, TableR
     if ( value.key_length < 0 || value.key_length > 8 ) { return false; } // storage invariant
     if ( value.key_length > 0 )
     {
-        w.header( ids.ref( 0x3dc94a19365b10ecull ), 12 ); // key
+        w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 12 ); // key
         w.putleb( (uint64_t) value.key_length );
         w.raw( value.key, value.key_length );
     }
     {
         const int32_t mark_value = ids.count;
-        const uint64_t ref_value = ids.ref( 0x7ce4fd9430e80ceaull );
+        const uint64_t ref_value = ids.ref_at( 36, 0x7ce4fd9430e80ceaull );
         const int64_t body_value = ItemMeasureBodyRetain( ids, value.value, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) );
         if ( body_value < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_value > 1 ) // all-default nested elides
@@ -13748,7 +13838,7 @@ inline int64_t RowMeasureBodyRetain( const Ctx & ctx, const TableNumbering & num
         if ( !order_entries.ok ) { return -1; } // the sort could not run
         if ( order_entries.count > 0 )
         {
-            const uint64_t ref_entries = ids.ref( 0xc5b2a72c0845a253ull );
+            const uint64_t ref_entries = ids.ref_at( 58, 0xc5b2a72c0845a253ull );
             int64_t body_entries = 1 + TableLebBytes( (uint64_t) order_entries.count ); // the element kind byte and the count
             for ( int32_t i = 0; i < order_entries.count; i++ )
             {
@@ -13760,7 +13850,7 @@ inline int64_t RowMeasureBodyRetain( const Ctx & ctx, const TableNumbering & num
         }
         TableMapRelease( order_entries );
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref( 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -13774,7 +13864,7 @@ inline bool RowSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & num
         if ( !order_entries.ok ) { return false; }
         if ( order_entries.count > 0 ) // an EMPTY map elides, the by-value rule (§3)
         {
-            const uint64_t ref_entries = ids.ref( 0xc5b2a72c0845a253ull );
+            const uint64_t ref_entries = ids.ref_at( 58, 0xc5b2a72c0845a253ull );
             int64_t body_entries = 1 + TableLebBytes( (uint64_t) order_entries.count );
             for ( int32_t i = 0; i < order_entries.count; i++ )
             {
@@ -13796,7 +13886,7 @@ inline bool RowSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & num
     }
     if ( value.after != 0 )
     {
-        w.header( ids.ref( 0xbf82010f6f71eae9ull ), 4 ); // after
+        w.header( ids.ref_at( 56, 0xbf82010f6f71eae9ull ), 4 ); // after
         w.put32( uint32_t( value.after ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
@@ -14137,10 +14227,10 @@ inline bool RowLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary 
 inline int64_t WideRowEntriesEntryMeasureBodyRetain( TableRetainIds & ids, const WideRowEntriesEntry & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.key != 0 ) { bytes += TableLebBytes( ids.ref( 0x3dc94a19365b10ecull ) ) + 1 + 4; } // key
+    if ( value.key != 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + 4; } // key
     {
         const int32_t mark_value = ids.count;
-        const uint64_t ref_value = ids.ref( 0x7ce4fd9430e80ceaull );
+        const uint64_t ref_value = ids.ref_at( 36, 0x7ce4fd9430e80ceaull );
         const int64_t body_value = ItemMeasureBodyRetain( ids, value.value, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) );
         if ( body_value < 0 ) { return -1; }
         if ( body_value > 1 ) { bytes += TableLebBytes( ref_value ) + 1 + TableLebBytes( (uint64_t) ( body_value ) ) + ( body_value ); } // value
@@ -14154,12 +14244,12 @@ MAPDEMO_TABLE_INLINE bool WideRowEntriesEntrySaveBodyRetain( TableWriter & w, Ta
 {
     if ( value.key != 0 )
     {
-        w.header( ids.ref( 0x3dc94a19365b10ecull ), 8 ); // key
+        w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 8 ); // key
         w.put32( uint32_t( value.key ) );
     }
     {
         const int32_t mark_value = ids.count;
-        const uint64_t ref_value = ids.ref( 0x7ce4fd9430e80ceaull );
+        const uint64_t ref_value = ids.ref_at( 36, 0x7ce4fd9430e80ceaull );
         const int64_t body_value = ItemMeasureBodyRetain( ids, value.value, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) );
         if ( body_value < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_value > 1 ) // all-default nested elides
@@ -14370,7 +14460,7 @@ inline int64_t WideRowMeasureBodyRetain( const Ctx & ctx, const TableNumbering &
         if ( !order_entries.ok ) { return -1; } // the sort could not run
         if ( order_entries.count > 0 )
         {
-            const uint64_t ref_entries = ids.ref( 0xc5b2a72c0845a253ull );
+            const uint64_t ref_entries = ids.ref_at( 58, 0xc5b2a72c0845a253ull );
             int64_t body_entries = 1 + TableLebBytes( (uint64_t) order_entries.count ); // the element kind byte and the count
             for ( int32_t i = 0; i < order_entries.count; i++ )
             {
@@ -14382,7 +14472,7 @@ inline int64_t WideRowMeasureBodyRetain( const Ctx & ctx, const TableNumbering &
         }
         TableMapRelease( order_entries );
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref( 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -14396,7 +14486,7 @@ inline bool WideRowSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering &
         if ( !order_entries.ok ) { return false; }
         if ( order_entries.count > 0 ) // an EMPTY map elides, the by-value rule (§3)
         {
-            const uint64_t ref_entries = ids.ref( 0xc5b2a72c0845a253ull );
+            const uint64_t ref_entries = ids.ref_at( 58, 0xc5b2a72c0845a253ull );
             int64_t body_entries = 1 + TableLebBytes( (uint64_t) order_entries.count );
             for ( int32_t i = 0; i < order_entries.count; i++ )
             {
@@ -14418,7 +14508,7 @@ inline bool WideRowSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering &
     }
     if ( value.after != 0 )
     {
-        w.header( ids.ref( 0xbf82010f6f71eae9ull ), 4 ); // after
+        w.header( ids.ref_at( 56, 0xbf82010f6f71eae9ull ), 4 ); // after
         w.put32( uint32_t( value.after ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
@@ -14760,10 +14850,10 @@ inline int64_t EdgeRowNamesEntryMeasureBodyRetain( TableRetainIds & ids, const E
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.key_length < 0 || value.key_length > 300 ) { return -1; } // storage invariant
-    if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref( 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
+    if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
     {
         const int32_t mark_value = ids.count;
-        const uint64_t ref_value = ids.ref( 0x7ce4fd9430e80ceaull );
+        const uint64_t ref_value = ids.ref_at( 36, 0x7ce4fd9430e80ceaull );
         const int64_t body_value = ItemMeasureBodyRetain( ids, value.value, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) );
         if ( body_value < 0 ) { return -1; }
         if ( body_value > 1 ) { bytes += TableLebBytes( ref_value ) + 1 + TableLebBytes( (uint64_t) ( body_value ) ) + ( body_value ); } // value
@@ -14778,13 +14868,13 @@ MAPDEMO_TABLE_INLINE bool EdgeRowNamesEntrySaveBodyRetain( TableWriter & w, Tabl
     if ( value.key_length < 0 || value.key_length > 300 ) { return false; } // storage invariant
     if ( value.key_length > 0 )
     {
-        w.header( ids.ref( 0x3dc94a19365b10ecull ), 12 ); // key
+        w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 12 ); // key
         w.putleb( (uint64_t) value.key_length );
         w.raw( value.key, value.key_length );
     }
     {
         const int32_t mark_value = ids.count;
-        const uint64_t ref_value = ids.ref( 0x7ce4fd9430e80ceaull );
+        const uint64_t ref_value = ids.ref_at( 36, 0x7ce4fd9430e80ceaull );
         const int64_t body_value = ItemMeasureBodyRetain( ids, value.value, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) );
         if ( body_value < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_value > 1 ) // all-default nested elides
@@ -14978,10 +15068,10 @@ inline bool EdgeRowNamesEntryLoadMessageBodyRetain( TableBitReader & r, const Ta
 inline int64_t EdgeRowIdsEntryMeasureBodyRetain( TableRetainIds & ids, const EdgeRowIdsEntry & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.key != 0 ) { bytes += TableLebBytes( ids.ref( 0x3dc94a19365b10ecull ) ) + 1 + 8; } // key
+    if ( value.key != 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + 8; } // key
     {
         const int32_t mark_value = ids.count;
-        const uint64_t ref_value = ids.ref( 0x7ce4fd9430e80ceaull );
+        const uint64_t ref_value = ids.ref_at( 36, 0x7ce4fd9430e80ceaull );
         const int64_t body_value = ItemMeasureBodyRetain( ids, value.value, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) );
         if ( body_value < 0 ) { return -1; }
         if ( body_value > 1 ) { bytes += TableLebBytes( ref_value ) + 1 + TableLebBytes( (uint64_t) ( body_value ) ) + ( body_value ); } // value
@@ -14995,12 +15085,12 @@ MAPDEMO_TABLE_INLINE bool EdgeRowIdsEntrySaveBodyRetain( TableWriter & w, TableR
 {
     if ( value.key != 0 )
     {
-        w.header( ids.ref( 0x3dc94a19365b10ecull ), 9 ); // key
+        w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 9 ); // key
         w.put64( uint64_t( value.key ) );
     }
     {
         const int32_t mark_value = ids.count;
-        const uint64_t ref_value = ids.ref( 0x7ce4fd9430e80ceaull );
+        const uint64_t ref_value = ids.ref_at( 36, 0x7ce4fd9430e80ceaull );
         const int64_t body_value = ItemMeasureBodyRetain( ids, value.value, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) );
         if ( body_value < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_value > 1 ) // all-default nested elides
@@ -15209,7 +15299,7 @@ inline int64_t EdgeRowMeasureBodyRetain( const Ctx & ctx, const TableNumbering &
         if ( !order_names.ok ) { return -1; } // the sort could not run
         if ( order_names.count > 0 )
         {
-            const uint64_t ref_names = ids.ref( 0xafb728fff268814full );
+            const uint64_t ref_names = ids.ref_at( 51, 0xafb728fff268814full );
             int64_t body_names = 1 + TableLebBytes( (uint64_t) order_names.count ); // the element kind byte and the count
             for ( int32_t i = 0; i < order_names.count; i++ )
             {
@@ -15227,7 +15317,7 @@ inline int64_t EdgeRowMeasureBodyRetain( const Ctx & ctx, const TableNumbering &
         if ( !order_ids.ok ) { return -1; } // the sort could not run
         if ( order_ids.count > 0 )
         {
-            const uint64_t ref_ids = ids.ref( 0x2b7dea192bb7be29ull );
+            const uint64_t ref_ids = ids.ref_at( 18, 0x2b7dea192bb7be29ull );
             int64_t body_ids = 1 + TableLebBytes( (uint64_t) order_ids.count ); // the element kind byte and the count
             for ( int32_t i = 0; i < order_ids.count; i++ )
             {
@@ -15239,7 +15329,7 @@ inline int64_t EdgeRowMeasureBodyRetain( const Ctx & ctx, const TableNumbering &
         }
         TableMapRelease( order_ids );
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref( 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -15253,7 +15343,7 @@ inline bool EdgeRowSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering &
         if ( !order_names.ok ) { return false; }
         if ( order_names.count > 0 ) // an EMPTY map elides, the by-value rule (§3)
         {
-            const uint64_t ref_names = ids.ref( 0xafb728fff268814full );
+            const uint64_t ref_names = ids.ref_at( 51, 0xafb728fff268814full );
             int64_t body_names = 1 + TableLebBytes( (uint64_t) order_names.count );
             for ( int32_t i = 0; i < order_names.count; i++ )
             {
@@ -15278,7 +15368,7 @@ inline bool EdgeRowSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering &
         if ( !order_ids.ok ) { return false; }
         if ( order_ids.count > 0 ) // an EMPTY map elides, the by-value rule (§3)
         {
-            const uint64_t ref_ids = ids.ref( 0x2b7dea192bb7be29ull );
+            const uint64_t ref_ids = ids.ref_at( 18, 0x2b7dea192bb7be29ull );
             int64_t body_ids = 1 + TableLebBytes( (uint64_t) order_ids.count );
             for ( int32_t i = 0; i < order_ids.count; i++ )
             {
@@ -15300,7 +15390,7 @@ inline bool EdgeRowSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering &
     }
     if ( value.after != 0 )
     {
-        w.header( ids.ref( 0xbf82010f6f71eae9ull ), 4 ); // after
+        w.header( ids.ref_at( 56, 0xbf82010f6f71eae9ull ), 4 ); // after
         w.put32( uint32_t( value.after ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }

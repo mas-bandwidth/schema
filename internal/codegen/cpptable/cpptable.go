@@ -118,6 +118,11 @@ type tableGen struct {
 	// entry takes, keyed by the triple (§3.3), so a generated field header
 	// carries its reference as a literal and a save does no lookup at all.
 	slots map[string]uint64
+	// idOrdinal is the unit's id vocabulary as id -> ORDINAL (§3): the index
+	// each id takes in ir.TableWireIds, which is the set TableIds's capacity
+	// counts. A generated field header carries its ordinal as a literal beside
+	// the id, and the id table answers a repeat from slot[ordinal].
+	idOrdinal map[uint64]int
 	// msgDepth is the message codec's nesting depth while it emits: every
 	// loop variable and local a nested payload declares carries the depth as
 	// a suffix, so an element's decode inside an element's decode shadows
@@ -244,8 +249,45 @@ func (g *tableGen) inElementStep(f *ir.Field, emit func()) {
 // both literals. The FILE form interns the id and answers a first-use
 // reference; the MESSAGE form answers the slot and never touches the table
 // (docs/SPEC-TABLES.md §3, §3.3).
+//
+// EVERY ID SPELLED HERE IS A COMPILE-TIME CONSTANT of the unit, so it carries
+// its ORDINAL — its index in the unit's id vocabulary — beside itself, and the
+// interning answers a repeat out of the ordinal slot cache. The APPEND is
+// still ref's, so first-use order is untouched.
 func (g *tableGen) wireRef(id uint64) string {
+	return fmt.Sprintf("ids.ref_at( %d, 0x%016xull )", g.knownOrdinal(id), id)
+}
+
+// wireRefRuntime is the general path, for an id the header cannot spell as a
+// constant: an ENUM VARIANT's, which is chosen by a value at run time. It has
+// an ordinal like any other id in the vocabulary, but no call site with one
+// number to hand, so it interns the way it always did.
+func (g *tableGen) wireRefRuntime(id uint64) string {
 	return fmt.Sprintf("ids.ref( 0x%016xull )", id)
+}
+
+// wireIdOrdinals is the unit's id vocabulary as id -> ordinal. It is the same
+// ascending set TableIds::kCapacity counts and the retain family's
+// kTableRetainKnown lists (docs/SPEC-TABLES.md §3, §6.6).
+func wireIdOrdinals(u *ir.Unit) map[uint64]int {
+	ids := ir.TableWireIds(u)
+	out := make(map[uint64]int, len(ids))
+	for i, id := range ids {
+		out[id] = i
+	}
+	return out
+}
+
+// knownOrdinal is the ordinal of an id the emitter is about to spell as a
+// literal. An id a field header names and the vocabulary does not hold would
+// be a table whose capacity does not cover its own wire, so this refuses at
+// GENERATION time rather than emitting an out-of-range index.
+func (g *tableGen) knownOrdinal(id uint64) int {
+	ord, ok := g.idOrdinal[id]
+	if !ok {
+		panic(fmt.Sprintf("table id 0x%016x is not in the unit's vocabulary (ir.TableWireIds)", id))
+	}
+	return ord
 }
 
 // hdrBytes is a field header's cost: the id reference and the kind byte, which
@@ -504,6 +546,15 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool
 	idCapacity := strconv.Itoa(idCap)
 	idBuckets := strconv.Itoa(buckets)
 	idShift := strconv.Itoa(64 - bits)
+	// THE ORDINAL SLOT CACHE's inverse column is as narrow as the vocabulary
+	// allows: an ordinal is an index into a set of idCap ids, and -1 is the
+	// entry a runtime id took. Sixteen bits carry every unit the language has
+	// ever produced; the width is picked here rather than asserted, so a unit
+	// past the narrow type's reach WIDENS instead of failing to build.
+	ordinalType := "int16_t"
+	if idCap > 32767 {
+		ordinalType = "int32_t"
+	}
 	keyedStorage := ""
 	if anyKeyed {
 		keyedStorage = tableKeyedStorage
@@ -894,12 +945,23 @@ struct TableIds
     uint64_t ids[ kCapacity ];
     int32_t chain[ kCapacity ];
     int32_t head[ kBuckets ];
+    // THE ORDINAL SLOT CACHE (§3). Every id a generated field header names is
+    // a COMPILE-TIME CONSTANT of the unit, so it has an ORDINAL: its index in
+    // the unit's id vocabulary, the same ascending set kCapacity counts. slot
+    // holds the ENTRY that ordinal's id took, -1 for one not interned yet, and
+    // ordinal_of is its inverse over the entries — the ordinal an entry was
+    // taken under, -1 for an entry a RUNTIME id took, which has no ordinal.
+    // The pair is what lets truncate undo the cache in O(popped) rather than
+    // walking the whole vocabulary.
+    int32_t slot[ kCapacity ];
+    ` + ordinalType + ` ordinal_of[ kCapacity ];
     int32_t count;
     bool overflow;
 
     TableIds() : count( 0 ), overflow( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
+        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; }
     }
 
     static ` + forceInline + ` uint32_t bucket_of( uint64_t id )
@@ -918,18 +980,41 @@ struct TableIds
             if ( ids[i] == id ) { return uint64_t( i ) + 1; }
         }
         if ( count >= kCapacity ) { overflow = true; return 1; }
-        ids[count] = id; chain[count] = head[b]; head[b] = count; count++;
+        ids[count] = id; chain[count] = head[b]; ordinal_of[count] = -1; head[b] = count; count++;
         return uint64_t( count );
     }
 
+    // ref FOR AN ID THE EMITTER KNEW, which is every id a generated field
+    // header, union arm header or blob header names. A REPEAT answers from
+    // slot[ordinal]; a MISS falls through to ref, so THE APPEND STILL HAPPENS
+    // ONLY THERE and first-use order — which is the trailer's order — is the
+    // order it always was. An id reached through both this and ref carries the
+    // ordinal from here, so truncate can always undo the cache.
+    ` + forceInline + ` uint64_t ref_at( int32_t ordinal, uint64_t id )
+    {
+        const int32_t at = slot[ordinal];
+        if ( at >= 0 ) { return uint64_t( at ) + 1; }
+        const uint64_t r = ref( id );
+        // AN OVERFLOWED TABLE RECORDS NOTHING: ref appended no entry and
+        // answered 1, which is not this id's reference (§3).
+        if ( overflow ) { return r; }
+        slot[ordinal] = int32_t( r ) - 1;
+        ordinal_of[ int32_t( r ) - 1 ] = ` + ordinalType + `( ordinal );
+        return r;
+    }
+
     // undo every entry appended since mark. An entry removed is the most
-    // recent one in its bucket, so it sits at that bucket's head.
+    // recent one in its bucket, so it sits at that bucket's head — and its
+    // ORDINAL SLOT goes with it, or a later ref_at would answer with an entry
+    // this call just popped.
     void truncate( int32_t mark )
     {
         while ( count > mark )
         {
             count--;
             head[ bucket_of( ids[count] ) ] = chain[count];
+            const int32_t o = ordinal_of[count];
+            if ( o >= 0 ) { slot[o] = -1; }
         }
     }
 };
@@ -941,10 +1026,38 @@ inline int64_t TableIdsBytes( const TableIds & ids ) { return int64_t( ids.count
 
 // TableIdsWrite puts the trailer where the walk ended: a writer never patches,
 // because first-use order is known only when the walk ends.
+//
+// THE TRAILER IS A CONTIGUOUS RUN OF 64-BIT LITTLE-ENDIAN WORDS (docs/SPEC-TABLES.md §3):
+// the interned entry ids followed by the entry count. A single capacity test
+// covers the entire trailer extent instead of one test per 8-byte put64, and on
+// little-endian architectures the contiguous ids array is bulk-copied in place.
 inline void TableIdsWrite( TableWriter & w, const TableIds & ids )
 {
-    for ( int32_t i = 0; i < ids.count; i++ ) { w.put64( ids.ids[i] ); }
-    w.put64( uint64_t( ids.count ) );
+    const int64_t count = ids.count;
+    const int64_t total_bytes = ( count + 1 ) * 8;
+    if ( w.overflow || w.offset < 0 || w.offset > w.capacity || total_bytes > w.capacity - w.offset )
+    {
+        w.overflow = true;
+        return;
+    }
+    uint8_t * dst = w.buffer + w.offset;
+#if defined( __BYTE_ORDER__ ) && defined( __ORDER_LITTLE_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+    if ( count > 0 )
+    {
+        memcpy( dst, ids.ids, (size_t)( count * 8 ) );
+    }
+    const uint64_t n = uint64_t( count );
+    memcpy( dst + count * 8, &n, 8 );
+#else
+    // Explicit little-endian stores also cover compilers that do not expose
+    // byte-order macros. Native copies require positive little-endian proof.
+    for ( int64_t i = 0; i <= count; i++ )
+    {
+        const uint64_t v = i < count ? ids.ids[i] : uint64_t( count );
+        for ( int j = 0; j < 8; j++ ) { dst[i * 8 + j] = uint8_t( v >> ( j * 8 ) ); }
+    }
+#endif
+    w.offset += total_bytes;
 }
 
 // THE ID TABLE, READER SIDE (docs/SPEC-TABLES.md §3). A reader locates it from
@@ -1007,6 +1120,21 @@ struct TableReader
     // rule. false = framing damage on the body carrying it.
     bool getleb( uint64_t & value )
     {
+        // ONE BYTE BELOW 0x80 IS A COMPLETE CANONICAL VALUE and there is no
+        // second spelling of it: the continuation bit is clear, so nothing
+        // follows; it is the FIRST byte, so the redundant-continuation rule
+        // ( i > 0 && b == 0 ) has nothing to say about it; and one byte is
+        // neither overlong nor past ten. The general loop below decides this
+        // same byte the same way — this reaches the answer without the cursor
+        // save it would need for the bytes that can still be refused. NO RULE
+        // IS RELAXED HERE: every number this path does not answer, canonical
+        // or not, goes to the loop with all of its checks (§3).
+        if ( offset < size && buffer[offset] < 0x80 )
+        {
+            value = buffer[offset];
+            offset++;
+            return true;
+        }
         // A NUMBER THIS READER REFUSES LEAVES THE CURSOR WHERE IT WAS. The
         // caller's next question is often "did this body end exactly at its
         // L", and a rejected number that had moved the cursor would answer
@@ -1278,9 +1406,14 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// compiler settled for it. A generated field header carries the slot as a
 	// literal beside the id.
 	slots := ir.TableVocabularySlots(u)
+	// THE ID VOCABULARY'S ORDINALS (docs/SPEC-TABLES.md §3), derived once for
+	// the unit beside the message form's slots: every id a generated header
+	// can name, and the index it takes in the ascending set TableIds's
+	// capacity counts.
+	idOrdinal := wireIdOrdinals(u)
 	for _, f := range u.Files {
 		g := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyKeyed: anyKeyed, anyMap: anyMap, anyList: anyList, anyExtent: anyExtent, blocks: blocks, variable: variable, targets: targets,
-			includes: map[string]bool{}, nativeIncludes: map[string]bool{}, slots: slots}
+			includes: map[string]bool{}, nativeIncludes: map[string]bool{}, slots: slots, idOrdinal: idOrdinal}
 		var members []*ir.Struct
 		members = append(members, orderTables(f.Tables)...)
 		for _, d := range f.Decls {
@@ -1532,7 +1665,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			fmt.Fprintf(&c, "\nnamespace %s {\n\n", u.Package)
 			cg := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyMap: anyMap, anyList: anyList, anyExtent: anyExtent, blocks: blocks, variable: variable, targets: targets,
 
-				includes: map[string]bool{}, nativeIncludes: map[string]bool{}}
+				includes: map[string]bool{}, nativeIncludes: map[string]bool{}, idOrdinal: idOrdinal}
 			for _, st := range members {
 				cg.emitJsonDefinitions(st)
 			}

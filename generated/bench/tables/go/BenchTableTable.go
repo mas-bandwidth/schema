@@ -340,11 +340,13 @@ const tableIdBuckets = 256
 // TableIds interns the writer's ids in first-use order. Bucket links are
 // one-based so its zero value is ready to use, including for hash zero.
 type TableIds struct {
-	Values   [tableIdCapacity]uint64
-	chain    [tableIdCapacity]int
-	head     [tableIdBuckets]int
-	Count    int
-	Overflow bool
+	Values    [tableIdCapacity]uint64
+	chain     [tableIdCapacity]int
+	head      [tableIdBuckets]int
+	slot      [tableIdCapacity]uint32
+	ordinalOf [tableIdCapacity]int32
+	Count     int
+	Overflow  bool
 }
 
 func (ids *TableIds) Ref(id uint64) uint64 {
@@ -360,9 +362,28 @@ func (ids *TableIds) Ref(id uint64) uint64 {
 	}
 	i := ids.Count
 	ids.Values[i], ids.chain[i] = id, ids.head[b]
+	ids.ordinalOf[i] = -1
 	ids.Count++
 	ids.head[b] = ids.Count
 	return uint64(ids.Count)
+}
+
+// RefAt is Ref for a compile-time-constant id. The ordinal is that id's index
+// in TableWireIds. A hit is one load and one compare; first-use order is
+// still append order. Truncate clears the ordinal in O(popped) so a
+// speculative intern does not leak into the next walk.
+func (ids *TableIds) RefAt(ordinal int, id uint64) uint64 {
+	if uint(ordinal) < uint(len(ids.slot)) {
+		if s := ids.slot[ordinal]; s != 0 {
+			return uint64(s)
+		}
+	}
+	r := ids.Ref(id)
+	if r != 0 && uint(ordinal) < uint(len(ids.slot)) {
+		ids.slot[ordinal] = uint32(r)
+		ids.ordinalOf[r-1] = int32(ordinal)
+	}
+	return r
 }
 
 // Truncate removes speculative ids when a measured field elides, or before
@@ -372,6 +393,9 @@ func (ids *TableIds) Truncate(mark int) {
 		ids.Count--
 		id := ids.Values[ids.Count]
 		ids.head[(id^id>>32)&(tableIdBuckets-1)] = ids.chain[ids.Count]
+		if o := ids.ordinalOf[ids.Count]; o >= 0 {
+			ids.slot[o] = 0
+		}
 	}
 }
 
@@ -442,15 +466,47 @@ func (w *TableWriter) Put64(v uint64) {
 	}
 }
 
-func (w *TableWriter) PutLeb(v uint64) {
-	for v >= 128 {
-		w.Put8(uint8(v) | 128)
-		v >>= 7
+// Put128 writes two little-endian lanes, low first, under one Advance.
+func (w *TableWriter) Put128(lo, hi uint64) {
+	at := w.Offset
+	if w.Advance(16) && !w.Measuring {
+		binary.LittleEndian.PutUint64(w.Buffer[at:], lo)
+		binary.LittleEndian.PutUint64(w.Buffer[at+8:], hi)
 	}
-	w.Put8(uint8(v))
 }
 
-func (w *TableWriter) Id(id uint64) { w.PutLeb(w.Ids.Ref(id)) }
+func (w *TableWriter) PutLeb(v uint64) {
+	// Groups assemble in a ten-byte stack buffer and go to Raw once. Spelling
+	// is the old loop's, group for group. One Advance covers the value; raw's
+	// capacity test is untouched. A value that does not fit now leaves the
+	// buffer alone rather than filling it first; Save answers -1.
+	var b [10]byte
+	n := 0
+	for v >= 128 {
+		b[n] = uint8(v) | 128
+		v >>= 7
+		n++
+	}
+	b[n] = uint8(v)
+	n++
+	w.Raw(b[:n])
+}
+
+func (w *TableWriter) Id(id uint64)                { w.PutLeb(w.Ids.Ref(id)) }
+func (w *TableWriter) IdAt(ordinal int, id uint64) { w.PutLeb(w.Ids.RefAt(ordinal, id)) }
+
+// Header writes a field's reference and kind. A reference below 128 is one
+// LEB byte, so the pair is one two-byte store. Larger references still go
+// through PutLeb then Put8. Bytes match that two-call spelling; a pair that
+// does not fit now leaves the buffer alone, and Save answers -1.
+func (w *TableWriter) Header(ref uint64, kind uint8) {
+	if ref < 128 {
+		w.Put16(uint16(ref) | uint16(kind)<<8)
+		return
+	}
+	w.PutLeb(ref)
+	w.Put8(kind)
+}
 
 func (w *TableWriter) Trailer() {
 	for i := 0; i < w.Ids.Count; i++ {
@@ -507,6 +563,17 @@ func (r *TableReader) Get64() uint64 {
 // A rejected integer leaves the cursor unchanged. Its spelling must be
 // minimal and fit in 64 bits, including the tenth byte's single value bit.
 func (r *TableReader) Leb() (uint64, bool) {
+	// One byte below 128 is a complete canonical value: the continuation bit
+	// is clear, it is the first byte so the redundant-continuation rule has
+	// nothing to say, and one byte is neither overlong nor past ten. No rule
+	// is relaxed; every other number goes to the loop with all of its checks.
+	if uint64(r.Offset) < uint64(len(r.Buffer)) {
+		b := r.Buffer[r.Offset]
+		if b < 128 {
+			r.Offset++
+			return uint64(b), true
+		}
+	}
 	at := r.Offset
 	var v uint64
 	for i := 0; i < 10; i++ {
@@ -636,18 +703,67 @@ func tableOpen(data []byte, report *TableReport) (TableReader, TableOpenVerdict)
 	}
 	start := len(data) - 8 - int(n)*8
 	r.Buffer, r.Ids = data[1:start], data[start:len(data)-8]
-	for i := 0; i < len(r.Ids); i += 8 {
-		id := binary.LittleEndian.Uint64(r.Ids[i:])
-		for j := 0; j < i; j += 8 {
-			if id == binary.LittleEndian.Uint64(r.Ids[j:]) {
-				return r, TableOpenDamaged
+	// Count is attacker-capped by (bytes-9)/8. The open-addressed path runs
+	// only at 8<=n<=256 with 512 slots, compares the stored id not the hash,
+	// and caps probes at the slot count. n<8 stays pairwise: 21 comparisons
+	// at 7 versus 4.6 KiB of slot zeroing on every open, including a two-entry
+	// trailer. Exhausted probes and n>256 keep the pairwise walk, which is
+	// the same verdict. The mix is C's table_writer_id.
+	if n > 1 {
+		pairwise := n < 8 || n > 256
+		if !pairwise {
+			var seen [512]uint64
+			var used [512]uint8
+			for i := uint64(0); i < n; i++ {
+				id := binary.LittleEndian.Uint64(r.Ids[i*8:])
+				hash := id
+				hash ^= hash >> 33
+				hash *= 0xff51afd7ed558ccd
+				hash ^= hash >> 33
+				slot := uint32(hash) & 511
+				probes := uint32(0)
+				for ; probes < 512; probes++ {
+					if used[slot] == 0 {
+						used[slot] = 1
+						seen[slot] = id
+						break
+					}
+					if seen[slot] == id {
+						return r, TableOpenDamaged
+					}
+					slot = (slot + 1) & 511
+				}
+				if probes == 512 {
+					pairwise = true
+					break
+				}
+			}
+		}
+		if pairwise {
+			for i := 0; i < len(r.Ids); i += 8 {
+				id := binary.LittleEndian.Uint64(r.Ids[i:])
+				for j := 0; j < i; j += 8 {
+					if id == binary.LittleEndian.Uint64(r.Ids[j:]) {
+						return r, TableOpenDamaged
+					}
+				}
 			}
 		}
 	}
-	if r.EndsEarly() {
+	return r, TableOpenOk
+}
+
+// tableOpenFramed is tableOpen plus the framing pre-walk. Variable-class Load,
+// LoadMeasure, LoadBuilder and the announcement still answer an early end this
+// way; their real walk is a node scan or the announcement, a different question.
+// schema #773 left those sites with the pre-walk. The fixed root Load does not
+// use this: it answers the early end from its own cursor after LoadBody.
+func tableOpenFramed(data []byte, report *TableReport) (TableReader, TableOpenVerdict) {
+	r, verdict := tableOpen(data, report)
+	if verdict == TableOpenOk && r.EndsEarly() {
 		return r, TableOpenDamaged
 	}
-	return r, TableOpenOk
+	return r, verdict
 }
 
 func tableKindWidens(from, to uint8) bool {
@@ -1013,7 +1129,7 @@ func AnnounceRead(v *TableVocabulary, data []byte, report *TableReport) bool {
 	return ok
 }
 func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) bool {
-	r, verdict := tableOpen(data, report)
+	r, verdict := tableOpenFramed(data, report)
 	if verdict != TableOpenOk {
 		if verdict == TableOpenRefused {
 			reason := "newer_form"
@@ -1792,78 +1908,67 @@ func TableEntityMeasureReason(value *TableEntity) (int64, error) {
 func TableEntitySaveBody(w *TableWriter, value *TableEntity) bool {
 	{
 		if value.EntityId != 0 {
-			w.Id(0x23fcfd6678e36712)
-			w.Put8(7)
+			w.Header(w.Ids.RefAt(11, 0x23fcfd6678e36712), 7)
 			w.Put16(uint16(value.EntityId))
 		}
 	}
 	{
 		if value.PosX != 0 {
-			w.Id(0xcb4b37357667310e)
-			w.Put8(4)
+			w.Header(w.Ids.RefAt(65, 0xcb4b37357667310e), 4)
 			w.Put32(uint32(value.PosX))
 		}
 	}
 	{
 		if value.PosY != 0 {
-			w.Id(0xcb4b3835766732c1)
-			w.Put8(4)
+			w.Header(w.Ids.RefAt(66, 0xcb4b3835766732c1), 4)
 			w.Put32(uint32(value.PosY))
 		}
 	}
 	{
 		if value.PosZ != 0 {
-			w.Id(0xcb4b353576672da8)
-			w.Put8(4)
+			w.Header(w.Ids.RefAt(64, 0xcb4b353576672da8), 4)
 			w.Put32(uint32(value.PosZ))
 		}
 	}
 	{
 		if value.Yaw != 0 {
-			w.Id(0xb54d8e19798e16e8)
-			w.Put8(7)
+			w.Header(w.Ids.RefAt(59, 0xb54d8e19798e16e8), 7)
 			w.Put16(uint16(value.Yaw))
 		}
 	}
 	{
 		if value.Pitch != 0 {
-			w.Id(0x53a9f665a90cc1b1)
-			w.Put8(7)
+			w.Header(w.Ids.RefAt(24, 0x53a9f665a90cc1b1), 7)
 			w.Put16(uint16(value.Pitch))
 		}
 	}
 	{
 		if value.VelX != 0 {
-			w.Id(0x6cede6b6eb60ee67)
-			w.Put8(4)
+			w.Header(w.Ids.RefAt(30, 0x6cede6b6eb60ee67), 4)
 			w.Put32(uint32(value.VelX))
 		}
 	}
 	{
 		if value.VelY != 0 {
-			w.Id(0x6cede5b6eb60ecb4)
-			w.Put8(4)
+			w.Header(w.Ids.RefAt(29, 0x6cede5b6eb60ecb4), 4)
 			w.Put32(uint32(value.VelY))
 		}
 	}
 	{
 		if value.VelZ != 0 {
-			w.Id(0x6cede8b6eb60f1cd)
-			w.Put8(4)
+			w.Header(w.Ids.RefAt(31, 0x6cede8b6eb60f1cd), 4)
 			w.Put32(uint32(value.VelZ))
 		}
 	}
 	{
 		if value.Health != 0 {
-			w.Id(0x7f69d4b5288ba9cf)
-			w.Put8(4)
+			w.Header(w.Ids.RefAt(41, 0x7f69d4b5288ba9cf), 4)
 			w.Put32(uint32(value.Health))
 		}
 	}
 	{
 		if value.Weapon != TableWeaponNone {
-			w.Id(0xa0b610205f2c6e01)
-			w.Put8(30)
+			w.Header(w.Ids.RefAt(54, 0xa0b610205f2c6e01), 30)
 			{
 				id, named := value.Weapon.TableEnumId()
 				if !named {
@@ -1879,15 +1984,13 @@ func TableEntitySaveBody(w *TableWriter, value *TableEntity) bool {
 	}
 	{
 		if value.Damage != 0 {
-			w.Id(0x7f6308be8ab37fc0)
-			w.Put8(9)
+			w.Header(w.Ids.RefAt(40, 0x7f6308be8ab37fc0), 9)
 			w.Put64(uint64(value.Damage))
 		}
 	}
 	{
 		if value.Moving != false {
-			w.Id(0x11a44fc1d1243da7)
-			w.Put8(1)
+			w.Header(w.Ids.RefAt(5, 0x11a44fc1d1243da7), 1)
 			if value.Moving {
 				w.Put8(1)
 			} else {
@@ -1897,8 +2000,7 @@ func TableEntitySaveBody(w *TableWriter, value *TableEntity) bool {
 	}
 	{
 		if value.Firing != false {
-			w.Id(0x7674cfd19b9031ca)
-			w.Put8(1)
+			w.Header(w.Ids.RefAt(36, 0x7674cfd19b9031ca), 1)
 			if value.Firing {
 				w.Put8(1)
 			} else {
@@ -2336,8 +2438,38 @@ func TableEntityLoad(value *TableEntity, data []byte, report *TableReport) bool 
 		}
 		return false
 	}
+	// The root read answers its own early end after the walk, not before it.
+	// A body that returned at its zero reference left the cursor on the byte
+	// after that reference. Every field leaves the cursor where skip would, so
+	// r.Offset != len(r.Buffer) is the old EndsEarly on the true path.
+	// Nothing is decoded on the damaged path: the value goes back to defaults
+	// and the report goes back to what the caller handed in, so an early end
+	// counts no unknown, no kind mismatch and no clamp — as when the framing
+	// walk refused before the reader had seen one byte.
+	before := *report
 	if !TableEntityLoadBody(&r, value) {
+		// The reading walk stops on rules the framing walk has no opinion about
+		// — a reserved id in a file body is the one that matters — so a body
+		// that stopped is still asked the framing question from the start of
+		// the body, and a body whose framing ends early is damage whatever else
+		// was wrong with it.
+		probe := r
+		probe.Offset = 0
+		if probe.EndsEarly() {
+			TableEntityReset(value)
+			*report = before
+			report.Malformed = true
+			report.Verdict = TableOpenDamaged
+			return false
+		}
 		report.Verdict = TableOpenBodyStopped
+		return false
+	}
+	if r.Offset != int64(len(r.Buffer)) {
+		TableEntityReset(value)
+		*report = before
+		report.Malformed = true
+		report.Verdict = TableOpenDamaged
 		return false
 	}
 	return true
@@ -3138,15 +3270,13 @@ func TableStatMeasureReason(value *TableStat) (int64, error) {
 func TableStatSaveBody(w *TableWriter, value *TableStat) bool {
 	{
 		if value.StatId != 0 {
-			w.Id(0x80ab75f0866dbf65)
-			w.Put8(6)
+			w.Header(w.Ids.RefAt(42, 0x80ab75f0866dbf65), 6)
 			w.Put8(uint8(value.StatId))
 		}
 	}
 	{
 		if value.Delta != 0 {
-			w.Id(0x52076675ec13a0c1)
-			w.Put8(4)
+			w.Header(w.Ids.RefAt(23, 0x52076675ec13a0c1), 4)
 			w.Put32(uint32(value.Delta))
 		}
 	}
@@ -3271,8 +3401,38 @@ func TableStatLoad(value *TableStat, data []byte, report *TableReport) bool {
 		}
 		return false
 	}
+	// The root read answers its own early end after the walk, not before it.
+	// A body that returned at its zero reference left the cursor on the byte
+	// after that reference. Every field leaves the cursor where skip would, so
+	// r.Offset != len(r.Buffer) is the old EndsEarly on the true path.
+	// Nothing is decoded on the damaged path: the value goes back to defaults
+	// and the report goes back to what the caller handed in, so an early end
+	// counts no unknown, no kind mismatch and no clamp — as when the framing
+	// walk refused before the reader had seen one byte.
+	before := *report
 	if !TableStatLoadBody(&r, value) {
+		// The reading walk stops on rules the framing walk has no opinion about
+		// — a reserved id in a file body is the one that matters — so a body
+		// that stopped is still asked the framing question from the start of
+		// the body, and a body whose framing ends early is damage whatever else
+		// was wrong with it.
+		probe := r
+		probe.Offset = 0
+		if probe.EndsEarly() {
+			TableStatReset(value)
+			*report = before
+			report.Malformed = true
+			report.Verdict = TableOpenDamaged
+			return false
+		}
 		report.Verdict = TableOpenBodyStopped
+		return false
+	}
+	if r.Offset != int64(len(r.Buffer)) {
+		TableStatReset(value)
+		*report = before
+		report.Malformed = true
+		report.Verdict = TableOpenDamaged
 		return false
 	}
 	return true
@@ -3546,73 +3706,64 @@ func TableMixedMeasureReason(value *TableMixed) (int64, error) {
 	return size, nil
 }
 func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
+	var arrayLengths [80]int64
 	{
 		if value.ProtocolMagic != 0 {
-			w.Id(0x6a5a70d91aa115fd)
-			w.Put8(7)
+			w.Header(w.Ids.RefAt(28, 0x6a5a70d91aa115fd), 7)
 			w.Put16(uint16(value.ProtocolMagic))
 		}
 	}
 	{
 		if value.Sequence != 0 {
-			w.Id(0xaa38aca481f528a8)
-			w.Put8(7)
+			w.Header(w.Ids.RefAt(58, 0xaa38aca481f528a8), 7)
 			w.Put16(uint16(value.Sequence))
 		}
 	}
 	{
 		if value.AckSequence != 0 {
-			w.Id(0x0dbe005c56697c3e)
-			w.Put8(4)
+			w.Header(w.Ids.RefAt(4, 0x0dbe005c56697c3e), 4)
 			w.Put32(uint32(value.AckSequence))
 		}
 	}
 	{
 		if value.AckBits != 0 {
-			w.Id(0x9bae0da8b829ee03)
-			w.Put8(8)
+			w.Header(w.Ids.RefAt(49, 0x9bae0da8b829ee03), 8)
 			w.Put32(uint32(value.AckBits))
 		}
 	}
 	{
 		if value.SessionId != 0 {
-			w.Id(0xb7d7b5650a590b05)
-			w.Put8(9)
+			w.Header(w.Ids.RefAt(61, 0xb7d7b5650a590b05), 9)
 			w.Put64(uint64(value.SessionId))
 		}
 	}
 	{
 		if value.ClientId != 0 {
-			w.Id(0x6d7b98e2d095967e)
-			w.Put8(8)
+			w.Header(w.Ids.RefAt(32, 0x6d7b98e2d095967e), 8)
 			w.Put32(uint32(value.ClientId))
 		}
 	}
 	{
 		if value.Nonce != 1 {
-			w.Id(0x73a94c71d60dc0d8)
-			w.Put8(9)
+			w.Header(w.Ids.RefAt(34, 0x73a94c71d60dc0d8), 9)
 			w.Put64(uint64(value.Nonce))
 		}
 	}
 	{
 		if value.WorldTime != 0 {
-			w.Id(0x3eee6b51be54fc85)
-			w.Put8(5)
+			w.Header(w.Ids.RefAt(21, 0x3eee6b51be54fc85), 5)
 			w.Put64(uint64(value.WorldTime))
 		}
 	}
 	{
 		if value.FrameTick != 0 {
-			w.Id(0x7bbc035f7b6d0112)
-			w.Put8(9)
+			w.Header(w.Ids.RefAt(39, 0x7bbc035f7b6d0112), 9)
 			w.Put64(uint64(value.FrameTick))
 		}
 	}
 	{
 		if value.ServerTime != 0.0 {
-			w.Id(0x3c460475f9be69c6)
-			w.Put8(10)
+			w.Header(w.Ids.RefAt(20, 0x3c460475f9be69c6), 10)
 			w.Put32(math.Float32bits(value.ServerTime))
 		}
 	}
@@ -3621,8 +3772,7 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 			return false
 		}
 		if value.EntitiesCount > 0 {
-			w.Id(0x935d0fb07bb3822a)
-			w.Put8(14)
+			w.Header(w.Ids.RefAt(46, 0x935d0fb07bb3822a), 14)
 			if value.EntitiesCount < 0 || value.EntitiesCount > 8 {
 				return false
 			}
@@ -3631,22 +3781,13 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 				payload16 := TableWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
 				for i := 0; i < int(value.EntitiesCount); i++ {
-					{
-						mark := payload16.Ids.Count
-						n := TableEntityMeasureBody(&value.Entities[i], payload16.Ids)
-						if n < 0 {
-							return false
-						}
-						payload16.PutLeb(uint64(n))
-						if payload16.Measuring {
-							payload16.Advance(n)
-						} else {
-							payload16.Ids.Truncate(mark)
-							if !TableEntitySaveBody(&payload16, &value.Entities[i]) {
-								return false
-							}
-						}
+					n := TableEntityMeasureBody(&value.Entities[i], payload16.Ids)
+					if n < 0 {
+						return false
 					}
+					arrayLengths[i] = n
+					payload16.PutLeb(uint64(n))
+					payload16.Advance(n)
 					pairs++
 				}
 				if payload16.Overflow {
@@ -3661,21 +3802,9 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 					w.Put8(13)
 					w.PutLeb(pairs)
 					for i := 0; i < int(value.EntitiesCount); i++ {
-						{
-							mark := w.Ids.Count
-							n := TableEntityMeasureBody(&value.Entities[i], w.Ids)
-							if n < 0 {
-								return false
-							}
-							w.PutLeb(uint64(n))
-							if w.Measuring {
-								w.Advance(n)
-							} else {
-								w.Ids.Truncate(mark)
-								if !TableEntitySaveBody(w, &value.Entities[i]) {
-									return false
-								}
-							}
+						w.PutLeb(uint64(arrayLengths[i]))
+						if !TableEntitySaveBody(w, &value.Entities[i]) {
+							return false
 						}
 					}
 				}
@@ -3687,8 +3816,7 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 			return false
 		}
 		if value.StatsCount > 0 {
-			w.Id(0xee639cad45b1994c)
-			w.Put8(14)
+			w.Header(w.Ids.RefAt(73, 0xee639cad45b1994c), 14)
 			if value.StatsCount < 0 || value.StatsCount > 80 {
 				return false
 			}
@@ -3697,22 +3825,13 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 				payload19 := TableWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
 				for i := 0; i < int(value.StatsCount); i++ {
-					{
-						mark := payload19.Ids.Count
-						n := TableStatMeasureBody(&value.Stats[i], payload19.Ids)
-						if n < 0 {
-							return false
-						}
-						payload19.PutLeb(uint64(n))
-						if payload19.Measuring {
-							payload19.Advance(n)
-						} else {
-							payload19.Ids.Truncate(mark)
-							if !TableStatSaveBody(&payload19, &value.Stats[i]) {
-								return false
-							}
-						}
+					n := TableStatMeasureBody(&value.Stats[i], payload19.Ids)
+					if n < 0 {
+						return false
 					}
+					arrayLengths[i] = n
+					payload19.PutLeb(uint64(n))
+					payload19.Advance(n)
 					pairs++
 				}
 				if payload19.Overflow {
@@ -3727,21 +3846,9 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 					w.Put8(13)
 					w.PutLeb(pairs)
 					for i := 0; i < int(value.StatsCount); i++ {
-						{
-							mark := w.Ids.Count
-							n := TableStatMeasureBody(&value.Stats[i], w.Ids)
-							if n < 0 {
-								return false
-							}
-							w.PutLeb(uint64(n))
-							if w.Measuring {
-								w.Advance(n)
-							} else {
-								w.Ids.Truncate(mark)
-								if !TableStatSaveBody(w, &value.Stats[i]) {
-									return false
-								}
-							}
+						w.PutLeb(uint64(arrayLengths[i]))
+						if !TableStatSaveBody(w, &value.Stats[i]) {
+							return false
 						}
 					}
 				}
@@ -3750,15 +3857,14 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 	}
 	{
 		if value.GameEvent.Type != TableEventTypeNone {
-			w.Id(0x2e35dc5321aa5790)
-			w.Put8(15)
+			w.Header(w.Ids.RefAt(15, 0x2e35dc5321aa5790), 15)
 			{
 				payload22 := &value.GameEvent
 				switch payload22.Type {
 				case TableEventTypeNone:
 					w.PutLeb(0)
 				case TableEventTypeHit:
-					ref := w.Ids.Ref(0x33732819300680aa)
+					ref := w.Ids.RefAt(18, 0x33732819300680aa)
 					start := w.Ids.Count
 					payload23 := TableWriter{Measuring: true, Ids: w.Ids}
 					if !TableHitEventSaveBody(&payload23, &payload22.Hit) {
@@ -3767,8 +3873,7 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 					if payload23.Overflow {
 						return false
 					}
-					w.PutLeb(ref)
-					w.Put8(13)
+					w.Header(ref, 13)
 					w.PutLeb(uint64(payload23.Offset))
 					if w.Measuring {
 						w.Advance(payload23.Offset)
@@ -3779,7 +3884,7 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 						}
 					}
 				case TableEventTypeChat:
-					ref := w.Ids.Ref(0xf2a38d910b5b348b)
+					ref := w.Ids.RefAt(74, 0xf2a38d910b5b348b)
 					start := w.Ids.Count
 					payload24 := TableWriter{Measuring: true, Ids: w.Ids}
 					if !TableChatEventSaveBody(&payload24, &payload22.Chat) {
@@ -3788,8 +3893,7 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 					if payload24.Overflow {
 						return false
 					}
-					w.PutLeb(ref)
-					w.Put8(13)
+					w.Header(ref, 13)
 					w.PutLeb(uint64(payload24.Offset))
 					if w.Measuring {
 						w.Advance(payload24.Offset)
@@ -3800,7 +3904,7 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 						}
 					}
 				case TableEventTypePickup:
-					ref := w.Ids.Ref(0x9fa3a41c86ecb765)
+					ref := w.Ids.RefAt(52, 0x9fa3a41c86ecb765)
 					start := w.Ids.Count
 					payload25 := TableWriter{Measuring: true, Ids: w.Ids}
 					if !TablePickupEventSaveBody(&payload25, &payload22.Pickup) {
@@ -3809,8 +3913,7 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 					if payload25.Overflow {
 						return false
 					}
-					w.PutLeb(ref)
-					w.Put8(13)
+					w.Header(ref, 13)
 					w.PutLeb(uint64(payload25.Offset))
 					if w.Measuring {
 						w.Advance(payload25.Offset)
@@ -3835,8 +3938,7 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 			}
 		}
 		if !allDefault {
-			w.Id(0x5759ce7586bbb5a3)
-			w.Put8(14)
+			w.Header(w.Ids.RefAt(26, 0x5759ce7586bbb5a3), 14)
 			{
 				mark := w.Ids.Count
 				payload26 := TableWriter{Measuring: true, Ids: w.Ids}
@@ -3868,8 +3970,7 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 			return false
 		}
 		if value.PlayerNameLength > 0 {
-			w.Id(0x13a62f542cf8e86e)
-			w.Put8(12)
+			w.Header(w.Ids.RefAt(7, 0x13a62f542cf8e86e), 12)
 			if value.PlayerNameLength < 0 || value.PlayerNameLength > 15 {
 				return false
 			}
@@ -3882,8 +3983,7 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 			return false
 		}
 		if value.PayloadLength > 0 {
-			w.Id(0xcfb8a9d063b5e9e5)
-			w.Put8(14)
+			w.Header(w.Ids.RefAt(67, 0xcfb8a9d063b5e9e5), 14)
 			if value.PayloadLength < 0 || value.PayloadLength > 16 {
 				return false
 			}
@@ -3915,71 +4015,61 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 	}
 	{
 		if value.AimX != 0.0 {
-			w.Id(0xdbaf7be5e24296c9)
-			w.Put8(10)
+			w.Header(w.Ids.RefAt(72, 0xdbaf7be5e24296c9), 10)
 			w.Put32(math.Float32bits(value.AimX))
 		}
 	}
 	{
 		if value.AimY != 0.0 {
-			w.Id(0xdbaf7ae5e2429516)
-			w.Put8(10)
+			w.Header(w.Ids.RefAt(71, 0xdbaf7ae5e2429516), 10)
 			w.Put32(math.Float32bits(value.AimY))
 		}
 	}
 	{
 		if value.AimZ != 0.0 {
-			w.Id(0xdbaf79e5e2429363)
-			w.Put8(10)
+			w.Header(w.Ids.RefAt(70, 0xdbaf79e5e2429363), 10)
 			w.Put32(math.Float32bits(value.AimZ))
 		}
 	}
 	{
 		if value.Recoil != 0.0 {
-			w.Id(0x9cef31fff7e2e457)
-			w.Put8(10)
+			w.Header(w.Ids.RefAt(50, 0x9cef31fff7e2e457), 10)
 			w.Put32(math.Float32bits(value.Recoil))
 		}
 	}
 	{
 		if value.Drift != 0.0 {
-			w.Id(0x5ab3f9c9341f6c04)
-			w.Put8(11)
+			w.Header(w.Ids.RefAt(27, 0x5ab3f9c9341f6c04), 11)
 			w.Put64(math.Float64bits(value.Drift))
 		}
 	}
 	{
 		if value.WideKey != 0 {
-			w.Id(0xa3348580461faf16)
-			w.Put8(9)
+			w.Header(w.Ids.RefAt(55, 0xa3348580461faf16), 9)
 			w.Put64(uint64(value.WideKey))
 		}
 	}
 	{
 		if value.Flux != 0 {
-			w.Id(0xd61bdd7908af2642)
-			w.Put8(5)
+			w.Header(w.Ids.RefAt(68, 0xd61bdd7908af2642), 5)
 			w.Put64(uint64(value.Flux))
 		}
 	}
 	{
 		if value.Ping != 0.0 {
-			w.Id(0xbf30e00dc53307a9)
-			w.Put8(10)
+			w.Header(w.Ids.RefAt(62, 0xbf30e00dc53307a9), 10)
 			w.Put32(math.Float32bits(value.Ping))
 		}
 	}
 	{
 		if value.CrcHint != 0 {
-			w.Id(0x560d6527ccd8515f)
-			w.Put8(8)
+			w.Header(w.Ids.RefAt(25, 0x560d6527ccd8515f), 8)
 			w.Put32(uint32(value.CrcHint))
 		}
 	}
 	{
 		if value.HasExtra != false {
-			w.Id(0xc08292176cfd8672)
-			w.Put8(1)
+			w.Header(w.Ids.RefAt(63, 0xc08292176cfd8672), 1)
 			if value.HasExtra {
 				w.Put8(1)
 			} else {
@@ -3990,8 +4080,7 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 	if value.HasExtra {
 		{
 			if value.Extra != 0 {
-				w.Id(0xfd29ee12a979cb69)
-				w.Put8(4)
+				w.Header(w.Ids.RefAt(76, 0xfd29ee12a979cb69), 4)
 				w.Put32(uint32(value.Extra))
 			}
 		}
@@ -3999,8 +4088,7 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 	if !value.HasExtra {
 		{
 			if value.IdleTicks != 0 {
-				w.Id(0x78101ac0aa8cbcfe)
-				w.Put8(4)
+				w.Header(w.Ids.RefAt(37, 0x78101ac0aa8cbcfe), 4)
 				w.Put32(uint32(value.IdleTicks))
 			}
 		}
@@ -4922,8 +5010,38 @@ func TableMixedLoad(value *TableMixed, data []byte, report *TableReport) bool {
 		}
 		return false
 	}
+	// The root read answers its own early end after the walk, not before it.
+	// A body that returned at its zero reference left the cursor on the byte
+	// after that reference. Every field leaves the cursor where skip would, so
+	// r.Offset != len(r.Buffer) is the old EndsEarly on the true path.
+	// Nothing is decoded on the damaged path: the value goes back to defaults
+	// and the report goes back to what the caller handed in, so an early end
+	// counts no unknown, no kind mismatch and no clamp — as when the framing
+	// walk refused before the reader had seen one byte.
+	before := *report
 	if !TableMixedLoadBody(&r, value) {
+		// The reading walk stops on rules the framing walk has no opinion about
+		// — a reserved id in a file body is the one that matters — so a body
+		// that stopped is still asked the framing question from the start of
+		// the body, and a body whose framing ends early is damage whatever else
+		// was wrong with it.
+		probe := r
+		probe.Offset = 0
+		if probe.EndsEarly() {
+			TableMixedReset(value)
+			*report = before
+			report.Malformed = true
+			report.Verdict = TableOpenDamaged
+			return false
+		}
 		report.Verdict = TableOpenBodyStopped
+		return false
+	}
+	if r.Offset != int64(len(r.Buffer)) {
+		TableMixedReset(value)
+		*report = before
+		report.Malformed = true
+		report.Verdict = TableOpenDamaged
 		return false
 	}
 	return true
@@ -6583,29 +6701,25 @@ func TableHitEventMeasureReason(value *TableHitEvent) (int64, error) {
 func TableHitEventSaveBody(w *TableWriter, value *TableHitEvent) bool {
 	{
 		if value.TargetId != 0 {
-			w.Id(0xb7bc9ac015a25050)
-			w.Put8(7)
+			w.Header(w.Ids.RefAt(60, 0xb7bc9ac015a25050), 7)
 			w.Put16(uint16(value.TargetId))
 		}
 	}
 	{
 		if value.Damage != 0 {
-			w.Id(0x7f6308be8ab37fc0)
-			w.Put8(4)
+			w.Header(w.Ids.RefAt(40, 0x7f6308be8ab37fc0), 4)
 			w.Put32(uint32(value.Damage))
 		}
 	}
 	{
 		if value.HitKind != 0 {
-			w.Id(0x01fbc365b059b925)
-			w.Put8(4)
+			w.Header(w.Ids.RefAt(1, 0x01fbc365b059b925), 4)
 			w.Put32(uint32(value.HitKind))
 		}
 	}
 	{
 		if value.Crit != false {
-			w.Id(0x126167908c9aa52d)
-			w.Put8(1)
+			w.Header(w.Ids.RefAt(6, 0x126167908c9aa52d), 1)
 			if value.Crit {
 				w.Put8(1)
 			} else {
@@ -6782,8 +6896,38 @@ func TableHitEventLoad(value *TableHitEvent, data []byte, report *TableReport) b
 		}
 		return false
 	}
+	// The root read answers its own early end after the walk, not before it.
+	// A body that returned at its zero reference left the cursor on the byte
+	// after that reference. Every field leaves the cursor where skip would, so
+	// r.Offset != len(r.Buffer) is the old EndsEarly on the true path.
+	// Nothing is decoded on the damaged path: the value goes back to defaults
+	// and the report goes back to what the caller handed in, so an early end
+	// counts no unknown, no kind mismatch and no clamp — as when the framing
+	// walk refused before the reader had seen one byte.
+	before := *report
 	if !TableHitEventLoadBody(&r, value) {
+		// The reading walk stops on rules the framing walk has no opinion about
+		// — a reserved id in a file body is the one that matters — so a body
+		// that stopped is still asked the framing question from the start of
+		// the body, and a body whose framing ends early is damage whatever else
+		// was wrong with it.
+		probe := r
+		probe.Offset = 0
+		if probe.EndsEarly() {
+			TableHitEventReset(value)
+			*report = before
+			report.Malformed = true
+			report.Verdict = TableOpenDamaged
+			return false
+		}
 		report.Verdict = TableOpenBodyStopped
+		return false
+	}
+	if r.Offset != int64(len(r.Buffer)) {
+		TableHitEventReset(value)
+		*report = before
+		report.Malformed = true
+		report.Verdict = TableOpenDamaged
 		return false
 	}
 	return true
@@ -7102,15 +7246,13 @@ func TableChatEventMeasureReason(value *TableChatEvent) (int64, error) {
 func TableChatEventSaveBody(w *TableWriter, value *TableChatEvent) bool {
 	{
 		if value.Channel != 0 {
-			w.Id(0xa5013e9ad5caeda4)
-			w.Put8(4)
+			w.Header(w.Ids.RefAt(56, 0xa5013e9ad5caeda4), 4)
 			w.Put32(uint32(value.Channel))
 		}
 	}
 	{
 		if value.Speaker != 0 {
-			w.Id(0xfbf1ac4d96ebd022)
-			w.Put8(7)
+			w.Header(w.Ids.RefAt(75, 0xfbf1ac4d96ebd022), 7)
 			w.Put16(uint16(value.Speaker))
 		}
 	}
@@ -7240,8 +7382,38 @@ func TableChatEventLoad(value *TableChatEvent, data []byte, report *TableReport)
 		}
 		return false
 	}
+	// The root read answers its own early end after the walk, not before it.
+	// A body that returned at its zero reference left the cursor on the byte
+	// after that reference. Every field leaves the cursor where skip would, so
+	// r.Offset != len(r.Buffer) is the old EndsEarly on the true path.
+	// Nothing is decoded on the damaged path: the value goes back to defaults
+	// and the report goes back to what the caller handed in, so an early end
+	// counts no unknown, no kind mismatch and no clamp — as when the framing
+	// walk refused before the reader had seen one byte.
+	before := *report
 	if !TableChatEventLoadBody(&r, value) {
+		// The reading walk stops on rules the framing walk has no opinion about
+		// — a reserved id in a file body is the one that matters — so a body
+		// that stopped is still asked the framing question from the start of
+		// the body, and a body whose framing ends early is damage whatever else
+		// was wrong with it.
+		probe := r
+		probe.Offset = 0
+		if probe.EndsEarly() {
+			TableChatEventReset(value)
+			*report = before
+			report.Malformed = true
+			report.Verdict = TableOpenDamaged
+			return false
+		}
 		report.Verdict = TableOpenBodyStopped
+		return false
+	}
+	if r.Offset != int64(len(r.Buffer)) {
+		TableChatEventReset(value)
+		*report = before
+		report.Malformed = true
+		report.Verdict = TableOpenDamaged
 		return false
 	}
 	return true
@@ -7470,15 +7642,13 @@ func TablePickupEventMeasureReason(value *TablePickupEvent) (int64, error) {
 func TablePickupEventSaveBody(w *TableWriter, value *TablePickupEvent) bool {
 	{
 		if value.ItemId != 0 {
-			w.Id(0x9e7fd06d864fbd56)
-			w.Put8(7)
+			w.Header(w.Ids.RefAt(51, 0x9e7fd06d864fbd56), 7)
 			w.Put16(uint16(value.ItemId))
 		}
 	}
 	{
 		if value.Amount != 0 {
-			w.Id(0x8113fe7ea2b16969)
-			w.Put8(4)
+			w.Header(w.Ids.RefAt(43, 0x8113fe7ea2b16969), 4)
 			w.Put32(uint32(value.Amount))
 		}
 	}
@@ -7608,8 +7778,38 @@ func TablePickupEventLoad(value *TablePickupEvent, data []byte, report *TableRep
 		}
 		return false
 	}
+	// The root read answers its own early end after the walk, not before it.
+	// A body that returned at its zero reference left the cursor on the byte
+	// after that reference. Every field leaves the cursor where skip would, so
+	// r.Offset != len(r.Buffer) is the old EndsEarly on the true path.
+	// Nothing is decoded on the damaged path: the value goes back to defaults
+	// and the report goes back to what the caller handed in, so an early end
+	// counts no unknown, no kind mismatch and no clamp — as when the framing
+	// walk refused before the reader had seen one byte.
+	before := *report
 	if !TablePickupEventLoadBody(&r, value) {
+		// The reading walk stops on rules the framing walk has no opinion about
+		// — a reserved id in a file body is the one that matters — so a body
+		// that stopped is still asked the framing question from the start of
+		// the body, and a body whose framing ends early is damage whatever else
+		// was wrong with it.
+		probe := r
+		probe.Offset = 0
+		if probe.EndsEarly() {
+			TablePickupEventReset(value)
+			*report = before
+			report.Malformed = true
+			report.Verdict = TableOpenDamaged
+			return false
+		}
 		report.Verdict = TableOpenBodyStopped
+		return false
+	}
+	if r.Offset != int64(len(r.Buffer)) {
+		TablePickupEventReset(value)
+		*report = before
+		report.Malformed = true
+		report.Verdict = TableOpenDamaged
 		return false
 	}
 	return true

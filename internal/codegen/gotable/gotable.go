@@ -87,10 +87,28 @@ type tableGen struct {
 	viewPacket    map[string]int
 	viewUnions    map[string]int
 	viewNoIds     bool
+	idOrdinal     map[uint64]int // compile-time slot of each id TableWireIds names
 
 	// Every union declaration reached by this unit's table closure has one
 	// immutable descriptor slot, shared by fields, arrays and nested arms.
 	unionArmSlot map[string]int
+}
+
+func wireIdOrdinals(u *ir.Unit) map[uint64]int {
+	ids := ir.TableWireIds(u)
+	out := make(map[uint64]int, len(ids))
+	for i, id := range ids {
+		out[id] = i
+	}
+	return out
+}
+
+func (g *tableGen) knownOrdinal(id uint64) int {
+	ord, ok := g.idOrdinal[id]
+	if !ok {
+		panic(fmt.Sprintf("table id 0x%016x is not in TableWireIds", id))
+	}
+	return ord
 }
 
 // unionArmSlots assigns one immutable descriptor slot per union definition.
@@ -166,8 +184,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// behind a guard
 	usedEnums := closureEnums(u, closure)
 	armSlots := unionArmSlots(u, closure)
+	idOrdinal := wireIdOrdinals(u)
 	for _, f := range u.Files {
-		g := &tableGen{unit: u, file: f, home: f.Base == home, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional}
+		g := &tableGen{unit: u, file: f, home: f.Base == home, anyKeyed: anyKeyed, unionArmSlot: armSlots, regional: regional, idOrdinal: idOrdinal}
 		members := fileMembers(f, closure)
 		if g.home {
 			g.needsMath = true

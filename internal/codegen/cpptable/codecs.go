@@ -572,7 +572,10 @@ func (g *tableGen) emitEnumIdentity(e *ir.Enum) {
 	g.pf("    switch ( value )\n    {\n")
 	g.pf("        case %s::None: ref = 0; return true;\n", e.Name)
 	for i, v := range e.Variants {
-		g.pf("        case %s::%s: ref = %s; return true;\n", e.Name, v, g.wireRef(ir.TableWireId(e.VariantWireName(i))))
+		// A VARIANT'S ID IS CHOSEN BY A VALUE, not by the header: the caller
+		// hands a runtime enum and this switch picks the id, so there is no
+		// one ordinal a call site could carry and the general path stands (§3, §5).
+		g.pf("        case %s::%s: ref = %s; return true;\n", e.Name, v, g.wireRefRuntime(ir.TableWireId(e.VariantWireName(i))))
 	}
 	g.pf("        default: return false; // no variant names this value: no wire identity\n")
 	g.pf("    }\n}\n")
@@ -585,7 +588,7 @@ func (g *tableGen) emitEnumIdentity(e *ir.Enum) {
 		g.pf("    switch ( value )\n    {\n")
 		g.pf("        case %s::None: ref = 0; return true;\n", e.Name)
 		for i, v := range e.Variants {
-			g.pf("        case %s::%s: ref = %s; return true;\n", e.Name, v, g.wireRef(ir.TableWireId(e.VariantWireName(i))))
+			g.pf("        case %s::%s: ref = %s; return true;\n", e.Name, v, g.wireRefRuntime(ir.TableWireId(e.VariantWireName(i))))
 		}
 		g.pf("        default: return false;\n")
 		g.pf("    }\n}\n")

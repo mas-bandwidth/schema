@@ -25,6 +25,13 @@ func (g *tableGen) emitTableSave(st *ir.Struct) {
 
 func (g *tableGen) emitTableWrite(st *ir.Struct) {
 	g.pf("func %sSaveBody(w *TableWriter, value *%s) bool {\n", st.Name, g.storageName(st.Name))
+	var scratchSlots int64
+	for _, f := range st.Fields {
+		scratchSlots = max(scratchSlots, g.arrayLengthScratchSlots(f))
+	}
+	if scratchSlots > 0 {
+		g.pf("var arrayLengths [%d]int64\n", scratchSlots)
+	}
 	if g.regional {
 		g.pf("if !%sSaveBodyFields(w,value) { return false }; w.Put8(0); return !w.Overflow && !w.Ids.Overflow\n}\nfunc %sSaveBodyFields(w *TableWriter,value *%s) bool {\n", st.Name, st.Name, g.storageName(st.Name))
 	}
@@ -70,14 +77,14 @@ func (g *tableGen) emitWireField(f *ir.Field, expr, ind string) {
 		if !f.Type.Optional {
 			cond = g.emitFieldRides(f, expr, i)
 		}
-		g.pf("%sif %s {\n%s w.Id(0x%016x); w.Put8(%d)\n", i, cond, i, ir.TableFieldWireId(f), kind)
+		g.pf("%sif %s {\n%s w.Header(w.Ids.RefAt(%d, 0x%016x), %d)\n", i, cond, i, g.knownOrdinal(ir.TableFieldWireId(f)), ir.TableFieldWireId(f), kind)
 		g.emitWireValue(f, expr, "w", i+"\t", true)
 		g.pf("%s}\n%s}\n", i, ind)
 		return
 	}
 	g.pf("%s{\n", ind)
 	i := ind + "\t"
-	g.pf("%smark := w.Ids.Count; ref := w.Ids.Ref(0x%016x); start := w.Ids.Count\n", i, ir.TableFieldWireId(f))
+	g.pf("%smark := w.Ids.Count; ref := w.Ids.RefAt(%d, 0x%016x); start := w.Ids.Count\n", i, g.knownOrdinal(ir.TableFieldWireId(f)), ir.TableFieldWireId(f))
 	g.pf("%spayload := TableWriter{Measuring:true, Ids:w.Ids}\n", i)
 	g.emitWireValue(f, expr, "payload", i, true)
 	g.pf("%sif payload.Overflow || w.Ids.Overflow { return false }\n", i)
@@ -89,7 +96,7 @@ func (g *tableGen) emitWireField(f *ir.Field, expr, ind string) {
 	if f.Type.Optional {
 		cond = "true"
 	}
-	g.pf("%sif %s {\n%s if w.Measuring { w.Advance(tableLebBytes(ref)+1+payload.Offset) } else {\n%s  w.Ids.Truncate(start); w.PutLeb(ref); w.Put8(%d)\n", i, cond, i, i, kind)
+	g.pf("%sif %s {\n%s if w.Measuring { w.Advance(tableLebBytes(ref)+1+payload.Offset) } else {\n%s  w.Ids.Truncate(start); w.Header(ref, %d)\n", i, cond, i, i, kind)
 	g.emitWireValue(f, expr, "w", i+"\t\t", true)
 	g.pf("%s }\n%s} else { w.Ids.Truncate(mark) }\n%s}\n", i, i, ind)
 }
@@ -198,9 +205,42 @@ func (g *tableGen) nextWireWriter() string {
 	return fmt.Sprintf("payload%d", g.wireSerial)
 }
 
+// Every SaveBody shares one length scratch array, bounded to 1 KiB, across its
+// eligible fields and union arms. Nested struct bodies are separate calls with
+// their own scratch: this is a per-function bound, not a bound on the call stack.
+// Larger arrays and variable, keyed, pointer or retain paths keep the old walk.
+const arrayLengthCacheBytes = 1024
+
+func (g *tableGen) cacheArrayLengths(f *ir.Field) bool {
+	return !g.regional && !g.retain && f.KeyEnum == "" && !f.Type.Pointer && isStructRef(f.Type) &&
+		(f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted) && f.ArrayBound > 0 && f.ArrayBound <= arrayLengthCacheBytes/8
+}
+
+func (g *tableGen) arrayLengthScratchSlots(f *ir.Field) int64 {
+	if g.regional || g.retain || f.Type.Pointer {
+		return 0
+	}
+	if g.cacheArrayLengths(f) {
+		return f.ArrayBound
+	}
+	// Union arms are emitted in the enclosing SaveBody, including arms of
+	// array elements. Only struct arrays use the cache, and each struct body's
+	// separate call cannot overwrite this function's in-progress lengths.
+	var slots int64
+	if isUnionRef(f.Type) {
+		for _, v := range f.Type.Ref.(*ir.Union).Variants {
+			if !v.Void() {
+				slots = max(slots, g.arrayLengthScratchSlots(v.F))
+			}
+		}
+	}
+	return slots
+}
+
 func (g *tableGen) emitWireArray(f *ir.Field, expr, writer, ind string, framed bool) {
 	body := g.nextWireWriter()
 	kind := ir.TableWireScalarKind(f)
+	cacheLengths := g.cacheArrayLengths(f)
 	count := fmt.Sprint(f.ArrayBound)
 	if f.Type.Kind == ir.TBytes && !f.Type.Pointer {
 		kind = tkU8
@@ -215,7 +255,13 @@ func (g *tableGen) emitWireArray(f *ir.Field, expr, writer, ind string, framed b
 	i := ind + "\t"
 	g.pf("%smark := %s.Ids.Count\n%s%s := TableWriter{Measuring:true, Ids:%s.Ids}; pairs := uint64(0)\n", i, writer, i, body, writer)
 	g.pf("%sfor i := 0; i < int(%s); i++ {\n", i, count)
-	g.emitWireArrayElement(f, expr+"[i]", body, i+"\t")
+	if cacheLengths {
+		g.wireSerial++ // Preserve the skipped element emitter's temporary-name slot.
+		g.pf("%s n := %sMeasureBody(&%s[i],%s.Ids); if n < 0 { return false }; arrayLengths[i] = n\n", i, f.Type.Name, expr, body)
+		g.pf("%s %s.PutLeb(uint64(n)); %s.Advance(n)\n", i, body, body)
+	} else {
+		g.emitWireArrayElement(f, expr+"[i]", body, i+"\t")
+	}
 	g.pf("%s pairs++\n%s}\n", i, i)
 	g.pf("%sif %s.Overflow { return false }; n := int64(1)+tableLebBytes(pairs)+%s.Offset\n", i, body, body)
 	if framed {
@@ -223,7 +269,15 @@ func (g *tableGen) emitWireArray(f *ir.Field, expr, writer, ind string, framed b
 	}
 	g.pf("%sif %s.Measuring { %s.Advance(n) } else {\n%s %s.Ids.Truncate(mark); %s.Put8(%d); %s.PutLeb(pairs)\n", i, writer, writer, i, writer, writer, kind, writer)
 	g.pf("%s for i := 0; i < int(%s); i++ {\n", i, count)
-	g.emitWireArrayElement(f, expr+"[i]", writer, i+"\t\t")
+	if cacheLengths {
+		g.wireSerial++
+		// The unchanged outer truncation replays the first pass's vocabulary in
+		// the same element order. Its saved lengths therefore include the same
+		// reference widths, without another MeasureBody before each SaveBody.
+		g.pf("%s  %s.PutLeb(uint64(arrayLengths[i])); if !%sSaveBody(%s,&%s[i]) { return false }\n", i, writer, f.Type.Name, writerPointer(writer), expr)
+	} else {
+		g.emitWireArrayElement(f, expr+"[i]", writer, i+"\t\t")
+	}
 	g.pf("%s }\n%s}\n%s}\n", i, i, ind)
 }
 
@@ -278,9 +332,9 @@ func (g *tableGen) emitWireUnion(un *ir.Union, expr, writer, ind string) {
 		if !v.Void() {
 			kind = ir.TableWireFieldKind(v.F)
 		}
-		g.pf("%sref := %s.Ids.Ref(0x%016x)\n", i, writer, ir.TableWireId(v.WireName()))
+		g.pf("%sref := %s.Ids.RefAt(%d, 0x%016x)\n", i, writer, g.knownOrdinal(ir.TableWireId(v.WireName())), ir.TableWireId(v.WireName()))
 		if v.Void() {
-			g.pf("%s%s.PutLeb(ref); %s.Put8(32); %s.PutLeb(0)\n", i, writer, writer, writer)
+			g.pf("%s%s.Header(ref, 32); %s.PutLeb(0)\n", i, writer, writer)
 			continue
 		}
 		savedIndex, savedArm := g.retainIndex, g.retainArm
@@ -294,7 +348,7 @@ func (g *tableGen) emitWireUnion(un *ir.Union, expr, writer, ind string) {
 		arm := g.unionArmExpr(un, v, expr)
 		g.pf("%sstart := %s.Ids.Count; %s := TableWriter{Measuring:true, Ids:%s.Ids}\n", i, writer, payload, writer)
 		g.emitWireValue(v.F, arm, payload, i, false)
-		g.pf("%sif %s.Overflow { return false }; %s.PutLeb(ref); %s.Put8(%d); %s.PutLeb(uint64(%s.Offset))\n", i, payload, writer, writer, kind, writer, payload)
+		g.pf("%sif %s.Overflow { return false }; %s.Header(ref, %d); %s.PutLeb(uint64(%s.Offset))\n", i, payload, writer, kind, writer, payload)
 		g.pf("%sif %s.Measuring { %s.Advance(%s.Offset) } else {\n%s %s.Ids.Truncate(start)\n", i, writer, writer, payload, i, writer)
 		g.emitWireValue(v.F, arm, writer, i+"\t", false)
 		g.pf("%s}\n", i)
@@ -330,7 +384,7 @@ func (g *tableGen) emitWireScalar(f *ir.Field, expr, writer, ind string) {
 	default:
 		width := ir.TableKindWidth(kind) * 8
 		if width == 128 {
-			g.pf("%s%s.Put64(%s.Lo); %s.Put64(%s.Hi)\n", ind, writer, expr, writer, expr)
+			g.pf("%s%s.Put128(%s.Lo, %s.Hi)\n", ind, writer, expr, expr)
 		} else {
 			g.pf("%s%s.Put%d(uint%d(%s))\n", ind, writer, width, width, expr)
 		}

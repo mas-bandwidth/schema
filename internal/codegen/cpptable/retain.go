@@ -360,6 +360,19 @@ struct TableRetainIds
         return (uint64_t) known_slot[ (int32_t) k - 1 ];
     }
 
+    // THE MERGED NUMBERING IS NOT THE GENERATED TABLE'S, so the ordinal slot
+    // cache stops at the store below: known.ref_at would cache known's own
+    // index, and what a caller here needs is the MERGED slot, which moves with
+    // the caller's list as well. The retain family therefore keeps ref's exact
+    // path — same walk, same first-use order, same overflow rule — and the
+    // ordinal is accepted and ignored so ONE emitted codec serves both
+    // families (docs/SPEC-TABLES.md §6.6).
+    uint64_t ref_at( int32_t ordinal, uint64_t id )
+    {
+        (void) ordinal;
+        return ref( id );
+    }
+
     // an id from INSIDE a retained record. A retained id takes its entry from
     // the caller's list, and one past the capacity sets lost: the record is
     // dropped, nothing else about the save changes, and the save is never

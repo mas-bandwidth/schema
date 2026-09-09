@@ -383,12 +383,23 @@ struct TableIds
     uint64_t ids[ kCapacity ];
     int32_t chain[ kCapacity ];
     int32_t head[ kBuckets ];
+    // THE ORDINAL SLOT CACHE (§3). Every id a generated field header names is
+    // a COMPILE-TIME CONSTANT of the unit, so it has an ORDINAL: its index in
+    // the unit's id vocabulary, the same ascending set kCapacity counts. slot
+    // holds the ENTRY that ordinal's id took, -1 for one not interned yet, and
+    // ordinal_of is its inverse over the entries — the ordinal an entry was
+    // taken under, -1 for an entry a RUNTIME id took, which has no ordinal.
+    // The pair is what lets truncate undo the cache in O(popped) rather than
+    // walking the whole vocabulary.
+    int32_t slot[ kCapacity ];
+    int16_t ordinal_of[ kCapacity ];
     int32_t count;
     bool overflow;
 
     TableIds() : count( 0 ), overflow( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
+        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; }
     }
 
     static BENCH_TABLE_INLINE uint32_t bucket_of( uint64_t id )
@@ -407,18 +418,41 @@ struct TableIds
             if ( ids[i] == id ) { return uint64_t( i ) + 1; }
         }
         if ( count >= kCapacity ) { overflow = true; return 1; }
-        ids[count] = id; chain[count] = head[b]; head[b] = count; count++;
+        ids[count] = id; chain[count] = head[b]; ordinal_of[count] = -1; head[b] = count; count++;
         return uint64_t( count );
     }
 
+    // ref FOR AN ID THE EMITTER KNEW, which is every id a generated field
+    // header, union arm header or blob header names. A REPEAT answers from
+    // slot[ordinal]; a MISS falls through to ref, so THE APPEND STILL HAPPENS
+    // ONLY THERE and first-use order — which is the trailer's order — is the
+    // order it always was. An id reached through both this and ref carries the
+    // ordinal from here, so truncate can always undo the cache.
+    BENCH_TABLE_INLINE uint64_t ref_at( int32_t ordinal, uint64_t id )
+    {
+        const int32_t at = slot[ordinal];
+        if ( at >= 0 ) { return uint64_t( at ) + 1; }
+        const uint64_t r = ref( id );
+        // AN OVERFLOWED TABLE RECORDS NOTHING: ref appended no entry and
+        // answered 1, which is not this id's reference (§3).
+        if ( overflow ) { return r; }
+        slot[ordinal] = int32_t( r ) - 1;
+        ordinal_of[ int32_t( r ) - 1 ] = int16_t( ordinal );
+        return r;
+    }
+
     // undo every entry appended since mark. An entry removed is the most
-    // recent one in its bucket, so it sits at that bucket's head.
+    // recent one in its bucket, so it sits at that bucket's head — and its
+    // ORDINAL SLOT goes with it, or a later ref_at would answer with an entry
+    // this call just popped.
     void truncate( int32_t mark )
     {
         while ( count > mark )
         {
             count--;
             head[ bucket_of( ids[count] ) ] = chain[count];
+            const int32_t o = ordinal_of[count];
+            if ( o >= 0 ) { slot[o] = -1; }
         }
     }
 };
@@ -430,10 +464,38 @@ inline int64_t TableIdsBytes( const TableIds & ids ) { return int64_t( ids.count
 
 // TableIdsWrite puts the trailer where the walk ended: a writer never patches,
 // because first-use order is known only when the walk ends.
+//
+// THE TRAILER IS A CONTIGUOUS RUN OF 64-BIT LITTLE-ENDIAN WORDS (docs/SPEC-TABLES.md §3):
+// the interned entry ids followed by the entry count. A single capacity test
+// covers the entire trailer extent instead of one test per 8-byte put64, and on
+// little-endian architectures the contiguous ids array is bulk-copied in place.
 inline void TableIdsWrite( TableWriter & w, const TableIds & ids )
 {
-    for ( int32_t i = 0; i < ids.count; i++ ) { w.put64( ids.ids[i] ); }
-    w.put64( uint64_t( ids.count ) );
+    const int64_t count = ids.count;
+    const int64_t total_bytes = ( count + 1 ) * 8;
+    if ( w.overflow || w.offset < 0 || w.offset > w.capacity || total_bytes > w.capacity - w.offset )
+    {
+        w.overflow = true;
+        return;
+    }
+    uint8_t * dst = w.buffer + w.offset;
+#if defined( __BYTE_ORDER__ ) && defined( __ORDER_LITTLE_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+    if ( count > 0 )
+    {
+        memcpy( dst, ids.ids, (size_t)( count * 8 ) );
+    }
+    const uint64_t n = uint64_t( count );
+    memcpy( dst + count * 8, &n, 8 );
+#else
+    // Explicit little-endian stores also cover compilers that do not expose
+    // byte-order macros. Native copies require positive little-endian proof.
+    for ( int64_t i = 0; i <= count; i++ )
+    {
+        const uint64_t v = i < count ? ids.ids[i] : uint64_t( count );
+        for ( int j = 0; j < 8; j++ ) { dst[i * 8 + j] = uint8_t( v >> ( j * 8 ) ); }
+    }
+#endif
+    w.offset += total_bytes;
 }
 
 // THE ID TABLE, READER SIDE (docs/SPEC-TABLES.md §3). A reader locates it from
@@ -496,6 +558,21 @@ struct TableReader
     // rule. false = framing damage on the body carrying it.
     bool getleb( uint64_t & value )
     {
+        // ONE BYTE BELOW 0x80 IS A COMPLETE CANONICAL VALUE and there is no
+        // second spelling of it: the continuation bit is clear, so nothing
+        // follows; it is the FIRST byte, so the redundant-continuation rule
+        // ( i > 0 && b == 0 ) has nothing to say about it; and one byte is
+        // neither overlong nor past ten. The general loop below decides this
+        // same byte the same way — this reaches the answer without the cursor
+        // save it would need for the bytes that can still be refused. NO RULE
+        // IS RELAXED HERE: every number this path does not answer, canonical
+        // or not, goes to the loop with all of its checks (§3).
+        if ( offset < size && buffer[offset] < 0x80 )
+        {
+            value = buffer[offset];
+            offset++;
+            return true;
+        }
         // A NUMBER THIS READER REFUSES LEAVES THE CURSOR WHERE IT WAS. The
         // caller's next question is often "did this body end exactly at its
         // L", and a rejected number that had moved the cursor would answer
@@ -2625,27 +2702,27 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
 inline int64_t MixedEntityMeasureBody( TableIds & ids, const MixedEntity & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.entity_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x23fcfd6678e36712ull ) ) + 1 + 2; } // entity_id
-    if ( value.pos_x != 0 ) { bytes += TableLebBytes( ids.ref( 0xcb4b37357667310eull ) ) + 1 + 4; } // pos_x
-    if ( value.pos_y != 0 ) { bytes += TableLebBytes( ids.ref( 0xcb4b3835766732c1ull ) ) + 1 + 4; } // pos_y
-    if ( value.pos_z != 0 ) { bytes += TableLebBytes( ids.ref( 0xcb4b353576672da8ull ) ) + 1 + 4; } // pos_z
-    if ( value.yaw != 0 ) { bytes += TableLebBytes( ids.ref( 0xb54d8e19798e16e8ull ) ) + 1 + 2; } // yaw
-    if ( value.pitch != 0 ) { bytes += TableLebBytes( ids.ref( 0x53a9f665a90cc1b1ull ) ) + 1 + 2; } // pitch
-    if ( value.vel_x != 0 ) { bytes += TableLebBytes( ids.ref( 0x6cede6b6eb60ee67ull ) ) + 1 + 4; } // vel_x
-    if ( value.vel_y != 0 ) { bytes += TableLebBytes( ids.ref( 0x6cede5b6eb60ecb4ull ) ) + 1 + 4; } // vel_y
-    if ( value.vel_z != 0 ) { bytes += TableLebBytes( ids.ref( 0x6cede8b6eb60f1cdull ) ) + 1 + 4; } // vel_z
-    if ( value.health != 0 ) { bytes += TableLebBytes( ids.ref( 0x7f69d4b5288ba9cfull ) ) + 1 + 4; } // health
+    if ( value.entity_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 11, 0x23fcfd6678e36712ull ) ) + 1 + 2; } // entity_id
+    if ( value.pos_x != 0 ) { bytes += TableLebBytes( ids.ref_at( 65, 0xcb4b37357667310eull ) ) + 1 + 4; } // pos_x
+    if ( value.pos_y != 0 ) { bytes += TableLebBytes( ids.ref_at( 66, 0xcb4b3835766732c1ull ) ) + 1 + 4; } // pos_y
+    if ( value.pos_z != 0 ) { bytes += TableLebBytes( ids.ref_at( 64, 0xcb4b353576672da8ull ) ) + 1 + 4; } // pos_z
+    if ( value.yaw != 0 ) { bytes += TableLebBytes( ids.ref_at( 58, 0xb54d8e19798e16e8ull ) ) + 1 + 2; } // yaw
+    if ( value.pitch != 0 ) { bytes += TableLebBytes( ids.ref_at( 22, 0x53a9f665a90cc1b1ull ) ) + 1 + 2; } // pitch
+    if ( value.vel_x != 0 ) { bytes += TableLebBytes( ids.ref_at( 27, 0x6cede6b6eb60ee67ull ) ) + 1 + 4; } // vel_x
+    if ( value.vel_y != 0 ) { bytes += TableLebBytes( ids.ref_at( 26, 0x6cede5b6eb60ecb4ull ) ) + 1 + 4; } // vel_y
+    if ( value.vel_z != 0 ) { bytes += TableLebBytes( ids.ref_at( 28, 0x6cede8b6eb60f1cdull ) ) + 1 + 4; } // vel_z
+    if ( value.health != 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0x7f69d4b5288ba9cfull ) ) + 1 + 4; } // health
     if ( value.weapon != MixedWeapon::None )
     {
         if ( !TableEnumNamed( value.weapon ) ) { return -1; } // no variant names this value
-        const uint64_t ref_weapon = ids.ref( 0xa0b610205f2c6e01ull );
+        const uint64_t ref_weapon = ids.ref_at( 52, 0xa0b610205f2c6e01ull );
         uint64_t variant_weapon = 0;
         if ( !TableEnumRef( ids, value.weapon, variant_weapon ) ) { return -1; }
         bytes += TableLebBytes( ref_weapon ) + 1 + TableLebBytes( variant_weapon ); // weapon: the variant's reference
     }
-    if ( value.damage != 0 ) { bytes += TableLebBytes( ids.ref( 0x7f6308be8ab37fc0ull ) ) + 1 + 8; } // damage
-    if ( value.moving != false ) { bytes += TableLebBytes( ids.ref( 0x11a44fc1d1243da7ull ) ) + 1 + 1; } // moving
-    if ( value.firing != false ) { bytes += TableLebBytes( ids.ref( 0x7674cfd19b9031caull ) ) + 1 + 1; } // firing
+    if ( value.damage != 0 ) { bytes += TableLebBytes( ids.ref_at( 36, 0x7f6308be8ab37fc0ull ) ) + 1 + 8; } // damage
+    if ( value.moving != false ) { bytes += TableLebBytes( ids.ref_at( 5, 0x11a44fc1d1243da7ull ) ) + 1 + 1; } // moving
+    if ( value.firing != false ) { bytes += TableLebBytes( ids.ref_at( 32, 0x7674cfd19b9031caull ) ) + 1 + 1; } // firing
     return bytes;
 }
 
@@ -2661,75 +2738,75 @@ BENCH_TABLE_INLINE bool MixedEntitySaveBody( TableWriter & w, TableIds & ids, co
 {
     if ( value.entity_id != 0 )
     {
-        w.header( ids.ref( 0x23fcfd6678e36712ull ), 7 ); // entity_id
+        w.header( ids.ref_at( 11, 0x23fcfd6678e36712ull ), 7 ); // entity_id
         w.put16( uint16_t( value.entity_id ) );
     }
     if ( value.pos_x != 0 )
     {
-        w.header( ids.ref( 0xcb4b37357667310eull ), 4 ); // pos_x
+        w.header( ids.ref_at( 65, 0xcb4b37357667310eull ), 4 ); // pos_x
         w.put32( uint32_t( value.pos_x ) );
     }
     if ( value.pos_y != 0 )
     {
-        w.header( ids.ref( 0xcb4b3835766732c1ull ), 4 ); // pos_y
+        w.header( ids.ref_at( 66, 0xcb4b3835766732c1ull ), 4 ); // pos_y
         w.put32( uint32_t( value.pos_y ) );
     }
     if ( value.pos_z != 0 )
     {
-        w.header( ids.ref( 0xcb4b353576672da8ull ), 4 ); // pos_z
+        w.header( ids.ref_at( 64, 0xcb4b353576672da8ull ), 4 ); // pos_z
         w.put32( uint32_t( value.pos_z ) );
     }
     if ( value.yaw != 0 )
     {
-        w.header( ids.ref( 0xb54d8e19798e16e8ull ), 7 ); // yaw
+        w.header( ids.ref_at( 58, 0xb54d8e19798e16e8ull ), 7 ); // yaw
         w.put16( uint16_t( value.yaw ) );
     }
     if ( value.pitch != 0 )
     {
-        w.header( ids.ref( 0x53a9f665a90cc1b1ull ), 7 ); // pitch
+        w.header( ids.ref_at( 22, 0x53a9f665a90cc1b1ull ), 7 ); // pitch
         w.put16( uint16_t( value.pitch ) );
     }
     if ( value.vel_x != 0 )
     {
-        w.header( ids.ref( 0x6cede6b6eb60ee67ull ), 4 ); // vel_x
+        w.header( ids.ref_at( 27, 0x6cede6b6eb60ee67ull ), 4 ); // vel_x
         w.put32( uint32_t( value.vel_x ) );
     }
     if ( value.vel_y != 0 )
     {
-        w.header( ids.ref( 0x6cede5b6eb60ecb4ull ), 4 ); // vel_y
+        w.header( ids.ref_at( 26, 0x6cede5b6eb60ecb4ull ), 4 ); // vel_y
         w.put32( uint32_t( value.vel_y ) );
     }
     if ( value.vel_z != 0 )
     {
-        w.header( ids.ref( 0x6cede8b6eb60f1cdull ), 4 ); // vel_z
+        w.header( ids.ref_at( 28, 0x6cede8b6eb60f1cdull ), 4 ); // vel_z
         w.put32( uint32_t( value.vel_z ) );
     }
     if ( value.health != 0 )
     {
-        w.header( ids.ref( 0x7f69d4b5288ba9cfull ), 4 ); // health
+        w.header( ids.ref_at( 37, 0x7f69d4b5288ba9cfull ), 4 ); // health
         w.put32( uint32_t( value.health ) );
     }
     if ( value.weapon != MixedWeapon::None )
     {
         if ( !TableEnumNamed( value.weapon ) ) { return false; }
-        const uint64_t ref_weapon = ids.ref( 0xa0b610205f2c6e01ull );
+        const uint64_t ref_weapon = ids.ref_at( 52, 0xa0b610205f2c6e01ull );
         uint64_t variant_weapon = 0;
         if ( !TableEnumRef( ids, value.weapon, variant_weapon ) ) { return false; }
         w.header( ref_weapon, 30 ); w.putleb( variant_weapon ); // weapon
     }
     if ( value.damage != 0 )
     {
-        w.header( ids.ref( 0x7f6308be8ab37fc0ull ), 9 ); // damage
+        w.header( ids.ref_at( 36, 0x7f6308be8ab37fc0ull ), 9 ); // damage
         w.put64( uint64_t( value.damage ) );
     }
     if ( value.moving != false )
     {
-        w.header( ids.ref( 0x11a44fc1d1243da7ull ), 1 ); // moving
+        w.header( ids.ref_at( 5, 0x11a44fc1d1243da7ull ), 1 ); // moving
         w.put8( value.moving ? 1 : 0 );
     }
     if ( value.firing != false )
     {
-        w.header( ids.ref( 0x7674cfd19b9031caull ), 1 ); // firing
+        w.header( ids.ref_at( 32, 0x7674cfd19b9031caull ), 1 ); // firing
         w.put8( value.firing ? 1 : 0 );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -4028,8 +4105,8 @@ inline bool MixedEntityLoadMessages( MixedEntity * values, int64_t * count, cons
 inline int64_t MixedStatMeasureBody( TableIds & ids, const MixedStat & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.stat_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x80ab75f0866dbf65ull ) ) + 1 + 1; } // stat_id
-    if ( value.delta != 0 ) { bytes += TableLebBytes( ids.ref( 0x52076675ec13a0c1ull ) ) + 1 + 4; } // delta
+    if ( value.stat_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 38, 0x80ab75f0866dbf65ull ) ) + 1 + 1; } // stat_id
+    if ( value.delta != 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x52076675ec13a0c1ull ) ) + 1 + 4; } // delta
     return bytes;
 }
 
@@ -4045,12 +4122,12 @@ BENCH_TABLE_INLINE bool MixedStatSaveBody( TableWriter & w, TableIds & ids, cons
 {
     if ( value.stat_id != 0 )
     {
-        w.header( ids.ref( 0x80ab75f0866dbf65ull ), 6 ); // stat_id
+        w.header( ids.ref_at( 38, 0x80ab75f0866dbf65ull ), 6 ); // stat_id
         w.put8( uint8_t( value.stat_id ) );
     }
     if ( value.delta != 0 )
     {
-        w.header( ids.ref( 0x52076675ec13a0c1ull ), 4 ); // delta
+        w.header( ids.ref_at( 21, 0x52076675ec13a0c1ull ), 4 ); // delta
         w.put32( uint32_t( value.delta ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -4417,10 +4494,10 @@ inline bool MixedStatLoadMessages( MixedStat * values, int64_t * count, const Ta
 inline int64_t MixedHitEventMeasureBody( TableIds & ids, const MixedHitEvent & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.target_id != 0 ) { bytes += TableLebBytes( ids.ref( 0xb7bc9ac015a25050ull ) ) + 1 + 2; } // target_id
-    if ( value.damage != 0 ) { bytes += TableLebBytes( ids.ref( 0x7f6308be8ab37fc0ull ) ) + 1 + 4; } // damage
-    if ( value.hit_kind != 0 ) { bytes += TableLebBytes( ids.ref( 0x01fbc365b059b925ull ) ) + 1 + 4; } // hit_kind
-    if ( value.crit != false ) { bytes += TableLebBytes( ids.ref( 0x126167908c9aa52dull ) ) + 1 + 1; } // crit
+    if ( value.target_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 59, 0xb7bc9ac015a25050ull ) ) + 1 + 2; } // target_id
+    if ( value.damage != 0 ) { bytes += TableLebBytes( ids.ref_at( 36, 0x7f6308be8ab37fc0ull ) ) + 1 + 4; } // damage
+    if ( value.hit_kind != 0 ) { bytes += TableLebBytes( ids.ref_at( 1, 0x01fbc365b059b925ull ) ) + 1 + 4; } // hit_kind
+    if ( value.crit != false ) { bytes += TableLebBytes( ids.ref_at( 6, 0x126167908c9aa52dull ) ) + 1 + 1; } // crit
     return bytes;
 }
 
@@ -4436,22 +4513,22 @@ BENCH_TABLE_INLINE bool MixedHitEventSaveBody( TableWriter & w, TableIds & ids, 
 {
     if ( value.target_id != 0 )
     {
-        w.header( ids.ref( 0xb7bc9ac015a25050ull ), 7 ); // target_id
+        w.header( ids.ref_at( 59, 0xb7bc9ac015a25050ull ), 7 ); // target_id
         w.put16( uint16_t( value.target_id ) );
     }
     if ( value.damage != 0 )
     {
-        w.header( ids.ref( 0x7f6308be8ab37fc0ull ), 4 ); // damage
+        w.header( ids.ref_at( 36, 0x7f6308be8ab37fc0ull ), 4 ); // damage
         w.put32( uint32_t( value.damage ) );
     }
     if ( value.hit_kind != 0 )
     {
-        w.header( ids.ref( 0x01fbc365b059b925ull ), 4 ); // hit_kind
+        w.header( ids.ref_at( 1, 0x01fbc365b059b925ull ), 4 ); // hit_kind
         w.put32( uint32_t( value.hit_kind ) );
     }
     if ( value.crit != false )
     {
-        w.header( ids.ref( 0x126167908c9aa52dull ), 1 ); // crit
+        w.header( ids.ref_at( 6, 0x126167908c9aa52dull ), 1 ); // crit
         w.put8( value.crit ? 1 : 0 );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -4976,8 +5053,8 @@ inline bool MixedHitEventLoadMessages( MixedHitEvent * values, int64_t * count, 
 inline int64_t MixedChatEventMeasureBody( TableIds & ids, const MixedChatEvent & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.channel != 0 ) { bytes += TableLebBytes( ids.ref( 0xa5013e9ad5caeda4ull ) ) + 1 + 4; } // channel
-    if ( value.speaker != 0 ) { bytes += TableLebBytes( ids.ref( 0xfbf1ac4d96ebd022ull ) ) + 1 + 2; } // speaker
+    if ( value.channel != 0 ) { bytes += TableLebBytes( ids.ref_at( 54, 0xa5013e9ad5caeda4ull ) ) + 1 + 4; } // channel
+    if ( value.speaker != 0 ) { bytes += TableLebBytes( ids.ref_at( 76, 0xfbf1ac4d96ebd022ull ) ) + 1 + 2; } // speaker
     return bytes;
 }
 
@@ -4993,12 +5070,12 @@ BENCH_TABLE_INLINE bool MixedChatEventSaveBody( TableWriter & w, TableIds & ids,
 {
     if ( value.channel != 0 )
     {
-        w.header( ids.ref( 0xa5013e9ad5caeda4ull ), 4 ); // channel
+        w.header( ids.ref_at( 54, 0xa5013e9ad5caeda4ull ), 4 ); // channel
         w.put32( uint32_t( value.channel ) );
     }
     if ( value.speaker != 0 )
     {
-        w.header( ids.ref( 0xfbf1ac4d96ebd022ull ), 7 ); // speaker
+        w.header( ids.ref_at( 76, 0xfbf1ac4d96ebd022ull ), 7 ); // speaker
         w.put16( uint16_t( value.speaker ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -5395,8 +5472,8 @@ inline bool MixedChatEventLoadMessages( MixedChatEvent * values, int64_t * count
 inline int64_t MixedPickupEventMeasureBody( TableIds & ids, const MixedPickupEvent & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.item_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x9e7fd06d864fbd56ull ) ) + 1 + 2; } // item_id
-    if ( value.amount != 0 ) { bytes += TableLebBytes( ids.ref( 0x8113fe7ea2b16969ull ) ) + 1 + 4; } // amount
+    if ( value.item_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 48, 0x9e7fd06d864fbd56ull ) ) + 1 + 2; } // item_id
+    if ( value.amount != 0 ) { bytes += TableLebBytes( ids.ref_at( 39, 0x8113fe7ea2b16969ull ) ) + 1 + 4; } // amount
     return bytes;
 }
 
@@ -5412,12 +5489,12 @@ BENCH_TABLE_INLINE bool MixedPickupEventSaveBody( TableWriter & w, TableIds & id
 {
     if ( value.item_id != 0 )
     {
-        w.header( ids.ref( 0x9e7fd06d864fbd56ull ), 7 ); // item_id
+        w.header( ids.ref_at( 48, 0x9e7fd06d864fbd56ull ), 7 ); // item_id
         w.put16( uint16_t( value.item_id ) );
     }
     if ( value.amount != 0 )
     {
-        w.header( ids.ref( 0x8113fe7ea2b16969ull ), 4 ); // amount
+        w.header( ids.ref_at( 39, 0x8113fe7ea2b16969ull ), 4 ); // amount
         w.put32( uint32_t( value.amount ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -5814,19 +5891,19 @@ inline bool MixedPickupEventLoadMessages( MixedPickupEvent * values, int64_t * c
 inline int64_t BenchMixedMeasureBody( TableIds & ids, const BenchMixed & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.sequence != 0 ) { bytes += TableLebBytes( ids.ref( 0xaa38aca481f528a8ull ) ) + 1 + 2; } // sequence
-    if ( value.ack_sequence != 0 ) { bytes += TableLebBytes( ids.ref( 0x0dbe005c56697c3eull ) ) + 1 + 4; } // ack_sequence
-    if ( value.ack_bits != 0 ) { bytes += TableLebBytes( ids.ref( 0x9bae0da8b829ee03ull ) ) + 1 + 4; } // ack_bits
-    if ( value.session_id != 0 ) { bytes += TableLebBytes( ids.ref( 0xb7d7b5650a590b05ull ) ) + 1 + 8; } // session_id
-    if ( value.client_id != 0 ) { bytes += TableLebBytes( ids.ref( 0x6d7b98e2d095967eull ) ) + 1 + 4; } // client_id
-    if ( value.nonce != 0 ) { bytes += TableLebBytes( ids.ref( 0x73a94c71d60dc0d8ull ) ) + 1 + 8; } // nonce
-    if ( value.world_time != 0 ) { bytes += TableLebBytes( ids.ref( 0x3eee6b51be54fc85ull ) ) + 1 + 8; } // world_time
-    if ( value.frame_tick != 0 ) { bytes += TableLebBytes( ids.ref( 0x7bbc035f7b6d0112ull ) ) + 1 + 8; } // frame_tick
-    if ( value.server_time != 0 ) { bytes += TableLebBytes( ids.ref( 0x3c460475f9be69c6ull ) ) + 1 + 4; } // server_time
+    if ( value.sequence != 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xaa38aca481f528a8ull ) ) + 1 + 2; } // sequence
+    if ( value.ack_sequence != 0 ) { bytes += TableLebBytes( ids.ref_at( 4, 0x0dbe005c56697c3eull ) ) + 1 + 4; } // ack_sequence
+    if ( value.ack_bits != 0 ) { bytes += TableLebBytes( ids.ref_at( 46, 0x9bae0da8b829ee03ull ) ) + 1 + 4; } // ack_bits
+    if ( value.session_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 60, 0xb7d7b5650a590b05ull ) ) + 1 + 8; } // session_id
+    if ( value.client_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 29, 0x6d7b98e2d095967eull ) ) + 1 + 4; } // client_id
+    if ( value.nonce != 0 ) { bytes += TableLebBytes( ids.ref_at( 31, 0x73a94c71d60dc0d8ull ) ) + 1 + 8; } // nonce
+    if ( value.world_time != 0 ) { bytes += TableLebBytes( ids.ref_at( 20, 0x3eee6b51be54fc85ull ) ) + 1 + 8; } // world_time
+    if ( value.frame_tick != 0 ) { bytes += TableLebBytes( ids.ref_at( 34, 0x7bbc035f7b6d0112ull ) ) + 1 + 8; } // frame_tick
+    if ( value.server_time != 0 ) { bytes += TableLebBytes( ids.ref_at( 18, 0x3c460475f9be69c6ull ) ) + 1 + 4; } // server_time
     if ( value.entities_count < 0 || value.entities_count > 8 ) { return -1; } // storage invariant
     if ( value.entities_count > 0 )
     {
-        const uint64_t ref_entities = ids.ref( 0x935d0fb07bb3822aull );
+        const uint64_t ref_entities = ids.ref_at( 43, 0x935d0fb07bb3822aull );
         int64_t body_entities = 0;
         body_entities += 1 + TableLebBytes( (uint64_t) ( value.entities_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.entities_count; elem_i++ )
@@ -5840,7 +5917,7 @@ inline int64_t BenchMixedMeasureBody( TableIds & ids, const BenchMixed & value )
     if ( value.stats_count < 0 || value.stats_count > 80 ) { return -1; } // storage invariant
     if ( value.stats_count > 0 )
     {
-        const uint64_t ref_stats = ids.ref( 0xee639cad45b1994cull );
+        const uint64_t ref_stats = ids.ref_at( 74, 0xee639cad45b1994cull );
         int64_t body_stats = 0;
         body_stats += 1 + TableLebBytes( (uint64_t) ( value.stats_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.stats_count; elem_i++ )
@@ -5853,14 +5930,14 @@ inline int64_t BenchMixedMeasureBody( TableIds & ids, const BenchMixed & value )
     }
     if ( value.game_event.type != MixedEventType::None ) // None elides — the absence of the field is the None
     {
-        bytes += TableLebBytes( ids.ref( 0x2e35dc5321aa5790ull ) ) + 1;
+        bytes += TableLebBytes( ids.ref_at( 14, 0x2e35dc5321aa5790ull ) ) + 1;
         switch ( value.game_event.type )
         {
             case MixedEventType::None: break;
             case MixedEventType::Hit:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0x33732819300680aaull );
+                const uint64_t arm_ref = ids.ref_at( 16, 0x33732819300680aaull );
                 {
                     const int64_t arm_body = MixedHitEventMeasureBody( ids, value.game_event.hit );
                     if ( arm_body < 0 ) { return -1; }
@@ -5872,7 +5949,7 @@ inline int64_t BenchMixedMeasureBody( TableIds & ids, const BenchMixed & value )
             case MixedEventType::Chat:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0xf2a38d910b5b348bull );
+                const uint64_t arm_ref = ids.ref_at( 75, 0xf2a38d910b5b348bull );
                 {
                     const int64_t arm_body = MixedChatEventMeasureBody( ids, value.game_event.chat );
                     if ( arm_body < 0 ) { return -1; }
@@ -5884,7 +5961,7 @@ inline int64_t BenchMixedMeasureBody( TableIds & ids, const BenchMixed & value )
             case MixedEventType::Pickup:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0x9fa3a41c86ecb765ull );
+                const uint64_t arm_ref = ids.ref_at( 50, 0x9fa3a41c86ecb765ull );
                 {
                     const int64_t arm_body = MixedPickupEventMeasureBody( ids, value.game_event.pickup );
                     if ( arm_body < 0 ) { return -1; }
@@ -5901,7 +5978,7 @@ inline int64_t BenchMixedMeasureBody( TableIds & ids, const BenchMixed & value )
         for ( int32_t i = 0; i < 4; i++ ) { if ( value.loadout[i] != 0 ) { all_default_loadout = false; break; } }
         if ( !all_default_loadout )
         {
-            const uint64_t ref_loadout = ids.ref( 0x5759ce7586bbb5a3ull );
+            const uint64_t ref_loadout = ids.ref_at( 24, 0x5759ce7586bbb5a3ull );
             int64_t body_loadout = 0;
             body_loadout += 1 + TableLebBytes( (uint64_t) ( 4 ) ); // the element kind byte and the count
             body_loadout += (int64_t) ( 4 ) * 1;
@@ -5909,30 +5986,30 @@ inline int64_t BenchMixedMeasureBody( TableIds & ids, const BenchMixed & value )
         }
     }
     if ( value.player_name_length < 0 || value.player_name_length > 15 ) { return -1; } // storage invariant
-    if ( value.player_name_length > 0 ) { bytes += TableLebBytes( ids.ref( 0x13a62f542cf8e86eull ) ) + 1 + TableLebBytes( (uint64_t) ( value.player_name_length ) ) + ( value.player_name_length ); } // player_name
+    if ( value.player_name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 7, 0x13a62f542cf8e86eull ) ) + 1 + TableLebBytes( (uint64_t) ( value.player_name_length ) ) + ( value.player_name_length ); } // player_name
     if ( value.payload_length < 0 || value.payload_length > 16 ) { return -1; } // storage invariant
     if ( value.payload_length > 0 )
     {
         const int64_t body_payload = 1 + TableLebBytes( (uint64_t) value.payload_length ) + value.payload_length;
-        bytes += TableLebBytes( ids.ref( 0xcfb8a9d063b5e9e5ull ) ) + 1 + TableLebBytes( (uint64_t) ( body_payload ) ) + ( body_payload ); // payload
+        bytes += TableLebBytes( ids.ref_at( 67, 0xcfb8a9d063b5e9e5ull ) ) + 1 + TableLebBytes( (uint64_t) ( body_payload ) ) + ( body_payload ); // payload
     }
-    if ( value.aim_x != 0.0f ) { bytes += TableLebBytes( ids.ref( 0xdbaf7be5e24296c9ull ) ) + 1 + 4; } // aim_x
-    if ( value.aim_y != 0.0f ) { bytes += TableLebBytes( ids.ref( 0xdbaf7ae5e2429516ull ) ) + 1 + 4; } // aim_y
-    if ( value.aim_z != 0.0f ) { bytes += TableLebBytes( ids.ref( 0xdbaf79e5e2429363ull ) ) + 1 + 4; } // aim_z
-    if ( value.recoil != 0.0f ) { bytes += TableLebBytes( ids.ref( 0x9cef31fff7e2e457ull ) ) + 1 + 4; } // recoil
-    if ( value.drift != 0.0 ) { bytes += TableLebBytes( ids.ref( 0x5ab3f9c9341f6c04ull ) ) + 1 + 8; } // drift
-    if ( value.wide_key != 0 ) { bytes += TableLebBytes( ids.ref( 0xa3348580461faf16ull ) ) + 1 + 16; } // wide_key
-    if ( value.flux != 0 ) { bytes += TableLebBytes( ids.ref( 0xd61bdd7908af2642ull ) ) + 1 + 16; } // flux
-    if ( value.ping != 0 ) { bytes += TableLebBytes( ids.ref( 0xbf30e00dc53307a9ull ) ) + 1 + 2; } // ping
-    if ( value.crc_hint != 0 ) { bytes += TableLebBytes( ids.ref( 0x560d6527ccd8515full ) ) + 1 + 4; } // crc_hint
-    if ( value.has_extra != true ) { bytes += TableLebBytes( ids.ref( 0xc08292176cfd8672ull ) ) + 1 + 1; } // has_extra
+    if ( value.aim_x != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 72, 0xdbaf7be5e24296c9ull ) ) + 1 + 4; } // aim_x
+    if ( value.aim_y != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 71, 0xdbaf7ae5e2429516ull ) ) + 1 + 4; } // aim_y
+    if ( value.aim_z != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 70, 0xdbaf79e5e2429363ull ) ) + 1 + 4; } // aim_z
+    if ( value.recoil != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 47, 0x9cef31fff7e2e457ull ) ) + 1 + 4; } // recoil
+    if ( value.drift != 0.0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0x5ab3f9c9341f6c04ull ) ) + 1 + 8; } // drift
+    if ( value.wide_key != 0 ) { bytes += TableLebBytes( ids.ref_at( 53, 0xa3348580461faf16ull ) ) + 1 + 16; } // wide_key
+    if ( value.flux != 0 ) { bytes += TableLebBytes( ids.ref_at( 68, 0xd61bdd7908af2642ull ) ) + 1 + 16; } // flux
+    if ( value.ping != 0 ) { bytes += TableLebBytes( ids.ref_at( 61, 0xbf30e00dc53307a9ull ) ) + 1 + 2; } // ping
+    if ( value.crc_hint != 0 ) { bytes += TableLebBytes( ids.ref_at( 23, 0x560d6527ccd8515full ) ) + 1 + 4; } // crc_hint
+    if ( value.has_extra != true ) { bytes += TableLebBytes( ids.ref_at( 62, 0xc08292176cfd8672ull ) ) + 1 + 1; } // has_extra
     if ( value.has_extra )
     {
-        if ( value.extra != 0 ) { bytes += TableLebBytes( ids.ref( 0xfd29ee12a979cb69ull ) ) + 1 + 4; } // extra
+        if ( value.extra != 0 ) { bytes += TableLebBytes( ids.ref_at( 77, 0xfd29ee12a979cb69ull ) ) + 1 + 4; } // extra
     }
     if ( !value.has_extra )
     {
-        if ( value.idle_ticks != 0 ) { bytes += TableLebBytes( ids.ref( 0x78101ac0aa8cbcfeull ) ) + 1 + 4; } // idle_ticks
+        if ( value.idle_ticks != 0 ) { bytes += TableLebBytes( ids.ref_at( 33, 0x78101ac0aa8cbcfeull ) ) + 1 + 4; } // idle_ticks
     }
     return bytes;
 }
@@ -5949,53 +6026,53 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
 {
     if ( value.sequence != 0 )
     {
-        w.header( ids.ref( 0xaa38aca481f528a8ull ), 7 ); // sequence
+        w.header( ids.ref_at( 56, 0xaa38aca481f528a8ull ), 7 ); // sequence
         w.put16( uint16_t( value.sequence ) );
     }
     if ( value.ack_sequence != 0 )
     {
-        w.header( ids.ref( 0x0dbe005c56697c3eull ), 4 ); // ack_sequence
+        w.header( ids.ref_at( 4, 0x0dbe005c56697c3eull ), 4 ); // ack_sequence
         w.put32( uint32_t( value.ack_sequence ) );
     }
     if ( value.ack_bits != 0 )
     {
-        w.header( ids.ref( 0x9bae0da8b829ee03ull ), 8 ); // ack_bits
+        w.header( ids.ref_at( 46, 0x9bae0da8b829ee03ull ), 8 ); // ack_bits
         w.put32( uint32_t( value.ack_bits ) );
     }
     if ( value.session_id != 0 )
     {
-        w.header( ids.ref( 0xb7d7b5650a590b05ull ), 9 ); // session_id
+        w.header( ids.ref_at( 60, 0xb7d7b5650a590b05ull ), 9 ); // session_id
         w.put64( uint64_t( value.session_id ) );
     }
     if ( value.client_id != 0 )
     {
-        w.header( ids.ref( 0x6d7b98e2d095967eull ), 8 ); // client_id
+        w.header( ids.ref_at( 29, 0x6d7b98e2d095967eull ), 8 ); // client_id
         w.put32( uint32_t( value.client_id ) );
     }
     if ( value.nonce != 0 )
     {
-        w.header( ids.ref( 0x73a94c71d60dc0d8ull ), 9 ); // nonce
+        w.header( ids.ref_at( 31, 0x73a94c71d60dc0d8ull ), 9 ); // nonce
         w.put64( uint64_t( value.nonce ) );
     }
     if ( value.world_time != 0 )
     {
-        w.header( ids.ref( 0x3eee6b51be54fc85ull ), 5 ); // world_time
+        w.header( ids.ref_at( 20, 0x3eee6b51be54fc85ull ), 5 ); // world_time
         w.put64( uint64_t( value.world_time ) );
     }
     if ( value.frame_tick != 0 )
     {
-        w.header( ids.ref( 0x7bbc035f7b6d0112ull ), 9 ); // frame_tick
+        w.header( ids.ref_at( 34, 0x7bbc035f7b6d0112ull ), 9 ); // frame_tick
         w.put64( uint64_t( value.frame_tick ) );
     }
     if ( value.server_time != 0 )
     {
-        w.header( ids.ref( 0x3c460475f9be69c6ull ), 22 ); // server_time
+        w.header( ids.ref_at( 18, 0x3c460475f9be69c6ull ), 22 ); // server_time
         w.put32( uint32_t( value.server_time ) );
     }
     if ( value.entities_count < 0 || value.entities_count > 8 ) { return false; } // storage invariant
     if ( value.entities_count > 0 )
     {
-        const uint64_t ref_entities = ids.ref( 0x935d0fb07bb3822aull );
+        const uint64_t ref_entities = ids.ref_at( 43, 0x935d0fb07bb3822aull );
         int64_t body_entities = 0;
         // entities: the sizing loop's per-element lengths, kept for the write loop
         // below — the element's own length prefix is the number the parent's
@@ -6024,7 +6101,7 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
     if ( value.stats_count < 0 || value.stats_count > 80 ) { return false; } // storage invariant
     if ( value.stats_count > 0 )
     {
-        const uint64_t ref_stats = ids.ref( 0xee639cad45b1994cull );
+        const uint64_t ref_stats = ids.ref_at( 74, 0xee639cad45b1994cull );
         int64_t body_stats = 0;
         // stats: the sizing loop's per-element lengths, kept for the write loop
         // below — the element's own length prefix is the number the parent's
@@ -6052,12 +6129,12 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
     }
     if ( value.game_event.type != MixedEventType::None )
     {
-        w.header( ids.ref( 0x2e35dc5321aa5790ull ), 15 ); // game_event
+        w.header( ids.ref_at( 14, 0x2e35dc5321aa5790ull ), 15 ); // game_event
         switch ( value.game_event.type )
         {
             case MixedEventType::Hit:
             {
-                const uint64_t arm_ref = ids.ref( 0x33732819300680aaull );
+                const uint64_t arm_ref = ids.ref_at( 16, 0x33732819300680aaull );
                 int64_t arm_payload = 0;
                 {
                     const int64_t arm_body = MixedHitEventMeasureBody( ids, value.game_event.hit );
@@ -6070,7 +6147,7 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
             }
             case MixedEventType::Chat:
             {
-                const uint64_t arm_ref = ids.ref( 0xf2a38d910b5b348bull );
+                const uint64_t arm_ref = ids.ref_at( 75, 0xf2a38d910b5b348bull );
                 int64_t arm_payload = 0;
                 {
                     const int64_t arm_body = MixedChatEventMeasureBody( ids, value.game_event.chat );
@@ -6083,7 +6160,7 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
             }
             case MixedEventType::Pickup:
             {
-                const uint64_t arm_ref = ids.ref( 0x9fa3a41c86ecb765ull );
+                const uint64_t arm_ref = ids.ref_at( 50, 0x9fa3a41c86ecb765ull );
                 int64_t arm_payload = 0;
                 {
                     const int64_t arm_body = MixedPickupEventMeasureBody( ids, value.game_event.pickup );
@@ -6102,7 +6179,7 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
         for ( int32_t i = 0; i < 4; i++ ) { if ( value.loadout[i] != 0 ) { all_default_loadout = false; break; } }
         if ( !all_default_loadout )
         {
-            const uint64_t ref_loadout = ids.ref( 0x5759ce7586bbb5a3ull );
+            const uint64_t ref_loadout = ids.ref_at( 24, 0x5759ce7586bbb5a3ull );
             int64_t body_loadout = 0;
             body_loadout += 1 + TableLebBytes( (uint64_t) ( 4 ) ); // the element kind byte and the count
             body_loadout += (int64_t) ( 4 ) * 1;
@@ -6117,7 +6194,7 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
     if ( value.player_name_length < 0 || value.player_name_length > 15 ) { return false; } // storage invariant
     if ( value.player_name_length > 0 )
     {
-        w.header( ids.ref( 0x13a62f542cf8e86eull ), 12 ); // player_name
+        w.header( ids.ref_at( 7, 0x13a62f542cf8e86eull ), 12 ); // player_name
         w.putleb( (uint64_t) value.player_name_length );
         w.raw( value.player_name, value.player_name_length );
     }
@@ -6125,66 +6202,66 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
     if ( value.payload_length > 0 )
     {
         const int64_t body_payload = 1 + TableLebBytes( (uint64_t) value.payload_length ) + value.payload_length;
-        w.header( ids.ref( 0xcfb8a9d063b5e9e5ull ), 14 ); // payload
+        w.header( ids.ref_at( 67, 0xcfb8a9d063b5e9e5ull ), 14 ); // payload
         w.putleb( (uint64_t) body_payload );
         w.put8( 6 ); w.putleb( (uint64_t) value.payload_length );
         w.raw( value.payload, value.payload_length );
     }
     if ( value.aim_x != 0.0f )
     {
-        w.header( ids.ref( 0xdbaf7be5e24296c9ull ), 10 ); // aim_x
+        w.header( ids.ref_at( 72, 0xdbaf7be5e24296c9ull ), 10 ); // aim_x
         w.put32( table_float_to_bits( value.aim_x ) );
     }
     if ( value.aim_y != 0.0f )
     {
-        w.header( ids.ref( 0xdbaf7ae5e2429516ull ), 10 ); // aim_y
+        w.header( ids.ref_at( 71, 0xdbaf7ae5e2429516ull ), 10 ); // aim_y
         w.put32( table_float_to_bits( value.aim_y ) );
     }
     if ( value.aim_z != 0.0f )
     {
-        w.header( ids.ref( 0xdbaf79e5e2429363ull ), 10 ); // aim_z
+        w.header( ids.ref_at( 70, 0xdbaf79e5e2429363ull ), 10 ); // aim_z
         w.put32( table_float_to_bits( value.aim_z ) );
     }
     if ( value.recoil != 0.0f )
     {
-        w.header( ids.ref( 0x9cef31fff7e2e457ull ), 10 ); // recoil
+        w.header( ids.ref_at( 47, 0x9cef31fff7e2e457ull ), 10 ); // recoil
         w.put32( table_float_to_bits( value.recoil ) );
     }
     if ( value.drift != 0.0 )
     {
-        w.header( ids.ref( 0x5ab3f9c9341f6c04ull ), 11 ); // drift
+        w.header( ids.ref_at( 25, 0x5ab3f9c9341f6c04ull ), 11 ); // drift
         w.put64( table_double_to_bits( value.drift ) );
     }
     if ( value.wide_key != 0 )
     {
-        w.header( ids.ref( 0xa3348580461faf16ull ), 19 ); // wide_key
+        w.header( ids.ref_at( 53, 0xa3348580461faf16ull ), 19 ); // wide_key
         { serialize::uint128_t raw_v = serialize::uint128_t( value.wide_key ); w.put128( uint64_t( raw_v ), uint64_t( raw_v >> 64 ) ); }
     }
     if ( value.flux != 0 )
     {
-        w.header( ids.ref( 0xd61bdd7908af2642ull ), 18 ); // flux
+        w.header( ids.ref_at( 68, 0xd61bdd7908af2642ull ), 18 ); // flux
         { serialize::uint128_t raw_v = serialize::uint128_t( value.flux ); w.put128( uint64_t( raw_v ), uint64_t( raw_v >> 64 ) ); }
     }
     if ( value.ping != 0 )
     {
-        w.header( ids.ref( 0xbf30e00dc53307a9ull ), 26 ); // ping
+        w.header( ids.ref_at( 61, 0xbf30e00dc53307a9ull ), 26 ); // ping
         w.put16( uint16_t( value.ping ) );
     }
     if ( value.crc_hint != 0 )
     {
-        w.header( ids.ref( 0x560d6527ccd8515full ), 8 ); // crc_hint
+        w.header( ids.ref_at( 23, 0x560d6527ccd8515full ), 8 ); // crc_hint
         w.put32( uint32_t( value.crc_hint ) );
     }
     if ( value.has_extra != true )
     {
-        w.header( ids.ref( 0xc08292176cfd8672ull ), 1 ); // has_extra
+        w.header( ids.ref_at( 62, 0xc08292176cfd8672ull ), 1 ); // has_extra
         w.put8( value.has_extra ? 1 : 0 );
     }
     if ( value.has_extra )
     {
         if ( value.extra != 0 )
         {
-            w.header( ids.ref( 0xfd29ee12a979cb69ull ), 4 ); // extra
+            w.header( ids.ref_at( 77, 0xfd29ee12a979cb69ull ), 4 ); // extra
             w.put32( uint32_t( value.extra ) );
         }
     }
@@ -6192,7 +6269,7 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
     {
         if ( value.idle_ticks != 0 )
         {
-            w.header( ids.ref( 0x78101ac0aa8cbcfeull ), 4 ); // idle_ticks
+            w.header( ids.ref_at( 33, 0x78101ac0aa8cbcfeull ), 4 ); // idle_ticks
             w.put32( uint32_t( value.idle_ticks ) );
         }
     }
