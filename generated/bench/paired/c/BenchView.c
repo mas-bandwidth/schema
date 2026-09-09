@@ -105,7 +105,7 @@ const UnitViewInfo * schema_bench_unit_view_(void)
     static const ViewType tables[] = {
         { "FixedTable", "FixedTable.schema", 1, &schema_bench_fixed_table_info_, TableDocNone, 0, NULL },
     };
-    static const UnitViewInfo info = { "bench", 0x8d12c3149393f40full,
+    static const UnitViewInfo info = { "bench", 0xc93127c82f083edfull,
         9, types,
         1, tables,
         1, enums,

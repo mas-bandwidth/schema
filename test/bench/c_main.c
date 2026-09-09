@@ -200,6 +200,7 @@ int main( void )
     mixed.crc_hint = 0xABCDEFu;
     mixed.has_extra = 1;
     mixed.extra = 200;
+    mixed.idle_ticks = 9;   /* rides now: the branch that gated it is gone */
 
     /* §1.7: the all-defaults instance IS the pin (gate defaults included) */
     real = new_real_packet();

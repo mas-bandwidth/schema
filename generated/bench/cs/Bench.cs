@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — protocol id 0x8d12c3149393f40f
+// package bench — protocol id 0xc93127c82f083edf
 //
 // Wire functions return bool — the C++-style early-out. A READ-side schema
 // validation failure (a wrong wire constant, nonzero reserved bits, an
@@ -200,13 +200,7 @@ namespace Bench
         public ushort Ping; // wire [0, 250]
         public uint CrcHint;
         public bool HasExtra = true; // specified default at construction; Zero* gives the §5 zero form
-
-        // has_extra — wire branch; storage holds both sides, a read zeroes the
-        // untaken side (SPEC §5)
         public int Extra; // wire [0, 255]
-
-        // !has_extra — wire branch; storage holds both sides, a read zeroes the
-        // untaken side (SPEC §5)
         public int IdleTicks; // wire [0, 15]
 
         public BenchMixed()
@@ -229,7 +223,7 @@ namespace Bench
     {
         // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
         // sides at the same id speak identical bits; there is no other versioning.
-        public const ulong ProtocolId = 0x8d12c3149393f40f;
+        public const ulong ProtocolId = 0xc93127c82f083edf;
 
         // BenchPacketMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // BenchPacketMaxBytes is rounded up to the 8-byte write-buffer granularity.
@@ -1352,7 +1346,7 @@ namespace Bench
 
         // BenchMixedMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // BenchMixedMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long BenchMixedMaxBits = 3626;
+        public const long BenchMixedMaxBits = 3630;
         public const long BenchMixedMaxBytes = 456;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
@@ -1638,35 +1632,17 @@ namespace Bench
                 return false;
             }
             {
-                // flat run: 25 bits in 1 chunk(s) — the field placement is folded
+                // flat run: 37 bits in 1 chunk(s) — the field placement is folded
+                Debug.Assert(value.Extra >= 0 && value.Extra <= 255, "value.Extra out of range [0, 255]");
+                Debug.Assert(value.IdleTicks >= 0 && value.IdleTicks <= 15, "value.IdleTicks out of range [0, 15]");
                 ulong f0 = ((ulong)value.CrcHint) & 0xffffffUL;
                 ulong f1 = value.HasExtra ? 1UL : 0UL;
-                uint w0 = (uint)(f0 | (f1 << 24));
-                if (!stream.SerializeBits(ref w0, 25))
+                ulong f2 = ((ulong)((uint)(value.Extra))) & 0xffUL;
+                ulong f3 = ((ulong)((uint)(value.IdleTicks))) & 0xfUL;
+                ulong w0 = f0 | (f1 << 24) | (f2 << 25) | (f3 << 33);
+                if (!stream.SerializeBits64(ref w0, 37))
                 {
                     return false;
-                }
-            }
-            if (value.HasExtra)
-            {
-                Debug.Assert(value.Extra >= 0 && value.Extra <= 255, "value.Extra out of range [0, 255]");
-                {
-                    uint offsetValue = (uint)(value.Extra);
-                    if (!stream.SerializeBits(ref offsetValue, 8))
-                    {
-                        return false;
-                    }
-                }
-            }
-            else
-            {
-                Debug.Assert(value.IdleTicks >= 0 && value.IdleTicks <= 15, "value.IdleTicks out of range [0, 15]");
-                {
-                    uint offsetValue = (uint)(value.IdleTicks);
-                    if (!stream.SerializeBits(ref offsetValue, 4))
-                    {
-                        return false;
-                    }
                 }
             }
             return true;
@@ -1875,10 +1851,10 @@ namespace Bench
                 return false;
             }
             {
-                // flat run: 25 bits in 1 chunk(s) — one bounds check per chunk,
+                // flat run: 37 bits in 1 chunk(s) — one bounds check per chunk,
                 // one sticky-error test for the whole run
                 ulong c0 = 0;
-                stream.SerializeBits64(ref c0, 25);
+                stream.SerializeBits64(ref c0, 37);
                 if (!stream.Ok)
                 {
                     return false;
@@ -1887,22 +1863,10 @@ namespace Bench
                 value.CrcHint = (uint)v0;
                 ulong v1 = (c0 >> 24) & 0x1UL;
                 value.HasExtra = v1 != 0UL;
-            }
-            if (value.HasExtra)
-            {
-                if (!stream.SerializeInt(ref value.Extra, 0, 255))
-                {
-                    return false;
-                }
-                value.IdleTicks = 0;
-            }
-            else
-            {
-                if (!stream.SerializeInt(ref value.IdleTicks, 0, 15))
-                {
-                    return false;
-                }
-                value.Extra = 0;
+                ulong v2 = (c0 >> 25) & 0xffUL;
+                value.Extra = (int)((int)(uint)v2);
+                ulong v3 = (c0 >> 33) & 0xfUL;
+                value.IdleTicks = (int)((int)(uint)v3);
             }
             return true;
         }
