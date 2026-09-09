@@ -56,7 +56,7 @@ table RootConfig
 }
 
 /// One weapon's tuning. A designer edits this table and nothing else.
-table WeaponConfig | designer_facing
+fixed table WeaponConfig | designer_facing
 {
     ///  Damage per hit, before armor.
     ///
@@ -70,7 +70,7 @@ table WeaponConfig | designer_facing
     effect      Effect
 }
 
-table LoadoutConfig
+fixed table LoadoutConfig
 {
     grade       Grade = Silver
     grades      [..4]Grade

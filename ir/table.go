@@ -4,6 +4,7 @@
 package ir
 
 import (
+	"slices"
 	"sort"
 	"strings"
 )
@@ -133,113 +134,156 @@ func TableFieldJsonKey(f *Field) string {
 	return f.Name
 }
 
-// VariableTables derives the table MODE — the compiler works it out; nobody
-// declares it (the owner's ruling: "i wouldn't want to manually have to
-// specify this… the compiler can work it out"). A closure member is
-// VARIABLE-LENGTH when a pointer appears anywhere in its BY-VALUE closure:
-// its own `*T` fields, or those of anything it nests by value. Everything
-// else is FIXED-SIZE — a plain struct of known sizeof, exactly as every table
-// was before pointers existed, and it gets none of the arena machinery.
+// VariableTables reports the table MODE, and the mode is DECLARED
+// (docs/SPEC-TABLES.md §2.2). `fixed table T` declares the FIXED class — a
+// plain struct of known sizeof that gets none of the arena machinery — and a
+// plain `table T` is the VARIABLE wire, whatever its fields happen to be.
+// Nothing is inferred and nothing is guessed, which is the owner's ruling:
+// "otherwise, it could be a bit of a guess whether the table is fixed or
+// variable, couldn't it? we don't want to surprise the user."
 //
-// The derivation is a least-fixed-point over the by-value edges: pointer
-// edges carry no size and never propagate the mode to the POINTING table's
-// nester, they only mark the table that declares them.
+// So this is the COMPLEMENT of the declared flag, and every emitter switches
+// on it at once. The old least-fixed-point derivation survives as
+// [FixedClosureBreaks], which is no longer a mode but a CHECK: it is what the
+// compiler refuses a `fixed table` by, naming the field and the table it
+// breaks, so a feature that stops a table being fixed is a compile error at
+// the declaration rather than a silent change of wire.
+//
+// A closure member that is not a table — a `type` held by value — carries no
+// declaration of its own and is never variable: a type body takes no pointer,
+// no map and no unbounded array, so nothing in one can make it so.
 func VariableTables(u *Unit) map[string]bool {
-	closure := TableClosure(u)
-	member := func(name string) *Struct {
-		if st := u.Tables[name]; st != nil {
-			return st
-		}
-		return u.Structs[name]
-	}
-	names := make([]string, 0, len(closure))
-	for name := range closure {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-
 	variable := map[string]bool{}
-	for changed := true; changed; {
-		changed = false
-		for _, name := range names {
-			if variable[name] {
-				continue
-			}
-			st := member(name)
-			if st == nil {
-				continue
-			}
-			for _, f := range st.Fields {
-				if f.Type.Pointer {
-					variable[name] = true
-					break
-				}
-				if f.IsMap() {
-					// a MAP is a variable edge whatever its key and value are
-					// (docs/SPEC-TABLES.md §2.8): its entries live in the
-					// arena on the authoring side and in the node's own extent
-					// in a region, so the table that declares one rides with
-					// the pointers and has no block form
-					variable[name] = true
-					break
-				}
-				if f.IsList() {
-					// an UNBOUNDED ARRAY is a variable edge whatever its
-					// element is (docs/SPEC-TABLES.md §2.9), on the map's own
-					// terms: its elements live in the arena on the authoring
-					// side and in the node's own extent in a region
-					variable[name] = true
-					break
-				}
-				if f.Type.Kind != TNamed {
-					continue
-				}
-				switch ref := f.Type.Ref.(type) {
-				case *Struct:
-					if variable[ref.Name] {
-						variable[name] = true
-					}
-				case *Union:
-					if unionIsVariable(ref, variable, map[*Union]bool{}) {
-						variable[name] = true
-					}
-				}
-				if variable[name] {
-					break
-				}
-			}
-			if variable[name] {
-				changed = true
-			}
+	for name := range TableClosure(u) {
+		// ONLY THE VARIABLE NAMES RIDE IN THE MAP, as they did when the mode
+		// was derived: a caller asks `variable[name]` and reads false for
+		// everything else, and `len(variable) == 0` is still "this unit is
+		// fixed throughout", which is the question the zero-cost gate asks.
+		if st := u.Tables[name]; st != nil && !st.Fixed {
+			variable[name] = true
 		}
 	}
 	return variable
 }
 
-// unionIsVariable reports whether a union makes its holder VARIABLE-LENGTH
-// (docs/SPEC-TABLES.md §2.2, §2.6): mode derivation runs through arms, so an
-// arm that is a POINTER, that names a variable-length table, or that is a
-// union which is itself variable, makes the holder variable.
-func unionIsVariable(un *Union, variable map[string]bool, seen map[*Union]bool) bool {
-	if seen[un] {
-		return false
+// FixedBreak is one construct in a fixed table's BY-VALUE closure that makes
+// a body variable size — the thing a `fixed table` is refused by
+// (docs/SPEC-TABLES.md §2.2, §11).
+type FixedBreak struct {
+	Owner string // the closure member that declares the field
+	Field string // the field's own name
+	Why   string // what it is, and why a fixed body cannot hold it
+	Refs  string // the spec references the refusal cites
+}
+
+// At is the break's field as a refusal spells it: `Owner.field`.
+func (b FixedBreak) At() string { return b.Owner + "." + b.Field }
+
+// FixedClosureBreaks walks a table's BY-VALUE closure and returns every
+// construct that makes a body variable size (docs/SPEC-TABLES.md §2.2). It is
+// the CHECK behind the `fixed table` refusal, and the only thing left of the
+// old derivation: "Nests by value" reaches through every by-value edge there
+// is — a plain nested table, an element of a bounded array, an element of an
+// enum-keyed array, a member of a guarded (`if`) group, an optional's value
+// (§2.3), and a UNION ARM that is a table (§2.6).
+//
+// A nested FIXED table stops the walk: its own closure is checked at its own
+// declaration, so a break is reported once, where it is declared. A nested
+// PLAIN table is itself a break, because the variable wire has no size a
+// fixed body could hold.
+//
+// `member` resolves a closure name to its struct; the checker passes its own
+// resolver, because the unit is not assembled yet when this runs.
+func FixedClosureBreaks(member func(string) *Struct, name string) []FixedBreak {
+	var out []FixedBreak
+	seen := map[string]bool{}
+	seenUnion := map[*Union]bool{}
+	var walk func(owner string)
+	var walkUnion func(un *Union)
+
+	walkLine := func(owner string, f *Field, arm bool) {
+		where, kinds := "", "docs/SPEC-TABLES.md §2.2"
+		if arm {
+			where, kinds = " arm", "docs/SPEC-TABLES.md §2.2, §2.6"
+		}
+		add := func(why, refs string) {
+			out = append(out, FixedBreak{owner, f.Name, why, refs})
+		}
+		switch {
+		case f.Guard != "":
+			// THE LOOKBACK CONDITIONAL IS THERE TO MAKE A BODY VARIABLE SIZE
+			// (SPEC §4.5): what rides depends on a value read earlier in the
+			// same body, so two values of one table have two sizes.
+			add("sits in an `if` branch, and the lookback conditional is there to make a body variable size — what rides depends on a value read earlier in the same body, so two values of the table have two sizes", "docs/SPEC-TABLES.md §2.2, SPEC §4.5")
+		case f.IsMap():
+			add("is a map"+where+", and a map's entries live in the arena on the authoring side and in the node's own extent in a region — the count is the data's, not the declaration's", kinds+", §2.8")
+		case f.IsList():
+			add("is an unbounded array"+where+", and its elements live in the arena on the authoring side and in the node's own extent in a region — the count is the data's, not the declaration's", kinds+", §2.9")
+		case f.Type.Blob():
+			add("is a byte buffer"+where+" at its used size, which is a pointer at a blob node — the bytes are the data's, not the declaration's; `string(N)` and `bytes(N)` are the bounded spellings and have a size the declaration states", kinds+", §2.5")
+		case f.Type.Pointer:
+			add("is a pointer"+where+", and a pointer is an arena allocation and a node record — the lifecycle the fixed class exists to not pay for", kinds+", §2.1")
+		case f.Type.Kind != TNamed:
+		default:
+			switch ref := f.Type.Ref.(type) {
+			case *Struct:
+				switch {
+				case ref.IsTable && !ref.Fixed:
+					held := "holds the plain table " + ref.Name + " by value"
+					if arm {
+						held = "is an arm holding the plain table " + ref.Name
+					}
+					add(held+", and a plain `table` is the variable wire whatever its fields are — a fixed body has no size to hold one at", kinds)
+				case ref.IsTable:
+					// A NESTED FIXED TABLE STOPS THE WALK: its own closure is
+					// checked at its own declaration, so a break is reported
+					// once, where a reader can edit it.
+				default:
+					walk(ref.Name)
+				}
+			case *Union:
+				walkUnion(ref)
+			}
+		}
 	}
-	seen[un] = true
-	for _, v := range un.Variants {
-		if v.F == nil {
-			continue
+
+	// A UNION ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6), so the arms take
+	// the field rules unchanged, reported under the UNION's own name — that is
+	// the declaration a reader has to edit.
+	walkUnion = func(un *Union) {
+		if seenUnion[un] {
+			return
 		}
-		if v.F.Type.Pointer {
-			return true
-		}
-		if v.Type != "" && variable[v.Type] {
-			return true
-		}
-		if inner, ok := v.F.Type.Ref.(*Union); ok && unionIsVariable(inner, variable, seen) {
-			return true
+		seenUnion[un] = true
+		for _, v := range un.Variants {
+			if v.F != nil {
+				walkLine(un.Name, v.F, true)
+			}
 		}
 	}
-	return false
+
+	walk = func(owner string) {
+		if seen[owner] {
+			return
+		}
+		seen[owner] = true
+		st := member(owner)
+		if st == nil {
+			return
+		}
+		for _, f := range st.Fields {
+			walkLine(owner, f, false)
+		}
+	}
+
+	walk(name)
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Owner != out[j].Owner {
+			return out[i].Owner < out[j].Owner
+		}
+		return out[i].Field < out[j].Field
+	})
+	return out
 }
 
 // PointerTargets is the set of tables some pointer field targets — the tables
@@ -607,4 +651,62 @@ func TableClosureVocabulary(u *Unit) map[string]bool {
 		}
 	}
 	return out
+}
+
+// ClosureHoldsArenaEdge reports whether a member's BY-VALUE closure declares a
+// POINTER, a MAP (§2.8) or an UNBOUNDED ARRAY (§2.9) — the three constructs
+// whose contents live in the arena on the authoring side and in the node's own
+// extent in a region, and, for a pointer, can be SHARED between two slots.
+//
+// It is not the MODE. The mode is declared (§2.2) and says which wire a table
+// is on; this says whether a TEXT needs labels for shared nodes, which is the
+// question §16.7 and §17.2's directory rule actually turn on. The two used to
+// be one answer because the mode was derived from these same three edges; a
+// guarded table is now variable without holding any of them, so the text asks
+// its own question rather than reading a mode that no longer means this.
+func ClosureHoldsArenaEdge(member func(string) *Struct, name string) bool {
+	seen := map[string]bool{}
+	seenUnion := map[*Union]bool{}
+	var walk func(string) bool
+	var line func(*Field) bool
+	var union func(*Union) bool
+	line = func(f *Field) bool {
+		if f.Type.Pointer || f.IsMap() || f.IsList() {
+			return true
+		}
+		if f.Type.Kind != TNamed {
+			return false
+		}
+		switch ref := f.Type.Ref.(type) {
+		case *Struct:
+			return walk(ref.Name)
+		case *Union:
+			return union(ref)
+		}
+		return false
+	}
+	union = func(un *Union) bool {
+		if seenUnion[un] {
+			return false
+		}
+		seenUnion[un] = true
+		for _, v := range un.Variants {
+			if v.F != nil && line(v.F) {
+				return true
+			}
+		}
+		return false
+	}
+	walk = func(n string) bool {
+		if seen[n] {
+			return false
+		}
+		seen[n] = true
+		st := member(n)
+		if st == nil {
+			return false
+		}
+		return slices.ContainsFunc(st.Fields, line)
+	}
+	return walk(name)
 }

@@ -24,7 +24,7 @@ package tabledemo
 // The signed widths. int8's storage is [-128, 127], int64's is
 // [-9223372036854775808, 9223372036854775807], and a bound landing on either
 // end of either is a comparison with no false case.
-table RangedSigned
+fixed table RangedSigned
 {
     i8_span   int8 | min = -128, max = 127
     i8_low    int8 | min = -128, max = 126
@@ -57,7 +57,7 @@ table RangedSigned
 // The rows whose range starts at 1 carry `= 1`: a field whose range excludes
 // zero must declare a default inside it, or the value's own zero form is out
 // of range and every read of it clamps.
-table RangedUnsigned
+fixed table RangedUnsigned
 {
     u8_span   uint8     | min = 0, max = 255
     u8_low    uint8     | min = 0, max = 254
@@ -86,7 +86,7 @@ table RangedUnsigned
 // half of the same rule: it is written only when N is narrower than the
 // storage the wire kind gives it. The four widths that fill their storage
 // exactly emit nothing; the two that do not emit one clamp each.
-table RangedWidths
+fixed table RangedWidths
 {
     b8  bits(8)
     b16 bits(16)

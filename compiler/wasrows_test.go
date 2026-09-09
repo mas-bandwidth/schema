@@ -36,7 +36,7 @@ union Effect
     tally int32
 }
 
-table Cfg
+fixed table Cfg
 {
     grade  Grade
     effect Effect

@@ -78,7 +78,7 @@ flags TableDamage
 // The per-entity update — MixedEntity's mirror, 14 fields, same kinds and
 // same bounds. Arrayed 8 deep, it carries the bulk of the message here as
 // it does there.
-table TableEntity
+fixed table TableEntity
 {
     entity_id bits(12)
     pos_x     int32       | min = -16383, max = 16383
@@ -99,7 +99,7 @@ table TableEntity
 // The integer mass element — MixedStat's mirror. Arrayed 80 deep, it is the
 // weighting law made mechanical, and on this wire it is also the clearest
 // view of the per-field id+kind overhead: two fields, six bytes of framing.
-table TableStat
+fixed table TableStat
 {
     stat_id bits(8)
     delta   int32   | min = -512, max = 511

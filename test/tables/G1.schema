@@ -12,7 +12,7 @@
 // is the precondition its diagnostic names.
 package tblg1
 
-table Node
+fixed table Node
 {
     value int32
 }

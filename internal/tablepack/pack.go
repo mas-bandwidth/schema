@@ -100,6 +100,13 @@ func PackMessages(m *tabletext.Model, trees []MessageTree) ([]byte, []string, ta
 		if st == nil {
 			return nil, nil, tabletext.Report{}, fmt.Errorf("--root %s names no table in this unit; the roots it declares are %s", tree.Root, strings.Join(m.Roots(), ", "))
 		}
+		// THE MESSAGE FORM IS A FIXED TABLE'S (docs/SPEC-TABLES.md §2.2,
+		// §3.3), and the class is declared: a plain `table` is the
+		// VARIABLE wire, and a message-form request naming one is refused
+		// naming the table rather than quietly writing another form.
+		if !st.Fixed {
+			return nil, nil, tabletext.Report{}, fmt.Errorf("--root %s names a plain `table`, and the MESSAGE FORM is a fixed table's: a message is a bitpacked body under one announced vocabulary, so the shape has to be one the declaration fixes. Declare it `fixed table %s`, or use the FILE form, which every table has (docs/SPEC-TABLES.md §2.2, §3.3)", tree.Root, tree.Root)
+		}
 		inst := m.New(st)
 		if err := p.rootTree(inst, tree.Root, tree.Dir); err != nil {
 			return nil, p.skipped, *p.report, err
@@ -146,8 +153,8 @@ func (p *packer) rootTree(inst *tabletext.Instance, root, dir string) error {
 		p.readTableText(inst, filepath.Join(dir, whole), text)
 		return nil
 	}
-	if p.m.IsVariable(root) {
-		p.refusef("%s: %s is VARIABLE-LENGTH and packs from one %s — its shared nodes are named by labels a text owns, so a tree of fields cannot carry it (docs/SPEC-TABLES.md §16.7, §17.2)",
+	if p.m.NeedsLabels(root) {
+		p.refusef("%s: %s holds a pointer, a map or an unbounded array and packs from one %s — its shared nodes are named by labels a text owns, so a tree of fields cannot carry it (docs/SPEC-TABLES.md §16.7, §17.2)",
 			dir, root, whole)
 		return nil
 	}

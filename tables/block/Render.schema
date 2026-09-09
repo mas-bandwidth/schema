@@ -65,7 +65,7 @@ type RenderQuaternion
 // and nine ordinary bounded arrays of ordinary fixed tables. Every fixed table
 // has a block form — a THIRD projection beside its wire (§3) and its cook (§7)
 // — emitted on the side in RenderBlock.h / RenderBlock.cs.
-table RenderFrame
+fixed table RenderFrame
 {
     version        uint64
     cameras        [..MaxCameras]RenderCamera
@@ -79,7 +79,7 @@ table RenderFrame
     explosions     [..MaxExplosions]RenderExplosion
 }
 
-table RenderCamera
+fixed table RenderCamera
 {
     position         RenderVector3
     rotation         RenderQuaternion
@@ -89,7 +89,7 @@ table RenderCamera
     fov              float32
 }
 
-table RenderShip
+fixed table RenderShip
 {
     position          RenderVector3
     rotation          RenderQuaternion
@@ -104,7 +104,7 @@ table RenderShip
     predicted_explode bool
 }
 
-table RenderTurret
+fixed table RenderTurret
 {
     rotation         RenderQuaternion
     flags            uint64
@@ -117,7 +117,7 @@ table RenderTurret
     has_target_lock  bool
 }
 
-table RenderMissile
+fixed table RenderMissile
 {
     position        RenderVector3
     rotation        RenderQuaternion
@@ -128,7 +128,7 @@ table RenderMissile
     team            Team
 }
 
-table RenderDynamicProp
+fixed table RenderDynamicProp
 {
     position        RenderVector3
     rotation        RenderQuaternion
@@ -139,7 +139,7 @@ table RenderDynamicProp
     team            Team
 }
 
-table RenderStaticProp
+fixed table RenderStaticProp
 {
     position       RenderVector3
     rotation       RenderQuaternion
@@ -150,7 +150,7 @@ table RenderStaticProp
     team           Team
 }
 
-table RenderCosmeticProp
+fixed table RenderCosmeticProp
 {
     position         RenderVector3
     rotation         RenderQuaternion
@@ -162,7 +162,7 @@ table RenderCosmeticProp
     team             Team
 }
 
-table RenderLaser
+fixed table RenderLaser
 {
     start      RenderVector3
     finish     RenderVector3
@@ -172,7 +172,7 @@ table RenderLaser
     team       Team
 }
 
-table RenderExplosion
+fixed table RenderExplosion
 {
     position         RenderVector3
     rotation         RenderQuaternion

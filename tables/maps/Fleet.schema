@@ -6,13 +6,13 @@ package mapdemo
 // it first. A walk that grouped the maps after the pointers would number the
 // two the other way round and the pinned wire would say so.
 
-table ShipConfig
+fixed table ShipConfig
 {
     name   string(64)
     health int32
 }
 
-table Item
+fixed table Item
 {
     count int32
 }

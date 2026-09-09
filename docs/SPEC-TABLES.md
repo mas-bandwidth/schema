@@ -623,13 +623,13 @@ refuses a table today is a gap, named in §15, not a design.
 ## 2. Declaration
 
 ```
-table Physics
+fixed table Physics
 {
     mass float32 | min = 0.1, max = 100000.0
     drag float32
 }
 
-table ShipConfig
+fixed table ShipConfig
 {
     name        string(64)
     class       ShipClass
@@ -639,10 +639,19 @@ table ShipConfig
 }
 ```
 
+**The declaration is `table` or `fixed table`, and the word is the class**
+(§2.2). `fixed table T` is the FIXED wire — a plain struct of known sizeof,
+none of the arena machinery, a block form (§2.7) and the message form (§3.3) —
+and the compiler REFUSES anything in its by-value closure that would make a
+body variable size, naming the field and the table (§11). A plain `table T` is
+the VARIABLE wire, always, whatever its fields happen to be.
+
 A table body is a type body — the field grammar of SPEC §4.2, hosted by
 `table`: bare and ranged integers, `bits(N)`, `bool`, floats and
 compressed floats, enums, flags, strings, bytes, bounded arrays, unions,
-`if` branches, and declared types as field groups. Nine additions:
+`if` branches, and declared types as field groups. (The last two are the
+variable class's: a guarded field and a plain nested table are refused in a
+`fixed table` — §2.2.) Nine additions:
 
 - **Tables nest.** A named table is a field type (above); nesting is by
   value, and a bounded array of tables is a collection. A table may not
@@ -749,29 +758,68 @@ pointers in the struct. Its meaning depends on the form it sits in
 (§6.3), and its width is that section's: a four-byte slot bounded a region
 at 2 GiB, and the scale a cook exists for is larger than that.
 
-### 2.2 The mode is derived, never declared
+### 2.2 The class is declared: `fixed table`
 
-The compiler works out which class a table belongs to; the schema never
-says. The rule is a least-fixed-point over BY-VALUE edges:
+```
+fixed table Physics                 // FIXED: a plain struct of known sizeof
+{
+    mass float32
+    drag float32
+}
 
-- A table is **VARIABLE-LENGTH** if it declares a pointer, a map (§2.8) or
-  an unbounded array (§2.9),
-  or if anything it nests by value is variable-length. "Nests by value" reaches through every
-  by-value edge there is: a plain nested table, an element of a bounded
-  array, an element of an enum-keyed array, a member of a guarded (`if`)
-  group, an optional's value (§2.3), and a UNION ARM that is a table (§2.6).
-- Every other table is **FIXED-SIZE**.
+table Scene                         // VARIABLE: the arena, the region, a lifecycle
+{
+    props []Prop
+}
+```
 
-Pointer edges do not propagate the mode: a table that is merely POINTED
-AT stays fixed-size if it holds no pointer of its own. It gains an
-allocation and a resolution entry, and nothing else.
+**A table's class is DECLARED, and the compiler refuses a declaration that
+cannot hold the class it claims.** `fixed table T` is the FIXED wire; a plain
+`table T` is the VARIABLE wire, whatever its fields happen to be. Nothing is
+inferred, in either direction, and a bounded body does not quietly become
+fixed because today it could be.
 
-**The BLOCK FORM does not enter this derivation — it READS it** (§2.7). The
-form declares nothing, so there is nothing for the rule above to take account
-of; the rule instead decides which tables have the form at all. Every FIXED
-table has one and a variable-length table has none, so "which arrays are laid
-out at a fixed pitch" and "which tables can be" are both answered by the mode.
-A form is not a mode, and this one is derived from it.
+That is the owner's ruling, and both halves of it are the point:
+
+> "maybe we should be explicit with `fixed` to tables in schema lang … that
+> way if we add any feature that stops it from being fixed, it is a compile
+> error."
+>
+> "otherwise, it could be a bit of a guess whether the table is fixed or
+> variable, couldn't it? we don't want to surprise the user."
+
+**SIX CONSTRUCTS ARE REFUSED IN A `fixed table`'s BY-VALUE CLOSURE**, each
+naming the field and the fixed table it breaks (§11):
+
+- a **pointer** (§2.1) — an arena allocation and a node record,
+- a **byte buffer at its used size** (§2.5) — `*bytes`, `*string`, `*wstring`,
+- a **map** (§2.8) and an **unbounded array** (§2.9) — a count the data
+  decides, not the declaration,
+- a **guarded (`if`) field** (SPEC §4.5) — *"the intent of the lookback
+  conditional is to make it variable size … so that is a disqualifying thing
+  for a fixed table. not supported. only variable."*
+- a **nested plain `table`** held by value — the variable wire has no size a
+  fixed body could hold. Nest a `fixed table`, or a `type`.
+
+"BY-VALUE CLOSURE" reaches through every by-value edge there is: a nested
+table, an element of a bounded array, an element of an enum-keyed array, a
+member of a guarded (`if`) group, an optional's value (§2.3), a `type` held by
+value, and a UNION ARM that is a table (§2.6). It stops at two edges. A
+POINTER edge carries no size, so a table that is merely POINTED AT may be
+`fixed table` and gains an allocation and a resolution entry and nothing else.
+And a nested `fixed table` stops the walk, because its own closure was checked
+at its own declaration — so a break is reported once, where a reader can edit
+it.
+
+**The MESSAGE FORM (§3.3) is a fixed table's**, and a message-form request
+naming a plain `table` is refused naming the table.
+
+**The BLOCK FORM does not enter the class — it READS it** (§2.7). The form
+declares nothing, so there is nothing to take account of; the class instead
+decides which tables have the form at all. Every FIXED table has one and a
+variable-length table has none, so "which arrays are laid out at a fixed
+pitch" and "which tables can be" are both answered by the declaration. A form
+is not a class, and this one follows from it.
 
 **A fixed-size table pays nothing for the VARIABLE-LENGTH machinery**, and
 that is a gate, not a hope: in a unit whose tables are all fixed-size the
@@ -1603,13 +1651,13 @@ the pitch is, what it costs and what it refuses — is §19.
 ### 2.8 Maps: `ships map[string(32)]ShipConfig`
 
 ```
-table ShipConfig
+fixed table ShipConfig
 {
     name   string(64)
     health int32
 }
 
-table Item { count int32 }
+fixed table Item { count int32 }
 
 table Fleet
 {
@@ -1628,10 +1676,10 @@ whole construct, and every rule below descends from it. The wire spends no
 kind, a cook is looked up in place, and every language's map is the same
 bytes under the same order.
 
-**A map is declared in a TABLE body, and it makes its holder
-VARIABLE-LENGTH.** A `type` body refuses one by name (§11). §2.2's
-derivation gains one clause: a map is a variable edge, whatever its key and
-value are. A table declaring one rides in the arena with the pointers, is
+**A map is declared in a TABLE body, and its holder is therefore a plain
+`table`.** A `type` body refuses one by name (§11), and so does a `fixed
+table`: a map is a variable edge whatever its key and value are, so the
+refusal names the map field and the fixed table it breaks (§2.2, §11). A table declaring one rides in the arena with the pointers, is
 read through a region and a root, and has no block form (§2.7). A unit with
 no map and no pointer is fixed exactly as it was, and the zero-cost gate
 holds for maps as it holds for pointers. Not one symbol of the map machinery
@@ -4164,6 +4212,14 @@ byte, no byte length and no alignment inside a message or between messages.
 **FORM BYTE `2` IS THE MESSAGE FORM, and form byte `1` does not move.** A
 form-`1` wire is the three parts §3 describes and every rule above holds over it
 unchanged. Nothing in this subsection touches a file.
+
+**THE FORM IS A FIXED TABLE'S, and that is a declaration, not a derivation**
+(§2.2). A message is a bitpacked body under a vocabulary announced once, so the
+shape a reader steps through has to be one the declaration fixes: `fixed table
+T` may ride here, a plain `table T` may not, and a message-form request naming
+one is REFUSED naming the table (§11) rather than quietly writing another form.
+The FILE form is every table's, fixed and variable alike, and is where a
+variable root goes.
 
 ---
 
@@ -10009,6 +10065,14 @@ in build version (§20.5).
   itself frames a body of any size (§3), so this cap is the STORAGE side's,
   and a wire body past it is refused at LOAD rather than at compile time
   (§3.1). It sits far below where an int64 size stops being exact.
+- **A `fixed table` whose BY-VALUE CLOSURE cannot hold the class** (§2.2),
+  naming the field and the fixed table it breaks: a pointer (§2.1), a byte
+  buffer at its used size (§2.5), a map (§2.8), an unbounded array (§2.9), a
+  guarded (`if`) field (SPEC §4.5), or a nested plain `table` held by value.
+  The class is DECLARED, so a feature that stops a table being fixed is a
+  compile error at the declaration and never a silent change of wire.
+- **A MESSAGE-FORM request naming a plain `table`** (§2.2, §3.3), naming the
+  table: the message form is a fixed table's. The FILE form is every table's.
 - Recursive nesting (§2 — the cycle is named).
 - A bare rename hazard: `was` naming the field's own name, or the table's
   own name (§5).

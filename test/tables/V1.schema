@@ -57,13 +57,13 @@ union Effect
 }
 
 // the element of the enum-keyed array of tables
-table Cell
+fixed table Cell
 {
     power int32 = 0 | min = 0, max = 1000
     label string(8)
 }
 
-table Cfg
+fixed table Cfg
 {
     a      int32 = 5          | min = 0, max = 1000
     b      float32 = 1.5

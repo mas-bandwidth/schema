@@ -18,13 +18,13 @@ import (
 // number, a map of maps, and a table with no map at all.
 const mapUnitSrc = `package fleet
 
-table ShipConfig
+fixed table ShipConfig
 {
     hull   int32
     shield int32
 }
 
-table Item { count int32 }
+fixed table Item { count int32 }
 
 table Fleet
 {
@@ -106,9 +106,9 @@ func TestAMapEntryHasNoBlockForm(t *testing.T) {
 func TestNoBlockFormReasonNamesTheEdgeItFound(t *testing.T) {
 	const src = `package fleet
 
-table ShipConfig { hull int32 }
+fixed table ShipConfig { hull int32 }
 
-table Item { count int32 }
+fixed table Item { count int32 }
 
 table Mapped
 {
@@ -184,7 +184,7 @@ func TestCookProjectionKeepsAMapAnonymous(t *testing.T) {
 func TestAWasRenameMovesNeitherTheProjectionNorTheVersion(t *testing.T) {
 	const before = `package fleet
 
-table ShipConfig { hull int32 }
+fixed table ShipConfig { hull int32 }
 
 table Fleet
 {
@@ -193,7 +193,7 @@ table Fleet
 `
 	const after = `package fleet
 
-table ShipConfig { hull int32 }
+fixed table ShipConfig { hull int32 }
 
 table Fleet
 {

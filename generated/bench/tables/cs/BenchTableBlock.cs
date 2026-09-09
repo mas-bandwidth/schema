@@ -604,7 +604,7 @@ namespace Benchtable
         public static TableBlockInfo Type { get { return blockProjection; } }
     }
 
-    // table TableMixed has NO block form: TableMixed.game_event is a union, and a block's blittable C# form is Sequential with generated padding, which cannot overlay arms (docs/SPEC-TABLES.md §19).
+    // table TableMixed has NO block form: it is VARIABLE-LENGTH: a pointer or a map in its by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
     // Its wire (§3) is unaffected — only this projection is absent, and it is
     // absent by construction rather than by refusal.
 

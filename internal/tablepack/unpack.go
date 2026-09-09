@@ -116,6 +116,13 @@ func UnpackMessages(m *tabletext.Model, trees []MessageTree, announcement, messa
 		if st == nil {
 			return report, fmt.Errorf("--root %s names no table in this unit; the roots it declares are %s", tree.Root, strings.Join(m.Roots(), ", "))
 		}
+		// THE MESSAGE FORM IS A FIXED TABLE'S (docs/SPEC-TABLES.md §2.2,
+		// §3.3), and the class is declared: a plain `table` is the
+		// VARIABLE wire, and a message-form request naming one is refused
+		// naming the table rather than quietly writing another form.
+		if !st.Fixed {
+			return report, fmt.Errorf("--root %s names a plain `table`, and the MESSAGE FORM is a fixed table's: a message is a bitpacked body under one announced vocabulary, so the shape has to be one the declaration fixes. Declare it `fixed table %s`, or use the FILE form, which every table has (docs/SPEC-TABLES.md §2.2, §3.3)", tree.Root, tree.Root)
+		}
 		insts = append(insts, m.New(st))
 	}
 	// the refusal comes back BEFORE anything is written: a batch this engine
@@ -128,7 +135,7 @@ func UnpackMessages(m *tabletext.Model, trees []MessageTree, announcement, messa
 		return report, fmt.Errorf("the bytes are not a batch of these roots: the framing is damaged inside body %d, and the %d before it stand (docs/SPEC-TABLES.md §3.3, §4)", delivered+1, delivered)
 	}
 	for i, tree := range trees {
-		if err := writeTree(m, insts[i], tree.Root, tree.Dir, oneFile || m.IsVariable(tree.Root)); err != nil {
+		if err := writeTree(m, insts[i], tree.Root, tree.Dir, oneFile || m.NeedsLabels(tree.Root)); err != nil {
 			return report, err
 		}
 	}
@@ -148,7 +155,7 @@ func unpackWith(m *tabletext.Model, root string, wire []byte, dir string, oneFil
 	if st == nil {
 		return tabletext.Report{}, fmt.Errorf("--root %s names no table in this unit; the roots it declares are %s", root, strings.Join(m.Roots(), ", "))
 	}
-	oneFile = oneFile || m.IsVariable(root)
+	oneFile = oneFile || m.NeedsLabels(root)
 	inst := m.New(st)
 	var report tabletext.Report
 	// the refusal comes back BEFORE anything is written: a root this engine

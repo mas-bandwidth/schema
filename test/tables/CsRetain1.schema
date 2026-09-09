@@ -1,11 +1,11 @@
 package csretain1
 
-table Child
+fixed table Child
 {
     known int32
 }
 
-table Group { rows [2]Child }
+fixed table Group { rows [2]Child }
 
 union Choice
 {

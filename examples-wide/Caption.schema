@@ -40,7 +40,7 @@ union Body
 }
 
 // The root: every site at once, so one instance exercises them all.
-table Caption
+fixed table Caption
 {
     title wstring(7)
     line  Line
@@ -52,7 +52,7 @@ table Caption
 // block form and its cook is one region of one node. Wide text's cooked
 // storage is char16_t[N + 1] and an int32 used length in CODE UNITS (§7.2),
 // and a fixed root is where that layout is asserted rather than derived.
-table Stamp
+fixed table Stamp
 {
     label wstring(4)
     seq   uint32

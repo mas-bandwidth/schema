@@ -17,7 +17,7 @@ type Badge
     caps  Caps = { Jump }
 }
 
-table Ship | was = "Vessel"
+fixed table Ship | was = "Vessel"
 {
     name string(32) = "untitled"
     tag  bytes(4) = "ab"

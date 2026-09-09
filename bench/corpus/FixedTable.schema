@@ -4,7 +4,7 @@
 // Generate these two files together, as one unit.
 package bench
 
-table FixedTable
+fixed table FixedTable
 {
     value BenchMixed
 }

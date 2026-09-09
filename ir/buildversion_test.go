@@ -32,7 +32,7 @@ const workedSource = `package demo
 
 enum Grade { Bronze, Silver, Gold }
 
-table ShipConfig
+fixed table ShipConfig
 {
     damage float32 = 21.0
     speed  float32 = 500.0 | was = "velocity"
@@ -250,12 +250,12 @@ table Row
 func TestTableArmedUnionArmRenameMovesTheBuildVersionAlone(t *testing.T) {
 	const src = `package demo
 
-table User
+fixed table User
 {
     name string(16)
 }
 
-table Script
+fixed table Script
 {
     path string(16)
 }
@@ -266,7 +266,7 @@ union Origin
     script Script
 }
 
-table Insert
+fixed table Insert
 {
     origin Origin
 }
@@ -303,7 +303,7 @@ func TestBuildVersionSeesARecordRenamed(t *testing.T) {
 // a list of tables and a list of scalars, and the sixteen-byte slot each takes.
 const listSource = `package demo
 
-table Placement
+fixed table Placement
 {
     x float32
     y float32

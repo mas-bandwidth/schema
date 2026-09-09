@@ -3091,70 +3091,66 @@ func TableStatToJson(value *TableStat, buffer []byte) int64 {
 	return tableJsonWrite(unsafe.Pointer(value), TableStatTableType(), buffer)
 }
 
-// TableMixedFromJson fills one TableMixed from a JSON text (docs/SPEC-TABLES.md §16).
-// A nil report is allowed; every tolerance event still decides the same way.
-func TableMixedFromJson(value *TableMixed, text []byte, report *TableReport) bool {
-	return tableJsonRead(unsafe.Pointer(value), TableMixedTableType(), text, report)
+func TableMixedFromJson(builder *TableMixedBuilder, text []byte, report *TableReport) bool {
+	if builder.Arena.Locked {
+		return false
+	}
+	return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()), TableMixedTableType(), &builder.Main, text, report)
 }
-
-// TableMixedToJsonMeasure is the exact size of TableMixed's JSON text, writing nothing.
-func TableMixedToJsonMeasure(value *TableMixed) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), TableMixedTableType(), nil)
+func TableMixedToJsonMeasure(value *TableMixed, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), TableMixedTableType(), nil, allocator...)
 }
-
-// TableMixedToJson writes TableMixed's JSON text into the caller's slice and returns the
-// bytes written — exactly TableMixedToJsonMeasure's answer — or -1 when it is short.
-func TableMixedToJson(value *TableMixed, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), TableMixedTableType(), buffer)
+func TableMixedToJson(value *TableMixed, buffer []byte, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), TableMixedTableType(), buffer, allocator...)
 }
 
 // TableHitEventFromJson fills one TableHitEvent from a JSON text (docs/SPEC-TABLES.md §16).
 // A nil report is allowed; every tolerance event still decides the same way.
-func TableHitEventFromJson(value *TableHitEvent, text []byte, report *TableReport) bool {
+func TableHitEventFromJson(value *TableHitEventRow, text []byte, report *TableReport) bool {
 	return tableJsonRead(unsafe.Pointer(value), TableHitEventTableType(), text, report)
 }
 
 // TableHitEventToJsonMeasure is the exact size of TableHitEvent's JSON text, writing nothing.
-func TableHitEventToJsonMeasure(value *TableHitEvent) int64 {
+func TableHitEventToJsonMeasure(value *TableHitEventRow) int64 {
 	return tableJsonWrite(unsafe.Pointer(value), TableHitEventTableType(), nil)
 }
 
 // TableHitEventToJson writes TableHitEvent's JSON text into the caller's slice and returns the
 // bytes written — exactly TableHitEventToJsonMeasure's answer — or -1 when it is short.
-func TableHitEventToJson(value *TableHitEvent, buffer []byte) int64 {
+func TableHitEventToJson(value *TableHitEventRow, buffer []byte) int64 {
 	return tableJsonWrite(unsafe.Pointer(value), TableHitEventTableType(), buffer)
 }
 
 // TableChatEventFromJson fills one TableChatEvent from a JSON text (docs/SPEC-TABLES.md §16).
 // A nil report is allowed; every tolerance event still decides the same way.
-func TableChatEventFromJson(value *TableChatEvent, text []byte, report *TableReport) bool {
+func TableChatEventFromJson(value *TableChatEventRow, text []byte, report *TableReport) bool {
 	return tableJsonRead(unsafe.Pointer(value), TableChatEventTableType(), text, report)
 }
 
 // TableChatEventToJsonMeasure is the exact size of TableChatEvent's JSON text, writing nothing.
-func TableChatEventToJsonMeasure(value *TableChatEvent) int64 {
+func TableChatEventToJsonMeasure(value *TableChatEventRow) int64 {
 	return tableJsonWrite(unsafe.Pointer(value), TableChatEventTableType(), nil)
 }
 
 // TableChatEventToJson writes TableChatEvent's JSON text into the caller's slice and returns the
 // bytes written — exactly TableChatEventToJsonMeasure's answer — or -1 when it is short.
-func TableChatEventToJson(value *TableChatEvent, buffer []byte) int64 {
+func TableChatEventToJson(value *TableChatEventRow, buffer []byte) int64 {
 	return tableJsonWrite(unsafe.Pointer(value), TableChatEventTableType(), buffer)
 }
 
 // TablePickupEventFromJson fills one TablePickupEvent from a JSON text (docs/SPEC-TABLES.md §16).
 // A nil report is allowed; every tolerance event still decides the same way.
-func TablePickupEventFromJson(value *TablePickupEvent, text []byte, report *TableReport) bool {
+func TablePickupEventFromJson(value *TablePickupEventRow, text []byte, report *TableReport) bool {
 	return tableJsonRead(unsafe.Pointer(value), TablePickupEventTableType(), text, report)
 }
 
 // TablePickupEventToJsonMeasure is the exact size of TablePickupEvent's JSON text, writing nothing.
-func TablePickupEventToJsonMeasure(value *TablePickupEvent) int64 {
+func TablePickupEventToJsonMeasure(value *TablePickupEventRow) int64 {
 	return tableJsonWrite(unsafe.Pointer(value), TablePickupEventTableType(), nil)
 }
 
 // TablePickupEventToJson writes TablePickupEvent's JSON text into the caller's slice and returns the
 // bytes written — exactly TablePickupEventToJsonMeasure's answer — or -1 when it is short.
-func TablePickupEventToJson(value *TablePickupEvent, buffer []byte) int64 {
+func TablePickupEventToJson(value *TablePickupEventRow, buffer []byte) int64 {
 	return tableJsonWrite(unsafe.Pointer(value), TablePickupEventTableType(), buffer)
 }

@@ -136,7 +136,7 @@ func blobKindOf(u *ir.Unit, qualified string) ir.FieldTypeKind {
 // respelled a table pointer carries no declaration at all.
 const blobCensusNodeSource = `package demo
 
-table Leaf { v int32 }
+fixed table Leaf { v int32 }
 
 union Reach
 {

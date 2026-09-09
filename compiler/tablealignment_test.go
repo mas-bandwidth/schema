@@ -21,12 +21,12 @@ func TestCppVariableWideAlignment(t *testing.T) {
 	}{
 		{"narrow", "table Root { n uint64\nnext *Root }", `{"n":7,"next":{"n":9}}`, 8},
 		{"direct", "table Root { n uint128\nnext *Root }", `{"n":1267650600228229401496703205383,"next":{"n":9}}`, 16},
-		{"pointer", "table Wide { n uint128 }\ntable Root { next *Wide }", `{"next":{"n":1267650600228229401496703205383}}`, 16},
+		{"pointer", "fixed table Wide { n uint128 }\ntable Root { next *Wide }", `{"next":{"n":1267650600228229401496703205383}}`, 16},
 		{"union", "union Choice { wide uint128 | overlay }\ntable Root { choice Choice\nnext *Root }", `{"choice":{"wide":1267650600228229401496703205383}}`, 16},
-		{"list", "table Wide { n uint128 }\ntable Root { values []Wide }", `{"values":[{"n":1267650600228229401496703205383},{"n":9}]}`, 16},
-		{"map", "table Wide { n uint128 }\ntable Root { values map[uint8]Wide }", `{"values":{"2":{"n":1267650600228229401496703205383}}}`, 16},
-		{"array", "table Wide { n uint128 }\ntable Root { values [2]Wide\nnext *Root }", `{"values":[{"n":1267650600228229401496703205383},{"n":9}]}`, 16},
-		{"nested", "table Wide { n uint128 }\ntable Root { value Wide\nnext *Root }", `{"value":{"n":1267650600228229401496703205383}}`, 16},
+		{"list", "fixed table Wide { n uint128 }\ntable Root { values []Wide }", `{"values":[{"n":1267650600228229401496703205383},{"n":9}]}`, 16},
+		{"map", "fixed table Wide { n uint128 }\ntable Root { values map[uint8]Wide }", `{"values":{"2":{"n":1267650600228229401496703205383}}}`, 16},
+		{"array", "fixed table Wide { n uint128 }\ntable Root { values [2]Wide\nnext *Root }", `{"values":[{"n":1267650600228229401496703205383},{"n":9}]}`, 16},
+		{"nested", "fixed table Wide { n uint128 }\ntable Root { value Wide\nnext *Root }", `{"value":{"n":1267650600228229401496703205383}}`, 16},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			u := unitFromSource(t, "package fixture\n"+tc.source+"\n")

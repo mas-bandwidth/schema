@@ -1041,7 +1041,11 @@ func (c *checker) resolveBodies() {
 				// tables share the struct shape but live beside the packet
 				// decls, never among them (docs/SPEC-TABLES.md): the packet wire,
 				// the projection and the protocol id do not know they exist
-				st := &ir.Struct{Name: d.Name, IsTable: true, Doc: d.Doc}
+				// THE CLASS IS DECLARED, never inferred (docs/SPEC-TABLES.md
+				// §2.2): `fixed table` is the fixed wire and a plain `table`
+				// is the variable one, and checkFixedTableClosures below
+				// refuses a fixed table whose closure cannot hold the class.
+				st := &ir.Struct{Name: d.Name, IsTable: true, Fixed: d.Fixed, Doc: d.Doc}
 				var tvalued []*ast.Attr
 				st.Tags, tvalued = c.qualification("table "+d.Name, "a table declaration", d.Attrs, map[string]bool{"was": true})
 				for _, a := range tvalued {
@@ -2508,6 +2512,7 @@ func (c *checker) checkTables() {
 			seen[id] = f
 		}
 	}
+	c.checkFixedTableClosures(names)
 	c.checkReservedWireIds(names)
 	c.checkTableVariantIdentity(names)
 	c.checkOptionalVariableClosures(names)
