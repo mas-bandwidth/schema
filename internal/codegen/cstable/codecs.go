@@ -982,18 +982,19 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 }
 
 func rootElemSlots(st *ir.Struct) int {
-	slots := 0
+	slots := int64(0)
 	for _, f := range st.Fields {
 		if f.KeyEnum == "" && tableScalarKind(f) == ir.TableKindTable {
-			if f.IsList() {
-				slots += 256
-			} else if f.Array != ir.ArrayNone && f.ArrayBound > 0 {
-				slots += int(f.ArrayBound)
-			}
-			if slots >= 256 {
+			if f.IsList() || f.ArrayBound >= 256 {
 				return 256
+			}
+			if f.Array != ir.ArrayNone && f.ArrayBound > 0 {
+				slots += f.ArrayBound
+				if slots >= 256 {
+					return 256
+				}
 			}
 		}
 	}
-	return slots
+	return int(slots)
 }
