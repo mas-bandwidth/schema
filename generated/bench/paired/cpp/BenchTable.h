@@ -2378,21 +2378,21 @@ inline bool TableEnumRef( TableIds & ids, MixedWeapon value, uint64_t & ref )
     switch ( value )
     {
         case MixedWeapon::None: ref = 0; return true;
-        case MixedWeapon::Fists: ref = ids.ref( 0xa790eee12766cf0cull ); return true;
-        case MixedWeapon::Pistol: ref = ids.ref( 0x9fbfefa835da8476ull ); return true;
-        case MixedWeapon::Shotgun: ref = ids.ref( 0x188bbb1783928a95ull ); return true;
-        case MixedWeapon::Rifle: ref = ids.ref( 0x2c3667b9c2f272f1ull ); return true;
-        case MixedWeapon::Sniper: ref = ids.ref( 0x0ca8b41b00d755f6ull ); return true;
-        case MixedWeapon::Smg: ref = ids.ref( 0x985fc819fab21a4eull ); return true;
-        case MixedWeapon::Rocket: ref = ids.ref( 0x229d0447c3086a55ull ); return true;
-        case MixedWeapon::Grenade: ref = ids.ref( 0x011c7b49a7228f9dull ); return true;
-        case MixedWeapon::Plasma: ref = ids.ref( 0x89f7566e1123e15full ); return true;
-        case MixedWeapon::Railgun: ref = ids.ref( 0x8d7f25318b3b4469ull ); return true;
-        case MixedWeapon::Flamer: ref = ids.ref( 0xd9cd0dcc285b7816ull ); return true;
-        case MixedWeapon::Mine: ref = ids.ref( 0x04dc16aea8ff5276ull ); return true;
-        case MixedWeapon::Turret: ref = ids.ref( 0x35e53bc341129217ull ); return true;
-        case MixedWeapon::Drone: ref = ids.ref( 0x2cc8282fb0de8831ull ); return true;
-        case MixedWeapon::Repair: ref = ids.ref( 0x20bada21bc8cb334ull ); return true;
+        case MixedWeapon::Fists: ref = ids.ref_at( 55, 0xa790eee12766cf0cull ); return true;
+        case MixedWeapon::Pistol: ref = ids.ref_at( 51, 0x9fbfefa835da8476ull ); return true;
+        case MixedWeapon::Shotgun: ref = ids.ref_at( 8, 0x188bbb1783928a95ull ); return true;
+        case MixedWeapon::Rifle: ref = ids.ref_at( 12, 0x2c3667b9c2f272f1ull ); return true;
+        case MixedWeapon::Sniper: ref = ids.ref_at( 3, 0x0ca8b41b00d755f6ull ); return true;
+        case MixedWeapon::Smg: ref = ids.ref_at( 45, 0x985fc819fab21a4eull ); return true;
+        case MixedWeapon::Rocket: ref = ids.ref_at( 10, 0x229d0447c3086a55ull ); return true;
+        case MixedWeapon::Grenade: ref = ids.ref_at( 0, 0x011c7b49a7228f9dull ); return true;
+        case MixedWeapon::Plasma: ref = ids.ref_at( 41, 0x89f7566e1123e15full ); return true;
+        case MixedWeapon::Railgun: ref = ids.ref_at( 42, 0x8d7f25318b3b4469ull ); return true;
+        case MixedWeapon::Flamer: ref = ids.ref_at( 69, 0xd9cd0dcc285b7816ull ); return true;
+        case MixedWeapon::Mine: ref = ids.ref_at( 2, 0x04dc16aea8ff5276ull ); return true;
+        case MixedWeapon::Turret: ref = ids.ref_at( 17, 0x35e53bc341129217ull ); return true;
+        case MixedWeapon::Drone: ref = ids.ref_at( 13, 0x2cc8282fb0de8831ull ); return true;
+        case MixedWeapon::Repair: ref = ids.ref_at( 9, 0x20bada21bc8cb334ull ); return true;
         default: return false; // no variant names this value: no wire identity
     }
 }

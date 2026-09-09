@@ -6642,8 +6642,8 @@ inline bool TableEnumRef( TableIds & ids, Slot value, uint64_t & ref )
     switch ( value )
     {
         case Slot::None: ref = 0; return true;
-        case Slot::Alpha: ref = ids.ref( 0x4fda04cbc245e18bull ); return true;
-        case Slot::Beta: ref = ids.ref( 0xa0b562a796b69487ull ); return true;
+        case Slot::Alpha: ref = ids.ref_at( 24, 0x4fda04cbc245e18bull ); return true;
+        case Slot::Beta: ref = ids.ref_at( 46, 0xa0b562a796b69487ull ); return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -6652,8 +6652,8 @@ inline bool TableEnumRef( TableRetainIds & ids, Slot value, uint64_t & ref )
     switch ( value )
     {
         case Slot::None: ref = 0; return true;
-        case Slot::Alpha: ref = ids.ref( 0x4fda04cbc245e18bull ); return true;
-        case Slot::Beta: ref = ids.ref( 0xa0b562a796b69487ull ); return true;
+        case Slot::Alpha: ref = ids.ref_at( 24, 0x4fda04cbc245e18bull ); return true;
+        case Slot::Beta: ref = ids.ref_at( 46, 0xa0b562a796b69487ull ); return true;
         default: return false;
     }
 }

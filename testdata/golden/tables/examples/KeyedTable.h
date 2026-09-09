@@ -2605,9 +2605,9 @@ inline bool TableEnumRef( TableIds & ids, Weapon value, uint64_t & ref )
     switch ( value )
     {
         case Weapon::None: ref = 0; return true;
-        case Weapon::Cannon: ref = ids.ref( 0x5854debe3b2e767cull ); return true;
-        case Weapon::Missile: ref = ids.ref( 0xb528592e5a4583e3ull ); return true;
-        case Weapon::Mine: ref = ids.ref( 0x04dc16aea8ff5276ull ); return true;
+        case Weapon::Cannon: ref = ids.ref_at( 51, 0x5854debe3b2e767cull ); return true;
+        case Weapon::Missile: ref = ids.ref_at( 99, 0xb528592e5a4583e3ull ); return true;
+        case Weapon::Mine: ref = ids.ref_at( 3, 0x04dc16aea8ff5276ull ); return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -2668,9 +2668,9 @@ inline bool TableEnumRef( TableIds & ids, Team value, uint64_t & ref )
     switch ( value )
     {
         case Team::None: ref = 0; return true;
-        case Team::Red: ref = ids.ref( 0x9ff1de19feac1b7cull ); return true;
-        case Team::Blue: ref = ids.ref( 0xecf3d3a7c1693e2dull ); return true;
-        case Team::Green: ref = ids.ref( 0xcf00d78fd5953f1cull ); return true;
+        case Team::Red: ref = ids.ref_at( 81, 0x9ff1de19feac1b7cull ); return true;
+        case Team::Blue: ref = ids.ref_at( 139, 0xecf3d3a7c1693e2dull ); return true;
+        case Team::Green: ref = ids.ref_at( 121, 0xcf00d78fd5953f1cull ); return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -2731,9 +2731,9 @@ inline bool TableEnumRef( TableIds & ids, Hull value, uint64_t & ref )
     switch ( value )
     {
         case Hull::None: ref = 0; return true;
-        case Hull::Interceptor: ref = ids.ref( 0xae61a6cbe88c2cf4ull ); return true;
-        case Hull::Gunship: ref = ids.ref( 0x334d24e1420dbc1full ); return true;
-        case Hull::Freighter: ref = ids.ref( 0x6c2321a3d00e23dbull ); return true;
+        case Hull::Interceptor: ref = ids.ref_at( 95, 0xae61a6cbe88c2cf4ull ); return true;
+        case Hull::Gunship: ref = ids.ref_at( 32, 0x334d24e1420dbc1full ); return true;
+        case Hull::Freighter: ref = ids.ref_at( 60, 0x6c2321a3d00e23dbull ); return true;
         default: return false; // no variant names this value: no wire identity
     }
 }

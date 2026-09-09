@@ -2629,9 +2629,9 @@ inline bool TableEnumRef( TableIds & ids, Grade value, uint64_t & ref )
     switch ( value )
     {
         case Grade::None: ref = 0; return true;
-        case Grade::Bronze: ref = ids.ref( 0xc4927739aac4c591ull ); return true;
-        case Grade::Silver: ref = ids.ref( 0xc3e51adeeaf12580ull ); return true;
-        case Grade::Gold: ref = ids.ref( 0xc416c97e0d3218b3ull ); return true;
+        case Grade::Bronze: ref = ids.ref_at( 115, 0xc4927739aac4c591ull ); return true;
+        case Grade::Silver: ref = ids.ref_at( 113, 0xc3e51adeeaf12580ull ); return true;
+        case Grade::Gold: ref = ids.ref_at( 114, 0xc416c97e0d3218b3ull ); return true;
         default: return false; // no variant names this value: no wire identity
     }
 }

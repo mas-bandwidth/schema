@@ -2524,10 +2524,10 @@ inline bool TableEnumRef( TableIds & ids, Team value, uint64_t & ref )
     switch ( value )
     {
         case Team::None: ref = 0; return true;
-        case Team::Red: ref = ids.ref( 0x9ff1de19feac1b7cull ); return true;
-        case Team::Blue: ref = ids.ref( 0xecf3d3a7c1693e2dull ); return true;
-        case Team::Green: ref = ids.ref( 0xcf00d78fd5953f1cull ); return true;
-        case Team::Gold: ref = ids.ref( 0xc416c97e0d3218b3ull ); return true;
+        case Team::Red: ref = ids.ref_at( 46, 0x9ff1de19feac1b7cull ); return true;
+        case Team::Blue: ref = ids.ref_at( 80, 0xecf3d3a7c1693e2dull ); return true;
+        case Team::Green: ref = ids.ref_at( 69, 0xcf00d78fd5953f1cull ); return true;
+        case Team::Gold: ref = ids.ref_at( 63, 0xc416c97e0d3218b3ull ); return true;
         default: return false; // no variant names this value: no wire identity
     }
 }

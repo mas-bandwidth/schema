@@ -5322,8 +5322,8 @@ inline bool TableEnumRef( TableIds & ids, Tier value, uint64_t & ref )
     switch ( value )
     {
         case Tier::None: ref = 0; return true;
-        case Tier::Low: ref = ids.ref( 0x24f3a319b88552c1ull ); return true;
-        case Tier::High: ref = ids.ref( 0x9deeefd89ca8a81dull ); return true;
+        case Tier::Low: ref = ids.ref_at( 3, 0x24f3a319b88552c1ull ); return true;
+        case Tier::High: ref = ids.ref_at( 30, 0x9deeefd89ca8a81dull ); return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -5332,8 +5332,8 @@ inline bool TableEnumRef( TableRetainIds & ids, Tier value, uint64_t & ref )
     switch ( value )
     {
         case Tier::None: ref = 0; return true;
-        case Tier::Low: ref = ids.ref( 0x24f3a319b88552c1ull ); return true;
-        case Tier::High: ref = ids.ref( 0x9deeefd89ca8a81dull ); return true;
+        case Tier::Low: ref = ids.ref_at( 3, 0x24f3a319b88552c1ull ); return true;
+        case Tier::High: ref = ids.ref_at( 30, 0x9deeefd89ca8a81dull ); return true;
         default: return false;
     }
 }

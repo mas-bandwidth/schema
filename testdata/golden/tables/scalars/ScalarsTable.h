@@ -2507,9 +2507,9 @@ inline bool TableEnumRef( TableIds & ids, Axis value, uint64_t & ref )
     switch ( value )
     {
         case Axis::None: ref = 0; return true;
-        case Axis::X: ref = ids.ref( 0xaf64154c86024d67ull ); return true;
-        case Axis::Y: ref = ids.ref( 0xaf64144c86024bb4ull ); return true;
-        case Axis::Z: ref = ids.ref( 0xaf64174c860250cdull ); return true;
+        case Axis::X: ref = ids.ref_at( 20, 0xaf64154c86024d67ull ); return true;
+        case Axis::Y: ref = ids.ref_at( 19, 0xaf64144c86024bb4ull ); return true;
+        case Axis::Z: ref = ids.ref_at( 21, 0xaf64174c860250cdull ); return true;
         default: return false; // no variant names this value: no wire identity
     }
 }

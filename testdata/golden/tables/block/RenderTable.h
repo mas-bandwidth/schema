@@ -2634,9 +2634,9 @@ inline bool TableEnumRef( TableIds & ids, ShipType value, uint64_t & ref )
     switch ( value )
     {
         case ShipType::None: ref = 0; return true;
-        case ShipType::Fighter: ref = ids.ref( 0xd011f7c3c15285c2ull ); return true;
-        case ShipType::Bomber: ref = ids.ref( 0xa8216aa1c554cb8aull ); return true;
-        case ShipType::Freighter: ref = ids.ref( 0x6c2321a3d00e23dbull ); return true;
+        case ShipType::Fighter: ref = ids.ref_at( 71, 0xd011f7c3c15285c2ull ); return true;
+        case ShipType::Bomber: ref = ids.ref_at( 49, 0xa8216aa1c554cb8aull ); return true;
+        case ShipType::Freighter: ref = ids.ref_at( 33, 0x6c2321a3d00e23dbull ); return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -2697,10 +2697,10 @@ inline bool TableEnumRef( TableIds & ids, Team value, uint64_t & ref )
     switch ( value )
     {
         case Team::None: ref = 0; return true;
-        case Team::Red: ref = ids.ref( 0x9ff1de19feac1b7cull ); return true;
-        case Team::Blue: ref = ids.ref( 0xecf3d3a7c1693e2dull ); return true;
-        case Team::Green: ref = ids.ref( 0xcf00d78fd5953f1cull ); return true;
-        case Team::Gold: ref = ids.ref( 0xc416c97e0d3218b3ull ); return true;
+        case Team::Red: ref = ids.ref_at( 46, 0x9ff1de19feac1b7cull ); return true;
+        case Team::Blue: ref = ids.ref_at( 80, 0xecf3d3a7c1693e2dull ); return true;
+        case Team::Green: ref = ids.ref_at( 69, 0xcf00d78fd5953f1cull ); return true;
+        case Team::Gold: ref = ids.ref_at( 63, 0xc416c97e0d3218b3ull ); return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -2765,8 +2765,8 @@ inline bool TableEnumRef( TableIds & ids, MissileType value, uint64_t & ref )
     switch ( value )
     {
         case MissileType::None: ref = 0; return true;
-        case MissileType::Seeker: ref = ids.ref( 0xf5d0a4d25a76afcaull ); return true;
-        case MissileType::Dumb: ref = ids.ref( 0x478d7972f6d9075dull ); return true;
+        case MissileType::Seeker: ref = ids.ref_at( 84, 0xf5d0a4d25a76afcaull ); return true;
+        case MissileType::Dumb: ref = ids.ref_at( 20, 0x478d7972f6d9075dull ); return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -2823,9 +2823,9 @@ inline bool TableEnumRef( TableIds & ids, PropType value, uint64_t & ref )
     switch ( value )
     {
         case PropType::None: ref = 0; return true;
-        case PropType::Rock: ref = ids.ref( 0xcaa6172bef74e234ull ); return true;
-        case PropType::Station: ref = ids.ref( 0x4f98acac2852d653ull ); return true;
-        case PropType::Beacon: ref = ids.ref( 0x7f3a7e4744ea3019ull ); return true;
+        case PropType::Rock: ref = ids.ref_at( 66, 0xcaa6172bef74e234ull ); return true;
+        case PropType::Station: ref = ids.ref_at( 24, 0x4f98acac2852d653ull ); return true;
+        case PropType::Beacon: ref = ids.ref_at( 37, 0x7f3a7e4744ea3019ull ); return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -2886,8 +2886,8 @@ inline bool TableEnumRef( TableIds & ids, LaserType value, uint64_t & ref )
     switch ( value )
     {
         case LaserType::None: ref = 0; return true;
-        case LaserType::Pulse: ref = ids.ref( 0x94e8a172d8f4805eull ); return true;
-        case LaserType::Beam: ref = ids.ref( 0xa0745aa7967eeffaull ); return true;
+        case LaserType::Pulse: ref = ids.ref_at( 42, 0x94e8a172d8f4805eull ); return true;
+        case LaserType::Beam: ref = ids.ref_at( 47, 0xa0745aa7967eeffaull ); return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -2944,8 +2944,8 @@ inline bool TableEnumRef( TableIds & ids, ExplosionType value, uint64_t & ref )
     switch ( value )
     {
         case ExplosionType::None: ref = 0; return true;
-        case ExplosionType::Small: ref = ids.ref( 0x3d2cc8d952adebecull ); return true;
-        case ExplosionType::Large: ref = ids.ref( 0xc8736ef79380e634ull ); return true;
+        case ExplosionType::Small: ref = ids.ref_at( 17, 0x3d2cc8d952adebecull ); return true;
+        case ExplosionType::Large: ref = ids.ref_at( 65, 0xc8736ef79380e634ull ); return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
