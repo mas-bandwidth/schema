@@ -1481,7 +1481,6 @@ static SCHEMA_UNUSED int archive_config_save_body( TableWriter * w, const Archiv
         table_writer_rewind(&default_probe);
         if ( default_probe.offset > 1 )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 85, 0xa354fd1ff0c467c5ull, 13 );
             if ( w->buffer == NULL )
             {
@@ -1501,7 +1500,6 @@ static SCHEMA_UNUSED int archive_config_save_body( TableWriter * w, const Archiv
     { /* count */
         if ( !( value->count == 1 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 97, 0xb1e5e28e4479a274ull, 4 );
             table_writer_put32( w, (uint32_t) ( value->count ) );
         }
@@ -1666,18 +1664,12 @@ static SCHEMA_UNUSED int archive_config_save_message_body(TableBitWriter * w,con
  probe.check_default=1;
  if(!root_config_save_message_body(&probe,&value->root)) return 0;
  if(probe.bits>kTableMessageRefBitsHere) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,1,kTableMessageRefBitsHere);
   if(!root_config_save_message_body(w,&value->root)) return 0;
  }
  }
  { /* count */
  if(!(value->count == 1)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,2,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->count)-UINT64_C(0),7);
  }

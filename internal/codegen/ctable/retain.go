@@ -14,7 +14,11 @@ func (g *tableGen) retainRuntime() string {
 	for _, id := range ir.TableWireIds(g.unit) {
 		fmt.Fprintf(&ids, "UINT64_C(0x%016x),", id)
 	}
-	return strings.NewReplacer("@DEPTH@", fmt.Sprint(g.retainDepth()), "@KNOWN@", ids.String(), "@RETAIN_OUT@", cRetainOut, "@RETAIN_MESSAGE@", cRetainMessage+cRetainGraph).Replace(cRetainRuntime)
+	retainOut := cRetainOut
+	if !g.hasProbes {
+		retainOut = strings.ReplaceAll(retainOut, " if(w->check_default){w->offset=2;return 1;}\n", "")
+	}
+	return strings.NewReplacer("@DEPTH@", fmt.Sprint(g.retainDepth()), "@KNOWN@", ids.String(), "@RETAIN_OUT@", retainOut, "@RETAIN_MESSAGE@", cRetainMessage+cRetainGraph).Replace(cRetainRuntime)
 }
 func (g *tableGen) retainDepth() int {
 	var field func(*ir.Field) int

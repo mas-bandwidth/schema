@@ -1506,7 +1506,6 @@ static SCHEMA_UNUSED int patrol_save_body( TableWriter * w, const Patrol * value
     { /* active */
         if ( !( value->active == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 57, 0x6580790b036f0c6full, 1 );
             table_writer_put8( w, value->active ? 1 : 0 );
         }
@@ -1516,7 +1515,6 @@ static SCHEMA_UNUSED int patrol_save_body( TableWriter * w, const Patrol * value
     {
         if ( !( value->speed == 1.0f ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 22, 0x2281498aa0200e40ull, 10 );
             table_writer_put32( w, table_float_to_bits( value->speed ) );
         }
@@ -1527,7 +1525,6 @@ static SCHEMA_UNUSED int patrol_save_body( TableWriter * w, const Patrol * value
     {
         if ( !( value->has_target == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 23, 0x247f0e7f55aacfbdull, 1 );
             table_writer_put8( w, value->has_target ? 1 : 0 );
         }
@@ -1538,7 +1535,6 @@ static SCHEMA_UNUSED int patrol_save_body( TableWriter * w, const Patrol * value
     {
         if ( !( value->target_id == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 103, 0xb7bc9ac015a25050ull, 4 );
             table_writer_put32( w, (uint32_t) ( value->target_id ) );
         }
@@ -1549,7 +1545,6 @@ static SCHEMA_UNUSED int patrol_save_body( TableWriter * w, const Patrol * value
     {
         if ( !( value->wander == 0.5f ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 104, 0xb8c758d8bd1845d4ull, 10 );
             table_writer_put32( w, table_float_to_bits( value->wander ) );
         }
@@ -1561,7 +1556,6 @@ static SCHEMA_UNUSED int patrol_save_body( TableWriter * w, const Patrol * value
         if ( value->note_length < 0 || value->note_length > 8 ) { return 0; }
         if ( value->note_length != 0 )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 37, 0x3bf8fbbad1587cddull, 12 );
             if ( w->buffer == NULL )
             {
@@ -1818,9 +1812,6 @@ static SCHEMA_UNUSED int patrol_save_message_body(TableBitWriter * w,const Patro
  (void)value;
  { /* active */
  if(!(value->active == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,32,kTableMessageRefBitsHere);
   table_bit_put(w,value->active ? 1 : 0,1);
  }
@@ -1828,9 +1819,6 @@ static SCHEMA_UNUSED int patrol_save_message_body(TableBitWriter * w,const Patro
  { /* speed */
  if(value->active) {
  if(!(value->speed == 1.0f)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,33,kTableMessageRefBitsHere);
   table_bit_put(w,table_float_to_bits(value->speed),32);
  }
@@ -1839,9 +1827,6 @@ static SCHEMA_UNUSED int patrol_save_message_body(TableBitWriter * w,const Patro
  { /* has_target */
  if(value->active) {
  if(!(value->has_target == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,34,kTableMessageRefBitsHere);
   table_bit_put(w,value->has_target ? 1 : 0,1);
  }
@@ -1850,9 +1835,6 @@ static SCHEMA_UNUSED int patrol_save_message_body(TableBitWriter * w,const Patro
  { /* target_id */
  if(value->active && value->has_target) {
  if(!(value->target_id == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,35,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->target_id)-UINT64_C(0),10);
  }
@@ -1861,9 +1843,6 @@ static SCHEMA_UNUSED int patrol_save_message_body(TableBitWriter * w,const Patro
  { /* wander */
  if(value->active && !value->has_target) {
  if(!(value->wander == 0.5f)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,36,kTableMessageRefBitsHere);
   table_bit_put(w,table_float_to_bits(value->wander),32);
  }
@@ -1873,9 +1852,6 @@ static SCHEMA_UNUSED int patrol_save_message_body(TableBitWriter * w,const Patro
  if(!value->active) {
  if(value->note_length<0 || value->note_length>8) return 0;
  if(value->note_length != 0) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,37,kTableMessageRefBitsHere);
   if(value->note_length<0 || value->note_length>8) return 0;
   table_bit_put(w,(uint64_t)value->note_length,4);
