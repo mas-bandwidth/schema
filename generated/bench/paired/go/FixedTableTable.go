@@ -63,7 +63,9 @@ func FixedTableSaveBody(w *TableWriter, value *FixedTable) bool {
 			if n < 0 {
 				return false
 			}
-			payload.PutLeb(uint64(n))
+			if !payload.putLebPair(uint64(n)) {
+				payload.putLebWide(uint64(n))
+			}
 			if payload.Measuring {
 				payload.Advance(n)
 			} else {
@@ -81,14 +83,18 @@ func FixedTableSaveBody(w *TableWriter, value *FixedTable) bool {
 				w.Advance(tableLebBytes(ref) + 1 + payload.Offset)
 			} else {
 				w.Ids.Truncate(start)
-				w.Header(ref, 13)
+				if !w.headerPair(ref, 13) {
+					w.headerRest(ref, 13)
+				}
 				{
 					mark := w.Ids.Count
 					n := BenchMixedMeasureBody(&value.Value, w.Ids)
 					if n < 0 {
 						return false
 					}
-					w.PutLeb(uint64(n))
+					if !w.putLebPair(uint64(n)) {
+						w.putLebWide(uint64(n))
+					}
 					if w.Measuring {
 						w.Advance(n)
 					} else {
@@ -124,7 +130,10 @@ func FixedTableSave(value *FixedTable, buffer []byte) int64 {
 func FixedTableLoadBody(r *TableReader, value *FixedTable) bool {
 	FixedTableReset(value)
 	for {
-		ref, ok := r.Leb()
+		ref, ok := r.lebPair()
+		if !ok {
+			ref, ok = r.lebWide()
+		}
 		if !ok {
 			r.Report.Malformed = true
 			return false

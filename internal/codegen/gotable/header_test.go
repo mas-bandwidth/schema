@@ -37,10 +37,10 @@ func TestHeaderAndPut128Shape(t *testing.T) {
 	}
 	for _, want := range []string{
 		"func (w *TableWriter) Header(ref uint64, kind uint8)",
-		"if ref < 128",
-		"w.Put16(uint16(ref) | uint16(kind)<<8)",
-		"w.Header(w.Ids.RefAt(",
-		"w.Header(ref, ",
+		"func (w *TableWriter) headerPair(ref uint64, kind uint8) bool",
+		"PutUint16(w.Buffer[at:]",
+		"w.Ids.RefAt(",
+		"w.headerPair(ref,",
 		"func (w *TableWriter) Put128(lo, hi uint64)",
 		"w.Advance(16)",
 		"w.Put128(",
