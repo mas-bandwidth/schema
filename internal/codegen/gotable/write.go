@@ -72,7 +72,7 @@ func (g *tableGen) emitArithMeasureBody(st *ir.Struct) {
 	n := st.Name
 	g.pf("func %sMeasureBody(value *%s, ids *TableIds) int64 {\n", n, g.storageName(n))
 	if len(st.Fields) == 0 {
-		g.pf("\t_ = value\n\t_ = ids\n\treturn 1\n}\n\n")
+		g.pf("\t_ = value\n\tif ids.Overflow { return -1 }\n\treturn 1\n}\n\n")
 		return
 	}
 	g.pf("\tbytes := int64(1)\n")
@@ -89,7 +89,7 @@ func (g *tableGen) emitArithMeasureBody(st *ir.Struct) {
 		}
 		g.emitArithMeasureField(f, cond, "\t")
 	}
-	g.pf("\treturn bytes\n}\n\n")
+	g.pf("\tif ids.Overflow { return -1 }\n\treturn bytes\n}\n\n")
 }
 
 func (g *tableGen) emitArithMeasureField(f *ir.Field, cond, ind string) {

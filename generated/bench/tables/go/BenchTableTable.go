@@ -2008,6 +2008,9 @@ func TableEntityMeasureBody(value *TableEntity, ids *TableIds) int64 {
 	if value.Firing != false {
 		bytes += tableLebBytes(ids.refAtHit(36, 0x7674cfd19b9031ca)) + 1 + 1
 	} // firing
+	if ids.Overflow {
+		return -1
+	}
 	return bytes
 }
 
@@ -3426,6 +3429,9 @@ func TableStatMeasureBody(value *TableStat, ids *TableIds) int64 {
 	if value.Delta != 0 {
 		bytes += tableLebBytes(ids.refAtHit(23, 0x52076675ec13a0c1)) + 1 + 4
 	} // delta
+	if ids.Overflow {
+		return -1
+	}
 	return bytes
 }
 
@@ -6967,6 +6973,9 @@ func TableHitEventMeasureBody(value *TableHitEvent, ids *TableIds) int64 {
 	if value.Crit != false {
 		bytes += tableLebBytes(ids.refAtHit(6, 0x126167908c9aa52d)) + 1 + 1
 	} // crit
+	if ids.Overflow {
+		return -1
+	}
 	return bytes
 }
 
@@ -7521,6 +7530,9 @@ func TableChatEventMeasureBody(value *TableChatEvent, ids *TableIds) int64 {
 	if value.Speaker != 0 {
 		bytes += tableLebBytes(ids.refAtHit(75, 0xfbf1ac4d96ebd022)) + 1 + 2
 	} // speaker
+	if ids.Overflow {
+		return -1
+	}
 	return bytes
 }
 
@@ -7922,6 +7934,9 @@ func TablePickupEventMeasureBody(value *TablePickupEvent, ids *TableIds) int64 {
 	if value.Amount != 0 {
 		bytes += tableLebBytes(ids.refAtHit(43, 0x8113fe7ea2b16969)) + 1 + 4
 	} // amount
+	if ids.Overflow {
+		return -1
+	}
 	return bytes
 }
 

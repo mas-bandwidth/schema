@@ -78,6 +78,7 @@ func TestArithMeasureBodyShape(t *testing.T) {
 		"+ 1 + 16",
 		"vref = ids.refAtHit(",
 		"tableLebBytes(ref) + 1 + tableLebBytes(vref)",
+		"if ids.Overflow",
 	} {
 		if !strings.Contains(leaf, want) {
 			t.Fatalf("LeafMeasureBody missing %q\n%s", want, leaf)
@@ -190,6 +191,17 @@ func TestLeafMeasureEqualsSave(t *testing.T) {
 	v.Grade = Grade(99)
 	if LeafMeasure(&v) != -1 || LeafSave(&v, make([]byte, 256)) != -1 {
 		t.Fatal("invalid enum measured or saved")
+	}
+
+	var full TableIds
+	full.Count = len(full.Values)
+	v.Grade = GradeGold
+	body = LeafMeasureBody(&v, &full)
+	if body != -1 {
+		t.Fatalf("MeasureBody on overflow returned %d, want -1", body)
+	}
+	if !full.Overflow {
+		t.Fatal("Overflow unset")
 	}
 }
 
