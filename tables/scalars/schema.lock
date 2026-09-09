@@ -1,4 +1,4 @@
-schema-lock 3
+schema-lock 4
 package scalardemo
 
 fixed table SimState layout=0x8ed3667ea95da031

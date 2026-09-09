@@ -1,4 +1,4 @@
-schema-lock 3
+schema-lock 4
 package wide
 
 fixed table Caption layout=0x4532f5365ad7bcb8

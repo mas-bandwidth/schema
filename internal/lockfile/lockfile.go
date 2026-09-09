@@ -31,8 +31,8 @@
 //   - one entry per field, in DECLARED ORDER, carrying the field's wire id,
 //     its kind, its WIDTH in the record, its DEFAULT declared or implicit, its
 //     declared RANGE and resolution, its `?` and its `deprecated` marker,
-//     which named type a kind-13/15 slot holds (name and that type's layout
-//     hash), and an array's element kind and width;
+//     which named type a slot holds (name and that type's layout hash), and
+//     an array's element kind and width;
 //   - one block per TYPE the fixed tables reach — a nested `type` record, an
 //     `enum`, a `flags` mask, a `union` — because a fixed record is made of
 //     those and a change inside one moves the root's bytes without moving one
@@ -79,7 +79,11 @@ import (
 // array's element kind and width (`elem=4/4`), and a union arm's payload
 // type beside the name. Those are new facts on the hashed lines, so a v2
 // lock is deleted and rewritten, the same sentence v1 took.
-const Version = 3
+// 4 records which enum or flags type a slot holds (`held=Hull@0x...`), the
+// same fact kind 13/15 already carried; an array of enum or flags carries
+// held= beside elem=. v3 locks are deleted and rewritten, the same sentence
+// v1 took.
+const Version = 4
 
 // FileName is the lock's name beside the unit's schema files. Unlike the
 // tables baseline, its presence is not what turns the check on for a unit
@@ -186,10 +190,11 @@ type Entry struct {
 	// may name the field, and a reader ignores what it finds there.
 	Deprecated bool
 
-	// HeldName and HeldHash are the nested type a kind-13 (table) or kind-15
-	// (union) slot holds — the type's wire name and that type's layout hash
-	// (a union's values hash), spelled `held=Buff@0x...`. A kind-14 array of
-	// a named type carries the same pair for its element. Empty on a scalar.
+	// HeldName and HeldHash are the named type a slot holds — a kind-13
+	// table, a kind-15 union, a kind-7 enum, a kind-9 flags mask, or a
+	// kind-14 array of any of those — the type's wire name and that type's
+	// layout hash (an enum, flags or union's values hash), spelled
+	// `held=Hull@0x...`. Empty on a scalar.
 	HeldName string
 	HeldHash uint64
 
@@ -391,9 +396,9 @@ func Render(u *ir.Unit) *Unit {
 	return out
 }
 
-// renderer fills held hashes from the nested type's own block, so a kind-13
-// slot and the `type` it names agree on the number, and a union arm's
-// payload= agrees with the nested record it points at.
+// renderer fills held hashes from the nested type's own block, so a slot
+// and the `type`, enum, flags or union it names agree on the number, and a
+// union arm's payload= agrees with the nested record it points at.
 type renderer struct {
 	u      *ir.Unit
 	tables map[*ir.Struct]Table
@@ -450,6 +455,8 @@ func (r *renderer) renderTable(decl string, st *ir.Struct) Table {
 			e.ElemKind = ir.TableElemKind(f)
 			e.ElemWidth = elemSize(r.u, f)
 			e.HeldName, e.HeldHash = r.held(f)
+		default:
+			e.HeldName, e.HeldHash = r.held(f)
 		}
 		t.Entries = append(t.Entries, e)
 	}
@@ -471,6 +478,12 @@ func (r *renderer) held(f *ir.Field) (string, uint64) {
 		return t.Name, t.Layout
 	case *ir.Union:
 		v := r.unionList(ref)
+		return v.Name, v.Hash
+	case *ir.Enum:
+		v := r.enumList(ref)
+		return v.Name, v.Hash
+	case *ir.Flags:
+		v := r.flagsList(ref)
 		return v.Name, v.Hash
 	default:
 		return "", 0

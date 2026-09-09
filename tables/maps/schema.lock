@@ -1,4 +1,4 @@
-schema-lock 3
+schema-lock 4
 package mapdemo
 
 fixed table Item layout=0xf8efefb09ce745f7

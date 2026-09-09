@@ -13,7 +13,7 @@ const SchemaLockFileName = lockfile.FileName
 // every FIXED table's field sequence in declared order — each entry carrying
 // the field's wire id, kind, width in the record, default declared or
 // implicit, declared range and resolution, `?` and `deprecated` marker, the
-// nested type a kind-13/15 slot holds, and an array's element kind and width
+// named type a slot holds, and an array's element kind and width
 // — then a block for every type those tables REACH: a nested `type` as a
 // record of its own, and an `enum`, a `flags` mask or a `union` as its value
 // list in declared order, a union arm carrying its payload type. Each block

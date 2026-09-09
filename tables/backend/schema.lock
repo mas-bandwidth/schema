@@ -1,14 +1,14 @@
-schema-lock 3
+schema-lock 4
 package backenddemo
 
-fixed table Envelope layout=0x48afa68f5294513f
-    field payload id=0xcfb8a9d063b5e9e5 kind=15 width=176 default=zero held=Payload@0xcfe090b40861806a
+fixed table Envelope layout=0x077ac066017f41c9
+    field payload id=0xcfb8a9d063b5e9e5 kind=15 width=176 default=zero held=Payload@0xb48f66556c573f94
 
-fixed table LoginRequest layout=0x8cc33d2fe825b64e
+fixed table LoginRequest layout=0x0a38315ac8ffb08d
     field player_id id=0xc14ae3ff748dc438 kind=9 width=8 default=0
     field session_token id=0x26860f8b6834fa0d kind=14 width=36 default=bytes: elem=6/1
     field client_build id=0xb865d537bd0b08f9 kind=8 width=4 default=0
-    field region id=0xc755a623f50a24dd kind=7 width=1 default=variant:None
+    field region id=0xc755a623f50a24dd kind=7 width=1 default=variant:None held=Region@0xc06757fb8ef01643
 
 fixed table MatchResult layout=0xa3114890cbd24e07
     field match_id id=0xf336e379ba146826 kind=9 width=8 default=0
@@ -19,12 +19,12 @@ fixed table PlayerRow layout=0x2b7e49e62ce171dd
     field score id=0xc10e63fbe7f624f5 kind=4 width=4 default=0 min=0 max=100000
     field placement id=0x98a3024830754a20 kind=6 width=1 default=1 min=1 max=10
 
-fixed table StorePurchase layout=0x02bc096258c7960b
+fixed table StorePurchase layout=0xcef54ea9fbe1e15a
     field player_id id=0xc14ae3ff748dc438 kind=9 width=8 default=0
     field sku id=0x82429a195ce84d1a kind=12 width=40 default=bytes:
     field quantity id=0xa3768bf56b809718 kind=6 width=1 default=1 min=1 max=99
     field price_minor id=0xa745885cff2a8840 kind=8 width=4 default=0
-    field currency id=0x75a5fb9b890ad416 kind=7 width=1 default=variant:None
+    field currency id=0x75a5fb9b890ad416 kind=7 width=1 default=variant:None held=Currency@0x9869f7d0d2752133
 
 enum Currency values=0x9869f7d0d2752133
     variant USD
@@ -38,7 +38,7 @@ enum Region values=0xc06757fb8ef01643
     variant APAC
     variant SA
 
-union Payload values=0xcfe090b40861806a
-    arm login payload=LoginRequest@0x8cc33d2fe825b64e
+union Payload values=0xb48f66556c573f94
+    arm login payload=LoginRequest@0x0a38315ac8ffb08d
     arm result payload=MatchResult@0xa3114890cbd24e07
-    arm purchase payload=StorePurchase@0x02bc096258c7960b
+    arm purchase payload=StorePurchase@0xcef54ea9fbe1e15a

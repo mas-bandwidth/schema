@@ -1,13 +1,13 @@
-schema-lock 3
+schema-lock 4
 package tabledemo
 
-fixed table ArchiveConfig layout=0xe7b9cdfeabdf1fac
-    field root id=0xa354fd1ff0c467c5 kind=13 width=1480 default=zero held=RootConfig@0xadb5d5e768da8c47
+fixed table ArchiveConfig layout=0x18e055832d2ae20f
+    field root id=0xa354fd1ff0c467c5 kind=13 width=1480 default=zero held=RootConfig@0xb4320e868aa6e0f8
     field count id=0xb1e5e28e4479a274 kind=4 width=4 default=1 min=0 max=100
 
-fixed table GlobalSettings layout=0x9370b5814eb005ce
+fixed table GlobalSettings layout=0x17ec347e3e20b357
     field tick_rate id=0xa65f859b617deaf3 kind=8 width=4 default=60 min=1 max=240
-    field difficulty id=0x467f35a74c6e4a70 kind=7 width=1 default=variant:Normal
+    field difficulty id=0x467f35a74c6e4a70 kind=7 width=1 default=variant:Normal held=Difficulty@0x8c7731ffcc25bee0
     field build_note id=0x14ec921cc2549d60 kind=12 width=55 default=bytes:
     field spawn_delays id=0x09ae5613b0051271 kind=14 width=12 default=born:0 elem=10/4
 
@@ -20,29 +20,29 @@ fixed table GunnerSettings layout=0x4d7299bf23b53716
     field tracking id=0xa6bf719a4602b0bc kind=1 width=1 default=false
     field callsign id=0x5bc44627b9848818 kind=12 width=31 default=bytes:
 
-fixed table HullConfig layout=0x7f5975fb9fddcaa4
+fixed table HullConfig layout=0x49fa8652005b3a25
     field health id=0x7f69d4b5288ba9cf kind=10 width=4 default=100.0
     field mass id=0x1f3757a2ce7b0ab1 kind=10 width=4 default=1.0
-    field turrets id=0x84f8260bc283608c kind=16 width=60 default=born:0
+    field turrets id=0x84f8260bc283608c kind=16 width=60 default=born:0 held=TurretConfig@0xd544f891dca5c02d
 
-fixed table KeyedConfig layout=0x303b68a38581458e
-    field teams id=0xbaaeb048a5a8fa6d kind=16 width=84 default=born:0
-    field hulls id=0xce0ac3c25694d8ff kind=16 width=204 default=born:0
+fixed table KeyedConfig layout=0x4d5e4cf3072476b1
+    field teams id=0xbaaeb048a5a8fa6d kind=16 width=84 default=born:0 held=TeamConfig@0xf3999d79399a77ea
+    field hulls id=0xce0ac3c25694d8ff kind=16 width=204 default=born:0 held=HullConfig@0x49fa8652005b3a25
     field scores id=0x01986b0b27400fb2 kind=13 width=12 default=zero held=ScoreBoard@0x7aa40527e9a30518
 
-fixed table LoadoutConfig layout=0x8ab96fc8392c8897
-    field grade id=0x32a89b2977c48ad4 kind=7 width=1 default=variant:Silver
-    field grades id=0xd90a4e7682f799c5 kind=14 width=11 default=born:0 elem=7/1
-    field podium id=0xb46ff45a23d72549 kind=14 width=3 default=born:0 elem=7/1
-    field perks id=0x4b06f5847096e54a kind=9 width=8 default=mask:0
+fixed table LoadoutConfig layout=0x3c738da0869f9933
+    field grade id=0x32a89b2977c48ad4 kind=7 width=1 default=variant:Silver held=Grade@0xc56ae3781a1039bd
+    field grades id=0xd90a4e7682f799c5 kind=14 width=11 default=born:0 held=Grade@0xc56ae3781a1039bd elem=7/1
+    field podium id=0xb46ff45a23d72549 kind=14 width=3 default=born:0 held=Grade@0xc56ae3781a1039bd elem=7/1
+    field perks id=0x4b06f5847096e54a kind=9 width=8 default=mask:0 held=Perks@0x1f153e786d4f23a7
     field primary id=0xbf31137ff783e939 kind=13 width=28 default=zero held=WeaponConfig@0xb8d345be27518024
     field backups id=0xde28f0f5118acc24 kind=14 width=56 default=born:0 held=WeaponConfig@0xb8d345be27518024 elem=13/28
     field attachments id=0xf901aa0340249a41 kind=14 width=68 default=born:0 held=Attachment@0x203fd5e47e2fd0c8 elem=13/8
 
-fixed table PackConfig layout=0x320b0b6b6125b1e4
+fixed table PackConfig layout=0x77d8789a464829f4
     field version id=0xbb62c62c9808ea37 kind=8 width=4 default=1
-    field global id=0x7fb43557b54149ce kind=13 width=72 default=zero held=GlobalSettings@0x9370b5814eb005ce
-    field ships id=0x294a5c4913e1ad44 kind=16 width=324 default=born:0
+    field global id=0x7fb43557b54149ce kind=13 width=72 default=zero held=GlobalSettings@0x17ec347e3e20b357
+    field ships id=0x294a5c4913e1ad44 kind=16 width=324 default=born:0 held=ShipEntry@0x09a64721f993b5da
     field thresholds id=0x9cda940a344e1571 kind=16 width=12 default=born:0 min=0 max=1000
     field reserves id=0x77707fccd201c228 kind=14 width=328 default=born:0 held=ShipEntry@0x09a64721f993b5da elem=13/108
 
@@ -54,7 +54,7 @@ fixed table Patrol layout=0xe5e88ef190270115
     field wander id=0xb8c758d8bd1845d4 kind=10 width=4 default=0.5
     field note id=0x3bf8fbbad1587cdd kind=12 width=16 default=bytes:
 
-fixed table ProfileConfig layout=0xbeb1829808ae9c73
+fixed table ProfileConfig layout=0xbc3a524e52a29909
     field name id=0xc4bcadba8e631b86 kind=12 width=40 default=bytes:
     field icon id=0xdbff4cc56c2092f0 kind=14 width=20 default=bytes: elem=6/1
     field experience id=0xab8b6d521f80b969 kind=8 width=4 default=0
@@ -67,7 +67,7 @@ fixed table ProfileConfig layout=0xbeb1829808ae9c73
     field precision id=0x288427f5babd05f7 kind=11 width=8 default=0.0
     field ratings id=0xb921eb8a3d0cb0f9 kind=14 width=16 default=born:0 elem=10/4
     field has_loadout id=0xa06f5e0a148e253c kind=1 width=1 default=false
-    field loadout id=0x5759ce7586bbb5a3 kind=13 width=176 default=zero held=LoadoutConfig@0x8ab96fc8392c8897
+    field loadout id=0x5759ce7586bbb5a3 kind=13 width=176 default=zero held=LoadoutConfig@0x3c738da0869f9933
 
 fixed table RangedSigned layout=0x46f0399743407be4
     field i8_span id=0x48121511bf702eb5 kind=2 width=1 default=0 min=-128 max=127
@@ -115,10 +115,10 @@ fixed table RangedWidths layout=0xaf0cc20950a8904e
     field b12 id=0xff95741912ad9e8a kind=7 width=4 default=0
     field b48 id=0xff8b681912a535a1 kind=9 width=8 default=0
 
-fixed table RootConfig layout=0xadb5d5e768da8c47
+fixed table RootConfig layout=0xb4320e868aa6e0f8
     field version_note id=0x8a67c9728746d394 kind=12 width=24 default=bytes:
     field weapons id=0x41cbd901b87fabb6 kind=14 width=228 default=born:0 held=WeaponConfig@0xb8d345be27518024 elem=13/28
-    field profiles id=0x8181e61fc0436767 kind=14 width=1220 default=born:0 held=ProfileConfig@0xbeb1829808ae9c73 elem=13/304
+    field profiles id=0x8181e61fc0436767 kind=14 width=1220 default=born:0 held=ProfileConfig@0xbc3a524e52a29909 elem=13/304
 
 fixed table ShipEntry layout=0x09a64721f993b5da
     field display_name id=0x2d21d7cd66bd5a5d kind=12 width=40 default=bytes:

@@ -4,9 +4,10 @@
 //
 // Order and width were the whole of the old file, and they are not the whole
 // of what a reader stands on. This file is the rest of it — the default, the
-// range, the fixed-point scale, the `?`, which type a nested slot holds, an
-// array's element, a union arm's payload, and every enum, flags mask, union
-// and nested record a fixed table reaches — and every case is measured three ways:
+// range, the fixed-point scale, the `?`, which type a nested slot holds, which
+// enum or flags type a slot holds, an array's element, a union arm's payload,
+// and every enum, flags mask, union and nested record a fixed table reaches —
+// and every case is measured three ways:
 // the edit is REFUSED on the fixed table, the SAME edit on a plain
 // variable-length `table` is not the lock's business, and `schema lock` will
 // not write the break either.
@@ -49,6 +50,40 @@ enum Cargo
 flags Perks { Shielded, Cloaked }
 
 flags Rigging { Sail, Mast }
+
+enum Rank
+{
+    Scout
+    Wing
+    Leader
+}
+
+enum Stow
+{
+    Dry
+    Frozen
+    Liquid
+}
+
+flags Honors { Medal, Star }
+
+flags Tackle { Hook, Line }
+
+type Manifest
+{
+    kind   Hull
+    rank   Rank
+    kit    Perks
+    medal  Honors
+}
+
+type Invoice
+{
+    kind   Cargo
+    stow   Stow
+    kit    Rigging
+    medal  Tackle
+}
 
 type Buff
 {
@@ -93,6 +128,8 @@ table Config
     gunner    ?Buff
     effect    Effect
     lanes     [4]int32
+    manifest  Manifest
+    ranks     [4]Hull
 }
 
 table Bag
@@ -106,6 +143,8 @@ table Bag
     spare   ?Ballast
     stowage Stowage
     lanes   [4]int32
+    invoice Invoice
+    holds   [4]Cargo
     tail    *Bag
 }
 `
@@ -145,16 +184,19 @@ func TestLockHoldsTheWholeClosure(t *testing.T) {
 	lk := lockfile.Render(load(t, paths))
 	text := lk.Text()
 
-	if lk.Version != 3 {
-		t.Errorf("the widened rendering is version 3, got %d", lk.Version)
+	if lk.Version != 4 {
+		t.Errorf("the widened rendering is version 4, got %d", lk.Version)
 	}
 	for _, want := range []string{
 		"fixed table Config layout=0x",
 		// the closure, each in its own block
 		"type Buff layout=0x",
 		"type Debuff layout=0x",
+		"type Manifest layout=0x",
 		"enum Hull values=0x",
+		"enum Rank values=0x",
 		"flags Perks values=0x",
+		"flags Honors values=0x",
 		"union Effect values=0x",
 		// the value lists, in declared order — a union arm names its payload
 		"    variant Interceptor\n    variant Gunship\n    variant Freighter\n",
@@ -165,12 +207,14 @@ func TestLockHoldsTheWholeClosure(t *testing.T) {
 		"field tick_rate id=0x", "default=60 min=1 max=240",
 		"default=0 min=-8 max=8 frac=16",       // the fixed-point scale
 		"default=0.0 min=0.0 max=1.0 res=0.01", // the compressed float
-		"default=variant:Gunship",              // an enum's named default
-		"default=mask:0",                       // a flags field's fresh mask
+		"default=variant:Gunship held=Hull@",   // an enum slot names what it holds
+		"default=mask:0 held=Perks@",           // a flags slot names what it holds
 		"default=zero held=Buff@",              // kind 13 names what it holds
 		"held=Buff@",                           // boost and gunner both
 		" optional",                            // the `?` still sits on gunner
 		"elem=4/4",                             // kind 14 names its element
+		"held=Hull@",                           // hull, Manifest.kind, ranks
+		"elem=7/1",                             // an array of enums
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the lock must carry %q:\n%s", want, text)
@@ -178,6 +222,7 @@ func TestLockHoldsTheWholeClosure(t *testing.T) {
 	}
 	for _, absent := range []string{
 		"Bag", "Ballast", "Trim", "Cargo", "Rigging", "Stowage",
+		"Invoice", "Stow", "Tackle",
 	} {
 		if strings.Contains(text, absent) {
 			t.Errorf("a VARIABLE-LENGTH table and what only it reaches are not in the lock, found %q:\n%s", absent, text)
@@ -332,6 +377,33 @@ var closureBreaks = []struct {
 		want: []string{"fixed table Config", "entry 9, field lanes",
 			"holds int32 elements in the lock and float32 elements in the declaration",
 			"keeps its element type",
+			"deprecate this field and append a new one"},
+	},
+	{
+		name:      "an enum slot holding a different type",
+		fixedFrom: "    hull      Hull = Gunship\n", fixed: "    hull      Rank = Scout\n",
+		varFrom: "    cargo   Cargo = Ore\n", varTo: "    cargo   Stow = Dry\n",
+		want: []string{"fixed table Config", "entry 4, field hull",
+			"held Hull in the lock and Rank in the declaration",
+			"keeps the type it holds",
+			"deprecate this field and append a new one"},
+	},
+	{
+		name:      "a flags slot holding a different type",
+		fixedFrom: "    perks     Perks\n", fixed: "    perks     Honors\n",
+		varFrom: "    rigging Rigging\n", varTo: "    rigging Tackle\n",
+		want: []string{"fixed table Config", "entry 5, field perks",
+			"held Perks in the lock and Honors in the declaration",
+			"keeps the type it holds",
+			"deprecate this field and append a new one"},
+	},
+	{
+		name:      "an array of enums holding a different type",
+		fixedFrom: "    ranks     [4]Hull\n", fixed: "    ranks     [4]Rank\n",
+		varFrom: "    holds   [4]Cargo\n", varTo: "    holds   [4]Stow\n",
+		want: []string{"fixed table Config", "entry 11, field ranks",
+			"held Hull in the lock and Rank in the declaration",
+			"keeps the type it holds",
 			"deprecate this field and append a new one"},
 	},
 }
@@ -628,7 +700,7 @@ func TestALockFromAnOlderRenderingSaysWhatToDo(t *testing.T) {
 		t.Fatal(err)
 	}
 	refuses(t, lockfile.Check(load(t, paths), paths),
-		"rendering version 1 and this compiler writes version 3",
+		"rendering version 1 and this compiler writes version 4",
 		"delete it and write it again with `schema lock`")
 	_, rewrote, err := lockfile.Update(load(t, paths), paths)
 	if err == nil || rewrote {

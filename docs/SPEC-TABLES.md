@@ -3079,9 +3079,10 @@ entry per field carrying
   fixed-point field's `frac`, which is the scale its raw integer is read at;
 - its **`?`**, as the bare token `optional`;
 - its **`deprecated`** marker;
-- which named type a kind-13 (nested record) or kind-15 (union) slot **holds**,
-  as `held=Buff@0x…` — the type's wire name and that type's layout hash (a
-  union's values hash);
+- which named type a slot **holds**, as `held=Hull@0x…` — the type's wire
+  name and that type's layout hash (a nested record's layout, an enum or
+  flags or union's values hash). Kind 13 (nested record), kind 15 (union),
+  kind 7 (enum) and kind 9 (flags) all carry it;
 - an **array**'s element kind and width, as `elem=4/4`, and `held=` beside it
   when the element is a named type;
 
@@ -3111,15 +3112,15 @@ fixed table ShipConfig
 ```
 
 ```
-schema-lock 3
+schema-lock 4
 package fleet
 
-fixed table ShipConfig layout=0xafdf97760f546da4
+fixed table ShipConfig layout=0x7047bca71a5890be
     field name id=0xc4bcadba8e631b86 kind=12 width=40 default=bytes:
     field speed id=0x2281498aa0200e40 kind=10 width=4 default=0.0 min=0.0 max=100.0 res=0.01
     field armor id=0xd19988b67e699194 kind=6 width=1 default=0 deprecated
     field shields id=0x798c587767067199 kind=6 width=1 default=3
-    field hull id=0x80da8ccc11daadf6 kind=7 width=1 default=variant:Gunship
+    field hull id=0x80da8ccc11daadf6 kind=7 width=1 default=variant:Gunship held=Hull@0xc3cc3881c580dd9d
     field gunner id=0x40dbb648c0cd44aa kind=13 width=9 default=zero held=GunnerSettings@0xdd5ef1d77231ba48 optional
 
 type GunnerSettings layout=0xdd5ef1d77231ba48
@@ -3328,8 +3329,8 @@ at all.
 A lock written under an OLDER RENDERING VERSION is the one file this command
 will not repair. The version is the compiler's own, the file holds nothing a
 hand could carry forward, and unlike a baseline there is no history to salvage
-— so the refusal says the remedy that works: *"this lock is rendering version 2
-and this compiler writes version 3 — the rendering version is the compiler's
+— so the refusal says the remedy that works: *"this lock is rendering version 3
+and this compiler writes version 4 — the rendering version is the compiler's
 own and this file holds nothing a hand can carry forward: delete it and write
 it again with `schema lock`"*.
 
@@ -3358,7 +3359,8 @@ integer range, a moved resolution, a moved fixed-point scale at the same width,
 a `?` turned on, a `?` turned off, a kind change inside a nested `type`, a
 nested slot pointed at a different type, an optional nested slot the same way,
 a union arm's payload types swapped with the names kept, an array's element
-type, and a reordered, renamed or removed enum variant, `flags` variant or
+type, an enum slot pointed at a different type, a flags slot the same way,
+an array of enums the same way, and a reordered, renamed or removed enum variant, `flags` variant or
 union arm are each refused on the fixed half with the line named; each of them on the
 VARIABLE-LENGTH half passes in silence and moves no byte of the file, because a
 `table` with a pointer in it rides the id-table wire where those edits are what

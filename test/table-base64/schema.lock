@@ -1,4 +1,4 @@
-schema-lock 3
+schema-lock 4
 package base64test
 
 fixed table Blob layout=0x6af9d88a34d3e508
