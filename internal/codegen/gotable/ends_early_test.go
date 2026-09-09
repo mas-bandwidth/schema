@@ -41,7 +41,7 @@ func TestEndsEarlyShape(t *testing.T) {
 }
 
 const endsEarlyWireTest = `package probe
-import ("testing")
+import ("math"; "testing")
 
 func finish(w *TableWriter, trailing int) []byte {
 	w.Put8(0)
@@ -166,6 +166,15 @@ func TestRootReadAnswersOwnEarlyEnd(t *testing.T) {
 		var damaged TableReport
 		if RootLoad(&after, early, &damaged) || damaged.Verdict != TableOpenDamaged || damaged.Unknown != 0 || after.A != 5 {
 			t.Fatalf("unknown then early: a=%d report=%+v", after.A, damaged)
+		}
+		// The C++ analogue of this walk increments unknown before the
+		// leftover-byte decision. A seeded MaxInt32 is signed overflow there
+		// and a defined wrap here; restoring the caller's report must still
+		// leave MaxInt32, default a, and Damaged.
+		var seededVal Root
+		seeded := TableReport{Unknown: math.MaxInt32}
+		if RootLoad(&seededVal, early, &seeded) || seeded.Verdict != TableOpenDamaged || seeded.Unknown != math.MaxInt32 || seededVal.A != 5 {
+			t.Fatalf("seeded unknown then early: a=%d report=%+v", seededVal.A, seeded)
 		}
 	}
 
