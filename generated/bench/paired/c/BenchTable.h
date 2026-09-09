@@ -265,6 +265,17 @@ typedef struct TableWriteIds
 {
     uint64_t ids[80];
     uint32_t slots[256], positions[80];
+    /* THE ORDINAL SLOT CACHE (docs/SPEC-TABLES.md §3). Every id a generated
+       field header, union arm header or blob header names is a COMPILE-TIME
+       CONSTANT of the unit, so it has an ORDINAL: its index in the unit's id
+       vocabulary, the ascending set 80 counts. slot holds the ENTRY
+       that ordinal's id took, -1 for one not interned yet, and ordinal_of is
+       its inverse over the entries — the ordinal an entry was taken under, -1
+       for an entry a RUNTIME id took, which has no ordinal. The pair is what
+       lets a rewind undo the cache in O(popped) rather than walking the whole
+       vocabulary. */
+    int32_t slot[80];
+    int16_t ordinal_of[80];
     int count;
 } TableWriteIds;
 
@@ -281,8 +292,15 @@ static SCHEMA_UNUSED TableWriter table_writer_make( uint8_t * buffer, int64_t ca
 {
     TableWriter w;
     memset( &w, 0, sizeof( w ) );
+    int i;
     w.buffer = buffer; w.capacity = capacity; w.vocabulary=vocabulary;
-    memset(vocabulary,0,sizeof(*vocabulary));
+    /* only the open-addressing table and the count are read before they are
+       written: ids, positions and ordinal_of are all written at the APPEND
+       that makes an entry, and read only below count. The ordinal slots are
+       the one column with a non-zero empty value. */
+    memset(vocabulary->slots,0,sizeof(vocabulary->slots));
+    for(i=0;i<80;i++) { vocabulary->slot[i]=-1; }
+    vocabulary->count=0;
     return w;
 }
 static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void table_writer_raw( TableWriter * w, const void * data, int64_t bytes )
@@ -308,7 +326,7 @@ static SCHEMA_UNUSED void table_writer_leb( TableWriter * w, uint64_t v )
 {
     do { uint8_t b = (uint8_t) (v & 127); v >>= 7; table_writer_put8( w, (uint8_t) (b | (v ? 128 : 0)) ); } while ( v );
 }
-static SCHEMA_UNUSED void table_writer_id( TableWriter * w, uint64_t id )
+static SCHEMA_UNUSED uint64_t table_writer_id( TableWriter * w, uint64_t id )
 {
     TableWriteIds * v=w->vocabulary;
     uint64_t hash=id;
@@ -316,12 +334,40 @@ static SCHEMA_UNUSED void table_writer_id( TableWriter * w, uint64_t id )
     hash ^= hash>>33; hash *= UINT64_C(0xff51afd7ed558ccd); hash ^= hash>>33;
     slot=(uint32_t)hash & (256-1);
     while((index=v->slots[slot])!=0) {
-        if(v->ids[index-1]==id) { table_writer_leb(w,index); return; }
+        if(v->ids[index-1]==id) { table_writer_leb(w,index); return index; }
         slot=(slot+1)&(256-1);
     }
-    if(v->count==80) { w->overflow=1; return; }
-    v->ids[v->count]=id; v->positions[v->count]=slot; v->count++;
+    /* AN OVERFLOWED TABLE APPENDS NOTHING and spells no reference: 0 names no
+       id, so a caller can tell the miss that took an entry from the one that
+       did not. */
+    if(v->count==80) { w->overflow=1; return 0; }
+    v->ids[v->count]=id; v->positions[v->count]=slot; v->ordinal_of[v->count]=-1; v->count++;
     v->slots[slot]=(uint32_t)v->count; table_writer_leb(w,(uint64_t)v->count);
+    return (uint64_t)v->count;
+}
+/* table_writer_id FOR AN ID THE EMITTER KNEW. A REPEAT answers from
+   slot[ordinal]; a MISS falls through to table_writer_id, so THE APPEND STILL
+   HAPPENS ONLY THERE and first-use order — which is the trailer's order — is
+   the order it always was. BOTH outcomes record the ordinal beside the entry:
+   an id can be reached through the general path first (a field's wire id and
+   an enum variant of the same name are one hash, and an enum-keyed array
+   interns its key AFTER the slot's element probe here, and before it in C++),
+   and an entry with no ordinal recorded is an entry a rewind cannot take the
+   cache back for. Recording on the hit is what makes the cache LOCALLY
+   correct — slot[ordinal] always names a live entry whose ordinal_of points
+   back — rather than correct by an argument about this emitter pairing every
+   rewind with an identical redo, which a change to the measure path could
+   quietly retire (make/c.mk, beside tables-c-ref-ordinal-negative-control). */
+static SCHEMA_UNUSED void table_writer_id_at( TableWriter * w, int32_t ordinal, uint64_t id )
+{
+    TableWriteIds * v=w->vocabulary;
+    const int32_t at=v->slot[ordinal];
+    uint64_t r;
+    if(at>=0) { table_writer_leb(w,(uint64_t)at+1); return; }
+    r=table_writer_id(w,id);
+    if(r==0) { return; }
+    v->slot[ordinal]=(int32_t)r-1;
+    v->ordinal_of[r-1]=(int16_t)ordinal;
 }
 static SCHEMA_UNUSED TableWriter table_writer_probe( const TableWriter * w )
 {
@@ -333,7 +379,15 @@ static SCHEMA_UNUSED TableWriter table_writer_probe( const TableWriter * w )
 static SCHEMA_UNUSED void table_writer_rewind( const TableWriter * probe )
 {
     TableWriteIds * v=probe->vocabulary;
-    while(v->count>probe->id_checkpoint) { v->count--; v->slots[v->positions[v->count]]=0; }
+    /* an entry removed is the most recent one on its probe chain, so clearing
+       it preserves every earlier chain — and ITS ORDINAL SLOT goes with it, or
+       a later table_writer_id_at would answer with an entry this call just
+       popped. */
+    while(v->count>probe->id_checkpoint) {
+        int32_t o;
+        v->count--; v->slots[v->positions[v->count]]=0;
+        o=v->ordinal_of[v->count]; if(o>=0) { v->slot[o]=-1; }
+    }
 }
 static SCHEMA_UNUSED void table_writer_finish( TableWriter * w )
 {
@@ -1589,7 +1643,7 @@ static SCHEMA_UNUSED int schema_bench_mixed_event_wire_save_( TableWriter * w, c
     {
         case MIXED_EVENT_TYPE_NONE: table_writer_leb( w, 0 ); break;
         case MIXED_EVENT_TYPE_HIT:
-            table_writer_id( w, 0x33732819300680aaull ); table_writer_put8( w, 13 );
+            table_writer_id_at( w, 16, 0x33732819300680aaull ); table_writer_put8( w, 13 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -1605,7 +1659,7 @@ static SCHEMA_UNUSED int schema_bench_mixed_event_wire_save_( TableWriter * w, c
             }
             break;
         case MIXED_EVENT_TYPE_CHAT:
-            table_writer_id( w, 0xf2a38d910b5b348bull ); table_writer_put8( w, 13 );
+            table_writer_id_at( w, 75, 0xf2a38d910b5b348bull ); table_writer_put8( w, 13 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -1621,7 +1675,7 @@ static SCHEMA_UNUSED int schema_bench_mixed_event_wire_save_( TableWriter * w, c
             }
             break;
         case MIXED_EVENT_TYPE_PICKUP:
-            table_writer_id( w, 0x9fa3a41c86ecb765ull ); table_writer_put8( w, 13 );
+            table_writer_id_at( w, 50, 0x9fa3a41c86ecb765ull ); table_writer_put8( w, 13 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -1692,7 +1746,7 @@ static SCHEMA_UNUSED int mixed_entity_save_body( TableWriter * w, const MixedEnt
         if ( !( value->entity_id == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0x23fcfd6678e36712ull ); table_writer_put8( w, 7 );
+            table_writer_id_at( w, 11, 0x23fcfd6678e36712ull ); table_writer_put8( w, 7 );
             table_writer_put16( w, (uint16_t) ( value->entity_id ) );
         }
     }
@@ -1700,7 +1754,7 @@ static SCHEMA_UNUSED int mixed_entity_save_body( TableWriter * w, const MixedEnt
         if ( !( value->pos_x == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0xcb4b37357667310eull ); table_writer_put8( w, 4 );
+            table_writer_id_at( w, 65, 0xcb4b37357667310eull ); table_writer_put8( w, 4 );
             table_writer_put32( w, (uint32_t) ( value->pos_x ) );
         }
     }
@@ -1708,7 +1762,7 @@ static SCHEMA_UNUSED int mixed_entity_save_body( TableWriter * w, const MixedEnt
         if ( !( value->pos_y == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0xcb4b3835766732c1ull ); table_writer_put8( w, 4 );
+            table_writer_id_at( w, 66, 0xcb4b3835766732c1ull ); table_writer_put8( w, 4 );
             table_writer_put32( w, (uint32_t) ( value->pos_y ) );
         }
     }
@@ -1716,7 +1770,7 @@ static SCHEMA_UNUSED int mixed_entity_save_body( TableWriter * w, const MixedEnt
         if ( !( value->pos_z == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0xcb4b353576672da8ull ); table_writer_put8( w, 4 );
+            table_writer_id_at( w, 64, 0xcb4b353576672da8ull ); table_writer_put8( w, 4 );
             table_writer_put32( w, (uint32_t) ( value->pos_z ) );
         }
     }
@@ -1724,7 +1778,7 @@ static SCHEMA_UNUSED int mixed_entity_save_body( TableWriter * w, const MixedEnt
         if ( !( value->yaw == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0xb54d8e19798e16e8ull ); table_writer_put8( w, 7 );
+            table_writer_id_at( w, 58, 0xb54d8e19798e16e8ull ); table_writer_put8( w, 7 );
             table_writer_put16( w, (uint16_t) ( value->yaw ) );
         }
     }
@@ -1732,7 +1786,7 @@ static SCHEMA_UNUSED int mixed_entity_save_body( TableWriter * w, const MixedEnt
         if ( !( value->pitch == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0x53a9f665a90cc1b1ull ); table_writer_put8( w, 7 );
+            table_writer_id_at( w, 22, 0x53a9f665a90cc1b1ull ); table_writer_put8( w, 7 );
             table_writer_put16( w, (uint16_t) ( value->pitch ) );
         }
     }
@@ -1740,7 +1794,7 @@ static SCHEMA_UNUSED int mixed_entity_save_body( TableWriter * w, const MixedEnt
         if ( !( value->vel_x == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0x6cede6b6eb60ee67ull ); table_writer_put8( w, 4 );
+            table_writer_id_at( w, 27, 0x6cede6b6eb60ee67ull ); table_writer_put8( w, 4 );
             table_writer_put32( w, (uint32_t) ( value->vel_x ) );
         }
     }
@@ -1748,7 +1802,7 @@ static SCHEMA_UNUSED int mixed_entity_save_body( TableWriter * w, const MixedEnt
         if ( !( value->vel_y == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0x6cede5b6eb60ecb4ull ); table_writer_put8( w, 4 );
+            table_writer_id_at( w, 26, 0x6cede5b6eb60ecb4ull ); table_writer_put8( w, 4 );
             table_writer_put32( w, (uint32_t) ( value->vel_y ) );
         }
     }
@@ -1756,7 +1810,7 @@ static SCHEMA_UNUSED int mixed_entity_save_body( TableWriter * w, const MixedEnt
         if ( !( value->vel_z == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0x6cede8b6eb60f1cdull ); table_writer_put8( w, 4 );
+            table_writer_id_at( w, 28, 0x6cede8b6eb60f1cdull ); table_writer_put8( w, 4 );
             table_writer_put32( w, (uint32_t) ( value->vel_z ) );
         }
     }
@@ -1764,7 +1818,7 @@ static SCHEMA_UNUSED int mixed_entity_save_body( TableWriter * w, const MixedEnt
         if ( !( value->health == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0x7f69d4b5288ba9cfull ); table_writer_put8( w, 4 );
+            table_writer_id_at( w, 37, 0x7f69d4b5288ba9cfull ); table_writer_put8( w, 4 );
             table_writer_put32( w, (uint32_t) ( value->health ) );
         }
     }
@@ -1772,7 +1826,7 @@ static SCHEMA_UNUSED int mixed_entity_save_body( TableWriter * w, const MixedEnt
         if ( !( value->weapon == MIXED_WEAPON_NONE ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0xa0b610205f2c6e01ull ); table_writer_put8( w, 30 );
+            table_writer_id_at( w, 52, 0xa0b610205f2c6e01ull ); table_writer_put8( w, 30 );
             switch ( value->weapon )
             {
                 case MIXED_WEAPON_NONE: table_writer_leb( w, 0 ); break;
@@ -1799,7 +1853,7 @@ static SCHEMA_UNUSED int mixed_entity_save_body( TableWriter * w, const MixedEnt
         if ( !( value->damage == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0x7f6308be8ab37fc0ull ); table_writer_put8( w, 9 );
+            table_writer_id_at( w, 36, 0x7f6308be8ab37fc0ull ); table_writer_put8( w, 9 );
             table_writer_put64( w, (uint64_t) ( value->damage ) );
         }
     }
@@ -1807,7 +1861,7 @@ static SCHEMA_UNUSED int mixed_entity_save_body( TableWriter * w, const MixedEnt
         if ( !( value->moving == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0x11a44fc1d1243da7ull ); table_writer_put8( w, 1 );
+            table_writer_id_at( w, 5, 0x11a44fc1d1243da7ull ); table_writer_put8( w, 1 );
             table_writer_put8( w, value->moving ? 1 : 0 );
         }
     }
@@ -1815,7 +1869,7 @@ static SCHEMA_UNUSED int mixed_entity_save_body( TableWriter * w, const MixedEnt
         if ( !( value->firing == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0x7674cfd19b9031caull ); table_writer_put8( w, 1 );
+            table_writer_id_at( w, 32, 0x7674cfd19b9031caull ); table_writer_put8( w, 1 );
             table_writer_put8( w, value->firing ? 1 : 0 );
         }
     }
@@ -3303,7 +3357,7 @@ static SCHEMA_UNUSED int mixed_stat_save_body( TableWriter * w, const MixedStat 
         if ( !( value->stat_id == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0x80ab75f0866dbf65ull ); table_writer_put8( w, 6 );
+            table_writer_id_at( w, 38, 0x80ab75f0866dbf65ull ); table_writer_put8( w, 6 );
             table_writer_put8( w, (uint8_t) ( value->stat_id ) );
         }
     }
@@ -3311,7 +3365,7 @@ static SCHEMA_UNUSED int mixed_stat_save_body( TableWriter * w, const MixedStat 
         if ( !( value->delta == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0x52076675ec13a0c1ull ); table_writer_put8( w, 4 );
+            table_writer_id_at( w, 21, 0x52076675ec13a0c1ull ); table_writer_put8( w, 4 );
             table_writer_put32( w, (uint32_t) ( value->delta ) );
         }
     }
@@ -3619,7 +3673,7 @@ static SCHEMA_UNUSED int mixed_hit_event_save_body( TableWriter * w, const Mixed
         if ( !( value->target_id == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0xb7bc9ac015a25050ull ); table_writer_put8( w, 7 );
+            table_writer_id_at( w, 59, 0xb7bc9ac015a25050ull ); table_writer_put8( w, 7 );
             table_writer_put16( w, (uint16_t) ( value->target_id ) );
         }
     }
@@ -3627,7 +3681,7 @@ static SCHEMA_UNUSED int mixed_hit_event_save_body( TableWriter * w, const Mixed
         if ( !( value->damage == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0x7f6308be8ab37fc0ull ); table_writer_put8( w, 4 );
+            table_writer_id_at( w, 36, 0x7f6308be8ab37fc0ull ); table_writer_put8( w, 4 );
             table_writer_put32( w, (uint32_t) ( value->damage ) );
         }
     }
@@ -3635,7 +3689,7 @@ static SCHEMA_UNUSED int mixed_hit_event_save_body( TableWriter * w, const Mixed
         if ( !( value->hit_kind == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0x01fbc365b059b925ull ); table_writer_put8( w, 4 );
+            table_writer_id_at( w, 1, 0x01fbc365b059b925ull ); table_writer_put8( w, 4 );
             table_writer_put32( w, (uint32_t) ( value->hit_kind ) );
         }
     }
@@ -3643,7 +3697,7 @@ static SCHEMA_UNUSED int mixed_hit_event_save_body( TableWriter * w, const Mixed
         if ( !( value->crit == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0x126167908c9aa52dull ); table_writer_put8( w, 1 );
+            table_writer_id_at( w, 6, 0x126167908c9aa52dull ); table_writer_put8( w, 1 );
             table_writer_put8( w, value->crit ? 1 : 0 );
         }
     }
@@ -4138,7 +4192,7 @@ static SCHEMA_UNUSED int mixed_chat_event_save_body( TableWriter * w, const Mixe
         if ( !( value->channel == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0xa5013e9ad5caeda4ull ); table_writer_put8( w, 4 );
+            table_writer_id_at( w, 54, 0xa5013e9ad5caeda4ull ); table_writer_put8( w, 4 );
             table_writer_put32( w, (uint32_t) ( value->channel ) );
         }
     }
@@ -4146,7 +4200,7 @@ static SCHEMA_UNUSED int mixed_chat_event_save_body( TableWriter * w, const Mixe
         if ( !( value->speaker == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0xfbf1ac4d96ebd022ull ); table_writer_put8( w, 7 );
+            table_writer_id_at( w, 76, 0xfbf1ac4d96ebd022ull ); table_writer_put8( w, 7 );
             table_writer_put16( w, (uint16_t) ( value->speaker ) );
         }
     }
@@ -4490,7 +4544,7 @@ static SCHEMA_UNUSED int mixed_pickup_event_save_body( TableWriter * w, const Mi
         if ( !( value->item_id == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0x9e7fd06d864fbd56ull ); table_writer_put8( w, 7 );
+            table_writer_id_at( w, 48, 0x9e7fd06d864fbd56ull ); table_writer_put8( w, 7 );
             table_writer_put16( w, (uint16_t) ( value->item_id ) );
         }
     }
@@ -4498,7 +4552,7 @@ static SCHEMA_UNUSED int mixed_pickup_event_save_body( TableWriter * w, const Mi
         if ( !( value->amount == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0x8113fe7ea2b16969ull ); table_writer_put8( w, 4 );
+            table_writer_id_at( w, 39, 0x8113fe7ea2b16969ull ); table_writer_put8( w, 4 );
             table_writer_put32( w, (uint32_t) ( value->amount ) );
         }
     }
@@ -4916,7 +4970,7 @@ static SCHEMA_UNUSED int bench_mixed_save_body( TableWriter * w, const BenchMixe
         if ( !( value->sequence == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0xaa38aca481f528a8ull ); table_writer_put8( w, 7 );
+            table_writer_id_at( w, 56, 0xaa38aca481f528a8ull ); table_writer_put8( w, 7 );
             table_writer_put16( w, (uint16_t) ( value->sequence ) );
         }
     }
@@ -4924,7 +4978,7 @@ static SCHEMA_UNUSED int bench_mixed_save_body( TableWriter * w, const BenchMixe
         if ( !( value->ack_sequence == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0x0dbe005c56697c3eull ); table_writer_put8( w, 4 );
+            table_writer_id_at( w, 4, 0x0dbe005c56697c3eull ); table_writer_put8( w, 4 );
             table_writer_put32( w, (uint32_t) ( value->ack_sequence ) );
         }
     }
@@ -4932,7 +4986,7 @@ static SCHEMA_UNUSED int bench_mixed_save_body( TableWriter * w, const BenchMixe
         if ( !( value->ack_bits == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0x9bae0da8b829ee03ull ); table_writer_put8( w, 8 );
+            table_writer_id_at( w, 46, 0x9bae0da8b829ee03ull ); table_writer_put8( w, 8 );
             table_writer_put32( w, (uint32_t) ( value->ack_bits ) );
         }
     }
@@ -4940,7 +4994,7 @@ static SCHEMA_UNUSED int bench_mixed_save_body( TableWriter * w, const BenchMixe
         if ( !( value->session_id == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0xb7d7b5650a590b05ull ); table_writer_put8( w, 9 );
+            table_writer_id_at( w, 60, 0xb7d7b5650a590b05ull ); table_writer_put8( w, 9 );
             table_writer_put64( w, (uint64_t) ( value->session_id ) );
         }
     }
@@ -4948,7 +5002,7 @@ static SCHEMA_UNUSED int bench_mixed_save_body( TableWriter * w, const BenchMixe
         if ( !( value->client_id == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0x6d7b98e2d095967eull ); table_writer_put8( w, 8 );
+            table_writer_id_at( w, 29, 0x6d7b98e2d095967eull ); table_writer_put8( w, 8 );
             table_writer_put32( w, (uint32_t) ( value->client_id ) );
         }
     }
@@ -4956,7 +5010,7 @@ static SCHEMA_UNUSED int bench_mixed_save_body( TableWriter * w, const BenchMixe
         if ( !( value->nonce == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0x73a94c71d60dc0d8ull ); table_writer_put8( w, 9 );
+            table_writer_id_at( w, 31, 0x73a94c71d60dc0d8ull ); table_writer_put8( w, 9 );
             table_writer_put64( w, (uint64_t) ( value->nonce ) );
         }
     }
@@ -4964,7 +5018,7 @@ static SCHEMA_UNUSED int bench_mixed_save_body( TableWriter * w, const BenchMixe
         if ( !( value->world_time == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0x3eee6b51be54fc85ull ); table_writer_put8( w, 5 );
+            table_writer_id_at( w, 20, 0x3eee6b51be54fc85ull ); table_writer_put8( w, 5 );
             table_writer_put64( w, (uint64_t) ( value->world_time ) );
         }
     }
@@ -4972,7 +5026,7 @@ static SCHEMA_UNUSED int bench_mixed_save_body( TableWriter * w, const BenchMixe
         if ( !( value->frame_tick == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0x7bbc035f7b6d0112ull ); table_writer_put8( w, 9 );
+            table_writer_id_at( w, 34, 0x7bbc035f7b6d0112ull ); table_writer_put8( w, 9 );
             table_writer_put64( w, (uint64_t) ( value->frame_tick ) );
         }
     }
@@ -4980,7 +5034,7 @@ static SCHEMA_UNUSED int bench_mixed_save_body( TableWriter * w, const BenchMixe
         if ( !( value->server_time == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0x3c460475f9be69c6ull ); table_writer_put8( w, 22 );
+            table_writer_id_at( w, 18, 0x3c460475f9be69c6ull ); table_writer_put8( w, 22 );
             table_writer_put32( w, (uint32_t) ( value->server_time ) );
         }
     }
@@ -4989,7 +5043,7 @@ static SCHEMA_UNUSED int bench_mixed_save_body( TableWriter * w, const BenchMixe
         if ( value->entities_count > 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0x935d0fb07bb3822aull ); table_writer_put8( w, 14 );
+            table_writer_id_at( w, 43, 0x935d0fb07bb3822aull ); table_writer_put8( w, 14 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -5010,7 +5064,7 @@ static SCHEMA_UNUSED int bench_mixed_save_body( TableWriter * w, const BenchMixe
         if ( value->stats_count > 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0xee639cad45b1994cull ); table_writer_put8( w, 14 );
+            table_writer_id_at( w, 74, 0xee639cad45b1994cull ); table_writer_put8( w, 14 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -5030,7 +5084,7 @@ static SCHEMA_UNUSED int bench_mixed_save_body( TableWriter * w, const BenchMixe
         if ( value->game_event.type != MIXED_EVENT_TYPE_NONE )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0x2e35dc5321aa5790ull ); table_writer_put8( w, 15 );
+            table_writer_id_at( w, 14, 0x2e35dc5321aa5790ull ); table_writer_put8( w, 15 );
             if ( !schema_bench_mixed_event_wire_save_( w, &value->game_event ) ) { return 0; }
         }
     }
@@ -5040,7 +5094,7 @@ static SCHEMA_UNUSED int bench_mixed_save_body( TableWriter * w, const BenchMixe
         if ( rides )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0x5759ce7586bbb5a3ull ); table_writer_put8( w, 14 );
+            table_writer_id_at( w, 24, 0x5759ce7586bbb5a3ull ); table_writer_put8( w, 14 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -5061,7 +5115,7 @@ static SCHEMA_UNUSED int bench_mixed_save_body( TableWriter * w, const BenchMixe
         if ( value->player_name_length != 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0x13a62f542cf8e86eull ); table_writer_put8( w, 12 );
+            table_writer_id_at( w, 7, 0x13a62f542cf8e86eull ); table_writer_put8( w, 12 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -5082,7 +5136,7 @@ static SCHEMA_UNUSED int bench_mixed_save_body( TableWriter * w, const BenchMixe
         if ( value->payload_length != 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0xcfb8a9d063b5e9e5ull ); table_writer_put8( w, 14 );
+            table_writer_id_at( w, 67, 0xcfb8a9d063b5e9e5ull ); table_writer_put8( w, 14 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -5102,7 +5156,7 @@ static SCHEMA_UNUSED int bench_mixed_save_body( TableWriter * w, const BenchMixe
         if ( !( value->aim_x == 0.0f ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0xdbaf7be5e24296c9ull ); table_writer_put8( w, 10 );
+            table_writer_id_at( w, 72, 0xdbaf7be5e24296c9ull ); table_writer_put8( w, 10 );
             table_writer_put32( w, table_float_to_bits( value->aim_x ) );
         }
     }
@@ -5110,7 +5164,7 @@ static SCHEMA_UNUSED int bench_mixed_save_body( TableWriter * w, const BenchMixe
         if ( !( value->aim_y == 0.0f ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0xdbaf7ae5e2429516ull ); table_writer_put8( w, 10 );
+            table_writer_id_at( w, 71, 0xdbaf7ae5e2429516ull ); table_writer_put8( w, 10 );
             table_writer_put32( w, table_float_to_bits( value->aim_y ) );
         }
     }
@@ -5118,7 +5172,7 @@ static SCHEMA_UNUSED int bench_mixed_save_body( TableWriter * w, const BenchMixe
         if ( !( value->aim_z == 0.0f ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0xdbaf79e5e2429363ull ); table_writer_put8( w, 10 );
+            table_writer_id_at( w, 70, 0xdbaf79e5e2429363ull ); table_writer_put8( w, 10 );
             table_writer_put32( w, table_float_to_bits( value->aim_z ) );
         }
     }
@@ -5126,7 +5180,7 @@ static SCHEMA_UNUSED int bench_mixed_save_body( TableWriter * w, const BenchMixe
         if ( !( value->recoil == 0.0f ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0x9cef31fff7e2e457ull ); table_writer_put8( w, 10 );
+            table_writer_id_at( w, 47, 0x9cef31fff7e2e457ull ); table_writer_put8( w, 10 );
             table_writer_put32( w, table_float_to_bits( value->recoil ) );
         }
     }
@@ -5134,7 +5188,7 @@ static SCHEMA_UNUSED int bench_mixed_save_body( TableWriter * w, const BenchMixe
         if ( !( value->drift == 0.0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0x5ab3f9c9341f6c04ull ); table_writer_put8( w, 11 );
+            table_writer_id_at( w, 25, 0x5ab3f9c9341f6c04ull ); table_writer_put8( w, 11 );
             table_writer_put64( w, table_double_to_bits( value->drift ) );
         }
     }
@@ -5142,7 +5196,7 @@ static SCHEMA_UNUSED int bench_mixed_save_body( TableWriter * w, const BenchMixe
         if ( !( serialize_uint128_equal( value->wide_key, serialize_uint128_make( 0ull, 0ull ) ) ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0xa3348580461faf16ull ); table_writer_put8( w, 19 );
+            table_writer_id_at( w, 53, 0xa3348580461faf16ull ); table_writer_put8( w, 19 );
             table_writer_put64( w, (value->wide_key).lo ); table_writer_put64( w, (value->wide_key).hi );
         }
     }
@@ -5150,7 +5204,7 @@ static SCHEMA_UNUSED int bench_mixed_save_body( TableWriter * w, const BenchMixe
         if ( !( serialize_int128_equal( value->flux, serialize_int128_make( 0ull, 0ull ) ) ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0xd61bdd7908af2642ull ); table_writer_put8( w, 18 );
+            table_writer_id_at( w, 68, 0xd61bdd7908af2642ull ); table_writer_put8( w, 18 );
             table_writer_put64( w, (value->flux).lo ); table_writer_put64( w, (value->flux).hi );
         }
     }
@@ -5158,7 +5212,7 @@ static SCHEMA_UNUSED int bench_mixed_save_body( TableWriter * w, const BenchMixe
         if ( !( value->ping == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0xbf30e00dc53307a9ull ); table_writer_put8( w, 26 );
+            table_writer_id_at( w, 61, 0xbf30e00dc53307a9ull ); table_writer_put8( w, 26 );
             table_writer_put16( w, (uint16_t) ( value->ping ) );
         }
     }
@@ -5166,7 +5220,7 @@ static SCHEMA_UNUSED int bench_mixed_save_body( TableWriter * w, const BenchMixe
         if ( !( value->crc_hint == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0x560d6527ccd8515full ); table_writer_put8( w, 8 );
+            table_writer_id_at( w, 23, 0x560d6527ccd8515full ); table_writer_put8( w, 8 );
             table_writer_put32( w, (uint32_t) ( value->crc_hint ) );
         }
     }
@@ -5174,7 +5228,7 @@ static SCHEMA_UNUSED int bench_mixed_save_body( TableWriter * w, const BenchMixe
         if ( !( value->has_extra == 1 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0xc08292176cfd8672ull ); table_writer_put8( w, 1 );
+            table_writer_id_at( w, 62, 0xc08292176cfd8672ull ); table_writer_put8( w, 1 );
             table_writer_put8( w, value->has_extra ? 1 : 0 );
         }
     }
@@ -5184,7 +5238,7 @@ static SCHEMA_UNUSED int bench_mixed_save_body( TableWriter * w, const BenchMixe
         if ( !( value->extra == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0xfd29ee12a979cb69ull ); table_writer_put8( w, 4 );
+            table_writer_id_at( w, 77, 0xfd29ee12a979cb69ull ); table_writer_put8( w, 4 );
             table_writer_put32( w, (uint32_t) ( value->extra ) );
         }
     }
@@ -5195,7 +5249,7 @@ static SCHEMA_UNUSED int bench_mixed_save_body( TableWriter * w, const BenchMixe
         if ( !( value->idle_ticks == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id( w, 0x78101ac0aa8cbcfeull ); table_writer_put8( w, 4 );
+            table_writer_id_at( w, 33, 0x78101ac0aa8cbcfeull ); table_writer_put8( w, 4 );
             table_writer_put32( w, (uint32_t) ( value->idle_ticks ) );
         }
     }

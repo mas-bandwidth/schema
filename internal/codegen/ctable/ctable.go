@@ -124,9 +124,13 @@ type tableGen struct {
 	owner    *ir.Struct      // the closure member whose codec is being emitted
 	variable map[string]bool // the derived VARIABLE-LENGTH members (ir.VariableTables)
 	targets  map[string]bool // tables some pointer targets (ir.PointerTargets)
-	body     strings.Builder
-	includes map[string]bool // referenced files -> #include "<base>Table.h"
-	indent   string          // extra per-line indent while emitting inside a branch guard
+	// idOrdinal is the unit's id vocabulary as id -> ORDINAL (§3): the index
+	// an id takes in ir.TableWireIds, which is what a generated header hands
+	// table_writer_id_at beside the id itself. Built on first use.
+	idOrdinal map[uint64]int
+	body      strings.Builder
+	includes  map[string]bool // referenced files -> #include "<base>Table.h"
+	indent    string          // extra per-line indent while emitting inside a branch guard
 }
 
 func (g *tableGen) pf(format string, args ...any) {
