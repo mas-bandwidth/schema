@@ -4951,6 +4951,22 @@ static SCHEMA_UNUSED int schema_tabledemo_root_config_message_extent_(TableMessa
 static SCHEMA_UNUSED int attachment_save_body( TableWriter * w, const Attachment * value )
 {
     (void) value;
+    if ( w->buffer == NULL && !w->check_default )
+    {
+        int64_t payload_bytes = 1; /* the zero reference ending this body */
+        if ( !( value->slot == 0 ) )
+        {
+            table_writer_id( w, 0x6a771618f6fe31d1ull );
+            payload_bytes += 5; /* kind and fixed-width payload */
+        }
+        if ( !( value->power == 1.0f ) )
+        {
+            table_writer_id( w, 0xeef9d1358ae7b4e6ull );
+            payload_bytes += 5; /* kind and fixed-width payload */
+        }
+        table_writer_raw( w, NULL, payload_bytes );
+        return !w->overflow;
+    }
     { /* slot */
         if ( !( value->slot == 0 ) )
         {
@@ -5265,6 +5281,17 @@ static SCHEMA_UNUSED int schema_tabledemo_attachment_message_extent_(TableMessag
 static SCHEMA_UNUSED int buff_save_body( TableWriter * w, const Buff * value )
 {
     (void) value;
+    if ( w->buffer == NULL && !w->check_default )
+    {
+        int64_t payload_bytes = 1; /* the zero reference ending this body */
+        if ( !( value->multiplier == 1.0f ) )
+        {
+            table_writer_id( w, 0x9adc623a805c87c6ull );
+            payload_bytes += 5; /* kind and fixed-width payload */
+        }
+        table_writer_raw( w, NULL, payload_bytes );
+        return !w->overflow;
+    }
     { /* multiplier */
         if ( !( value->multiplier == 1.0f ) )
         {
@@ -5461,6 +5488,17 @@ static SCHEMA_UNUSED int schema_tabledemo_buff_message_extent_(TableMessageReade
 static SCHEMA_UNUSED int debuff_save_body( TableWriter * w, const Debuff * value )
 {
     (void) value;
+    if ( w->buffer == NULL && !w->check_default )
+    {
+        int64_t payload_bytes = 1; /* the zero reference ending this body */
+        if ( !( value->amount == 0 ) )
+        {
+            table_writer_id( w, 0x8113fe7ea2b16969ull );
+            payload_bytes += 5; /* kind and fixed-width payload */
+        }
+        table_writer_raw( w, NULL, payload_bytes );
+        return !w->overflow;
+    }
     { /* amount */
         if ( !( value->amount == 0 ) )
         {

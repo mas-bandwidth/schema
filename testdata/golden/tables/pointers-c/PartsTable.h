@@ -3384,6 +3384,27 @@ static SCHEMA_UNUSED int schema_graphdemo_stamp_message_extent_(TableMessageRead
 static SCHEMA_UNUSED int colour_save_body( TableWriter * w, const Colour * value )
 {
     (void) value;
+    if ( w->buffer == NULL && !w->check_default )
+    {
+        int64_t payload_bytes = 1; /* the zero reference ending this body */
+        if ( !( value->r == 0 ) )
+        {
+            table_writer_id( w, 0xaf63ef4c86020cd5ull );
+            payload_bytes += 2; /* kind and fixed-width payload */
+        }
+        if ( !( value->g == 0 ) )
+        {
+            table_writer_id( w, 0xaf63da4c8601e926ull );
+            payload_bytes += 2; /* kind and fixed-width payload */
+        }
+        if ( !( value->b == 0 ) )
+        {
+            table_writer_id( w, 0xaf63df4c8601f1a5ull );
+            payload_bytes += 2; /* kind and fixed-width payload */
+        }
+        table_writer_raw( w, NULL, payload_bytes );
+        return !w->overflow;
+    }
     { /* r */
         if ( !( value->r == 0 ) )
         {
