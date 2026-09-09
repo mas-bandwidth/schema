@@ -1,6 +1,7 @@
 package cstable
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -170,21 +171,33 @@ func TestIsChildScalarArray(t *testing.T) {
 	}
 }
 
-func TestKnownOrdinalGracefulFallback(t *testing.T) {
+func TestKnownOrdinal(t *testing.T) {
 	g := &tableGen{
 		idOrdinal: map[uint64]int{
 			0x1111: 0,
 			0x2222: 1,
 		},
 	}
-	if got := g.knownOrdinal(0x1111); got != 0 {
-		t.Fatalf("knownOrdinal(0x1111) = %d, want 0", got)
+	f1 := &ir.Field{Name: "field1"}
+	f2 := &ir.Field{Name: "field2"}
+	if got := g.knownOrdinal(f1, 0x1111); got != 0 {
+		t.Fatalf("knownOrdinal(f1, 0x1111) = %d, want 0", got)
 	}
-	if got := g.knownOrdinal(0x2222); got != 1 {
-		t.Fatalf("knownOrdinal(0x2222) = %d, want 1", got)
+	if got := g.knownOrdinal(f2, 0x2222); got != 1 {
+		t.Fatalf("knownOrdinal(f2, 0x2222) = %d, want 1", got)
 	}
-	// Missing id should return -1 gracefully instead of panicking.
-	if got := g.knownOrdinal(0x9999); got != -1 {
-		t.Fatalf("knownOrdinal(0x9999) = %d, want -1", got)
-	}
+
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatalf("expected panic for unregistered field, got none")
+		}
+		wantMsg := fmt.Sprintf("table field missingField (%d) missing from wire ID table; schema compiler invariant violated", uint64(0x9999))
+		if msg, ok := r.(string); !ok || msg != wantMsg {
+			t.Fatalf("panic = %v, want %q", r, wantMsg)
+		}
+	}()
+
+	fMissing := &ir.Field{Name: "missingField"}
+	g.knownOrdinal(fMissing, 0x9999)
 }

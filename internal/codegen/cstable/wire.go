@@ -113,7 +113,7 @@ func (g *tableGen) emitCollectTyped(st *ir.Struct) {
 	g.pf("    return true;\n}\n\n")
 }
 
-func (g *tableGen) knownOrdinal(id uint64) int {
+func (g *tableGen) knownOrdinal(f *ir.Field, id uint64) int {
 	if g.idOrdinal == nil {
 		g.idOrdinal = make(map[uint64]int)
 		for i, known := range ir.TableWireIds(g.unit) {
@@ -122,7 +122,7 @@ func (g *tableGen) knownOrdinal(id uint64) int {
 	}
 	ord, ok := g.idOrdinal[id]
 	if !ok {
-		return -1
+		panic(fmt.Sprintf("table field %s (%d) missing from wire ID table; schema compiler invariant violated", f.Name, id))
 	}
 	return ord
 }
@@ -143,11 +143,7 @@ func (g *tableGen) emitBodySizeTyped(st *ir.Struct) {
 			cond := leafRideCondition(f)
 			kind := tableScalarKind(f)
 			width := tableKindWidth(kind)
-			if ord := g.knownOrdinal(id); ord >= 0 {
-				g.pf("    if (%s) { n += TableWire.VarSize(ids.RefAt(%d, 0x%016xul)) + %d; }\n", cond, ord, id, 1+width)
-			} else {
-				g.pf("    if (%s) { n += TableWire.VarSize(ids.Reference(0x%016xul)) + %d; }\n", cond, id, 1+width)
-			}
+			g.pf("    if (%s) { n += TableWire.VarSize(ids.RefAt(%d, 0x%016xul)) + %d; }\n", cond, g.knownOrdinal(f, id), id, 1+width)
 		} else if childSt, ok := isChildScalarArray(f); ok {
 			prop := member(f)
 			childName := childSt.Name
@@ -169,11 +165,7 @@ func (g *tableGen) emitBodySizeTyped(st *ir.Struct) {
 			g.pf("            nChild_%d += TableWire.VarSize((ulong)childBody) + childBody;\n", i)
 			g.pf("        }\n")
 			g.pf("        long payload_%d = 1 + TableWire.VarSize((ulong)count_%d) + nChild_%d;\n", i, i, i)
-			if ord := g.knownOrdinal(id); ord >= 0 {
-				g.pf("        n += TableWire.VarSize(ids.RefAt(%d, 0x%016xul)) + 1 + TableWire.VarSize((ulong)payload_%d) + payload_%d;\n", ord, id, i, i)
-			} else {
-				g.pf("        n += TableWire.VarSize(ids.Reference(0x%016xul)) + 1 + TableWire.VarSize((ulong)payload_%d) + payload_%d;\n", id, i, i)
-			}
+			g.pf("        n += TableWire.VarSize(ids.RefAt(%d, 0x%016xul)) + 1 + TableWire.VarSize((ulong)payload_%d) + payload_%d;\n", g.knownOrdinal(f, id), id, i, i)
 			g.pf("        if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[%d] = payload_%d; }\n", i, i)
 			g.pf("    }\n")
 		} else {
@@ -215,11 +207,7 @@ func (g *tableGen) emitWriteBodyTyped(st *ir.Struct) {
 			width := tableKindWidth(kind)
 			raw := csRawGet("v."+member(f), f.Type)
 			g.pf("    if (%s)\n    {\n", cond)
-			if ord := g.knownOrdinal(id); ord >= 0 {
-				g.pf("        w.HeaderAt(%d, 0x%016xul, %d, ref ids);\n", ord, id, kind)
-			} else {
-				g.pf("        w.Header(ids.Reference(0x%016xul), %d);\n", id, kind)
-			}
+			g.pf("        w.HeaderAt(%d, 0x%016xul, %d, ref ids);\n", g.knownOrdinal(f, id), id, kind)
 			g.pf("        w.Fixed(%s, %d);\n", raw, width)
 			g.pf("    }\n")
 		} else if childSt, ok := isChildScalarArray(f); ok {
@@ -231,11 +219,7 @@ func (g *tableGen) emitWriteBodyTyped(st *ir.Struct) {
 			} else {
 				g.pf("    int count_%d = %d;\n    {\n", i, f.ArrayBound)
 			}
-			if ord := g.knownOrdinal(id); ord >= 0 {
-				g.pf("        w.HeaderAt(%d, 0x%016xul, 14, ref ids);\n", ord, id)
-			} else {
-				g.pf("        w.Header(ids.Reference(0x%016xul), 14);\n", id)
-			}
+			g.pf("        w.HeaderAt(%d, 0x%016xul, 14, ref ids);\n", g.knownOrdinal(f, id), id)
 			g.pf("        scoped ReadOnlySpan<long> elemCache_%d = default;\n", i)
 			g.pf("        if (!rootElemSizes.IsEmpty)\n        {\n")
 			g.pf("            int take = System.Math.Min(count_%d, System.Math.Max(0, rootElemSizes.Length - elemOffset));\n", i)
