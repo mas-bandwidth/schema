@@ -24,11 +24,10 @@
 //   - AN ENUM-KEYED ARRAY OF TABLES, held at every shape: all slots default
 //     (pairs == 0, the whole field elides after interning its own id and its
 //     keys), some slots default (a per-slot truncate inside a field that does
-//     ride) and none default. The keyed truncate is the one that pops a key
-//     interned through the general path beside elements interned through the
-//     cache, so both kinds of entry are popped in one call;
-//   - A UNION FIELD, whose arm name is a compile-time id of its own, and an
-//     ENUM FIELD, whose variant id is a RUNTIME value and stays on ref;
+//     ride) and none default. A keyed truncate pops cached key and field
+//     references together;
+//   - A UNION FIELD and an ENUM FIELD, whose selected arms each name a
+//     compile-time id and use that id's ordinal;
 //   - A NESTED TABLE OF 140 FIELDS, so the id table crosses 127 entries part
 //     way through the array and a reference's LEB128 spelling grows from one
 //     byte to two WHILE the elements are being written. A cache that answered
@@ -152,7 +151,7 @@ static void build( Outer & v, int32_t many_count, int32_t few_count, int banks_s
         v.banks[ Slot::High ].z = 22;
         set_wide( v.banks[ Slot::Mid ].leaf, 130, 23 );
     }
-    // the union arm's own id, and an enum variant's, which stays on ref
+    // the union arm's own id and an enum variant's both use their known ordinal
     if ( many_count % 2 == 0 )
     {
         v.pick.type = PickType::Alpha;
@@ -276,10 +275,9 @@ func TestCppTableRefOrdinalBytes(t *testing.T) {
 				t.Fatalf("the generated save path does not carry %q — this test would prove nothing", want)
 			}
 		}
-		// and the RUNTIME ids must still reach the general path: an enum's
-		// variant is a value, not a compile-time constant of the header
-		if !strings.Contains(header, "ids.ref( 0x") {
-			t.Fatal("no general-path ref survives: the enum identity's variant ids must not be cached by ordinal")
+		// Selection is dynamic, but the selected switch arm has a known ID.
+		if !strings.Contains(header, "case Slot::Low: ref = ids.ref_at(") {
+			t.Fatal("the enum switch does not use its known variant ordinal")
 		}
 	}
 	main := filepath.Join(dir, "main.cpp")
@@ -331,16 +329,17 @@ func TestCppTableRefOrdinalBytes(t *testing.T) {
 
 // AN ID BOTH PATHS CAN REACH (docs/SPEC-TABLES.md §3, §5). A field's wire id
 // and an enum variant's are the same hash over the same name, so a schema that
-// spells one name in both places gives ONE id two call sites: ref_at, from the
-// field header, and ref, from TableEnumRef's switch on a runtime value.
+// spells one name in both places gives ONE id and ordinal to two call sites:
+// the field header and TableEnumRef's switch on a runtime value.
 //
-// That id can therefore be interned by ref FIRST — an enum-keyed array interns
-// its key before it measures the slot's element — and the ref_at that follows
-// only HITS. If the hit did not record the ordinal beside the entry, truncate
-// would have nothing to clear when the slot elides, and the NEXT slot's field
-// header would answer out of a stale cache: it would name the entry the popped
-// one was replaced by, which is the following KEY. The file stays
-// self-consistent and the value is silently gone.
+// An enum-keyed array interns its key before it measures the slot's element.
+// The enum helper now uses ref_at too. Run the same driver against the emitted
+// header and a test-local copy whose shared enum key uses generic ref, keeping
+// the original generic-ref/ref_at interaction covered. In that copy, the field's
+// ref_at finds an existing entry and must record its ordinal for truncate.
+// Without that record, the NEXT slot's field header would answer out of a stale
+// cache: it would name the entry the popped one was replaced by, which is the
+// following KEY. The file stays self-consistent and the value is silently gone.
 //
 // The schema below is the smallest shape that reaches it: an enum-keyed array
 // whose key `alpha` is also the name of the element's only field, one slot
@@ -419,9 +418,9 @@ int main()
 }
 `
 
-// TestCppTableRefOrdinalSharedId holds ref_at to recording the ordinal on the
-// HIT path as well as the miss, which is what lets truncate undo a cache entry
-// for an id the general path interned first.
+// TestCppTableRefOrdinalSharedId checks that a key and field sharing one ID
+// share its cached ordinal and remain correct across elision and re-interning,
+// both when the key uses its ordinal and when generic ref interns it first.
 func TestCppTableRefOrdinalSharedId(t *testing.T) {
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
@@ -441,9 +440,16 @@ func TestCppTableRefOrdinalSharedId(t *testing.T) {
 	// exists for is not in the header at all
 	header := string(files["ProbeTable.h"])
 	const shared = "0x8ac625bb85ed202bull" // TableWireId( "alpha" )
-	if !strings.Contains(header, "ids.ref_at( 5, "+shared+" )") || !strings.Contains(header, "ids.ref( "+shared+" )") {
+	call := "ids.ref_at( 5, " + shared + " )"
+	enumCall := "case Tag::alpha: ref = " + call + "; return true;"
+	if strings.Count(header, call) < 2 || strings.Count(header, enumCall) != 1 {
 		t.Fatalf("the schema no longer gives one id both a field header and an enum variant: this test would prove nothing")
 	}
+	// Restore only the existing driver's shared key to its old generic path in
+	// this test-local header. The exactly-one check above prevents a stale
+	// replacement from silently dropping the generic-ref/ref_at coverage.
+	genericHeader := strings.Replace(header, enumCall,
+		"case Tag::alpha: ref = ids.ref( "+shared+" ); return true;", 1)
 	// the driver must live BESIDE the header: an #include "..." searches the
 	// including file's own directory first, and a driver written elsewhere
 	// would quietly compile against some other tree's copy
@@ -451,17 +457,27 @@ func TestCppTableRefOrdinalSharedId(t *testing.T) {
 	if err := os.WriteFile(main, []byte(refOrdinalCollisionDriver), 0600); err != nil {
 		t.Fatal(err)
 	}
-	bin := filepath.Join(dir, "collide")
-	args := []string{
-		"-std=c++17", "-O2", "-DNDEBUG", "-Wall", "-Wextra", "-Werror", "-Wshadow",
-		"-ffp-contract=off", "-I", dir, main, "-o", bin,
+	for _, setup := range []struct{ name, header string }{
+		{"enum-ordinal", header},
+		{"generic-key", genericHeader},
+	} {
+		t.Run(setup.name, func(t *testing.T) {
+			if err := os.WriteFile(filepath.Join(dir, "ProbeTable.h"), []byte(setup.header), 0600); err != nil {
+				t.Fatal(err)
+			}
+			bin := filepath.Join(dir, "collide-"+setup.name)
+			args := []string{
+				"-std=c++17", "-O2", "-DNDEBUG", "-Wall", "-Wextra", "-Werror", "-Wshadow",
+				"-ffp-contract=off", "-I", dir, main, "-o", bin,
+			}
+			if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+				t.Fatalf("compile: %v\n%s", err, out)
+			}
+			out, err := exec.Command(bin).CombinedOutput()
+			if err != nil {
+				t.Fatalf("a shared key/field id is not undone by truncate: %v\n%s", err, out)
+			}
+			t.Logf("%s", strings.TrimSpace(string(out)))
+		})
 	}
-	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
-		t.Fatalf("compile: %v\n%s", err, out)
-	}
-	out, err := exec.Command(bin).CombinedOutput()
-	if err != nil {
-		t.Fatalf("an id the general path interned first is not undone by truncate: %v\n%s", err, out)
-	}
-	t.Logf("%s", strings.TrimSpace(string(out)))
 }

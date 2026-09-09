@@ -2651,9 +2651,9 @@ inline bool TableEnumRef( TableIds & ids, Difficulty value, uint64_t & ref )
     switch ( value )
     {
         case Difficulty::None: ref = 0; return true;
-        case Difficulty::Easy: ref = ids.ref( 0x483d9e6c1ccd1f9bull ); return true;
-        case Difficulty::Normal: ref = ids.ref( 0x9ff3121d30f88d52ull ); return true;
-        case Difficulty::Hard: ref = ids.ref( 0x58c7b5d87587287cull ); return true;
+        case Difficulty::Easy: ref = ids.ref_at( 44, 0x483d9e6c1ccd1f9bull ); return true;
+        case Difficulty::Normal: ref = ids.ref_at( 82, 0x9ff3121d30f88d52ull ); return true;
+        case Difficulty::Hard: ref = ids.ref_at( 52, 0x58c7b5d87587287cull ); return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -2714,9 +2714,9 @@ inline bool TableEnumRef( TableIds & ids, ShipType value, uint64_t & ref )
     switch ( value )
     {
         case ShipType::None: ref = 0; return true;
-        case ShipType::Fighter: ref = ids.ref( 0xd011f7c3c15285c2ull ); return true;
-        case ShipType::Bomber: ref = ids.ref( 0xa8216aa1c554cb8aull ); return true;
-        case ShipType::Scout: ref = ids.ref( 0x7d573c625719c1a5ull ); return true;
+        case ShipType::Fighter: ref = ids.ref_at( 123, 0xd011f7c3c15285c2ull ); return true;
+        case ShipType::Bomber: ref = ids.ref_at( 91, 0xa8216aa1c554cb8aull ); return true;
+        case ShipType::Scout: ref = ids.ref_at( 65, 0x7d573c625719c1a5ull ); return true;
         default: return false; // no variant names this value: no wire identity
     }
 }

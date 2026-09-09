@@ -6630,9 +6630,9 @@ inline bool TableEnumRef( TableIds & ids, Grade value, uint64_t & ref )
     switch ( value )
     {
         case Grade::None: ref = 0; return true;
-        case Grade::A: ref = ids.ref( 0xaf63fc4c860222ecull ); return true;
-        case Grade::B: ref = ids.ref( 0xaf63ff4c86022805ull ); return true;
-        case Grade::C: ref = ids.ref( 0xaf63fe4c86022652ull ); return true;
+        case Grade::A: ref = ids.ref_at( 43, 0xaf63fc4c860222ecull ); return true;
+        case Grade::B: ref = ids.ref_at( 45, 0xaf63ff4c86022805ull ); return true;
+        case Grade::C: ref = ids.ref_at( 44, 0xaf63fe4c86022652ull ); return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -6641,9 +6641,9 @@ inline bool TableEnumRef( TableRetainIds & ids, Grade value, uint64_t & ref )
     switch ( value )
     {
         case Grade::None: ref = 0; return true;
-        case Grade::A: ref = ids.ref( 0xaf63fc4c860222ecull ); return true;
-        case Grade::B: ref = ids.ref( 0xaf63ff4c86022805ull ); return true;
-        case Grade::C: ref = ids.ref( 0xaf63fe4c86022652ull ); return true;
+        case Grade::A: ref = ids.ref_at( 43, 0xaf63fc4c860222ecull ); return true;
+        case Grade::B: ref = ids.ref_at( 45, 0xaf63ff4c86022805ull ); return true;
+        case Grade::C: ref = ids.ref_at( 44, 0xaf63fe4c86022652ull ); return true;
         default: return false;
     }
 }

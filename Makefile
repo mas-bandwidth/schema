@@ -4610,14 +4610,15 @@ tables-ref-ordinal-negative-control:
 	@echo "negative control: a truncate that leaves the ordinal slot standing names a POPPED entry — the file stops round-tripping"
 
 # THE SECOND HALF OF THE SAME RULE. An id can be interned by the GENERAL path
-# first — an enum-keyed array interns its key before it measures the slot's
-# element, and a field's wire id is the same hash as a variant of the same name
-# — so the ref_at that follows only HITS. Record the ordinal on the miss alone
-# and truncate has nothing to clear when that slot elides: the next slot's
-# field header answers out of a stale cache and names the entry the popped one
-# was replaced by, which is the following KEY. The file stays self-consistent
-# and the value is silently gone, so compiler/tablerefordinal_test.go's
-# shared-id driver is what has to go RED.
+# first, so the ref_at that follows finds an existing entry. The shared-id
+# driver runs the emitted enum helper and a test-local copy that restores its
+# shared key to generic ref; enums now use their known ordinals in production.
+# Both copies use the same schema and values. Record the ordinal on the miss
+# alone and truncate has nothing to clear in the generic-key copy when that
+# slot elides: the next slot's field header answers out of a stale cache and
+# names the entry the popped one was replaced by, which is the following KEY.
+# The file stays self-consistent and the value is silently gone, so
+# compiler/tablerefordinal_test.go's generic-key driver must go RED.
 .PHONY: tables-ref-ordinal-shared-negative-control
 tables-ref-ordinal-shared-negative-control:
 	@rm -rf build/ref-ordinal-shared-nc && mkdir -p build/ref-ordinal-shared-nc
@@ -4636,7 +4637,7 @@ tables-ref-ordinal-shared-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the driver went red, but not on the shared id"; \
 		  cat build/ref-ordinal-shared-nc/log; exit 1; }
 	@grep -m1 "VALUES MOVED" build/ref-ordinal-shared-nc/log
-	@echo "negative control: an ordinal recorded on the MISS alone loses the field an eliding keyed slot shares its id with"
+	@echo "negative control: an ordinal recorded on the MISS alone loses the field an eliding generic-key slot shares its id with"
 
 # THE C++ RELEASE GATE: the wire fuzzer at a long random pass, both builds,
 # and the retention leg beside it at the same length (docs/SPEC-TABLES.md

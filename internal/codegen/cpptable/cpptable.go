@@ -258,14 +258,6 @@ func (g *tableGen) wireRef(id uint64) string {
 	return fmt.Sprintf("ids.ref_at( %d, 0x%016xull )", g.knownOrdinal(id), id)
 }
 
-// wireRefRuntime is the general path, for an id the header cannot spell as a
-// constant: an ENUM VARIANT's, which is chosen by a value at run time. It has
-// an ordinal like any other id in the vocabulary, but no call site with one
-// number to hand, so it interns the way it always did.
-func (g *tableGen) wireRefRuntime(id uint64) string {
-	return fmt.Sprintf("ids.ref( 0x%016xull )", id)
-}
-
 // wireIdOrdinals is the unit's id vocabulary as id -> ordinal. It is the same
 // ascending set TableIds::kCapacity counts and the retain family's
 // kTableRetainKnown lists (docs/SPEC-TABLES.md §3, §6.6).

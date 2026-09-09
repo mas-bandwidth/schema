@@ -2653,8 +2653,8 @@ inline bool TableEnumRef( TableIds & ids, Mode value, uint64_t & ref )
     switch ( value )
     {
         case Mode::None: ref = 0; return true;
-        case Mode::Read: ref = ids.ref( 0x740d542bbe696de5ull ); return true;
-        case Mode::Write: ref = ids.ref( 0x78f9fa174282015cull ); return true;
+        case Mode::Read: ref = ids.ref_at( 22, 0x740d542bbe696de5ull ); return true;
+        case Mode::Write: ref = ids.ref_at( 24, 0x78f9fa174282015cull ); return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
