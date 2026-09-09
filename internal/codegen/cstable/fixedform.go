@@ -13,6 +13,7 @@ const (
 	fixedCountBytes   = int64(4)
 	fixedPresentBytes = int64(1)
 	fixedLeafCap      = 4096
+	kFixedOpFlat      = byte(7)
 )
 
 func fixedStorageBytes(t ir.FieldType) int64 {
@@ -606,7 +607,7 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 				dst:   elemBaseSlot,
 				size:  totalElemBytes,
 				guard: kFixedNoGuard,
-				op:    0,
+				op:    kFixedOpFlat,
 			})
 		} else {
 			elemSlots := b.countElementSlots(f)
@@ -644,7 +645,7 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 				dst:   elemBaseSlot,
 				size:  totalElemBytes,
 				guard: kFixedNoGuard,
-				op:    0,
+				op:    kFixedOpFlat,
 			})
 		} else {
 			elemSlots := b.countElementSlots(f)
@@ -1044,7 +1045,7 @@ func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field,
 				dst:   elemBaseSlot,
 				size:  totalElemBytes,
 				guard: kFixedNoGuard,
-				op:    0,
+				op:    kFixedOpFlat,
 			})
 		} else {
 			elemSlots := b.countElementSlots(f)
@@ -1071,7 +1072,7 @@ func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field,
 				dst:   elemBaseSlot,
 				size:  totalElemBytes,
 				guard: kFixedNoGuard,
-				op:    0,
+				op:    kFixedOpFlat,
 			})
 		} else {
 			elemSlots := b.countElementSlots(f)
@@ -1391,10 +1392,12 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("public const long %sFixedRecordBytes = 8 + %sFixedBodyBytes;\n", name, name)
 	g.pf("public const ulong %sFixedHash = 0x%016xul;\n\n", name, hash)
 
-	g.pf("public static readonly byte[] %sFixedBlock = new byte[] {\n", name)
+	g.pf("public static readonly byte[] %sFixedLayout = new byte[] {\n", name)
 	g.emitCsByteArray(block)
 	g.pf("};\n")
-	g.pf("public const long %sFixedBlockBytes = %d;\n\n", name, len(block))
+	g.pf("public const long %sFixedLayoutBytes = %d;\n", name, len(block))
+	g.pf("public const long %sFixedBlockBytes = %sFixedLayoutBytes;\n", name, name)
+	g.pf("public static readonly byte[] %sFixedBlock = %sFixedLayout;\n\n", name, name)
 
 	g.pf("public static readonly TableFixedDst[] %sFixedDst = new TableFixedDst[] {\n", name)
 	for i, row := range b.dstRows {
@@ -1436,6 +1439,8 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 			opName = "TableFixedWire.Count"
 		case 2:
 			opName = "TableFixedWire.Text"
+		case kFixedOpFlat:
+			opName = "TableFixedWire.Flat"
 		}
 		g.pf("    new TableFixedEntry(%du, %du, %du, %du, %s, %s, %d, 0),\n",
 			p.src, p.dst, p.size, p.aux, guardStr, opName, p.arg)
@@ -1443,15 +1448,17 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("});\n\n")
 
 	g.pf("public static long %sFixedMeasure(long count)\n{\n", name)
-	g.pf("    return 1 + 4 + %sFixedBlockBytes + count * %sFixedRecordBytes;\n}\n\n", name, name)
+	g.pf("    return TableFixedWire.HeaderBytes + 4 + %sFixedLayoutBytes + count * %sFixedRecordBytes;\n}\n\n", name, name)
 
 	g.pf("public static long %sFixedSave(ReadOnlySpan<%s> values, Span<byte> buffer)\n{\n", name, name)
 	g.pf("    long need = %sFixedMeasure(values.Length);\n", name)
 	g.pf("    if (values.Length < 0 || buffer.Length < need) { return -1; }\n")
+	g.pf("    buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();\n")
 	g.pf("    buffer[0] = TableFixedWire.Form;\n")
-	g.pf("    BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(1), (uint)%sFixedBlockBytes);\n", name)
-	g.pf("    %sFixedBlock.CopyTo(buffer.Slice(5));\n", name)
-	g.pf("    Span<byte> at = buffer.Slice(5 + (int)%sFixedBlockBytes);\n", name)
+	g.pf("    BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), %sFixedHash);\n", name)
+	g.pf("    BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(TableFixedWire.HeaderBytes), (uint)%sFixedLayoutBytes);\n", name)
+	g.pf("    %sFixedLayout.CopyTo(buffer.Slice(TableFixedWire.HeaderBytes + 4));\n", name)
+	g.pf("    Span<byte> at = buffer.Slice(TableFixedWire.HeaderBytes + 4 + (int)%sFixedLayoutBytes);\n", name)
 	g.pf("    for (int k = 0; k < values.Length; ++k)\n    {\n")
 	g.pf("        BinaryPrimitives.WriteUInt64LittleEndian(at, %sFixedHash);\n", name)
 	g.pf("        at.Slice(8, (int)%sFixedBodyBytes).Clear();\n", name)
@@ -1470,37 +1477,55 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    ReadOnlySpan<byte> data,\n")
 	g.pf("    Span<TableFixedEntry> plan,\n")
 	g.pf("    TableReport report = null)\n{\n")
-	g.pf("    if (report == null) { report = new TableReport(); }\n")
-	g.pf("    if (data.Length < 5) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; return -1; }\n")
-	g.pf("    if (data[0] != TableFixedWire.Form) { report.Refused = true; report.Reason = \"newer_form\"; report.Verdict = TableWire.Verdict.Refused; return -1; }\n")
-	g.pf("    uint block_bytes = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(1));\n")
-	g.pf("    if ((long)block_bytes + 5 > data.Length) { report.Refused = true; report.Reason = \"layout_malformed\"; report.Verdict = TableWire.Verdict.Refused; return -1; }\n")
-	g.pf("    ReadOnlySpan<byte> block = data.Slice(5, (int)block_bytes);\n")
-	g.pf("    ulong hash = TableFixedWire.HashOf(block);\n")
-	g.pf("    ReadOnlySpan<byte> at = data.Slice(5 + (int)block_bytes);\n")
-	g.pf("    int rest = data.Length - 5 - (int)block_bytes;\n")
+	g.pf("    if (data.Length < TableFixedWire.HeaderBytes + 4)\n    {\n")
+	g.pf("        if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }\n")
+	g.pf("        return -1;\n    }\n")
+	g.pf("    if (data[0] != TableFixedWire.Form)\n    {\n")
+	g.pf("        if (report != null)\n        {\n")
+	g.pf("            report.Refused = true;\n")
+	g.pf("            report.Reason = data[0] == 2 ? \"message_form_as_file\"\n")
+	g.pf("                          : data[0] < TableFixedWire.Form ? \"previous_form\"\n")
+	g.pf("                          : \"newer_form\";\n")
+	g.pf("            report.Verdict = TableWire.Verdict.Refused;\n        }\n")
+	g.pf("        return -1;\n    }\n")
+	g.pf("    uint layout_bytes = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(TableFixedWire.HeaderBytes));\n")
+	g.pf("    if ((long)layout_bytes + TableFixedWire.HeaderBytes + 4 > data.Length)\n    {\n")
+	g.pf("        if (report != null) { report.Refused = true; report.Reason = \"layout_malformed\"; report.Verdict = TableWire.Verdict.Refused; }\n")
+	g.pf("        return -1;\n    }\n")
+	g.pf("    ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);\n")
+	g.pf("    ulong hash = TableFixedWire.HashOf(layout);\n")
+	g.pf("    ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);\n")
+	g.pf("    int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;\n")
 	g.pf("    ReadOnlySpan<TableFixedEntry> entries = %sFixedPlan;\n", name)
 	g.pf("    long record_bytes = %sFixedRecordBytes;\n", name)
 	g.pf("    ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;\n")
 	g.pf("    if (hash != %sFixedHash)\n    {\n", name)
-	g.pf("        if (!TableFixedWire.ParseBlock(block, out TableFixedBlockView parsed))\n")
-	g.pf("        {\n            report.Refused = true; report.Reason = \"layout_malformed\"; report.Verdict = TableWire.Verdict.Refused; return -1;\n        }\n")
-	g.pf("        int made = TableFixedWire.Compile(parsed, %sFixedBlock, %sFixedDst, plan, report);\n", name, name)
-	g.pf("        if (made < 0)\n        {\n            report.Refused = true; report.Reason = \"plan_too_large\"; report.Verdict = TableWire.Verdict.Refused; return -1;\n        }\n")
+	g.pf("        if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed))\n")
+	g.pf("        {\n            if (report != null) { report.Refused = true; report.Reason = \"layout_malformed\"; report.Verdict = TableWire.Verdict.Refused; }\n            return -1;\n        }\n")
+	g.pf("        int made = TableFixedWire.Compile(parsed, %sFixedLayout, %sFixedDst, plan, report);\n", name, name)
+	g.pf("        if (made < 0)\n        {\n            if (report != null) { report.Refused = true; report.Reason = \"plan_too_large\"; report.Verdict = TableWire.Verdict.Refused; }\n            return -1;\n        }\n")
 	g.pf("        entries = plan.Slice(0, made);\n")
 	g.pf("        record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;\n")
 	g.pf("        planBytes = MemoryMarshal.AsBytes(plan);\n    }\n")
-	g.pf("    if (record_bytes <= 8 || rest %% record_bytes != 0) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; return -1; }\n")
+	g.pf("    if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)\n    {\n")
+	g.pf("        if (report != null) { report.Refused = true; report.Reason = \"layout_malformed\"; report.Verdict = TableWire.Verdict.Refused; }\n")
+	g.pf("        return -1;\n    }\n")
+	g.pf("    if (record_bytes <= 8 || rest %% record_bytes != 0)\n    {\n")
+	g.pf("        if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }\n")
+	g.pf("        return -1;\n    }\n")
 	g.pf("    long n = rest / record_bytes;\n")
-	g.pf("    if (n > values.Length) { report.Refused = true; report.Reason = \"batch_too_large\"; report.Verdict = TableWire.Verdict.Refused; return -1; }\n")
+	g.pf("    if (n > values.Length)\n    {\n")
+	g.pf("        if (report != null) { report.Refused = true; report.Reason = \"batch_too_large\"; report.Verdict = TableWire.Verdict.Refused; }\n")
+	g.pf("        return -1;\n    }\n")
 	g.pf("    for (int k = 0; k < n; ++k)\n    {\n")
 	g.pf("        if (values[k] == null) { values[k] = new %s(); }\n", name)
 	g.pf("        TableReset(values[k]);\n")
-	g.pf("        if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)\n")
-	g.pf("        {\n            report.Refused = true; report.Reason = \"no_layout\"; report.Verdict = TableWire.Verdict.Refused; return -1;\n        }\n")
+	g.pf("        if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)\n        {\n")
+	g.pf("            if (report != null) { report.Refused = true; report.Reason = \"no_layout\"; report.Verdict = TableWire.Verdict.Refused; }\n")
+	g.pf("            return -1;\n        }\n")
 	g.pf("        TableFixedWire.Run(entries, %sFixedSlots, at.Slice(8), values[k], report, planBytes);\n", name)
 	g.pf("        at = at.Slice((int)record_bytes);\n    }\n")
-	g.pf("    report.Verdict = TableWire.Verdict.Ok;\n    return n;\n}\n\n")
+	g.pf("    if (report != null) { report.Verdict = TableWire.Verdict.Ok; }\n    return n;\n}\n\n")
 
 	g.pf("public static long %sFixedLoad(%s[] values, ReadOnlySpan<byte> data, Span<TableFixedEntry> plan, TableReport report = null)\n{\n", name, name)
 	g.pf("    return %sFixedLoad((Span<%s>)values, data, plan, report);\n}\n\n", name, name)

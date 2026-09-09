@@ -19,6 +19,7 @@ static partial class Program
         TestFixedVCase();
         TestFixedPCase();
         TestFixedWideBlobCase();
+        TestFixedFoldedArraysCase();
         TestFixedNegativeControl();
     }
 
@@ -174,7 +175,7 @@ static partial class Program
         two.Nested.B = 44;
         byte[] w2 = new byte[FX2.Schema.FxRootFixedMeasure(1)];
         FX2.Schema.FxRootFixedSave(two, w2);
-        ReadOnlySpan<byte> body = w2.AsSpan(5 + (int)FX2.Schema.FxRootFixedBlockBytes + 8);
+        ReadOnlySpan<byte> body = w2.AsSpan(FX2.Schema.TableFixedWire.HeaderBytes + 4 + (int)FX2.Schema.FxRootFixedLayoutBytes + 8);
 
         FX1.FxRoot wrong = new FX1.FxRoot();
         FX1.Schema.TableReset(wrong);
@@ -194,7 +195,7 @@ static partial class Program
         // A BLOCK THAT IS NOT A BLOCK IS REFUSED BY NAME, whole, and never damage.
         {
             byte[] broken = (byte[])w2.Clone();
-            broken[5] ^= 0xFF; // the entry count
+            broken[FX1.Schema.TableFixedWire.HeaderBytes] ^= 0xFF; // the layout length at 16
             FX1.FxRoot v = new FX1.FxRoot();
             FX1.TableReport r3 = new FX1.TableReport();
             long bad = FX1.Schema.FxRootFixedLoad(v, broken, plan, r3);
@@ -204,7 +205,7 @@ static partial class Program
 
         {
             byte[] unknownKind = (byte[])w2.Clone();
-            unknownKind[17] = 99; // byte 17 is root entry kind byte in the layout
+            unknownKind[FX1.Schema.TableFixedWire.HeaderBytes + 4 + 4 + 8] = 99; // byte 32: 20 header+len + 4 count + 8 id = kind
             FX1.FxRoot v = new FX1.FxRoot();
             FX1.TableReport rKind = new FX1.TableReport();
             long bad = FX1.Schema.FxRootFixedLoad(v, unknownKind, plan, rKind);
@@ -212,15 +213,60 @@ static partial class Program
             Check(rKind.Unknown == 0 && rKind.KindMismatch == 0 && !rKind.Malformed, "REFUSED BY NAME: unknown kind refusal moves no counter");
         }
 
-        // A FORM BYTE THIS READER DOES NOT CARRY IS A REFUSAL AND NEVER DAMAGE.
+        // A FORM BYTE THIS READER DOES NOT CARRY IS A REFUSAL AND NEVER DAMAGE, AND
+        // THE NAME SAYS WHICH DIRECTION (docs/SPEC-TABLES.md §3, §3.4).
         {
-            byte[] other = (byte[])w2.Clone();
-            other[0] = 4;
+            var rows = new (byte form, string want, string what)[]
+            {
+                (1, "previous_form", "REFUSED BY NAME: previous_form for the VARIABLE form"),
+                (2, "message_form_as_file", "REFUSED BY NAME: message_form_as_file for a batch"),
+                (6, "newer_form", "REFUSED BY NAME: newer_form for a byte no form defines"),
+            };
+            foreach (var row in rows)
+            {
+                byte[] other = (byte[])w2.Clone();
+                other[0] = row.form;
+                FX1.FxRoot v = new FX1.FxRoot();
+                FX1.TableReport r4 = new FX1.TableReport();
+                long bad = FX1.Schema.FxRootFixedLoad(v, other, plan, r4);
+                Check(bad < 0 && r4.Refused && r4.Reason == row.want, row.what);
+                Check(!r4.Malformed, "REFUSED BY NAME: never damage");
+                Check(r4.Unknown == 0 && r4.KindMismatch == 0 && r4.Widened == 0 && r4.Clamped == 0,
+                      "REFUSED BY NAME: a form-byte refusal moves no counter");
+            }
+        }
+
+        // THE HEADER NAMES THE LAYOUT ONCE (docs/SPEC-TABLES.md §3)
+        {
+            byte[] lying = (byte[])w2.Clone();
+            lying[FX1.Schema.TableFixedWire.HashAt] ^= 0xFF;
             FX1.FxRoot v = new FX1.FxRoot();
-            FX1.TableReport r4 = new FX1.TableReport();
-            long bad = FX1.Schema.FxRootFixedLoad(v, other, plan, r4);
-            Check(bad < 0 && r4.Refused && r4.Reason == "newer_form", "REFUSED BY NAME: newer_form");
-            Check(!r4.Malformed, "REFUSED BY NAME: never damage");
+            FX1.TableReport r6 = new FX1.TableReport();
+            long bad = FX1.Schema.FxRootFixedLoad(v, lying, plan, r6);
+            Check(bad < 0 && r6.Refused && r6.Reason == "layout_malformed",
+                  "REFUSED BY NAME: a header hash that is not the layout's");
+            Check(!r6.Malformed, "REFUSED BY NAME: never damage");
+        }
+
+        // RECORD HASH MISMATCH: a record stamped with a different layout refuses no_layout
+        {
+            byte[] corruptRecord = (byte[])w2.Clone();
+            int recordHashOffset = FX1.Schema.TableFixedWire.HeaderBytes + 4 + (int)FX2.Schema.FxRootFixedLayoutBytes;
+            corruptRecord[recordHashOffset] ^= 0xFF;
+            FX1.FxRoot v = new FX1.FxRoot();
+            FX1.TableReport rNoLayout = new FX1.TableReport();
+            long bad = FX1.Schema.FxRootFixedLoad(v, corruptRecord, plan, rNoLayout);
+            Check(bad < 0 && rNoLayout.Refused && rNoLayout.Reason == "no_layout",
+                  "REFUSED BY NAME: record hash mismatch refuses no_layout");
+            Check(!rNoLayout.Malformed, "REFUSED BY NAME: never damage");
+        }
+
+        // FIXEDLOAD WITH NULL REPORT: accepts null report cleanly and allocates nothing
+        {
+            FX1.FxRoot v = new FX1.FxRoot();
+            long loaded = FX1.Schema.FxRootFixedLoad(v, w2, plan, null);
+            Check(loaded == 1 && v.Nested.A == 33 && v.Nested.B == 44,
+                  "LOAD WITH NULL REPORT: succeeds and populates record");
         }
 
         // A PLAN THAT DOES NOT FIT THE CALLER'S STORAGE IS A REFUSAL BY NAME, and
@@ -268,5 +314,109 @@ static partial class Program
         Check(back.Payload[0] == 1 && back.Payload[4] == 5, "WideBlob payload contents");
         Check(back.SamplesCount == 3, "WideBlob samples count");
         Check(back.Samples[0] == 100 && back.Samples[1] == 200 && back.Samples[2] == 300, "WideBlob samples contents");
+    }
+
+    static void TestFixedFoldedArraysCase()
+    {
+        // 1. LoadoutConfig: 4 bytes (Grades [..4]Grade) and 3 bytes (Podium [3]Grade)
+        {
+            TD.LoadoutConfig lc = new TD.LoadoutConfig();
+            TD.Schema.TableReset(lc);
+            lc.GradesCount = 4;
+            lc.Grades[0] = TD.Grade.Bronze;
+            lc.Grades[1] = TD.Grade.Silver;
+            lc.Grades[2] = TD.Grade.Gold;
+            lc.Grades[3] = TD.Grade.Bronze;
+            lc.Podium[0] = TD.Grade.Gold;
+            lc.Podium[1] = TD.Grade.Silver;
+            lc.Podium[2] = TD.Grade.Bronze;
+
+            byte[] buf = new byte[TD.Schema.LoadoutConfigFixedMeasure(1)];
+            long saved = TD.Schema.LoadoutConfigFixedSave(lc, buf);
+            Check(saved == buf.Length, "LoadoutConfig save");
+
+            TD.LoadoutConfig back = new TD.LoadoutConfig();
+            TD.TableReport r = new TD.TableReport();
+            TD.TableFixedEntry[] plan = new TD.TableFixedEntry[64];
+            long loaded = TD.Schema.LoadoutConfigFixedLoad(back, buf, plan, r);
+            Check(loaded == 1, "LoadoutConfig load one record");
+            Check(r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && !r.Malformed && !r.Refused, "LoadoutConfig clean read");
+            Check(back.GradesCount == 4, "LoadoutConfig grades count");
+            Check(back.Grades[0] == TD.Grade.Bronze && back.Grades[1] == TD.Grade.Silver &&
+                  back.Grades[2] == TD.Grade.Gold && back.Grades[3] == TD.Grade.Bronze,
+                  "LoadoutConfig 4-byte folded enum array reproduced");
+            Check(back.Podium[0] == TD.Grade.Gold && back.Podium[1] == TD.Grade.Silver && back.Podium[2] == TD.Grade.Bronze,
+                  "LoadoutConfig 3-byte fixed enum array reproduced");
+        }
+
+        // 2. RangedSigned: 8 bytes (Edges [..4]int16)
+        {
+            TD.RangedSigned rs = new TD.RangedSigned();
+            TD.Schema.TableReset(rs);
+            rs.EdgesCount = 4;
+            rs.Edges[0] = 11;
+            rs.Edges[1] = 22;
+            rs.Edges[2] = 33;
+            rs.Edges[3] = 44;
+
+            byte[] buf = new byte[TD.Schema.RangedSignedFixedMeasure(1)];
+            long saved = TD.Schema.RangedSignedFixedSave(rs, buf);
+            Check(saved == buf.Length, "RangedSigned save");
+
+            TD.RangedSigned back = new TD.RangedSigned();
+            TD.TableReport r = new TD.TableReport();
+            TD.TableFixedEntry[] plan = new TD.TableFixedEntry[64];
+            long loaded = TD.Schema.RangedSignedFixedLoad(back, buf, plan, r);
+            Check(loaded == 1, "RangedSigned load one record");
+            Check(r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && !r.Malformed && !r.Refused, "RangedSigned clean read");
+            Check(back.EdgesCount == 4, "RangedSigned edges count");
+            Check(back.Edges[0] == 11 && back.Edges[1] == 22 && back.Edges[2] == 33 && back.Edges[3] == 44,
+                  "RangedSigned 8-byte folded int16 array reproduced");
+
+            // Also test TableFixedWire.Copy dispatch fallback with SetBytes != null
+            TD.RangedSigned backCopy = new TD.RangedSigned();
+            TD.Schema.TableReset(backCopy);
+            TD.TableFixedEntry[] copyPlan = (TD.TableFixedEntry[])TD.Schema.RangedSignedFixedPlan.Entries.Clone();
+            for (int i = 0; i < copyPlan.Length; ++i)
+            {
+                if (copyPlan[i].Op == TD.Schema.TableFixedWire.Flat)
+                {
+                    copyPlan[i] = new TD.TableFixedEntry(
+                        copyPlan[i].Src, copyPlan[i].Dst, copyPlan[i].Size,
+                        copyPlan[i].Aux, copyPlan[i].Guard, TD.Schema.TableFixedWire.Copy,
+                        copyPlan[i].Arg, 0);
+                }
+            }
+            ReadOnlySpan<byte> recordBody = buf.AsSpan(TD.Schema.TableFixedWire.HeaderBytes + 4 + (int)TD.Schema.RangedSignedFixedLayoutBytes + 8);
+            TD.Schema.TableFixedWire.Run(copyPlan, TD.Schema.RangedSignedFixedSlots, recordBody, backCopy, null, ReadOnlySpan<byte>.Empty);
+            Check(backCopy.EdgesCount == 4 && backCopy.Edges[0] == 11 && backCopy.Edges[1] == 22 &&
+                  backCopy.Edges[2] == 33 && backCopy.Edges[3] == 44,
+                  "RangedSigned: Copy opcode dispatches to SetBytes for folded array");
+        }
+
+        // 3. ShipEntry: 16 bytes (Hardpoints [..4]int32)
+        {
+            TD.ShipEntry se = new TD.ShipEntry();
+            TD.Schema.TableReset(se);
+            se.HardpointsCount = 4;
+            se.Hardpoints[0] = 101;
+            se.Hardpoints[1] = 202;
+            se.Hardpoints[2] = 303;
+            se.Hardpoints[3] = 404;
+
+            byte[] buf = new byte[TD.Schema.ShipEntryFixedMeasure(1)];
+            long saved = TD.Schema.ShipEntryFixedSave(se, buf);
+            Check(saved == buf.Length, "ShipEntry save");
+
+            TD.ShipEntry back = new TD.ShipEntry();
+            TD.TableReport r = new TD.TableReport();
+            TD.TableFixedEntry[] plan = new TD.TableFixedEntry[64];
+            long loaded = TD.Schema.ShipEntryFixedLoad(back, buf, plan, r);
+            Check(loaded == 1, "ShipEntry load one record");
+            Check(r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && !r.Malformed && !r.Refused, "ShipEntry clean read");
+            Check(back.HardpointsCount == 4, "ShipEntry hardpoints count");
+            Check(back.Hardpoints[0] == 101 && back.Hardpoints[1] == 202 && back.Hardpoints[2] == 303 && back.Hardpoints[3] == 404,
+                  "ShipEntry 16-byte folded int32 array reproduced");
+        }
     }
 }

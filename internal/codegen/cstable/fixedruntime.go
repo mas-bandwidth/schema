@@ -2,7 +2,7 @@ package cstable
 
 // tableFixedRuntimeTypes defines the namespace-level types for the fixed-table
 // wire form (docs/SPEC-TABLES.md §3.4): TableFixedEntry, TableFixedDst,
-// TableFixedBlockEntry, TableFixedBlockView, TableFixedPlan, and TableFixedSlot.
+// TableFixedLayoutEntry, TableFixedLayoutView, TableFixedPlan, and TableFixedSlot.
 const tableFixedRuntimeTypes = `
 // ---------------------------------------------------------------------------
 // THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
@@ -37,8 +37,8 @@ public struct TableFixedEntry
     }
 }
 
-// TableFixedDst is MY side of the block walk: one row per entry of my own block,
-// carrying the storage facts a block entry cannot: destination slot index, array
+// TableFixedDst is MY side of the layout walk: one row per entry of my own layout,
+// carrying the storage facts a layout entry cannot: destination slot index, array
 // stride in slots, auxiliary slot index, counted flag, and text flavour.
 [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
 public struct TableFixedDst
@@ -59,10 +59,10 @@ public struct TableFixedDst
     }
 }
 
-// TableFixedBlockEntry is one seventeen-byte entry: an id, a constant size,
+// TableFixedLayoutEntry is one seventeen-byte entry: an id, a constant size,
 // a child count, and a kind, in the writer's declared order.
 [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
-public struct TableFixedBlockEntry
+public struct TableFixedLayoutEntry
 {
     public ulong Id;
     public uint Size;
@@ -70,7 +70,7 @@ public struct TableFixedBlockEntry
     public byte Kind;
 }
 
-public ref struct TableFixedBlockView
+public ref struct TableFixedLayoutView
 {
     public ReadOnlySpan<byte> Bytes;
     public int Count;
@@ -117,12 +117,14 @@ public readonly struct TableFixedSlot<T>
 }
 `
 
-// tableFixedWireSource defines TableFixedWire inside Schema: block parsing,
+// tableFixedWireSource defines TableFixedWire inside Schema: layout parsing,
 // plan compilation, and the ONE execution loop.
 const tableFixedWireSource = `
     public static class TableFixedWire
     {
         public const byte Form = 3;
+        public const int HeaderBytes = 16;
+        public const int HashAt = 8;
         public const uint NoGuard = 0xFFFFFFFFu;
 
         // The opcodes for plan entries
@@ -133,6 +135,7 @@ const tableFixedWireSource = `
         public const byte Widen = 4;   // narrower source into wider destination
         public const byte Const = 5;   // constant value: e.g. remapped union tag
         public const byte WidenF = 6;  // float32 into float64
+        public const byte Flat = 7;    // folded flat array copy
 
         // Arg on a Text entry
         public const byte TextUtf8 = 1;
@@ -153,21 +156,21 @@ const tableFixedWireSource = `
             return kind >= 2 && kind <= 5;
         }
 
-        public static ulong HashOf(ReadOnlySpan<byte> block)
+        public static ulong HashOf(ReadOnlySpan<byte> layout)
         {
             ulong h = 0xcbf29ce484222325ul;
-            for (int i = 0; i < block.Length; ++i)
+            for (int i = 0; i < layout.Length; ++i)
             {
-                h ^= (ulong)block[i];
+                h ^= (ulong)layout[i];
                 h *= 0x100000001b3ul;
             }
             return h;
         }
 
-        public static TableFixedBlockEntry EntryAt(TableFixedBlockView b, int i)
+        public static TableFixedLayoutEntry EntryAt(TableFixedLayoutView b, int i)
         {
             ReadOnlySpan<byte> e = b.Bytes.Slice(4 + i * EntryBytes, EntryBytes);
-            TableFixedBlockEntry outEntry = default;
+            TableFixedLayoutEntry outEntry = default;
             outEntry.Id = BinaryPrimitives.ReadUInt64LittleEndian(e);
             outEntry.Kind = e[8];
             outEntry.Size = BinaryPrimitives.ReadUInt32LittleEndian(e.Slice(9));
@@ -175,10 +178,10 @@ const tableFixedWireSource = `
             return outEntry;
         }
 
-        public static int Subtree(TableFixedBlockView b, int i)
+        public static int Subtree(TableFixedLayoutView b, int i)
         {
             if (i < 0 || i >= b.Count) { return 1; }
-            TableFixedBlockEntry e = EntryAt(b, i);
+            TableFixedLayoutEntry e = EntryAt(b, i);
             int n = 1;
             int at = i + 1;
             for (uint c = 0; c < e.Children; ++c)
@@ -191,21 +194,21 @@ const tableFixedWireSource = `
             return n;
         }
 
-        public static uint UnionArmBytes(TableFixedBlockView b, int i)
+        public static uint UnionArmBytes(TableFixedLayoutView b, int i)
         {
-            TableFixedBlockEntry e = EntryAt(b, i);
+            TableFixedLayoutEntry e = EntryAt(b, i);
             uint widest = 0;
             int at = i + 1;
             for (uint k = 0; k < e.Children; ++k)
             {
-                TableFixedBlockEntry a = EntryAt(b, at);
+                TableFixedLayoutEntry a = EntryAt(b, at);
                 if (a.Size > widest) { widest = a.Size; }
                 at += Subtree(b, at);
             }
             return widest;
         }
 
-        public static uint TagBytes(TableFixedBlockView b, int i)
+        public static uint TagBytes(TableFixedLayoutView b, int i)
         {
             return EntryAt(b, i).Size - UnionArmBytes(b, i);
         }
@@ -215,7 +218,7 @@ const tableFixedWireSource = `
             return (k >= 1 && k <= 19) || (k >= 20 && k <= 29) || k == 30 || k == 32 || k == 33 || k == 35;
         }
 
-        public static bool ParseBlock(ReadOnlySpan<byte> bytes, out TableFixedBlockView view)
+        public static bool ParseLayout(ReadOnlySpan<byte> bytes, out TableFixedLayoutView view)
         {
             view = default;
             if (bytes.Length < 4) { return false; }
@@ -238,6 +241,8 @@ const tableFixedWireSource = `
             }
             return true;
         }
+
+        public static bool ParseBlock(ReadOnlySpan<byte> bytes, out TableFixedLayoutView view) => ParseLayout(bytes, out view);
 
         private ref struct Compiler
         {
@@ -274,21 +279,21 @@ const tableFixedWireSource = `
 
         private static void MatchChildren(
             ref Compiler c,
-            TableFixedBlockView theirs, int ti, uint their_at,
-            TableFixedBlockView mine, int mi, ReadOnlySpan<TableFixedDst> dst, uint my_at,
+            TableFixedLayoutView theirs, int ti, uint their_at,
+            TableFixedLayoutView mine, int mi, ReadOnlySpan<TableFixedDst> dst, uint my_at,
             uint guard, byte arg)
         {
-            TableFixedBlockEntry te = EntryAt(theirs, ti);
-            TableFixedBlockEntry me = EntryAt(mine, mi);
+            TableFixedLayoutEntry te = EntryAt(theirs, ti);
+            TableFixedLayoutEntry me = EntryAt(mine, mi);
             int my_child = mi + 1;
             for (uint k = 0; k < me.Children; ++k)
             {
-                TableFixedBlockEntry mc = EntryAt(mine, my_child);
+                TableFixedLayoutEntry mc = EntryAt(mine, my_child);
                 int their_child = ti + 1;
                 uint their_off = their_at;
                 for (uint j = 0; j < te.Children; ++j)
                 {
-                    TableFixedBlockEntry tc = EntryAt(theirs, their_child);
+                    TableFixedLayoutEntry tc = EntryAt(theirs, their_child);
                     if (tc.Id == mc.Id)
                     {
                         CompileEntry(ref c, theirs, their_child, their_off, mine, my_child, dst, my_at, guard, arg);
@@ -302,7 +307,7 @@ const tableFixedWireSource = `
             int tc_at = ti + 1;
             for (uint j = 0; j < te.Children; ++j)
             {
-                TableFixedBlockEntry tc = EntryAt(theirs, tc_at);
+                TableFixedLayoutEntry tc = EntryAt(theirs, tc_at);
                 bool named = false;
                 int mc_at = mi + 1;
                 for (uint k = 0; k < me.Children; ++k)
@@ -317,12 +322,12 @@ const tableFixedWireSource = `
 
         private static void CompileEntry(
             ref Compiler c,
-            TableFixedBlockView theirs, int ti, uint their_at,
-            TableFixedBlockView mine, int mi, ReadOnlySpan<TableFixedDst> dst, uint my_at,
+            TableFixedLayoutView theirs, int ti, uint their_at,
+            TableFixedLayoutView mine, int mi, ReadOnlySpan<TableFixedDst> dst, uint my_at,
             uint guard, byte arg)
         {
-            TableFixedBlockEntry te = EntryAt(theirs, ti);
-            TableFixedBlockEntry me = EntryAt(mine, mi);
+            TableFixedLayoutEntry te = EntryAt(theirs, ti);
+            TableFixedLayoutEntry me = EntryAt(mine, mi);
             TableFixedDst d = dst[mi];
             uint at = my_at + d.Dst;
             uint aux_at = my_at + d.Aux;
@@ -364,8 +369,8 @@ const tableFixedWireSource = `
                         c.Push(e);
                         break;
                     }
-                    TableFixedBlockEntry tel = EntryAt(theirs, ti + 1);
-                    TableFixedBlockEntry mel = EntryAt(mine, mi + 1);
+                    TableFixedLayoutEntry tel = EntryAt(theirs, ti + 1);
+                    TableFixedLayoutEntry mel = EntryAt(mine, mi + 1);
                     uint head = d.Counted != 0 ? 4u : 0u;
                     uint their_n = tel.Size != 0 ? (te.Size - head) / tel.Size : 0u;
                     uint my_n = mel.Size != 0 ? (me.Size - head) / mel.Size : 0u;
@@ -376,6 +381,15 @@ const tableFixedWireSource = `
                         c.Push(e);
                     }
                     uint n = Math.Min(their_n, my_n);
+                    if (d.Stride == 0)
+                    {
+                        if (tel.Kind == mel.Kind && tel.Size == mel.Size)
+                        {
+                            TableFixedEntry e = new TableFixedEntry(their_base, at, n * mel.Size, 0, guard, Flat, arg, 0);
+                            c.Push(e);
+                        }
+                        break;
+                    }
                     for (uint i = 0; i < n; ++i)
                     {
                         CompileEntry(ref c, theirs, ti + 1, their_base + i * tel.Size,
@@ -385,11 +399,11 @@ const tableFixedWireSource = `
                 }
                 case 16: // Enum-keyed array
                 {
-                    TableFixedBlockEntry tkey = EntryAt(theirs, ti + 1);
-                    TableFixedBlockEntry mkey = EntryAt(mine, mi + 1);
+                    TableFixedLayoutEntry tkey = EntryAt(theirs, ti + 1);
+                    TableFixedLayoutEntry mkey = EntryAt(mine, mi + 1);
                     int tel = ti + 1 + Subtree(theirs, ti + 1);
                     int mel = mi + 1 + Subtree(mine, mi + 1);
-                    TableFixedBlockEntry tee = EntryAt(theirs, tel);
+                    TableFixedLayoutEntry tee = EntryAt(theirs, tel);
                     for (uint k = 0; k < mkey.Children; ++k)
                     {
                         ulong key_id = EntryAt(mine, mi + 2 + (int)k).Id;
@@ -410,11 +424,11 @@ const tableFixedWireSource = `
                     int my_arm = mi + 1;
                     for (uint k = 0; k < me.Children; ++k)
                     {
-                        TableFixedBlockEntry ma = EntryAt(mine, my_arm);
+                        TableFixedLayoutEntry ma = EntryAt(mine, my_arm);
                         int their_arm = ti + 1;
                         for (uint j = 0; j < te.Children; ++j)
                         {
-                            TableFixedBlockEntry ta = EntryAt(theirs, their_arm);
+                            TableFixedLayoutEntry ta = EntryAt(theirs, their_arm);
                             if (ta.Id == ma.Id)
                             {
                                 TableFixedEntry tag = new TableFixedEntry(
@@ -480,14 +494,14 @@ const tableFixedWireSource = `
         }
 
         public static int Compile(
-            TableFixedBlockView theirs,
-            ReadOnlySpan<byte> my_block,
+            TableFixedLayoutView theirs,
+            ReadOnlySpan<byte> my_layout,
             ReadOnlySpan<TableFixedDst> dst,
             Span<TableFixedEntry> plan,
             TableReport report)
         {
             if (plan.IsEmpty) { return -1; }
-            if (!ParseBlock(my_block, out TableFixedBlockView mine)) { return -1; }
+            if (!ParseLayout(my_layout, out TableFixedLayoutView mine)) { return -1; }
             Compiler c = new Compiler
             {
                 Plan = plan,
@@ -515,7 +529,11 @@ const tableFixedWireSource = `
                 {
                     case Copy:
                     {
-                        if (p.Size == 1)
+                        if (slots[(int)p.Dst].SetBytes != null)
+                        {
+                            slots[(int)p.Dst].SetBytes(dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                        }
+                        else if (p.Size == 1)
                         {
                             slots[(int)p.Dst].SetRaw?.Invoke(dst, src[(int)p.Src]);
                         }
@@ -541,6 +559,11 @@ const tableFixedWireSource = `
                         {
                             slots[(int)p.Dst].SetBytes?.Invoke(dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
                         }
+                        break;
+                    }
+                    case Flat:
+                    {
+                        slots[(int)p.Dst].SetBytes?.Invoke(dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
                         break;
                     }
                     case Count:
