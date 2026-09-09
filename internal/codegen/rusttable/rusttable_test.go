@@ -364,3 +364,87 @@ func keysOf(out map[string][]byte) []string {
 	}
 	return names
 }
+
+// wideKinds declares the two families §15's refusal names — fixed-point and
+// 128-bit — on a table that is otherwise a plain fixed root. It is the bench
+// corpus's shape in miniature (bench/corpus/Bench.schema's server_time,
+// wide_key, flux and ping).
+const wideKinds = `package probe
+
+table Wide
+{
+    server_time fixed(24, 8)  | min = 0, max = 65535
+    ping        ufixed(8, 8)  | min = 0, max = 250
+    wide_key    uint128
+    flux        int128       | min = -1267650600228229401496703205376, max = 1267650600228229401496703205376
+    plain       int32
+}
+`
+
+// wideKindsNoFixedRoot is the same two families on a table a pointer makes
+// VARIABLE, so the unit has no fixed root at all and §15's refusal is the
+// whole answer.
+const wideKindsNoFixedRoot = `package probe
+
+table Wide
+{
+    wide_key uint128
+    next     *Wide
+}
+`
+
+// TestWideKindsAreRefusedByTheAcceleratorsAndCarriedByTheWire holds
+// docs/SPEC-TABLES.md §15's refusal to the two things that owe it. THE BLOCK
+// AND THE COOK owe it: they name a kind's storage column and its reflection
+// descriptor, and they do not carry these two families yet. THE FIXED FORM
+// (§3.4) does not owe it: a field there is a store of its width at its offset,
+// so a 128-bit field is a `u128` store and a fixed-point one is its raw
+// integer, and the block entry carries the kind byte the reader compares.
+//
+// The row types are the load-bearing half and they are not asserted here
+// alone: emitCookLayout's const asserts hold every one of them to
+// ir.RecordLayout at COMPILE TIME, so a row that spelled a 128-bit field u64
+// fails the build rather than laying a record down at the wrong offsets.
+func TestWideKindsAreRefusedByTheAcceleratorsAndCarriedByTheWire(t *testing.T) {
+	out := generate(t, wideKinds)
+
+	if _, ok := out["probe_fixed.rs"]; !ok {
+		t.Fatalf("a fixed root declaring the wide kinds got no fixed form; got %v", keysOf(out))
+	}
+	if _, ok := out[FixedRuntimeModule+".rs"]; !ok {
+		t.Errorf("no %s.rs beside the fixed form", FixedRuntimeModule)
+	}
+
+	// the accelerators stood down, and BOTH of them
+	for _, name := range []string{"probe_cook.rs", CookRuntimeModule + ".rs", "probe_block.rs", BlockRuntimeModule + ".rs"} {
+		if _, ok := out[name]; ok {
+			t.Errorf("%s rode into a unit whose kinds it does not carry", name)
+		}
+	}
+
+	// the rows the fixed form's value IS: the raw integer at the declared
+	// storage width, signed by `fixed` against `ufixed`, and 128 bits native
+	rows := string(out["probe_records.rs"])
+	for _, want := range []string{
+		"pub server_time: i32,",
+		"pub ping: u16,",
+		"pub wide_key: u128,",
+		"pub flux: i128,",
+	} {
+		if !strings.Contains(rows, want) {
+			t.Errorf("the row does not carry %q", want)
+		}
+	}
+
+	// AND THE REFUSAL IS STILL THE WHOLE ANSWER where nothing is left to
+	// emit — BY NAME, naming every field, exactly as §15 states it.
+	_, err := Generate(unitFrom(t, wideKindsNoFixedRoot))
+	if err == nil {
+		t.Fatal("a wide-kind unit with no fixed root generated; §15's refusal is owed")
+	}
+	for _, want := range []string{"Wide.wide_key uint128", "docs/SPEC-TABLES.md §3, §15"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not name %q: %v", want, err)
+		}
+	}
+}

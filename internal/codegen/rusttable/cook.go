@@ -399,7 +399,14 @@ func cookElemType(f *ir.Field) string {
 		return "f32"
 	case ir.TFloat64:
 		return "f64"
-	case ir.TInt:
+	case ir.TInt, ir.TFixed:
+		// A FIXED-POINT SLOT HOLDS ITS RAW INTEGER and not a scaled float
+		// (docs/SPEC-TABLES.md §4.3): the storage width is I+F and the
+		// signedness is `fixed` against `ufixed`, which is the same pair
+		// ir.RecordLayout sizes the slot by and the same one Go's row spells
+		// int32 for fixed(24, 8) and uint16 for ufixed(8, 8). The wire carries
+		// the raw integer too, so the slot and the wire are one value here and
+		// nothing scales on the way in or out.
 		if f.Type.Signed {
 			return rustInt(f.Type.Width)
 		}
