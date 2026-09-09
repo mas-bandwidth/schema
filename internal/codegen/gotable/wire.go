@@ -34,6 +34,7 @@ type TableIds struct {
 	chain [tableIdCapacity]int
 	head [tableIdBuckets]int
 	slot [tableIdCapacity]uint32
+	ordinalOf [tableIdCapacity]int32
 	Count int
 	Overflow bool
 }
@@ -46,6 +47,7 @@ func (ids *TableIds) Ref(id uint64) uint64 {
 	if ids.Count == len(ids.Values) { ids.Overflow = true; return 0 }
 	i := ids.Count
 	ids.Values[i], ids.chain[i] = id, ids.head[b]
+	ids.ordinalOf[i] = -1
 	ids.Count++
 	ids.head[b] = ids.Count
 	return uint64(ids.Count)
@@ -53,8 +55,8 @@ func (ids *TableIds) Ref(id uint64) uint64 {
 
 // RefAt is Ref for a compile-time-constant id. The ordinal is that id's index
 // in TableWireIds. A hit is one load and one compare; first-use order is
-// still append order. Truncate clears by ordinal so a speculative intern
-// does not leak into the next walk.
+// still append order. Truncate clears the ordinal in O(popped) so a
+// speculative intern does not leak into the next walk.
 func (ids *TableIds) RefAt(ordinal int, id uint64) uint64 {
 	if uint(ordinal) < uint(len(ids.slot)) {
 		if s := ids.slot[ordinal]; s != 0 {
@@ -64,6 +66,7 @@ func (ids *TableIds) RefAt(ordinal int, id uint64) uint64 {
 	r := ids.Ref(id)
 	if r != 0 && uint(ordinal) < uint(len(ids.slot)) {
 		ids.slot[ordinal] = uint32(r)
+		ids.ordinalOf[r-1] = int32(ordinal)
 	}
 	return r
 }
@@ -75,9 +78,9 @@ func (ids *TableIds) Truncate(mark int) {
 		ids.Count--
 		id := ids.Values[ids.Count]
 		ids.head[(id ^ id >> 32) & (tableIdBuckets - 1)] = ids.chain[ids.Count]
-	}
-	for i, s := range ids.slot {
-		if int(s) > mark { ids.slot[i] = 0 }
+		if o := ids.ordinalOf[ids.Count]; o >= 0 {
+			ids.slot[o] = 0
+		}
 	}
 }
 
