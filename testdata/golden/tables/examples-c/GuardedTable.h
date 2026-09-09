@@ -1619,16 +1619,8 @@ static SCHEMA_UNUSED int patrol_load_body( TableReader * r, Patrol * value )
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
-                {
-                    case 1:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        value->active = table_reader_get8( &(*r) ) != 0;
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
-                }
+                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                value->active = table_reader_get8( &(*r) ) != 0;
                 break;
             }
             case 0x2281498aa0200e40ull: /* speed */
@@ -1639,16 +1631,8 @@ static SCHEMA_UNUSED int patrol_load_body( TableReader * r, Patrol * value )
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
-                {
-                    case 10:
-                    {
-                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                        value->speed = table_bits_to_float( table_reader_get32( &(*r) ) );
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
-                }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                value->speed = table_bits_to_float( table_reader_get32( &(*r) ) );
                 break;
             }
             case 0x247f0e7f55aacfbdull: /* has_target */
@@ -1659,16 +1643,8 @@ static SCHEMA_UNUSED int patrol_load_body( TableReader * r, Patrol * value )
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
-                {
-                    case 1:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        value->has_target = table_reader_get8( &(*r) ) != 0;
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
-                }
+                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                value->has_target = table_reader_get8( &(*r) ) != 0;
                 break;
             }
             case 0xb7bc9ac015a25050ull: /* target_id */
@@ -1717,38 +1693,12 @@ static SCHEMA_UNUSED int patrol_load_body( TableReader * r, Patrol * value )
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 2:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        int64_t decoded_wide = (int8_t) table_reader_get8( &(*r) );
-                        if ( decoded_wide < 0ll ) { decoded_wide = 0ll; r->report->clamped++; }
-                        if ( decoded_wide > 1000ll ) { decoded_wide = 1000ll; r->report->clamped++; }
-                        value->target_id = decoded_wide;
-                        break;
-                    }
-                    case 3:
-                    {
-                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
-                        int64_t decoded_wide = (int16_t) table_reader_get16( &(*r) );
-                        if ( decoded_wide < 0ll ) { decoded_wide = 0ll; r->report->clamped++; }
-                        if ( decoded_wide > 1000ll ) { decoded_wide = 1000ll; r->report->clamped++; }
-                        value->target_id = decoded_wide;
-                        break;
-                    }
-                    case 4:
-                    {
-                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            int32_t decoded_v = (int32_t) table_reader_get32( &(*r) );
-                            if ( decoded_v < 0 ) { decoded_v = 0; r->report->clamped++; }
-                            else if ( decoded_v > 1000 ) { decoded_v = 1000; r->report->clamped++; }
-                            value->target_id = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    int32_t decoded_v = (int32_t) table_reader_get32( &(*r) );
+                    if ( decoded_v < 0 ) { decoded_v = 0; r->report->clamped++; }
+                    else if ( decoded_v > 1000 ) { decoded_v = 1000; r->report->clamped++; }
+                    value->target_id = decoded_v;
                 }
                 break;
             }
@@ -1760,16 +1710,8 @@ static SCHEMA_UNUSED int patrol_load_body( TableReader * r, Patrol * value )
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
-                {
-                    case 10:
-                    {
-                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                        value->wander = table_bits_to_float( table_reader_get32( &(*r) ) );
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
-                }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                value->wander = table_bits_to_float( table_reader_get32( &(*r) ) );
                 break;
             }
             case 0x3bf8fbbad1587cddull: /* note */

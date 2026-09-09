@@ -1786,18 +1786,10 @@ static SCHEMA_UNUSED int ranged_signed_load_body( TableReader * r, RangedSigned 
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 2:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            int8_t decoded_v = (int8_t) table_reader_get8( &(*r) );
-                            value->i8_span = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    int8_t decoded_v = (int8_t) table_reader_get8( &(*r) );
+                    value->i8_span = decoded_v;
                 }
                 break;
             }
@@ -1809,19 +1801,11 @@ static SCHEMA_UNUSED int ranged_signed_load_body( TableReader * r, RangedSigned 
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 2:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            int8_t decoded_v = (int8_t) table_reader_get8( &(*r) );
-                            if ( decoded_v > 126 ) { decoded_v = 126; r->report->clamped++; }
-                            value->i8_low = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    int8_t decoded_v = (int8_t) table_reader_get8( &(*r) );
+                    if ( decoded_v > 126 ) { decoded_v = 126; r->report->clamped++; }
+                    value->i8_low = decoded_v;
                 }
                 break;
             }
@@ -1833,19 +1817,11 @@ static SCHEMA_UNUSED int ranged_signed_load_body( TableReader * r, RangedSigned 
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 2:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            int8_t decoded_v = (int8_t) table_reader_get8( &(*r) );
-                            if ( decoded_v < -127 ) { decoded_v = -127; r->report->clamped++; }
-                            value->i8_high = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    int8_t decoded_v = (int8_t) table_reader_get8( &(*r) );
+                    if ( decoded_v < -127 ) { decoded_v = -127; r->report->clamped++; }
+                    value->i8_high = decoded_v;
                 }
                 break;
             }
@@ -1857,20 +1833,12 @@ static SCHEMA_UNUSED int ranged_signed_load_body( TableReader * r, RangedSigned 
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 2:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            int8_t decoded_v = (int8_t) table_reader_get8( &(*r) );
-                            if ( decoded_v < -127 ) { decoded_v = -127; r->report->clamped++; }
-                            else if ( decoded_v > 126 ) { decoded_v = 126; r->report->clamped++; }
-                            value->i8_inside = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    int8_t decoded_v = (int8_t) table_reader_get8( &(*r) );
+                    if ( decoded_v < -127 ) { decoded_v = -127; r->report->clamped++; }
+                    else if ( decoded_v > 126 ) { decoded_v = 126; r->report->clamped++; }
+                    value->i8_inside = decoded_v;
                 }
                 break;
             }
@@ -1909,27 +1877,10 @@ static SCHEMA_UNUSED int ranged_signed_load_body( TableReader * r, RangedSigned 
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 2:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        int64_t decoded_wide = (int8_t) table_reader_get8( &(*r) );
-                        if ( decoded_wide < -32768ll ) { decoded_wide = -32768ll; r->report->clamped++; }
-                        if ( decoded_wide > 32767ll ) { decoded_wide = 32767ll; r->report->clamped++; }
-                        value->i16_span = decoded_wide;
-                        break;
-                    }
-                    case 3:
-                    {
-                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            int16_t decoded_v = (int16_t) table_reader_get16( &(*r) );
-                            value->i16_span = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    int16_t decoded_v = (int16_t) table_reader_get16( &(*r) );
+                    value->i16_span = decoded_v;
                 }
                 break;
             }
@@ -1969,28 +1920,11 @@ static SCHEMA_UNUSED int ranged_signed_load_body( TableReader * r, RangedSigned 
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 2:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        int64_t decoded_wide = (int8_t) table_reader_get8( &(*r) );
-                        if ( decoded_wide < -32768ll ) { decoded_wide = -32768ll; r->report->clamped++; }
-                        if ( decoded_wide > 32766ll ) { decoded_wide = 32766ll; r->report->clamped++; }
-                        value->i16_low = decoded_wide;
-                        break;
-                    }
-                    case 3:
-                    {
-                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            int16_t decoded_v = (int16_t) table_reader_get16( &(*r) );
-                            if ( decoded_v > 32766 ) { decoded_v = 32766; r->report->clamped++; }
-                            value->i16_low = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    int16_t decoded_v = (int16_t) table_reader_get16( &(*r) );
+                    if ( decoded_v > 32766 ) { decoded_v = 32766; r->report->clamped++; }
+                    value->i16_low = decoded_v;
                 }
                 break;
             }
@@ -2030,28 +1964,11 @@ static SCHEMA_UNUSED int ranged_signed_load_body( TableReader * r, RangedSigned 
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 2:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        int64_t decoded_wide = (int8_t) table_reader_get8( &(*r) );
-                        if ( decoded_wide < -32767ll ) { decoded_wide = -32767ll; r->report->clamped++; }
-                        if ( decoded_wide > 32767ll ) { decoded_wide = 32767ll; r->report->clamped++; }
-                        value->i16_high = decoded_wide;
-                        break;
-                    }
-                    case 3:
-                    {
-                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            int16_t decoded_v = (int16_t) table_reader_get16( &(*r) );
-                            if ( decoded_v < -32767 ) { decoded_v = -32767; r->report->clamped++; }
-                            value->i16_high = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    int16_t decoded_v = (int16_t) table_reader_get16( &(*r) );
+                    if ( decoded_v < -32767 ) { decoded_v = -32767; r->report->clamped++; }
+                    value->i16_high = decoded_v;
                 }
                 break;
             }
@@ -2092,29 +2009,12 @@ static SCHEMA_UNUSED int ranged_signed_load_body( TableReader * r, RangedSigned 
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 2:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        int64_t decoded_wide = (int8_t) table_reader_get8( &(*r) );
-                        if ( decoded_wide < -32767ll ) { decoded_wide = -32767ll; r->report->clamped++; }
-                        if ( decoded_wide > 32766ll ) { decoded_wide = 32766ll; r->report->clamped++; }
-                        value->i16_inside = decoded_wide;
-                        break;
-                    }
-                    case 3:
-                    {
-                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            int16_t decoded_v = (int16_t) table_reader_get16( &(*r) );
-                            if ( decoded_v < -32767 ) { decoded_v = -32767; r->report->clamped++; }
-                            else if ( decoded_v > 32766 ) { decoded_v = 32766; r->report->clamped++; }
-                            value->i16_inside = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    int16_t decoded_v = (int16_t) table_reader_get16( &(*r) );
+                    if ( decoded_v < -32767 ) { decoded_v = -32767; r->report->clamped++; }
+                    else if ( decoded_v > 32766 ) { decoded_v = 32766; r->report->clamped++; }
+                    value->i16_inside = decoded_v;
                 }
                 break;
             }
@@ -2162,36 +2062,10 @@ static SCHEMA_UNUSED int ranged_signed_load_body( TableReader * r, RangedSigned 
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 2:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        int64_t decoded_wide = (int8_t) table_reader_get8( &(*r) );
-                        if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; r->report->clamped++; }
-                        if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; r->report->clamped++; }
-                        value->i32_span = decoded_wide;
-                        break;
-                    }
-                    case 3:
-                    {
-                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
-                        int64_t decoded_wide = (int16_t) table_reader_get16( &(*r) );
-                        if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; r->report->clamped++; }
-                        if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; r->report->clamped++; }
-                        value->i32_span = decoded_wide;
-                        break;
-                    }
-                    case 4:
-                    {
-                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            int32_t decoded_v = (int32_t) table_reader_get32( &(*r) );
-                            value->i32_span = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    int32_t decoded_v = (int32_t) table_reader_get32( &(*r) );
+                    value->i32_span = decoded_v;
                 }
                 break;
             }
@@ -2240,37 +2114,11 @@ static SCHEMA_UNUSED int ranged_signed_load_body( TableReader * r, RangedSigned 
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 2:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        int64_t decoded_wide = (int8_t) table_reader_get8( &(*r) );
-                        if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; r->report->clamped++; }
-                        if ( decoded_wide > 2147483646ll ) { decoded_wide = 2147483646ll; r->report->clamped++; }
-                        value->i32_low = decoded_wide;
-                        break;
-                    }
-                    case 3:
-                    {
-                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
-                        int64_t decoded_wide = (int16_t) table_reader_get16( &(*r) );
-                        if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; r->report->clamped++; }
-                        if ( decoded_wide > 2147483646ll ) { decoded_wide = 2147483646ll; r->report->clamped++; }
-                        value->i32_low = decoded_wide;
-                        break;
-                    }
-                    case 4:
-                    {
-                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            int32_t decoded_v = (int32_t) table_reader_get32( &(*r) );
-                            if ( decoded_v > 2147483646 ) { decoded_v = 2147483646; r->report->clamped++; }
-                            value->i32_low = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    int32_t decoded_v = (int32_t) table_reader_get32( &(*r) );
+                    if ( decoded_v > 2147483646 ) { decoded_v = 2147483646; r->report->clamped++; }
+                    value->i32_low = decoded_v;
                 }
                 break;
             }
@@ -2319,37 +2167,11 @@ static SCHEMA_UNUSED int ranged_signed_load_body( TableReader * r, RangedSigned 
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 2:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        int64_t decoded_wide = (int8_t) table_reader_get8( &(*r) );
-                        if ( decoded_wide < -2147483647ll ) { decoded_wide = -2147483647ll; r->report->clamped++; }
-                        if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; r->report->clamped++; }
-                        value->i32_high = decoded_wide;
-                        break;
-                    }
-                    case 3:
-                    {
-                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
-                        int64_t decoded_wide = (int16_t) table_reader_get16( &(*r) );
-                        if ( decoded_wide < -2147483647ll ) { decoded_wide = -2147483647ll; r->report->clamped++; }
-                        if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; r->report->clamped++; }
-                        value->i32_high = decoded_wide;
-                        break;
-                    }
-                    case 4:
-                    {
-                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            int32_t decoded_v = (int32_t) table_reader_get32( &(*r) );
-                            if ( decoded_v < -2147483647 ) { decoded_v = -2147483647; r->report->clamped++; }
-                            value->i32_high = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    int32_t decoded_v = (int32_t) table_reader_get32( &(*r) );
+                    if ( decoded_v < -2147483647 ) { decoded_v = -2147483647; r->report->clamped++; }
+                    value->i32_high = decoded_v;
                 }
                 break;
             }
@@ -2399,38 +2221,12 @@ static SCHEMA_UNUSED int ranged_signed_load_body( TableReader * r, RangedSigned 
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 2:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        int64_t decoded_wide = (int8_t) table_reader_get8( &(*r) );
-                        if ( decoded_wide < -2147483647ll ) { decoded_wide = -2147483647ll; r->report->clamped++; }
-                        if ( decoded_wide > 2147483646ll ) { decoded_wide = 2147483646ll; r->report->clamped++; }
-                        value->i32_inside = decoded_wide;
-                        break;
-                    }
-                    case 3:
-                    {
-                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
-                        int64_t decoded_wide = (int16_t) table_reader_get16( &(*r) );
-                        if ( decoded_wide < -2147483647ll ) { decoded_wide = -2147483647ll; r->report->clamped++; }
-                        if ( decoded_wide > 2147483646ll ) { decoded_wide = 2147483646ll; r->report->clamped++; }
-                        value->i32_inside = decoded_wide;
-                        break;
-                    }
-                    case 4:
-                    {
-                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            int32_t decoded_v = (int32_t) table_reader_get32( &(*r) );
-                            if ( decoded_v < -2147483647 ) { decoded_v = -2147483647; r->report->clamped++; }
-                            else if ( decoded_v > 2147483646 ) { decoded_v = 2147483646; r->report->clamped++; }
-                            value->i32_inside = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    int32_t decoded_v = (int32_t) table_reader_get32( &(*r) );
+                    if ( decoded_v < -2147483647 ) { decoded_v = -2147483647; r->report->clamped++; }
+                    else if ( decoded_v > 2147483646 ) { decoded_v = 2147483646; r->report->clamped++; }
+                    value->i32_inside = decoded_v;
                 }
                 break;
             }
@@ -2481,39 +2277,10 @@ static SCHEMA_UNUSED int ranged_signed_load_body( TableReader * r, RangedSigned 
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 2:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        int64_t decoded_wide = (int8_t) table_reader_get8( &(*r) );
-                        value->i64_span = decoded_wide;
-                        break;
-                    }
-                    case 3:
-                    {
-                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
-                        int64_t decoded_wide = (int16_t) table_reader_get16( &(*r) );
-                        value->i64_span = decoded_wide;
-                        break;
-                    }
-                    case 4:
-                    {
-                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                        int64_t decoded_wide = (int32_t) table_reader_get32( &(*r) );
-                        value->i64_span = decoded_wide;
-                        break;
-                    }
-                    case 5:
-                    {
-                        if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            int64_t decoded_v = (int64_t) table_reader_get64( &(*r) );
-                            value->i64_span = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    int64_t decoded_v = (int64_t) table_reader_get64( &(*r) );
+                    value->i64_span = decoded_v;
                 }
                 break;
             }
@@ -2568,43 +2335,11 @@ static SCHEMA_UNUSED int ranged_signed_load_body( TableReader * r, RangedSigned 
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 2:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        int64_t decoded_wide = (int8_t) table_reader_get8( &(*r) );
-                        if ( decoded_wide > 9223372036854775806ll ) { decoded_wide = 9223372036854775806ll; r->report->clamped++; }
-                        value->i64_low = decoded_wide;
-                        break;
-                    }
-                    case 3:
-                    {
-                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
-                        int64_t decoded_wide = (int16_t) table_reader_get16( &(*r) );
-                        if ( decoded_wide > 9223372036854775806ll ) { decoded_wide = 9223372036854775806ll; r->report->clamped++; }
-                        value->i64_low = decoded_wide;
-                        break;
-                    }
-                    case 4:
-                    {
-                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                        int64_t decoded_wide = (int32_t) table_reader_get32( &(*r) );
-                        if ( decoded_wide > 9223372036854775806ll ) { decoded_wide = 9223372036854775806ll; r->report->clamped++; }
-                        value->i64_low = decoded_wide;
-                        break;
-                    }
-                    case 5:
-                    {
-                        if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            int64_t decoded_v = (int64_t) table_reader_get64( &(*r) );
-                            if ( decoded_v > 9223372036854775806ll ) { decoded_v = 9223372036854775806ll; r->report->clamped++; }
-                            value->i64_low = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    int64_t decoded_v = (int64_t) table_reader_get64( &(*r) );
+                    if ( decoded_v > 9223372036854775806ll ) { decoded_v = 9223372036854775806ll; r->report->clamped++; }
+                    value->i64_low = decoded_v;
                 }
                 break;
             }
@@ -2659,43 +2394,11 @@ static SCHEMA_UNUSED int ranged_signed_load_body( TableReader * r, RangedSigned 
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 2:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        int64_t decoded_wide = (int8_t) table_reader_get8( &(*r) );
-                        if ( decoded_wide < -9223372036854775807ll ) { decoded_wide = -9223372036854775807ll; r->report->clamped++; }
-                        value->i64_high = decoded_wide;
-                        break;
-                    }
-                    case 3:
-                    {
-                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
-                        int64_t decoded_wide = (int16_t) table_reader_get16( &(*r) );
-                        if ( decoded_wide < -9223372036854775807ll ) { decoded_wide = -9223372036854775807ll; r->report->clamped++; }
-                        value->i64_high = decoded_wide;
-                        break;
-                    }
-                    case 4:
-                    {
-                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                        int64_t decoded_wide = (int32_t) table_reader_get32( &(*r) );
-                        if ( decoded_wide < -9223372036854775807ll ) { decoded_wide = -9223372036854775807ll; r->report->clamped++; }
-                        value->i64_high = decoded_wide;
-                        break;
-                    }
-                    case 5:
-                    {
-                        if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            int64_t decoded_v = (int64_t) table_reader_get64( &(*r) );
-                            if ( decoded_v < -9223372036854775807ll ) { decoded_v = -9223372036854775807ll; r->report->clamped++; }
-                            value->i64_high = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    int64_t decoded_v = (int64_t) table_reader_get64( &(*r) );
+                    if ( decoded_v < -9223372036854775807ll ) { decoded_v = -9223372036854775807ll; r->report->clamped++; }
+                    value->i64_high = decoded_v;
                 }
                 break;
             }
@@ -2754,47 +2457,12 @@ static SCHEMA_UNUSED int ranged_signed_load_body( TableReader * r, RangedSigned 
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 2:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        int64_t decoded_wide = (int8_t) table_reader_get8( &(*r) );
-                        if ( decoded_wide < -9223372036854775807ll ) { decoded_wide = -9223372036854775807ll; r->report->clamped++; }
-                        if ( decoded_wide > 9223372036854775806ll ) { decoded_wide = 9223372036854775806ll; r->report->clamped++; }
-                        value->i64_inside = decoded_wide;
-                        break;
-                    }
-                    case 3:
-                    {
-                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
-                        int64_t decoded_wide = (int16_t) table_reader_get16( &(*r) );
-                        if ( decoded_wide < -9223372036854775807ll ) { decoded_wide = -9223372036854775807ll; r->report->clamped++; }
-                        if ( decoded_wide > 9223372036854775806ll ) { decoded_wide = 9223372036854775806ll; r->report->clamped++; }
-                        value->i64_inside = decoded_wide;
-                        break;
-                    }
-                    case 4:
-                    {
-                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                        int64_t decoded_wide = (int32_t) table_reader_get32( &(*r) );
-                        if ( decoded_wide < -9223372036854775807ll ) { decoded_wide = -9223372036854775807ll; r->report->clamped++; }
-                        if ( decoded_wide > 9223372036854775806ll ) { decoded_wide = 9223372036854775806ll; r->report->clamped++; }
-                        value->i64_inside = decoded_wide;
-                        break;
-                    }
-                    case 5:
-                    {
-                        if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            int64_t decoded_v = (int64_t) table_reader_get64( &(*r) );
-                            if ( decoded_v < -9223372036854775807ll ) { decoded_v = -9223372036854775807ll; r->report->clamped++; }
-                            else if ( decoded_v > 9223372036854775806ll ) { decoded_v = 9223372036854775806ll; r->report->clamped++; }
-                            value->i64_inside = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    int64_t decoded_v = (int64_t) table_reader_get64( &(*r) );
+                    if ( decoded_v < -9223372036854775807ll ) { decoded_v = -9223372036854775807ll; r->report->clamped++; }
+                    else if ( decoded_v > 9223372036854775806ll ) { decoded_v = 9223372036854775806ll; r->report->clamped++; }
+                    value->i64_inside = decoded_v;
                 }
                 break;
             }
@@ -3598,18 +3266,10 @@ static SCHEMA_UNUSED int ranged_unsigned_load_body( TableReader * r, RangedUnsig
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 6:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
-                            value->u8_span = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
+                    value->u8_span = decoded_v;
                 }
                 break;
             }
@@ -3621,19 +3281,11 @@ static SCHEMA_UNUSED int ranged_unsigned_load_body( TableReader * r, RangedUnsig
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 6:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
-                            if ( decoded_v > 254 ) { decoded_v = 254; r->report->clamped++; }
-                            value->u8_low = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
+                    if ( decoded_v > 254 ) { decoded_v = 254; r->report->clamped++; }
+                    value->u8_low = decoded_v;
                 }
                 break;
             }
@@ -3645,19 +3297,11 @@ static SCHEMA_UNUSED int ranged_unsigned_load_body( TableReader * r, RangedUnsig
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 6:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
-                            if ( decoded_v < 1 ) { decoded_v = 1; r->report->clamped++; }
-                            value->u8_high = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
+                    if ( decoded_v < 1 ) { decoded_v = 1; r->report->clamped++; }
+                    value->u8_high = decoded_v;
                 }
                 break;
             }
@@ -3669,20 +3313,12 @@ static SCHEMA_UNUSED int ranged_unsigned_load_body( TableReader * r, RangedUnsig
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 6:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
-                            if ( decoded_v < 1 ) { decoded_v = 1; r->report->clamped++; }
-                            else if ( decoded_v > 254 ) { decoded_v = 254; r->report->clamped++; }
-                            value->u8_inside = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
+                    if ( decoded_v < 1 ) { decoded_v = 1; r->report->clamped++; }
+                    else if ( decoded_v > 254 ) { decoded_v = 254; r->report->clamped++; }
+                    value->u8_inside = decoded_v;
                 }
                 break;
             }
@@ -3720,26 +3356,10 @@ static SCHEMA_UNUSED int ranged_unsigned_load_body( TableReader * r, RangedUnsig
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 6:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
-                        if ( decoded_wide > 65535ull ) { decoded_wide = 65535ull; r->report->clamped++; }
-                        value->u16_span = decoded_wide;
-                        break;
-                    }
-                    case 7:
-                    {
-                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            uint16_t decoded_v = (uint16_t) table_reader_get16( &(*r) );
-                            value->u16_span = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    uint16_t decoded_v = (uint16_t) table_reader_get16( &(*r) );
+                    value->u16_span = decoded_v;
                 }
                 break;
             }
@@ -3778,27 +3398,11 @@ static SCHEMA_UNUSED int ranged_unsigned_load_body( TableReader * r, RangedUnsig
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 6:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
-                        if ( decoded_wide > 65534ull ) { decoded_wide = 65534ull; r->report->clamped++; }
-                        value->u16_low = decoded_wide;
-                        break;
-                    }
-                    case 7:
-                    {
-                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            uint16_t decoded_v = (uint16_t) table_reader_get16( &(*r) );
-                            if ( decoded_v > 65534 ) { decoded_v = 65534; r->report->clamped++; }
-                            value->u16_low = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    uint16_t decoded_v = (uint16_t) table_reader_get16( &(*r) );
+                    if ( decoded_v > 65534 ) { decoded_v = 65534; r->report->clamped++; }
+                    value->u16_low = decoded_v;
                 }
                 break;
             }
@@ -3838,28 +3442,11 @@ static SCHEMA_UNUSED int ranged_unsigned_load_body( TableReader * r, RangedUnsig
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 6:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
-                        if ( decoded_wide < 1ull ) { decoded_wide = 1ull; r->report->clamped++; }
-                        if ( decoded_wide > 65535ull ) { decoded_wide = 65535ull; r->report->clamped++; }
-                        value->u16_high = decoded_wide;
-                        break;
-                    }
-                    case 7:
-                    {
-                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            uint16_t decoded_v = (uint16_t) table_reader_get16( &(*r) );
-                            if ( decoded_v < 1 ) { decoded_v = 1; r->report->clamped++; }
-                            value->u16_high = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    uint16_t decoded_v = (uint16_t) table_reader_get16( &(*r) );
+                    if ( decoded_v < 1 ) { decoded_v = 1; r->report->clamped++; }
+                    value->u16_high = decoded_v;
                 }
                 break;
             }
@@ -3900,29 +3487,12 @@ static SCHEMA_UNUSED int ranged_unsigned_load_body( TableReader * r, RangedUnsig
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 6:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
-                        if ( decoded_wide < 1ull ) { decoded_wide = 1ull; r->report->clamped++; }
-                        if ( decoded_wide > 65534ull ) { decoded_wide = 65534ull; r->report->clamped++; }
-                        value->u16_inside = decoded_wide;
-                        break;
-                    }
-                    case 7:
-                    {
-                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            uint16_t decoded_v = (uint16_t) table_reader_get16( &(*r) );
-                            if ( decoded_v < 1 ) { decoded_v = 1; r->report->clamped++; }
-                            else if ( decoded_v > 65534 ) { decoded_v = 65534; r->report->clamped++; }
-                            value->u16_inside = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    uint16_t decoded_v = (uint16_t) table_reader_get16( &(*r) );
+                    if ( decoded_v < 1 ) { decoded_v = 1; r->report->clamped++; }
+                    else if ( decoded_v > 65534 ) { decoded_v = 65534; r->report->clamped++; }
+                    value->u16_inside = decoded_v;
                 }
                 break;
             }
@@ -3968,34 +3538,10 @@ static SCHEMA_UNUSED int ranged_unsigned_load_body( TableReader * r, RangedUnsig
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 6:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
-                        if ( decoded_wide > 4294967295ull ) { decoded_wide = 4294967295ull; r->report->clamped++; }
-                        value->u32_span = decoded_wide;
-                        break;
-                    }
-                    case 7:
-                    {
-                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
-                        uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
-                        if ( decoded_wide > 4294967295ull ) { decoded_wide = 4294967295ull; r->report->clamped++; }
-                        value->u32_span = decoded_wide;
-                        break;
-                    }
-                    case 8:
-                    {
-                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
-                            value->u32_span = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                    value->u32_span = decoded_v;
                 }
                 break;
             }
@@ -4042,35 +3588,11 @@ static SCHEMA_UNUSED int ranged_unsigned_load_body( TableReader * r, RangedUnsig
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 6:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
-                        if ( decoded_wide > 4294967294ull ) { decoded_wide = 4294967294ull; r->report->clamped++; }
-                        value->u32_low = decoded_wide;
-                        break;
-                    }
-                    case 7:
-                    {
-                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
-                        uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
-                        if ( decoded_wide > 4294967294ull ) { decoded_wide = 4294967294ull; r->report->clamped++; }
-                        value->u32_low = decoded_wide;
-                        break;
-                    }
-                    case 8:
-                    {
-                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
-                            if ( decoded_v > 4294967294 ) { decoded_v = 4294967294; r->report->clamped++; }
-                            value->u32_low = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                    if ( decoded_v > 4294967294 ) { decoded_v = 4294967294; r->report->clamped++; }
+                    value->u32_low = decoded_v;
                 }
                 break;
             }
@@ -4119,37 +3641,11 @@ static SCHEMA_UNUSED int ranged_unsigned_load_body( TableReader * r, RangedUnsig
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 6:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
-                        if ( decoded_wide < 1ull ) { decoded_wide = 1ull; r->report->clamped++; }
-                        if ( decoded_wide > 4294967295ull ) { decoded_wide = 4294967295ull; r->report->clamped++; }
-                        value->u32_high = decoded_wide;
-                        break;
-                    }
-                    case 7:
-                    {
-                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
-                        uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
-                        if ( decoded_wide < 1ull ) { decoded_wide = 1ull; r->report->clamped++; }
-                        if ( decoded_wide > 4294967295ull ) { decoded_wide = 4294967295ull; r->report->clamped++; }
-                        value->u32_high = decoded_wide;
-                        break;
-                    }
-                    case 8:
-                    {
-                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
-                            if ( decoded_v < 1 ) { decoded_v = 1; r->report->clamped++; }
-                            value->u32_high = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                    if ( decoded_v < 1 ) { decoded_v = 1; r->report->clamped++; }
+                    value->u32_high = decoded_v;
                 }
                 break;
             }
@@ -4199,38 +3695,12 @@ static SCHEMA_UNUSED int ranged_unsigned_load_body( TableReader * r, RangedUnsig
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 6:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
-                        if ( decoded_wide < 1ull ) { decoded_wide = 1ull; r->report->clamped++; }
-                        if ( decoded_wide > 4294967294ull ) { decoded_wide = 4294967294ull; r->report->clamped++; }
-                        value->u32_inside = decoded_wide;
-                        break;
-                    }
-                    case 7:
-                    {
-                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
-                        uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
-                        if ( decoded_wide < 1ull ) { decoded_wide = 1ull; r->report->clamped++; }
-                        if ( decoded_wide > 4294967294ull ) { decoded_wide = 4294967294ull; r->report->clamped++; }
-                        value->u32_inside = decoded_wide;
-                        break;
-                    }
-                    case 8:
-                    {
-                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
-                            if ( decoded_v < 1 ) { decoded_v = 1; r->report->clamped++; }
-                            else if ( decoded_v > 4294967294 ) { decoded_v = 4294967294; r->report->clamped++; }
-                            value->u32_inside = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                    if ( decoded_v < 1 ) { decoded_v = 1; r->report->clamped++; }
+                    else if ( decoded_v > 4294967294 ) { decoded_v = 4294967294; r->report->clamped++; }
+                    value->u32_inside = decoded_v;
                 }
                 break;
             }
@@ -4281,39 +3751,10 @@ static SCHEMA_UNUSED int ranged_unsigned_load_body( TableReader * r, RangedUnsig
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 6:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
-                        value->u64_span = decoded_wide;
-                        break;
-                    }
-                    case 7:
-                    {
-                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
-                        uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
-                        value->u64_span = decoded_wide;
-                        break;
-                    }
-                    case 8:
-                    {
-                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                        uint64_t decoded_wide = (uint32_t) table_reader_get32( &(*r) );
-                        value->u64_span = decoded_wide;
-                        break;
-                    }
-                    case 9:
-                    {
-                        if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
-                            value->u64_span = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
+                    value->u64_span = decoded_v;
                 }
                 break;
             }
@@ -4368,43 +3809,11 @@ static SCHEMA_UNUSED int ranged_unsigned_load_body( TableReader * r, RangedUnsig
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 6:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
-                        if ( decoded_wide > 18446744073709551614ull ) { decoded_wide = 18446744073709551614ull; r->report->clamped++; }
-                        value->u64_low = decoded_wide;
-                        break;
-                    }
-                    case 7:
-                    {
-                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
-                        uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
-                        if ( decoded_wide > 18446744073709551614ull ) { decoded_wide = 18446744073709551614ull; r->report->clamped++; }
-                        value->u64_low = decoded_wide;
-                        break;
-                    }
-                    case 8:
-                    {
-                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                        uint64_t decoded_wide = (uint32_t) table_reader_get32( &(*r) );
-                        if ( decoded_wide > 18446744073709551614ull ) { decoded_wide = 18446744073709551614ull; r->report->clamped++; }
-                        value->u64_low = decoded_wide;
-                        break;
-                    }
-                    case 9:
-                    {
-                        if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
-                            if ( decoded_v > 18446744073709551614ull ) { decoded_v = 18446744073709551614ull; r->report->clamped++; }
-                            value->u64_low = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
+                    if ( decoded_v > 18446744073709551614ull ) { decoded_v = 18446744073709551614ull; r->report->clamped++; }
+                    value->u64_low = decoded_v;
                 }
                 break;
             }
@@ -4459,43 +3868,11 @@ static SCHEMA_UNUSED int ranged_unsigned_load_body( TableReader * r, RangedUnsig
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 6:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
-                        if ( decoded_wide < 1ull ) { decoded_wide = 1ull; r->report->clamped++; }
-                        value->u64_high = decoded_wide;
-                        break;
-                    }
-                    case 7:
-                    {
-                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
-                        uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
-                        if ( decoded_wide < 1ull ) { decoded_wide = 1ull; r->report->clamped++; }
-                        value->u64_high = decoded_wide;
-                        break;
-                    }
-                    case 8:
-                    {
-                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                        uint64_t decoded_wide = (uint32_t) table_reader_get32( &(*r) );
-                        if ( decoded_wide < 1ull ) { decoded_wide = 1ull; r->report->clamped++; }
-                        value->u64_high = decoded_wide;
-                        break;
-                    }
-                    case 9:
-                    {
-                        if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
-                            if ( decoded_v < 1ull ) { decoded_v = 1ull; r->report->clamped++; }
-                            value->u64_high = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
+                    if ( decoded_v < 1ull ) { decoded_v = 1ull; r->report->clamped++; }
+                    value->u64_high = decoded_v;
                 }
                 break;
             }
@@ -4554,47 +3931,12 @@ static SCHEMA_UNUSED int ranged_unsigned_load_body( TableReader * r, RangedUnsig
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 6:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
-                        if ( decoded_wide < 1ull ) { decoded_wide = 1ull; r->report->clamped++; }
-                        if ( decoded_wide > 18446744073709551614ull ) { decoded_wide = 18446744073709551614ull; r->report->clamped++; }
-                        value->u64_inside = decoded_wide;
-                        break;
-                    }
-                    case 7:
-                    {
-                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
-                        uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
-                        if ( decoded_wide < 1ull ) { decoded_wide = 1ull; r->report->clamped++; }
-                        if ( decoded_wide > 18446744073709551614ull ) { decoded_wide = 18446744073709551614ull; r->report->clamped++; }
-                        value->u64_inside = decoded_wide;
-                        break;
-                    }
-                    case 8:
-                    {
-                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                        uint64_t decoded_wide = (uint32_t) table_reader_get32( &(*r) );
-                        if ( decoded_wide < 1ull ) { decoded_wide = 1ull; r->report->clamped++; }
-                        if ( decoded_wide > 18446744073709551614ull ) { decoded_wide = 18446744073709551614ull; r->report->clamped++; }
-                        value->u64_inside = decoded_wide;
-                        break;
-                    }
-                    case 9:
-                    {
-                        if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
-                            if ( decoded_v < 1ull ) { decoded_v = 1ull; r->report->clamped++; }
-                            else if ( decoded_v > 18446744073709551614ull ) { decoded_v = 18446744073709551614ull; r->report->clamped++; }
-                            value->u64_inside = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
+                    if ( decoded_v < 1ull ) { decoded_v = 1ull; r->report->clamped++; }
+                    else if ( decoded_v > 18446744073709551614ull ) { decoded_v = 18446744073709551614ull; r->report->clamped++; }
+                    value->u64_inside = decoded_v;
                 }
                 break;
             }
@@ -5321,18 +4663,10 @@ static SCHEMA_UNUSED int ranged_widths_load_body( TableReader * r, RangedWidths 
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 6:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
-                            value->b8 = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
+                    value->b8 = decoded_v;
                 }
                 break;
             }
@@ -5370,26 +4704,10 @@ static SCHEMA_UNUSED int ranged_widths_load_body( TableReader * r, RangedWidths 
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 6:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
-                        if ( decoded_wide > 65535ull ) { decoded_wide = 65535ull; r->report->clamped++; }
-                        value->b16 = decoded_wide;
-                        break;
-                    }
-                    case 7:
-                    {
-                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            uint16_t decoded_v = (uint16_t) table_reader_get16( &(*r) );
-                            value->b16 = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    uint16_t decoded_v = (uint16_t) table_reader_get16( &(*r) );
+                    value->b16 = decoded_v;
                 }
                 break;
             }
@@ -5435,34 +4753,10 @@ static SCHEMA_UNUSED int ranged_widths_load_body( TableReader * r, RangedWidths 
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 6:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
-                        if ( decoded_wide > 4294967295ull ) { decoded_wide = 4294967295ull; r->report->clamped++; }
-                        value->b32 = decoded_wide;
-                        break;
-                    }
-                    case 7:
-                    {
-                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
-                        uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
-                        if ( decoded_wide > 4294967295ull ) { decoded_wide = 4294967295ull; r->report->clamped++; }
-                        value->b32 = decoded_wide;
-                        break;
-                    }
-                    case 8:
-                    {
-                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
-                            value->b32 = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
+                    value->b32 = decoded_v;
                 }
                 break;
             }
@@ -5513,39 +4807,10 @@ static SCHEMA_UNUSED int ranged_widths_load_body( TableReader * r, RangedWidths 
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 6:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
-                        value->b64 = decoded_wide;
-                        break;
-                    }
-                    case 7:
-                    {
-                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
-                        uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
-                        value->b64 = decoded_wide;
-                        break;
-                    }
-                    case 8:
-                    {
-                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                        uint64_t decoded_wide = (uint32_t) table_reader_get32( &(*r) );
-                        value->b64 = decoded_wide;
-                        break;
-                    }
-                    case 9:
-                    {
-                        if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
-                            value->b64 = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
+                    value->b64 = decoded_v;
                 }
                 break;
             }
@@ -5584,27 +4849,11 @@ static SCHEMA_UNUSED int ranged_widths_load_body( TableReader * r, RangedWidths 
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 6:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
-                        if ( decoded_wide > 4095ull ) { decoded_wide = 4095ull; r->report->clamped++; }
-                        value->b12 = decoded_wide;
-                        break;
-                    }
-                    case 7:
-                    {
-                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            uint16_t decoded_v = (uint16_t) table_reader_get16( &(*r) );
-                            if ( decoded_v > 4095ull ) { decoded_v = 4095ull; r->report->clamped++; } /* bits(12) width clamp */
-                            value->b12 = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    uint16_t decoded_v = (uint16_t) table_reader_get16( &(*r) );
+                    if ( decoded_v > 4095ull ) { decoded_v = 4095ull; r->report->clamped++; } /* bits(12) width clamp */
+                    value->b12 = decoded_v;
                 }
                 break;
             }
@@ -5659,43 +4908,11 @@ static SCHEMA_UNUSED int ranged_widths_load_body( TableReader * r, RangedWidths 
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 6:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        uint64_t decoded_wide = (uint8_t) table_reader_get8( &(*r) );
-                        if ( decoded_wide > 281474976710655ull ) { decoded_wide = 281474976710655ull; r->report->clamped++; }
-                        value->b48 = decoded_wide;
-                        break;
-                    }
-                    case 7:
-                    {
-                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
-                        uint64_t decoded_wide = (uint16_t) table_reader_get16( &(*r) );
-                        if ( decoded_wide > 281474976710655ull ) { decoded_wide = 281474976710655ull; r->report->clamped++; }
-                        value->b48 = decoded_wide;
-                        break;
-                    }
-                    case 8:
-                    {
-                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                        uint64_t decoded_wide = (uint32_t) table_reader_get32( &(*r) );
-                        if ( decoded_wide > 281474976710655ull ) { decoded_wide = 281474976710655ull; r->report->clamped++; }
-                        value->b48 = decoded_wide;
-                        break;
-                    }
-                    case 9:
-                    {
-                        if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
-                            if ( decoded_v > 281474976710655ull ) { decoded_v = 281474976710655ull; r->report->clamped++; } /* bits(48) width clamp */
-                            value->b48 = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
+                    if ( decoded_v > 281474976710655ull ) { decoded_v = 281474976710655ull; r->report->clamped++; } /* bits(48) width clamp */
+                    value->b48 = decoded_v;
                 }
                 break;
             }
