@@ -436,33 +436,27 @@ inline void TableIdsWrite( TableWriter & w, const TableIds & ids )
 {
     const int64_t count = ids.count;
     const int64_t total_bytes = ( count + 1 ) * 8;
-    if ( w.overflow || w.offset + total_bytes > w.capacity )
+    if ( w.overflow || w.offset < 0 || w.offset > w.capacity || total_bytes > w.capacity - w.offset )
     {
         w.overflow = true;
         return;
     }
     uint8_t * dst = w.buffer + w.offset;
-#if defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-    for ( int32_t i = 0; i < count; i++ )
-    {
-        uint64_t v = ids.ids[i];
-        v = ( v >> 56 ) | ( ( v >> 40 ) & 0xff00ull ) | ( ( v >> 24 ) & 0xff0000ull ) | ( ( v >> 8 ) & 0xff000000ull )
-          | ( ( v << 8 ) & 0xff00000000ull ) | ( ( v << 24 ) & 0xff0000000000ull ) | ( ( v << 40 ) & 0xff000000000000ull )
-          | ( v << 56 );
-        memcpy( dst + int64_t( i ) * 8, &v, 8 );
-    }
-    uint64_t n = uint64_t( count );
-    n = ( n >> 56 ) | ( ( n >> 40 ) & 0xff00ull ) | ( ( n >> 24 ) & 0xff0000ull ) | ( ( n >> 8 ) & 0xff000000ull )
-      | ( ( n << 8 ) & 0xff00000000ull ) | ( ( n << 24 ) & 0xff0000000000ull ) | ( ( n << 40 ) & 0xff000000000000ull )
-      | ( n << 56 );
-    memcpy( dst + count * 8, &n, 8 );
-#else
+#if defined( __BYTE_ORDER__ ) && defined( __ORDER_LITTLE_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
     if ( count > 0 )
     {
         memcpy( dst, ids.ids, (size_t)( count * 8 ) );
     }
     const uint64_t n = uint64_t( count );
     memcpy( dst + count * 8, &n, 8 );
+#else
+    // Explicit little-endian stores also cover compilers that do not expose
+    // byte-order macros. Native copies require positive little-endian proof.
+    for ( int64_t i = 0; i <= count; i++ )
+    {
+        const uint64_t v = i < count ? ids.ids[i] : uint64_t( count );
+        for ( int j = 0; j < 8; j++ ) { dst[i * 8 + j] = uint8_t( v >> ( j * 8 ) ); }
+    }
 #endif
     w.offset += total_bytes;
 }
