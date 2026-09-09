@@ -3,6 +3,7 @@ package gotable
 import (
 	"fmt"
 	"math/bits"
+	"slices"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -75,10 +76,8 @@ func unitDeclaresTableKind(u *ir.Unit, kind int) bool {
 		if st == nil {
 			continue
 		}
-		for _, f := range st.Fields {
-			if note(f) {
-				return true
-			}
+		if slices.ContainsFunc(st.Fields, note) {
+			return true
 		}
 	}
 	return false
