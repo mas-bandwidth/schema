@@ -268,6 +268,14 @@
       ]
     },
     {
+      "name": "table-distinctness",
+      "when": "pull-request",
+      "why": "the id table's distinctness control, alone, because it is an overlay rebuild: it patches the C++ table emitter's probe, rebuilds the compiler under the overlay, regenerates one unit and requires the distinctness gate to go red on the probe's own cases. It costs what the other overlay rebuilds cost, without the fuzzer's pass on top. Measured about 30 s over 1 control on the author's machine.",
+      "targets": [
+        "tables-distinctness-negative-control"
+      ]
+    },
+    {
       "name": "wire-fuzz",
       "when": "pull-request",
       "why": "the tolerant-wire oracle and node-type controls, which read a pinned vector rather than rebuilding the compiler. The five oracles ran as one job at 82 s of control time on run 34115675206, most of it the fuzz driver they all build, so they run as two. Measured 11 s over 2 controls.",
