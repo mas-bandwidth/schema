@@ -722,6 +722,10 @@ instance scalars_default scalars SimState testdata/wire/tables/scalars_default.b
 instance scalars_edges   scalars SimState testdata/wire/tables/scalars_edges.bin
 report scalars_full_as_2  tblscalars2 SimState testdata/wire/tables/scalars_full.bin
 report scalars_edges_as_2 tblscalars2 SimState testdata/wire/tables/scalars_edges.bin
+# a PLAIN TOP-LEVEL SCALAR field, written narrower than the declaration: the
+# corpus otherwise pins widening only on arms, list elements and map keys, so
+# a later reader that reports those three and misses a field would stay green.
+report field_scalar_widen tblscalars2 SimState testdata/wire/tables/field_scalar_widen.bin
 cook-write scalars_full    testdata/conformance/tables/cook-write/scalars_full.cook    testdata/conformance/tables/cook-write/scalars_full-be.cook
 cook-write scalars_default testdata/conformance/tables/cook-write/scalars_default.cook testdata/conformance/tables/cook-write/scalars_default-be.cook
 cook-write scalars_edges   testdata/conformance/tables/cook-write/scalars_edges.cook   testdata/conformance/tables/cook-write/scalars_edges-be.cook
