@@ -345,12 +345,23 @@ struct TableIds
     uint64_t ids[ kCapacity ];
     int32_t chain[ kCapacity ];
     int32_t head[ kBuckets ];
+    // THE ORDINAL SLOT CACHE (§3). Every id a generated field header names is
+    // a COMPILE-TIME CONSTANT of the unit, so it has an ORDINAL: its index in
+    // the unit's id vocabulary, the same ascending set kCapacity counts. slot
+    // holds the ENTRY that ordinal's id took, -1 for one not interned yet, and
+    // ordinal_of is its inverse over the entries — the ordinal an entry was
+    // taken under, -1 for an entry a RUNTIME id took, which has no ordinal.
+    // The pair is what lets truncate undo the cache in O(popped) rather than
+    // walking the whole vocabulary.
+    int32_t slot[ kCapacity ];
+    int16_t ordinal_of[ kCapacity ];
     int32_t count;
     bool overflow;
 
     TableIds() : count( 0 ), overflow( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
+        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; }
     }
 
     static BLOCKHOME_TABLE_INLINE uint32_t bucket_of( uint64_t id )
@@ -369,18 +380,41 @@ struct TableIds
             if ( ids[i] == id ) { return uint64_t( i ) + 1; }
         }
         if ( count >= kCapacity ) { overflow = true; return 1; }
-        ids[count] = id; chain[count] = head[b]; head[b] = count; count++;
+        ids[count] = id; chain[count] = head[b]; ordinal_of[count] = -1; head[b] = count; count++;
         return uint64_t( count );
     }
 
+    // ref FOR AN ID THE EMITTER KNEW, which is every id a generated field
+    // header, union arm header or blob header names. A REPEAT answers from
+    // slot[ordinal]; a MISS falls through to ref, so THE APPEND STILL HAPPENS
+    // ONLY THERE and first-use order — which is the trailer's order — is the
+    // order it always was. An id reached through both this and ref carries the
+    // ordinal from here, so truncate can always undo the cache.
+    BLOCKHOME_TABLE_INLINE uint64_t ref_at( int32_t ordinal, uint64_t id )
+    {
+        const int32_t at = slot[ordinal];
+        if ( at >= 0 ) { return uint64_t( at ) + 1; }
+        const uint64_t r = ref( id );
+        // AN OVERFLOWED TABLE RECORDS NOTHING: ref appended no entry and
+        // answered 1, which is not this id's reference (§3).
+        if ( overflow ) { return r; }
+        slot[ordinal] = int32_t( r ) - 1;
+        ordinal_of[ int32_t( r ) - 1 ] = int16_t( ordinal );
+        return r;
+    }
+
     // undo every entry appended since mark. An entry removed is the most
-    // recent one in its bucket, so it sits at that bucket's head.
+    // recent one in its bucket, so it sits at that bucket's head — and its
+    // ORDINAL SLOT goes with it, or a later ref_at would answer with an entry
+    // this call just popped.
     void truncate( int32_t mark )
     {
         while ( count > mark )
         {
             count--;
             head[ bucket_of( ids[count] ) ] = chain[count];
+            const int32_t o = ordinal_of[count];
+            if ( o >= 0 ) { slot[o] = -1; }
         }
     }
 };
@@ -2348,9 +2382,9 @@ BLOCKHOME_TABLE_INLINE bool GunnerSettingsLoadBody( TableReader & r, GunnerSetti
 inline int64_t ArmorPlateMeasureBody( TableIds & ids, const ArmorPlate & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.thickness != 0.0 ) { bytes += TableLebBytes( ids.ref( 0xdbae65ca25b4f315ull ) ) + 1 + 8; } // thickness
-    if ( value.material != 0 ) { bytes += TableLebBytes( ids.ref( 0x026f7568983161e0ull ) ) + 1 + 4; } // material
-    if ( value.layer != 0 ) { bytes += TableLebBytes( ids.ref( 0x84e39fec29768c56ull ) ) + 1 + 1; } // layer
+    if ( value.thickness != 0.0 ) { bytes += TableLebBytes( ids.ref_at( 24, 0xdbae65ca25b4f315ull ) ) + 1 + 8; } // thickness
+    if ( value.material != 0 ) { bytes += TableLebBytes( ids.ref_at( 0, 0x026f7568983161e0ull ) ) + 1 + 4; } // material
+    if ( value.layer != 0 ) { bytes += TableLebBytes( ids.ref_at( 16, 0x84e39fec29768c56ull ) ) + 1 + 1; } // layer
     return bytes;
 }
 
@@ -2366,17 +2400,17 @@ BLOCKHOME_TABLE_INLINE bool ArmorPlateSaveBody( TableWriter & w, TableIds & ids,
 {
     if ( value.thickness != 0.0 )
     {
-        w.putleb( ids.ref( 0xdbae65ca25b4f315ull ) ); w.put8( 11 ); // thickness
+        w.putleb( ids.ref_at( 24, 0xdbae65ca25b4f315ull ) ); w.put8( 11 ); // thickness
         w.put64( table_double_to_bits( value.thickness ) );
     }
     if ( value.material != 0 )
     {
-        w.putleb( ids.ref( 0x026f7568983161e0ull ) ); w.put8( 8 ); // material
+        w.putleb( ids.ref_at( 0, 0x026f7568983161e0ull ) ); w.put8( 8 ); // material
         w.put32( uint32_t( value.material ) );
     }
     if ( value.layer != 0 )
     {
-        w.putleb( ids.ref( 0x84e39fec29768c56ull ) ); w.put8( 6 ); // layer
+        w.putleb( ids.ref_at( 16, 0x84e39fec29768c56ull ) ); w.put8( 6 ); // layer
         w.put8( uint8_t( value.layer ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -2796,7 +2830,7 @@ inline int64_t ArmorConfigMeasureBody( TableIds & ids, const ArmorConfig & value
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
         const int32_t mark_front = ids.count;
-        const uint64_t ref_front = ids.ref( 0x538b8c566e9e4b38ull );
+        const uint64_t ref_front = ids.ref_at( 11, 0x538b8c566e9e4b38ull );
         const int64_t body_front = ArmorPlateMeasureBody( ids, value.front );
         if ( body_front < 0 ) { return -1; }
         if ( body_front > 1 ) { bytes += TableLebBytes( ref_front ) + 1 + TableLebBytes( (uint64_t) ( body_front ) ) + ( body_front ); } // front
@@ -2804,14 +2838,14 @@ inline int64_t ArmorConfigMeasureBody( TableIds & ids, const ArmorConfig & value
     }
     {
         const int32_t mark_rear = ids.count;
-        const uint64_t ref_rear = ids.ref( 0x4ce65d1fbfdde703ull );
+        const uint64_t ref_rear = ids.ref_at( 9, 0x4ce65d1fbfdde703ull );
         const int64_t body_rear = ArmorPlateMeasureBody( ids, value.rear );
         if ( body_rear < 0 ) { return -1; }
         if ( body_rear > 1 ) { bytes += TableLebBytes( ref_rear ) + 1 + TableLebBytes( (uint64_t) ( body_rear ) ) + ( body_rear ); } // rear
         else { ids.truncate( mark_rear ); } // an all-default nested table elides, and costs no entry
     }
-    if ( value.rating != 0.0f ) { bytes += TableLebBytes( ids.ref( 0x4e79ecbefe5ff4d0ull ) ) + 1 + 4; } // rating
-    if ( value.tier != 0 ) { bytes += TableLebBytes( ids.ref( 0x1e6f84ef2eb65989ull ) ) + 1 + 1; } // tier
+    if ( value.rating != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 10, 0x4e79ecbefe5ff4d0ull ) ) + 1 + 4; } // rating
+    if ( value.tier != 0 ) { bytes += TableLebBytes( ids.ref_at( 3, 0x1e6f84ef2eb65989ull ) ) + 1 + 1; } // tier
     return bytes;
 }
 
@@ -2827,7 +2861,7 @@ BLOCKHOME_TABLE_INLINE bool ArmorConfigSaveBody( TableWriter & w, TableIds & ids
 {
     {
         const int32_t mark_front = ids.count;
-        const uint64_t ref_front = ids.ref( 0x538b8c566e9e4b38ull );
+        const uint64_t ref_front = ids.ref_at( 11, 0x538b8c566e9e4b38ull );
         const int64_t body_front = ArmorPlateMeasureBody( ids, value.front );
         if ( body_front < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_front > 1 ) // all-default nested elides
@@ -2839,7 +2873,7 @@ BLOCKHOME_TABLE_INLINE bool ArmorConfigSaveBody( TableWriter & w, TableIds & ids
     }
     {
         const int32_t mark_rear = ids.count;
-        const uint64_t ref_rear = ids.ref( 0x4ce65d1fbfdde703ull );
+        const uint64_t ref_rear = ids.ref_at( 9, 0x4ce65d1fbfdde703ull );
         const int64_t body_rear = ArmorPlateMeasureBody( ids, value.rear );
         if ( body_rear < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_rear > 1 ) // all-default nested elides
@@ -2851,12 +2885,12 @@ BLOCKHOME_TABLE_INLINE bool ArmorConfigSaveBody( TableWriter & w, TableIds & ids
     }
     if ( value.rating != 0.0f )
     {
-        w.putleb( ids.ref( 0x4e79ecbefe5ff4d0ull ) ); w.put8( 10 ); // rating
+        w.putleb( ids.ref_at( 10, 0x4e79ecbefe5ff4d0ull ) ); w.put8( 10 ); // rating
         w.put32( table_float_to_bits( value.rating ) );
     }
     if ( value.tier != 0 )
     {
-        w.putleb( ids.ref( 0x1e6f84ef2eb65989ull ) ); w.put8( 6 ); // tier
+        w.putleb( ids.ref_at( 3, 0x1e6f84ef2eb65989ull ) ); w.put8( 6 ); // tier
         w.put8( uint8_t( value.tier ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -3299,8 +3333,8 @@ inline bool ArmorConfigLoadMessages( ArmorConfig * values, int64_t * count, cons
 inline int64_t FiringGroupMeasureBody( TableIds & ids, const FiringGroup & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.barrel != 0 ) { bytes += TableLebBytes( ids.ref( 0x8ece059ad360b651ull ) ) + 1 + 4; } // barrel
-    if ( value.cooldown != 0.0f ) { bytes += TableLebBytes( ids.ref( 0xdc2cbe6953343d48ull ) ) + 1 + 4; } // cooldown
+    if ( value.barrel != 0 ) { bytes += TableLebBytes( ids.ref_at( 17, 0x8ece059ad360b651ull ) ) + 1 + 4; } // barrel
+    if ( value.cooldown != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 25, 0xdc2cbe6953343d48ull ) ) + 1 + 4; } // cooldown
     return bytes;
 }
 
@@ -3316,12 +3350,12 @@ BLOCKHOME_TABLE_INLINE bool FiringGroupSaveBody( TableWriter & w, TableIds & ids
 {
     if ( value.barrel != 0 )
     {
-        w.putleb( ids.ref( 0x8ece059ad360b651ull ) ); w.put8( 8 ); // barrel
+        w.putleb( ids.ref_at( 17, 0x8ece059ad360b651ull ) ); w.put8( 8 ); // barrel
         w.put32( uint32_t( value.barrel ) );
     }
     if ( value.cooldown != 0.0f )
     {
-        w.putleb( ids.ref( 0xdc2cbe6953343d48ull ) ); w.put8( 10 ); // cooldown
+        w.putleb( ids.ref_at( 25, 0xdc2cbe6953343d48ull ) ); w.put8( 10 ); // cooldown
         w.put32( table_float_to_bits( value.cooldown ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -3681,7 +3715,7 @@ inline int64_t GunnerSettingsMeasureBody( TableIds & ids, const GunnerSettings &
     if ( value.firing_groups_count < 0 || value.firing_groups_count > 32 ) { return -1; } // storage invariant
     if ( value.firing_groups_count > 0 )
     {
-        const uint64_t ref_firing_groups = ids.ref( 0x260b8ca6b0c3db7full );
+        const uint64_t ref_firing_groups = ids.ref_at( 4, 0x260b8ca6b0c3db7full );
         int64_t body_firing_groups = 0;
         body_firing_groups += 1 + TableLebBytes( (uint64_t) ( value.firing_groups_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.firing_groups_count; elem_i++ )
@@ -3695,7 +3729,7 @@ inline int64_t GunnerSettingsMeasureBody( TableIds & ids, const GunnerSettings &
     if ( value.missile_groups_count < 0 || value.missile_groups_count > 4 ) { return -1; } // storage invariant
     if ( value.missile_groups_count > 0 )
     {
-        const uint64_t ref_missile_groups = ids.ref( 0x3c99105aa087f6bcull );
+        const uint64_t ref_missile_groups = ids.ref_at( 7, 0x3c99105aa087f6bcull );
         int64_t body_missile_groups = 0;
         body_missile_groups += 1 + TableLebBytes( (uint64_t) ( value.missile_groups_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.missile_groups_count; elem_i++ )
@@ -3706,8 +3740,8 @@ inline int64_t GunnerSettingsMeasureBody( TableIds & ids, const GunnerSettings &
         }
         bytes += TableLebBytes( ref_missile_groups ) + 1 + TableLebBytes( (uint64_t) ( body_missile_groups ) ) + ( body_missile_groups ); // missile_groups
     }
-    if ( value.reload_seconds != 0.0f ) { bytes += TableLebBytes( ids.ref( 0xad9b64728ea52486ull ) ) + 1 + 4; } // reload_seconds
-    if ( value.gunner_id != 0 ) { bytes += TableLebBytes( ids.ref( 0xbd9be53180256e02ull ) ) + 1 + 4; } // gunner_id
+    if ( value.reload_seconds != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 19, 0xad9b64728ea52486ull ) ) + 1 + 4; } // reload_seconds
+    if ( value.gunner_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 22, 0xbd9be53180256e02ull ) ) + 1 + 4; } // gunner_id
     return bytes;
 }
 
@@ -3724,7 +3758,7 @@ BLOCKHOME_TABLE_INLINE bool GunnerSettingsSaveBody( TableWriter & w, TableIds & 
     if ( value.firing_groups_count < 0 || value.firing_groups_count > 32 ) { return false; } // storage invariant
     if ( value.firing_groups_count > 0 )
     {
-        const uint64_t ref_firing_groups = ids.ref( 0x260b8ca6b0c3db7full );
+        const uint64_t ref_firing_groups = ids.ref_at( 4, 0x260b8ca6b0c3db7full );
         int64_t body_firing_groups = 0;
         // firing_groups: the sizing loop's per-element lengths, kept for the write loop
         // below — the element's own length prefix is the number the parent's
@@ -3753,7 +3787,7 @@ BLOCKHOME_TABLE_INLINE bool GunnerSettingsSaveBody( TableWriter & w, TableIds & 
     if ( value.missile_groups_count < 0 || value.missile_groups_count > 4 ) { return false; } // storage invariant
     if ( value.missile_groups_count > 0 )
     {
-        const uint64_t ref_missile_groups = ids.ref( 0x3c99105aa087f6bcull );
+        const uint64_t ref_missile_groups = ids.ref_at( 7, 0x3c99105aa087f6bcull );
         int64_t body_missile_groups = 0;
         // missile_groups: the sizing loop's per-element lengths, kept for the write loop
         // below — the element's own length prefix is the number the parent's
@@ -3781,12 +3815,12 @@ BLOCKHOME_TABLE_INLINE bool GunnerSettingsSaveBody( TableWriter & w, TableIds & 
     }
     if ( value.reload_seconds != 0.0f )
     {
-        w.putleb( ids.ref( 0xad9b64728ea52486ull ) ); w.put8( 10 ); // reload_seconds
+        w.putleb( ids.ref_at( 19, 0xad9b64728ea52486ull ) ); w.put8( 10 ); // reload_seconds
         w.put32( table_float_to_bits( value.reload_seconds ) );
     }
     if ( value.gunner_id != 0 )
     {
-        w.putleb( ids.ref( 0xbd9be53180256e02ull ) ); w.put8( 8 ); // gunner_id
+        w.putleb( ids.ref_at( 22, 0xbd9be53180256e02ull ) ); w.put8( 8 ); // gunner_id
         w.put32( uint32_t( value.gunner_id ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body

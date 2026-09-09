@@ -404,12 +404,23 @@ struct TableIds
     uint64_t ids[ kCapacity ];
     int32_t chain[ kCapacity ];
     int32_t head[ kBuckets ];
+    // THE ORDINAL SLOT CACHE (§3). Every id a generated field header names is
+    // a COMPILE-TIME CONSTANT of the unit, so it has an ORDINAL: its index in
+    // the unit's id vocabulary, the same ascending set kCapacity counts. slot
+    // holds the ENTRY that ordinal's id took, -1 for one not interned yet, and
+    // ordinal_of is its inverse over the entries — the ordinal an entry was
+    // taken under, -1 for an entry a RUNTIME id took, which has no ordinal.
+    // The pair is what lets truncate undo the cache in O(popped) rather than
+    // walking the whole vocabulary.
+    int32_t slot[ kCapacity ];
+    int16_t ordinal_of[ kCapacity ];
     int32_t count;
     bool overflow;
 
     TableIds() : count( 0 ), overflow( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
+        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; }
     }
 
     static MAPDEMO_TABLE_INLINE uint32_t bucket_of( uint64_t id )
@@ -428,18 +439,41 @@ struct TableIds
             if ( ids[i] == id ) { return uint64_t( i ) + 1; }
         }
         if ( count >= kCapacity ) { overflow = true; return 1; }
-        ids[count] = id; chain[count] = head[b]; head[b] = count; count++;
+        ids[count] = id; chain[count] = head[b]; ordinal_of[count] = -1; head[b] = count; count++;
         return uint64_t( count );
     }
 
+    // ref FOR AN ID THE EMITTER KNEW, which is every id a generated field
+    // header, union arm header or blob header names. A REPEAT answers from
+    // slot[ordinal]; a MISS falls through to ref, so THE APPEND STILL HAPPENS
+    // ONLY THERE and first-use order — which is the trailer's order — is the
+    // order it always was. An id reached through both this and ref carries the
+    // ordinal from here, so truncate can always undo the cache.
+    MAPDEMO_TABLE_INLINE uint64_t ref_at( int32_t ordinal, uint64_t id )
+    {
+        const int32_t at = slot[ordinal];
+        if ( at >= 0 ) { return uint64_t( at ) + 1; }
+        const uint64_t r = ref( id );
+        // AN OVERFLOWED TABLE RECORDS NOTHING: ref appended no entry and
+        // answered 1, which is not this id's reference (§3).
+        if ( overflow ) { return r; }
+        slot[ordinal] = int32_t( r ) - 1;
+        ordinal_of[ int32_t( r ) - 1 ] = int16_t( ordinal );
+        return r;
+    }
+
     // undo every entry appended since mark. An entry removed is the most
-    // recent one in its bucket, so it sits at that bucket's head.
+    // recent one in its bucket, so it sits at that bucket's head — and its
+    // ORDINAL SLOT goes with it, or a later ref_at would answer with an entry
+    // this call just popped.
     void truncate( int32_t mark )
     {
         while ( count > mark )
         {
             count--;
             head[ bucket_of( ids[count] ) ] = chain[count];
+            const int32_t o = ordinal_of[count];
+            if ( o >= 0 ) { slot[o] = -1; }
         }
     }
 };
@@ -3616,6 +3650,19 @@ struct TableRetainIds
         if ( known.overflow ) { overflow = true; return 1; }
         if ( known.count != before ) { known_slot[ (int32_t) k - 1 ] = ++count; }
         return (uint64_t) known_slot[ (int32_t) k - 1 ];
+    }
+
+    // THE MERGED NUMBERING IS NOT THE GENERATED TABLE'S, so the ordinal slot
+    // cache stops at the store below: known.ref_at would cache known's own
+    // index, and what a caller here needs is the MERGED slot, which moves with
+    // the caller's list as well. The retain family therefore keeps ref's exact
+    // path — same walk, same first-use order, same overflow rule — and the
+    // ordinal is accepted and ignored so ONE emitted codec serves both
+    // families (docs/SPEC-TABLES.md §6.6).
+    uint64_t ref_at( int32_t ordinal, uint64_t id )
+    {
+        (void) ordinal;
+        return ref( id );
     }
 
     // an id from INSIDE a retained record. A retained id takes its entry from
@@ -6811,14 +6858,14 @@ template <typename Ctx>
 inline int64_t TrailsStepsEntryMeasureBody( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const TrailsStepsEntry & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.key != 0 ) { bytes += TableLebBytes( ids.ref( 0x3dc94a19365b10ecull ) ) + 1 + 4; } // key
+    if ( value.key != 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + 4; } // key
     {
         // value: a kind 14 array of kind 17 elements, INDEX order (§2.9)
         TableListCursor<TableRef> cursor_value = TableListElements( ctx, value.value );
         if ( !cursor_value.ok ) { return -1; } // the slot and the head disagree
         if ( cursor_value.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_value = ids.ref( 0x7ce4fd9430e80ceaull );
+            const uint64_t ref_value = ids.ref_at( 36, 0x7ce4fd9430e80ceaull );
             int64_t body_value = 0;
             body_value += 1 + TableLebBytes( (uint64_t) ( cursor_value.count ) ); // the element kind byte and the count
             for ( int32_t elem_i_value = 0; elem_i_value < cursor_value.count; elem_i_value++ )
@@ -6841,7 +6888,7 @@ inline bool TrailsStepsEntrySaveBodyFields( const Ctx & ctx, const TableNumberin
 {
     if ( value.key != 0 )
     {
-        w.putleb( ids.ref( 0x3dc94a19365b10ecull ) ); w.put8( 8 ); // key
+        w.putleb( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ); w.put8( 8 ); // key
         w.put32( uint32_t( value.key ) );
     }
     {
@@ -6849,7 +6896,7 @@ inline bool TrailsStepsEntrySaveBodyFields( const Ctx & ctx, const TableNumberin
         if ( !cursor_value.ok ) { return false; }
         if ( cursor_value.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_value = ids.ref( 0x7ce4fd9430e80ceaull );
+            const uint64_t ref_value = ids.ref_at( 36, 0x7ce4fd9430e80ceaull );
             int64_t body_value = 0;
             body_value += 1 + TableLebBytes( (uint64_t) ( cursor_value.count ) ); // the element kind byte and the count
             for ( int32_t elem_i_value = 0; elem_i_value < cursor_value.count; elem_i_value++ )
@@ -7208,7 +7255,7 @@ inline int64_t TrailsMeasureBody( const Ctx & ctx, const TableNumbering & number
         if ( !order_steps.ok ) { return -1; } // the sort could not run
         if ( order_steps.count > 0 )
         {
-            const uint64_t ref_steps = ids.ref( 0x124250ad5a5b6d14ull );
+            const uint64_t ref_steps = ids.ref_at( 6, 0x124250ad5a5b6d14ull );
             int64_t body_steps = 1 + TableLebBytes( (uint64_t) order_steps.count ); // the element kind byte and the count
             for ( int32_t i = 0; i < order_steps.count; i++ )
             {
@@ -7220,7 +7267,7 @@ inline int64_t TrailsMeasureBody( const Ctx & ctx, const TableNumbering & number
         }
         TableMapRelease( order_steps );
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref( 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
     return bytes;
 }
 
@@ -7232,7 +7279,7 @@ inline bool TrailsSaveBodyFields( const Ctx & ctx, const TableNumbering & number
         if ( !order_steps.ok ) { return false; }
         if ( order_steps.count > 0 ) // an EMPTY map elides, the by-value rule (§3)
         {
-            const uint64_t ref_steps = ids.ref( 0x124250ad5a5b6d14ull );
+            const uint64_t ref_steps = ids.ref_at( 6, 0x124250ad5a5b6d14ull );
             int64_t body_steps = 1 + TableLebBytes( (uint64_t) order_steps.count );
             for ( int32_t i = 0; i < order_steps.count; i++ )
             {
@@ -7254,7 +7301,7 @@ inline bool TrailsSaveBodyFields( const Ctx & ctx, const TableNumbering & number
     }
     if ( value.after != 0 )
     {
-        w.putleb( ids.ref( 0xbf82010f6f71eae9ull ) ); w.put8( 4 ); // after
+        w.putleb( ids.ref_at( 56, 0xbf82010f6f71eae9ull ) ); w.put8( 4 ); // after
         w.put32( uint32_t( value.after ) );
     }
     return !w.overflow;
@@ -9080,14 +9127,14 @@ template <typename Ctx>
 inline int64_t TrailsStepsEntryMeasureBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableRetainIds & ids, const TrailsStepsEntry & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.key != 0 ) { bytes += TableLebBytes( ids.ref( 0x3dc94a19365b10ecull ) ) + 1 + 4; } // key
+    if ( value.key != 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + 4; } // key
     {
         // value: a kind 14 array of kind 17 elements, INDEX order (§2.9)
         TableListCursor<TableRef> cursor_value = TableListElements( ctx, value.value );
         if ( !cursor_value.ok ) { return -1; } // the slot and the head disagree
         if ( cursor_value.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_value = ids.ref( 0x7ce4fd9430e80ceaull );
+            const uint64_t ref_value = ids.ref_at( 36, 0x7ce4fd9430e80ceaull );
             int64_t body_value = 0;
             body_value += 1 + TableLebBytes( (uint64_t) ( cursor_value.count ) ); // the element kind byte and the count
             for ( int32_t elem_i_value = 0; elem_i_value < cursor_value.count; elem_i_value++ )
@@ -9111,7 +9158,7 @@ inline bool TrailsStepsEntrySaveBodyFieldsRetain( const Ctx & ctx, const TableNu
 {
     if ( value.key != 0 )
     {
-        w.putleb( ids.ref( 0x3dc94a19365b10ecull ) ); w.put8( 8 ); // key
+        w.putleb( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ); w.put8( 8 ); // key
         w.put32( uint32_t( value.key ) );
     }
     {
@@ -9119,7 +9166,7 @@ inline bool TrailsStepsEntrySaveBodyFieldsRetain( const Ctx & ctx, const TableNu
         if ( !cursor_value.ok ) { return false; }
         if ( cursor_value.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_value = ids.ref( 0x7ce4fd9430e80ceaull );
+            const uint64_t ref_value = ids.ref_at( 36, 0x7ce4fd9430e80ceaull );
             int64_t body_value = 0;
             body_value += 1 + TableLebBytes( (uint64_t) ( cursor_value.count ) ); // the element kind byte and the count
             for ( int32_t elem_i_value = 0; elem_i_value < cursor_value.count; elem_i_value++ )
@@ -9408,7 +9455,7 @@ inline int64_t TrailsMeasureBodyRetain( const Ctx & ctx, const TableNumbering & 
         if ( !order_steps.ok ) { return -1; } // the sort could not run
         if ( order_steps.count > 0 )
         {
-            const uint64_t ref_steps = ids.ref( 0x124250ad5a5b6d14ull );
+            const uint64_t ref_steps = ids.ref_at( 6, 0x124250ad5a5b6d14ull );
             int64_t body_steps = 1 + TableLebBytes( (uint64_t) order_steps.count ); // the element kind byte and the count
             for ( int32_t i = 0; i < order_steps.count; i++ )
             {
@@ -9420,7 +9467,7 @@ inline int64_t TrailsMeasureBodyRetain( const Ctx & ctx, const TableNumbering & 
         }
         TableMapRelease( order_steps );
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref( 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -9433,7 +9480,7 @@ inline bool TrailsSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & 
         if ( !order_steps.ok ) { return false; }
         if ( order_steps.count > 0 ) // an EMPTY map elides, the by-value rule (§3)
         {
-            const uint64_t ref_steps = ids.ref( 0x124250ad5a5b6d14ull );
+            const uint64_t ref_steps = ids.ref_at( 6, 0x124250ad5a5b6d14ull );
             int64_t body_steps = 1 + TableLebBytes( (uint64_t) order_steps.count );
             for ( int32_t i = 0; i < order_steps.count; i++ )
             {
@@ -9455,7 +9502,7 @@ inline bool TrailsSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & 
     }
     if ( value.after != 0 )
     {
-        w.putleb( ids.ref( 0xbf82010f6f71eae9ull ) ); w.put8( 4 ); // after
+        w.putleb( ids.ref_at( 56, 0xbf82010f6f71eae9ull ) ); w.put8( 4 ); // after
         w.put32( uint32_t( value.after ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }

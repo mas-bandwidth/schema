@@ -396,12 +396,23 @@ struct TableIds
     uint64_t ids[ kCapacity ];
     int32_t chain[ kCapacity ];
     int32_t head[ kBuckets ];
+    // THE ORDINAL SLOT CACHE (§3). Every id a generated field header names is
+    // a COMPILE-TIME CONSTANT of the unit, so it has an ORDINAL: its index in
+    // the unit's id vocabulary, the same ascending set kCapacity counts. slot
+    // holds the ENTRY that ordinal's id took, -1 for one not interned yet, and
+    // ordinal_of is its inverse over the entries — the ordinal an entry was
+    // taken under, -1 for an entry a RUNTIME id took, which has no ordinal.
+    // The pair is what lets truncate undo the cache in O(popped) rather than
+    // walking the whole vocabulary.
+    int32_t slot[ kCapacity ];
+    int16_t ordinal_of[ kCapacity ];
     int32_t count;
     bool overflow;
 
     TableIds() : count( 0 ), overflow( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
+        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; }
     }
 
     static GRAPHDEMO_TABLE_INLINE uint32_t bucket_of( uint64_t id )
@@ -420,18 +431,41 @@ struct TableIds
             if ( ids[i] == id ) { return uint64_t( i ) + 1; }
         }
         if ( count >= kCapacity ) { overflow = true; return 1; }
-        ids[count] = id; chain[count] = head[b]; head[b] = count; count++;
+        ids[count] = id; chain[count] = head[b]; ordinal_of[count] = -1; head[b] = count; count++;
         return uint64_t( count );
     }
 
+    // ref FOR AN ID THE EMITTER KNEW, which is every id a generated field
+    // header, union arm header or blob header names. A REPEAT answers from
+    // slot[ordinal]; a MISS falls through to ref, so THE APPEND STILL HAPPENS
+    // ONLY THERE and first-use order — which is the trailer's order — is the
+    // order it always was. An id reached through both this and ref carries the
+    // ordinal from here, so truncate can always undo the cache.
+    GRAPHDEMO_TABLE_INLINE uint64_t ref_at( int32_t ordinal, uint64_t id )
+    {
+        const int32_t at = slot[ordinal];
+        if ( at >= 0 ) { return uint64_t( at ) + 1; }
+        const uint64_t r = ref( id );
+        // AN OVERFLOWED TABLE RECORDS NOTHING: ref appended no entry and
+        // answered 1, which is not this id's reference (§3).
+        if ( overflow ) { return r; }
+        slot[ordinal] = int32_t( r ) - 1;
+        ordinal_of[ int32_t( r ) - 1 ] = int16_t( ordinal );
+        return r;
+    }
+
     // undo every entry appended since mark. An entry removed is the most
-    // recent one in its bucket, so it sits at that bucket's head.
+    // recent one in its bucket, so it sits at that bucket's head — and its
+    // ORDINAL SLOT goes with it, or a later ref_at would answer with an entry
+    // this call just popped.
     void truncate( int32_t mark )
     {
         while ( count > mark )
         {
             count--;
             head[ bucket_of( ids[count] ) ] = chain[count];
+            const int32_t o = ordinal_of[count];
+            if ( o >= 0 ) { slot[o] = -1; }
         }
     }
 };
@@ -3525,6 +3559,19 @@ struct TableRetainIds
         return (uint64_t) known_slot[ (int32_t) k - 1 ];
     }
 
+    // THE MERGED NUMBERING IS NOT THE GENERATED TABLE'S, so the ordinal slot
+    // cache stops at the store below: known.ref_at would cache known's own
+    // index, and what a caller here needs is the MERGED slot, which moves with
+    // the caller's list as well. The retain family therefore keeps ref's exact
+    // path — same walk, same first-use order, same overflow rule — and the
+    // ordinal is accepted and ignored so ONE emitted codec serves both
+    // families (docs/SPEC-TABLES.md §6.6).
+    uint64_t ref_at( int32_t ordinal, uint64_t id )
+    {
+        (void) ordinal;
+        return ref( id );
+    }
+
     // an id from INSIDE a retained record. A retained id takes its entry from
     // the caller's list, and one past the capacity sets lost: the record is
     // dropped, nothing else about the save changes, and the save is never
@@ -5252,8 +5299,8 @@ inline int64_t StampMeasureBody( TableIds & ids, const Stamp & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.tag_length < 0 || value.tag_length > 8 ) { return -1; } // storage invariant
-    if ( value.tag_length > 0 ) { bytes += TableLebBytes( ids.ref( 0x56d7ab194448a4f3ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.tag_length ) ) + ( value.tag_length ); } // tag
-    if ( value.seq != 0 ) { bytes += TableLebBytes( ids.ref( 0x823b8a195ce2133cull ) ) + 1 + 4; } // seq
+    if ( value.tag_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 13, 0x56d7ab194448a4f3ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.tag_length ) ) + ( value.tag_length ); } // tag
+    if ( value.seq != 0 ) { bytes += TableLebBytes( ids.ref_at( 27, 0x823b8a195ce2133cull ) ) + 1 + 4; } // seq
     return bytes;
 }
 
@@ -5270,13 +5317,13 @@ GRAPHDEMO_TABLE_INLINE bool StampSaveBody( TableWriter & w, TableIds & ids, cons
     if ( value.tag_length < 0 || value.tag_length > 8 ) { return false; } // storage invariant
     if ( value.tag_length > 0 )
     {
-        w.putleb( ids.ref( 0x56d7ab194448a4f3ull ) ); w.put8( 12 ); // tag
+        w.putleb( ids.ref_at( 13, 0x56d7ab194448a4f3ull ) ); w.put8( 12 ); // tag
         w.putleb( (uint64_t) value.tag_length );
         w.raw( value.tag, value.tag_length );
     }
     if ( value.seq != 0 )
     {
-        w.putleb( ids.ref( 0x823b8a195ce2133cull ) ); w.put8( 4 ); // seq
+        w.putleb( ids.ref_at( 27, 0x823b8a195ce2133cull ) ); w.put8( 4 ); // seq
         w.put32( uint32_t( value.seq ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -5665,9 +5712,9 @@ inline bool StampLoadMessages( Stamp * values, int64_t * count, const TableVocab
 inline int64_t ColourMeasureBody( TableIds & ids, const Colour & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.r != 0 ) { bytes += TableLebBytes( ids.ref( 0xaf63ef4c86020cd5ull ) ) + 1 + 1; } // r
-    if ( value.g != 0 ) { bytes += TableLebBytes( ids.ref( 0xaf63da4c8601e926ull ) ) + 1 + 1; } // g
-    if ( value.b != 0 ) { bytes += TableLebBytes( ids.ref( 0xaf63df4c8601f1a5ull ) ) + 1 + 1; } // b
+    if ( value.r != 0 ) { bytes += TableLebBytes( ids.ref_at( 34, 0xaf63ef4c86020cd5ull ) ) + 1 + 1; } // r
+    if ( value.g != 0 ) { bytes += TableLebBytes( ids.ref_at( 32, 0xaf63da4c8601e926ull ) ) + 1 + 1; } // g
+    if ( value.b != 0 ) { bytes += TableLebBytes( ids.ref_at( 33, 0xaf63df4c8601f1a5ull ) ) + 1 + 1; } // b
     return bytes;
 }
 
@@ -5683,17 +5730,17 @@ GRAPHDEMO_TABLE_INLINE bool ColourSaveBody( TableWriter & w, TableIds & ids, con
 {
     if ( value.r != 0 )
     {
-        w.putleb( ids.ref( 0xaf63ef4c86020cd5ull ) ); w.put8( 6 ); // r
+        w.putleb( ids.ref_at( 34, 0xaf63ef4c86020cd5ull ) ); w.put8( 6 ); // r
         w.put8( uint8_t( value.r ) );
     }
     if ( value.g != 0 )
     {
-        w.putleb( ids.ref( 0xaf63da4c8601e926ull ) ); w.put8( 6 ); // g
+        w.putleb( ids.ref_at( 32, 0xaf63da4c8601e926ull ) ); w.put8( 6 ); // g
         w.put8( uint8_t( value.g ) );
     }
     if ( value.b != 0 )
     {
-        w.putleb( ids.ref( 0xaf63df4c8601f1a5ull ) ); w.put8( 6 ); // b
+        w.putleb( ids.ref_at( 33, 0xaf63df4c8601f1a5ull ) ); w.put8( 6 ); // b
         w.put8( uint8_t( value.b ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -6067,8 +6114,8 @@ inline int64_t StampMeasureBodyRetain( TableRetainIds & ids, const Stamp & value
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.tag_length < 0 || value.tag_length > 8 ) { return -1; } // storage invariant
-    if ( value.tag_length > 0 ) { bytes += TableLebBytes( ids.ref( 0x56d7ab194448a4f3ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.tag_length ) ) + ( value.tag_length ); } // tag
-    if ( value.seq != 0 ) { bytes += TableLebBytes( ids.ref( 0x823b8a195ce2133cull ) ) + 1 + 4; } // seq
+    if ( value.tag_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 13, 0x56d7ab194448a4f3ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.tag_length ) ) + ( value.tag_length ); } // tag
+    if ( value.seq != 0 ) { bytes += TableLebBytes( ids.ref_at( 27, 0x823b8a195ce2133cull ) ) + 1 + 4; } // seq
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -6078,13 +6125,13 @@ GRAPHDEMO_TABLE_INLINE bool StampSaveBodyRetain( TableWriter & w, TableRetainIds
     if ( value.tag_length < 0 || value.tag_length > 8 ) { return false; } // storage invariant
     if ( value.tag_length > 0 )
     {
-        w.putleb( ids.ref( 0x56d7ab194448a4f3ull ) ); w.put8( 12 ); // tag
+        w.putleb( ids.ref_at( 13, 0x56d7ab194448a4f3ull ) ); w.put8( 12 ); // tag
         w.putleb( (uint64_t) value.tag_length );
         w.raw( value.tag, value.tag_length );
     }
     if ( value.seq != 0 )
     {
-        w.putleb( ids.ref( 0x823b8a195ce2133cull ) ); w.put8( 4 ); // seq
+        w.putleb( ids.ref_at( 27, 0x823b8a195ce2133cull ) ); w.put8( 4 ); // seq
         w.put32( uint32_t( value.seq ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
@@ -6311,9 +6358,9 @@ inline bool StampLoadMessageBodyRetain( TableBitReader & r, const TableVocabular
 inline int64_t ColourMeasureBodyRetain( TableRetainIds & ids, const Colour & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.r != 0 ) { bytes += TableLebBytes( ids.ref( 0xaf63ef4c86020cd5ull ) ) + 1 + 1; } // r
-    if ( value.g != 0 ) { bytes += TableLebBytes( ids.ref( 0xaf63da4c8601e926ull ) ) + 1 + 1; } // g
-    if ( value.b != 0 ) { bytes += TableLebBytes( ids.ref( 0xaf63df4c8601f1a5ull ) ) + 1 + 1; } // b
+    if ( value.r != 0 ) { bytes += TableLebBytes( ids.ref_at( 34, 0xaf63ef4c86020cd5ull ) ) + 1 + 1; } // r
+    if ( value.g != 0 ) { bytes += TableLebBytes( ids.ref_at( 32, 0xaf63da4c8601e926ull ) ) + 1 + 1; } // g
+    if ( value.b != 0 ) { bytes += TableLebBytes( ids.ref_at( 33, 0xaf63df4c8601f1a5ull ) ) + 1 + 1; } // b
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -6322,17 +6369,17 @@ GRAPHDEMO_TABLE_INLINE bool ColourSaveBodyRetain( TableWriter & w, TableRetainId
 {
     if ( value.r != 0 )
     {
-        w.putleb( ids.ref( 0xaf63ef4c86020cd5ull ) ); w.put8( 6 ); // r
+        w.putleb( ids.ref_at( 34, 0xaf63ef4c86020cd5ull ) ); w.put8( 6 ); // r
         w.put8( uint8_t( value.r ) );
     }
     if ( value.g != 0 )
     {
-        w.putleb( ids.ref( 0xaf63da4c8601e926ull ) ); w.put8( 6 ); // g
+        w.putleb( ids.ref_at( 32, 0xaf63da4c8601e926ull ) ); w.put8( 6 ); // g
         w.put8( uint8_t( value.g ) );
     }
     if ( value.b != 0 )
     {
-        w.putleb( ids.ref( 0xaf63df4c8601f1a5ull ) ); w.put8( 6 ); // b
+        w.putleb( ids.ref_at( 33, 0xaf63df4c8601f1a5ull ) ); w.put8( 6 ); // b
         w.put8( uint8_t( value.b ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }

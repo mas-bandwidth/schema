@@ -403,12 +403,23 @@ struct TableIds
     uint64_t ids[ kCapacity ];
     int32_t chain[ kCapacity ];
     int32_t head[ kBuckets ];
+    // THE ORDINAL SLOT CACHE (§3). Every id a generated field header names is
+    // a COMPILE-TIME CONSTANT of the unit, so it has an ORDINAL: its index in
+    // the unit's id vocabulary, the same ascending set kCapacity counts. slot
+    // holds the ENTRY that ordinal's id took, -1 for one not interned yet, and
+    // ordinal_of is its inverse over the entries — the ordinal an entry was
+    // taken under, -1 for an entry a RUNTIME id took, which has no ordinal.
+    // The pair is what lets truncate undo the cache in O(popped) rather than
+    // walking the whole vocabulary.
+    int32_t slot[ kCapacity ];
+    int16_t ordinal_of[ kCapacity ];
     int32_t count;
     bool overflow;
 
     TableIds() : count( 0 ), overflow( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
+        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; }
     }
 
     static ARMDEMO_TABLE_INLINE uint32_t bucket_of( uint64_t id )
@@ -427,18 +438,41 @@ struct TableIds
             if ( ids[i] == id ) { return uint64_t( i ) + 1; }
         }
         if ( count >= kCapacity ) { overflow = true; return 1; }
-        ids[count] = id; chain[count] = head[b]; head[b] = count; count++;
+        ids[count] = id; chain[count] = head[b]; ordinal_of[count] = -1; head[b] = count; count++;
         return uint64_t( count );
     }
 
+    // ref FOR AN ID THE EMITTER KNEW, which is every id a generated field
+    // header, union arm header or blob header names. A REPEAT answers from
+    // slot[ordinal]; a MISS falls through to ref, so THE APPEND STILL HAPPENS
+    // ONLY THERE and first-use order — which is the trailer's order — is the
+    // order it always was. An id reached through both this and ref carries the
+    // ordinal from here, so truncate can always undo the cache.
+    ARMDEMO_TABLE_INLINE uint64_t ref_at( int32_t ordinal, uint64_t id )
+    {
+        const int32_t at = slot[ordinal];
+        if ( at >= 0 ) { return uint64_t( at ) + 1; }
+        const uint64_t r = ref( id );
+        // AN OVERFLOWED TABLE RECORDS NOTHING: ref appended no entry and
+        // answered 1, which is not this id's reference (§3).
+        if ( overflow ) { return r; }
+        slot[ordinal] = int32_t( r ) - 1;
+        ordinal_of[ int32_t( r ) - 1 ] = int16_t( ordinal );
+        return r;
+    }
+
     // undo every entry appended since mark. An entry removed is the most
-    // recent one in its bucket, so it sits at that bucket's head.
+    // recent one in its bucket, so it sits at that bucket's head — and its
+    // ORDINAL SLOT goes with it, or a later ref_at would answer with an entry
+    // this call just popped.
     void truncate( int32_t mark )
     {
         while ( count > mark )
         {
             count--;
             head[ bucket_of( ids[count] ) ] = chain[count];
+            const int32_t o = ordinal_of[count];
+            if ( o >= 0 ) { slot[o] = -1; }
         }
     }
 };
@@ -3459,6 +3493,19 @@ struct TableRetainIds
         return (uint64_t) known_slot[ (int32_t) k - 1 ];
     }
 
+    // THE MERGED NUMBERING IS NOT THE GENERATED TABLE'S, so the ordinal slot
+    // cache stops at the store below: known.ref_at would cache known's own
+    // index, and what a caller here needs is the MERGED slot, which moves with
+    // the caller's list as well. The retain family therefore keeps ref's exact
+    // path — same walk, same first-use order, same overflow rule — and the
+    // ordinal is accepted and ignored so ONE emitted codec serves both
+    // families (docs/SPEC-TABLES.md §6.6).
+    uint64_t ref_at( int32_t ordinal, uint64_t id )
+    {
+        (void) ordinal;
+        return ref( id );
+    }
+
     // an id from INSIDE a retained record. A retained id takes its entry from
     // the caller's list, and one past the capacity sets lost: the record is
     // dropped, nothing else about the save changes, and the save is never
@@ -5893,7 +5940,7 @@ inline bool GateLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
 inline int64_t OnlyMeasureBody( TableIds & ids, const Only & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.w != 0 ) { bytes += TableLebBytes( ids.ref( 0xaf63ea4c86020456ull ) ) + 1 + 4; } // w
+    if ( value.w != 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0xaf63ea4c86020456ull ) ) + 1 + 4; } // w
     return bytes;
 }
 
@@ -5909,7 +5956,7 @@ ARMDEMO_TABLE_INLINE bool OnlySaveBody( TableWriter & w, TableIds & ids, const O
 {
     if ( value.w != 0 )
     {
-        w.putleb( ids.ref( 0xaf63ea4c86020456ull ) ); w.put8( 4 ); // w
+        w.putleb( ids.ref_at( 21, 0xaf63ea4c86020456ull ) ); w.put8( 4 ); // w
         w.put32( uint32_t( value.w ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -6227,14 +6274,14 @@ inline int64_t GateMeasureBody( const Ctx & ctx, const TableNumbering & numberin
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.reach.type != ReachType::None ) // None elides — the absence of the field is the None
     {
-        bytes += TableLebBytes( ids.ref( 0x891da1f305deb858ull ) ) + 1;
+        bytes += TableLebBytes( ids.ref_at( 16, 0x891da1f305deb858ull ) ) + 1;
         switch ( value.reach.type )
         {
             case ReachType::None: break;
             case ReachType::Only:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0x072ddab46af04ab7ull );
+                const uint64_t arm_ref = ids.ref_at( 0, 0x072ddab46af04ab7ull );
                 {
                     const Only * arm_pointee = OnlyAt( ctx, value.reach.only );
                     uint64_t arm_index = 0;
@@ -6247,7 +6294,7 @@ inline int64_t GateMeasureBody( const Ctx & ctx, const TableNumbering & numberin
             case ReachType::Text:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0xfa04f4ef1995407eull );
+                const uint64_t arm_ref = ids.ref_at( 29, 0xfa04f4ef1995407eull );
                 {
                     const TableBlob * arm_blob = TableBlobAt( ctx, value.reach.text );
                     uint64_t arm_index = 0;
@@ -6260,7 +6307,7 @@ inline int64_t GateMeasureBody( const Ctx & ctx, const TableNumbering & numberin
             case ReachType::Plain:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0xfd4d194e1652b207ull );
+                const uint64_t arm_ref = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                 arm_payload += 4; // int32
                 bytes += TableLebBytes( arm_ref ) + 1 + TableLebBytes( (uint64_t) ( arm_payload ) ) + ( arm_payload );
                 break;
@@ -6268,7 +6315,7 @@ inline int64_t GateMeasureBody( const Ctx & ctx, const TableNumbering & numberin
             default: return -1; // invalid tag — the write side refuses it too
         }
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref( 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
     return bytes;
 }
 
@@ -6277,12 +6324,12 @@ inline bool GateSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
 {
     if ( value.reach.type != ReachType::None )
     {
-        w.putleb( ids.ref( 0x891da1f305deb858ull ) ); w.put8( 15 ); // reach
+        w.putleb( ids.ref_at( 16, 0x891da1f305deb858ull ) ); w.put8( 15 ); // reach
         switch ( value.reach.type )
         {
             case ReachType::Only:
             {
-                const uint64_t arm_ref = ids.ref( 0x072ddab46af04ab7ull );
+                const uint64_t arm_ref = ids.ref_at( 0, 0x072ddab46af04ab7ull );
                 int64_t arm_payload = 0;
                 {
                     const Only * arm_pointee = OnlyAt( ctx, value.reach.only );
@@ -6301,7 +6348,7 @@ inline bool GateSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
             }
             case ReachType::Text:
             {
-                const uint64_t arm_ref = ids.ref( 0xfa04f4ef1995407eull );
+                const uint64_t arm_ref = ids.ref_at( 29, 0xfa04f4ef1995407eull );
                 int64_t arm_payload = 0;
                 {
                     const TableBlob * arm_blob = TableBlobAt( ctx, value.reach.text );
@@ -6320,7 +6367,7 @@ inline bool GateSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
             }
             case ReachType::Plain:
             {
-                const uint64_t arm_ref = ids.ref( 0xfd4d194e1652b207ull );
+                const uint64_t arm_ref = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                 int64_t arm_payload = 0;
                 arm_payload += 4; // int32
                 w.putleb( arm_ref ); w.put8( 4 ); w.putleb( (uint64_t) arm_payload ); // plain
@@ -6332,7 +6379,7 @@ inline bool GateSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
     }
     if ( value.after != 0 )
     {
-        w.putleb( ids.ref( 0xbf82010f6f71eae9ull ) ); w.put8( 4 ); // after
+        w.putleb( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ); w.put8( 4 ); // after
         w.put32( uint32_t( value.after ) );
     }
     return !w.overflow;
@@ -8085,7 +8132,7 @@ inline bool GateLoadBuilder( GateBuilder & builder, const uint8_t * wire_file, i
 inline int64_t OnlyMeasureBodyRetain( TableRetainIds & ids, const Only & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.w != 0 ) { bytes += TableLebBytes( ids.ref( 0xaf63ea4c86020456ull ) ) + 1 + 4; } // w
+    if ( value.w != 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0xaf63ea4c86020456ull ) ) + 1 + 4; } // w
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -8094,7 +8141,7 @@ ARMDEMO_TABLE_INLINE bool OnlySaveBodyRetain( TableWriter & w, TableRetainIds & 
 {
     if ( value.w != 0 )
     {
-        w.putleb( ids.ref( 0xaf63ea4c86020456ull ) ); w.put8( 4 ); // w
+        w.putleb( ids.ref_at( 21, 0xaf63ea4c86020456ull ) ); w.put8( 4 ); // w
         w.put32( uint32_t( value.w ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
@@ -8266,14 +8313,14 @@ inline int64_t GateMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.reach.type != ReachType::None ) // None elides — the absence of the field is the None
     {
-        bytes += TableLebBytes( ids.ref( 0x891da1f305deb858ull ) ) + 1;
+        bytes += TableLebBytes( ids.ref_at( 16, 0x891da1f305deb858ull ) ) + 1;
         switch ( value.reach.type )
         {
             case ReachType::None: break;
             case ReachType::Only:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0x072ddab46af04ab7ull );
+                const uint64_t arm_ref = ids.ref_at( 0, 0x072ddab46af04ab7ull );
                 {
                     const Only * arm_pointee = OnlyAt( ctx, value.reach.only );
                     uint64_t arm_index = 0;
@@ -8286,7 +8333,7 @@ inline int64_t GateMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
             case ReachType::Text:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0xfa04f4ef1995407eull );
+                const uint64_t arm_ref = ids.ref_at( 29, 0xfa04f4ef1995407eull );
                 {
                     const TableBlob * arm_blob = TableBlobAt( ctx, value.reach.text );
                     uint64_t arm_index = 0;
@@ -8299,7 +8346,7 @@ inline int64_t GateMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
             case ReachType::Plain:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0xfd4d194e1652b207ull );
+                const uint64_t arm_ref = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                 arm_payload += 4; // int32
                 bytes += TableLebBytes( arm_ref ) + 1 + TableLebBytes( (uint64_t) ( arm_payload ) ) + ( arm_payload );
                 break;
@@ -8307,7 +8354,7 @@ inline int64_t GateMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
             default: return -1; // invalid tag — the write side refuses it too
         }
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref( 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -8317,12 +8364,12 @@ inline bool GateSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
 {
     if ( value.reach.type != ReachType::None )
     {
-        w.putleb( ids.ref( 0x891da1f305deb858ull ) ); w.put8( 15 ); // reach
+        w.putleb( ids.ref_at( 16, 0x891da1f305deb858ull ) ); w.put8( 15 ); // reach
         switch ( value.reach.type )
         {
             case ReachType::Only:
             {
-                const uint64_t arm_ref = ids.ref( 0x072ddab46af04ab7ull );
+                const uint64_t arm_ref = ids.ref_at( 0, 0x072ddab46af04ab7ull );
                 int64_t arm_payload = 0;
                 {
                     const Only * arm_pointee = OnlyAt( ctx, value.reach.only );
@@ -8341,7 +8388,7 @@ inline bool GateSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
             }
             case ReachType::Text:
             {
-                const uint64_t arm_ref = ids.ref( 0xfa04f4ef1995407eull );
+                const uint64_t arm_ref = ids.ref_at( 29, 0xfa04f4ef1995407eull );
                 int64_t arm_payload = 0;
                 {
                     const TableBlob * arm_blob = TableBlobAt( ctx, value.reach.text );
@@ -8360,7 +8407,7 @@ inline bool GateSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
             }
             case ReachType::Plain:
             {
-                const uint64_t arm_ref = ids.ref( 0xfd4d194e1652b207ull );
+                const uint64_t arm_ref = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                 int64_t arm_payload = 0;
                 arm_payload += 4; // int32
                 w.putleb( arm_ref ); w.put8( 4 ); w.putleb( (uint64_t) arm_payload ); // plain
@@ -8372,7 +8419,7 @@ inline bool GateSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
     }
     if ( value.after != 0 )
     {
-        w.putleb( ids.ref( 0xbf82010f6f71eae9ull ) ); w.put8( 4 ); // after
+        w.putleb( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ); w.put8( 4 ); // after
         w.put32( uint32_t( value.after ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
