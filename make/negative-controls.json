@@ -103,6 +103,14 @@
       ]
     },
     {
+      "name": "base-c-le-trailer",
+      "when": "pull-request",
+      "why": "the C little-endian memcpy arm of table_writer_finish: overlay-rebuilds the C emitter, regenerates the soak units and requires the host soak golden to go red. Isolated from the other C overlay rebuilds the way base-c-foreign is. Host-only, so it is not on the s390x job that already runs tables-c-big-endian-negative-control. Measured 10 s over 1 control on the author's machine.",
+      "targets": [
+        "tables-c-little-endian-negative-control"
+      ]
+    },
+    {
       "name": "base-conformance-absence",
       "when": "pull-request",
       "why": "one control, and it is alone because it costs 47 s on the runner: it rebuilds the C++ reference driver under a sabotage the way the group above does, and the two together do not fit the owner's rule in one job. Measured 15 s over 1 control.",

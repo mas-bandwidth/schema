@@ -40,7 +40,7 @@ import (
 // There are TWO ids in the design and they are not interchangeable: the
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by.
-const BuildVersion uint64 = 0x0f47a14ab477ddf4
+const BuildVersion uint64 = 0x12bc9e07fe351b2c
 
 // TableCookMagic is the cook's magic (docs/SPEC-TABLES.md §7.1), read before
 // anything else: it is what establishes the byte order every other header word

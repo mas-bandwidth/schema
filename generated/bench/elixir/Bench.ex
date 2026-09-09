@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 # your choice. See the LICENSE exception in the schema compiler; the compiler is
 # AGPL-3.0, its output is not.
-# package bench — protocol id 0x8d12c3149393f40f
+# package bench — protocol id 0xc93127c82f083edf
 #
 # The shipped Elixir wire path (issue #167): the serialize.elixir port's
 # measured shapes — byte-granular 32-bit-group packing and 40-bit read
@@ -185,9 +185,7 @@ defmodule Bench.BenchMixed do
   # flux: wire [-1267650600228229401496703205376, 1267650600228229401496703205376]
   # ping: fixed point Q8.8 — the raw scaled integer; wire [0, 250]
   # has_extra: specified default at construction; zero_* gives the §5 zero form
-  # has_extra — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   # extra: wire [0, 255]
-  # !has_extra — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   # idle_ticks: wire [0, 15]
   defstruct sequence: 0,
             ack_sequence: 0,
@@ -258,7 +256,7 @@ defmodule Bench.Bench do
 
   # The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
   # sides at the same id speak identical bits; there is no other versioning.
-  def protocol_id, do: 0x8D12C3149393F40F
+  def protocol_id, do: 0xC93127C82F083EDF
 
   # bench_packet_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
   # bench_packet_max_bytes is rounded up to the family 8-byte write-buffer granularity.
@@ -1735,7 +1733,7 @@ defmodule Bench.Bench do
 
   # bench_mixed_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
   # bench_mixed_max_bytes is rounded up to the family 8-byte write-buffer granularity.
-  def bench_mixed_max_bits, do: 3626
+  def bench_mixed_max_bits, do: 3630
   def bench_mixed_max_bytes, do: 456
 
   # The §5 zero form: all-zero storage; specified defaults live only in
@@ -1803,7 +1801,9 @@ defmodule Bench.Bench do
       flux: value_flux,
       ping: value_ping,
       crc_hint: value_crc_hint,
-      has_extra: value_has_extra
+      has_extra: value_has_extra,
+      extra: value_extra,
+      idle_ticks: value_idle_ticks
     } = value
 
     # const(0xC0DE, 16) rides the wire (SPEC §4.3)
@@ -2156,41 +2156,32 @@ defmodule Bench.Bench do
     scratch = v
     v = if value_has_extra, do: 1, else: 0
     scratch = scratch ||| v <<< 24
-    data = <<data::binary, scratch::little-size(3)-unit(8)>>
-    scratch = scratch >>> 24
 
-    {data, scratch, scratch_bits} =
-      if value_has_extra do
-        if value.extra < 0 do
-          raise ArgumentError, "value.extra is below the wire minimum"
-        end
+    if value_extra < 0 do
+      raise ArgumentError, "value.extra is below the wire minimum"
+    end
 
-        if value.extra > 255 do
-          raise ArgumentError, "value.extra is above the wire maximum"
-        end
+    if value_extra > 255 do
+      raise ArgumentError, "value.extra is above the wire maximum"
+    end
 
-        v = value.extra
-        scratch = scratch ||| v <<< 1
-        data = <<data::binary, scratch::little-size(1)-unit(8)>>
-        scratch = scratch >>> 8
-        scratch_bits = 1
-        {data, scratch, scratch_bits}
-      else
-        if value.idle_ticks < 0 do
-          raise ArgumentError, "value.idle_ticks is below the wire minimum"
-        end
+    v = value_extra
+    scratch = scratch ||| v <<< 25
 
-        if value.idle_ticks > 15 do
-          raise ArgumentError, "value.idle_ticks is above the wire maximum"
-        end
+    if value_idle_ticks < 0 do
+      raise ArgumentError, "value.idle_ticks is below the wire minimum"
+    end
 
-        v = value.idle_ticks
-        scratch = scratch ||| v <<< 1
-        scratch_bits = 5
-        {data, scratch, scratch_bits}
-      end
+    if value_idle_ticks > 15 do
+      raise ArgumentError, "value.idle_ticks is above the wire maximum"
+    end
 
-    if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
+    v = value_idle_ticks
+    scratch = scratch ||| v <<< 33
+    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    scratch = scratch >>> 32
+    # the residual byte, statically known to be there
+    <<data::binary, scratch>>
   end
 
   # read_bench_mixed decodes the first num_bits of data — the family read verdict:
@@ -2497,34 +2488,20 @@ defmodule Bench.Bench do
       end
 
       bits_read = bits_read + pad
-      if bits_read + 25 > num_bits, do: throw(:invalid)
-      rv = rd(data, bits_read, 25)
+      if bits_read + 37 > num_bits, do: throw(:invalid)
+      rv = rdw(data, bits_read, 37)
       v = rv &&& 0xFFFFFF
       bits_read = bits_read + 24
       v_crc_hint = v
-      v = rv >>> 24
+      v = rv >>> 24 &&& 0x1
       bits_read = bits_read + 1
       v_has_extra = v == 1
-
-      {bits_read, v_extra, v_idle_ticks} =
-        if v_has_extra do
-          if bits_read + 8 > num_bits, do: throw(:invalid)
-          rv = rd(data, bits_read, 8)
-          v = rv
-          bits_read = bits_read + 8
-          v_extra = v
-          v_idle_ticks = 0
-          {bits_read, v_extra, v_idle_ticks}
-        else
-          if bits_read + 4 > num_bits, do: throw(:invalid)
-          rv = rd(data, bits_read, 4)
-          v = rv
-          bits_read = bits_read + 4
-          v_idle_ticks = v
-          v_extra = 0
-          {bits_read, v_extra, v_idle_ticks}
-        end
-
+      v = rv >>> 25 &&& 0xFF
+      bits_read = bits_read + 8
+      v_extra = v
+      v = rv >>> 33
+      bits_read = bits_read + 4
+      v_idle_ticks = v
       # the final position is unobserved — the verdict and value are the surface
       _ = bits_read
 
@@ -2598,16 +2575,7 @@ defmodule Bench.Bench do
     bits = bits + byte_size(value.payload) * 8
     bits = bits + 370
     bits = bits + (8 - (bits &&& 7) &&& 7)
-    bits = bits + 25
-
-    bits =
-      if value.has_extra do
-        bits + 8
-      else
-        bits + 4
-      end
-
-    bits
+    bits + 37
   end
 
   defp w_bench_packet_blob([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}

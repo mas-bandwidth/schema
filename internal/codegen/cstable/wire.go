@@ -113,6 +113,20 @@ func (g *tableGen) emitCollectTyped(st *ir.Struct) {
 	g.pf("    return true;\n}\n\n")
 }
 
+func (g *tableGen) knownOrdinal(f *ir.Field, id uint64) int {
+	if g.idOrdinal == nil {
+		g.idOrdinal = make(map[uint64]int)
+		for i, known := range ir.TableWireIds(g.unit) {
+			g.idOrdinal[known] = i
+		}
+	}
+	ord, ok := g.idOrdinal[id]
+	if !ok {
+		panic(fmt.Sprintf("table field %s (%d) missing from wire ID table; schema compiler invariant violated", f.Name, id))
+	}
+	return ord
+}
+
 func (g *tableGen) emitBodySizeTyped(st *ir.Struct) {
 	name := st.Name
 	g.pf("public static long %sBodySizeTyped(%s v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)\n{\n", name, name)
@@ -129,7 +143,7 @@ func (g *tableGen) emitBodySizeTyped(st *ir.Struct) {
 			cond := leafRideCondition(f)
 			kind := tableScalarKind(f)
 			width := tableKindWidth(kind)
-			g.pf("    if (%s) { n += TableWire.VarSize(ids.RefAt(%d, 0x%016xul)) + %d; }\n", cond, g.knownOrdinal(id), id, 1+width)
+			g.pf("    if (%s) { n += TableWire.VarSize(ids.RefAt(%d, 0x%016xul)) + %d; }\n", cond, g.knownOrdinal(f, id), id, 1+width)
 		} else if childSt, ok := isChildScalarArray(f); ok {
 			prop := member(f)
 			childName := childSt.Name
@@ -151,7 +165,7 @@ func (g *tableGen) emitBodySizeTyped(st *ir.Struct) {
 			g.pf("            nChild_%d += TableWire.VarSize((ulong)childBody) + childBody;\n", i)
 			g.pf("        }\n")
 			g.pf("        long payload_%d = 1 + TableWire.VarSize((ulong)count_%d) + nChild_%d;\n", i, i, i)
-			g.pf("        n += TableWire.VarSize(ids.RefAt(%d, 0x%016xul)) + 1 + TableWire.VarSize((ulong)payload_%d) + payload_%d;\n", g.knownOrdinal(id), id, i, i)
+			g.pf("        n += TableWire.VarSize(ids.RefAt(%d, 0x%016xul)) + 1 + TableWire.VarSize((ulong)payload_%d) + payload_%d;\n", g.knownOrdinal(f, id), id, i, i)
 			g.pf("        if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[%d] = payload_%d; }\n", i, i)
 			g.pf("    }\n")
 		} else {
@@ -193,7 +207,7 @@ func (g *tableGen) emitWriteBodyTyped(st *ir.Struct) {
 			width := tableKindWidth(kind)
 			raw := csRawGet("v."+member(f), f.Type)
 			g.pf("    if (%s)\n    {\n", cond)
-			g.pf("        w.HeaderAt(%d, 0x%016xul, %d, ref ids);\n", g.knownOrdinal(id), id, kind)
+			g.pf("        w.HeaderAt(%d, 0x%016xul, %d, ref ids);\n", g.knownOrdinal(f, id), id, kind)
 			g.pf("        w.Fixed(%s, %d);\n", raw, width)
 			g.pf("    }\n")
 		} else if childSt, ok := isChildScalarArray(f); ok {
@@ -205,7 +219,7 @@ func (g *tableGen) emitWriteBodyTyped(st *ir.Struct) {
 			} else {
 				g.pf("    int count_%d = %d;\n    {\n", i, f.ArrayBound)
 			}
-			g.pf("        w.HeaderAt(%d, 0x%016xul, 14, ref ids);\n", g.knownOrdinal(id), id)
+			g.pf("        w.HeaderAt(%d, 0x%016xul, 14, ref ids);\n", g.knownOrdinal(f, id), id)
 			g.pf("        scoped ReadOnlySpan<long> elemCache_%d = default;\n", i)
 			g.pf("        if (!rootElemSizes.IsEmpty)\n        {\n")
 			g.pf("            int take = System.Math.Min(count_%d, System.Math.Max(0, rootElemSizes.Length - elemOffset));\n", i)
@@ -415,16 +429,6 @@ public static partial class TableWire
         {
             Values = values;
             Slots = default;
-            OrdinalSlots = default;
-            OrdinalOf = default;
-            Count = 0;
-            Graph = null;
-        }
-        public Ids(Span<ulong> values, Span<int> slots)
-        {
-            Values = values;
-            Slots = slots;
-            if (!Slots.IsEmpty) { Slots.Clear(); }
             OrdinalSlots = default;
             OrdinalOf = default;
             Count = 0;
