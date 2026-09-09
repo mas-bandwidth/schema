@@ -133,7 +133,7 @@ type tableGen struct {
 }
 
 func (g *tableGen) pf(format string, args ...any) {
-	g.body.WriteString(fmt.Sprintf(format, args...))
+	fmt.Fprintf(&g.body, format, args...)
 }
 
 func (g *tableGen) declBase(name string) string {
