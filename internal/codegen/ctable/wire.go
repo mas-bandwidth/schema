@@ -84,7 +84,7 @@ func (g *tableGen) wirePrimitives() string {
 		runtime = strings.ReplaceAll(runtime, "@WRITE_NODES@", writeNodes)
 		runtime = strings.ReplaceAll(runtime, "@READ_NODES@", readNodes)
 	}
-	return tablePrimitives(g.unit.Package, g.anyVariable, g.anyKeyed, runtime) + tableTextRuntime
+	return tablePrimitives(g.unit.Package, g.anyVariable, g.anyKeyed, runtime, true, unitHasWideStorage(g.unit)) + tableTextRuntime
 }
 
 const fileWireRuntime = `
