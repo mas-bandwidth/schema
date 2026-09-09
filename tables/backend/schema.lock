@@ -1,18 +1,18 @@
-schema-lock 2
+schema-lock 3
 package backenddemo
 
-fixed table Envelope layout=0x35194e8ba69691e6
-    field payload id=0xcfb8a9d063b5e9e5 kind=15 width=176 default=zero
+fixed table Envelope layout=0x48afa68f5294513f
+    field payload id=0xcfb8a9d063b5e9e5 kind=15 width=176 default=zero held=Payload@0xcfe090b40861806a
 
-fixed table LoginRequest layout=0x338c20379a69d172
+fixed table LoginRequest layout=0x8cc33d2fe825b64e
     field player_id id=0xc14ae3ff748dc438 kind=9 width=8 default=0
-    field session_token id=0x26860f8b6834fa0d kind=14 width=36 default=bytes:
+    field session_token id=0x26860f8b6834fa0d kind=14 width=36 default=bytes: elem=6/1
     field client_build id=0xb865d537bd0b08f9 kind=8 width=4 default=0
     field region id=0xc755a623f50a24dd kind=7 width=1 default=variant:None
 
-fixed table MatchResult layout=0xa06db399a76c88c3
+fixed table MatchResult layout=0xa3114890cbd24e07
     field match_id id=0xf336e379ba146826 kind=9 width=8 default=0
-    field players id=0x98e3ac7518558b29 kind=14 width=160 default=born:0
+    field players id=0x98e3ac7518558b29 kind=14 width=160 default=born:0 held=PlayerRow@0x2b7e49e62ce171dd elem=13/16
 
 fixed table PlayerRow layout=0x2b7e49e62ce171dd
     field player_id id=0xc14ae3ff748dc438 kind=9 width=8 default=0
@@ -38,7 +38,7 @@ enum Region values=0xc06757fb8ef01643
     variant APAC
     variant SA
 
-union Payload values=0x4344d822b00cb72e
-    arm login
-    arm result
-    arm purchase
+union Payload values=0xcfe090b40861806a
+    arm login payload=LoginRequest@0x8cc33d2fe825b64e
+    arm result payload=MatchResult@0xa3114890cbd24e07
+    arm purchase payload=StorePurchase@0x02bc096258c7960b

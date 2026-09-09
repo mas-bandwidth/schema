@@ -20,6 +20,7 @@ package lockfile
 
 import (
 	"fmt"
+	"strings"
 )
 
 // A Policy is which of the two readings a comparison takes.
@@ -125,8 +126,9 @@ func gone(lk *Table) error {
 // entry. THE ORDER THE FACTS ARE COMPARED IN IS THE ORDER THAT NAMES THE
 // CHANGE BEST: which field is at this offset; then the `?`, which is the exact
 // account of a move the width would report vaguely; then the width, the fact
-// that slides every field after it; then the kind, the range and the default —
-// the three that move no byte and change what the bytes say.
+// that slides every field after it; then the kind, the held type, the array
+// element, the range and the default — the facts that move no byte and change
+// what the bytes say.
 func diffTable(lk, lv *Table, policy Policy) error {
 	for i, want := range lk.Entries {
 		where := fmt.Sprintf("%s %s: entry %d, field %s (id=0x%016x)", lk.Decl, lk.Name, i+1, want.Name, want.Id)
@@ -150,6 +152,14 @@ func diffTable(lk, lv *Table, policy Policy) error {
 		if got.Kind != want.Kind {
 			return fmt.Errorf("%s, is kind %d in the lock and kind %d in the declaration — a field already in the lock keeps its type: every record already written holds the old one, and nothing on the wire says which (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one",
 				where, want.Kind, got.Kind)
+		}
+		if want.HeldName != got.HeldName {
+			return fmt.Errorf("%s, held %s in the lock and %s in the declaration — a field already in the lock keeps the type it holds: every record already written holds the old one, and nothing on the wire says which (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one",
+				where, heldName(want.HeldName), heldName(got.HeldName))
+		}
+		if want.ElemKind != got.ElemKind || want.ElemWidth != got.ElemWidth {
+			return fmt.Errorf("%s, holds %s elements in the lock and %s elements in the declaration — a field already in the lock keeps its element type: every record already written holds the old one, and nothing on the wire says which (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one",
+				where, elemWord(want.ElemKind, want.ElemWidth), elemWord(got.ElemKind, got.ElemWidth))
 		}
 		if !got.sameRange(want) {
 			return fmt.Errorf("%s, is %s in the lock and %s in the declaration — a field already in the lock keeps its range: the bounds and the resolution are the scale a stored value is read back at, so moving them reads every record already written as a different number (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one",
@@ -182,6 +192,63 @@ func optionalText(optional bool) string {
 	return "plain"
 }
 
+func heldName(name string) string {
+	if name == "" {
+		return "nothing"
+	}
+	return name
+}
+
+func payloadTypeName(p string) string {
+	name, _, ok := strings.Cut(p, "@")
+	if ok {
+		return name
+	}
+	return p
+}
+
+func elemWord(kind int, width int64) string {
+	if kind == 0 && width == 0 {
+		return "nothing"
+	}
+	if w := kindWord(kind); w != "" {
+		return w
+	}
+	return fmt.Sprintf("kind %d width %d", kind, width)
+}
+
+func kindWord(kind int) string {
+	switch kind {
+	case 1:
+		return "bool"
+	case 2:
+		return "int8"
+	case 3:
+		return "int16"
+	case 4:
+		return "int32"
+	case 5:
+		return "int64"
+	case 6:
+		return "uint8"
+	case 7:
+		return "uint16"
+	case 8:
+		return "uint32"
+	case 9:
+		return "uint64"
+	case 10:
+		return "float32"
+	case 11:
+		return "float64"
+	case 13:
+		return "table"
+	case 15:
+		return "union"
+	}
+	return ""
+}
+
 // diffValues is the same rule over an enum, a flags mask or a union. THE LIST
 // IS A NUMBERING: in a fixed record an enum rides as its dense ordinal, a
 // flags variant is its bit position, and a union's tag is its arm's position —
@@ -197,6 +264,14 @@ func diffValues(lk, lv *ValueList, policy Policy) error {
 		if lv.Values[i] != want {
 			return fmt.Errorf("%s, is %s in the declaration — an enum, a flags mask or a union a fixed table reaches evolves APPEND-ONLY: a new %s goes at the END, and one already in the lock is never inserted, moved or renamed, because a fixed record stores the PLACE and a reader would read one value as the other (docs/SPEC-TABLES.md §2.10); restore it, and add the new one at the END",
 				where, lv.Values[i], lk.Child())
+		}
+		if lk.Decl == DeclUnion {
+			wantP := payloadTypeName(valuePayload(lk, i))
+			gotP := payloadTypeName(valuePayload(lv, i))
+			if wantP != gotP {
+				return fmt.Errorf("%s, held %s in the lock and %s in the declaration — an arm already in the lock keeps the type it holds: every record already written holds the old one, and nothing on the wire says which (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one",
+					where, heldName(wantP), heldName(gotP))
+			}
 		}
 	}
 	if policy == Current && len(lv.Values) > len(lk.Values) {

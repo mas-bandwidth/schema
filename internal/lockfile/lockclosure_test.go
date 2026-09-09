@@ -4,8 +4,9 @@
 //
 // Order and width were the whole of the old file, and they are not the whole
 // of what a reader stands on. This file is the rest of it — the default, the
-// range, the fixed-point scale, the `?`, and every enum, flags mask, union and
-// nested record a fixed table reaches — and every case is measured three ways:
+// range, the fixed-point scale, the `?`, which type a nested slot holds, an
+// array's element, a union arm's payload, and every enum, flags mask, union
+// and nested record a fixed table reaches — and every case is measured three ways:
 // the edit is REFUSED on the fixed table, the SAME edit on a plain
 // variable-length `table` is not the lock's business, and `schema lock` will
 // not write the break either.
@@ -91,6 +92,7 @@ table Config
     boost     Buff
     gunner    ?Buff
     effect    Effect
+    lanes     [4]int32
 }
 
 table Bag
@@ -103,6 +105,7 @@ table Bag
     keel    Ballast
     spare   ?Ballast
     stowage Stowage
+    lanes   [4]int32
     tail    *Bag
 }
 `
@@ -142,8 +145,8 @@ func TestLockHoldsTheWholeClosure(t *testing.T) {
 	lk := lockfile.Render(load(t, paths))
 	text := lk.Text()
 
-	if lk.Version != 2 {
-		t.Errorf("the widened rendering is version 2, got %d", lk.Version)
+	if lk.Version != 3 {
+		t.Errorf("the widened rendering is version 3, got %d", lk.Version)
 	}
 	for _, want := range []string{
 		"fixed table Config layout=0x",
@@ -153,17 +156,21 @@ func TestLockHoldsTheWholeClosure(t *testing.T) {
 		"enum Hull values=0x",
 		"flags Perks values=0x",
 		"union Effect values=0x",
-		// the value lists, in declared order
+		// the value lists, in declared order — a union arm names its payload
 		"    variant Interceptor\n    variant Gunship\n    variant Freighter\n",
 		"    variant Shielded\n    variant Cloaked\n",
-		"    arm buff\n    arm debuff\n",
+		"    arm buff payload=Buff@",
+		"    arm debuff payload=Debuff@",
 		// and the facts on the entries
 		"field tick_rate id=0x", "default=60 min=1 max=240",
 		"default=0 min=-8 max=8 frac=16",       // the fixed-point scale
 		"default=0.0 min=0.0 max=1.0 res=0.01", // the compressed float
 		"default=variant:Gunship",              // an enum's named default
 		"default=mask:0",                       // a flags field's fresh mask
-		"default=zero optional",                // the `?`
+		"default=zero held=Buff@",              // kind 13 names what it holds
+		"held=Buff@",                           // boost and gunner both
+		" optional",                            // the `?` still sits on gunner
+		"elem=4/4",                             // kind 14 names its element
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the lock must carry %q:\n%s", want, text)
@@ -291,6 +298,42 @@ var closureBreaks = []struct {
 		want: []string{"union Effect", "arm 1, buff", "is debuff in the declaration",
 			"a new arm goes at the END"},
 	},
+	{
+		name:      "a nested slot holding a different type",
+		fixedFrom: "    boost     Buff\n", fixed: "    boost     Debuff\n",
+		varFrom: "    keel    Ballast\n", varTo: "    keel    Trim\n",
+		want: []string{"fixed table Config", "entry 6, field boost",
+			"held Buff in the lock and Debuff in the declaration",
+			"keeps the type it holds",
+			"deprecate this field and append a new one"},
+	},
+	{
+		name:      "an optional nested slot holding a different type",
+		fixedFrom: "    gunner    ?Buff\n", fixed: "    gunner    ?Debuff\n",
+		varFrom: "    spare   ?Ballast\n", varTo: "    spare   ?Trim\n",
+		want: []string{"fixed table Config", "entry 7, field gunner",
+			"held Buff in the lock and Debuff in the declaration",
+			"keeps the type it holds",
+			"deprecate this field and append a new one"},
+	},
+	{
+		name:      "a union arm's payload type swapped, names kept",
+		fixedFrom: "union Effect\n{\n    buff   Buff\n    debuff Debuff\n}", fixed: "union Effect\n{\n    buff   Debuff\n    debuff Buff\n}",
+		varFrom: "union Stowage\n{\n    ballast Ballast\n    trim    Trim\n}", varTo: "union Stowage\n{\n    ballast Trim\n    trim    Ballast\n}",
+		want: []string{"union Effect", "arm 1, buff",
+			"held Buff in the lock and Debuff in the declaration",
+			"keeps the type it holds",
+			"deprecate this field and append a new one"},
+	},
+	{
+		name:      "an array's element type",
+		fixedFrom: "    lanes     [4]int32\n", fixed: "    lanes     [4]float32\n",
+		varFrom: "    lanes   [4]int32\n", varTo: "    lanes   [4]float32\n",
+		want: []string{"fixed table Config", "entry 9, field lanes",
+			"holds int32 elements in the lock and float32 elements in the declaration",
+			"keeps its element type",
+			"deprecate this field and append a new one"},
+	},
 }
 
 // TestClosureBreakRefused is the first of the three ways: the edit lands on the
@@ -396,7 +439,7 @@ var closureAppends = []struct {
 		name: "an arm at the end of a union",
 		from: "    debuff Debuff\n}", to: "    debuff Debuff\n    stun   Buff\n}",
 		stale:    []string{"union Effect", "arm 3, stun", "in the declaration and not in the lock"},
-		recorded: "    arm stun\n",
+		recorded: "    arm stun payload=Buff@",
 	},
 }
 
@@ -585,7 +628,7 @@ func TestALockFromAnOlderRenderingSaysWhatToDo(t *testing.T) {
 		t.Fatal(err)
 	}
 	refuses(t, lockfile.Check(load(t, paths), paths),
-		"rendering version 1 and this compiler writes version 2",
+		"rendering version 1 and this compiler writes version 3",
 		"delete it and write it again with `schema lock`")
 	_, rewrote, err := lockfile.Update(load(t, paths), paths)
 	if err == nil || rewrote {

@@ -30,11 +30,14 @@
 //
 //   - one entry per field, in DECLARED ORDER, carrying the field's wire id,
 //     its kind, its WIDTH in the record, its DEFAULT declared or implicit, its
-//     declared RANGE and resolution, its `?` and its `deprecated` marker;
+//     declared RANGE and resolution, its `?` and its `deprecated` marker,
+//     which named type a kind-13/15 slot holds (name and that type's layout
+//     hash), and an array's element kind and width;
 //   - one block per TYPE the fixed tables reach — a nested `type` record, an
 //     `enum`, a `flags` mask, a `union` — because a fixed record is made of
 //     those and a change inside one moves the root's bytes without moving one
-//     line of the root's own entries;
+//     line of the root's own entries; a union arm carries its payload type
+//     beside the name;
 //   - per block, the hash of its lines.
 //
 // The check is then one sentence: THE LOCK IS THE LIVE SEQUENCE, entry for
@@ -44,9 +47,10 @@
 // refuses too. The two readings are [Current] and [Appendable].
 //
 // ONE CLASS IS BEYOND THE FILE, and §2.10 says so: a field that keeps its
-// name, its id, its kind, its width, its default, its range and its `?` and
-// changes only what it MEANS. Nothing recorded here moves, so nothing here can
-// refuse it; the rule for that change is deprecate and add.
+// name, its id, its kind, its width, its default, its range, its `?`, the
+// type it holds and its element shape, and changes only what it MEANS.
+// Nothing recorded here moves, so nothing here can refuse it; the rule for
+// that change is deprecate and add.
 package lockfile
 
 import (
@@ -71,7 +75,11 @@ import (
 //
 // 2 is the owner's widening: the default, the range, the `?`, and a block per
 // enum, flags mask, union and nested record the fixed tables reach.
-const Version = 2
+// 3 records which type a kind-13/15 slot holds (`held=Buff@0x...`), an
+// array's element kind and width (`elem=4/4`), and a union arm's payload
+// type beside the name. Those are new facts on the hashed lines, so a v2
+// lock is deleted and rewritten, the same sentence v1 took.
+const Version = 3
 
 // FileName is the lock's name beside the unit's schema files. Unlike the
 // tables baseline, its presence is not what turns the check on for a unit
@@ -177,6 +185,19 @@ type Entry struct {
 	// on and it may never turn off: the slot stays where it is, nothing new
 	// may name the field, and a reader ignores what it finds there.
 	Deprecated bool
+
+	// HeldName and HeldHash are the nested type a kind-13 (table) or kind-15
+	// (union) slot holds — the type's wire name and that type's layout hash
+	// (a union's values hash), spelled `held=Buff@0x...`. A kind-14 array of
+	// a named type carries the same pair for its element. Empty on a scalar.
+	HeldName string
+	HeldHash uint64
+
+	// ElemKind and ElemWidth are a kind-14 (array) slot's element: the
+	// element's table-wire kind and its width in bytes, spelled `elem=4/4`.
+	// Zero on every other kind.
+	ElemKind  int
+	ElemWidth int64
 }
 
 // A ValueList is one enum, flags mask or union a fixed table reaches: its
@@ -196,6 +217,11 @@ type ValueList struct {
 	// Values are the variant or arm WIRE names in declared order (§5), so a
 	// `was` rename moves no line here either.
 	Values []string
+
+	// Payloads are a union's arm payload types, parallel to Values: the
+	// nested record's `Name@0xhash`, or a scalar arm's type spelling, or
+	// "" on a payload-free arm. Nil on an enum or a flags mask.
+	Payloads []string
 }
 
 // Child is the word one value of this list is called: a union has ARMS and an
@@ -338,43 +364,63 @@ func reach(u *ir.Unit) *closure {
 // result is exactly what [Unit.Text] writes and what the check compares
 // against.
 func Render(u *ir.Unit) *Unit {
+	r := &renderer{
+		u:      u,
+		tables: map[*ir.Struct]Table{},
+		enums:  map[*ir.Enum]ValueList{},
+		flags:  map[*ir.Flags]ValueList{},
+		unions: map[*ir.Union]ValueList{},
+	}
 	out := &Unit{Version: Version, Package: u.Package}
 	for _, name := range FixedTables(u) {
-		out.Tables = append(out.Tables, renderTable(u, DeclFixedTable, u.Tables[name]))
+		out.Tables = append(out.Tables, r.table(DeclFixedTable, u.Tables[name]))
 	}
 	c := reach(u)
 	for _, st := range c.structs {
-		out.Tables = append(out.Tables, renderTable(u, DeclType, st))
+		out.Tables = append(out.Tables, r.table(DeclType, st))
 	}
 	for _, e := range c.enums {
-		vals := make([]string, len(e.Variants))
-		for i := range e.Variants {
-			vals[i] = e.VariantWireName(i)
-		}
-		out.Values = append(out.Values, newValueList(DeclEnum, e.Name, vals))
+		out.Values = append(out.Values, r.enumList(e))
 	}
 	for _, fl := range c.flags {
-		out.Values = append(out.Values, newValueList(DeclFlags, fl.Name, append([]string(nil), fl.Variants...)))
+		out.Values = append(out.Values, r.flagsList(fl))
 	}
 	for _, un := range c.unions {
-		vals := make([]string, len(un.Variants))
-		for i, v := range un.Variants {
-			vals[i] = v.WireName()
-		}
-		out.Values = append(out.Values, newValueList(DeclUnion, un.Name, vals))
+		out.Values = append(out.Values, r.unionList(un))
 	}
 	return out
 }
 
-func newValueList(decl, name string, values []string) ValueList {
-	v := ValueList{Decl: decl, Name: name, Values: values}
-	v.Hash = ValuesHash(&v)
-	return v
+// renderer fills held hashes from the nested type's own block, so a kind-13
+// slot and the `type` it names agree on the number, and a union arm's
+// payload= agrees with the nested record it points at.
+type renderer struct {
+	u      *ir.Unit
+	tables map[*ir.Struct]Table
+	enums  map[*ir.Enum]ValueList
+	flags  map[*ir.Flags]ValueList
+	unions map[*ir.Union]ValueList
 }
 
-func renderTable(u *ir.Unit, decl string, st *ir.Struct) Table {
+func structDecl(st *ir.Struct) string {
+	if st.IsTable {
+		return DeclFixedTable
+	}
+	return DeclType
+}
+
+func (r *renderer) table(decl string, st *ir.Struct) Table {
+	if t, ok := r.tables[st]; ok {
+		return t
+	}
+	t := r.renderTable(decl, st)
+	r.tables[st] = t
+	return t
+}
+
+func (r *renderer) renderTable(decl string, st *ir.Struct) Table {
 	t := Table{Decl: decl, Name: st.WireName()}
-	layout := ir.RecordLayout(u, st)
+	layout := ir.RecordLayout(r.u, st)
 	for _, f := range st.Fields {
 		e := Entry{
 			Name:       fieldWireName(f),
@@ -397,10 +443,146 @@ func renderTable(u *ir.Unit, decl string, st *ir.Struct) Table {
 		if fl := layout.FieldByName(f.Name); fl != nil {
 			e.Width = fl.Size
 		}
+		switch e.Kind {
+		case ir.TableKindTable, ir.TableKindUnion:
+			e.HeldName, e.HeldHash = r.held(f)
+		case ir.TableKindArray:
+			e.ElemKind = ir.TableElemKind(f)
+			e.ElemWidth = elemSize(r.u, f)
+			e.HeldName, e.HeldHash = r.held(f)
+		}
 		t.Entries = append(t.Entries, e)
 	}
 	t.Layout = LayoutHash(t.Entries)
 	return t
+}
+
+func (r *renderer) held(f *ir.Field) (string, uint64) {
+	if f.IsMap() && f.MapEntry != nil {
+		t := r.table(DeclFixedTable, f.MapEntry)
+		return t.Name, t.Layout
+	}
+	if f.Type.Kind != ir.TNamed {
+		return "", 0
+	}
+	switch ref := f.Type.Ref.(type) {
+	case *ir.Struct:
+		t := r.table(structDecl(ref), ref)
+		return t.Name, t.Layout
+	case *ir.Union:
+		v := r.unionList(ref)
+		return v.Name, v.Hash
+	default:
+		return "", 0
+	}
+}
+
+func (r *renderer) enumList(e *ir.Enum) ValueList {
+	if v, ok := r.enums[e]; ok {
+		return v
+	}
+	vals := make([]string, len(e.Variants))
+	for i := range e.Variants {
+		vals[i] = e.VariantWireName(i)
+	}
+	v := newValueList(DeclEnum, e.Name, vals, nil)
+	r.enums[e] = v
+	return v
+}
+
+func (r *renderer) flagsList(fl *ir.Flags) ValueList {
+	if v, ok := r.flags[fl]; ok {
+		return v
+	}
+	v := newValueList(DeclFlags, fl.Name, append([]string(nil), fl.Variants...), nil)
+	r.flags[fl] = v
+	return v
+}
+
+func (r *renderer) unionList(un *ir.Union) ValueList {
+	if v, ok := r.unions[un]; ok {
+		return v
+	}
+	vals := make([]string, len(un.Variants))
+	payloads := make([]string, len(un.Variants))
+	for i, arm := range un.Variants {
+		vals[i] = arm.WireName()
+		payloads[i] = r.armPayload(arm)
+	}
+	v := newValueList(DeclUnion, un.Name, vals, payloads)
+	r.unions[un] = v
+	return v
+}
+
+func (r *renderer) armPayload(arm ir.UnionVariant) string {
+	if arm.F == nil {
+		return ""
+	}
+	if name, hash := r.held(arm.F); name != "" {
+		return heldText(name, hash)
+	}
+	return ir.FieldTypeSpelling(arm.F)
+}
+
+func heldText(name string, hash uint64) string {
+	if name == "" {
+		return ""
+	}
+	if hash == 0 {
+		return name
+	}
+	return fmt.Sprintf("%s@0x%016x", name, hash)
+}
+
+func newValueList(decl, name string, values, payloads []string) ValueList {
+	v := ValueList{Decl: decl, Name: name, Values: values, Payloads: payloads}
+	v.Hash = ValuesHash(&v)
+	return v
+}
+
+// elemSize is one VALUE of a field's declared type, in bytes — the array
+// element a kind-14 slot is made of. It follows ir.elementPiece so a nested
+// record, an enum's storage width and a scalar all agree with the layout.
+func elemSize(u *ir.Unit, f *ir.Field) int64 {
+	if f.IsMap() && f.MapEntry != nil {
+		return ir.RecordLayout(u, f.MapEntry).Size
+	}
+	if f.Type.Pointer {
+		return 8
+	}
+	switch f.Type.Kind {
+	case ir.TBool:
+		return 1
+	case ir.TFloat32:
+		return 4
+	case ir.TFloat64:
+		return 8
+	case ir.TInt, ir.TFixed:
+		return int64(f.Type.Width) / 8
+	case ir.TBits:
+		if f.Type.Width <= 32 {
+			return 4
+		}
+		return 8
+	case ir.TBytes:
+		return 1
+	case ir.TNamed:
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Enum:
+			return int64(ir.StorageBitsFor(ref.Max)) / 8
+		case *ir.Flags:
+			return 8
+		case *ir.Struct:
+			return ir.RecordLayout(u, ref).Size
+		case *ir.Union:
+			size, _, _, _ := ir.UnionLayout(u, ref)
+			return size
+		}
+	}
+	if w := ir.TableKindWidth(ir.TableElemKind(f)); w > 0 {
+		return int64(w)
+	}
+	return 0
 }
 
 // fieldWireName is the name this file records: the `was` alias where one is
@@ -502,13 +684,24 @@ func LayoutHash(entries []Entry) uint64 {
 // carries and for the same reason.
 func ValuesHash(v *ValueList) uint64 {
 	var b strings.Builder
-	for _, s := range v.Values {
+	for i, s := range v.Values {
 		b.WriteString(v.Child())
 		b.WriteByte(' ')
 		b.WriteString(s)
+		if payload := valuePayload(v, i); payload != "" {
+			b.WriteString(" payload=")
+			b.WriteString(payload)
+		}
 		b.WriteByte('\n')
 	}
 	return ir.TableWireId(b.String())
+}
+
+func valuePayload(v *ValueList, i int) string {
+	if i < 0 || i >= len(v.Payloads) {
+		return ""
+	}
+	return v.Payloads[i]
 }
 
 // line is one entry's text, and the unit the layout hash digests.
@@ -522,6 +715,12 @@ func (e Entry) line() string {
 	}
 	if e.Frac >= 0 {
 		s += " frac=" + strconv.Itoa(e.Frac)
+	}
+	if e.HeldName != "" {
+		s += " held=" + heldText(e.HeldName, e.HeldHash)
+	}
+	if e.ElemKind != 0 || e.ElemWidth != 0 {
+		s += fmt.Sprintf(" elem=%d/%d", e.ElemKind, e.ElemWidth)
 	}
 	if e.Optional {
 		s += " optional"
@@ -569,8 +768,12 @@ func (u *Unit) Text() string {
 	}
 	for _, v := range u.Values {
 		fmt.Fprintf(&b, "\n%s %s values=0x%016x\n", v.Decl, v.Name, v.Hash)
-		for _, s := range v.Values {
-			fmt.Fprintf(&b, "    %s %s\n", v.Child(), s)
+		for i, s := range v.Values {
+			if payload := valuePayload(&v, i); payload != "" {
+				fmt.Fprintf(&b, "    %s %s payload=%s\n", v.Child(), s, payload)
+			} else {
+				fmt.Fprintf(&b, "    %s %s\n", v.Child(), s)
+			}
 		}
 	}
 	return b.String()
@@ -679,13 +882,27 @@ func Parse(path string, data []byte) (*Unit, error) {
 			if curList == nil {
 				return nil, fmt.Errorf("%s: a %s line before any `enum`, `flags` or `union` line", where, fields[0])
 			}
-			if len(fields) != 2 {
+			if len(fields) < 2 {
 				return nil, fmt.Errorf("%s: a %s line names one value", where, fields[0])
 			}
 			if fields[0] != curList.Child() {
 				return nil, fmt.Errorf("%s: a %s carries %s lines, not %s lines", where, curList.Decl, curList.Child(), fields[0])
 			}
+			payload := ""
+			for _, tok := range fields[2:] {
+				key, val, valued := strings.Cut(tok, "=")
+				if !valued || key != "payload" {
+					return nil, fmt.Errorf("%s: %q is not a fact a %s line carries", where, tok, fields[0])
+				}
+				payload = val
+			}
+			if fields[0] == "variant" && payload != "" {
+				return nil, fmt.Errorf("%s: a variant line names one value", where)
+			}
 			curList.Values = append(curList.Values, fields[1])
+			if curList.Decl == DeclUnion {
+				curList.Payloads = append(curList.Payloads, payload)
+			}
 		default:
 			return nil, fmt.Errorf("%s: %q is not a line a %s carries", where, fields[0], FileName)
 		}
@@ -698,7 +915,7 @@ func Parse(path string, data []byte) (*Unit, error) {
 
 func parseEntry(fields []string) (Entry, error) {
 	if len(fields) < 6 {
-		return Entry{}, fmt.Errorf("a field line is `field <name> id=0x... kind=N width=N default=V [min=V max=V] [res=V] [frac=N] [optional] [deprecated]`")
+		return Entry{}, fmt.Errorf("a field line is `field <name> id=0x... kind=N width=N default=V [min=V max=V] [res=V] [frac=N] [held=Name@0x...] [elem=K/W] [optional] [deprecated]`")
 	}
 	e := Entry{Name: fields[1], Frac: -1}
 	for _, tok := range fields[2:] {
@@ -742,6 +959,26 @@ func parseEntry(fields []string) (Entry, error) {
 				return Entry{}, fmt.Errorf("frac=%q is not a count of fractional bits", val)
 			}
 			e.Frac = n
+		case key == "held":
+			name, hash, err := parseHeld(val)
+			if err != nil {
+				return Entry{}, err
+			}
+			e.HeldName, e.HeldHash = name, hash
+		case key == "elem":
+			ks, ws, ok := strings.Cut(val, "/")
+			if !ok {
+				return Entry{}, fmt.Errorf("elem=%q is not kind/width", val)
+			}
+			ek, err := strconv.Atoi(ks)
+			if err != nil {
+				return Entry{}, fmt.Errorf("elem=%q is not kind/width", val)
+			}
+			ew, err := strconv.ParseInt(ws, 10, 64)
+			if err != nil {
+				return Entry{}, fmt.Errorf("elem=%q is not kind/width", val)
+			}
+			e.ElemKind, e.ElemWidth = ek, ew
 		default:
 			return Entry{}, fmt.Errorf("%q is not a fact a field line carries", key)
 		}
@@ -759,4 +996,16 @@ func parseHex(tok, key string) (uint64, error) {
 		return 0, fmt.Errorf("%s=%q is not a 64-bit hex value", key, val)
 	}
 	return v, nil
+}
+
+func parseHeld(val string) (string, uint64, error) {
+	name, rest, ok := strings.Cut(val, "@")
+	if !ok || name == "" {
+		return "", 0, fmt.Errorf("held=%q is not Name@0x...", val)
+	}
+	h, err := strconv.ParseUint(strings.TrimPrefix(rest, "0x"), 16, 64)
+	if err != nil {
+		return "", 0, fmt.Errorf("held=%q is not Name@0x...", val)
+	}
+	return name, h, nil
 }

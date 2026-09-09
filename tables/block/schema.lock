@@ -1,33 +1,33 @@
-schema-lock 2
+schema-lock 3
 package blockdemo
 
-fixed table PaddedFrame layout=0x15684f7c1f001a61
+fixed table PaddedFrame layout=0x3ad30b4696945e69
     field marker id=0xeddcb72b15486e77 kind=6 width=1 default=0
     field stamp id=0xee7ba9ad45c64144 kind=9 width=8 default=0
-    field rows id=0xa3a7061ff10a8138 kind=14 width=4100 default=born:0
-    field blob id=0xc573b39bc29148ca kind=14 width=16 default=bytes:
+    field rows id=0xa3a7061ff10a8138 kind=14 width=4100 default=born:0 held=PaddedRow@0x9020be3c7b98758c elem=13/64
+    field blob id=0xc573b39bc29148ca kind=14 width=16 default=bytes: elem=6/1
 
-fixed table PaddedRow layout=0xff8e8027f63afd7e
+fixed table PaddedRow layout=0x9020be3c7b98758c
     field tag id=0x56d7ab194448a4f3 kind=6 width=1 default=0
     field value id=0x7ce4fd9430e80cea kind=11 width=8 default=0.0
     field flag id=0xd5f2d079088c0b17 kind=1 width=1 default=false
     field id id=0x08b72e07b55c3ac0 kind=8 width=4 default=0
     field label id=0x39f7fcec8fcb623d kind=12 width=20 default=bytes:
-    field slots id=0xe68c2e6bb1ee5646 kind=14 width=8 default=born:0
+    field slots id=0xe68c2e6bb1ee5646 kind=14 width=8 default=born:0 elem=7/2
     field teams id=0xbaaeb048a5a8fa6d kind=16 width=4 default=born:0
     field counter id=0x77976c7416517c63 kind=4 width=5 default=0 optional
 
-fixed table RenderCamera layout=0x062a5291bb3c3d45
-    field position id=0x4cbf3a26fca1d74a kind=13 width=24 default=zero
-    field rotation id=0xb51afb05cd34709f kind=13 width=32 default=zero
+fixed table RenderCamera layout=0xbc6d7a94c6456443
+    field position id=0x4cbf3a26fca1d74a kind=13 width=24 default=zero held=RenderVector3@0xd77965e30412b51d
+    field rotation id=0xb51afb05cd34709f kind=13 width=32 default=zero held=RenderQuaternion@0x23322f19f5b78111
     field camera_id id=0x9f61700f084ab92e kind=8 width=4 default=0
     field camera_type id=0x336d3dc7fffd0c9b kind=8 width=4 default=0
     field target_object_id id=0x6a0c6a156952b9c2 kind=8 width=4 default=0
     field fov id=0xdcb27c18fed9e15c kind=10 width=4 default=0.0
 
-fixed table RenderCosmeticProp layout=0xec86d7d79410791a
-    field position id=0x4cbf3a26fca1d74a kind=13 width=24 default=zero
-    field rotation id=0xb51afb05cd34709f kind=13 width=32 default=zero
+fixed table RenderCosmeticProp layout=0x3fee9fcc767a59f0
+    field position id=0x4cbf3a26fca1d74a kind=13 width=24 default=zero held=RenderVector3@0xd77965e30412b51d
+    field rotation id=0xb51afb05cd34709f kind=13 width=32 default=zero held=RenderQuaternion@0x23322f19f5b78111
     field scale id=0x6aacb9fbb71a1d91 kind=11 width=8 default=0.0
     field flags id=0x17a3a1a985f75aec kind=9 width=8 default=0
     field cosmetic_prop_id id=0xb66e4449e56b2e26 kind=8 width=4 default=0
@@ -35,56 +35,56 @@ fixed table RenderCosmeticProp layout=0xec86d7d79410791a
     field prop_type id=0xe5626f155e4c5dad kind=7 width=1 default=variant:None
     field team id=0xfa23d9ef19afc32c kind=7 width=1 default=variant:None
 
-fixed table RenderDynamicProp layout=0x140d4e03d39953c0
-    field position id=0x4cbf3a26fca1d74a kind=13 width=24 default=zero
-    field rotation id=0xb51afb05cd34709f kind=13 width=32 default=zero
+fixed table RenderDynamicProp layout=0x6c9d8733bd2633ce
+    field position id=0x4cbf3a26fca1d74a kind=13 width=24 default=zero held=RenderVector3@0xd77965e30412b51d
+    field rotation id=0xb51afb05cd34709f kind=13 width=32 default=zero held=RenderQuaternion@0x23322f19f5b78111
     field flags id=0x17a3a1a985f75aec kind=9 width=8 default=0
     field object_id id=0x0bdab42c07f19812 kind=8 width=4 default=0
     field object_sequence id=0x5de0015285763c46 kind=6 width=1 default=0
     field prop_type id=0xe5626f155e4c5dad kind=7 width=1 default=variant:None
     field team id=0xfa23d9ef19afc32c kind=7 width=1 default=variant:None
 
-fixed table RenderExplosion layout=0xe71646e319b09bd0
-    field position id=0x4cbf3a26fca1d74a kind=13 width=24 default=zero
-    field rotation id=0xb51afb05cd34709f kind=13 width=32 default=zero
+fixed table RenderExplosion layout=0x6125a84373f1884a
+    field position id=0x4cbf3a26fca1d74a kind=13 width=24 default=zero held=RenderVector3@0xd77965e30412b51d
+    field rotation id=0xb51afb05cd34709f kind=13 width=32 default=zero held=RenderQuaternion@0x23322f19f5b78111
     field t id=0xaf63e94c860202a3 kind=11 width=8 default=0.0
     field explosion_id id=0xfd7f3fa0b16ed778 kind=8 width=4 default=0
     field parent_object_id id=0x0bee7b3cb4046c93 kind=8 width=4 default=0
     field explosion_type id=0xdc89eb9cd3393be5 kind=7 width=1 default=variant:None
     field team id=0xfa23d9ef19afc32c kind=7 width=1 default=variant:None
 
-fixed table RenderFrame layout=0x4219ed0c600fca44
+fixed table RenderFrame layout=0xa8b62c87a8033b12
     field version id=0xbb62c62c9808ea37 kind=9 width=8 default=0
-    field cameras id=0x0f9222d2ba7aa2a7 kind=14 width=76 default=born:0
-    field ships id=0x294a5c4913e1ad44 kind=14 width=360452 default=born:0
-    field turrets id=0x84f8260bc283608c kind=14 width=65540 default=born:0
-    field missiles id=0x1c3027194b1ba4d0 kind=14 width=294916 default=born:0
-    field dynamic_props id=0x43125398a9903d27 kind=14 width=294916 default=born:0
-    field static_props id=0xc1f8d7edff7fcfd2 kind=14 width=1600004 default=born:0
-    field cosmetic_props id=0x33408e39f5f480ff kind=14 width=655364 default=born:0
-    field lasers id=0xd982b77b3e92d16d kind=14 width=2048004 default=born:0
-    field explosions id=0x876a8c1a85806a69 kind=14 width=2560004 default=born:0
+    field cameras id=0x0f9222d2ba7aa2a7 kind=14 width=76 default=born:0 held=RenderCamera@0xbc6d7a94c6456443 elem=13/72
+    field ships id=0x294a5c4913e1ad44 kind=14 width=360452 default=born:0 held=RenderShip@0xe675979306e57f6e elem=13/88
+    field turrets id=0x84f8260bc283608c kind=14 width=65540 default=born:0 held=RenderTurret@0xf828a57e1fb64685 elem=13/64
+    field missiles id=0x1c3027194b1ba4d0 kind=14 width=294916 default=born:0 held=RenderMissile@0x0c11d87f35a5964a elem=13/72
+    field dynamic_props id=0x43125398a9903d27 kind=14 width=294916 default=born:0 held=RenderDynamicProp@0x6c9d8733bd2633ce elem=13/72
+    field static_props id=0xc1f8d7edff7fcfd2 kind=14 width=1600004 default=born:0 held=RenderStaticProp@0x9cd76a335a730e55 elem=13/80
+    field cosmetic_props id=0x33408e39f5f480ff kind=14 width=655364 default=born:0 held=RenderCosmeticProp@0x3fee9fcc767a59f0 elem=13/80
+    field lasers id=0xd982b77b3e92d16d kind=14 width=2048004 default=born:0 held=RenderLaser@0x1057e9f2a4e5dd76 elem=13/64
+    field explosions id=0x876a8c1a85806a69 kind=14 width=2560004 default=born:0 held=RenderExplosion@0x6125a84373f1884a elem=13/80
 
-fixed table RenderLaser layout=0xb018ee3b2d2555dc
-    field start id=0xee5d97ad45ad251f kind=13 width=24 default=zero
-    field finish id=0x6917a5bab91540f2 kind=13 width=24 default=zero
+fixed table RenderLaser layout=0x1057e9f2a4e5dd76
+    field start id=0xee5d97ad45ad251f kind=13 width=24 default=zero held=RenderVector3@0xd77965e30412b51d
+    field finish id=0x6917a5bab91540f2 kind=13 width=24 default=zero held=RenderVector3@0xd77965e30412b51d
     field t id=0xaf63e94c860202a3 kind=11 width=8 default=0.0
     field laser_id id=0xcd29c05f390294ec kind=8 width=4 default=0
     field laser_type id=0x96b593c242133841 kind=7 width=1 default=variant:None
     field team id=0xfa23d9ef19afc32c kind=7 width=1 default=variant:None
 
-fixed table RenderMissile layout=0xa2c1c31f863fef5c
-    field position id=0x4cbf3a26fca1d74a kind=13 width=24 default=zero
-    field rotation id=0xb51afb05cd34709f kind=13 width=32 default=zero
+fixed table RenderMissile layout=0x0c11d87f35a5964a
+    field position id=0x4cbf3a26fca1d74a kind=13 width=24 default=zero held=RenderVector3@0xd77965e30412b51d
+    field rotation id=0xb51afb05cd34709f kind=13 width=32 default=zero held=RenderQuaternion@0x23322f19f5b78111
     field flags id=0x17a3a1a985f75aec kind=9 width=8 default=0
     field object_id id=0x0bdab42c07f19812 kind=8 width=4 default=0
     field object_sequence id=0x5de0015285763c46 kind=6 width=1 default=0
     field missile_type id=0x151b2a0e2c07b4bc kind=7 width=1 default=variant:None
     field team id=0xfa23d9ef19afc32c kind=7 width=1 default=variant:None
 
-fixed table RenderShip layout=0x257d2692c9b5e640
-    field position id=0x4cbf3a26fca1d74a kind=13 width=24 default=zero
-    field rotation id=0xb51afb05cd34709f kind=13 width=32 default=zero
+fixed table RenderShip layout=0xe675979306e57f6e
+    field position id=0x4cbf3a26fca1d74a kind=13 width=24 default=zero held=RenderVector3@0xd77965e30412b51d
+    field rotation id=0xb51afb05cd34709f kind=13 width=32 default=zero held=RenderQuaternion@0x23322f19f5b78111
     field flags id=0x17a3a1a985f75aec kind=9 width=8 default=mask:0
     field object_id id=0x0bdab42c07f19812 kind=8 width=4 default=0
     field target_object_id id=0x6a0c6a156952b9c2 kind=8 width=4 default=0
@@ -95,17 +95,17 @@ fixed table RenderShip layout=0x257d2692c9b5e640
     field has_target_lock id=0x1554fa45a1220171 kind=1 width=1 default=false
     field predicted_explode id=0x4d5be97ba1b9cb81 kind=1 width=1 default=false
 
-fixed table RenderStaticProp layout=0xd9e313b912df6b8b
-    field position id=0x4cbf3a26fca1d74a kind=13 width=24 default=zero
-    field rotation id=0xb51afb05cd34709f kind=13 width=32 default=zero
+fixed table RenderStaticProp layout=0x9cd76a335a730e55
+    field position id=0x4cbf3a26fca1d74a kind=13 width=24 default=zero held=RenderVector3@0xd77965e30412b51d
+    field rotation id=0xb51afb05cd34709f kind=13 width=32 default=zero held=RenderQuaternion@0x23322f19f5b78111
     field scale id=0x6aacb9fbb71a1d91 kind=11 width=8 default=0.0
     field flags id=0x17a3a1a985f75aec kind=9 width=8 default=0
     field static_prop_id id=0xd23da7ab574b95c3 kind=8 width=4 default=0
     field prop_type id=0xe5626f155e4c5dad kind=7 width=1 default=variant:None
     field team id=0xfa23d9ef19afc32c kind=7 width=1 default=variant:None
 
-fixed table RenderTurret layout=0x3b03b34ca5dcc5fc
-    field rotation id=0xb51afb05cd34709f kind=13 width=32 default=zero
+fixed table RenderTurret layout=0xf828a57e1fb64685
+    field rotation id=0xb51afb05cd34709f kind=13 width=32 default=zero held=RenderQuaternion@0x23322f19f5b78111
     field flags id=0x17a3a1a985f75aec kind=9 width=8 default=0
     field object_id id=0x0bdab42c07f19812 kind=8 width=4 default=0
     field parent_object_id id=0x0bee7b3cb4046c93 kind=8 width=4 default=0

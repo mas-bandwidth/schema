@@ -1,8 +1,8 @@
-schema-lock 2
+schema-lock 3
 package listdemo
 
-fixed table Bounded layout=0x3b84d989bb000b0a
-    field items id=0x3e7884bf4f412c6f kind=14 width=36 default=born:0
+fixed table Bounded layout=0x38e61d51e4cc8311
+    field items id=0x3e7884bf4f412c6f kind=14 width=36 default=born:0 held=Unit@0x3157106757693e8a elem=13/4
     field tag id=0x56d7ab194448a4f3 kind=4 width=4 default=0
 
 fixed table Item layout=0xf8efefb09ce745f7

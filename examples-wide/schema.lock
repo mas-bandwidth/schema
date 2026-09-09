@@ -1,11 +1,11 @@
-schema-lock 2
+schema-lock 3
 package wide
 
-fixed table Caption layout=0xdf56a387ba9e9fad
+fixed table Caption layout=0x4532f5365ad7bcb8
     field title id=0xda31296c0c1b6029 kind=33 width=20 default=bytes:
-    field line id=0xbf4ba5ad694f5907 kind=13 width=16 default=zero
-    field lines id=0x5ce3f9a9f1d5001c kind=14 width=52 default=born:0
-    field body id=0xcd4de79bc6c93295 kind=15 width=20 default=zero
+    field line id=0xbf4ba5ad694f5907 kind=13 width=16 default=zero held=Line@0x29e98794ee82dc80
+    field lines id=0x5ce3f9a9f1d5001c kind=14 width=52 default=born:0 held=Line@0x29e98794ee82dc80 elem=13/16
+    field body id=0xcd4de79bc6c93295 kind=15 width=20 default=zero held=Body@0xa032cbdb123eb700
 
 fixed table Stamp layout=0x26f593720238ea03
     field label id=0x39f7fcec8fcb623d kind=33 width=16 default=bytes:
@@ -14,7 +14,7 @@ fixed table Stamp layout=0x26f593720238ea03
 type Line layout=0x29e98794ee82dc80
     field text id=0xfa04f4ef1995407e kind=33 width=16 default=bytes:
 
-union Body values=0x2e6580b5faa71fba
-    arm wide
-    arm narrow
-    arm count
+union Body values=0xa032cbdb123eb700
+    arm wide payload=wstring(4)
+    arm narrow payload=string(4)
+    arm count payload=int32

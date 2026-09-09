@@ -12,11 +12,13 @@ const SchemaLockFileName = lockfile.FileName
 // SchemaLockText renders the unit's SCHEMA LOCK (docs/SPEC-TABLES.md §2.10):
 // every FIXED table's field sequence in declared order — each entry carrying
 // the field's wire id, kind, width in the record, default declared or
-// implicit, declared range and resolution, `?` and `deprecated` marker — then
-// a block for every type those tables REACH: a nested `type` as a record of
-// its own, and an `enum`, a `flags` mask or a `union` as its value list in
-// declared order. Each block carries the hash of its lines. One fact per line,
-// stable and diffable, exactly as the committed file holds it.
+// implicit, declared range and resolution, `?` and `deprecated` marker, the
+// nested type a kind-13/15 slot holds, and an array's element kind and width
+// — then a block for every type those tables REACH: a nested `type` as a
+// record of its own, and an `enum`, a `flags` mask or a `union` as its value
+// list in declared order, a union arm carrying its payload type. Each block
+// carries the hash of its lines. One fact per line, stable and diffable,
+// exactly as the committed file holds it.
 func SchemaLockText(u *ir.Unit) string {
 	return lockfile.Render(u).Text()
 }

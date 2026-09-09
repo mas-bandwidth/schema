@@ -1,24 +1,24 @@
-schema-lock 2
+schema-lock 3
 package messagedemo
 
-fixed table Edit layout=0x6f6024d4e52f3ce4
+fixed table Edit layout=0xe5f61d113528350f
     field revision id=0xd6a4dbc46c8e8658 kind=8 width=4 default=0
-    field body id=0xcd4de79bc6c93295 kind=15 width=308 default=zero
+    field body id=0xcd4de79bc6c93295 kind=15 width=308 default=zero held=EditBody@0xe030492f7a325c4e
 
-fixed table InsertText layout=0xd2825df561ef8540
-    field at id=0x089c4e07b545a968 kind=13 width=8 default=zero
+fixed table InsertText layout=0xa964ff3cc1ffeb20
+    field at id=0x089c4e07b545a968 kind=13 width=8 default=zero held=Cursor@0x1c6c4747ec7d22b6
     field text id=0xfa04f4ef1995407e kind=12 width=40 default=bytes:
-    field origin id=0xb9eae4fe785a14cf kind=15 width=80 default=zero
-    field origins id=0x4437d86681113b74 kind=14 width=164 default=born:0
-    field modes id=0x9de526933e6e3ef3 kind=14 width=9 default=born:0 optional
+    field origin id=0xb9eae4fe785a14cf kind=15 width=80 default=zero held=Origin@0x354ffdd877947c6d
+    field origins id=0x4437d86681113b74 kind=14 width=164 default=born:0 held=Origin@0x354ffdd877947c6d elem=15/80
+    field modes id=0x9de526933e6e3ef3 kind=14 width=9 default=born:0 elem=7/1 optional
 
-fixed table OpenDocument layout=0x4169eff253a0107a
+fixed table OpenDocument layout=0xcf66c6e6b1054122
     field path id=0x03c52d0debd70676 kind=12 width=72 default=bytes:
     field mode id=0x0d3deba2c41dadb2 kind=7 width=1 default=variant:Read
-    field cursor id=0xf927453fbe6252ef kind=13 width=8 default=zero
+    field cursor id=0xf927453fbe6252ef kind=13 width=8 default=zero held=Cursor@0x1c6c4747ec7d22b6
 
-fixed table RemoveText layout=0xe4aaf9cbd2784f45
-    field span id=0x8b7dc019093cd0e1 kind=13 width=16 default=zero
+fixed table RemoveText layout=0xc5487d2191b647dc
+    field span id=0x8b7dc019093cd0e1 kind=13 width=16 default=zero held=Selection@0xde26223e859e6221
 
 fixed table SaveDocument layout=0xd663204963a83a25
     field path id=0x03c52d0debd70676 kind=12 width=72 default=bytes:
@@ -28,23 +28,23 @@ fixed table Script layout=0xb777ff39a7af3cd8
     field path id=0x03c52d0debd70676 kind=12 width=72 default=bytes:
     field line id=0xbf4ba5ad694f5907 kind=8 width=4 default=0
 
-fixed table Selection layout=0xd3816a0bf4b58fb1
-    field start id=0xee5d97ad45ad251f kind=13 width=8 default=zero
-    field end id=0xc2f00318f053500a kind=13 width=8 default=zero
+fixed table Selection layout=0xde26223e859e6221
+    field start id=0xee5d97ad45ad251f kind=13 width=8 default=zero held=Cursor@0x1c6c4747ec7d22b6
+    field end id=0xc2f00318f053500a kind=13 width=8 default=zero held=Cursor@0x1c6c4747ec7d22b6
 
-fixed table ToolMessage layout=0x8f8c2dacddf928e9
+fixed table ToolMessage layout=0xb4dbe182679fcfcd
     field sequence id=0xaa38aca481f528a8 kind=8 width=4 default=0
-    field body id=0xcd4de79bc6c93295 kind=15 width=1640 default=zero
-    field history id=0x33428945bbd5f2ff kind=14 width=3284 default=born:0
-    field trace id=0xdec59ea6c4eb9aee kind=14 width=233 default=born:0 optional
-    field marks id=0x9077d4a4e1726e29 kind=14 width=3 default=born:0 optional
+    field body id=0xcd4de79bc6c93295 kind=15 width=1640 default=zero held=ToolBody@0x337b2592c25d4996
+    field history id=0x33428945bbd5f2ff kind=14 width=3284 default=born:0 held=ToolBody@0x337b2592c25d4996 elem=15/1640
+    field trace id=0xdec59ea6c4eb9aee kind=14 width=233 default=born:0 held=Script@0xb777ff39a7af3cd8 elem=13/76 optional
+    field marks id=0x9077d4a4e1726e29 kind=14 width=3 default=born:0 elem=7/1 optional
 
-fixed table Transaction layout=0xf8e3c04e9fa87a7b
+fixed table Transaction layout=0x1ff7c5ddf934351c
     field reason id=0x65e8d7f3474f2639 kind=12 width=24 default=bytes:
-    field edits id=0x9478d06b697549e6 kind=14 width=940 default=born:0
-    field pending id=0x52dea0d6eeb5083c kind=14 width=616 default=born:0
-    field checkpoints id=0x028afa1c4d757704 kind=14 width=9 default=born:0 optional
-    field snapshots id=0x99dc6354a681403a kind=14 width=33 default=born:0 optional
+    field edits id=0x9478d06b697549e6 kind=14 width=940 default=born:0 held=Edit@0xe5f61d113528350f elem=13/312
+    field pending id=0x52dea0d6eeb5083c kind=14 width=616 default=born:0 held=EditBody@0xe030492f7a325c4e elem=15/308
+    field checkpoints id=0x028afa1c4d757704 kind=14 width=9 default=born:0 elem=8/4 optional
+    field snapshots id=0x99dc6354a681403a kind=14 width=33 default=born:0 held=Selection@0xde26223e859e6221 elem=13/16 optional
 
 fixed table User layout=0xabbd6dfa650ebe49
     field name id=0xc4bcadba8e631b86 kind=12 width=24 default=bytes:
@@ -64,26 +64,26 @@ flags Capabilities values=0x38384ef20e92e294
     variant Trace
     variant Verbose
 
-union EditBody values=0x961387e9a1def7ed
-    arm insert
-    arm remove
-    arm count
-    arm marks
-    arm blob
-    arm mode
+union EditBody values=0xe030492f7a325c4e
+    arm insert payload=InsertText@0xa964ff3cc1ffeb20
+    arm remove payload=RemoveText@0xc5487d2191b647dc
+    arm count payload=int32
+    arm marks payload=[..3]uint16
+    arm blob payload=bytes(4)
+    arm mode payload=Mode
 
-union Origin values=0xd8ed427f8d2864c8
-    arm user
-    arm script
-    arm pid
-    arm note
+union Origin values=0x354ffdd877947c6d
+    arm user payload=User@0xabbd6dfa650ebe49
+    arm script payload=Script@0xb777ff39a7af3cd8
+    arm pid payload=uint32
+    arm note payload=string(24)
 
-union ToolBody values=0x8d528f544f260ba1
-    arm open
-    arm save
-    arm transact
-    arm ping
-    arm caps
-    arm spans
-    arm origin
+union ToolBody values=0x337b2592c25d4996
+    arm open payload=OpenDocument@0xcf66c6e6b1054122
+    arm save payload=SaveDocument@0xd663204963a83a25
+    arm transact payload=Transaction@0x1ff7c5ddf934351c
+    arm ping payload=Ping@0xa3b89594fbb34f54
+    arm caps payload=Capabilities
+    arm spans payload=[2]int32
+    arm origin payload=Origin@0x354ffdd877947c6d
     arm ack

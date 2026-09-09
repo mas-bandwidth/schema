@@ -3079,13 +3079,20 @@ entry per field carrying
   fixed-point field's `frac`, which is the scale its raw integer is read at;
 - its **`?`**, as the bare token `optional`;
 - its **`deprecated`** marker;
+- which named type a kind-13 (nested record) or kind-15 (union) slot **holds**,
+  as `held=Buff@0x…` — the type's wire name and that type's layout hash (a
+  union's values hash);
+- an **array**'s element kind and width, as `elem=4/4`, and `held=` beside it
+  when the element is a named type;
 
 and the hash of that sequence. Then, because a fixed record is MADE OF the
 types its fields name, it records **every type those tables reach** in a block
 of its own: a nested `type` as a record like the tables above it, and an
-`enum`, a `flags` mask or a `union` as its VALUE LIST in declared order. So a
-change one level in — a variant moved, an arm inserted, a nested field
-retyped — is caught where it happens rather than not at all.
+`enum`, a `flags` mask or a `union` as its VALUE LIST in declared order, a
+union arm carrying its **payload type** beside the name (`payload=Buff@0x…`
+when the arm is a nested record). So a change one level in — a variant moved,
+an arm inserted, a nested field retyped, a slot pointed at a different type —
+is caught where it happens rather than not at all.
 
 The `ShipConfig` above, later in its life — a range on `speed`, a default on
 `shields`, an enum, and an optional block — and the whole of what the lock
@@ -3104,16 +3111,16 @@ fixed table ShipConfig
 ```
 
 ```
-schema-lock 2
+schema-lock 3
 package fleet
 
-fixed table ShipConfig layout=0x7415189c4f354006
+fixed table ShipConfig layout=0xafdf97760f546da4
     field name id=0xc4bcadba8e631b86 kind=12 width=40 default=bytes:
     field speed id=0x2281498aa0200e40 kind=10 width=4 default=0.0 min=0.0 max=100.0 res=0.01
     field armor id=0xd19988b67e699194 kind=6 width=1 default=0 deprecated
     field shields id=0x798c587767067199 kind=6 width=1 default=3
     field hull id=0x80da8ccc11daadf6 kind=7 width=1 default=variant:Gunship
-    field gunner id=0x40dbb648c0cd44aa kind=13 width=9 default=zero optional
+    field gunner id=0x40dbb648c0cd44aa kind=13 width=9 default=zero held=GunnerSettings@0xdd5ef1d77231ba48 optional
 
 type GunnerSettings layout=0xdd5ef1d77231ba48
     field reaction id=0xb75aa3662201646a kind=10 width=4 default=0.2
@@ -3192,6 +3199,18 @@ under a new name:
   declaration — a field already in the lock keeps its type: every record
   already written holds the old one, and nothing on the wire says which
   (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one"*
+- a **held type** that moved at the same kind — `boost Buff` becoming
+  `boost Debuff`, or `gunner ?Buff` becoming `gunner ?Debuff`: *"… held Buff
+  in the lock and Debuff in the declaration — a field already in the lock
+  keeps the type it holds: every record already written holds the old one,
+  and nothing on the wire says which (docs/SPEC-TABLES.md §2.10); deprecate
+  this field and append a new one"*
+- an **array element** that moved at the same field width — `[4]int32`
+  becoming `[4]float32`: *"… holds int32 elements in the lock and float32
+  elements in the declaration — a field already in the lock keeps its
+  element type: every record already written holds the old one, and nothing
+  on the wire says which (docs/SPEC-TABLES.md §2.10); deprecate this field
+  and append a new one"*
 - a **moved range, resolution or fixed-point scale**, none of which moves a
   byte and all of which change what the bytes say: *"… is [1, 240] in the lock
   and [1, 480] in the declaration — a field already in the lock keeps its
@@ -3219,7 +3238,13 @@ under a new name:
   read one value as the other (docs/SPEC-TABLES.md §2.10); restore it, and add
   the new one at the END"* — and a **removed** one reads *"… is in the lock and
   gone from the declaration — … every variant keeps its place forever, because
-  a fixed record stores the PLACE and not the name …"*.
+  a fixed record stores the PLACE and not the name …"*. A **union arm whose
+  payload type moved**, names kept — `buff Buff` / `debuff Debuff` becoming
+  `buff Debuff` / `debuff Buff`: *"union Effect: arm 1, buff, held Buff in
+  the lock and Debuff in the declaration — an arm already in the lock keeps
+  the type it holds: every record already written holds the old one, and
+  nothing on the wire says which (docs/SPEC-TABLES.md §2.10); deprecate this
+  field and append a new one"*.
 - a **table that is no longer a fixed table of this unit**: *"fixed table
   ShipConfig is in the lock and this unit no longer declares it as a fixed
   table — a fixed table's layout is a promise to every record already written,
@@ -3259,12 +3284,12 @@ entry beside it. A nested record has no bottom of its own; the bottom belongs
 to the table.
 
 **ONE CLASS OF CHANGE IS BEYOND THIS FILE.** A field that keeps its name, its
-id, its kind, its width, its default, its range and its `?` and changes only
-what it MEANS — `timeout` counted in seconds becoming `timeout` counted in
-milliseconds, an index counted from zero becoming one counted from one — moves
-no fact the lock records and no byte a reader could compare, so nothing here
-can refuse it, and the rule for it is the rule for every other break: DEPRECATE
-AND ADD.
+id, its kind, its width, its default, its range, its `?`, the type it holds
+and its element shape, and changes only what it MEANS — `timeout` counted in
+seconds becoming `timeout` counted in milliseconds, an index counted from
+zero becoming one counted from one — moves no fact the lock records and no
+byte a reader could compare, so nothing here can refuse it, and the rule for
+it is the rule for every other break: DEPRECATE AND ADD.
 
 **NO FILE MEANS NO CHECK.** A unit that has never been locked promises
 nothing, and `schema lock` is what makes the promise.
@@ -3288,10 +3313,12 @@ schema lock [--print] [--verbose] [dir|files...]
 `schema lock` rewrites the file, and **it is the only thing that writes it**.
 It only ever APPENDS entries and values, adds blocks and flips `deprecated` on:
 it runs the check's own comparison first and **refuses everything the check
-refuses** — a reorder, a removal, a widening, a kind change, a moved default, a
-moved range, a flipped `?`, a reordered value list, an un-deprecation, a table
-withdrawn, a type gone from the closure, a hand-edited file — so the one
-command that moves the file cannot be the one that breaks the rule. The ONE
+refuses** — a reorder, a removal, a widening, a kind change, a held type that
+moved, an array element that moved, a union arm's payload type that moved, a
+moved default, a moved range, a flipped `?`, a reordered value list, an
+un-deprecation, a table withdrawn, a type gone from the closure, a hand-edited
+file — so the one command that moves the file cannot be the one that breaks
+the rule. The ONE
 difference between the two readings is the one this command exists for: where
 the check refuses a declaration the lock has not caught up to, this command
 writes it down. It is idempotent — a
@@ -3301,8 +3328,8 @@ at all.
 A lock written under an OLDER RENDERING VERSION is the one file this command
 will not repair. The version is the compiler's own, the file holds nothing a
 hand could carry forward, and unlike a baseline there is no history to salvage
-— so the refusal says the remedy that works: *"this lock is rendering version 1
-and this compiler writes version 2 — the rendering version is the compiler's
+— so the refusal says the remedy that works: *"this lock is rendering version 2
+and this compiler writes version 3 — the rendering version is the compiler's
 own and this file holds nothing a hand can carry forward: delete it and write
 it again with `schema lock`"*.
 
@@ -3328,9 +3355,11 @@ Over the second — a FIXED table beside a VARIABLE-LENGTH one carrying the same
 fields, and a closure beside a closure — every fact the file gained is measured
 THREE WAYS: a moved default, a default given to a slot that had none, a widened
 integer range, a moved resolution, a moved fixed-point scale at the same width,
-a `?` turned on, a `?` turned off, a kind change inside a nested `type`, and a
-reordered, renamed or removed enum variant, `flags` variant or union arm are
-each refused on the fixed half with the line named; each of them on the
+a `?` turned on, a `?` turned off, a kind change inside a nested `type`, a
+nested slot pointed at a different type, an optional nested slot the same way,
+a union arm's payload types swapped with the names kept, an array's element
+type, and a reordered, renamed or removed enum variant, `flags` variant or
+union arm are each refused on the fixed half with the line named; each of them on the
 VARIABLE-LENGTH half passes in silence and moves no byte of the file, because a
 `table` with a pointer in it rides the id-table wire where those edits are what
 the wire is FOR (§4); and `schema lock` refuses every one of them with the same
