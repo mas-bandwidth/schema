@@ -2410,25 +2410,43 @@ static SCHEMA_UNUSED int schema_blockdemo_padded_row_message_extent_(TableMessag
  }if(!table_message_skip(r,entry))return 0;
  }
 }
-static SCHEMA_UNUSED int schema_blockdemo_padded_frame_wire_rows_( TableWriter * w, const PaddedFrame * value )
+static SCHEMA_UNUSED int schema_blockdemo_padded_frame_wire_rows_( TableWriter * w, const PaddedFrame * value, int64_t * element_sizes )
 {
     if ( value->rows_count < 0 || value->rows_count > 64 ) { return 0; }
     int32_t i;
     table_writer_put8( w, 13 ); table_writer_leb( w, (uint64_t) value->rows_count );
     for ( i = 0; i < value->rows_count; i++ )
     {
-        if ( w->buffer == NULL )
+        if ( element_sizes != NULL && i < 64 )
         {
-            int64_t frame_begin = w->offset;
-            if ( !padded_row_save_body( w, &value->rows[i] ) ) { return 0; }
-            table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            if ( w->buffer == NULL )
+            {
+                int64_t begin = w->offset;
+                if ( !padded_row_save_body( w, &value->rows[i] ) ) { return 0; }
+                element_sizes[i] = w->offset - begin;
+                table_writer_leb( w, (uint64_t) element_sizes[i] );
+            }
+            else
+            {
+                table_writer_leb( w, (uint64_t) element_sizes[i] );
+                if ( !padded_row_save_body( w, &value->rows[i] ) ) { return 0; }
+            }
         }
         else
         {
-            TableWriter probe = table_writer_probe( w );
-            if ( !padded_row_save_body( &probe, &value->rows[i] ) ) { return 0; }
-            table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
-            if ( !padded_row_save_body( w, &value->rows[i] ) ) { return 0; }
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !padded_row_save_body( w, &value->rows[i] ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !padded_row_save_body( &probe, &value->rows[i] ) ) { return 0; }
+                table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !padded_row_save_body( w, &value->rows[i] ) ) { return 0; }
+            }
         }
     }
     return !w->overflow;
@@ -2467,18 +2485,19 @@ static SCHEMA_UNUSED int padded_frame_save_body( TableWriter * w, const PaddedFr
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xa3a7061ff10a8138ull ); table_writer_put8( w, 14 );
+            int64_t element_sizes[64]; /* bounded sizing-to-write cache */
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
-                if ( !schema_blockdemo_padded_frame_wire_rows_( w, value ) ) { return 0; }
+                if ( !schema_blockdemo_padded_frame_wire_rows_( w, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
                 table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
             }
             else
             {
                 TableWriter probe = table_writer_probe( w );
-                if ( !schema_blockdemo_padded_frame_wire_rows_( &probe, value ) ) { return 0; }
+                if ( !schema_blockdemo_padded_frame_wire_rows_( &probe, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
                 table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
-                if ( !schema_blockdemo_padded_frame_wire_rows_( w, value ) ) { return 0; }
+                if ( !schema_blockdemo_padded_frame_wire_rows_( w, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
             }
         }
     }

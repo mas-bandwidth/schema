@@ -4872,49 +4872,85 @@ static SCHEMA_UNUSED int schema_bench_mixed_pickup_event_message_extent_(TableMe
  }if(!table_message_skip(r,entry))return 0;
  }
 }
-static SCHEMA_UNUSED int schema_bench_bench_mixed_wire_entities_( TableWriter * w, const BenchMixed * value )
+static SCHEMA_UNUSED int schema_bench_bench_mixed_wire_entities_( TableWriter * w, const BenchMixed * value, int64_t * element_sizes )
 {
     if ( value->entities_count < 0 || value->entities_count > 8 ) { return 0; }
     int32_t i;
     table_writer_put8( w, 13 ); table_writer_leb( w, (uint64_t) value->entities_count );
     for ( i = 0; i < value->entities_count; i++ )
     {
-        if ( w->buffer == NULL )
+        if ( element_sizes != NULL && i < 8 )
         {
-            int64_t frame_begin = w->offset;
-            if ( !mixed_entity_save_body( w, &value->entities[i] ) ) { return 0; }
-            table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            if ( w->buffer == NULL )
+            {
+                int64_t begin = w->offset;
+                if ( !mixed_entity_save_body( w, &value->entities[i] ) ) { return 0; }
+                element_sizes[i] = w->offset - begin;
+                table_writer_leb( w, (uint64_t) element_sizes[i] );
+            }
+            else
+            {
+                table_writer_leb( w, (uint64_t) element_sizes[i] );
+                if ( !mixed_entity_save_body( w, &value->entities[i] ) ) { return 0; }
+            }
         }
         else
         {
-            TableWriter probe = table_writer_probe( w );
-            if ( !mixed_entity_save_body( &probe, &value->entities[i] ) ) { return 0; }
-            table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
-            if ( !mixed_entity_save_body( w, &value->entities[i] ) ) { return 0; }
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !mixed_entity_save_body( w, &value->entities[i] ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !mixed_entity_save_body( &probe, &value->entities[i] ) ) { return 0; }
+                table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !mixed_entity_save_body( w, &value->entities[i] ) ) { return 0; }
+            }
         }
     }
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int schema_bench_bench_mixed_wire_stats_( TableWriter * w, const BenchMixed * value )
+static SCHEMA_UNUSED int schema_bench_bench_mixed_wire_stats_( TableWriter * w, const BenchMixed * value, int64_t * element_sizes )
 {
     if ( value->stats_count < 0 || value->stats_count > 80 ) { return 0; }
     int32_t i;
     table_writer_put8( w, 13 ); table_writer_leb( w, (uint64_t) value->stats_count );
     for ( i = 0; i < value->stats_count; i++ )
     {
-        if ( w->buffer == NULL )
+        if ( element_sizes != NULL && i < 64 )
         {
-            int64_t frame_begin = w->offset;
-            if ( !mixed_stat_save_body( w, &value->stats[i] ) ) { return 0; }
-            table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            if ( w->buffer == NULL )
+            {
+                int64_t begin = w->offset;
+                if ( !mixed_stat_save_body( w, &value->stats[i] ) ) { return 0; }
+                element_sizes[i] = w->offset - begin;
+                table_writer_leb( w, (uint64_t) element_sizes[i] );
+            }
+            else
+            {
+                table_writer_leb( w, (uint64_t) element_sizes[i] );
+                if ( !mixed_stat_save_body( w, &value->stats[i] ) ) { return 0; }
+            }
         }
         else
         {
-            TableWriter probe = table_writer_probe( w );
-            if ( !mixed_stat_save_body( &probe, &value->stats[i] ) ) { return 0; }
-            table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
-            if ( !mixed_stat_save_body( w, &value->stats[i] ) ) { return 0; }
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !mixed_stat_save_body( w, &value->stats[i] ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !mixed_stat_save_body( &probe, &value->stats[i] ) ) { return 0; }
+                table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !mixed_stat_save_body( w, &value->stats[i] ) ) { return 0; }
+            }
         }
     }
     return !w->overflow;
@@ -5027,18 +5063,19 @@ static SCHEMA_UNUSED int bench_mixed_save_body( TableWriter * w, const BenchMixe
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x935d0fb07bb3822aull ); table_writer_put8( w, 14 );
+            int64_t element_sizes[8]; /* bounded sizing-to-write cache */
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
-                if ( !schema_bench_bench_mixed_wire_entities_( w, value ) ) { return 0; }
+                if ( !schema_bench_bench_mixed_wire_entities_( w, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
                 table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
             }
             else
             {
                 TableWriter probe = table_writer_probe( w );
-                if ( !schema_bench_bench_mixed_wire_entities_( &probe, value ) ) { return 0; }
+                if ( !schema_bench_bench_mixed_wire_entities_( &probe, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
                 table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
-                if ( !schema_bench_bench_mixed_wire_entities_( w, value ) ) { return 0; }
+                if ( !schema_bench_bench_mixed_wire_entities_( w, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
             }
         }
     }
@@ -5048,18 +5085,19 @@ static SCHEMA_UNUSED int bench_mixed_save_body( TableWriter * w, const BenchMixe
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xee639cad45b1994cull ); table_writer_put8( w, 14 );
+            int64_t element_sizes[64]; /* bounded sizing-to-write cache */
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
-                if ( !schema_bench_bench_mixed_wire_stats_( w, value ) ) { return 0; }
+                if ( !schema_bench_bench_mixed_wire_stats_( w, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
                 table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
             }
             else
             {
                 TableWriter probe = table_writer_probe( w );
-                if ( !schema_bench_bench_mixed_wire_stats_( &probe, value ) ) { return 0; }
+                if ( !schema_bench_bench_mixed_wire_stats_( &probe, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
                 table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
-                if ( !schema_bench_bench_mixed_wire_stats_( w, value ) ) { return 0; }
+                if ( !schema_bench_bench_mixed_wire_stats_( w, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
             }
         }
     }
