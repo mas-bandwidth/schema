@@ -4289,11 +4289,13 @@ namespace Bench
                 if (!Collect(value, type, ref ids) || !CollectNodes(ref ids)) { return -1; }
                 // Reuse the root's measured length prefixes while writing its fields,
                 // and cache immediate child element body sizes for root unkeyed table arrays.
-                // These ceilings bound additional stack storage to 2 KiB each (4 KiB total);
-                // larger roots, element counts beyond 256, variable graphs and Measure retain
-                // the uncached path. Nested writes keep their own sizing path, so no recursive
-                // cache or shared state lives across calls, and all validation still precedes
-                // the first output byte.
+                // These ceilings bound additional stack storage to 2 KiB each (4 KiB total).
+                // Roots with >256 fields bypass root payload sizing caching while element
+                // caching remains active; element counts beyond 256 keep their cached prefix
+                // with remaining elements falling back to on-demand sizing; variable graphs
+                // and Measure retain the uncached path. Nested writes keep their own sizing
+                // path, so no recursive cache or shared state lives across calls, and all
+                // validation still precedes the first output byte.
                 int cachedFields = !measure && !type.Variable && type.Fields.Length <= 256 ? type.Fields.Length : 0;
                 Span<long> rootPayloadSizes = stackalloc long[cachedFields];
                 int cachedElemSlots = !measure && !type.Variable ? 256 : 0;
