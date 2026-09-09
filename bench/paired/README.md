@@ -29,9 +29,29 @@ bin/schema-paired -mode run -reuse-build \
 ```
 
 Fast mode never builds or generates. It requires a clean checkpoint with an
-existing all-language build whose source, host, runtime settings, binaries and
-corpora still match. It runs the existing correctness gates before any clocks,
-then one complete round across all four languages and both wires. Each path
+existing build of the languages it is asked for, whose source, host, runtime
+settings, binaries and corpora still match. It runs the existing correctness
+gates before any clocks, then one complete round across the requested languages
+and both wires.
+
+`-langs` names what to build, gate and measure. **A confirmation pass takes the
+published set exactly** — `cpp,c,go,cs` — because a pass is sealed over that
+set and a pass measuring anything else would render as a pass it is not. **Fast
+mode is the diagnostic and takes any non-empty subset of the known legs**, which
+is `cpp,c,go,cs,elixir`: it publishes nothing and seals nothing, and it is where
+a leg that is not in a published pass yet is measured at all. The Elixir leg is
+exactly that today — it carries the FIXED form (form 3) and no other table wire
+(form 1 is deferred to schema#515), so its table rows are named `bench_fixed`
+and it is not part of a confirmation pass.
+
+An interpreted leg has no compiled artifact, so what stands in place of a hashed
+executable is a manifest of its inputs — the leg's own scripts and every
+generated module it loads — each recorded and re-hashed individually, so an edit
+after the build is refused exactly as a recompiled binary would be. Its
+toolchain is pinned the way `make/elixir.mk` pins it (`BEAM_PATH`, defaulting to
+the repo-local `dist/`), and `-mode build` holds the generated Elixir to the
+same two gates the make targets do: `mix format --check-formatted` and
+`elixirc --warnings-as-errors`. Each path
 retains one discarded warmup at its requested sample count. Packet `--quick`
 skips the unrelated bitpacker workload.
 

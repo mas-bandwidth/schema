@@ -370,6 +370,36 @@ build/elixir-fixed-bench/bench_fixed.bin: generated/bench/paired/cpp/.stamp test
 	$(CXX) $(CXXFLAGS) -Igenerated/bench/paired/cpp test/bench/fixedform_corpus.cpp -o build/elixir-fixed-bench/corpus
 	./build/elixir-fixed-bench/corpus bench/corpus/variants/bench_mixed.variants.bin $@
 
+# THE PAIRED BENCH LEG's generated unit (bench/paired/README.md,
+# bench/tables/README.md). It is the SAME unit tables-elixir-fixed-bench builds
+# in build/, generated into the committed tree because that is where every
+# other paired leg's generated code lives and because `generated-current`
+# refuses a generated file nobody regenerates. The copy is for the same reason
+# as above: a declaration whose name is its own file's basename collides with
+# the module this backend writes for that file (§11).
+#
+# bench/paired/main.go's `-mode build -langs elixir` writes the same files from
+# the same copies, so a build there and a `make test` here cannot disagree.
+generated/bench/paired/elixir/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema make/elixir.mk
+	@mkdir -p generated/bench/paired/elixir build/paired/elixir-src
+	cp bench/corpus/Bench.schema build/paired/elixir-src/Bench.schema
+	cp bench/corpus/FixedTable.schema build/paired/elixir-src/Wrap.schema
+	./bin/schema generate --lang elixir --out generated/bench/paired/elixir \
+		build/paired/elixir-src/Bench.schema build/paired/elixir-src/Wrap.schema
+	@touch $@
+
+# THE PAIRED LEG's own gate, with no clock: the fixed corpus's layout compared
+# byte for byte against this build's, the file loaded clean, saved back and
+# compared, and then loaded and saved twice more into fresh terms. It is
+# bench/tables/elixir's `--gate` mode, which is what bench/paired's gate runs,
+# so `make test` and the paired driver hold this leg to the same bytes.
+.PHONY: tables-elixir-paired-gate
+tables-elixir-paired-gate: generated/bench/paired/elixir/.stamp bench-paired-check
+	$(MIX) format --check-formatted generated/bench/paired/elixir/*.ex bench/tables/elixir/*.exs
+	$(ELIXIRC) --warnings-as-errors -o build/paired/table-elixir/ebin generated/bench/paired/elixir/*.ex
+	$(ELIXIR) bench/tables/elixir/main.exs --gate --indexed \
+		--wire-dir bench/paired/corpus --variant-dir bench/paired/corpus
+
 .PHONY: tables-elixir-fixed-bench
 tables-elixir-fixed-bench: build/elixir-fixed-bench/.stamp build/elixir-fixed-bench/bench_fixed.bin
 	$(MIX) format --check-formatted build/elixir-fixed-bench/gen/*Fixed.ex \
@@ -410,3 +440,4 @@ tables-elixir-fixed-form-negative-control: build/fixedform-corpus/.stamp
 	@echo 'elixir fixed form negative control: one byte off the write template reds the reference byte match'
 
 test-elixir: tables-elixir-fixed-form tables-elixir-fixed-form-negative-control tables-elixir-fixed-bench
+test-elixir: tables-elixir-paired-gate

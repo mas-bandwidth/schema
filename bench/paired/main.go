@@ -25,8 +25,82 @@ import (
 	"time"
 )
 
+// languages IS THE PUBLISHED SET, and it is what a confirmation pass and a
+// rendered report are sealed over (provenance.go's passInputNames). A leg is
+// not published until every round of a seven-round pass carries it, so adding
+// a name here changes what an old pass renders as — which is why a new leg
+// arrives in knownLanguages first and moves here when it is promoted.
 var languages = []string{"cpp", "c", "go", "cs"}
-var names = map[string]string{"c": "C", "cpp": "C++", "go": "Go", "cs": "C#"}
+
+// knownLanguages IS EVERY NAME -langs ACCEPTS: the published four plus the legs
+// that exist and are measurable but are not part of a published pass yet.
+// `-mode fast` is the DIAGNOSTIC mode and takes any non-empty subset of these;
+// `-mode run` still takes the published four and nothing else.
+var knownLanguages = []string{"cpp", "c", "go", "cs", "elixir"}
+var names = map[string]string{"c": "C", "cpp": "C++", "go": "Go", "cs": "C#", "elixir": "Elixir"}
+
+// THE BEAM TOOLCHAIN, pinned exactly as make/elixir.mk pins it: the repo-local
+// unpacked dist/ by default, and whatever is on PATH when BEAM_PATH names a
+// directory that is not there (which is what CI has). The `elixir` launcher
+// finds `erl` through PATH, so both bin directories ride together.
+func beamPath() string {
+	return setting("BEAM_PATH", abs("dist/otp-29.0.5/bin")+string(os.PathListSeparator)+abs("dist/elixir-1.20.4/bin"))
+}
+
+// elixirLeg is the leg's entry point per wire: the packet runner is the same
+// one bench/run.sh drives, and the table runner is the fixed form's own.
+func elixirLeg(wire string) string {
+	if wire == "packet" {
+		return "bench/elixir/main.exs"
+	}
+	return "bench/tables/elixir/main.exs"
+}
+
+// elixirInputs is what a run of an Elixir leg IS, for provenance: there is no
+// compiled artifact to hash, so the identity of the leg is its own sources and
+// the generated modules it loads. Every one of them is recorded in build.json
+// and re-hashed by readBuild, so an edit after the build is refused exactly as
+// a recompiled binary would be.
+func elixirInputs(wire string) ([]string, error) {
+	out := []string{elixirLeg(wire), filepath.Join(filepath.Dir(elixirLeg(wire)), "runner.exs")}
+	gen := "generated/bench/elixir"
+	if wire != "packet" {
+		gen = "generated/bench/paired/elixir"
+	}
+	found, err := filepath.Glob(filepath.Join(gen, "*.ex"))
+	if err != nil {
+		return nil, err
+	}
+	if len(found) == 0 {
+		return nil, fmt.Errorf("no generated Elixir under %s", gen)
+	}
+	sort.Strings(found)
+	return append(out, found...), nil
+}
+
+// elixirManifest writes the one path binary() can name for an interpreted leg:
+// a sorted list of every input and its SHA-256. It is a convenience for a
+// reader of build/paired — the inputs themselves are recorded individually and
+// are what actually holds the leg to its build.
+func elixirManifest(wire string) (string, error) {
+	inputs, err := elixirInputs(wire)
+	if err != nil {
+		return "", err
+	}
+	var b strings.Builder
+	for _, p := range inputs {
+		h, err := hashFile(p)
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprintf(&b, "%s  %s\n", h, filepath.ToSlash(p))
+	}
+	path := binary(wire, "elixir")
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return "", err
+	}
+	return path, os.WriteFile(path, []byte(b.String()), 0644)
+}
 
 const header = "lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline"
 
@@ -70,12 +144,24 @@ func cpuName() string {
 type command struct {
 	args []string
 	dir  string
+	// env is added to this process's environment, never replacing it: an
+	// interpreted leg needs its pinned toolchain on PATH and nothing else
+	// about the measured environment may move (see measuredEnvironment).
+	env []string
+}
+
+func (c command) environment() []string {
+	if len(c.env) == 0 {
+		return nil
+	}
+	return append(os.Environ(), c.env...)
 }
 
 func execute(c command) error {
 	fmt.Fprintln(os.Stderr, "+", c.args[0], strings.Join(c.args[1:], " "))
 	cmd := exec.Command(c.args[0], c.args[1:]...)
 	cmd.Dir = c.dir
+	cmd.Env = c.environment()
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
@@ -83,6 +169,7 @@ func execute(c command) error {
 func capture(c command) ([]byte, error) {
 	cmd := exec.Command(c.args[0], c.args[1:]...)
 	cmd.Dir = c.dir
+	cmd.Env = c.environment()
 	cmd.Stderr = os.Stderr
 	return cmd.Output()
 }
@@ -102,6 +189,12 @@ func abs(p string) string {
 }
 func binary(wire, lang string) string {
 	p := filepath.Join("build", "paired", wire+"-"+lang)
+	if lang == "elixir" {
+		// AN INTERPRETED LEG HAS NO EXECUTABLE. What stands in its place is the
+		// manifest of its inputs and their hashes; the inputs are recorded and
+		// verified individually beside it (elixirInputs).
+		return filepath.Join(p, "leg.sha256")
+	}
 	if lang == "cs" {
 		if wire == "packet" {
 			return filepath.Join(p, "schemabench.dll")
@@ -115,15 +208,23 @@ func binary(wire, lang string) string {
 }
 func runner(wire, lang string, args ...string) command {
 	a := []string{binary(wire, lang)}
-	if lang == "cs" {
+	var env []string
+	switch lang {
+	case "cs":
 		a = append([]string{"dotnet"}, a...)
+	case "elixir":
+		// The leg is a script, and it is spawned from the REPOSITORY ROOT like
+		// every other leg, so its corpus paths arrive through --wire-dir and
+		// --variant-dir rather than through a working directory.
+		a = []string{"elixir", elixirLeg(wire)}
+		env = []string{"PATH=" + beamPath() + string(os.PathListSeparator) + os.Getenv("PATH")}
 	}
 	if wire == "table" {
 		a = append(a, "--indexed", "--wire-dir", "bench/paired/corpus", "--variant-dir", "bench/paired/corpus")
 	} else {
 		a = append(a, "--wire-dir", "testdata/wire", "--variant-dir", "bench/corpus/variants")
 	}
-	return command{args: append(a, args...)}
+	return command{args: append(a, args...), env: env}
 }
 func hashFile(path string) (string, error) {
 	b, e := os.ReadFile(path)
@@ -146,7 +247,12 @@ func corpusID(wire string) (string, error) {
 		paths["bench_mixed.bin"] = "testdata/wire/bench_mixed.bin"
 		paths["bench_mixed.variants.bin"] = "bench/corpus/variants/bench_mixed.variants.bin"
 	} else {
-		for _, name := range []string{"bench_table.bin", "bench_table.lengths", "bench_table.variants.bin"} {
+		// bench_fixed.bin and bench_fixed.vocab are the FIXED FORM's half of
+		// the same 64 logical records (docs/SPEC-TABLES.md §3.4). They ride the
+		// table corpus id because they are the same corpus: a row measured
+		// against one of these files is not divisible against a row measured
+		// before they existed.
+		for _, name := range []string{"bench_table.bin", "bench_table.lengths", "bench_table.variants.bin", "bench_fixed.bin", "bench_fixed.vocab"} {
 			paths[name] = "bench/paired/corpus/" + name
 		}
 	}
@@ -185,7 +291,34 @@ func generateAndBuild(langs []string) error {
 		return e
 	}
 	for _, lang := range langs {
-		if e := run(schema, "generate", "--lang", lang, "--out", "generated/bench/paired/"+lang, "bench/corpus/Bench.schema", "bench/corpus/FixedTable.schema"); e != nil {
+		paired := []string{"bench/corpus/Bench.schema", "bench/corpus/FixedTable.schema"}
+		if lang == "elixir" {
+			// THE UNIT'S SCHEMA FILES ARE COPIED UNDER OTHER BASENAMES, and only
+			// that: a declaration whose name is its own file's basename collides
+			// with the module the Elixir backend writes for that file
+			// (docs/SPEC-TABLES.md §11), which is the checker working rather
+			// than a problem. No declaration moves, so no id and no layout byte
+			// moves either. make/elixir.mk's tables-elixir-fixed-bench makes the
+			// same copy for the same reason.
+			src := "build/paired/elixir-src"
+			if e := os.MkdirAll(src, 0755); e != nil {
+				return e
+			}
+			renamed := []string{"Bench.schema", "Wrap.schema"}
+			for i, to := range renamed {
+				b, e := os.ReadFile(paired[i])
+				if e != nil {
+					return e
+				}
+				to = filepath.Join(src, to)
+				if e := os.WriteFile(to, b, 0644); e != nil {
+					return e
+				}
+				renamed[i] = to
+			}
+			paired = renamed
+		}
+		if e := run(append([]string{schema, "generate", "--lang", lang, "--out", "generated/bench/paired/" + lang}, paired...)...); e != nil {
 			return e
 		}
 		if e := run(schema, "generate", "--lang", lang, "--out", "generated/bench/"+lang, "bench/corpus/Bench.schema"); e != nil {
@@ -289,6 +422,37 @@ func generateAndBuild(langs []string) error {
 					return e
 				}
 			}
+		case "elixir":
+			// NOTHING IS LINKED AND NOTHING IS CACHED: the leg is a script that
+			// compiles the generated modules into the VM it measures in. What
+			// this stage does instead is (a) hold the generated Elixir to the
+			// SAME TWO GATES the make targets hold it to — `mix format
+			// --check-formatted`, because the emitter emits the formatter's own
+			// shape rather than being checked afterwards, and `elixirc
+			// --warnings-as-errors`, because a warning in generated code is a
+			// defect in the emitter — and (b) write the manifest that stands in
+			// for an executable in the provenance.
+			env := []string{"PATH=" + beamPath() + string(os.PathListSeparator) + os.Getenv("PATH")}
+			for _, wire := range []string{"table", "packet"} {
+				inputs, e := elixirInputs(wire)
+				if e != nil {
+					return e
+				}
+				sources := inputs[2:] // the generated modules; [0] and [1] are the leg
+				if e := execute(command{args: append([]string{"mix", "format", "--check-formatted"}, inputs...), env: env}); e != nil {
+					return e
+				}
+				ebin := filepath.Join("build", "paired", wire+"-elixir", "ebin")
+				if e := os.MkdirAll(ebin, 0755); e != nil {
+					return e
+				}
+				if e := execute(command{args: append([]string{"elixirc", "--warnings-as-errors", "-o", ebin}, sources...), env: env}); e != nil {
+					return e
+				}
+				if _, e := elixirManifest(wire); e != nil {
+					return e
+				}
+			}
 		}
 	}
 	hostname, _ := os.Hostname()
@@ -304,6 +468,9 @@ func generateAndBuild(langs []string) error {
 			info.Tools[key] = strings.TrimSpace(string(b))
 		}
 	}
+	if b, e := capture(command{args: []string{"elixir", "--version"}, env: []string{"PATH=" + beamPath() + string(os.PathListSeparator) + os.Getenv("PATH")}}); e == nil {
+		info.Tools["elixir"] = strings.TrimSpace(string(b))
+	}
 	for _, lang := range langs {
 		for _, wire := range []string{"packet", "table"} {
 			p := binary(wire, lang)
@@ -312,6 +479,23 @@ func generateAndBuild(langs []string) error {
 				return e
 			}
 			info.Binaries[p] = h
+			if lang == "elixir" {
+				// EVERY INPUT INDIVIDUALLY, not only the manifest: an edit to a
+				// leg script or a regenerated module after the build is what
+				// readBuild has to refuse, and it can only refuse a path it
+				// recorded.
+				inputs, e := elixirInputs(wire)
+				if e != nil {
+					return e
+				}
+				for _, in := range inputs {
+					h, e := hashFile(in)
+					if e != nil {
+						return e
+					}
+					info.Binaries[in] = h
+				}
+			}
 			if lang == "cs" {
 				for _, suffix := range []string{".deps.json", ".runtimeconfig.json"} {
 					config := strings.TrimSuffix(p, ".dll") + suffix
@@ -344,7 +528,7 @@ func generateAndBuild(langs []string) error {
 		return err
 	}
 	info.Binaries["build/paired/corpus"] = hash
-	for _, p := range []string{"bench/corpus/Bench.schema", "bench/corpus/FixedTable.schema", "testdata/wire/bench_mixed.bin", "bench/corpus/variants/bench_mixed.variants.bin", "bench/paired/corpus/bench_table.bin", "bench/paired/corpus/bench_table.variants.bin", "bench/paired/corpus/bench_table.lengths"} {
+	for _, p := range []string{"bench/corpus/Bench.schema", "bench/corpus/FixedTable.schema", "testdata/wire/bench_mixed.bin", "bench/corpus/variants/bench_mixed.variants.bin", "bench/paired/corpus/bench_table.bin", "bench/paired/corpus/bench_table.variants.bin", "bench/paired/corpus/bench_table.lengths", "bench/paired/corpus/bench_fixed.bin", "bench/paired/corpus/bench_fixed.vocab"} {
 		h, e := hashFile(p)
 		if e != nil {
 			return e
@@ -464,6 +648,16 @@ func parseRowsForIterations(data []byte, lang, wire, id string, wantIterations i
 		if wire == "table" {
 			bench, family = "bench_table", "table"
 		}
+		// THE TABLE WIRE HAS TWO FORMS AND ONE CORPUS (docs/SPEC-TABLES.md
+		// §3.4). A leg that measures the FIXED form names its rows bench_fixed
+		// and a leg that measures the tolerant one names them bench_table;
+		// both carry the same 64 logical records, both are family `table`, and
+		// both are answerable to the same corpus id, which is what makes the
+		// two divisible against one packet row. A leg that emitted BOTH would
+		// be a duplicate path and is refused below by `seen`.
+		if wire == "table" && cols[1] == "bench_fixed" {
+			bench = "bench_fixed"
+		}
 		if cols[1] != bench || cols[12] != family || cols[11] != id || cols[5] != "1" || (cols[2] != "write" && cols[2] != "round_trip") || seen[cols[2]] {
 			return nil, fmt.Errorf("wrong or duplicate %s/%s row identity: %v", lang, wire, cols)
 		}
@@ -506,8 +700,15 @@ func expectedChecks(lang, wire string) string {
 	if wire == "table" {
 		return "contract"
 	}
-	if lang == "go" {
+	switch lang {
+	case "go":
 		return "always"
+	case "elixir":
+		// The generated Elixir writer takes no caller-error checks and its
+		// reader validates the wire contract in every build — there is no
+		// release mode that removes either, so the axis is `contract` on both
+		// wires (bench/elixir/runner.exs states the same).
+		return "contract"
 	}
 	return "removed"
 }
@@ -812,8 +1013,8 @@ func main() {
 	langs := strings.Split(*langsFlag, ",")
 	seen := map[string]bool{}
 	for _, lang := range langs {
-		if !contains(languages, lang) || seen[lang] {
-			fail(errors.New("langs must be unique c,cpp,go,cs names"))
+		if !contains(knownLanguages, lang) || seen[lang] {
+			fail(fmt.Errorf("langs must be unique %s names", strings.Join(knownLanguages, ",")))
 		}
 		seen[lang] = true
 	}
@@ -831,8 +1032,12 @@ func main() {
 	}
 	fast := fastConfig{Rounds: *fastRounds, PacketIterations: *packetIters, TableIterations: *tableIters, Timeout: *fastTimeout, Noise: *noise}
 	if *mode == "fast" {
-		if len(langs) != 4 {
-			fail(errors.New("fast mode requires all four languages"))
+		// FAST IS THE DIAGNOSTIC MODE and it takes any non-empty subset: it
+		// publishes nothing, seals nothing, and is where a leg that is not in a
+		// published pass yet is measured at all. Confirmation is unchanged
+		// below — the published four and nothing else.
+		if len(langs) == 0 || len(langs) > len(knownLanguages) {
+			fail(errors.New("fast mode requires at least one known language"))
 		}
 		if e := fast.validate(); e != nil {
 			fail(e)
@@ -862,8 +1067,11 @@ func main() {
 		}
 		return
 	}
-	if len(langs) != 4 {
-		fail(errors.New("published pass requires all four languages"))
+	// A CONFIRMATION PASS IS THE PUBLISHED SET, EXACTLY: provenance.go seals a
+	// pass over `languages`, so a pass measuring anything else would render as
+	// a pass it is not.
+	if len(langs) != len(languages) || !slices.Equal(slices.Sorted(slices.Values(langs)), slices.Sorted(slices.Values(languages))) {
+		fail(fmt.Errorf("published pass requires exactly the published languages: %s", strings.Join(languages, ",")))
 	}
 	if e := measure(langs, *out, *rounds, info, *receipt); e != nil {
 		fail(e)

@@ -30,6 +30,16 @@ The next representative corpus is a variable table. Message form, block form,
 and cooked save/load follow as separate measured operations. They do not acquire
 a performance result from this fixed-table pass.
 
+**The FIXED form (form 3) is measured through the paired driver, not through
+this board.** `bench/paired/main.go` names the fixed rows `bench_fixed` and
+answers them to the paired corpus's own id; `bench/tables/cpp`, `bench/tables/c`
+and `bench/tables/elixir` carry that path. The Elixir leg carries **form 3 and
+nothing else** — form 1 is deferred to schema#515, so it has no `bench_table`
+row and therefore no `leg` script on this board yet; `run.sh`'s row filter
+accepts `bench_table` only. That registration is the named follow-on, and it is
+what would put Elixir on the board below rather than only in a paired
+diagnostic.
+
 ## The corpus
 
 [`bench/corpus/BenchTable.schema`](../corpus/BenchTable.schema) declares

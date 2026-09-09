@@ -170,7 +170,11 @@ type fastCommandReceipt struct {
 }
 
 type fastEvidence struct {
-	Status        string               `json:"status"`
+	Status string `json:"status"`
+	// Languages is what this diagnostic measured. It is recorded because fast
+	// mode takes a subset, so a reader of the summary cannot infer it from the
+	// published set.
+	Languages     []string             `json:"languages,omitempty"`
 	Reason        string               `json:"reason,omitempty"`
 	Started       string               `json:"started"`
 	Ended         string               `json:"ended,omitempty"`
@@ -278,10 +282,13 @@ func fastMeasure(langs []string, out string, info buildInfo, config fastConfig) 
 	if _, err := os.Stat(out); !os.IsNotExist(err) {
 		return errors.New("refusing to overwrite diagnostic directory")
 	}
-	for _, lang := range languages {
+	// THE BUILD HAS TO CARRY WHAT THIS RUN MEASURES, and nothing more: a
+	// diagnostic over one leg is a legitimate thing to ask for, and requiring a
+	// build of the other four to ask it would make the subset flag a lie.
+	for _, lang := range langs {
 		for _, wire := range []string{"packet", "table"} {
 			if info.Binaries[binary(wire, lang)] == "" {
-				return fmt.Errorf("cached build lacks %s/%s; run the all-language gate first", lang, wire)
+				return fmt.Errorf("cached build lacks %s/%s; build it first (-mode build -langs %s)", lang, wire, lang)
 			}
 		}
 	}
@@ -386,6 +393,7 @@ func fastMeasure(langs []string, out string, info buildInfo, config fastConfig) 
 	if gitValue(".", statusArgs...) != "" {
 		return errors.New("source changed during fast diagnostic")
 	}
+	f.evidence.Languages = langs
 	if err := writeFastSummary(tmp, f.evidence); err != nil {
 		return err
 	}
@@ -438,7 +446,11 @@ func writeFastSummary(dir string, e fastEvidence) error {
 	median := map[string]float64{}
 	var text strings.Builder
 	fmt.Fprintf(&text, "# Fast iteration diagnostic — not certified\n\n%s\n\nOperator context: %s\n\n%d observed noise warnings; see fast.json and process-samples.jsonl. Every accepted sample is at least 200ms. Short attempts are retained but excluded below. Costs use the median of the adequate rounds; one round does not establish stability.\n\nOne iteration count per wire, identical across all four languages and every round (BENCH-STANDARD §2.1): %s Packet and %s Table operations per warmup and per measured sample. A short leg raised the count for its whole group, never for itself alone. At one round the Range column is degenerate — the single value is its own minimum and maximum — so it reads as zero variance by construction, not as measured stability.\n\n| Language | Wire | Path | Median µs/op | Range µs/op |\n|---|---|---|---:|---:|\n", e.Qualification, e.Config.Noise, len(e.Noise), grouped(e.FinalCounts["packet"]), grouped(e.FinalCounts["table"]))
-	for _, lang := range languages {
+	measured := e.Languages
+	if len(measured) == 0 {
+		measured = languages
+	}
+	for _, lang := range measured {
 		for _, wire := range []string{"packet", "table"} {
 			for _, path := range []string{"write", "round_trip"} {
 				key := lang + "/" + wire + "/" + path
@@ -458,11 +470,11 @@ func writeFastSummary(dir string, e fastEvidence) error {
 		}
 	}
 	fastest := math.Inf(1)
-	for _, lang := range languages {
+	for _, lang := range measured {
 		fastest = math.Min(fastest, median[lang+"/table/round_trip"])
 	}
 	text.WriteString("\n| Language | Fixed Table % | vs Packet Wire % |\n|---|---:|---:|\n")
-	for _, lang := range languages {
+	for _, lang := range measured {
 		table := median[lang+"/table/round_trip"]
 		fmt.Fprintf(&text, "| %s | %.1f%% | %.1f%% |\n", names[lang], 100*table/fastest, 100*table/median[lang+"/packet/round_trip"])
 	}
