@@ -180,3 +180,14 @@ names bench/paired/main.go 3 source filenames passed to the existing compiler; n
 paths test/bench/paired_main.cpp 1 shared-data producer and packet/table equivalence oracle; no timing
 timing test/bench/fixedform_measure.cpp 8 THE FIXED FORM'S RULING MEASUREMENT (docs/SPEC-TABLES.md §3.4): one reader path was decided against a ratio, and this is the file that reports it — the plan-driven reader against straight-line constant-offset loads. It is not in `make test` and produces no CSV row; it exists so the ruling's bound stays checkable
 paths test/bench/fixedform_measure.cpp 1 the same file: its path names a measurement because it IS one, and it lives beside the corpus it measures rather than in a runner directory
+
+# THE FIXED FORM'S CORPUS PRODUCER AND CROSS-LANGUAGE ORACLE (docs/SPEC-TABLES.md
+# §3.4). It writes bench_fixed.bin with the C++ reference's form-3 writer and
+# publishes the VALUES beside the bytes, so a port is checked twice over and a
+# shared offset mistake cannot round trip its way past both checks. It carries
+# NO CLOCK — it is the oracle every form-3 leg is gated against before one is
+# allowed to report a number — and it names its shapes only through the packet
+# corpus it decodes, never by field. Only its bench-shaped PATH trips a check,
+# exactly as its two siblings' above do.
+
+paths test/bench/fixedform_corpus.cpp 1 the fixed form's corpus producer and cross-language value oracle: correctness code, no timing

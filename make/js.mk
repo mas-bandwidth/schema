@@ -361,6 +361,28 @@ generated/bench/js/.stamp: bin/schema $(SCHEMAS_BENCH)
 	./bin/schema generate --lang js --out generated/bench/js/realworld bench/corpus/RealWorld.schema
 	@touch $@
 
+# THE PAIRED UNIT, for bench/tables/js — the FIXED FORM's leg in `bench/paired`
+# (bench/paired/main.go, bench/tables/js/table_main.mjs). Bench.schema and
+# FixedTable.schema are ONE unit, exactly as the C, C++, Go and C# paired
+# generations are: the fixed root reaches the packet type so the compiler emits
+# its table codec. Nothing compiles here — node runs these modules as written —
+# and the driver regenerates the same files itself, so the two agree byte for
+# byte or `generated-current` says so.
+generated/bench/paired/js/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	@mkdir -p generated/bench/paired/js
+	./bin/schema generate --lang js --out generated/bench/paired/js bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	@touch $@
+
+# THE FIXED FORM'S PAIRED LEG, gated and not timed: the same no-clock `--gate`
+# the C++ and C legs answer in `tables-fixed-matched`, over the same corpus.
+# The clock lives in `go run ./bench/paired`, and a clock does not gate a build.
+.PHONY: tables-js-fixed-matched
+tables-js-fixed-matched: generated/bench/paired/js/.stamp
+	cd $(CURDIR) && $(NODE) bench/tables/js/table_main.mjs --gate --indexed \
+		--wire-dir bench/paired/corpus --variant-dir bench/paired/corpus
+
+test-js: generated/bench/paired/js/.stamp tables-js-fixed-matched
+
 
 # ---------------------------------------------------------------------------
 # THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)

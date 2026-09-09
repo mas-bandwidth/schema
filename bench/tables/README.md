@@ -225,6 +225,18 @@ Stated so a reader knows what is not here, and why:
   emitters. The lock is a ruling about a profiling round, not a side effect of
   a board existing; it belongs to the round the owner opens after the first
   box sitting reads.
+- **`bench/tables/js` has a runner and NO `leg`.** `run.sh` discovers a leg by
+  the path `bench/tables/<lang>/leg`, and this page's leg measures the
+  TOLERANT wire — which JavaScript does not have (schema#516: the backend
+  carries form 3 and only form 3). So there is nothing here for this pass to
+  run, and registering a command that could only ever SKIP would put a row of
+  noise on the board. `bench/tables/js/table_main.mjs` is instead the FIXED
+  form's leg for [`bench/paired`](../paired/README.md), where it is a
+  table-only language: it names the same flags and emits the same CSV columns
+  as the C++ reference, it is gated by `make tables-js-fixed-matched`, and it
+  is the one leg on this page whose rows are named `bench_fixed`. When a
+  form-1 JavaScript wire lands, its `leg` lands with it.
+
 - **The `inline` column stays `unknown`** for both legs. The §4 verdict pass
   has no branch for the generated table codec, which is the same open item the
   type board's data-driven rows carry.

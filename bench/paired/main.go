@@ -25,8 +25,52 @@ import (
 	"time"
 )
 
+// THE PAIRED LANGUAGES. Each one measures BOTH wires over the same 64 logical
+// records, which is the only thing that licenses the division, so the
+// confirmation pass, its window and its board are defined over exactly these.
 var languages = []string{"cpp", "c", "go", "cs"}
-var names = map[string]string{"c": "C", "cpp": "C++", "go": "Go", "cs": "C#"}
+
+// A TABLE-ONLY LANGUAGE measures the table wire and NEVER a ratio.
+//
+// js is here because its packet leg does not exist to be run rather than
+// because somebody chose to skip it: bench/js/main.mjs imports the serialize.js
+// sibling runtime, has neither `--gate` nor `--iterations` — the two flags this
+// driver passes on every invocation — and appends the §5.1 `codec` column, so
+// its rows are eighteen columns where parseRows requires seventeen. The table
+// codec has none of those problems: the generated JS table modules import no
+// runtime at all. A packet leg is separate work with its own ruling, and
+// filling this driver's second wire with a fabricated row would be inventing a
+// measurement, so js rides the table wire alone and appears in no ratio, no
+// confirmation pass and no board.
+var tableOnlyLanguages = []string{"js"}
+
+var names = map[string]string{"c": "C", "cpp": "C++", "go": "Go", "cs": "C#", "js": "JavaScript"}
+
+func allLanguages() []string {
+	return append(append([]string{}, languages...), tableOnlyLanguages...)
+}
+
+// wiresFor names the wires a language actually has a runner for. Every loop
+// that walks a language's legs walks this and not the literal pair, so a
+// table-only language is never asked for a packet row it cannot produce.
+func wiresFor(lang string) []string {
+	if contains(tableOnlyLanguages, lang) {
+		return []string{"table"}
+	}
+	return []string{"packet", "table"}
+}
+
+// onlyTableLanguages reports whether every requested language is table-only.
+// A request is one shape or the other and never a mixture: a diagnostic that
+// paired some languages and not others would print a ratio table with holes.
+func onlyTableLanguages(langs []string) bool {
+	for _, lang := range langs {
+		if !contains(tableOnlyLanguages, lang) {
+			return false
+		}
+	}
+	return len(langs) > 0
+}
 
 const header = "lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline"
 
@@ -101,6 +145,13 @@ func abs(p string) string {
 	return s
 }
 func binary(wire, lang string) string {
+	// AN INTERPRETED LEG HAS NO BUILD PRODUCT, so the thing this driver pins,
+	// hashes and runs is the runner source itself. Its generated modules are
+	// hashed beside it (generateAndBuild), so the recorded identity covers the
+	// whole unit that runs and not only the entry point.
+	if lang == "js" {
+		return filepath.Join("bench", "tables", "js", "table_main.mjs")
+	}
 	p := filepath.Join("build", "paired", wire+"-"+lang)
 	if lang == "cs" {
 		if wire == "packet" {
@@ -113,10 +164,34 @@ func binary(wire, lang string) string {
 	}
 	return p
 }
+
+// generatedModules names the generated sources an interpreted leg loads, so
+// readBuild verifies them the way it verifies a compiled leg's binary. It is a
+// GLOB and not a list: the emitter decides how many modules a unit has, and a
+// list here would be one more place to keep in step with it — and one more
+// place naming a corpus type, which this driver has no business doing.
+func generatedModules(lang string) ([]string, error) {
+	if !contains(tableOnlyLanguages, lang) {
+		return nil, nil
+	}
+	found, err := filepath.Glob(filepath.Join("generated", "bench", "paired", lang, "*."+lang))
+	if err != nil {
+		return nil, err
+	}
+	if len(found) == 0 {
+		return nil, fmt.Errorf("no generated %s modules for the paired unit", lang)
+	}
+	sort.Strings(found)
+	return found, nil
+}
+func nodeExecutable() string { return setting("NODE", "node") }
 func runner(wire, lang string, args ...string) command {
 	a := []string{binary(wire, lang)}
-	if lang == "cs" {
+	switch lang {
+	case "cs":
 		a = append([]string{"dotnet"}, a...)
+	case "js":
+		a = append([]string{nodeExecutable()}, a...)
 	}
 	if wire == "table" {
 		a = append(a, "--indexed", "--wire-dir", "bench/paired/corpus", "--variant-dir", "bench/paired/corpus")
@@ -192,6 +267,12 @@ func generateAndBuild(langs []string) error {
 	for _, lang := range langs {
 		if e := run(schema, "generate", "--lang", lang, "--out", "generated/bench/paired/"+lang, "bench/corpus/Bench.schema", "bench/corpus/FixedTable.schema"); e != nil {
 			return e
+		}
+		// The standalone packet unit is the packet leg's, so a table-only
+		// language does not generate it: nothing here would compile it and
+		// emitting it would imply a leg that does not exist.
+		if contains(tableOnlyLanguages, lang) {
+			continue
 		}
 		if e := run(schema, "generate", "--lang", lang, "--out", "generated/bench/"+lang, "bench/corpus/Bench.schema"); e != nil {
 			return e
@@ -294,6 +375,17 @@ func generateAndBuild(langs []string) error {
 					return e
 				}
 			}
+		case "js":
+			// Nothing compiles. The build step's whole job is to prove the
+			// interpreter is here and that the leg loads and gates, which is
+			// the same evidence a compile gives the other legs: a leg that
+			// cannot start is a build failure and not a skipped row.
+			if e := run(nodeExecutable(), "--version"); e != nil {
+				return fmt.Errorf("node is required for the js leg (set NODE): %w", e)
+			}
+			if e := execute(runner("table", lang, "--gate")); e != nil {
+				return e
+			}
 		}
 	}
 	hostname, _ := os.Hostname()
@@ -304,13 +396,24 @@ func generateAndBuild(langs []string) error {
 			info.Runtimes[key] += "-dirty"
 		}
 	}
-	for key, args := range map[string][]string{"c": {cc, "--version"}, "cpp": {cxx, "--version"}, "go": {"go", "version"}, "dotnet": {"dotnet", "--info"}} {
+	for key, args := range map[string][]string{"c": {cc, "--version"}, "cpp": {cxx, "--version"}, "go": {"go", "version"}, "dotnet": {"dotnet", "--info"}, "node": {nodeExecutable(), "--version"}} {
 		if b, e := capture(command{args: args}); e == nil {
 			info.Tools[key] = strings.TrimSpace(string(b))
 		}
 	}
 	for _, lang := range langs {
-		for _, wire := range []string{"packet", "table"} {
+		modules, e := generatedModules(lang)
+		if e != nil {
+			return e
+		}
+		for _, p := range modules {
+			h, e := hashFile(p)
+			if e != nil {
+				return e
+			}
+			info.Binaries[p] = h
+		}
+		for _, wire := range wiresFor(lang) {
 			p := binary(wire, lang)
 			h, e := hashFile(p)
 			if e != nil {
@@ -344,6 +447,9 @@ func generateAndBuild(langs []string) error {
 	info.Tools["cpp_table_flags"] = strings.Join(cppFlags, " ") + " -DBENCH_MATCHED"
 	info.Tools["c_packet_flags"] = strings.Join(cFlags, " ")
 	info.Tools["c_table_flags"] = strings.Join(cFlags, " ") + " -DBENCH_MATCHED -ffp-contract=off"
+	// An interpreted leg has no flags to record; what decides its code is the
+	// interpreter, which the tools map above already carries by version.
+	info.Tools["js_table_flags"] = "none: node runs the generated ES modules as written"
 	hash, err := hashFile("build/paired/corpus")
 	if err != nil {
 		return err
@@ -416,7 +522,7 @@ func gate(langs []string) error {
 		return e
 	}
 	for _, lang := range langs {
-		for _, wire := range []string{"packet", "table"} {
+		for _, wire := range wiresFor(lang) {
 			out, e := capture(runner(wire, lang, "--gate"))
 			if e != nil {
 				return fmt.Errorf("%s/%s gate: %w", lang, wire, e)
@@ -827,10 +933,20 @@ func main() {
 	langs := strings.Split(*langsFlag, ",")
 	seen := map[string]bool{}
 	for _, lang := range langs {
-		if !contains(languages, lang) || seen[lang] {
-			fail(errors.New("langs must be unique c,cpp,go,cs names"))
+		if !contains(allLanguages(), lang) || seen[lang] {
+			fail(errors.New("langs must be unique " + strings.Join(allLanguages(), ",") + " names"))
 		}
 		seen[lang] = true
+	}
+	// A TABLE-ONLY LANGUAGE IS NEVER IN A MIXED REQUEST. Build and gate could
+	// take one, but every other mode reads the request as a set to compare, so
+	// keeping the shapes apart everywhere is one rule instead of four.
+	if !onlyTableLanguages(langs) {
+		for _, lang := range langs {
+			if contains(tableOnlyLanguages, lang) {
+				fail(errors.New("a table-only language is requested alone: -langs " + lang))
+			}
+		}
 	}
 	if *mode == "render" {
 		if e := render(*out); e != nil {
@@ -846,8 +962,11 @@ func main() {
 	}
 	fast := fastConfig{Rounds: *fastRounds, PacketIterations: *packetIters, TableIterations: *tableIters, Timeout: *fastTimeout, Noise: *noise}
 	if *mode == "fast" {
-		if len(langs) != 4 {
-			fail(errors.New("fast mode requires all four languages"))
+		// EITHER the whole paired set — the only shape that yields a ratio —
+		// or a table-only language on its own, which yields the table wire's
+		// own numbers and no ratio at all.
+		if !onlyTableLanguages(langs) && len(langs) != len(languages) {
+			fail(errors.New("fast mode requires all four paired languages, or one table-only language alone"))
 		}
 		if e := fast.validate(); e != nil {
 			fail(e)
@@ -877,8 +996,10 @@ func main() {
 		}
 		return
 	}
-	if len(langs) != 4 {
-		fail(errors.New("published pass requires all four languages"))
+	if onlyTableLanguages(langs) || len(langs) != len(languages) {
+		// The board is a ratio, and a table-only language has no packet row to
+		// divide, so it cannot enter a published pass at all.
+		fail(errors.New("published pass requires all four paired languages"))
 	}
 	if e := measure(langs, *out, *rounds, info, *receipt); e != nil {
 		fail(e)
