@@ -742,13 +742,19 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 		h.WriteString(tableAllocatorRuntime)
 		h.WriteString(tableArenaRuntime(u.Package))
 		if g.fileWire() {
-			// THE BYTE BUFFER's runtime, and only where the unit DECLARES one
-			// (docs/SPEC-TABLES.md §2.5, §2.2). Every name in these two blocks
-			// — the blob storage header and its views, the emplace family, the
-			// two reserved type ids and the two node types they key — is
-			// reached from a `*bytes` or a `*string` declaration and from
-			// nowhere else, so a pointered unit that declares neither carried
-			// them and could not reach them.
+			// THE BYTE BUFFER's runtime is TWO HALVES, and only the first
+			// is every pointered unit's (blobs.go).
+			//
+			// THE FLOOR — TableBlob, table_blob_storage, the emplace family
+			// — is named by code that is in EVERY pointered unit whether or
+			// not the unit declares a byte buffer, so tableBlobRuntime
+			// always writes it here.
+			//
+			// THE SURFACE — the two views, the two reserved type ids, the
+			// three read accessors, and the two node types they key — is
+			// reached only from a `*bytes` or a `*string` DECLARATION, and
+			// is emitted only where the unit has one (docs/SPEC-TABLES.md
+			// §2.5, §2.2).
 			//
 			// THE CENSUS IS ir.BlobPointerFields, A DECLARATION SCAN, and
 			// never ir.PointerReachableBlobs. That one answers a WIRE question

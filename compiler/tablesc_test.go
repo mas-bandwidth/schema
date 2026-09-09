@@ -47,7 +47,7 @@ func TestCTableRuntimeNamesAreClaimed(t *testing.T) {
 	// runtime blocks follow a CENSUS and are emitted only into a unit that
 	// declares what reaches them — kind 33's UTF-16 helpers, the float rung
 	// table_wire_widen_f32, and the byte buffer's own surface
-	// (compiler/tabledeadc_test.go). The registry's claim is that the C
+	// (compiler/tablecensusc_test.go). The registry's claim is that the C
 	// backend defines those names SOMEWHERE, so the scan is taken over a
 	// corpus that declares all three; a scan over a unit that declares none
 	// would read a gate as an unclaimed registration.
