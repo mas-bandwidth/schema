@@ -1142,6 +1142,7 @@ refuse, under s390x emulation); `tables-java-order`;
 **Measured effect.** Structural.
 
 **Negative control.** `tables-big-endian-negative-control`;
+`tables-c-big-endian-negative-control`;
 `conformance-negative-control-c-foreign` neuters the byte swap and requires
 both foreign rows red with `cook` and `block` green.
 

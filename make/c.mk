@@ -533,6 +533,55 @@ tables-c-big-endian-negative-control: test/c-tables/soak_main.c
 		  cat $(C_BE_NC)/be.log; exit 1; }
 	@echo "negative control: the same C fallback turns the s390x golden gate red, on the wire goldens"
 
+# THE LITTLE-ENDIAN MEMCPY ARM of table_writer_finish. The control above
+# sabotages the #else fallback and leaves this copy standing; on this host the
+# #else is not compiled, so the ordinary soak runs the memcpy and nothing named
+# was watching it. Reversing the interned id words here must turn the host soak
+# red on the same "does not re-save to its own bytes" golden. Overlay, so no
+# tracked file is written. Host-only: the negative-controls matrix runs it.
+C_LE_NC := build/c-le-sabotage
+C_LE_NC_GEN := $(C_LE_NC)/generated
+C_LE_NC_INCLUDES := $(subst build/tables-generated-c,$(C_LE_NC_GEN),$(C_CONFORMANCE_INCLUDES))
+C_LE_NC_SOAK_SRCS := test/c-tables/soak_main.c test/conformance/c/unit_tabledemo.c \
+	test/conformance/c/unit_tblv1.c test/conformance/c/unit_tblv2.c \
+	test/conformance/c/unit_tblp1.c test/conformance/c/unit_tblp3.c \
+	$(C_LE_NC_GEN)/examples/TablesTable.c $(C_LE_NC_GEN)/examples/WideTable.c \
+	$(C_LE_NC_GEN)/examples/NestedTable.c $(C_LE_NC_GEN)/examples/KeyedTable.c \
+	$(C_LE_NC_GEN)/examples/PackTable.c $(C_LE_NC_GEN)/examples/GuardedTable.c \
+	$(C_LE_NC_GEN)/examples/RangesTable.c \
+	$(C_LE_NC_GEN)/v1/V1Table.c $(C_LE_NC_GEN)/v2/V2Table.c \
+	$(C_LE_NC_GEN)/p1/P1Table.c $(C_LE_NC_GEN)/p3/P3Table.c
+.PHONY: tables-c-little-endian-negative-control
+tables-c-little-endian-negative-control: test/c-tables/soak_main.c
+	@rm -rf $(C_LE_NC) && mkdir -p $(C_LE_NC)
+	@sed 's|if ( count > 0 ) { memcpy( dst, w->vocabulary->ids, (size_t) ( count \* 8 ) ); }|if ( count > 0 ) { int64_t k; for ( k = 0; k < count; k++ ) { memcpy( dst + k * 8, w->vocabulary->ids + ( count - 1 - k ), 8 ); } } /* SABOTAGED: reversed id words */|' \
+		internal/codegen/ctable/wire.go > $(C_LE_NC)/wire.go.txt
+	@cmp -s internal/codegen/ctable/wire.go $(C_LE_NC)/wire.go.txt && \
+		{ echo "NEGATIVE CONTROL: the C memcpy-arm sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/ctable/wire.go":"%s/$(C_LE_NC)/wire.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(C_LE_NC)/overlay.json
+	go build -overlay $(C_LE_NC)/overlay.json -o $(C_LE_NC)/schema ./cmd/schema
+	$(C_LE_NC)/schema generate --lang c --out $(C_LE_NC_GEN)/examples tables/examples
+	$(C_LE_NC)/schema generate --lang c --out $(C_LE_NC_GEN)/v1 test/tables/V1.schema
+	$(C_LE_NC)/schema generate --lang c --out $(C_LE_NC_GEN)/v2 test/tables/V2.schema
+	$(C_LE_NC)/schema generate --lang c --out $(C_LE_NC_GEN)/p1 test/tables/P1.schema
+	$(C_LE_NC)/schema generate --lang c --out $(C_LE_NC_GEN)/p3 test/tables/P3.schema
+	@grep -q "SABOTAGED: reversed id words" $(C_LE_NC_GEN)/examples/TablesTable.h || \
+		{ echo "NEGATIVE CONTROL: the sabotaged emitter emitted an unsabotaged memcpy arm"; exit 1; }
+	@grep -Fq "v >> ( j * 8 )" $(C_LE_NC_GEN)/examples/TablesTable.h || \
+		{ echo "NEGATIVE CONTROL: the sabotage removed the big-endian fallback arm"; exit 1; }
+	$(CC) -std=c99 -Wall -Wextra -Werror -Wshadow -Wtype-limits $(C_TAUTOLOGICAL) \
+		-O2 -ffp-contract=off $(C_LE_NC_INCLUDES) $(C_LE_NC_SOAK_SRCS) \
+		-o $(C_LE_NC)/soak -lm
+	@if ./$(C_LE_NC)/soak 0 > $(C_LE_NC)/host.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: reversed id words in the little-endian memcpy arm left the host soak green"; \
+		cat $(C_LE_NC)/host.log; exit 1; \
+	fi
+	@grep -q "does not re-save to its own bytes" $(C_LE_NC)/host.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the host soak went red, but not on a wire golden"; \
+		  cat $(C_LE_NC)/host.log; exit 1; }
+	@echo "negative control: reversed id words in the C memcpy arm turn the host soak red, on the wire goldens"
+
 # THE KEYED None REFUSAL, C side (docs/SPEC-TABLES.md §2.4). C's accessor is a
 # macro over table_keyed_slot rather than an operator[] — the one spelling that
 # differs from the reference — and the refusal inside it is the same assert plus

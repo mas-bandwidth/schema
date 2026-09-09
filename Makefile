@@ -2802,7 +2802,8 @@ tables-cook-endian: bin/schema
 # whole argument for the leg: this is precisely the defect class no
 # little-endian CI can see. The C twin is tables-c-big-endian-negative-control
 # (make/c.mk): it sabotages table_writer_finish's #else arm, because this
-# control never reaches that arm.
+# control never reaches that arm. The memcpy arm of that function is
+# tables-c-little-endian-negative-control, a host soak.
 #
 # The sabotaged emitter reaches the compiler through `go build -overlay`, so no
 # tracked file is ever written to: an interrupt cannot leave a sabotaged

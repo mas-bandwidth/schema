@@ -522,6 +522,10 @@ jobs:
       - name: the C big-endian negative control
         run: make tables-c-big-endian-negative-control BE_CXX=s390x-linux-gnu-g++-13 BE_CC=s390x-linux-gnu-gcc-13
 
+      # The memcpy arm of the same function is a host soak
+      # (tables-c-little-endian-negative-control). The negative-controls matrix
+      # runs it; this job does not, because that arm is not compiled for s390x.
+
       # And the GO table leg on the same target. Go cross-compiles, so the
       # conformance driver is one env var away from a big-endian binary, and
       # the harness's own goldens become the gate: a big-endian reader loads
