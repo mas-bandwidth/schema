@@ -719,10 +719,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_arm_array( serialize_read_str
                         return 0;
                     }
                     offset_value = raw;
-                    if ( offset_value > 8191ULL )
-                    {
-                        return 0;
-                    }
                     value->items[i] = (uint16_t) offset_value;
                 }
             }
@@ -1065,10 +1061,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_regain_after_align( serialize
                     return 0;
                 }
                 offset_value = raw;
-                if ( offset_value > 8191ULL )
-                {
-                    return 0;
-                }
                 value->items[i] = (uint16_t) offset_value;
             }
         }

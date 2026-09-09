@@ -68,7 +68,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		out[f.Base+".h"] = g.assembleHeader()
 		errs = append(errs, g.errs...)
 
-		w := &gen{unit: u, file: f, deps: sortedDeps(deps[f.Base]), wire: true}
+		w := &gen{unit: u, file: f, deps: sortedDeps(deps[f.Base])}
 		w.emitWireHeader()
 		out[f.Base+"Wire.h"] = w.assembleWireHeader()
 		errs = append(errs, w.errs...)
@@ -99,7 +99,6 @@ type gen struct {
 	saidFlagAppend bool // the flag_names_* append helpers are emitted once per file
 	file           *ir.File
 	deps           []string
-	wire           bool
 	body           strings.Builder
 
 	// fixed [N]uint8 arrays of the struct being emitted whose element bytes
