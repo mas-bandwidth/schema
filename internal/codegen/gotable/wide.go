@@ -26,15 +26,21 @@ func wideLiteral(v *big.Int, signed bool) string {
 }
 
 func (g *tableGen) emitReadWide(f *ir.Field, expr, rdr, kind, ind, onBad string) {
-	g.pf("%sif !%s.Has(tableKindBytes(%s)) { %s }\n", ind, rdr, kind, onBad)
-	g.pf("%s{\n%s var v %s\n", ind, ind, goFieldType(f.Type))
-	g.pf("%s if tableKindBytes(%s) == 16 { v.Lo = %s.Get64(); v.Hi = %s.Get64() } else {\n", ind, kind, rdr, rdr)
-	if f.Type.Signed {
-		g.pf("%s  v = serialize.Int128From64(%s.Signed(%s))\n", ind, rdr, kind)
+	if knownKindWidth(kind) == 16 {
+		g.pf("%sif !%s.Has(16) { %s }\n", ind, rdr, onBad)
+		g.pf("%s{\n%s var v %s\n", ind, ind, goFieldType(f.Type))
+		g.pf("%s v.Lo = %s.Get64(); v.Hi = %s.Get64()\n", ind, rdr, rdr)
 	} else {
-		g.pf("%s  v.Lo = %s.Unsigned(%s)\n", ind, rdr, kind)
+		g.pf("%sif !%s.Has(tableKindBytes(%s)) { %s }\n", ind, rdr, kind, onBad)
+		g.pf("%s{\n%s var v %s\n", ind, ind, goFieldType(f.Type))
+		g.pf("%s if tableKindBytes(%s) == 16 { v.Lo = %s.Get64(); v.Hi = %s.Get64() } else {\n", ind, kind, rdr, rdr)
+		if f.Type.Signed {
+			g.pf("%s  v = serialize.Int128From64(%s.Signed(%s))\n", ind, rdr, kind)
+		} else {
+			g.pf("%s  v.Lo = %s.Unsigned(%s)\n", ind, rdr, kind)
+		}
+		g.pf("%s }\n", ind)
 	}
-	g.pf("%s }\n", ind)
 	if f.HasIntRange {
 		rlo, rhi, _ := ir.TableRawRange(f)
 		lo, hi := wideLiteral(rlo, f.Type.Signed), wideLiteral(rhi, f.Type.Signed)

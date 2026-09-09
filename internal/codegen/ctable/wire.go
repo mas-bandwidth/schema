@@ -76,6 +76,11 @@ func (g *tableGen) wirePrimitives() string {
 			writeNodes = "    struct TableNumbering * nodes;"
 			readNodes = "    struct TableNodeMap * nodes;"
 		}
+		checkDefault := ""
+		if g.hasProbes {
+			checkDefault = ", check_default"
+		}
+		runtime = strings.ReplaceAll(runtime, "@CHECK_DEFAULT@", checkDefault)
 		runtime = strings.ReplaceAll(runtime, "@WRITE_NODES@", writeNodes)
 		runtime = strings.ReplaceAll(runtime, "@READ_NODES@", readNodes)
 	}
@@ -108,7 +113,7 @@ typedef struct TableWriter
 {
     uint8_t * buffer;
     int64_t capacity, offset;
-    int overflow, id_checkpoint, check_default;
+    int overflow, id_checkpoint@CHECK_DEFAULT@;
     TableWriteIds * vocabulary;
 @WRITE_NODES@
 } TableWriter;
@@ -608,7 +613,11 @@ func (g *tableGen) emitWireScalarLeafMeasure(st *ir.Struct) {
 			return
 		}
 	}
-	g.pf("    if ( w->buffer == NULL && !w->check_default )\n    {\n")
+	if g.canProbe(st) {
+		g.pf("    if ( w->buffer == NULL && !w->check_default )\n    {\n")
+	} else {
+		g.pf("    if ( w->buffer == NULL )\n    {\n")
+	}
 	guards := tableGuardExprs(st)
 	// With every field id already interned, a small vocabulary needs one byte
 	// per riding reference. Count those bytes with the scalar payload instead
@@ -717,7 +726,9 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 			condition = expr + "_present"
 		}
 		g.pf("        if ( %s )\n        {\n", condition)
-		g.pf("            if ( w->check_default ) { w->offset = 2; return 1; }\n")
+		if g.canProbe(st) {
+			g.pf("            if ( w->check_default ) { w->offset = 2; return 1; }\n")
+		}
 		g.pf("            %s\n", g.wireHeaderCall(ir.TableFieldWireId(f), wireKind))
 		switch {
 		case framed:

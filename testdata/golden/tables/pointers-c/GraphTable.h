@@ -3831,7 +3831,6 @@ static SCHEMA_UNUSED int settings_save_body( TableWriter * w, const Settings * v
     { /* quality */
         if ( !( value->quality == 2 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 23, 0x7a8060916400fe66ull, 4 );
             table_writer_put32( w, (uint32_t) ( value->quality ) );
         }
@@ -3840,7 +3839,6 @@ static SCHEMA_UNUSED int settings_save_body( TableWriter * w, const Settings * v
         if ( value->label_length < 0 || value->label_length > 16 ) { return 0; }
         if ( value->label_length != 0 )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 6, 0x39f7fcec8fcb623dull, 12 );
             if ( w->buffer == NULL )
             {
@@ -4020,9 +4018,6 @@ static SCHEMA_UNUSED int settings_save_message_body(TableBitWriter * w,const Set
  (void)value;
  { /* quality */
  if(!(value->quality == 2)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,28,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->quality)-UINT64_C(0),3);
  }
@@ -4030,9 +4025,6 @@ static SCHEMA_UNUSED int settings_save_message_body(TableBitWriter * w,const Set
  { /* label */
  if(value->label_length<0 || value->label_length>16) return 0;
  if(value->label_length != 0) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,29,kTableMessageRefBitsHere);
   if(value->label_length<0 || value->label_length>16) return 0;
   table_bit_put(w,(uint64_t)value->label_length,5);
@@ -4176,7 +4168,6 @@ static SCHEMA_UNUSED int list_node_save_body( TableWriter * w, const ListNode * 
     { /* value */
         if ( !( value->value == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 24, 0x7ce4fd9430e80ceaull, 4 );
             table_writer_put32( w, (uint32_t) ( value->value ) );
         }
@@ -4185,7 +4176,6 @@ static SCHEMA_UNUSED int list_node_save_body( TableWriter * w, const ListNode * 
         if ( value->name_length < 0 || value->name_length > 12 ) { return 0; }
         if ( value->name_length != 0 )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 37, 0xc4bcadba8e631b86ull, 12 );
             if ( w->buffer == NULL )
             {
@@ -4205,7 +4195,6 @@ static SCHEMA_UNUSED int list_node_save_body( TableWriter * w, const ListNode * 
     { /* next */
         if ( !( value->next.value == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 41, 0xe5316cbaa025f028ull, 17 );
             { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->next); uint64_t index=table_number_find(w->nodes,node);
               if(node!=NULL && index==0) { return 0; } table_writer_leb(w,index); }
@@ -4345,9 +4334,6 @@ static SCHEMA_UNUSED int list_node_save_message_body(TableBitWriter * w,const Li
  (void)value;
  { /* value */
  if(!(value->value == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,14,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->value)-UINT64_C(0),32);
  }
@@ -4355,9 +4341,6 @@ static SCHEMA_UNUSED int list_node_save_message_body(TableBitWriter * w,const Li
  { /* name */
  if(value->name_length<0 || value->name_length>12) return 0;
  if(value->name_length != 0) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,10,kTableMessageRefBitsHere);
   if(value->name_length<0 || value->name_length>12) return 0;
   table_bit_put(w,(uint64_t)value->name_length,4);
@@ -4367,9 +4350,6 @@ static SCHEMA_UNUSED int list_node_save_message_body(TableBitWriter * w,const Li
  }
  { /* next */
  if(!(value->next.value == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,15,kTableMessageRefBitsHere);
   { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->next);
   uint64_t index=table_number_find(w->nodes,node);
@@ -4475,7 +4455,6 @@ static SCHEMA_UNUSED int tree_node_save_body( TableWriter * w, const TreeNode * 
         if ( value->label_length < 0 || value->label_length > 12 ) { return 0; }
         if ( value->label_length != 0 )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 6, 0x39f7fcec8fcb623dull, 12 );
             if ( w->buffer == NULL )
             {
@@ -4495,7 +4474,6 @@ static SCHEMA_UNUSED int tree_node_save_body( TableWriter * w, const TreeNode * 
     { /* left */
         if ( !( value->left.value == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 2, 0x24b070ada2041cb0ull, 17 );
             { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->left); uint64_t index=table_number_find(w->nodes,node);
               if(node!=NULL && index==0) { return 0; } table_writer_leb(w,index); }
@@ -4504,7 +4482,6 @@ static SCHEMA_UNUSED int tree_node_save_body( TableWriter * w, const TreeNode * 
     { /* right */
         if ( !( value->right.value == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 21, 0x76aaaa535714d805ull, 17 );
             { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->right); uint64_t index=table_number_find(w->nodes,node);
               if(node!=NULL && index==0) { return 0; } table_writer_leb(w,index); }
@@ -4588,9 +4565,6 @@ static SCHEMA_UNUSED int tree_node_save_message_body(TableBitWriter * w,const Tr
  { /* label */
  if(value->label_length<0 || value->label_length>12) return 0;
  if(value->label_length != 0) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,32,kTableMessageRefBitsHere);
   if(value->label_length<0 || value->label_length>12) return 0;
   table_bit_put(w,(uint64_t)value->label_length,4);
@@ -4600,9 +4574,6 @@ static SCHEMA_UNUSED int tree_node_save_message_body(TableBitWriter * w,const Tr
  }
  { /* left */
  if(!(value->left.value == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,33,kTableMessageRefBitsHere);
   { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->left);
   uint64_t index=table_number_find(w->nodes,node);
@@ -4613,9 +4584,6 @@ static SCHEMA_UNUSED int tree_node_save_message_body(TableBitWriter * w,const Tr
  }
  { /* right */
  if(!(value->right.value == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,34,kTableMessageRefBitsHere);
   { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->right);
   uint64_t index=table_number_find(w->nodes,node);
@@ -4965,7 +4933,6 @@ static SCHEMA_UNUSED int scene_save_body( TableWriter * w, const Scene * value )
         if ( value->name_length < 0 || value->name_length > 24 ) { return 0; }
         if ( value->name_length != 0 )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 37, 0xc4bcadba8e631b86ull, 12 );
             if ( w->buffer == NULL )
             {
@@ -4985,7 +4952,6 @@ static SCHEMA_UNUSED int scene_save_body( TableWriter * w, const Scene * value )
     { /* version */
         if ( !( value->version == 1 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 36, 0xbb62c62c9808ea37ull, 4 );
             table_writer_put32( w, (uint32_t) ( value->version ) );
         }
@@ -4993,7 +4959,6 @@ static SCHEMA_UNUSED int scene_save_body( TableWriter * w, const Scene * value )
     { /* head */
         if ( !( value->head.value == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 0, 0x0a8f12cc5f9a0c03ull, 17 );
             { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->head); uint64_t index=table_number_find(w->nodes,node);
               if(node!=NULL && index==0) { return 0; } table_writer_leb(w,index); }
@@ -5002,7 +4967,6 @@ static SCHEMA_UNUSED int scene_save_body( TableWriter * w, const Scene * value )
     { /* tree */
         if ( !( value->tree.value == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 14, 0x5b25b8ef511eb395ull, 17 );
             { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->tree); uint64_t index=table_number_find(w->nodes,node);
               if(node!=NULL && index==0) { return 0; } table_writer_leb(w,index); }
@@ -5011,7 +4975,6 @@ static SCHEMA_UNUSED int scene_save_body( TableWriter * w, const Scene * value )
     { /* settings */
         if ( !( value->settings.value == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 43, 0xee5f6d7b48b44de8ull, 17 );
             { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->settings); uint64_t index=table_number_find(w->nodes,node);
               if(node!=NULL && index==0) { return 0; } table_writer_leb(w,index); }
@@ -5020,7 +4983,6 @@ static SCHEMA_UNUSED int scene_save_body( TableWriter * w, const Scene * value )
     { /* alias */
         if ( !( value->alias.value == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 12, 0x509220bb65a646b7ull, 17 );
             { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->alias); uint64_t index=table_number_find(w->nodes,node);
               if(node!=NULL && index==0) { return 0; } table_writer_leb(w,index); }
@@ -5032,7 +4994,6 @@ static SCHEMA_UNUSED int scene_save_body( TableWriter * w, const Scene * value )
         table_writer_rewind(&default_probe);
         if ( default_probe.offset > 1 )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 15, 0x60839e2395be697eull, 13 );
             if ( w->buffer == NULL )
             {
@@ -5053,7 +5014,6 @@ static SCHEMA_UNUSED int scene_save_body( TableWriter * w, const Scene * value )
         if ( value->layers_count < 0 || value->layers_count > 4 ) { return 0; }
         if ( value->layers_count > 0 )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 10, 0x4554e34a747022dfull, 14 );
             if ( w->buffer == NULL )
             {
@@ -5076,7 +5036,6 @@ static SCHEMA_UNUSED int scene_save_body( TableWriter * w, const Scene * value )
         table_writer_rewind(&default_probe);
         if ( default_probe.offset > 1 )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 8, 0x4320e9a2e32eac38ull, 13 );
             if ( w->buffer == NULL )
             {
@@ -5344,9 +5303,6 @@ static SCHEMA_UNUSED int scene_save_message_body(TableBitWriter * w,const Scene 
  { /* name */
  if(value->name_length<0 || value->name_length>24) return 0;
  if(value->name_length != 0) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,20,kTableMessageRefBitsHere);
   if(value->name_length<0 || value->name_length>24) return 0;
   table_bit_put(w,(uint64_t)value->name_length,5);
@@ -5356,18 +5312,12 @@ static SCHEMA_UNUSED int scene_save_message_body(TableBitWriter * w,const Scene 
  }
  { /* version */
  if(!(value->version == 1)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,21,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->version)-UINT64_C(0),7);
  }
  }
  { /* head */
  if(!(value->head.value == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,6,kTableMessageRefBitsHere);
   { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->head);
   uint64_t index=table_number_find(w->nodes,node);
@@ -5378,9 +5328,6 @@ static SCHEMA_UNUSED int scene_save_message_body(TableBitWriter * w,const Scene 
  }
  { /* tree */
  if(!(value->tree.value == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,22,kTableMessageRefBitsHere);
   { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->tree);
   uint64_t index=table_number_find(w->nodes,node);
@@ -5391,9 +5338,6 @@ static SCHEMA_UNUSED int scene_save_message_body(TableBitWriter * w,const Scene 
  }
  { /* settings */
  if(!(value->settings.value == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,23,kTableMessageRefBitsHere);
   { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->settings);
   uint64_t index=table_number_find(w->nodes,node);
@@ -5404,9 +5348,6 @@ static SCHEMA_UNUSED int scene_save_message_body(TableBitWriter * w,const Scene 
  }
  { /* alias */
  if(!(value->alias.value == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,24,kTableMessageRefBitsHere);
   { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->alias);
   uint64_t index=table_number_find(w->nodes,node);
@@ -5423,9 +5364,6 @@ static SCHEMA_UNUSED int scene_save_message_body(TableBitWriter * w,const Scene 
  probe.check_default=1;
  if(!layer_save_message_body(&probe,&value->ground)) return 0;
  if(probe.bits>kTableMessageRefBitsHere) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,25,kTableMessageRefBitsHere);
   if(!layer_save_message_body(w,&value->ground)) return 0;
  }
@@ -5433,9 +5371,6 @@ static SCHEMA_UNUSED int scene_save_message_body(TableBitWriter * w,const Scene 
  { /* layers */
  if(value->layers_count<0 || value->layers_count>4) return 0;
  if(value->layers_count>0) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,26,kTableMessageRefBitsHere);
   if(value->layers_count<0 || value->layers_count>4) return 0;
   table_bit_put(w,(uint64_t)value->layers_count-0,3);
@@ -5453,9 +5388,6 @@ static SCHEMA_UNUSED int scene_save_message_body(TableBitWriter * w,const Scene 
  probe.check_default=1;
  if(!meta_save_message_body(&probe,&value->meta)) return 0;
  if(probe.bits>kTableMessageRefBitsHere) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,27,kTableMessageRefBitsHere);
   if(!meta_save_message_body(w,&value->meta)) return 0;
  }
@@ -5676,7 +5608,6 @@ static SCHEMA_UNUSED int depot_save_body( TableWriter * w, const Depot * value )
         if ( value->name_length < 0 || value->name_length > 12 ) { return 0; }
         if ( value->name_length != 0 )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 37, 0xc4bcadba8e631b86ull, 12 );
             if ( w->buffer == NULL )
             {
@@ -5705,7 +5636,6 @@ static SCHEMA_UNUSED int depot_save_body( TableWriter * w, const Depot * value )
         }
         if ( rides )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 40, 0xdd9eb981e152e90cull, 16 );
             if ( w->buffer == NULL )
             {
@@ -5725,7 +5655,6 @@ static SCHEMA_UNUSED int depot_save_body( TableWriter * w, const Depot * value )
     { /* spare */
         if ( value->spare_present )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 9, 0x4339ee8ab21c8380ull, 13 );
             if ( w->buffer == NULL )
             {
@@ -5745,7 +5674,6 @@ static SCHEMA_UNUSED int depot_save_body( TableWriter * w, const Depot * value )
     { /* head */
         if ( !( value->head.value == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 0, 0x0a8f12cc5f9a0c03ull, 17 );
             { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->head); uint64_t index=table_number_find(w->nodes,node);
               if(node!=NULL && index==0) { return 0; } table_writer_leb(w,index); }
@@ -5865,9 +5793,6 @@ static SCHEMA_UNUSED int depot_save_message_body(TableBitWriter * w,const Depot 
  { /* name */
  if(value->name_length<0 || value->name_length>12) return 0;
  if(value->name_length != 0) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,10,kTableMessageRefBitsHere);
   if(value->name_length<0 || value->name_length>12) return 0;
   table_bit_put(w,(uint64_t)value->name_length,4);
@@ -5890,9 +5815,6 @@ static SCHEMA_UNUSED int depot_save_message_body(TableBitWriter * w,const Depot 
   break;
   } }
  if(rides) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,11,kTableMessageRefBitsHere);
   { uint32_t count=0;
   int32_t i;
@@ -5930,18 +5852,12 @@ static SCHEMA_UNUSED int depot_save_message_body(TableBitWriter * w,const Depot 
  }
  { /* spare */
  if(value->spare_present) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,12,kTableMessageRefBitsHere);
   if(!meta_save_message_body(w,&value->spare)) return 0;
  }
  }
  { /* head */
  if(!(value->head.value == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,6,kTableMessageRefBitsHere);
   { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->head);
   uint64_t index=table_number_find(w->nodes,node);
@@ -6067,7 +5983,6 @@ static SCHEMA_UNUSED int album_save_body( TableWriter * w, const Album * value )
         if ( value->name_length < 0 || value->name_length > 16 ) { return 0; }
         if ( value->name_length != 0 )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 37, 0xc4bcadba8e631b86ull, 12 );
             if ( w->buffer == NULL )
             {
@@ -6090,7 +6005,6 @@ static SCHEMA_UNUSED int album_save_body( TableWriter * w, const Album * value )
         table_writer_rewind(&default_probe);
         if ( default_probe.offset > 1 )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 1, 0x1e4984ef2e958a4cull, 13 );
             if ( w->buffer == NULL )
             {
@@ -6113,7 +6027,6 @@ static SCHEMA_UNUSED int album_save_body( TableWriter * w, const Album * value )
         table_writer_rewind(&default_probe);
         if ( default_probe.offset > 1 )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 44, 0xee7ba9ad45c64144ull, 13 );
             if ( w->buffer == NULL )
             {
@@ -6136,7 +6049,6 @@ static SCHEMA_UNUSED int album_save_body( TableWriter * w, const Album * value )
         table_writer_rewind(&default_probe);
         if ( default_probe.offset > 1 )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 42, 0xeddcb72b15486e77ull, 13 );
             if ( w->buffer == NULL )
             {
@@ -6156,7 +6068,6 @@ static SCHEMA_UNUSED int album_save_body( TableWriter * w, const Album * value )
     { /* pin */
         if ( !( value->pin.value == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 22, 0x77af761956600b54ull, 17 );
             { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->pin); uint64_t index=table_number_find(w->nodes,node);
               if(node!=NULL && index==0) { return 0; } table_writer_leb(w,index); }
@@ -6165,7 +6076,6 @@ static SCHEMA_UNUSED int album_save_body( TableWriter * w, const Album * value )
     { /* head */
         if ( !( value->head.value == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 0, 0x0a8f12cc5f9a0c03ull, 17 );
             { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->head); uint64_t index=table_number_find(w->nodes,node);
               if(node!=NULL && index==0) { return 0; } table_writer_leb(w,index); }
@@ -6291,9 +6201,6 @@ static SCHEMA_UNUSED int album_save_message_body(TableBitWriter * w,const Album 
  { /* name */
  if(value->name_length<0 || value->name_length>16) return 0;
  if(value->name_length != 0) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,1,kTableMessageRefBitsHere);
   if(value->name_length<0 || value->name_length>16) return 0;
   table_bit_put(w,(uint64_t)value->name_length,5);
@@ -6309,9 +6216,6 @@ static SCHEMA_UNUSED int album_save_message_body(TableBitWriter * w,const Album 
  probe.check_default=1;
  if(!colour_save_message_body(&probe,&value->tint)) return 0;
  if(probe.bits>kTableMessageRefBitsHere) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,2,kTableMessageRefBitsHere);
   if(!colour_save_message_body(w,&value->tint)) return 0;
  }
@@ -6324,9 +6228,6 @@ static SCHEMA_UNUSED int album_save_message_body(TableBitWriter * w,const Album 
  probe.check_default=1;
  if(!stamp_save_message_body(&probe,&value->stamp)) return 0;
  if(probe.bits>kTableMessageRefBitsHere) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,3,kTableMessageRefBitsHere);
   if(!stamp_save_message_body(w,&value->stamp)) return 0;
  }
@@ -6339,18 +6240,12 @@ static SCHEMA_UNUSED int album_save_message_body(TableBitWriter * w,const Album 
  probe.check_default=1;
  if(!marker_save_message_body(&probe,&value->marker)) return 0;
  if(probe.bits>kTableMessageRefBitsHere) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,4,kTableMessageRefBitsHere);
   if(!marker_save_message_body(w,&value->marker)) return 0;
  }
  }
  { /* pin */
  if(!(value->pin.value == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,5,kTableMessageRefBitsHere);
   { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->pin);
   uint64_t index=table_number_find(w->nodes,node);
@@ -6361,9 +6256,6 @@ static SCHEMA_UNUSED int album_save_message_body(TableBitWriter * w,const Album 
  }
  { /* head */
  if(!(value->head.value == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,6,kTableMessageRefBitsHere);
   { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->head);
   uint64_t index=table_number_find(w->nodes,node);
@@ -6842,9 +6734,6 @@ static SCHEMA_UNUSED int settings_save_body_retain( TableWriter * w, const Setti
     retention=table_retain_step(body_keep,0,0);
         if ( !( value->quality == 2 ) )
         {
-            if ( w->check_default ) { w->offset = 2;
-            return 1;
-            }
             table_retain_writer_id( w, 0x7a8060916400fe66ull , retention);
             table_writer_put8( w, 4 );
             table_writer_put32( w, (uint32_t) ( value->quality ) );
@@ -6856,9 +6745,6 @@ static SCHEMA_UNUSED int settings_save_body_retain( TableWriter * w, const Setti
         }
         if ( value->label_length != 0 )
         {
-            if ( w->check_default ) { w->offset = 2;
-            return 1;
-            }
             table_retain_writer_id( w, 0x39f7fcec8fcb623dull , retention);
             table_writer_put8( w, 12 );
             if ( w->buffer == NULL )
@@ -7166,9 +7052,6 @@ static SCHEMA_UNUSED int list_node_save_body_retain( TableWriter * w, const List
     retention=table_retain_step(body_keep,0,0);
         if ( !( value->value == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2;
-            return 1;
-            }
             table_retain_writer_id( w, 0x7ce4fd9430e80ceaull , retention);
             table_writer_put8( w, 4 );
             table_writer_put32( w, (uint32_t) ( value->value ) );
@@ -7180,9 +7063,6 @@ static SCHEMA_UNUSED int list_node_save_body_retain( TableWriter * w, const List
         }
         if ( value->name_length != 0 )
         {
-            if ( w->check_default ) { w->offset = 2;
-            return 1;
-            }
             table_retain_writer_id( w, 0xc4bcadba8e631b86ull , retention);
             table_writer_put8( w, 12 );
             if ( w->buffer == NULL )
@@ -7208,9 +7088,6 @@ static SCHEMA_UNUSED int list_node_save_body_retain( TableWriter * w, const List
     retention=table_retain_step(body_keep,2,0);
         if ( !( value->next.value == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2;
-            return 1;
-            }
             table_retain_writer_id( w, 0xe5316cbaa025f028ull , retention);
             table_writer_put8( w, 17 );
             { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->next);
@@ -7504,9 +7381,6 @@ static SCHEMA_UNUSED int tree_node_save_body_retain( TableWriter * w, const Tree
         }
         if ( value->label_length != 0 )
         {
-            if ( w->check_default ) { w->offset = 2;
-            return 1;
-            }
             table_retain_writer_id( w, 0x39f7fcec8fcb623dull , retention);
             table_writer_put8( w, 12 );
             if ( w->buffer == NULL )
@@ -7532,9 +7406,6 @@ static SCHEMA_UNUSED int tree_node_save_body_retain( TableWriter * w, const Tree
     retention=table_retain_step(body_keep,1,0);
         if ( !( value->left.value == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2;
-            return 1;
-            }
             table_retain_writer_id( w, 0x24b070ada2041cb0ull , retention);
             table_writer_put8( w, 17 );
             { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->left);
@@ -7548,9 +7419,6 @@ static SCHEMA_UNUSED int tree_node_save_body_retain( TableWriter * w, const Tree
     retention=table_retain_step(body_keep,2,0);
         if ( !( value->right.value == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2;
-            return 1;
-            }
             table_retain_writer_id( w, 0x76aaaa535714d805ull , retention);
             table_writer_put8( w, 17 );
             { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->right);
@@ -8079,9 +7947,6 @@ static SCHEMA_UNUSED int scene_save_body_retain( TableWriter * w, const Scene * 
         }
         if ( value->name_length != 0 )
         {
-            if ( w->check_default ) { w->offset = 2;
-            return 1;
-            }
             table_retain_writer_id( w, 0xc4bcadba8e631b86ull , retention);
             table_writer_put8( w, 12 );
             if ( w->buffer == NULL )
@@ -8107,9 +7972,6 @@ static SCHEMA_UNUSED int scene_save_body_retain( TableWriter * w, const Scene * 
     retention=table_retain_step(body_keep,1,0);
         if ( !( value->version == 1 ) )
         {
-            if ( w->check_default ) { w->offset = 2;
-            return 1;
-            }
             table_retain_writer_id( w, 0xbb62c62c9808ea37ull , retention);
             table_writer_put8( w, 4 );
             table_writer_put32( w, (uint32_t) ( value->version ) );
@@ -8119,9 +7981,6 @@ static SCHEMA_UNUSED int scene_save_body_retain( TableWriter * w, const Scene * 
     retention=table_retain_step(body_keep,2,0);
         if ( !( value->head.value == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2;
-            return 1;
-            }
             table_retain_writer_id( w, 0x0a8f12cc5f9a0c03ull , retention);
             table_writer_put8( w, 17 );
             { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->head);
@@ -8135,9 +7994,6 @@ static SCHEMA_UNUSED int scene_save_body_retain( TableWriter * w, const Scene * 
     retention=table_retain_step(body_keep,3,0);
         if ( !( value->tree.value == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2;
-            return 1;
-            }
             table_retain_writer_id( w, 0x5b25b8ef511eb395ull , retention);
             table_writer_put8( w, 17 );
             { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->tree);
@@ -8151,9 +8007,6 @@ static SCHEMA_UNUSED int scene_save_body_retain( TableWriter * w, const Scene * 
     retention=table_retain_step(body_keep,4,0);
         if ( !( value->settings.value == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2;
-            return 1;
-            }
             table_retain_writer_id( w, 0xee5f6d7b48b44de8ull , retention);
             table_writer_put8( w, 17 );
             { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->settings);
@@ -8167,9 +8020,6 @@ static SCHEMA_UNUSED int scene_save_body_retain( TableWriter * w, const Scene * 
     retention=table_retain_step(body_keep,5,0);
         if ( !( value->alias.value == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2;
-            return 1;
-            }
             table_retain_writer_id( w, 0x509220bb65a646b7ull , retention);
             table_writer_put8( w, 17 );
             { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->alias);
@@ -8188,9 +8038,6 @@ static SCHEMA_UNUSED int scene_save_body_retain( TableWriter * w, const Scene * 
         table_retain_rewind(&default_probe, retention);
         if ( default_probe.offset > 1 )
         {
-            if ( w->check_default ) { w->offset = 2;
-            return 1;
-            }
             table_retain_writer_id( w, 0x60839e2395be697eull , retention);
             table_writer_put8( w, 13 );
             if ( w->buffer == NULL )
@@ -8218,9 +8065,6 @@ static SCHEMA_UNUSED int scene_save_body_retain( TableWriter * w, const Scene * 
         }
         if ( value->layers_count > 0 )
         {
-            if ( w->check_default ) { w->offset = 2;
-            return 1;
-            }
             table_retain_writer_id( w, 0x4554e34a747022dfull , retention);
             table_writer_put8( w, 14 );
             if ( w->buffer == NULL )
@@ -8251,9 +8095,6 @@ static SCHEMA_UNUSED int scene_save_body_retain( TableWriter * w, const Scene * 
         table_retain_rewind(&default_probe, retention);
         if ( default_probe.offset > 1 )
         {
-            if ( w->check_default ) { w->offset = 2;
-            return 1;
-            }
             table_retain_writer_id( w, 0x4320e9a2e32eac38ull , retention);
             table_writer_put8( w, 13 );
             if ( w->buffer == NULL )
@@ -8911,9 +8752,6 @@ static SCHEMA_UNUSED int depot_save_body_retain( TableWriter * w, const Depot * 
         }
         if ( value->name_length != 0 )
         {
-            if ( w->check_default ) { w->offset = 2;
-            return 1;
-            }
             table_retain_writer_id( w, 0xc4bcadba8e631b86ull , retention);
             table_writer_put8( w, 12 );
             if ( w->buffer == NULL )
@@ -8954,9 +8792,6 @@ static SCHEMA_UNUSED int depot_save_body_retain( TableWriter * w, const Depot * 
         }
         if ( rides )
         {
-            if ( w->check_default ) { w->offset = 2;
-            return 1;
-            }
             table_retain_writer_id( w, 0xdd9eb981e152e90cull , retention);
             table_writer_put8( w, 16 );
             if ( w->buffer == NULL )
@@ -8982,9 +8817,6 @@ static SCHEMA_UNUSED int depot_save_body_retain( TableWriter * w, const Depot * 
     retention=table_retain_step(body_keep,2,0);
         if ( value->spare_present )
         {
-            if ( w->check_default ) { w->offset = 2;
-            return 1;
-            }
             table_retain_writer_id( w, 0x4339ee8ab21c8380ull , retention);
             table_writer_put8( w, 13 );
             if ( w->buffer == NULL )
@@ -9010,9 +8842,6 @@ static SCHEMA_UNUSED int depot_save_body_retain( TableWriter * w, const Depot * 
     retention=table_retain_step(body_keep,3,0);
         if ( !( value->head.value == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2;
-            return 1;
-            }
             table_retain_writer_id( w, 0x0a8f12cc5f9a0c03ull , retention);
             table_writer_put8( w, 17 );
             { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->head);
@@ -9326,9 +9155,6 @@ static SCHEMA_UNUSED int album_save_body_retain( TableWriter * w, const Album * 
         }
         if ( value->name_length != 0 )
         {
-            if ( w->check_default ) { w->offset = 2;
-            return 1;
-            }
             table_retain_writer_id( w, 0xc4bcadba8e631b86ull , retention);
             table_writer_put8( w, 12 );
             if ( w->buffer == NULL )
@@ -9359,9 +9185,6 @@ static SCHEMA_UNUSED int album_save_body_retain( TableWriter * w, const Album * 
         table_retain_rewind(&default_probe, retention);
         if ( default_probe.offset > 1 )
         {
-            if ( w->check_default ) { w->offset = 2;
-            return 1;
-            }
             table_retain_writer_id( w, 0x1e4984ef2e958a4cull , retention);
             table_writer_put8( w, 13 );
             if ( w->buffer == NULL )
@@ -9392,9 +9215,6 @@ static SCHEMA_UNUSED int album_save_body_retain( TableWriter * w, const Album * 
         table_retain_rewind(&default_probe, retention);
         if ( default_probe.offset > 1 )
         {
-            if ( w->check_default ) { w->offset = 2;
-            return 1;
-            }
             table_retain_writer_id( w, 0xee7ba9ad45c64144ull , retention);
             table_writer_put8( w, 13 );
             if ( w->buffer == NULL )
@@ -9425,9 +9245,6 @@ static SCHEMA_UNUSED int album_save_body_retain( TableWriter * w, const Album * 
         table_retain_rewind(&default_probe, retention);
         if ( default_probe.offset > 1 )
         {
-            if ( w->check_default ) { w->offset = 2;
-            return 1;
-            }
             table_retain_writer_id( w, 0xeddcb72b15486e77ull , retention);
             table_writer_put8( w, 13 );
             if ( w->buffer == NULL )
@@ -9453,9 +9270,6 @@ static SCHEMA_UNUSED int album_save_body_retain( TableWriter * w, const Album * 
     retention=table_retain_step(body_keep,4,0);
         if ( !( value->pin.value == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2;
-            return 1;
-            }
             table_retain_writer_id( w, 0x77af761956600b54ull , retention);
             table_writer_put8( w, 17 );
             { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->pin);
@@ -9469,9 +9283,6 @@ static SCHEMA_UNUSED int album_save_body_retain( TableWriter * w, const Album * 
     retention=table_retain_step(body_keep,5,0);
         if ( !( value->head.value == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2;
-            return 1;
-            }
             table_retain_writer_id( w, 0x0a8f12cc5f9a0c03ull , retention);
             table_writer_put8( w, 17 );
             { const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&value->head);

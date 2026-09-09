@@ -1580,7 +1580,6 @@ static SCHEMA_UNUSED int padded_row_save_body( TableWriter * w, const PaddedRow 
     { /* tag */
         if ( !( value->tag == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 25, 0x56d7ab194448a4f3ull, 6 );
             table_writer_put8( w, (uint8_t) ( value->tag ) );
         }
@@ -1588,7 +1587,6 @@ static SCHEMA_UNUSED int padded_row_save_body( TableWriter * w, const PaddedRow 
     { /* value */
         if ( !( value->value == 0.0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 36, 0x7ce4fd9430e80ceaull, 11 );
             table_writer_put64( w, table_double_to_bits( value->value ) );
         }
@@ -1596,7 +1594,6 @@ static SCHEMA_UNUSED int padded_row_save_body( TableWriter * w, const PaddedRow 
     { /* flag */
         if ( !( value->flag == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 73, 0xd5f2d079088c0b17ull, 1 );
             table_writer_put8( w, value->flag ? 1 : 0 );
         }
@@ -1604,7 +1601,6 @@ static SCHEMA_UNUSED int padded_row_save_body( TableWriter * w, const PaddedRow 
     { /* id */
         if ( !( value->id == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 0, 0x08b72e07b55c3ac0ull, 8 );
             table_writer_put32( w, (uint32_t) ( value->id ) );
         }
@@ -1613,7 +1609,6 @@ static SCHEMA_UNUSED int padded_row_save_body( TableWriter * w, const PaddedRow 
         if ( value->label_length < 0 || value->label_length > 15 ) { return 0; }
         if ( value->label_length != 0 )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 16, 0x39f7fcec8fcb623dull, 12 );
             if ( w->buffer == NULL )
             {
@@ -1635,7 +1630,6 @@ static SCHEMA_UNUSED int padded_row_save_body( TableWriter * w, const PaddedRow 
         for ( i = 0; i < 4; i++ ) { if ( !( value->slots[i] == 0 ) ) { rides = 1; break; } }
         if ( rides )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 79, 0xe68c2e6bb1ee5646ull, 14 );
             if ( w->buffer == NULL )
             {
@@ -1661,7 +1655,6 @@ static SCHEMA_UNUSED int padded_row_save_body( TableWriter * w, const PaddedRow 
         }
         if ( rides )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 58, 0xbaaeb048a5a8fa6dull, 16 );
             if ( w->buffer == NULL )
             {
@@ -1681,7 +1674,6 @@ static SCHEMA_UNUSED int padded_row_save_body( TableWriter * w, const PaddedRow 
     { /* counter */
         if ( value->counter_present )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 35, 0x77976c7416517c63ull, 4 );
             table_writer_put32( w, (uint32_t) ( value->counter ) );
         }
@@ -2093,36 +2085,24 @@ static SCHEMA_UNUSED int padded_row_save_message_body(TableBitWriter * w,const P
  (void)value;
  { /* tag */
  if(!(value->tag == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,5,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->tag)-UINT64_C(0),8);
  }
  }
  { /* value */
  if(!(value->value == 0.0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,6,kTableMessageRefBitsHere);
   table_bit_put(w,table_double_to_bits(value->value),64);
  }
  }
  { /* flag */
  if(!(value->flag == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,7,kTableMessageRefBitsHere);
   table_bit_put(w,value->flag ? 1 : 0,1);
  }
  }
  { /* id */
  if(!(value->id == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,8,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->id)-UINT64_C(0),32);
  }
@@ -2130,9 +2110,6 @@ static SCHEMA_UNUSED int padded_row_save_message_body(TableBitWriter * w,const P
  { /* label */
  if(value->label_length<0 || value->label_length>15) return 0;
  if(value->label_length != 0) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,9,kTableMessageRefBitsHere);
   if(value->label_length<0 || value->label_length>15) return 0;
   table_bit_put(w,(uint64_t)value->label_length,4);
@@ -2147,9 +2124,6 @@ static SCHEMA_UNUSED int padded_row_save_message_body(TableBitWriter * w,const P
  break;
  } }
  if(rides) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,10,kTableMessageRefBitsHere);
   if(4<0 || 4>4) return 0;
   table_bit_put(w,(uint64_t)4-4,0);
@@ -2168,9 +2142,6 @@ static SCHEMA_UNUSED int padded_row_save_message_body(TableBitWriter * w,const P
   break;
   } }
  if(rides) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,11,kTableMessageRefBitsHere);
   { uint32_t count=0;
   int32_t i;
@@ -2200,9 +2171,6 @@ static SCHEMA_UNUSED int padded_row_save_message_body(TableBitWriter * w,const P
  }
  { /* counter */
  if(value->counter_present) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,12,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->counter)-UINT64_C(0),32);
  }
@@ -2530,7 +2498,6 @@ static SCHEMA_UNUSED int padded_frame_save_body( TableWriter * w, const PaddedFr
     { /* marker */
         if ( !( value->marker == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 81, 0xeddcb72b15486e77ull, 6 );
             table_writer_put8( w, (uint8_t) ( value->marker ) );
         }
@@ -2538,7 +2505,6 @@ static SCHEMA_UNUSED int padded_frame_save_body( TableWriter * w, const PaddedFr
     { /* stamp */
         if ( !( value->stamp == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 83, 0xee7ba9ad45c64144ull, 9 );
             table_writer_put64( w, (uint64_t) ( value->stamp ) );
         }
@@ -2547,7 +2513,6 @@ static SCHEMA_UNUSED int padded_frame_save_body( TableWriter * w, const PaddedFr
         if ( value->rows_count < 0 || value->rows_count > 64 ) { return 0; }
         if ( value->rows_count > 0 )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 48, 0xa3a7061ff10a8138ull, 14 );
             int64_t element_sizes[64]; /* bounded sizing-to-write cache */
             if ( w->buffer == NULL )
@@ -2569,7 +2534,6 @@ static SCHEMA_UNUSED int padded_frame_save_body( TableWriter * w, const PaddedFr
         if ( value->blob_length < 0 || value->blob_length > 12 ) { return 0; }
         if ( value->blob_length != 0 )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 64, 0xc573b39bc29148caull, 14 );
             if ( w->buffer == NULL )
             {
@@ -2836,18 +2800,12 @@ static SCHEMA_UNUSED int padded_frame_save_message_body(TableBitWriter * w,const
  (void)value;
  { /* marker */
  if(!(value->marker == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,1,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->marker)-UINT64_C(0),8);
  }
  }
  { /* stamp */
  if(!(value->stamp == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,2,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->stamp)-UINT64_C(0),64);
  }
@@ -2855,9 +2813,6 @@ static SCHEMA_UNUSED int padded_frame_save_message_body(TableBitWriter * w,const
  { /* rows */
  if(value->rows_count<0 || value->rows_count>64) return 0;
  if(value->rows_count>0) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,3,kTableMessageRefBitsHere);
   if(value->rows_count<0 || value->rows_count>64) return 0;
   table_bit_put(w,(uint64_t)value->rows_count-0,7);
@@ -2870,9 +2825,6 @@ static SCHEMA_UNUSED int padded_frame_save_message_body(TableBitWriter * w,const
  { /* blob */
  if(value->blob_length<0 || value->blob_length>12) return 0;
  if(value->blob_length != 0) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,4,kTableMessageRefBitsHere);
   if(value->blob_length<0 || value->blob_length>12) return 0;
   table_bit_put(w,(uint64_t)value->blob_length,4);

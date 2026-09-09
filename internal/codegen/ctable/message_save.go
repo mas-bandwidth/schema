@@ -226,7 +226,10 @@ func (g *tableGen) emitMessageSave(st *ir.Struct) {
 		if f.Type.Optional {
 			condition = expr + "_present"
 		}
-		g.pf(" if(%s) {\n  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}\n", condition)
+		g.pf(" if(%s) {\n", condition)
+		if g.canProbe(st) {
+			g.pf("  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}\n")
+		}
 		g.messageHeader(ir.TableFieldEntry(f), "  ")
 		g.messageValue(f, ir.TableFieldEntry(f), expr, count, "  ")
 		g.pf(" }\n")

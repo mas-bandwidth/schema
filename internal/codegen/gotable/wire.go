@@ -3,6 +3,7 @@ package gotable
 import (
 	"fmt"
 	"math/bits"
+	"slices"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -20,6 +21,9 @@ func tableWireRuntime(u *ir.Unit) string {
 		source = strings.Replace(source, "type TableReader struct {", "type TableReader struct {\nNodes TableNodeMap", 1)
 		source = strings.ReplaceAll(source, "Ids:r.Ids, Nested:true", "Ids:r.Ids, Nested:true, Nodes:r.Nodes")
 	}
+	if unitDeclaresTableKind(u, ir.TableKindF64) {
+		source = tableSourceReplace(source, "func tableUtf8Valid", tableWidenFloatSource+"func tableUtf8Valid", 1)
+	}
 	res := fmt.Sprintf(`
 const tableIdCapacity = %d
 const tableIdBuckets = %d
@@ -28,6 +32,55 @@ const tableIdBuckets = %d
 		res += tableWStringSource
 	}
 	return res
+}
+
+// unitDeclaresTableKind is the declared-kind census tableWidenFloat is gated
+// on: a kind anywhere in the table closure — a field, an arm, an element or a
+// generated map-entry slot. It is a safe superset over the call sites. A
+// subset would omit a helper a codec still names.
+func unitDeclaresTableKind(u *ir.Unit, kind int) bool {
+	seen := map[*ir.Union]bool{}
+	var note func(f *ir.Field) bool
+	var walkUnion func(un *ir.Union) bool
+	note = func(f *ir.Field) bool {
+		if f == nil {
+			return false
+		}
+		if ir.TableWireScalarKind(f) == kind || ir.TableWireElemKind(f) == kind {
+			return true
+		}
+		if f.Type.Kind == ir.TNamed {
+			if un, ok := f.Type.Ref.(*ir.Union); ok {
+				return walkUnion(un)
+			}
+		}
+		return false
+	}
+	walkUnion = func(un *ir.Union) bool {
+		if un == nil || seen[un] {
+			return false
+		}
+		seen[un] = true
+		for _, v := range un.Variants {
+			if note(v.F) {
+				return true
+			}
+		}
+		return false
+	}
+	for name := range ir.TableClosure(u) {
+		st := u.Tables[name]
+		if st == nil {
+			st = u.Structs[name]
+		}
+		if st == nil {
+			continue
+		}
+		if slices.ContainsFunc(st.Fields, note) {
+			return true
+		}
+	}
+	return false
 }
 
 const tableWireSource = `
@@ -462,11 +515,6 @@ func (r *TableReader) Signed(kind uint8) int64 {
  switch tableKindBytes(kind) { case 1: return int64(int8(r.Get8())); case 2: return int64(int16(r.Get16())); case 4: return int64(int32(r.Get32())); default: return int64(r.Get64()) }
 }
 
-func tableWidenFloat(b uint32) uint64 {
- if b & 0x7f800000 == 0x7f800000 { return uint64(b >> 31) << 63 | 0x7ff0000000000000 | uint64(b & 0x7fffff) << 29 }
- return math.Float64bits(float64(math.Float32frombits(b)))
-}
-
 func tableUtf8Valid(data []byte) bool {
 	if !utf8.Valid(data) { return false }
 	for _, b := range data { if b == 0 { return false } }
@@ -477,4 +525,13 @@ func tableUtf8Clamp(data []byte, n int64) int64 {
 	for n > 0 && n < int64(len(data)) && data[n]&0xc0 == 0x80 { n-- }
 	return n
 }
+`
+
+// tableWidenFloatSource is the float rung, kind 10 into kind 11. It is spliced
+// into tableWireSource only where the unit declares kind 11.
+const tableWidenFloatSource = `func tableWidenFloat(b uint32) uint64 {
+ if b & 0x7f800000 == 0x7f800000 { return uint64(b >> 31) << 63 | 0x7ff0000000000000 | uint64(b & 0x7fffff) << 29 }
+ return math.Float64bits(float64(math.Float32frombits(b)))
+}
+
 `

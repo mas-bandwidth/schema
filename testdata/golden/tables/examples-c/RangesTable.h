@@ -1611,7 +1611,6 @@ static SCHEMA_UNUSED int ranged_signed_save_body( TableWriter * w, const RangedS
     { /* i8_span */
         if ( !( value->i8_span == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 43, 0x48121511bf702eb5ull, 2 );
             table_writer_put8( w, (uint8_t) ( value->i8_span ) );
         }
@@ -1619,7 +1618,6 @@ static SCHEMA_UNUSED int ranged_signed_save_body( TableWriter * w, const RangedS
     { /* i8_low */
         if ( !( value->i8_low == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 76, 0x942bfe3168090f7dull, 2 );
             table_writer_put8( w, (uint8_t) ( value->i8_low ) );
         }
@@ -1627,7 +1625,6 @@ static SCHEMA_UNUSED int ranged_signed_save_body( TableWriter * w, const RangedS
     { /* i8_high */
         if ( !( value->i8_high == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 126, 0xd182acd105b55dd1ull, 2 );
             table_writer_put8( w, (uint8_t) ( value->i8_high ) );
         }
@@ -1635,7 +1632,6 @@ static SCHEMA_UNUSED int ranged_signed_save_body( TableWriter * w, const RangedS
     { /* i8_inside */
         if ( !( value->i8_inside == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 141, 0xef9ded23c8912a81ull, 2 );
             table_writer_put8( w, (uint8_t) ( value->i8_inside ) );
         }
@@ -1643,7 +1639,6 @@ static SCHEMA_UNUSED int ranged_signed_save_body( TableWriter * w, const RangedS
     { /* i16_span */
         if ( !( value->i16_span == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 100, 0xb655574ea23760b4ull, 3 );
             table_writer_put16( w, (uint16_t) ( value->i16_span ) );
         }
@@ -1651,7 +1646,6 @@ static SCHEMA_UNUSED int ranged_signed_save_body( TableWriter * w, const RangedS
     { /* i16_low */
         if ( !( value->i16_low == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 127, 0xd217b3af8d7a2bdeull, 3 );
             table_writer_put16( w, (uint16_t) ( value->i16_low ) );
         }
@@ -1659,7 +1653,6 @@ static SCHEMA_UNUSED int ranged_signed_save_body( TableWriter * w, const RangedS
     { /* i16_high */
         if ( !( value->i16_high == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 75, 0x90652f70c9127900ull, 3 );
             table_writer_put16( w, (uint16_t) ( value->i16_high ) );
         }
@@ -1667,7 +1660,6 @@ static SCHEMA_UNUSED int ranged_signed_save_body( TableWriter * w, const RangedS
     { /* i16_inside */
         if ( !( value->i16_inside == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 58, 0x6a659d7c354db158ull, 3 );
             table_writer_put16( w, (uint16_t) ( value->i16_inside ) );
         }
@@ -1675,7 +1667,6 @@ static SCHEMA_UNUSED int ranged_signed_save_body( TableWriter * w, const RangedS
     { /* i32_span */
         if ( !( value->i32_span == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 137, 0xe693bd88532c91d6ull, 4 );
             table_writer_put32( w, (uint32_t) ( value->i32_span ) );
         }
@@ -1683,7 +1674,6 @@ static SCHEMA_UNUSED int ranged_signed_save_body( TableWriter * w, const RangedS
     { /* i32_low */
         if ( !( value->i32_low == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 5, 0x065ee827cf99fbb4ull, 4 );
             table_writer_put32( w, (uint32_t) ( value->i32_low ) );
         }
@@ -1691,7 +1681,6 @@ static SCHEMA_UNUSED int ranged_signed_save_body( TableWriter * w, const RangedS
     { /* i32_high */
         if ( !( value->i32_high == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 118, 0xc9b121c4c2a186eeull, 4 );
             table_writer_put32( w, (uint32_t) ( value->i32_high ) );
         }
@@ -1699,7 +1688,6 @@ static SCHEMA_UNUSED int ranged_signed_save_body( TableWriter * w, const RangedS
     { /* i32_inside */
         if ( !( value->i32_inside == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 129, 0xd363dfa465acf27aull, 4 );
             table_writer_put32( w, (uint32_t) ( value->i32_inside ) );
         }
@@ -1707,7 +1695,6 @@ static SCHEMA_UNUSED int ranged_signed_save_body( TableWriter * w, const RangedS
     { /* i64_span */
         if ( !( value->i64_span == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 63, 0x7549c70700c49d6full, 5 );
             table_writer_put64( w, (uint64_t) ( value->i64_span ) );
         }
@@ -1715,7 +1702,6 @@ static SCHEMA_UNUSED int ranged_signed_save_body( TableWriter * w, const RangedS
     { /* i64_low */
         if ( !( value->i64_low == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 16, 0x1cce6617419771dbull, 5 );
             table_writer_put64( w, (uint64_t) ( value->i64_low ) );
         }
@@ -1723,7 +1709,6 @@ static SCHEMA_UNUSED int ranged_signed_save_body( TableWriter * w, const RangedS
     { /* i64_high */
         if ( !( value->i64_high == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 36, 0x3b54fa60620b5597ull, 5 );
             table_writer_put64( w, (uint64_t) ( value->i64_high ) );
         }
@@ -1731,7 +1716,6 @@ static SCHEMA_UNUSED int ranged_signed_save_body( TableWriter * w, const RangedS
     { /* i64_inside */
         if ( !( value->i64_inside == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 128, 0xd308fcb98ece5d23ull, 5 );
             table_writer_put64( w, (uint64_t) ( value->i64_inside ) );
         }
@@ -1740,7 +1724,6 @@ static SCHEMA_UNUSED int ranged_signed_save_body( TableWriter * w, const RangedS
         if ( value->edges_count < 0 || value->edges_count > 4 ) { return 0; }
         if ( value->edges_count > 0 )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 117, 0xc70cde6b85b6197dull, 14 );
             if ( w->buffer == NULL )
             {
@@ -2894,144 +2877,96 @@ static SCHEMA_UNUSED int ranged_signed_save_message_body(TableBitWriter * w,cons
  (void)value;
  { /* i8_span */
  if(!(value->i8_span == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,51,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->i8_span)-UINT64_C(18446744073709551488),8);
  }
  }
  { /* i8_low */
  if(!(value->i8_low == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,52,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->i8_low)-UINT64_C(18446744073709551488),8);
  }
  }
  { /* i8_high */
  if(!(value->i8_high == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,53,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->i8_high)-UINT64_C(18446744073709551489),8);
  }
  }
  { /* i8_inside */
  if(!(value->i8_inside == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,54,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->i8_inside)-UINT64_C(18446744073709551489),8);
  }
  }
  { /* i16_span */
  if(!(value->i16_span == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,55,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->i16_span)-UINT64_C(18446744073709518848),16);
  }
  }
  { /* i16_low */
  if(!(value->i16_low == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,56,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->i16_low)-UINT64_C(18446744073709518848),16);
  }
  }
  { /* i16_high */
  if(!(value->i16_high == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,57,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->i16_high)-UINT64_C(18446744073709518849),16);
  }
  }
  { /* i16_inside */
  if(!(value->i16_inside == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,58,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->i16_inside)-UINT64_C(18446744073709518849),16);
  }
  }
  { /* i32_span */
  if(!(value->i32_span == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,59,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->i32_span)-UINT64_C(18446744071562067968),32);
  }
  }
  { /* i32_low */
  if(!(value->i32_low == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,60,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->i32_low)-UINT64_C(18446744071562067968),32);
  }
  }
  { /* i32_high */
  if(!(value->i32_high == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,61,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->i32_high)-UINT64_C(18446744071562067969),32);
  }
  }
  { /* i32_inside */
  if(!(value->i32_inside == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,62,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->i32_inside)-UINT64_C(18446744071562067969),32);
  }
  }
  { /* i64_span */
  if(!(value->i64_span == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,63,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->i64_span)-UINT64_C(9223372036854775808),64);
  }
  }
  { /* i64_low */
  if(!(value->i64_low == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,64,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->i64_low)-UINT64_C(9223372036854775808),64);
  }
  }
  { /* i64_high */
  if(!(value->i64_high == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,65,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->i64_high)-UINT64_C(9223372036854775809),64);
  }
  }
  { /* i64_inside */
  if(!(value->i64_inside == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,66,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->i64_inside)-UINT64_C(9223372036854775809),64);
  }
@@ -3039,9 +2974,6 @@ static SCHEMA_UNUSED int ranged_signed_save_message_body(TableBitWriter * w,cons
  { /* edges */
  if(value->edges_count<0 || value->edges_count>4) return 0;
  if(value->edges_count>0) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,67,kTableMessageRefBitsHere);
   if(value->edges_count<0 || value->edges_count>4) return 0;
   table_bit_put(w,(uint64_t)value->edges_count-0,3);
@@ -3491,7 +3423,6 @@ static SCHEMA_UNUSED int ranged_unsigned_save_body( TableWriter * w, const Range
     { /* u8_span */
         if ( !( value->u8_span == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 8, 0x0f8897557f37c021ull, 6 );
             table_writer_put8( w, (uint8_t) ( value->u8_span ) );
         }
@@ -3499,7 +3430,6 @@ static SCHEMA_UNUSED int ranged_unsigned_save_body( TableWriter * w, const Range
     { /* u8_low */
         if ( !( value->u8_low == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 28, 0x2e17553f8200a2a1ull, 6 );
             table_writer_put8( w, (uint8_t) ( value->u8_low ) );
         }
@@ -3507,7 +3437,6 @@ static SCHEMA_UNUSED int ranged_unsigned_save_body( TableWriter * w, const Range
     { /* u8_high */
         if ( !( value->u8_high == 1 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 84, 0xa0e5c60df9301b7dull, 6 );
             table_writer_put8( w, (uint8_t) ( value->u8_high ) );
         }
@@ -3515,7 +3444,6 @@ static SCHEMA_UNUSED int ranged_unsigned_save_body( TableWriter * w, const Range
     { /* u8_inside */
         if ( !( value->u8_inside == 1 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 15, 0x1cb2c073a6f5844dull, 6 );
             table_writer_put8( w, (uint8_t) ( value->u8_inside ) );
         }
@@ -3523,7 +3451,6 @@ static SCHEMA_UNUSED int ranged_unsigned_save_body( TableWriter * w, const Range
     { /* u16_span */
         if ( !( value->u16_span == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 46, 0x4ca0c150b1790960ull, 7 );
             table_writer_put16( w, (uint16_t) ( value->u16_span ) );
         }
@@ -3531,7 +3458,6 @@ static SCHEMA_UNUSED int ranged_unsigned_save_body( TableWriter * w, const Range
     { /* u16_low */
         if ( !( value->u16_low == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 143, 0xf252136836b04cb2ull, 7 );
             table_writer_put16( w, (uint16_t) ( value->u16_low ) );
         }
@@ -3539,7 +3465,6 @@ static SCHEMA_UNUSED int ranged_unsigned_save_body( TableWriter * w, const Range
     { /* u16_high */
         if ( !( value->u16_high == 1 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 48, 0x4f37e1f216e7610cull, 7 );
             table_writer_put16( w, (uint16_t) ( value->u16_high ) );
         }
@@ -3547,7 +3472,6 @@ static SCHEMA_UNUSED int ranged_unsigned_save_body( TableWriter * w, const Range
     { /* u16_inside */
         if ( !( value->u16_inside == 1 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 125, 0xd176b605978f3304ull, 7 );
             table_writer_put16( w, (uint16_t) ( value->u16_inside ) );
         }
@@ -3555,7 +3479,6 @@ static SCHEMA_UNUSED int ranged_unsigned_save_body( TableWriter * w, const Range
     { /* u32_span */
         if ( !( value->u32_span == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 21, 0x200b924de7479cdaull, 8 );
             table_writer_put32( w, (uint32_t) ( value->u32_span ) );
         }
@@ -3563,7 +3486,6 @@ static SCHEMA_UNUSED int ranged_unsigned_save_body( TableWriter * w, const Range
     { /* u32_low */
         if ( !( value->u32_low == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 87, 0xa53d2f2a31b5acb0ull, 8 );
             table_writer_put32( w, (uint32_t) ( value->u32_low ) );
         }
@@ -3571,7 +3493,6 @@ static SCHEMA_UNUSED int ranged_unsigned_save_body( TableWriter * w, const Range
     { /* u32_high */
         if ( !( value->u32_high == 1 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 78, 0x9759be8ea1a4e3d2ull, 8 );
             table_writer_put32( w, (uint32_t) ( value->u32_high ) );
         }
@@ -3579,7 +3500,6 @@ static SCHEMA_UNUSED int ranged_unsigned_save_body( TableWriter * w, const Range
     { /* u32_inside */
         if ( !( value->u32_inside == 1 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 74, 0x8dc515fc082e3c0eull, 8 );
             table_writer_put32( w, (uint32_t) ( value->u32_inside ) );
         }
@@ -3587,7 +3507,6 @@ static SCHEMA_UNUSED int ranged_unsigned_save_body( TableWriter * w, const Range
     { /* u64_span */
         if ( !( value->u64_span == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 109, 0xbeecef11dbdf8973ull, 9 );
             table_writer_put64( w, (uint64_t) ( value->u64_span ) );
         }
@@ -3595,7 +3514,6 @@ static SCHEMA_UNUSED int ranged_unsigned_save_body( TableWriter * w, const Range
     { /* u64_low */
         if ( !( value->u64_low == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 0, 0x0117ad66e0fff227ull, 9 );
             table_writer_put64( w, (uint64_t) ( value->u64_low ) );
         }
@@ -3603,7 +3521,6 @@ static SCHEMA_UNUSED int ranged_unsigned_save_body( TableWriter * w, const Range
     { /* u64_high */
         if ( !( value->u64_high == 1ull ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 144, 0xf2b45af3b50689dbull, 9 );
             table_writer_put64( w, (uint64_t) ( value->u64_high ) );
         }
@@ -3611,7 +3528,6 @@ static SCHEMA_UNUSED int ranged_unsigned_save_body( TableWriter * w, const Range
     { /* u64_inside */
         if ( !( value->u64_inside == 1ull ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 62, 0x713e12017eebcaf7ull, 9 );
             table_writer_put64( w, (uint64_t) ( value->u64_inside ) );
         }
@@ -3620,7 +3536,6 @@ static SCHEMA_UNUSED int ranged_unsigned_save_body( TableWriter * w, const Range
         if ( value->counts_count < 0 || value->counts_count > 4 ) { return 0; }
         if ( value->counts_count > 0 )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 112, 0xc341febe5aae51e5ull, 14 );
             if ( w->buffer == NULL )
             {
@@ -4774,144 +4689,96 @@ static SCHEMA_UNUSED int ranged_unsigned_save_message_body(TableBitWriter * w,co
  (void)value;
  { /* u8_span */
  if(!(value->u8_span == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,68,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->u8_span)-UINT64_C(0),8);
  }
  }
  { /* u8_low */
  if(!(value->u8_low == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,69,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->u8_low)-UINT64_C(0),8);
  }
  }
  { /* u8_high */
  if(!(value->u8_high == 1)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,70,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->u8_high)-UINT64_C(1),8);
  }
  }
  { /* u8_inside */
  if(!(value->u8_inside == 1)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,71,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->u8_inside)-UINT64_C(1),8);
  }
  }
  { /* u16_span */
  if(!(value->u16_span == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,72,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->u16_span)-UINT64_C(0),16);
  }
  }
  { /* u16_low */
  if(!(value->u16_low == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,73,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->u16_low)-UINT64_C(0),16);
  }
  }
  { /* u16_high */
  if(!(value->u16_high == 1)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,74,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->u16_high)-UINT64_C(1),16);
  }
  }
  { /* u16_inside */
  if(!(value->u16_inside == 1)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,75,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->u16_inside)-UINT64_C(1),16);
  }
  }
  { /* u32_span */
  if(!(value->u32_span == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,76,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->u32_span)-UINT64_C(0),32);
  }
  }
  { /* u32_low */
  if(!(value->u32_low == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,77,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->u32_low)-UINT64_C(0),32);
  }
  }
  { /* u32_high */
  if(!(value->u32_high == 1)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,78,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->u32_high)-UINT64_C(1),32);
  }
  }
  { /* u32_inside */
  if(!(value->u32_inside == 1)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,79,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->u32_inside)-UINT64_C(1),32);
  }
  }
  { /* u64_span */
  if(!(value->u64_span == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,80,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->u64_span)-UINT64_C(0),64);
  }
  }
  { /* u64_low */
  if(!(value->u64_low == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,81,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->u64_low)-UINT64_C(0),64);
  }
  }
  { /* u64_high */
  if(!(value->u64_high == 1ull)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,82,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->u64_high)-UINT64_C(1),64);
  }
  }
  { /* u64_inside */
  if(!(value->u64_inside == 1ull)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,83,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->u64_inside)-UINT64_C(1),64);
  }
@@ -4919,9 +4786,6 @@ static SCHEMA_UNUSED int ranged_unsigned_save_message_body(TableBitWriter * w,co
  { /* counts */
  if(value->counts_count<0 || value->counts_count>4) return 0;
  if(value->counts_count>0) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,84,kTableMessageRefBitsHere);
   if(value->counts_count<0 || value->counts_count>4) return 0;
   table_bit_put(w,(uint64_t)value->counts_count-0,3);
@@ -5332,7 +5196,7 @@ static SCHEMA_UNUSED int schema_tabledemo_ranged_unsigned_message_extent_(TableM
 static SCHEMA_UNUSED int ranged_widths_save_body( TableWriter * w, const RangedWidths * value )
 {
     (void) value;
-    if ( w->buffer == NULL && !w->check_default )
+    if ( w->buffer == NULL )
     {
         int64_t payload_bytes = 1; /* the zero reference ending this body */
         if ( !( value->b8 == 0 ) )
@@ -5372,7 +5236,6 @@ static SCHEMA_UNUSED int ranged_widths_save_body( TableWriter * w, const RangedW
     { /* b8 */
         if ( !( value->b8 == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 6, 0x08a60c07b54d8dc7ull, 6 );
             table_writer_put8( w, (uint8_t) ( value->b8 ) );
         }
@@ -5380,7 +5243,6 @@ static SCHEMA_UNUSED int ranged_widths_save_body( TableWriter * w, const RangedW
     { /* b16 */
         if ( !( value->b16 == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 149, 0xff95701912ad97beull, 7 );
             table_writer_put16( w, (uint16_t) ( value->b16 ) );
         }
@@ -5388,7 +5250,6 @@ static SCHEMA_UNUSED int ranged_widths_save_body( TableWriter * w, const RangedW
     { /* b32 */
         if ( !( value->b32 == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 151, 0xff9c5c1912b39470ull, 8 );
             table_writer_put32( w, (uint32_t) ( value->b32 ) );
         }
@@ -5396,7 +5257,6 @@ static SCHEMA_UNUSED int ranged_widths_save_body( TableWriter * w, const RangedW
     { /* b64 */
         if ( !( value->b64 == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 148, 0xff92701912ab61e7ull, 9 );
             table_writer_put64( w, (uint64_t) ( value->b64 ) );
         }
@@ -5404,7 +5264,6 @@ static SCHEMA_UNUSED int ranged_widths_save_body( TableWriter * w, const RangedW
     { /* b12 */
         if ( !( value->b12 == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 150, 0xff95741912ad9e8aull, 7 );
             table_writer_put16( w, (uint16_t) ( value->b12 ) );
         }
@@ -5412,7 +5271,6 @@ static SCHEMA_UNUSED int ranged_widths_save_body( TableWriter * w, const RangedW
     { /* b48 */
         if ( !( value->b48 == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 147, 0xff8b681912a535a1ull, 9 );
             table_writer_put64( w, (uint64_t) ( value->b48 ) );
         }
@@ -5862,54 +5720,36 @@ static SCHEMA_UNUSED int ranged_widths_save_message_body(TableBitWriter * w,cons
  (void)value;
  { /* b8 */
  if(!(value->b8 == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,85,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->b8)-UINT64_C(0),8);
  }
  }
  { /* b16 */
  if(!(value->b16 == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,86,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->b16)-UINT64_C(0),16);
  }
  }
  { /* b32 */
  if(!(value->b32 == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,87,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->b32)-UINT64_C(0),32);
  }
  }
  { /* b64 */
  if(!(value->b64 == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,88,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->b64)-UINT64_C(0),64);
  }
  }
  { /* b12 */
  if(!(value->b12 == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,89,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->b12)-UINT64_C(0),12);
  }
  }
  { /* b48 */
  if(!(value->b48 == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,90,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->b48)-UINT64_C(0),48);
  }

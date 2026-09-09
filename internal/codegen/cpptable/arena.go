@@ -23,6 +23,60 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
+// cppBlobThunks is what the numbering stores for a BYTE BUFFER record
+// (docs/SPEC-TABLES.md §2.5, §3.1), and it is emitted only into a unit that
+// DECLARES one. The four are named at exactly one site in this emitter — the
+// `blob:` arm of the pointer edge walk in pointers.go — so a unit that
+// declares no *bytes and no *string has no call site for them and carried
+// thirty-three lines it could not reach. The two RESERVED TYPE IDS the block
+// used to sit under stay in EVERY pointered unit: the retain and message paths
+// compare against them whether or not this unit writes a blob of its own.
+//
+// THE CENSUS IS ir.BlobPointerFields AND NOT ir.PointerReachableBlobs, though
+// the two agree on every schema the corpus holds. The emitter's pointer edge
+// walk and the numbering walk ir.PointerReachableBlobs takes its census with
+// are two pieces of code, not one, and a gate that emits a DEFINITION must not
+// rest on the second agreeing with the first: the arms gate's negative
+// controls (schema#565) sabotage the numbering walk on purpose, and a census
+// taken with it then withholds a definition the emitter's own walk has already
+// written a call to — the control dies in the compiler instead of turning the
+// gate red on its CHECK. A declaration scan is a superset of both walks and
+// cannot lose that race.
+const cppBlobThunks = `
+template <typename Ctx>
+inline int64_t TableBlobMeasureThunk( const void *, const TableNumbering &, TableIds &, const void * node )
+{
+    return (int64_t) ( (const TableBlob *) node )->length;
+}
+
+template <typename Ctx>
+inline bool TableBlobSaveThunk( const void *, const TableNumbering &, TableWriter & w, TableIds &, const void * node )
+{
+    const TableBlob * blob = (const TableBlob *) node;
+    w.raw( (const void *) ( blob + 1 ), (int64_t) blob->length );
+    return true;
+}
+
+// and the same two on the MESSAGE FORM (§3.3): a blob record is its length at
+// thirty-two raw bits, an ALIGN, then the bytes verbatim
+template <typename Ctx>
+inline int64_t TableBlobMessageMeasureThunk( const void *, const TableNumbering &, int64_t, int64_t at, const void * node )
+{
+    const int64_t length = (int64_t) ( (const TableBlob *) node )->length;
+    return 32 + TableAlignBits( at + 32 ) + length * 8;
+}
+
+template <typename Ctx>
+inline bool TableBlobMessageSaveThunk( const void *, const TableNumbering &, int64_t, TableBitWriter & w, const void * node )
+{
+    const TableBlob * blob = (const TableBlob *) node;
+    w.put( (uint64_t) blob->length, 32 );
+    w.align();
+    w.putbytes( (const uint8_t *) ( blob + 1 ), (int64_t) blob->length );
+    return !w.overflow;
+}
+`
+
 // tableArenaRuntime is the variable-length runtime, guarded per package like
 // tablePrimitives so one definition survives any include order.
 func tableArenaRuntime(u *ir.Unit, anyExtent bool) string {
@@ -30,6 +84,14 @@ func tableArenaRuntime(u *ir.Unit, anyExtent bool) string {
 	align := ir.TableRegionAlign(u)
 	alignComment := fmt.Sprintf("every node starts %d-aligned", align)
 	guard := strings.ToUpper(pkg) + "_SCHEMA_TABLE_ARENA"
+	// THE BLOB THUNKS, only where a blob is declared. The census is taken over
+	// the WHOLE unit rather than one root, because the arena runtime sits
+	// behind ONE package-scoped guard: whichever file a translation unit
+	// includes first defines it for every other file of the package.
+	blobThunks := "\n" // the blank line the block used to open with
+	if unitDeclaresBlob(u) {
+		blobThunks = cppBlobThunks
+	}
 	// A UNIT WITH NEITHER A MAP NOR A LIST CARRIES NOT ONE SYMBOL OF THE EXTENT
 	// MACHINERY (docs/SPEC-TABLES.md §2.2, §2.8, §2.9), the node map's extent
 	// cursor included: a pointered unit with neither emits exactly the arena
@@ -884,40 +946,7 @@ inline bool TableNodeMessageSaveThunk( const void * ctx, const TableNumbering & 
 // member's codec for a table: the length, and the bytes verbatim.
 static const uint64_t kTableBytesTypeId = ` + fmt.Sprintf("0x%016xull", ir.BytesWireTypeId) + `;  // fnv1a64( "bytes" )
 static const uint64_t kTableStringTypeId = ` + fmt.Sprintf("0x%016xull", ir.StringWireTypeId) + `; // fnv1a64( "string" )
-
-template <typename Ctx>
-inline int64_t TableBlobMeasureThunk( const void *, const TableNumbering &, TableIds &, const void * node )
-{
-    return (int64_t) ( (const TableBlob *) node )->length;
-}
-
-template <typename Ctx>
-inline bool TableBlobSaveThunk( const void *, const TableNumbering &, TableWriter & w, TableIds &, const void * node )
-{
-    const TableBlob * blob = (const TableBlob *) node;
-    w.raw( (const void *) ( blob + 1 ), (int64_t) blob->length );
-    return true;
-}
-
-// and the same two on the MESSAGE FORM (§3.3): a blob record is its length at
-// thirty-two raw bits, an ALIGN, then the bytes verbatim
-template <typename Ctx>
-inline int64_t TableBlobMessageMeasureThunk( const void *, const TableNumbering &, int64_t, int64_t at, const void * node )
-{
-    const int64_t length = (int64_t) ( (const TableBlob *) node )->length;
-    return 32 + TableAlignBits( at + 32 ) + length * 8;
-}
-
-template <typename Ctx>
-inline bool TableBlobMessageSaveThunk( const void *, const TableNumbering &, int64_t, TableBitWriter & w, const void * node )
-{
-    const TableBlob * blob = (const TableBlob *) node;
-    w.put( (uint64_t) blob->length, 32 );
-    w.align();
-    w.putbytes( (const uint8_t *) ( blob + 1 ), (int64_t) blob->length );
-    return !w.overflow;
-}
-// TableNodeTableMeasure and TableNodeTableSave are the framing, and they are
+` + blobThunks + `// TableNodeTableMeasure and TableNodeTableSave are the framing, and they are
 // ONE fill rule written twice — measure derives it from the graph and save
 // derives the same one, which is what makes measure == save hold across a
 // pointer graph (§3.1).
@@ -1138,4 +1167,13 @@ inline bool TableNodeScanWhole( TableNodeScan & s )
 
 #endif // ` + guard + `
 `
+}
+
+// unitDeclaresBlob reports whether the unit declares a byte buffer pointer
+// anywhere — a field, an element, a map's half or a union arm — which is the
+// question the arena runtime's one package-scoped definition is gated on. See
+// cppBlobThunks for why a DECLARATION scan and not the numbering walk's
+// reachability answer.
+func unitDeclaresBlob(u *ir.Unit) bool {
+	return len(ir.BlobPointerFields(u)) > 0
 }

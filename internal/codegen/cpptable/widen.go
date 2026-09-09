@@ -17,10 +17,14 @@ import (
 // inside the kind-mismatch branch a reader already takes, which today skips
 // the payload. A payload under the declared kind never reaches it.
 
-// tableWidenRuntime is the runtime half, emitted after TableReader in every
-// unit: the ladder predicate and the two readers that fetch a payload at ITS
-// kind's width and extend it to sixty-four bits.
-const tableWidenRuntime = `
+// THE RUNTIME HALF IS FIVE FUNCTIONS AND FOUR CENSUSES (§2.2). The ladder
+// predicate below rides in every unit, because a kind comparison is what every
+// reader does and the walks name it. The other four are each reached from a
+// kind the unit DECLARES, so each is emitted only where a call site could
+// exist — see unitWidenCensus for the superset each is taken over.
+//
+// tableWidensRuntime is the predicate, emitted after TableReader in every unit.
+const tableWidensRuntime = `
 // WIDENING (docs/SPEC-TABLES.md §4): a payload under a kind BELOW the reader's
 // on the same ladder decodes exactly. The signed ladder is kinds 2, 3, 4, 5,
 // 18, the unsigned one 6, 7, 8, 9, 19, and 10 into 11 is the float rung. Every
@@ -39,7 +43,13 @@ inline bool TableKindWidens( uint8_t kind, uint8_t declared )
     }
     return false;
 }
+`
 
+// tableKindWidthRuntime is emitted where a WIDTH can be a run-time fact: an
+// arm whose kind byte the reader widens (widen.go's emitArmWiden), and the
+// list runtime's own extent term (lists.go's TableListWireExtent). A unit that
+// declares neither an arm on a ladder nor a list has no call site for it.
+const tableKindWidthRuntime = `
 // a fixed-width kind's payload width, for the one place the width is a
 // runtime fact: an arm whose kind byte the reader widens, whose L must be the
 // wire kind's own width (§3)
@@ -55,7 +65,12 @@ inline int64_t TableKindWidth( uint8_t kind )
     }
     return 0;
 }
+`
 
+// tableReadSignedAtRuntime is emitted where a SIGNED ladder's top is declared
+// — a field, an arm, an element or a map key of kind 3, 4, 5 or 18. Nothing
+// below one of those reads a signed payload at a run-time width.
+const tableReadSignedAtRuntime = `
 // the payload of a kind on the SIGNED ladder (2 to 5), sign-extended to
 // sixty-four bits; false = the body cannot cover it, which is framing damage
 inline bool TableReadSignedAt( TableReader & r, uint8_t kind, int64_t & out )
@@ -68,7 +83,12 @@ inline bool TableReadSignedAt( TableReader & r, uint8_t kind, int64_t & out )
         default: if ( !r.has( 8 ) ) { return false; } out = (int64_t) r.get64(); return true;
     }
 }
+`
 
+// tableReadUnsignedAtRuntime is the unsigned half, and its census is the
+// unsigned ladder's tops: kind 7, 8, 9 or 19 — which a `flags` and a `bits(N)`
+// field reach under, because the kind pair alone decides widening (§4).
+const tableReadUnsignedAtRuntime = `
 // the payload of a kind on the UNSIGNED ladder (6 to 9), zero-extended
 inline bool TableReadUnsignedAt( TableReader & r, uint8_t kind, uint64_t & out )
 {
@@ -80,7 +100,13 @@ inline bool TableReadUnsignedAt( TableReader & r, uint8_t kind, uint64_t & out )
         default: if ( !r.has( 8 ) ) { return false; } out = r.get64(); return true;
     }
 }
+`
 
+// tableWidenF32Runtime is the FLOAT RUNG, kind 10 into kind 11, and it is
+// emitted only where kind 11 is declared: the file wire's widened scalar and
+// the message form's f32-shaped entry into an f64 field (messageload.go) are
+// its two call sites, and both are behind a declared f64.
+const tableWidenF32Runtime = `
 // f32 into f64, exact: a NaN's payload is data and rides on the bits, since
 // the hardware conversion would set the quiet bit (§4)
 inline double TableWidenF32( uint32_t bits )
@@ -95,6 +121,120 @@ inline double TableWidenF32( uint32_t bits )
     float f; memcpy( &f, &bits, 4 ); return (double) f;
 }
 `
+
+// widenCensus is the unit-level census of the four widening helpers
+// (docs/SPEC-TABLES.md §2.2, §3, §4). It is UNIT-LEVEL and not per-file for
+// the reason §794's two are: the primitives block sits behind ONE
+// package-scoped guard, so whichever <Base>Table.h a translation unit includes
+// first defines the runtime for every other file of the package, and a helper
+// is therefore in or out for the whole unit.
+//
+// IT IS A SAFE SUPERSET AND NOT AN EXACT MATCH, deliberately. The call sites
+// are emitted from four to eight places apiece, each behind its own shape test
+// — plainScalar at a field, widenableElement at an array, a keyed body or a
+// list, plainScalar again at an arm, widenable at a map key — and no census
+// could match that union without spelling those tests a second time and
+// growing a second way to be wrong. So the census asks the ONE question the
+// widening rule is decided by (§4: "the rule is decided by the KIND PAIR and
+// by nothing else"): does any field, arm, element or map key in the unit's
+// closure DECLARE a kind whose ladder has a rung below it? A pointer field of
+// kind 11, a map of int64 values, a *bytes — none of them will ever reach a
+// call site, and each still answers yes. The cost of the superset is a unit
+// that keeps a helper it does not call; the cost of a subset would be a unit
+// that does not compile, which is why it is taken this way round.
+type widenCensus struct {
+	f32      bool // TableWidenF32: a declared kind 11, the float rung's top
+	signed   bool // TableReadSignedAt: a declared kind 3, 4, 5 or 18
+	unsigned bool // TableReadUnsignedAt: a declared kind 7, 8, 9 or 19
+	width    bool // TableKindWidth: an arm on any ladder, or a list
+}
+
+// unitWidenCensus walks the closure the emitter itself emits codecs for —
+// every table and struct it reaches, the generated map entries among them
+// (ir.TableClosure) — and every union an arm or a field of one of those
+// reaches, transitively. For each field it asks BOTH kinds a widening site can
+// be keyed on: the field's own scalar kind, which is what a plain field, an
+// arm and a map key are compared under, and its ELEMENT kind, which is what a
+// bounded array, a keyed body and a list are compared under.
+//
+// anyList is folded into `width` because the list runtime's extent term calls
+// TableKindWidth on a wire kind unconditionally (lists.go's
+// TableListWireExtent), whatever the element kind is: a unit with a list has
+// that call site whether or not any element could widen.
+func unitWidenCensus(u *ir.Unit, closure map[string]bool, anyList bool) widenCensus {
+	c := widenCensus{width: anyList}
+	seen := map[*ir.Union]bool{}
+	var note func(f *ir.Field, arm bool)
+	var walkUnion func(un *ir.Union)
+	note = func(f *ir.Field, arm bool) {
+		if f == nil {
+			return
+		}
+		for _, kind := range [2]int{tableScalarKind(f), ir.TableWireElemKind(f)} {
+			if !widenable(kind) {
+				continue
+			}
+			switch {
+			case kind == tkF64:
+				c.f32 = true
+			case ir.TableKindSigned(kind):
+				c.signed = true
+			default:
+				c.unsigned = true
+			}
+			// AN ARM IS THE ONE FIELD-LIKE POSITION whose payload width is a
+			// run-time fact (§3): the arm's L must be the WIRE kind's width,
+			// which is the width the reader has to ask for.
+			if arm {
+				c.width = true
+			}
+		}
+		if f.Type.Kind == ir.TNamed {
+			if un, ok := f.Type.Ref.(*ir.Union); ok {
+				walkUnion(un)
+			}
+		}
+	}
+	walkUnion = func(un *ir.Union) {
+		if seen[un] {
+			return
+		}
+		seen[un] = true
+		for _, v := range un.Variants {
+			note(v.F, true)
+		}
+	}
+	for name := range closure {
+		st := memberOf(u, name)
+		if st == nil {
+			continue
+		}
+		for _, f := range st.Fields {
+			note(f, false)
+		}
+	}
+	return c
+}
+
+// runtime composes the widening runtime this unit carries: the ladder
+// predicate always, and each of the four helpers where the census could not
+// rule its call sites out.
+func (c widenCensus) runtime() string {
+	out := tableWidensRuntime
+	if c.width {
+		out += tableKindWidthRuntime
+	}
+	if c.signed {
+		out += tableReadSignedAtRuntime
+	}
+	if c.unsigned {
+		out += tableReadUnsignedAtRuntime
+	}
+	if c.f32 {
+		out += tableWidenF32Runtime
+	}
+	return out
+}
 
 // widenable reports whether a declared kind sits ABOVE the bottom of a ladder,
 // so a reader of it has kinds to widen from and emits the branch.

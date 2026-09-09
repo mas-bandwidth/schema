@@ -32,6 +32,7 @@ import (
 // declared initial values before decoding it, even when the tag is unchanged.
 func (g *gen) emitUnionFunctions(d *ir.Union) {
 	g.needsStreams = true
+	g.needsStreamTrait = true
 	snake := ir.RustSnake(d.Name)
 	maxBits := ir.MaxBitsUnion(d)
 	g.pf("// %s is the tag plus the largest arm; None costs the tag only (SPEC §4.8).\n", ir.RustConstName(d.Name+"MaxBits"))

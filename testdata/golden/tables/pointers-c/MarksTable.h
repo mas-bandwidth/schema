@@ -3207,7 +3207,7 @@ static SCHEMA_UNUSED int schema_graphdemo_marker_message_extent_(TableMessageRea
 static SCHEMA_UNUSED int tally_save_body( TableWriter * w, const Tally * value )
 {
     (void) value;
-    if ( w->buffer == NULL && !w->check_default )
+    if ( w->buffer == NULL )
     {
         if ( !w->overflow && w->offset >= 0 && w->offset <= w->capacity && w->vocabulary->slot[19] >= 0 && 7 <= w->capacity - w->offset )
         {
@@ -3229,7 +3229,6 @@ static SCHEMA_UNUSED int tally_save_body( TableWriter * w, const Tally * value )
     { /* hits */
         if ( !( value->hits == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 19, 0x732dfbcc9b0cf0bbull, 4 );
             table_writer_put32( w, (uint32_t) ( value->hits ) );
         }
@@ -3378,9 +3377,6 @@ static SCHEMA_UNUSED int tally_save_message_body(TableBitWriter * w,const Tally 
  (void)value;
  { /* hits */
  if(!(value->hits == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,31,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->hits)-UINT64_C(0),14);
  }
@@ -3694,9 +3690,6 @@ static SCHEMA_UNUSED int tally_save_body_retain( TableWriter * w, const Tally * 
     retention=table_retain_step(body_keep,0,0);
         if ( !( value->hits == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2;
-            return 1;
-            }
             table_retain_writer_id( w, 0x732dfbcc9b0cf0bbull , retention);
             table_writer_put8( w, 4 );
             table_writer_put32( w, (uint32_t) ( value->hits ) );
