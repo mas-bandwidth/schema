@@ -170,6 +170,22 @@ type tableGen struct {
 	// a measure emitted on its own has nobody to hand the number to.
 	elemCache      string
 	elemCacheSlots int64
+	// noElide is the FIXED TABLE'S WRITE RULE in force for the body being
+	// emitted (docs/SPEC-TABLES.md §3, "The fixed table's body"): every
+	// declared field rides whatever it holds, and the bounded payloads that
+	// can carry padding ride at their bound. A VARIABLE table keeps the
+	// elision wire entirely, and so does a map's generated ENTRY, which is
+	// only ever part of a variable table's wire.
+	noElide bool
+}
+
+// fixedNoElide reports whether a closure member takes the FIXED table's write
+// rule. The mode is the derived one (ir.VariableTables) and nothing else, so
+// nobody declares this either; a map's ENTRY is excluded because a map makes
+// its declaring table variable and the entry is a body inside that table's
+// wire (docs/SPEC-TABLES.md §2.8).
+func (g *tableGen) fixedNoElide(st *ir.Struct) bool {
+	return !g.isVar(st.Name) && !st.IsMapEntry()
 }
 
 // kElemCacheSlots is the most per-element lengths one array field keeps on the
@@ -848,6 +864,18 @@ struct TableWriter
     {
         if ( offset + bytes > capacity ) { overflow = true; return; }
         memcpy( buffer + offset, data, (size_t) bytes );
+        offset += bytes;
+    }
+    // THE FIXED TABLE'S PADDING (docs/SPEC-TABLES.md §3): the slack a bounded
+    // payload rides at its bound with. Zero-filled, and no reader reads it —
+    // the count or length in front of it says where the value stopped, and the
+    // enclosing L says where the field stopped. It is written rather than
+    // skipped because the buffer is the caller's and may hold anything.
+    ` + forceInline + ` void zeros( int64_t bytes )
+    {
+        if ( bytes <= 0 ) { return; }
+        if ( offset + bytes > capacity ) { overflow = true; return; }
+        memset( buffer + offset, 0, (size_t) bytes );
         offset += bytes;
     }
     ` + forceInline + ` void put8( uint8_t v )   { raw( &v, 1 ); }

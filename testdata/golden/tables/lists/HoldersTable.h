@@ -335,6 +335,18 @@ struct TableWriter
         memcpy( buffer + offset, data, (size_t) bytes );
         offset += bytes;
     }
+    // THE FIXED TABLE'S PADDING (docs/SPEC-TABLES.md §3): the slack a bounded
+    // payload rides at its bound with. Zero-filled, and no reader reads it —
+    // the count or length in front of it says where the value stopped, and the
+    // enclosing L says where the field stopped. It is written rather than
+    // skipped because the buffer is the caller's and may hold anything.
+    LISTDEMO_TABLE_INLINE void zeros( int64_t bytes )
+    {
+        if ( bytes <= 0 ) { return; }
+        if ( offset + bytes > capacity ) { overflow = true; return; }
+        memset( buffer + offset, 0, (size_t) bytes );
+        offset += bytes;
+    }
     LISTDEMO_TABLE_INLINE void put8( uint8_t v )   { raw( &v, 1 ); }
     LISTDEMO_TABLE_INLINE void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
     LISTDEMO_TABLE_INLINE void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
@@ -6914,8 +6926,9 @@ inline bool DeckLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
 
 inline int64_t SampleMeasureBody( TableIds & ids, const Sample & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.v != 0 ) { bytes += TableLebBytes( ids.ref_at( 40, 0xaf63eb4c86020609ull ) ) + 1 + 4; } // v
+    bytes += TableLebBytes( ids.ref_at( 40, 0xaf63eb4c86020609ull ) ) + 1 + 4; // v
     return bytes;
 }
 
@@ -6929,7 +6942,6 @@ inline int64_t SampleMeasure( const Sample & value )
 
 LISTDEMO_TABLE_INLINE bool SampleSaveBody( TableWriter & w, TableIds & ids, const Sample & value )
 {
-    if ( value.v != 0 )
     {
         w.header( ids.ref_at( 40, 0xaf63eb4c86020609ull ), 4 ); // v
         w.put32( uint32_t( value.v ) );
@@ -8048,8 +8060,9 @@ inline bool SheetLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
 
 inline int64_t ItemMeasureBody( TableIds & ids, const Item & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.count != 0 ) { bytes += TableLebBytes( ids.ref_at( 46, 0xb1e5e28e4479a274ull ) ) + 1 + 4; } // count
+    bytes += TableLebBytes( ids.ref_at( 46, 0xb1e5e28e4479a274ull ) ) + 1 + 4; // count
     return bytes;
 }
 
@@ -8063,7 +8076,6 @@ inline int64_t ItemMeasure( const Item & value )
 
 LISTDEMO_TABLE_INLINE bool ItemSaveBody( TableWriter & w, TableIds & ids, const Item & value )
 {
-    if ( value.count != 0 )
     {
         w.header( ids.ref_at( 46, 0xb1e5e28e4479a274ull ), 4 ); // count
         w.put32( uint32_t( value.count ) );
@@ -15356,15 +15368,15 @@ inline bool DeckLoadBuilder( DeckBuilder & builder, const uint8_t * wire_file, i
 
 inline int64_t SampleMeasureBodyRetain( TableRetainIds & ids, const Sample & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.v != 0 ) { bytes += TableLebBytes( ids.ref_at( 40, 0xaf63eb4c86020609ull ) ) + 1 + 4; } // v
+    bytes += TableLebBytes( ids.ref_at( 40, 0xaf63eb4c86020609ull ) ) + 1 + 4; // v
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
 
 LISTDEMO_TABLE_INLINE bool SampleSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const Sample & value, TableRetain * retain, const TableRetainPath & path )
 {
-    if ( value.v != 0 )
     {
         w.header( ids.ref_at( 40, 0xaf63eb4c86020609ull ), 4 ); // v
         w.put32( uint32_t( value.v ) );
@@ -16186,15 +16198,15 @@ inline bool SheetLoadMessageBodyRetain( TableBitReader & r, const TableVocabular
 
 inline int64_t ItemMeasureBodyRetain( TableRetainIds & ids, const Item & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.count != 0 ) { bytes += TableLebBytes( ids.ref_at( 46, 0xb1e5e28e4479a274ull ) ) + 1 + 4; } // count
+    bytes += TableLebBytes( ids.ref_at( 46, 0xb1e5e28e4479a274ull ) ) + 1 + 4; // count
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
 
 LISTDEMO_TABLE_INLINE bool ItemSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const Item & value, TableRetain * retain, const TableRetainPath & path )
 {
-    if ( value.count != 0 )
     {
         w.header( ids.ref_at( 46, 0xb1e5e28e4479a274ull ), 4 ); // count
         w.put32( uint32_t( value.count ) );

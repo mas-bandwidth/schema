@@ -277,6 +277,18 @@ struct TableWriter
         memcpy( buffer + offset, data, (size_t) bytes );
         offset += bytes;
     }
+    // THE FIXED TABLE'S PADDING (docs/SPEC-TABLES.md §3): the slack a bounded
+    // payload rides at its bound with. Zero-filled, and no reader reads it —
+    // the count or length in front of it says where the value stopped, and the
+    // enclosing L says where the field stopped. It is written rather than
+    // skipped because the buffer is the caller's and may hold anything.
+    WIDE_TABLE_INLINE void zeros( int64_t bytes )
+    {
+        if ( bytes <= 0 ) { return; }
+        if ( offset + bytes > capacity ) { overflow = true; return; }
+        memset( buffer + offset, 0, (size_t) bytes );
+        offset += bytes;
+    }
     WIDE_TABLE_INLINE void put8( uint8_t v )   { raw( &v, 1 ); }
     WIDE_TABLE_INLINE void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
     WIDE_TABLE_INLINE void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
@@ -2489,19 +2501,17 @@ WIDE_TABLE_INLINE bool LineLoadBody( TableReader & r, Line & value );
 
 inline int64_t CaptionMeasureBody( TableIds & ids, const Caption & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.title_length < 0 || value.title_length > 7 ) { return -1; } // storage invariant
-    if ( value.title_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 13, 0xda31296c0c1b6029ull ) ) + 1 + TableLebBytes( (uint64_t) ( (int64_t) value.title_length * 2 ) ) + ( (int64_t) value.title_length * 2 ); } // title
+    bytes += TableLebBytes( ids.ref_at( 13, 0xda31296c0c1b6029ull ) ) + 1 + TableLebBytes( (uint64_t) ( (int64_t) value.title_length * 2 ) ) + ( (int64_t) value.title_length * 2 ); // title
     {
-        const int32_t mark_line = ids.count;
         const uint64_t ref_line = ids.ref_at( 11, 0xbf4ba5ad694f5907ull );
         const int64_t body_line = LineMeasureBody( ids, value.line );
         if ( body_line < 0 ) { return -1; }
-        if ( body_line > 1 ) { bytes += TableLebBytes( ref_line ) + 1 + TableLebBytes( (uint64_t) ( body_line ) ) + ( body_line ); } // line
-        else { ids.truncate( mark_line ); } // an all-default nested table elides, and costs no entry
+        bytes += TableLebBytes( ref_line ) + 1 + TableLebBytes( (uint64_t) ( body_line ) ) + ( body_line ); // line
     }
     if ( value.lines_count < 0 || value.lines_count > 3 ) { return -1; } // storage invariant
-    if ( value.lines_count > 0 )
     {
         const uint64_t ref_lines = ids.ref_at( 3, 0x5ce3f9a9f1d5001cull );
         int64_t body_lines = 0;
@@ -2514,40 +2524,37 @@ inline int64_t CaptionMeasureBody( TableIds & ids, const Caption & value )
         }
         bytes += TableLebBytes( ref_lines ) + 1 + TableLebBytes( (uint64_t) ( body_lines ) ) + ( body_lines ); // lines
     }
-    if ( value.body.type != BodyType::None ) // None elides — the absence of the field is the None
+    bytes += TableLebBytes( ids.ref_at( 12, 0xcd4de79bc6c93295ull ) ) + 1; // body
+    switch ( value.body.type )
     {
-        bytes += TableLebBytes( ids.ref_at( 12, 0xcd4de79bc6c93295ull ) ) + 1;
-        switch ( value.body.type )
+        case BodyType::None: bytes += 1; break; // the ZERO ARM REFERENCE is the whole payload (§3)
+        case BodyType::Wide:
         {
-            case BodyType::None: break;
-            case BodyType::Wide:
-            {
-                int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref_at( 8, 0xa633f1f655715ccaull );
-                if ( value.body.wide.value_length < 0 || value.body.wide.value_length > 4 ) { return -1; } // storage invariant
-                arm_payload += (int64_t) value.body.wide.value_length * 2; // the code units under the arm's L, which is a BYTE length (§3)
-                bytes += TableLebBytes( arm_ref ) + 1 + TableLebBytes( (uint64_t) ( arm_payload ) ) + ( arm_payload );
-                break;
-            }
-            case BodyType::Narrow:
-            {
-                int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref_at( 7, 0x96569b06f223c29aull );
-                if ( value.body.narrow.value_length < 0 || value.body.narrow.value_length > 4 ) { return -1; } // storage invariant
-                arm_payload += value.body.narrow.value_length; // the string's bytes under the arm's L
-                bytes += TableLebBytes( arm_ref ) + 1 + TableLebBytes( (uint64_t) ( arm_payload ) ) + ( arm_payload );
-                break;
-            }
-            case BodyType::Tally:
-            {
-                int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref_at( 10, 0xb1e5e28e4479a274ull );
-                arm_payload += 4; // int32
-                bytes += TableLebBytes( arm_ref ) + 1 + TableLebBytes( (uint64_t) ( arm_payload ) ) + ( arm_payload );
-                break;
-            }
-            default: return -1; // invalid tag — the write side refuses it too
+            int64_t arm_payload = 0;
+            const uint64_t arm_ref = ids.ref_at( 8, 0xa633f1f655715ccaull );
+            if ( value.body.wide.value_length < 0 || value.body.wide.value_length > 4 ) { return -1; } // storage invariant
+            arm_payload += (int64_t) value.body.wide.value_length * 2; // the code units under the arm's L, which is a BYTE length (§3)
+            bytes += TableLebBytes( arm_ref ) + 1 + TableLebBytes( (uint64_t) ( arm_payload ) ) + ( arm_payload );
+            break;
         }
+        case BodyType::Narrow:
+        {
+            int64_t arm_payload = 0;
+            const uint64_t arm_ref = ids.ref_at( 7, 0x96569b06f223c29aull );
+            if ( value.body.narrow.value_length < 0 || value.body.narrow.value_length > 4 ) { return -1; } // storage invariant
+            arm_payload += value.body.narrow.value_length; // the string's bytes under the arm's L
+            bytes += TableLebBytes( arm_ref ) + 1 + TableLebBytes( (uint64_t) ( arm_payload ) ) + ( arm_payload );
+            break;
+        }
+        case BodyType::Tally:
+        {
+            int64_t arm_payload = 0;
+            const uint64_t arm_ref = ids.ref_at( 10, 0xb1e5e28e4479a274ull );
+            arm_payload += 4; // int32
+            bytes += TableLebBytes( arm_ref ) + 1 + TableLebBytes( (uint64_t) ( arm_payload ) ) + ( arm_payload );
+            break;
+        }
+        default: return -1; // invalid tag — the write side refuses it too
     }
     return bytes;
 }
@@ -2563,26 +2570,19 @@ inline int64_t CaptionMeasure( const Caption & value )
 WIDE_TABLE_INLINE bool CaptionSaveBody( TableWriter & w, TableIds & ids, const Caption & value )
 {
     if ( value.title_length < 0 || value.title_length > 7 ) { return false; } // storage invariant
-    if ( value.title_length > 0 )
-    {
+    { // rides whatever it holds, AT ITS LENGTH: kind 33 admits no zero unit (§3)
         w.header( ids.ref_at( 13, 0xda31296c0c1b6029ull ), 33 ); // title
         w.putleb( (uint64_t) value.title_length * 2 ); // L is a BYTE length (§3)
         for ( int32_t i = 0; i < value.title_length; i++ ) { w.put16( (uint16_t) value.title[i] ); } // two bytes each, little-endian
     }
     {
-        const int32_t mark_line = ids.count;
         const uint64_t ref_line = ids.ref_at( 11, 0xbf4ba5ad694f5907ull );
         const int64_t body_line = LineMeasureBody( ids, value.line );
         if ( body_line < 0 ) return false; // storage invariant, refused as measure refuses it
-        if ( body_line > 1 ) // all-default nested elides
-        {
-            w.header( ref_line, 13 ); w.putleb( (uint64_t) body_line ); // line
-            if ( !LineSaveBody( w, ids, value.line ) ) return false;
-        }
-        else { ids.truncate( mark_line ); }
+        w.header( ref_line, 13 ); w.putleb( (uint64_t) body_line ); // line
+        if ( !LineSaveBody( w, ids, value.line ) ) return false;
     }
     if ( value.lines_count < 0 || value.lines_count > 3 ) { return false; } // storage invariant
-    if ( value.lines_count > 0 )
     {
         const uint64_t ref_lines = ids.ref_at( 3, 0x5ce3f9a9f1d5001cull );
         int64_t body_lines = 0;
@@ -2610,11 +2610,11 @@ WIDE_TABLE_INLINE bool CaptionSaveBody( TableWriter & w, TableIds & ids, const C
             }
         }
     }
-    if ( value.body.type != BodyType::None )
-    {
+    { // rides whatever the tag is: None is the ZERO ARM REFERENCE (§3)
         w.header( ids.ref_at( 12, 0xcd4de79bc6c93295ull ), 15 ); // body
         switch ( value.body.type )
         {
+            case BodyType::None: w.putleb( 0 ); break; // the ZERO ARM REFERENCE is the whole payload (§3)
             case BodyType::Wide:
             {
                 const uint64_t arm_ref = ids.ref_at( 8, 0xa633f1f655715ccaull );
@@ -3447,10 +3447,11 @@ inline bool CaptionLoadMessages( Caption * values, int64_t * count, const TableV
 
 inline int64_t StampMeasureBody( TableIds & ids, const Stamp & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.label_length < 0 || value.label_length > 4 ) { return -1; } // storage invariant
-    if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 1, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( (int64_t) value.label_length * 2 ) ) + ( (int64_t) value.label_length * 2 ); } // label
-    if ( value.seq != 0 ) { bytes += TableLebBytes( ids.ref_at( 5, 0x823b8a195ce2133cull ) ) + 1 + 4; } // seq
+    bytes += TableLebBytes( ids.ref_at( 1, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( (int64_t) value.label_length * 2 ) ) + ( (int64_t) value.label_length * 2 ); // label
+    bytes += TableLebBytes( ids.ref_at( 5, 0x823b8a195ce2133cull ) ) + 1 + 4; // seq
     return bytes;
 }
 
@@ -3465,13 +3466,11 @@ inline int64_t StampMeasure( const Stamp & value )
 WIDE_TABLE_INLINE bool StampSaveBody( TableWriter & w, TableIds & ids, const Stamp & value )
 {
     if ( value.label_length < 0 || value.label_length > 4 ) { return false; } // storage invariant
-    if ( value.label_length > 0 )
-    {
+    { // rides whatever it holds, AT ITS LENGTH: kind 33 admits no zero unit (§3)
         w.header( ids.ref_at( 1, 0x39f7fcec8fcb623dull ), 33 ); // label
         w.putleb( (uint64_t) value.label_length * 2 ); // L is a BYTE length (§3)
         for ( int32_t i = 0; i < value.label_length; i++ ) { w.put16( (uint16_t) value.label[i] ); } // two bytes each, little-endian
     }
-    if ( value.seq != 0 )
     {
         w.header( ids.ref_at( 5, 0x823b8a195ce2133cull ), 8 ); // seq
         w.put32( uint32_t( value.seq ) );
@@ -3856,9 +3855,10 @@ inline bool StampLoadMessages( Stamp * values, int64_t * count, const TableVocab
 
 inline int64_t LineMeasureBody( TableIds & ids, const Line & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.text_length < 0 || value.text_length > 4 ) { return -1; } // storage invariant
-    if ( value.text_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 14, 0xfa04f4ef1995407eull ) ) + 1 + TableLebBytes( (uint64_t) ( (int64_t) value.text_length * 2 ) ) + ( (int64_t) value.text_length * 2 ); } // text
+    bytes += TableLebBytes( ids.ref_at( 14, 0xfa04f4ef1995407eull ) ) + 1 + TableLebBytes( (uint64_t) ( (int64_t) value.text_length * 2 ) ) + ( (int64_t) value.text_length * 2 ); // text
     return bytes;
 }
 
@@ -3873,8 +3873,7 @@ inline int64_t LineMeasure( const Line & value )
 WIDE_TABLE_INLINE bool LineSaveBody( TableWriter & w, TableIds & ids, const Line & value )
 {
     if ( value.text_length < 0 || value.text_length > 4 ) { return false; } // storage invariant
-    if ( value.text_length > 0 )
-    {
+    { // rides whatever it holds, AT ITS LENGTH: kind 33 admits no zero unit (§3)
         w.header( ids.ref_at( 14, 0xfa04f4ef1995407eull ), 33 ); // text
         w.putleb( (uint64_t) value.text_length * 2 ); // L is a BYTE length (§3)
         for ( int32_t i = 0; i < value.text_length; i++ ) { w.put16( (uint16_t) value.text[i] ); } // two bytes each, little-endian

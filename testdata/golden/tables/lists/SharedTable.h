@@ -335,6 +335,18 @@ struct TableWriter
         memcpy( buffer + offset, data, (size_t) bytes );
         offset += bytes;
     }
+    // THE FIXED TABLE'S PADDING (docs/SPEC-TABLES.md §3): the slack a bounded
+    // payload rides at its bound with. Zero-filled, and no reader reads it —
+    // the count or length in front of it says where the value stopped, and the
+    // enclosing L says where the field stopped. It is written rather than
+    // skipped because the buffer is the caller's and may hold anything.
+    LISTDEMO_TABLE_INLINE void zeros( int64_t bytes )
+    {
+        if ( bytes <= 0 ) { return; }
+        if ( offset + bytes > capacity ) { overflow = true; return; }
+        memset( buffer + offset, 0, (size_t) bytes );
+        offset += bytes;
+    }
     LISTDEMO_TABLE_INLINE void put8( uint8_t v )   { raw( &v, 1 ); }
     LISTDEMO_TABLE_INLINE void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
     LISTDEMO_TABLE_INLINE void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
@@ -6608,9 +6620,10 @@ inline bool AlbumLoadMessageBodyRetain( TableBitReader & r, const TableVocabular
 
 inline int64_t PhotoMeasureBody( TableIds & ids, const Photo & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.width != 0 ) { bytes += TableLebBytes( ids.ref_at( 54, 0xdbdacd932fd1e9bfull ) ) + 1 + 4; } // width
-    if ( value.height != 0 ) { bytes += TableLebBytes( ids.ref_at( 5, 0x17720bf67d347222ull ) ) + 1 + 4; } // height
+    bytes += TableLebBytes( ids.ref_at( 54, 0xdbdacd932fd1e9bfull ) ) + 1 + 4; // width
+    bytes += TableLebBytes( ids.ref_at( 5, 0x17720bf67d347222ull ) ) + 1 + 4; // height
     return bytes;
 }
 
@@ -6624,12 +6637,10 @@ inline int64_t PhotoMeasure( const Photo & value )
 
 LISTDEMO_TABLE_INLINE bool PhotoSaveBody( TableWriter & w, TableIds & ids, const Photo & value )
 {
-    if ( value.width != 0 )
     {
         w.header( ids.ref_at( 54, 0xdbdacd932fd1e9bfull ), 8 ); // width
         w.put32( uint32_t( value.width ) );
     }
-    if ( value.height != 0 )
     {
         w.header( ids.ref_at( 5, 0x17720bf67d347222ull ), 8 ); // height
         w.put32( uint32_t( value.height ) );
@@ -8722,21 +8733,20 @@ inline bool AlbumLoadBuilder( AlbumBuilder & builder, const uint8_t * wire_file,
 
 inline int64_t PhotoMeasureBodyRetain( TableRetainIds & ids, const Photo & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.width != 0 ) { bytes += TableLebBytes( ids.ref_at( 54, 0xdbdacd932fd1e9bfull ) ) + 1 + 4; } // width
-    if ( value.height != 0 ) { bytes += TableLebBytes( ids.ref_at( 5, 0x17720bf67d347222ull ) ) + 1 + 4; } // height
+    bytes += TableLebBytes( ids.ref_at( 54, 0xdbdacd932fd1e9bfull ) ) + 1 + 4; // width
+    bytes += TableLebBytes( ids.ref_at( 5, 0x17720bf67d347222ull ) ) + 1 + 4; // height
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
 
 LISTDEMO_TABLE_INLINE bool PhotoSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const Photo & value, TableRetain * retain, const TableRetainPath & path )
 {
-    if ( value.width != 0 )
     {
         w.header( ids.ref_at( 54, 0xdbdacd932fd1e9bfull ), 8 ); // width
         w.put32( uint32_t( value.width ) );
     }
-    if ( value.height != 0 )
     {
         w.header( ids.ref_at( 5, 0x17720bf67d347222ull ), 8 ); // height
         w.put32( uint32_t( value.height ) );

@@ -3433,7 +3433,13 @@ twenty unnameable entries counts nothing at all if no body references them.
   framing. **First-use order in the id table follows from the write order**,
   so an encoder that reorders fields writes a different table and the same
   values.
-- **Writers elide what readers default**: a field holding its default, an
+- **Writers elide what readers default — IN A VARIABLE TABLE.** This bullet
+  and the two after it describe the VARIABLE class's body. A FIXED table's
+  body elides nothing, and "The fixed table's body" below states its rule and
+  the two classes' one shared reader. Everything else in this section — the
+  framing, the kinds, the payloads, the terminator, the id table — is one wire
+  for both classes.
+  A field holding its default, an
   empty string or array, an all-default FIXED array, an empty union and an
   all-default nested table are not written at all (fixed arrays of tables
   keep their elements, because position is identity there, and an ENUM-KEYED
@@ -3487,11 +3493,106 @@ under 128, two under 16,384, and so on.
 | an array of `N` elements holding `e` bytes | header + `L` + one element-kind byte + the count + `e` |
 | an enum-keyed array of present slots | header + `L` + one element-kind byte + the count + per slot the key reference, its `L` and its bytes |
 | a union holding a set arm of `L` bytes | header + the arm reference + one kind byte + `L` + `L` bytes |
-| a union holding `None` | nothing: it elides |
+| a union holding `None` | nothing in a variable table: it elides. In a fixed table, header + one zero byte |
 | a pointer | header + the index |
 | the escape kind | header + `L` + `L` bytes |
 | a payload-free arm | the arm reference + one kind byte + one zero byte |
 | the whole file's framing | 1 for the form byte, 8 for the entry count, 8 an entry |
+
+### The fixed table's body
+
+**A FIXED table's writer elides nothing.** Every declared field rides, whatever
+it holds, in declaration order, and the payloads that can carry slack ride at
+their declared BOUND rather than at their value's extent. The class is the
+derived one and nobody declares it (§2.2): a table is FIXED when no pointer,
+map or unbounded array appears anywhere in its by-value closure. **A VARIABLE
+table keeps the elision wire above, entirely**, and so does a map's generated
+ENTRY, which is only ever a body inside a variable table's wire.
+
+**The class is the TABLE's, not the file's.** A fixed table nested by value
+inside a variable one is still a fixed table, and its body follows this rule
+inside the other's.
+
+**What each field kind costs in a fixed body:**
+
+| a field of | its bytes |
+|---|---|
+| any scalar, `enum`, `flags`, `fixed`/`ufixed`, 128-bit | the variable class's row above, always, never elided |
+| a nested FIXED table | header + `L` + the nested body, always, even when the body is its lone terminator |
+| `[N]T`, a fixed array | header + `L` + the element-kind byte + `N` + `N` elements, always |
+| `[..Max]T` and `[Lo..Max]T` where `T` has ONE CONSTANT WIDTH | header + `L` + the element-kind byte + the LIVE COUNT + `Max` elements: the count says where the value stopped and `Max − count` elements' worth of ZERO PADDING follows it |
+| `[..Max]T` where `T` is a table, enum, union or pointer index | header + `L` + the element-kind byte + the live count + that many elements. `Max` of a self-framed element is not a number the writer knows, so the array rides at its live extent |
+| `bytes(N)` | header + `L` + the `u8` element-kind byte + the LIVE LENGTH + `N` bytes, the last `N − length` of them zero padding |
+| `[Enum]T` | header + `L` + the element-kind byte + `N` = EVERY slot + `N` triples. No slot elides and the field has no elided form |
+| a union holding a set arm | the variable class's row, unchanged |
+| a union holding `None` | header + one zero byte, the arm reference that names no arm |
+| `string(N)`, `wstring(N)` | header + `L` + the value's own bytes — AT ITS LENGTH, not at `N` |
+| an ABSENT `?T` | nothing |
+
+**THE PADDING IS ZERO AND NO READER READS IT.** A count, a length or the
+enclosing `L` always stands in front of it saying where the value stopped, and
+a reader that has read that many elements steps to the field's `L` and reads
+on. This is the one place the section's opening sentence — "nothing is aligned
+and nothing is padded" — admits a writer-side exception, and it is an exception
+in the SLACK only: no field, count, length or reference moves to a boundary,
+and the padding is never a field.
+
+**THREE CONSTRUCTS CANNOT RIDE AT A BOUND IN THIS FORM, and they are the
+reason a fixed body is not one constant size per type:**
+
+- **`string(N)` and `wstring(N)`.** Kind `12`'s payload is `L` then `L` bytes
+  of well-formed UTF-8 **with no zero byte among them**, and kind `33`'s is the
+  same rule over code units. The `L` a string carries IS its character count:
+  there is no second number a reader could trust, so `N − length` bytes of
+  slack would either be malformed (zero bytes) or read back as content. A
+  bounded string rides at its length.
+- **A union.** A reader checks a set arm's `L` against the arm the reference
+  names — a scalar arm against that kind's exact width, a body arm against its
+  own terminator — so an arm padded to a sibling arm's width is that arm's own
+  framing damage. And `None`'s payload is the zero arm reference ALONE: kind
+  `15` has no `L` after a `0`, so the field ends at that byte and the next
+  bytes are the next field's header. A union rides at its arm's width.
+- **An ABSENT `?T`.** Presence on this wire IS the field riding (§2.3). There
+  is no present flag for an absent optional to set, so an absent optional that
+  rode would read as present. It elides, and it is the one elision a fixed
+  body keeps.
+
+**AND THE REFERENCES ARE NOT A CONSTANT EITHER.** Every field header, every
+enum value and every union arm names its id by a REFERENCE — a canonical
+unsigned LEB128 index into the file's own first-use id table — so a reference
+is one byte for the file's first 127 distinct ids and two for the next 16,256.
+Which of those a given field takes is a property of the FILE the body sits in,
+not of the type. Canonical LEB128 forbids padding a reference to a fixed width
+(a non-minimal encoding is malformed), so the widths cannot be normalized.
+**A fixed table's body is therefore of BOUNDED and STABLE size, not of one
+constant size**: it does not vary with what the bounded payloads hold, and it
+does vary with the strings, unions and optionals a type declares and with where
+the file's ids land.
+
+**THE READER IS THE SAME READER.** Not one rule in §4 moves. An absent field,
+a short array, a short string, a narrower arm and an older writer's body all
+read exactly as they always did, from a fixed writer and a variable one alike:
+the count, the length, the arm reference and the enclosing `L` are what a
+reader already follows, and padding is what lies between where it stopped and
+where those numbers said the field ends. A reader has no way to ask which class
+wrote a body, and no reason to.
+
+**WHAT DISQUALIFIES A FIXED TABLE.** Maps, unbounded arrays and pointers make a
+table VARIABLE by the derivation itself, so they never reach this rule. **A
+GUARDED BRANCH is refused outright**: an `if`/`else` group exists to make a
+body's size depend on a value it carries, which is the one thing this class
+does not do, so a table declaring one is a compile error and not a table that
+silently becomes variable.
+
+**THE VERSION CONSEQUENCE.** This moves the bytes a conforming writer produces
+and moves none that a conforming reader accepts, so it is a WRITER change on
+form `1` and not a new form: the form byte versions the FRAMING, and no framing
+rule here is new. Every wire a previous writer produced still reads, and every
+wire this writer produces reads on a build that predates the rule. What it does
+move is the BUILD VERSION (§20), because the layout a build asserts is
+digested there, and every pinned golden a fixed table writes. A deployment that
+pins bytes rather than values re-pins them; a deployment that reads values sees
+nothing.
 
 **MEASURED over the tables conformance corpus, as a ratio to the wire's
 previous form**: **0.98x the bytes over the corpus without its 210 KB blob,
@@ -10864,6 +10965,34 @@ are these rulings, in the owner's words:
 
 ### 13.3 The fixed-class constructs, ruled
 
+- **Elision, dropped from the fixed class** (§3, "The fixed table's body").
+  The project owner, in order: *"I think for fixed tables we should drop
+  elision."* — *"Keep it simple. Fixed tables are meant to be the fast
+  equivalent of types, in table form."* On `[..Max]int`: *"it should be
+  [fixed], and we should just always write the array as max, along with the
+  count."* — *"same for strings, wstrings"* — *"what about unions? we could
+  just write bytes always matching the largest union in fixed, and now unions
+  are fixed too."* — *"effectively, fixed tables should only be used for small
+  things."* And on the guarded branch, which the owner calls the lookback
+  conditional: *"the intent of the lookback conditional is to make it variable
+  size"* — *"so that is a disqualifying thing for a fixed table. not
+  supported. only variable."*
+
+  **The rule landed in full for every construct that can carry slack, and
+  THREE of the owner's cases are refused by the wire itself rather than by a
+  choice** — §3 states each with its reason: a bounded string and wstring
+  (kind `12` and kind `33` admit no zero byte, and the one length they carry
+  IS the character count), a union (every arm's `L` is checked against the arm
+  the reference names, and `None`'s payload is the zero reference alone), and
+  an absent optional (presence on this wire is the field riding). Padding any
+  of the three needs a READ-side change, which this ruling does not have. The
+  same three, plus the LEB128 id references, are why the ruling's stated
+  consequence — one constant size per type — does not follow: a fixed body is
+  bounded and stable, not constant. **Measured** on the paired corpus's 64
+  identical logical records (`bench/paired/corpus`, one table body per record):
+  the body's spread narrows from 94 bytes to 56 and does not reach zero, and
+  the mean grows 2069.84 → 2157.88 bytes against an unchanged 438-byte packet,
+  a table/packet ratio of 4.73x → 4.93x.
 - **Optional fields** (§2.3): "If you want to have optional fields without
   needing pointers too, and that's elegant, then go for it" — and, once
   they existed, "it's cool to keep the Config.bin and Assets.bin fixed

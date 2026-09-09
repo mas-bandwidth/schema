@@ -295,6 +295,18 @@ struct TableWriter
         memcpy( buffer + offset, data, (size_t) bytes );
         offset += bytes;
     }
+    // THE FIXED TABLE'S PADDING (docs/SPEC-TABLES.md §3): the slack a bounded
+    // payload rides at its bound with. Zero-filled, and no reader reads it —
+    // the count or length in front of it says where the value stopped, and the
+    // enclosing L says where the field stopped. It is written rather than
+    // skipped because the buffer is the caller's and may hold anything.
+    TABLEDEMO_TABLE_INLINE void zeros( int64_t bytes )
+    {
+        if ( bytes <= 0 ) { return; }
+        if ( offset + bytes > capacity ) { overflow = true; return; }
+        memset( buffer + offset, 0, (size_t) bytes );
+        offset += bytes;
+    }
     TABLEDEMO_TABLE_INLINE void put8( uint8_t v )   { raw( &v, 1 ); }
     TABLEDEMO_TABLE_INLINE void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
     TABLEDEMO_TABLE_INLINE void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
@@ -2887,10 +2899,11 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardLoadBody( TableReader & r, ScoreBoard & va
 
 inline int64_t TeamConfigMeasureBody( TableIds & ids, const TeamConfig & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.spawn_count != 4 ) { bytes += TableLebBytes( ids.ref_at( 120, 0xceec99e2d65db674ull ) ) + 1 + 4; } // spawn_count
+    bytes += TableLebBytes( ids.ref_at( 120, 0xceec99e2d65db674ull ) ) + 1 + 4; // spawn_count
     if ( value.banner_length < 0 || value.banner_length > 16 ) { return -1; } // storage invariant
-    if ( value.banner_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 108, 0xbca0dab1c7a00ccfull ) ) + 1 + TableLebBytes( (uint64_t) ( value.banner_length ) ) + ( value.banner_length ); } // banner
+    bytes += TableLebBytes( ids.ref_at( 108, 0xbca0dab1c7a00ccfull ) ) + 1 + TableLebBytes( (uint64_t) ( value.banner_length ) ) + ( value.banner_length ); // banner
     return bytes;
 }
 
@@ -2904,14 +2917,12 @@ inline int64_t TeamConfigMeasure( const TeamConfig & value )
 
 TABLEDEMO_TABLE_INLINE bool TeamConfigSaveBody( TableWriter & w, TableIds & ids, const TeamConfig & value )
 {
-    if ( value.spawn_count != 4 )
     {
         w.header( ids.ref_at( 120, 0xceec99e2d65db674ull ), 4 ); // spawn_count
         w.put32( uint32_t( value.spawn_count ) );
     }
     if ( value.banner_length < 0 || value.banner_length > 16 ) { return false; } // storage invariant
-    if ( value.banner_length > 0 )
-    {
+    { // rides whatever it holds, AT ITS LENGTH: kind 12 admits no zero byte (§3)
         w.header( ids.ref_at( 108, 0xbca0dab1c7a00ccfull ), 12 ); // banner
         w.putleb( (uint64_t) value.banner_length );
         w.raw( value.banner, value.banner_length );
@@ -3301,9 +3312,10 @@ inline bool TeamConfigLoadMessages( TeamConfig * values, int64_t * count, const 
 
 inline int64_t GunnerConfigMeasureBody( TableIds & ids, const GunnerConfig & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.reaction != 0.2f ) { bytes += TableLebBytes( ids.ref_at( 101, 0xb75aa3662201646aull ) ) + 1 + 4; } // reaction
-    if ( value.tracking != false ) { bytes += TableLebBytes( ids.ref_at( 90, 0xa6bf719a4602b0bcull ) ) + 1 + 1; } // tracking
+    bytes += TableLebBytes( ids.ref_at( 101, 0xb75aa3662201646aull ) ) + 1 + 4; // reaction
+    bytes += TableLebBytes( ids.ref_at( 90, 0xa6bf719a4602b0bcull ) ) + 1 + 1; // tracking
     return bytes;
 }
 
@@ -3317,12 +3329,10 @@ inline int64_t GunnerConfigMeasure( const GunnerConfig & value )
 
 TABLEDEMO_TABLE_INLINE bool GunnerConfigSaveBody( TableWriter & w, TableIds & ids, const GunnerConfig & value )
 {
-    if ( value.reaction != 0.2f )
     {
         w.header( ids.ref_at( 101, 0xb75aa3662201646aull ), 10 ); // reaction
         w.put32( table_float_to_bits( value.reaction ) );
     }
-    if ( value.tracking != false )
     {
         w.header( ids.ref_at( 90, 0xa6bf719a4602b0bcull ), 1 ); // tracking
         w.put8( value.tracking ? 1 : 0 );
@@ -3644,9 +3654,10 @@ inline bool GunnerConfigLoadMessages( GunnerConfig * values, int64_t * count, co
 
 inline int64_t TurretConfigMeasureBody( TableIds & ids, const TurretConfig & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.damage != 10.0f ) { bytes += TableLebBytes( ids.ref_at( 66, 0x7f6308be8ab37fc0ull ) ) + 1 + 4; } // damage
-    if ( value.cooldown != 0.5f ) { bytes += TableLebBytes( ids.ref_at( 133, 0xdc2cbe6953343d48ull ) ) + 1 + 4; } // cooldown
+    bytes += TableLebBytes( ids.ref_at( 66, 0x7f6308be8ab37fc0ull ) ) + 1 + 4; // damage
+    bytes += TableLebBytes( ids.ref_at( 133, 0xdc2cbe6953343d48ull ) ) + 1 + 4; // cooldown
     if ( value.gunner_present ) // ?GunnerConfig: presence decides, not content
     {
         const uint64_t ref_gunner = ids.ref_at( 38, 0x40dbb648c0cd44aaull );
@@ -3667,12 +3678,10 @@ inline int64_t TurretConfigMeasure( const TurretConfig & value )
 
 TABLEDEMO_TABLE_INLINE bool TurretConfigSaveBody( TableWriter & w, TableIds & ids, const TurretConfig & value )
 {
-    if ( value.damage != 10.0f )
     {
         w.header( ids.ref_at( 66, 0x7f6308be8ab37fc0ull ), 10 ); // damage
         w.put32( table_float_to_bits( value.damage ) );
     }
-    if ( value.cooldown != 0.5f )
     {
         w.header( ids.ref_at( 133, 0xdc2cbe6953343d48ull ), 10 ); // cooldown
         w.put32( table_float_to_bits( value.cooldown ) );
@@ -4072,29 +4081,23 @@ inline bool TurretConfigLoadMessages( TurretConfig * values, int64_t * count, co
 
 inline int64_t HullConfigMeasureBody( TableIds & ids, const HullConfig & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.health != 100.0f ) { bytes += TableLebBytes( ids.ref_at( 67, 0x7f69d4b5288ba9cfull ) ) + 1 + 4; } // health
-    if ( value.mass != 1.0f ) { bytes += TableLebBytes( ids.ref_at( 20, 0x1f3757a2ce7b0ab1ull ) ) + 1 + 4; } // mass
+    bytes += TableLebBytes( ids.ref_at( 67, 0x7f69d4b5288ba9cfull ) ) + 1 + 4; // health
+    bytes += TableLebBytes( ids.ref_at( 20, 0x1f3757a2ce7b0ab1ull ) ) + 1 + 4; // mass
     {
-        const int32_t mark_turrets = ids.count;
         const uint64_t ref_turrets = ids.ref_at( 71, 0x84f8260bc283608cull );
         int64_t pairs_turrets = 0, body_turrets = 0;
         for ( int32_t i = 0; i < 3; i++ ) // [Weapon]: every stored slot is a named variant's
         {
-            const int32_t slot_mark = ids.count;
             uint64_t key_ref = 0;
             if ( !TableEnumRef( ids, Weapon( i + 1 ), key_ref ) || key_ref == 0 ) { return -1; } // i is the STORAGE index; the key it holds is i + 1
             const int64_t elem_bytes = TurretConfigMeasureBody( ids, value.turrets.slots[i] );
             if ( elem_bytes < 0 ) { return -1; }
-            if ( elem_bytes <= 1 ) { ids.truncate( slot_mark ); continue; } // an all-default slot elides
             pairs_turrets++; body_turrets += TableLebBytes( key_ref ) + TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
-        if ( pairs_turrets > 0 )
-        {
-            const int64_t whole_turrets = 1 + TableLebBytes( (uint64_t) pairs_turrets ) + body_turrets;
-            bytes += TableLebBytes( ref_turrets ) + 1 + TableLebBytes( (uint64_t) ( whole_turrets ) ) + ( whole_turrets ); // turrets
-        }
-        else { ids.truncate( mark_turrets ); } // an ELIDED field costs nothing in the id table either
+        const int64_t whole_turrets = 1 + TableLebBytes( (uint64_t) pairs_turrets ) + body_turrets;
+        bytes += TableLebBytes( ref_turrets ) + 1 + TableLebBytes( (uint64_t) ( whole_turrets ) ) + ( whole_turrets ); // turrets
     }
     return bytes;
 }
@@ -4109,31 +4112,25 @@ inline int64_t HullConfigMeasure( const HullConfig & value )
 
 TABLEDEMO_TABLE_INLINE bool HullConfigSaveBody( TableWriter & w, TableIds & ids, const HullConfig & value )
 {
-    if ( value.health != 100.0f )
     {
         w.header( ids.ref_at( 67, 0x7f69d4b5288ba9cfull ), 10 ); // health
         w.put32( table_float_to_bits( value.health ) );
     }
-    if ( value.mass != 1.0f )
     {
         w.header( ids.ref_at( 20, 0x1f3757a2ce7b0ab1ull ), 10 ); // mass
         w.put32( table_float_to_bits( value.mass ) );
     }
     {
-        const int32_t mark_turrets = ids.count;
         const uint64_t ref_turrets = ids.ref_at( 71, 0x84f8260bc283608cull );
         int64_t pairs_turrets = 0, body_turrets = 0;
         for ( int32_t i = 0; i < 3; i++ ) // [Weapon]: every stored slot is a named variant's
         {
-            const int32_t slot_mark = ids.count;
             uint64_t key_ref = 0;
             if ( !TableEnumRef( ids, Weapon( i + 1 ), key_ref ) || key_ref == 0 ) { return false; } // i is the STORAGE index; the key it holds is i + 1
             const int64_t elem_bytes = TurretConfigMeasureBody( ids, value.turrets.slots[i] );
             if ( elem_bytes < 0 ) { return false; }
-            if ( elem_bytes <= 1 ) { ids.truncate( slot_mark ); continue; } // an all-default slot elides
             pairs_turrets++; body_turrets += TableLebBytes( key_ref ) + TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
-        if ( pairs_turrets > 0 )
         {
             // KIND 16, not 14: a keyed body and a positional one are
             // incompatible, so a reader of the other kind must see a kind
@@ -4146,18 +4143,15 @@ TABLEDEMO_TABLE_INLINE bool HullConfigSaveBody( TableWriter & w, TableIds & ids,
             // slot is found by its key (docs/SPEC-TABLES.md §3.2)
             for ( int32_t i = 0; i < 3; i++ )
             {
-                const int32_t slot_mark = ids.count;
                 uint64_t key_ref = 0;
                 if ( !TableEnumRef( ids, Weapon( i + 1 ), key_ref ) || key_ref == 0 ) { return false; } // i is the STORAGE index; the key it holds is i + 1
                 const int64_t elem_bytes = TurretConfigMeasureBody( ids, value.turrets.slots[i] );
                 if ( elem_bytes < 0 ) { return false; }
-                if ( elem_bytes <= 1 ) { ids.truncate( slot_mark ); continue; } // an all-default slot elides
                 w.putleb( key_ref ); // the slot's VARIANT reference, not its position
                 w.putleb( (uint64_t) elem_bytes );
                 if ( !TurretConfigSaveBody( w, ids, value.turrets.slots[i] ) ) return false;
             }
         }
-        else { ids.truncate( mark_turrets ); } // an ELIDED field costs nothing in the id table either
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -4636,56 +4630,41 @@ inline bool HullConfigLoadMessages( HullConfig * values, int64_t * count, const 
 
 inline int64_t KeyedConfigMeasureBody( TableIds & ids, const KeyedConfig & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
-        const int32_t mark_teams = ids.count;
         const uint64_t ref_teams = ids.ref_at( 106, 0xbaaeb048a5a8fa6dull );
         int64_t pairs_teams = 0, body_teams = 0;
         for ( int32_t i = 0; i < 3; i++ ) // [Team]: every stored slot is a named variant's
         {
-            const int32_t slot_mark = ids.count;
             uint64_t key_ref = 0;
             if ( !TableEnumRef( ids, Team( i + 1 ), key_ref ) || key_ref == 0 ) { return -1; } // i is the STORAGE index; the key it holds is i + 1
             const int64_t elem_bytes = TeamConfigMeasureBody( ids, value.teams.slots[i] );
             if ( elem_bytes < 0 ) { return -1; }
-            if ( elem_bytes <= 1 ) { ids.truncate( slot_mark ); continue; } // an all-default slot elides
             pairs_teams++; body_teams += TableLebBytes( key_ref ) + TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
-        if ( pairs_teams > 0 )
-        {
-            const int64_t whole_teams = 1 + TableLebBytes( (uint64_t) pairs_teams ) + body_teams;
-            bytes += TableLebBytes( ref_teams ) + 1 + TableLebBytes( (uint64_t) ( whole_teams ) ) + ( whole_teams ); // teams
-        }
-        else { ids.truncate( mark_teams ); } // an ELIDED field costs nothing in the id table either
+        const int64_t whole_teams = 1 + TableLebBytes( (uint64_t) pairs_teams ) + body_teams;
+        bytes += TableLebBytes( ref_teams ) + 1 + TableLebBytes( (uint64_t) ( whole_teams ) ) + ( whole_teams ); // teams
     }
     {
-        const int32_t mark_hulls = ids.count;
         const uint64_t ref_hulls = ids.ref_at( 119, 0xce0ac3c25694d8ffull );
         int64_t pairs_hulls = 0, body_hulls = 0;
         for ( int32_t i = 0; i < 3; i++ ) // [Hull]: every stored slot is a named variant's
         {
-            const int32_t slot_mark = ids.count;
             uint64_t key_ref = 0;
             if ( !TableEnumRef( ids, Hull( i + 1 ), key_ref ) || key_ref == 0 ) { return -1; } // i is the STORAGE index; the key it holds is i + 1
             const int64_t elem_bytes = HullConfigMeasureBody( ids, value.hulls.slots[i] );
             if ( elem_bytes < 0 ) { return -1; }
-            if ( elem_bytes <= 1 ) { ids.truncate( slot_mark ); continue; } // an all-default slot elides
             pairs_hulls++; body_hulls += TableLebBytes( key_ref ) + TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
-        if ( pairs_hulls > 0 )
-        {
-            const int64_t whole_hulls = 1 + TableLebBytes( (uint64_t) pairs_hulls ) + body_hulls;
-            bytes += TableLebBytes( ref_hulls ) + 1 + TableLebBytes( (uint64_t) ( whole_hulls ) ) + ( whole_hulls ); // hulls
-        }
-        else { ids.truncate( mark_hulls ); } // an ELIDED field costs nothing in the id table either
+        const int64_t whole_hulls = 1 + TableLebBytes( (uint64_t) pairs_hulls ) + body_hulls;
+        bytes += TableLebBytes( ref_hulls ) + 1 + TableLebBytes( (uint64_t) ( whole_hulls ) ) + ( whole_hulls ); // hulls
     }
     {
-        const int32_t mark_scores = ids.count;
         const uint64_t ref_scores = ids.ref_at( 1, 0x01986b0b27400fb2ull );
         const int64_t body_scores = ScoreBoardMeasureBody( ids, value.scores );
         if ( body_scores < 0 ) { return -1; }
-        if ( body_scores > 1 ) { bytes += TableLebBytes( ref_scores ) + 1 + TableLebBytes( (uint64_t) ( body_scores ) ) + ( body_scores ); } // scores
-        else { ids.truncate( mark_scores ); } // an all-default nested table elides, and costs no entry
+        bytes += TableLebBytes( ref_scores ) + 1 + TableLebBytes( (uint64_t) ( body_scores ) ) + ( body_scores ); // scores
     }
     return bytes;
 }
@@ -4701,20 +4680,16 @@ inline int64_t KeyedConfigMeasure( const KeyedConfig & value )
 TABLEDEMO_TABLE_INLINE bool KeyedConfigSaveBody( TableWriter & w, TableIds & ids, const KeyedConfig & value )
 {
     {
-        const int32_t mark_teams = ids.count;
         const uint64_t ref_teams = ids.ref_at( 106, 0xbaaeb048a5a8fa6dull );
         int64_t pairs_teams = 0, body_teams = 0;
         for ( int32_t i = 0; i < 3; i++ ) // [Team]: every stored slot is a named variant's
         {
-            const int32_t slot_mark = ids.count;
             uint64_t key_ref = 0;
             if ( !TableEnumRef( ids, Team( i + 1 ), key_ref ) || key_ref == 0 ) { return false; } // i is the STORAGE index; the key it holds is i + 1
             const int64_t elem_bytes = TeamConfigMeasureBody( ids, value.teams.slots[i] );
             if ( elem_bytes < 0 ) { return false; }
-            if ( elem_bytes <= 1 ) { ids.truncate( slot_mark ); continue; } // an all-default slot elides
             pairs_teams++; body_teams += TableLebBytes( key_ref ) + TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
-        if ( pairs_teams > 0 )
         {
             // KIND 16, not 14: a keyed body and a positional one are
             // incompatible, so a reader of the other kind must see a kind
@@ -4727,34 +4702,27 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigSaveBody( TableWriter & w, TableIds & ids
             // slot is found by its key (docs/SPEC-TABLES.md §3.2)
             for ( int32_t i = 0; i < 3; i++ )
             {
-                const int32_t slot_mark = ids.count;
                 uint64_t key_ref = 0;
                 if ( !TableEnumRef( ids, Team( i + 1 ), key_ref ) || key_ref == 0 ) { return false; } // i is the STORAGE index; the key it holds is i + 1
                 const int64_t elem_bytes = TeamConfigMeasureBody( ids, value.teams.slots[i] );
                 if ( elem_bytes < 0 ) { return false; }
-                if ( elem_bytes <= 1 ) { ids.truncate( slot_mark ); continue; } // an all-default slot elides
                 w.putleb( key_ref ); // the slot's VARIANT reference, not its position
                 w.putleb( (uint64_t) elem_bytes );
                 if ( !TeamConfigSaveBody( w, ids, value.teams.slots[i] ) ) return false;
             }
         }
-        else { ids.truncate( mark_teams ); } // an ELIDED field costs nothing in the id table either
     }
     {
-        const int32_t mark_hulls = ids.count;
         const uint64_t ref_hulls = ids.ref_at( 119, 0xce0ac3c25694d8ffull );
         int64_t pairs_hulls = 0, body_hulls = 0;
         for ( int32_t i = 0; i < 3; i++ ) // [Hull]: every stored slot is a named variant's
         {
-            const int32_t slot_mark = ids.count;
             uint64_t key_ref = 0;
             if ( !TableEnumRef( ids, Hull( i + 1 ), key_ref ) || key_ref == 0 ) { return false; } // i is the STORAGE index; the key it holds is i + 1
             const int64_t elem_bytes = HullConfigMeasureBody( ids, value.hulls.slots[i] );
             if ( elem_bytes < 0 ) { return false; }
-            if ( elem_bytes <= 1 ) { ids.truncate( slot_mark ); continue; } // an all-default slot elides
             pairs_hulls++; body_hulls += TableLebBytes( key_ref ) + TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
-        if ( pairs_hulls > 0 )
         {
             // KIND 16, not 14: a keyed body and a positional one are
             // incompatible, so a reader of the other kind must see a kind
@@ -4767,30 +4735,22 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigSaveBody( TableWriter & w, TableIds & ids
             // slot is found by its key (docs/SPEC-TABLES.md §3.2)
             for ( int32_t i = 0; i < 3; i++ )
             {
-                const int32_t slot_mark = ids.count;
                 uint64_t key_ref = 0;
                 if ( !TableEnumRef( ids, Hull( i + 1 ), key_ref ) || key_ref == 0 ) { return false; } // i is the STORAGE index; the key it holds is i + 1
                 const int64_t elem_bytes = HullConfigMeasureBody( ids, value.hulls.slots[i] );
                 if ( elem_bytes < 0 ) { return false; }
-                if ( elem_bytes <= 1 ) { ids.truncate( slot_mark ); continue; } // an all-default slot elides
                 w.putleb( key_ref ); // the slot's VARIANT reference, not its position
                 w.putleb( (uint64_t) elem_bytes );
                 if ( !HullConfigSaveBody( w, ids, value.hulls.slots[i] ) ) return false;
             }
         }
-        else { ids.truncate( mark_hulls ); } // an ELIDED field costs nothing in the id table either
     }
     {
-        const int32_t mark_scores = ids.count;
         const uint64_t ref_scores = ids.ref_at( 1, 0x01986b0b27400fb2ull );
         const int64_t body_scores = ScoreBoardMeasureBody( ids, value.scores );
         if ( body_scores < 0 ) return false; // storage invariant, refused as measure refuses it
-        if ( body_scores > 1 ) // all-default nested elides
-        {
-            w.header( ref_scores, 13 ); w.putleb( (uint64_t) body_scores ); // scores
-            if ( !ScoreBoardSaveBody( w, ids, value.scores ) ) return false;
-        }
-        else { ids.truncate( mark_scores ); }
+        w.header( ref_scores, 13 ); w.putleb( (uint64_t) body_scores ); // scores
+        if ( !ScoreBoardSaveBody( w, ids, value.scores ) ) return false;
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -5361,24 +5321,19 @@ inline bool KeyedConfigLoadMessages( KeyedConfig * values, int64_t * count, cons
 
 inline int64_t ScoreBoardMeasureBody( TableIds & ids, const ScoreBoard & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
-        const int32_t mark_per_team = ids.count;
         const uint64_t ref_per_team = ids.ref_at( 142, 0xf10fad739a0e1660ull );
         int64_t pairs_per_team = 0, body_per_team = 0;
         for ( int32_t i = 0; i < 3; i++ ) // [Team]: every stored slot is a named variant's
         {
-            if ( value.per_team[i] == 0 ) { continue; } // a default slot elides
             uint64_t key_ref = 0;
             if ( !TableEnumRef( ids, Team( i + 1 ), key_ref ) || key_ref == 0 ) { return -1; } // i is the STORAGE index; the key it holds is i + 1
             pairs_per_team++; body_per_team += TableLebBytes( key_ref ) + TableLebBytes( 4 ) + 4;
         }
-        if ( pairs_per_team > 0 )
-        {
-            const int64_t whole_per_team = 1 + TableLebBytes( (uint64_t) pairs_per_team ) + body_per_team;
-            bytes += TableLebBytes( ref_per_team ) + 1 + TableLebBytes( (uint64_t) ( whole_per_team ) ) + ( whole_per_team ); // per_team
-        }
-        else { ids.truncate( mark_per_team ); } // an ELIDED field costs nothing in the id table either
+        const int64_t whole_per_team = 1 + TableLebBytes( (uint64_t) pairs_per_team ) + body_per_team;
+        bytes += TableLebBytes( ref_per_team ) + 1 + TableLebBytes( (uint64_t) ( whole_per_team ) ) + ( whole_per_team ); // per_team
     }
     return bytes;
 }
@@ -5394,17 +5349,14 @@ inline int64_t ScoreBoardMeasure( const ScoreBoard & value )
 TABLEDEMO_TABLE_INLINE bool ScoreBoardSaveBody( TableWriter & w, TableIds & ids, const ScoreBoard & value )
 {
     {
-        const int32_t mark_per_team = ids.count;
         const uint64_t ref_per_team = ids.ref_at( 142, 0xf10fad739a0e1660ull );
         int64_t pairs_per_team = 0, body_per_team = 0;
         for ( int32_t i = 0; i < 3; i++ ) // [Team]: every stored slot is a named variant's
         {
-            if ( value.per_team[i] == 0 ) { continue; } // a default slot elides
             uint64_t key_ref = 0;
             if ( !TableEnumRef( ids, Team( i + 1 ), key_ref ) || key_ref == 0 ) { return false; } // i is the STORAGE index; the key it holds is i + 1
             pairs_per_team++; body_per_team += TableLebBytes( key_ref ) + TableLebBytes( 4 ) + 4;
         }
-        if ( pairs_per_team > 0 )
         {
             // KIND 16, not 14: a keyed body and a positional one are
             // incompatible, so a reader of the other kind must see a kind
@@ -5417,7 +5369,6 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardSaveBody( TableWriter & w, TableIds & ids,
             // slot is found by its key (docs/SPEC-TABLES.md §3.2)
             for ( int32_t i = 0; i < 3; i++ )
             {
-                if ( value.per_team[i] == 0 ) { continue; } // a default slot elides
                 uint64_t key_ref = 0;
                 if ( !TableEnumRef( ids, Team( i + 1 ), key_ref ) || key_ref == 0 ) { return false; } // i is the STORAGE index; the key it holds is i + 1
                 w.putleb( key_ref ); // the slot's VARIANT reference, not its position
@@ -5425,7 +5376,6 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardSaveBody( TableWriter & w, TableIds & ids,
                 w.put32( uint32_t( value.per_team[i] ) );
             }
         }
-        else { ids.truncate( mark_per_team ); } // an ELIDED field costs nothing in the id table either
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;

@@ -296,6 +296,18 @@ struct TableWriter
         memcpy( buffer + offset, data, (size_t) bytes );
         offset += bytes;
     }
+    // THE FIXED TABLE'S PADDING (docs/SPEC-TABLES.md §3): the slack a bounded
+    // payload rides at its bound with. Zero-filled, and no reader reads it —
+    // the count or length in front of it says where the value stopped, and the
+    // enclosing L says where the field stopped. It is written rather than
+    // skipped because the buffer is the caller's and may hold anything.
+    BLOCKDEMO_TABLE_INLINE void zeros( int64_t bytes )
+    {
+        if ( bytes <= 0 ) { return; }
+        if ( offset + bytes > capacity ) { overflow = true; return; }
+        memset( buffer + offset, 0, (size_t) bytes );
+        offset += bytes;
+    }
     BLOCKDEMO_TABLE_INLINE void put8( uint8_t v )   { raw( &v, 1 ); }
     BLOCKDEMO_TABLE_INLINE void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
     BLOCKDEMO_TABLE_INLINE void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
@@ -2639,42 +2651,32 @@ BLOCKDEMO_TABLE_INLINE bool PaddedFrameLoadBody( TableReader & r, PaddedFrame & 
 
 inline int64_t PaddedRowMeasureBody( TableIds & ids, const PaddedRow & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.tag != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0x56d7ab194448a4f3ull ) ) + 1 + 1; } // tag
-    if ( value.value != 0.0 ) { bytes += TableLebBytes( ids.ref_at( 36, 0x7ce4fd9430e80ceaull ) ) + 1 + 8; } // value
-    if ( value.flag != false ) { bytes += TableLebBytes( ids.ref_at( 73, 0xd5f2d079088c0b17ull ) ) + 1 + 1; } // flag
-    if ( value.id != 0 ) { bytes += TableLebBytes( ids.ref_at( 0, 0x08b72e07b55c3ac0ull ) ) + 1 + 4; } // id
+    bytes += TableLebBytes( ids.ref_at( 25, 0x56d7ab194448a4f3ull ) ) + 1 + 1; // tag
+    bytes += TableLebBytes( ids.ref_at( 36, 0x7ce4fd9430e80ceaull ) ) + 1 + 8; // value
+    bytes += TableLebBytes( ids.ref_at( 73, 0xd5f2d079088c0b17ull ) ) + 1 + 1; // flag
+    bytes += TableLebBytes( ids.ref_at( 0, 0x08b72e07b55c3ac0ull ) ) + 1 + 4; // id
     if ( value.label_length < 0 || value.label_length > 15 ) { return -1; } // storage invariant
-    if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 16, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
+    bytes += TableLebBytes( ids.ref_at( 16, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); // label
     {
-        bool all_default_slots = true;
-        for ( int32_t i = 0; i < 4; i++ ) { if ( value.slots[i] != 0 ) { all_default_slots = false; break; } }
-        if ( !all_default_slots )
-        {
-            const uint64_t ref_slots = ids.ref_at( 79, 0xe68c2e6bb1ee5646ull );
-            int64_t body_slots = 0;
-            body_slots += 1 + TableLebBytes( (uint64_t) ( 4 ) ); // the element kind byte and the count
-            body_slots += (int64_t) ( 4 ) * 2;
-            bytes += TableLebBytes( ref_slots ) + 1 + TableLebBytes( (uint64_t) ( body_slots ) ) + ( body_slots ); // slots
-        }
+        const uint64_t ref_slots = ids.ref_at( 79, 0xe68c2e6bb1ee5646ull );
+        int64_t body_slots = 0;
+        body_slots += 1 + TableLebBytes( (uint64_t) ( 4 ) ); // the element kind byte and the count
+        body_slots += (int64_t) ( 4 ) * 2;
+        bytes += TableLebBytes( ref_slots ) + 1 + TableLebBytes( (uint64_t) ( body_slots ) ) + ( body_slots ); // slots
     }
     {
-        const int32_t mark_teams = ids.count;
         const uint64_t ref_teams = ids.ref_at( 58, 0xbaaeb048a5a8fa6dull );
         int64_t pairs_teams = 0, body_teams = 0;
         for ( int32_t i = 0; i < 4; i++ ) // [Team]: every stored slot is a named variant's
         {
-            if ( value.teams.slots[i] == 0 ) { continue; } // a default slot elides
             uint64_t key_ref = 0;
             if ( !TableEnumRef( ids, Team( i + 1 ), key_ref ) || key_ref == 0 ) { return -1; } // i is the STORAGE index; the key it holds is i + 1
             pairs_teams++; body_teams += TableLebBytes( key_ref ) + TableLebBytes( 1 ) + 1;
         }
-        if ( pairs_teams > 0 )
-        {
-            const int64_t whole_teams = 1 + TableLebBytes( (uint64_t) pairs_teams ) + body_teams;
-            bytes += TableLebBytes( ref_teams ) + 1 + TableLebBytes( (uint64_t) ( whole_teams ) ) + ( whole_teams ); // teams
-        }
-        else { ids.truncate( mark_teams ); } // an ELIDED field costs nothing in the id table either
+        const int64_t whole_teams = 1 + TableLebBytes( (uint64_t) pairs_teams ) + body_teams;
+        bytes += TableLebBytes( ref_teams ) + 1 + TableLebBytes( (uint64_t) ( whole_teams ) ) + ( whole_teams ); // teams
     }
     if ( value.counter_present ) // ?int32: presence decides, not content
     {
@@ -2693,62 +2695,49 @@ inline int64_t PaddedRowMeasure( const PaddedRow & value )
 
 BLOCKDEMO_TABLE_INLINE bool PaddedRowSaveBody( TableWriter & w, TableIds & ids, const PaddedRow & value )
 {
-    if ( value.tag != 0 )
     {
         w.header( ids.ref_at( 25, 0x56d7ab194448a4f3ull ), 6 ); // tag
         w.put8( uint8_t( value.tag ) );
     }
-    if ( value.value != 0.0 )
     {
         w.header( ids.ref_at( 36, 0x7ce4fd9430e80ceaull ), 11 ); // value
         w.put64( table_double_to_bits( value.value ) );
     }
-    if ( value.flag != false )
     {
         w.header( ids.ref_at( 73, 0xd5f2d079088c0b17ull ), 1 ); // flag
         w.put8( value.flag ? 1 : 0 );
     }
-    if ( value.id != 0 )
     {
         w.header( ids.ref_at( 0, 0x08b72e07b55c3ac0ull ), 8 ); // id
         w.put32( uint32_t( value.id ) );
     }
     if ( value.label_length < 0 || value.label_length > 15 ) { return false; } // storage invariant
-    if ( value.label_length > 0 )
-    {
+    { // rides whatever it holds, AT ITS LENGTH: kind 12 admits no zero byte (§3)
         w.header( ids.ref_at( 16, 0x39f7fcec8fcb623dull ), 12 ); // label
         w.putleb( (uint64_t) value.label_length );
         w.raw( value.label, value.label_length );
     }
     {
-        bool all_default_slots = true;
-        for ( int32_t i = 0; i < 4; i++ ) { if ( value.slots[i] != 0 ) { all_default_slots = false; break; } }
-        if ( !all_default_slots )
+        const uint64_t ref_slots = ids.ref_at( 79, 0xe68c2e6bb1ee5646ull );
+        int64_t body_slots = 0;
+        body_slots += 1 + TableLebBytes( (uint64_t) ( 4 ) ); // the element kind byte and the count
+        body_slots += (int64_t) ( 4 ) * 2;
+        w.header( ref_slots, 14 ); w.putleb( (uint64_t) body_slots ); // slots
+        w.put8( 7 ); w.putleb( (uint64_t) ( 4 ) );
+        for ( int32_t elem_i = 0; elem_i < 4; elem_i++ )
         {
-            const uint64_t ref_slots = ids.ref_at( 79, 0xe68c2e6bb1ee5646ull );
-            int64_t body_slots = 0;
-            body_slots += 1 + TableLebBytes( (uint64_t) ( 4 ) ); // the element kind byte and the count
-            body_slots += (int64_t) ( 4 ) * 2;
-            w.header( ref_slots, 14 ); w.putleb( (uint64_t) body_slots ); // slots
-            w.put8( 7 ); w.putleb( (uint64_t) ( 4 ) );
-            for ( int32_t elem_i = 0; elem_i < 4; elem_i++ )
-            {
-                w.put16( uint16_t( value.slots[elem_i] ) );
-            }
+            w.put16( uint16_t( value.slots[elem_i] ) );
         }
     }
     {
-        const int32_t mark_teams = ids.count;
         const uint64_t ref_teams = ids.ref_at( 58, 0xbaaeb048a5a8fa6dull );
         int64_t pairs_teams = 0, body_teams = 0;
         for ( int32_t i = 0; i < 4; i++ ) // [Team]: every stored slot is a named variant's
         {
-            if ( value.teams.slots[i] == 0 ) { continue; } // a default slot elides
             uint64_t key_ref = 0;
             if ( !TableEnumRef( ids, Team( i + 1 ), key_ref ) || key_ref == 0 ) { return false; } // i is the STORAGE index; the key it holds is i + 1
             pairs_teams++; body_teams += TableLebBytes( key_ref ) + TableLebBytes( 1 ) + 1;
         }
-        if ( pairs_teams > 0 )
         {
             // KIND 16, not 14: a keyed body and a positional one are
             // incompatible, so a reader of the other kind must see a kind
@@ -2761,7 +2750,6 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowSaveBody( TableWriter & w, TableIds & ids, 
             // slot is found by its key (docs/SPEC-TABLES.md §3.2)
             for ( int32_t i = 0; i < 4; i++ )
             {
-                if ( value.teams.slots[i] == 0 ) { continue; } // a default slot elides
                 uint64_t key_ref = 0;
                 if ( !TableEnumRef( ids, Team( i + 1 ), key_ref ) || key_ref == 0 ) { return false; } // i is the STORAGE index; the key it holds is i + 1
                 w.putleb( key_ref ); // the slot's VARIANT reference, not its position
@@ -2769,7 +2757,6 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowSaveBody( TableWriter & w, TableIds & ids, 
                 w.put8( uint8_t( value.teams.slots[i] ) );
             }
         }
-        else { ids.truncate( mark_teams ); } // an ELIDED field costs nothing in the id table either
     }
     if ( value.counter_present ) // ?int32
     {
@@ -3702,11 +3689,11 @@ inline bool PaddedRowLoadMessages( PaddedRow * values, int64_t * count, const Ta
 
 inline int64_t PaddedFrameMeasureBody( TableIds & ids, const PaddedFrame & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.marker != 0 ) { bytes += TableLebBytes( ids.ref_at( 81, 0xeddcb72b15486e77ull ) ) + 1 + 1; } // marker
-    if ( value.stamp != 0 ) { bytes += TableLebBytes( ids.ref_at( 83, 0xee7ba9ad45c64144ull ) ) + 1 + 8; } // stamp
+    bytes += TableLebBytes( ids.ref_at( 81, 0xeddcb72b15486e77ull ) ) + 1 + 1; // marker
+    bytes += TableLebBytes( ids.ref_at( 83, 0xee7ba9ad45c64144ull ) ) + 1 + 8; // stamp
     if ( value.rows_count < 0 || value.rows_count > 64 ) { return -1; } // storage invariant
-    if ( value.rows_count > 0 )
     {
         const uint64_t ref_rows = ids.ref_at( 48, 0xa3a7061ff10a8138ull );
         int64_t body_rows = 0;
@@ -3720,9 +3707,8 @@ inline int64_t PaddedFrameMeasureBody( TableIds & ids, const PaddedFrame & value
         bytes += TableLebBytes( ref_rows ) + 1 + TableLebBytes( (uint64_t) ( body_rows ) ) + ( body_rows ); // rows
     }
     if ( value.blob_length < 0 || value.blob_length > 12 ) { return -1; } // storage invariant
-    if ( value.blob_length > 0 )
     {
-        const int64_t body_blob = 1 + TableLebBytes( (uint64_t) value.blob_length ) + value.blob_length;
+        const int64_t body_blob = 1 + TableLebBytes( (uint64_t) value.blob_length ) + 12;
         bytes += TableLebBytes( ids.ref_at( 64, 0xc573b39bc29148caull ) ) + 1 + TableLebBytes( (uint64_t) ( body_blob ) ) + ( body_blob ); // blob
     }
     return bytes;
@@ -3738,18 +3724,15 @@ inline int64_t PaddedFrameMeasure( const PaddedFrame & value )
 
 BLOCKDEMO_TABLE_INLINE bool PaddedFrameSaveBody( TableWriter & w, TableIds & ids, const PaddedFrame & value )
 {
-    if ( value.marker != 0 )
     {
         w.header( ids.ref_at( 81, 0xeddcb72b15486e77ull ), 6 ); // marker
         w.put8( uint8_t( value.marker ) );
     }
-    if ( value.stamp != 0 )
     {
         w.header( ids.ref_at( 83, 0xee7ba9ad45c64144ull ), 9 ); // stamp
         w.put64( uint64_t( value.stamp ) );
     }
     if ( value.rows_count < 0 || value.rows_count > 64 ) { return false; } // storage invariant
-    if ( value.rows_count > 0 )
     {
         const uint64_t ref_rows = ids.ref_at( 48, 0xa3a7061ff10a8138ull );
         int64_t body_rows = 0;
@@ -3778,13 +3761,13 @@ BLOCKDEMO_TABLE_INLINE bool PaddedFrameSaveBody( TableWriter & w, TableIds & ids
         }
     }
     if ( value.blob_length < 0 || value.blob_length > 12 ) { return false; } // storage invariant
-    if ( value.blob_length > 0 )
-    {
-        const int64_t body_blob = 1 + TableLebBytes( (uint64_t) value.blob_length ) + value.blob_length;
+    { // rides AT ITS BOUND: the count says where the value stopped (§3)
+        const int64_t body_blob = 1 + TableLebBytes( (uint64_t) value.blob_length ) + 12;
         w.header( ids.ref_at( 64, 0xc573b39bc29148caull ), 14 ); // blob
         w.putleb( (uint64_t) body_blob );
         w.put8( 6 ); w.putleb( (uint64_t) value.blob_length );
         w.raw( value.blob, value.blob_length );
+        w.zeros( 12 - value.blob_length ); // the slack above the count
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;

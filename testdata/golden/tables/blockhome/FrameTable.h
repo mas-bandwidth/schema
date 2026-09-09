@@ -278,6 +278,18 @@ struct TableWriter
         memcpy( buffer + offset, data, (size_t) bytes );
         offset += bytes;
     }
+    // THE FIXED TABLE'S PADDING (docs/SPEC-TABLES.md §3): the slack a bounded
+    // payload rides at its bound with. Zero-filled, and no reader reads it —
+    // the count or length in front of it says where the value stopped, and the
+    // enclosing L says where the field stopped. It is written rather than
+    // skipped because the buffer is the caller's and may hold anything.
+    BLOCKHOME_TABLE_INLINE void zeros( int64_t bytes )
+    {
+        if ( bytes <= 0 ) { return; }
+        if ( offset + bytes > capacity ) { overflow = true; return; }
+        memset( buffer + offset, 0, (size_t) bytes );
+        offset += bytes;
+    }
     BLOCKHOME_TABLE_INLINE void put8( uint8_t v )   { raw( &v, 1 ); }
     BLOCKHOME_TABLE_INLINE void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
     BLOCKHOME_TABLE_INLINE void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
@@ -2366,25 +2378,22 @@ BLOCKHOME_TABLE_INLINE bool PartFrameLoadBody( TableReader & r, PartFrame & valu
 
 inline int64_t PartRowMeasureBody( TableIds & ids, const PartRow & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
-        const int32_t mark_armor = ids.count;
         const uint64_t ref_armor = ids.ref_at( 23, 0xd19988b67e699194ull );
         const int64_t body_armor = ArmorConfigMeasureBody( ids, value.armor );
         if ( body_armor < 0 ) { return -1; }
-        if ( body_armor > 1 ) { bytes += TableLebBytes( ref_armor ) + 1 + TableLebBytes( (uint64_t) ( body_armor ) ) + ( body_armor ); } // armor
-        else { ids.truncate( mark_armor ); } // an all-default nested table elides, and costs no entry
+        bytes += TableLebBytes( ref_armor ) + 1 + TableLebBytes( (uint64_t) ( body_armor ) ) + ( body_armor ); // armor
     }
     {
-        const int32_t mark_gunner = ids.count;
         const uint64_t ref_gunner = ids.ref_at( 8, 0x40dbb648c0cd44aaull );
         const int64_t body_gunner = GunnerSettingsMeasureBody( ids, value.gunner );
         if ( body_gunner < 0 ) { return -1; }
-        if ( body_gunner > 1 ) { bytes += TableLebBytes( ref_gunner ) + 1 + TableLebBytes( (uint64_t) ( body_gunner ) ) + ( body_gunner ); } // gunner
-        else { ids.truncate( mark_gunner ); } // an all-default nested table elides, and costs no entry
+        bytes += TableLebBytes( ref_gunner ) + 1 + TableLebBytes( (uint64_t) ( body_gunner ) ) + ( body_gunner ); // gunner
     }
-    if ( value.part_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 1, 0x04d6206b33415104ull ) ) + 1 + 4; } // part_id
-    if ( value.slot != 0 ) { bytes += TableLebBytes( ids.ref_at( 13, 0x6a771618f6fe31d1ull ) ) + 1 + 1; } // slot
+    bytes += TableLebBytes( ids.ref_at( 1, 0x04d6206b33415104ull ) ) + 1 + 4; // part_id
+    bytes += TableLebBytes( ids.ref_at( 13, 0x6a771618f6fe31d1ull ) ) + 1 + 1; // slot
     return bytes;
 }
 
@@ -2399,35 +2408,23 @@ inline int64_t PartRowMeasure( const PartRow & value )
 BLOCKHOME_TABLE_INLINE bool PartRowSaveBody( TableWriter & w, TableIds & ids, const PartRow & value )
 {
     {
-        const int32_t mark_armor = ids.count;
         const uint64_t ref_armor = ids.ref_at( 23, 0xd19988b67e699194ull );
         const int64_t body_armor = ArmorConfigMeasureBody( ids, value.armor );
         if ( body_armor < 0 ) return false; // storage invariant, refused as measure refuses it
-        if ( body_armor > 1 ) // all-default nested elides
-        {
-            w.header( ref_armor, 13 ); w.putleb( (uint64_t) body_armor ); // armor
-            if ( !ArmorConfigSaveBody( w, ids, value.armor ) ) return false;
-        }
-        else { ids.truncate( mark_armor ); }
+        w.header( ref_armor, 13 ); w.putleb( (uint64_t) body_armor ); // armor
+        if ( !ArmorConfigSaveBody( w, ids, value.armor ) ) return false;
     }
     {
-        const int32_t mark_gunner = ids.count;
         const uint64_t ref_gunner = ids.ref_at( 8, 0x40dbb648c0cd44aaull );
         const int64_t body_gunner = GunnerSettingsMeasureBody( ids, value.gunner );
         if ( body_gunner < 0 ) return false; // storage invariant, refused as measure refuses it
-        if ( body_gunner > 1 ) // all-default nested elides
-        {
-            w.header( ref_gunner, 13 ); w.putleb( (uint64_t) body_gunner ); // gunner
-            if ( !GunnerSettingsSaveBody( w, ids, value.gunner ) ) return false;
-        }
-        else { ids.truncate( mark_gunner ); }
+        w.header( ref_gunner, 13 ); w.putleb( (uint64_t) body_gunner ); // gunner
+        if ( !GunnerSettingsSaveBody( w, ids, value.gunner ) ) return false;
     }
-    if ( value.part_id != 0 )
     {
         w.header( ids.ref_at( 1, 0x04d6206b33415104ull ), 8 ); // part_id
         w.put32( uint32_t( value.part_id ) );
     }
-    if ( value.slot != 0 )
     {
         w.header( ids.ref_at( 13, 0x6a771618f6fe31d1ull ), 6 ); // slot
         w.put8( uint8_t( value.slot ) );
@@ -2891,10 +2888,10 @@ inline bool PartRowLoadMessages( PartRow * values, int64_t * count, const TableV
 
 inline int64_t PartFrameMeasureBody( TableIds & ids, const PartFrame & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.version != 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0xbb62c62c9808ea37ull ) ) + 1 + 8; } // version
+    bytes += TableLebBytes( ids.ref_at( 21, 0xbb62c62c9808ea37ull ) ) + 1 + 8; // version
     if ( value.parts_count < 0 || value.parts_count > 32 ) { return -1; } // storage invariant
-    if ( value.parts_count > 0 )
     {
         const uint64_t ref_parts = ids.ref_at( 2, 0x0c519da7a1f958c5ull );
         int64_t body_parts = 0;
@@ -2920,13 +2917,11 @@ inline int64_t PartFrameMeasure( const PartFrame & value )
 
 BLOCKHOME_TABLE_INLINE bool PartFrameSaveBody( TableWriter & w, TableIds & ids, const PartFrame & value )
 {
-    if ( value.version != 0 )
     {
         w.header( ids.ref_at( 21, 0xbb62c62c9808ea37ull ), 9 ); // version
         w.put64( uint64_t( value.version ) );
     }
     if ( value.parts_count < 0 || value.parts_count > 32 ) { return false; } // storage invariant
-    if ( value.parts_count > 0 )
     {
         const uint64_t ref_parts = ids.ref_at( 2, 0x0c519da7a1f958c5ull );
         int64_t body_parts = 0;

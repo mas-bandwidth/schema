@@ -295,6 +295,18 @@ struct TableWriter
         memcpy( buffer + offset, data, (size_t) bytes );
         offset += bytes;
     }
+    // THE FIXED TABLE'S PADDING (docs/SPEC-TABLES.md §3): the slack a bounded
+    // payload rides at its bound with. Zero-filled, and no reader reads it —
+    // the count or length in front of it says where the value stopped, and the
+    // enclosing L says where the field stopped. It is written rather than
+    // skipped because the buffer is the caller's and may hold anything.
+    TABLEDEMO_TABLE_INLINE void zeros( int64_t bytes )
+    {
+        if ( bytes <= 0 ) { return; }
+        if ( offset + bytes > capacity ) { overflow = true; return; }
+        memset( buffer + offset, 0, (size_t) bytes );
+        offset += bytes;
+    }
     TABLEDEMO_TABLE_INLINE void put8( uint8_t v )   { raw( &v, 1 ); }
     TABLEDEMO_TABLE_INLINE void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
     TABLEDEMO_TABLE_INLINE void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
@@ -2615,28 +2627,29 @@ TABLEDEMO_TABLE_INLINE bool PatrolLoadBody( TableReader & r, Patrol & value );
 
 inline int64_t PatrolMeasureBody( TableIds & ids, const Patrol & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.active != false ) { bytes += TableLebBytes( ids.ref_at( 57, 0x6580790b036f0c6full ) ) + 1 + 1; } // active
+    bytes += TableLebBytes( ids.ref_at( 57, 0x6580790b036f0c6full ) ) + 1 + 1; // active
     if ( value.active )
     {
-        if ( value.speed != 1.0f ) { bytes += TableLebBytes( ids.ref_at( 22, 0x2281498aa0200e40ull ) ) + 1 + 4; } // speed
+        bytes += TableLebBytes( ids.ref_at( 22, 0x2281498aa0200e40ull ) ) + 1 + 4; // speed
     }
     if ( value.active )
     {
-        if ( value.has_target != false ) { bytes += TableLebBytes( ids.ref_at( 23, 0x247f0e7f55aacfbdull ) ) + 1 + 1; } // has_target
+        bytes += TableLebBytes( ids.ref_at( 23, 0x247f0e7f55aacfbdull ) ) + 1 + 1; // has_target
     }
     if ( value.active && value.has_target )
     {
-        if ( value.target_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 103, 0xb7bc9ac015a25050ull ) ) + 1 + 4; } // target_id
+        bytes += TableLebBytes( ids.ref_at( 103, 0xb7bc9ac015a25050ull ) ) + 1 + 4; // target_id
     }
     if ( value.active && !value.has_target )
     {
-        if ( value.wander != 0.5f ) { bytes += TableLebBytes( ids.ref_at( 104, 0xb8c758d8bd1845d4ull ) ) + 1 + 4; } // wander
+        bytes += TableLebBytes( ids.ref_at( 104, 0xb8c758d8bd1845d4ull ) ) + 1 + 4; // wander
     }
     if ( !value.active )
     {
         if ( value.note_length < 0 || value.note_length > 8 ) { return -1; } // storage invariant
-        if ( value.note_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0x3bf8fbbad1587cddull ) ) + 1 + TableLebBytes( (uint64_t) ( value.note_length ) ) + ( value.note_length ); } // note
+        bytes += TableLebBytes( ids.ref_at( 37, 0x3bf8fbbad1587cddull ) ) + 1 + TableLebBytes( (uint64_t) ( value.note_length ) ) + ( value.note_length ); // note
     }
     return bytes;
 }
@@ -2651,14 +2664,12 @@ inline int64_t PatrolMeasure( const Patrol & value )
 
 TABLEDEMO_TABLE_INLINE bool PatrolSaveBody( TableWriter & w, TableIds & ids, const Patrol & value )
 {
-    if ( value.active != false )
     {
         w.header( ids.ref_at( 57, 0x6580790b036f0c6full ), 1 ); // active
         w.put8( value.active ? 1 : 0 );
     }
     if ( value.active )
     {
-        if ( value.speed != 1.0f )
         {
             w.header( ids.ref_at( 22, 0x2281498aa0200e40ull ), 10 ); // speed
             w.put32( table_float_to_bits( value.speed ) );
@@ -2666,7 +2677,6 @@ TABLEDEMO_TABLE_INLINE bool PatrolSaveBody( TableWriter & w, TableIds & ids, con
     }
     if ( value.active )
     {
-        if ( value.has_target != false )
         {
             w.header( ids.ref_at( 23, 0x247f0e7f55aacfbdull ), 1 ); // has_target
             w.put8( value.has_target ? 1 : 0 );
@@ -2674,7 +2684,6 @@ TABLEDEMO_TABLE_INLINE bool PatrolSaveBody( TableWriter & w, TableIds & ids, con
     }
     if ( value.active && value.has_target )
     {
-        if ( value.target_id != 0 )
         {
             w.header( ids.ref_at( 103, 0xb7bc9ac015a25050ull ), 4 ); // target_id
             w.put32( uint32_t( value.target_id ) );
@@ -2682,7 +2691,6 @@ TABLEDEMO_TABLE_INLINE bool PatrolSaveBody( TableWriter & w, TableIds & ids, con
     }
     if ( value.active && !value.has_target )
     {
-        if ( value.wander != 0.5f )
         {
             w.header( ids.ref_at( 104, 0xb8c758d8bd1845d4ull ), 10 ); // wander
             w.put32( table_float_to_bits( value.wander ) );
@@ -2691,8 +2699,7 @@ TABLEDEMO_TABLE_INLINE bool PatrolSaveBody( TableWriter & w, TableIds & ids, con
     if ( !value.active )
     {
         if ( value.note_length < 0 || value.note_length > 8 ) { return false; } // storage invariant
-        if ( value.note_length > 0 )
-        {
+        { // rides whatever it holds, AT ITS LENGTH: kind 12 admits no zero byte (§3)
             w.header( ids.ref_at( 37, 0x3bf8fbbad1587cddull ), 12 ); // note
             w.putleb( (uint64_t) value.note_length );
             w.raw( value.note, value.note_length );

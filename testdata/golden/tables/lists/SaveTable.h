@@ -335,6 +335,18 @@ struct TableWriter
         memcpy( buffer + offset, data, (size_t) bytes );
         offset += bytes;
     }
+    // THE FIXED TABLE'S PADDING (docs/SPEC-TABLES.md §3): the slack a bounded
+    // payload rides at its bound with. Zero-filled, and no reader reads it —
+    // the count or length in front of it says where the value stopped, and the
+    // enclosing L says where the field stopped. It is written rather than
+    // skipped because the buffer is the caller's and may hold anything.
+    LISTDEMO_TABLE_INLINE void zeros( int64_t bytes )
+    {
+        if ( bytes <= 0 ) { return; }
+        if ( offset + bytes > capacity ) { overflow = true; return; }
+        memset( buffer + offset, 0, (size_t) bytes );
+        offset += bytes;
+    }
     LISTDEMO_TABLE_INLINE void put8( uint8_t v )   { raw( &v, 1 ); }
     LISTDEMO_TABLE_INLINE void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
     LISTDEMO_TABLE_INLINE void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
@@ -6828,10 +6840,11 @@ inline bool MixedLoadMessageBodyRetain( TableBitReader & r, const TableVocabular
 
 inline int64_t PlacementMeasureBody( TableIds & ids, const Placement & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.x != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 42, 0xaf63f54c86021707ull ) ) + 1 + 4; } // x
-    if ( value.y != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 41, 0xaf63f44c86021554ull ) ) + 1 + 4; } // y
-    if ( value.model != 0 ) { bytes += TableLebBytes( ids.ref_at( 35, 0x9de543933e6e703aull ) ) + 1 + 4; } // model
+    bytes += TableLebBytes( ids.ref_at( 42, 0xaf63f54c86021707ull ) ) + 1 + 4; // x
+    bytes += TableLebBytes( ids.ref_at( 41, 0xaf63f44c86021554ull ) ) + 1 + 4; // y
+    bytes += TableLebBytes( ids.ref_at( 35, 0x9de543933e6e703aull ) ) + 1 + 4; // model
     return bytes;
 }
 
@@ -6845,17 +6858,14 @@ inline int64_t PlacementMeasure( const Placement & value )
 
 LISTDEMO_TABLE_INLINE bool PlacementSaveBody( TableWriter & w, TableIds & ids, const Placement & value )
 {
-    if ( value.x != 0.0f )
     {
         w.header( ids.ref_at( 42, 0xaf63f54c86021707ull ), 10 ); // x
         w.put32( table_float_to_bits( value.x ) );
     }
-    if ( value.y != 0.0f )
     {
         w.header( ids.ref_at( 41, 0xaf63f44c86021554ull ), 10 ); // y
         w.put32( table_float_to_bits( value.y ) );
     }
-    if ( value.model != 0 )
     {
         w.header( ids.ref_at( 35, 0x9de543933e6e703aull ), 8 ); // model
         w.put32( uint32_t( value.model ) );
@@ -7267,8 +7277,9 @@ inline bool PlacementLoadMessages( Placement * values, int64_t * count, const Ta
 
 inline int64_t LogEntryMeasureBody( TableIds & ids, const LogEntry & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.tick != 0 ) { bytes += TableLebBytes( ids.ref_at( 7, 0x1e7683ef2ebc7684ull ) ) + 1 + 4; } // tick
+    bytes += TableLebBytes( ids.ref_at( 7, 0x1e7683ef2ebc7684ull ) ) + 1 + 4; // tick
     return bytes;
 }
 
@@ -7282,7 +7293,6 @@ inline int64_t LogEntryMeasure( const LogEntry & value )
 
 LISTDEMO_TABLE_INLINE bool LogEntrySaveBody( TableWriter & w, TableIds & ids, const LogEntry & value )
 {
-    if ( value.tick != 0 )
     {
         w.header( ids.ref_at( 7, 0x1e7683ef2ebc7684ull ), 8 ); // tick
         w.put32( uint32_t( value.tick ) );
@@ -8273,9 +8283,10 @@ inline bool SaveLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
 
 inline int64_t PointMeasureBody( TableIds & ids, const Point & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.x != 0 ) { bytes += TableLebBytes( ids.ref_at( 42, 0xaf63f54c86021707ull ) ) + 1 + 4; } // x
-    if ( value.y != 0 ) { bytes += TableLebBytes( ids.ref_at( 41, 0xaf63f44c86021554ull ) ) + 1 + 4; } // y
+    bytes += TableLebBytes( ids.ref_at( 42, 0xaf63f54c86021707ull ) ) + 1 + 4; // x
+    bytes += TableLebBytes( ids.ref_at( 41, 0xaf63f44c86021554ull ) ) + 1 + 4; // y
     return bytes;
 }
 
@@ -8289,12 +8300,10 @@ inline int64_t PointMeasure( const Point & value )
 
 LISTDEMO_TABLE_INLINE bool PointSaveBody( TableWriter & w, TableIds & ids, const Point & value )
 {
-    if ( value.x != 0 )
     {
         w.header( ids.ref_at( 42, 0xaf63f54c86021707ull ), 4 ); // x
         w.put32( uint32_t( value.x ) );
     }
-    if ( value.y != 0 )
     {
         w.header( ids.ref_at( 41, 0xaf63f44c86021554ull ), 4 ); // y
         w.put32( uint32_t( value.y ) );
@@ -12429,27 +12438,25 @@ inline bool MixedLoadBuilder( MixedBuilder & builder, const uint8_t * wire_file,
 
 inline int64_t PlacementMeasureBodyRetain( TableRetainIds & ids, const Placement & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.x != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 42, 0xaf63f54c86021707ull ) ) + 1 + 4; } // x
-    if ( value.y != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 41, 0xaf63f44c86021554ull ) ) + 1 + 4; } // y
-    if ( value.model != 0 ) { bytes += TableLebBytes( ids.ref_at( 35, 0x9de543933e6e703aull ) ) + 1 + 4; } // model
+    bytes += TableLebBytes( ids.ref_at( 42, 0xaf63f54c86021707ull ) ) + 1 + 4; // x
+    bytes += TableLebBytes( ids.ref_at( 41, 0xaf63f44c86021554ull ) ) + 1 + 4; // y
+    bytes += TableLebBytes( ids.ref_at( 35, 0x9de543933e6e703aull ) ) + 1 + 4; // model
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
 
 LISTDEMO_TABLE_INLINE bool PlacementSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const Placement & value, TableRetain * retain, const TableRetainPath & path )
 {
-    if ( value.x != 0.0f )
     {
         w.header( ids.ref_at( 42, 0xaf63f54c86021707ull ), 10 ); // x
         w.put32( table_float_to_bits( value.x ) );
     }
-    if ( value.y != 0.0f )
     {
         w.header( ids.ref_at( 41, 0xaf63f44c86021554ull ), 10 ); // y
         w.put32( table_float_to_bits( value.y ) );
     }
-    if ( value.model != 0 )
     {
         w.header( ids.ref_at( 35, 0x9de543933e6e703aull ), 8 ); // model
         w.put32( uint32_t( value.model ) );
@@ -12695,15 +12702,15 @@ inline bool PlacementLoadMessageBodyRetain( TableBitReader & r, const TableVocab
 
 inline int64_t LogEntryMeasureBodyRetain( TableRetainIds & ids, const LogEntry & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.tick != 0 ) { bytes += TableLebBytes( ids.ref_at( 7, 0x1e7683ef2ebc7684ull ) ) + 1 + 4; } // tick
+    bytes += TableLebBytes( ids.ref_at( 7, 0x1e7683ef2ebc7684ull ) ) + 1 + 4; // tick
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
 
 LISTDEMO_TABLE_INLINE bool LogEntrySaveBodyRetain( TableWriter & w, TableRetainIds & ids, const LogEntry & value, TableRetain * retain, const TableRetainPath & path )
 {
-    if ( value.tick != 0 )
     {
         w.header( ids.ref_at( 7, 0x1e7683ef2ebc7684ull ), 8 ); // tick
         w.put32( uint32_t( value.tick ) );
@@ -13413,21 +13420,20 @@ inline bool SaveLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
 
 inline int64_t PointMeasureBodyRetain( TableRetainIds & ids, const Point & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.x != 0 ) { bytes += TableLebBytes( ids.ref_at( 42, 0xaf63f54c86021707ull ) ) + 1 + 4; } // x
-    if ( value.y != 0 ) { bytes += TableLebBytes( ids.ref_at( 41, 0xaf63f44c86021554ull ) ) + 1 + 4; } // y
+    bytes += TableLebBytes( ids.ref_at( 42, 0xaf63f54c86021707ull ) ) + 1 + 4; // x
+    bytes += TableLebBytes( ids.ref_at( 41, 0xaf63f44c86021554ull ) ) + 1 + 4; // y
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
 
 LISTDEMO_TABLE_INLINE bool PointSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const Point & value, TableRetain * retain, const TableRetainPath & path )
 {
-    if ( value.x != 0 )
     {
         w.header( ids.ref_at( 42, 0xaf63f54c86021707ull ), 4 ); // x
         w.put32( uint32_t( value.x ) );
     }
-    if ( value.y != 0 )
     {
         w.header( ids.ref_at( 41, 0xaf63f44c86021554ull ), 4 ); // y
         w.put32( uint32_t( value.y ) );

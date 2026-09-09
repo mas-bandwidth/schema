@@ -69,7 +69,7 @@
 # its test fixtures — no serialization, no timing.
 # ---------------------------------------------------------------------------
 
-names bench/tools/variantgen/main.go 94 the single deliberate copy of BenchMixed shape code; emits the corpus the nine legs read blind (superseded by #195)
+names bench/tools/variantgen/main.go 96 the single deliberate copy of BenchMixed shape code; emits the corpus the nine legs read blind (superseded by #195)
 names bench/tools/realpacket-gen/main.go 11 the single deliberate copy of the RealWorld snapshot shape code (§1.7)
 names bench/tools/realpacket-gen/pin_test.go 3 pins the generator above against its golden
 names bench/tools/inline-gate.sh 9 shape names inside the inline-budget symbol map and its disassembly test fixtures — row labels, no serialization, no clock

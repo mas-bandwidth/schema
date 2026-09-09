@@ -295,6 +295,18 @@ struct TableWriter
         memcpy( buffer + offset, data, (size_t) bytes );
         offset += bytes;
     }
+    // THE FIXED TABLE'S PADDING (docs/SPEC-TABLES.md §3): the slack a bounded
+    // payload rides at its bound with. Zero-filled, and no reader reads it —
+    // the count or length in front of it says where the value stopped, and the
+    // enclosing L says where the field stopped. It is written rather than
+    // skipped because the buffer is the caller's and may hold anything.
+    TABLEDEMO_TABLE_INLINE void zeros( int64_t bytes )
+    {
+        if ( bytes <= 0 ) { return; }
+        if ( offset + bytes > capacity ) { overflow = true; return; }
+        memset( buffer + offset, 0, (size_t) bytes );
+        offset += bytes;
+    }
     TABLEDEMO_TABLE_INLINE void put8( uint8_t v )   { raw( &v, 1 ); }
     TABLEDEMO_TABLE_INLINE void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
     TABLEDEMO_TABLE_INLINE void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
@@ -2601,22 +2613,22 @@ TABLEDEMO_TABLE_INLINE bool WideBlobLoadBody( TableReader & r, WideBlob & value 
 
 inline int64_t WideBlobMeasureBody( TableIds & ids, const WideBlob & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.label_length < 0 || value.label_length > 70000 ) { return -1; } // storage invariant
-    if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 35, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
+    bytes += TableLebBytes( ids.ref_at( 35, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); // label
     if ( value.payload_length < 0 || value.payload_length > 70000 ) { return -1; } // storage invariant
-    if ( value.payload_length > 0 )
     {
-        const int64_t body_payload = 1 + TableLebBytes( (uint64_t) value.payload_length ) + value.payload_length;
+        const int64_t body_payload = 1 + TableLebBytes( (uint64_t) value.payload_length ) + 70000;
         bytes += TableLebBytes( ids.ref_at( 122, 0xcfb8a9d063b5e9e5ull ) ) + 1 + TableLebBytes( (uint64_t) ( body_payload ) ) + ( body_payload ); // payload
     }
     if ( value.samples_count < 0 || value.samples_count > 70000 ) { return -1; } // storage invariant
-    if ( value.samples_count > 0 )
     {
         const uint64_t ref_samples = ids.ref_at( 136, 0xe3b1ca6a3b48dddcull );
         int64_t body_samples = 0;
         body_samples += 1 + TableLebBytes( (uint64_t) ( value.samples_count ) ); // the element kind byte and the count
         body_samples += (int64_t) ( value.samples_count ) * 2;
+        body_samples += ( (int64_t) 70000 - (int64_t) value.samples_count ) * 2; // the elements ride at the BOUND (§3)
         bytes += TableLebBytes( ref_samples ) + 1 + TableLebBytes( (uint64_t) ( body_samples ) ) + ( body_samples ); // samples
     }
     return bytes;
@@ -2633,34 +2645,34 @@ inline int64_t WideBlobMeasure( const WideBlob & value )
 TABLEDEMO_TABLE_INLINE bool WideBlobSaveBody( TableWriter & w, TableIds & ids, const WideBlob & value )
 {
     if ( value.label_length < 0 || value.label_length > 70000 ) { return false; } // storage invariant
-    if ( value.label_length > 0 )
-    {
+    { // rides whatever it holds, AT ITS LENGTH: kind 12 admits no zero byte (§3)
         w.header( ids.ref_at( 35, 0x39f7fcec8fcb623dull ), 12 ); // label
         w.putleb( (uint64_t) value.label_length );
         w.raw( value.label, value.label_length );
     }
     if ( value.payload_length < 0 || value.payload_length > 70000 ) { return false; } // storage invariant
-    if ( value.payload_length > 0 )
-    {
-        const int64_t body_payload = 1 + TableLebBytes( (uint64_t) value.payload_length ) + value.payload_length;
+    { // rides AT ITS BOUND: the count says where the value stopped (§3)
+        const int64_t body_payload = 1 + TableLebBytes( (uint64_t) value.payload_length ) + 70000;
         w.header( ids.ref_at( 122, 0xcfb8a9d063b5e9e5ull ), 14 ); // payload
         w.putleb( (uint64_t) body_payload );
         w.put8( 6 ); w.putleb( (uint64_t) value.payload_length );
         w.raw( value.payload, value.payload_length );
+        w.zeros( 70000 - value.payload_length ); // the slack above the count
     }
     if ( value.samples_count < 0 || value.samples_count > 70000 ) { return false; } // storage invariant
-    if ( value.samples_count > 0 )
     {
         const uint64_t ref_samples = ids.ref_at( 136, 0xe3b1ca6a3b48dddcull );
         int64_t body_samples = 0;
         body_samples += 1 + TableLebBytes( (uint64_t) ( value.samples_count ) ); // the element kind byte and the count
         body_samples += (int64_t) ( value.samples_count ) * 2;
+        body_samples += ( (int64_t) 70000 - (int64_t) value.samples_count ) * 2; // the elements ride at the BOUND (§3)
         w.header( ref_samples, 14 ); w.putleb( (uint64_t) body_samples ); // samples
         w.put8( 7 ); w.putleb( (uint64_t) ( value.samples_count ) );
         for ( int32_t elem_i = 0; elem_i < value.samples_count; elem_i++ )
         {
             w.put16( uint16_t( value.samples[elem_i] ) );
         }
+        w.zeros( ( (int64_t) 70000 - (int64_t) value.samples_count ) * 2 ); // the slack above the count, which no reader reads
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
