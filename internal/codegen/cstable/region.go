@@ -537,8 +537,7 @@ const tableRegionSource = `
             if ((nested && id == ulong.MaxValue) || id == ulong.MaxValue - 1 || id == ulong.MaxValue - 2) { return Damage(report); }
             if (!r.Has(1)) { return Damage(report); }
             byte kind = r.Byte();
-            TableFieldInfo field = null;
-            foreach (TableFieldInfo f in type.Fields) { if (f.Id == id) { field = f; break; } }
+            TableFieldInfo field = FindField(type, id);
             if (!nested && id == ulong.MaxValue && type.Variable)
             { if (!r.Skip(kind)) { return Damage(report); } continue; }
             if (field == null)

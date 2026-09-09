@@ -290,8 +290,21 @@ struct TableWriter
                          uint8_t( v >> 32 ), uint8_t( v >> 40 ), uint8_t( v >> 48 ), uint8_t( v >> 56 ) };
         raw( b, 8 );
     }
-    // a 128-bit value as two lanes, the low half first (docs/SPEC-TABLES.md §3)
-    BLOCKHOME_TABLE_INLINE void put128( uint64_t lo, uint64_t hi ) { put64( lo ); put64( hi ); }
+    // A 128-BIT VALUE IS TWO LANES, THE LOW HALF FIRST (docs/SPEC-TABLES.md §3):
+    // THE SAME SIXTEEN BYTES two put64 wrote, assembled once and handed to raw
+    // once. One capacity test rather than two, and NOT ONE FEWER — raw still
+    // asks before it copies, so an undersized buffer still raises the overflow
+    // flag and Save still answers -1. A pair that does not fit now leaves the
+    // buffer alone rather than writing the low lane first; nothing reads those
+    // bytes, because the caller that overflowed answers -1.
+    BLOCKHOME_TABLE_INLINE void put128( uint64_t lo, uint64_t hi )
+    {
+        uint8_t b[16] = { uint8_t( lo ), uint8_t( lo >> 8 ), uint8_t( lo >> 16 ), uint8_t( lo >> 24 ),
+                          uint8_t( lo >> 32 ), uint8_t( lo >> 40 ), uint8_t( lo >> 48 ), uint8_t( lo >> 56 ),
+                          uint8_t( hi ), uint8_t( hi >> 8 ), uint8_t( hi >> 16 ), uint8_t( hi >> 24 ),
+                          uint8_t( hi >> 32 ), uint8_t( hi >> 40 ), uint8_t( hi >> 48 ), uint8_t( hi >> 56 ) };
+        raw( b, 16 );
+    }
     // EVERY LENGTH, COUNT, INDEX AND ID REFERENCE IS ONE CANONICAL UNSIGNED
     // LEB128 (docs/SPEC-TABLES.md §3): seven value bits a byte, the lowest
     // group first, the high bit set on every byte but the last. One value has
@@ -312,6 +325,30 @@ struct TableWriter
         while ( v >= 0x80 ) { b[n++] = uint8_t( v ) | 0x80; v >>= 7; }
         b[n++] = uint8_t( v );
         raw( b, n );
+    }
+    // A FIELD HEADER IS A REFERENCE AND THE KIND BYTE BEHIND IT
+    // (docs/SPEC-TABLES.md §3), and nearly every one of them is two bytes: a
+    // reference below 128 is a single LEB128 byte, so the pair assembles in a
+    // two-byte stack buffer and goes to raw once. A reference at 128 or above
+    // still goes through putleb then put8 — the same two calls, the same bytes.
+    // Both arms write what the two-call spelling wrote, byte for byte.
+    //
+    // NOTHING IS HOISTED AND NO TEST IS REMOVED: raw still asks before it
+    // copies, so a header that does not fit still raises the overflow flag and
+    // Save still answers -1 — including a capacity that would cut the two-byte
+    // header in half. What differs is only on that failing path: a header that
+    // does not fit now leaves the buffer alone rather than writing the
+    // reference first, and nothing reads those bytes.
+    BLOCKHOME_TABLE_INLINE void header( uint64_t ref, uint8_t kind )
+    {
+        if ( ref < 128 )
+        {
+            uint8_t b[2] = { uint8_t( ref ), kind };
+            raw( b, 2 );
+            return;
+        }
+        putleb( ref );
+        put8( kind );
     }
 };
 

@@ -12,6 +12,37 @@ import (
 
 func (g *tableGen) fileWire() bool { return true }
 
+// knownOrdinal is the ordinal of an id the emitter is about to spell as a
+// literal in a field, arm or blob header. An id a header names and the
+// vocabulary does not hold would be a table whose capacity does not cover its
+// own wire, so this refuses at GENERATION time rather than emitting an
+// out-of-range index (§3).
+func (g *tableGen) knownOrdinal(id uint64) int {
+	if g.idOrdinal == nil {
+		g.idOrdinal = make(map[uint64]int)
+		for i, known := range ir.TableWireIds(g.unit) {
+			g.idOrdinal[known] = i
+		}
+	}
+	ord, ok := g.idOrdinal[id]
+	if !ok {
+		panic(fmt.Sprintf("table id 0x%016x is not in the unit's vocabulary (ir.TableWireIds)", id))
+	}
+	return ord
+}
+
+// wireIdCall is a header's id call. The FILE form interns through the ORDINAL
+// SLOT CACHE, because every id spelled here is a compile-time constant of the
+// unit and so carries an ordinal. The RETAINED family keeps the general path:
+// it has an id table of its own (TableRetainIds), whose numbering interleaves
+// the retained record's ids with the unit's, and the cache is not its.
+func (g *tableGen) wireIdCall(id uint64) string {
+	if g.retain {
+		return fmt.Sprintf("table_writer_id( w, 0x%016xull );", id)
+	}
+	return fmt.Sprintf("table_writer_id_at( w, %d, 0x%016xull );", g.knownOrdinal(id), id)
+}
+
 func (g *tableGen) wirePrimitives() string {
 	runtime := ""
 	if g.fileWire() {
@@ -22,6 +53,17 @@ func (g *tableGen) wirePrimitives() string {
 			slots *= 2
 		}
 		runtime = strings.ReplaceAll(runtime, "@ID_SLOTS@", strconv.Itoa(slots))
+		// THE ORDINAL SLOT CACHE's inverse column is as narrow as the
+		// vocabulary allows: an ordinal indexes a set of len(TableWireIds)
+		// ids, and -1 is the entry a RUNTIME id took. Sixteen bits carry
+		// every unit the language has ever produced; the width is picked
+		// here rather than asserted, so a unit past the narrow type's reach
+		// WIDENS instead of failing to build.
+		ordinalType := "int16_t"
+		if len(ir.TableWireIds(g.unit)) > 32767 {
+			ordinalType = "int32_t"
+		}
+		runtime = strings.ReplaceAll(runtime, "@ID_ORD@", ordinalType)
 		writeNodes, readNodes := "", ""
 		if g.anyVariable {
 			writeNodes = "    struct TableNumbering * nodes;"
@@ -41,6 +83,17 @@ typedef struct TableWriteIds
 {
     uint64_t ids[@CAPACITY@];
     uint32_t slots[@ID_SLOTS@], positions[@CAPACITY@];
+    /* THE ORDINAL SLOT CACHE (docs/SPEC-TABLES.md §3). Every id a generated
+       field header, union arm header or blob header names is a COMPILE-TIME
+       CONSTANT of the unit, so it has an ORDINAL: its index in the unit's id
+       vocabulary, the ascending set @CAPACITY@ counts. slot holds the ENTRY
+       that ordinal's id took, -1 for one not interned yet, and ordinal_of is
+       its inverse over the entries — the ordinal an entry was taken under, -1
+       for an entry a RUNTIME id took, which has no ordinal. The pair is what
+       lets a rewind undo the cache in O(popped) rather than walking the whole
+       vocabulary. */
+    int32_t slot[@CAPACITY@];
+    @ID_ORD@ ordinal_of[@CAPACITY@];
     int count;
 } TableWriteIds;
 
@@ -57,8 +110,15 @@ static SCHEMA_UNUSED TableWriter table_writer_make( uint8_t * buffer, int64_t ca
 {
     TableWriter w;
     memset( &w, 0, sizeof( w ) );
+    int i;
     w.buffer = buffer; w.capacity = capacity; w.vocabulary=vocabulary;
-    memset(vocabulary,0,sizeof(*vocabulary));
+    /* only the open-addressing table and the count are read before they are
+       written: ids, positions and ordinal_of are all written at the APPEND
+       that makes an entry, and read only below count. The ordinal slots are
+       the one column with a non-zero empty value. */
+    memset(vocabulary->slots,0,sizeof(vocabulary->slots));
+    for(i=0;i<@CAPACITY@;i++) { vocabulary->slot[i]=-1; }
+    vocabulary->count=0;
     return w;
 }
 static SCHEMA_UNUSED @INLINE@ void table_writer_raw( TableWriter * w, const void * data, int64_t bytes )
@@ -86,7 +146,7 @@ static SCHEMA_UNUSED void table_writer_leb( TableWriter * w, uint64_t v )
 {
     do { uint8_t b = (uint8_t) (v & 127); v >>= 7; table_writer_put8( w, (uint8_t) (b | (v ? 128 : 0)) ); } while ( v );
 }
-static SCHEMA_UNUSED void table_writer_id( TableWriter * w, uint64_t id )
+static SCHEMA_UNUSED uint64_t table_writer_id( TableWriter * w, uint64_t id )
 {
     TableWriteIds * v=w->vocabulary;
     uint64_t hash=id;
@@ -94,12 +154,40 @@ static SCHEMA_UNUSED void table_writer_id( TableWriter * w, uint64_t id )
     hash ^= hash>>33; hash *= UINT64_C(0xff51afd7ed558ccd); hash ^= hash>>33;
     slot=(uint32_t)hash & (@ID_SLOTS@-1);
     while((index=v->slots[slot])!=0) {
-        if(v->ids[index-1]==id) { table_writer_leb(w,index); return; }
+        if(v->ids[index-1]==id) { table_writer_leb(w,index); return index; }
         slot=(slot+1)&(@ID_SLOTS@-1);
     }
-    if(v->count==@CAPACITY@) { w->overflow=1; return; }
-    v->ids[v->count]=id; v->positions[v->count]=slot; v->count++;
+    /* AN OVERFLOWED TABLE APPENDS NOTHING and spells no reference: 0 names no
+       id, so a caller can tell the miss that took an entry from the one that
+       did not. */
+    if(v->count==@CAPACITY@) { w->overflow=1; return 0; }
+    v->ids[v->count]=id; v->positions[v->count]=slot; v->ordinal_of[v->count]=-1; v->count++;
     v->slots[slot]=(uint32_t)v->count; table_writer_leb(w,(uint64_t)v->count);
+    return (uint64_t)v->count;
+}
+/* table_writer_id FOR AN ID THE EMITTER KNEW. A REPEAT answers from
+   slot[ordinal]; a MISS falls through to table_writer_id, so THE APPEND STILL
+   HAPPENS ONLY THERE and first-use order — which is the trailer's order — is
+   the order it always was. BOTH outcomes record the ordinal beside the entry:
+   an id can be reached through the general path first (a field's wire id and
+   an enum variant of the same name are one hash, and an enum-keyed array
+   interns its key AFTER the slot's element probe here, and before it in C++),
+   and an entry with no ordinal recorded is an entry a rewind cannot take the
+   cache back for. Recording on the hit is what makes the cache LOCALLY
+   correct — slot[ordinal] always names a live entry whose ordinal_of points
+   back — rather than correct by an argument about this emitter pairing every
+   rewind with an identical redo, which a change to the measure path could
+   quietly retire (make/c.mk, beside tables-c-ref-ordinal-negative-control). */
+static SCHEMA_UNUSED void table_writer_id_at( TableWriter * w, int32_t ordinal, uint64_t id )
+{
+    TableWriteIds * v=w->vocabulary;
+    const int32_t at=v->slot[ordinal];
+    uint64_t r;
+    if(at>=0) { table_writer_leb(w,(uint64_t)at+1); return; }
+    r=table_writer_id(w,id);
+    if(r==0) { return; }
+    v->slot[ordinal]=(int32_t)r-1;
+    v->ordinal_of[r-1]=(@ID_ORD@)ordinal;
 }
 static SCHEMA_UNUSED TableWriter table_writer_probe( const TableWriter * w )
 {
@@ -111,7 +199,15 @@ static SCHEMA_UNUSED TableWriter table_writer_probe( const TableWriter * w )
 static SCHEMA_UNUSED void table_writer_rewind( const TableWriter * probe )
 {
     TableWriteIds * v=probe->vocabulary;
-    while(v->count>probe->id_checkpoint) { v->count--; v->slots[v->positions[v->count]]=0; }
+    /* an entry removed is the most recent one on its probe chain, so clearing
+       it preserves every earlier chain — and ITS ORDINAL SLOT goes with it, or
+       a later table_writer_id_at would answer with an entry this call just
+       popped. */
+    while(v->count>probe->id_checkpoint) {
+        int32_t o;
+        v->count--; v->slots[v->positions[v->count]]=0;
+        o=v->ordinal_of[v->count]; if(o>=0) { v->slot[o]=-1; }
+    }
 }
 static SCHEMA_UNUSED void table_writer_finish( TableWriter * w )
 {
@@ -377,10 +473,30 @@ func (g *tableGen) wireFieldHelper(st *ir.Struct, f *ir.Field) string {
 	return g.sym(st.Name, "wire_"+f.Name)
 }
 
+// Keep the same bounded per-array sizing scratch as C++: the first 64 plain
+// table elements can reuse their measured length when the array is written.
+// Retained and variable tables keep their existing traversal unchanged.
+func (g *tableGen) wireElementCacheSlots(st *ir.Struct, f *ir.Field) int64 {
+	if g.retain || g.isVar(st.Name) || f.IsList() || f.IsMap() ||
+		f.Array == ir.ArrayNone || f.KeyEnum != "" || f.Type.Pointer ||
+		ir.TableWireScalarKind(f) != tkTable || g.isVar(f.Type.Name) {
+		return 0
+	}
+	if f.ArrayBound < 64 {
+		return f.ArrayBound
+	}
+	return 64
+}
+
 func (g *tableGen) emitWireFieldHelper(st *ir.Struct, f *ir.Field) {
 	expr := "value->" + f.Name
 	kind := ir.TableWireScalarKind(f)
-	g.pf("static SCHEMA_UNUSED int %s( TableWriter * w, const %s * value )\n{\n", g.wireFieldHelper(st, f), st.Name)
+	cacheSlots := g.wireElementCacheSlots(st, f)
+	cacheArg := ""
+	if cacheSlots > 0 {
+		cacheArg = ", int64_t * element_sizes"
+	}
+	g.pf("static SCHEMA_UNUSED int %s( TableWriter * w, const %s * value%s )\n{\n", g.wireFieldHelper(st, f), st.Name, cacheArg)
 	if (f.Type.Kind == ir.TString && !f.Type.Blob()) || f.Type.Kind == ir.TWString || (f.Type.Kind == ir.TBytes && !f.Type.Blob()) {
 		g.pf("    if ( %s_length < 0 || %s_length > %d ) { return 0; }\n", expr, expr, f.Type.Size)
 	} else if f.Array == ir.ArrayCounted {
@@ -424,7 +540,17 @@ func (g *tableGen) emitWireFieldHelper(st *ir.Struct, f *ir.Field) {
 		g.pf("    int32_t i;\n    table_writer_put8( w, %d ); table_writer_leb( w, (uint64_t) %s );\n", kind, n)
 		g.pf("    for ( i = 0; i < %s; i++ )\n    {\n", n)
 		g.retainIndex(f, "i", "        ")
-		g.wirePayload(f, expr+"[i]", "        ")
+		if cacheSlots > 0 {
+			g.pf("        if ( element_sizes != NULL && i < %d )\n        {\n", cacheSlots)
+			g.pf("            if ( w->buffer == NULL )\n            {\n                int64_t begin = w->offset;\n")
+			g.pf("                if ( !%s( w, &%s[i] ) ) { return 0; }\n", g.api(f.Type.Name, "save_body"), expr)
+			g.pf("                element_sizes[i] = w->offset - begin;\n                table_writer_leb( w, (uint64_t) element_sizes[i] );\n            }\n            else\n            {\n")
+			g.pf("                table_writer_leb( w, (uint64_t) element_sizes[i] );\n                if ( !%s( w, &%s[i] ) ) { return 0; }\n            }\n        }\n        else\n        {\n", g.api(f.Type.Name, "save_body"), expr)
+			g.wirePayload(f, expr+"[i]", "            ")
+			g.pf("        }\n")
+		} else {
+			g.wirePayload(f, expr+"[i]", "        ")
+		}
 		g.pf("    }\n")
 	default:
 		panic("wire field helper on unframed field")
@@ -444,6 +570,37 @@ func (g *tableGen) wireKeyedRides(f *ir.Field, ind string) {
 	}
 }
 
+// A plain scalar leaf has no nested frames or value-dependent payload widths.
+// Its measure walk still interns riding field ids in order, but only counts the
+// kind and payload bytes. Default probes retain their existing early exit.
+func (g *tableGen) emitWireScalarLeafMeasure(st *ir.Struct) {
+	if g.retain || g.isVar(st.Name) || st.IsMapEntry() || len(st.Fields) == 0 {
+		return
+	}
+	for _, f := range st.Fields {
+		if f.Array != ir.ArrayNone || f.IsList() || f.IsMap() || f.KeyEnum != "" ||
+			f.Type.Optional || f.Type.Pointer || enumRef(f) != nil || tableKindWidth(ir.TableWireScalarKind(f)) == 0 {
+			return
+		}
+	}
+	g.pf("    if ( w->buffer == NULL && !w->check_default )\n    {\n")
+	g.pf("        int64_t payload_bytes = 1; /* the zero reference ending this body */\n")
+	guards := tableGuardExprs(st)
+	for _, f := range st.Fields {
+		condition := "!( " + g.wireDefaultEquals(f, "value->"+f.Name) + " )"
+		if guard := guards[f.Name]; guard != "" {
+			condition = "( " + guard + " ) && " + condition
+		}
+		g.pf("        if ( %s )\n        {\n", condition)
+		g.pf("            %s\n", g.wireIdCall(ir.TableFieldWireId(f)))
+		g.pf("            payload_bytes += %d; /* kind and fixed-width payload */\n        }\n", 1+tableKindWidth(ir.TableWireScalarKind(f)))
+	}
+	// This branch only measures. Advance with the same overflow check as raw
+	// without exposing a null source to fortified memcpy after inlining.
+	g.pf("        if ( payload_bytes < 0 || w->offset > w->capacity || payload_bytes > w->capacity - w->offset ) { w->overflow = 1; }\n")
+	g.pf("        else { w->offset += payload_bytes; }\n        return !w->overflow;\n    }\n")
+}
+
 func (g *tableGen) emitWireWrite(st *ir.Struct) {
 	for _, f := range st.Fields {
 		if f.IsMap() || f.Array != ir.ArrayNone || (f.Type.Kind == ir.TBytes && !f.Type.Blob()) || ((f.Type.Kind == ir.TString && !f.Type.Blob()) || f.Type.Kind == ir.TWString) {
@@ -452,6 +609,7 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 	}
 	g.pf("static SCHEMA_UNUSED int %s( TableWriter * w, const %s * value )\n{\n", g.api(st.Name, "save_body"), st.Name)
 	g.pf("    (void) value;\n")
+	g.emitWireScalarLeafMeasure(st)
 	if g.retain {
 		g.pf("    TableRetainWalk body_keep=retention;\n")
 	}
@@ -512,10 +670,15 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 		}
 		g.pf("        if ( %s )\n        {\n", condition)
 		g.pf("            if ( w->check_default ) { w->offset = 2; return 1; }\n")
-		g.pf("            table_writer_id( w, 0x%016xull ); table_writer_put8( w, %d );\n", ir.TableFieldWireId(f), wireKind)
+		g.pf("            %s table_writer_put8( w, %d );\n", g.wireIdCall(ir.TableFieldWireId(f)), wireKind)
 		switch {
 		case framed:
-			g.wireFrame(fmt.Sprintf("%s( w, value )", g.wireFieldHelper(st, f)), "            ")
+			if slots := g.wireElementCacheSlots(st, f); slots > 0 {
+				g.pf("            int64_t element_sizes[%d]; /* bounded sizing-to-write cache */\n", slots)
+				g.wireFrame(fmt.Sprintf("%s( w, value, w->buffer != NULL ? element_sizes : NULL )", g.wireFieldHelper(st, f)), "            ")
+			} else {
+				g.wireFrame(fmt.Sprintf("%s( w, value )", g.wireFieldHelper(st, f)), "            ")
+			}
 
 		default:
 			g.wirePayload(f, expr, "            ")

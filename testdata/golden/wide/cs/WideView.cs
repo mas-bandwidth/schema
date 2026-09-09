@@ -114,6 +114,7 @@ namespace Wide
                 info.Doc = TableDocNone;
                 info.NumTags = 0;
                 info.Tags = null;
+                TableWire.IndexFields(info);
                 return info;
             }
         }
@@ -155,6 +156,7 @@ namespace Wide
                 info.Doc = TableDocNone;
                 info.NumTags = 0;
                 info.Tags = null;
+                TableWire.IndexFields(info);
                 return info;
             }
         }
@@ -196,6 +198,7 @@ namespace Wide
                 info.Doc = TableDocNone;
                 info.NumTags = 0;
                 info.Tags = null;
+                TableWire.IndexFields(info);
                 return info;
             }
         }
@@ -237,6 +240,7 @@ namespace Wide
                 info.Doc = TableDocNone;
                 info.NumTags = 0;
                 info.Tags = null;
+                TableWire.IndexFields(info);
                 return info;
             }
         }

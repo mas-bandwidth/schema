@@ -958,8 +958,7 @@ inline bool TableNodeTableSave( const Ctx & ctx, TableWriter & w, TableIds & ids
     const uint64_t ref = ids.ref( kTableNodeTableFieldId );
     const int64_t payload = TableNodeTablePayload( ctx, ids, n );
     if ( payload < 0 ) { return false; }
-    w.putleb( ref );
-    w.put8( 12 ); // kind 12 is the opaque byte payload: a reader that cannot name the id skips by L
+    w.header( ref, 12 ); // kind 12 is the opaque byte payload: a reader that cannot name the id skips by L
     w.putleb( (uint64_t) payload );
     w.putleb( (uint64_t) n.count );
     for ( int64_t k = 0; k < n.count; k++ )

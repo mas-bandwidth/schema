@@ -308,8 +308,21 @@ struct TableWriter
                          uint8_t( v >> 32 ), uint8_t( v >> 40 ), uint8_t( v >> 48 ), uint8_t( v >> 56 ) };
         raw( b, 8 );
     }
-    // a 128-bit value as two lanes, the low half first (docs/SPEC-TABLES.md §3)
-    TABLEDEMO_TABLE_INLINE void put128( uint64_t lo, uint64_t hi ) { put64( lo ); put64( hi ); }
+    // A 128-BIT VALUE IS TWO LANES, THE LOW HALF FIRST (docs/SPEC-TABLES.md §3):
+    // THE SAME SIXTEEN BYTES two put64 wrote, assembled once and handed to raw
+    // once. One capacity test rather than two, and NOT ONE FEWER — raw still
+    // asks before it copies, so an undersized buffer still raises the overflow
+    // flag and Save still answers -1. A pair that does not fit now leaves the
+    // buffer alone rather than writing the low lane first; nothing reads those
+    // bytes, because the caller that overflowed answers -1.
+    TABLEDEMO_TABLE_INLINE void put128( uint64_t lo, uint64_t hi )
+    {
+        uint8_t b[16] = { uint8_t( lo ), uint8_t( lo >> 8 ), uint8_t( lo >> 16 ), uint8_t( lo >> 24 ),
+                          uint8_t( lo >> 32 ), uint8_t( lo >> 40 ), uint8_t( lo >> 48 ), uint8_t( lo >> 56 ),
+                          uint8_t( hi ), uint8_t( hi >> 8 ), uint8_t( hi >> 16 ), uint8_t( hi >> 24 ),
+                          uint8_t( hi >> 32 ), uint8_t( hi >> 40 ), uint8_t( hi >> 48 ), uint8_t( hi >> 56 ) };
+        raw( b, 16 );
+    }
     // EVERY LENGTH, COUNT, INDEX AND ID REFERENCE IS ONE CANONICAL UNSIGNED
     // LEB128 (docs/SPEC-TABLES.md §3): seven value bits a byte, the lowest
     // group first, the high bit set on every byte but the last. One value has
@@ -330,6 +343,30 @@ struct TableWriter
         while ( v >= 0x80 ) { b[n++] = uint8_t( v ) | 0x80; v >>= 7; }
         b[n++] = uint8_t( v );
         raw( b, n );
+    }
+    // A FIELD HEADER IS A REFERENCE AND THE KIND BYTE BEHIND IT
+    // (docs/SPEC-TABLES.md §3), and nearly every one of them is two bytes: a
+    // reference below 128 is a single LEB128 byte, so the pair assembles in a
+    // two-byte stack buffer and goes to raw once. A reference at 128 or above
+    // still goes through putleb then put8 — the same two calls, the same bytes.
+    // Both arms write what the two-call spelling wrote, byte for byte.
+    //
+    // NOTHING IS HOISTED AND NO TEST IS REMOVED: raw still asks before it
+    // copies, so a header that does not fit still raises the overflow flag and
+    // Save still answers -1 — including a capacity that would cut the two-byte
+    // header in half. What differs is only on that failing path: a header that
+    // does not fit now leaves the buffer alone rather than writing the
+    // reference first, and nothing reads those bytes.
+    TABLEDEMO_TABLE_INLINE void header( uint64_t ref, uint8_t kind )
+    {
+        if ( ref < 128 )
+        {
+            uint8_t b[2] = { uint8_t( ref ), kind };
+            raw( b, 2 );
+            return;
+        }
+        putleb( ref );
+        put8( kind );
     }
 };
 
@@ -2938,13 +2975,13 @@ TABLEDEMO_TABLE_INLINE bool TeamConfigSaveBody( TableWriter & w, TableIds & ids,
 {
     if ( value.spawn_count != 4 )
     {
-        w.putleb( ids.ref_at( 120, 0xceec99e2d65db674ull ) ); w.put8( 4 ); // spawn_count
+        w.header( ids.ref_at( 120, 0xceec99e2d65db674ull ), 4 ); // spawn_count
         w.put32( uint32_t( value.spawn_count ) );
     }
     if ( value.banner_length < 0 || value.banner_length > 16 ) { return false; } // storage invariant
     if ( value.banner_length > 0 )
     {
-        w.putleb( ids.ref_at( 108, 0xbca0dab1c7a00ccfull ) ); w.put8( 12 ); // banner
+        w.header( ids.ref_at( 108, 0xbca0dab1c7a00ccfull ), 12 ); // banner
         w.putleb( (uint64_t) value.banner_length );
         w.raw( value.banner, value.banner_length );
     }
@@ -3351,12 +3388,12 @@ TABLEDEMO_TABLE_INLINE bool GunnerConfigSaveBody( TableWriter & w, TableIds & id
 {
     if ( value.reaction != 0.2f )
     {
-        w.putleb( ids.ref_at( 101, 0xb75aa3662201646aull ) ); w.put8( 10 ); // reaction
+        w.header( ids.ref_at( 101, 0xb75aa3662201646aull ), 10 ); // reaction
         w.put32( table_float_to_bits( value.reaction ) );
     }
     if ( value.tracking != false )
     {
-        w.putleb( ids.ref_at( 90, 0xa6bf719a4602b0bcull ) ); w.put8( 1 ); // tracking
+        w.header( ids.ref_at( 90, 0xa6bf719a4602b0bcull ), 1 ); // tracking
         w.put8( value.tracking ? 1 : 0 );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -3701,12 +3738,12 @@ TABLEDEMO_TABLE_INLINE bool TurretConfigSaveBody( TableWriter & w, TableIds & id
 {
     if ( value.damage != 10.0f )
     {
-        w.putleb( ids.ref_at( 66, 0x7f6308be8ab37fc0ull ) ); w.put8( 10 ); // damage
+        w.header( ids.ref_at( 66, 0x7f6308be8ab37fc0ull ), 10 ); // damage
         w.put32( table_float_to_bits( value.damage ) );
     }
     if ( value.cooldown != 0.5f )
     {
-        w.putleb( ids.ref_at( 133, 0xdc2cbe6953343d48ull ) ); w.put8( 10 ); // cooldown
+        w.header( ids.ref_at( 133, 0xdc2cbe6953343d48ull ), 10 ); // cooldown
         w.put32( table_float_to_bits( value.cooldown ) );
     }
     if ( value.gunner_present ) // ?GunnerConfig
@@ -3714,7 +3751,7 @@ TABLEDEMO_TABLE_INLINE bool TurretConfigSaveBody( TableWriter & w, TableIds & id
         const uint64_t ref_gunner = ids.ref_at( 38, 0x40dbb648c0cd44aaull );
         const int64_t body_gunner = GunnerConfigMeasureBody( ids, value.gunner );
         if ( body_gunner < 0 ) return false; // storage invariant, refused as measure refuses it
-        w.putleb( ref_gunner ); w.put8( 13 ); w.putleb( (uint64_t) body_gunner ); // gunner
+        w.header( ref_gunner, 13 ); w.putleb( (uint64_t) body_gunner ); // gunner
         if ( !GunnerConfigSaveBody( w, ids, value.gunner ) ) return false;
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -4143,12 +4180,12 @@ TABLEDEMO_TABLE_INLINE bool HullConfigSaveBody( TableWriter & w, TableIds & ids,
 {
     if ( value.health != 100.0f )
     {
-        w.putleb( ids.ref_at( 67, 0x7f69d4b5288ba9cfull ) ); w.put8( 10 ); // health
+        w.header( ids.ref_at( 67, 0x7f69d4b5288ba9cfull ), 10 ); // health
         w.put32( table_float_to_bits( value.health ) );
     }
     if ( value.mass != 1.0f )
     {
-        w.putleb( ids.ref_at( 20, 0x1f3757a2ce7b0ab1ull ) ); w.put8( 10 ); // mass
+        w.header( ids.ref_at( 20, 0x1f3757a2ce7b0ab1ull ), 10 ); // mass
         w.put32( table_float_to_bits( value.mass ) );
     }
     {
@@ -4171,7 +4208,7 @@ TABLEDEMO_TABLE_INLINE bool HullConfigSaveBody( TableWriter & w, TableIds & ids,
             // incompatible, so a reader of the other kind must see a kind
             // mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2)
             const int64_t whole_turrets = 1 + TableLebBytes( (uint64_t) pairs_turrets ) + body_turrets;
-            w.putleb( ref_turrets ); w.put8( 16 ); w.putleb( (uint64_t) whole_turrets ); // turrets (keyed by Weapon)
+            w.header( ref_turrets, 16 ); w.putleb( (uint64_t) whole_turrets ); // turrets (keyed by Weapon)
             w.put8( 13 ); w.putleb( (uint64_t) pairs_turrets );
             // ASCENDING BY VARIANT ORDINAL, which is slot order — this
             // writer's choice, and a reader must not rely on it: every
@@ -4752,7 +4789,7 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigSaveBody( TableWriter & w, TableIds & ids
             // incompatible, so a reader of the other kind must see a kind
             // mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2)
             const int64_t whole_teams = 1 + TableLebBytes( (uint64_t) pairs_teams ) + body_teams;
-            w.putleb( ref_teams ); w.put8( 16 ); w.putleb( (uint64_t) whole_teams ); // teams (keyed by Team)
+            w.header( ref_teams, 16 ); w.putleb( (uint64_t) whole_teams ); // teams (keyed by Team)
             w.put8( 13 ); w.putleb( (uint64_t) pairs_teams );
             // ASCENDING BY VARIANT ORDINAL, which is slot order — this
             // writer's choice, and a reader must not rely on it: every
@@ -4792,7 +4829,7 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigSaveBody( TableWriter & w, TableIds & ids
             // incompatible, so a reader of the other kind must see a kind
             // mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2)
             const int64_t whole_hulls = 1 + TableLebBytes( (uint64_t) pairs_hulls ) + body_hulls;
-            w.putleb( ref_hulls ); w.put8( 16 ); w.putleb( (uint64_t) whole_hulls ); // hulls (keyed by Hull)
+            w.header( ref_hulls, 16 ); w.putleb( (uint64_t) whole_hulls ); // hulls (keyed by Hull)
             w.put8( 13 ); w.putleb( (uint64_t) pairs_hulls );
             // ASCENDING BY VARIANT ORDINAL, which is slot order — this
             // writer's choice, and a reader must not rely on it: every
@@ -4819,7 +4856,7 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigSaveBody( TableWriter & w, TableIds & ids
         if ( body_scores < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_scores > 1 ) // all-default nested elides
         {
-            w.putleb( ref_scores ); w.put8( 13 ); w.putleb( (uint64_t) body_scores ); // scores
+            w.header( ref_scores, 13 ); w.putleb( (uint64_t) body_scores ); // scores
             if ( !ScoreBoardSaveBody( w, ids, value.scores ) ) return false;
         }
         else { ids.truncate( mark_scores ); }
@@ -5442,7 +5479,7 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardSaveBody( TableWriter & w, TableIds & ids,
             // incompatible, so a reader of the other kind must see a kind
             // mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2)
             const int64_t whole_per_team = 1 + TableLebBytes( (uint64_t) pairs_per_team ) + body_per_team;
-            w.putleb( ref_per_team ); w.put8( 16 ); w.putleb( (uint64_t) whole_per_team ); // per_team (keyed by Team)
+            w.header( ref_per_team, 16 ); w.putleb( (uint64_t) whole_per_team ); // per_team (keyed by Team)
             w.put8( 4 ); w.putleb( (uint64_t) pairs_per_team );
             // ASCENDING BY VARIANT ORDINAL, which is slot order — this
             // writer's choice, and a reader must not rely on it: every

@@ -131,8 +131,7 @@ const tableMessageReadSource = `
             if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry entry)) { return false; }
             if (reference == 0) { return true; }
             if (Reserved(entry.Id)) { return false; }
-            TableFieldInfo field = null;
-            foreach (TableFieldInfo f in type.Fields) { if (f.Id == entry.Id) { field = f; break; } }
+            TableFieldInfo field = FindField(type, entry.Id);
             if (field == null)
             { d.Report.Unknown++; if (!MessageSkip(ref r, d, entry.Kind, entry.Shape)) { return false; } continue; }
             if (!MessageCompatible(entry, field, out bool widened))

@@ -145,7 +145,7 @@ func (g *tableGen) emitUnionWire(un *ir.Union) {
 	g.pf("        case %s: table_writer_leb( w, 0 ); break;\n", enumNoneConst(un.Name+"Type"))
 	for _, v := range un.Variants {
 		g.pf("        case %s:\n", enumConst(un.Name+"Type", v.Name))
-		g.pf("            table_writer_id( w, 0x%016xull ); table_writer_put8( w, %d );\n", ir.TableWireId(v.WireName()), armWireKind(v))
+		g.pf("            %s table_writer_put8( w, %d );\n", g.wireIdCall(ir.TableWireId(v.WireName())), armWireKind(v))
 		if v.Void() {
 			g.pf("            table_writer_leb( w, 0 );\n")
 		} else {

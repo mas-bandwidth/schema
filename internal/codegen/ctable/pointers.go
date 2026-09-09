@@ -24,46 +24,6 @@ import (
 
 func (g *tableGen) isVar(name string) bool { return g.variable[name] }
 
-// ---- what the depth cap counts (docs/SPEC-TABLES.md §3.1) ----
-//
-// ONLY POINTER EDGES CHARGE DEPTH. By-value nesting — a table inside a table,
-// or a bounded array of them — charges nothing, because by-value composition is
-// already finite: the checker refuses by-value cycles, so its nesting is
-// bounded by the schema itself and cannot be driven by data.
-//
-// This has to hold in ALL FOUR walks — measure, save, load and pack — or the
-// forms disagree about which structures are legal, and a structure that Locks
-// is refused by the wire. The two constants below are the whole rule.
-const (
-	depthSame = "depth"     // by-value nesting: the schema already bounds it
-	depthDown = "depth + 1" // a pointer edge: only DATA can make this deep
-)
-
-// measureCall renders a nested MEASURE call on a closure member: a variable
-// member takes the resolution context and the depth, a fixed one takes
-// neither — so a fixed table's codec is character-for-character what it was
-// before pointers existed.
-func (g *tableGen) measureCall(name, expr, depth string) string {
-	if g.isVar(name) {
-		return fmt.Sprintf("%s( ctx, %s, %s )", g.api(name, "measure_body"), expr, depth)
-	}
-	return fmt.Sprintf("%s( %s )", g.api(name, "measure"), expr)
-}
-
-func (g *tableGen) saveCall(name, expr, depth string) string {
-	if g.isVar(name) {
-		return fmt.Sprintf("%s( ctx, w, %s, %s )", g.api(name, "save_body"), expr, depth)
-	}
-	return fmt.Sprintf("%s( w, %s )", g.api(name, "save_body"), expr)
-}
-
-func (g *tableGen) loadCall(name, reader, expr, depth string) string {
-	if g.isVar(name) {
-		return fmt.Sprintf("%s( %s, sink, %s, %s )", g.api(name, "load_body"), reader, expr, depth)
-	}
-	return fmt.Sprintf("%s( %s, %s )", g.api(name, "load_body"), reader, expr)
-}
-
 // needsWalkers returns true when a member needs the pointer-graph walkers:
 // every variable member, plus every table some pointer targets (a pointed-at
 // table may itself be pointer-free, and still needs to be allocated, packed,

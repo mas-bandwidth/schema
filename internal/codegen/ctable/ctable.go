@@ -124,24 +124,16 @@ type tableGen struct {
 	owner    *ir.Struct      // the closure member whose codec is being emitted
 	variable map[string]bool // the derived VARIABLE-LENGTH members (ir.VariableTables)
 	targets  map[string]bool // tables some pointer targets (ir.PointerTargets)
-	body     strings.Builder
-	includes map[string]bool // referenced files -> #include "<base>Table.h"
-	indent   string          // extra per-line indent while emitting inside a branch guard
+	// idOrdinal is the unit's id vocabulary as id -> ORDINAL (§3): the index
+	// an id takes in ir.TableWireIds, which is what a generated header hands
+	// table_writer_id_at beside the id itself. Built on first use.
+	idOrdinal map[uint64]int
+	body      strings.Builder
+	includes  map[string]bool // referenced files -> #include "<base>Table.h"
 }
 
 func (g *tableGen) pf(format string, args ...any) {
-	s := fmt.Sprintf(format, args...)
-	if g.indent != "" && s != "" {
-		trailing := strings.HasSuffix(s, "\n")
-		if trailing {
-			s = s[:len(s)-1]
-		}
-		s = g.indent + strings.ReplaceAll(s, "\n", "\n"+g.indent)
-		if trailing {
-			s += "\n"
-		}
-	}
-	g.body.WriteString(s)
+	fmt.Fprintf(&g.body, format, args...)
 }
 
 func (g *tableGen) declBase(name string) string {
@@ -727,18 +719,11 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			for _, st := range members {
 				g.owner = st
 				g.emitKeyedAccessors(st)
-				if g.fileWire() {
-					g.emitWireWrite(st)
-					g.emitWireRead(st)
-					g.emitMessageSave(st)
-					g.emitMessageRead(st)
-					g.emitMessageExtent(st)
-				} else {
-					g.emitTableMeasure(st)
-					g.emitTableWrite(st)
-					g.emitTableSave(st)
-					g.emitTableRead(st)
-				}
+				g.emitWireWrite(st)
+				g.emitWireRead(st)
+				g.emitMessageSave(st)
+				g.emitMessageRead(st)
+				g.emitMessageExtent(st)
 			}
 			if g.anySequence {
 				for _, st := range members {

@@ -9,7 +9,7 @@ const tableMessageMeasureSource = `
             if (reference == 0) { return true; }
             TableFieldInfo field = null;
             if (type != null)
-            { foreach (TableFieldInfo f in type.Fields) { if (f.Id == entry.Id && MessageCompatible(entry,f,out _)) { field = f; break; } } }
+            { field = FindField(type, entry.Id); if (field != null && !MessageCompatible(entry,field,out _)) { field = null; } }
             if (field == null) { if (!MessageSkip(ref r, d, entry.Kind, entry.Shape)) { return false; } }
             else if (!MessageExtentField(ref r, d, field, entry.Kind, entry.Shape, ref extent)) { return false; }
         }
