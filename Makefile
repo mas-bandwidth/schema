@@ -2685,13 +2685,40 @@ build/schema_test_tables_asan: build/tables-generated/.stamp test/tables/main.cp
 BE_CXX ?= s390x-linux-gnu-g++
 BE_RUN ?= qemu-s390x
 
+# ONE TRANSLATION UNIT PER CORE, THEN THE LINK. A whole corpus handed to one
+# $(CXX) is ONE PROCESS ON ONE CORE, and these corpora are seventy translation
+# units each. MEASURED on the four-core runner, run 34346307562: 50 s of the
+# big-endian job's 54 s of building, 118 s of the conformance (c) leg's 136,
+# and 90 s of every wire-fuzz negative control's 123. Nothing is compiled
+# differently — same compiler, same flags, same -Werror, same units — what
+# changes is that the other three cores are used. The list is a SHELL GLOB in
+# most of these rules, because the tree it names is generated and does not
+# exist when this file is parsed, so the fan-out is xargs rather than a pattern
+# rule; a unit that fails makes xargs exit nonzero and the recipe line with it.
+NPROC ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+
+# $(call corpus_objects,<compiler>,<compile flags>,<objdir>,<sources>)
+# — compiles each source to <objdir>/<path with / flattened to _>.o, NPROC at a
+# time. $2 carries ALL the compile flags, so C and C++ callers both fit; LINK
+# flags belong on the caller's link line and not here. The sources are named
+# only INSIDE the recipe, never as prerequisites, which is deliberate: they are
+# generated files with no rule of their own, and make would refuse a DAG that
+# named them.
+define corpus_objects
+	@rm -rf $3 && mkdir -p $3
+	@ls $4 | xargs -P $(NPROC) -n 1 sh -c \
+	  'o=$3/$$(echo "$$0" | tr / _ | sed "s/\.[cp]*$$/.o/"); \
+	   $1 $2 -c "$$0" -o "$$o"'
+endef
+
 # Same flags and includes as the plain leg, shared through the same variables
 # for the same reason the sanitized twin shares them (#278): a twin that
 # covers different code is not a twin. -static so the runner needs no sysroot
 # and the emulator invocation is just the binary.
 build/schema_test_tables_be: build/tables-generated/.stamp test/tables/main.cpp test/tables/message_form.h
 	@mkdir -p build
-	$(BE_CXX) $(TABLES_CXXFLAGS) -static $(TABLES_INCLUDES) test/tables/main.cpp $(TABLES_JSON_SOURCES) -o $@
+	$(call corpus_objects,$(BE_CXX),$(TABLES_CXXFLAGS) $(TABLES_INCLUDES),build/be-tables-obj,test/tables/main.cpp $(TABLES_JSON_SOURCES))
+	$(BE_CXX) $(TABLES_CXXFLAGS) -static build/be-tables-obj/*.o -o $@
 
 # THE MAP GATE, for a BIG-ENDIAN target (docs/SPEC-TABLES.md §2.8, §3). Its
 # wire goldens were written by a LITTLE-ENDIAN build, so a codec that reached
@@ -2736,13 +2763,24 @@ build/schema_test_block_endian_be: build/tables-generated/.stamp test/tables/blo
 	@mkdir -p build
 	$(BE_CXX) $(BLOCK_CXXFLAGS) -static $(BLOCK_INCLUDES) test/tables/block_endian_main.cpp $(BLOCK_SOURCES) -o $@
 
-.PHONY: tables-big-endian
-tables-big-endian: build/schema_test_tables_be build/schema_test_maps_be build/schema_test_lists_be build/schema_test_arms_be build/schema_test_block_endian build/schema_test_block_endian_be build/schema_test_cook build/schema_test_cook_be build/cook-open/.stamp
+# THE LEG IS FIVE INDEPENDENT PIECES, AND EACH IS ITS OWN TARGET. `make
+# tables-big-endian` still runs all five, in the same order, off the same
+# parallel prerequisite build — that is what `make test`, certify.yml and a
+# workstation ask for and none of it changes. What the split adds is that CI
+# can ask for ONE of them: the five pieces share nothing but bin/schema and
+# the generated tree, they were 411 s in a single job (run 34346307562), and
+# five jobs make that the LONGEST piece rather than the SUM.
+.PHONY: tables-big-endian-tables
+tables-big-endian-tables: build/schema_test_tables_be
 	$(BE_RUN) ./build/schema_test_tables_be
+	@echo "big-endian leg: the wire crosses the byte order"
+
+.PHONY: tables-big-endian-collections
+tables-big-endian-collections: build/schema_test_maps_be build/schema_test_lists_be build/schema_test_arms_be build/schema_test_block_endian build/schema_test_block_endian_be build/schema_test_cook build/schema_test_cook_be build/cook-open/.stamp
 	$(BE_RUN) ./build/schema_test_maps_be
 	$(BE_RUN) ./build/schema_test_lists_be
 	$(BE_RUN) ./build/schema_test_arms_be
-	@echo "big-endian leg: the wire crosses the byte order, a map's framing and its sorted entry array with it, a list's element array and the arrays a union arm holds"
+	@echo "big-endian leg: a map's framing and its sorted entry array cross the byte order with it, a list's element array and the arrays a union arm holds"
 	./build/schema_test_block_endian write build/block-host.bin
 	$(BE_RUN) ./build/schema_test_block_endian_be write build/block-target.bin
 	$(BE_RUN) ./build/schema_test_block_endian_be accept build/block-target.bin
@@ -2756,6 +2794,15 @@ tables-big-endian: build/schema_test_tables_be build/schema_test_maps_be build/s
 	./build/schema_test_cook accept Scene build/cook-open/Scene.cook
 	./build/schema_test_cook refuse Scene build/cook-open/Scene-be.cook
 	@echo "big-endian leg: a cook opens NATIVELY in the order it was cooked for, whole graph and all, and a cook of the other order is refused by the magic"
+
+# The prerequisites stay HERE, on the umbrella, so one `make -j
+# tables-big-endian` still builds all nine binaries in parallel and only then
+# runs anything. The pieces are submakes because their prerequisites are
+# already standing by the time this recipe runs.
+.PHONY: tables-big-endian
+tables-big-endian: build/schema_test_tables_be build/schema_test_maps_be build/schema_test_lists_be build/schema_test_arms_be build/schema_test_block_endian build/schema_test_block_endian_be build/schema_test_cook build/schema_test_cook_be build/cook-open/.stamp
+	$(MAKE) tables-big-endian-tables
+	$(MAKE) tables-big-endian-collections
 	$(MAKE) tables-cook-endian
 	$(MAKE) tables-c-big-endian
 
@@ -2806,8 +2853,21 @@ tables-cook-endian: bin/schema
 # tracked file is ever written to: an interrupt cannot leave a sabotaged
 # working tree, and a parallel `make -j` cannot compile the sabotage into
 # something else.
+#
+# THE CONTROL'S OWN RECIPE IS ITS OWN TARGET, `tables-big-endian-control-only`.
+# It shares nothing with the leg above but the tree it is cut from: it builds a
+# SABOTAGED compiler through the overlay, generates its OWN corpus into
+# build/tables-host-order, and compiles and runs that — none of the leg's nine
+# binaries appear in it. `tables-big-endian-negative-control` still runs the
+# leg and then the control, which is what `make test`, certify.yml and a
+# workstation ask for; CI asks for the control half in a job of its own, beside
+# the job that runs the leg, and the pair is the same pair.
 .PHONY: tables-big-endian-negative-control
 tables-big-endian-negative-control: tables-big-endian
+	$(MAKE) tables-big-endian-control-only
+
+.PHONY: tables-big-endian-control-only
+tables-big-endian-control-only:
 	@mkdir -p build
 	@sed 's|void put16( uint16_t v ) { uint8_t b\[2\] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }|void put16( uint16_t v ) { raw( \&v, 2 ); } // SABOTAGED: host order|' \
 		internal/codegen/cpptable/cpptable.go > build/cpptable-host-order.gotext
@@ -2818,10 +2878,10 @@ tables-big-endian-negative-control: tables-big-endian
 	@go build -overlay=build/cpptable-overlay.json -o build/schema-host-order ./cmd/schema
 	@rm -rf build/tables-host-order && mkdir -p build/tables-host-order
 	$(call tables_generate,./build/schema-host-order,build/tables-host-order)
-	$(CXX) $(TABLES_CXXFLAGS) $(call tables_includes,build/tables-host-order) \
-		test/tables/main.cpp $$(ls build/tables-host-order/*/*Table.cpp) -o build/schema_test_tables_host_order
-	$(BE_CXX) $(TABLES_CXXFLAGS) -static $(call tables_includes,build/tables-host-order) \
-		test/tables/main.cpp $$(ls build/tables-host-order/*/*Table.cpp) -o build/schema_test_tables_host_order_be
+	$(call corpus_objects,$(CXX),$(TABLES_CXXFLAGS) $(call tables_includes,build/tables-host-order),build/host-order-obj,test/tables/main.cpp $$(ls build/tables-host-order/*/*Table.cpp))
+	$(CXX) $(TABLES_CXXFLAGS) build/host-order-obj/*.o -o build/schema_test_tables_host_order
+	$(call corpus_objects,$(BE_CXX),$(TABLES_CXXFLAGS) $(call tables_includes,build/tables-host-order),build/host-order-obj-be,test/tables/main.cpp $$(ls build/tables-host-order/*/*Table.cpp))
+	$(BE_CXX) $(TABLES_CXXFLAGS) -static build/host-order-obj-be/*.o -o build/schema_test_tables_host_order_be
 	@./build/schema_test_tables_host_order > /dev/null || \
 		{ echo "NEGATIVE CONTROL FAILED: a host-order put16 is visible on a little-endian host — this host is not little-endian, or the sabotage is not the one described"; exit 1; }
 	@echo "negative control: a host-order put16 leaves the LITTLE-ENDIAN leg green"
@@ -4182,7 +4242,7 @@ tables-arms-negative-controls: tables-arms-list-edge-negative-control \
 # Re-pin the goldens DELIBERATELY (SPEC §7.2 gates 1, 2, 7). A wire golden
 # breaking under an unchanged schema is stop-the-line, never a quiet re-pin
 # (SPEC §3.1) — this target is for intentional emitter/schema changes only.
-update-goldens: build/schema_test_retain build/schema_test build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/schema_test_tables build/schema_test_block build/schema_test_maps build/schema_test_lists build/schema_test_arms build/schema_test_wide_table build/conformance-harness
+update-goldens-only: build/schema_test_retain build/schema_test build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/schema_test_tables build/schema_test_block build/schema_test_maps build/schema_test_lists build/schema_test_arms build/schema_test_wide_table build/conformance-harness
 	@mkdir -p testdata/golden testdata/wire testdata/wire/tables
 	go test ./internal/goldens -update -run 'TestGolden'
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test
@@ -4205,6 +4265,19 @@ update-goldens: build/schema_test_retain build/schema_test build/schema_test_lud
 	# Cook-write snapshots carry the build version too; update both byte orders
 	# through the engine after the reference wire pins have been regenerated.
 	./build/conformance-harness generate
+
+# THE CLOSING `go test ./...` IS ITS OWN TARGET. It re-runs the Go suite over
+# the tree the rules above have just rewritten, which is what a workstation
+# wants after `make update-goldens`, and `update-goldens` still does it. It is
+# also, on CI, the SECOND `go test ./...` of the same pull request: the `pins`
+# job's verdict is that testdata/ is byte-identical afterwards, and when that
+# verdict is green the tree these tests ran over IS the committed tree the
+# `go-test` shards already ran over. MEASURED at 318 s of the pins job's 409
+# on run 34346307562 — the whole of its overrun. So CI asks for
+# `update-goldens-only` and lets the shards carry the suite; if the pins
+# verdict ever goes red the job fails there, before any of this would matter.
+.PHONY: update-goldens
+update-goldens: update-goldens-only
 	go test ./...
 
 # the cross-language serialize profiling harness (bench/README.md): builds and
@@ -4392,7 +4465,7 @@ shape-gate:
 clean:
 	rm -rf bin build generated
 
-.PHONY: all test check id fmt clean update-goldens bench bench-variants bench-tables bench-table-corpus bench-table-check generated-current shape-gate
+.PHONY: all test check id fmt clean update-goldens update-goldens-only bench bench-variants bench-tables bench-table-corpus bench-table-check generated-current shape-gate
 
 # ---------------------------------------------------------------------------
 # THE TABLES CONFORMANCE HARNESS (test/conformance/README.md) ----------------
@@ -4565,10 +4638,8 @@ define wire_fuzz_control
 		"$(CURDIR)" "$(CURDIR)" > build/wire-fuzz-nc-$(1)/overlay.json
 	go build -overlay build/wire-fuzz-nc-$(1)/overlay.json -o build/wire-fuzz-nc-$(1)/schema ./cmd/schema
 	$(call tables_generate,./build/wire-fuzz-nc-$(1)/schema,build/wire-fuzz-nc-$(1)/generated)
-	$(CXX) $(TABLES_CXXFLAGS) -O1 $(call tables_includes,build/wire-fuzz-nc-$(1)/generated) \
-		test/tables/wire_fuzz_main.cpp \
-		$(subst build/tables-generated/,build/wire-fuzz-nc-$(1)/generated/,$(CONFORMANCE_SOURCES)) \
-		-o build/wire-fuzz-nc-$(1)/leg
+	$(call corpus_objects,$(CXX),$(TABLES_CXXFLAGS) -O1 $(call tables_includes,build/wire-fuzz-nc-$(1)/generated),build/wire-fuzz-nc-$(1)/obj,test/tables/wire_fuzz_main.cpp $(subst build/tables-generated/,build/wire-fuzz-nc-$(1)/generated/,$(CONFORMANCE_SOURCES)))
+	$(CXX) $(TABLES_CXXFLAGS) -O1 build/wire-fuzz-nc-$(1)/obj/*.o -o build/wire-fuzz-nc-$(1)/leg
 	@if ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-nc-$(1)/leg --seed $(SEED) --n $(N) \
 			--failed build/wire-fuzz-nc-$(1)/failed.bin > build/wire-fuzz-nc-$(1)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the $(1) check is gone and the wire fuzzer stayed green"; \

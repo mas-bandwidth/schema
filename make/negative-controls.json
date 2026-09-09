@@ -391,12 +391,20 @@
     {
       "name": "cs",
       "when": "pull-request",
-      "why": "the C# port's conformance leg and its four packet families. Measured 13 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached.",
+      "why": "the C# port's conformance leg and the three table controls that drive the same built driver. Was one group of eight with the four packet families below, and that job was 160 s end to end on run 34346307562 — inside the per-job rule and the LONGEST JOB IN THE RUN, so the run could not fit two minutes while it stood. Cut in two by the driver each control needs; the halves want measuring on the first run that carries them, the way the first cut was measured and cut again.",
       "targets": [
         "conformance-negative-control-cs",
         "tables-cs-retain-negative-control",
         "tables-cs-pack-negative-control",
-        "tables-cs-message-blob-endian-negative-control",
+        "tables-cs-message-blob-endian-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-packet",
+      "when": "pull-request",
+      "why": "the C# port's four packet families, split off the `cs` group above so neither half is the longest job in the run. Each is one small build off the generated tree and they share it.",
+      "targets": [
         "packet-arm-defaults-cs-negative-control",
         "packet-defaults-cs-negative-control",
         "packet-utf8-cs-negative-control",

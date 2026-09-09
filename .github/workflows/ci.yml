@@ -5,9 +5,29 @@ name: CI
 # CI that runs on each pull request: one to two minutes.
 #
 # MEASURED, on this file's own run on the branch that introduced it (run
-# 33740084214): the gate answers END TO END in 1:54. Per job — big-endian
+# 33740084214): the gate answered END TO END in 1:54. Per job — big-endian
 # 1:49, msvc 1:27, windows 0:49, conformance 0:21 to 0:41 per leg, go-test
 # 0:37, lint 0:37, vuln 0:30, shape-gate 0:22, generated 0:16, cpp-lock 0:06.
+#
+# IT DRIFTED BACK TO 6:59 (run 34346307562, 2026-09-09), and this file's split
+# is the answer. Where the seven minutes were, measured on that run:
+#
+#   pins      6:55 — 5:18 of it a SECOND `go test ./...`, the one
+#                    `update-goldens` closes with. Its own pinning work is 1:23.
+#   big-endian 6:52 — one job running five independent legs end to end, with a
+#                    90 s single-process compile of a seventy-unit corpus in
+#                    the middle of it and 1:44 of a soak the leg never asked for.
+#   go-test   6:03 — 5:24 of it ONE package, ./compiler, run one test at a time.
+#   conformance (c) 2:24 — 1:58 of it a single `cc` over seventy translation
+#                    units on a four-core runner.
+#   negative controls (the wire-fuzz rows) 2:20 to 2:40 — 1:30 of each is that
+#                    same single-process corpus compile, under a sabotaged emitter.
+#
+# NOTHING MOVED OFF THIS FILE and nothing was dropped. Four shapes of change:
+# a duplicated suite is named as a duplicate and asked for once; a job that ran
+# five independent legs is five jobs; a package that is 80 % of a suite's wall
+# is sharded by test name; and every corpus compile that was one process on one
+# core is one process PER core, same compiler, same flags, same -Werror.
 #
 # THE RULE IS PER JOB, AND EVERY JOB IN THIS FILE IS HELD TO IT. The
 # negative-control leg below is a matrix, and a matrix row is a job, so each
@@ -18,19 +38,18 @@ name: CI
 # group is in and why. `tools/negativecontrols` refuses a group that is in
 # neither, so nothing can fall between the two files.
 #
-# `big-endian` IS THE BINDING CONSTRAINT, and it is worth naming rather than
-# rounding away: 87 s of its 109 is `make tables-big-endian-negative-control`,
-# which cross-compiles the tables battery for s390x, runs it under qemu, and
-# then compiles it a SECOND time for the negative control. Building its six
-# binaries in parallel bought 14 s of that; the rest is the control's own two
-# compiles, which are serial by construction. The next job that wants a place
-# on this gate takes the budget from somewhere, and that is where to look.
-# NOTE, 2026-09-07: that job measures 4:15 to 4:26 on main (runs 34111624059,
-# 34111228369, 34110320928), which is over the rule and is not this leg's
-# doing. It wants the same treatment the negative controls have here, and
-# issue #684 owns giving it that. Its control is the reason
-# tables-big-endian-negative-control sits in the plan's exclusion list rather
-# than in a group: this job runs it on every pull request already.
+# `big-endian` WAS THE BINDING CONSTRAINT, and issue #684 owned giving it the
+# treatment the negative controls already have. It has it now: the leg is a
+# matrix of six rows — the tables battery, the collections battery, the cook,
+# the C leg, the Go leg and the negative control — because those six share
+# nothing but bin/schema and the generated tree, and one job made the run pay
+# their SUM. The Makefile carries the same six as targets of their own, and
+# `make tables-big-endian-negative-control` still runs all of them in order,
+# which is what `make test`, certify.yml and a workstation ask for.
+#
+# Its control is still the reason tables-big-endian-negative-control sits in
+# the plan's exclusion list rather than in a group: this file runs it on every
+# pull request already, now in the `control` row.
 #
 # CERTIFICATION IS certify.yml: the inline gates, the full `make test` chain on
 # both OSes, every `tables-<lang>-release` target. It runs nightly and on
@@ -127,8 +146,26 @@ jobs:
       - name: go vet
         run: go vet ./...
 
-      - name: go test
-        run: go test ./...
+      # EVERY PACKAGE BUT ./compiler, which `compiler-test` below shards.
+      # MEASURED on run 34346307562: `go test ./...` was 5:28 and ./compiler
+      # alone was 5:24 of it — 163 tests, none of them parallel, on one core
+      # while the other three sat under the remaining thirty-seven packages.
+      # Splitting the suite at that one package is what makes both halves fit.
+      #
+      # THE EXCLUSION IS CHECKED, not trusted. A package that stopped being
+      # named here would simply stop being tested, so the step counts what it
+      # left out and refuses anything but the one package the shards carry.
+      - name: go test (every package but ./compiler — the shards carry that one)
+        run: |
+          all=$(go list ./...)
+          pkgs=$(printf '%s\n' "$all" | grep -v '^github.com/mas-bandwidth/schema/v2/compiler$')
+          left_out=$(( $(printf '%s\n' "$all" | wc -l) - $(printf '%s\n' "$pkgs" | wc -l) ))
+          if [ "$left_out" -ne 1 ]; then
+            echo "::error::this step left $left_out packages out of the suite, not the one ./compiler that compiler-test shards. Either ./compiler was renamed or the filter is wrong — a package nobody tests would look exactly like this."
+            exit 1
+          fi
+          # shellcheck disable=SC2086
+          go test $pkgs
 
       # The projection's three controls (SPEC §3.1): a projection that stopped
       # carrying enum and flags variant names, or a union's arm names, would
@@ -152,6 +189,89 @@ jobs:
       # a second.
       - name: the toolchain gate goes red without the toolchains it pins
         run: make toolchain-negative-control
+
+  # THE COMPILER PACKAGE, SHARDED BY TEST NAME (issue #684's other half).
+  #
+  # ./compiler is 163 tests and 5:24 of a 5:28 suite (run 34346307562). Not one
+  # of them calls t.Parallel, so the package is one test at a time on one core,
+  # and no amount of package-level parallelism reaches inside it. Six shards of
+  # about 54 s each is what fits the rule; the shards run the SAME tests with
+  # the SAME `go test`, and between them they run every one.
+  #
+  # THE SPLIT IS ENUMERATED, NOT TYPED. Each shard asks `go test -list` for the
+  # package's whole test list, sorts it, and takes every sixth name. A test
+  # added tomorrow lands in a shard the moment it exists, with no edit here —
+  # and because all six shards run the same command over the same tree, the six
+  # slices are a partition of the same list by construction.
+  #
+  # AND EACH SHARD PROVES IT RAN WHAT IT SELECTED. `-run` over a regexp that
+  # has drifted off its targets is the failure mode that would make this leg
+  # quietly test nothing, and the same failure mode `tools/negativecontrols`
+  # exists to catch elsewhere. So the shard counts the top-level verdicts in
+  # the output and refuses if that is not exactly the number of names it chose.
+  #
+  # The sibling checkouts are go-test's, for go-test's reason: a check that
+  # SKIPS ITSELF when a sibling is absent reports green over a check that never
+  # ran, and which of them a compiler test reaches for belongs to the test.
+  compiler-test:
+    name: compiler tests (${{ matrix.shard }} of 6)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5]
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check out the C, C++, C# and Go serialize runtimes (pinned releases)
+        run: |
+          cd ..
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"   https://github.com/mas-bandwidth/serialize.git   serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG" https://github.com/mas-bandwidth/serialize.c.git serialize.c
+          git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+
+      - name: shard ${{ matrix.shard }} of ./compiler
+        env:
+          SHARDS: '6'
+          SHARD: ${{ matrix.shard }}
+        run: |
+          if ! go test ./compiler/ -list '.*' > build-shard-list.txt 2>&1; then
+            cat build-shard-list.txt
+            echo "::error::./compiler does not build, so this shard cannot name the tests it would run"
+            exit 1
+          fi
+          grep -E '^(Test|Example|Fuzz)[A-Za-z0-9_]*$' build-shard-list.txt | sort > build-shard-all.txt
+          total=$(wc -l < build-shard-all.txt)
+          if [ "$total" -eq 0 ]; then
+            echo "::error::go test -list named no tests in ./compiler — every shard would pass over an empty set"
+            exit 1
+          fi
+          awk -v n="$SHARDS" -v i="$SHARD" 'NR % n == i' build-shard-all.txt > build-shard-mine.txt
+          mine=$(wc -l < build-shard-mine.txt)
+          echo "shard $SHARD of $SHARDS: $mine of $total tests in ./compiler"
+          cat build-shard-mine.txt
+          if [ "$mine" -eq 0 ]; then
+            echo "::error::this shard selected none of the $total tests — the split is wrong, not the package"
+            exit 1
+          fi
+          pattern="^($(paste -sd'|' build-shard-mine.txt))\$"
+          status=0
+          go test ./compiler/ -count=1 -v -run "$pattern" > build-shard-out.txt 2>&1 || status=1
+          grep -vE '^(=== RUN|=== PAUSE|=== CONT|    )' build-shard-out.txt || true
+          ran=$(grep -cE '^--- (PASS|FAIL|SKIP): ' build-shard-out.txt || true)
+          if [ "$ran" -ne "$mine" ]; then
+            echo "::error::this shard selected $mine tests and ran $ran. A -run pattern that no longer matches its targets is a shard testing nothing, and the six shards together would report green over the gap."
+            status=1
+          fi
+          exit $status
 
   # THE GENERATED TREE IS CURRENT (issue #30). The committed generated/ tree is
   # what this repo treats as ground truth — findings are receipted against its
@@ -228,12 +348,23 @@ jobs:
   # supply the generated-code fixtures in update-goldens' closing compiler
   # tests. Each checkout uses its shared release pin above.
   #
-  # MEASURED at 1m44s on the run that introduced it (34113070433), against
-  # 4m27s for big-endian in the same run: this job is inside the two-minute
-  # rule and it is not the binding constraint. Its own budget is the C++
-  # reference binaries `update-goldens` builds plus that target's closing
-  # `go test ./...`, which is the duplicate of go-test's and the first place
-  # to look if this job ever wants the time back.
+  # MEASURED at 1m44s on the run that introduced it (34113070433). By run
+  # 34346307562 it was 6m55s, and 5m18s of that was exactly what the note here
+  # said to look at first: `update-goldens` closes with `go test ./...`, and
+  # this job was therefore running the whole Go suite a SECOND time on every
+  # pull request. So it asks for `update-goldens-only`, which is that target
+  # without its closing line, and the suite is carried once by `go-test` and
+  # the `compiler-test` shards.
+  #
+  # NOTHING IS TESTED LESS. The closing run tests the tree the re-pinning rules
+  # have just rewritten; this job's VERDICT, the step below, is that the tree is
+  # byte-identical to the committed one afterwards. When that verdict is green
+  # the two trees are the same bytes, so the suite the shards ran is the suite
+  # this would have run. When it is red the job fails at that step regardless.
+  # `make update-goldens` on a workstation still closes with the suite.
+  #
+  # What is left is the C++ reference binaries update-goldens builds and the
+  # re-pinning itself: 1m23s on that same run.
   pins:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -253,7 +384,7 @@ jobs:
           cache: false
 
       - name: rewrite every pin under testdata/ from the reference
-        run: make -j"$(nproc)" conformance-pin update-goldens
+        run: make -j"$(nproc)" conformance-pin update-goldens-only
 
       - name: the pins are current
         run: |
@@ -471,8 +602,38 @@ jobs:
   # from the policy the failing install prints. The step after the install
   # records the resolved closure both pins pull in.
   big-endian:
+    name: big-endian (${{ matrix.leg }})
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      # SIX LEGS, SIX JOBS. They share nothing but bin/schema and the generated
+      # tree, which each rebuilds in about fifteen seconds; in one job the run
+      # paid their SUM, 411 s on run 34346307562 (tables battery 106 s,
+      # collections 12 s, cook 12 s, the C leg 125 s of which 104 was a soak
+      # the leg never asked for, the control 127 s, the Go leg 21 s). The
+      # Makefile carries the same six as targets of their own and
+      # `tables-big-endian-negative-control` still runs all six in order.
+      #
+      # The `control` row is `tables-big-endian-control-only`: the negative
+      # control's own recipe, without the leg in front of it, because the leg
+      # is the row above and the pair is the same pair whether one job runs
+      # them or two. It is what proves the whole matrix can go red.
+      matrix:
+        include:
+          - leg: tables
+            target: tables-big-endian-tables
+          - leg: collections
+            target: tables-big-endian-collections
+          - leg: cook
+            target: tables-cook-endian
+          - leg: c
+            target: tables-c-big-endian
+          - leg: control
+            target: tables-big-endian-control-only
+          - leg: go
+            target: conformance-big-endian
+
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -494,43 +655,26 @@ jobs:
           qemu-s390x --version | head -1
           dpkg-query -W -f='${Package} ${Version}\n' | grep -E 's390x|^qemu-user'
 
-      # The one sibling the C++ battery needs, header-only, at the pin every
-      # other job uses: a table unit declaring a 128-bit field takes its
-      # storage type (serialize::int128_t / uint128_t) from serialize.h.
-      - name: Check out the serialize runtime (pinned release)
-        run: git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git ../serialize
-
-      # The battery on the target, then the control that proves it can fail.
-      # BE_CXX and BE_CC name the pinned compilers: the exact-version package
-      # installs the SUFFIXED drivers, and the Makefile's unsuffixed defaults
-      # are for a workstation that installed the metapackage. The C leg needs
-      # the C driver because the tolerant wire has a C reader too, and the
-      # g++ cross package pulls its gcc sibling in.
-      #
-      # -j BECAUSE THIS IS THE JOB AT THE BOUND. Six independent binaries hang
-      # off `tables-big-endian` — the tables corpus, the block driver both
-      # ways, the cook reader both ways, and the cook fixtures — sharing only
-      # bin/schema and the generated tree, which make builds once. The runner
-      # has four cores and the leg was spending them one at a time.
-      - name: the big-endian leg, and its negative control
-        run: make -j"$(nproc)" tables-big-endian-negative-control BE_CXX=s390x-linux-gnu-g++-13 BE_CC=s390x-linux-gnu-gcc-13
-
-      # And the GO table leg on the same target. Go cross-compiles, so the
-      # conformance driver is one env var away from a big-endian binary, and
-      # the harness's own goldens become the gate: a big-endian reader loads
-      # what a little-endian host wrote, writes it back, and is byte-compared
-      # over the wire, the read report and the text form.
-      #
-      # It needs the Go RUNTIME checkout, even though the table codec names no
-      # runtime at all: a generated unit's PACKET sources sit in the same
-      # package as its table sources, and those import it.
-      - name: Check out the Go serialize runtime (pinned release)
+      # BOTH siblings in every row, the argument the negative-control rows make
+      # one door over: a table unit declaring a 128-bit field takes its storage
+      # type from serialize.h, a generated unit's PACKET sources import the Go
+      # runtime, and which of those a leg reaches for belongs to the leg rather
+      # than to this list. Two shallow clones cost two seconds and remove the
+      # whole class of "the row forgot a sibling".
+      - name: Check out the serialize runtimes (pinned releases)
         run: |
           cd ..
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"    https://github.com/mas-bandwidth/serialize.git    serialize
           git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
 
-      - name: the Go table leg, big-endian
-        run: make conformance-big-endian
+      # -j BECAUSE EVERY ROW STILL HAS BINARIES TO BUILD. BE_CXX and BE_CC name
+      # the pinned compilers: the exact-version package installs the SUFFIXED
+      # drivers, and the Makefile's unsuffixed defaults are for a workstation
+      # that installed the metapackage. The C leg needs the C driver because the
+      # tolerant wire has a C reader too, and the g++ cross package pulls its
+      # gcc sibling in.
+      - name: ${{ matrix.target }}
+        run: make -j"$(nproc)" ${{ matrix.target }} BE_CXX=s390x-linux-gnu-g++-13 BE_CC=s390x-linux-gnu-gcc-13
 
   # Self-contained Go lint job; .golangci.yml carries the config.
   lint:
@@ -899,9 +1043,10 @@ jobs:
   #
   # MEASURED, 2026-09-07 on the author's machine (arm64 macOS, one target per
   # make invocation, off one warm build) and then on the runner, on this
-  # branch's own pull-request runs. 203 controls, 40 pull-request groups and
-  # one nightly group. `go run ./tools/negativecontrols check` prints the
-  # count, so it is one command rather than a number to keep in step by hand.
+  # branch's own pull-request runs. `go run ./tools/negativecontrols check`
+  # prints the counts — 219 controls over 46 pull-request groups and one
+  # nightly group as this is written — so it is one command rather than a pair
+  # of numbers to keep in step by hand.
   #
   # The base toolchain carries 134 of them and takes twenty-eight jobs rather
   # than one: the map gate alone is 17 controls at 4 s each on the author's
@@ -918,6 +1063,16 @@ jobs:
   # make/negative-controls.json's `why` lines, next to the targets they are
   # about.
   #
+  # AND CUT ONCE MORE, FOR THE RUN AND NOT THE JOB. The rule above is per job,
+  # and on run 34346307562 every row still met it — while `negative controls
+  # (cs)` at 160 s was the longest job in a run that has to answer in two
+  # minutes END TO END. So `cs` is `cs` and `cs-packet` now. Nothing else was
+  # re-cut: the wire-fuzz rows lost about 65 s each to the corpus compile going
+  # one process per core (Makefile, `corpus_objects`), and re-grouping them on
+  # a number nobody has run yet would be the luck this paragraph is against.
+  # They want re-measuring on the first run that carries this file, and merging
+  # then if the numbers say so.
+  #
   # ONE CONTROL DOES NOT FIT THE RULE AT ANY GROUP SIZE, and it runs nightly
   # instead: tables-message-form-negative-control drives 49 sabotage rows one
   # submake each at 124 s, against a 120 s rule. It is the `nightly` group in
@@ -932,6 +1087,25 @@ jobs:
   # which the wire-fuzz-message-oracle and wire-fuzz-retain-class rows run
   # between them, so it sits in the plan's exclusion list beside the other
   # umbrellas rather than in a job that would run one of those leaves twice.
+  # THE ENUMERATION GATE, IN A JOB OF ITS OWN. It used to run FIRST in the
+  # matrix job below, which meant forty jobs waited seven seconds on a check
+  # that gates none of them: the matrix job's output is the plan, and the plan
+  # is a file, so what the gate says about it cannot change what the rows are.
+  # Beside the matrix job rather than in front of it, it blocks the merge
+  # exactly as it did and the fan-out starts sooner. A control that nothing
+  # runs is still named here rather than discovered by its absence from a log.
+  negative-controls-plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: every negative control the makefiles define is in the plan
+        run: go run ./tools/negativecontrols check
+
   negative-controls-matrix:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -943,11 +1117,6 @@ jobs:
         with:
           go-version: '1.26'
           cache: false
-
-      # The enumeration gate, first and on its own, so a control that nothing
-      # runs is named here rather than discovered by its absence from a log.
-      - name: every negative control the makefiles define is in the plan
-        run: go run ./tools/negativecontrols check
 
       - id: plan
         name: the plan, as a matrix
