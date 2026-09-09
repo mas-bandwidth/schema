@@ -480,7 +480,8 @@ tables-c-big-endian: build/schema_test_c_soak_be
 # stores back to a host-order copy, the same defect class as put16, and requires
 # the s390x soak golden to go red. The same sabotage stays green on this
 # little-endian host: the #else is not compiled there, and that pair is the
-# argument for the C leg the way put16 is for the C++ one.
+# argument for the C leg the way put16 is for the C++ one. The memcpy arm this
+# overlay leaves standing is tables-c-little-endian-negative-control, a host soak.
 #
 # Overlay, so no tracked file is written.
 C_BE_NC := build/c-be-sabotage
