@@ -2564,7 +2564,7 @@ static SCHEMA_UNUSED int loadout_config_save_body( TableWriter * w, const Loadou
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !schema_tabledemo_loadout_config_wire_backups_( &probe, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
-                table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+                table_writer_leb( w, (uint64_t) probe.offset );
                 if ( !schema_tabledemo_loadout_config_wire_backups_( w, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
             }
         }
@@ -2586,7 +2586,7 @@ static SCHEMA_UNUSED int loadout_config_save_body( TableWriter * w, const Loadou
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !schema_tabledemo_loadout_config_wire_attachments_( &probe, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
-                table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+                table_writer_leb( w, (uint64_t) probe.offset );
                 if ( !schema_tabledemo_loadout_config_wire_attachments_( w, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
             }
         }
@@ -4713,7 +4713,7 @@ static SCHEMA_UNUSED int root_config_save_body( TableWriter * w, const RootConfi
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !schema_tabledemo_root_config_wire_weapons_( &probe, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
-                table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+                table_writer_leb( w, (uint64_t) probe.offset );
                 if ( !schema_tabledemo_root_config_wire_weapons_( w, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
             }
         }
@@ -4735,7 +4735,7 @@ static SCHEMA_UNUSED int root_config_save_body( TableWriter * w, const RootConfi
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !schema_tabledemo_root_config_wire_profiles_( &probe, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
-                table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+                table_writer_leb( w, (uint64_t) probe.offset );
                 if ( !schema_tabledemo_root_config_wire_profiles_( w, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
             }
         }

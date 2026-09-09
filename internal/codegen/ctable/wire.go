@@ -457,13 +457,23 @@ func (g *tableGen) wireScalarWrite(f *ir.Field, expr, ind string) {
 // bytes are emitted in this mode. Save probes with that same measure
 // before writing the prefix, so recursive frames never double recursively.
 func (g *tableGen) wireFrame(call, ind string) {
+	g.wireFrameWithProbeIDs(call, ind, false)
+}
+
+// A successful ordinary array probe already interns its riding IDs in first-use
+// order. Its identical write can keep that vocabulary and reuse every reference.
+func (g *tableGen) wireFrameWithProbeIDs(call, ind string, keepProbeIDs bool) {
 	g.pf("%sif ( w->buffer == NULL )\n%s{\n", ind, ind)
 	g.pf("%s    int64_t frame_begin = w->offset;\n", ind)
 	g.pf("%s    if ( !%s ) { return 0; }\n", ind, call)
 	g.pf("%s    table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );\n%s}\n%selse\n%s{\n", ind, ind, ind, ind)
 	g.pf("%s    TableWriter probe = table_writer_probe( w );\n", ind)
 	g.pf("%s    if ( !%s ) { return 0; }\n", ind, strings.ReplaceAll(call, "( w,", "( &probe,"))
-	g.pf("%s    table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );\n", ind)
+	if keepProbeIDs {
+		g.pf("%s    table_writer_leb( w, (uint64_t) probe.offset );\n", ind)
+	} else {
+		g.pf("%s    table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );\n", ind)
+	}
 	g.pf("%s    if ( !%s ) { return 0; }\n%s}\n", ind, call, ind)
 }
 
@@ -690,7 +700,9 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 		case framed:
 			if slots := g.wireElementCacheSlots(st, f); slots > 0 {
 				g.pf("            int64_t element_sizes[%d]; /* bounded sizing-to-write cache */\n", slots)
-				g.wireFrame(fmt.Sprintf("%s( w, value, w->buffer != NULL ? element_sizes : NULL )", g.wireFieldHelper(st, f)), "            ")
+				// Fixed children also serve graph saves in mixed units. Keep their
+				// existing graph traversal unchanged in this first, bounded pass.
+				g.wireFrameWithProbeIDs(fmt.Sprintf("%s( w, value, w->buffer != NULL ? element_sizes : NULL )", g.wireFieldHelper(st, f)), "            ", !g.anyVariable)
 			} else {
 				g.wireFrame(fmt.Sprintf("%s( w, value )", g.wireFieldHelper(st, f)), "            ")
 			}
