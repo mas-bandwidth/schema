@@ -459,6 +459,7 @@ namespace Tabledemo
                 info.Doc = TableDocNone;
                 info.NumTags = 0;
                 info.Tags = null;
+                TableWire.IndexFields(info);
                 return info;
             }
         }
@@ -500,6 +501,7 @@ namespace Tabledemo
                 info.Doc = "One weapon's tuning. A designer edits this table and nothing else.";
                 info.NumTags = 1;
                 info.Tags = WeaponConfigTableTags;
+                TableWire.IndexFields(info);
                 return info;
             }
         }
@@ -539,6 +541,7 @@ namespace Tabledemo
                 info.Doc = TableDocNone;
                 info.NumTags = 0;
                 info.Tags = null;
+                TableWire.IndexFields(info);
                 return info;
             }
         }
@@ -584,6 +587,7 @@ namespace Tabledemo
                 info.Doc = TableDocNone;
                 info.NumTags = 0;
                 info.Tags = null;
+                TableWire.IndexFields(info);
                 return info;
             }
         }
@@ -618,6 +622,7 @@ namespace Tabledemo
                 info.Doc = TableDocNone;
                 info.NumTags = 0;
                 info.Tags = null;
+                TableWire.IndexFields(info);
                 return info;
             }
         }
@@ -651,6 +656,7 @@ namespace Tabledemo
                 info.Doc = TableDocNone;
                 info.NumTags = 0;
                 info.Tags = null;
+                TableWire.IndexFields(info);
                 return info;
             }
         }
@@ -684,6 +690,7 @@ namespace Tabledemo
                 info.Doc = TableDocNone;
                 info.NumTags = 0;
                 info.Tags = null;
+                TableWire.IndexFields(info);
                 return info;
             }
         }

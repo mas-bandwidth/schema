@@ -6,8 +6,8 @@ const tableLoadMeasureSource = `
     {
         while (r.Ref(out ulong reference, out ulong id) && reference != 0 && r.Has(1))
         {
-            byte kind = r.Byte(); TableFieldInfo field = null;
-            foreach (TableFieldInfo f in type.Fields) { if (f.Id == id && Kind(f) == kind) { field = f; break; } }
+            byte kind = r.Byte(); TableFieldInfo field = FindField(type, id);
+            if (field != null && Kind(field) != kind) { field = null; }
             if (field == null) { if (!r.Skip(kind)) { break; } continue; }
             if (!ExtentField(ref r, field, true, ref at, ref reason)) { return false; }
         }

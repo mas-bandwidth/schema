@@ -844,6 +844,10 @@ public sealed class TableTypeInfo
     public ulong Id;            // full wire identity of the table name
     public int NumFields;
     public TableFieldInfo[] Fields;
+    // open-addressing over Fields, same mix as TableWire.Ids.Slot. Built once
+    // in TableType() so a ReadBody id lookup is not a linear scan of Fields.
+    internal TableFieldInfo[] IdIndex;
+    internal int IdMask;
     // put one instance back at its declared defaults, in place. A generic
     // walker that FILLS a value has to establish the defaults an absent field
     // takes, and it holds no type to spell — this is the one thing the columns

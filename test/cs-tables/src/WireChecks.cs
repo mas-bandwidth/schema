@@ -58,6 +58,12 @@ static partial class Program
         Check(V1.Schema.CfgLoad(cfg, zeroId, report) && cfg.A == 42 && report.Unknown == 3 && !report.Malformed,
             "zero identity and unknown future kinds skip without swallowing the next field");
 
+        V1.TableTypeInfo cfgType = V1.Schema.CfgTableType();
+        Check(V1.Schema.TableWire.FindField(cfgType, cfgType.Fields[0].Id) == cfgType.Fields[0],
+            "indexed field lookup hits the declared id");
+        Check(V1.Schema.TableWire.FindField(cfgType, 1ul) == null,
+            "indexed field lookup misses an unknown id");
+
         // C++ reads a fixed array's count at the enclosing cursor before
         // bounding elements by L. The next field reference completes count 128;
         // its bool kind mismatches the same array field. No element may be

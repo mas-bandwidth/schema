@@ -346,6 +346,10 @@ namespace Blockdemo
         public ulong Id;            // full wire identity of the table name
         public int NumFields;
         public TableFieldInfo[] Fields;
+        // open-addressing over Fields, same mix as TableWire.Ids.Slot. Built once
+        // in TableType() so a ReadBody id lookup is not a linear scan of Fields.
+        internal TableFieldInfo[] IdIndex;
+        internal int IdMask;
         // put one instance back at its declared defaults, in place. A generic
         // walker that FILLS a value has to establish the defaults an absent field
         // takes, and it holds no type to spell — this is the one thing the columns
@@ -2998,8 +3002,8 @@ namespace Blockdemo
             {
                 while (r.Ref(out ulong reference, out ulong id) && reference != 0 && r.Has(1))
                 {
-                    byte kind = r.Byte(); TableFieldInfo field = null;
-                    foreach (TableFieldInfo f in type.Fields) { if (f.Id == id && Kind(f) == kind) { field = f; break; } }
+                    byte kind = r.Byte(); TableFieldInfo field = FindField(type, id);
+                    if (field != null && Kind(field) != kind) { field = null; }
                     if (field == null) { if (!r.Skip(kind)) { break; } continue; }
                     if (!ExtentField(ref r, field, true, ref at, ref reason)) { return false; }
                 }
@@ -3574,8 +3578,7 @@ namespace Blockdemo
                     if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry entry)) { return false; }
                     if (reference == 0) { return true; }
                     if (Reserved(entry.Id)) { return false; }
-                    TableFieldInfo field = null;
-                    foreach (TableFieldInfo f in type.Fields) { if (f.Id == entry.Id) { field = f; break; } }
+                    TableFieldInfo field = FindField(type, entry.Id);
                     if (field == null)
                     { d.Report.Unknown++; if (!MessageSkip(ref r, d, entry.Kind, entry.Shape)) { return false; } continue; }
                     if (!MessageCompatible(entry, field, out bool widened))
@@ -3839,7 +3842,7 @@ namespace Blockdemo
                     if (reference == 0) { return true; }
                     TableFieldInfo field = null;
                     if (type != null)
-                    { foreach (TableFieldInfo f in type.Fields) { if (f.Id == entry.Id && MessageCompatible(entry,f,out _)) { field = f; break; } } }
+                    { field = FindField(type, entry.Id); if (field != null && !MessageCompatible(entry,field,out _)) { field = null; } }
                     if (field == null) { if (!MessageSkip(ref r, d, entry.Kind, entry.Shape)) { return false; } }
                     else if (!MessageExtentField(ref r, d, field, entry.Kind, entry.Shape, ref extent)) { return false; }
                 }
@@ -4718,6 +4721,52 @@ namespace Blockdemo
                 }
                 return ReadElement(ref r, value, f, 0, kind, report, true);
             }
+            // IndexFields builds a power-of-two open-addressing table over Fields using
+            // the same mix as Ids.Slot. Nested static TableType() Build() calls it
+            // before publishing Instance, so ARM64 sees the index with the descriptor.
+            internal static void IndexFields(TableTypeInfo type)
+            {
+                TableFieldInfo[] fields = type.Fields;
+                if (fields == null || fields.Length == 0)
+                {
+                    type.IdIndex = Array.Empty<TableFieldInfo>();
+                    type.IdMask = 0;
+                    return;
+                }
+                int slots = 1;
+                while (slots < fields.Length * 2) { slots <<= 1; }
+                TableFieldInfo[] index = new TableFieldInfo[slots];
+                int mask = slots - 1;
+                for (int i = 0; i < fields.Length; i++)
+                {
+                    TableFieldInfo f = fields[i];
+                    int slot = unchecked((int)(f.Id ^ (f.Id >> 32))) & mask;
+                    while (index[slot] != null) { slot = (slot + 1) & mask; }
+                    index[slot] = f;
+                }
+                type.IdIndex = index;
+                type.IdMask = mask;
+            }
+            internal static TableFieldInfo FindField(TableTypeInfo type, ulong id)
+            {
+                TableFieldInfo[] index = type.IdIndex;
+                if (index != null)
+                {
+                    if (index.Length == 0) { return null; }
+                    int mask = type.IdMask;
+                    int slot = unchecked((int)(id ^ (id >> 32))) & mask;
+                    for (;;)
+                    {
+                        TableFieldInfo f = index[slot];
+                        if (f == null) { return null; }
+                        if (f.Id == id) { return f; }
+                        slot = (slot + 1) & mask;
+                    }
+                }
+                if (type.Fields == null) { return null; }
+                foreach (TableFieldInfo f in type.Fields) { if (f.Id == id) { return f; } }
+                return null;
+            }
             static bool ReadBody(ref Reader r, object value, TableTypeInfo type, TableReport report, bool nested)
             {
                 // Load resets the root before even the framing checks. Every nested
@@ -4730,8 +4779,7 @@ namespace Blockdemo
                     if ((nested && id == ulong.MaxValue) || id == ulong.MaxValue - 1 || id == ulong.MaxValue - 2) { return Damage(report); }
                     if (!r.Has(1)) { return Damage(report); }
                     byte kind = r.Byte();
-                    TableFieldInfo field = null;
-                    foreach (TableFieldInfo f in type.Fields) { if (f.Id == id) { field = f; break; } }
+                    TableFieldInfo field = FindField(type, id);
                     if (!nested && id == ulong.MaxValue && type.Variable)
                     { if (!r.Skip(kind)) { return Damage(report); } continue; }
                     if (field == null)
