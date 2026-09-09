@@ -3012,9 +3012,20 @@ inline void RenderFrameReset( RenderFrame & value )
     value.explosions_count = 0;
 }
 
-inline void RenderVector3Reset( RenderVector3 & value ) { value = RenderVector3(); }
+inline void RenderVector3Reset( RenderVector3 & value )
+{
+    value.x = 0.0;
+    value.y = 0.0;
+    value.z = 0.0;
+}
 
-inline void RenderQuaternionReset( RenderQuaternion & value ) { value = RenderQuaternion(); }
+inline void RenderQuaternionReset( RenderQuaternion & value )
+{
+    value.x = 0.0;
+    value.y = 0.0;
+    value.z = 0.0;
+    value.w = 1.0;
+}
 
 inline int64_t RenderCameraMeasureMessageBody( int64_t at, const RenderCamera & value );
 inline bool RenderCameraSaveMessageBody( TableBitWriter & w, const RenderCamera & value );

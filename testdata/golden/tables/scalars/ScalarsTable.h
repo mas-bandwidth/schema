@@ -2462,7 +2462,12 @@ inline void SimStateReset( SimState & value )
     value.spawn_present = false;
 }
 
-inline void PoseReset( Pose & value ) { value = Pose(); }
+inline void PoseReset( Pose & value )
+{
+    value.x = 32768ll;
+    value.y = 0;
+    value.heading = 0;
+}
 
 inline int64_t SimStateMeasureMessageBody( int64_t at, const SimState & value );
 inline bool SimStateSaveMessageBody( TableBitWriter & w, const SimState & value );

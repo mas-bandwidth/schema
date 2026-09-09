@@ -121,6 +121,7 @@ using namespace probe;
 #define RESET(v) RootReset(v)
 #define JSON(v,b,n,r) RootFromJson(v,b,n,r)
 #define LEAF_LOAD(v,b,n,r) LeafLoad(v,b,n,r)
+#define REPORT_RESET(v) ((v) = TableReport())
 #else
 #define LOAD(v,b,n,r) root_load(&(v),b,n,r)
 #define SAVE(v,b,n) root_save(&(v),b,n)
@@ -128,6 +129,7 @@ using namespace probe;
 #define RESET(v) root_reset(&(v))
 #define JSON(v,b,n,r) root_from_json(&(v),b,n,r)
 #define LEAF_LOAD(v,b,n,r) leaf_load(&(v),b,n,r)
+#define REPORT_RESET(v) memset(&(v),0,sizeof(v))
 #endif
 int main(void) {
  const uint8_t empty[] = {@EMPTY@}, full[] = {@FULL@};
@@ -139,14 +141,14 @@ int main(void) {
  Payload packet;
  CHECK(packet.leaf.values_count == 1 && packet.rows_count == 1 && packet.rows[1].values_count == 1);
 #endif
- memset(&report,0,sizeof(report));
+ REPORT_RESET(report);
  CHECK(LEAF_LOAD(leaf,empty,sizeof(empty),&report));
  CHECK(leaf.values_count == 0 && leaf.marker == 7);
  for(int i=0;i<8;i++) {
   const int populated = !(i&1);
   const uint8_t *wire = populated ? full : empty;
   const int64_t size = populated ? sizeof(full) : sizeof(empty);
-  memset(&report,0,sizeof(report));
+  REPORT_RESET(report);
   CHECK(LOAD(value,wire,size,&report));
   CHECK(!report.malformed && !report.refused && !report.unknown && !report.kind_mismatch && !report.clamped && !report.widened && !report.duplicate);
   CHECK(value.payload.leaf.values_count == (populated ? 1 : 0));
@@ -158,7 +160,7 @@ int main(void) {
  }
  RESET(value);
  CHECK(MEASURE(value)==sizeof(empty) && SAVE(value,saved,sizeof(saved))==sizeof(empty) && !memcmp(saved,empty,sizeof(empty)));
- memset(&report,0,sizeof(report));
+ REPORT_RESET(report);
  CHECK(JSON(value,"{}",2,&report) && !report.malformed);
  CHECK(value.payload.leaf.values_count==0 && value.payload.rows_count==0 && MEASURE(value)==sizeof(empty));
 #ifdef __cplusplus

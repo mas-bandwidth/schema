@@ -2618,11 +2618,21 @@ inline void RootConfigReset( RootConfig & value )
     value.profiles_count = 0;
 }
 
-inline void AttachmentReset( Attachment & value ) { value = Attachment(); }
+inline void AttachmentReset( Attachment & value )
+{
+    value.slot = 0;
+    value.power = 1.0f;
+}
 
-inline void BuffReset( Buff & value ) { value = Buff(); }
+inline void BuffReset( Buff & value )
+{
+    value.multiplier = 1.0f;
+}
 
-inline void DebuffReset( Debuff & value ) { value = Debuff(); }
+inline void DebuffReset( Debuff & value )
+{
+    value.amount = 0;
+}
 
 inline int64_t WeaponConfigMeasureMessageBody( int64_t at, const WeaponConfig & value );
 inline bool WeaponConfigSaveMessageBody( TableBitWriter & w, const WeaponConfig & value );

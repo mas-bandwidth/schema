@@ -2500,11 +2500,25 @@ inline void TableMixedReset( TableMixed & value )
     value.idle_ticks = 0;
 }
 
-inline void TableHitEventReset( TableHitEvent & value ) { value = TableHitEvent(); }
+inline void TableHitEventReset( TableHitEvent & value )
+{
+    value.target_id = 0;
+    value.damage = 0;
+    value.hit_kind = 0;
+    value.crit = false;
+}
 
-inline void TableChatEventReset( TableChatEvent & value ) { value = TableChatEvent(); }
+inline void TableChatEventReset( TableChatEvent & value )
+{
+    value.channel = 0;
+    value.speaker = 0;
+}
 
-inline void TablePickupEventReset( TablePickupEvent & value ) { value = TablePickupEvent(); }
+inline void TablePickupEventReset( TablePickupEvent & value )
+{
+    value.item_id = 0;
+    value.amount = 0;
+}
 
 inline int64_t TableEntityMeasureMessageBody( int64_t at, const TableEntity & value );
 inline bool TableEntitySaveMessageBody( TableBitWriter & w, const TableEntity & value );

@@ -2701,7 +2701,10 @@ inline void KeyedConfigReset( KeyedConfig & value )
     ScoreBoardReset( value.scores );
 }
 
-inline void ScoreBoardReset( ScoreBoard & value ) { value = ScoreBoard(); }
+inline void ScoreBoardReset( ScoreBoard & value )
+{
+    memset( value.per_team, 0, sizeof( value.per_team ) );
+}
 
 inline int64_t TeamConfigMeasureMessageBody( int64_t at, const TeamConfig & value );
 inline bool TeamConfigSaveMessageBody( TableBitWriter & w, const TeamConfig & value );

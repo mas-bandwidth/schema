@@ -5106,7 +5106,12 @@ inline void StampReset( Stamp & value )
     value.seq = 0;
 }
 
-inline void ColourReset( Colour & value ) { value = Colour(); }
+inline void ColourReset( Colour & value )
+{
+    value.r = 0;
+    value.g = 0;
+    value.b = 0;
+}
 
 inline int64_t StampMeasureMessageBody( int64_t at, const Stamp & value );
 inline bool StampSaveMessageBody( TableBitWriter & w, const Stamp & value );

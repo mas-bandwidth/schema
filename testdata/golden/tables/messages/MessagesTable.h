@@ -2633,9 +2633,16 @@ inline void ToolMessageReset( ToolMessage & value )
     value.marks_present = false;
 }
 
-inline void CursorReset( Cursor & value ) { value = Cursor(); }
+inline void CursorReset( Cursor & value )
+{
+    value.line = 0;
+    value.column = 0;
+}
 
-inline void PingReset( Ping & value ) { value = Ping(); }
+inline void PingReset( Ping & value )
+{
+    value.nonce = 0;
+}
 
 inline int64_t UserMeasureMessageBody( int64_t at, const User & value );
 inline bool UserSaveMessageBody( TableBitWriter & w, const User & value );
