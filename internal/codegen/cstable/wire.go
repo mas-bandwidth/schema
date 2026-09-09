@@ -352,9 +352,10 @@ public static partial class TableWire
     static bool CollectPayload(object value, TableFieldInfo f, ref Ids ids)
     {
         if (f == null) { return true; } // selected, payload-free arm
-        if (f.Counted && (Count(value, f) < 0 || Count(value, f) > f.ArrayBound)) { return false; }
+        int count = Count(value, f);
+        if (f.Counted && (count < 0 || count > f.ArrayBound)) { return false; }
         if (!f.IsArray) { return CollectElement(value, f, 0, ref ids); }
-        for (int i = 0; i < Count(value, f); i++)
+        for (int i = 0; i < count; i++)
         {
             if (f.KeyId != null)
             {
@@ -410,7 +411,8 @@ public static partial class TableWire
     static long ArraySize(object value, TableFieldInfo f, ref Ids ids, scoped Span<long> elemCache = default)
     {
         long n = 0; int count = 0;
-        for (int i = 0; i < Count(value, f); i++)
+        int total = Count(value, f);
+        for (int i = 0; i < total; i++)
         {
             if (f.KeyId != null)
             {
@@ -491,14 +493,15 @@ public static partial class TableWire
         if (f.IsArray)
         {
             w.Byte(f.Kind);
-            int count = Count(value, f);
+            int total = Count(value, f);
+            int count = total;
             if (f.KeyId != null)
             {
                 count = 0;
                 for (int i = 0; i < f.ArrayBound; i++) { if (!DefaultElement(value, f, i)) { count++; } }
             }
             w.Var((ulong)count);
-            for (int i = 0; i < Count(value, f); i++)
+            for (int i = 0; i < total; i++)
             {
                 if (f.KeyId != null)
                 {
@@ -520,7 +523,7 @@ public static partial class TableWire
                 }
             }
         }
-        else if (f.Kind == 33) { char[] chars = f.GetChars(value); for (int i = 0; i < Count(value, f); i++) { w.Fixed(chars[i], 2); } }
+        else if (f.Kind == 33) { char[] chars = f.GetChars(value); int count = Count(value, f); for (int i = 0; i < count; i++) { w.Fixed(chars[i], 2); } }
         else if (f.Kind == 12) { w.Raw(f.GetBuffer(value).AsSpan(0, Count(value, f))); }
         else { WriteElement(ref w, value, f, 0, ref ids, false); }
     }
@@ -565,11 +568,13 @@ public static partial class TableWire
         if (!Collect(value, type, ref ids) || !CollectNodes(ref ids)) { return -1; }
         // Reuse the root's measured length prefixes while writing its fields,
         // and cache immediate child element body sizes for root unkeyed table arrays.
-        // These ceilings bound additional stack storage to 2 KiB each (4 KiB total);
-        // larger roots, element counts beyond 256, variable graphs and Measure retain
-        // the uncached path. Nested writes keep their own sizing path, so no recursive
-        // cache or shared state lives across calls, and all validation still precedes
-        // the first output byte.
+        // These ceilings bound additional stack storage to 2 KiB each (4 KiB total).
+        // Roots with >256 fields bypass root payload sizing caching while element
+        // caching remains active; element counts beyond 256 keep their cached prefix
+        // with remaining elements falling back to on-demand sizing; variable graphs
+        // and Measure retain the uncached path. Nested writes keep their own sizing
+        // path, so no recursive cache or shared state lives across calls, and all
+        // validation still precedes the first output byte.
         int cachedFields = !measure && !type.Variable && type.Fields.Length <= 256 ? type.Fields.Length : 0;
         Span<long> rootPayloadSizes = stackalloc long[cachedFields];
         int cachedElemSlots = !measure && !type.Variable ? 256 : 0;
