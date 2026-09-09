@@ -6,6 +6,14 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
+func (g *tableGen) emitPutLeb(ind, writer, value string) {
+	g.pf("%sif !%s.putLebPair(%s) { %s.putLebWide(%s) }\n", ind, writer, value, writer, value)
+}
+
+func (g *tableGen) emitHeader(ind, writer, ref, kind string) {
+	g.pf("%sif !%s.headerPair(%s, %s) { %s.headerRest(%s, %s) }\n", ind, writer, ref, kind, writer, ref, kind)
+}
+
 func (g *tableGen) emitTableMeasure(st *ir.Struct) {
 	n := st.Name
 	g.pf("func %sMeasureBody(value *%s, ids *TableIds) int64 {\n w := TableWriter{Measuring:true, Ids:ids}\n if !%sSaveBody(&w,value) { return -1 }; return w.Offset\n}\n\n", n, g.storageName(n), n)
@@ -77,7 +85,7 @@ func (g *tableGen) emitWireField(f *ir.Field, expr, ind string) {
 		if !f.Type.Optional {
 			cond = g.emitFieldRides(f, expr, i)
 		}
-		g.pf("%sif %s {\n%s w.Header(w.Ids.RefAt(%d, 0x%016x), %d)\n", i, cond, i, g.knownOrdinal(ir.TableFieldWireId(f)), ir.TableFieldWireId(f), kind)
+		g.pf("%sif %s {\n%s if ref := w.Ids.refAtHit(%d, 0x%016x); !w.headerPair(ref, %d) { w.headerRest(ref, %d) }\n", i, cond, i, g.knownOrdinal(ir.TableFieldWireId(f)), ir.TableFieldWireId(f), kind, kind)
 		g.emitWireValue(f, expr, "w", i+"\t", true)
 		g.pf("%s}\n%s}\n", i, ind)
 		return
@@ -85,19 +93,22 @@ func (g *tableGen) emitWireField(f *ir.Field, expr, ind string) {
 	if !g.retain && f.KeyEnum == "" && kind == tkTable {
 		g.pf("%s{\n", ind)
 		i := ind + "\t"
-		g.pf("%smark := w.Ids.Count; ref := w.Ids.RefAt(%d, 0x%016x); start := w.Ids.Count\n", i, g.knownOrdinal(ir.TableFieldWireId(f)), ir.TableFieldWireId(f))
+		g.pf("%smark := w.Ids.Count; ref := w.Ids.refAtHit(%d, 0x%016x); start := w.Ids.Count\n", i, g.knownOrdinal(ir.TableFieldWireId(f)), ir.TableFieldWireId(f))
 		g.pf("%sn := %sMeasureBody(&%s, w.Ids)\n", i, f.Type.Name, expr)
 		g.pf("%sif n < 0 || w.Ids.Overflow { return false }\n", i)
 		cond := "n > 1"
 		if f.Type.Optional {
 			cond = "true"
 		}
-		g.pf("%sif %s {\n%s if w.Measuring { w.Advance(tableLebBytes(ref)+1+tableLebBytes(uint64(n))+n) } else {\n%s  w.Ids.Truncate(start); w.Header(ref, %d); w.PutLeb(uint64(n))\n%s  if !%sSaveBody(w, &%s) { return false }\n%s }\n%s} else { w.Ids.Truncate(mark) }\n%s}\n", i, cond, i, i, kind, i, f.Type.Name, expr, i, i, ind)
+		g.pf("%sif %s {\n%s if w.Measuring { w.Advance(tableLebBytes(ref)+1+tableLebBytes(uint64(n))+n) } else {\n%s  w.Ids.Truncate(start)\n", i, cond, i, i)
+		g.emitHeader(i+"  ", "w", "ref", fmt.Sprintf("%d", kind))
+		g.emitPutLeb(i+"  ", "w", "uint64(n)")
+		g.pf("%s  if !%sSaveBody(w, &%s) { return false }\n%s }\n%s} else { w.Ids.Truncate(mark) }\n%s}\n", i, f.Type.Name, expr, i, i, ind)
 		return
 	}
 	g.pf("%s{\n", ind)
 	i := ind + "\t"
-	g.pf("%smark := w.Ids.Count; ref := w.Ids.RefAt(%d, 0x%016x); start := w.Ids.Count\n", i, g.knownOrdinal(ir.TableFieldWireId(f)), ir.TableFieldWireId(f))
+	g.pf("%smark := w.Ids.Count; ref := w.Ids.refAtHit(%d, 0x%016x); start := w.Ids.Count\n", i, g.knownOrdinal(ir.TableFieldWireId(f)), ir.TableFieldWireId(f))
 	g.pf("%spayload := TableWriter{Measuring:true, Ids:w.Ids}\n", i)
 	g.emitWireValue(f, expr, "payload", i, true)
 	g.pf("%sif payload.Overflow || w.Ids.Overflow { return false }\n", i)
@@ -109,7 +120,7 @@ func (g *tableGen) emitWireField(f *ir.Field, expr, ind string) {
 	if f.Type.Optional {
 		cond = "true"
 	}
-	g.pf("%sif %s {\n%s if w.Measuring { w.Advance(tableLebBytes(ref)+1+payload.Offset) } else {\n%s  w.Ids.Truncate(start); w.Header(ref, %d)\n", i, cond, i, i, kind)
+	g.pf("%sif %s {\n%s if w.Measuring { w.Advance(tableLebBytes(ref)+1+payload.Offset) } else {\n%s  w.Ids.Truncate(start); if !w.headerPair(ref, %d) { w.headerRest(ref, %d) }\n", i, cond, i, i, kind, kind)
 	g.emitWireValue(f, expr, "w", i+"\t\t", true)
 	g.pf("%s }\n%s} else { w.Ids.Truncate(mark) }\n%s}\n", i, i, ind)
 }
@@ -178,15 +189,19 @@ func (g *tableGen) emitWireValue(f *ir.Field, expr, writer, ind string, framed b
 	case f.KeyEnum != "" || f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes && !f.Type.Pointer:
 		g.emitWireArray(f, expr, writer, ind, framed)
 	case f.Type.Pointer:
-		g.pf("%sif %s==0 { %s.PutLeb(0) } else { index,ok := %s.Ids.Numbering.Index(&%s);if !ok {return false};%s.PutLeb(index) }\n", ind, expr, writer, writer, expr, writer)
+		g.pf("%sif %s==0 {\n", ind, expr)
+		g.emitPutLeb(ind+"\t", writer, "0")
+		g.pf("%s} else { index,ok := %s.Ids.Numbering.Index(&%s);if !ok {return false}\n", ind, writer, expr)
+		g.emitPutLeb(ind+"\t", writer, "index")
+		g.pf("%s}\n", ind)
 	case f.Type.Kind == ir.TString:
 		if framed {
-			g.pf("%s%s.PutLeb(uint64(%sLength))\n", ind, writer, expr)
+			g.emitPutLeb(ind, writer, "uint64("+expr+"Length)")
 		}
 		g.pf("%s%s.Raw(%s[:%sLength])\n", ind, writer, expr, expr)
 	case f.Type.Kind == ir.TWString:
 		if framed {
-			g.pf("%s%s.PutLeb(uint64(%sLength)*2)\n", ind, writer, expr)
+			g.emitPutLeb(ind, writer, "uint64("+expr+"Length)*2")
 		}
 		g.pf("%sfor i := int32(0); i < %sLength; i++ { %s.Put16(%s[i]) }\n", ind, expr, writer, expr)
 	case isStructRef(f.Type):
@@ -202,7 +217,8 @@ func (g *tableGen) emitWireValue(f *ir.Field, expr, writer, ind string, framed b
 			return
 		}
 		g.pf("%s{\n%s mark := %s.Ids.Count\n%s n := %sMeasureBody(&%s,%s.Ids); if n < 0 { return false }\n", ind, ind, writer, ind, f.Type.Name, expr, writer)
-		g.pf("%s %s.PutLeb(uint64(n))\n%s if %s.Measuring { %s.Advance(n) } else {\n%s  %s.Ids.Truncate(mark)\n%s  if !%sSaveBody(%s,&%s) { return false }\n%s }\n%s}\n", ind, writer, ind, writer, writer, ind, writer, ind, f.Type.Name, writerPointer(writer), expr, ind, ind)
+		g.emitPutLeb(ind+" ", writer, "uint64(n)")
+		g.pf("%s if %s.Measuring { %s.Advance(n) } else {\n%s  %s.Ids.Truncate(mark)\n%s  if !%sSaveBody(%s,&%s) { return false }\n%s }\n%s}\n", ind, writer, writer, ind, writer, ind, f.Type.Name, writerPointer(writer), expr, ind, ind)
 		if restore != "" {
 			g.retainWritePop(writer, restore)
 		}
@@ -271,23 +287,26 @@ func (g *tableGen) emitWireArray(f *ir.Field, expr, writer, ind string, framed b
 	if cacheLengths {
 		g.wireSerial++ // Preserve the skipped element emitter's temporary-name slot.
 		g.pf("%s n := %sMeasureBody(&%s[i],%s.Ids); if n < 0 { return false }; arrayLengths[i] = n\n", i, f.Type.Name, expr, body)
-		g.pf("%s %s.PutLeb(uint64(n)); %s.Advance(n)\n", i, body, body)
+		g.emitPutLeb(i+" ", body, "uint64(n)")
+		g.pf("%s %s.Advance(n)\n", i, body)
 	} else {
 		g.emitWireArrayElement(f, expr+"[i]", body, i+"\t")
 	}
 	g.pf("%s pairs++\n%s}\n", i, i)
 	g.pf("%sif %s.Overflow { return false }; n := int64(1)+tableLebBytes(pairs)+%s.Offset\n", i, body, body)
 	if framed {
-		g.pf("%s%s.PutLeb(uint64(n))\n", i, writer)
+		g.emitPutLeb(i, writer, "uint64(n)")
 	}
-	g.pf("%sif %s.Measuring { %s.Advance(n) } else {\n%s %s.Ids.Truncate(mark); %s.Put8(%d); %s.PutLeb(pairs)\n", i, writer, writer, i, writer, writer, kind, writer)
+	g.pf("%sif %s.Measuring { %s.Advance(n) } else {\n%s %s.Ids.Truncate(mark); %s.Put8(%d)\n", i, writer, writer, i, writer, writer, kind)
+	g.emitPutLeb(i+" ", writer, "pairs")
 	g.pf("%s for i := 0; i < int(%s); i++ {\n", i, count)
 	if cacheLengths {
 		g.wireSerial++
 		// The unchanged outer truncation replays the first pass's vocabulary in
 		// the same element order. Its saved lengths therefore include the same
 		// reference widths, without another MeasureBody before each SaveBody.
-		g.pf("%s  %s.PutLeb(uint64(arrayLengths[i])); if !%sSaveBody(%s,&%s[i]) { return false }\n", i, writer, f.Type.Name, writerPointer(writer), expr)
+		g.emitPutLeb(i+"  ", writer, "uint64(arrayLengths[i])")
+		g.pf("%s  if !%sSaveBody(%s,&%s[i]) { return false }\n", i, f.Type.Name, writerPointer(writer), expr)
 	} else {
 		g.emitWireArrayElement(f, expr+"[i]", writer, i+"\t\t")
 	}
@@ -324,7 +343,9 @@ func (g *tableGen) emitWireArrayElement(f *ir.Field, expr, writer, ind string) {
 		cond = expr + ".Type != " + elem.Type.Name + "TypeNone"
 	}
 	g.pf("%sif !(%s) { %s.Ids.Truncate(mark); continue }\n%sif %s.Overflow { return false }\n", i, cond, writer, i, element)
-	g.pf("%s%s.PutLeb(ref); %s.PutLeb(uint64(%s.Offset))\n%sif %s.Measuring { %s.Advance(%s.Offset) } else {\n%s %s.Ids.Truncate(start)\n", i, writer, writer, element, i, writer, writer, element, i, writer)
+	g.emitPutLeb(i, writer, "ref")
+	g.emitPutLeb(i, writer, "uint64("+element+".Offset)")
+	g.pf("%sif %s.Measuring { %s.Advance(%s.Offset) } else {\n%s %s.Ids.Truncate(start)\n", i, writer, writer, element, i, writer)
 	g.emitWireValue(&elem, expr, writer, i+"\t", false)
 	g.pf("%s}\n%s}\n", i, ind)
 }
@@ -337,7 +358,8 @@ func (g *tableGen) emitWireUnion(un *ir.Union, expr, writer, ind string) {
 	if g.retain && g.retainIndex != "" && g.retainIndex != "0" {
 		outer = g.retainWritePush(writer, g.retainIndex)
 	}
-	g.pf("%sswitch %s.Type {\n%scase %sTypeNone: %s.PutLeb(0)\n", ind, expr, ind, un.Name, writer)
+	g.pf("%sswitch %s.Type {\n%scase %sTypeNone:\n", ind, expr, ind, un.Name)
+	g.emitPutLeb(ind+"\t", writer, "0")
 	for ordinal, v := range un.Variants {
 		g.pf("%scase %sType%s:\n", ind, un.Name, ir.GoExportName(v.Name))
 		i := ind + "\t"
@@ -345,9 +367,10 @@ func (g *tableGen) emitWireUnion(un *ir.Union, expr, writer, ind string) {
 		if !v.Void() {
 			kind = ir.TableWireFieldKind(v.F)
 		}
-		g.pf("%sref := %s.Ids.RefAt(%d, 0x%016x)\n", i, writer, g.knownOrdinal(ir.TableWireId(v.WireName())), ir.TableWireId(v.WireName()))
+		g.pf("%sref := %s.Ids.refAtHit(%d, 0x%016x)\n", i, writer, g.knownOrdinal(ir.TableWireId(v.WireName())), ir.TableWireId(v.WireName()))
 		if v.Void() {
-			g.pf("%s%s.Header(ref, 32); %s.PutLeb(0)\n", i, writer, writer)
+			g.emitHeader(i, writer, "ref", "32")
+			g.emitPutLeb(i, writer, "0")
 			continue
 		}
 		savedIndex, savedArm := g.retainIndex, g.retainArm
@@ -361,7 +384,9 @@ func (g *tableGen) emitWireUnion(un *ir.Union, expr, writer, ind string) {
 		arm := g.unionArmExpr(un, v, expr)
 		g.pf("%sstart := %s.Ids.Count; %s := TableWriter{Measuring:true, Ids:%s.Ids}\n", i, writer, payload, writer)
 		g.emitWireValue(v.F, arm, payload, i, false)
-		g.pf("%sif %s.Overflow { return false }; %s.Header(ref, %d); %s.PutLeb(uint64(%s.Offset))\n", i, payload, writer, kind, writer, payload)
+		g.pf("%sif %s.Overflow { return false }\n", i, payload)
+		g.emitHeader(i, writer, "ref", fmt.Sprintf("%d", kind))
+		g.emitPutLeb(i, writer, "uint64("+payload+".Offset)")
 		g.pf("%sif %s.Measuring { %s.Advance(%s.Offset) } else {\n%s %s.Ids.Truncate(start)\n", i, writer, writer, payload, i, writer)
 		g.emitWireValue(v.F, arm, writer, i+"\t", false)
 		g.pf("%s}\n", i)
@@ -382,7 +407,8 @@ func (g *tableGen) emitWireScalar(f *ir.Field, expr, writer, ind string) {
 	if e := enumRef(f); e != nil {
 		// Each arm is a compile-time id, so RefAt is one load and one
 		// compare. None is still reference zero and is not interned.
-		g.pf("%sswitch %s {\n%scase %sNone: %s.PutLeb(0)\n", ind, expr, ind, e.Name, writer)
+		g.pf("%sswitch %s {\n%scase %sNone:\n", ind, expr, ind, e.Name)
+		g.emitPutLeb(ind+"\t", writer, "0")
 		for i, v := range e.Variants {
 			id := ir.TableWireId(e.VariantWireName(i))
 			g.pf("%scase %s%s: %s.IdAt(%d, 0x%016x)\n", ind, e.Name, v, writer, g.knownOrdinal(id), id)

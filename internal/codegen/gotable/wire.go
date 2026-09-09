@@ -60,13 +60,27 @@ func (ids *TableIds) Ref(id uint64) uint64 {
 // RefAt is Ref for a compile-time-constant id. The ordinal is that id's index
 // in TableWireIds. A hit is one load and one compare; first-use order is
 // still append order. Truncate clears the ordinal in O(popped) so a
-// speculative intern does not leak into the next walk.
+// speculative intern does not leak into the next walk. An ordinal outside
+// the slot range falls back to Ref; it does not index slot.
 func (ids *TableIds) RefAt(ordinal int, id uint64) uint64 {
 	if uint(ordinal) < uint(len(ids.slot)) {
 		if s := ids.slot[ordinal]; s != 0 {
 			return uint64(s)
 		}
 	}
+	return ids.refAtMiss(ordinal, id)
+}
+
+// refAtHit is RefAt for a generated knownOrdinal. The hit indexes slot
+// directly: the ordinal is a compile-time TableWireIds index, in range.
+func (ids *TableIds) refAtHit(ordinal int, id uint64) uint64 {
+	if s := ids.slot[ordinal]; s != 0 {
+		return uint64(s)
+	}
+	return ids.refAtMiss(ordinal, id)
+}
+
+func (ids *TableIds) refAtMiss(ordinal int, id uint64) uint64 {
 	r := ids.Ref(id)
 	if r != 0 && uint(ordinal) < uint(len(ids.slot)) {
 		ids.slot[ordinal] = uint32(r)
@@ -151,11 +165,32 @@ func (w *TableWriter) Put128(lo, hi uint64) {
 	}
 }
 
-func (w *TableWriter) PutLeb(v uint64) {
-	if v < 128 {
-		w.Put8(uint8(v))
-		return
+// putLebPair writes a one-byte LEB. False means the value needs putLebWide.
+// Overflow on a short buffer is handled here so the fast path has no calls.
+func (w *TableWriter) putLebPair(v uint64) bool {
+	if v >= 128 {
+		return false
 	}
+	at := w.Offset
+	end := at + 1
+	if at < 0 || end < at {
+		w.Overflow = true
+		return true
+	}
+	if w.Measuring {
+		w.Offset = end
+		return true
+	}
+	if uint64(end) > uint64(len(w.Buffer)) {
+		w.Overflow = true
+		return true
+	}
+	w.Buffer[at] = uint8(v)
+	w.Offset = end
+	return true
+}
+
+func (w *TableWriter) putLebWide(v uint64) {
 	// Groups assemble in a ten-byte stack buffer and go to Raw once. Spelling
 	// is the old loop's, group for group. One Advance covers the value; raw's
 	// capacity test is untouched. A value that does not fit now leaves the
@@ -168,20 +203,54 @@ func (w *TableWriter) PutLeb(v uint64) {
 	w.Raw(b[:n])
 }
 
+func (w *TableWriter) PutLeb(v uint64) {
+	if !w.putLebPair(v) {
+		w.putLebWide(v)
+	}
+}
+
 func (w *TableWriter) Id(id uint64) { w.PutLeb(w.Ids.Ref(id)) }
 func (w *TableWriter) IdAt(ordinal int, id uint64) { w.PutLeb(w.Ids.RefAt(ordinal, id)) }
+
+// headerPair writes a field header whose reference is one LEB byte. False
+// means the reference needs headerRest. Overflow on a short buffer is handled
+// here so the fast path has no calls, matching the packet runtime's tryWriteBits.
+func (w *TableWriter) headerPair(ref uint64, kind uint8) bool {
+	if ref >= 128 {
+		return false
+	}
+	at := w.Offset
+	end := at + 2
+	if at < 0 || end < at {
+		w.Overflow = true
+		return true
+	}
+	if w.Measuring {
+		w.Offset = end
+		return true
+	}
+	if uint64(end) > uint64(len(w.Buffer)) {
+		w.Overflow = true
+		return true
+	}
+	binary.LittleEndian.PutUint16(w.Buffer[at:], uint16(ref)|uint16(kind)<<8)
+	w.Offset = end
+	return true
+}
+
+func (w *TableWriter) headerRest(ref uint64, kind uint8) {
+	w.PutLeb(ref)
+	w.Put8(kind)
+}
 
 // Header writes a field's reference and kind. A reference below 128 is one
 // LEB byte, so the pair is one two-byte store. Larger references still go
 // through PutLeb then Put8. Bytes match that two-call spelling; a pair that
 // does not fit now leaves the buffer alone, and Save answers -1.
 func (w *TableWriter) Header(ref uint64, kind uint8) {
-	if ref < 128 {
-		w.Put16(uint16(ref) | uint16(kind)<<8)
-		return
+	if !w.headerPair(ref, kind) {
+		w.headerRest(ref, kind)
 	}
-	w.PutLeb(ref)
-	w.Put8(kind)
 }
 
 func (w *TableWriter) Trailer() {
@@ -221,20 +290,21 @@ func (r *TableReader) Get16() uint16 { v := binary.LittleEndian.Uint16(r.Buffer[
 func (r *TableReader) Get32() uint32 { v := binary.LittleEndian.Uint32(r.Buffer[r.Offset:]); r.Offset += 4; return v }
 func (r *TableReader) Get64() uint64 { v := binary.LittleEndian.Uint64(r.Buffer[r.Offset:]); r.Offset += 8; return v }
 
-// A rejected integer leaves the cursor unchanged. Its spelling must be
-// minimal and fit in 64 bits, including the tenth byte's single value bit.
-func (r *TableReader) Leb() (uint64, bool) {
-	// One byte below 128 is a complete canonical value: the continuation bit
-	// is clear, it is the first byte so the redundant-continuation rule has
-	// nothing to say, and one byte is neither overlong nor past ten. No rule
-	// is relaxed; every other number goes to the loop with all of its checks.
-	if uint64(r.Offset) < uint64(len(r.Buffer)) {
-		b := r.Buffer[r.Offset]
+// lebPair reads a one-byte canonical LEB. False means EOF or a multi-byte
+// value; lebWide holds every remaining check. No rule is relaxed.
+func (r *TableReader) lebPair() (uint64, bool) {
+	at := r.Offset
+	if uint64(at) < uint64(len(r.Buffer)) {
+		b := r.Buffer[at]
 		if b < 128 {
-			r.Offset++
+			r.Offset = at + 1
 			return uint64(b), true
 		}
 	}
+	return 0, false
+}
+
+func (r *TableReader) lebWide() (uint64, bool) {
 	at := r.Offset
 	var v uint64
 	for i := 0; i < 10; i++ {
@@ -249,6 +319,15 @@ func (r *TableReader) Leb() (uint64, bool) {
 	}
 	r.Offset = at
 	return 0, false
+}
+
+// A rejected integer leaves the cursor unchanged. Its spelling must be
+// minimal and fit in 64 bits, including the tenth byte's single value bit.
+func (r *TableReader) Leb() (uint64, bool) {
+	if v, ok := r.lebPair(); ok {
+		return v, true
+	}
+	return r.lebWide()
 }
 
 func (r *TableReader) Resolve(ref uint64) (uint64, bool) {

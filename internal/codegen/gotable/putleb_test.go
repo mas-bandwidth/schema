@@ -19,7 +19,7 @@ func TestPutLebAssemblesOnce(t *testing.T) {
 			body += string(data)
 		}
 	}
-	for _, want := range []string{"func (w *TableWriter) PutLeb(v uint64)", "var b [10]byte", "w.Raw(b[:n])"} {
+	for _, want := range []string{"func (w *TableWriter) PutLeb(v uint64)", "func (w *TableWriter) putLebPair(v uint64) bool", "var b [10]byte", "w.Raw(b[:n])"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("PutLeb does not assemble then Raw once: missing %q", want)
 		}

@@ -85,9 +85,10 @@ func (g *tableGen) emitListWrite(f *ir.Field, expr, writer, ind string, framed b
 		if pass == 0 {
 			g.pf("%s if %s.Overflow {return false};n:=int64(1)+tableLebBytes(uint64(%s.Count))+%s.Offset\n", ind, body, expr, body)
 			if framed {
-				g.pf("%s %s.PutLeb(uint64(n))\n", ind, writer)
+				g.emitPutLeb(ind+" ", writer, "uint64(n)")
 			}
-			g.pf("%s if %s.Measuring { %s.Advance(n) } else { %s.Ids.Truncate(mark);%s.Put8(%d);%s.PutLeb(uint64(%s.Count))\n", ind, writer, writer, writer, writer, kind, writer, expr)
+			g.pf("%s if %s.Measuring { %s.Advance(n) } else { %s.Ids.Truncate(mark);%s.Put8(%d)\n", ind, writer, writer, writer, writer, kind)
+			g.emitPutLeb(ind+" ", writer, "uint64("+expr+".Count)")
 		}
 	}
 	g.pf("%s }\n%s}\n", ind, ind)

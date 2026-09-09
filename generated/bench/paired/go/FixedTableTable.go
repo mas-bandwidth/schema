@@ -54,7 +54,7 @@ func FixedTableMeasureReason(value *FixedTable) (int64, error) {
 func FixedTableSaveBody(w *TableWriter, value *FixedTable) bool {
 	{
 		mark := w.Ids.Count
-		ref := w.Ids.RefAt(35, 0x7ce4fd9430e80cea)
+		ref := w.Ids.refAtHit(35, 0x7ce4fd9430e80cea)
 		start := w.Ids.Count
 		n := BenchMixedMeasureBody(&value.Value, w.Ids)
 		if n < 0 || w.Ids.Overflow {
@@ -65,8 +65,12 @@ func FixedTableSaveBody(w *TableWriter, value *FixedTable) bool {
 				w.Advance(tableLebBytes(ref) + 1 + tableLebBytes(uint64(n)) + n)
 			} else {
 				w.Ids.Truncate(start)
-				w.Header(ref, 13)
-				w.PutLeb(uint64(n))
+				if !w.headerPair(ref, 13) {
+					w.headerRest(ref, 13)
+				}
+				if !w.putLebPair(uint64(n)) {
+					w.putLebWide(uint64(n))
+				}
 				if !BenchMixedSaveBody(w, &value.Value) {
 					return false
 				}
@@ -96,7 +100,10 @@ func FixedTableSave(value *FixedTable, buffer []byte) int64 {
 func FixedTableLoadBody(r *TableReader, value *FixedTable) bool {
 	FixedTableReset(value)
 	for {
-		ref, ok := r.Leb()
+		ref, ok := r.lebPair()
+		if !ok {
+			ref, ok = r.lebWide()
+		}
 		if !ok {
 			r.Report.Malformed = true
 			return false

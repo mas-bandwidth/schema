@@ -20,7 +20,7 @@ func TestLebOneByteFastPathShape(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		"uint64(r.Offset) < uint64(len(r.Buffer))",
+		"uint64(at) < uint64(len(r.Buffer))",
 		"return uint64(b), true",
 		"for i := 0; i < 10; i++",
 		"if i > 0 && b == 0",

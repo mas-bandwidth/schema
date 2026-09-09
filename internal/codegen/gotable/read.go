@@ -12,7 +12,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	if g.retain {
 		g.pf("r.Retain.discard(r.Path,false,0)\n")
 	}
-	g.pf("\tfor {\n\t\tref, ok := r.Leb(); if !ok { r.Report.Malformed = true; return false }\n")
+	g.pf("\tfor {\n\t\tref, ok := r.lebPair(); if !ok { ref, ok = r.lebWide() }; if !ok { r.Report.Malformed = true; return false }\n")
 	g.pf("\t\tif ref == 0 { return true }\n")
 	g.pf("\t\tfieldID, ok := r.Resolve(ref); if !ok || !r.Has(1) { r.Report.Malformed = true; return false }\n")
 	g.pf("\t\tif fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff { r.Report.Malformed = true; return false }\n")

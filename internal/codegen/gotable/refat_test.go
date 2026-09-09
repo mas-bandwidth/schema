@@ -28,16 +28,18 @@ func TestRefAtShape(t *testing.T) {
 		"[tableIdCapacity]uint32",
 		"ordinalOf [tableIdCapacity]int32",
 		"func (ids *TableIds) RefAt(ordinal int, id uint64)",
+		"func (ids *TableIds) refAtHit(ordinal int, id uint64)",
 		"func (w *TableWriter) IdAt(ordinal int, id uint64)",
 		"ids.slot[o] = 0",
-		"w.Header(w.Ids.RefAt(",
+		"w.headerPair(ref,",
+		"uint(ordinal) < uint(len(ids.slot))",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("RefAt is missing %q", want)
 		}
 	}
-	if !strings.Contains(body, "w.Ids.RefAt(") && !strings.Contains(body, ".RefAt(") {
-		t.Fatal("generated Save never calls RefAt")
+	if !strings.Contains(body, "w.Ids.refAtHit(") {
+		t.Fatal("generated SaveBody never calls refAtHit")
 	}
 	runGenerated(t, refAtSchema, refAtWireTest)
 }
@@ -127,6 +129,19 @@ func TestRefAtFirstUseAndElision(t *testing.T) {
 	}
 	if got := trailerIds(short); len(got) != 1 || got[0] != RootTableFields[0].Id {
 		t.Fatalf("elided children leaked ids: %x", got)
+	}
+}
+
+func TestRefAtOutOfRangeFallsBackToRef(t *testing.T) {
+	id := uint64(0x1111111111111111)
+	var a TableIds
+	if got, want := a.RefAt(-1, id), a.Ref(id); got != want {
+		t.Fatalf("RefAt(-1) = %d want Ref %d", got, want)
+	}
+	var b TableIds
+	far := len(b.slot) + 10
+	if got, want := b.RefAt(far, id), b.Ref(id); got != want {
+		t.Fatalf("RefAt(%d) = %d want Ref %d", far, got, want)
 	}
 }
 
