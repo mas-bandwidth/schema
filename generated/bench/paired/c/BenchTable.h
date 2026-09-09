@@ -122,7 +122,7 @@ typedef struct TableReport
     int malformed;         /* framing damage; decode stopped, partial result kept */
     int32_t widened;        /* exact widening of a known kind */
     int32_t retained, retain_lost; /* opt-in unknown-field round trips */
-    int refused;           /* unsupported file form, not framing damage */
+    int refused;           /* unsupported form byte, not framing damage */
     int reason;            /* SCHEMA_TABLE_REFUSAL_REASON */
 } TableReport;
 
@@ -6918,7 +6918,7 @@ static SCHEMA_UNUSED int schema_bench_bench_mixed_message_extent_(TableMessageRe
 #define mixed_entity_save_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
 #define mixed_entity_load_retain_messages(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
-/* Retained fields have no announced slots: save the FILE form or relay the original message. */
+/* Retained fields have no announced slots: save the VARIABLE form or relay the original message. */
 #define mixed_entity_save_retain_messages(...) ((void)sizeof(struct { int retention_message_write_requires_file_form : -1; }))
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
 #define mixed_stat_load_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
@@ -6928,7 +6928,7 @@ static SCHEMA_UNUSED int schema_bench_bench_mixed_message_extent_(TableMessageRe
 #define mixed_stat_save_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
 #define mixed_stat_load_retain_messages(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
-/* Retained fields have no announced slots: save the FILE form or relay the original message. */
+/* Retained fields have no announced slots: save the VARIABLE form or relay the original message. */
 #define mixed_stat_save_retain_messages(...) ((void)sizeof(struct { int retention_message_write_requires_file_form : -1; }))
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
 #define mixed_hit_event_load_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
@@ -6938,7 +6938,7 @@ static SCHEMA_UNUSED int schema_bench_bench_mixed_message_extent_(TableMessageRe
 #define mixed_hit_event_save_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
 #define mixed_hit_event_load_retain_messages(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
-/* Retained fields have no announced slots: save the FILE form or relay the original message. */
+/* Retained fields have no announced slots: save the VARIABLE form or relay the original message. */
 #define mixed_hit_event_save_retain_messages(...) ((void)sizeof(struct { int retention_message_write_requires_file_form : -1; }))
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
 #define mixed_chat_event_load_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
@@ -6948,7 +6948,7 @@ static SCHEMA_UNUSED int schema_bench_bench_mixed_message_extent_(TableMessageRe
 #define mixed_chat_event_save_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
 #define mixed_chat_event_load_retain_messages(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
-/* Retained fields have no announced slots: save the FILE form or relay the original message. */
+/* Retained fields have no announced slots: save the VARIABLE form or relay the original message. */
 #define mixed_chat_event_save_retain_messages(...) ((void)sizeof(struct { int retention_message_write_requires_file_form : -1; }))
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
 #define mixed_pickup_event_load_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
@@ -6958,7 +6958,7 @@ static SCHEMA_UNUSED int schema_bench_bench_mixed_message_extent_(TableMessageRe
 #define mixed_pickup_event_save_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
 #define mixed_pickup_event_load_retain_messages(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
-/* Retained fields have no announced slots: save the FILE form or relay the original message. */
+/* Retained fields have no announced slots: save the VARIABLE form or relay the original message. */
 #define mixed_pickup_event_save_retain_messages(...) ((void)sizeof(struct { int retention_message_write_requires_file_form : -1; }))
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
 #define bench_mixed_load_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
@@ -6968,7 +6968,7 @@ static SCHEMA_UNUSED int schema_bench_bench_mixed_message_extent_(TableMessageRe
 #define bench_mixed_save_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
 #define bench_mixed_load_retain_messages(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
-/* Retained fields have no announced slots: save the FILE form or relay the original message. */
+/* Retained fields have no announced slots: save the VARIABLE form or relay the original message. */
 #define bench_mixed_save_retain_messages(...) ((void)sizeof(struct { int retention_message_write_requires_file_form : -1; }))
 static SCHEMA_UNUSED int schema_bench_mixed_entity_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order)
 {

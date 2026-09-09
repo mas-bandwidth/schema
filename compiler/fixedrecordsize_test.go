@@ -160,3 +160,67 @@ func generatedFixedForm(t *testing.T, dir string) string {
 	}
 	return all.String()
 }
+
+// A DECLARED FIXED TABLE PAST THE CEILING DOES NOT COMPILE (docs/SPEC-TABLES.md
+// §3.4, #823). The two bounds above are the DERIVED mode's, which asked for
+// nothing and keeps form 1; the keyword is a request, and *"if we add any
+// feature that stops it from being fixed, it is a compile error … we don't want
+// to surprise the user"* — the project owner. A declared fixed table encodes as
+// form 3 ALWAYS, so past the ceiling there is nothing for it to be.
+//
+// The `fixed table` keyword lives on branch `fixed-table-keyword` and is not
+// merged, so this test sets the IR marker the keyword will set. That is the
+// whole difference: the refusal is real, the parser's half is #823's.
+func TestDeclaredFixedTablePastTheCeilingRefusesTheCompile(t *testing.T) {
+	dir, body := fixedSizeUnit(t, "Huge", ir.TableFixedRecordMaxBytes)
+	paths, err := GatherPaths([]string{dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := New().Load(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := u.Tables["Huge"]
+	if st == nil {
+		t.Fatal("the probe declares Huge")
+	}
+	// UNDECLARED: a warning, the form dropped, and the unit still compiles.
+	warns, errs := ir.TableFixedRecordBounds(u, 0)
+	if len(errs) != 0 || len(warns) != 1 {
+		t.Fatalf("a DERIVED fixed table past the ceiling warns and compiles: warns=%v errs=%v", warns, errs)
+	}
+	// DECLARED: a refusal by name, and no warning pretending the form was kept.
+	st.FixedDeclared = true
+	warns, errs = ir.TableFixedRecordBounds(u, 0)
+	if len(errs) != 1 {
+		t.Fatalf("a DECLARED fixed table past the ceiling must not compile: warns=%v errs=%v", warns, errs)
+	}
+	if len(warns) != 0 {
+		t.Errorf("a refusal replaces the warning rather than joining it: %v", warns)
+	}
+	for _, want := range []string{"Huge", fmt.Sprint(body), fmt.Sprint(ir.TableFixedRecordMaxBytes), "§3.4", "DECLARED"} {
+		if !strings.Contains(errs[0].Error(), want) {
+			t.Errorf("the refusal must carry %q: %s", want, errs[0])
+		}
+	}
+}
+
+// AND A DECLARED FIXED TABLE INSIDE THE CEILING IS UNTOUCHED: the keyword
+// changes what happens at the bound, not what happens under it.
+func TestDeclaredFixedTableInsideTheCeilingCompiles(t *testing.T) {
+	dir, _ := fixedSizeUnit(t, "Small", 64)
+	paths, err := GatherPaths([]string{dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := New().Load(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u.Tables["Small"].FixedDeclared = true
+	warns, errs := ir.TableFixedRecordBounds(u, 0)
+	if len(errs) != 0 || len(warns) != 0 {
+		t.Fatalf("a small declared fixed table says nothing: warns=%v errs=%v", warns, errs)
+	}
+}

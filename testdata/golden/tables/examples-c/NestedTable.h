@@ -112,7 +112,7 @@ typedef struct TableReport
     int malformed;         /* framing damage; decode stopped, partial result kept */
     int32_t widened;        /* exact widening of a known kind */
     int32_t retained, retain_lost; /* opt-in unknown-field round trips */
-    int refused;           /* unsupported file form, not framing damage */
+    int refused;           /* unsupported form byte, not framing damage */
     int reason;            /* SCHEMA_TABLE_REFUSAL_REASON */
 } TableReport;
 
@@ -1802,7 +1802,7 @@ static SCHEMA_UNUSED int schema_tabledemo_archive_config_message_extent_(TableMe
 #define archive_config_save_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
 #define archive_config_load_retain_messages(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
-/* Retained fields have no announced slots: save the FILE form or relay the original message. */
+/* Retained fields have no announced slots: save the VARIABLE form or relay the original message. */
 #define archive_config_save_retain_messages(...) ((void)sizeof(struct { int retention_message_write_requires_file_form : -1; }))
 /* ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ---- */
 

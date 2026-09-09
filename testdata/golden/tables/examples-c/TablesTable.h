@@ -111,7 +111,7 @@ typedef struct TableReport
     int malformed;         /* framing damage; decode stopped, partial result kept */
     int32_t widened;        /* exact widening of a known kind */
     int32_t retained, retain_lost; /* opt-in unknown-field round trips */
-    int refused;           /* unsupported file form, not framing damage */
+    int refused;           /* unsupported form byte, not framing damage */
     int reason;            /* SCHEMA_TABLE_REFUSAL_REASON */
 } TableReport;
 
@@ -5568,7 +5568,7 @@ static SCHEMA_UNUSED int schema_tabledemo_debuff_message_extent_(TableMessageRea
 #define weapon_config_save_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
 #define weapon_config_load_retain_messages(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
-/* Retained fields have no announced slots: save the FILE form or relay the original message. */
+/* Retained fields have no announced slots: save the VARIABLE form or relay the original message. */
 #define weapon_config_save_retain_messages(...) ((void)sizeof(struct { int retention_message_write_requires_file_form : -1; }))
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
 #define loadout_config_load_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
@@ -5578,7 +5578,7 @@ static SCHEMA_UNUSED int schema_tabledemo_debuff_message_extent_(TableMessageRea
 #define loadout_config_save_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
 #define loadout_config_load_retain_messages(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
-/* Retained fields have no announced slots: save the FILE form or relay the original message. */
+/* Retained fields have no announced slots: save the VARIABLE form or relay the original message. */
 #define loadout_config_save_retain_messages(...) ((void)sizeof(struct { int retention_message_write_requires_file_form : -1; }))
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
 #define profile_config_load_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
@@ -5588,7 +5588,7 @@ static SCHEMA_UNUSED int schema_tabledemo_debuff_message_extent_(TableMessageRea
 #define profile_config_save_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
 #define profile_config_load_retain_messages(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
-/* Retained fields have no announced slots: save the FILE form or relay the original message. */
+/* Retained fields have no announced slots: save the VARIABLE form or relay the original message. */
 #define profile_config_save_retain_messages(...) ((void)sizeof(struct { int retention_message_write_requires_file_form : -1; }))
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
 #define root_config_load_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
@@ -5598,7 +5598,7 @@ static SCHEMA_UNUSED int schema_tabledemo_debuff_message_extent_(TableMessageRea
 #define root_config_save_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
 #define root_config_load_retain_messages(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
-/* Retained fields have no announced slots: save the FILE form or relay the original message. */
+/* Retained fields have no announced slots: save the VARIABLE form or relay the original message. */
 #define root_config_save_retain_messages(...) ((void)sizeof(struct { int retention_message_write_requires_file_form : -1; }))
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
 #define attachment_load_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
@@ -5608,7 +5608,7 @@ static SCHEMA_UNUSED int schema_tabledemo_debuff_message_extent_(TableMessageRea
 #define attachment_save_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
 #define attachment_load_retain_messages(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
-/* Retained fields have no announced slots: save the FILE form or relay the original message. */
+/* Retained fields have no announced slots: save the VARIABLE form or relay the original message. */
 #define attachment_save_retain_messages(...) ((void)sizeof(struct { int retention_message_write_requires_file_form : -1; }))
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
 #define buff_load_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
@@ -5618,7 +5618,7 @@ static SCHEMA_UNUSED int schema_tabledemo_debuff_message_extent_(TableMessageRea
 #define buff_save_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
 #define buff_load_retain_messages(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
-/* Retained fields have no announced slots: save the FILE form or relay the original message. */
+/* Retained fields have no announced slots: save the VARIABLE form or relay the original message. */
 #define buff_save_retain_messages(...) ((void)sizeof(struct { int retention_message_write_requires_file_form : -1; }))
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
 #define debuff_load_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
@@ -5628,7 +5628,7 @@ static SCHEMA_UNUSED int schema_tabledemo_debuff_message_extent_(TableMessageRea
 #define debuff_save_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
 #define debuff_load_retain_messages(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
-/* Retained fields have no announced slots: save the FILE form or relay the original message. */
+/* Retained fields have no announced slots: save the VARIABLE form or relay the original message. */
 #define debuff_save_retain_messages(...) ((void)sizeof(struct { int retention_message_write_requires_file_form : -1; }))
 /* ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ---- */
 

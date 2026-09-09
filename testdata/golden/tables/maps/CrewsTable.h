@@ -81,6 +81,14 @@ namespace mapdemo {
 enum TableMessageReason
 {
     newer_form,           // a FORM BYTE this reader does not carry (§3)
+    // A FORM BYTE THIS FORM IS AHEAD OF (docs/SPEC-TABLES.md §3, §3.4). The
+    // registry is ordered, so a reader meeting a byte it does not carry can
+    // say WHICH DIRECTION it is: form 1 handed to a fixed reader is the VARIABLE
+    // form, which is older, and calling that newer_form would send a caller
+    // looking for a build that does not exist. The bytes are the same refusal
+    // either way — nothing decoded, no counter moved — and only the name of it
+    // differs.
+    previous_form,
     no_vocabulary,        // no table for this connection: the message arrived before the announcement, or after a refused one
     second_announcement,  // a second announcement on a connection: it sets nothing, amends nothing, and the connection closes
     vocabulary_too_large, // an announcement above the receiver's declared bound, refused before an entry is touched
@@ -2344,6 +2352,20 @@ inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8
 // ---------------------------------------------------------------------------
 
 inline constexpr uint8_t kTableFixedForm = 3;
+
+// THE HEADER, ONE RULE FOR ALL FIVE FORMS (docs/SPEC-TABLES.md §3, "THE FIRST
+// BYTE"): the FORM BYTE at offset 0, seven RESERVED ZERO bytes, the form's own
+// EIGHT-BYTE HASH at offset 8, and the body at 16 — the alignment a
+// memory-mapped body needs. The fixed form does not need the alignment today;
+// it pads anyway, so the bytes do not move again the day the cook and the
+// block form join the registry under the same header.
+//
+// The hash here is the LAYOUT's. Each record still carries its own eight-byte
+// hash, which §3.4 has always said and which the header does not replace: the
+// header names the layout ONCE for the file, and a record names the layout it
+// was stamped by.
+inline constexpr int64_t kTableFixedHeaderBytes = 16;
+inline constexpr int64_t kTableFixedHashAt     = 8;
 
 // THE OPS ARE THE WHOLE SET. The IDENTITY plan carries only the first three;
 // the other two are what a plan compiled from another writer's layout adds.
@@ -5523,12 +5545,12 @@ inline bool TableNodeTableSaveRetain( const Ctx & ctx, TableWriter & w, TableRet
 // replacing every reference with the id it names AGAINST THE CONNECTION'S
 // VOCABULARY instead of a trailer, and SaveRetain writing form 2 refuses by
 // name. So retention crosses the forms in ONE DIRECTION, and the record a
-// message body produces is the FILE FORM'S OWN, to the byte: a retained record
+// message body produces is the VARIABLE FORM'S OWN, to the byte: a retained record
 // carries the field's bytes with every reference resolved so that re-emitting
 // it into any id table is correct, and the table it is re-emitted into is a
 // file's. The capture below is therefore a TRANSCODE as well as a resolve, a
 // bitpacked value is read at the width its announced shape states and written
-// at the width the file form spells, and from there it is the same record,
+// at the width the variable form spells, and from there it is the same record,
 // laid down in the same slots and read back by the same emit walk.
 //
 // THE SKIP RUNS FIRST AND THE CAPTURE SECOND, over the same bits. The plain
@@ -5834,7 +5856,7 @@ inline int64_t TableMessageRetainPayload( TableMessageRetainIn & s, const TableM
     switch ( entry.kind )
     {
         case 17: return -1; // THE NODE-INDEX CLASS, met inside a payload (§6.6)
-        case 0: return -1;  // a KIND-0 ENTRY names no payload the file form has a kind for
+        case 0: return -1;  // a KIND-0 ENTRY names no payload the variable form has a kind for
         case 32: TableRetainInLeb( s.out, 0 ); break;
         case 30:
         {
@@ -8027,7 +8049,7 @@ inline int64_t CrewsMembersEntryMeasureMessageBody( const Ctx & ctx, const Table
 
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
 // kind byte rides at all, and no length frames a nested body, because a
-// body is self-delimiting: it is written where the file form put an L.
+// body is self-delimiting: it is written where the VARIABLE form put an L.
 template <typename Ctx>
 inline bool CrewsMembersEntrySaveMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const CrewsMembersEntry & value )
 {
@@ -8422,7 +8444,7 @@ inline int64_t CrewsMeasureMessageBody( const Ctx & ctx, const TableNumbering & 
 
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
 // kind byte rides at all, and no length frames a nested body, because a
-// body is self-delimiting: it is written where the file form put an L.
+// body is self-delimiting: it is written where the VARIABLE form put an L.
 template <typename Ctx>
 inline bool CrewsSaveMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const Crews & value )
 {
@@ -10990,7 +11012,7 @@ inline bool CrewsLoadMessageBodyIntoRetain( TableBitReader & r, const TableVocab
 // `retains` is an array parallel to `roots`, each entry reset by this call
 // and each holding the records of the body it belongs to, which is what keeps
 // a record's first step an index into that body's own node directory. A
-// SaveRetain from `roots[k]` takes `retains[k]` and is the file form's own
+// SaveRetain from `roots[k]` takes `retains[k]` and is the VARIABLE form's own
 // pair unchanged: retention writing FORM 2 refuses by name (§3.3).
 inline bool CrewsLoadRetainMessages( const Crews ** roots, int64_t * count, uint8_t * region, int64_t region_bytes, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableRetain * retains, TableReport * report )
 {
@@ -11123,14 +11145,14 @@ inline int64_t CrewsSaveRetain( const Crews * root, TableRetain * retain, uint8_
 // CrewsSaveRetainMessages: RETENTION WRITING FORM 2 IS REFUSED BY NAME
 // (docs/SPEC-TABLES.md §3.3). It is a MISUSE refusal on §6.6's own
 // precedent and never a silent drop, and the two answers are named: a
-// caller that must carry unknowns across a rewrite writes the FILE form,
+// caller that must carry unknowns across a rewrite writes the VARIABLE form,
 // which carries its own table and takes §6.6 unchanged, and a RELAY
 // forwards the sending peer's announcement and its batch bytes verbatim.
 template <typename... Args>
 inline int64_t CrewsSaveRetainMessages( Args &&... )
 {
     static_assert( sizeof...( Args ) == (size_t) -1,
-        "Crews: a form 2 writer names entries through slots of a vocabulary the compiler settled, and a retained id is one this build's closure does not contain, so it has neither a slot nor an announced shape. Retention writing the MESSAGE form is refused by name (docs/SPEC-TABLES.md §3.3). Write the FILE form, which carries its own table and takes §6.6 unchanged, or relay the sender's announcement and batch bytes verbatim." );
+        "Crews: a form 2 writer names entries through slots of a vocabulary the compiler settled, and a retained id is one this build's closure does not contain, so it has neither a slot nor an announced shape. Retention writing the MESSAGE form is refused by name (docs/SPEC-TABLES.md §3.3). Write the VARIABLE form, which carries its own table and takes §6.6 unchanged, or relay the sender's announcement and batch bytes verbatim." );
     return -1;
 }
 

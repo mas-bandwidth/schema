@@ -3578,7 +3578,7 @@ tables-retain-fixed-class-negative-control: build/tables-generated/.stamp
 	@grep -q "FIXED-class root" build/retain-fixed-class.log || { echo "RETAIN GATE FAILED: the fixed-class refusal was not by name"; cat build/retain-fixed-class.log; exit 1; }
 	@echo "the fixed-class root refuses retention BY NAME (docs/SPEC-TABLES.md §6.6)"
 # AND THE MESSAGE FORM'S TWO ON THE SAME ROOT (§3.3, schema#680). A fixed-class
-# root that declared only the file form's three would answer LoadRetainMessages
+# root that declared only the variable form's three would answer LoadRetainMessages
 # with a missing symbol, which is a compile error with no reason in it, so the
 # row asks for the name and greps for the same sentence.
 	@printf '#include "RT1Table.h"\nint main()\n{\n    const tblrt1::Inner * roots[1] = { NULL };\n    int64_t count = 1;\n    uint8_t storage[ 64 ];\n    tblrt1::TableMessageEntry entries[ 1 ];\n    tblrt1::TableVocabulary vocabulary( entries, 1 );\n    tblrt1::TableRetain retain;\n    retain.bytes = storage;\n    tblrt1::TableReport report;\n    (void) tblrt1::InnerLoadRetainMessages( roots, &count, storage, (int64_t) 64, vocabulary, storage, (int64_t) 0, &retain, &report );\n    return 0;\n}\n' > build/retain-fixed-class-message.cpp
