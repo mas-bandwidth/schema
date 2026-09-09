@@ -41,6 +41,24 @@ func TestRefAtShape(t *testing.T) {
 	runGenerated(t, refAtSchema, refAtWireTest)
 }
 
+// A field named alpha and enum variant alpha share TableWireId("alpha"). The
+// keyed array interns the key through Ref before measuring the element, so
+// the element's RefAt on that id is a chain hit. Recording the slot only on
+// an intern miss leaves truncate nothing to clear (schema #775).
+const refAtSharedIdSchema = `package probe
+enum Tag { alpha, beta }
+type Leaf { alpha int32 }
+table Root {
+ t Tag
+ banks [Tag]Leaf
+ n int32
+}
+`
+
+func TestRefAtSharedFieldAndEnumKeyId(t *testing.T) {
+	runGenerated(t, refAtSharedIdSchema, refAtSharedIdTest)
+}
+
 const refAtWireTest = `package probe
 import ("bytes"; "encoding/binary"; "testing")
 
@@ -96,5 +114,42 @@ func trailerIds(wire []byte) []uint64 {
 		out[i] = binary.LittleEndian.Uint64(wire[start+i*8 : start+i*8+8])
 	}
 	return out
+}
+`
+
+const refAtSharedIdTest = `package probe
+import ("encoding/binary"; "testing")
+
+func TestSharedIdRoundTrip(t *testing.T) {
+	var value, loaded Root
+	value.Banks[0].Alpha = 7
+	value.N = 1
+	n := RootMeasure(&value)
+	if n < 0 {
+		t.Fatal("measure")
+	}
+	wire := make([]byte, n)
+	if RootSave(&value, wire) != n {
+		t.Fatal("save")
+	}
+	var report TableReport
+	if !RootLoad(&loaded, wire, &report) || report.Malformed || loaded.Banks[0].Alpha != 7 || loaded.N != 1 {
+		t.Fatalf("alpha field gone: n=%d loaded.alpha=%d report=%+v", n, loaded.Banks[0].Alpha, report)
+	}
+	count := binary.LittleEndian.Uint64(wire[len(wire)-8:])
+	hasAlpha := false
+	start := len(wire) - 8 - int(count)*8
+	if start < 0 || start > len(wire) {
+		t.Fatalf("trailer start %d count %d len %d", start, count, len(wire))
+	}
+	for i := 0; i < int(count); i++ {
+		id := binary.LittleEndian.Uint64(wire[start+i*8:])
+		if id == LeafTableFields[0].Id {
+			hasAlpha = true
+		}
+	}
+	if !hasAlpha {
+		t.Fatalf("alpha id missing from trailer, %d bytes, %d ids", n, count)
+	}
 }
 `
