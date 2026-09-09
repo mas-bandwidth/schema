@@ -1,15 +1,5 @@
 # Schema roadmap
 
-Nine languages are live: C++, C, C#, Go, Rust, Java, JavaScript, Dart and Elixir.
-The packet wire is complete in all nine and holds there. On the table wire the
-work is in this order: C++, C, C# and Go carry the complete table surface and are
-being made production ready first, well tested, correct and performant; Rust,
-Java, JavaScript, Dart and Elixir follow (#514 to #518). The eleven columns to
-the right of those are the languages we intend to port next; each waits for
-support that covers its tokens. The two tables below say what each port does
-today, read off the checked-in compiler and the conformance legs that run on
-every pull request.
-
 ### Packet wire
 
 | feature | cpp | c | cs | go | rust | java | js | dart | elixir | swift | ts | lua | clojure | python | ruby | kotlin | gdscript | zig | odin | haxe |
@@ -78,29 +68,6 @@ every pull request.
 | doc comments and tags in the descriptors | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | the unit registry, UnitView | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | widening on read, and the refusal reasons | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-
-Rust, Java, JavaScript, Dart and Elixir emit no table wire or descriptors
-today; the code that wrote the form which preceded the id-table wire is gone
-from all five. Their cells above are green only where the current block and
-cook readers and the build-version check earn them. #514 to #518 carry each
-column forward to the id-table wire when there is time and support for it.
-
-C supports the complete table surface in the library's C-like dialect: the
-eighteen conformance surfaces, the file and message wire fuzzers with their
-negative controls, the keyed refusals held in every build including -DNDEBUG,
-the allocator contract and UnitView.
-
-Go supports the complete table surface through caller-owned regions, mutable
-arena builders and cooks. `test-go` covers all eighteen conformance surfaces,
-file/message, builder and retaining differential fuzzers, allocator ownership,
-block fill, typed refusals and UnitView. The porting register tracks remaining
-optimization and instrumentation work separately.
-
-C# supports the complete table surface through managed authoring values and
-native regions, builders and cooks. The shared conformance corpus, managed and
-native differential fuzzers, builder and retention arms, UnitView checks, and
-compiled negative controls cover the column. See [C# tables](docs/CS-TABLES.md)
-for storage ownership, lifecycle contracts and verification commands.
 
 ## How the work is done
 
