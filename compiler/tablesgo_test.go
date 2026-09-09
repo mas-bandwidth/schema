@@ -134,7 +134,12 @@ table Effected
 // adds, which is how the hole reached a reviewer.
 func TestTableRuntimeNamesAreClaimedGo(t *testing.T) {
 	files := map[string][]byte{}
-	for i, source := range []string{goRuntimeSrc, goRuntimeSrc + "\ntable Graph {head *Graph\ndata *bytes\ncaption *string\n}\n", goRuntimeSrc + "\ntable Lists {rows []int32}\n"} {
+	for i, source := range []string{
+		goRuntimeSrc,
+		goRuntimeSrc + "\ntable Graph {head *Graph\ndata *bytes\ncaption *string\n}\n",
+		goRuntimeSrc + "\ntable Lists {rows []int32}\n",
+		goRuntimeSrc + "\ntable Wide {label wstring(16)\n}\n",
+	} {
 		generated, err := New().Generate(unitFromSource(t, source), "go", Options{})
 		if err != nil {
 			t.Fatal(err)

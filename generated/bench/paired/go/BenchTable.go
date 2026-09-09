@@ -759,38 +759,6 @@ func tableUtf8Clamp(data []byte, n int64) int64 {
 	return n
 }
 
-func tableUtf16Valid(data []byte) bool {
-	if len(data)&1 != 0 {
-		return false
-	}
-	for i := 0; i < len(data); i += 2 {
-		u := binary.LittleEndian.Uint16(data[i:])
-		if u == 0 || u >= 0xdc00 && u <= 0xdfff {
-			return false
-		}
-		if u >= 0xd800 && u <= 0xdbff {
-			i += 2
-			if i >= len(data) {
-				return false
-			}
-			v := binary.LittleEndian.Uint16(data[i:])
-			if v < 0xdc00 || v > 0xdfff {
-				return false
-			}
-		}
-	}
-	return true
-}
-func tableUtf16Clamp(data []byte, keep int) int {
-	if keep > 0 && keep < len(data)/2 {
-		u := binary.LittleEndian.Uint16(data[(keep-1)*2:])
-		if u >= 0xd800 && u <= 0xdbff {
-			keep--
-		}
-	}
-	return keep
-}
-
 const TableMessageBatchMax = 256
 const TableMessageRefBitsHere = 7
 const TableMessageEntriesHere = 75
