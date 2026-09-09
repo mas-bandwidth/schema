@@ -1113,7 +1113,10 @@ other order, exactly the file a reader leaning on one check would open — or
 the register states why the platform needs none.
 
 **Reference.** `tables-big-endian` (wire, block both ways, cook accept and
-refuse, under s390x emulation); `tables-java-order`;
+refuse, under s390x emulation) — one umbrella over `tables-big-endian-tables`
+(the wire), `tables-big-endian-collections` (block both ways, cook accept and
+refuse), `tables-cook-endian` and `tables-c-big-endian`, each of which CI runs
+as a job of its own; `tables-java-order`;
 `test/js-tables/main.mjs:417` (`checkForeignByteOrder`, the gap named at
 `:382-386`).
 
@@ -1129,7 +1132,7 @@ both foreign rows red with `cook` and `block` green.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-big-endian` | ✅ `tables-c-big-endian` `conformance-negative-control-c-foreign` | ✅ `tables-rust-big-endian` (a `cargo check` for s390x; skips cleanly without the target) | ✅ `conformance-big-endian` (the Go driver under qemu-s390x) | ✅ `tables-cook-open-cs` (the refuse half; the native big-endian half is stated unproven until a big-endian .NET exists) | ✅ `tables-java-order` | ✅ `tables-js-leg` | ❌ #415 (reads `Endian.little`; the order word is untested and no sentence says why) | — the host's order is never consulted and no platform query exists for a gate to catch; the two foreign surfaces hold it (docs/SPEC-TABLES.md) |
+| ✅ `tables-big-endian-tables` `tables-big-endian-collections` (the two pieces of the s390x battery CI runs as jobs of their own; the umbrella target above runs them and the cook and C legs in order) | ✅ `tables-c-big-endian` `conformance-negative-control-c-foreign` | ✅ `tables-rust-big-endian` (a `cargo check` for s390x; skips cleanly without the target) | ✅ `conformance-big-endian` (the Go driver under qemu-s390x) | ✅ `tables-cook-open-cs` (the refuse half; the native big-endian half is stated unproven until a big-endian .NET exists) | ✅ `tables-java-order` | ✅ `tables-js-leg` | ❌ #415 (reads `Endian.little`; the order word is untested and no sentence says why) | — the host's order is never consulted and no platform query exists for a gate to catch; the two foreign surfaces hold it (docs/SPEC-TABLES.md) |
 
 ### I8 — A bench row is labeled a pairing check
 

@@ -295,6 +295,7 @@ conformance job reads it as the leg's matrix row:
 | `runtime`, `runtime_tag` | the sibling checkout the leg needs (`serialize.cs`) and the workflow variable that pins it (`SERIALIZE_CS_TAG`) |
 | `node`, `rust`, `dart`, `java`, `otp` + `elixir` | the toolchain step to run, and the version it installs |
 | `dotnet` | the .NET SDK step to run, and the file holding the version — `.github/dotnet-version`, the repo's one pin, because nine `csproj` files under `test/` and `bench/` target it and `certify.yml` builds all of them (issue #470) |
+| `seconds` | what this leg MEASURED on the runner, and the ONLY thing it is used for is the order the rows are handed to GitHub: longest first, because the fan-out is dispatch-bound and the run's tail is whichever leg was dispatched last (run 34350259348: the nine conformance rows started between 165 s and 179 s of a 310 s run). It is dropped from the rendered row, so it is not a matrix field; a leg that omits it sorts FIRST, on the assumption that an unmeasured leg is heavy. A stale number is a slower run, never a weaker one |
 
 A leg that names a toolchain with no step yet adds one step to the workflow,
 keyed on its new field; that is the one edit a port makes there. A driver with

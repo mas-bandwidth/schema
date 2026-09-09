@@ -439,6 +439,11 @@ jobs:
           echo "$matrix"
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
+  # LONGEST LEG FIRST, for the reason the negative-control leg below carries in
+  # full: the fan-out is dispatch-bound, so the order the matrix is handed over
+  # is the order the rows start, and the tail should be the cheapest leg. Each
+  # leg's ci.json records what it measured; `harness matrix` sorts on it and
+  # drops the key, so it never becomes a matrix field.
   conformance:
     name: conformance (${{ matrix.lang }})
     needs: conformance-matrix
@@ -1125,6 +1130,15 @@ jobs:
           echo "$matrix"
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
+  # THE ROWS COME BACK LONGEST FIRST, and that is the whole of what run
+  # 34350259348 changed here. That run answered in 5:10 with its longest job at
+  # 2:38, which means no job was the constraint: 82 jobs were eligible at once
+  # and GitHub started them as runners freed up, the last row 179 s in. So the
+  # run's wall time is set by WHICH rows are still going at the end, and the
+  # 158 s and 145 s rows were dispatched 139 s and 162 s in and finished last.
+  # `negativecontrols matrix` now sorts by the seconds make/negative-controls.json
+  # records for each group; the same rows run the same controls in the same
+  # groups, and the tail becomes the shortest row instead of an arbitrary one.
   negative-controls:
     name: negative controls (${{ matrix.name }})
     needs: negative-controls-matrix

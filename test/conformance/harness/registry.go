@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -155,5 +156,41 @@ func matrix(dir string) ([]byte, error) {
 			}
 		}
 	}
+	sortLongestFirst(rows)
 	return json.Marshal(map[string]any{"include": rows})
+}
+
+// sortLongestFirst orders the rows by the "seconds" a leg's ci.json records —
+// what that leg MEASURED on the runner — longest first, and drops the key from
+// the rendered row so it is a note to this function and not a matrix field.
+//
+// GitHub starts matrix rows in the order the matrix hands them over, and on
+// run 34350259348 the fan-out was capacity-bound: the conformance rows were
+// dispatched last, between 165 s and 179 s into a 310 s run, so the run's tail
+// was whichever leg happened to be dispatched at the end. The 100 s C# leg was
+// dispatched last of the nine and finished at 279 s. Longest first costs
+// nothing, runs the same legs over the same corpus, and makes the tail the
+// SHORTEST leg instead of an arbitrary one.
+//
+// A leg with no number sorts FIRST: an unmeasured leg is assumed heavy,
+// because being wrong that way costs a little wall time and being wrong the
+// other way costs a tail. Nothing about what is checked rides on this.
+func sortLongestFirst(rows []map[string]string) {
+	cost := func(row map[string]string) int {
+		n, err := strconv.Atoi(strings.TrimSpace(row["seconds"]))
+		if err != nil || n <= 0 {
+			return 1 << 30
+		}
+		return n
+	}
+	sort.SliceStable(rows, func(i, j int) bool {
+		a, b := cost(rows[i]), cost(rows[j])
+		if a != b {
+			return a > b
+		}
+		return rows[i]["lang"] < rows[j]["lang"]
+	})
+	for _, row := range rows {
+		delete(row, "seconds")
+	}
 }
