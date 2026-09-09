@@ -6185,6 +6185,7 @@ inline uint32_t PatrolNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t
 inline void PatrolNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
     (void) nodes; // every node this root can name is a FIXED table
+    (void) r; (void) at; // this root's numbering is always empty: nothing is ever decoded
     switch ( type_id )
     {
         default: break;
@@ -6221,6 +6222,7 @@ inline bool PatrolNodeMessageExtent( uint64_t type_id, TableBitReader & r, const
 inline bool PatrolNodeMessageBody( uint64_t type_id, TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, uint8_t * at )
 {
     (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
+    (void) r; (void) vocabulary; (void) at; // this root's numbering is always empty: nothing is ever decoded
     bool ok = false;
     switch ( type_id )
     {
@@ -7317,6 +7319,7 @@ inline bool PatrolLoadMessageBodyRetain( TableBitReader & r, const TableVocabula
 inline void PatrolNodeBodyRetain( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at, TableRetain * retain, uint32_t node )
 {
     (void) nodes; // every node this root can name is a FIXED table
+    (void) r; (void) at; // this root's numbering is always empty: nothing is ever decoded
     (void) retain; (void) node;
     switch ( type_id )
     {
@@ -7468,6 +7471,7 @@ inline const Patrol * PatrolLoadRetain( uint8_t * region, int64_t region_bytes, 
 inline bool PatrolNodeMessageBodyRetain( uint64_t type_id, TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, uint8_t * at, TableRetain * retain, uint32_t node )
 {
     (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
+    (void) r; (void) vocabulary; (void) at; // this root's numbering is always empty: nothing is ever decoded
     (void) retain; (void) node;
     bool ok = false;
     switch ( type_id )

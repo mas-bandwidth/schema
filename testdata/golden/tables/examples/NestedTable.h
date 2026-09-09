@@ -5898,6 +5898,7 @@ inline uint32_t ArchiveConfigNodeAlloc( uint64_t type_id, TableWorker & worker, 
 inline void ArchiveConfigNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
     (void) nodes; // every node this root can name is a FIXED table
+    (void) r; (void) at; // this root's numbering is always empty: nothing is ever decoded
     switch ( type_id )
     {
         default: break;
@@ -5934,6 +5935,7 @@ inline bool ArchiveConfigNodeMessageExtent( uint64_t type_id, TableBitReader & r
 inline bool ArchiveConfigNodeMessageBody( uint64_t type_id, TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, uint8_t * at )
 {
     (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
+    (void) r; (void) vocabulary; (void) at; // this root's numbering is always empty: nothing is ever decoded
     bool ok = false;
     switch ( type_id )
     {
@@ -6826,6 +6828,7 @@ inline bool ArchiveConfigLoadMessageBodyRetain( TableBitReader & r, const TableV
 inline void ArchiveConfigNodeBodyRetain( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at, TableRetain * retain, uint32_t node )
 {
     (void) nodes; // every node this root can name is a FIXED table
+    (void) r; (void) at; // this root's numbering is always empty: nothing is ever decoded
     (void) retain; (void) node;
     switch ( type_id )
     {
@@ -6977,6 +6980,7 @@ inline const ArchiveConfig * ArchiveConfigLoadRetain( uint8_t * region, int64_t 
 inline bool ArchiveConfigNodeMessageBodyRetain( uint64_t type_id, TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, uint8_t * at, TableRetain * retain, uint32_t node )
 {
     (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
+    (void) r; (void) vocabulary; (void) at; // this root's numbering is always empty: nothing is ever decoded
     (void) retain; (void) node;
     bool ok = false;
     switch ( type_id )

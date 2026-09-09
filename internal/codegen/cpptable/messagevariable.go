@@ -489,6 +489,16 @@ func (g *tableGen) emitRootNodeMessageBodyDispatch(st *ir.Struct, reachable []*i
 	if !anyVar {
 		g.pf("    (void) nodes; (void) index_bits; // every node this root can name is a FIXED table\n")
 	}
+	// A VARIABLE ROOT WHOSE NUMBERING CAN NAME NOTHING (docs/SPEC-TABLES.md
+	// §2.2): the class is DECLARED, so a plain `table` is the variable wire
+	// with no pointer, no map and no unbounded array under it at all. The
+	// switch below is then empty — only its `default` arm stands — and the
+	// reader, the vocabulary and the storage are read by nothing, exactly as
+	// `NodeMessageStorage` and `NodeMessageExtent` above already say of their
+	// own parameters under the same emptiness.
+	if !g.anyExtent && len(reachable) == 0 {
+		g.pf("    (void) r; (void) vocabulary; (void) at; // this root's numbering is always empty: nothing is ever decoded\n")
+	}
 	if g.retain && len(reachable) == 0 {
 		// a root whose numbering can name no TABLE record: a blob's bytes carry
 		// no body, so there is nothing under this node for a path to reach

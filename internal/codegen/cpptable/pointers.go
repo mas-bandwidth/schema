@@ -1349,6 +1349,16 @@ func (g *tableGen) emitRootNodeBody(st *ir.Struct, reachable []*ir.Struct, blobs
 	if !anyVar {
 		g.pf("    (void) nodes; // every node this root can name is a FIXED table\n")
 	}
+	// A VARIABLE ROOT WHOSE NUMBERING CAN NAME NOTHING is a state the DECLARED
+	// class creates (docs/SPEC-TABLES.md §2.2): a plain `table` is the variable
+	// wire whatever its fields are, so a unit can now have a variable root with
+	// no pointer, no map and no unbounded array anywhere under it. The switch
+	// below is then empty and the reader and the storage are read by nothing —
+	// which is what `NodePlace` and `NodeAlloc` above already say of themselves
+	// under the same emptiness, and what -Wunused-parameter otherwise refuses.
+	if !g.anyExtent && len(reachable) == 0 && len(blobs) == 0 {
+		g.pf("    (void) r; (void) at; // this root's numbering is always empty: nothing is ever decoded\n")
+	}
 	if g.retain && len(reachable) == 0 {
 		// a root whose numbering can name no TABLE record: a blob's bytes carry
 		// no body, so there is nothing under this node for a path to reach

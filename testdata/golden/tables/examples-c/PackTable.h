@@ -1082,10 +1082,6 @@ typedef struct TableSink
 #ifndef SCHEMA_TABLE_BLOB_RUNTIME
 #define SCHEMA_TABLE_BLOB_RUNTIME
 typedef struct TableBlob { uint32_t length, zero; } TableBlob;
-typedef struct TableBytesView { const uint8_t * data; int64_t length; } TableBytesView;
-typedef struct TableStringView { const char * data; int64_t length; } TableStringView;
-#define kTableBytesTypeId UINT64_C(0x2f2ec0474f1c4fe4)
-#define kTableStringTypeId UINT64_C(0x704be0d8faaffc58)
 
 static SCHEMA_UNUSED int64_t table_blob_storage( int64_t length, int terminated )
 {
@@ -1093,24 +1089,6 @@ static SCHEMA_UNUSED int64_t table_blob_storage( int64_t length, int terminated 
     return table_align_up64(8+length+(terminated ? 1 : 0));
 }
 
-static SCHEMA_UNUSED const TableBlob * table_blob_at( const TableCtx * ctx, const TableRef * ref )
-{
-    if ( ref->value == 0 ) { return NULL; }
-    return (const TableBlob *)(const void *)(ctx != NULL && ctx->arena != NULL
-        ? table_arena_at(ctx->arena,(uint32_t)ref->value) : (const uint8_t *)(const void *)ref+ref->value);
-}
-static SCHEMA_UNUSED TableBytesView table_bytes_at( const TableCtx * ctx, const TableRef * ref )
-{
-    const TableBlob * blob=table_blob_at(ctx,ref);
-    TableBytesView view={NULL,0};
-    if(blob!=NULL) { view.data=(const uint8_t *)(blob+1); view.length=blob->length; } return view;
-}
-static SCHEMA_UNUSED TableStringView table_string_at( const TableCtx * ctx, const TableRef * ref )
-{
-    const TableBlob * blob=table_blob_at(ctx,ref);
-    TableStringView view={NULL,0};
-    if(blob!=NULL) { view.data=(const char *)(blob+1); view.length=blob->length; } return view;
-}
 static SCHEMA_UNUSED TableBlob * table_blob_emplace( TableWorker * worker, TableRef * ref, int64_t length, int terminated )
 {
     int64_t bytes=table_blob_storage(length,terminated);
@@ -1206,16 +1184,6 @@ static SCHEMA_UNUSED int64_t table_node_wire_storage( const TableNodeType * type
     }
     return type->blob ? table_blob_storage(body->size,type->blob==2) : type->wire_storage(body);
 }
-
-static SCHEMA_UNUSED int table_blob_save( TableWriter * w, const void * value )
-{
-    const TableBlob * blob=(const TableBlob *)value;
-    table_writer_raw(w,blob+1,blob->length); return !w->overflow;
-}
-static SCHEMA_UNUSED int table_blob_edges( TableNumbering * n, const void * value )
-{ (void)n; (void)value; return 1; }
-static const TableNodeType table_bytes_node_type = { kTableBytesTypeId, 0, table_blob_save, table_blob_edges, 1, NULL, NULL, 8, 0, NULL, NULL };
-static const TableNodeType table_string_node_type = { kTableStringTypeId, 0, table_blob_save, table_blob_edges, 2, NULL, NULL, 8, 0, NULL, NULL };
 
 
 static SCHEMA_UNUSED uint64_t table_number_hash( const void * value )

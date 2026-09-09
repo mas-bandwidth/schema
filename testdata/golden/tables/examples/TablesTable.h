@@ -10556,6 +10556,7 @@ inline uint32_t ProfileConfigNodeAlloc( uint64_t type_id, TableWorker & worker, 
 inline void ProfileConfigNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
     (void) nodes; // every node this root can name is a FIXED table
+    (void) r; (void) at; // this root's numbering is always empty: nothing is ever decoded
     switch ( type_id )
     {
         default: break;
@@ -10592,6 +10593,7 @@ inline bool ProfileConfigNodeMessageExtent( uint64_t type_id, TableBitReader & r
 inline bool ProfileConfigNodeMessageBody( uint64_t type_id, TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, uint8_t * at )
 {
     (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
+    (void) r; (void) vocabulary; (void) at; // this root's numbering is always empty: nothing is ever decoded
     bool ok = false;
     switch ( type_id )
     {
@@ -11384,6 +11386,7 @@ inline uint32_t RootConfigNodeAlloc( uint64_t type_id, TableWorker & worker, int
 inline void RootConfigNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
     (void) nodes; // every node this root can name is a FIXED table
+    (void) r; (void) at; // this root's numbering is always empty: nothing is ever decoded
     switch ( type_id )
     {
         default: break;
@@ -11420,6 +11423,7 @@ inline bool RootConfigNodeMessageExtent( uint64_t type_id, TableBitReader & r, c
 inline bool RootConfigNodeMessageBody( uint64_t type_id, TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, uint8_t * at )
 {
     (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
+    (void) r; (void) vocabulary; (void) at; // this root's numbering is always empty: nothing is ever decoded
     bool ok = false;
     switch ( type_id )
     {
@@ -15444,6 +15448,7 @@ inline bool DebuffLoadMessageBodyRetain( TableBitReader & r, const TableVocabula
 inline void ProfileConfigNodeBodyRetain( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at, TableRetain * retain, uint32_t node )
 {
     (void) nodes; // every node this root can name is a FIXED table
+    (void) r; (void) at; // this root's numbering is always empty: nothing is ever decoded
     (void) retain; (void) node;
     switch ( type_id )
     {
@@ -15595,6 +15600,7 @@ inline const ProfileConfig * ProfileConfigLoadRetain( uint8_t * region, int64_t 
 inline bool ProfileConfigNodeMessageBodyRetain( uint64_t type_id, TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, uint8_t * at, TableRetain * retain, uint32_t node )
 {
     (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
+    (void) r; (void) vocabulary; (void) at; // this root's numbering is always empty: nothing is ever decoded
     (void) retain; (void) node;
     bool ok = false;
     switch ( type_id )
@@ -15865,6 +15871,7 @@ inline int64_t ProfileConfigSaveRetainMessages( Args &&... )
 inline void RootConfigNodeBodyRetain( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at, TableRetain * retain, uint32_t node )
 {
     (void) nodes; // every node this root can name is a FIXED table
+    (void) r; (void) at; // this root's numbering is always empty: nothing is ever decoded
     (void) retain; (void) node;
     switch ( type_id )
     {
@@ -16016,6 +16023,7 @@ inline const RootConfig * RootConfigLoadRetain( uint8_t * region, int64_t region
 inline bool RootConfigNodeMessageBodyRetain( uint64_t type_id, TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, uint8_t * at, TableRetain * retain, uint32_t node )
 {
     (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
+    (void) r; (void) vocabulary; (void) at; // this root's numbering is always empty: nothing is ever decoded
     (void) retain; (void) node;
     bool ok = false;
     switch ( type_id )
