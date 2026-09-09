@@ -473,6 +473,66 @@ tables-c-big-endian: build/schema_test_c_soak_be
 	$(BE_RUN) ./build/schema_test_c_soak_be 0
 	@echo "big-endian C leg: the tolerant wire crosses the byte order — same goldens, byte for byte"
 
+# THE NEGATIVE CONTROL FOR THAT LEG. tables-big-endian-negative-control
+# (Makefile) sabotages cpptable's put16, so a C-side byte-order defect in
+# table_writer_finish's #else arm — the arm #815 put behind this gate — would
+# not turn that control red. This one puts the fallback's explicit little-endian
+# stores back to a host-order copy, the same defect class as put16, and requires
+# the s390x soak golden to go red. The same sabotage stays green on this
+# little-endian host: the #else is not compiled there, and that pair is the
+# argument for the C leg the way put16 is for the C++ one.
+#
+# Overlay, so no tracked file is written.
+C_BE_NC := build/c-be-sabotage
+C_BE_NC_GEN := $(C_BE_NC)/generated
+C_BE_NC_INCLUDES := $(subst build/tables-generated-c,$(C_BE_NC_GEN),$(C_CONFORMANCE_INCLUDES))
+C_BE_NC_SOAK_SRCS := test/c-tables/soak_main.c test/conformance/c/unit_tabledemo.c \
+	test/conformance/c/unit_tblv1.c test/conformance/c/unit_tblv2.c \
+	test/conformance/c/unit_tblp1.c test/conformance/c/unit_tblp3.c \
+	$(C_BE_NC_GEN)/examples/TablesTable.c $(C_BE_NC_GEN)/examples/WideTable.c \
+	$(C_BE_NC_GEN)/examples/NestedTable.c $(C_BE_NC_GEN)/examples/KeyedTable.c \
+	$(C_BE_NC_GEN)/examples/PackTable.c $(C_BE_NC_GEN)/examples/GuardedTable.c \
+	$(C_BE_NC_GEN)/examples/RangesTable.c \
+	$(C_BE_NC_GEN)/v1/V1Table.c $(C_BE_NC_GEN)/v2/V2Table.c \
+	$(C_BE_NC_GEN)/p1/P1Table.c $(C_BE_NC_GEN)/p3/P3Table.c
+.PHONY: tables-c-big-endian-negative-control
+tables-c-big-endian-negative-control: test/c-tables/soak_main.c
+	@rm -rf $(C_BE_NC) && mkdir -p $(C_BE_NC)
+	@sed 's|for ( j = 0; j < 8; j++ ) { dst\[i \* 8 + j\] = (uint8_t) ( v >> ( j \* 8 ) ); }|for ( j = 0; j < 8; j++ ) { dst[i * 8 + j] = ( (const uint8_t *) \&v )[j]; } /* SABOTAGED: host order */|' \
+		internal/codegen/ctable/wire.go > $(C_BE_NC)/wire.go.txt
+	@cmp -s internal/codegen/ctable/wire.go $(C_BE_NC)/wire.go.txt && \
+		{ echo "NEGATIVE CONTROL: the C fallback-arm sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/ctable/wire.go":"%s/$(C_BE_NC)/wire.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(C_BE_NC)/overlay.json
+	go build -overlay $(C_BE_NC)/overlay.json -o $(C_BE_NC)/schema ./cmd/schema
+	$(C_BE_NC)/schema generate --lang c --out $(C_BE_NC_GEN)/examples tables/examples
+	$(C_BE_NC)/schema generate --lang c --out $(C_BE_NC_GEN)/v1 test/tables/V1.schema
+	$(C_BE_NC)/schema generate --lang c --out $(C_BE_NC_GEN)/v2 test/tables/V2.schema
+	$(C_BE_NC)/schema generate --lang c --out $(C_BE_NC_GEN)/p1 test/tables/P1.schema
+	$(C_BE_NC)/schema generate --lang c --out $(C_BE_NC_GEN)/p3 test/tables/P3.schema
+	@grep -q "SABOTAGED: host order" $(C_BE_NC_GEN)/examples/TablesTable.h || \
+		{ echo "NEGATIVE CONTROL: the sabotaged emitter emitted an unsabotaged fallback arm"; exit 1; }
+	@grep -q "memcpy( dst, w->vocabulary->ids" $(C_BE_NC_GEN)/examples/TablesTable.h || \
+		{ echo "NEGATIVE CONTROL: the sabotage removed the little-endian memcpy arm"; exit 1; }
+	$(CC) -std=c99 -Wall -Wextra -Werror -Wshadow -Wtype-limits $(C_TAUTOLOGICAL) \
+		-O2 -ffp-contract=off $(C_BE_NC_INCLUDES) $(C_BE_NC_SOAK_SRCS) \
+		-o $(C_BE_NC)/soak -lm
+	@./$(C_BE_NC)/soak 0 > $(C_BE_NC)/host.log 2>&1 || \
+		{ echo "NEGATIVE CONTROL FAILED: a host-order C trailer fallback is visible on a little-endian host — this host is not little-endian, or the sabotage is not the one described"; \
+		  cat $(C_BE_NC)/host.log; exit 1; }
+	@echo "negative control: a host-order C trailer fallback leaves the LITTLE-ENDIAN soak green"
+	$(BE_CC) -std=c99 -Wall -Wextra -Werror -Wshadow -O2 -ffp-contract=off -static \
+		-DSCHEMA_SOAK_NO_INTERPOSE $(C_BE_NC_INCLUDES) $(C_BE_NC_SOAK_SRCS) \
+		-o $(C_BE_NC)/soak_be -lm
+	@if $(BE_RUN) ./$(C_BE_NC)/soak_be 0 > $(C_BE_NC)/be.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a host-order C trailer fallback left the s390x golden gate green"; \
+		cat $(C_BE_NC)/be.log; exit 1; \
+	fi
+	@grep -q "does not re-save to its own bytes" $(C_BE_NC)/be.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the s390x soak went red, but not on a wire golden"; \
+		  cat $(C_BE_NC)/be.log; exit 1; }
+	@echo "negative control: the same C fallback turns the s390x golden gate red, on the wire goldens"
+
 # THE KEYED None REFUSAL, C side (docs/SPEC-TABLES.md §2.4). C's accessor is a
 # macro over table_keyed_slot rather than an operator[] — the one spelling that
 # differs from the reference — and the refusal inside it is the same assert plus

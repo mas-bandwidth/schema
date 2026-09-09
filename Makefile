@@ -2800,7 +2800,9 @@ tables-cook-endian: bin/schema
 # every union arm id — and the leg must go RED on the big-endian target. The
 # same sabotage stays GREEN on this little-endian host, and that pair is the
 # whole argument for the leg: this is precisely the defect class no
-# little-endian CI can see.
+# little-endian CI can see. The C twin is tables-c-big-endian-negative-control
+# (make/c.mk): it sabotages table_writer_finish's #else arm, because this
+# control never reaches that arm.
 #
 # The sabotaged emitter reaches the compiler through `go build -overlay`, so no
 # tracked file is ever written to: an interrupt cannot leave a sabotaged
