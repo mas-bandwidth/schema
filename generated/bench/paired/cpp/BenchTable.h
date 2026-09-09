@@ -281,17 +281,38 @@ struct TableWriter
     BENCH_TABLE_INLINE void put8( uint8_t v )   { raw( &v, 1 ); }
     BENCH_TABLE_INLINE void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
     BENCH_TABLE_INLINE void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
-    BENCH_TABLE_INLINE void put64( uint64_t v ) { put32( uint32_t( v ) ); put32( uint32_t( v >> 32 ) ); }
+    // THE SAME EIGHT BYTES two put32 wrote, assembled once and handed to raw
+    // once: little-endian, lowest byte first. One capacity test rather than
+    // two, and NOT ONE FEWER — raw still asks before it copies, so an
+    // undersized buffer still raises the overflow flag and Save still answers -1.
+    BENCH_TABLE_INLINE void put64( uint64_t v )
+    {
+        uint8_t b[8] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ),
+                         uint8_t( v >> 32 ), uint8_t( v >> 40 ), uint8_t( v >> 48 ), uint8_t( v >> 56 ) };
+        raw( b, 8 );
+    }
     // a 128-bit value as two lanes, the low half first (docs/SPEC-TABLES.md §3)
     BENCH_TABLE_INLINE void put128( uint64_t lo, uint64_t hi ) { put64( lo ); put64( hi ); }
     // EVERY LENGTH, COUNT, INDEX AND ID REFERENCE IS ONE CANONICAL UNSIGNED
     // LEB128 (docs/SPEC-TABLES.md §3): seven value bits a byte, the lowest
     // group first, the high bit set on every byte but the last. One value has
     // one spelling, so two conforming writers agree byte for byte.
+    //
+    // THE GROUPS ARE ASSEMBLED IN A STACK BUFFER AND HANDED TO raw ONCE. Ten
+    // bytes is the whole range: 64 value bits at seven bits a group. The
+    // spelling is the byte-at-a-time loop's, group for group; what changes is
+    // that one capacity test covers the value instead of one per byte. An
+    // undersized buffer still raises the overflow flag — raw's test is untouched —
+    // and a value that does not fit now leaves the buffer alone rather than
+    // filling it to the brim first. Nothing reads those bytes: the caller
+    // that overflowed answers -1.
     BENCH_TABLE_INLINE void putleb( uint64_t v )
     {
-        while ( v >= 0x80 ) { put8( uint8_t( v ) | 0x80 ); v >>= 7; }
-        put8( uint8_t( v ) );
+        uint8_t b[10];
+        int64_t n = 0;
+        while ( v >= 0x80 ) { b[n++] = uint8_t( v ) | 0x80; v >>= 7; }
+        b[n++] = uint8_t( v );
+        raw( b, n );
     }
 };
 
@@ -5797,11 +5818,16 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
     {
         const uint64_t ref_entities = ids.ref( 0x935d0fb07bb3822aull );
         int64_t body_entities = 0;
+        // entities: the sizing loop's per-element lengths, kept for the write loop
+        // below — the element's own length prefix is the number the parent's
+        // body length was built from, so measuring it twice can only agree.
+        int64_t elem_cache[ 8 ];
         body_entities += 1 + TableLebBytes( (uint64_t) ( value.entities_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.entities_count; elem_i++ )
         {
             const int64_t elem_bytes = MixedEntityMeasureBody( ids, value.entities[elem_i] );
             if ( elem_bytes < 0 ) { return false; }
+            if ( elem_i < 8 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_entities += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         w.putleb( ref_entities ); w.put8( 14 ); w.putleb( (uint64_t) body_entities ); // entities
@@ -5809,7 +5835,7 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
         for ( int32_t elem_i = 0; elem_i < value.entities_count; elem_i++ )
         {
             {
-                const int64_t elem_len = MixedEntityMeasureBody( ids, value.entities[elem_i] );
+                const int64_t elem_len = elem_i < 8 ? elem_cache[ elem_i ] : MixedEntityMeasureBody( ids, value.entities[elem_i] );
                 if ( elem_len < 0 ) return false;
                 w.putleb( (uint64_t) elem_len );
                 if ( !MixedEntitySaveBody( w, ids, value.entities[elem_i] ) ) return false;
@@ -5821,11 +5847,16 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
     {
         const uint64_t ref_stats = ids.ref( 0xee639cad45b1994cull );
         int64_t body_stats = 0;
+        // stats: the sizing loop's per-element lengths, kept for the write loop
+        // below — the element's own length prefix is the number the parent's
+        // body length was built from, so measuring it twice can only agree.
+        int64_t elem_cache[ 64 ];
         body_stats += 1 + TableLebBytes( (uint64_t) ( value.stats_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.stats_count; elem_i++ )
         {
             const int64_t elem_bytes = MixedStatMeasureBody( ids, value.stats[elem_i] );
             if ( elem_bytes < 0 ) { return false; }
+            if ( elem_i < 64 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_stats += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         w.putleb( ref_stats ); w.put8( 14 ); w.putleb( (uint64_t) body_stats ); // stats
@@ -5833,7 +5864,7 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
         for ( int32_t elem_i = 0; elem_i < value.stats_count; elem_i++ )
         {
             {
-                const int64_t elem_len = MixedStatMeasureBody( ids, value.stats[elem_i] );
+                const int64_t elem_len = elem_i < 64 ? elem_cache[ elem_i ] : MixedStatMeasureBody( ids, value.stats[elem_i] );
                 if ( elem_len < 0 ) return false;
                 w.putleb( (uint64_t) elem_len );
                 if ( !MixedStatSaveBody( w, ids, value.stats[elem_i] ) ) return false;

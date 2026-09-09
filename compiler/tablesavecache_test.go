@@ -58,7 +58,7 @@ func saveCacheSchema() string {
 	b.WriteString("package savecache\n\n")
 	b.WriteString("// 140 fields, so the id table crosses 127 entries mid-array\n")
 	b.WriteString("table Wide\n{\n")
-	for i := 0; i < saveCacheWideFields; i++ {
+	for i := range saveCacheWideFields {
 		fmt.Fprintf(&b, "    f%03d int32\n", i)
 	}
 	b.WriteString("}\n\n")
@@ -90,7 +90,7 @@ static void set_wide( Wide & w, int which, int32_t v )
     switch ( which )
     {
 `)
-	for i := 0; i < saveCacheWideFields; i++ {
+	for i := range saveCacheWideFields {
 		fmt.Fprintf(&b, "        case %d: w.f%03d = v; break;\n", i, i)
 	}
 	b.WriteString(`        default: break;
