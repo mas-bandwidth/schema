@@ -400,10 +400,44 @@ static SCHEMA_UNUSED void table_writer_rewind( const TableWriter * probe )
         o=v->ordinal_of[v->count]; if(o>=0) { v->slot[o]=-1; }
     }
 }
+/* THE TRAILER IS A CONTIGUOUS RUN OF 64-BIT LITTLE-ENDIAN WORDS
+   (docs/SPEC-TABLES.md §3): the interned entry ids followed by the entry count.
+   A SINGLE CAPACITY TEST COVERS THE ENTIRE TRAILER EXTENT instead of one test
+   per 8-byte put64, and on little-endian architectures the contiguous ids array
+   is bulk-copied in place — the same trailer the C++ TableIdsWrite writes, byte
+   for byte. NOTHING IS REMOVED: an undersized buffer still raises the overflow
+   flag and Save still answers -1; what differs is only on that failing path,
+   where a trailer that does not fit now leaves the buffer alone rather than
+   filling it entry by entry, and nothing reads those bytes. A NULL BUFFER IS
+   THE SIZING WRITER: it counts the extent and copies nothing. */
 static SCHEMA_UNUSED void table_writer_finish( TableWriter * w )
 {
-    int i; for ( i = 0; i < w->vocabulary->count; i++ ) { table_writer_put64( w, w->vocabulary->ids[i] ); }
-    table_writer_put64( w, (uint64_t) w->vocabulary->count );
+    const int64_t count = w->vocabulary->count;
+    const int64_t total_bytes = ( count + 1 ) * 8;
+    if ( w->overflow || w->offset < 0 || w->offset > w->capacity || total_bytes > w->capacity - w->offset )
+    {
+        w->overflow = 1;
+        return;
+    }
+    if ( w->buffer != NULL )
+    {
+        uint8_t * dst = w->buffer + w->offset;
+#if defined( __BYTE_ORDER__ ) && defined( __ORDER_LITTLE_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+        const uint64_t n = (uint64_t) count;
+        if ( count > 0 ) { memcpy( dst, w->vocabulary->ids, (size_t) ( count * 8 ) ); }
+        memcpy( dst + count * 8, &n, 8 );
+#else
+        /* Explicit little-endian stores also cover compilers that do not expose
+           byte-order macros. Native copies require positive little-endian proof. */
+        int64_t i; int j;
+        for ( i = 0; i <= count; i++ )
+        {
+            const uint64_t v = i < count ? w->vocabulary->ids[i] : (uint64_t) count;
+            for ( j = 0; j < 8; j++ ) { dst[i * 8 + j] = (uint8_t) ( v >> ( j * 8 ) ); }
+        }
+#endif
+    }
+    w->offset += total_bytes;
 }
 
 typedef struct TableReader
