@@ -1,0 +1,8 @@
+schema-lock 1
+package armdemo
+
+fixed table Node layout=0x4c160b6acc8ee562
+    field v id=0xaf63eb4c86020609 kind=4 width=4
+
+fixed table Only layout=0xdd4a2fb00ae58fee
+    field w id=0xaf63ea4c86020456 kind=4 width=4

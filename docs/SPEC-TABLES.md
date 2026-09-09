@@ -2970,6 +2970,207 @@ the framing and not the clamp, and the clamp is the `report` row above. Red if
 either writer's bytes differ from the pin, if either read is not silent, or if
 the two loaded values are not equal field for field.
 
+### 2.10 Evolution of fixed tables: append-only, and the lock
+
+A VARIABLE-LENGTH table rides the id-table wire, where evolution is wire
+tolerance (§4): fields may be added, removed and reordered, and the reader
+finds each one by its id. **A FIXED-SIZE table has none of that.** It is a
+plain C record (§6.1) — no ids, no terminators, no names, walked by offset —
+so the field ORDER and the field WIDTHS *are* the contract. A reordered field,
+a removed one, a widened one: every one of those is read as garbage by a
+reader holding an older record, silently, with no counter to fire and nothing
+in the bytes that could have said so.
+
+So a fixed table gets a discipline instead of a wire, and the owner ruled it:
+
+> "append only, and deprecation possibly. might keep it light weight?"
+> — Glenn Fiedler, project owner
+
+**Network Next ran this rule by hand for years** — a `uint8` version at the
+front of the struct, bumped on every change, new fields appended at the bottom,
+and hand-written upgrade paths kept alive for a limited time:
+
+> "manual stuff, and it is a footgun, but it worked."
+> — Glenn Fiedler, project owner
+
+It worked because the discipline is right. It was a footgun because nothing
+enforced it. **The rule below is that discipline with the footgun taken away:
+the compiler owns a lock file, and the check is the hand nobody has to
+remember to use.** On the mechanism itself: *"OK that sounds cool, go ahead."*
+
+**THE RULE. A fixed table evolves APPEND-ONLY.** A new field goes at the
+BOTTOM and nowhere else. A field that has outlived its use is DEPRECATED IN
+PLACE — it keeps its slot forever. Nothing is reordered, nothing is removed,
+nothing is widened, and nothing that has been deprecated comes back.
+
+#### The `deprecated` marker
+
+```
+fixed table ShipConfig
+{
+    name     string(32)
+    speed    float32
+    armor    uint8 | deprecated   // retired in place: the slot stays
+    shields  uint8                // its replacement, appended at the bottom
+}
+```
+
+`deprecated` is a TAG — a valueless qualifier in the open half of the
+qualification section (SPEC §4.2) — because there is nothing for it to take a
+value of, and it costs the grammar nothing. What it means:
+
+- **THE SLOT STAYS EXACTLY WHERE IT IS.** The record is walked by offset;
+  removing the field would slide every field after it. Deprecation is a
+  statement about MEANING, never about layout, and it moves not one byte.
+- **The writer emits the field's default.** Nothing writes a retired field, so
+  what goes into the slot is what a fresh record holds there — its specified
+  default, or zero (SPEC §5).
+- **The reader ignores it.** The slot is read like any other and the value in
+  it means nothing; a consumer that still reads it is reading what the last
+  writer that cared left behind.
+- **NEW USES ARE REFUSED**, and "new use" is deliberately small: a deprecated
+  field may not be named by a **guard** — an `if` condition is the one
+  construct in this language that reads another field's value, and branching
+  on a retired field decides the shape of a body by accident — and it may not
+  be a **key**, which the language already gives for free: a map key takes no
+  qualification at all (§2.8), so a key can never carry the marker. Everything
+  else about the field is left alone. The marker is documentation with two
+  teeth, not an access-control system.
+- **It is ONE-WAY.** A field that has been deprecated is not un-deprecated:
+  the readers were told to ignore the slot and the writers that have run since
+  left it at its default, so what would come back is not data.
+
+A `deprecated` field's id, kind and width are unchanged, and it still rides
+the id-table wire when its table is read there — deprecation is not removal in
+any form.
+
+#### Renaming is not a change
+
+`was = "old_name"` (§5) keeps a field's identity through a rename: the wire id
+stays the hash of the old name. **A rename under `was` is therefore not a
+change to a fixed table at all** — the lock records the wire name, so the file
+does not move.
+
+#### Compaction is a new table
+
+There is no mechanism for reclaiming the slots a run of deprecated fields
+holds, and there is not going to be one: **compaction is a NEW fixed table
+under a NEW name**, with the fields that are still live, and the old table
+stays exactly as it is for as long as anything holds a record written under
+it.
+
+#### The lock
+
+`schema.lock` sits beside the unit's schema files and is **written by the
+compiler only**. For every fixed table it records the field sequence IN
+DECLARED ORDER — one entry per field carrying the field's wire id, its kind,
+its WIDTH in the record and its `deprecated` marker — and the hash of that
+sequence:
+
+```
+schema-lock 1
+package fleet
+
+fixed table ShipConfig layout=0x0a301f6d45fa0b3b
+    field name id=0xc4bcadba8e631b86 kind=12 width=40
+    field speed id=0x2281498aa0200e40 kind=10 width=4
+    field armor id=0xd19988b67e699194 kind=6 width=1 deprecated
+    field shields id=0x798c587767067199 kind=6 width=1
+```
+
+The width is the field's WHOLE storage in the record — an array's elements
+together, a `string(N)`'s buffer and its length companion, an optional's value
+and its presence bool — the same measurement the block form's layout contract
+takes (§19.3), because that is the fact a reader standing at an offset is
+standing on.
+
+**The layout hash is derived and written down anyway.** It and the entries
+above it are one statement made twice, so a lock whose halves disagree has
+been edited by a hand rather than written by the compiler, and that is the
+only way this file can be caught lying.
+
+**THE CHECK runs on every compile — `schema check` and `schema generate`.**
+For every fixed table the lock carries, THE LOCKED SEQUENCE MUST BE A PREFIX
+OF THE LIVE ONE, entry for entry, with `deprecated` allowed only to turn ON.
+Anything else is a refusal naming the table and the FIRST differing entry —
+the first one is the one a person can fix, and a list of every consequence of
+a single reorder teaches nothing the first line did not:
+
+- a **reorder** or an **insert before the end**: *"fixed table ShipConfig:
+  entry 2, field speed (id=0x…), is field armor (id=0x…) in the declaration —
+  a fixed table evolves APPEND-ONLY: a field is added at the BOTTOM, never
+  inserted, moved or removed, because the record has no ids in it and a reader
+  at this offset would read one field as the other (docs/SPEC-TABLES.md
+  §2.10)"*
+  A removal from the middle lands here too, and rightly: the entry the lock
+  names now holds the field that followed it, which is exactly what a reader
+  at that offset would find.
+- a **removal from the end**: *"… is in the lock and gone from the declaration
+  — a fixed table evolves APPEND-ONLY: a field is deprecated in place, never
+  removed, because the record has no ids in it and every field after a removed
+  one slides (docs/SPEC-TABLES.md §2.10); restore it and mark it
+  `| deprecated`"*
+- a **changed width**, checked before the kind because it is the fact that
+  slides every field after it: *"… is 1 bytes wide in the lock and 4 in the
+  declaration — a field already in the lock keeps its width: a fixed record is
+  walked by offset, so widening one field moves every field after it
+  (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one"*
+- a **changed kind** at the same width — `float32` read as `int32` moves no
+  byte and still lies: *"… is kind 10 in the lock and kind 4 in the
+  declaration — a field already in the lock keeps its type: every record
+  already written holds the old one, and nothing on the wire says which
+  (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one"*
+- an **un-deprecation**: *"… is deprecated in the lock and live in the
+  declaration — deprecation is ONE-WAY: readers were told to ignore this slot
+  and the writers that have run since left it at its default, so what comes
+  back is not data (docs/SPEC-TABLES.md §2.10); append a new field instead"*
+- a **table that is no longer a fixed table of this unit**: *"fixed table
+  ShipConfig is in the lock and this unit no longer declares it as a fixed
+  table — a fixed table's layout is a promise to every record already written,
+  and a promise is not withdrawn; compaction is a NEW table under a NEW name
+  (docs/SPEC-TABLES.md §2.10)"*
+- a **hand-edited lock**: *"fixed table ShipConfig: the lock records
+  layout=0x… over entries that hash to 0x… — the lock is written by the
+  compiler and a hand-edit does not hold; regenerate it with `schema lock` and
+  make the schema change you meant instead (docs/SPEC-TABLES.md §2.10)"*
+
+**NO FILE MEANS NO CHECK.** A unit that has never been locked promises
+nothing, and a table the lock does not carry is new and passes: locking is
+what `schema lock` is for.
+
+#### `schema lock`
+
+```
+schema lock [--print] [--verbose] [dir|files...]
+```
+
+`schema lock` rewrites the file, and **it is the only thing that writes it**.
+It only ever APPENDS entries, adds tables and flips `deprecated` on: it runs
+the check's own comparison first and **refuses to write a lock the check would
+refuse**, so the one command that moves the file cannot be the one that breaks
+the rule. It is idempotent — a lock that is already current is left untouched
+— and `--print` writes nothing at all.
+
+There is no `--reason` here and no history section, and the difference from the
+tables baseline (§18.4) is the point: moving a BASELINE declares an intentional
+break with data already written, so it wants a sentence a person reads years
+later. Writing a LOCK declares nothing — every write it accepts is an append,
+and an append breaks nothing.
+
+#### Held by test
+
+`internal/lockfile` holds the mechanism over a fixture package: an appended
+field passes the check and `schema lock` appends the entry; a reorder, a
+removal, a widening, an insert in the middle and an un-deprecation are each
+refused with the entry named; a `deprecated` marker is allowed, the lock flips
+the flag, the generated code still writes the slot, and a guard on the field is
+refused; a new table adds an entry; a `was =` rename moves no line; and a lock
+whose entries have been hand-edited away from its layout hash is refused.
+`internal/lockfile`'s corpus test regenerates every committed `schema.lock` in
+the tree and compares byte for byte, and compiles each of those units with the
+check on.
+
+
 ## 3. The wire
 
 **The wire is neutral.** It carries none of schema's packing opinions, no

@@ -1,0 +1,12 @@
+schema-lock 1
+package blockhome
+
+fixed table PartFrame layout=0x72e97f7a51d19218
+    field version id=0xbb62c62c9808ea37 kind=9 width=8
+    field parts id=0x0c519da7a1f958c5 kind=14 width=11268
+
+fixed table PartRow layout=0xd3b3439a67da02c5
+    field armor id=0xd19988b67e699194 kind=13 width=40
+    field gunner id=0x40dbb648c0cd44aa kind=13 width=304
+    field part_id id=0x04d6206b33415104 kind=8 width=4
+    field slot id=0x6a771618f6fe31d1 kind=6 width=1

@@ -1,0 +1,24 @@
+schema-lock 1
+package scalardemo
+
+fixed table SimState layout=0x89a2e672a446a9af
+    field tilt id=0x1e5088ef2e9bafc6 kind=20 width=1
+    field angle id=0x401ab8cd06158638 kind=22 width=4
+    field position id=0x4cbf3a26fca1d74a kind=23 width=8
+    field reach id=0x891da1f305deb858 kind=24 width=16
+    field ticks id=0x7fd9266c6a3e25b5 kind=22 width=4
+    field ratio id=0xfbc924118177ade4 kind=25 width=1
+    field speed id=0x2281498aa0200e40 kind=27 width=4
+    field span id=0x8b7dc019093cd0e1 kind=28 width=8
+    field mass id=0x1f3757a2ce7b0ab1 kind=29 width=16
+    field frames id=0x23e5906728b4e66f kind=27 width=4
+    field flux id=0xd61bdd7908af2642 kind=18 width=16
+    field energy id=0xf2fd4f9140ef2f15 kind=18 width=16
+    field entity_id id=0x23fcfd6678e36712 kind=19 width=16
+    field scale id=0x6aacb9fbb71a1d91 kind=22 width=4
+    field samples id=0xe3b1ca6a3b48dddc kind=14 width=12
+    field weights id=0xb1494b6ef08a411e kind=14 width=12
+    field axes id=0x32969e840d9c67b8 kind=16 width=24
+    field seeds id=0x5af1ac301b4ae16d kind=14 width=36
+    field pose id=0x8c2fd80da8957064 kind=13 width=24
+    field spawn id=0x4328f78ab20e1f98 kind=13 width=25

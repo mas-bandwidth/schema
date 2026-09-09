@@ -23,6 +23,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/baseline"
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/format"
+	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/version"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -58,6 +59,16 @@ type Compiler struct {
 	// changed field kind. No file means no check. The CLI sets it for `check`
 	// and `generate`.
 	TablesBaseline bool
+
+	// SchemaLock turns on the SCHEMA LOCK check (docs/SPEC-TABLES.md §2.10):
+	// when a schema.lock sits in the unit's directory, Load compares every
+	// FIXED table's field sequence against the locked one and REFUSES
+	// anything but an append — a reorder, a removal, a changed kind or width,
+	// an un-deprecation, an insert before the end. A fixed table is a plain C
+	// record with no ids in it, so every one of those is read as garbage with
+	// no counter to fire. No file means no check. The CLI sets it for `check`
+	// and `generate`.
+	SchemaLock bool
 
 	// OnWarn, when set, receives each non-fatal report a load produced — the
 	// baseline's warn class (a shrunk bound, a removed enum variant or union
@@ -153,6 +164,11 @@ func (c *Compiler) Load(paths []string) (*ir.Unit, error) {
 		}
 		if len(berrs) > 0 {
 			return nil, Diagnostics(berrs)
+		}
+	}
+	if c.SchemaLock {
+		if lerrs := lockfile.Check(u, paths); len(lerrs) > 0 {
+			return nil, Diagnostics(lerrs)
 		}
 	}
 	return u, nil

@@ -1,0 +1,31 @@
+schema-lock 1
+package listdemo
+
+fixed table Bounded layout=0xde4d2356cb2409ff
+    field items id=0x3e7884bf4f412c6f kind=14 width=36
+    field tag id=0x56d7ab194448a4f3 kind=4 width=4
+
+fixed table Item layout=0x02e33cb64d7a0933
+    field count id=0xb1e5e28e4479a274 kind=4 width=4
+
+fixed table LogEntry layout=0xcc7e27337ba5d9a6
+    field tick id=0x1e7683ef2ebc7684 kind=8 width=4
+
+fixed table Photo layout=0x55fc1627fe82a95d
+    field width id=0xdbdacd932fd1e9bf kind=8 width=4
+    field height id=0x17720bf67d347222 kind=8 width=4
+
+fixed table Placement layout=0x7234da57109b4470
+    field x id=0xaf63f54c86021707 kind=10 width=4
+    field y id=0xaf63f44c86021554 kind=10 width=4
+    field model id=0x9de543933e6e703a kind=8 width=4
+
+fixed table Point layout=0xed3b6866a6880895
+    field x id=0xaf63f54c86021707 kind=4 width=4
+    field y id=0xaf63f44c86021554 kind=4 width=4
+
+fixed table Sample layout=0x4c160b6acc8ee562
+    field v id=0xaf63eb4c86020609 kind=4 width=4
+
+fixed table Unit layout=0x4c160b6acc8ee562
+    field v id=0xaf63eb4c86020609 kind=4 width=4

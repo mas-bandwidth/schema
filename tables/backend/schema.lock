@@ -1,0 +1,27 @@
+schema-lock 1
+package backenddemo
+
+fixed table Envelope layout=0xa1d09d7092cc56a0
+    field payload id=0xcfb8a9d063b5e9e5 kind=15 width=176
+
+fixed table LoginRequest layout=0x76c57c3551a974ee
+    field player_id id=0xc14ae3ff748dc438 kind=9 width=8
+    field session_token id=0x26860f8b6834fa0d kind=14 width=36
+    field client_build id=0xb865d537bd0b08f9 kind=8 width=4
+    field region id=0xc755a623f50a24dd kind=7 width=1
+
+fixed table MatchResult layout=0xb8d1169575f46f54
+    field match_id id=0xf336e379ba146826 kind=9 width=8
+    field players id=0x98e3ac7518558b29 kind=14 width=160
+
+fixed table PlayerRow layout=0x4c657e43185f33a7
+    field player_id id=0xc14ae3ff748dc438 kind=9 width=8
+    field score id=0xc10e63fbe7f624f5 kind=4 width=4
+    field placement id=0x98a3024830754a20 kind=6 width=1
+
+fixed table StorePurchase layout=0xa6be627f9f933339
+    field player_id id=0xc14ae3ff748dc438 kind=9 width=8
+    field sku id=0x82429a195ce84d1a kind=12 width=40
+    field quantity id=0xa3768bf56b809718 kind=6 width=1
+    field price_minor id=0xa745885cff2a8840 kind=8 width=4
+    field currency id=0x75a5fb9b890ad416 kind=7 width=1

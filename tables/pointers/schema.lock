@@ -1,0 +1,17 @@
+schema-lock 1
+package graphdemo
+
+fixed table Meta layout=0xe8d4e14b6ab5de96
+    field build id=0x802517e298c70b03 kind=4 width=4
+    field tag id=0x56d7ab194448a4f3 kind=12 width=16
+
+fixed table Settings layout=0xe6f43718413f9fde
+    field quality id=0x7a8060916400fe66 kind=4 width=4
+    field label id=0x39f7fcec8fcb623d kind=12 width=24
+
+fixed table Stamp layout=0xfe173adc77eec5da
+    field tag id=0x56d7ab194448a4f3 kind=12 width=16
+    field seq id=0x823b8a195ce2133c kind=4 width=4
+
+fixed table Tally layout=0x8b89b953e106699d
+    field hits id=0x732dfbcc9b0cf0bb kind=4 width=4

@@ -6,6 +6,7 @@
 //	schema projection [dir|files...]                 print the wire shape the id hashes
 //	schema build-version [--facts] [dir|files...]    print the build version, or the cook projection it hashes
 //	schema tables-baseline [--update --reason "..."]  print or move the tables baseline
+//	schema lock       [--print] [dir|files...]       write the fixed tables' append-only lock
 //	schema fmt        [dir|files...]                 canonicalize schema files in place — the ONLY command that writes one
 //	schema pack       --root T --out F <dir>         a directory tree becomes one table's wire bytes
 //	schema unpack     --root T --in  F <dir>         the wire bytes become the tree again
@@ -68,6 +69,7 @@ func main() {
 		fs.BoolVar(&verbose, "verbose", false, "report the package and protocol id on success")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
 		c.TablesBaseline = true
+		c.SchemaLock = true
 		paths, err := compiler.GatherPaths(fs.Args())
 		if err != nil {
 			fail(err)
@@ -154,6 +156,45 @@ func main() {
 				fmt.Printf("%s is already current\n", path)
 			}
 		}
+	case "lock":
+		// THE SCHEMA LOCK (docs/SPEC-TABLES.md §2.10). Fixed tables evolve
+		// APPEND-ONLY, and this is the file that holds the compiler to it.
+		// WRITING IS THE DEFAULT here, where `tables-baseline` prints by
+		// default, because the two commands do different things: moving a
+		// baseline DECLARES a break and wants a reason, while writing a lock
+		// declares nothing — every write this command accepts is an append,
+		// and it refuses to write anything else.
+		//
+		// It does NOT run the lock check on load: this is the tool for
+		// extending a lock, and the extension is exactly what the check would
+		// be looking at.
+		fs := flag.NewFlagSet("lock", flag.ExitOnError)
+		print := fs.Bool("print", false, "print the lock this unit would write, and write nothing")
+		fs.BoolVar(&verbose, "verbose", false, "name the file written")
+		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
+		paths, err := compiler.GatherPaths(fs.Args())
+		if err != nil {
+			fail(err)
+		}
+		u, err := c.Load(paths)
+		if err != nil {
+			fail(err)
+		}
+		if *print {
+			fmt.Print(compiler.SchemaLockText(u))
+			break
+		}
+		path, rewrote, err := compiler.UpdateSchemaLock(u, paths)
+		if err != nil {
+			fail(err)
+		}
+		if verbose {
+			if rewrote {
+				fmt.Printf("wrote %s\n", path)
+			} else {
+				fmt.Printf("%s is already current\n", path)
+			}
+		}
 	case "fmt":
 		// THE ONE WRITER (SPEC §7.4). Every other command reads the unit and
 		// leaves it alone, so canonicalizing a tree is this command's job and
@@ -188,6 +229,7 @@ func main() {
 		fs.BoolVar(&verbose, "verbose", false, "list the files emitted")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
 		c.TablesBaseline = true
+		c.SchemaLock = true
 		unit := loadUnit(c, fs.Args())
 		files, err := c.Generate(unit, *lang, compiler.Options{})
 		if err != nil {
@@ -593,6 +635,7 @@ func usage() {
   schema projection [dir|files...]
   schema build-version [--facts] [dir|files...]
   schema tables-baseline [--update --reason "..."] [--verbose] [dir|files...]
+  schema lock       [--print] [--verbose] [dir|files...]
   schema fmt        [--verbose] [dir|files...]
   schema pack       --root <Table> --out <file> [--message [--announce <file>] [--batch <Table>=<dir>]...] [--tolerate] [--verbose] <tree-dir> [dir|files...]
   schema unpack     --root <Table> --in  <file> [--announce <file>] [--one-file] [--tolerate] [--verbose] <tree-dir> [dir|files...]

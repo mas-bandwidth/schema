@@ -1,0 +1,50 @@
+schema-lock 1
+package messagedemo
+
+fixed table Edit layout=0xbe47c6e1cd645f8a
+    field revision id=0xd6a4dbc46c8e8658 kind=8 width=4
+    field body id=0xcd4de79bc6c93295 kind=15 width=308
+
+fixed table InsertText layout=0xf04f8aa0fc1a17d3
+    field at id=0x089c4e07b545a968 kind=13 width=8
+    field text id=0xfa04f4ef1995407e kind=12 width=40
+    field origin id=0xb9eae4fe785a14cf kind=15 width=80
+    field origins id=0x4437d86681113b74 kind=14 width=164
+    field modes id=0x9de526933e6e3ef3 kind=14 width=9
+
+fixed table OpenDocument layout=0xb48d35e16433a8fe
+    field path id=0x03c52d0debd70676 kind=12 width=72
+    field mode id=0x0d3deba2c41dadb2 kind=7 width=1
+    field cursor id=0xf927453fbe6252ef kind=13 width=8
+
+fixed table RemoveText layout=0x8f035a1f94799ab1
+    field span id=0x8b7dc019093cd0e1 kind=13 width=16
+
+fixed table SaveDocument layout=0x38a5ca3bdf402daf
+    field path id=0x03c52d0debd70676 kind=12 width=72
+    field force id=0xe75ad8afb3eeebe4 kind=1 width=1
+
+fixed table Script layout=0xbba00356d8d64819
+    field path id=0x03c52d0debd70676 kind=12 width=72
+    field line id=0xbf4ba5ad694f5907 kind=8 width=4
+
+fixed table Selection layout=0x3b4d8007489d5099
+    field start id=0xee5d97ad45ad251f kind=13 width=8
+    field end id=0xc2f00318f053500a kind=13 width=8
+
+fixed table ToolMessage layout=0xeb616a40e97a4446
+    field sequence id=0xaa38aca481f528a8 kind=8 width=4
+    field body id=0xcd4de79bc6c93295 kind=15 width=1640
+    field history id=0x33428945bbd5f2ff kind=14 width=3284
+    field trace id=0xdec59ea6c4eb9aee kind=14 width=233
+    field marks id=0x9077d4a4e1726e29 kind=14 width=3
+
+fixed table Transaction layout=0x7ec646eff3287820
+    field reason id=0x65e8d7f3474f2639 kind=12 width=24
+    field edits id=0x9478d06b697549e6 kind=14 width=940
+    field pending id=0x52dea0d6eeb5083c kind=14 width=616
+    field checkpoints id=0x028afa1c4d757704 kind=14 width=9
+    field snapshots id=0x99dc6354a681403a kind=14 width=33
+
+fixed table User layout=0x7d09ab9b426398c0
+    field name id=0xc4bcadba8e631b86 kind=12 width=24

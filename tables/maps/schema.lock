@@ -1,0 +1,9 @@
+schema-lock 1
+package mapdemo
+
+fixed table Item layout=0x02e33cb64d7a0933
+    field count id=0xb1e5e28e4479a274 kind=4 width=4
+
+fixed table ShipConfig layout=0xfc242dc508985025
+    field name id=0xc4bcadba8e631b86 kind=12 width=72
+    field health id=0x7f69d4b5288ba9cf kind=4 width=4
