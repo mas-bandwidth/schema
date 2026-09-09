@@ -4706,6 +4706,7 @@ func BenchMixedMeasureReason(value *BenchMixed) (int64, error) {
 	return size, nil
 }
 func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
+	var arrayLengths [80]int64
 	{
 		if value.Sequence != 0 {
 			w.Id(0xaa38aca481f528a8)
@@ -4784,22 +4785,13 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 				payload24 := TableWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
 				for i := 0; i < int(value.EntitiesCount); i++ {
-					{
-						mark := payload24.Ids.Count
-						n := MixedEntityMeasureBody(&value.Entities[i], payload24.Ids)
-						if n < 0 {
-							return false
-						}
-						payload24.PutLeb(uint64(n))
-						if payload24.Measuring {
-							payload24.Advance(n)
-						} else {
-							payload24.Ids.Truncate(mark)
-							if !MixedEntitySaveBody(&payload24, &value.Entities[i]) {
-								return false
-							}
-						}
+					n := MixedEntityMeasureBody(&value.Entities[i], payload24.Ids)
+					if n < 0 {
+						return false
 					}
+					arrayLengths[i] = n
+					payload24.PutLeb(uint64(n))
+					payload24.Advance(n)
 					pairs++
 				}
 				if payload24.Overflow {
@@ -4814,21 +4806,9 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 					w.Put8(13)
 					w.PutLeb(pairs)
 					for i := 0; i < int(value.EntitiesCount); i++ {
-						{
-							mark := w.Ids.Count
-							n := MixedEntityMeasureBody(&value.Entities[i], w.Ids)
-							if n < 0 {
-								return false
-							}
-							w.PutLeb(uint64(n))
-							if w.Measuring {
-								w.Advance(n)
-							} else {
-								w.Ids.Truncate(mark)
-								if !MixedEntitySaveBody(w, &value.Entities[i]) {
-									return false
-								}
-							}
+						w.PutLeb(uint64(arrayLengths[i]))
+						if !MixedEntitySaveBody(w, &value.Entities[i]) {
+							return false
 						}
 					}
 				}
@@ -4850,22 +4830,13 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 				payload27 := TableWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
 				for i := 0; i < int(value.StatsCount); i++ {
-					{
-						mark := payload27.Ids.Count
-						n := MixedStatMeasureBody(&value.Stats[i], payload27.Ids)
-						if n < 0 {
-							return false
-						}
-						payload27.PutLeb(uint64(n))
-						if payload27.Measuring {
-							payload27.Advance(n)
-						} else {
-							payload27.Ids.Truncate(mark)
-							if !MixedStatSaveBody(&payload27, &value.Stats[i]) {
-								return false
-							}
-						}
+					n := MixedStatMeasureBody(&value.Stats[i], payload27.Ids)
+					if n < 0 {
+						return false
 					}
+					arrayLengths[i] = n
+					payload27.PutLeb(uint64(n))
+					payload27.Advance(n)
 					pairs++
 				}
 				if payload27.Overflow {
@@ -4880,21 +4851,9 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 					w.Put8(13)
 					w.PutLeb(pairs)
 					for i := 0; i < int(value.StatsCount); i++ {
-						{
-							mark := w.Ids.Count
-							n := MixedStatMeasureBody(&value.Stats[i], w.Ids)
-							if n < 0 {
-								return false
-							}
-							w.PutLeb(uint64(n))
-							if w.Measuring {
-								w.Advance(n)
-							} else {
-								w.Ids.Truncate(mark)
-								if !MixedStatSaveBody(w, &value.Stats[i]) {
-									return false
-								}
-							}
+						w.PutLeb(uint64(arrayLengths[i]))
+						if !MixedStatSaveBody(w, &value.Stats[i]) {
+							return false
 						}
 					}
 				}
