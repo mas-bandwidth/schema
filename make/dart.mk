@@ -188,6 +188,7 @@ tables-dart-release:
 	$(MAKE) tables-dart-fuzz SEED=1 DART_FUZZ_MUTANTS=20000
 	$(MAKE) tables-dart-fuzz SEED=2 DART_FUZZ_MUTANTS=20000
 	$(MAKE) tables-dart-fuzz-negative-control
+	$(MAKE) tables-dart-fixed-form-negative-control
 	$(MAKE) tables-dart-names-negative-control
 	$(MAKE) tables-dart-standalone-negative-control
 
@@ -239,6 +240,88 @@ build/conformance-dart: build/tables-generated-dart/.stamp test/conformance/dart
 	@mkdir -p build
 	$(DART) compile exe -o $@ test/conformance/dart/main.dart >/dev/null
 
+# ---------------------------------------------------------------------------
+# THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
+# ---------------------------------------------------------------------------
+#
+# THE BYTES ARE THE C++ REFERENCE'S, and that is the whole point of this gate.
+# The reference writes seven form-3 files — the six of
+# `make tables-fixedform-corpus` and the paired bench's sixty-four logical
+# records — and states the VALUES beside them, by hand in
+# test/tables/fixedform_dump.cpp and as a JSON oracle beside the bench corpus.
+# The Dart leg reads each file, checks every field against those values, writes
+# it back, and the bytes must be IDENTICAL. A reader and a writer that share
+# one offset mistake round trip perfectly and are both wrong, which is why the
+# values ride beside the bytes and not instead of them.
+#
+# Beside it rides the VERSIONING CONFORMANCE — the FX1/FX2, V1/V2 and P1/P3
+# pairs the C++ leg uses (test/tables/fixedform_main.cpp), case for case — and
+# the negative controls, of which the one §3.4 names is a reader given the
+# WRONG PLAN for a record, which must come out wrong, and one corrupted-layout
+# case per NAMED RULE a reader holds an untrusted peer's layout to.
+build/dart-fixed/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema \
+		test/tables/FX1.schema test/tables/FX2.schema \
+		test/tables/V1.schema test/tables/V2.schema \
+		test/tables/P1.schema test/tables/P3.schema $(SCHEMAS_TABLES) make/dart.mk
+	@rm -rf build/dart-fixed && mkdir -p build/dart-fixed
+	./bin/schema generate --lang dart --out build/dart-fixed/bench bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	./bin/schema generate --lang dart --out build/dart-fixed/fx1 test/tables/FX1.schema
+	./bin/schema generate --lang dart --out build/dart-fixed/fx2 test/tables/FX2.schema
+	./bin/schema generate --lang dart --out build/dart-fixed/v1 test/tables/V1.schema
+	./bin/schema generate --lang dart --out build/dart-fixed/v2 test/tables/V2.schema
+	./bin/schema generate --lang dart --out build/dart-fixed/p1 test/tables/P1.schema
+	./bin/schema generate --lang dart --out build/dart-fixed/p3 test/tables/P3.schema
+	./bin/schema generate --lang dart --out build/dart-fixed/examples tables/examples
+	@touch $@
+
+.PHONY: tables-dart-fixed-form
+tables-dart-fixed-form: build/dart-fixed/.stamp build/fixedform-corpus/.stamp build/fixedform-bench-corpus/.stamp
+	$(DART) analyze build/dart-fixed test/dart-tables/fixedform.dart
+	$(DART) format --set-exit-if-changed --output=none test/dart-tables/fixedform.dart
+	@for f in build/dart-fixed/*/*Fixed.dart; do \
+		$(DART) format --set-exit-if-changed --output=none $$f >/dev/null || \
+			{ echo "dart format drift in $$f"; exit 1; }; \
+	done
+	@echo "tables Dart fixed form: every generated library is format-canonical"
+	$(DART) --enable-asserts test/dart-tables/fixedform.dart build/fixedform-corpus build/fixedform-bench-corpus
+	@mkdir -p build
+	$(DART) compile exe -o build/dart_fixedform test/dart-tables/fixedform.dart >/dev/null
+	./build/dart_fixedform build/fixedform-corpus build/fixedform-bench-corpus
+
+# ITS NEGATIVE CONTROL: move ONE byte of the write template and the leg must go
+# red against the reference's corpus. Without this the byte comparison could be
+# comparing a file with itself and nobody would know.
+.PHONY: tables-dart-fixed-form-negative-control
+tables-dart-fixed-form-negative-control: bin/schema build/fixedform-corpus/.stamp build/fixedform-bench-corpus/.stamp
+	@rm -rf build/dart-fixed-nc && mkdir -p build/dart-fixed-nc
+	@sed 's|val + "." + name + "Length", "Endian.little"}, ";")|val + "." + name + "Length + 1", "Endian.little"}, ";") // SABOTAGED|' \
+		internal/codegen/darttable/fixeddart.go > build/dart-fixed-nc/fixeddart.go.txt
+	@grep -q SABOTAGED build/dart-fixed-nc/fixeddart.go.txt || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/darttable/fixeddart.go":"%s/build/dart-fixed-nc/fixeddart.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/dart-fixed-nc/overlay.json
+	go build -overlay build/dart-fixed-nc/overlay.json -o build/dart-fixed-nc/schema ./cmd/schema
+	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/bench bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/fx1 test/tables/FX1.schema
+	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/fx2 test/tables/FX2.schema
+	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/v1 test/tables/V1.schema
+	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/v2 test/tables/V2.schema
+	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/p1 test/tables/P1.schema
+	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/p3 test/tables/P3.schema
+	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/examples tables/examples
+	@sed 's|../../build/dart-fixed/|$(CURDIR)/build/dart-fixed-nc/gen/|g' \
+		test/dart-tables/fixedform.dart > build/dart-fixed-nc/fixedform.dart
+	@if $(DART) build/dart-fixed-nc/fixedform.dart build/fixedform-corpus build/fixedform-bench-corpus \
+			> build/dart-fixed-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a text length one byte off left the fixed form green"; \
+		cat build/dart-fixed-nc/log; exit 1; \
+	fi
+	@grep -q "first byte differing from the C++ reference" build/dart-fixed-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the fixed form went red for another reason"; \
+		  cat build/dart-fixed-nc/log; exit 1; }
+	@grep -m1 "first byte differing from the C++ reference" build/dart-fixed-nc/log
+	@echo "negative control: one byte off the Dart write template reds the reference byte match"
+
 # THE DART LEG of `make test`. THE DART PORT's own instruments
 # (docs/SPEC-TABLES.md): the emitted block and cook sources held to what `dart
 # format` writes and what the analyzer accepts, the name-claim control, the
@@ -253,6 +336,9 @@ test-dart: toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp 
 	$(MAKE) tables-dart-standalone-negative-control
 	$(MAKE) tables-dart-fuzz DART_FUZZ_MUTANTS=1500
 	$(MAKE) tables-dart-fuzz-negative-control
+	# THE FIXED FORM against the C++ reference's own bytes (§3.4)
+	$(MAKE) tables-dart-fixed-form
+	$(MAKE) tables-dart-fixed-form-negative-control
 	$(DART) analyze generated/dart generated/dart-ludicrous generated/bench/dart test/dart test/dart-ludicrous bench/dart
 	$(DART) format --set-exit-if-changed --output=none generated/dart generated/dart-ludicrous generated/bench/dart
 	cd test/dart && $(DART) --enable-asserts main.dart
