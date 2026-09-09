@@ -2531,39 +2531,109 @@ namespace Bench
             ref struct Ids
             {
                 public Span<ulong> Values;
-                public Span<int> Slots;
+                public Span<ushort> Slots;
+                public Span<short> OrdinalOf;
+                public Span<int> Index;
                 public int Count;
                 public Graph Graph;
-                public Ids(Span<ulong> values) { Values = values; Slots = default; Count = 0; Graph = null; }
-                public Ids(Span<ulong> values, Span<int> slots)
-                { Values = values; Slots = slots; Slots.Clear(); Count = 0; Graph = null; }
+                public Ids(Span<ulong> values)
+                {
+                    Values = values; Slots = default; OrdinalOf = default; Index = default; Count = 0; Graph = null;
+                }
+                public Ids(Span<ulong> values, Span<int> index)
+                {
+                    Values = values; Slots = default; OrdinalOf = default; Index = index; if (!Index.IsEmpty) { Index.Clear(); } Count = 0; Graph = null;
+                }
+                public Ids(Span<ulong> values, Span<ushort> slots, Span<short> ordinalOf)
+                {
+                    Values = values; Slots = slots; if (!Slots.IsEmpty) { Slots.Clear(); } OrdinalOf = ordinalOf; Index = default; Count = 0; Graph = null;
+                }
+                public Ids(Span<ulong> values, Span<ushort> slots, Span<short> ordinalOf, Span<int> index)
+                {
+                    Values = values; Slots = slots; if (!Slots.IsEmpty) { Slots.Clear(); } OrdinalOf = ordinalOf; Index = index; if (!Index.IsEmpty) { Index.Clear(); } Count = 0; Graph = null;
+                }
                 int Slot(ulong id)
                 {
-                    int mask = Slots.Length - 1;
+                    int mask = Index.Length - 1;
                     int slot = unchecked((int)(id ^ (id >> 32))) & mask;
-                    while (Slots[slot] != 0 && Values[Slots[slot] - 1] != id) { slot = (slot + 1) & mask; }
+                    while (Index[slot] != 0 && Values[Index[slot] - 1] != id) { slot = (slot + 1) & mask; }
                     return slot;
                 }
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
                 public ulong Reference(ulong id)
                 {
-                    if (!Slots.IsEmpty) { return (ulong)Slots[Slot(id)]; }
+                    if (!Index.IsEmpty) { return (ulong)Index[Slot(id)]; }
                     for (int i = 0; i < Count; i++) { if (Values[i] == id) { return (ulong)i + 1; } }
                     return 0;
                 }
-                public bool Add(ulong id)
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                public ulong Ref(ulong id)
                 {
-                    if (!Slots.IsEmpty)
+                    if (!Index.IsEmpty)
                     {
                         int slot = Slot(id);
-                        if (Slots[slot] != 0) { return true; }
-                        if (Count == Values.Length) { return false; }
-                        Values[Count++] = id; Slots[slot] = Count;
-                        return true;
+                        if (Index[slot] != 0) { return (ulong)Index[slot]; }
+                        if (Count == Values.Length) { return 0; }
+                        Values[Count] = id;
+                        if ((uint)Count < (uint)OrdinalOf.Length) { OrdinalOf[Count] = -1; }
+                        Count++;
+                        Index[slot] = Count;
+                        return (ulong)Count;
                     }
-                    if (Reference(id) != 0) { return true; }
-                    if (Count == Values.Length) { return false; }
-                    Values[Count++] = id;
-                    return true;
+                    for (int i = 0; i < Count; i++) { if (Values[i] == id) { return (ulong)i + 1; } }
+                    if (Count == Values.Length) { return 0; }
+                    Values[Count] = id;
+                    if ((uint)Count < (uint)OrdinalOf.Length) { OrdinalOf[Count] = -1; }
+                    Count++;
+                    return (ulong)Count;
+                }
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                public bool Add(ulong id)
+                {
+                    return Ref(id) != 0;
+                }
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                public ulong RefAt(int ordinal, ulong id)
+                {
+                    if ((uint)ordinal < (uint)Slots.Length)
+                    {
+                        ushort s = Slots[ordinal];
+                        if (s != 0) { return s; }
+                    }
+                    return AddAt(ordinal, id);
+                }
+                [MethodImpl(MethodImplOptions.NoInlining)]
+                public ulong AddAt(int ordinal, ulong id)
+                {
+                    ulong r = Ref(id);
+                    if (r != 0 && (uint)ordinal < (uint)Slots.Length)
+                    {
+                        Slots[ordinal] = (ushort)r;
+                        int idx = (int)r - 1;
+                        if ((uint)idx < (uint)OrdinalOf.Length)
+                        {
+                            OrdinalOf[idx] = (short)ordinal;
+                        }
+                    }
+                    return r;
+                }
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                public void Truncate(int mark)
+                {
+                    while (Count > mark)
+                    {
+                        Count--;
+                        if (!Index.IsEmpty)
+                        {
+                            int slot = Slot(Values[Count]);
+                            Index[slot] = 0;
+                        }
+                        if ((uint)Count < (uint)OrdinalOf.Length)
+                        {
+                            short o = OrdinalOf[Count];
+                            if ((uint)o < (uint)Slots.Length) { Slots[o] = 0; }
+                        }
+                    }
                 }
             }
 
@@ -2572,8 +2642,11 @@ namespace Bench
                 public Span<byte> Buffer;
                 public int Offset;
                 public Writer(Span<byte> buffer) { Buffer = buffer; Offset = 0; }
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
                 public void Byte(byte v) { Buffer[Offset++] = v; }
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
                 public void Raw(ReadOnlySpan<byte> v) { v.CopyTo(Buffer.Slice(Offset)); Offset += v.Length; }
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
                 public void Fixed(ulong v, int n)
                 {
                     switch (n)
@@ -2586,6 +2659,7 @@ namespace Bench
                     }
                     Offset += n;
                 }
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
                 public void Header(ulong reference, byte kind)
                 {
                     if (reference < 128)
@@ -2596,6 +2670,7 @@ namespace Bench
                     }
                     Var(reference); Byte(kind);
                 }
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
                 public void Var(ulong v)
                 {
                     if (v < 128) { Byte((byte)v); return; }
@@ -2611,8 +2686,11 @@ namespace Bench
                 public int Offset;
                 public Reader(ReadOnlySpan<byte> buffer, ReadOnlySpan<byte> vocabulary)
                 { Buffer = buffer; Vocabulary = vocabulary; Offset = 0; Graph = null; }
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
                 public bool Has(int n) { return n >= 0 && n <= Buffer.Length - Offset; }
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
                 public byte Byte() { return Buffer[Offset++]; }
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
                 public ulong Fixed(int n)
                 {
                     ulong v;
@@ -2630,6 +2708,7 @@ namespace Bench
                     Offset += n;
                     return v;
                 }
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
                 public bool Var(out ulong v)
                 {
                     if ((uint)Offset < (uint)Buffer.Length)
@@ -2655,6 +2734,7 @@ namespace Bench
                     Offset = start;
                     return false;
                 }
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
                 public bool Ref(out ulong reference, out ulong id)
                 {
                     id = 0;

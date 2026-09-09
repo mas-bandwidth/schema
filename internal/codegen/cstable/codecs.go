@@ -979,3 +979,38 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 		csElemWidth(f.Type), hasRange, rangeMin, rangeMax, enumMax, enumName, variantId,
 		keyTypeName, keyName, keyId, guard, tableRef, arms, doc, numTags, tags, g.tableStorageColumns(f)+g.wireColumns(f))
 }
+
+// wireIdOrdinals maps each vocabulary ID in ir.TableWireIds(u) to its
+// static compile-time ordinal (0 <= ord < len(ids)).
+func wireIdOrdinals(u *ir.Unit) map[uint64]int {
+	ids := ir.TableWireIds(u)
+	out := make(map[uint64]int, len(ids))
+	for i, id := range ids {
+		out[id] = i
+	}
+	return out
+}
+
+// knownOrdinal returns the compile-time static ordinal of an id in the unit's
+// vocabulary (ir.TableWireIds).
+func (g *tableGen) knownOrdinal(id uint64) int {
+	if g.idOrdinal == nil && g.unit != nil {
+		g.idOrdinal = wireIdOrdinals(g.unit)
+	}
+	ord, ok := g.idOrdinal[id]
+	if !ok {
+		panic(fmt.Sprintf("table id 0x%016x is not in the unit's vocabulary (ir.TableWireIds)", id))
+	}
+	return ord
+}
+
+// wireFieldOrdinal returns the static compile-time ordinal for a table field.
+func (g *tableGen) wireFieldOrdinal(f *ir.Field) int {
+	return g.knownOrdinal(ir.TableFieldWireId(f))
+}
+
+// wireRef emits a RefAt expression for a compile-time vocabulary ID.
+func (g *tableGen) wireRef(id uint64) string {
+	return fmt.Sprintf("ids.RefAt(%d, 0x%016xul)", g.knownOrdinal(id), id)
+}
+
