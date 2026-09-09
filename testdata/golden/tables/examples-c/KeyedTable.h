@@ -1721,38 +1721,12 @@ static SCHEMA_UNUSED int team_config_load_body( TableReader * r, TeamConfig * va
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    case 2:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        int64_t decoded_wide = (int8_t) table_reader_get8( &(*r) );
-                        if ( decoded_wide < 0ll ) { decoded_wide = 0ll; r->report->clamped++; }
-                        if ( decoded_wide > 64ll ) { decoded_wide = 64ll; r->report->clamped++; }
-                        value->spawn_count = decoded_wide;
-                        break;
-                    }
-                    case 3:
-                    {
-                        if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
-                        int64_t decoded_wide = (int16_t) table_reader_get16( &(*r) );
-                        if ( decoded_wide < 0ll ) { decoded_wide = 0ll; r->report->clamped++; }
-                        if ( decoded_wide > 64ll ) { decoded_wide = 64ll; r->report->clamped++; }
-                        value->spawn_count = decoded_wide;
-                        break;
-                    }
-                    case 4:
-                    {
-                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                        {
-                            int32_t decoded_v = (int32_t) table_reader_get32( &(*r) );
-                            if ( decoded_v < 0 ) { decoded_v = 0; r->report->clamped++; }
-                            else if ( decoded_v > 64 ) { decoded_v = 64; r->report->clamped++; }
-                            value->spawn_count = decoded_v;
-                        }
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
+                    int32_t decoded_v = (int32_t) table_reader_get32( &(*r) );
+                    if ( decoded_v < 0 ) { decoded_v = 0; r->report->clamped++; }
+                    else if ( decoded_v > 64 ) { decoded_v = 64; r->report->clamped++; }
+                    value->spawn_count = decoded_v;
                 }
                 break;
             }
@@ -2021,16 +1995,8 @@ static SCHEMA_UNUSED int gunner_config_load_body( TableReader * r, GunnerConfig 
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
-                {
-                    case 10:
-                    {
-                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                        value->reaction = table_bits_to_float( table_reader_get32( &(*r) ) );
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
-                }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                value->reaction = table_bits_to_float( table_reader_get32( &(*r) ) );
                 break;
             }
             case 0xa6bf719a4602b0bcull: /* tracking */
@@ -2041,16 +2007,8 @@ static SCHEMA_UNUSED int gunner_config_load_body( TableReader * r, GunnerConfig 
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
-                {
-                    case 1:
-                    {
-                        if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                        value->tracking = table_reader_get8( &(*r) ) != 0;
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
-                }
+                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                value->tracking = table_reader_get8( &(*r) ) != 0;
                 break;
             }
             default:
@@ -2286,16 +2244,8 @@ static SCHEMA_UNUSED int turret_config_load_body( TableReader * r, TurretConfig 
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
-                {
-                    case 10:
-                    {
-                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                        value->damage = table_bits_to_float( table_reader_get32( &(*r) ) );
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
-                }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                value->damage = table_bits_to_float( table_reader_get32( &(*r) ) );
                 break;
             }
             case 0xdc2cbe6953343d48ull: /* cooldown */
@@ -2306,16 +2256,8 @@ static SCHEMA_UNUSED int turret_config_load_body( TableReader * r, TurretConfig 
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
-                {
-                    case 10:
-                    {
-                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                        value->cooldown = table_bits_to_float( table_reader_get32( &(*r) ) );
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
-                }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                value->cooldown = table_bits_to_float( table_reader_get32( &(*r) ) );
                 break;
             }
             case 0x40dbb648c0cd44aaull: /* gunner */
@@ -2644,16 +2586,8 @@ static SCHEMA_UNUSED int hull_config_load_body( TableReader * r, HullConfig * va
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
-                {
-                    case 10:
-                    {
-                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                        value->health = table_bits_to_float( table_reader_get32( &(*r) ) );
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
-                }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                value->health = table_bits_to_float( table_reader_get32( &(*r) ) );
                 break;
             }
             case 0x1f3757a2ce7b0ab1ull: /* mass */
@@ -2664,16 +2598,8 @@ static SCHEMA_UNUSED int hull_config_load_body( TableReader * r, HullConfig * va
                     if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                switch ( kind )
-                {
-                    case 10:
-                    {
-                        if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                        value->mass = table_bits_to_float( table_reader_get32( &(*r) ) );
-                        break;
-                    }
-                    default: r->report->malformed = 1; return 0;
-                }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                value->mass = table_bits_to_float( table_reader_get32( &(*r) ) );
                 break;
             }
             case 0x84f8260bc283608cull: /* turrets */

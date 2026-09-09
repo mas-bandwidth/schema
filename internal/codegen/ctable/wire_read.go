@@ -270,7 +270,16 @@ func (g *tableGen) wireReadFieldPayload(f *ir.Field, kind int, dst, bounded stri
 		g.wireRefusalCheck(ind)
 		g.pf("%sif ( sub.offset != sub.size ) { r->report->malformed = 1; %s( &%s ); }\n", ind, g.api(f.Type.Name, "reset"), dst)
 	default:
-		g.wireScalarRead(f, dst, "(*r)", "kind", ind, "r->report->malformed = 1; return 0;")
+		// Kind already matched the declaration. Decode at that width;
+		// widening stays in the mismatch arm (emitWireRead).
+		onBad := "r->report->malformed = 1; return 0;"
+		if e := enumRef(f); e != nil {
+			g.wireEnumRead(e, dst, "(*r)", ind, onBad)
+		} else if tableKindWidth(kind) == 16 {
+			g.wireWideRead(f, kind, dst, "(*r)", ind, onBad)
+		} else {
+			g.emitTableReadScalarFrom(f, kind, dst, ind, "(*r)", onBad)
+		}
 	}
 }
 
