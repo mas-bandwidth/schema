@@ -169,3 +169,22 @@ func TestIsChildScalarArray(t *testing.T) {
 		})
 	}
 }
+
+func TestKnownOrdinalGracefulFallback(t *testing.T) {
+	g := &tableGen{
+		idOrdinal: map[uint64]int{
+			0x1111: 0,
+			0x2222: 1,
+		},
+	}
+	if got := g.knownOrdinal(0x1111); got != 0 {
+		t.Fatalf("knownOrdinal(0x1111) = %d, want 0", got)
+	}
+	if got := g.knownOrdinal(0x2222); got != 1 {
+		t.Fatalf("knownOrdinal(0x2222) = %d, want 1", got)
+	}
+	// Missing id should return -1 gracefully instead of panicking.
+	if got := g.knownOrdinal(0x9999); got != -1 {
+		t.Fatalf("knownOrdinal(0x9999) = %d, want -1", got)
+	}
+}
