@@ -67,6 +67,7 @@ inline uint64_t bench_rng( uint64_t rng )
 
 const int MaxNumRuns = 7;       // median of 7 (N >= 5), after 1 warmup run
 static int g_num_runs = MaxNumRuns; // --round K drops this to 1 (§2.4: one warmup + one measured run per round; the driver aggregates across rounds)
+static bool g_gate = false;
 static bool g_quick = false;    // --quick: bench_mixed only, 3 measured runs — the iteration instrument, never the certification instrument
 const int NumVariants = 64;     // read-path variant buffers
 
@@ -337,6 +338,8 @@ static void bench_datadriven( const char * name, const char * golden, long base_
             return;
         }
     }
+
+    if ( g_gate ) return;
 
     double write_rates[MaxNumRuns];
     double roundtrip_rates[MaxNumRuns];
@@ -630,7 +633,8 @@ int main( int argc, char ** argv )
 {
     for ( int i = 1; i < argc; i++ )
     {
-        if ( strcmp( argv[i], "--csv" ) == 0 )
+        if ( strcmp( argv[i], "--gate" ) == 0 ) { g_gate = 1; }
+        else if ( strcmp( argv[i], "--csv" ) == 0 )
             g_csv = true;
         else if ( strcmp( argv[i], "--wire-dir" ) == 0 && i + 1 < argc )
             g_wire_dir = argv[++i];
@@ -654,7 +658,7 @@ int main( int argc, char ** argv )
             g_quick = true;
         else
         {
-            fprintf( stderr, "usage: %s [--csv] [--round K] [--quick] [--wire-dir <dir>] [--variant-dir <dir>]\n", argv[0] );
+            fprintf( stderr, "usage: %s [--gate] [--csv] [--round K] [--quick] [--wire-dir <dir>] [--variant-dir <dir>]\n", argv[0] );
             return 1;
         }
     }
@@ -683,7 +687,7 @@ int main( int argc, char ** argv )
     // family bits (§1.4): the one bitpacker workload in the estate. 24576
     // passes, not the historical 4096 — at 4096 the C++ read leg finishes in
     // ~170 ms, under §2.1's 200 ms floor (measured; §1.4 records this).
-    if ( !g_quick )
+    if ( !g_quick && !g_gate )
         bench_bitpacker( 24576L );
 
     flush_csv();    // rows carry the corpus_id of the goldens this run loaded

@@ -4270,6 +4270,30 @@ bench-table-corpus: build/schema_test_bench_table
 bench-table-check: build/schema_test_bench_table
 	./build/schema_test_bench_table verify
 
+# Matched Fixed Table uses BenchMixed itself, reached through the tiny wrapper.
+# The wrapper is never serialized; packet storage remains independently built.
+generated/bench/paired/cpp/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	@mkdir -p generated/bench/paired/cpp
+	./bin/schema generate --lang cpp --out generated/bench/paired/cpp bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	@touch $@
+
+build/schema_test_bench_paired: generated/bench/paired/cpp/.stamp test/bench/paired_main.cpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Igenerated/bench/paired/cpp test/bench/paired_main.cpp -o $@
+
+bench-paired-corpus: build/schema_test_bench_paired
+	./build/schema_test_bench_paired pin
+
+bench-paired-check: build/schema_test_bench_paired
+	./build/schema_test_bench_paired verify
+
+test: bench-paired-check
+
+bench-paired-gate:
+	go run ./bench/paired -mode gate
+
+.PHONY: bench-paired-corpus bench-paired-check bench-paired-gate
+
 
 # Prove the COMMITTED generated/ tree matches what the current compiler
 # emits (issue #30). `make test` regenerates every tracked generated file in
@@ -4317,6 +4341,7 @@ check: bin/schema
 	./bin/schema check bench/corpus/Bench.schema
 	./bin/schema check bench/corpus/RealWorld.schema
 	./bin/schema check bench/corpus/BenchTable.schema
+	./bin/schema check bench/corpus/Bench.schema bench/corpus/FixedTable.schema
 
 id: bin/schema
 	./bin/schema id examples
@@ -4350,6 +4375,7 @@ fmt: bin/schema
 	./bin/schema fmt bench/corpus/Bench.schema
 	./bin/schema fmt bench/corpus/RealWorld.schema
 	./bin/schema fmt bench/corpus/BenchTable.schema
+	./bin/schema fmt bench/corpus/Bench.schema bench/corpus/FixedTable.schema
 
 # The one-benchmark rule, made mechanical: no hand-coded measurement of a
 # schema shape anywhere in this repo except what a SHAPE-GATE.allow names —

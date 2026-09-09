@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>annotations</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <DefineConstants>$(DefineConstants);BENCH_MATCHED</DefineConstants>
+    <SerializeCsRoot Condition="'$(SerializeCsRoot)' == ''">../../../../serialize.cs</SerializeCsRoot>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../tables/cs/src/Program.cs" />
+    <Compile Include="../../../generated/bench/paired/cs/*.cs"
+             Exclude="../../../generated/bench/paired/cs/*Block.cs;../../../generated/bench/paired/cs/*Cook.cs" />
+    <Compile Include="$(SerializeCsRoot)/src/Serialize.cs" />
+    <Compile Include="$(SerializeCsRoot)/src/Int128Pair.cs" />
+  </ItemGroup>
+</Project>

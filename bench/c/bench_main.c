@@ -57,6 +57,7 @@ static uint64_t bench_rng( uint64_t rng )
 }
 
 #define MaxNumRuns 7        /* median of 7 (N >= 5), after 1 warmup run */
+static int g_gate = 0;
 static int g_quick = 0;             /* --quick: bench_mixed only, 3 measured runs —
                                        the iteration instrument, never certification */
 static int g_num_runs = MaxNumRuns; /* --round K drops this to 1 (§2.4: one warmup +
@@ -552,7 +553,8 @@ int main( int argc, char ** argv )
 
     for ( i = 1; i < argc; i++ )
     {
-        if ( strcmp( argv[i], "--csv" ) == 0 )
+        if ( strcmp( argv[i], "--gate" ) == 0 ) { g_gate = 1; }
+        else if ( strcmp( argv[i], "--csv" ) == 0 )
             g_csv = 1;
         else if ( strcmp( argv[i], "--wire-dir" ) == 0 && i + 1 < argc )
             g_wire_dir = argv[++i];
@@ -576,7 +578,7 @@ int main( int argc, char ** argv )
             g_quick = 1;
         else
         {
-            fprintf( stderr, "usage: %s [--csv] [--round K] [--quick] [--wire-dir <dir>] [--variant-dir <dir>]\n", argv[0] );
+            fprintf( stderr, "usage: %s [--gate] [--csv] [--round K] [--quick] [--wire-dir <dir>] [--variant-dir <dir>]\n", argv[0] );
             return 1;
         }
     }
@@ -602,7 +604,7 @@ int main( int argc, char ** argv )
     bench_datadriven_gen_bench_mixed( "bench_mixed", "bench_mixed", 4000000L );
 
     /* family bits (§1.4): the one bitpacker workload in the estate */
-    if ( !g_quick )
+    if ( !g_quick && !g_gate )
         bench_bitpacker( 24576L );
 
     flush_csv();    /* rows carry the corpus_id of the goldens this run loaded */
