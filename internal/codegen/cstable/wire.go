@@ -41,7 +41,7 @@ func isChildScalarArray(f *ir.Field) (*ir.Struct, bool) {
 		return nil, false
 	}
 	st, ok := f.Type.Ref.(*ir.Struct)
-	if !ok || !st.IsTable {
+	if !ok {
 		return nil, false
 	}
 	if !isScalarLeafStruct(st) {

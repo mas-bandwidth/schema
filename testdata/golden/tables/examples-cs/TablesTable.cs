@@ -447,7 +447,16 @@ namespace Tabledemo
             if (!TableWire.CollectField(v, fields[3], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[4], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[5], ref ids)) return false;
-            if (!TableWire.CollectField(v, fields[6], ref ids)) return false;
+            int count_6 = v.AttachmentsCount;
+            if (count_6 < 0 || count_6 > 8) return false;
+            if (count_6 > 0)
+            {
+                if (!ids.Add(0xf901aa0340249a41ul)) return false;
+                for (int i_6 = 0; i_6 < count_6; i_6++)
+                {
+                    if (!AttachmentCollectTyped(v.Attachments[i_6], ref ids)) return false;
+                }
+            }
             return true;
         }
 
@@ -476,16 +485,27 @@ namespace Tabledemo
             }
             n += TableWire.BodySizeField(v, fields[5], ref ids, elemCache_5, out long payload_5);
             if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[5] = payload_5; }
-            scoped Span<long> elemCache_6 = default;
-            if (!rootElemSizes.IsEmpty)
+            int count_6 = v.AttachmentsCount;
+            if (count_6 > 0)
             {
-                int c = TableWire.Count(v, fields[6]);
-                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
-                elemCache_6 = rootElemSizes.Slice(elemOffset, take);
-                elemOffset += take;
+                scoped Span<long> elemCache_6 = default;
+                if (!rootElemSizes.IsEmpty)
+                {
+                    int take = System.Math.Min(count_6, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                    elemCache_6 = rootElemSizes.Slice(elemOffset, take);
+                    elemOffset += take;
+                }
+                long nChild_6 = 0;
+                for (int i_6 = 0; i_6 < count_6; i_6++)
+                {
+                    long childBody = AttachmentBodySizeTyped(v.Attachments[i_6], ref ids);
+                    if (!elemCache_6.IsEmpty && i_6 < elemCache_6.Length) { elemCache_6[i_6] = childBody; }
+                    nChild_6 += TableWire.VarSize((ulong)childBody) + childBody;
+                }
+                long payload_6 = 1 + TableWire.VarSize((ulong)count_6) + nChild_6;
+                n += TableWire.VarSize(ids.Reference(0xf901aa0340249a41ul)) + 1 + TableWire.VarSize((ulong)payload_6) + payload_6;
+                if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[6] = payload_6; }
             }
-            n += TableWire.BodySizeField(v, fields[6], ref ids, elemCache_6, out long payload_6);
-            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[6] = payload_6; }
             return n;
         }
 
@@ -513,16 +533,38 @@ namespace Tabledemo
             }
             long payload_5 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[5] : -1;
             TableWire.WriteBodyField(ref w, v, fields[5], ref ids, elemCache_5, payload_5);
-            scoped ReadOnlySpan<long> elemCache_6 = default;
-            if (!rootElemSizes.IsEmpty)
+            int count_6 = v.AttachmentsCount;
+            if (count_6 > 0)
             {
-                int c = TableWire.Count(v, fields[6]);
-                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
-                elemCache_6 = rootElemSizes.Slice(elemOffset, take);
-                elemOffset += take;
+                w.Header(ids.Reference(0xf901aa0340249a41ul), 14);
+                scoped ReadOnlySpan<long> elemCache_6 = default;
+                if (!rootElemSizes.IsEmpty)
+                {
+                    int take = System.Math.Min(count_6, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                    elemCache_6 = rootElemSizes.Slice(elemOffset, take);
+                    elemOffset += take;
+                }
+                long payload_6 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[6] : -1;
+                if (payload_6 < 0)
+                {
+                    long nChild_6 = 0;
+                    for (int i_6 = 0; i_6 < count_6; i_6++)
+                    {
+                        long childBody = (!elemCache_6.IsEmpty && i_6 < elemCache_6.Length) ? elemCache_6[i_6] : AttachmentBodySizeTyped(v.Attachments[i_6], ref ids);
+                        nChild_6 += TableWire.VarSize((ulong)childBody) + childBody;
+                    }
+                    payload_6 = 1 + TableWire.VarSize((ulong)count_6) + nChild_6;
+                }
+                w.Var((ulong)payload_6);
+                w.Byte(13);
+                w.Var((ulong)count_6);
+                for (int i_6 = 0; i_6 < count_6; i_6++)
+                {
+                    long childBody = (!elemCache_6.IsEmpty && i_6 < elemCache_6.Length) ? elemCache_6[i_6] : AttachmentBodySizeTyped(v.Attachments[i_6], ref ids);
+                    w.Var((ulong)childBody);
+                    AttachmentWriteBodyTyped(ref w, v.Attachments[i_6], ref ids);
+                }
             }
-            long payload_6 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[6] : -1;
-            TableWire.WriteBodyField(ref w, v, fields[6], ref ids, elemCache_6, payload_6);
             w.Var(0);
         }
 

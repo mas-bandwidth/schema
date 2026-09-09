@@ -5569,7 +5569,16 @@ namespace Bench
             if (v.FrameTick != 0 && !ids.Add(0x7bbc035f7b6d0112ul)) return false;
             if (!TableWire.CollectField(v, fields[8], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[9], ref ids)) return false;
-            if (!TableWire.CollectField(v, fields[10], ref ids)) return false;
+            int count_10 = v.StatsCount;
+            if (count_10 < 0 || count_10 > 80) return false;
+            if (count_10 > 0)
+            {
+                if (!ids.Add(0xee639cad45b1994cul)) return false;
+                for (int i_10 = 0; i_10 < count_10; i_10++)
+                {
+                    if (!MixedStatCollectTyped(v.Stats[i_10], ref ids)) return false;
+                }
+            }
             if (!TableWire.CollectField(v, fields[11], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[12], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[13], ref ids)) return false;
@@ -5615,16 +5624,27 @@ namespace Bench
             }
             n += TableWire.BodySizeField(v, fields[9], ref ids, elemCache_9, out long payload_9);
             if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[9] = payload_9; }
-            scoped Span<long> elemCache_10 = default;
-            if (!rootElemSizes.IsEmpty)
+            int count_10 = v.StatsCount;
+            if (count_10 > 0)
             {
-                int c = TableWire.Count(v, fields[10]);
-                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
-                elemCache_10 = rootElemSizes.Slice(elemOffset, take);
-                elemOffset += take;
+                scoped Span<long> elemCache_10 = default;
+                if (!rootElemSizes.IsEmpty)
+                {
+                    int take = System.Math.Min(count_10, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                    elemCache_10 = rootElemSizes.Slice(elemOffset, take);
+                    elemOffset += take;
+                }
+                long nChild_10 = 0;
+                for (int i_10 = 0; i_10 < count_10; i_10++)
+                {
+                    long childBody = MixedStatBodySizeTyped(v.Stats[i_10], ref ids);
+                    if (!elemCache_10.IsEmpty && i_10 < elemCache_10.Length) { elemCache_10[i_10] = childBody; }
+                    nChild_10 += TableWire.VarSize((ulong)childBody) + childBody;
+                }
+                long payload_10 = 1 + TableWire.VarSize((ulong)count_10) + nChild_10;
+                n += TableWire.VarSize(ids.Reference(0xee639cad45b1994cul)) + 1 + TableWire.VarSize((ulong)payload_10) + payload_10;
+                if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[10] = payload_10; }
             }
-            n += TableWire.BodySizeField(v, fields[10], ref ids, elemCache_10, out long payload_10);
-            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[10] = payload_10; }
             n += TableWire.BodySizeField(v, fields[11], ref ids);
             n += TableWire.BodySizeField(v, fields[12], ref ids, default, out long payload_12);
             if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[12] = payload_12; }
@@ -5703,16 +5723,38 @@ namespace Bench
             }
             long payload_9 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[9] : -1;
             TableWire.WriteBodyField(ref w, v, fields[9], ref ids, elemCache_9, payload_9);
-            scoped ReadOnlySpan<long> elemCache_10 = default;
-            if (!rootElemSizes.IsEmpty)
+            int count_10 = v.StatsCount;
+            if (count_10 > 0)
             {
-                int c = TableWire.Count(v, fields[10]);
-                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
-                elemCache_10 = rootElemSizes.Slice(elemOffset, take);
-                elemOffset += take;
+                w.Header(ids.Reference(0xee639cad45b1994cul), 14);
+                scoped ReadOnlySpan<long> elemCache_10 = default;
+                if (!rootElemSizes.IsEmpty)
+                {
+                    int take = System.Math.Min(count_10, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                    elemCache_10 = rootElemSizes.Slice(elemOffset, take);
+                    elemOffset += take;
+                }
+                long payload_10 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[10] : -1;
+                if (payload_10 < 0)
+                {
+                    long nChild_10 = 0;
+                    for (int i_10 = 0; i_10 < count_10; i_10++)
+                    {
+                        long childBody = (!elemCache_10.IsEmpty && i_10 < elemCache_10.Length) ? elemCache_10[i_10] : MixedStatBodySizeTyped(v.Stats[i_10], ref ids);
+                        nChild_10 += TableWire.VarSize((ulong)childBody) + childBody;
+                    }
+                    payload_10 = 1 + TableWire.VarSize((ulong)count_10) + nChild_10;
+                }
+                w.Var((ulong)payload_10);
+                w.Byte(13);
+                w.Var((ulong)count_10);
+                for (int i_10 = 0; i_10 < count_10; i_10++)
+                {
+                    long childBody = (!elemCache_10.IsEmpty && i_10 < elemCache_10.Length) ? elemCache_10[i_10] : MixedStatBodySizeTyped(v.Stats[i_10], ref ids);
+                    w.Var((ulong)childBody);
+                    MixedStatWriteBodyTyped(ref w, v.Stats[i_10], ref ids);
+                }
             }
-            long payload_10 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[10] : -1;
-            TableWire.WriteBodyField(ref w, v, fields[10], ref ids, elemCache_10, payload_10);
             TableWire.WriteBodyField(ref w, v, fields[11], ref ids);
             long payload_12 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[12] : -1;
             TableWire.WriteBodyField(ref w, v, fields[12], ref ids, default, payload_12);

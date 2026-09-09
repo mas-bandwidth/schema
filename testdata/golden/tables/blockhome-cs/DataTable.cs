@@ -365,9 +365,26 @@ namespace Blockhome
 
         public static bool GunnerSettingsCollectTyped(GunnerSettings v, ref TableWire.Ids ids)
         {
-            TableFieldInfo[] fields = GunnerSettingsTableType().Fields;
-            if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
-            if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
+            int count_0 = v.FiringGroupsCount;
+            if (count_0 < 0 || count_0 > 32) return false;
+            if (count_0 > 0)
+            {
+                if (!ids.Add(0x260b8ca6b0c3db7ful)) return false;
+                for (int i_0 = 0; i_0 < count_0; i_0++)
+                {
+                    if (!FiringGroupCollectTyped(v.FiringGroups[i_0], ref ids)) return false;
+                }
+            }
+            int count_1 = v.MissileGroupsCount;
+            if (count_1 < 0 || count_1 > 4) return false;
+            if (count_1 > 0)
+            {
+                if (!ids.Add(0x3c99105aa087f6bcul)) return false;
+                for (int i_1 = 0; i_1 < count_1; i_1++)
+                {
+                    if (!FiringGroupCollectTyped(v.MissileGroups[i_1], ref ids)) return false;
+                }
+            }
             if (v.ReloadSeconds != 0.0f && !ids.Add(0xad9b64728ea52486ul)) return false;
             if (v.GunnerId != 0 && !ids.Add(0xbd9be53180256e02ul)) return false;
             return true;
@@ -378,28 +395,49 @@ namespace Blockhome
         public static long GunnerSettingsBodySizeTyped(GunnerSettings v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
-            TableFieldInfo[] fields = GunnerSettingsTableType().Fields;
             int elemOffset = 0;
-            scoped Span<long> elemCache_0 = default;
-            if (!rootElemSizes.IsEmpty)
+            int count_0 = v.FiringGroupsCount;
+            if (count_0 > 0)
             {
-                int c = TableWire.Count(v, fields[0]);
-                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
-                elemCache_0 = rootElemSizes.Slice(elemOffset, take);
-                elemOffset += take;
+                scoped Span<long> elemCache_0 = default;
+                if (!rootElemSizes.IsEmpty)
+                {
+                    int take = System.Math.Min(count_0, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                    elemCache_0 = rootElemSizes.Slice(elemOffset, take);
+                    elemOffset += take;
+                }
+                long nChild_0 = 0;
+                for (int i_0 = 0; i_0 < count_0; i_0++)
+                {
+                    long childBody = FiringGroupBodySizeTyped(v.FiringGroups[i_0], ref ids);
+                    if (!elemCache_0.IsEmpty && i_0 < elemCache_0.Length) { elemCache_0[i_0] = childBody; }
+                    nChild_0 += TableWire.VarSize((ulong)childBody) + childBody;
+                }
+                long payload_0 = 1 + TableWire.VarSize((ulong)count_0) + nChild_0;
+                n += TableWire.VarSize(ids.Reference(0x260b8ca6b0c3db7ful)) + 1 + TableWire.VarSize((ulong)payload_0) + payload_0;
+                if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[0] = payload_0; }
             }
-            n += TableWire.BodySizeField(v, fields[0], ref ids, elemCache_0, out long payload_0);
-            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[0] = payload_0; }
-            scoped Span<long> elemCache_1 = default;
-            if (!rootElemSizes.IsEmpty)
+            int count_1 = v.MissileGroupsCount;
+            if (count_1 > 0)
             {
-                int c = TableWire.Count(v, fields[1]);
-                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
-                elemCache_1 = rootElemSizes.Slice(elemOffset, take);
-                elemOffset += take;
+                scoped Span<long> elemCache_1 = default;
+                if (!rootElemSizes.IsEmpty)
+                {
+                    int take = System.Math.Min(count_1, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                    elemCache_1 = rootElemSizes.Slice(elemOffset, take);
+                    elemOffset += take;
+                }
+                long nChild_1 = 0;
+                for (int i_1 = 0; i_1 < count_1; i_1++)
+                {
+                    long childBody = FiringGroupBodySizeTyped(v.MissileGroups[i_1], ref ids);
+                    if (!elemCache_1.IsEmpty && i_1 < elemCache_1.Length) { elemCache_1[i_1] = childBody; }
+                    nChild_1 += TableWire.VarSize((ulong)childBody) + childBody;
+                }
+                long payload_1 = 1 + TableWire.VarSize((ulong)count_1) + nChild_1;
+                n += TableWire.VarSize(ids.Reference(0x3c99105aa087f6bcul)) + 1 + TableWire.VarSize((ulong)payload_1) + payload_1;
+                if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[1] = payload_1; }
             }
-            n += TableWire.BodySizeField(v, fields[1], ref ids, elemCache_1, out long payload_1);
-            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[1] = payload_1; }
             if (v.ReloadSeconds != 0.0f) { n += TableWire.VarSize(ids.Reference(0xad9b64728ea52486ul)) + 5; }
             if (v.GunnerId != 0) { n += TableWire.VarSize(ids.Reference(0xbd9be53180256e02ul)) + 5; }
             return n;
@@ -409,28 +447,71 @@ namespace Blockhome
 
         public static void GunnerSettingsWriteBodyTyped(ref TableWire.Writer w, GunnerSettings v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
-            TableFieldInfo[] fields = GunnerSettingsTableType().Fields;
             int elemOffset = 0;
-            scoped ReadOnlySpan<long> elemCache_0 = default;
-            if (!rootElemSizes.IsEmpty)
+            int count_0 = v.FiringGroupsCount;
+            if (count_0 > 0)
             {
-                int c = TableWire.Count(v, fields[0]);
-                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
-                elemCache_0 = rootElemSizes.Slice(elemOffset, take);
-                elemOffset += take;
+                w.Header(ids.Reference(0x260b8ca6b0c3db7ful), 14);
+                scoped ReadOnlySpan<long> elemCache_0 = default;
+                if (!rootElemSizes.IsEmpty)
+                {
+                    int take = System.Math.Min(count_0, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                    elemCache_0 = rootElemSizes.Slice(elemOffset, take);
+                    elemOffset += take;
+                }
+                long payload_0 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[0] : -1;
+                if (payload_0 < 0)
+                {
+                    long nChild_0 = 0;
+                    for (int i_0 = 0; i_0 < count_0; i_0++)
+                    {
+                        long childBody = (!elemCache_0.IsEmpty && i_0 < elemCache_0.Length) ? elemCache_0[i_0] : FiringGroupBodySizeTyped(v.FiringGroups[i_0], ref ids);
+                        nChild_0 += TableWire.VarSize((ulong)childBody) + childBody;
+                    }
+                    payload_0 = 1 + TableWire.VarSize((ulong)count_0) + nChild_0;
+                }
+                w.Var((ulong)payload_0);
+                w.Byte(13);
+                w.Var((ulong)count_0);
+                for (int i_0 = 0; i_0 < count_0; i_0++)
+                {
+                    long childBody = (!elemCache_0.IsEmpty && i_0 < elemCache_0.Length) ? elemCache_0[i_0] : FiringGroupBodySizeTyped(v.FiringGroups[i_0], ref ids);
+                    w.Var((ulong)childBody);
+                    FiringGroupWriteBodyTyped(ref w, v.FiringGroups[i_0], ref ids);
+                }
             }
-            long payload_0 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[0] : -1;
-            TableWire.WriteBodyField(ref w, v, fields[0], ref ids, elemCache_0, payload_0);
-            scoped ReadOnlySpan<long> elemCache_1 = default;
-            if (!rootElemSizes.IsEmpty)
+            int count_1 = v.MissileGroupsCount;
+            if (count_1 > 0)
             {
-                int c = TableWire.Count(v, fields[1]);
-                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
-                elemCache_1 = rootElemSizes.Slice(elemOffset, take);
-                elemOffset += take;
+                w.Header(ids.Reference(0x3c99105aa087f6bcul), 14);
+                scoped ReadOnlySpan<long> elemCache_1 = default;
+                if (!rootElemSizes.IsEmpty)
+                {
+                    int take = System.Math.Min(count_1, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                    elemCache_1 = rootElemSizes.Slice(elemOffset, take);
+                    elemOffset += take;
+                }
+                long payload_1 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[1] : -1;
+                if (payload_1 < 0)
+                {
+                    long nChild_1 = 0;
+                    for (int i_1 = 0; i_1 < count_1; i_1++)
+                    {
+                        long childBody = (!elemCache_1.IsEmpty && i_1 < elemCache_1.Length) ? elemCache_1[i_1] : FiringGroupBodySizeTyped(v.MissileGroups[i_1], ref ids);
+                        nChild_1 += TableWire.VarSize((ulong)childBody) + childBody;
+                    }
+                    payload_1 = 1 + TableWire.VarSize((ulong)count_1) + nChild_1;
+                }
+                w.Var((ulong)payload_1);
+                w.Byte(13);
+                w.Var((ulong)count_1);
+                for (int i_1 = 0; i_1 < count_1; i_1++)
+                {
+                    long childBody = (!elemCache_1.IsEmpty && i_1 < elemCache_1.Length) ? elemCache_1[i_1] : FiringGroupBodySizeTyped(v.MissileGroups[i_1], ref ids);
+                    w.Var((ulong)childBody);
+                    FiringGroupWriteBodyTyped(ref w, v.MissileGroups[i_1], ref ids);
+                }
             }
-            long payload_1 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[1] : -1;
-            TableWire.WriteBodyField(ref w, v, fields[1], ref ids, elemCache_1, payload_1);
             if (v.ReloadSeconds != 0.0f)
             {
                 w.Header(ids.Reference(0xad9b64728ea52486ul), 10);
