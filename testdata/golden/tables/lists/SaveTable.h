@@ -7555,11 +7555,16 @@ inline bool SaveSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
         {
             const uint64_t ref_placements = ids.ref( 0xd24733aa574d4b09ull );
             int64_t body_placements = 0;
+            // placements: the sizing loop's per-element lengths, kept for the write loop
+            // below — the element's own length prefix is the number the parent's
+            // body length was built from, so measuring it twice can only agree.
+            int64_t elem_cache_placements[ 64 ];
             body_placements += 1 + TableLebBytes( (uint64_t) ( cursor_placements.count ) ); // the element kind byte and the count
             for ( int32_t elem_i_placements = 0; elem_i_placements < cursor_placements.count; elem_i_placements++ )
             {
                 const int64_t elem_bytes_placements = PlacementMeasureBody( ids, cursor_placements[elem_i_placements] );
                 if ( elem_bytes_placements < 0 ) { return false; }
+                if ( elem_i_placements < 64 ) { elem_cache_placements[ elem_i_placements ] = elem_bytes_placements; }
                 body_placements += TableLebBytes( (uint64_t) ( elem_bytes_placements ) ) + ( elem_bytes_placements );
             }
             w.putleb( ref_placements ); w.put8( 14 ); w.putleb( (uint64_t) body_placements ); // placements
@@ -7567,7 +7572,7 @@ inline bool SaveSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
             for ( int32_t elem_i_placements = 0; elem_i_placements < cursor_placements.count; elem_i_placements++ )
             {
                 {
-                    const int64_t elem_len_placements = PlacementMeasureBody( ids, cursor_placements[elem_i_placements] );
+                    const int64_t elem_len_placements = elem_i_placements < 64 ? elem_cache_placements[ elem_i_placements ] : PlacementMeasureBody( ids, cursor_placements[elem_i_placements] );
                     if ( elem_len_placements < 0 ) return false;
                     w.putleb( (uint64_t) elem_len_placements );
                     if ( !PlacementSaveBody( w, ids, cursor_placements[elem_i_placements] ) ) return false;

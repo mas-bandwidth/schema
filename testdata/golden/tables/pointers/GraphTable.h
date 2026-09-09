@@ -7631,11 +7631,16 @@ inline bool SceneSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
     {
         const uint64_t ref_layers = ids.ref( 0x4554e34a747022dfull );
         int64_t body_layers = 0;
+        // layers: the sizing loop's per-element lengths, kept for the write loop
+        // below — the element's own length prefix is the number the parent's
+        // body length was built from, so measuring it twice can only agree.
+        int64_t elem_cache[ 4 ];
         body_layers += 1 + TableLebBytes( (uint64_t) ( value.layers_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.layers_count; elem_i++ )
         {
             const int64_t elem_bytes = LayerMeasureBody( ctx, numbering, ids, value.layers[elem_i] );
             if ( elem_bytes < 0 ) { return false; }
+            if ( elem_i < 4 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_layers += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         w.putleb( ref_layers ); w.put8( 14 ); w.putleb( (uint64_t) body_layers ); // layers
@@ -7643,7 +7648,7 @@ inline bool SceneSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
         for ( int32_t elem_i = 0; elem_i < value.layers_count; elem_i++ )
         {
             {
-                const int64_t elem_len = LayerMeasureBody( ctx, numbering, ids, value.layers[elem_i] );
+                const int64_t elem_len = elem_i < 4 ? elem_cache[ elem_i ] : LayerMeasureBody( ctx, numbering, ids, value.layers[elem_i] );
                 if ( elem_len < 0 ) return false;
                 w.putleb( (uint64_t) elem_len );
                 if ( !LayerSaveBody( ctx, numbering, w, ids, value.layers[elem_i] ) ) return false;

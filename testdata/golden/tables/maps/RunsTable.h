@@ -6761,11 +6761,16 @@ MAPDEMO_TABLE_INLINE bool RunsSpansEntrySaveBody( TableWriter & w, TableIds & id
     {
         const uint64_t ref_value = ids.ref( 0x7ce4fd9430e80ceaull );
         int64_t body_value = 0;
+        // value: the sizing loop's per-element lengths, kept for the write loop
+        // below — the element's own length prefix is the number the parent's
+        // body length was built from, so measuring it twice can only agree.
+        int64_t elem_cache[ 4 ];
         body_value += 1 + TableLebBytes( (uint64_t) ( value.value_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.value_count; elem_i++ )
         {
             const int64_t elem_bytes = ItemMeasureBody( ids, value.value[elem_i] );
             if ( elem_bytes < 0 ) { return false; }
+            if ( elem_i < 4 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_value += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         w.putleb( ref_value ); w.put8( 14 ); w.putleb( (uint64_t) body_value ); // value
@@ -6773,7 +6778,7 @@ MAPDEMO_TABLE_INLINE bool RunsSpansEntrySaveBody( TableWriter & w, TableIds & id
         for ( int32_t elem_i = 0; elem_i < value.value_count; elem_i++ )
         {
             {
-                const int64_t elem_len = ItemMeasureBody( ids, value.value[elem_i] );
+                const int64_t elem_len = elem_i < 4 ? elem_cache[ elem_i ] : ItemMeasureBody( ids, value.value[elem_i] );
                 if ( elem_len < 0 ) return false;
                 w.putleb( (uint64_t) elem_len );
                 if ( !ItemSaveBody( w, ids, value.value[elem_i] ) ) return false;

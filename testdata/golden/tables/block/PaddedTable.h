@@ -3635,11 +3635,16 @@ BLOCKDEMO_TABLE_INLINE bool PaddedFrameSaveBody( TableWriter & w, TableIds & ids
     {
         const uint64_t ref_rows = ids.ref( 0xa3a7061ff10a8138ull );
         int64_t body_rows = 0;
+        // rows: the sizing loop's per-element lengths, kept for the write loop
+        // below — the element's own length prefix is the number the parent's
+        // body length was built from, so measuring it twice can only agree.
+        int64_t elem_cache[ 64 ];
         body_rows += 1 + TableLebBytes( (uint64_t) ( value.rows_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.rows_count; elem_i++ )
         {
             const int64_t elem_bytes = PaddedRowMeasureBody( ids, value.rows[elem_i] );
             if ( elem_bytes < 0 ) { return false; }
+            if ( elem_i < 64 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_rows += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         w.putleb( ref_rows ); w.put8( 14 ); w.putleb( (uint64_t) body_rows ); // rows
@@ -3647,7 +3652,7 @@ BLOCKDEMO_TABLE_INLINE bool PaddedFrameSaveBody( TableWriter & w, TableIds & ids
         for ( int32_t elem_i = 0; elem_i < value.rows_count; elem_i++ )
         {
             {
-                const int64_t elem_len = PaddedRowMeasureBody( ids, value.rows[elem_i] );
+                const int64_t elem_len = elem_i < 64 ? elem_cache[ elem_i ] : PaddedRowMeasureBody( ids, value.rows[elem_i] );
                 if ( elem_len < 0 ) return false;
                 w.putleb( (uint64_t) elem_len );
                 if ( !PaddedRowSaveBody( w, ids, value.rows[elem_i] ) ) return false;

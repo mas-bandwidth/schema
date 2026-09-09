@@ -2825,11 +2825,16 @@ BLOCKHOME_TABLE_INLINE bool PartFrameSaveBody( TableWriter & w, TableIds & ids, 
     {
         const uint64_t ref_parts = ids.ref( 0x0c519da7a1f958c5ull );
         int64_t body_parts = 0;
+        // parts: the sizing loop's per-element lengths, kept for the write loop
+        // below — the element's own length prefix is the number the parent's
+        // body length was built from, so measuring it twice can only agree.
+        int64_t elem_cache[ 32 ];
         body_parts += 1 + TableLebBytes( (uint64_t) ( value.parts_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.parts_count; elem_i++ )
         {
             const int64_t elem_bytes = PartRowMeasureBody( ids, value.parts[elem_i] );
             if ( elem_bytes < 0 ) { return false; }
+            if ( elem_i < 32 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_parts += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         w.putleb( ref_parts ); w.put8( 14 ); w.putleb( (uint64_t) body_parts ); // parts
@@ -2837,7 +2842,7 @@ BLOCKHOME_TABLE_INLINE bool PartFrameSaveBody( TableWriter & w, TableIds & ids, 
         for ( int32_t elem_i = 0; elem_i < value.parts_count; elem_i++ )
         {
             {
-                const int64_t elem_len = PartRowMeasureBody( ids, value.parts[elem_i] );
+                const int64_t elem_len = elem_i < 32 ? elem_cache[ elem_i ] : PartRowMeasureBody( ids, value.parts[elem_i] );
                 if ( elem_len < 0 ) return false;
                 w.putleb( (uint64_t) elem_len );
                 if ( !PartRowSaveBody( w, ids, value.parts[elem_i] ) ) return false;

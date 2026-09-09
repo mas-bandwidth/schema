@@ -2409,11 +2409,16 @@ WIDE_TABLE_INLINE bool CaptionSaveBody( TableWriter & w, TableIds & ids, const C
     {
         const uint64_t ref_lines = ids.ref( 0x5ce3f9a9f1d5001cull );
         int64_t body_lines = 0;
+        // lines: the sizing loop's per-element lengths, kept for the write loop
+        // below — the element's own length prefix is the number the parent's
+        // body length was built from, so measuring it twice can only agree.
+        int64_t elem_cache[ 3 ];
         body_lines += 1 + TableLebBytes( (uint64_t) ( value.lines_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.lines_count; elem_i++ )
         {
             const int64_t elem_bytes = LineMeasureBody( ids, value.lines[elem_i] );
             if ( elem_bytes < 0 ) { return false; }
+            if ( elem_i < 3 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_lines += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         w.putleb( ref_lines ); w.put8( 14 ); w.putleb( (uint64_t) body_lines ); // lines
@@ -2421,7 +2426,7 @@ WIDE_TABLE_INLINE bool CaptionSaveBody( TableWriter & w, TableIds & ids, const C
         for ( int32_t elem_i = 0; elem_i < value.lines_count; elem_i++ )
         {
             {
-                const int64_t elem_len = LineMeasureBody( ids, value.lines[elem_i] );
+                const int64_t elem_len = elem_i < 3 ? elem_cache[ elem_i ] : LineMeasureBody( ids, value.lines[elem_i] );
                 if ( elem_len < 0 ) return false;
                 w.putleb( (uint64_t) elem_len );
                 if ( !LineSaveBody( w, ids, value.lines[elem_i] ) ) return false;

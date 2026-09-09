@@ -4635,11 +4635,16 @@ TABLEDEMO_TABLE_INLINE bool PackConfigSaveBody( TableWriter & w, TableIds & ids,
     {
         const uint64_t ref_reserves = ids.ref( 0x77707fccd201c228ull );
         int64_t body_reserves = 0;
+        // reserves: the sizing loop's per-element lengths, kept for the write loop
+        // below — the element's own length prefix is the number the parent's
+        // body length was built from, so measuring it twice can only agree.
+        int64_t elem_cache[ 3 ];
         body_reserves += 1 + TableLebBytes( (uint64_t) ( value.reserves_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.reserves_count; elem_i++ )
         {
             const int64_t elem_bytes = ShipEntryMeasureBody( ids, value.reserves[elem_i] );
             if ( elem_bytes < 0 ) { return false; }
+            if ( elem_i < 3 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_reserves += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         w.putleb( ref_reserves ); w.put8( 14 ); w.putleb( (uint64_t) body_reserves ); // reserves
@@ -4647,7 +4652,7 @@ TABLEDEMO_TABLE_INLINE bool PackConfigSaveBody( TableWriter & w, TableIds & ids,
         for ( int32_t elem_i = 0; elem_i < value.reserves_count; elem_i++ )
         {
             {
-                const int64_t elem_len = ShipEntryMeasureBody( ids, value.reserves[elem_i] );
+                const int64_t elem_len = elem_i < 3 ? elem_cache[ elem_i ] : ShipEntryMeasureBody( ids, value.reserves[elem_i] );
                 if ( elem_len < 0 ) return false;
                 w.putleb( (uint64_t) elem_len );
                 if ( !ShipEntrySaveBody( w, ids, value.reserves[elem_i] ) ) return false;

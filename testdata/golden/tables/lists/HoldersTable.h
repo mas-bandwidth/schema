@@ -7183,11 +7183,16 @@ inline bool RowSaveBodyFields( const Ctx & ctx, const TableNumbering & numbering
         {
             const uint64_t ref_items = ids.ref( 0x3e7884bf4f412c6full );
             int64_t body_items = 0;
+            // items: the sizing loop's per-element lengths, kept for the write loop
+            // below — the element's own length prefix is the number the parent's
+            // body length was built from, so measuring it twice can only agree.
+            int64_t elem_cache_items[ 64 ];
             body_items += 1 + TableLebBytes( (uint64_t) ( cursor_items.count ) ); // the element kind byte and the count
             for ( int32_t elem_i_items = 0; elem_i_items < cursor_items.count; elem_i_items++ )
             {
                 const int64_t elem_bytes_items = SampleMeasureBody( ids, cursor_items[elem_i_items] );
                 if ( elem_bytes_items < 0 ) { return false; }
+                if ( elem_i_items < 64 ) { elem_cache_items[ elem_i_items ] = elem_bytes_items; }
                 body_items += TableLebBytes( (uint64_t) ( elem_bytes_items ) ) + ( elem_bytes_items );
             }
             w.putleb( ref_items ); w.put8( 14 ); w.putleb( (uint64_t) body_items ); // items
@@ -7195,7 +7200,7 @@ inline bool RowSaveBodyFields( const Ctx & ctx, const TableNumbering & numbering
             for ( int32_t elem_i_items = 0; elem_i_items < cursor_items.count; elem_i_items++ )
             {
                 {
-                    const int64_t elem_len_items = SampleMeasureBody( ids, cursor_items[elem_i_items] );
+                    const int64_t elem_len_items = elem_i_items < 64 ? elem_cache_items[ elem_i_items ] : SampleMeasureBody( ids, cursor_items[elem_i_items] );
                     if ( elem_len_items < 0 ) return false;
                     w.putleb( (uint64_t) elem_len_items );
                     if ( !SampleSaveBody( w, ids, cursor_items[elem_i_items] ) ) return false;
@@ -7596,11 +7601,16 @@ inline bool SheetSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
         {
             const uint64_t ref_rows = ids.ref( 0xa3a7061ff10a8138ull );
             int64_t body_rows = 0;
+            // rows: the sizing loop's per-element lengths, kept for the write loop
+            // below — the element's own length prefix is the number the parent's
+            // body length was built from, so measuring it twice can only agree.
+            int64_t elem_cache_rows[ 64 ];
             body_rows += 1 + TableLebBytes( (uint64_t) ( cursor_rows.count ) ); // the element kind byte and the count
             for ( int32_t elem_i_rows = 0; elem_i_rows < cursor_rows.count; elem_i_rows++ )
             {
                 const int64_t elem_bytes_rows = RowMeasureBody( ctx, numbering, ids, cursor_rows[elem_i_rows] );
                 if ( elem_bytes_rows < 0 ) { return false; }
+                if ( elem_i_rows < 64 ) { elem_cache_rows[ elem_i_rows ] = elem_bytes_rows; }
                 body_rows += TableLebBytes( (uint64_t) ( elem_bytes_rows ) ) + ( elem_bytes_rows );
             }
             w.putleb( ref_rows ); w.put8( 14 ); w.putleb( (uint64_t) body_rows ); // rows
@@ -7608,7 +7618,7 @@ inline bool SheetSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
             for ( int32_t elem_i_rows = 0; elem_i_rows < cursor_rows.count; elem_i_rows++ )
             {
                 {
-                    const int64_t elem_len_rows = RowMeasureBody( ctx, numbering, ids, cursor_rows[elem_i_rows] );
+                    const int64_t elem_len_rows = elem_i_rows < 64 ? elem_cache_rows[ elem_i_rows ] : RowMeasureBody( ctx, numbering, ids, cursor_rows[elem_i_rows] );
                     if ( elem_len_rows < 0 ) return false;
                     w.putleb( (uint64_t) elem_len_rows );
                     if ( !RowSaveBody( ctx, numbering, w, ids, cursor_rows[elem_i_rows] ) ) return false;
@@ -8995,11 +9005,16 @@ inline bool ArmySaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
         {
             const uint64_t ref_squads = ids.ref( 0x7848019b0c02a926ull );
             int64_t body_squads = 0;
+            // squads: the sizing loop's per-element lengths, kept for the write loop
+            // below — the element's own length prefix is the number the parent's
+            // body length was built from, so measuring it twice can only agree.
+            int64_t elem_cache_squads[ 64 ];
             body_squads += 1 + TableLebBytes( (uint64_t) ( cursor_squads.count ) ); // the element kind byte and the count
             for ( int32_t elem_i_squads = 0; elem_i_squads < cursor_squads.count; elem_i_squads++ )
             {
                 const int64_t elem_bytes_squads = SquadMeasureBody( ctx, numbering, ids, cursor_squads[elem_i_squads] );
                 if ( elem_bytes_squads < 0 ) { return false; }
+                if ( elem_i_squads < 64 ) { elem_cache_squads[ elem_i_squads ] = elem_bytes_squads; }
                 body_squads += TableLebBytes( (uint64_t) ( elem_bytes_squads ) ) + ( elem_bytes_squads );
             }
             w.putleb( ref_squads ); w.put8( 14 ); w.putleb( (uint64_t) body_squads ); // squads
@@ -9007,7 +9022,7 @@ inline bool ArmySaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
             for ( int32_t elem_i_squads = 0; elem_i_squads < cursor_squads.count; elem_i_squads++ )
             {
                 {
-                    const int64_t elem_len_squads = SquadMeasureBody( ctx, numbering, ids, cursor_squads[elem_i_squads] );
+                    const int64_t elem_len_squads = elem_i_squads < 64 ? elem_cache_squads[ elem_i_squads ] : SquadMeasureBody( ctx, numbering, ids, cursor_squads[elem_i_squads] );
                     if ( elem_len_squads < 0 ) return false;
                     w.putleb( (uint64_t) elem_len_squads );
                     if ( !SquadSaveBody( ctx, numbering, w, ids, cursor_squads[elem_i_squads] ) ) return false;
@@ -9390,11 +9405,16 @@ inline bool DeckSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
     {
         const uint64_t ref_hands = ids.ref( 0x81b46a69304ee2c9ull );
         int64_t body_hands = 0;
+        // hands: the sizing loop's per-element lengths, kept for the write loop
+        // below — the element's own length prefix is the number the parent's
+        // body length was built from, so measuring it twice can only agree.
+        int64_t elem_cache[ 3 ];
         body_hands += 1 + TableLebBytes( (uint64_t) ( value.hands_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.hands_count; elem_i++ )
         {
             const int64_t elem_bytes = RowMeasureBody( ctx, numbering, ids, value.hands[elem_i] );
             if ( elem_bytes < 0 ) { return false; }
+            if ( elem_i < 3 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_hands += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         w.putleb( ref_hands ); w.put8( 14 ); w.putleb( (uint64_t) body_hands ); // hands
@@ -9402,7 +9422,7 @@ inline bool DeckSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
         for ( int32_t elem_i = 0; elem_i < value.hands_count; elem_i++ )
         {
             {
-                const int64_t elem_len = RowMeasureBody( ctx, numbering, ids, value.hands[elem_i] );
+                const int64_t elem_len = elem_i < 3 ? elem_cache[ elem_i ] : RowMeasureBody( ctx, numbering, ids, value.hands[elem_i] );
                 if ( elem_len < 0 ) return false;
                 w.putleb( (uint64_t) elem_len );
                 if ( !RowSaveBody( ctx, numbering, w, ids, value.hands[elem_i] ) ) return false;

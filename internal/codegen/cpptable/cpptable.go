@@ -152,7 +152,27 @@ type tableGen struct {
 	// decoded into a scratch where a file's reader steps over it by its
 	// length, and nothing in that body is a field of this region (§6.6, §3.3).
 	retainGate string
+	// elemCache names the stack array in scope that holds the SIZING LOOP's
+	// per-element measured lengths, and elemCacheSlots is how many it has. An
+	// array of TABLE elements is framed twice — the parent's body length needs
+	// every element's length before the header rides, and each element then
+	// needs its own length prefix — and the second number IS the first one
+	// (docs/SPEC-TABLES.md §3). The two emitters that stand next to each other
+	// in one function, emitArrayBodyMeasure then emitArrayBodyWrite, hand the
+	// number across in this array rather than measuring the element twice.
+	//
+	// Empty everywhere else, INCLUDING every measure with no write beside it:
+	// a measure emitted on its own has nobody to hand the number to.
+	elemCache      string
+	elemCacheSlots int64
 }
+
+// kElemCacheSlots is the most per-element lengths one array field keeps on the
+// stack: 64 int64, half a kilobyte, and an element ABOVE it is measured a
+// second time exactly as every element was before. A bound is what there is:
+// no heap and no VLA on the save path, so a cache that grew with the count
+// could be neither.
+const kElemCacheSlots = 64
 
 // step renders one path step at a child-body descent: the field's ordinal in
 // the body being descended from, and the element index inside that field

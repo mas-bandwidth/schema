@@ -3649,11 +3649,16 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBody( TableWriter & w, TableIds & i
     {
         const uint64_t ref_backups = ids.ref( 0xde28f0f5118acc24ull );
         int64_t body_backups = 0;
+        // backups: the sizing loop's per-element lengths, kept for the write loop
+        // below — the element's own length prefix is the number the parent's
+        // body length was built from, so measuring it twice can only agree.
+        int64_t elem_cache[ 2 ];
         body_backups += 1 + TableLebBytes( (uint64_t) ( 2 ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < 2; elem_i++ )
         {
             const int64_t elem_bytes = WeaponConfigMeasureBody( ids, value.backups[elem_i] );
             if ( elem_bytes < 0 ) { return false; }
+            if ( elem_i < 2 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_backups += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         w.putleb( ref_backups ); w.put8( 14 ); w.putleb( (uint64_t) body_backups ); // backups
@@ -3661,7 +3666,7 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBody( TableWriter & w, TableIds & i
         for ( int32_t elem_i = 0; elem_i < 2; elem_i++ )
         {
             {
-                const int64_t elem_len = WeaponConfigMeasureBody( ids, value.backups[elem_i] );
+                const int64_t elem_len = elem_i < 2 ? elem_cache[ elem_i ] : WeaponConfigMeasureBody( ids, value.backups[elem_i] );
                 if ( elem_len < 0 ) return false;
                 w.putleb( (uint64_t) elem_len );
                 if ( !WeaponConfigSaveBody( w, ids, value.backups[elem_i] ) ) return false;
@@ -3673,11 +3678,16 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBody( TableWriter & w, TableIds & i
     {
         const uint64_t ref_attachments = ids.ref( 0xf901aa0340249a41ull );
         int64_t body_attachments = 0;
+        // attachments: the sizing loop's per-element lengths, kept for the write loop
+        // below — the element's own length prefix is the number the parent's
+        // body length was built from, so measuring it twice can only agree.
+        int64_t elem_cache[ 8 ];
         body_attachments += 1 + TableLebBytes( (uint64_t) ( value.attachments_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.attachments_count; elem_i++ )
         {
             const int64_t elem_bytes = AttachmentMeasureBody( ids, value.attachments[elem_i] );
             if ( elem_bytes < 0 ) { return false; }
+            if ( elem_i < 8 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_attachments += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         w.putleb( ref_attachments ); w.put8( 14 ); w.putleb( (uint64_t) body_attachments ); // attachments
@@ -3685,7 +3695,7 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBody( TableWriter & w, TableIds & i
         for ( int32_t elem_i = 0; elem_i < value.attachments_count; elem_i++ )
         {
             {
-                const int64_t elem_len = AttachmentMeasureBody( ids, value.attachments[elem_i] );
+                const int64_t elem_len = elem_i < 8 ? elem_cache[ elem_i ] : AttachmentMeasureBody( ids, value.attachments[elem_i] );
                 if ( elem_len < 0 ) return false;
                 w.putleb( (uint64_t) elem_len );
                 if ( !AttachmentSaveBody( w, ids, value.attachments[elem_i] ) ) return false;
@@ -5946,11 +5956,16 @@ TABLEDEMO_TABLE_INLINE bool RootConfigSaveBody( TableWriter & w, TableIds & ids,
     {
         const uint64_t ref_weapons = ids.ref( 0x41cbd901b87fabb6ull );
         int64_t body_weapons = 0;
+        // weapons: the sizing loop's per-element lengths, kept for the write loop
+        // below — the element's own length prefix is the number the parent's
+        // body length was built from, so measuring it twice can only agree.
+        int64_t elem_cache[ 8 ];
         body_weapons += 1 + TableLebBytes( (uint64_t) ( value.weapons_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.weapons_count; elem_i++ )
         {
             const int64_t elem_bytes = WeaponConfigMeasureBody( ids, value.weapons[elem_i] );
             if ( elem_bytes < 0 ) { return false; }
+            if ( elem_i < 8 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_weapons += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         w.putleb( ref_weapons ); w.put8( 14 ); w.putleb( (uint64_t) body_weapons ); // weapons
@@ -5958,7 +5973,7 @@ TABLEDEMO_TABLE_INLINE bool RootConfigSaveBody( TableWriter & w, TableIds & ids,
         for ( int32_t elem_i = 0; elem_i < value.weapons_count; elem_i++ )
         {
             {
-                const int64_t elem_len = WeaponConfigMeasureBody( ids, value.weapons[elem_i] );
+                const int64_t elem_len = elem_i < 8 ? elem_cache[ elem_i ] : WeaponConfigMeasureBody( ids, value.weapons[elem_i] );
                 if ( elem_len < 0 ) return false;
                 w.putleb( (uint64_t) elem_len );
                 if ( !WeaponConfigSaveBody( w, ids, value.weapons[elem_i] ) ) return false;
@@ -5970,11 +5985,16 @@ TABLEDEMO_TABLE_INLINE bool RootConfigSaveBody( TableWriter & w, TableIds & ids,
     {
         const uint64_t ref_profiles = ids.ref( 0x8181e61fc0436767ull );
         int64_t body_profiles = 0;
+        // profiles: the sizing loop's per-element lengths, kept for the write loop
+        // below — the element's own length prefix is the number the parent's
+        // body length was built from, so measuring it twice can only agree.
+        int64_t elem_cache[ 4 ];
         body_profiles += 1 + TableLebBytes( (uint64_t) ( value.profiles_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.profiles_count; elem_i++ )
         {
             const int64_t elem_bytes = ProfileConfigMeasureBody( ids, value.profiles[elem_i] );
             if ( elem_bytes < 0 ) { return false; }
+            if ( elem_i < 4 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_profiles += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         w.putleb( ref_profiles ); w.put8( 14 ); w.putleb( (uint64_t) body_profiles ); // profiles
@@ -5982,7 +6002,7 @@ TABLEDEMO_TABLE_INLINE bool RootConfigSaveBody( TableWriter & w, TableIds & ids,
         for ( int32_t elem_i = 0; elem_i < value.profiles_count; elem_i++ )
         {
             {
-                const int64_t elem_len = ProfileConfigMeasureBody( ids, value.profiles[elem_i] );
+                const int64_t elem_len = elem_i < 4 ? elem_cache[ elem_i ] : ProfileConfigMeasureBody( ids, value.profiles[elem_i] );
                 if ( elem_len < 0 ) return false;
                 w.putleb( (uint64_t) elem_len );
                 if ( !ProfileConfigSaveBody( w, ids, value.profiles[elem_i] ) ) return false;

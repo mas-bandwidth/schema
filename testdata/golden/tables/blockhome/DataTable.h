@@ -3628,11 +3628,16 @@ BLOCKHOME_TABLE_INLINE bool GunnerSettingsSaveBody( TableWriter & w, TableIds & 
     {
         const uint64_t ref_firing_groups = ids.ref( 0x260b8ca6b0c3db7full );
         int64_t body_firing_groups = 0;
+        // firing_groups: the sizing loop's per-element lengths, kept for the write loop
+        // below — the element's own length prefix is the number the parent's
+        // body length was built from, so measuring it twice can only agree.
+        int64_t elem_cache[ 32 ];
         body_firing_groups += 1 + TableLebBytes( (uint64_t) ( value.firing_groups_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.firing_groups_count; elem_i++ )
         {
             const int64_t elem_bytes = FiringGroupMeasureBody( ids, value.firing_groups[elem_i] );
             if ( elem_bytes < 0 ) { return false; }
+            if ( elem_i < 32 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_firing_groups += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         w.putleb( ref_firing_groups ); w.put8( 14 ); w.putleb( (uint64_t) body_firing_groups ); // firing_groups
@@ -3640,7 +3645,7 @@ BLOCKHOME_TABLE_INLINE bool GunnerSettingsSaveBody( TableWriter & w, TableIds & 
         for ( int32_t elem_i = 0; elem_i < value.firing_groups_count; elem_i++ )
         {
             {
-                const int64_t elem_len = FiringGroupMeasureBody( ids, value.firing_groups[elem_i] );
+                const int64_t elem_len = elem_i < 32 ? elem_cache[ elem_i ] : FiringGroupMeasureBody( ids, value.firing_groups[elem_i] );
                 if ( elem_len < 0 ) return false;
                 w.putleb( (uint64_t) elem_len );
                 if ( !FiringGroupSaveBody( w, ids, value.firing_groups[elem_i] ) ) return false;
@@ -3652,11 +3657,16 @@ BLOCKHOME_TABLE_INLINE bool GunnerSettingsSaveBody( TableWriter & w, TableIds & 
     {
         const uint64_t ref_missile_groups = ids.ref( 0x3c99105aa087f6bcull );
         int64_t body_missile_groups = 0;
+        // missile_groups: the sizing loop's per-element lengths, kept for the write loop
+        // below — the element's own length prefix is the number the parent's
+        // body length was built from, so measuring it twice can only agree.
+        int64_t elem_cache[ 4 ];
         body_missile_groups += 1 + TableLebBytes( (uint64_t) ( value.missile_groups_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.missile_groups_count; elem_i++ )
         {
             const int64_t elem_bytes = FiringGroupMeasureBody( ids, value.missile_groups[elem_i] );
             if ( elem_bytes < 0 ) { return false; }
+            if ( elem_i < 4 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_missile_groups += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         w.putleb( ref_missile_groups ); w.put8( 14 ); w.putleb( (uint64_t) body_missile_groups ); // missile_groups
@@ -3664,7 +3674,7 @@ BLOCKHOME_TABLE_INLINE bool GunnerSettingsSaveBody( TableWriter & w, TableIds & 
         for ( int32_t elem_i = 0; elem_i < value.missile_groups_count; elem_i++ )
         {
             {
-                const int64_t elem_len = FiringGroupMeasureBody( ids, value.missile_groups[elem_i] );
+                const int64_t elem_len = elem_i < 4 ? elem_cache[ elem_i ] : FiringGroupMeasureBody( ids, value.missile_groups[elem_i] );
                 if ( elem_len < 0 ) return false;
                 w.putleb( (uint64_t) elem_len );
                 if ( !FiringGroupSaveBody( w, ids, value.missile_groups[elem_i] ) ) return false;

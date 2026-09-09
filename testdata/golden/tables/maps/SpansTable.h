@@ -6767,11 +6767,16 @@ inline bool SpansTracksEntrySaveBodyFields( const Ctx & ctx, const TableNumberin
         {
             const uint64_t ref_value = ids.ref( 0x7ce4fd9430e80ceaull );
             int64_t body_value = 0;
+            // value: the sizing loop's per-element lengths, kept for the write loop
+            // below — the element's own length prefix is the number the parent's
+            // body length was built from, so measuring it twice can only agree.
+            int64_t elem_cache_value[ 64 ];
             body_value += 1 + TableLebBytes( (uint64_t) ( cursor_value.count ) ); // the element kind byte and the count
             for ( int32_t elem_i_value = 0; elem_i_value < cursor_value.count; elem_i_value++ )
             {
                 const int64_t elem_bytes_value = ItemMeasureBody( ids, cursor_value[elem_i_value] );
                 if ( elem_bytes_value < 0 ) { return false; }
+                if ( elem_i_value < 64 ) { elem_cache_value[ elem_i_value ] = elem_bytes_value; }
                 body_value += TableLebBytes( (uint64_t) ( elem_bytes_value ) ) + ( elem_bytes_value );
             }
             w.putleb( ref_value ); w.put8( 14 ); w.putleb( (uint64_t) body_value ); // value
@@ -6779,7 +6784,7 @@ inline bool SpansTracksEntrySaveBodyFields( const Ctx & ctx, const TableNumberin
             for ( int32_t elem_i_value = 0; elem_i_value < cursor_value.count; elem_i_value++ )
             {
                 {
-                    const int64_t elem_len_value = ItemMeasureBody( ids, cursor_value[elem_i_value] );
+                    const int64_t elem_len_value = elem_i_value < 64 ? elem_cache_value[ elem_i_value ] : ItemMeasureBody( ids, cursor_value[elem_i_value] );
                     if ( elem_len_value < 0 ) return false;
                     w.putleb( (uint64_t) elem_len_value );
                     if ( !ItemSaveBody( w, ids, cursor_value[elem_i_value] ) ) return false;

@@ -4551,11 +4551,16 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
     {
         const uint64_t ref_entities = ids.ref( 0x935d0fb07bb3822aull );
         int64_t body_entities = 0;
+        // entities: the sizing loop's per-element lengths, kept for the write loop
+        // below — the element's own length prefix is the number the parent's
+        // body length was built from, so measuring it twice can only agree.
+        int64_t elem_cache[ 8 ];
         body_entities += 1 + TableLebBytes( (uint64_t) ( value.entities_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.entities_count; elem_i++ )
         {
             const int64_t elem_bytes = TableEntityMeasureBody( ids, value.entities[elem_i] );
             if ( elem_bytes < 0 ) { return false; }
+            if ( elem_i < 8 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_entities += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         w.putleb( ref_entities ); w.put8( 14 ); w.putleb( (uint64_t) body_entities ); // entities
@@ -4563,7 +4568,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
         for ( int32_t elem_i = 0; elem_i < value.entities_count; elem_i++ )
         {
             {
-                const int64_t elem_len = TableEntityMeasureBody( ids, value.entities[elem_i] );
+                const int64_t elem_len = elem_i < 8 ? elem_cache[ elem_i ] : TableEntityMeasureBody( ids, value.entities[elem_i] );
                 if ( elem_len < 0 ) return false;
                 w.putleb( (uint64_t) elem_len );
                 if ( !TableEntitySaveBody( w, ids, value.entities[elem_i] ) ) return false;
@@ -4575,11 +4580,16 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
     {
         const uint64_t ref_stats = ids.ref( 0xee639cad45b1994cull );
         int64_t body_stats = 0;
+        // stats: the sizing loop's per-element lengths, kept for the write loop
+        // below — the element's own length prefix is the number the parent's
+        // body length was built from, so measuring it twice can only agree.
+        int64_t elem_cache[ 64 ];
         body_stats += 1 + TableLebBytes( (uint64_t) ( value.stats_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.stats_count; elem_i++ )
         {
             const int64_t elem_bytes = TableStatMeasureBody( ids, value.stats[elem_i] );
             if ( elem_bytes < 0 ) { return false; }
+            if ( elem_i < 64 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_stats += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         w.putleb( ref_stats ); w.put8( 14 ); w.putleb( (uint64_t) body_stats ); // stats
@@ -4587,7 +4597,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
         for ( int32_t elem_i = 0; elem_i < value.stats_count; elem_i++ )
         {
             {
-                const int64_t elem_len = TableStatMeasureBody( ids, value.stats[elem_i] );
+                const int64_t elem_len = elem_i < 64 ? elem_cache[ elem_i ] : TableStatMeasureBody( ids, value.stats[elem_i] );
                 if ( elem_len < 0 ) return false;
                 w.putleb( (uint64_t) elem_len );
                 if ( !TableStatSaveBody( w, ids, value.stats[elem_i] ) ) return false;

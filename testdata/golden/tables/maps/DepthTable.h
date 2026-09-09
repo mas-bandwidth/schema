@@ -7562,11 +7562,16 @@ inline bool DepthSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
     {
         const uint64_t ref_many = ids.ref( 0x1f6459a2cea1fc02ull );
         int64_t body_many = 0;
+        // many: the sizing loop's per-element lengths, kept for the write loop
+        // below — the element's own length prefix is the number the parent's
+        // body length was built from, so measuring it twice can only agree.
+        int64_t elem_cache[ 3 ];
         body_many += 1 + TableLebBytes( (uint64_t) ( value.many_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.many_count; elem_i++ )
         {
             const int64_t elem_bytes = SquadMeasureBody( ctx, numbering, ids, value.many[elem_i] );
             if ( elem_bytes < 0 ) { return false; }
+            if ( elem_i < 3 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_many += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         w.putleb( ref_many ); w.put8( 14 ); w.putleb( (uint64_t) body_many ); // many
@@ -7574,7 +7579,7 @@ inline bool DepthSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
         for ( int32_t elem_i = 0; elem_i < value.many_count; elem_i++ )
         {
             {
-                const int64_t elem_len = SquadMeasureBody( ctx, numbering, ids, value.many[elem_i] );
+                const int64_t elem_len = elem_i < 3 ? elem_cache[ elem_i ] : SquadMeasureBody( ctx, numbering, ids, value.many[elem_i] );
                 if ( elem_len < 0 ) return false;
                 w.putleb( (uint64_t) elem_len );
                 if ( !SquadSaveBody( ctx, numbering, w, ids, value.many[elem_i] ) ) return false;
