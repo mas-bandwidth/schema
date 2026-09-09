@@ -1,15 +1,5 @@
 # Schema roadmap
 
-Nine languages are live: C++, C, C#, Go, Rust, Java, JavaScript, Dart and Elixir.
-The packet wire is complete in all nine and holds there. On the table wire the
-work is in this order: C++, C, C# and Go carry the complete table surface and are
-being made production ready first, well tested, correct and performant; Rust,
-Java, JavaScript, Dart and Elixir follow (#514 to #518). The eleven columns to
-the right of those are the languages we intend to port next; each waits for
-support that covers its tokens. The two tables below say what each port does
-today, read off the checked-in compiler and the conformance legs that run on
-every pull request.
-
 ### Packet wire
 
 | feature | cpp | c | cs | go | rust | java | js | dart | elixir | swift | ts | lua | clojure | python | ruby | kotlin | gdscript | zig | odin | haxe |
