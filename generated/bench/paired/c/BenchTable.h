@@ -3402,6 +3402,14 @@ static SCHEMA_UNUSED int mixed_stat_save_body( TableWriter * w, const MixedStat 
     (void) value;
     if ( w->buffer == NULL && !w->check_default )
     {
+        if ( !w->overflow && w->offset >= 0 && w->offset <= w->capacity && w->vocabulary->slot[38] >= 0 && w->vocabulary->slot[21] >= 0 && 10 <= w->capacity - w->offset )
+        {
+            int64_t body_bytes = 1;
+            if ( !( value->stat_id == 0 ) ) { body_bytes += 3; }
+            if ( !( value->delta == 0 ) ) { body_bytes += 6; }
+            w->offset += body_bytes;
+            return 1;
+        }
         int64_t payload_bytes = 1; /* the zero reference ending this body */
         if ( !( value->stat_id == 0 ) )
         {
@@ -3735,6 +3743,16 @@ static SCHEMA_UNUSED int mixed_hit_event_save_body( TableWriter * w, const Mixed
     (void) value;
     if ( w->buffer == NULL && !w->check_default )
     {
+        if ( !w->overflow && w->offset >= 0 && w->offset <= w->capacity && w->vocabulary->slot[59] >= 0 && w->vocabulary->slot[36] >= 0 && w->vocabulary->slot[1] >= 0 && w->vocabulary->slot[6] >= 0 && 20 <= w->capacity - w->offset )
+        {
+            int64_t body_bytes = 1;
+            if ( !( value->target_id == 0 ) ) { body_bytes += 4; }
+            if ( !( value->damage == 0 ) ) { body_bytes += 6; }
+            if ( !( value->hit_kind == 0 ) ) { body_bytes += 6; }
+            if ( !( value->crit == 0 ) ) { body_bytes += 3; }
+            w->offset += body_bytes;
+            return 1;
+        }
         int64_t payload_bytes = 1; /* the zero reference ending this body */
         if ( !( value->target_id == 0 ) )
         {
@@ -4281,6 +4299,14 @@ static SCHEMA_UNUSED int mixed_chat_event_save_body( TableWriter * w, const Mixe
     (void) value;
     if ( w->buffer == NULL && !w->check_default )
     {
+        if ( !w->overflow && w->offset >= 0 && w->offset <= w->capacity && w->vocabulary->slot[54] >= 0 && w->vocabulary->slot[76] >= 0 && 11 <= w->capacity - w->offset )
+        {
+            int64_t body_bytes = 1;
+            if ( !( value->channel == 0 ) ) { body_bytes += 6; }
+            if ( !( value->speaker == 0 ) ) { body_bytes += 4; }
+            w->offset += body_bytes;
+            return 1;
+        }
         int64_t payload_bytes = 1; /* the zero reference ending this body */
         if ( !( value->channel == 0 ) )
         {
@@ -4650,6 +4676,14 @@ static SCHEMA_UNUSED int mixed_pickup_event_save_body( TableWriter * w, const Mi
     (void) value;
     if ( w->buffer == NULL && !w->check_default )
     {
+        if ( !w->overflow && w->offset >= 0 && w->offset <= w->capacity && w->vocabulary->slot[48] >= 0 && w->vocabulary->slot[39] >= 0 && 11 <= w->capacity - w->offset )
+        {
+            int64_t body_bytes = 1;
+            if ( !( value->item_id == 0 ) ) { body_bytes += 4; }
+            if ( !( value->amount == 0 ) ) { body_bytes += 6; }
+            w->offset += body_bytes;
+            return 1;
+        }
         int64_t payload_bytes = 1; /* the zero reference ending this body */
         if ( !( value->item_id == 0 ) )
         {

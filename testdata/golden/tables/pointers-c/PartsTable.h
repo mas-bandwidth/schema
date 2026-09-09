@@ -3448,6 +3448,15 @@ static SCHEMA_UNUSED int colour_save_body( TableWriter * w, const Colour * value
     (void) value;
     if ( w->buffer == NULL && !w->check_default )
     {
+        if ( !w->overflow && w->offset >= 0 && w->offset <= w->capacity && w->vocabulary->slot[34] >= 0 && w->vocabulary->slot[32] >= 0 && w->vocabulary->slot[33] >= 0 && 10 <= w->capacity - w->offset )
+        {
+            int64_t body_bytes = 1;
+            if ( !( value->r == 0 ) ) { body_bytes += 3; }
+            if ( !( value->g == 0 ) ) { body_bytes += 3; }
+            if ( !( value->b == 0 ) ) { body_bytes += 3; }
+            w->offset += body_bytes;
+            return 1;
+        }
         int64_t payload_bytes = 1; /* the zero reference ending this body */
         if ( !( value->r == 0 ) )
         {

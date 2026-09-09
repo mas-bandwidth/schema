@@ -3209,6 +3209,13 @@ static SCHEMA_UNUSED int tally_save_body( TableWriter * w, const Tally * value )
     (void) value;
     if ( w->buffer == NULL && !w->check_default )
     {
+        if ( !w->overflow && w->offset >= 0 && w->offset <= w->capacity && w->vocabulary->slot[19] >= 0 && 7 <= w->capacity - w->offset )
+        {
+            int64_t body_bytes = 1;
+            if ( !( value->hits == 0 ) ) { body_bytes += 6; }
+            w->offset += body_bytes;
+            return 1;
+        }
         int64_t payload_bytes = 1; /* the zero reference ending this body */
         if ( !( value->hits == 0 ) )
         {

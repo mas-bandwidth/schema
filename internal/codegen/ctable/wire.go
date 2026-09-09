@@ -609,8 +609,31 @@ func (g *tableGen) emitWireScalarLeafMeasure(st *ir.Struct) {
 		}
 	}
 	g.pf("    if ( w->buffer == NULL && !w->check_default )\n    {\n")
-	g.pf("        int64_t payload_bytes = 1; /* the zero reference ending this body */\n")
 	guards := tableGuardExprs(st)
+	// With every field id already interned, a small vocabulary needs one byte
+	// per riding reference. Count those bytes with the scalar payload instead
+	// of advancing the measuring writer for each id. The full-body room guard
+	// keeps the existing path's cursor and overflow behavior for short capacity.
+	if len(ir.TableWireIds(g.unit))+1 <= 127 {
+		maxBytes := int64(1)
+		warm := []string{"!w->overflow", "w->offset >= 0", "w->offset <= w->capacity"}
+		for _, f := range st.Fields {
+			maxBytes += int64(2 + tableKindWidth(ir.TableWireScalarKind(f)))
+			warm = append(warm, fmt.Sprintf("w->vocabulary->slot[%d] >= 0", g.knownOrdinal(ir.TableFieldWireId(f))))
+		}
+		warm = append(warm, fmt.Sprintf("%d <= w->capacity - w->offset", maxBytes))
+		g.pf("        if ( %s )\n        {\n", strings.Join(warm, " && "))
+		g.pf("            int64_t body_bytes = 1;\n")
+		for _, f := range st.Fields {
+			condition := "!( " + g.wireDefaultEquals(f, "value->"+f.Name) + " )"
+			if guard := guards[f.Name]; guard != "" {
+				condition = "( " + guard + " ) && " + condition
+			}
+			g.pf("            if ( %s ) { body_bytes += %d; }\n", condition, 2+tableKindWidth(ir.TableWireScalarKind(f)))
+		}
+		g.pf("            w->offset += body_bytes;\n            return 1;\n        }\n")
+	}
+	g.pf("        int64_t payload_bytes = 1; /* the zero reference ending this body */\n")
 	for _, f := range st.Fields {
 		condition := "!( " + g.wireDefaultEquals(f, "value->"+f.Name) + " )"
 		if guard := guards[f.Name]; guard != "" {

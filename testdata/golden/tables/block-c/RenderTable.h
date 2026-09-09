@@ -10166,6 +10166,15 @@ static SCHEMA_UNUSED int render_vector3_save_body( TableWriter * w, const Render
     (void) value;
     if ( w->buffer == NULL && !w->check_default )
     {
+        if ( !w->overflow && w->offset >= 0 && w->offset <= w->capacity && w->vocabulary->slot[53] >= 0 && w->vocabulary->slot[52] >= 0 && w->vocabulary->slot[54] >= 0 && 31 <= w->capacity - w->offset )
+        {
+            int64_t body_bytes = 1;
+            if ( !( value->x == 0.0 ) ) { body_bytes += 10; }
+            if ( !( value->y == 0.0 ) ) { body_bytes += 10; }
+            if ( !( value->z == 0.0 ) ) { body_bytes += 10; }
+            w->offset += body_bytes;
+            return 1;
+        }
         int64_t payload_bytes = 1; /* the zero reference ending this body */
         if ( !( value->x == 0.0 ) )
         {
@@ -10581,6 +10590,16 @@ static SCHEMA_UNUSED int render_quaternion_save_body( TableWriter * w, const Ren
     (void) value;
     if ( w->buffer == NULL && !w->check_default )
     {
+        if ( !w->overflow && w->offset >= 0 && w->offset <= w->capacity && w->vocabulary->slot[53] >= 0 && w->vocabulary->slot[52] >= 0 && w->vocabulary->slot[54] >= 0 && w->vocabulary->slot[51] >= 0 && 41 <= w->capacity - w->offset )
+        {
+            int64_t body_bytes = 1;
+            if ( !( value->x == 0.0 ) ) { body_bytes += 10; }
+            if ( !( value->y == 0.0 ) ) { body_bytes += 10; }
+            if ( !( value->z == 0.0 ) ) { body_bytes += 10; }
+            if ( !( value->w == 1.0 ) ) { body_bytes += 10; }
+            w->offset += body_bytes;
+            return 1;
+        }
         int64_t payload_bytes = 1; /* the zero reference ending this body */
         if ( !( value->x == 0.0 ) )
         {
