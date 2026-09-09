@@ -577,11 +577,48 @@ func tableOpen(data []byte, report *TableReport) (TableReader, TableOpenVerdict)
 	}
 	start := len(data) - 8 - int(n)*8
 	r.Buffer, r.Ids = data[1:start], data[start:len(data)-8]
-	for i := 0; i < len(r.Ids); i += 8 {
-		id := binary.LittleEndian.Uint64(r.Ids[i:])
-		for j := 0; j < i; j += 8 {
-			if id == binary.LittleEndian.Uint64(r.Ids[j:]) {
-				return r, TableOpenDamaged
+	// Count is attacker-capped by (bytes-9)/8. The open-addressed path runs
+	// only at n<=256 with 512 slots, compares the stored id not the hash, and
+	// caps probes at the slot count. Exhausted probes and n>256 keep the
+	// pairwise walk, which is the same verdict. The mix is C's table_writer_id.
+	if n > 1 {
+		pairwise := n > 256
+		if !pairwise {
+			var seen [512]uint64
+			var used [512]uint8
+			for i := uint64(0); i < n; i++ {
+				id := binary.LittleEndian.Uint64(r.Ids[i*8:])
+				hash := id
+				hash ^= hash >> 33
+				hash *= 0xff51afd7ed558ccd
+				hash ^= hash >> 33
+				slot := uint32(hash) & 511
+				probes := uint32(0)
+				for ; probes < 512; probes++ {
+					if used[slot] == 0 {
+						used[slot] = 1
+						seen[slot] = id
+						break
+					}
+					if seen[slot] == id {
+						return r, TableOpenDamaged
+					}
+					slot = (slot + 1) & 511
+				}
+				if probes == 512 {
+					pairwise = true
+					break
+				}
+			}
+		}
+		if pairwise {
+			for i := 0; i < len(r.Ids); i += 8 {
+				id := binary.LittleEndian.Uint64(r.Ids[i:])
+				for j := 0; j < i; j += 8 {
+					if id == binary.LittleEndian.Uint64(r.Ids[j:]) {
+						return r, TableOpenDamaged
+					}
+				}
 			}
 		}
 	}
