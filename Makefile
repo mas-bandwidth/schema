@@ -3072,6 +3072,17 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	$(MAKE) projection-union-arm-order-negative-control
 	./build/schema_test_tables
 	./build/schema_test_tables_asan
+	# THE ID TABLE'S DISTINCTNESS AND RESOLVE GATE (docs/SPEC-TABLES.md §3):
+	# TableOpen answers "one id in two entries" three ways and resolves every
+	# entry into a compile-time slot, and the corpus above takes only one of
+	# those ways, so the gate below builds the other tables by hand and holds
+	# every verdict against a pairwise reference and every slot against the
+	# hash. Its controls remove each structure's own test and require the gate
+	# to go red on that structure's cases.
+	$(MAKE) tables-distinctness
+	$(MAKE) tables-distinctness-negative-control
+	$(MAKE) tables-slot-bitmap-negative-control
+	$(MAKE) tables-slot-resolve-negative-control
 	# THE WIRE FUZZER (docs/SPEC-TABLES.md §4.2): the tolerant read on hostile
 	# bytes against the engine, plain and sanitized, at a short random pass —
 	# the enumerated passes run whole whatever N is — and its two controls at
@@ -4466,6 +4477,128 @@ build/wire-fuzz-cpp-asan: build/tables-generated/.stamp test/tables/wire_fuzz_ma
 	$(CXX) $(TABLES_CXXFLAGS) -O1 -fsanitize=address,undefined -fno-sanitize-recover=all \
 		-fno-omit-frame-pointer -g $(CONFORMANCE_INCLUDES) test/tables/wire_fuzz_main.cpp \
 		$(CONFORMANCE_SOURCES) -o $@
+
+# THE ID TABLE'S DISTINCTNESS AND RESOLVE GATE (docs/SPEC-TABLES.md §3): a
+# table that carries one id twice is malformed, and TableOpen answers that
+# question with THREE structures — a bitmap over the compile-time SLOTS for
+# every id this build can name, a hashed PROBE over a stack array for the
+# foreign subset, and the pairwise walk above kTableIdRefBound. The property is
+# that a READER CANNOT TELL WHICH ONE RAN, and a corpus cannot say so on its
+# own, because every table this schema writes is small and every id in it is
+# one this build names. So this gate builds tables BY HAND, drives TableOpen
+# directly and compares every verdict against an independent pairwise
+# reference: both sides of the bound, a repeat planted at every position, the
+# known set and the foreign set separately and interleaved, the three reserved
+# ids, and the ALL-COLLIDING tables a hostile writer builds by inverting each
+# multiply. It also holds the RESOLVE itself: every entry's slot out of the
+# array TableOpen filled must equal the slot the hash gives, on both sides of
+# the bound, and a slot that is not kTableIdSlotUnknown must name that id.
+#
+# It is built THREE ways because the check is READ SIDE and a read-side check
+# never compiles out: the debug build, an NDEBUG release build that has to
+# reach the same verdict on the same bytes, and a sanitized one, for the reason
+# the wire fuzzer carries its own — the probe indexes a stack array.
+# The generated header is the whole dependency, which is also what "the codec
+# is header-only and names no runtime" means when a leg says it.
+.PHONY: tables-distinctness
+tables-distinctness: build/tables-generated/.stamp test/tables/distinct_main.cpp
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/examples \
+		test/tables/distinct_main.cpp -o build/schema_test_distinct
+	./build/schema_test_distinct
+	$(CXX) $(TABLES_CXXFLAGS) -DNDEBUG -O2 -Ibuild/tables-generated/examples \
+		test/tables/distinct_main.cpp -o build/schema_test_distinct_ndebug
+	./build/schema_test_distinct_ndebug
+	$(CXX) $(TABLES_CXXFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all \
+		-fno-omit-frame-pointer -g -Ibuild/tables-generated/examples \
+		test/tables/distinct_main.cpp -o build/schema_test_distinct_asan
+	./build/schema_test_distinct_asan
+	@echo "distinctness gate: one verdict across both walks, debug, release and sanitized"
+
+# ITS NEGATIVE CONTROL. A gate over a check that is correct THREE times cannot
+# be read for which walk earned the green: the pairwise walk alone would answer
+# every case in this test correctly if the bound never sent anything down the
+# fast path. So this removes the PROBE's comparison from a copy of the emitter,
+# leaves the pairwise walk untouched, and requires the gate to go red ON THE
+# PROBE'S OWN CASES — which is also the standing proof that the bound is live.
+# Its sibling below does the same to the SLOT bitmap, which is the structure
+# this change added and the one that carries every id a real wire names.
+.PHONY: tables-distinctness-negative-control
+tables-distinctness-negative-control: bin/schema test/tables/distinct_main.cpp
+	@rm -rf build/distinct-nc && mkdir -p build/distinct-nc
+	@sed -e 's|if ( seen\[p\] == id ) { return TableOpenDamaged; }|if ( false \&\& seen[p] == id ) { return TableOpenDamaged; } // SABOTAGED|' \
+		internal/codegen/cpptable/cpptable.go > build/distinct-nc/cpptable.go.txt
+	@cmp -s build/distinct-nc/cpptable.go.txt internal/codegen/cpptable/cpptable.go && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/distinct-nc/cpptable.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/distinct-nc/overlay.json
+	go build -overlay=build/distinct-nc/overlay.json -o build/distinct-nc/schema ./cmd/schema
+	./build/distinct-nc/schema generate --lang cpp --out build/distinct-nc/examples tables/examples
+	@grep -q SABOTAGED build/distinct-nc/examples/TablesTable.h || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter did not reach the header"; exit 1; }
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/distinct-nc/examples \
+		test/tables/distinct_main.cpp -o build/distinct-nc/schema_test_distinct
+	@if ./build/distinct-nc/schema_test_distinct > build/distinct-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the gate stayed green with the probe's comparison removed"; exit 1; \
+	fi
+	@grep -q "^FAIL probe:" build/distinct-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on a probe case"; cat build/distinct-nc/log; exit 1; }
+	@echo "negative control: removing the probe's comparison turns the distinctness gate RED on the probe's own cases"
+
+
+# THE SLOT BITMAP'S OWN NEGATIVE CONTROL. The probe control above proves the
+# FOREIGN walk is live; this one proves the KNOWN walk is, which is the walk
+# every real wire takes, because every id a wire this build wrote carries is
+# one this build names. It removes the bitmap's "already set" test from a copy
+# of the emitter, leaves the probe and the pairwise walk untouched, and
+# requires the gate to go red on a case built out of the known set.
+.PHONY: tables-slot-bitmap-negative-control
+tables-slot-bitmap-negative-control: bin/schema test/tables/distinct_main.cpp
+	@rm -rf build/slotmap-nc && mkdir -p build/slotmap-nc
+	@sed -e 's|if ( ( known\[ s >> 6 \] & bit ) != 0 ) { return TableOpenDamaged; }|if ( false \&\& ( known[ s >> 6 ] \& bit ) != 0 ) { return TableOpenDamaged; } // SABOTAGED|' \
+		internal/codegen/cpptable/cpptable.go > build/slotmap-nc/cpptable.go.txt
+	@cmp -s build/slotmap-nc/cpptable.go.txt internal/codegen/cpptable/cpptable.go && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/slotmap-nc/cpptable.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/slotmap-nc/overlay.json
+	go build -overlay=build/slotmap-nc/overlay.json -o build/slotmap-nc/schema ./cmd/schema
+	./build/slotmap-nc/schema generate --lang cpp --out build/slotmap-nc/examples tables/examples
+	@grep -q SABOTAGED build/slotmap-nc/examples/TablesTable.h || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter did not reach the header"; exit 1; }
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/slotmap-nc/examples \
+		test/tables/distinct_main.cpp -o build/slotmap-nc/schema_test_distinct
+	@if ./build/slotmap-nc/schema_test_distinct > build/slotmap-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the gate stayed green with the slot bitmap's test removed"; exit 1; \
+	fi
+	@grep -q "^FAIL known" build/slotmap-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on a known-id case"; cat build/slotmap-nc/log; exit 1; }
+	@echo "negative control: removing the slot bitmap's test turns the distinctness gate RED on the known set's own cases"
+
+# THE RESOLVE'S NEGATIVE CONTROL. The two above prove the distinctness verdict
+# is earned; this one proves the RESOLVE is, which is what every body's
+# dispatch reads. It makes TableOpen leave one entry's slot behind — the
+# resolved array disagreeing with the hash by one position — and requires the
+# gate to go red, which is what says the slot_of check in the gate is live.
+.PHONY: tables-slot-resolve-negative-control
+tables-slot-resolve-negative-control: bin/schema test/tables/distinct_main.cpp
+	@rm -rf build/slotres-nc && mkdir -p build/slotres-nc
+	@sed -e 's|table.slots\[ i + 1 \] = s;|table.slots[ i + 1 ] = i == 0 ? kTableIdSlotUnknown : s; // SABOTAGED|' \
+		internal/codegen/cpptable/cpptable.go > build/slotres-nc/cpptable.go.txt
+	@cmp -s build/slotres-nc/cpptable.go.txt internal/codegen/cpptable/cpptable.go && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/slotres-nc/cpptable.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/slotres-nc/overlay.json
+	go build -overlay=build/slotres-nc/overlay.json -o build/slotres-nc/schema ./cmd/schema
+	./build/slotres-nc/schema generate --lang cpp --out build/slotres-nc/examples tables/examples
+	@grep -q SABOTAGED build/slotres-nc/examples/TablesTable.h || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter did not reach the header"; exit 1; }
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/slotres-nc/examples \
+		test/tables/distinct_main.cpp -o build/slotres-nc/schema_test_distinct
+	@if ./build/slotres-nc/schema_test_distinct > build/slotres-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the gate stayed green with one entry's slot dropped"; exit 1; \
+	fi
+	@grep -q "resolved to slot" build/slotres-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the resolve"; cat build/slotres-nc/log; exit 1; }
+	@echo "negative control: dropping one entry's resolved slot turns the distinctness gate RED on the resolve"
 
 .PHONY: tables-wire-fuzz
 tables-wire-fuzz: build/conformance-harness build/wire-fuzz-cpp build/wire-fuzz-cpp-asan

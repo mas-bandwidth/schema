@@ -1140,10 +1140,10 @@ func (g *tableGen) emitMapKeyReader(f *ir.Field) {
 	g.pf("        if ( !r.getleb( field_ref ) ) { out.malformed = true; return out; }\n")
 	g.pf("        if ( field_ref == 0 ) { out.malformed = r.offset != r.size; return out; } // the terminator consumes the entry's L\n")
 	g.pf("        if ( ids == NULL || field_ref > (uint64_t) ids->count ) { out.malformed = true; return out; }\n")
-	g.pf("        const uint64_t field_id = ids->at( field_ref );\n")
+	g.pf("        const uint16_t field_slot = ids->slot_of( field_ref ); // the trailer resolved ONCE, at open (§3)\n")
 	g.pf("        if ( !r.has( 1 ) ) { out.malformed = true; return out; }\n")
 	g.pf("        uint8_t field_kind = r.get8();\n")
-	g.pf("        if ( field_id == 0x%016xull ) // `key`, the ordinary hash of an ordinary name\n        {\n", ir.MapKeyWireId)
+	g.pf("        if ( field_slot == %d ) // `key`, at its slot; the id is the ordinary hash of an ordinary name\n        {\n", g.idSlotOf(ir.MapKeyWireId))
 	if !mapKeyIsString(f) && widenable(kind) {
 		// A KEY KIND THE DECLARATION WIDENS IS NOT A DISAGREEMENT (§2.8,
 		// §4): the key decodes exactly at its own width and the entry lands.

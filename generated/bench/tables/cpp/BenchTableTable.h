@@ -377,6 +377,145 @@ inline void TableIdsWrite( TableWriter & w, const TableIds & ids )
     w.put64( uint64_t( ids.count ) );
 }
 
+
+// THE ID SLOT MAP, and it is the READ SIDE'S half of the id table
+// (docs/SPEC-TABLES.md §3). The spec leaves the shape to the reader — "an
+// array of the ids it read, a per-type array of resolved slots, a perfect
+// hash" — because nothing on the wire depends on it and no conformance case
+// can see the difference. This is the third with the second on top of it.
+//
+// THE SET IS A COMPILE-TIME FACT OF THE UNIT, exactly as TableIds::kCapacity
+// is: every id this closure can SPELL — every field's, every enum variant's,
+// every union arm's, every table's own name, the blob type ids and the three
+// the language holds back. Each takes a SLOT, numbered in the vocabulary's own
+// order so that a record's fields land in a run and its switch is dense.
+//
+// THE MAP NEVER SOFTENS AND NEVER COMPILES OUT. It decides nothing about
+// damage on its own: an id outside the set answers kTableIdSlotUnknown, which is
+// the arm the unknown counter already sat in, and every check that followed a
+// resolved id still follows a resolved slot.
+static const int32_t kTableIdSlotCount = 81;
+static const uint16_t kTableIdSlotUnknown = 0xFFFF;
+static const int32_t kTableIdSlotProbeSize = 512;
+// THE WORST CASE IS A CONSTANT OF THIS HEADER and not a property of the input:
+// the emitter searched the multipliers and this one leaves no run of occupied
+// probe slots longer than 2, so no lookup examines more than 3. A hostile
+// wire cannot lengthen a run, because the set that fills the table is the
+// unit's own and every id the wire brings is either in it or a miss.
+static const int32_t kTableIdSlotMaxProbe = 3;
+static const uint64_t kTableIdSlotMultiplier = 0xb3c4904a6d278933ull;
+static const uint32_t kTableIdSlotShift = 55;
+// kTableIdSlotUnknown IS NOT A SLOT, so the set may never grow into it
+static_assert( kTableIdSlotCount < 0xFFFF, "the id slot map outgrew its sentinel" );
+// the id each slot names, in slot order — what TableIdTable::at hands back,
+// settled at compile time instead of decoded from the wire
+static const uint64_t kTableIdSlotId[ kTableIdSlotCount ] = {
+    0xa5013e9ad5caeda4ull, 0xfbf1ac4d96ebd022ull, 0x23fcfd6678e36712ull, 0xcb4b37357667310eull,
+    0xcb4b3835766732c1ull, 0xcb4b353576672da8ull, 0xb54d8e19798e16e8ull, 0x53a9f665a90cc1b1ull,
+    0x6cede6b6eb60ee67ull, 0x6cede5b6eb60ecb4ull, 0x6cede8b6eb60f1cdull, 0x7f69d4b5288ba9cfull,
+    0xa0b610205f2c6e01ull, 0x7f6308be8ab37fc0ull, 0x11a44fc1d1243da7ull, 0x7674cfd19b9031caull,
+    0xb7bc9ac015a25050ull, 0x01fbc365b059b925ull, 0x126167908c9aa52dull, 0x6a5a70d91aa115fdull,
+    0xaa38aca481f528a8ull, 0x0dbe005c56697c3eull, 0x9bae0da8b829ee03ull, 0xb7d7b5650a590b05ull,
+    0x6d7b98e2d095967eull, 0x73a94c71d60dc0d8ull, 0x3eee6b51be54fc85ull, 0x7bbc035f7b6d0112ull,
+    0x3c460475f9be69c6ull, 0x935d0fb07bb3822aull, 0xee639cad45b1994cull, 0x2e35dc5321aa5790ull,
+    0x5759ce7586bbb5a3ull, 0x13a62f542cf8e86eull, 0xcfb8a9d063b5e9e5ull, 0xdbaf7be5e24296c9ull,
+    0xdbaf7ae5e2429516ull, 0xdbaf79e5e2429363ull, 0x9cef31fff7e2e457ull, 0x5ab3f9c9341f6c04ull,
+    0xa3348580461faf16ull, 0xd61bdd7908af2642ull, 0xbf30e00dc53307a9ull, 0x560d6527ccd8515full,
+    0xc08292176cfd8672ull, 0xfd29ee12a979cb69ull, 0x78101ac0aa8cbcfeull, 0x9e7fd06d864fbd56ull,
+    0x8113fe7ea2b16969ull, 0x80ab75f0866dbf65ull, 0x52076675ec13a0c1ull, 0xa790eee12766cf0cull,
+    0x9fbfefa835da8476ull, 0x188bbb1783928a95ull, 0x2c3667b9c2f272f1ull, 0x0ca8b41b00d755f6ull,
+    0x985fc819fab21a4eull, 0x229d0447c3086a55ull, 0x011c7b49a7228f9dull, 0x89f7566e1123e15full,
+    0x8d7f25318b3b4469ull, 0xd9cd0dcc285b7816ull, 0x04dc16aea8ff5276ull, 0x35e53bc341129217ull,
+    0x2cc8282fb0de8831ull, 0x20bada21bc8cb334ull, 0x33732819300680aaull, 0xf2a38d910b5b348bull,
+    0x9fa3a41c86ecb765ull, 0xffffffffffffffffull, 0x2f2ec0474f1c4fe4ull, 0x704be0d8faaffc58ull,
+    0x5f299db0267bd4c7ull, 0x3161723596c6cba8ull, 0x439ae459d6f88a8eull, 0x296aa8e669b99c95ull,
+    0x746c6429cbf8aba8ull, 0x78a8188d74947dedull, 0x969901d577faad3bull, 0xfffffffffffffffeull,
+    0xfffffffffffffffdull,
+};
+// the probe table: a SLOT number a slot, kTableIdSlotUnknown where nothing sits
+static const uint16_t kTableIdSlotProbe[ kTableIdSlotProbeSize ] = {
+    0xFFFF,    73, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+    0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,    37, 0xFFFF, 0xFFFF,    25,
+    0xFFFF,    48, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,    54, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+    0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,    52, 0xFFFF, 0xFFFF,    57,    72, 0xFFFF,    58, 0xFFFF,
+    0xFFFF, 0xFFFF, 0xFFFF,    40, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,    12, 0xFFFF,    28,
+    0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,    47, 0xFFFF, 0xFFFF, 0xFFFF,
+    0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,    34,     2, 0xFFFF,     8, 0xFFFF, 0xFFFF, 0xFFFF,     4,
+    0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+    0xFFFF, 0xFFFF, 0xFFFF,    67, 0xFFFF, 0xFFFF, 0xFFFF,    75, 0xFFFF,     1, 0xFFFF, 0xFFFF,
+    0xFFFF, 0xFFFF,    44, 0xFFFF, 0xFFFF, 0xFFFF,    22, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+    0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+    0xFFFF,    17,    19, 0xFFFF,    31, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,    35,
+    0xFFFF, 0xFFFF,    43, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,    64,    69, 0xFFFF, 0xFFFF,
+        5, 0xFFFF, 0xFFFF,    41, 0xFFFF, 0xFFFF,    77,    65, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+    0xFFFF, 0xFFFF,    51, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,    39, 0xFFFF, 0xFFFF, 0xFFFF,
+    0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,    60, 0xFFFF,
+    0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,    10, 0xFFFF,
+    0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,    46, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+    0xFFFF, 0xFFFF, 0xFFFF,    50, 0xFFFF, 0xFFFF, 0xFFFF,    26, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+    0xFFFF,    29, 0xFFFF, 0xFFFF,    70,    15, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+    0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,    56, 0xFFFF, 0xFFFF,
+    0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+    0xFFFF,    49, 0xFFFF, 0xFFFF, 0xFFFF,    32, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,     9, 0xFFFF,
+    0xFFFF, 0xFFFF,     3,     7, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+        0, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,    21,    24, 0xFFFF, 0xFFFF, 0xFFFF,
+       11, 0xFFFF, 0xFFFF, 0xFFFF,    61,    79, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+    0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,    66,    78, 0xFFFF, 0xFFFF,
+    0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,    20, 0xFFFF, 0xFFFF, 0xFFFF,
+    0xFFFF, 0xFFFF,    36, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,    18, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+    0xFFFF, 0xFFFF,    62, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+    0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,    68,    74, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+    0xFFFF,    23, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,    45, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+    0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+    0xFFFF, 0xFFFF,    33, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+    0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,    71, 0xFFFF, 0xFFFF,    38, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+    0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,    27, 0xFFFF, 0xFFFF, 0xFFFF,    63, 0xFFFF,
+    0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+    0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,    16, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+    0xFFFF,    80, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+    0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,    53,    55, 0xFFFF,    14,     6,
+    0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,    13, 0xFFFF,
+    0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,    42, 0xFFFF,
+       76, 0xFFFF, 0xFFFF, 0xFFFF,    59, 0xFFFF, 0xFFFF,    30,
+};
+
+// TableIdSlotOf is the whole lookup: one multiply, one shift, and at most
+// kTableIdSlotMaxProbe slots examined. It runs ONCE A TRAILER ENTRY at open,
+// and on the ONE cold path where a trailer is larger than the reader resolves
+// (TableIdTable::slot_of below), never once a field on any ordinary wire. It
+// is a PLAIN inline and not the unit's force-inline: it carries a loop, and a
+// copy of it at every field's dispatch would cost the read path i-cache to
+// buy nothing a taken branch does not already buy.
+inline uint16_t TableIdSlotOf( uint64_t id )
+{
+    uint32_t i = uint32_t( ( id * kTableIdSlotMultiplier ) >> kTableIdSlotShift );
+    for ( int32_t p = 0; p < kTableIdSlotMaxProbe; p++ )
+    {
+        const uint16_t s = kTableIdSlotProbe[i];
+        if ( s == kTableIdSlotUnknown ) { return kTableIdSlotUnknown; } // an empty slot ENDS the run
+        if ( kTableIdSlotId[s] == id ) { return s; }
+        i = ( i + 1 ) & uint32_t( kTableIdSlotProbeSize - 1 );
+    }
+    return kTableIdSlotUnknown;
+}
+
+// THE TRAILER THE READER RESOLVES INTO SLOTS AT OPEN. Its bound is a
+// compile-time fact of the unit like every other: the id table this unit's own
+// writer can fill is kCapacity entries, so a wire this build wrote is always
+// under it, and the floor of 128 covers a foreign wire that names more.
+// A trailer ABOVE the bound is read exactly as it always was — the slot is
+// computed per reference instead of read from the array, and the DISTINCTNESS
+// walk falls back to the pairwise one — so the bound moves no verdict and no
+// byte, only where the work sits.
+static const int32_t kTableIdRefBound = 128;
+
+// THE THREE IDS THE LANGUAGE HOLDS BACK, at their slots (docs/SPEC-TABLES.md
+// §3.1, §3.3, §5). A body meeting one where it does not belong is MALFORMED,
+// and the read side tests that by slot like every other id.
+static const uint16_t kTableIdSlotNodeTable = 69;
+static const uint16_t kTableIdSlotBuildVersion = 79;
+static const uint16_t kTableIdSlotVocabulary = 80;
+
 // THE ID TABLE, READER SIDE (docs/SPEC-TABLES.md §3). A reader locates it from
 // the END of the wire and resolves it ONCE, at open: the entries are eight
 // bytes each and a body names them by position, so every field dispatches
@@ -385,16 +524,34 @@ struct TableIdTable
 {
     const uint8_t * entries = NULL;
     int64_t count = 0;
+    // RESOLVED ONCE, AT OPEN (docs/SPEC-TABLES.md §3, and the slot map above):
+    // entry k's compile-time SLOT at index k, counted from 1 exactly as the
+    // reference is, so a body's dispatch is one array load and a dense switch
+    // rather than an eight-byte decode and a chain of 64-bit compares.
+    // The flag is false for a trailer above kTableIdRefBound and for a table no
+    // TableOpen filled, and slot_of then hashes the id the way open would
+    // have: the SAME slot, computed later, and never a different answer.
+    bool resolved = false;
+    uint16_t slots[ kTableIdRefBound + 1 ];
 
     // the id a reference names. ref is 1-based and bounds-checked by the
     // caller: a reference ABOVE the entry count is framing damage on the body
-    // that carries it, and 0 names no id at all.
+    // that carries it, and 0 names no id at all. THE RAW ID IS STILL WHAT A
+    // REPORT, A RETAINED RECORD AND A DUMP WANT, so this stays exactly what it
+    // was and the slot rides beside it rather than in place of it.
     uint64_t at( uint64_t ref ) const
     {
         const uint8_t * e = entries + ( ref - 1 ) * 8;
         uint64_t lo = uint64_t( e[0] ) | uint64_t( e[1] ) << 8 | uint64_t( e[2] ) << 16 | uint64_t( e[3] ) << 24;
         uint64_t hi = uint64_t( e[4] ) | uint64_t( e[5] ) << 8 | uint64_t( e[6] ) << 16 | uint64_t( e[7] ) << 24;
         return lo | ( hi << 32 );
+    }
+
+    // the SLOT a reference names, which is what every read-side switch
+    // dispatches on. Same bounds contract as at().
+    BENCHTABLE_TABLE_INLINE uint16_t slot_of( uint64_t ref ) const
+    {
+        return resolved ? slots[ ref ] : TableIdSlotOf( at( ref ) );
     }
 };
 
@@ -714,6 +871,18 @@ static const uint64_t kTableNodeTableFieldId = 0xFFFFFFFFFFFFFFFFull;
 // refuses the wire by name and never reports damage.
 const uint8_t kTableWireForm = 1;
 
+// THE UNKNOWN-ID PROBE's two sizes (docs/SPEC-TABLES.md §3, and TableOpen
+// below). Only an id this build cannot NAME reaches it — a known id's repeat
+// is a repeated slot and costs one bit of a bitmap over the compile-time set —
+// so the probe carries the FOREIGN subset alone. It is a power of two, so the
+// mask is one AND, and TWICE kTableIdRefBound, so the foreign subset of any
+// trailer the reader resolves fits with the table never fuller than half:
+// the probe has no bound of its own and cannot overflow. Both are compile-time
+// facts of this header, like the id table's own capacity, and the slots are a
+// local of TableOpen: the probe allocates nothing.
+static const int32_t kTableIdProbeSlots = 256;
+static const int32_t kTableIdProbeShift = 56;
+
 // TableOpen reads the form byte and the trailer, in that order, and hands back
 // the ROOT BODY. It answers one of three verdicts, because five zero counters
 // and a false flag are what a clean read prints too:
@@ -745,16 +914,99 @@ inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableI
     if ( span + 1 > bytes ) { return TableOpenDamaged; }
     table.entries = buffer + bytes - span;
     table.count = (int64_t) count;
+    // A READER RESOLVES THE TABLE ONCE, AT OPEN (docs/SPEC-TABLES.md §3), and
+    // this is that resolve: every entry becomes its compile-time SLOT here, so
+    // no body ever decodes an entry's eight bytes again. THE DISTINCTNESS
+    // CHECK RIDES IN THE SAME PASS, because a repeat of an id the unit can
+    // spell is a repeat of a SLOT and costs one bit of a bitmap over a set
+    // whose size is a compile-time fact.
+    //
     // THE ENTRIES ARE DISTINCT: a table that carries one id twice is malformed
     // for the whole wire, because no wire this schema writes carries a repeat
     // and it would leave one more shape of table for a hostile writer to aim
     // at (docs/SPEC-TABLES.md §3).
-    for ( int64_t i = 1; i < table.count; i++ )
+    //
+    // The check is READ SIDE, so it is unconditional: it never compiles out
+    // under NDEBUG and it never softens. The arms below answer TableOpenDamaged
+    // on exactly the same tables and TableOpenOk on exactly the same tables —
+    // WHICH walk finds a repeat is settled by the entry count and by how many
+    // of the entries this build cannot name, and nothing else.
+    //
+    // A KNOWN id is exact by construction: the slot map is injective over the
+    // unit's set, so two distinct known ids never share a slot and one id
+    // repeated always does. AN UNKNOWN id has no slot, so the foreign subset
+    // goes through a PROBE by value — the same Fibonacci multiply TableIds
+    // interns with, taken at the top bits, then linear probing, with occupancy
+    // in a separate bitmap because AN ENTRY IS fnv1a64( name ) AND NOTHING
+    // ELSE (§3): a hash of 0 is an ordinary id and the wire holds back no
+    // 64-bit value to mean "no id".
+    //
+    // ABOVE kTableIdRefBound THE PAIRWISE WALK RUNS UNCHANGED, and nothing is
+    // ever charged for both. The ids are the writer's, so the worst case is
+    // the attacker's, and it is worth stating plainly: the probe's multiply is
+    // invertible, so a hostile writer can land every FOREIGN entry in one
+    // bucket, and a linear probe with no seed cannot be steered away from
+    // that. A cluster can be no longer than the entries already standing in
+    // it, so the nth insert probes at most n slots and the whole probe costs
+    // at most n(n+1)/2 slot comparisons at n = kTableIdRefBound, against the
+    // pairwise walk's n(n-1)/2. The probe therefore does NOT beat the pairwise
+    // walk on comparison count in the worst case, and against chosen ids no
+    // fixed hash could. What it beats, at every count and in the worst case
+    // exactly as much as in the best, is how often the check touches the WIRE:
+    // at() decodes eight bytes a call, and this pass makes EXACTLY n of them
+    // where the pairwise walk makes n(n-1)/2 inner decodes beside n-1 outer
+    // ones. The KNOWN ids do not even reach the probe: they cost one bitmap
+    // bit each, whatever a hostile writer does with them, because their slots
+    // were settled when this header was emitted.
+    //
+    // The SLOT MAP's own lookup cannot be steered either: it is bounded by
+    // kTableIdSlotMaxProbe, a compile-time property of the set the emitter
+    // placed, and a foreign id can only miss.
+    table.resolved = false;
+    if ( table.count <= (int64_t) kTableIdRefBound )
     {
-        const uint64_t id = table.at( uint64_t( i ) + 1 );
-        for ( int64_t j = 0; j < i; j++ )
+        uint64_t known[ ( kTableIdSlotCount + 63 ) / 64 ];
+        for ( int32_t w = 0; w < ( kTableIdSlotCount + 63 ) / 64; w++ ) { known[w] = 0; }
+        uint64_t seen[ kTableIdProbeSlots ];
+        uint64_t used[ kTableIdProbeSlots / 64 ];
+        for ( int32_t w = 0; w < kTableIdProbeSlots / 64; w++ ) { used[w] = 0; }
+        for ( int64_t i = 0; i < table.count; i++ )
         {
-            if ( table.at( uint64_t( j ) + 1 ) == id ) { return TableOpenDamaged; }
+            const uint64_t id = table.at( uint64_t( i ) + 1 );
+            const uint16_t s = TableIdSlotOf( id );
+            table.slots[ i + 1 ] = s;
+            if ( s != kTableIdSlotUnknown )
+            {
+                const uint64_t bit = 1ull << ( s & 63 );
+                if ( ( known[ s >> 6 ] & bit ) != 0 ) { return TableOpenDamaged; }
+                known[ s >> 6 ] |= bit;
+                continue;
+            }
+            uint32_t p = uint32_t( ( id * 0x9E3779B97F4A7C15ull ) >> kTableIdProbeShift ) & uint32_t( kTableIdProbeSlots - 1 );
+            for ( ;; )
+            {
+                const uint64_t bit = 1ull << ( p & 63 );
+                if ( ( used[ p >> 6 ] & bit ) == 0 )
+                {
+                    used[ p >> 6 ] |= bit;
+                    seen[p] = id;
+                    break;
+                }
+                if ( seen[p] == id ) { return TableOpenDamaged; }
+                p = ( p + 1 ) & uint32_t( kTableIdProbeSlots - 1 );
+            }
+        }
+        table.resolved = true;
+    }
+    else
+    {
+        for ( int64_t i = 1; i < table.count; i++ )
+        {
+            const uint64_t id = table.at( uint64_t( i ) + 1 );
+            for ( int64_t j = 0; j < i; j++ )
+            {
+                if ( table.at( uint64_t( j ) + 1 ) == id ) { return TableOpenDamaged; }
+            }
         }
     }
     body_bytes = bytes - span - 1;
@@ -2427,6 +2679,28 @@ inline bool TableEnumValue( uint64_t id, TableWeapon & out )
         default: return false; // an id this build cannot name
     }
 }
+inline bool TableEnumValueAt( uint16_t slot, TableWeapon & out )
+{
+    switch ( slot )
+    {
+        case 51: out = TableWeapon::Fists; return true; // id 0xa790eee12766cf0cull
+        case 52: out = TableWeapon::Pistol; return true; // id 0x9fbfefa835da8476ull
+        case 53: out = TableWeapon::Shotgun; return true; // id 0x188bbb1783928a95ull
+        case 54: out = TableWeapon::Rifle; return true; // id 0x2c3667b9c2f272f1ull
+        case 55: out = TableWeapon::Sniper; return true; // id 0x0ca8b41b00d755f6ull
+        case 56: out = TableWeapon::Smg; return true; // id 0x985fc819fab21a4eull
+        case 57: out = TableWeapon::Rocket; return true; // id 0x229d0447c3086a55ull
+        case 58: out = TableWeapon::Grenade; return true; // id 0x011c7b49a7228f9dull
+        case 59: out = TableWeapon::Plasma; return true; // id 0x89f7566e1123e15full
+        case 60: out = TableWeapon::Railgun; return true; // id 0x8d7f25318b3b4469ull
+        case 61: out = TableWeapon::Flamer; return true; // id 0xd9cd0dcc285b7816ull
+        case 62: out = TableWeapon::Mine; return true; // id 0x04dc16aea8ff5276ull
+        case 63: out = TableWeapon::Turret; return true; // id 0x35e53bc341129217ull
+        case 64: out = TableWeapon::Drone; return true; // id 0x2cc8282fb0de8831ull
+        case 65: out = TableWeapon::Repair; return true; // id 0x20bada21bc8cb334ull
+        default: return false; // a slot this build cannot name
+    }
+}
 #endif // BENCHTABLE_SCHEMA_TABLE_ENUM_TABLEWEAPON
 
 // ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ----
@@ -2680,10 +2954,10 @@ BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity &
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
-        const uint64_t field_id = r.ids->at( field_ref );
+        const uint16_t field_slot = r.ids->slot_of( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
+        if ( ( field_slot == kTableIdSlotNodeTable && r.nested ) || field_slot == kTableIdSlotBuildVersion || field_slot == kTableIdSlotVocabulary )
         {
             // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
             // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
@@ -2694,9 +2968,9 @@ BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity &
             r.report->malformed = true;
             return false;
         }
-        switch ( field_id )
+        switch ( field_slot )
         {
-            case 0x23fcfd6678e36712ull: // entity_id
+            case 2: // entity_id, id 0x23fcfd6678e36712ull
             {
                 if ( kind != 7 )
                 {
@@ -2724,7 +2998,7 @@ BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity &
                 value.entity_id = decoded_v;
                 break;
             }
-            case 0xcb4b37357667310eull: // pos_x
+            case 3: // pos_x, id 0xcb4b37357667310eull
             {
                 if ( kind != 4 )
                 {
@@ -2754,7 +3028,7 @@ BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity &
                 value.pos_x = decoded_v;
                 break;
             }
-            case 0xcb4b3835766732c1ull: // pos_y
+            case 4: // pos_y, id 0xcb4b3835766732c1ull
             {
                 if ( kind != 4 )
                 {
@@ -2784,7 +3058,7 @@ BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity &
                 value.pos_y = decoded_v;
                 break;
             }
-            case 0xcb4b353576672da8ull: // pos_z
+            case 5: // pos_z, id 0xcb4b353576672da8ull
             {
                 if ( kind != 4 )
                 {
@@ -2814,7 +3088,7 @@ BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity &
                 value.pos_z = decoded_v;
                 break;
             }
-            case 0xb54d8e19798e16e8ull: // yaw
+            case 6: // yaw, id 0xb54d8e19798e16e8ull
             {
                 if ( kind != 7 )
                 {
@@ -2842,7 +3116,7 @@ BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity &
                 value.yaw = decoded_v;
                 break;
             }
-            case 0x53a9f665a90cc1b1ull: // pitch
+            case 7: // pitch, id 0x53a9f665a90cc1b1ull
             {
                 if ( kind != 7 )
                 {
@@ -2870,7 +3144,7 @@ BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity &
                 value.pitch = decoded_v;
                 break;
             }
-            case 0x6cede6b6eb60ee67ull: // vel_x
+            case 8: // vel_x, id 0x6cede6b6eb60ee67ull
             {
                 if ( kind != 4 )
                 {
@@ -2900,7 +3174,7 @@ BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity &
                 value.vel_x = decoded_v;
                 break;
             }
-            case 0x6cede5b6eb60ecb4ull: // vel_y
+            case 9: // vel_y, id 0x6cede5b6eb60ecb4ull
             {
                 if ( kind != 4 )
                 {
@@ -2930,7 +3204,7 @@ BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity &
                 value.vel_y = decoded_v;
                 break;
             }
-            case 0x6cede8b6eb60f1cdull: // vel_z
+            case 10: // vel_z, id 0x6cede8b6eb60f1cdull
             {
                 if ( kind != 4 )
                 {
@@ -2960,7 +3234,7 @@ BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity &
                 value.vel_z = decoded_v;
                 break;
             }
-            case 0x7f69d4b5288ba9cfull: // health
+            case 11: // health, id 0x7f69d4b5288ba9cfull
             {
                 if ( kind != 4 )
                 {
@@ -2990,7 +3264,7 @@ BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity &
                 value.health = decoded_v;
                 break;
             }
-            case 0xa0b610205f2c6e01ull: // weapon
+            case 12: // weapon, id 0xa0b610205f2c6e01ull
             {
                 if ( kind != 30 )
                 {
@@ -3004,14 +3278,14 @@ BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity &
                 if ( !r.getleb( variant_ref ) ) { r.report->malformed = true; return false; }
                 if ( variant_ref == 0 ) { value.weapon = TableWeapon::None; } // the zero reference is the enum's None
                 else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; }
-                else if ( !TableEnumValue( r.ids->at( variant_ref ), value.weapon ) )
+                else if ( !TableEnumValueAt( r.ids->slot_of( variant_ref ), value.weapon ) )
                 {
                     value.weapon = TableWeapon::None;
                     r.report->unknown++;
                 }
                 break;
             }
-            case 0x7f6308be8ab37fc0ull: // damage
+            case 13: // damage, id 0x7f6308be8ab37fc0ull
             {
                 if ( kind != 9 )
                 {
@@ -3037,7 +3311,7 @@ BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity &
                 value.damage = decoded_v;
                 break;
             }
-            case 0x11a44fc1d1243da7ull: // moving
+            case 14: // moving, id 0x11a44fc1d1243da7ull
             {
                 if ( kind != 1 )
                 {
@@ -3051,7 +3325,7 @@ BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity &
                 value.moving = r.get8() != 0;
                 break;
             }
-            case 0x7674cfd19b9031caull: // firing
+            case 15: // firing, id 0x7674cfd19b9031caull
             {
                 if ( kind != 1 )
                 {
@@ -4001,10 +4275,10 @@ BENCHTABLE_TABLE_INLINE bool TableStatLoadBody( TableReader & r, TableStat & val
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
-        const uint64_t field_id = r.ids->at( field_ref );
+        const uint16_t field_slot = r.ids->slot_of( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
+        if ( ( field_slot == kTableIdSlotNodeTable && r.nested ) || field_slot == kTableIdSlotBuildVersion || field_slot == kTableIdSlotVocabulary )
         {
             // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
             // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
@@ -4015,9 +4289,9 @@ BENCHTABLE_TABLE_INLINE bool TableStatLoadBody( TableReader & r, TableStat & val
             r.report->malformed = true;
             return false;
         }
-        switch ( field_id )
+        switch ( field_slot )
         {
-            case 0x80ab75f0866dbf65ull: // stat_id
+            case 49: // stat_id, id 0x80ab75f0866dbf65ull
             {
                 if ( kind != 6 )
                 {
@@ -4032,7 +4306,7 @@ BENCHTABLE_TABLE_INLINE bool TableStatLoadBody( TableReader & r, TableStat & val
                 value.stat_id = decoded_v;
                 break;
             }
-            case 0x52076675ec13a0c1ull: // delta
+            case 50: // delta, id 0x52076675ec13a0c1ull
             {
                 if ( kind != 4 )
                 {
@@ -4743,10 +5017,10 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
-        const uint64_t field_id = r.ids->at( field_ref );
+        const uint16_t field_slot = r.ids->slot_of( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
+        if ( ( field_slot == kTableIdSlotNodeTable && r.nested ) || field_slot == kTableIdSlotBuildVersion || field_slot == kTableIdSlotVocabulary )
         {
             // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
             // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
@@ -4757,9 +5031,9 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
             r.report->malformed = true;
             return false;
         }
-        switch ( field_id )
+        switch ( field_slot )
         {
-            case 0x6a5a70d91aa115fdull: // protocol_magic
+            case 19: // protocol_magic, id 0x6a5a70d91aa115fdull
             {
                 if ( kind != 7 )
                 {
@@ -4785,7 +5059,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.protocol_magic = decoded_v;
                 break;
             }
-            case 0xaa38aca481f528a8ull: // sequence
+            case 20: // sequence, id 0xaa38aca481f528a8ull
             {
                 if ( kind != 7 )
                 {
@@ -4811,7 +5085,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.sequence = decoded_v;
                 break;
             }
-            case 0x0dbe005c56697c3eull: // ack_sequence
+            case 21: // ack_sequence, id 0x0dbe005c56697c3eull
             {
                 if ( kind != 4 )
                 {
@@ -4841,7 +5115,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.ack_sequence = decoded_v;
                 break;
             }
-            case 0x9bae0da8b829ee03ull: // ack_bits
+            case 22: // ack_bits, id 0x9bae0da8b829ee03ull
             {
                 if ( kind != 8 )
                 {
@@ -4867,7 +5141,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.ack_bits = decoded_v;
                 break;
             }
-            case 0xb7d7b5650a590b05ull: // session_id
+            case 23: // session_id, id 0xb7d7b5650a590b05ull
             {
                 if ( kind != 9 )
                 {
@@ -4893,7 +5167,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.session_id = decoded_v;
                 break;
             }
-            case 0x6d7b98e2d095967eull: // client_id
+            case 24: // client_id, id 0x6d7b98e2d095967eull
             {
                 if ( kind != 8 )
                 {
@@ -4919,7 +5193,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.client_id = decoded_v;
                 break;
             }
-            case 0x73a94c71d60dc0d8ull: // nonce
+            case 25: // nonce, id 0x73a94c71d60dc0d8ull
             {
                 if ( kind != 9 )
                 {
@@ -4949,7 +5223,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.nonce = decoded_v;
                 break;
             }
-            case 0x3eee6b51be54fc85ull: // world_time
+            case 26: // world_time, id 0x3eee6b51be54fc85ull
             {
                 if ( kind != 5 )
                 {
@@ -4979,7 +5253,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.world_time = decoded_v;
                 break;
             }
-            case 0x7bbc035f7b6d0112ull: // frame_tick
+            case 27: // frame_tick, id 0x7bbc035f7b6d0112ull
             {
                 if ( kind != 9 )
                 {
@@ -5007,7 +5281,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.frame_tick = decoded_v;
                 break;
             }
-            case 0x3c460475f9be69c6ull: // server_time
+            case 28: // server_time, id 0x3c460475f9be69c6ull
             {
                 if ( kind != 10 )
                 {
@@ -5024,7 +5298,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.server_time = decoded_f;
                 break;
             }
-            case 0x935d0fb07bb3822aull: // entities
+            case 29: // entities, id 0x935d0fb07bb3822aull
             {
                 if ( kind != 14 )
                 {
@@ -5082,7 +5356,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 r.offset = body_end; // excess elements and slack skip via the length
                 break;
             }
-            case 0xee639cad45b1994cull: // stats
+            case 30: // stats, id 0xee639cad45b1994cull
             {
                 if ( kind != 14 )
                 {
@@ -5140,7 +5414,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 r.offset = body_end; // excess elements and slack skip via the length
                 break;
             }
-            case 0x2e35dc5321aa5790ull: // game_event
+            case 31: // game_event, id 0x2e35dc5321aa5790ull
             {
                 if ( kind != 15 )
                 {
@@ -5154,16 +5428,16 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 if ( !r.getleb( arm_ref ) ) { r.report->malformed = true; return false; }
                 if ( arm_ref == 0 ) { value.game_event.type = TableEventType::None; break; } // empty: the reference is the whole payload
                 if ( arm_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; }
-                const uint64_t arm_id = r.ids->at( arm_ref );
+                const uint16_t arm_slot = r.ids->slot_of( arm_ref );
                 if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
                 const uint8_t arm_kind = r.get8();
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 {
                     TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
-                    switch ( arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
+                    switch ( arm_slot ) // the arm's name, at its compile-time SLOT (§3, §5)
                     {
-                        case 0x33732819300680aaull: // hit
+                        case 66: // hit, id 0x33732819300680aaull
                         {
                             if ( arm_kind != 13 )
                             {
@@ -5178,7 +5452,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                             if ( sub.offset != sub.size ) { value.game_event.type = TableEventType::None; r.report->malformed = true; break; }
                             break;
                         }
-                        case 0xf2a38d910b5b348bull: // chat
+                        case 67: // chat, id 0xf2a38d910b5b348bull
                         {
                             if ( arm_kind != 13 )
                             {
@@ -5193,7 +5467,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                             if ( sub.offset != sub.size ) { value.game_event.type = TableEventType::None; r.report->malformed = true; break; }
                             break;
                         }
-                        case 0x9fa3a41c86ecb765ull: // pickup
+                        case 68: // pickup, id 0x9fa3a41c86ecb765ull
                         {
                             if ( arm_kind != 13 )
                             {
@@ -5222,7 +5496,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 r.offset += (int64_t) body_len;
                 break;
             }
-            case 0x5759ce7586bbb5a3ull: // loadout
+            case 32: // loadout, id 0x5759ce7586bbb5a3ull
             {
                 if ( kind != 14 )
                 {
@@ -5268,7 +5542,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 r.offset = body_end; // excess elements and slack skip via the length
                 break;
             }
-            case 0x13a62f542cf8e86eull: // player_name
+            case 33: // player_name, id 0x13a62f542cf8e86eull
             {
                 if ( kind != 12 )
                 {
@@ -5297,7 +5571,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 r.offset += (int64_t) len;
                 break;
             }
-            case 0xcfb8a9d063b5e9e5ull: // payload
+            case 34: // payload, id 0xcfb8a9d063b5e9e5ull
             {
                 if ( kind != 14 )
                 {
@@ -5346,7 +5620,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 r.offset = body_end; // excess elements and slack skip via the length
                 break;
             }
-            case 0xdbaf7be5e24296c9ull: // aim_x
+            case 35: // aim_x, id 0xdbaf7be5e24296c9ull
             {
                 if ( kind != 10 )
                 {
@@ -5363,7 +5637,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.aim_x = decoded_f;
                 break;
             }
-            case 0xdbaf7ae5e2429516ull: // aim_y
+            case 36: // aim_y, id 0xdbaf7ae5e2429516ull
             {
                 if ( kind != 10 )
                 {
@@ -5380,7 +5654,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.aim_y = decoded_f;
                 break;
             }
-            case 0xdbaf79e5e2429363ull: // aim_z
+            case 37: // aim_z, id 0xdbaf79e5e2429363ull
             {
                 if ( kind != 10 )
                 {
@@ -5397,7 +5671,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.aim_z = decoded_f;
                 break;
             }
-            case 0x9cef31fff7e2e457ull: // recoil
+            case 38: // recoil, id 0x9cef31fff7e2e457ull
             {
                 if ( kind != 10 )
                 {
@@ -5411,7 +5685,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.recoil = table_bits_to_float( r.get32() );
                 break;
             }
-            case 0x5ab3f9c9341f6c04ull: // drift
+            case 39: // drift, id 0x5ab3f9c9341f6c04ull
             {
                 if ( kind != 11 )
                 {
@@ -5434,7 +5708,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.drift = table_bits_to_double( r.get64() );
                 break;
             }
-            case 0xa3348580461faf16ull: // wide_key
+            case 40: // wide_key, id 0xa3348580461faf16ull
             {
                 if ( kind != 9 )
                 {
@@ -5460,7 +5734,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.wide_key = decoded_v;
                 break;
             }
-            case 0xd61bdd7908af2642ull: // flux
+            case 41: // flux, id 0xd61bdd7908af2642ull
             {
                 if ( kind != 5 )
                 {
@@ -5490,7 +5764,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.flux = decoded_v;
                 break;
             }
-            case 0xbf30e00dc53307a9ull: // ping
+            case 42: // ping, id 0xbf30e00dc53307a9ull
             {
                 if ( kind != 10 )
                 {
@@ -5507,7 +5781,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.ping = decoded_f;
                 break;
             }
-            case 0x560d6527ccd8515full: // crc_hint
+            case 43: // crc_hint, id 0x560d6527ccd8515full
             {
                 if ( kind != 8 )
                 {
@@ -5535,7 +5809,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.crc_hint = decoded_v;
                 break;
             }
-            case 0xc08292176cfd8672ull: // has_extra
+            case 44: // has_extra, id 0xc08292176cfd8672ull
             {
                 if ( kind != 1 )
                 {
@@ -5549,7 +5823,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.has_extra = r.get8() != 0;
                 break;
             }
-            case 0xfd29ee12a979cb69ull: // extra
+            case 45: // extra, id 0xfd29ee12a979cb69ull
             {
                 if ( kind != 4 )
                 {
@@ -5579,7 +5853,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 value.extra = decoded_v;
                 break;
             }
-            case 0x78101ac0aa8cbcfeull: // idle_ticks
+            case 46: // idle_ticks, id 0x78101ac0aa8cbcfeull
             {
                 if ( kind != 4 )
                 {
@@ -7314,10 +7588,10 @@ BENCHTABLE_TABLE_INLINE bool TableHitEventLoadBody( TableReader & r, TableHitEve
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
-        const uint64_t field_id = r.ids->at( field_ref );
+        const uint16_t field_slot = r.ids->slot_of( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
+        if ( ( field_slot == kTableIdSlotNodeTable && r.nested ) || field_slot == kTableIdSlotBuildVersion || field_slot == kTableIdSlotVocabulary )
         {
             // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
             // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
@@ -7328,9 +7602,9 @@ BENCHTABLE_TABLE_INLINE bool TableHitEventLoadBody( TableReader & r, TableHitEve
             r.report->malformed = true;
             return false;
         }
-        switch ( field_id )
+        switch ( field_slot )
         {
-            case 0xb7bc9ac015a25050ull: // target_id
+            case 16: // target_id, id 0xb7bc9ac015a25050ull
             {
                 if ( kind != 7 )
                 {
@@ -7358,7 +7632,7 @@ BENCHTABLE_TABLE_INLINE bool TableHitEventLoadBody( TableReader & r, TableHitEve
                 value.target_id = decoded_v;
                 break;
             }
-            case 0x7f6308be8ab37fc0ull: // damage
+            case 13: // damage, id 0x7f6308be8ab37fc0ull
             {
                 if ( kind != 4 )
                 {
@@ -7388,7 +7662,7 @@ BENCHTABLE_TABLE_INLINE bool TableHitEventLoadBody( TableReader & r, TableHitEve
                 value.damage = decoded_v;
                 break;
             }
-            case 0x01fbc365b059b925ull: // hit_kind
+            case 17: // hit_kind, id 0x01fbc365b059b925ull
             {
                 if ( kind != 4 )
                 {
@@ -7418,7 +7692,7 @@ BENCHTABLE_TABLE_INLINE bool TableHitEventLoadBody( TableReader & r, TableHitEve
                 value.hit_kind = decoded_v;
                 break;
             }
-            case 0x126167908c9aa52dull: // crit
+            case 18: // crit, id 0x126167908c9aa52dull
             {
                 if ( kind != 1 )
                 {
@@ -7861,10 +8135,10 @@ BENCHTABLE_TABLE_INLINE bool TableChatEventLoadBody( TableReader & r, TableChatE
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
-        const uint64_t field_id = r.ids->at( field_ref );
+        const uint16_t field_slot = r.ids->slot_of( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
+        if ( ( field_slot == kTableIdSlotNodeTable && r.nested ) || field_slot == kTableIdSlotBuildVersion || field_slot == kTableIdSlotVocabulary )
         {
             // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
             // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
@@ -7875,9 +8149,9 @@ BENCHTABLE_TABLE_INLINE bool TableChatEventLoadBody( TableReader & r, TableChatE
             r.report->malformed = true;
             return false;
         }
-        switch ( field_id )
+        switch ( field_slot )
         {
-            case 0xa5013e9ad5caeda4ull: // channel
+            case 0: // channel, id 0xa5013e9ad5caeda4ull
             {
                 if ( kind != 4 )
                 {
@@ -7907,7 +8181,7 @@ BENCHTABLE_TABLE_INLINE bool TableChatEventLoadBody( TableReader & r, TableChatE
                 value.channel = decoded_v;
                 break;
             }
-            case 0xfbf1ac4d96ebd022ull: // speaker
+            case 1: // speaker, id 0xfbf1ac4d96ebd022ull
             {
                 if ( kind != 7 )
                 {
@@ -8280,10 +8554,10 @@ BENCHTABLE_TABLE_INLINE bool TablePickupEventLoadBody( TableReader & r, TablePic
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
-        const uint64_t field_id = r.ids->at( field_ref );
+        const uint16_t field_slot = r.ids->slot_of( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
+        if ( ( field_slot == kTableIdSlotNodeTable && r.nested ) || field_slot == kTableIdSlotBuildVersion || field_slot == kTableIdSlotVocabulary )
         {
             // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
             // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
@@ -8294,9 +8568,9 @@ BENCHTABLE_TABLE_INLINE bool TablePickupEventLoadBody( TableReader & r, TablePic
             r.report->malformed = true;
             return false;
         }
-        switch ( field_id )
+        switch ( field_slot )
         {
-            case 0x9e7fd06d864fbd56ull: // item_id
+            case 47: // item_id, id 0x9e7fd06d864fbd56ull
             {
                 if ( kind != 7 )
                 {
@@ -8324,7 +8598,7 @@ BENCHTABLE_TABLE_INLINE bool TablePickupEventLoadBody( TableReader & r, TablePic
                 value.item_id = decoded_v;
                 break;
             }
-            case 0x8113fe7ea2b16969ull: // amount
+            case 48: // amount, id 0x8113fe7ea2b16969ull
             {
                 if ( kind != 4 )
                 {

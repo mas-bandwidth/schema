@@ -386,7 +386,7 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 		g.pf("%s}\n", ind)
 	case kind == tkUnion:
 		un := f.Type.Ref.(*ir.Union)
-		ref, id, length := "arm_inner_ref"+sfx, "arm_inner_id"+sfx, "arm_inner_len"+sfx
+		ref, id, length := "arm_inner_ref"+sfx, "arm_inner_slot"+sfx, "arm_inner_len"+sfx
 		inner, innerKind := "arm_inner"+sfx, "arm_inner_kind"+sfx
 		g.pf("%s{\n%s    uint64_t %s = 0;\n", ind, ind, ref)
 		g.pf("%s    if ( !%s.getleb( %s ) ) { %s = %s; r.report->malformed = true; break; }\n", ind, rdr, ref, tag, none)
@@ -397,15 +397,15 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 		// not decoded — THIS union reads None, malformed counts, and the
 		// enclosing body continues past the arm by `L`
 		g.pf("%s        if ( %s > (uint64_t) r.ids->count ) { %s = %s; r.report->malformed = true; break; }\n", ind, ref, tag, none)
-		g.pf("%s        const uint64_t %s = r.ids->at( %s );\n", ind, id, ref)
+		g.pf("%s        const uint16_t %s = r.ids->slot_of( %s );\n", ind, id, ref)
 		g.pf("%s        if ( !%s.has( 1 ) ) { %s = %s; r.report->malformed = true; break; }\n", ind, rdr, tag, none)
 		g.pf("%s        const uint8_t %s = %s.get8();\n", ind, innerKind, rdr)
 		g.pf("%s        uint64_t %s = 0;\n", ind, length)
 		g.pf("%s        if ( !%s.getleb( %s ) || !%s.room( %s ) ) { %s = %s; r.report->malformed = true; break; }\n", ind, rdr, length, rdr, length, tag, none)
 		g.pf("%s        TableReader %s( %s.buffer + %s.offset, (int64_t) %s, r.report, r.ids );\n", ind, inner, rdr, rdr, length)
-		g.pf("%s        switch ( %s ) // the arm's NAME hash (§5)\n%s        {\n", ind, id, ind)
+		g.pf("%s        switch ( %s ) // the arm's name, at its compile-time SLOT (§3, §5)\n%s        {\n", ind, id, ind)
 		for _, in := range un.Variants {
-			g.pf("%s            case 0x%016xull: // %s\n%s            {\n", ind, ir.TableWireId(in.WireName()), in.Name, ind)
+			g.pf("%s            case %d: // %s, id 0x%016xull\n%s            {\n", ind, g.idSlotOf(ir.TableWireId(in.WireName())), in.Name, ir.TableWireId(in.WireName()), ind)
 			g.pf("%s                if ( %s != %d )\n%s                {\n", ind, innerKind, armWireKind(in), ind)
 			g.emitArmWiden(in, value, innerKind, inner, value+".type",
 				un.Name+"Type::"+ir.GoExportName(in.Name), un.Name+"Type::None", ind+"                    ")
