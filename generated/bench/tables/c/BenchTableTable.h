@@ -3452,6 +3452,22 @@ static SCHEMA_UNUSED int schema_benchtable_table_entity_message_extent_(TableMes
 static SCHEMA_UNUSED int table_stat_save_body( TableWriter * w, const TableStat * value )
 {
     (void) value;
+    if ( w->buffer == NULL && !w->check_default )
+    {
+        int64_t payload_bytes = 1; /* the zero reference ending this body */
+        if ( !( value->stat_id == 0 ) )
+        {
+            table_writer_id( w, 0x80ab75f0866dbf65ull );
+            payload_bytes += 2; /* kind and fixed-width payload */
+        }
+        if ( !( value->delta == 0 ) )
+        {
+            table_writer_id( w, 0x52076675ec13a0c1ull );
+            payload_bytes += 5; /* kind and fixed-width payload */
+        }
+        table_writer_raw( w, NULL, payload_bytes );
+        return !w->overflow;
+    }
     { /* stat_id */
         if ( !( value->stat_id == 0 ) )
         {
@@ -6676,6 +6692,32 @@ static SCHEMA_UNUSED int schema_benchtable_table_mixed_message_extent_(TableMess
 static SCHEMA_UNUSED int table_hit_event_save_body( TableWriter * w, const TableHitEvent * value )
 {
     (void) value;
+    if ( w->buffer == NULL && !w->check_default )
+    {
+        int64_t payload_bytes = 1; /* the zero reference ending this body */
+        if ( !( value->target_id == 0 ) )
+        {
+            table_writer_id( w, 0xb7bc9ac015a25050ull );
+            payload_bytes += 3; /* kind and fixed-width payload */
+        }
+        if ( !( value->damage == 0 ) )
+        {
+            table_writer_id( w, 0x7f6308be8ab37fc0ull );
+            payload_bytes += 5; /* kind and fixed-width payload */
+        }
+        if ( !( value->hit_kind == 0 ) )
+        {
+            table_writer_id( w, 0x01fbc365b059b925ull );
+            payload_bytes += 5; /* kind and fixed-width payload */
+        }
+        if ( !( value->crit == 0 ) )
+        {
+            table_writer_id( w, 0x126167908c9aa52dull );
+            payload_bytes += 2; /* kind and fixed-width payload */
+        }
+        table_writer_raw( w, NULL, payload_bytes );
+        return !w->overflow;
+    }
     { /* target_id */
         if ( !( value->target_id == 0 ) )
         {
@@ -7195,6 +7237,22 @@ static SCHEMA_UNUSED int schema_benchtable_table_hit_event_message_extent_(Table
 static SCHEMA_UNUSED int table_chat_event_save_body( TableWriter * w, const TableChatEvent * value )
 {
     (void) value;
+    if ( w->buffer == NULL && !w->check_default )
+    {
+        int64_t payload_bytes = 1; /* the zero reference ending this body */
+        if ( !( value->channel == 0 ) )
+        {
+            table_writer_id( w, 0xa5013e9ad5caeda4ull );
+            payload_bytes += 5; /* kind and fixed-width payload */
+        }
+        if ( !( value->speaker == 0 ) )
+        {
+            table_writer_id( w, 0xfbf1ac4d96ebd022ull );
+            payload_bytes += 3; /* kind and fixed-width payload */
+        }
+        table_writer_raw( w, NULL, payload_bytes );
+        return !w->overflow;
+    }
     { /* channel */
         if ( !( value->channel == 0 ) )
         {
@@ -7547,6 +7605,22 @@ static SCHEMA_UNUSED int schema_benchtable_table_chat_event_message_extent_(Tabl
 static SCHEMA_UNUSED int table_pickup_event_save_body( TableWriter * w, const TablePickupEvent * value )
 {
     (void) value;
+    if ( w->buffer == NULL && !w->check_default )
+    {
+        int64_t payload_bytes = 1; /* the zero reference ending this body */
+        if ( !( value->item_id == 0 ) )
+        {
+            table_writer_id( w, 0x9e7fd06d864fbd56ull );
+            payload_bytes += 3; /* kind and fixed-width payload */
+        }
+        if ( !( value->amount == 0 ) )
+        {
+            table_writer_id( w, 0x8113fe7ea2b16969ull );
+            payload_bytes += 5; /* kind and fixed-width payload */
+        }
+        table_writer_raw( w, NULL, payload_bytes );
+        return !w->overflow;
+    }
     { /* item_id */
         if ( !( value->item_id == 0 ) )
         {

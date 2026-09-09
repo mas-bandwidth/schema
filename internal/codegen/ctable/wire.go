@@ -570,6 +570,34 @@ func (g *tableGen) wireKeyedRides(f *ir.Field, ind string) {
 	}
 }
 
+// A plain scalar leaf has no nested frames or value-dependent payload widths.
+// Its measure walk still interns riding field ids in order, but only counts the
+// kind and payload bytes. Default probes retain their existing early exit.
+func (g *tableGen) emitWireScalarLeafMeasure(st *ir.Struct) {
+	if g.retain || g.isVar(st.Name) || st.IsMapEntry() || len(st.Fields) == 0 {
+		return
+	}
+	for _, f := range st.Fields {
+		if f.Array != ir.ArrayNone || f.IsList() || f.IsMap() || f.KeyEnum != "" ||
+			f.Type.Optional || f.Type.Pointer || enumRef(f) != nil || tableKindWidth(ir.TableWireScalarKind(f)) == 0 {
+			return
+		}
+	}
+	g.pf("    if ( w->buffer == NULL && !w->check_default )\n    {\n")
+	g.pf("        int64_t payload_bytes = 1; /* the zero reference ending this body */\n")
+	guards := tableGuardExprs(st)
+	for _, f := range st.Fields {
+		condition := "!( " + g.wireDefaultEquals(f, "value->"+f.Name) + " )"
+		if guard := guards[f.Name]; guard != "" {
+			condition = "( " + guard + " ) && " + condition
+		}
+		g.pf("        if ( %s )\n        {\n", condition)
+		g.pf("            table_writer_id( w, 0x%016xull );\n", ir.TableFieldWireId(f))
+		g.pf("            payload_bytes += %d; /* kind and fixed-width payload */\n        }\n", 1+tableKindWidth(ir.TableWireScalarKind(f)))
+	}
+	g.pf("        table_writer_raw( w, NULL, payload_bytes );\n        return !w->overflow;\n    }\n")
+}
+
 func (g *tableGen) emitWireWrite(st *ir.Struct) {
 	for _, f := range st.Fields {
 		if f.IsMap() || f.Array != ir.ArrayNone || (f.Type.Kind == ir.TBytes && !f.Type.Blob()) || ((f.Type.Kind == ir.TString && !f.Type.Blob()) || f.Type.Kind == ir.TWString) {
@@ -578,6 +606,7 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 	}
 	g.pf("static SCHEMA_UNUSED int %s( TableWriter * w, const %s * value )\n{\n", g.api(st.Name, "save_body"), st.Name)
 	g.pf("    (void) value;\n")
+	g.emitWireScalarLeafMeasure(st)
 	if g.retain {
 		g.pf("    TableRetainWalk body_keep=retention;\n")
 	}
