@@ -297,7 +297,7 @@ func workflowJobs(text string) []string {
 			cur = nil
 		}
 	}
-	for _, line := range strings.Split(text, "\n") {
+	for line := range strings.SplitSeq(text, "\n") {
 		switch {
 		case strings.HasPrefix(line, "jobs:"):
 			flush()
@@ -326,7 +326,7 @@ func workflowJobs(text string) []string {
 func workflowMatrixValues(job string) map[string][]string {
 	vals := map[string][]string{}
 	inMatrix, indent := false, 0
-	for _, line := range strings.Split(job, "\n") {
+	for line := range strings.SplitSeq(job, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
@@ -348,7 +348,7 @@ func workflowMatrixValues(job string) map[string][]string {
 		}
 		v := strings.TrimSpace(strings.SplitN(m[2], " #", 2)[0])
 		if strings.HasPrefix(v, "[") && strings.HasSuffix(v, "]") {
-			for _, one := range strings.Split(strings.Trim(v, "[]"), ",") {
+			for one := range strings.SplitSeq(strings.Trim(v, "[]"), ",") {
 				vals[m[1]] = append(vals[m[1]], strings.Trim(strings.TrimSpace(one), `'"`))
 			}
 			continue
