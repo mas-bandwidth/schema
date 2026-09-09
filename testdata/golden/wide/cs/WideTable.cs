@@ -2570,7 +2570,18 @@ namespace Wide
                 public Writer(Span<byte> buffer) { Buffer = buffer; Offset = 0; }
                 public void Byte(byte v) { Buffer[Offset++] = v; }
                 public void Raw(ReadOnlySpan<byte> v) { v.CopyTo(Buffer.Slice(Offset)); Offset += v.Length; }
-                public void Fixed(ulong v, int n) { for (int i = 0; i < n; i++) { Byte((byte)v); v >>= 8; } }
+                public void Fixed(ulong v, int n)
+                {
+                    switch (n)
+                    {
+                        case 1: Byte((byte)v); return;
+                        case 2: System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(Buffer.Slice(Offset), (ushort)v); break;
+                        case 4: System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(Buffer.Slice(Offset), (uint)v); break;
+                        case 8: System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(Buffer.Slice(Offset), v); break;
+                        default: for (int i = 0; i < n; i++) { Byte((byte)v); v >>= 8; } return;
+                    }
+                    Offset += n;
+                }
                 public void Var(ulong v)
                 {
                     while (v >= 128) { Byte((byte)(v | 128)); v >>= 7; }
@@ -2589,8 +2600,19 @@ namespace Wide
                 public byte Byte() { return Buffer[Offset++]; }
                 public ulong Fixed(int n)
                 {
-                    ulong v = 0;
-                    for (int i = 0; i < n; i++) { v |= (ulong)Byte() << (8 * i); }
+                    ulong v;
+                    switch (n)
+                    {
+                        case 1: return Byte();
+                        case 2: v = System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(Buffer.Slice(Offset)); break;
+                        case 4: v = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(Buffer.Slice(Offset)); break;
+                        case 8: v = System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(Buffer.Slice(Offset)); break;
+                        default:
+                            v = 0;
+                            for (int i = 0; i < n; i++) { v |= (ulong)Byte() << (8 * i); }
+                            return v;
+                    }
+                    Offset += n;
                     return v;
                 }
                 public bool Var(out ulong v)
@@ -3963,9 +3985,7 @@ namespace Wide
 
             static ulong Read64(ReadOnlySpan<byte> bytes, int offset)
             {
-                ulong v = 0;
-                for (int i = 0; i < 8; i++) { v |= (ulong)bytes[offset + i] << (8 * i); }
-                return v;
+                return System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(bytes.Slice(offset));
             }
             static int Width(byte k)
             {
