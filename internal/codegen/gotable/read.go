@@ -423,11 +423,12 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 		g.pf("%s%s = %s.Get8() != 0\n", ind, expr, rdr)
 	case tkF32, tkF64:
 		g.needsMath = true
-		if kind == tkF32 {
+		switch {
+		case kind == tkF32:
 			g.pf("%s{\n%s\tv := math.Float32frombits(%s.Get32())\n", ind, ind, rdr)
-		} else if knownKindWidth(wireKind) > 0 {
+		case knownKindWidth(wireKind) > 0:
 			g.pf("%s{\n%s\tv := math.Float64frombits(%s.Get64())\n", ind, ind, rdr)
-		} else {
+		default:
 			g.pf("%s{\n%s\tvar v float64\n%s\tif %s == 10 { v = math.Float64frombits(tableWidenFloat(%s.Get32())) } else { v = math.Float64frombits(%s.Get64()) }\n", ind, ind, ind, wireKind, rdr, rdr)
 		}
 		if f.HasFloatRange {
