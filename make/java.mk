@@ -84,7 +84,7 @@ generated/java-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # the committed generated/ tree. The full unit is generated (packet .java +
 # <Table>Block.java + <Table>Cook.java + the Row accessors and the runtime
 # types), because a record's descriptors name the packet emitter's own enums.
-build/tables-generated-java/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema
+build/tables-generated-java/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema
 	@mkdir -p build/tables-generated-java
 	./bin/schema generate --lang java --out build/tables-generated-java/examples tables/examples
 	# the POINTERED unit: its cook readers are the reason it is here — the two
@@ -96,6 +96,11 @@ build/tables-generated-java/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLE
 	./bin/schema generate --lang java --out build/tables-generated-java/v2 test/tables/V2.schema
 	./bin/schema generate --lang java --out build/tables-generated-java/p1 test/tables/P1.schema
 	./bin/schema generate --lang java --out build/tables-generated-java/p3 test/tables/P3.schema
+	# THE FIXED FORM's versioning pair (docs/SPEC-TABLES.md §3.4): FX1 is the
+	# old side and FX2 the new, and every edit between them lands through a
+	# plan compiled from the other side's layout.
+	./bin/schema generate --lang java --out build/tables-generated-java/fx1 test/tables/FX1.schema
+	./bin/schema generate --lang java --out build/tables-generated-java/fx2 test/tables/FX2.schema
 	@touch $@
 
 # The Java twin of the C++ "no serialize include path" build: a generated
@@ -228,6 +233,97 @@ tables-java-fuzz-negative-control: build/cook-open/.stamp
 	@grep -m1 "FAILED:" $(JAVA_FUZZ_SABOTAGE)/log
 	@echo "negative control: the Java block Open with its two extent bounds removed turns the fuzz oracle RED"
 
+# ---------------------------------------------------------------------------
+# THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
+# ---------------------------------------------------------------------------
+#
+# THE BYTES ARE THE C++ REFERENCE'S, and that is the whole of this gate. The
+# reference writes the corpus (`make tables-fixedform-corpus`, one form-3 FILE
+# per root) and this leg reads every one of them, checks the VALUES it decoded,
+# saves them back, and the bytes must be IDENTICAL. A byte this port encodes
+# differently is a byte that does not come back.
+#
+# Beside it rides the VERSIONING CONFORMANCE — the FX1/FX2 pair, the V1/V2
+# slide and P1 against P3, exactly the cases the C++ leg runs
+# (test/tables/fixedform_main.cpp) — and the negative controls, of which the
+# one §3.4 names is a reader given the WRONG PLAN for a record, which must come
+# out wrong, and one CORRUPTED-LAYOUT case per named rule a reader holds an
+# untrusted peer's layout to.
+build/java-fixedform/.stamp: build/tables-generated-java/.stamp test/java-fixedform/src/Main.java
+	@rm -rf build/java-fixedform && mkdir -p build/java-fixedform
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-fixedform \
+		build/tables-generated-java/fx1/*.java build/tables-generated-java/fx2/*.java \
+		build/tables-generated-java/p1/*.java build/tables-generated-java/p3/*.java \
+		build/tables-generated-java/v1/*.java build/tables-generated-java/v2/*.java \
+		build/tables-generated-java/examples/*.java test/java-fixedform/src/Main.java
+	@touch $@
+
+# BOTH ASSERTION MODES, and the reason is this form's own: the generated
+# writer's caller contracts are DEBUG ONLY, so -ea proves they fire and the
+# default proves they are gone and the bytes are still the reference's.
+.PHONY: tables-java-fixedform
+tables-java-fixedform: build/java-fixedform/.stamp build/fixedform-corpus/.stamp
+	$(JAVA) -ea -cp build/java-fixedform Main build/fixedform-corpus
+	$(JAVA)     -cp build/java-fixedform Main build/fixedform-corpus
+
+# THE PAIRED BENCH CORPUS on this form: the same sixty-four logical records the
+# matched bench uses, written by the C++ reference with its form-3 writer and
+# stated beside as a VALUE ORACLE, because a reader and a writer that share one
+# offset mistake round trip perfectly and are both wrong. bench/paired has no
+# Java half to run the matched gate through, so this is that gate's shape for
+# this port: the reference is the oracle, at gate time, over the same corpus.
+# It is also where the WIDE KINDS ride — a `fixed(24, 8)`, a `ufixed(8, 8)`, a
+# bare `uint128` and a ranged `int128` — which no other fixed-form corpus has.
+build/java-fixed-corpus/.stamp: generated/bench/paired/cpp/.stamp test/bench/fixedform_corpus.cpp bench/corpus/variants/bench_mixed.variants.bin
+	@mkdir -p build/java-fixed-corpus
+	$(CXX) $(CXXFLAGS) -Igenerated/bench/paired/cpp test/bench/fixedform_corpus.cpp -o build/java-fixed-corpus/corpus
+	./build/java-fixed-corpus/corpus bench/corpus/variants/bench_mixed.variants.bin \
+		build/java-fixed-corpus/bench_fixed.bin build/java-fixed-corpus/bench_fixed.oracle.json
+	@touch $@
+
+build/java-fixed-bench/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema test/java-fixedform/src/BenchFixed.java make/java.mk
+	@rm -rf build/java-fixed-bench && mkdir -p build/java-fixed-bench/src
+	./bin/schema generate --lang java --out build/java-fixed-bench/src bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-fixed-bench \
+		build/java-fixed-bench/src/*.java test/java-fixedform/src/BenchFixed.java
+	@touch $@
+
+.PHONY: tables-java-fixedform-bench
+tables-java-fixedform-bench: build/java-fixed-bench/.stamp build/java-fixed-corpus/.stamp
+	$(JAVA) -ea -cp build/java-fixed-bench BenchFixed build/java-fixed-corpus
+	$(JAVA)     -cp build/java-fixed-bench BenchFixed build/java-fixed-corpus
+
+# ITS NEGATIVE CONTROL, and it moves a BYTE rather than a check: one text
+# length written one too high in the fixed writer's template, which the C++
+# reference's corpus must then refuse to match. Without this the byte
+# comparison could be comparing a file with itself and nobody would know.
+JAVA_FIXED_SABOTAGE := build/java-fixed-sabotage
+.PHONY: tables-java-fixedform-negative-control
+tables-java-fixedform-negative-control: build/java-fixed-corpus/.stamp
+	@rm -rf $(JAVA_FIXED_SABOTAGE) && mkdir -p $(JAVA_FIXED_SABOTAGE)
+	go run ./tools/sabotage -name fixed-form-java-text-length \
+		-out $(JAVA_FIXED_SABOTAGE)/fixedform.gotext internal/codegen/javatable/fixedform.go
+	@grep -q SABOTAGED $(JAVA_FIXED_SABOTAGE)/fixedform.gotext || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/javatable/fixedform.go":"%s/$(JAVA_FIXED_SABOTAGE)/fixedform.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(JAVA_FIXED_SABOTAGE)/overlay.json
+	go run -overlay=$(JAVA_FIXED_SABOTAGE)/overlay.json ./cmd/schema generate --lang java \
+		--out $(JAVA_FIXED_SABOTAGE)/src bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	@grep -q "Length + 1" $(JAVA_FIXED_SABOTAGE)/src/BenchMixedFixed.java || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged writer"; exit 1; }
+	$(JAVAC) --release 17 -nowarn -d $(JAVA_FIXED_SABOTAGE)/classes \
+		$(JAVA_FIXED_SABOTAGE)/src/*.java test/java-fixedform/src/BenchFixed.java
+	@if $(JAVA) -cp $(JAVA_FIXED_SABOTAGE)/classes BenchFixed build/java-fixed-corpus \
+			> $(JAVA_FIXED_SABOTAGE)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a text length one byte off left the fixed form green"; \
+		cat $(JAVA_FIXED_SABOTAGE)/log; exit 1; \
+	fi
+	@grep -q "the first byte differing from the C++ reference" $(JAVA_FIXED_SABOTAGE)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the fixed form went red, but not on the reference byte match"; \
+		  cat $(JAVA_FIXED_SABOTAGE)/log; exit 1; }
+	@grep -m1 "FAILED:" $(JAVA_FIXED_SABOTAGE)/log
+	@echo "negative control: one byte off the fixed write template reds the reference byte match"
+
 # THE BYTE-ORDER LEG. Java reads a block and a cook explicitly little-endian, so
 # this reader's order is a CONSTANT rather than the host's — and a file of the
 # other order is refused twice: its magic reads back byte-swapped and its order
@@ -291,6 +387,7 @@ tables-java-cook-extent-negative-control: build/cook-open/.stamp
 .PHONY: tables-java-release
 tables-java-release:
 	$(MAKE) tables-java-compile-all
+	$(MAKE) tables-java-fixedform-negative-control
 	$(MAKE) conformance-negative-control-java-block
 	$(MAKE) tables-java-fuzz-negative-control
 	$(MAKE) tables-java-cook-extent-negative-control
@@ -406,6 +503,9 @@ test-java: toolchain-java generated/java/.stamp generated/java-ludicrous/.stamp 
 	$(MAKE) tables-java-fuzz
 	$(MAKE) tables-java-order
 	$(MAKE) tables-java-cook-extent
+	# THE FIXED FORM against the C++ reference's own bytes (docs/SPEC-TABLES.md §3.4)
+	$(MAKE) tables-java-fixedform
+	$(MAKE) tables-java-fixedform-bench
 	cd test/java && $(JAVA) -ea -cp ../../build/java-test Main
 	cd test/java && $(JAVA) -cp ../../build/java-test Main
 	cd test/java-ludicrous && $(JAVA) -ea -cp ../../build/java-test-ludicrous Main
