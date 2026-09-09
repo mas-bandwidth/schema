@@ -145,6 +145,82 @@ func runCTableWireProbe(t *testing.T, u *ir.Unit, source string) {
 	}
 }
 
+func tableOpenMixSlot(id uint64) uint32 {
+	h := id
+	h ^= h >> 33
+	h *= 0xff51afd7ed558ccd
+	h ^= h >> 33
+	return uint32(h) & 511
+}
+
+// TestCTableOpenDistinctnessVerdict is the same verdict as pairwise: a
+// repeated id is malformed, distinct ids including a hash-slot collision and
+// a count above the 256-slot bound are not.
+func TestCTableOpenDistinctnessVerdict(t *testing.T) {
+	var collideA, collideB uint64
+	found := false
+	for a := uint64(1); a < 4096 && !found; a++ {
+		for b := a + 1; b < 4096; b++ {
+			if tableOpenMixSlot(a) == tableOpenMixSlot(b) {
+				collideA, collideB = a, b
+				found = true
+				break
+			}
+		}
+	}
+	if !found {
+		t.Fatal("could not find two ids that share a 512-slot mix")
+	}
+	u := unitFromSource(t, `package probe
+table Leaf { x uint32 }
+`)
+	source := fmt.Sprintf(`#include "ProbeTable.h"
+#include <stdio.h>
+#define CHECK(x) do { if (!(x)) { fprintf(stderr, "line %%d: %%s\n", __LINE__, #x); return 1; } } while (0)
+static void put_le64(uint8_t *p, uint64_t v)
+{
+    int i; for ( i = 0; i < 8; i++ ) { p[i] = (uint8_t)(v >> (8 * i)); }
+}
+static int load_ids(const uint64_t *ids, uint64_t n, TableReport *report)
+{
+    uint8_t buf[4096];
+    int64_t o = 0;
+    uint64_t i;
+    Leaf value;
+    CHECK(n <= 257);
+    buf[o++] = 1;
+    buf[o++] = 0;
+    for ( i = 0; i < n; i++ ) { put_le64(buf + o, ids[i]); o += 8; }
+    put_le64(buf + o, n); o += 8;
+    memset(report, 0, sizeof(*report));
+    return leaf_load(&value, buf, o, report);
+}
+int main(void)
+{
+    TableReport report;
+    uint64_t two_ok[2] = { 1, 2 };
+    uint64_t two_dup[2] = { 1, 1 };
+    uint64_t zero_dup[2] = { 0, 0 };
+    uint64_t collide[2] = { %dull, %dull };
+    uint64_t over[257];
+    uint64_t i;
+    CHECK(load_ids(two_ok, 2, &report) && !report.malformed && !report.refused);
+    CHECK(!load_ids(two_dup, 2, &report) && report.malformed && !report.refused);
+    CHECK(!load_ids(zero_dup, 2, &report) && report.malformed && !report.refused);
+    CHECK(load_ids(collide, 2, &report) && !report.malformed && !report.refused);
+    for ( i = 0; i < 257; i++ ) { over[i] = i + 1; }
+    CHECK(load_ids(over, 257, &report) && !report.malformed && !report.refused);
+    over[256] = 1;
+    CHECK(!load_ids(over, 257, &report) && report.malformed && !report.refused);
+    over[256] = 257;
+    over[0] = 2;
+    CHECK(!load_ids(over, 256, &report) && report.malformed && !report.refused);
+    return 0;
+}
+`, collideA, collideB)
+	runCTableWireProbe(t, u, source)
+}
+
 // Clamps must happen after promoting the source-width integer. NaN widening
 // must preserve its sign and payload without quieting a signaling NaN.
 func TestCTableWireWidening(t *testing.T) {
