@@ -453,28 +453,28 @@ func (g *tableGen) emitUnionWireExtent(un *ir.Union) {
 	g.pf("    if ( !r.getleb( arm_ref ) ) { r.offset = r.size; return true; }\n")
 	g.pf("    if ( arm_ref == 0 ) { return true; } // None: the reference is the whole payload\n")
 	g.pf("    if ( r.ids == NULL || arm_ref > (uint64_t) r.ids->count ) { r.offset = r.size; return true; }\n")
-	g.pf("    const uint64_t arm_id = r.ids->at( arm_ref );\n")
+	g.pf("    const uint16_t arm_slot = r.ids->slot_of( arm_ref );\n")
 	g.pf("    if ( !r.has( 1 ) ) { r.offset = r.size; return true; }\n")
 	g.pf("    r.offset += 1; // the arm's kind byte\n")
 	g.pf("    uint64_t arm_len = 0;\n")
 	g.pf("    if ( !r.getleb( arm_len ) || !r.room( arm_len ) ) { r.offset = r.size; return true; }\n")
 	g.pf("    const uint8_t * arm_body = r.buffer + r.offset;\n")
 	g.pf("    r.offset += (int64_t) arm_len;\n")
-	g.pf("    switch ( arm_id )\n    {\n")
+	g.pf("    switch ( arm_slot ) // the arm's name, at its compile-time SLOT (§3, §5)\n    {\n")
 	for _, v := range un.Variants {
 		if v.F == nil {
 			continue
 		}
 		switch {
 		case v.Body() && g.hasExtent(v.Ref):
-			g.pf("        case 0x%016xull: if ( !%sWireExtent( arm_body, (int64_t) arm_len, at, r.ids, reason ) ) { return false; } break; // %s\n",
-				ir.TableWireId(v.WireName()), v.Type, v.Name)
+			g.pf("        case %d: if ( !%sWireExtent( arm_body, (int64_t) arm_len, at, r.ids, reason ) ) { return false; } break; // %s, id 0x%016xull\n",
+				g.idSlotOf(ir.TableWireId(v.WireName())), v.Type, v.Name, ir.TableWireId(v.WireName()))
 		default:
 			inner, isUnion := v.F.Type.Ref.(*ir.Union)
 			if !isUnion || !g.unionHasExtent(inner, map[*ir.Union]bool{}) {
 				continue
 			}
-			g.pf("        case 0x%016xull: // %s: an arm that is another union\n        {\n", ir.TableWireId(v.WireName()), v.Name)
+			g.pf("        case %d: // %s: an arm that is another union, id 0x%016xull\n        {\n", g.idSlotOf(ir.TableWireId(v.WireName())), v.Name, ir.TableWireId(v.WireName()))
 			g.pf("            TableReader arm( arm_body, (int64_t) arm_len, r.report, r.ids );\n")
 			g.pf("            if ( !%sWireArmExtent( arm, at, reason ) ) { return false; }\n", inner.Name)
 			g.pf("            break;\n        }\n")
@@ -538,7 +538,7 @@ func (g *tableGen) emitWireExtent(st *ir.Struct) {
 	g.pf("        if ( !r.getleb( field_ref ) ) { return true; }\n")
 	g.pf("        if ( field_ref == 0 ) { return true; }\n")
 	g.pf("        if ( ids == NULL || field_ref > (uint64_t) ids->count ) { return true; }\n")
-	g.pf("        const uint64_t field_id = ids->at( field_ref );\n")
+	g.pf("        const uint16_t field_slot = ids->slot_of( field_ref ); // the trailer resolved ONCE, at open (§3)\n")
 	g.pf("        if ( !r.has( 1 ) ) { return true; }\n")
 	g.pf("        uint8_t field_kind = r.get8();\n")
 	g.emitWireExtentCases(st)
@@ -558,7 +558,7 @@ func (g *tableGen) emitWireExtentCases(st *ir.Struct) {
 			if g.hasExtent(entry) {
 				inner = "&" + entry.Name + "WireExtent"
 			}
-			g.pf("        if ( field_id == 0x%016xull && field_kind == %d ) // %s\n        {\n", ir.TableFieldWireId(f), tkArray, f.Name)
+			g.pf("        if ( field_slot == %d && field_kind == %d ) // %s, id 0x%016xull\n        {\n", g.idSlotOf(ir.TableFieldWireId(f)), tkArray, f.Name, ir.TableFieldWireId(f))
 			g.pf("            uint64_t map_len = 0;\n")
 			g.pf("            if ( !r.getleb( map_len ) || !r.room( map_len ) ) { return true; }\n")
 			g.pf("            const uint8_t * map_body = r.buffer + r.offset;\n")
@@ -574,7 +574,7 @@ func (g *tableGen) emitWireExtentCases(st *ir.Struct) {
 			if ref := listElementStruct(f); ref != nil && g.hasExtent(ref) {
 				inner = "&" + ref.Name + "WireExtent"
 			}
-			g.pf("        if ( field_id == 0x%016xull && field_kind == %d ) // %s: an unbounded array\n        {\n", ir.TableFieldWireId(f), tkArray, f.Name)
+			g.pf("        if ( field_slot == %d && field_kind == %d ) // %s: an unbounded array, id 0x%016xull\n        {\n", g.idSlotOf(ir.TableFieldWireId(f)), tkArray, f.Name, ir.TableFieldWireId(f))
 			g.pf("            uint64_t list_len = 0;\n")
 			g.pf("            if ( !r.getleb( list_len ) || !r.room( list_len ) ) { return true; }\n")
 			g.pf("            const uint8_t * list_body = r.buffer + r.offset;\n")
@@ -604,7 +604,7 @@ func (g *tableGen) emitWireExtentCases(st *ir.Struct) {
 			case f.Array != ir.ArrayNone:
 				kind, walk = tkArray, "TableWireExtentElements"
 			}
-			g.pf("        if ( field_id == 0x%016xull && field_kind == %d ) // %s: a nesting that holds a list or a map\n        {\n", ir.TableFieldWireId(f), kind, f.Name)
+			g.pf("        if ( field_slot == %d && field_kind == %d ) // %s: a nesting that holds a list or a map, id 0x%016xull\n        {\n", g.idSlotOf(ir.TableFieldWireId(f)), kind, f.Name, ir.TableFieldWireId(f))
 			g.pf("            uint64_t nested_len = 0;\n")
 			g.pf("            if ( !r.getleb( nested_len ) || !r.room( nested_len ) ) { return true; }\n")
 			g.pf("            const uint8_t * nested_body = r.buffer + r.offset;\n")
@@ -623,12 +623,12 @@ func (g *tableGen) emitWireExtentCases(st *ir.Struct) {
 			// THE FIELD'S ACTUAL SHAPE decides the framing: a union field is one
 			// arm header, and an array of unions is a kind 14 body of them
 			if f.Array == ir.ArrayNone {
-				g.pf("        if ( field_id == 0x%016xull && field_kind == %d ) // %s: a union arm that holds a list or a map\n        {\n", ir.TableFieldWireId(f), tkUnion, f.Name)
+				g.pf("        if ( field_slot == %d && field_kind == %d ) // %s: a union arm that holds a list or a map, id 0x%016xull\n        {\n", g.idSlotOf(ir.TableFieldWireId(f)), tkUnion, f.Name, ir.TableFieldWireId(f))
 				g.pf("            if ( !%sWireArmExtent( r, at, reason ) ) { return false; }\n", un.Name)
 				g.pf("            continue;\n        }\n")
 				continue
 			}
-			g.pf("        if ( field_id == 0x%016xull && field_kind == %d ) // %s: an array of unions whose arms hold a list or a map\n        {\n", ir.TableFieldWireId(f), tkArray, f.Name)
+			g.pf("        if ( field_slot == %d && field_kind == %d ) // %s: an array of unions whose arms hold a list or a map, id 0x%016xull\n        {\n", g.idSlotOf(ir.TableFieldWireId(f)), tkArray, f.Name, ir.TableFieldWireId(f))
 			g.pf("            uint64_t arms_len = 0;\n")
 			g.pf("            if ( !r.getleb( arms_len ) || !r.room( arms_len ) ) { return true; }\n")
 			g.pf("            const uint8_t * arms_body = r.buffer + r.offset;\n")

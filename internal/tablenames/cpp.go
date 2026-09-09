@@ -81,6 +81,13 @@ func init() {
 		// spells neither name.
 		Name{Name: "TableEnumId", What: "an enum value -> its table-wire variant id"},
 		Name{Name: "TableEnumValue", What: "a table-wire variant id -> its enum value"},
+		// the FILE FORM's half of the same answer (docs/SPEC-TABLES.md §3): a
+		// reader resolves the trailer ONCE, at open, and dispatches on the
+		// compile-time SLOT it resolved to rather than on the id, so the pair
+		// above gains a third spelling keyed by slot. Claimed on the pair's
+		// own terms, and for the same reason: a name free today must not
+		// become a collision the day a build reads a table.
+		Name{Name: "TableEnumValueAt", What: "a table-wire variant's RESOLVED SLOT -> its enum value (§3)"},
 		// the ENUM-KEYED array's storage type (docs/SPEC-TABLES.md §2.4). C++ spells it
 		// a class template and C# a generic class; both put it at unit level, and
 		// both emit it ONLY into a unit that declares a keyed array — but the

@@ -118,6 +118,13 @@ type tableGen struct {
 	// entry takes, keyed by the triple (§3.3), so a generated field header
 	// carries its reference as a literal and a save does no lookup at all.
 	slots map[string]uint64
+	// idSlot is the FILE FORM's own numbering, id -> slot: the compile-time
+	// slot every id this unit can spell takes in the header's id slot map
+	// (docs/SPEC-TABLES.md §3, and slots.go). It is NOT the message form's
+	// vocabulary slot above: that one is keyed by the TRIPLE, because one name
+	// may ride at two shapes there, and this one is keyed by the id alone,
+	// because a trailer entry is an id and nothing else.
+	idSlot map[uint64]int
 	// msgDepth is the message codec's nesting depth while it emits: every
 	// loop variable and local a nested payload declares carries the depth as
 	// a suffix, so an element's decode inside an element's decode shadows
@@ -484,6 +491,21 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool
 	idCapacity := strconv.Itoa(idCap)
 	idBuckets := strconv.Itoa(buckets)
 	idShift := strconv.Itoa(64 - bits)
+	// THE ID SLOT MAP, the read side's half of the same compile-time fact
+	// (docs/SPEC-TABLES.md §3, and slots.go): the set of ids this unit can
+	// spell, each at a settled slot, with the probe table that finds one.
+	slotMap := buildIdSlotMap(tableIdSlotOrder(u))
+	refBound := tableRefBound(idCap)
+	// The UNKNOWN-ID PROBE's size. Only an id the unit cannot spell reaches it:
+	// a KNOWN id's repeat shows as a repeated SLOT, which is one bit of a
+	// bitmap over the compile-time set. It is TWICE the resolved-trailer bound,
+	// so the foreign subset of any trailer the reader resolves fits with the
+	// table never fuller than half, and the probe can neither overflow nor need
+	// a bound of its own.
+	probeSlots := 16
+	for probeSlots < 2*refBound {
+		probeSlots *= 2
+	}
 	keyedStorage := ""
 	if anyKeyed {
 		keyedStorage = tableKeyedStorage
@@ -869,6 +891,7 @@ inline void TableIdsWrite( TableWriter & w, const TableIds & ids )
     w.put64( uint64_t( ids.count ) );
 }
 
+` + tableSlotRuntime(&slotMap, refBound) + `
 // THE ID TABLE, READER SIDE (docs/SPEC-TABLES.md §3). A reader locates it from
 // the END of the wire and resolves it ONCE, at open: the entries are eight
 // bytes each and a body names them by position, so every field dispatches
@@ -877,16 +900,34 @@ struct TableIdTable
 {
     const uint8_t * entries = NULL;
     int64_t count = 0;
+    // RESOLVED ONCE, AT OPEN (docs/SPEC-TABLES.md §3, and the slot map above):
+    // entry k's compile-time SLOT at index k, counted from 1 exactly as the
+    // reference is, so a body's dispatch is one array load and a dense switch
+    // rather than an eight-byte decode and a chain of 64-bit compares.
+    // The flag is false for a trailer above kTableIdRefBound and for a table no
+    // TableOpen filled, and slot_of then hashes the id the way open would
+    // have: the SAME slot, computed later, and never a different answer.
+    bool resolved = false;
+    uint16_t slots[ kTableIdRefBound + 1 ];
 
     // the id a reference names. ref is 1-based and bounds-checked by the
     // caller: a reference ABOVE the entry count is framing damage on the body
-    // that carries it, and 0 names no id at all.
+    // that carries it, and 0 names no id at all. THE RAW ID IS STILL WHAT A
+    // REPORT, A RETAINED RECORD AND A DUMP WANT, so this stays exactly what it
+    // was and the slot rides beside it rather than in place of it.
     uint64_t at( uint64_t ref ) const
     {
         const uint8_t * e = entries + ( ref - 1 ) * 8;
         uint64_t lo = uint64_t( e[0] ) | uint64_t( e[1] ) << 8 | uint64_t( e[2] ) << 16 | uint64_t( e[3] ) << 24;
         uint64_t hi = uint64_t( e[4] ) | uint64_t( e[5] ) << 8 | uint64_t( e[6] ) << 16 | uint64_t( e[7] ) << 24;
         return lo | ( hi << 32 );
+    }
+
+    // the SLOT a reference names, which is what every read-side switch
+    // dispatches on. Same bounds contract as at().
+    ` + forceInline + ` uint16_t slot_of( uint64_t ref ) const
+    {
+        return resolved ? slots[ ref ] : TableIdSlotOf( at( ref ) );
     }
 };
 
@@ -1022,6 +1063,18 @@ static const uint64_t kTableNodeTableFieldId = 0xFFFFFFFFFFFFFFFFull;
 // refuses the wire by name and never reports damage.
 const uint8_t kTableWireForm = 1;
 
+// THE UNKNOWN-ID PROBE's two sizes (docs/SPEC-TABLES.md §3, and TableOpen
+// below). Only an id this build cannot NAME reaches it — a known id's repeat
+// is a repeated slot and costs one bit of a bitmap over the compile-time set —
+// so the probe carries the FOREIGN subset alone. It is a power of two, so the
+// mask is one AND, and TWICE kTableIdRefBound, so the foreign subset of any
+// trailer the reader resolves fits with the table never fuller than half:
+// the probe has no bound of its own and cannot overflow. Both are compile-time
+// facts of this header, like the id table's own capacity, and the slots are a
+// local of TableOpen: the probe allocates nothing.
+static const int32_t kTableIdProbeSlots = ` + strconv.Itoa(probeSlots) + `;
+static const int32_t kTableIdProbeShift = ` + strconv.Itoa(64-probeBits(probeSlots)) + `;
+
 // TableOpen reads the form byte and the trailer, in that order, and hands back
 // the ROOT BODY. It answers one of three verdicts, because five zero counters
 // and a false flag are what a clean read prints too:
@@ -1053,16 +1106,99 @@ inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableI
     if ( span + 1 > bytes ) { return TableOpenDamaged; }
     table.entries = buffer + bytes - span;
     table.count = (int64_t) count;
+    // A READER RESOLVES THE TABLE ONCE, AT OPEN (docs/SPEC-TABLES.md §3), and
+    // this is that resolve: every entry becomes its compile-time SLOT here, so
+    // no body ever decodes an entry's eight bytes again. THE DISTINCTNESS
+    // CHECK RIDES IN THE SAME PASS, because a repeat of an id the unit can
+    // spell is a repeat of a SLOT and costs one bit of a bitmap over a set
+    // whose size is a compile-time fact.
+    //
     // THE ENTRIES ARE DISTINCT: a table that carries one id twice is malformed
     // for the whole wire, because no wire this schema writes carries a repeat
     // and it would leave one more shape of table for a hostile writer to aim
     // at (docs/SPEC-TABLES.md §3).
-    for ( int64_t i = 1; i < table.count; i++ )
+    //
+    // The check is READ SIDE, so it is unconditional: it never compiles out
+    // under NDEBUG and it never softens. The arms below answer TableOpenDamaged
+    // on exactly the same tables and TableOpenOk on exactly the same tables —
+    // WHICH walk finds a repeat is settled by the entry count and by how many
+    // of the entries this build cannot name, and nothing else.
+    //
+    // A KNOWN id is exact by construction: the slot map is injective over the
+    // unit's set, so two distinct known ids never share a slot and one id
+    // repeated always does. AN UNKNOWN id has no slot, so the foreign subset
+    // goes through a PROBE by value — the same Fibonacci multiply TableIds
+    // interns with, taken at the top bits, then linear probing, with occupancy
+    // in a separate bitmap because AN ENTRY IS fnv1a64( name ) AND NOTHING
+    // ELSE (§3): a hash of 0 is an ordinary id and the wire holds back no
+    // 64-bit value to mean "no id".
+    //
+    // ABOVE kTableIdRefBound THE PAIRWISE WALK RUNS UNCHANGED, and nothing is
+    // ever charged for both. The ids are the writer's, so the worst case is
+    // the attacker's, and it is worth stating plainly: the probe's multiply is
+    // invertible, so a hostile writer can land every FOREIGN entry in one
+    // bucket, and a linear probe with no seed cannot be steered away from
+    // that. A cluster can be no longer than the entries already standing in
+    // it, so the nth insert probes at most n slots and the whole probe costs
+    // at most n(n+1)/2 slot comparisons at n = kTableIdRefBound, against the
+    // pairwise walk's n(n-1)/2. The probe therefore does NOT beat the pairwise
+    // walk on comparison count in the worst case, and against chosen ids no
+    // fixed hash could. What it beats, at every count and in the worst case
+    // exactly as much as in the best, is how often the check touches the WIRE:
+    // at() decodes eight bytes a call, and this pass makes EXACTLY n of them
+    // where the pairwise walk makes n(n-1)/2 inner decodes beside n-1 outer
+    // ones. The KNOWN ids do not even reach the probe: they cost one bitmap
+    // bit each, whatever a hostile writer does with them, because their slots
+    // were settled when this header was emitted.
+    //
+    // The SLOT MAP's own lookup cannot be steered either: it is bounded by
+    // kTableIdSlotMaxProbe, a compile-time property of the set the emitter
+    // placed, and a foreign id can only miss.
+    table.resolved = false;
+    if ( table.count <= (int64_t) kTableIdRefBound )
     {
-        const uint64_t id = table.at( uint64_t( i ) + 1 );
-        for ( int64_t j = 0; j < i; j++ )
+        uint64_t known[ ( kTableIdSlotCount + 63 ) / 64 ];
+        for ( int32_t w = 0; w < ( kTableIdSlotCount + 63 ) / 64; w++ ) { known[w] = 0; }
+        uint64_t seen[ kTableIdProbeSlots ];
+        uint64_t used[ kTableIdProbeSlots / 64 ];
+        for ( int32_t w = 0; w < kTableIdProbeSlots / 64; w++ ) { used[w] = 0; }
+        for ( int64_t i = 0; i < table.count; i++ )
         {
-            if ( table.at( uint64_t( j ) + 1 ) == id ) { return TableOpenDamaged; }
+            const uint64_t id = table.at( uint64_t( i ) + 1 );
+            const uint16_t s = TableIdSlotOf( id );
+            table.slots[ i + 1 ] = s;
+            if ( s != kTableIdSlotUnknown )
+            {
+                const uint64_t bit = 1ull << ( s & 63 );
+                if ( ( known[ s >> 6 ] & bit ) != 0 ) { return TableOpenDamaged; }
+                known[ s >> 6 ] |= bit;
+                continue;
+            }
+            uint32_t p = uint32_t( ( id * 0x9E3779B97F4A7C15ull ) >> kTableIdProbeShift ) & uint32_t( kTableIdProbeSlots - 1 );
+            for ( ;; )
+            {
+                const uint64_t bit = 1ull << ( p & 63 );
+                if ( ( used[ p >> 6 ] & bit ) == 0 )
+                {
+                    used[ p >> 6 ] |= bit;
+                    seen[p] = id;
+                    break;
+                }
+                if ( seen[p] == id ) { return TableOpenDamaged; }
+                p = ( p + 1 ) & uint32_t( kTableIdProbeSlots - 1 );
+            }
+        }
+        table.resolved = true;
+    }
+    else
+    {
+        for ( int64_t i = 1; i < table.count; i++ )
+        {
+            const uint64_t id = table.at( uint64_t( i ) + 1 );
+            for ( int64_t j = 0; j < i; j++ )
+            {
+                if ( table.at( uint64_t( j ) + 1 ) == id ) { return TableOpenDamaged; }
+            }
         }
     }
     body_bytes = bytes - span - 1;
@@ -1127,9 +1263,14 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// compiler settled for it. A generated field header carries the slot as a
 	// literal beside the id.
 	slots := ir.TableVocabularySlots(u)
+	// THE FILE FORM'S ID SLOT MAP (docs/SPEC-TABLES.md §3), derived once for
+	// the unit and emitted into the header: the compile-time slot every id the
+	// closure can spell takes, which is what every read-side switch dispatches
+	// on once TableOpen has resolved the trailer.
+	idSlot := buildIdSlotMap(tableIdSlotOrder(u)).slot
 	for _, f := range u.Files {
 		g := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyKeyed: anyKeyed, anyMap: anyMap, anyList: anyList, anyExtent: anyExtent, blocks: blocks, variable: variable, targets: targets,
-			includes: map[string]bool{}, nativeIncludes: map[string]bool{}, slots: slots}
+			includes: map[string]bool{}, nativeIncludes: map[string]bool{}, slots: slots, idSlot: idSlot}
 		var members []*ir.Struct
 		members = append(members, orderTables(f.Tables)...)
 		for _, d := range f.Decls {

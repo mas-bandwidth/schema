@@ -410,6 +410,98 @@ inline void TableIdsWrite( TableWriter & w, const TableIds & ids )
     w.put64( uint64_t( ids.count ) );
 }
 
+
+// THE ID SLOT MAP, and it is the READ SIDE'S half of the id table
+// (docs/SPEC-TABLES.md §3). The spec leaves the shape to the reader — "an
+// array of the ids it read, a per-type array of resolved slots, a perfect
+// hash" — because nothing on the wire depends on it and no conformance case
+// can see the difference. This is the third with the second on top of it.
+//
+// THE SET IS A COMPILE-TIME FACT OF THE UNIT, exactly as TableIds::kCapacity
+// is: every id this closure can SPELL — every field's, every enum variant's,
+// every union arm's, every table's own name, the blob type ids and the three
+// the language holds back. Each takes a SLOT, numbered in the vocabulary's own
+// order so that a record's fields land in a run and its switch is dense.
+//
+// THE MAP NEVER SOFTENS AND NEVER COMPILES OUT. It decides nothing about
+// damage on its own: an id outside the set answers kTableIdSlotUnknown, which is
+// the arm the unknown counter already sat in, and every check that followed a
+// resolved id still follows a resolved slot.
+static const int32_t kTableIdSlotCount = 21;
+static const uint16_t kTableIdSlotUnknown = 0xFFFF;
+static const int32_t kTableIdSlotProbeSize = 128;
+// THE WORST CASE IS A CONSTANT OF THIS HEADER and not a property of the input:
+// the emitter searched the multipliers and this one leaves no run of occupied
+// probe slots longer than 1, so no lookup examines more than 2. A hostile
+// wire cannot lengthen a run, because the set that fills the table is the
+// unit's own and every id the wire brings is either in it or a miss.
+static const int32_t kTableIdSlotMaxProbe = 2;
+static const uint64_t kTableIdSlotMultiplier = 0xae5d669c4ded3d95ull;
+static const uint32_t kTableIdSlotShift = 57;
+// kTableIdSlotUnknown IS NOT A SLOT, so the set may never grow into it
+static_assert( kTableIdSlotCount < 0xFFFF, "the id slot map outgrew its sentinel" );
+// the id each slot names, in slot order — what TableIdTable::at hands back,
+// settled at compile time instead of decoded from the wire
+static const uint64_t kTableIdSlotId[ kTableIdSlotCount ] = {
+    0x855b556730a34a05ull, 0xe5316cbaa025f028ull, 0x5cc201a9f1b8274eull, 0x08b72e07b55c3ac0ull,
+    0xd8d4335628b35226ull, 0x0c519da7a1f958c5ull, 0x0369250deb889a31ull, 0xc4bcadba8e631b86ull,
+    0x3a506cb501761960ull, 0x0f838176873c8e22ull, 0xbf4b9bad694f4809ull, 0x56d7ab194448a4f3ull,
+    0xffffffffffffffffull, 0x2f2ec0474f1c4fe4ull, 0x704be0d8faaffc58ull, 0x5f299db0267bd4c7ull,
+    0xcf4368dcf951e082ull, 0x3a8fe3852a245245ull, 0x75d83fc3f0cfab40ull, 0xfffffffffffffffeull,
+    0xfffffffffffffffdull,
+};
+// the probe table: a SLOT number a slot, kTableIdSlotUnknown where nothing sits
+static const uint16_t kTableIdSlotProbe[ kTableIdSlotProbeSize ] = {
+    0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+    0xFFFF,     1, 0xFFFF, 0xFFFF,     4, 0xFFFF, 0xFFFF,     9, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+        5, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,    14, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+       18, 0xFFFF, 0xFFFF, 0xFFFF,    12, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+    0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+        0, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,    13, 0xFFFF, 0xFFFF, 0xFFFF,
+    0xFFFF,    11, 0xFFFF, 0xFFFF,     8, 0xFFFF,    15, 0xFFFF, 0xFFFF,    19, 0xFFFF, 0xFFFF,
+    0xFFFF, 0xFFFF, 0xFFFF,    10, 0xFFFF, 0xFFFF, 0xFFFF,    16, 0xFFFF, 0xFFFF, 0xFFFF,     7,
+    0xFFFF,     3, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,     6, 0xFFFF, 0xFFFF, 0xFFFF,     2,
+    0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+    0xFFFF, 0xFFFF,    20, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,    17,
+};
+
+// TableIdSlotOf is the whole lookup: one multiply, one shift, and at most
+// kTableIdSlotMaxProbe slots examined. It runs ONCE A TRAILER ENTRY at open,
+// and on the ONE cold path where a trailer is larger than the reader resolves
+// (TableIdTable::slot_of below), never once a field on any ordinary wire. It
+// is a PLAIN inline and not the unit's force-inline: it carries a loop, and a
+// copy of it at every field's dispatch would cost the read path i-cache to
+// buy nothing a taken branch does not already buy.
+inline uint16_t TableIdSlotOf( uint64_t id )
+{
+    uint32_t i = uint32_t( ( id * kTableIdSlotMultiplier ) >> kTableIdSlotShift );
+    for ( int32_t p = 0; p < kTableIdSlotMaxProbe; p++ )
+    {
+        const uint16_t s = kTableIdSlotProbe[i];
+        if ( s == kTableIdSlotUnknown ) { return kTableIdSlotUnknown; } // an empty slot ENDS the run
+        if ( kTableIdSlotId[s] == id ) { return s; }
+        i = ( i + 1 ) & uint32_t( kTableIdSlotProbeSize - 1 );
+    }
+    return kTableIdSlotUnknown;
+}
+
+// THE TRAILER THE READER RESOLVES INTO SLOTS AT OPEN. Its bound is a
+// compile-time fact of the unit like every other: the id table this unit's own
+// writer can fill is kCapacity entries, so a wire this build wrote is always
+// under it, and the floor of 128 covers a foreign wire that names more.
+// A trailer ABOVE the bound is read exactly as it always was — the slot is
+// computed per reference instead of read from the array, and the DISTINCTNESS
+// walk falls back to the pairwise one — so the bound moves no verdict and no
+// byte, only where the work sits.
+static const int32_t kTableIdRefBound = 128;
+
+// THE THREE IDS THE LANGUAGE HOLDS BACK, at their slots (docs/SPEC-TABLES.md
+// §3.1, §3.3, §5). A body meeting one where it does not belong is MALFORMED,
+// and the read side tests that by slot like every other id.
+static const uint16_t kTableIdSlotNodeTable = 12;
+static const uint16_t kTableIdSlotBuildVersion = 19;
+static const uint16_t kTableIdSlotVocabulary = 20;
+
 // THE ID TABLE, READER SIDE (docs/SPEC-TABLES.md §3). A reader locates it from
 // the END of the wire and resolves it ONCE, at open: the entries are eight
 // bytes each and a body names them by position, so every field dispatches
@@ -418,16 +510,34 @@ struct TableIdTable
 {
     const uint8_t * entries = NULL;
     int64_t count = 0;
+    // RESOLVED ONCE, AT OPEN (docs/SPEC-TABLES.md §3, and the slot map above):
+    // entry k's compile-time SLOT at index k, counted from 1 exactly as the
+    // reference is, so a body's dispatch is one array load and a dense switch
+    // rather than an eight-byte decode and a chain of 64-bit compares.
+    // The flag is false for a trailer above kTableIdRefBound and for a table no
+    // TableOpen filled, and slot_of then hashes the id the way open would
+    // have: the SAME slot, computed later, and never a different answer.
+    bool resolved = false;
+    uint16_t slots[ kTableIdRefBound + 1 ];
 
     // the id a reference names. ref is 1-based and bounds-checked by the
     // caller: a reference ABOVE the entry count is framing damage on the body
-    // that carries it, and 0 names no id at all.
+    // that carries it, and 0 names no id at all. THE RAW ID IS STILL WHAT A
+    // REPORT, A RETAINED RECORD AND A DUMP WANT, so this stays exactly what it
+    // was and the slot rides beside it rather than in place of it.
     uint64_t at( uint64_t ref ) const
     {
         const uint8_t * e = entries + ( ref - 1 ) * 8;
         uint64_t lo = uint64_t( e[0] ) | uint64_t( e[1] ) << 8 | uint64_t( e[2] ) << 16 | uint64_t( e[3] ) << 24;
         uint64_t hi = uint64_t( e[4] ) | uint64_t( e[5] ) << 8 | uint64_t( e[6] ) << 16 | uint64_t( e[7] ) << 24;
         return lo | ( hi << 32 );
+    }
+
+    // the SLOT a reference names, which is what every read-side switch
+    // dispatches on. Same bounds contract as at().
+    STREAMDEMO_TABLE_INLINE uint16_t slot_of( uint64_t ref ) const
+    {
+        return resolved ? slots[ ref ] : TableIdSlotOf( at( ref ) );
     }
 };
 
@@ -747,6 +857,18 @@ static const uint64_t kTableNodeTableFieldId = 0xFFFFFFFFFFFFFFFFull;
 // refuses the wire by name and never reports damage.
 const uint8_t kTableWireForm = 1;
 
+// THE UNKNOWN-ID PROBE's two sizes (docs/SPEC-TABLES.md §3, and TableOpen
+// below). Only an id this build cannot NAME reaches it — a known id's repeat
+// is a repeated slot and costs one bit of a bitmap over the compile-time set —
+// so the probe carries the FOREIGN subset alone. It is a power of two, so the
+// mask is one AND, and TWICE kTableIdRefBound, so the foreign subset of any
+// trailer the reader resolves fits with the table never fuller than half:
+// the probe has no bound of its own and cannot overflow. Both are compile-time
+// facts of this header, like the id table's own capacity, and the slots are a
+// local of TableOpen: the probe allocates nothing.
+static const int32_t kTableIdProbeSlots = 256;
+static const int32_t kTableIdProbeShift = 56;
+
 // TableOpen reads the form byte and the trailer, in that order, and hands back
 // the ROOT BODY. It answers one of three verdicts, because five zero counters
 // and a false flag are what a clean read prints too:
@@ -778,16 +900,99 @@ inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableI
     if ( span + 1 > bytes ) { return TableOpenDamaged; }
     table.entries = buffer + bytes - span;
     table.count = (int64_t) count;
+    // A READER RESOLVES THE TABLE ONCE, AT OPEN (docs/SPEC-TABLES.md §3), and
+    // this is that resolve: every entry becomes its compile-time SLOT here, so
+    // no body ever decodes an entry's eight bytes again. THE DISTINCTNESS
+    // CHECK RIDES IN THE SAME PASS, because a repeat of an id the unit can
+    // spell is a repeat of a SLOT and costs one bit of a bitmap over a set
+    // whose size is a compile-time fact.
+    //
     // THE ENTRIES ARE DISTINCT: a table that carries one id twice is malformed
     // for the whole wire, because no wire this schema writes carries a repeat
     // and it would leave one more shape of table for a hostile writer to aim
     // at (docs/SPEC-TABLES.md §3).
-    for ( int64_t i = 1; i < table.count; i++ )
+    //
+    // The check is READ SIDE, so it is unconditional: it never compiles out
+    // under NDEBUG and it never softens. The arms below answer TableOpenDamaged
+    // on exactly the same tables and TableOpenOk on exactly the same tables —
+    // WHICH walk finds a repeat is settled by the entry count and by how many
+    // of the entries this build cannot name, and nothing else.
+    //
+    // A KNOWN id is exact by construction: the slot map is injective over the
+    // unit's set, so two distinct known ids never share a slot and one id
+    // repeated always does. AN UNKNOWN id has no slot, so the foreign subset
+    // goes through a PROBE by value — the same Fibonacci multiply TableIds
+    // interns with, taken at the top bits, then linear probing, with occupancy
+    // in a separate bitmap because AN ENTRY IS fnv1a64( name ) AND NOTHING
+    // ELSE (§3): a hash of 0 is an ordinary id and the wire holds back no
+    // 64-bit value to mean "no id".
+    //
+    // ABOVE kTableIdRefBound THE PAIRWISE WALK RUNS UNCHANGED, and nothing is
+    // ever charged for both. The ids are the writer's, so the worst case is
+    // the attacker's, and it is worth stating plainly: the probe's multiply is
+    // invertible, so a hostile writer can land every FOREIGN entry in one
+    // bucket, and a linear probe with no seed cannot be steered away from
+    // that. A cluster can be no longer than the entries already standing in
+    // it, so the nth insert probes at most n slots and the whole probe costs
+    // at most n(n+1)/2 slot comparisons at n = kTableIdRefBound, against the
+    // pairwise walk's n(n-1)/2. The probe therefore does NOT beat the pairwise
+    // walk on comparison count in the worst case, and against chosen ids no
+    // fixed hash could. What it beats, at every count and in the worst case
+    // exactly as much as in the best, is how often the check touches the WIRE:
+    // at() decodes eight bytes a call, and this pass makes EXACTLY n of them
+    // where the pairwise walk makes n(n-1)/2 inner decodes beside n-1 outer
+    // ones. The KNOWN ids do not even reach the probe: they cost one bitmap
+    // bit each, whatever a hostile writer does with them, because their slots
+    // were settled when this header was emitted.
+    //
+    // The SLOT MAP's own lookup cannot be steered either: it is bounded by
+    // kTableIdSlotMaxProbe, a compile-time property of the set the emitter
+    // placed, and a foreign id can only miss.
+    table.resolved = false;
+    if ( table.count <= (int64_t) kTableIdRefBound )
     {
-        const uint64_t id = table.at( uint64_t( i ) + 1 );
-        for ( int64_t j = 0; j < i; j++ )
+        uint64_t known[ ( kTableIdSlotCount + 63 ) / 64 ];
+        for ( int32_t w = 0; w < ( kTableIdSlotCount + 63 ) / 64; w++ ) { known[w] = 0; }
+        uint64_t seen[ kTableIdProbeSlots ];
+        uint64_t used[ kTableIdProbeSlots / 64 ];
+        for ( int32_t w = 0; w < kTableIdProbeSlots / 64; w++ ) { used[w] = 0; }
+        for ( int64_t i = 0; i < table.count; i++ )
         {
-            if ( table.at( uint64_t( j ) + 1 ) == id ) { return TableOpenDamaged; }
+            const uint64_t id = table.at( uint64_t( i ) + 1 );
+            const uint16_t s = TableIdSlotOf( id );
+            table.slots[ i + 1 ] = s;
+            if ( s != kTableIdSlotUnknown )
+            {
+                const uint64_t bit = 1ull << ( s & 63 );
+                if ( ( known[ s >> 6 ] & bit ) != 0 ) { return TableOpenDamaged; }
+                known[ s >> 6 ] |= bit;
+                continue;
+            }
+            uint32_t p = uint32_t( ( id * 0x9E3779B97F4A7C15ull ) >> kTableIdProbeShift ) & uint32_t( kTableIdProbeSlots - 1 );
+            for ( ;; )
+            {
+                const uint64_t bit = 1ull << ( p & 63 );
+                if ( ( used[ p >> 6 ] & bit ) == 0 )
+                {
+                    used[ p >> 6 ] |= bit;
+                    seen[p] = id;
+                    break;
+                }
+                if ( seen[p] == id ) { return TableOpenDamaged; }
+                p = ( p + 1 ) & uint32_t( kTableIdProbeSlots - 1 );
+            }
+        }
+        table.resolved = true;
+    }
+    else
+    {
+        for ( int64_t i = 1; i < table.count; i++ )
+        {
+            const uint64_t id = table.at( uint64_t( i ) + 1 );
+            for ( int64_t j = 0; j < i; j++ )
+            {
+                if ( table.at( uint64_t( j ) + 1 ) == id ) { return TableOpenDamaged; }
+            }
         }
     }
     body_bytes = bytes - span - 1;
@@ -5200,10 +5405,10 @@ STREAMDEMO_TABLE_INLINE bool HeaderLoadBody( TableReader & r, Header & value )
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
-        const uint64_t field_id = r.ids->at( field_ref );
+        const uint16_t field_slot = r.ids->slot_of( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
+        if ( ( field_slot == kTableIdSlotNodeTable && r.nested ) || field_slot == kTableIdSlotBuildVersion || field_slot == kTableIdSlotVocabulary )
         {
             // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
             // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
@@ -5214,9 +5419,9 @@ STREAMDEMO_TABLE_INLINE bool HeaderLoadBody( TableReader & r, Header & value )
             r.report->malformed = true;
             return false;
         }
-        switch ( field_id )
+        switch ( field_slot )
         {
-            case 0xc4bcadba8e631b86ull: // name
+            case 7: // name, id 0xc4bcadba8e631b86ull
             {
                 if ( kind != 12 )
                 {
@@ -5582,10 +5787,10 @@ inline bool ChunkLoadBody( TableReader & r, const TableNodeMap & nodes, Chunk & 
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
-        const uint64_t field_id = r.ids->at( field_ref );
+        const uint16_t field_slot = r.ids->slot_of( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
+        if ( ( field_slot == kTableIdSlotNodeTable && r.nested ) || field_slot == kTableIdSlotBuildVersion || field_slot == kTableIdSlotVocabulary )
         {
             // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
             // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
@@ -5596,9 +5801,9 @@ inline bool ChunkLoadBody( TableReader & r, const TableNodeMap & nodes, Chunk & 
             r.report->malformed = true;
             return false;
         }
-        switch ( field_id )
+        switch ( field_slot )
         {
-            case 0x855b556730a34a05ull: // data
+            case 0: // data, id 0x855b556730a34a05ull
             {
                 if ( kind != 14 )
                 {
@@ -5647,7 +5852,7 @@ inline bool ChunkLoadBody( TableReader & r, const TableNodeMap & nodes, Chunk & 
                 r.offset = body_end; // excess elements and slack skip via the length
                 break;
             }
-            case 0xe5316cbaa025f028ull: // next
+            case 1: // next, id 0xe5316cbaa025f028ull
             {
                 if ( kind != 17 )
                 {
@@ -5667,7 +5872,7 @@ inline bool ChunkLoadBody( TableReader & r, const TableNodeMap & nodes, Chunk & 
                 }
                 break;
             }
-            case 0x5cc201a9f1b8274eull: // links
+            case 2: // links, id 0x5cc201a9f1b8274eull
             {
                 if ( kind != 14 )
                 {
@@ -5722,7 +5927,7 @@ inline bool ChunkLoadBody( TableReader & r, const TableNodeMap & nodes, Chunk & 
                 r.offset = body_end; // excess elements and slack skip via the length
                 break;
             }
-            case 0xffffffffffffffffull:
+            case kTableIdSlotNodeTable: // id 0xffffffffffffffffull
             {
                 if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                 break;
@@ -6175,10 +6380,10 @@ inline bool FeedLoadBody( TableReader & r, const TableNodeMap & nodes, Feed & va
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
-        const uint64_t field_id = r.ids->at( field_ref );
+        const uint16_t field_slot = r.ids->slot_of( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
+        if ( ( field_slot == kTableIdSlotNodeTable && r.nested ) || field_slot == kTableIdSlotBuildVersion || field_slot == kTableIdSlotVocabulary )
         {
             // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
             // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
@@ -6189,9 +6394,9 @@ inline bool FeedLoadBody( TableReader & r, const TableNodeMap & nodes, Feed & va
             r.report->malformed = true;
             return false;
         }
-        switch ( field_id )
+        switch ( field_slot )
         {
-            case 0x08b72e07b55c3ac0ull: // id
+            case 3: // id, id 0x08b72e07b55c3ac0ull
             {
                 if ( kind != 8 )
                 {
@@ -6217,7 +6422,7 @@ inline bool FeedLoadBody( TableReader & r, const TableNodeMap & nodes, Feed & va
                 value.id = decoded_v;
                 break;
             }
-            case 0xd8d4335628b35226ull: // frame
+            case 4: // frame, id 0xd8d4335628b35226ull
             {
                 if ( kind != 15 )
                 {
@@ -6231,16 +6436,16 @@ inline bool FeedLoadBody( TableReader & r, const TableNodeMap & nodes, Feed & va
                 if ( !r.getleb( arm_ref ) ) { r.report->malformed = true; return false; }
                 if ( arm_ref == 0 ) { value.frame.type = FrameType::None; break; } // empty: the reference is the whole payload
                 if ( arm_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; }
-                const uint64_t arm_id = r.ids->at( arm_ref );
+                const uint16_t arm_slot = r.ids->slot_of( arm_ref );
                 if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
                 const uint8_t arm_kind = r.get8();
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 {
                     TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
-                    switch ( arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
+                    switch ( arm_slot ) // the arm's name, at its compile-time SLOT (§3, §5)
                     {
-                        case 0x3a506cb501761960ull: // header
+                        case 8: // header, id 0x3a506cb501761960ull
                         {
                             if ( arm_kind != 13 )
                             {
@@ -6255,7 +6460,7 @@ inline bool FeedLoadBody( TableReader & r, const TableNodeMap & nodes, Feed & va
                             if ( sub.offset != sub.size ) { value.frame.type = FrameType::None; r.report->malformed = true; break; }
                             break;
                         }
-                        case 0x0f838176873c8e22ull: // chunk
+                        case 9: // chunk, id 0x0f838176873c8e22ull
                         {
                             if ( arm_kind != 13 )
                             {
@@ -6270,7 +6475,7 @@ inline bool FeedLoadBody( TableReader & r, const TableNodeMap & nodes, Feed & va
                             if ( sub.offset != sub.size ) { value.frame.type = FrameType::None; r.report->malformed = true; break; }
                             break;
                         }
-                        case 0xbf4b9bad694f4809ull: // link
+                        case 10: // link, id 0xbf4b9bad694f4809ull
                         {
                             if ( arm_kind != 17 )
                             {
@@ -6289,7 +6494,7 @@ inline bool FeedLoadBody( TableReader & r, const TableNodeMap & nodes, Feed & va
                             }
                             break;
                         }
-                        case 0x56d7ab194448a4f3ull: // tag
+                        case 11: // tag, id 0x56d7ab194448a4f3ull
                         {
                             if ( arm_kind != 8 )
                             {
@@ -6334,7 +6539,7 @@ inline bool FeedLoadBody( TableReader & r, const TableNodeMap & nodes, Feed & va
                 r.offset += (int64_t) body_len;
                 break;
             }
-            case 0x0c519da7a1f958c5ull: // parts
+            case 5: // parts, id 0x0c519da7a1f958c5ull
             {
                 if ( kind != 14 )
                 {
@@ -6389,7 +6594,7 @@ inline bool FeedLoadBody( TableReader & r, const TableNodeMap & nodes, Feed & va
                 r.offset = body_end; // excess elements and slack skip via the length
                 break;
             }
-            case 0x0369250deb889a31ull: // pair
+            case 6: // pair, id 0x0369250deb889a31ull
             {
                 if ( kind != 14 )
                 {
@@ -6437,7 +6642,7 @@ inline bool FeedLoadBody( TableReader & r, const TableNodeMap & nodes, Feed & va
                 r.offset = body_end; // excess elements and slack skip via the length
                 break;
             }
-            case 0xffffffffffffffffull:
+            case kTableIdSlotNodeTable: // id 0xffffffffffffffffull
             {
                 if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                 break;
@@ -9080,10 +9285,11 @@ STREAMDEMO_TABLE_INLINE bool HeaderLoadBodyRetain( TableReader & r, Header & val
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
-        const uint64_t field_id = r.ids->at( field_ref );
+        const uint16_t field_slot = r.ids->slot_of( field_ref );
+        const uint64_t field_id = r.ids->at( field_ref ); // the RAW id, which a retained record carries (§6.6)
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
+        if ( ( field_slot == kTableIdSlotNodeTable && r.nested ) || field_slot == kTableIdSlotBuildVersion || field_slot == kTableIdSlotVocabulary )
         {
             // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
             // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
@@ -9094,9 +9300,9 @@ STREAMDEMO_TABLE_INLINE bool HeaderLoadBodyRetain( TableReader & r, Header & val
             r.report->malformed = true;
             return false;
         }
-        switch ( field_id )
+        switch ( field_slot )
         {
-            case 0xc4bcadba8e631b86ull: // name
+            case 7: // name, id 0xc4bcadba8e631b86ull
             {
                 if ( kind != 12 )
                 {
@@ -9322,10 +9528,11 @@ inline bool ChunkLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ch
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
-        const uint64_t field_id = r.ids->at( field_ref );
+        const uint16_t field_slot = r.ids->slot_of( field_ref );
+        const uint64_t field_id = r.ids->at( field_ref ); // the RAW id, which a retained record carries (§6.6)
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
+        if ( ( field_slot == kTableIdSlotNodeTable && r.nested ) || field_slot == kTableIdSlotBuildVersion || field_slot == kTableIdSlotVocabulary )
         {
             // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
             // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
@@ -9336,9 +9543,9 @@ inline bool ChunkLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ch
             r.report->malformed = true;
             return false;
         }
-        switch ( field_id )
+        switch ( field_slot )
         {
-            case 0x855b556730a34a05ull: // data
+            case 0: // data, id 0x855b556730a34a05ull
             {
                 if ( kind != 14 )
                 {
@@ -9387,7 +9594,7 @@ inline bool ChunkLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ch
                 r.offset = body_end; // excess elements and slack skip via the length
                 break;
             }
-            case 0xe5316cbaa025f028ull: // next
+            case 1: // next, id 0xe5316cbaa025f028ull
             {
                 if ( kind != 17 )
                 {
@@ -9407,7 +9614,7 @@ inline bool ChunkLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ch
                 }
                 break;
             }
-            case 0x5cc201a9f1b8274eull: // links
+            case 2: // links, id 0x5cc201a9f1b8274eull
             {
                 if ( kind != 14 )
                 {
@@ -9462,7 +9669,7 @@ inline bool ChunkLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ch
                 r.offset = body_end; // excess elements and slack skip via the length
                 break;
             }
-            case 0xffffffffffffffffull:
+            case kTableIdSlotNodeTable: // id 0xffffffffffffffffull
             {
                 if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                 break;
@@ -9855,10 +10062,11 @@ inline bool FeedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fee
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
-        const uint64_t field_id = r.ids->at( field_ref );
+        const uint16_t field_slot = r.ids->slot_of( field_ref );
+        const uint64_t field_id = r.ids->at( field_ref ); // the RAW id, which a retained record carries (§6.6)
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
-        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
+        if ( ( field_slot == kTableIdSlotNodeTable && r.nested ) || field_slot == kTableIdSlotBuildVersion || field_slot == kTableIdSlotVocabulary )
         {
             // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
             // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
@@ -9869,9 +10077,9 @@ inline bool FeedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fee
             r.report->malformed = true;
             return false;
         }
-        switch ( field_id )
+        switch ( field_slot )
         {
-            case 0x08b72e07b55c3ac0ull: // id
+            case 3: // id, id 0x08b72e07b55c3ac0ull
             {
                 if ( kind != 8 )
                 {
@@ -9897,7 +10105,7 @@ inline bool FeedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fee
                 value.id = decoded_v;
                 break;
             }
-            case 0xd8d4335628b35226ull: // frame
+            case 4: // frame, id 0xd8d4335628b35226ull
             {
                 if ( kind != 15 )
                 {
@@ -9912,16 +10120,16 @@ inline bool FeedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fee
                 if ( !r.getleb( arm_ref ) ) { r.report->malformed = true; return false; }
                 if ( arm_ref == 0 ) { value.frame.type = FrameType::None; break; } // empty: the reference is the whole payload
                 if ( arm_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; }
-                const uint64_t arm_id = r.ids->at( arm_ref );
+                const uint16_t arm_slot = r.ids->slot_of( arm_ref );
                 if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
                 const uint8_t arm_kind = r.get8();
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 {
                     TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
-                    switch ( arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
+                    switch ( arm_slot ) // the arm's name, at its compile-time SLOT (§3, §5)
                     {
-                        case 0x3a506cb501761960ull: // header
+                        case 8: // header, id 0x3a506cb501761960ull
                         {
                             if ( arm_kind != 13 )
                             {
@@ -9936,7 +10144,7 @@ inline bool FeedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fee
                             if ( sub.offset != sub.size ) { value.frame.type = FrameType::None; r.report->malformed = true; break; }
                             break;
                         }
-                        case 0x0f838176873c8e22ull: // chunk
+                        case 9: // chunk, id 0x0f838176873c8e22ull
                         {
                             if ( arm_kind != 13 )
                             {
@@ -9951,7 +10159,7 @@ inline bool FeedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fee
                             if ( sub.offset != sub.size ) { value.frame.type = FrameType::None; r.report->malformed = true; break; }
                             break;
                         }
-                        case 0xbf4b9bad694f4809ull: // link
+                        case 10: // link, id 0xbf4b9bad694f4809ull
                         {
                             if ( arm_kind != 17 )
                             {
@@ -9970,7 +10178,7 @@ inline bool FeedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fee
                             }
                             break;
                         }
-                        case 0x56d7ab194448a4f3ull: // tag
+                        case 11: // tag, id 0x56d7ab194448a4f3ull
                         {
                             if ( arm_kind != 8 )
                             {
@@ -10015,7 +10223,7 @@ inline bool FeedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fee
                 r.offset += (int64_t) body_len;
                 break;
             }
-            case 0x0c519da7a1f958c5ull: // parts
+            case 5: // parts, id 0x0c519da7a1f958c5ull
             {
                 if ( kind != 14 )
                 {
@@ -10070,7 +10278,7 @@ inline bool FeedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fee
                 r.offset = body_end; // excess elements and slack skip via the length
                 break;
             }
-            case 0x0369250deb889a31ull: // pair
+            case 6: // pair, id 0x0369250deb889a31ull
             {
                 if ( kind != 14 )
                 {
@@ -10118,7 +10326,7 @@ inline bool FeedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fee
                 r.offset = body_end; // excess elements and slack skip via the length
                 break;
             }
-            case 0xffffffffffffffffull:
+            case kTableIdSlotNodeTable: // id 0xffffffffffffffffull
             {
                 if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                 break;

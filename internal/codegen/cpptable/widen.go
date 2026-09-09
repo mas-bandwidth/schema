@@ -261,7 +261,7 @@ func (g *tableGen) emitKeyedTriples(f *ir.Field, kind int, ind string, widened b
 	g.pf("%s        uint64_t elem_len = 0;\n", ind)
 	g.pf("%s        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->malformed = true; break; }\n", ind)
 	g.pf("%s        %s slot = %s::None;\n", ind, f.KeyEnum, f.KeyEnum)
-	g.pf("%s        if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )\n%s        {\n", ind, ind)
+	g.pf("%s        if ( !TableEnumValueAt( r.ids->slot_of( key_ref ), slot ) )\n%s        {\n", ind, ind)
 	g.pf("%s            r.report->unknown++;%s // a slot this reader cannot name\n", ind, g.retainLostInline())
 	g.pf("%s            sub.offset += (int64_t) elem_len;\n%s            continue;\n%s        }\n", ind, ind, ind)
 	g.pf("%s        {\n%s            TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );\n", ind, ind)

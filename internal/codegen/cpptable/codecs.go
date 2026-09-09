@@ -623,6 +623,23 @@ func (g *tableGen) emitEnumIdentity(e *ir.Enum) {
 	}
 	g.pf("        default: return false; // an id this build cannot name\n")
 	g.pf("    }\n}\n")
+	// THE FILE FORM'S HALF, over the trailer's RESOLVED SLOT rather than over
+	// the id (docs/SPEC-TABLES.md §3, and the id slot map). The answer is the
+	// same on every input, because the map is injective over the unit's set
+	// and an id outside it has no slot; what changes is the dispatch, which is
+	// a dense switch over consecutive slots — a variant's slots are
+	// consecutive, the vocabulary places an enum's variants in a run — where
+	// it was a chain of 64-bit compares. TableEnumValue above is untouched:
+	// the MESSAGE form has no id table and no trailer to resolve, and a report
+	// or a dump still holds a raw id.
+	g.pf("inline bool TableEnumValueAt( uint16_t slot, %s & out )\n{\n", e.Name)
+	g.pf("    switch ( slot )\n    {\n")
+	for i, v := range e.Variants {
+		id := ir.TableWireId(e.VariantWireName(i))
+		g.pf("        case %d: out = %s::%s; return true; // id 0x%016xull\n", g.idSlotOf(id), e.Name, v, id)
+	}
+	g.pf("        default: return false; // a slot this build cannot name\n")
+	g.pf("    }\n}\n")
 	g.pf("#endif // %s\n\n", guard)
 }
 
@@ -1549,10 +1566,19 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("        if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }\n")
 	g.pf("        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE\n")
 	g.pf("        if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count\n")
-	g.pf("        const uint64_t field_id = r.ids->at( field_ref );\n")
+	// THE REFERENCE RESOLVES TO A SLOT, NOT TO AN ID (docs/SPEC-TABLES.md §3,
+	// and the id slot map in the header). TableOpen resolved the whole trailer
+	// once, so this is one array load where it was an eight-byte decode, and
+	// the switch below dispatches on a DENSE index where it dispatched on a
+	// 64-bit hash. The id itself is decoded only where something still wants
+	// it: a RETAINED record carries the id it could not name.
+	g.pf("        const uint16_t field_slot = r.ids->slot_of( field_ref );\n")
+	if g.retain {
+		g.pf("        const uint64_t field_id = r.ids->at( field_ref ); // the RAW id, which a retained record carries (§6.6)\n")
+	}
 	g.pf("        if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }\n")
 	g.pf("        uint8_t kind = r.get8();\n")
-	g.pf("        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )\n        {\n")
+	g.pf("        if ( ( field_slot == kTableIdSlotNodeTable && r.nested ) || field_slot == kTableIdSlotBuildVersion || field_slot == kTableIdSlotVocabulary )\n        {\n")
 	g.pf("            // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,\n")
 	g.pf("            // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node\n")
 	g.pf("            // table's is the ROOT body's alone, on the numbering's own\n")
@@ -1562,7 +1588,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("            r.report->malformed = true;\n")
 	g.pf("            return false;\n        }\n")
 	if len(st.Fields) > 0 {
-		g.pf("        switch ( field_id )\n        {\n")
+		g.pf("        switch ( field_slot )\n        {\n")
 		for _, f := range st.Fields {
 			id := tableFieldWireId(f)
 			kind := tableScalarKind(f)
@@ -1593,7 +1619,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 			if f.Type.Kind == ir.TBytes && !f.Type.Blob() {
 				kind = tkU8 // bytes travel as an array of u8 elements; a *bytes is a node index (§2.5)
 			}
-			g.pf("            case 0x%016xull: // %s\n            {\n", id, f.Name)
+			g.pf("            case %d: // %s, id 0x%016xull\n            {\n", g.idSlotOf(id), f.Name, id)
 			g.pf("                if ( kind != %d )\n                {\n", wireKind)
 			if plainScalar(f) {
 				// THE WIDENING BRANCH (docs/SPEC-TABLES.md §4) lives inside
@@ -1632,7 +1658,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 			// the table, it is where the numbering travelled. An `unknown` here
 			// would mean "a build without kind 17", which is the difference §4
 			// exists to report and not one this reader has.
-			g.pf("            case 0x%016xull:\n            {\n", ir.TableNodeWireId)
+			g.pf("            case kTableIdSlotNodeTable: // id 0x%016xull\n            {\n", ir.TableNodeWireId)
 			g.pf("                if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }\n")
 			g.pf("                break;\n            }\n")
 		}
@@ -1748,7 +1774,7 @@ func (g *tableGen) emitEnumRefLoad(f *ir.Field, dst, ind, rdr, onBad string) {
 	g.pf("%sif ( !%s.getleb( variant_ref ) ) { %s }\n", ind, rdr, onBad)
 	g.pf("%sif ( variant_ref == 0 ) { %s = %s::None; } // the zero reference is the enum's None\n", ind, dst, e)
 	g.pf("%selse if ( variant_ref > (uint64_t) r.ids->count ) { %s }\n", ind, onBad)
-	g.pf("%selse if ( !TableEnumValue( r.ids->at( variant_ref ), %s ) )\n%s{\n", ind, dst, ind)
+	g.pf("%selse if ( !TableEnumValueAt( r.ids->slot_of( variant_ref ), %s ) )\n%s{\n", ind, dst, ind)
 	g.pf("%s    %s = %s::None;\n%s    r.report->unknown++;%s\n%s}\n", ind, dst, e, ind, g.retainLostInline(), ind)
 }
 
@@ -1930,18 +1956,18 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%sif ( !r.getleb( arm_ref ) ) { r.report->malformed = true; return false; }\n", ind)
 		g.pf("%sif ( arm_ref == 0 ) { value.%s.type = %sType::None; break; } // empty: the reference is the whole payload\n", ind, f.Name, un.Name)
 		g.pf("%sif ( arm_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; }\n", ind)
-		g.pf("%sconst uint64_t arm_id = r.ids->at( arm_ref );\n", ind)
+		g.pf("%sconst uint16_t arm_slot = r.ids->slot_of( arm_ref );\n", ind)
 		g.pf("%sif ( !r.has( 1 ) ) { r.report->malformed = true; return false; }\n", ind)
 		g.pf("%sconst uint8_t arm_kind = r.get8();\n", ind)
 		g.pf("%suint64_t body_len = 0;\n", ind)
 		g.pf("%sif ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }\n", ind)
 		g.pf("%s{\n%s    TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );\n", ind, ind)
-		g.pf("%s    switch ( arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)\n%s    {\n", ind, ind)
+		g.pf("%s    switch ( arm_slot ) // the arm's name, at its compile-time SLOT (§3, §5)\n%s    {\n", ind, ind)
 		wasField := g.unionField
 		g.unionField = f
 		defer func() { g.unionField = wasField }()
 		for ai, v := range un.Variants {
-			g.pf("%s        case 0x%016xull: // %s\n%s        {\n", ind, ir.TableWireId(v.WireName()), v.Name, ind)
+			g.pf("%s        case %d: // %s, id 0x%016xull\n%s        {\n", ind, g.idSlotOf(ir.TableWireId(v.WireName())), v.Name, ir.TableWireId(v.WireName()), ind)
 			g.pf("%s            if ( arm_kind != %d )\n%s            {\n", ind, armWireKind(v), ind)
 			g.emitArmWiden(v, "value."+f.Name, "arm_kind", "sub", fmt.Sprintf("value.%s.type", f.Name),
 				un.Name+"Type::"+ir.GoExportName(v.Name), un.Name+"Type::None", ind+"                ")
@@ -2007,7 +2033,7 @@ func (g *tableGen) emitTableReadElementInto(f *ir.Field, kind int, dst, ind, rdr
 		// re-established as None before the arm is read, so a repeated field id
 		// leaves no earlier arm standing (§4).
 		un := f.Type.Ref.(*ir.Union)
-		ref, id, length := "elem_arm_ref"+sfx, "elem_arm_id"+sfx, "elem_arm_len"+sfx
+		ref, id, length := "elem_arm_ref"+sfx, "elem_arm_slot"+sfx, "elem_arm_len"+sfx
 		armKind := "elem_arm_kind" + sfx
 		wasPath, wasIndex := g.pathExpr, g.elemIndex
 		g.pathExpr, g.elemIndex = g.step(f), "0"
@@ -2017,18 +2043,18 @@ func (g *tableGen) emitTableReadElementInto(f *ir.Field, kind int, dst, ind, rdr
 		g.pf("%s    %s.type = %sType::None;\n", ind, dst, un.Name)
 		g.pf("%s    if ( %s != 0 ) // the zero reference is a None element in its place\n%s    {\n", ind, ref, ind)
 		g.pf("%s        if ( %s > (uint64_t) r.ids->count ) { r.report->malformed = true; break; }\n", ind, ref)
-		g.pf("%s        const uint64_t %s = r.ids->at( %s );\n", ind, id, ref)
+		g.pf("%s        const uint16_t %s = r.ids->slot_of( %s );\n", ind, id, ref)
 		g.pf("%s        if ( !%s.has( 1 ) ) { r.report->malformed = true; break; }\n", ind, rdr)
 		g.pf("%s        const uint8_t %s = %s.get8();\n", ind, armKind, rdr)
 		g.pf("%s        uint64_t %s = 0;\n", ind, length)
 		g.pf("%s        if ( !%s.getleb( %s ) || !%s.room( %s ) ) { r.report->malformed = true; break; }\n", ind, rdr, length, rdr, length)
 		g.pf("%s        TableReader elem_arm%s( %s.buffer + %s.offset, (int64_t) %s, r.report, r.ids );\n", ind, sfx, rdr, rdr, length)
-		g.pf("%s        switch ( %s ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)\n%s        {\n", ind, id, ind)
+		g.pf("%s        switch ( %s ) // the arm's name, at its compile-time SLOT (§3, §5)\n%s        {\n", ind, id, ind)
 		wasField := g.unionField
 		g.unionField = f
 		defer func() { g.unionField = wasField }()
 		for ai, v := range un.Variants {
-			g.pf("%s            case 0x%016xull: // %s\n%s            {\n", ind, ir.TableWireId(v.WireName()), v.Name, ind)
+			g.pf("%s            case %d: // %s, id 0x%016xull\n%s            {\n", ind, g.idSlotOf(ir.TableWireId(v.WireName())), v.Name, ir.TableWireId(v.WireName()), ind)
 			g.pf("%s                if ( %s != %d )\n%s                {\n", ind, armKind, armWireKind(v), ind)
 			g.emitArmWiden(v, dst, armKind, "elem_arm"+sfx, dst+".type",
 				un.Name+"Type::"+ir.GoExportName(v.Name), un.Name+"Type::None", ind+"                    ")

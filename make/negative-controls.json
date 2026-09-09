@@ -268,6 +268,16 @@
       ]
     },
     {
+      "name": "table-distinctness",
+      "when": "pull-request",
+      "why": "the id table's three distinctness and resolve controls, together, because each is an overlay rebuild: they patch the C++ table emitter's foreign probe, its known-slot bitmap and its resolve in turn, rebuild the compiler under each overlay, regenerate one unit and require the distinctness gate to go red on that structure's own cases. They cost what the other overlay rebuilds cost, without the fuzzer's pass on top. Measured about 90 s over 3 controls on the author's machine.",
+      "targets": [
+        "tables-distinctness-negative-control",
+        "tables-slot-bitmap-negative-control",
+        "tables-slot-resolve-negative-control"
+      ]
+    },
+    {
       "name": "wire-fuzz",
       "when": "pull-request",
       "why": "the tolerant-wire oracle and node-type controls, which read a pinned vector rather than rebuilding the compiler. The five oracles ran as one job at 82 s of control time on run 34115675206, most of it the fuzz driver they all build, so they run as two. Measured 11 s over 2 controls.",

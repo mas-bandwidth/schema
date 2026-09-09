@@ -69,7 +69,8 @@ func generateViewFiles(u *ir.Unit, closure map[string]bool, anyVariable, anyKeye
 	g := &tableGen{unit: u, file: &ir.File{Base: viewBase(u.Package)},
 		anyVariable: anyVariable, anyKeyed: anyKeyed, anyMap: anyMap, anyList: anyList, anyExtent: anyExtent,
 		blocks: blocks, variable: variable, targets: targets,
-		includes: map[string]bool{}, nativeIncludes: map[string]bool{}, slots: ir.TableVocabularySlots(u)}
+		includes: map[string]bool{}, nativeIncludes: map[string]bool{}, slots: ir.TableVocabularySlots(u),
+		idSlot: buildIdSlotMap(tableIdSlotOrder(u)).slot}
 
 	base := viewBase(u.Package)
 	return map[string][]byte{
