@@ -417,13 +417,15 @@ static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE uint8_t table_reader_get8( T
 static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE uint16_t table_reader_get16( TableReader * r )
 { uint16_t v = r->buffer[r->offset]; v |= (uint16_t) ((uint16_t) r->buffer[r->offset+1] << 8); r->offset += 2; return v; }
 static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE uint32_t table_reader_get32( TableReader * r )
-{ uint32_t v = 0; int i; for ( i = 0; i < 4; i++ ) { v |= (uint32_t) table_reader_get8( r ) << (8*i); } return v; }
+{ uint32_t v = (uint32_t) r->buffer[r->offset] | (uint32_t) r->buffer[r->offset+1] << 8 | (uint32_t) r->buffer[r->offset+2] << 16 | (uint32_t) r->buffer[r->offset+3] << 24; r->offset += 4; return v; }
 static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE uint64_t table_reader_get64( TableReader * r )
 { uint64_t lo = table_reader_get32( r ); return lo | ((uint64_t) table_reader_get32( r ) << 32); }
-static SCHEMA_UNUSED uint64_t table_reader_id_at( const TableReader * r, uint64_t ref )
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE uint64_t table_reader_id_at( const TableReader * r, uint64_t ref )
 {
-    TableReader entry = table_reader_make( r->ids + (ref-1)*8, 8, r->report );
-    return table_reader_get64( &entry );
+    const uint8_t * e = r->ids + (ref-1)*8;
+    uint64_t lo = (uint64_t) e[0] | (uint64_t) e[1] << 8 | (uint64_t) e[2] << 16 | (uint64_t) e[3] << 24;
+    uint64_t hi = (uint64_t) e[4] | (uint64_t) e[5] << 8 | (uint64_t) e[6] << 16 | (uint64_t) e[7] << 24;
+    return lo | ( hi << 32 );
 }
 /* Rejected numbers do not consume input: the containing body's exact extent
    must still be able to detect the damaged spelling. */
