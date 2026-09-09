@@ -130,22 +130,10 @@ type tableGen struct {
 	idOrdinal map[uint64]int
 	body      strings.Builder
 	includes  map[string]bool // referenced files -> #include "<base>Table.h"
-	indent    string          // extra per-line indent while emitting inside a branch guard
 }
 
 func (g *tableGen) pf(format string, args ...any) {
-	s := fmt.Sprintf(format, args...)
-	if g.indent != "" && s != "" {
-		trailing := strings.HasSuffix(s, "\n")
-		if trailing {
-			s = s[:len(s)-1]
-		}
-		s = g.indent + strings.ReplaceAll(s, "\n", "\n"+g.indent)
-		if trailing {
-			s += "\n"
-		}
-	}
-	g.body.WriteString(s)
+	g.body.WriteString(fmt.Sprintf(format, args...))
 }
 
 func (g *tableGen) declBase(name string) string {
@@ -731,18 +719,11 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			for _, st := range members {
 				g.owner = st
 				g.emitKeyedAccessors(st)
-				if g.fileWire() {
-					g.emitWireWrite(st)
-					g.emitWireRead(st)
-					g.emitMessageSave(st)
-					g.emitMessageRead(st)
-					g.emitMessageExtent(st)
-				} else {
-					g.emitTableMeasure(st)
-					g.emitTableWrite(st)
-					g.emitTableSave(st)
-					g.emitTableRead(st)
-				}
+				g.emitWireWrite(st)
+				g.emitWireRead(st)
+				g.emitMessageSave(st)
+				g.emitMessageRead(st)
+				g.emitMessageExtent(st)
 			}
 			if g.anySequence {
 				for _, st := range members {
