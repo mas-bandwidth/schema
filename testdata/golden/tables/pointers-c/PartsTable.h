@@ -540,15 +540,6 @@ static SCHEMA_UNUSED int table_kind_widens( uint8_t kind, uint8_t declared )
     if ( declared == 19 ) { return kind >= 6 && kind <= 9; }
     return declared == 11 && kind == 10;
 }
-static SCHEMA_UNUSED double table_wire_widen_f32( uint32_t bits )
-{
-    if ( (bits & 0x7f800000u) == 0x7f800000u && (bits & 0x007fffffu) != 0 )
-    {
-        uint64_t wide = ((uint64_t) (bits >> 31) << 63) | 0x7ff0000000000000ull | ((uint64_t) (bits & 0x007fffffu) << 29);
-        double d; memcpy( &d, &wide, 8 ); return d;
-    }
-    { float f; memcpy( &f, &bits, 4 ); return (double) f; }
-}
 static SCHEMA_UNUSED int table_wire_open( TableReader * r, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     uint64_t count, i, j; int64_t span; TableReader tail;
@@ -1569,38 +1560,6 @@ static SCHEMA_UNUSED uint64_t table_double_to_bits( double d ) { uint64_t b; mem
 
 #endif /* SCHEMA_GRAPHDEMO_TABLE_PRIMITIVES */
 
-#ifndef SCHEMA_TABLE_UTF16_RUNTIME
-#define SCHEMA_TABLE_UTF16_RUNTIME
-static SCHEMA_UNUSED uint16_t table_wire_utf16_unit( const uint8_t * bytes, int64_t index )
-{
-    return (uint16_t) ((uint16_t) bytes[index*2] | ((uint16_t) bytes[index*2+1] << 8));
-}
-static SCHEMA_UNUSED int table_wire_utf16( const uint8_t * bytes, int64_t units )
-{
-    int64_t i = 0;
-    while ( i < units ) {
-        uint16_t unit = table_wire_utf16_unit( bytes, i++ );
-        if ( unit == 0 ) { return 0; }
-        if ( unit >= 0xd800 && unit <= 0xdbff ) {
-            uint16_t low;
-            if ( i == units ) { return 0; }
-            low = table_wire_utf16_unit( bytes, i++ );
-            if ( low < 0xdc00 || low > 0xdfff ) { return 0; }
-        } else if ( unit >= 0xdc00 && unit <= 0xdfff ) { return 0; }
-    }
-    return 1;
-}
-static SCHEMA_UNUSED int64_t table_wire_utf16_clamp( const uint8_t * bytes, int64_t units, int64_t bound )
-{
-    if ( units <= bound ) { return units; }
-    if ( bound > 0 ) {
-        uint16_t last = table_wire_utf16_unit( bytes, bound-1 );
-        if ( last >= 0xd800 && last <= 0xdbff ) { bound--; }
-    }
-    return bound;
-}
-#endif
-
 #ifndef SCHEMA_TABLE_REFUSE_RUNTIME
 #define SCHEMA_TABLE_REFUSE_RUNTIME
 typedef int TableRefuseReason;
@@ -2014,10 +1973,6 @@ typedef struct TableSink
 #ifndef SCHEMA_TABLE_BLOB_RUNTIME
 #define SCHEMA_TABLE_BLOB_RUNTIME
 typedef struct TableBlob { uint32_t length, zero; } TableBlob;
-typedef struct TableBytesView { const uint8_t * data; int64_t length; } TableBytesView;
-typedef struct TableStringView { const char * data; int64_t length; } TableStringView;
-#define kTableBytesTypeId UINT64_C(0x2f2ec0474f1c4fe4)
-#define kTableStringTypeId UINT64_C(0x704be0d8faaffc58)
 
 static SCHEMA_UNUSED int64_t table_blob_storage( int64_t length, int terminated )
 {
@@ -2025,24 +1980,6 @@ static SCHEMA_UNUSED int64_t table_blob_storage( int64_t length, int terminated 
     return table_align_up64(8+length+(terminated ? 1 : 0));
 }
 
-static SCHEMA_UNUSED const TableBlob * table_blob_at( const TableCtx * ctx, const TableRef * ref )
-{
-    if ( ref->value == 0 ) { return NULL; }
-    return (const TableBlob *)(const void *)(ctx != NULL && ctx->arena != NULL
-        ? table_arena_at(ctx->arena,(uint32_t)ref->value) : (const uint8_t *)(const void *)ref+ref->value);
-}
-static SCHEMA_UNUSED TableBytesView table_bytes_at( const TableCtx * ctx, const TableRef * ref )
-{
-    const TableBlob * blob=table_blob_at(ctx,ref);
-    TableBytesView view={NULL,0};
-    if(blob!=NULL) { view.data=(const uint8_t *)(blob+1); view.length=blob->length; } return view;
-}
-static SCHEMA_UNUSED TableStringView table_string_at( const TableCtx * ctx, const TableRef * ref )
-{
-    const TableBlob * blob=table_blob_at(ctx,ref);
-    TableStringView view={NULL,0};
-    if(blob!=NULL) { view.data=(const char *)(blob+1); view.length=blob->length; } return view;
-}
 static SCHEMA_UNUSED TableBlob * table_blob_emplace( TableWorker * worker, TableRef * ref, int64_t length, int terminated )
 {
     int64_t bytes=table_blob_storage(length,terminated);
@@ -2138,16 +2075,6 @@ static SCHEMA_UNUSED int64_t table_node_wire_storage( const TableNodeType * type
     }
     return type->blob ? table_blob_storage(body->size,type->blob==2) : type->wire_storage(body);
 }
-
-static SCHEMA_UNUSED int table_blob_save( TableWriter * w, const void * value )
-{
-    const TableBlob * blob=(const TableBlob *)value;
-    table_writer_raw(w,blob+1,blob->length); return !w->overflow;
-}
-static SCHEMA_UNUSED int table_blob_edges( TableNumbering * n, const void * value )
-{ (void)n; (void)value; return 1; }
-static const TableNodeType table_bytes_node_type = { kTableBytesTypeId, 0, table_blob_save, table_blob_edges, 1, NULL, NULL, 8, 0, NULL, NULL };
-static const TableNodeType table_string_node_type = { kTableStringTypeId, 0, table_blob_save, table_blob_edges, 2, NULL, NULL, 8, 0, NULL, NULL };
 
 
 static SCHEMA_UNUSED uint64_t table_number_hash( const void * value )

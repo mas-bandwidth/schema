@@ -33,6 +33,90 @@ The two contracts never mix. Flatbuffers- and protobuf-class evolution
 ideas apply here, to tables — they do not apply to `type`, whose wire is
 hardcoded under the protocol id, and nothing in this document changes that.
 
+## The three wires
+
+**There are THREE WIRES over the same struct, and each is a different
+bargain.** In the owner's words: *"I also like that there are three quite
+different tables now, the type, the fixed table, the variable table"* —
+*"they are all pretty cool and unique. the tradeoffs are clear."*
+
+- **TYPE — the fastest wire.** Bitpacked, hardcoded, and it knows only
+  itself: the bytes are ONE BUILD'S PRIVATE LAYOUT, guarded by the protocol
+  id, same-or-refuse (SPEC.md). A type is NOT VERSIONED, and that refusal
+  is the whole of what it buys — nothing is negotiated because nothing may
+  differ. Where versioning would cost more than it is worth, the type is
+  the answer: *"if somebody really cares about this, they use a type
+  instead (no versioning)."*
+- **FIXED TABLE — the type's speed, in table form** (the FIXED FORM, form
+  byte `3`, §3.4 — lands with the fixed-form batch). *"Fixed tables are
+  meant to be the fast equivalent of types, in table form."* A record is an
+  EIGHT-BYTE HASH of the writer's LAYOUT and then the VALUES IN DECLARED
+  ORDER, EVERY FIELD AT ITS BOUND — the type's own field order, with THE
+  LAYOUT sent once beside it. (The fixed form's once-per-file description
+  is THE LAYOUT; form `1`'s VOCABULARY BLOCK is a different thing and keeps
+  its name.)
+  The class is DECLARED, `fixed table` (§2.2), and the compiler REFUSES in
+  its by-value closure anything that would make a body variable size,
+  naming the field and the table (§11): a pointer, a byte buffer at its
+  used size, a map, an unbounded array, a guarded (`if`) branch, or a
+  nested plain `table`. So the body is ONE CONSTANT SIZE PER TYPE and no
+  branch is guarded: ONE read path and ONE write path, whose cost DOES NOT
+  DEPEND ON VERSION SKEW. Skew is paid for whether or not the peers
+  differ, which is the trade — *"it's more honest, and predictable."* It
+  versions by APPEND-ONLY evolution with DEPRECATION IN PLACE, and that
+  versioning is load-bearing: **we must not ever break versioning in fixed
+  tables.** Writing at the bound is why it is for SMALL THINGS —
+  *"effectively, fixed tables should only be used for small things."*
+- **VARIABLE TABLE — the tolerant wire** (the VARIABLE FORM, form byte `1`,
+  §3). Maps, lists, pointers, per-field guards, default elision, and a
+  record that DESCRIBES ITSELF every time: ids, kinds and lengths ride
+  with the values, so any reader reads any data and the differences are
+  reported, never fatal. It pays framing bytes and, in one narrow case, an
+  allocation, and it is the wire for anything LARGE, SPARSE or FREE-FORM —
+  everything the other two refuse to carry.
+
+**THE FIRST BYTE OF EVERY SCHEMA FILE IS THE FORM BYTE**, and the registry is
+three: `1` the VARIABLE FORM, `2` the MESSAGE FORM, `3` the FIXED FORM.
+
+**ONE FORM BYTE PER CLASS.** Form `3` is the FIXED table's wire and form `1`
+is the VARIABLE table's, and neither reads for the other. Form `1` does not
+move: it is what §3 describes, it is what every variable table writes, and it
+is what an old file on a disk is. The form-`1` machinery a FIXED table
+currently carries — the emitted reader and writer a fixed-size table has on
+the variable wire, from the days when both classes rode form `1` — is
+SCHEDULED FOR REMOVAL once form `3` lands, so that a fixed table has one wire
+and one pair of paths and not two of each.
+
+**The variable table is the ESCAPE HATCH THAT LETS THE OTHER TWO BE
+STRICT.** A fixed table refuses what would make it variable; a type
+refuses to version; and neither refusal strands anyone, because —
+*"if you are ever constrained by type or fixed table, table (variable
+table) is there for you."*
+
+**The MESSAGE FORM (form byte `2`, §3.3) is the fixed table on the wire
+between peers**: a BATCH of fixed tables under ONE ANNOUNCED BLOCK, each
+body packed through the type's own codec. It is a fixed table's and nobody
+else's — a message-form request naming a plain `table` is REFUSED naming the
+table (§2.2, §11), because a message is a bitpacked body under one announced
+vocabulary and the shape has to be one the declaration fixes.
+
+**NEITHER CLASS BORROWS THE OTHER'S FORM.** A declared `fixed table` encodes
+as form `3`, ALWAYS; a plain `table` encodes as form `1`, always; and a reader
+emitted for one REFUSES the other BY NAME. A form-`1` file handed to a fixed
+root is `previous_form` — a NAMED REFUSAL, never a slow read down the variable
+wire — exactly as a form-`3` file handed to a variable root is refused by name.
+A variable root is form `1`'s, and that is where it goes.
+
+**How to choose.**
+
+- **One build on both ends, and speed above all** — `type`. No versioning,
+  no hash, no vocabulary; the protocol id refuses anything else.
+- **Small, dense, every field bounded, and it must cross builds** —
+  `fixed table`. A constant-size body and a skew-independent cost, versioned
+  by appending and deprecating in place.
+- **Large, sparse, free-form, or you cannot bound it** — `table`. Pay the
+  framing and keep every reader.
+
 ## The performance ladder
 
 **Tables are LESS performant than types**, and that is the trade they exist
@@ -9471,7 +9555,7 @@ element size, array bound and count-companion offset, declared bounds,
 branch guards, and the nested table's descriptor. `<Name>TableType()`
 returns that table's descriptor.
 
-**The C# Table Serialization Contract.** In C#, generated typed `<Name>Save` entry points perform direct typed field reads and compile-time ordinal indexing, and therefore do not observe runtime mutations of TableFieldInfo / TableTypeInfo descriptors (such as getter swapping, custom defaults, guard overrides, or field id alterations). Polymorphic `TableWire.Save(object)` remains the descriptor-driven entry point that observes runtime descriptor mutations.
+**The C# Table Serialization Contract.** In C#, generated typed `<Name>Save` entry points read fields directly and use compile-time ordinal indexing: scalar leaves and child scalar arrays are typed; everything else is descriptor-driven. For those direct-read paths (scalar leaves and child scalar arrays), typed `<Name>Save` does not observe runtime mutations of TableFieldInfo / TableTypeInfo descriptors (such as getter swapping, custom defaults, guard overrides, or field id alterations). Polymorphic `TableWire.Save(object)` remains the descriptor-driven entry point that observes runtime descriptor mutations across all fields.
 
 **A type descriptor also carries a RESET hook** — put one instance back at
 its declared defaults, in place. A generic walker that FILLS a value has to
