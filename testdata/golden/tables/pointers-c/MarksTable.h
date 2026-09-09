@@ -3199,6 +3199,18 @@ static SCHEMA_UNUSED int schema_graphdemo_marker_message_extent_(TableMessageRea
 static SCHEMA_UNUSED int tally_save_body( TableWriter * w, const Tally * value )
 {
     (void) value;
+    if ( w->buffer == NULL && !w->check_default )
+    {
+        int64_t payload_bytes = 1; /* the zero reference ending this body */
+        if ( !( value->hits == 0 ) )
+        {
+            table_writer_id_at( w, 19, 0x732dfbcc9b0cf0bbull );
+            payload_bytes += 5; /* kind and fixed-width payload */
+        }
+        if ( payload_bytes < 0 || w->offset > w->capacity || payload_bytes > w->capacity - w->offset ) { w->overflow = 1; }
+        else { w->offset += payload_bytes; }
+        return !w->overflow;
+    }
     { /* hits */
         if ( !( value->hits == 0 ) )
         {

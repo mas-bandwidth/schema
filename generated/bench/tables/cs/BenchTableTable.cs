@@ -2670,6 +2670,16 @@ namespace Benchtable
                     }
                     Offset += n;
                 }
+                public void Header(ulong reference, byte kind)
+                {
+                    if (reference < 128)
+                    {
+                        System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(Buffer.Slice(Offset), (ushort)(reference | ((ulong)kind << 8)));
+                        Offset += 2;
+                        return;
+                    }
+                    Var(reference); Byte(kind);
+                }
                 public void Var(ulong v)
                 {
                     if (v < 128) { Byte((byte)v); return; }
@@ -4157,9 +4167,10 @@ namespace Benchtable
             static bool CollectPayload(object value, TableFieldInfo f, ref Ids ids)
             {
                 if (f == null) { return true; } // selected, payload-free arm
-                if (f.Counted && (Count(value, f) < 0 || Count(value, f) > f.ArrayBound)) { return false; }
+                int count = Count(value, f);
+                if (f.Counted && (count < 0 || count > f.ArrayBound)) { return false; }
                 if (!f.IsArray) { return CollectElement(value, f, 0, ref ids); }
-                for (int i = 0; i < Count(value, f); i++)
+                for (int i = 0; i < count; i++)
                 {
                     if (f.KeyId != null)
                     {
@@ -4181,10 +4192,10 @@ namespace Benchtable
                 }
                 return true;
             }
-            static long PayloadSize(object value, TableFieldInfo f, ref Ids ids)
+            static long PayloadSize(object value, TableFieldInfo f, ref Ids ids, scoped Span<long> elemCache = default)
             {
                 if (f == null) { return 0; }
-                if (f.IsArray) { return ArraySize(value, f, ref ids); }
+                if (f.IsArray) { return ArraySize(value, f, ref ids, elemCache); }
                 if (f.Kind == 12 || f.Kind == 33) { return Count(value, f) * (f.Kind == 33 ? 2L : 1L); }
                 return ElementSize(value, f, 0, ref ids, false);
             }
@@ -4212,10 +4223,11 @@ namespace Benchtable
                 if (f.Kind == 17) { return VarSize(ids.Graph.Index(f.GetChild(value, i))); }
                 return Width(f.Kind);
             }
-            static long ArraySize(object value, TableFieldInfo f, ref Ids ids)
+            static long ArraySize(object value, TableFieldInfo f, ref Ids ids, scoped Span<long> elemCache = default)
             {
                 long n = 0; int count = 0;
-                for (int i = 0; i < Count(value, f); i++)
+                int total = Count(value, f);
+                for (int i = 0; i < total; i++)
                 {
                     if (f.KeyId != null)
                     {
@@ -4223,14 +4235,21 @@ namespace Benchtable
                         long elem = ElementSize(value, f, i, ref ids, false);
                         n += VarSize(ids.Reference(f.KeyId((ulong)i + 1))) + VarSize((ulong)elem) + elem;
                     }
+                    else if (f.Kind == 13)
+                    {
+                        long childBody = BodySize(f.GetChild(value, i), f.Table, ref ids);
+                        if (!elemCache.IsEmpty && i < elemCache.Length) { elemCache[i] = childBody; }
+                        n += VarSize((ulong)childBody) + childBody;
+                    }
                     else { n += ElementSize(value, f, i, ref ids, true); }
                     count++;
                 }
                 return 1 + VarSize((ulong)count) + n;
             }
-            static long BodySize(object value, TableTypeInfo type, ref Ids ids, scoped Span<long> rootPayloadSizes = default)
+            static long BodySize(object value, TableTypeInfo type, ref Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
             {
                 long n = 1;
+                int elemOffset = 0;
                 for (int i = 0; i < type.Fields.Length; i++)
                 {
                     TableFieldInfo f = type.Fields[i];
@@ -4238,7 +4257,15 @@ namespace Benchtable
                     n += VarSize(ids.Reference(f.Id)) + 1;
                     if (f.IsArray || f.Kind == 12 || f.Kind == 33 || f.Kind == 13)
                     {
-                        long payload = PayloadSize(value, f, ref ids);
+                        scoped Span<long> elemCache = default;
+                        if (f.IsArray && f.KeyId == null && f.Kind == 13 && !rootElemSizes.IsEmpty)
+                        {
+                            int c = Count(value, f);
+                            int take = Math.Min(c, Math.Max(0, rootElemSizes.Length - elemOffset));
+                            elemCache = rootElemSizes.Slice(elemOffset, take);
+                            elemOffset += take;
+                        }
+                        long payload = PayloadSize(value, f, ref ids, elemCache);
                         n += VarSize((ulong)payload) + payload;
                         if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[i] = payload; }
                     }
@@ -4275,44 +4302,65 @@ namespace Benchtable
                 }
                 else { w.Fixed(f.GetBuffer != null ? f.GetBuffer(value)[i] : f.GetRaw(value, i), Width(f.Kind)); }
             }
-            static void WritePayload(ref Writer w, object value, TableFieldInfo f, ref Ids ids)
+            static void WritePayload(ref Writer w, object value, TableFieldInfo f, ref Ids ids, scoped ReadOnlySpan<long> elemCache = default)
             {
                 if (f == null) { return; }
                 if (f.IsArray)
                 {
                     w.Byte(f.Kind);
-                    int count = Count(value, f);
+                    int total = Count(value, f);
+                    int count = total;
                     if (f.KeyId != null)
                     {
                         count = 0;
                         for (int i = 0; i < f.ArrayBound; i++) { if (!DefaultElement(value, f, i)) { count++; } }
                     }
                     w.Var((ulong)count);
-                    for (int i = 0; i < Count(value, f); i++)
+                    for (int i = 0; i < total; i++)
                     {
                         if (f.KeyId != null)
                         {
                             if (DefaultElement(value, f, i)) { continue; }
                             w.Var(ids.Reference(f.KeyId((ulong)i + 1)));
                             w.Var((ulong)ElementSize(value, f, i, ref ids, false));
+                            WriteElement(ref w, value, f, i, ref ids, false);
                         }
-                        WriteElement(ref w, value, f, i, ref ids, f.KeyId == null);
+                        else if (f.Kind == 13)
+                        {
+                            object child = f.GetChild(value, i);
+                            long childBody = (!elemCache.IsEmpty && i < elemCache.Length) ? elemCache[i] : BodySize(child, f.Table, ref ids);
+                            w.Var((ulong)childBody);
+                            WriteBody(ref w, child, f.Table, ref ids);
+                        }
+                        else
+                        {
+                            WriteElement(ref w, value, f, i, ref ids, true);
+                        }
                     }
                 }
-                else if (f.Kind == 33) { char[] chars = f.GetChars(value); for (int i = 0; i < Count(value, f); i++) { w.Fixed(chars[i], 2); } }
+                else if (f.Kind == 33) { char[] chars = f.GetChars(value); int count = Count(value, f); for (int i = 0; i < count; i++) { w.Fixed(chars[i], 2); } }
                 else if (f.Kind == 12) { w.Raw(f.GetBuffer(value).AsSpan(0, Count(value, f))); }
                 else { WriteElement(ref w, value, f, 0, ref ids, false); }
             }
-            static void WriteBody(ref Writer w, object value, TableTypeInfo type, ref Ids ids, bool root = false, scoped ReadOnlySpan<long> rootPayloadSizes = default)
+            static void WriteBody(ref Writer w, object value, TableTypeInfo type, ref Ids ids, bool root = false, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
             {
+                int elemOffset = 0;
                 for (int i = 0; i < type.Fields.Length; i++)
                 {
                     TableFieldInfo f = type.Fields[i];
                     if (!Rides(value, f)) { continue; }
-                    w.Var(ids.Reference(f.Id)); w.Byte(Kind(f));
+                    w.Header(ids.Reference(f.Id), Kind(f));
+                    scoped ReadOnlySpan<long> elemCache = default;
+                    if (f.IsArray && f.KeyId == null && f.Kind == 13 && !rootElemSizes.IsEmpty)
+                    {
+                        int c = Count(value, f);
+                        int take = Math.Min(c, Math.Max(0, rootElemSizes.Length - elemOffset));
+                        elemCache = rootElemSizes.Slice(elemOffset, take);
+                        elemOffset += take;
+                    }
                     if (f.IsArray || f.Kind == 12 || f.Kind == 33 || f.Kind == 13)
                     { w.Var((ulong)(rootPayloadSizes.IsEmpty ? PayloadSize(value, f, ref ids) : rootPayloadSizes[i])); }
-                    WritePayload(ref w, value, f, ref ids);
+                    WritePayload(ref w, value, f, ref ids, elemCache);
                 }
                 if (root) { WriteNodes(ref w, ref ids); }
                 w.Var(0);
@@ -4333,20 +4381,26 @@ namespace Benchtable
                 Ids ids = new Ids(vocabulary, index);
                 if (type.Variable) { ids.Graph = Number(value, type); if (ids.Graph == null) { return -1; } }
                 if (!Collect(value, type, ref ids) || !CollectNodes(ref ids)) { return -1; }
-                // Reuse the root's measured length prefixes while writing its fields.
-                // This ceiling bounds additional stack storage to 2 KiB; larger roots,
-                // variable graphs and Measure retain the uncached path. Nested writes
-                // keep their own sizing path, so no recursive cache or shared state lives
-                // across calls, and all validation still precedes the first output byte.
+                // Reuse the root's measured length prefixes while writing its fields,
+                // and cache immediate child element body sizes for root unkeyed table arrays.
+                // These ceilings bound additional stack storage to 2 KiB each (4 KiB total).
+                // Roots with >256 fields bypass root payload sizing caching while element
+                // caching remains active; element counts beyond 256 keep their cached prefix
+                // with remaining elements falling back to on-demand sizing; variable graphs
+                // and Measure retain the uncached path. Nested writes keep their own sizing
+                // path, so no recursive cache or shared state lives across calls, and all
+                // validation still precedes the first output byte.
                 int cachedFields = !measure && !type.Variable && type.Fields.Length <= 256 ? type.Fields.Length : 0;
                 Span<long> rootPayloadSizes = stackalloc long[cachedFields];
-                long n = 1 + BodySize(value, type, ref ids, rootPayloadSizes) + 8L * ids.Count + 8;
+                int cachedElemSlots = !measure && !type.Variable ? 256 : 0;
+                Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
+                long n = 1 + BodySize(value, type, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
                 long nodes = NodesSize(ref ids);
                 if (nodes != 0) { n += VarSize(ids.Reference(ulong.MaxValue)) + 1 + VarSize((ulong)nodes) + nodes; }
                 if (measure) { return n; }
                 if (n > buffer.Length) { return -1; }
                 scoped Writer w = new Writer(buffer);
-                w.Byte(1); WriteBody(ref w, value, type, ref ids, true, rootPayloadSizes);
+                w.Byte(1); WriteBody(ref w, value, type, ref ids, true, rootPayloadSizes, rootElemSizes);
                 for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
                 w.Fixed((ulong)ids.Count, 8);
                 return w.Offset;
