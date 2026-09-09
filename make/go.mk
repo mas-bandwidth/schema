@@ -229,6 +229,14 @@ generated/bench/tables/go/.stamp: bin/schema bench/corpus/BenchTable.schema
 	./bin/schema generate --lang go --out generated/bench/tables/go bench/corpus/BenchTable.schema
 	@printf 'module benchtable\n\ngo 1.24\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../../$(SERIALIZE_GO)\n' > generated/bench/tables/go/go.mod
 
+# Keep both compiler-owned source and module wiring in the discovered generation
+# graph. Default wiring is byte-identical to the paired driver's generated unit.
+generated/bench/paired/go/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema make/go.mk
+	@mkdir -p generated/bench/paired/go
+	./bin/schema generate --lang go --out generated/bench/paired/go bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	@printf 'module benchtable\n\ngo 1.24\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../../$(SERIALIZE_GO)\n' > generated/bench/paired/go/go.mod
+	@touch $@
+
 generated/bench/go/.stamp: bin/schema $(SCHEMAS_BENCH)
 	./bin/schema generate --lang go --out generated/bench/go bench/corpus/Bench.schema
 	./bin/schema generate --lang go --out generated/bench/go/realworld bench/corpus/RealWorld.schema
@@ -279,7 +287,7 @@ conformance-negative-control-go-walk: build/conformance-harness build/conformanc
 # of the soak; the hour is `make tables-go-soak` — the bench units' compile
 # gates, and the packet tests.
 .PHONY: test-go
-test-go: generated/bench/tables/go/.stamp generated/go/.stamp generated/go-ludicrous/.stamp generated/bench/go/.stamp
+test-go: generated/bench/tables/go/.stamp generated/bench/paired/go/.stamp generated/go/.stamp generated/go-ludicrous/.stamp generated/bench/go/.stamp
 	$(MAKE) conformance-negative-control-go
 	$(MAKE) conformance-negative-control-go-walk
 	$(MAKE) tables-go-json-walk
@@ -289,6 +297,7 @@ test-go: generated/bench/tables/go/.stamp generated/go/.stamp generated/go-ludic
 	$(MAKE) tables-go-fuzz-maximum-negative-control
 	bench/tables/go/leg build
 	cd generated/bench/go && go build ./...
+	cd generated/bench/paired/go && go build ./...
 	cd test/go && go run .
 	cd test/go-ludicrous && go run .
 

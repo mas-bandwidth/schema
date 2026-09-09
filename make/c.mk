@@ -62,6 +62,22 @@ generated/bench/tables/c/.stamp: bin/schema bench/corpus/BenchTable.schema
 	./bin/schema generate --lang c --out generated/bench/tables/c bench/corpus/BenchTable.schema
 	@touch $@
 
+# Explicit generated/ stamp: CI discovers it without a hand-maintained list.
+generated/bench/paired/c/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	@mkdir -p generated/bench/paired/c
+	./bin/schema generate --lang c --out generated/bench/paired/c bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	@touch $@
+
+# Compile the shared table harness against the paired closure. This catches
+# storage/layout drift in this unit without building another language or timing.
+build/schema_test_bench_paired_c: generated/bench/paired/c/.stamp bench/tables/c/table_main.c
+	@mkdir -p build
+	$(CC) -std=c99 -Wall -Wextra -Werror -O2 -DNDEBUG -ffp-contract=off \
+		-DBENCH_MATCHED -Igenerated/bench/paired/c -I$(SERIALIZE_C) \
+		bench/tables/c/table_main.c -o $@ -lm
+
+test-c: build/schema_test_bench_paired_c
+
 build/schema_test_bench_c: generated/bench/c/.stamp test/bench/c_main.c
 	@mkdir -p build
 	$(CC) -std=c99 -Wall -Wextra -Werror -Wtype-limits $(C_TAUTOLOGICAL) \

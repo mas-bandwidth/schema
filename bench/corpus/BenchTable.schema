@@ -3,14 +3,11 @@
 // TABLE on the tolerant wire (docs/SPEC-TABLES.md §3), which is the form a
 // reader of protobuf or flatbuffers already has a number for.
 //
-// It MIRRORS BenchMixed, the type corpus's one measured shape, field for
-// field: same field count, same kinds, same nesting, same bounds, same
-// pinned structure. That is the owner's sizing rule (issue #330): "Make the
-// fixed table roughly equivalent to the profiled type in size", for the
-// reason he gave — "so we don't hyper-fixate on serializing a few fields and
-// it's all memcpy". Two boards over ONE shape is what makes the bitpacked
-// type wire and the tolerant table wire comparable at all: the ratio between
-// them is the price of tolerance, and nothing else.
+// This is the retained historical representative counterpart of BenchMixed.
+// Its substitutions and independent values below mean it cannot establish a
+// same-logical-data table/packet ratio. The matched four-language comparison
+// now uses Bench.schema together with FixedTable.schema (bench/paired/).
+// Historical results and this corpus remain reproducible.
 //
 // HISTORICAL CORPUS SUBSTITUTIONS. Wide table kinds now exist in C/C++/C#/Go,
 // but this retained benchmark keeps its original shape and golden identity.

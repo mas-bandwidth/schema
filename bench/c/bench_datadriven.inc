@@ -83,6 +83,8 @@ static void BM_FUNC( const char * name, const char * golden, long base_iters )
         }
     }
 
+    if ( g_gate ) return;
+
     /* WRITE path: 1 warmup + NumRuns measured. Encodes the 64 pre-decoded
        instances round-robin. Rotating the instances is what §2.7's
        per-iteration LCG mutation bought — the encoder never sees the same

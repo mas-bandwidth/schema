@@ -1,0 +1,10 @@
+// Reach the canonical packet type so the compiler emits its table codecs too.
+// The benchmark calls BenchMixedSave/Load directly: this wrapper is NOT timed
+// or serialized. Bench.schema remains the only definition of the logical data.
+// Generate these two files together, as one unit.
+package bench
+
+table FixedTable
+{
+    value BenchMixed
+}

@@ -547,6 +547,76 @@ under the same measure-first rule.
 
 ### §1.9 The tables corpus and family `table`
 
+**The paired four-language comparison is `bench/paired/`.** It generates table
+codecs for the unchanged `BenchMixed` type and derives every table record from
+the canonical packet corpus. The producer verifies packet → table → packet
+byte identity before any clock. Table elision can change record lengths across
+those unchanged values, so paired table runners consume an exact 64-entry
+length index and report the mean encoded bytes per operation. They never pad
+the wire or change the input values to force equal encoded lengths. The normal
+packet runners retain their existing generated storage and timed loops.
+
+Only the paired driver may divide these two families, bound by its shared-data
+oracle, binary/corpus hashes and one interleaved sitting. Its compact report is
+`Language | Fixed Table % | vs Packet Wire %`: fastest table is 100%, and each
+language's own packet wire is 100% in the second column. Both ratios use the
+best round-trip rate; details retain medians, absolute costs and spread. Results
+on different architectures are separate pages. The compact page labels the
+checks mismatch: packet C/C++/C# has `checks=removed` (debug asserts and bounds/
+range checks compile out), packet Go has `checks=always` (bounds, range and
+sticky-error checks remain), and table has `checks=contract` (debug asserts
+compile out; wire/API validation remains). The driver refuses other axes. This
+keeps each packet implementation's fastest release form while naming the
+validation work paid by each side; it does not relax the general tools' existing
+cross-family or unlabelled cross-checks refusal rules.
+
+The paired pass requires an operator READY/START receipt or reference. Its
+`window.json` records START/END, names/PIDs/parent PIDs/CPU and load before clocks,
+every two seconds during runners and at their boundaries, with an `OK` or
+`INVALID` verdict. Every control and measured runner needs matching before/after
+samples. Known foreign compiler/build/benchmark processes refuse,
+including idle build servers; only the coordinator's actual process ancestry
+and descendants are excluded, never every tool sharing a name or parent app.
+Normal desktop load is recorded without a universal threshold. Monitoring is
+supported on macOS/Linux; unsupported platforms, missing samples beyond ten
+seconds or more than 10,000 samples refuse timing. No process arguments or
+environments are captured. Brief or unusually named workloads can escape
+sampling, so `OK` is the checked verdict, not proof of exclusive CPU use.
+The receipt and bracketing controls remain necessary.
+
+The monitor forks `ps` every two seconds and at boundaries (`sysctl` too on
+macOS), allocates snapshots, and writes one compact JSONL sample to the temporary
+`window.samples.jsonl` journal per observation. This has measurement overhead.
+Collection never re-encodes or rewrites the growing history. Samples also remain
+in memory, so the 10,000-sample limit is not a byte limit. The full `window.json`
+is assembled once after END/INVALID, synced, closed and renamed before the
+journal is removed. Append records are not individually synced. An interruption
+or failed final write retains its journal and remains unsealable; the completed
+artifact format and manifest remain unchanged.
+
+Seven rounds intentionally keep the packet convention's 4/3 order imbalance.
+Warmups use the full per-path iteration count: 4,000,000 packet or 400,000 table
+operations. Public table Load restores declared defaults inside the round-trip
+clock; the runner adds no separate reset. Packet does not need that reset.
+Before timing, two complete corpus rotations must load into one reused target
+without caller resets and re-save the exact expected bytes, including the
+last-to-first transition. Best-of-N remains the requested reporting convention,
+with medians and spread retained in details rather than substituted into headline
+ratios.
+
+`completion.json` binds the exact build/window/load/control/round raw file set
+by SHA-256 after all measurement gates and actual binary/corpus hash checks.
+Every render verifies the seal first, then checks CSV completeness, identities,
+controls and spread. Rendering an archived sitting requires its evidence, not
+historical local binaries. Reuse for new measurement requires the same source
+HEAD and actual recorded binaries/corpus. Changed, missing or additional raw
+evidence refuses publication. This is integrity checking, not a signature or
+protection against a deliberately dishonest operator.
+
+The following describes the retained historical representative corpus. Its
+logical-type substitutions and independent value producer mean its rows do
+**not** supply the new paired ratio.
+
 **A second corpus, a second pass, a second board — and family `table` so the
 two can never be divided by accident.** `bench/corpus/BenchTable.schema`
 declares ONE measured shape, `TableMixed`: a representative fixed table
@@ -576,10 +646,10 @@ clauses are restated because the wire differs:
   `bytes_per_op` moves. The producer (`test/bench/table_main.cpp`) holds them
   off by construction and REFUSES to emit a corpus whose 64 records are not
   all the same length.
-- **The read arm resets before it loads**, inside the clock. `Load` fills only
-  what rode, so resetting is part of a correct read into reused storage in
-  every language; hiding it outside the clock would publish a decode number
-  that no caller can obtain.
+- **Public `Load` restores declared defaults** before overlaying the fields
+  on the wire. That work stays inside the clock; the runner adds no separate
+  reset. Two complete corpus rotations into one reused target must pass exact
+  re-save checks before timing, with no caller resets between loads.
 
 **Why the pass is separate from `bench/run.sh`.** `corpus_id` is computed over
 the goldens a RUN loaded (§1.6). Folding the table corpus into the type pass

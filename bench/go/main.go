@@ -36,7 +36,8 @@ import (
 	"github.com/mas-bandwidth/serialize.go"
 )
 
-const MaxNumRuns = 7      // median of 7 (N >= 5), after 1 warmup run
+const MaxNumRuns = 7 // median of 7 (N >= 5), after 1 warmup run
+var gGate bool
 var gQuick = false        // --quick: bench_mixed only, 3 measured runs
 var gNumRuns = MaxNumRuns // --round K drops this to 1 (§2.4: one warmup + one
 // measured run per round; the driver aggregates across rounds)
@@ -271,6 +272,10 @@ func benchDataDriven[T any](name, golden string, iters int64,
 		}
 	}
 
+	if gGate {
+		return
+	}
+
 	writeRates := make([]float64, gNumRuns)
 	roundtripRates := make([]float64, gNumRuns)
 
@@ -389,6 +394,8 @@ func main() {
 	args := os.Args[1:]
 	for i := 0; i < len(args); i++ {
 		switch {
+		case args[i] == "--gate":
+			gGate = true
 		case args[i] == "--csv":
 			gCsv = true
 		case args[i] == "--wire-dir" && i+1 < len(args):
@@ -427,7 +434,7 @@ func main() {
 			}
 			defer pprof.StopCPUProfile()
 		default:
-			fmt.Fprintf(os.Stderr, "usage: %s [--csv] [--round K] [--quick] [--wire-dir <dir>] [--variant-dir <dir>] [--cpuprofile <file>]\n", os.Args[0])
+			fmt.Fprintf(os.Stderr, "usage: %s [--gate] [--csv] [--round K] [--quick] [--wire-dir <dir>] [--variant-dir <dir>] [--cpuprofile <file>]\n", os.Args[0])
 			os.Exit(1)
 		}
 	}
@@ -450,7 +457,7 @@ func main() {
 	benchDataDriven[bench.BenchMixed]("bench_mixed", "bench_mixed", 4000000, bench.WriteBenchMixed, bench.ReadBenchMixed)
 
 	// family bits (§1.4): the one bitpacker workload in the estate
-	if !gQuick {
+	if !gQuick && !gGate {
 		benchBitpacker(24576)
 	}
 
