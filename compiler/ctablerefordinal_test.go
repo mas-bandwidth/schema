@@ -312,7 +312,7 @@ func TestCTableRefOrdinalBytes(t *testing.T) {
 			"int32_t slot[",
 			"ordinal_of[",
 			"void table_writer_id_at( TableWriter * w, int32_t ordinal, uint64_t id )",
-			"table_writer_id_at( w, ",
+			"table_writer_header_at( w, ",
 		} {
 			if !strings.Contains(header, want) {
 				t.Fatalf("the generated save path does not carry %q — this test would prove nothing", want)
@@ -469,7 +469,7 @@ func TestCTableRefOrdinalSharedId(t *testing.T) {
 	// exists for is not in the sources at all
 	header := string(files["ProbeTable.h"])
 	const shared = "0x8ac625bb85ed202bull" // TableWireId( "alpha" )
-	if !strings.Contains(header, "table_writer_id_at( w, 5, "+shared+" )") || !strings.Contains(header, "table_writer_id( w, "+shared+" )") {
+	if !strings.Contains(header, "table_writer_header_at( w, 5, "+shared+", ") || !strings.Contains(header, "table_writer_id( w, "+shared+" )") {
 		t.Fatalf("the schema no longer gives one id both a field header and an enum variant: this test would prove nothing")
 	}
 	out := runCRefOrdinal(t, files, cRefOrdinalCollisionDriver, "ccollide",

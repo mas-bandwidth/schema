@@ -361,6 +361,14 @@ static SCHEMA_UNUSED void table_writer_id_at( TableWriter * w, int32_t ordinal, 
     v->slot[ordinal]=(int32_t)r-1;
     v->ordinal_of[r-1]=(int16_t)ordinal;
 }
+/* A repeated one-byte reference and its kind share one checked little-endian
+   store, as in the C++ Header writer. Misses keep the existing ID append path. */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void table_writer_header_at( TableWriter * w, int32_t ordinal, uint64_t id, uint8_t kind )
+{
+    const int32_t at=w->vocabulary->slot[ordinal];
+    if(at>=0 && at<127) { table_writer_put16(w,(uint16_t)((uint16_t)(at+1)|((uint16_t)kind<<8))); return; }
+    table_writer_id_at(w,ordinal,id); table_writer_put8(w,kind);
+}
 static SCHEMA_UNUSED TableWriter table_writer_probe( const TableWriter * w )
 {
     TableWriter probe = *w;
@@ -1474,7 +1482,7 @@ static SCHEMA_UNUSED int archive_config_save_body( TableWriter * w, const Archiv
         if ( default_probe.offset > 1 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 85, 0xa354fd1ff0c467c5ull ); table_writer_put8( w, 13 );
+            table_writer_header_at( w, 85, 0xa354fd1ff0c467c5ull, 13 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -1494,7 +1502,7 @@ static SCHEMA_UNUSED int archive_config_save_body( TableWriter * w, const Archiv
         if ( !( value->count == 1 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 97, 0xb1e5e28e4479a274ull ); table_writer_put8( w, 4 );
+            table_writer_header_at( w, 97, 0xb1e5e28e4479a274ull, 4 );
             table_writer_put32( w, (uint32_t) ( value->count ) );
         }
     }
