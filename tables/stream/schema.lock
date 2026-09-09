@@ -1,5 +1,5 @@
-schema-lock 1
+schema-lock 2
 package streamdemo
 
-fixed table Header layout=0x7d09ab9b426398c0
-    field name id=0xc4bcadba8e631b86 kind=12 width=24
+fixed table Header layout=0xabbd6dfa650ebe49
+    field name id=0xc4bcadba8e631b86 kind=12 width=24 default=bytes:

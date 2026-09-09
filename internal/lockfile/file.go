@@ -52,8 +52,8 @@ func Locate(paths []string) (path string, ok bool, err error) {
 	}
 }
 
-// Check compares a checked unit's fixed tables against its committed lock,
-// when it has one. No file means no check: a unit that has never been locked
+// Check compares a checked unit's fixed tables — and every type they reach —
+// against its committed lock, when it has one. No file means no check: a unit that has never been locked
 // promises nothing, and `schema lock` is what makes the promise.
 //
 // A unit that HAS one is held to it exactly ([Current]): a lock the
@@ -96,8 +96,8 @@ func Check(u *ir.Unit, paths []string) []error {
 }
 
 // Update writes the unit's lock. It is the ONLY writer of this file, and it
-// only ever APPENDS entries, adds tables and flips `deprecated` on: it runs
-// the same comparison [Check] runs, under [Appendable] rather than [Current],
+// only ever APPENDS entries and values, adds blocks and flips `deprecated` on:
+// it runs the same comparison [Check] runs, under [Appendable] rather than [Current],
 // and refuses everything the check refuses, so the one command that moves the
 // file cannot be the one that breaks the rule. The one thing it accepts and
 // the check does not is a declaration that has moved past the lock — which is

@@ -1,17 +1,17 @@
-schema-lock 1
+schema-lock 2
 package graphdemo
 
-fixed table Meta layout=0xe8d4e14b6ab5de96
-    field build id=0x802517e298c70b03 kind=4 width=4
-    field tag id=0x56d7ab194448a4f3 kind=12 width=16
+fixed table Meta layout=0x3f9b4446d61d61b3
+    field build id=0x802517e298c70b03 kind=4 width=4 default=1 min=0 max=1000
+    field tag id=0x56d7ab194448a4f3 kind=12 width=16 default=bytes:
 
-fixed table Settings layout=0xe6f43718413f9fde
-    field quality id=0x7a8060916400fe66 kind=4 width=4
-    field label id=0x39f7fcec8fcb623d kind=12 width=24
+fixed table Settings layout=0x14186600bc9c40bf
+    field quality id=0x7a8060916400fe66 kind=4 width=4 default=2 min=0 max=4
+    field label id=0x39f7fcec8fcb623d kind=12 width=24 default=bytes:
 
-fixed table Stamp layout=0xfe173adc77eec5da
-    field tag id=0x56d7ab194448a4f3 kind=12 width=16
-    field seq id=0x823b8a195ce2133c kind=4 width=4
+fixed table Stamp layout=0xab1ee6bdcb000a32
+    field tag id=0x56d7ab194448a4f3 kind=12 width=16 default=bytes:
+    field seq id=0x823b8a195ce2133c kind=4 width=4 default=0 min=0 max=1000
 
-fixed table Tally layout=0x8b89b953e106699d
-    field hits id=0x732dfbcc9b0cf0bb kind=4 width=4
+fixed table Tally layout=0xb806fdff4d4b3a3a
+    field hits id=0x732dfbcc9b0cf0bb kind=4 width=4 default=0 min=0 max=10000
