@@ -48,6 +48,11 @@ const int mixedIters = 4000000;
 bool csv = false;
 bool quick = false;
 int numRuns = 7;
+bool gate = false;
+bool indexed = false;
+String wireDir = 'testdata/wire';
+String variantDir = 'bench/corpus/variants';
+int iters = mixedIters;
 
 final Stopwatch _clock = Stopwatch()..start();
 
@@ -213,12 +218,12 @@ _DataDrivenShape<P> gateDataDriven<P>(
   // The records are fixed-width by construction (§2.7 pins every structure
   // field), so the file needs no index: the record size IS file size /
   // numVariants, and a file that does not divide evenly is a refusal.
-  final path = '../../bench/corpus/variants/$row.variants.bin';
+  final path = '$variantDir/$row.variants.bin';
   final file = File(path);
   if (!file.existsSync()) {
     stderr.write(
       'missing variant data $path — run `make bench-variants`, and run the '
-      'bench from bench/dart\n',
+      'bench from bench/dart (or pass --variant-dir)\n',
     );
     exit(1);
   }
@@ -244,17 +249,17 @@ _DataDrivenShape<P> gateDataDriven<P>(
 
   // gate 1 (§1.5): variant 0 IS the pinned instance, so the whole variant
   // file is bound to the wire golden by one byte-compare.
-  final goldenFile = File('../../testdata/wire/$goldenName.bin');
+  final goldenFile = File('$wireDir/$goldenName.bin');
   if (!goldenFile.existsSync()) {
     stderr.write(
-      'missing wire golden testdata/wire/$goldenName.bin — run from bench/dart\n',
+      'missing wire golden $wireDir/$goldenName.bin — run from bench/dart (or pass --wire-dir)\n',
     );
     exit(1);
   }
   final goldenBytes = goldenFile.readAsBytesSync();
   goldensLoaded['$goldenName.bin'] = goldenBytes;
   if (!bytesEqual(Uint8List.sublistView(packed, 0, record), goldenBytes)) {
-    gateFail(row, 'variant 0 vs testdata/wire/$goldenName.bin');
+    gateFail(row, 'variant 0 vs $wireDir/$goldenName.bin');
   }
 
   // gate 2: every variant decodes, re-encodes, and comes back byte-identical
@@ -364,6 +369,28 @@ void benchDataDriven<P>(
 void main(List<String> arguments) {
   for (var i = 0; i < arguments.length; i++) {
     switch (arguments[i]) {
+      case '--gate':
+        gate = true;
+      case '--indexed':
+        indexed = true;
+      case '--wire-dir':
+        if (i + 1 >= arguments.length) {
+          stderr.write('--wire-dir takes a directory path\n');
+          exit(1);
+        }
+        wireDir = arguments[++i];
+      case '--variant-dir':
+        if (i + 1 >= arguments.length) {
+          stderr.write('--variant-dir takes a directory path\n');
+          exit(1);
+        }
+        variantDir = arguments[++i];
+      case '--iterations':
+        if (i + 1 >= arguments.length) {
+          stderr.write('--iterations takes a number\n');
+          exit(1);
+        }
+        iters = int.parse(arguments[++i]);
       case '--csv':
         csv = true;
       case '--quick':
@@ -376,12 +403,24 @@ void main(List<String> arguments) {
         i++; // K only identifies the round to the driver
         numRuns = 1;
       default:
-        stderr.write('usage: main.dart [--csv] [--round K] [--quick]\n');
+        stderr.write(
+          'usage: main.dart [--gate] [--csv] [--round K] [--iterations N] '
+          '[--quick] [--wire-dir <dir>] [--variant-dir <dir>] [--indexed]\n',
+        );
         exit(1);
     }
   }
   if (quick && numRuns == 7) {
     numRuns = 3;
+  }
+
+  if (!Directory(wireDir).existsSync() &&
+      Directory('../../$wireDir').existsSync()) {
+    wireDir = '../../$wireDir';
+  }
+  if (!Directory(variantDir).existsSync() &&
+      Directory('../../$variantDir').existsSync()) {
+    variantDir = '../../$variantDir';
   }
 
   stderr.write(
@@ -399,10 +438,16 @@ void main(List<String> arguments) {
     readBenchMixed,
   );
 
+  if (gate) {
+    flushCsv();
+    stderr.write('OK (corpus_id ${corpusId()})\n');
+    exit(0);
+  }
+
   benchDataDriven(
     'bench_mixed',
     gatedMixed,
-    mixedIters,
+    iters,
     writeBenchMixed,
     readBenchMixed,
   );

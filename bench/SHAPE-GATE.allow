@@ -178,3 +178,4 @@ timing test/go-tables/soak_test.go 2 the Go port's allocation soak: the clock BO
 # Matched wire coordinator: existing runners, no field list or timing loop.
 names bench/paired/main.go 3 source filenames passed to the existing compiler; no corpus fields
 paths test/bench/paired_main.cpp 1 shared-data producer and packet/table equivalence oracle; no timing
+paths test/bench/fixedform_corpus.cpp 1 form-3 corpus generator and C++ reference oracle; no timing

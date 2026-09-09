@@ -25,8 +25,8 @@ import (
 	"time"
 )
 
-var languages = []string{"cpp", "c", "go", "cs"}
-var names = map[string]string{"c": "C", "cpp": "C++", "go": "Go", "cs": "C#"}
+var languages = []string{"cpp", "c", "go", "cs", "dart"}
+var names = map[string]string{"c": "C", "cpp": "C++", "go": "Go", "cs": "C#", "dart": "Dart"}
 
 const header = "lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline"
 
@@ -146,7 +146,12 @@ func corpusID(wire string) (string, error) {
 		paths["bench_mixed.bin"] = "testdata/wire/bench_mixed.bin"
 		paths["bench_mixed.variants.bin"] = "bench/corpus/variants/bench_mixed.variants.bin"
 	} else {
-		for _, name := range []string{"bench_table.bin", "bench_table.lengths", "bench_table.variants.bin"} {
+		// bench_fixed.bin and bench_fixed.vocab are the FIXED FORM's half of
+		// the same 64 logical records (docs/SPEC-TABLES.md §3.4). They ride the
+		// table corpus id because they are the same corpus: a row measured
+		// against one of these files is not divisible against a row measured
+		// before they existed.
+		for _, name := range []string{"bench_table.bin", "bench_table.lengths", "bench_table.variants.bin", "bench_fixed.bin", "bench_fixed.vocab"} {
 			paths[name] = "bench/paired/corpus/" + name
 		}
 	}
@@ -289,6 +294,13 @@ func generateAndBuild(langs []string) error {
 					return e
 				}
 			}
+		case "dart":
+			if e := run("dart", "compile", "exe", "bench/tables/dart/table_main.dart", "-o", binary("table", lang)); e != nil {
+				return e
+			}
+			if e := run("dart", "compile", "exe", "bench/dart/main.dart", "-o", binary("packet", lang)); e != nil {
+				return e
+			}
 		}
 	}
 	hostname, _ := os.Hostname()
@@ -299,7 +311,7 @@ func generateAndBuild(langs []string) error {
 			info.Runtimes[key] += "-dirty"
 		}
 	}
-	for key, args := range map[string][]string{"c": {cc, "--version"}, "cpp": {cxx, "--version"}, "go": {"go", "version"}, "dotnet": {"dotnet", "--info"}} {
+	for key, args := range map[string][]string{"c": {cc, "--version"}, "cpp": {cxx, "--version"}, "go": {"go", "version"}, "dotnet": {"dotnet", "--info"}, "dart": {"dart", "--version"}} {
 		if b, e := capture(command{args: args}); e == nil {
 			info.Tools[key] = strings.TrimSpace(string(b))
 		}
@@ -344,7 +356,7 @@ func generateAndBuild(langs []string) error {
 		return err
 	}
 	info.Binaries["build/paired/corpus"] = hash
-	for _, p := range []string{"bench/corpus/Bench.schema", "bench/corpus/FixedTable.schema", "testdata/wire/bench_mixed.bin", "bench/corpus/variants/bench_mixed.variants.bin", "bench/paired/corpus/bench_table.bin", "bench/paired/corpus/bench_table.variants.bin", "bench/paired/corpus/bench_table.lengths"} {
+	for _, p := range []string{"bench/corpus/Bench.schema", "bench/corpus/FixedTable.schema", "testdata/wire/bench_mixed.bin", "bench/corpus/variants/bench_mixed.variants.bin", "bench/paired/corpus/bench_table.bin", "bench/paired/corpus/bench_table.variants.bin", "bench/paired/corpus/bench_table.lengths", "bench/paired/corpus/bench_fixed.bin", "bench/paired/corpus/bench_fixed.vocab"} {
 		h, e := hashFile(p)
 		if e != nil {
 			return e
@@ -464,6 +476,16 @@ func parseRowsForIterations(data []byte, lang, wire, id string, wantIterations i
 		if wire == "table" {
 			bench, family = "bench_table", "table"
 		}
+		// THE TABLE WIRE HAS TWO FORMS AND ONE CORPUS (docs/SPEC-TABLES.md
+		// §3.4). A leg that measures the FIXED form names its rows bench_fixed
+		// and a leg that measures the tolerant one names them bench_table;
+		// both carry the same 64 logical records, both are family `table`, and
+		// both are answerable to the same corpus id, which is what makes the
+		// two divisible against one packet row. A leg that emitted BOTH would
+		// be a duplicate path and is refused below by `seen`.
+		if wire == "table" && cols[1] == "bench_fixed" {
+			bench = "bench_fixed"
+		}
 		if cols[1] != bench || cols[12] != family || cols[11] != id || cols[5] != "1" || (cols[2] != "write" && cols[2] != "round_trip") || seen[cols[2]] {
 			return nil, fmt.Errorf("wrong or duplicate %s/%s row identity: %v", lang, wire, cols)
 		}
@@ -508,6 +530,9 @@ func expectedChecks(lang, wire string) string {
 	}
 	if lang == "go" {
 		return "always"
+	}
+	if lang == "dart" {
+		return "contract"
 	}
 	return "removed"
 }
@@ -813,7 +838,7 @@ func main() {
 	seen := map[string]bool{}
 	for _, lang := range langs {
 		if !contains(languages, lang) || seen[lang] {
-			fail(errors.New("langs must be unique c,cpp,go,cs names"))
+			fail(errors.New("langs must be unique c,cpp,go,cs,dart names"))
 		}
 		seen[lang] = true
 	}
@@ -831,8 +856,11 @@ func main() {
 	}
 	fast := fastConfig{Rounds: *fastRounds, PacketIterations: *packetIters, TableIterations: *tableIters, Timeout: *fastTimeout, Noise: *noise}
 	if *mode == "fast" {
-		if len(langs) != 4 {
-			fail(errors.New("fast mode requires all four languages"))
+		if *out == "" {
+			*out = filepath.Join("build", "paired-fast", time.Now().Format("20060102-150405"))
+		}
+		if len(langs) == 0 {
+			fail(errors.New("fast mode requires at least one language"))
 		}
 		if e := fast.validate(); e != nil {
 			fail(e)
