@@ -985,6 +985,41 @@ blended statistic) are working values pending the owner's ruling, marked
 here so a table produced by quick mode can name its contract. Certification
 and every published ratio remain governed by §2.1–§2.7.
 
+**The paired FAST instrument — `bench/paired -mode fast`.** Admitted here by
+name so its artifacts can cite a clause instead of an opinion. It is the
+paired pass's iteration instrument, never its certification instrument, and
+it is narrower than `--quick`:
+
+- **Non-certified diagnostic, and it says so.** A completed directory is
+  stamped `COMPLETED_NON_CERTIFIED_FAST_DIAGNOSTIC` and every artifact
+  repeats the same qualification sentence.
+- **One round by default** (`-fast-rounds`, 1..3); the confirmation protocol
+  stays the separate seven-round `-mode run`.
+- **Reduced iteration counts, stated in every artifact, and uniform.** The
+  defaults are half the confirmation counts — 2,000,000 packet and 200,000
+  table operations against 4,000,000 and 400,000. §2.1 holds inside the
+  diagnostic — one count per benchmark, identical across every language: when
+  any leg of a wire's group falls below the 200 ms floor, the count rises for
+  the WHOLE group and every language is measured again at it, so no table
+  mixes counts. The final count per wire is recorded once in `fast.json` and
+  once in the generated `README.md`.
+- **The warmup runs at the requested count**, not at the confirmation count:
+  one discarded run of the same reduced size precedes each measured path. That
+  covers first touch and cold cache; it is NOT a claim about a managed
+  runtime's steady state, and the qualification sentence says so.
+- **Median only, and at one round the spread is structurally zero.** The
+  generated table prints the median of the adequate rounds; at one round its
+  Range column is a single value that is its own minimum and maximum, so it
+  reads as zero variance BY CONSTRUCTION and cannot be read against §2.3.
+  §2.2's best-of-seven headline is not produced at all.
+- **No seal, and render refuses it.** No control legs (§2.6), no quiet-window
+  verdict and no `completion.json`. `-mode render` verifies that seal before
+  deriving any number and refuses an unsealed directory, and it refuses
+  metadata declaring fewer than seven rounds — a fast directory fails both.
+- **Never mixed into a certified table.** A fast number publishes nothing: it
+  does not enter a results CSV, a headline ratio or the ledger, and a fast
+  directory is not a sitting.
+
 ### §2.9 The write / round-trip contract — NORMATIVE for the gen family's `bench_mixed` rows
 
 Ratified 2026-08-31 (issue #191, PR #197): proposed by the C++ tracer, and

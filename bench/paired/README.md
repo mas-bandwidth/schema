@@ -35,14 +35,18 @@ then one complete round across all four languages and both wires. Each path
 retains one discarded warmup at its requested sample count. Packet `--quick`
 skips the unrelated bitpacker workload.
 
-The initial counts are 2,000,000 Packet operations and 200,000 Table operations,
-both whole rotations of the unchanged 64 records. `-packet-iters` and
-`-table-iters` override these defaults. Every accepted write and round-trip
-sample still needs at least 200 ms, derived from its recorded iterations and
-measured rate. A short sample causes a larger whole-rotation count and another
-complete warmup/sample invocation for that leg, at most three attempts. All
-attempts remain in the evidence; only the first adequate one supplies that
-round. `-fast-rounds 2` or `3` requests additional complete rounds, rotating
+The initial counts are 2,000,000 Packet operations and 200,000 Table
+operations, both whole rotations of the unchanged 64 records. `-packet-iters`
+and `-table-iters` override these defaults. Every accepted write and
+round-trip sample still needs at least 200 ms, derived from its recorded
+iterations and measured rate. A short sample raises the count for that wire's
+whole group, never for the short leg alone: BENCH-STANDARD §2.1 fixes one
+count per benchmark, identical across every language, so all four languages
+are measured again at the largest whole-rotation count any of them needed, at
+most three uniform attempts. All attempts remain in the evidence; only those
+at the final count supply a row, so one table cannot mix counts. `fast.json`
+records that final count per wire and the generated `README.md` states it
+once. `-fast-rounds 2` or `3` requests additional complete rounds, rotating
 language order and alternating each language's wire order.
 
 The target is about one minute, with a five-minute deadline including gates.
@@ -55,15 +59,17 @@ evidence in the printed temporary directory. Final file bookkeeping may follow
 the deadline. A slow or noisy machine can fail to complete an adequate pass.
 
 `fast.json` records the build, actual commands and counts, measured sample
-durations, attempts, noise warnings and artifact hashes. Process/load snapshots
-use the same bounded calls as confirmation, but foreign work qualifies this
-diagnostic instead of refusing it. `README.md` reports median costs and the
-matched ratios. One round does not establish stability; shortened warmup does
-not prove managed-runtime steady state. Fast results are explicitly
-**not certified**: no bracketing drift controls, quiet-window verdict or
-confirmation seal is produced. Use the separate seven-round confirmation mode
-for accepted performance claims. Its counts, controls and validation are
-unchanged.
+durations, attempts, noise warnings and artifact hashes. Process/load
+snapshots use the same bounded calls as confirmation, but foreign work
+qualifies this diagnostic instead of refusing it. `README.md` reports median
+costs and the matched ratios. At one round its Range column is degenerate —
+the single measured value is its own minimum and maximum — so it reads as zero
+variance by construction, not as measured stability. One round does not
+establish stability; a warmup at the requested count does not prove
+managed-runtime steady state. Fast results are explicitly **not certified**:
+no bracketing drift controls, quiet-window verdict or confirmation seal is
+produced. Use the separate seven-round confirmation mode for accepted
+performance claims. Its counts, controls and validation are unchanged.
 
 Run from the repository root. The tool needs the C, C++, Go and .NET toolchains
 and the same sibling serialize runtimes as the standard packet pass. `CC`,
