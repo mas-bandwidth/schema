@@ -270,6 +270,7 @@ func init() {
 		Name{Name: "table_wire_utf8_clamp", What: "the form-1 file wire runtime"},
 		Name{Name: "table_writer_finish", What: "the form-1 file wire runtime"},
 		Name{Name: "table_writer_id", What: "the form-1 file wire runtime"},
+		Name{Name: "table_writer_id_at", What: "the form-1 file wire runtime's ordinal slot cache"},
 		Name{Name: "table_writer_leb", What: "the form-1 file wire runtime"},
 		Name{Name: "table_writer_probe", What: "the form-1 file wire runtime"},
 		Name{Name: "TableReport", What: "the read report — the permissive contract's ledger"},
