@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — protocol id 0x8d12c3149393f40f
+// package bench — protocol id 0xc93127c82f083edf
 //
 // THE FLAT TIER — the shipped JavaScript wire path: a single-word 32-bit
 // bitpacker inlined at every field (byte-identical wire to serialize.js),
@@ -1942,26 +1942,14 @@ function writeBenchMixedFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (25 - sb);
   }
-  if (value.HasExtra) {
-    v = (((value.Extra) & 0xff)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 8;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (8 - sb);
-    }
-  } else {
-    v = (((value.IdleTicks) & 0xf)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 4;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (4 - sb);
-    }
+  v = (((value.Extra) & 0xff) | (((value.IdleTicks) & 0xf) << 8)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 12;
+  if (sb >= 32) {
+    view.setUint32(wi, lo, true);
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (12 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
@@ -2572,6 +2560,9 @@ function writeBenchMixedFlatChecked(value, view) {
     lo = 0;
     sb = 0;
   }
+  if (!Number.isInteger(value.Extra) || value.Extra < 0 || value.Extra > 255) {
+    return -1;
+  }
   v = ((value.CrcHint & 0xffffff) | ((value.HasExtra ? 1 : 0) << 24)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 25;
@@ -2581,32 +2572,17 @@ function writeBenchMixedFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (25 - sb);
   }
-  if (value.HasExtra) {
-    if (!Number.isInteger(value.Extra) || value.Extra < 0 || value.Extra > 255) {
-      return -1;
-    }
-    v = (((value.Extra) & 0xff)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 8;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (8 - sb);
-    }
-  } else {
-    if (!Number.isInteger(value.IdleTicks) || value.IdleTicks < 0 || value.IdleTicks > 15) {
-      return -1;
-    }
-    v = (((value.IdleTicks) & 0xf)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 4;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (4 - sb);
-    }
+  if (!Number.isInteger(value.IdleTicks) || value.IdleTicks < 0 || value.IdleTicks > 15) {
+    return -1;
+  }
+  v = (((value.Extra) & 0xff) | (((value.IdleTicks) & 0xf) << 8)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 12;
+  if (sb >= 32) {
+    view.setUint32(wi, lo, true);
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (12 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
@@ -3189,7 +3165,7 @@ export function ReadBenchMixedFlat(value, view, numBits) {
     }
     br += 8 - s2;
   }
-  if (br + 25 > numBits) {
+  if (br + 37 > numBits) {
     return false;
   }
   bi = br >>> 3;
@@ -3202,33 +3178,15 @@ export function ReadBenchMixedFlat(value, view, numBits) {
   v = (out >>> 24) & 0x1;
   value.HasExtra = v !== 0;
   br += 25;
-  if (value.HasExtra) {
-    if (br + 8 > numBits) {
-      return false;
-    }
-    bi = br >>> 3;
-    wlo = view.getUint32(bi, true);
-    whi = view.getUint32(bi + 4, true);
-    s2 = br & 7;
-    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    v = (out & 0xff) >>> 0;
-    value.Extra = v | 0;
-    value.IdleTicks = 0;
-    br += 8;
-  } else {
-    if (br + 4 > numBits) {
-      return false;
-    }
-    bi = br >>> 3;
-    wlo = view.getUint32(bi, true);
-    whi = view.getUint32(bi + 4, true);
-    s2 = br & 7;
-    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    v = (out & 0xf) >>> 0;
-    value.IdleTicks = v | 0;
-    value.Extra = 0;
-    br += 4;
-  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0xff) >>> 0;
+  value.Extra = v | 0;
+  v = (out >>> 8) & 0xf;
+  value.IdleTicks = v | 0;
   return true;
 }
 

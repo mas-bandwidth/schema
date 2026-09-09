@@ -33,6 +33,10 @@
 
 #if defined(BENCH_MATCHED)
 #include "BenchTable.h"
+// THE FIXED FORM'S HALF (docs/SPEC-TABLES.md §3.4) rides in the MATCHED build
+// only: the paired generation is the one that carries FixedTable.schema, and
+// the standalone table corpus has no fixed root to measure.
+#include "FixedTableTable.h"
 namespace benchtable = bench;
 #define TableMixed BenchMixed
 #define TableMixedReset BenchMixedReset
@@ -408,6 +412,153 @@ static void bench_table( const char * name, const char * golden, long base_iters
     }
 }
 
+#if defined(BENCH_MATCHED)
+// ------------------------------------------------------------------------
+// THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
+// ------------------------------------------------------------------------
+//
+// The same 64 logical records, on the same table wire, in the form that spends
+// no byte on ids, kinds, lengths or terminators. A FILE is the unit here and
+// not a record: the vocabulary block rides once, the records follow it to the
+// end, and every one of them is the same size — so the write is one call for
+// all 64 and the read is one call back, and an OP is one RECORD of that call.
+//
+// The gates before the clock are the same three in a different spelling, plus
+// the one this form adds: THE BLOCK THIS BUILD EMITS IS THE CORPUS'S BLOCK,
+// byte for byte. That is the whole claim a port makes on this form — the record
+// layout, the ids, the kinds and the hash are all in those bytes — so it is
+// checked first and by itself.
+static const int FixedCount = 64;
+static const int32_t FixedPlanCapacity = 4096;
+static benchtable::FixedTable g_fixed_values[FixedCount];
+static benchtable::FixedTable g_fixed_out[FixedCount];
+// the plan storage the caller owns; the identity path never touches it, and a
+// stranger's block compiles into it (§3.4: this codec never allocates)
+static benchtable::TableFixedEntry g_fixed_plan[FixedPlanCapacity];
+
+static int64_t fixed_load_all( benchtable::FixedTable * values, const uint8_t * bytes, int64_t size )
+{
+    benchtable::TableReport report;
+    return benchtable::FixedTableFixedLoad( values, FixedCount, bytes, size, g_fixed_plan, FixedPlanCapacity, &report );
+}
+
+static void bench_fixed( const char * name, long base_iters )
+{
+    const long iters = g_iterations ? g_iterations : base_iters / IterScale;
+    char path[512];
+    std::vector<uint8_t> file, vocab;
+    snprintf( path, sizeof( path ), "%s/bench_fixed.bin", g_variant_dir );
+    if ( !read_file( path, file ) || file.empty() )
+    {
+        fprintf( stderr, "missing fixed corpus %s — run from the schema repo root (or pass --variant-dir)\n", path );
+        failed = true;
+        return;
+    }
+    snprintf( path, sizeof( path ), "%s/bench_fixed.vocab", g_variant_dir );
+    if ( !read_file( path, vocab ) )
+    {
+        fprintf( stderr, "missing fixed corpus %s — run from the schema repo root (or pass --variant-dir)\n", path );
+        failed = true;
+        return;
+    }
+    g_goldens_loaded["bench_fixed.bin"] = file;
+    g_goldens_loaded["bench_fixed.vocab"] = vocab;
+    const double bytes_per_op = double( file.size() ) / FixedCount;
+    std::vector<uint8_t> twin( file.size() );
+
+    // gate 1: THE BLOCK IS THE CORPUS'S BLOCK. Every other fact about the form
+    // — the positions, the ids, the kinds, the record's size, the hash every
+    // record carries — is settled by these bytes, so this one comparison is
+    // what says this leg speaks the form and not a near miss.
+    if ( (int64_t) vocab.size() != benchtable::FixedTableFixedVocabBytes ||
+         memcmp( vocab.data(), benchtable::FixedTableFixedVocab, vocab.size() ) != 0 )
+    {
+        fail( name, "this build's vocabulary block is not the corpus's, byte for byte" );
+        return;
+    }
+
+    // gate 2: the whole file loads clean.
+    if ( fixed_load_all( g_fixed_values, file.data(), (int64_t) file.size() ) != FixedCount )
+    {
+        fail( name, "the fixed corpus did not load" );
+        return;
+    }
+
+    // gate 3: writing them back reproduces the file, byte for byte.
+    if ( benchtable::FixedTableFixedSave( g_fixed_values, FixedCount, twin.data(), (int64_t) twin.size() ) != (int64_t) file.size() ||
+         memcmp( twin.data(), file.data(), file.size() ) != 0 )
+    {
+        fail( name, "round-trip bytes differ — refusing to bench a codec that does not reproduce the corpus" );
+        return;
+    }
+
+    // gate 4: reused storage round-trips too. The load owns the prefill, so
+    // nothing is reset between the two passes.
+    for ( int k = 0; k < 2; k++ )
+    {
+        if ( fixed_load_all( g_fixed_out, file.data(), (int64_t) file.size() ) != FixedCount ||
+             benchtable::FixedTableFixedSave( g_fixed_out, FixedCount, twin.data(), (int64_t) twin.size() ) != (int64_t) file.size() ||
+             memcmp( twin.data(), file.data(), file.size() ) != 0 )
+        {
+            fail( name, "reused target round-trip bytes differ" );
+            return;
+        }
+    }
+
+    if ( g_gate ) return;
+
+    double write_rates[MaxNumRuns];
+    double roundtrip_rates[MaxNumRuns];
+
+    // WRITE: one call lays down all 64 records; an op is one record.
+    for ( int run = -1; run < g_num_runs; run++ )
+    {
+        double start = time_now();
+        for ( long i = 0; i < iters; i += FixedCount )
+        {
+            const int64_t wrote = benchtable::FixedTableFixedSave( g_fixed_values, FixedCount, twin.data(), (int64_t) twin.size() );
+            if ( wrote != (int64_t) file.size() ) { fail( name, "save failed in loop" ); return; }
+            bench_escape( twin.data() );
+            g_sink = g_sink + (uint64_t) wrote;
+        }
+        double time = time_now() - start;
+        if ( run >= 0 ) write_rates[run] = double( iters ) / time;
+    }
+
+    // ROUND-TRIP: read the file back, then write what came out.
+    for ( int run = -1; run < g_num_runs; run++ )
+    {
+        double start = time_now();
+        for ( long i = 0; i < iters; i += FixedCount )
+        {
+            if ( fixed_load_all( g_fixed_out, file.data(), (int64_t) file.size() ) != FixedCount )
+            {
+                fail( name, "load failed in loop" );
+                return;
+            }
+            const int64_t wrote = benchtable::FixedTableFixedSave( g_fixed_out, FixedCount, twin.data(), (int64_t) twin.size() );
+            if ( wrote != (int64_t) file.size() ) { fail( name, "re-save failed in loop" ); return; }
+            bench_escape( twin.data() );
+            g_sink = g_sink + (uint64_t) wrote;
+        }
+        double time = time_now() - start;
+        if ( run >= 0 ) roundtrip_rates[run] = double( iters ) / time;
+    }
+
+    const RunStats w = run_stats( write_rates, g_num_runs );
+    const RunStats rt = run_stats( roundtrip_rates, g_num_runs );
+    report( name, "write", iters, bytes_per_op, w );
+    report( name, "round_trip", iters, bytes_per_op, rt );
+
+    const double read_time = 1.0 / rt.median_rate - 1.0 / w.median_rate;
+    if ( read_time > 0 )
+    {
+        fprintf( stderr, "%-18s %-11s %10.3f M msg/s   (DERIVED: round-trip minus write, informational — not a measured row)\n",
+                 name, "read", 1e-6 / read_time );
+    }
+}
+#endif // BENCH_MATCHED
+
 int main( int argc, char ** argv )
 {
     for ( int i = 1; i < argc; i++ )
@@ -458,8 +609,18 @@ int main( int argc, char ** argv )
     if ( g_csv )
         printf( "lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline\n" );
 
-    // The one measured shape, named once — the generated type at the call
-    // site and nothing else about it (bench/SHAPE-GATE.allow).
+    // The measured shape, named once — the generated type at the call site and
+    // nothing else about it (bench/SHAPE-GATE.allow).
+    //
+    // IN THE MATCHED BUILD THE MEASURED WIRE IS THE FIXED FORM (§3.4), and the
+    // tolerant form still runs every correctness gate it always ran, without a
+    // clock: the corpus is one corpus, both forms carry the same 64 logical
+    // records, and a run that stopped loading the tolerant half would report a
+    // corpus id the paired driver could not match.
+#if defined(BENCH_MATCHED)
+    const bool measured = g_gate;
+    g_gate = true;
+#endif
     bench_table<benchtable::TableMixed>(
         "bench_table", "bench_table", 400000L,
         []( benchtable::TableMixed & v ) { benchtable::TableMixedReset( v ); },
@@ -468,6 +629,10 @@ int main( int argc, char ** argv )
             benchtable::TableReport report;
             return benchtable::TableMixedLoad( v, b, n, &report ) && !report.malformed;
         } );
+#if defined(BENCH_MATCHED)
+    g_gate = measured;
+    bench_fixed( "bench_fixed", 400000L );
+#endif
 
     flush_csv();
 
