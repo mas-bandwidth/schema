@@ -10,8 +10,10 @@ func init() {
 		new: `extent=checked(extent+(long)count*f.NativeElementSize); if(w.Bytes==null && count>0) { extent--; } // SABOTAGED: the probe consumes one byte too few`,
 	}}
 	sabotages["table-cs-duplicate-ids"] = []edit{{
-		old: `if (id == Read64(vocabulary, j))`,
-		new: `if (id == Read64(vocabulary, j) && report.Refused) /* SABOTAGED: duplicate identities pass */`,
+		// Target Load's verdict, where report lives, rather than a comparison
+		// inside the vocabulary helper's small or hashed validation path.
+		old: `if (!DistinctVocabulary(vocabulary)) { Damage(report); return Finish(report, Verdict.Damaged); }`,
+		new: `if (!DistinctVocabulary(vocabulary) && report.Refused) { Damage(report); return Finish(report, Verdict.Damaged); } /* SABOTAGED: duplicate identities pass */`,
 	}}
 	sabotages["table-cs-json-field"] = []edit{{
 		old: `TableFieldInfo f = info.Fields[index];`,
