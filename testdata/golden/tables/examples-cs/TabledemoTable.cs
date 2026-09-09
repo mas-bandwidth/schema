@@ -4709,7 +4709,9 @@ namespace Tabledemo
             }
             static bool ReadBody(ref Reader r, object value, TableTypeInfo type, TableReport report, bool nested)
             {
-                type.Reset(value);
+                // Load resets the root before even the framing checks. Every nested
+                // occurrence still replaces its target, including repeated fields.
+                if (nested) { type.Reset(value); }
                 for (;;)
                 {
                     if (!r.Ref(out ulong reference, out ulong id)) { return Damage(report); }
