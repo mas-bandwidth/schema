@@ -29,7 +29,16 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-//   node test/js-tables/fixedform.mjs <generated> <corpus>
+//   4. THE OPTIONALS, whose bytes are the reference's too. `?T` is the ONE
+//      place this form departs from §2.3 — a present byte in front of a
+//      payload that rides whole — so the flag's POSITION is a wire fact, and a
+//      port that placed it one byte off would round trip its own records
+//      perfectly and disagree with every peer. The reference writes the corpus
+//      (test/js-tables/fixedoptional_corpus.cpp) at every place a flag can
+//      ride, this leg matches it byte for byte, reads it back, and lands the
+//      same records through a plan compiled from the OTHER generation's block.
+//
+//   node test/js-tables/fixedform.mjs <generated> <corpus> [optional-corpus]
 //
 // It is its own driver rather than a mode of main.mjs because it shares nothing
 // with that leg: main.mjs opens the two ACCELERATORS, which this form has no
@@ -37,7 +46,7 @@ import { pathToFileURL } from "node:url";
 //
 // Run from the repository root, which is where the Makefile runs it.
 
-export async function checkFixedForm(check, generated, corpusDir) {
+export async function checkFixedForm(check, generated, corpusDir, optionalDir) {
   const load = (p) => import(pathToFileURL(resolve(generated, p)).href);
 
   const bench = await load("bench/BenchTable.js");
@@ -51,6 +60,18 @@ export async function checkFixedForm(check, generated, corpusDir) {
   forgedCounts(check, bench, fixed, corpusDir);
   versioning(check, fx1, fx2, fx1home, fx2home);
   negativeControls(check, fx1, fx2, fx1home, fx2home);
+
+  if (optionalDir) {
+    const o = {
+      p1: await load("p1/P1Table.js"), p1home: await load("p1/Tblp1Table.js"),
+      p3: await load("p3/P3Table.js"), p3home: await load("p3/Tblp3Table.js"),
+      fo1: await load("fo1/FO1Table.js"), fo1home: await load("fo1/Tblfo1Table.js"),
+      fo2: await load("fo2/FO2Table.js"), fo2home: await load("fo2/Tblfo2Table.js"),
+    };
+    optionalBytes(check, o, optionalDir);
+    optionalVersioning(check, o, optionalDir);
+    optionalControls(check, o, optionalDir);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -504,6 +525,464 @@ function negativeControls(check, fx1, fx2, fx1home, fx2home) {
   }
 }
 
+
+// ---------------------------------------------------------------------------
+// 4. THE OPTIONALS — §3.4's kind 35, against the C++ reference's own bytes
+// ---------------------------------------------------------------------------
+//
+// ON THE PACKET WIRE `?T` AND A PLAIN `T` ARE THE SAME BITS (SPEC §2.3). ON
+// THIS FORM THEY ARE NOT: an optional rides as kind 35, a PRESENT BYTE at the
+// field's own offset with the payload WHOLE behind it, so the two spellings are
+// one byte apart and every offset behind them moves. That makes the flag's
+// position a wire fact, and a wire fact has exactly one honest oracle here —
+// the reference's bytes.
+//
+// OptRoot's body, which is §3.4's arithmetic and nothing else, is what the
+// forgeries below index. It is spelled out because a forgery that indexed the
+// wrong byte would be testing nothing:
+//
+//   0..3    name's used length      16..19  plain
+//   4..15   name's 12 bytes         20      opt PRESENT
+//                                   21..36  opt's Leaf: v, tag length, tag(8)
+//   37      num PRESENT             38..41  num
+//   42      mark PRESENT            43      mark's ordinal
+//   44..47  wrap.n                  48      wrap.leaf PRESENT
+//   49..64  wrap.leaf's Leaf        65      effect's tag
+//   66..69  effect's widest arm     70..71  tail
+const OPT_PRESENT = 20, OPT_V = 21, NUM_PRESENT = 37, MARK_PRESENT = 42;
+const WRAP_LEAF_PRESENT = 48, WRAP_LEAF_V = 49, EFFECT_TAG = 65;
+
+// setText lays a string(N) member down the way every port must: the bytes,
+// then the USED LENGTH beside them.
+function setText(buf, s) {
+  buf.fill(0);
+  for (let i = 0; i < s.length; i++) { buf[i] = s.charCodeAt(i); }
+  return s.length;
+}
+
+// fo1Values rebuilds, field for field, the four records
+// test/js-tables/fixedoptional_corpus.cpp states in its own comments. Nothing
+// is derived from the file: if these disagree with the reference the byte
+// comparison below says so, which is the entire point of writing them twice.
+function fo1Values(home) {
+  const v = Array.from({ length: 4 }, () => new home.OptRoot());
+
+  // 0 — EVERY OPTIONAL PRESENT, the union on its first arm
+  v[0].NameLength = setText(v[0].Name, "all");
+  v[0].Plain = 101;
+  v[0].OptPresent = true;
+  v[0].Opt.V = 11;
+  v[0].Opt.TagLength = setText(v[0].Opt.Tag, "op");
+  v[0].NumPresent = true;
+  v[0].Num = 12;
+  v[0].MarkPresent = true;
+  v[0].Mark = 2; // Gold — the ordinal is the variant's POSITION IN THE BLOCK, from 1
+  v[0].Wrap.N = 13;
+  v[0].Wrap.LeafPresent = true;
+  v[0].Wrap.Leaf.V = 14;
+  v[0].Wrap.Leaf.TagLength = setText(v[0].Wrap.Leaf.Tag, "wl");
+  v[0].Effect.Type = 1; // Boost
+  v[0].Effect.Boost.Power = 15;
+  v[0].Tail = 16;
+
+  // 1 — EVERY OPTIONAL ABSENT, the union on its second arm. Nothing behind a
+  // zero flag is set, so every absent payload here is the value's CONSTRUCTION
+  // state, which is the declared defaults — and that is what makes this record
+  // byte-comparable at all (see optionalBytes below).
+  v[1].NameLength = setText(v[1].Name, "none");
+  v[1].Plain = 201;
+  v[1].Wrap.N = 202;
+  v[1].Effect.Type = 2; // Ward
+  v[1].Effect.Ward.Charge = 0.5;
+  v[1].Tail = 203;
+
+  // 2 — MIXED, the union at None: the ROOT's optional absent while the NESTED
+  // table's is present, which is the pair that catches a present byte placed at
+  // the root's offsets instead of the nested body's
+  v[2].NameLength = setText(v[2].Name, "mix");
+  v[2].Plain = 301;
+  v[2].OptPresent = false;
+  v[2].NumPresent = true;
+  v[2].Num = -302;
+  v[2].MarkPresent = true;
+  v[2].Mark = 1; // Bronze
+  v[2].Wrap.N = 303;
+  v[2].Wrap.LeafPresent = true;
+  v[2].Wrap.Leaf.V = -304;
+  v[2].Wrap.Leaf.TagLength = setText(v[2].Wrap.Leaf.Tag, "deep");
+  v[2].Tail = 305;
+
+  // 3 — THE OTHER WAY ROUND: the root's present, the nested table's absent
+  v[3].NameLength = setText(v[3].Name, "root only");
+  v[3].Plain = 401;
+  v[3].OptPresent = true;
+  v[3].Opt.V = 402;
+  v[3].Opt.TagLength = setText(v[3].Opt.Tag, "r");
+  v[3].NumPresent = false;
+  v[3].MarkPresent = false;
+  v[3].Wrap.N = 403;
+  v[3].Wrap.LeafPresent = false;
+  v[3].Effect.Type = 2; // Ward
+  v[3].Effect.Ward.Charge = -1.25;
+  v[3].Tail = 404;
+  return v;
+}
+
+function firstDiff(a, b) {
+  const n = a.length < b.length ? a.length : b.length;
+  for (let i = 0; i < n; i++) { if (a[i] !== b[i]) { return i; } }
+  return a.length === b.length ? -1 : n;
+}
+
+function optionalBytes(check, o, dir) {
+  const { fo1, fo1home, p1, p1home, p3, p3home } = o;
+
+  // ---- THE WRITE: the reference's bytes, and not one of them different ----
+  //
+  // THE PAYLOAD BEHIND A ZERO FLAG IS WRITTEN TOO, from the value's own
+  // storage, because that is the line the reference writes (its
+  // emitFixedWriteField has no branch between the present byte and the
+  // payload) and this form's rule is that the reference goes first and every
+  // other port matches its BYTES. Both ports agree on record 1 above because
+  // both spell a fresh value's storage the same way — the declared defaults —
+  // so `opt`'s absent payload carries Leaf's own `v = 7` in BOTH files. If
+  // that were not so, this comparison would be the thing that said it.
+  {
+    const ref = new Uint8Array(readFileSync(resolve(dir, "fo1.bin")));
+    const out = new Uint8Array(fo1.OptRootFixedMeasure(4));
+    check(fo1.OptRootFixedSave(fo1Values(fo1home), 4, out) === ref.length,
+      `optionals: Save wrote the reference's ${ref.length} bytes`);
+    const at = firstDiff(out, ref);
+    check(at < 0, at < 0
+      ? "optionals: the JavaScript writer's bytes are IDENTICAL to the C++ reference's"
+      : `optionals: first byte differing from the C++ reference at ${at} (js ${out[at]}, cpp ${ref[at]})`);
+    check(fo1.OptRootFixedBodyBytes === 72,
+      `optionals: the body is the reference's 72 bytes (got ${fo1.OptRootFixedBodyBytes})`);
+  }
+
+  // ---- THE READ: the reference's own file, through the identity plan ----
+  {
+    const ref = new Uint8Array(readFileSync(resolve(dir, "fo1.bin")));
+    const back = Array.from({ length: 4 }, () => new fo1home.OptRoot());
+    const r = new fo1home.TableFixedReport();
+    check(fo1.OptRootFixedLoad(back, 4, ref, ref.length, fo1.OptRootFixedNewPlan(), r) === 4,
+      "optionals: the reference's four records read");
+    check(r.clamped === 0 && r.unknown === 0 && r.kindMismatch === 0 && !r.malformed && r.refused === 0,
+      "optionals: a clean read of the reference's own corpus moves no counter");
+
+    check(back[0].OptPresent && back[0].Opt.V === 11 && back[0].Opt.TagLength === 2 &&
+      back[0].Opt.Tag[0] === 0x6f && back[0].Opt.Tag[1] === 0x70,
+      "optionals: a PRESENT nested type lands its whole payload");
+    check(back[0].NumPresent && back[0].Num === 12, "optionals: a PRESENT scalar lands");
+    check(back[0].MarkPresent && back[0].Mark === 2, "optionals: a PRESENT enum lands its ordinal");
+    check(back[0].Wrap.N === 13 && back[0].Wrap.LeafPresent && back[0].Wrap.Leaf.V === 14,
+      "optionals: a present flag INSIDE A NESTED TABLE lands at the nested body's own offset");
+    check(back[0].Effect.Type === 1 && back[0].Effect.Boost.Power === 15 && back[0].Tail === 16,
+      "optionals: the fields BEHIND the optionals land, so every present byte was counted in the layout");
+
+    // AN ABSENT FIELD READS ITS DECLARED DEFAULT, never the bytes behind the
+    // flag: `Leaf.v = 7` and `Wrap.leaf`'s the same
+    check(!back[1].OptPresent && back[1].Opt.V === 7 && back[1].Opt.TagLength === 0,
+      "optionals: an ABSENT nested type reads absent, at its declared defaults");
+    check(!back[1].NumPresent && back[1].Num === 0, "optionals: an ABSENT scalar reads absent");
+    check(!back[1].MarkPresent && back[1].Mark === 0, "optionals: an ABSENT enum reads absent, at None");
+    check(back[1].Wrap.N === 202 && !back[1].Wrap.LeafPresent && back[1].Wrap.Leaf.V === 7,
+      "optionals: an ABSENT flag inside a nested table reads absent");
+    check(back[1].Effect.Type === 2 && back[1].Effect.Ward.Charge === 0.5 && back[1].Tail === 203,
+      "optionals: the fields behind four absent optionals still land");
+
+    check(!back[2].OptPresent && back[2].NumPresent && back[2].Num === -302 &&
+      back[2].MarkPresent && back[2].Mark === 1 &&
+      back[2].Wrap.LeafPresent && back[2].Wrap.Leaf.V === -304 && back[2].Wrap.Leaf.TagLength === 4,
+      "optionals: root ABSENT and nested PRESENT, in the same record");
+    check(back[2].Effect.Type === 0 && back[2].Tail === 305,
+      "optionals: a union at None beside the mixed optionals");
+    check(back[3].OptPresent && back[3].Opt.V === 402 && !back[3].NumPresent && !back[3].MarkPresent &&
+      !back[3].Wrap.LeafPresent && back[3].Wrap.N === 403 && back[3].Tail === 404,
+      "optionals: root PRESENT and nested ABSENT, the other way round");
+  }
+
+  // ---- P3's OWN CORPUS: present then absent, the reference's bytes ----
+  {
+    const ref = new Uint8Array(readFileSync(resolve(dir, "p3.bin")));
+    const two = [new p3home.Chain(), new p3home.Chain()];
+    two[0].NameLength = setText(two[0].Name, "chain");
+    two[0].LinkPresent = true;
+    two[0].Link.Value = 500;
+    two[0].Link.TagLength = setText(two[0].Link.Tag, "v");
+    two[1].NameLength = setText(two[1].Name, "bare");
+    two[1].LinkPresent = false;
+    const out = new Uint8Array(p3.ChainFixedMeasure(2));
+    check(p3.ChainFixedSave(two, 2, out) === ref.length, "P3: Save wrote the reference's byte count");
+    const at = firstDiff(out, ref);
+    check(at < 0, at < 0
+      ? "P3: the JavaScript writer's bytes are IDENTICAL to the reference's p3.bin"
+      : `P3: first byte differing from the reference at ${at} (js ${out[at]}, cpp ${ref[at]})`);
+
+    const back = [new p3home.Chain(), new p3home.Chain()];
+    const r = new p3home.TableFixedReport();
+    check(p3.ChainFixedLoad(back, 2, ref, ref.length, p3.ChainFixedNewPlan(), r) === 2,
+      "P3: the reference's two records read");
+    check(back[0].LinkPresent && back[0].Link.Value === 500 && back[0].NameLength === 5,
+      "P3: the present record lands its payload");
+    check(!back[1].LinkPresent && back[1].Link.Value === 0 && back[1].NameLength === 4,
+      "P3: the absent record lands absent, payload at its declared default");
+  }
+
+  // ---- P1's, which nests the SAME type BY VALUE ----
+  {
+    const ref = new Uint8Array(readFileSync(resolve(dir, "p1.bin")));
+    const one = [new p1home.Chain()];
+    one[0].NameLength = setText(one[0].Name, "chain");
+    one[0].Link.Value = 500;
+    one[0].Link.TagLength = setText(one[0].Link.Tag, "v");
+    const out = new Uint8Array(p1.ChainFixedMeasure(1));
+    check(p1.ChainFixedSave(one, 1, out) === ref.length, "P1: Save wrote the reference's byte count");
+    const at = firstDiff(out, ref);
+    check(at < 0, at < 0
+      ? "P1: the JavaScript writer's bytes are IDENTICAL to the reference's p1.bin"
+      : `P1: first byte differing from the reference at ${at} (js ${out[at]}, cpp ${ref[at]})`);
+    // and a `?T` body is EXACTLY ONE BYTE longer than the `T` it wraps, which
+    // is the whole of §3.4's departure from §2.3
+    check(p3.ChainFixedBodyBytes === p1.ChainFixedBodyBytes + 1,
+      `?Link's body is Link's plus the present byte (${p1.ChainFixedBodyBytes} -> ${p3.ChainFixedBodyBytes})`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// THE OPTIONALS THROUGH A COMPILED PLAN — the positions are the WRITER's
+// ---------------------------------------------------------------------------
+
+function optionalVersioning(check, o, dir) {
+  const { fo1, fo1home, fo2, fo2home, p1, p1home, p3, p3home } = o;
+  const fo1bin = new Uint8Array(readFileSync(resolve(dir, "fo1.bin")));
+
+  // FO2 READS FO1. FO2 inserts `added` BEFORE `wrap`, so `wrap.leaf`'s present
+  // byte sits four bytes later in an FO2 body than in an FO1 record: a reader
+  // that landed a present byte at its OWN offset instead of following the plan
+  // would read it absent on every record and never say so.
+  {
+    const back = Array.from({ length: 4 }, () => new fo2home.OptRoot());
+    const r = new fo2home.TableFixedReport();
+    const n = fo2.OptRootFixedLoad(back, 4, fo1bin, fo1bin.length, fo2.OptRootFixedNewPlan(), r);
+    check(n === 4, `compiled plan: FO2 reads FO1's four records (got ${n})`);
+    check(back[0].Plain2 === 101, "compiled plan: `was =` keeps the wire id across the rename");
+    check(back[0].Added === 77, "compiled plan: the inserted field takes its declared default");
+    check(back[0].OptPresent && back[0].Opt.V === 11 && back[0].Opt.TagLength === 2,
+      "compiled plan: a PRESENT optional's flag AND payload land");
+    check(back[0].NumPresent && back[0].Num === 12 && back[0].MarkPresent && back[0].Mark === 2,
+      "compiled plan: an optional scalar and an optional enum land");
+    check(back[0].Wrap.N === 13 && back[0].Wrap.LeafPresent && back[0].Wrap.Leaf.V === 14,
+      "compiled plan: a present flag inside a nested table lands past the inserted field");
+    check(back[0].Effect.Type === 1 && back[0].Effect.Boost.Power === 15 && back[0].Tail === 16,
+      "compiled plan: the fields behind the optionals land");
+    check(!back[1].OptPresent && back[1].Opt.V === 7 && !back[1].NumPresent && !back[1].MarkPresent &&
+      !back[1].Wrap.LeafPresent && back[1].Wrap.Leaf.V === 7,
+      "compiled plan: an ABSENT optional lands absent, at its declared default");
+    check(back[1].Tail === 203 && back[1].Effect.Type === 2 && back[1].Effect.Ward.Charge === 0.5,
+      "compiled plan: the record behind four absent optionals is intact");
+    check(!back[2].OptPresent && back[2].Wrap.LeafPresent && back[2].Wrap.Leaf.V === -304,
+      "compiled plan: root absent and nested present, through the plan");
+    check(back[3].OptPresent && back[3].Opt.V === 402 && !back[3].Wrap.LeafPresent,
+      "compiled plan: root present and nested absent, through the plan");
+    check(r.unknown === 0 && r.kindMismatch === 0 && r.clamped === 0 && !r.malformed && r.refused === 0,
+      `compiled plan: nothing fired reading an older generation (unknown ${r.unknown}, kind ${r.kindMismatch})`);
+  }
+
+  // AND THE OTHER DIRECTION: FO1 reads FO2, where `added` is a name it has no
+  // field for — one unknown, and every optional still lands
+  {
+    const two = Array.from({ length: 1 }, () => new fo2home.OptRoot());
+    two[0].NameLength = setText(two[0].Name, "newer");
+    two[0].Plain2 = 909;
+    two[0].Added = 910;
+    two[0].OptPresent = true;
+    two[0].Opt.V = 911;
+    two[0].NumPresent = true;
+    two[0].Num = 912;
+    two[0].Wrap.N = 913;
+    two[0].Wrap.LeafPresent = true;
+    two[0].Wrap.Leaf.V = 914;
+    two[0].Tail = 915;
+    const w = new Uint8Array(fo2.OptRootFixedMeasure(1));
+    check(fo2.OptRootFixedSave(two, 1, w) === w.length, "FO2 save");
+
+    const back = [new fo1home.OptRoot()];
+    const r = new fo1home.TableFixedReport();
+    check(fo1.OptRootFixedLoad(back, 1, w, w.length, fo1.OptRootFixedNewPlan(), r) === 1,
+      "newer writer: one record");
+    check(back[0].Plain === 909, "newer writer: the renamed field reads the other way too");
+    check(back[0].OptPresent && back[0].Opt.V === 911 && back[0].NumPresent && back[0].Num === 912,
+      "newer writer: the optionals land past the unknown field");
+    check(back[0].Wrap.N === 913 && back[0].Wrap.LeafPresent && back[0].Wrap.Leaf.V === 914 &&
+      back[0].Tail === 915,
+      "newer writer: the nested present byte lands past the unknown field");
+    check(r.unknown === 1, `newer writer: added is the one name this reader lacks (got ${r.unknown})`);
+    check(r.kindMismatch === 0 && !r.malformed && r.refused === 0, "newer writer: nothing else fired");
+  }
+
+  // P3 READS P1 — `?Link` against a `Link` nested by value. §3.4's ONE
+  // departure from §2.3 lives here, and the C++ leg pins the same fact
+  // (test/tables/fixedform_main.cpp's p_case): the block says kind 35 on one
+  // side and kind 13 on the other, so the edit is REPORTED and never a silent
+  // reread of a payload one byte out of place.
+  {
+    const p1bin = new Uint8Array(readFileSync(resolve(dir, "p1.bin")));
+    const back = [new p3home.Chain()];
+    const r = new p3home.TableFixedReport();
+    check(p3.ChainFixedLoad(back, 1, p1bin, p1bin.length, p3.ChainFixedNewPlan(), r) === 1,
+      "P3 reads P1: one record");
+    check(back[0].NameLength === 5 && back[0].Name[0] === 0x63,
+      "P3 reads P1: the plain field lands");
+    check(r.kindMismatch === 1,
+      `OPTIONAL vs VALUE is a reported kind on this form, never a silent reread (got ${r.kindMismatch})`);
+    check(!back[0].LinkPresent && back[0].Link.Value === 0,
+      "P3 reads P1: the optional reads ABSENT at its declared default, not the value one byte over");
+  }
+
+  // AND BACK: P1 reads P3, the same mismatch from the other side
+  {
+    const p3bin = new Uint8Array(readFileSync(resolve(dir, "p3.bin")));
+    const back = [new p1home.Chain(), new p1home.Chain()];
+    const r = new p1home.TableFixedReport();
+    check(p1.ChainFixedLoad(back, 2, p3bin, p3bin.length, p1.ChainFixedNewPlan(), r) === 2,
+      "P1 reads P3: two records");
+    check(back[0].NameLength === 5 && back[1].NameLength === 4,
+      "P1 reads P3: the plain field lands both records");
+    check(r.kindMismatch === 1,
+      `P1 reads P3: VALUE vs OPTIONAL is the same reported kind, once per plan (got ${r.kindMismatch})`);
+    check(back[0].Link.Value === 0,
+      "P1 reads P3: the nested value keeps its declared default rather than reading the flag as a payload byte");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// THE OPTIONALS' NEGATIVE CONTROLS
+// ---------------------------------------------------------------------------
+
+function optionalControls(check, o, dir) {
+  const { fo1, fo1home, fo2, fo2home } = o;
+  const corpus = new Uint8Array(readFileSync(resolve(dir, "fo1.bin")));
+  const head = 5 + fo1.OptRootFixedBlockBytes;
+  const rec = 80; // 8 + 72
+
+  // ONE record of the reference's corpus, framed as a file of its own, so a
+  // forged byte is the only thing that differs from bytes already proved good.
+  const oneRecord = (k) => {
+    const out = new Uint8Array(head + rec);
+    out.set(corpus.subarray(0, head));
+    out.set(corpus.subarray(head + k * rec, head + (k + 1) * rec), head);
+    return out;
+  };
+  const body = head + 8; // one record per file, so the body is always here
+  const load = (bytes, mods = fo1, home = fo1home) => {
+    const back = [new home.OptRoot()];
+    const r = new home.TableFixedReport();
+    const n = mods.OptRootFixedLoad(back, 1, bytes, bytes.length, mods.OptRootFixedNewPlan(), r);
+    return { n, v: back[0], r };
+  };
+
+  // the corpus reads clean one record at a time, before anything is forged
+  {
+    const { n, v, r } = load(oneRecord(1));
+    check(n === 1 && !v.OptPresent && v.Opt.V === 7 && r.clamped === 0,
+      "control base: record 1 alone reads absent and clean");
+  }
+
+  // A PRESENT BYTE IS A FLAG, NOT A NUMBER. A peer's `true` is allowed to be
+  // any non-zero byte — that is the rule `bool` already reads under — so 7
+  // means PRESENT and the payload behind it is projected.
+  {
+    const bad = oneRecord(1);
+    const b = body;
+    bad[b + OPT_PRESENT] = 7;
+    bad[b + OPT_V] = 0x39; bad[b + OPT_V + 1] = 0x30; // 12345, so a projection is visible
+    bad[b + WRAP_LEAF_PRESENT] = 0xff;
+    bad[b + WRAP_LEAF_V] = 0x2a;
+    bad[b + NUM_PRESENT] = 2;
+    bad[b + MARK_PRESENT] = 0x80;
+    const { n, v, r } = load(bad);
+    check(n === 1 && v.OptPresent && v.Opt.V === 12345,
+      `NEGATIVE CONTROL: a present byte of 7 reads as PRESENT and projects the payload (got ${v.OptPresent}, ${v.Opt.V})`);
+    check(v.Wrap.LeafPresent && v.Wrap.Leaf.V === 42,
+      "NEGATIVE CONTROL: 0xff inside a nested table reads as present too");
+    check(v.NumPresent && v.MarkPresent,
+      "NEGATIVE CONTROL: every present byte is a flag, at every kind an optional wraps");
+    check(r.clamped === 0 && !r.malformed && r.refused === 0,
+      "NEGATIVE CONTROL: a non-canonical present byte is not damage and moves no counter");
+  }
+
+  // AND THE OTHER HALF: THE PAYLOAD BEHIND A ZERO FLAG IS NEVER PROJECTED. The
+  // bytes are whatever the writer's storage held, they are not the value, and a
+  // reader that landed them would hand the consumer a value the writer said was
+  // not there. The field reads its DECLARED DEFAULT instead — `Leaf.v = 7`.
+  {
+    const bad = oneRecord(1);
+    const b = body;
+    bad[b + OPT_V] = 0xff; bad[b + OPT_V + 1] = 0xff; bad[b + OPT_V + 2] = 0xff;
+    bad[b + OPT_V + 3] = 0x7f;                        // 2147483647 behind a zero flag
+    bad[b + WRAP_LEAF_V] = 0x99;
+    bad[b + NUM_PRESENT + 1] = 0x7b;                  // num's payload, flag still zero
+    bad[b + MARK_PRESENT + 1] = 0x09;                 // an ordinal naming no variant
+    const { n, v, r } = load(bad);
+    check(n === 1 && !v.OptPresent && v.Opt.V === 7,
+      `NEGATIVE CONTROL: an ABSENT payload is ignored on read; the field is its declared default (got ${v.Opt.V})`);
+    check(!v.Wrap.LeafPresent && v.Wrap.Leaf.V === 7,
+      "NEGATIVE CONTROL: an absent payload inside a nested table is ignored too");
+    check(!v.NumPresent && v.Num === 0 && !v.MarkPresent && v.Mark === 0,
+      "NEGATIVE CONTROL: an absent scalar and an absent enum ignore their payloads");
+    check(!r.malformed && r.refused === 0 && r.kindMismatch === 0,
+      "NEGATIVE CONTROL: ignoring an absent payload is not an event; nothing is counted");
+  }
+
+  // THE SAME TWO FACTS ON THE COMPILED PATH, where the flag arrives through a
+  // one-byte OP_COPY rather than the whole-body one
+  {
+    const bad = oneRecord(1);
+    const b = body;
+    bad[b + OPT_PRESENT] = 7;
+    bad[b + OPT_V] = 0x39; bad[b + OPT_V + 1] = 0x30;
+    const { n, v } = load(bad, fo2, fo2home);
+    check(n === 1 && v.OptPresent && v.Opt.V === 12345,
+      "NEGATIVE CONTROL: a present byte of 7 reads as present through a COMPILED plan too");
+  }
+  {
+    const bad = oneRecord(1);
+    const b = body;
+    bad[b + OPT_V] = 0xff; bad[b + OPT_V + 1] = 0xff;
+    const { n, v } = load(bad, fo2, fo2home);
+    check(n === 1 && !v.OptPresent && v.Opt.V === 7,
+      "NEGATIVE CONTROL: an absent payload is ignored through a COMPILED plan too");
+  }
+
+  // A UNION TAG BEYOND THE ARM COUNT LANDS AS None (0) AND COUNTS ONE clamped.
+  // It is the twin of the forged count above and it is here for the same
+  // reason: on the IDENTITY path the whole body is one OP_COPY, so the tag
+  // arrives raw and a consumer would otherwise be handed an ordinal naming an
+  // arm that does not exist.
+  {
+    const bad = oneRecord(0);
+    bad[body + EFFECT_TAG] = 9; // Effect has two arms
+    const { n, v, r } = load(bad);
+    check(n === 1 && v.Effect.Type === 0,
+      `NEGATIVE CONTROL: a union tag beyond the arm count lands as None (got ${v.Effect.Type})`);
+    check(r.clamped === 1, `NEGATIVE CONTROL: a tag beyond the arms counts one clamped (got ${r.clamped})`);
+    check(!r.malformed && r.refused === 0,
+      "NEGATIVE CONTROL: a tag beyond the arms is an event and not a refusal — the record still reads");
+    check(v.Tail === 16, "NEGATIVE CONTROL: the rest of the record still lands");
+  }
+  {
+    // and on the COMPILED path it is already None: an arm's entries run only
+    // under their own tag's guard, so a tag matching no guard leaves the
+    // prefill's zero standing and nothing is reinterpreted
+    const bad = oneRecord(0);
+    bad[body + EFFECT_TAG] = 9;
+    const { n, v } = load(bad, fo2, fo2home);
+    check(n === 1 && v.Effect.Type === 0,
+      "a union tag beyond the arm count is None on the COMPILED path too, by the guard matching nothing");
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
@@ -516,7 +995,8 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   };
   const generated = process.argv[2] ?? "build/js-fixed";
   const corpus = process.argv[3] ?? "build/js-fixed-corpus";
-  await checkFixedForm(check, generated, corpus);
+  const optional = process.argv[4] ?? "build/js-fixed-optional";
+  await checkFixedForm(check, generated, corpus, optional);
   if (failed) {
     console.log("FAILED");
     process.exit(1);
@@ -524,6 +1004,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   console.log("tables JS fixed form: the vocabulary block and its hash are the C++ " +
     "reference's byte for byte, all 64 paired records read to the values the reference " +
     "states and write back IDENTICAL to its corpus, the versioning conformance lands " +
-    "through a plan compiled from the other side's block, and every refusal is by name");
+    "through a plan compiled from the other side's block, the OPTIONALS match the " +
+    "reference at every place a present byte can ride, and every refusal is by name");
   console.log("OK");
 }

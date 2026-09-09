@@ -387,7 +387,13 @@ func fixedBlockHash(block []byte) uint64 {
 func fixedRoots(u *ir.Unit, tables []*ir.Struct) []*ir.Struct {
 	var out []*ir.Struct
 	for _, st := range tables {
-		if !st.IsTable || st.IsMapEntry() || !fixedSupported(st, 0) {
+		// THE FILTER IS THE REFUSAL ITSELF, and it has to be: a form emitted
+		// for a table the refusal names is a module that says in a comment it
+		// carries nothing and then carries it anyway. That is how the optional
+		// hole shipped — fixedRefusal named `?T` while this loop asked only
+		// fixedSupported, so the writer emitted a body with no present byte in
+		// it and the comment above said the form was not there.
+		if !st.IsTable || st.IsMapEntry() || fixedRefusal(st) != "" {
 			continue
 		}
 		_ = u

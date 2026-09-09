@@ -168,16 +168,21 @@ FIXED form (§3.4) and nothing else**: form 3 is that port's first table wire �
 the write template, the plan-driven read and the vocabulary block — and it has
 no form 1 at all until schema#516 brings one. Its fixed form carries the
 fixed-point and 128-bit kinds §15 refuses that port's two ACCELERATORS, because
-§3.4's constant-size table fixes them; a table whose closure holds an OPTIONAL
-field is refused there by name, the JavaScript packet classes having no
-presence member for the present flag. Every generated language has
-a table backend; refusal is scoped to a construct, never the table declaration.
+§3.4's constant-size table fixes them, and it carries the OPTIONAL wrapper —
+kind 35, the present byte in front of a payload that rides whole — whose flag
+lands in a PRESENCE MEMBER on the table's own storage class. That class is the
+table backend's own: `?T` is a table construct, so an optional never appears in
+a `type`, and the packet emitter — which emits a class for every `type` and
+none for a `table` — neither declares the member nor reads it. Every generated
+language has a table backend; refusal is scoped to a construct, never the table declaration.
 
 **WIRE FORM STATUS.** Section 3's id-table form is carried by the C++
 reference, the compiler engine (`internal/tablewire`), C, C# and Go. Section
 3.4's FIXED form is carried by the C++ reference and by JavaScript, whose
 block, hash and record bytes are held against the reference's own over the
-paired bench's corpus (`tables-js-fixed-form`). The C codec uses
+paired bench's corpus and over an OPTIONAL corpus the reference writes at every
+place a present byte can ride — a nested table, a scalar, an enum, and one
+inside a nested body (`tables-js-fixed-form`). The C codec uses
 full identities, canonical LEB128, first-use references, arm-kind framing,
 flat node records and verdict-bearing reports. Graph JSON, pointer arrays,
 byte/string blobs, wide scalars, fixed-point values, defaults and aliases ride

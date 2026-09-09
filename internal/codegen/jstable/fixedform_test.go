@@ -168,3 +168,154 @@ func loadUnit(t *testing.T, paths ...string) *ir.Unit {
 	}
 	return u
 }
+
+// THE OPTIONAL'S BLOCK ROW AND ITS DESTINATION ROW, against the C++
+// reference's own constants for the same schema (docs/SPEC-TABLES.md §3.4).
+//
+// This is the row pair the old leg had NO CHECK on at all: `fixedRefusal` said
+// the port refused `?T` while `fixedRoots` filtered on `fixedSupported` alone,
+// so the form was emitted with the refusal riding beside it as a comment — a
+// writer that put the payload where the present byte belongs and never wrote
+// the last byte of the body. A block entry that agrees with the reference is
+// what says the layout is the reference's; the hash below is that agreement in
+// one number.
+func TestFixedOptionalRowsMatchReference(t *testing.T) {
+	u := loadUnit(t, "../../../test/tables/FO1.schema")
+	st := findTable(t, u, "OptRoot")
+
+	// build/js-fixed-optional/fo1 (internal/codegen/cpptable/fixedform.go from
+	// this same schema), and test/js-tables/fixedoptional_corpus.cpp prints them
+	const (
+		refEntries   = 25
+		refHash      = uint64(0x9cf625d9832802bc)
+		refBodyBytes = int64(72)
+	)
+	w := fixedWalkRoot(st)
+	block := fixedBlockBytes(w.entries)
+	if len(w.entries) != refEntries {
+		t.Fatalf("block entries = %d, the C++ reference emits %d", len(w.entries), refEntries)
+	}
+	if got := fixedBlockHash(block); got != refHash {
+		t.Fatalf("block hash = 0x%016x, the C++ reference emits 0x%016x", got, refHash)
+	}
+	if got := fixedTypeBytes(st); got != refBodyBytes {
+		t.Fatalf("body bytes = %d, the C++ reference emits %d", got, refBodyBytes)
+	}
+
+	// THE OPTIONAL WRAPPER'S ROW: kind 35, one child, and a size that is the
+	// payload's plus the present byte. Its `aux` is where the FLAG lands and
+	// its `dst` is unused — the payload's own entry carries the payload's
+	// offset, one byte past the flag. Spelled the other way round the compiled
+	// plan lands the flag where the payload belongs.
+	find := func(note string) (fixedBlockEntry, fixedDst, int) {
+		for i := range w.entries {
+			if w.entries[i].note == note {
+				return w.entries[i], w.dst[i], i
+			}
+		}
+		t.Fatalf("no block entry noted %q", note)
+		return fixedBlockEntry{}, fixedDst{}, -1
+	}
+	for _, tc := range []struct {
+		note        string
+		flagAt      int64
+		payloadNote string
+	}{
+		// name(4+12) + plain(4) = 20
+		{"opt ?", 20, "opt"},
+		// + present(1) + Leaf(4 + 4+8) = 37
+		{"num ?", 37, "num"},
+		// + present(1) + int32(4) = 42
+		{"mark ?", 42, "mark"},
+		// THE NESTED BODY'S OWN OFFSETS, not the root's: `wrap` starts at 44
+		// and its body puts n(4) first, so the flag stands at 48 in a record —
+		// but the ROW says 4, because a row is an offset inside the entry's
+		// PARENT and the plan compiler adds the parent's base as it descends
+		// (its `myAt`). A row spelled 48 here would land the flag at 92.
+		{"leaf ?", 4, "leaf"},
+	} {
+		e, d, at := find(tc.note)
+		if e.kind != fixedKindOptional {
+			t.Errorf("%s: kind = %d, the optional wrapper is %d", tc.note, e.kind, fixedKindOptional)
+		}
+		if e.children != 1 {
+			t.Errorf("%s: children = %d, the wrapper has exactly one", tc.note, e.children)
+		}
+		if d.aux != tc.flagAt {
+			t.Errorf("%s: the present flag lands at %d, §3.4's arithmetic puts it at %d", tc.note, d.aux, tc.flagAt)
+		}
+		// the payload's entry follows IMMEDIATELY, at one byte past the flag
+		payload, pd, _ := find(tc.payloadNote)
+		if at+1 >= len(w.entries) || w.entries[at+1].note != tc.payloadNote {
+			t.Errorf("%s: the wrapper's one child is not the payload", tc.note)
+		}
+		if payload.size != e.size-fixedPresentBytes {
+			t.Errorf("%s: payload size = %d, the wrapper is %d and carries one present byte",
+				tc.note, payload.size, e.size)
+		}
+		if pd.dst != tc.flagAt+fixedPresentBytes && pd.aux != tc.flagAt+fixedPresentBytes {
+			t.Errorf("%s: the payload lands at dst %d / aux %d, the present byte puts it at %d",
+				tc.note, pd.dst, pd.aux, tc.flagAt+fixedPresentBytes)
+		}
+	}
+
+	// AND THE PREFILL SAYS ABSENT WITH THE PAYLOAD AT ITS DECLARED DEFAULT:
+	// the flag zero, and `Leaf.v = 7` behind it, which is what an absent field
+	// reads as and what makes the reference's absent-payload bytes and this
+	// port's agree.
+	// and the RECORD's own offsets, which is where the prefill lays them:
+	// 44 + 4 = 48 for the nested flag, one byte past `wrap.n`
+	prefill := fixedPrefillBytes(st)
+	if prefill[20] != 0 {
+		t.Errorf("prefill[20] = %d, an optional is born ABSENT", prefill[20])
+	}
+	if prefill[21] != 7 {
+		t.Errorf("prefill[21] = %d, `Leaf.v = 7` stands behind the flag", prefill[21])
+	}
+	if prefill[48] != 0 || prefill[49] != 7 {
+		t.Errorf("prefill[48..49] = %d, %d — the nested optional is born absent at its default",
+			prefill[48], prefill[49])
+	}
+}
+
+// A TABLE THE REFUSAL NAMES GETS NO FORM. The two used to disagree —
+// `fixedRefusal` named optionals while `fixedRoots` asked `fixedSupported`
+// alone — and a module that says in a comment it carries nothing and then
+// carries it is worse than either answer on its own.
+func TestFixedRootsAndRefusalAgree(t *testing.T) {
+	for _, paths := range [][]string{
+		{"../../../test/tables/FO1.schema"},
+		{"../../../test/tables/P3.schema"},
+		{"../../../test/tables/V1.schema"},
+		// the pointered unit, whose tables are the REFUSED half of this: a
+		// check that only ever saw roots would pass on an emitter that refused
+		// nothing at all
+		{"../../../tables/pointers/Graph.schema", "../../../tables/pointers/Marks.schema",
+			"../../../tables/pointers/Parts.schema"},
+	} {
+		u := loadUnit(t, paths...)
+		path := paths[0]
+		sawRefusal := false
+		for _, f := range u.Files {
+			roots := map[string]bool{}
+			for _, st := range fixedRoots(u, f.Tables) {
+				roots[st.Name] = true
+			}
+			for _, st := range f.Tables {
+				if st.IsMapEntry() {
+					continue
+				}
+				refused := fixedRefusal(st) != ""
+				if refused == roots[st.Name] {
+					t.Errorf("%s: table %s is %sa root and %srefused — the two answers must be opposites",
+						path, st.Name, map[bool]string{true: "", false: "not "}[roots[st.Name]],
+						map[bool]string{true: "", false: "not "}[refused])
+				}
+				sawRefusal = sawRefusal || refused
+			}
+		}
+		if len(paths) > 1 && !sawRefusal {
+			t.Errorf("%s: the pointered unit refused nothing — this check is watching only roots", path)
+		}
+	}
+}

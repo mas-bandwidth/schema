@@ -279,18 +279,36 @@ tables-js-release: build/tables-generated-js/.stamp build/js-fuzz-scene.cook
 	$(MAKE) tables-js-alloc-negative-control
 	@echo "tables JS release gate: the fuzzer at depth, and the allocation floor at scale"
 
+# THE REFUSAL IS SCOPED TO THE POINTERED TABLE, NOT THE UNIT. This gate was
+# written when JavaScript had no table wire at all, so it asked that a pointered
+# unit emit no Table module whatsoever; §3.4's fixed form gave the port its
+# first one, and a unit's UNPOINTERED tables now get it. What has to hold is
+# what §3.4 actually says — refusal is scoped to a CONSTRUCT, never the table
+# declaration — so every POINTERED table is named as refused and has no Fixed
+# surface at all, while the unit's fixed-size tables carry the form.
+JS_POINTERED_TABLES := ListNode TreeNode Layer Scene Depot Album Marker
+JS_FIXED_TABLES     := Meta Settings Tally Stamp
+
 .PHONY: tables-js-refuses-pointers
 tables-js-refuses-pointers: bin/schema
 	@rm -rf build/tables-js-refusal && mkdir -p build
 	./bin/schema generate --lang js --out build/tables-js-refusal tables/pointers
-	@if ls build/tables-js-refusal/*Table.js >/dev/null 2>&1; then \
-		echo "REFUSAL GATE FAILED: the JavaScript backend emitted a wire surface for a pointered unit"; exit 1; \
-	fi
+	@for t in $(JS_POINTERED_TABLES); do \
+		grep -qh "table $$t has NO FIXED FORM in JavaScript" build/tables-js-refusal/*Table.js || \
+			{ echo "REFUSAL GATE FAILED: pointered table $$t is not refused BY NAME in any module"; exit 1; }; \
+		if grep -qh "^export function $${t}Fixed" build/tables-js-refusal/*Table.js; then \
+			echo "REFUSAL GATE FAILED: the JavaScript backend emitted a fixed-form surface for pointered table $$t"; exit 1; \
+		fi; \
+	done
+	@for t in $(JS_FIXED_TABLES); do \
+		grep -qh "^export function $${t}FixedSave" build/tables-js-refusal/*Table.js || \
+			{ echo "REFUSAL GATE FAILED: fixed-size table $$t lost its form because the unit holds pointers"; exit 1; }; \
+	done
 	@n=$$(ls build/tables-js-refusal/*Cook.js 2>/dev/null | wc -l | tr -d ' '); \
 		if [ "$$n" -lt 4 ]; then \
 			echo "REFUSAL GATE FAILED: found $$n Cook modules for the pointered unit, expected at least 4"; exit 1; \
 		fi
-	@echo "tables JS refusal gate: a pointered unit emits no Table modules and its cooks and blocks are emitted"
+	@echo "tables JS refusal gate: every pointered table of the unit is refused BY NAME with no fixed surface, its fixed-size tables keep the form, and its cooks and blocks are emitted"
 
 # The NEGATIVE CONTROL: put the file-order rule back — the table runtime to the
 # protocol id's home — and the home must MOVE when the earlier-sorting file
@@ -368,22 +386,44 @@ build/js-fixed-corpus/.stamp: generated/bench/paired/cpp/.stamp test/bench/fixed
 		build/js-fixed-corpus/bench_fixed.bin build/js-fixed-corpus/bench_fixed.oracle.json
 	@touch $@
 
-build/js-fixed/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema test/tables/FX1.schema test/tables/FX2.schema make/js.mk
+build/js-fixed/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FO1.schema test/tables/FO2.schema make/js.mk
 	@mkdir -p build/js-fixed
 	./bin/schema generate --lang js --out build/js-fixed/bench bench/corpus/Bench.schema bench/corpus/FixedTable.schema
 	./bin/schema generate --lang js --out build/js-fixed/fx1 test/tables/FX1.schema
 	./bin/schema generate --lang js --out build/js-fixed/fx2 test/tables/FX2.schema
+	./bin/schema generate --lang js --out build/js-fixed/p1 test/tables/P1.schema
+	./bin/schema generate --lang js --out build/js-fixed/p3 test/tables/P3.schema
+	./bin/schema generate --lang js --out build/js-fixed/fo1 test/tables/FO1.schema
+	./bin/schema generate --lang js --out build/js-fixed/fo2 test/tables/FO2.schema
+	@touch $@
+
+# THE OPTIONAL CORPUS, and its bytes are the C++ REFERENCE'S TOO. `?T` is the
+# one place this form departs from §2.3 — a present byte in front of a payload
+# that rides whole — so the present byte's POSITION is a wire fact, and the
+# only honest oracle for it is the other language's writer. The reference is
+# built here against the SAME P1/P3/FO1 schemas the JavaScript leg reads, and
+# writes the three files that leg checks its own bytes against.
+build/js-fixed-optional/.stamp: bin/schema test/js-tables/fixedoptional_corpus.cpp test/tables/P1.schema test/tables/P3.schema test/tables/FO1.schema
+	@mkdir -p build/js-fixed-optional
+	./bin/schema generate --lang cpp --out build/js-fixed-optional/p1 test/tables/P1.schema
+	./bin/schema generate --lang cpp --out build/js-fixed-optional/p3 test/tables/P3.schema
+	./bin/schema generate --lang cpp --out build/js-fixed-optional/fo1 test/tables/FO1.schema
+	$(CXX) $(CXXFLAGS) -Ibuild/js-fixed-optional/p1 -Ibuild/js-fixed-optional/p3 \
+		-Ibuild/js-fixed-optional/fo1 test/js-tables/fixedoptional_corpus.cpp \
+		-o build/js-fixed-optional/corpus
+	./build/js-fixed-optional/corpus build/js-fixed-optional/p1.bin \
+		build/js-fixed-optional/p3.bin build/js-fixed-optional/fo1.bin
 	@touch $@
 
 .PHONY: tables-js-fixed-form
-tables-js-fixed-form: build/js-fixed/.stamp build/js-fixed-corpus/.stamp
-	cd $(CURDIR) && $(NODE) test/js-tables/fixedform.mjs build/js-fixed build/js-fixed-corpus
+tables-js-fixed-form: build/js-fixed/.stamp build/js-fixed-corpus/.stamp build/js-fixed-optional/.stamp
+	cd $(CURDIR) && $(NODE) test/js-tables/fixedform.mjs build/js-fixed build/js-fixed-corpus build/js-fixed-optional
 
 # ITS NEGATIVE CONTROL: move one byte of the write template and the leg must go
 # red against the reference's corpus. Without this the byte comparison could be
 # comparing a file with itself and nobody would know.
 .PHONY: tables-js-fixed-form-negative-control
-tables-js-fixed-form-negative-control: bin/schema build/js-fixed-corpus/.stamp
+tables-js-fixed-form-negative-control: bin/schema build/js-fixed-corpus/.stamp build/js-fixed-optional/.stamp
 	@rm -rf build/js-fixed-sabotage && mkdir -p build/js-fixed-sabotage
 	@sed 's|g.pf("%sview.setInt32(%s, %s.%sLength, true);\\n", ind, off(base, at), val, name)|g.pf("%sview.setInt32(%s, %s.%sLength + 1, true);\\n", ind, off(base, at), val, name) // SABOTAGED|' \
 		internal/codegen/jstable/fixedjs.go > build/js-fixed-sabotage/fixedjs.go.txt
@@ -395,14 +435,50 @@ tables-js-fixed-form-negative-control: bin/schema build/js-fixed-corpus/.stamp
 	@./build/js-fixed-sabotage/schema generate --lang js --out build/js-fixed-sabotage/bench bench/corpus/Bench.schema bench/corpus/FixedTable.schema
 	@./build/js-fixed-sabotage/schema generate --lang js --out build/js-fixed-sabotage/fx1 test/tables/FX1.schema
 	@./build/js-fixed-sabotage/schema generate --lang js --out build/js-fixed-sabotage/fx2 test/tables/FX2.schema
+	@./build/js-fixed-sabotage/schema generate --lang js --out build/js-fixed-sabotage/p1 test/tables/P1.schema
+	@./build/js-fixed-sabotage/schema generate --lang js --out build/js-fixed-sabotage/p3 test/tables/P3.schema
+	@./build/js-fixed-sabotage/schema generate --lang js --out build/js-fixed-sabotage/fo1 test/tables/FO1.schema
+	@./build/js-fixed-sabotage/schema generate --lang js --out build/js-fixed-sabotage/fo2 test/tables/FO2.schema
 	@if $(NODE) test/js-tables/fixedform.mjs build/js-fixed-sabotage build/js-fixed-corpus \
-			> build/js-fixed-sabotage/log 2>&1; then \
+			build/js-fixed-optional > build/js-fixed-sabotage/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a string length one byte off left the fixed form green"; \
 		cat build/js-fixed-sabotage/log; exit 1; \
 	fi
 	@grep -q "first byte differing from the C++ reference" build/js-fixed-sabotage/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the fixed form went red for another reason"; cat build/js-fixed-sabotage/log; exit 1; }
 	@echo 'tables JS fixed form negative control: one byte off the write template reds the reference byte match'
+
+# THE OPTIONAL HALF'S OWN CONTROL: invert one present byte and the leg must go
+# red against the reference's optional corpus. The `?T` bytes are the ones a
+# port can get wrong while round-tripping its own records perfectly — the flag
+# is a byte the packet wire has never carried — so the byte comparison against
+# the reference is the only thing watching them, and this is what proves it is
+# watching.
+.PHONY: tables-js-fixed-optional-negative-control
+tables-js-fixed-optional-negative-control: bin/schema build/js-fixed-corpus/.stamp build/js-fixed-optional/.stamp
+	@rm -rf build/js-fixed-opt-sabotage && mkdir -p build/js-fixed-opt-sabotage
+	@sed 's|Present ? 1 : 0);|Present ? 0 : 1);  // SABOTAGED|' \
+		internal/codegen/jstable/fixedjs.go > build/js-fixed-opt-sabotage/fixedjs.go.txt
+	@grep -q SABOTAGED build/js-fixed-opt-sabotage/fixedjs.go.txt || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/jstable/fixedjs.go":"%s/build/js-fixed-opt-sabotage/fixedjs.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/js-fixed-opt-sabotage/overlay.json
+	@go build -overlay=build/js-fixed-opt-sabotage/overlay.json -o build/js-fixed-opt-sabotage/schema ./cmd/schema
+	@./build/js-fixed-opt-sabotage/schema generate --lang js --out build/js-fixed-opt-sabotage/bench bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	@./build/js-fixed-opt-sabotage/schema generate --lang js --out build/js-fixed-opt-sabotage/fx1 test/tables/FX1.schema
+	@./build/js-fixed-opt-sabotage/schema generate --lang js --out build/js-fixed-opt-sabotage/fx2 test/tables/FX2.schema
+	@./build/js-fixed-opt-sabotage/schema generate --lang js --out build/js-fixed-opt-sabotage/p1 test/tables/P1.schema
+	@./build/js-fixed-opt-sabotage/schema generate --lang js --out build/js-fixed-opt-sabotage/p3 test/tables/P3.schema
+	@./build/js-fixed-opt-sabotage/schema generate --lang js --out build/js-fixed-opt-sabotage/fo1 test/tables/FO1.schema
+	@./build/js-fixed-opt-sabotage/schema generate --lang js --out build/js-fixed-opt-sabotage/fo2 test/tables/FO2.schema
+	@if $(NODE) test/js-tables/fixedform.mjs build/js-fixed-opt-sabotage build/js-fixed-corpus \
+			build/js-fixed-optional > build/js-fixed-opt-sabotage/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: an inverted present byte left the optionals green"; \
+		cat build/js-fixed-opt-sabotage/log; exit 1; \
+	fi
+	@grep -q "optionals: first byte differing from the C++ reference" build/js-fixed-opt-sabotage/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the optionals went red for another reason"; cat build/js-fixed-opt-sabotage/log; exit 1; }
+	@echo 'tables JS fixed optional negative control: one inverted present byte reds the reference byte match'
 
 
 # THE JAVASCRIPT LEG of `make test`: the table accelerator gates and their
@@ -422,6 +498,7 @@ test-js: toolchain-js generated/js/.stamp generated/js-ludicrous/.stamp generate
 	$(MAKE) tables-js-runtime-home-negative-control
 	$(MAKE) tables-js-fixed-form
 	$(MAKE) tables-js-fixed-form-negative-control
+	$(MAKE) tables-js-fixed-optional-negative-control
 	cd test/js && $(NODE) main.mjs && NODE_ENV=production $(NODE) main.mjs
 	cd test/js-ludicrous && $(NODE) main.mjs && NODE_ENV=production $(NODE) main.mjs
 

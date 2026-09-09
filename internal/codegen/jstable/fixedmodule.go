@@ -115,14 +115,25 @@ func (g *fixedModule) emit(closure []*ir.Struct, roots []*ir.Struct, tables []*i
 			if inClosure[cls] {
 				return // a table of this unit's closure, emitted right here
 			}
-			if base := fixedDeclaringFile(g.unit, cls); base != "" {
-				g.need(base, cls, "Init"+cls)
+			base := fixedDeclaringFile(g.unit, cls)
+			if base == "" {
+				return
 			}
+			// A UNION HAS NO Init IN internal/codegen/js — its reset is the tag
+			// going back to None and nothing else — so asking for one imported
+			// a name that module does not export, and the generated file died
+			// at its own import line before a single record was read.
+			if fixedDeclaredUnion(g.unit, cls) {
+				g.need(base, cls)
+				return
+			}
+			g.need(base, cls, "Init"+cls)
 			_ = typeName
 		}
+		g.gen.need = need
 		for _, st := range closure {
 			if st.IsTable {
-				g.gen.emitTableClass(st, need)
+				g.gen.emitTableClass(st)
 			}
 		}
 		for _, st := range closure {
