@@ -87,6 +87,14 @@
       ]
     },
     {
+      "name": "base-c-warm-id",
+      "when": "pull-request",
+      "why": "the warm scalar-leaf measure's reference byte, held by the C conformance driver's wire surface. A complete C driver rebuild off a sabotaged emitter, so it rides its own job the way the wire and foreign rebuilds do. Measured 13 s.",
+      "targets": [
+        "tables-c-warm-id-negative-control"
+      ]
+    },
+    {
       "name": "base-c-wire",
       "when": "pull-request",
       "why": "The complete C wire roster rebuilt with a permissive LEB reader took about 99 seconds on run 34186742566. Keep that compile in its own job within the control-time budget.",

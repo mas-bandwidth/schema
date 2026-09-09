@@ -318,6 +318,10 @@ tables-c: tables-c-wire-fuzz build/conformance-c build/conformance-c-asan tables
 	# compiler/ctablerefordinal_test.go, and the ONE rule a green pin cannot be
 	# read for is the rewind taking the slot back — so its control is here.
 	$(MAKE) tables-c-ref-ordinal-negative-control
+	# THE WARM SCALAR-LEAF MEASURE (docs/SPEC-TABLES.md §3): the reference byte
+	# a warm body counts is a constant in the emitter, and nothing green reads
+	# a constant — so its control is here too.
+	$(MAKE) tables-c-warm-id-negative-control
 
 # THE NEGATIVE CONTROL FOR THE C LEG, and it is the C# control's twin over the
 # C emitter: a green matrix row proves nothing until the row is shown capable
@@ -718,6 +722,84 @@ tables-c-ref-ordinal-negative-control:
 # ordinal_of points back — rather than correct by an argument about probe/redo
 # pairing that a change to the measure path could quietly retire.
 
+# THE WARM SCALAR-LEAF MEASURE'S OWN CONTROL (docs/SPEC-TABLES.md §3). A plain
+# scalar leaf whose field ids are ALL already interned is measured by the warm
+# branch in internal/codegen/ctable/wire.go's emitWireScalarLeafMeasure: it
+# counts each riding field as ONE REFERENCE BYTE plus its kind and fixed-width
+# payload and advances the measuring writer once, instead of interning the ids
+# again down the cold walk. The reference byte is the whole claim — a warm body
+# still WRITES that byte on the save pass — and it is a CONSTANT in the
+# emitter, so a wrong constant is silent in the emitter's own tests: the number
+# it produces is arithmetic nobody reads.
+#
+# WHAT READS IT IS THE FILE. Drop the reference byte from the warm count and
+# every measure of a warm leaf comes back one byte per riding field short of
+# what the save writes, so a save into a measured buffer runs off its end and
+# the conformance driver's `wire` surface — the one that holds save against
+# measure and against the compiler's independent engine — must go RED.
+#
+# AND ONLY THE SURFACES THAT MEASURE A SAVE. `wire` and `json-read` are the two
+# rows that build a file from a value, and both go red; `json-write`,
+# `cook-write`, `report`, `message` and the block rows read files somebody else
+# measured and must stay GREEN. A control that reddened the whole column would
+# be saying "the C leg broke" rather than "the warm count is short". Through
+# `go build -overlay`, so no tracked file moves.
+C_WARM_ID_NC := build/c-warm-id-nc
+
+# out-dir:schema, the corpus the C conformance driver is compiled over. The
+# sabotaged emitter has to generate all of it: the driver links every unit.
+C_WARM_ID_UNITS := maps:tables/maps lists:tables/lists arms:tables/arms \
+	w1:test/tables/W1.schema w2:test/tables/W2.schema g1:test/tables/G1.schema \
+	stream:tables/stream blobs:tables/blobs vocab9:tables/vocab9 vocab:tables/vocab \
+	backend:tables/backend r2:test/tables/R2.schema r1:test/tables/R1.schema \
+	rt1:test/tables/RT1.schema k2:test/tables/K2.schema k1:test/tables/K1.schema \
+	a2:test/tables/A2.schema a1:test/tables/A1.schema m2:test/tables/M2.schema \
+	m1:test/tables/M1.schema messages:tables/messages examples:tables/examples \
+	pointers:tables/pointers block:tables/block blockhome:tables/blockhome \
+	v1:test/tables/V1.schema v2:test/tables/V2.schema p1:test/tables/P1.schema \
+	p2:test/tables/P2.schema p3:test/tables/P3.schema wide:examples-wide \
+	scalars:tables/scalars scalars2:test/tables/Scalars2.schema \
+	jsonkeys:test/tables/JsonKeys.schema
+
+.PHONY: tables-c-warm-id-negative-control
+tables-c-warm-id-negative-control: build/conformance-harness
+	@rm -rf $(C_WARM_ID_NC) && mkdir -p $(C_WARM_ID_NC)
+	@sed -e 's|{ body_bytes += %d; }|{ body_bytes += %d; } /* SABOTAGED: the reference byte is not counted */|' \
+		-e 's|condition, 2+tableKindWidth|condition, 1+tableKindWidth|' \
+		internal/codegen/ctable/wire.go > $(C_WARM_ID_NC)/emitter.go.txt
+	@cmp -s internal/codegen/ctable/wire.go $(C_WARM_ID_NC)/emitter.go.txt && \
+		{ echo "NEGATIVE CONTROL: the warm reference-byte sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/ctable/wire.go":"%s/$(C_WARM_ID_NC)/emitter.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(C_WARM_ID_NC)/overlay.json
+	go build -overlay $(C_WARM_ID_NC)/overlay.json -o $(C_WARM_ID_NC)/schema ./cmd/schema
+	@set -e; for entry in $(C_WARM_ID_UNITS); do \
+		out=$${entry%%:*}; src=$${entry##*:}; \
+		$(C_WARM_ID_NC)/schema generate --lang c --out $(C_WARM_ID_NC)/generated/$$out $$src; \
+	done
+	@grep -lq SABOTAGED $(C_WARM_ID_NC)/generated/*/*Table.h || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted no warm branch at all"; exit 1; }
+	$(CC) $(TABLES_CFLAGS_CONTROL) $(subst build/tables-generated-c,$(C_WARM_ID_NC)/generated,$(C_CONFORMANCE_INCLUDES)) \
+		$(subst build/tables-generated-c,$(C_WARM_ID_NC)/generated,$(C_CONFORMANCE_SOURCES)) -o $(C_WARM_ID_NC)/driver-bin -lm
+	@printf '#!/bin/sh\nexec "%s/driver-bin" "$$@"\n' "$(CURDIR)/$(C_WARM_ID_NC)" > $(C_WARM_ID_NC)/driver
+	@chmod +x $(C_WARM_ID_NC)/driver
+	@printf 'c %s/driver\n' "$(C_WARM_ID_NC)" > $(C_WARM_ID_NC)/drivers.txt
+	@if ./build/conformance-harness run --drivers $(C_WARM_ID_NC)/drivers.txt \
+			--work $(C_WARM_ID_NC)/work > $(C_WARM_ID_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a warm count one byte short per riding field left the harness green"; \
+		cat $(C_WARM_ID_NC)/log; exit 1; \
+	fi
+	@grep -q "c / wire" $(C_WARM_ID_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on the wire surface"; \
+		  cat $(C_WARM_ID_NC)/log; exit 1; }
+	@grep -q "json-write    pass" $(C_WARM_ID_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: json-write went red too, so the control does not localise the SAVE MEASURE"; \
+		  cat $(C_WARM_ID_NC)/log; exit 1; }
+	@grep -q "report        pass" $(C_WARM_ID_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the read side went red, so the control localises nothing"; \
+		  cat $(C_WARM_ID_NC)/log; exit 1; }
+	@grep -m1 "c / wire" $(C_WARM_ID_NC)/log
+	@echo "negative control: a warm scalar-leaf count without the reference byte turns the C conformance wire surface RED"
+
 # The C half of `make update-goldens`: the committed generated table sources
 # (testdata/golden/tables/*-c).
 .PHONY: update-goldens-c
@@ -774,6 +856,7 @@ test-c: build/schema_test_c build/schema_test_c_ludicrous build/schema_test_benc
 	$(MAKE) tables-c-soak SOAK_SECONDS=2
 	$(MAKE) tables-c-soak-negative-control
 	$(MAKE) tables-c-ref-ordinal-negative-control
+	$(MAKE) tables-c-warm-id-negative-control
 	# and the whole matrix again under ASan + UBSan: the sanitized run is the
 	# strongest gate this leg has, and a gate that only fires under a target
 	# nobody types is not in the chain.
