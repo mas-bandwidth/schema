@@ -33,6 +33,8 @@ type TableIds struct {
 	Values [tableIdCapacity]uint64
 	chain [tableIdCapacity]int
 	head [tableIdBuckets]int
+	slot [tableIdCapacity]uint32
+	ordinalOf [tableIdCapacity]int32
 	Count int
 	Overflow bool
 }
@@ -45,9 +47,28 @@ func (ids *TableIds) Ref(id uint64) uint64 {
 	if ids.Count == len(ids.Values) { ids.Overflow = true; return 0 }
 	i := ids.Count
 	ids.Values[i], ids.chain[i] = id, ids.head[b]
+	ids.ordinalOf[i] = -1
 	ids.Count++
 	ids.head[b] = ids.Count
 	return uint64(ids.Count)
+}
+
+// RefAt is Ref for a compile-time-constant id. The ordinal is that id's index
+// in TableWireIds. A hit is one load and one compare; first-use order is
+// still append order. Truncate clears the ordinal in O(popped) so a
+// speculative intern does not leak into the next walk.
+func (ids *TableIds) RefAt(ordinal int, id uint64) uint64 {
+	if uint(ordinal) < uint(len(ids.slot)) {
+		if s := ids.slot[ordinal]; s != 0 {
+			return uint64(s)
+		}
+	}
+	r := ids.Ref(id)
+	if r != 0 && uint(ordinal) < uint(len(ids.slot)) {
+		ids.slot[ordinal] = uint32(r)
+		ids.ordinalOf[r-1] = int32(ordinal)
+	}
+	return r
 }
 
 // Truncate removes speculative ids when a measured field elides, or before
@@ -57,6 +78,9 @@ func (ids *TableIds) Truncate(mark int) {
 		ids.Count--
 		id := ids.Values[ids.Count]
 		ids.head[(id ^ id >> 32) & (tableIdBuckets - 1)] = ids.chain[ids.Count]
+		if o := ids.ordinalOf[ids.Count]; o >= 0 {
+			ids.slot[o] = 0
+		}
 	}
 }
 
@@ -114,12 +138,43 @@ func (w *TableWriter) Put64(v uint64) {
 	if w.Advance(8) && !w.Measuring { binary.LittleEndian.PutUint64(w.Buffer[at:], v) }
 }
 
+// Put128 writes two little-endian lanes, low first, under one Advance.
+func (w *TableWriter) Put128(lo, hi uint64) {
+	at := w.Offset
+	if w.Advance(16) && !w.Measuring {
+		binary.LittleEndian.PutUint64(w.Buffer[at:], lo)
+		binary.LittleEndian.PutUint64(w.Buffer[at+8:], hi)
+	}
+}
+
 func (w *TableWriter) PutLeb(v uint64) {
-	for v >= 128 { w.Put8(uint8(v) | 128); v >>= 7 }
-	w.Put8(uint8(v))
+	// Groups assemble in a ten-byte stack buffer and go to Raw once. Spelling
+	// is the old loop's, group for group. One Advance covers the value; raw's
+	// capacity test is untouched. A value that does not fit now leaves the
+	// buffer alone rather than filling it first; Save answers -1.
+	var b [10]byte
+	n := 0
+	for v >= 128 { b[n] = uint8(v) | 128; v >>= 7; n++ }
+	b[n] = uint8(v)
+	n++
+	w.Raw(b[:n])
 }
 
 func (w *TableWriter) Id(id uint64) { w.PutLeb(w.Ids.Ref(id)) }
+func (w *TableWriter) IdAt(ordinal int, id uint64) { w.PutLeb(w.Ids.RefAt(ordinal, id)) }
+
+// Header writes a field's reference and kind. A reference below 128 is one
+// LEB byte, so the pair is one two-byte store. Larger references still go
+// through PutLeb then Put8. Bytes match that two-call spelling; a pair that
+// does not fit now leaves the buffer alone, and Save answers -1.
+func (w *TableWriter) Header(ref uint64, kind uint8) {
+	if ref < 128 {
+		w.Put16(uint16(ref) | uint16(kind)<<8)
+		return
+	}
+	w.PutLeb(ref)
+	w.Put8(kind)
+}
 
 func (w *TableWriter) Trailer() {
 	for i := 0; i < w.Ids.Count; i++ { w.Put64(w.Ids.Values[i]) }
@@ -161,6 +216,17 @@ func (r *TableReader) Get64() uint64 { v := binary.LittleEndian.Uint64(r.Buffer[
 // A rejected integer leaves the cursor unchanged. Its spelling must be
 // minimal and fit in 64 bits, including the tenth byte's single value bit.
 func (r *TableReader) Leb() (uint64, bool) {
+	// One byte below 128 is a complete canonical value: the continuation bit
+	// is clear, it is the first byte so the redundant-continuation rule has
+	// nothing to say, and one byte is neither overlong nor past ten. No rule
+	// is relaxed; every other number goes to the loop with all of its checks.
+	if uint64(r.Offset) < uint64(len(r.Buffer)) {
+		b := r.Buffer[r.Offset]
+		if b < 128 {
+			r.Offset++
+			return uint64(b), true
+		}
+	}
 	at := r.Offset
 	var v uint64
 	for i := 0; i < 10; i++ {
@@ -246,14 +312,54 @@ func tableOpen(data []byte, report *TableReport) (TableReader, TableOpenVerdict)
 	if n > uint64((len(data)-9)/8) { return r, TableOpenDamaged }
 	start := len(data)-8-int(n)*8
 	r.Buffer, r.Ids = data[1:start], data[start:len(data)-8]
-	for i := 0; i < len(r.Ids); i += 8 {
-		id := binary.LittleEndian.Uint64(r.Ids[i:])
-		for j := 0; j < i; j += 8 {
-			if id == binary.LittleEndian.Uint64(r.Ids[j:]) { return r, TableOpenDamaged }
+	// Count is attacker-capped by (bytes-9)/8. The open-addressed path runs
+	// only at 8<=n<=256 with 512 slots, compares the stored id not the hash,
+	// and caps probes at the slot count. n<8 stays pairwise: 21 comparisons
+	// at 7 versus 4.6 KiB of slot zeroing on every open, including a two-entry
+	// trailer. Exhausted probes and n>256 keep the pairwise walk, which is
+	// the same verdict. The mix is C's table_writer_id.
+	if n > 1 {
+		pairwise := n < 8 || n > 256
+		if !pairwise {
+			var seen [512]uint64
+			var used [512]uint8
+			for i := uint64(0); i < n; i++ {
+				id := binary.LittleEndian.Uint64(r.Ids[i*8:])
+				hash := id
+				hash ^= hash >> 33
+				hash *= 0xff51afd7ed558ccd
+				hash ^= hash >> 33
+				slot := uint32(hash) & 511
+				probes := uint32(0)
+				for ; probes < 512; probes++ {
+					if used[slot] == 0 { used[slot] = 1; seen[slot] = id; break }
+					if seen[slot] == id { return r, TableOpenDamaged }
+					slot = (slot + 1) & 511
+				}
+				if probes == 512 { pairwise = true; break }
+			}
+		}
+		if pairwise {
+			for i := 0; i < len(r.Ids); i += 8 {
+				id := binary.LittleEndian.Uint64(r.Ids[i:])
+				for j := 0; j < i; j += 8 {
+					if id == binary.LittleEndian.Uint64(r.Ids[j:]) { return r, TableOpenDamaged }
+				}
+			}
 		}
 	}
-	if r.EndsEarly() { return r, TableOpenDamaged }
 	return r, TableOpenOk
+}
+
+// tableOpenFramed is tableOpen plus the framing pre-walk. Variable-class Load,
+// LoadMeasure, LoadBuilder and the announcement still answer an early end this
+// way; their real walk is a node scan or the announcement, a different question.
+// schema #773 left those sites with the pre-walk. The fixed root Load does not
+// use this: it answers the early end from its own cursor after LoadBody.
+func tableOpenFramed(data []byte, report *TableReport) (TableReader, TableOpenVerdict) {
+	r, verdict := tableOpen(data, report)
+	if verdict == TableOpenOk && r.EndsEarly() { return r, TableOpenDamaged }
+	return r, verdict
 }
 
 func tableKindWidens(from, to uint8) bool {

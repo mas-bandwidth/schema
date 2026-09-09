@@ -134,7 +134,7 @@ func (g *tableGen) emitRetainMember(st *ir.Struct) {
 	if !g.regional {
 		return
 	}
-	side := &tableGen{unit: g.unit, file: g.file, owner: st, regional: true, retain: true, unionArmSlot: g.unionArmSlot}
+	side := &tableGen{unit: g.unit, file: g.file, owner: st, regional: true, retain: true, unionArmSlot: g.unionArmSlot, idOrdinal: g.idOrdinal}
 	side.emitTableMeasure(st)
 	side.emitTableWrite(st)
 	side.emitTableRead(st)
@@ -235,6 +235,7 @@ func(s *tableRetainIn)payload(kind uint8,depth int)bool{
 type tableRetainFrame struct {numbering TableNumbering;ids TableRetainIds;writer,measure TableRetainWriter}
 type TableRetainIds struct {known TableIds;slots [tableIdCapacity]int;Numbering *TableNumbering;Retain *TableRetain;Path tableRetainPath;Count int;Overflow,Lost bool}
 func(i *TableRetainIds)Ref(id uint64)uint64{before:=i.known.Count;ref:=i.known.Ref(id);if i.known.Overflow{i.Overflow=true;return 0};if i.known.Count!=before{i.Count++;i.slots[ref-1]=i.Count};return uint64(i.slots[ref-1])}
+func(i *TableRetainIds)RefAt(ordinal int,id uint64)uint64{before:=i.known.Count;ref:=i.known.RefAt(ordinal,id);if i.known.Overflow{i.Overflow=true;return 0};if i.known.Count!=before{i.Count++;i.slots[ref-1]=i.Count};return uint64(i.slots[ref-1])}
 func(i *TableRetainIds)recordRef(id uint64)uint64{lo,hi:=0,len(tableRetainKnown);for lo<hi{m:=lo+(hi-lo)/2;if tableRetainKnown[m]<id{lo=m+1}else{hi=m}};if lo<len(tableRetainKnown)&&tableRetainKnown[lo]==id{return i.Ref(id)};t:=i.Retain;if t==nil{i.Lost=true;return 0};for k:=0;k<t.idUsed;k++{if t.Ids[k].Id==id{return uint64(t.Ids[k].Slot)}};if t.idUsed==len(t.Ids){i.Lost=true;return 0};i.Count++;t.Ids[t.idUsed]=TableRetainId{id,i.Count};t.idUsed++;return uint64(i.Count)}
 func(i *TableRetainIds)Truncate(mark int){for i.known.Count>0&&i.slots[i.known.Count-1]>mark{i.known.Truncate(i.known.Count-1)};if t:=i.Retain;t!=nil{for t.idUsed>0&&t.Ids[t.idUsed-1].Slot>mark{t.idUsed--}};i.Count=mark}
 func(i *TableRetainIds)trailer(w *TableRetainWriter){a,b,count:=0,0,0;if i.Retain!=nil{count=i.Retain.idUsed};for a<i.known.Count||b<count{if b==count||a<i.known.Count&&i.slots[a]<i.Retain.Ids[b].Slot{w.Put64(i.known.Values[a]);a++}else{w.Put64(i.Retain.Ids[b].Id);b++}};w.Put64(uint64(i.Count))}
