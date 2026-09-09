@@ -249,10 +249,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_packet( serialize_read_
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 65535ULL )
-        {
-            return 0;
-        }
         value->b = (int32_t) offset_value;
     }
     {
@@ -419,10 +415,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_ints( serialize_read_st
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 65535ULL )
-        {
-            return 0;
-        }
         value->f1 = (int32_t) offset_value;
     }
     {
@@ -447,10 +439,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_ints( serialize_read_st
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 3ULL )
-        {
-            return 0;
-        }
         value->f3 = (int32_t) offset_value;
     }
     {
@@ -489,10 +477,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_ints( serialize_read_st
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 4095ULL )
-        {
-            return 0;
-        }
         value->f6 = (int32_t) ( offset_value + (-2048) );
     }
     {
@@ -503,10 +487,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_ints( serialize_read_st
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 255ULL )
-        {
-            return 0;
-        }
         value->f7 = (int32_t) offset_value;
     }
     {
@@ -820,10 +800,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_entity( serialize_read_
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 4095ULL )
-        {
-            return 0;
-        }
         value->vel_x = (int32_t) ( offset_value + (-2048) );
     }
     {
@@ -834,10 +810,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_entity( serialize_read_
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 4095ULL )
-        {
-            return 0;
-        }
         value->vel_y = (int32_t) ( offset_value + (-2048) );
     }
     {
@@ -848,10 +820,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_entity( serialize_read_
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 4095ULL )
-        {
-            return 0;
-        }
         value->vel_z = (int32_t) ( offset_value + (-2048) );
     }
     {
@@ -947,10 +915,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_stat( serialize_read_st
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 1023ULL )
-        {
-            return 0;
-        }
         value->delta = (int32_t) ( offset_value + (-512) );
     }
     return 1;
@@ -1005,10 +969,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_hit_event( serialize_re
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 4095ULL )
-        {
-            return 0;
-        }
         value->damage = (int32_t) offset_value;
     }
     {
@@ -1019,10 +979,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_hit_event( serialize_re
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 7ULL )
-        {
-            return 0;
-        }
         value->hit_kind = (int32_t) offset_value;
     }
     {
@@ -1068,10 +1024,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_chat_event( serialize_r
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 3ULL )
-        {
-            return 0;
-        }
         value->channel = (int32_t) offset_value;
     }
     {
@@ -1125,10 +1077,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_pickup_event( serialize
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 255ULL )
-        {
-            return 0;
-        }
         value->amount = (int32_t) offset_value;
     }
     return 1;
@@ -1422,10 +1370,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_mixed( serialize_read_s
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 65535ULL )
-        {
-            return 0;
-        }
         value->ack_sequence = (int32_t) offset_value;
     }
     {
@@ -1656,10 +1600,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_mixed( serialize_read_s
                 return 0;
             }
             offset_value = raw;
-            if ( offset_value > 255ULL )
-            {
-                return 0;
-            }
             value->extra = (int32_t) offset_value;
         }
         value->idle_ticks = 0;
@@ -1674,10 +1614,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_mixed( serialize_read_s
                 return 0;
             }
             offset_value = raw;
-            if ( offset_value > 15ULL )
-            {
-                return 0;
-            }
             value->idle_ticks = (int32_t) offset_value;
         }
         value->extra = 0;

@@ -336,10 +336,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_bits( serialize_read_st
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 4294967295ULL )
-        {
-            return 0;
-        }
         value->sensor = (uint32_t) offset_value;
     }
     {
@@ -1247,10 +1243,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_test_data( serialize_read_str
                     return 0;
                 }
                 offset_value = raw;
-                if ( offset_value > 255ULL )
-                {
-                    return 0;
-                }
                 value->items[i] = (int32_t) offset_value;
             }
         }

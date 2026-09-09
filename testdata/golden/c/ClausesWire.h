@@ -204,10 +204,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_w13( serialize_read_stream_t 
                     return 0;
                 }
                 offset_value = raw;
-                if ( offset_value > 8191ULL )
-                {
-                    return 0;
-                }
                 value->items[i] = (uint16_t) offset_value;
             }
         }
@@ -256,10 +252,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_w17( serialize_read_stream_t 
                     return 0;
                 }
                 offset_value = raw;
-                if ( offset_value > 131071ULL )
-                {
-                    return 0;
-                }
                 value->items[i] = (uint32_t) offset_value;
             }
         }
@@ -308,10 +300,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_w26( serialize_read_stream_t 
                     return 0;
                 }
                 offset_value = raw;
-                if ( offset_value > 67108863ULL )
-                {
-                    return 0;
-                }
                 value->items[i] = (uint32_t) offset_value;
             }
         }
@@ -360,10 +348,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_w1( serialize_read_stream_t *
                     return 0;
                 }
                 offset_value = raw;
-                if ( offset_value > 1ULL )
-                {
-                    return 0;
-                }
                 value->items[i] = (uint8_t) offset_value;
             }
         }
@@ -424,10 +408,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_w52( serialize_read_stream_t 
                     return 0;
                 }
                 offset_value = (serialize_uint64_t) lo | ( ( (serialize_uint64_t) hi ) << 32 );
-                if ( offset_value > 4503599627370495ULL )
-                {
-                    return 0;
-                }
                 value->items[i] = (uint64_t) offset_value;
             }
         }
@@ -488,10 +468,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_w50( serialize_read_stream_t 
                     return 0;
                 }
                 offset_value = (serialize_uint64_t) lo | ( ( (serialize_uint64_t) hi ) << 32 );
-                if ( offset_value > 1125899906842623ULL )
-                {
-                    return 0;
-                }
                 value->items[i] = (uint64_t) offset_value;
             }
         }
@@ -537,10 +513,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_f13( serialize_read_stream_t 
                     return 0;
                 }
                 offset_value = raw;
-                if ( offset_value > 8191ULL )
-                {
-                    return 0;
-                }
                 value->items[i] = (uint16_t) offset_value;
             }
         }

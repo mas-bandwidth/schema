@@ -101,10 +101,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_table_hit_event( serialize_re
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 4095ULL )
-        {
-            return 0;
-        }
         value->damage = (int32_t) offset_value;
     }
     {
@@ -115,10 +111,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_table_hit_event( serialize_re
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 7ULL )
-        {
-            return 0;
-        }
         value->hit_kind = (int32_t) offset_value;
     }
     {
@@ -164,10 +156,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_table_chat_event( serialize_r
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 3ULL )
-        {
-            return 0;
-        }
         value->channel = (int32_t) offset_value;
     }
     {
@@ -221,10 +209,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_table_pickup_event( serialize
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 255ULL )
-        {
-            return 0;
-        }
         value->amount = (int32_t) offset_value;
     }
     return 1;

@@ -103,10 +103,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_default_arm( serialize_read_s
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 7ULL )
-        {
-            return 0;
-        }
         value->marker = (uint8_t) offset_value;
     }
     return 1;
