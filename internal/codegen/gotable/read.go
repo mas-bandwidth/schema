@@ -53,6 +53,10 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	if g.retain || st.IsMapEntry() || g.regional && ir.VariableTables(g.unit)[st.Name] {
 		return
 	}
+	if g.hasFixedForm(st) {
+		g.emitFixedForm1Load(st)
+		return
+	}
 	g.pf("func %sLoad(value *%s, data []byte, report *TableReport) bool {\n", n, g.storageName(n))
 	g.pf("\tif report == nil { var ignored TableReport; report = &ignored }\n")
 	g.pf("\tr, verdict := tableOpen(data, report); report.Verdict = verdict; report.Reason = \"\"\n")

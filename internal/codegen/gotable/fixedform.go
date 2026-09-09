@@ -7,6 +7,10 @@
 // the packet codec with byte-width stores instead of shifts. The reader is
 // ONE plan-driven path. There is no version byte inside the layout; the form
 // byte versions it. The word is LAYOUT, not block.
+//
+// Form-1 Load of a table that has FixedLoad is a named refusal (Glenn
+// 2026-09-09), never a slow read. Writer emits 3 only. The C++ reference
+// still accepts both by the form byte; this port does not copy that.
 package gotable
 
 import (
@@ -288,16 +292,23 @@ func (g *tableGen) isVarTable(name string) bool {
 	return ir.VariableTables(g.unit)[name]
 }
 
+// hasFixedForm is whether this table emits FixedLoad/FixedSave. A regional
+// unit skips the fixed form entirely, so a mixed unit's fixed-size tables
+// keep form-1 Load. Glenn 2026-09-09: a form-1 file of a table that has
+// FixedLoad is a named refusal, never a slow read.
+func (g *tableGen) hasFixedForm(st *ir.Struct) bool {
+	if g.regional || !st.IsTable || st.IsMapEntry() || g.isVarTable(st.Name) || !fixedSupported(st, 0) {
+		return false
+	}
+	return g.fixedLeafCount(st) <= fixedLeafCap
+}
+
 func (g *tableGen) fixedRoots(members []*ir.Struct) []*ir.Struct {
 	var out []*ir.Struct
 	for _, st := range members {
-		if !st.IsTable || st.IsMapEntry() || g.isVarTable(st.Name) || !fixedSupported(st, 0) {
-			continue
+		if g.hasFixedForm(st) {
+			out = append(out, st)
 		}
-		if g.fixedLeafCount(st) > fixedLeafCap {
-			continue
-		}
-		out = append(out, st)
 	}
 	return out
 }
@@ -665,7 +676,9 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("func %sFixedLoad(values []%s, data []byte, plan []TableFixedEntry, report *TableReport) int64 {\n", st.Name, st.Name)
 	g.pf("\tif report == nil {\n\t\tvar local TableReport\n\t\treport = &local\n\t}\n")
 	g.pf("\tif len(data) < 5 {\n\t\treport.Malformed = true\n\t\treturn -1\n\t}\n")
-	g.pf("\tif data[0] != TableFixedForm {\n\t\treturn tableFixedRefuse(report, \"newer_form\")\n\t}\n")
+	g.pf("\tif data[0] != TableFixedForm {\n")
+	g.pf("\t\tif data[0] < TableFixedForm {\n\t\t\treturn tableFixedRefuse(report, \"previous_form\")\n\t\t}\n")
+	g.pf("\t\treturn tableFixedRefuse(report, \"newer_form\")\n\t}\n")
 	g.pf("\tlayoutBytes := tableFixedGet32(data[1:])\n")
 	g.pf("\tif int64(layoutBytes)+5 > int64(len(data)) {\n\t\treturn tableFixedRefuse(report, \"layout_malformed\")\n\t}\n")
 	g.pf("\tlayout := data[5 : 5+layoutBytes]\n")
@@ -693,6 +706,26 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\t\ttableFixedRun(entries, entryCount, at[8:], dst, report)\n")
 	g.pf("\t\tat = at[recordBytes:]\n")
 	g.pf("\t}\n\treturn n\n}\n\n")
+}
+
+// emitFixedForm1Load is the form-1 file reader for a table that also has
+// FixedLoad. Form 1 is previous_form; the slow tableOpen walk never runs.
+// Other bytes keep the form-1 Load's existing refusal names. The C++
+// reference still accepts form 1 on this type (cpptable/fixedform.go:19);
+// Glenn says refuse.
+func (g *tableGen) emitFixedForm1Load(st *ir.Struct) {
+	n := st.Name
+	g.pf("func %sLoad(value *%s, data []byte, report *TableReport) bool {\n", n, g.storageName(n))
+	g.pf("\tif report == nil { var ignored TableReport; report = &ignored }\n")
+	g.pf("\t%sReset(value)\n", n)
+	g.pf("\tif len(data) > 0 && data[0] == 1 {\n")
+	g.pf("\t\ttableFixedRefuse(report, \"previous_form\")\n")
+	g.pf("\t\treturn false\n")
+	g.pf("\t}\n")
+	g.pf("\t_, verdict := tableOpen(data, report); report.Verdict = verdict; report.Reason = \"\"\n")
+	g.pf("\tif verdict == TableOpenRefused { report.Reason = \"unsupported wire form\"; if len(data) > 0 && data[0] == 2 { report.Reason = \"message form requires an announced vocabulary and a message reader\" } }\n")
+	g.pf("\tif verdict == TableOpenDamaged { report.Malformed = true }\n")
+	g.pf("\treturn false\n}\n\n")
 }
 
 func (g *tableGen) emitByteArray(b []byte) {

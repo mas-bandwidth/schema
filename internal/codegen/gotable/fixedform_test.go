@@ -33,6 +33,7 @@ table Point {
 		"no_layout",
 		"plan_too_large",
 		"newer_form",
+		"previous_form",
 		"tableFixedParseLayout",
 		"PointFixedLayout",
 		"PointFixedPlan",
@@ -43,6 +44,16 @@ table Point {
 	}
 	if strings.Contains(body, "block_malformed") {
 		t.Error("the layout is still named a block")
+	}
+	load := funcSource(body, "func PointLoad(")
+	if load == "" {
+		t.Fatal("PointLoad was not emitted")
+	}
+	if !strings.Contains(load, "previous_form") || !strings.Contains(load, "tableFixedRefuse") {
+		t.Error("PointLoad of a fixed-table type is not a named form-1 refusal")
+	}
+	if strings.Contains(load, "PointLoadBody") {
+		t.Error("PointLoad still walks a form-1 file of a declared-fixed table")
 	}
 }
 
@@ -76,6 +87,12 @@ func TestRoundTrip(t *testing.T) {
 	r = TableReport{}
 	if n := PointFixedLoad(got, other, plan, &r); n >= 0 || r.Reason != "newer_form" {
 		t.Fatalf("newer_form: %d %+v", n, r)
+	}
+	older := append([]byte(nil), buf...)
+	older[0] = 1
+	r = TableReport{}
+	if n := PointFixedLoad(got, older, plan, &r); n >= 0 || r.Reason != "previous_form" || r.Verdict != TableOpenRefused {
+		t.Fatalf("FixedLoad previous_form: %d %+v", n, r)
 	}
 	broken := append([]byte(nil), buf...)
 	broken[5] ^= 0xFF
@@ -288,4 +305,92 @@ func writeUnit(t *testing.T, out, pkg, schema, runtime string) {
 	if err := os.WriteFile(filepath.Join(out, "go.mod"), []byte(mod), 0o600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestForm1OfFixedTableRefused(t *testing.T) {
+	runGenerated(t, `package probe
+table Point {
+    x int32 = 1
+    y int32 = 2
+}
+`, `package probe
+import ("testing")
+
+func TestForm1LoadIsNamedRefusal(t *testing.T) {
+	one := Point{X: 4242, Y: -7}
+	need := PointMeasure(&one)
+	if need < 0 {
+		t.Fatal("measure")
+	}
+	form1 := make([]byte, need)
+	if n := PointSave(&one, form1); n != need {
+		t.Fatalf("form-1 save %d", n)
+	}
+	if form1[0] != 1 {
+		t.Fatalf("form-1 save wrote %d", form1[0])
+	}
+	var got Point
+	var r TableReport
+	if PointLoad(&got, form1, &r) {
+		t.Fatalf("form-1 Load of a fixed-table type succeeded: %+v seq=%+v", r, got)
+	}
+	if r.Reason != "previous_form" || r.Verdict != TableOpenRefused || r.Malformed {
+		t.Fatalf("want named previous_form, got %+v", r)
+	}
+	if got.X == 4242 || got.Y == -7 {
+		t.Fatalf("form-1 Load of a fixed-table type was a slow read: %+v", got)
+	}
+	batch := make([]Point, 1)
+	r = TableReport{}
+	plan := make([]TableFixedEntry, 64)
+	n := PointFixedLoad(batch, form1, plan, &r)
+	if n >= 0 || r.Reason != "previous_form" || r.Verdict != TableOpenRefused {
+		t.Fatalf("FixedLoad(form1): n=%d %+v", n, r)
+	}
+}
+`)
+}
+
+func TestForm1OfVariableTableStillLoads(t *testing.T) {
+	runGenerated(t, `package probe
+table Node {
+    n int32 = 5
+    next *Node
+}
+`, `package probe
+import ("testing"; "unsafe")
+
+func TestForm1VariableLoad(t *testing.T) {
+	var b NodeBuilder
+	if !b.Init() {
+		t.Fatal("init")
+	}
+	defer b.Shutdown()
+	root := b.GetRoot()
+	root.N = 9
+	need := NodeMeasure(root, &b.Arena)
+	if need < 0 {
+		t.Fatal("measure")
+	}
+	form1 := make([]byte, need)
+	if n := NodeSave(root, form1, &b.Arena); n != need {
+		t.Fatalf("save %d", n)
+	}
+	if form1[0] != 1 {
+		t.Fatalf("variable save wrote form %d", form1[0])
+	}
+	size := NodeLoadMeasure(form1)
+	if size < 0 {
+		t.Fatal("load measure")
+	}
+	raw := make([]byte, size+16)
+	off := (-uintptr(unsafe.Pointer(&raw[0]))) & 15
+	region := raw[off : off+uintptr(size)]
+	var r TableReport
+	got := NodeLoad(region, form1, &r)
+	if got == nil || r != (TableReport{}) || got.N != 9 {
+		t.Fatalf("variable form-1 Load: %+v report %+v", got, r)
+	}
+}
+`)
 }

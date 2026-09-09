@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
@@ -22,6 +23,56 @@ func runGeneratedResult(t *testing.T, schema, testSource string, flags ...string
 	t.Helper()
 	return runGeneratedEdited(t, schema, testSource, nil, flags...)
 }
+
+// form1RootLoadHelper is the old form-1 open+body walk, for tests of the
+// form-1 writer and LoadBody. RootLoad of a table that has FixedLoad refuses
+// form 1 by name; these tests still need the body walk.
+const form1RootLoadHelper = `
+func load1(value *Root, data []byte, report *TableReport) bool {
+	if report == nil {
+		var ignored TableReport
+		report = &ignored
+	}
+	r, verdict := tableOpen(data, report)
+	report.Verdict = verdict
+	report.Reason = ""
+	if verdict == TableOpenRefused {
+		report.Reason = "unsupported wire form"
+		if len(data) > 0 && data[0] == 2 {
+			report.Reason = "message form requires an announced vocabulary and a message reader"
+		}
+	}
+	if verdict != TableOpenOk {
+		RootReset(value)
+		if verdict == TableOpenDamaged {
+			report.Malformed = true
+		}
+		return false
+	}
+	before := *report
+	if !RootLoadBody(&r, value) {
+		probe := r
+		probe.Offset = 0
+		if probe.EndsEarly() {
+			RootReset(value)
+			*report = before
+			report.Malformed = true
+			report.Verdict = TableOpenDamaged
+			return false
+		}
+		report.Verdict = TableOpenBodyStopped
+		return false
+	}
+	if r.Offset != int64(len(r.Buffer)) {
+		RootReset(value)
+		*report = before
+		report.Malformed = true
+		report.Verdict = TableOpenDamaged
+		return false
+	}
+	return true
+}
+`
 
 func runGeneratedEdited(t *testing.T, schema, testSource string, edit func(map[string][]byte), flags ...string) ([]byte, error) {
 	t.Helper()
@@ -42,6 +93,9 @@ func runGeneratedEdited(t *testing.T, schema, testSource string, edit func(map[s
 	runtime, err := filepath.Abs("../../../../serialize.go")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(variableTableNames(u)) == 0 && strings.Contains(testSource, "RootLoad(") {
+		testSource = strings.ReplaceAll(testSource, "RootLoad(", "load1(") + form1RootLoadHelper
 	}
 	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
 	files["values_test.go"] = []byte(testSource)
