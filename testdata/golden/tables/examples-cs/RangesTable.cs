@@ -100,16 +100,187 @@ namespace Tabledemo
             value.EdgesCount = 0;
         }
 
+        public static bool RangedSignedCollectTyped(RangedSigned v, ref TableWire.Ids ids)
+        {
+            TableFieldInfo[] fields = RangedSignedTableType().Fields;
+            if (v.I8Span != 0 && !ids.Add(0x48121511bf702eb5ul)) return false;
+            if (v.I8Low != 0 && !ids.Add(0x942bfe3168090f7dul)) return false;
+            if (v.I8High != 0 && !ids.Add(0xd182acd105b55dd1ul)) return false;
+            if (v.I8Inside != 0 && !ids.Add(0xef9ded23c8912a81ul)) return false;
+            if (v.I16Span != 0 && !ids.Add(0xb655574ea23760b4ul)) return false;
+            if (v.I16Low != 0 && !ids.Add(0xd217b3af8d7a2bdeul)) return false;
+            if (v.I16High != 0 && !ids.Add(0x90652f70c9127900ul)) return false;
+            if (v.I16Inside != 0 && !ids.Add(0x6a659d7c354db158ul)) return false;
+            if (v.I32Span != 0 && !ids.Add(0xe693bd88532c91d6ul)) return false;
+            if (v.I32Low != 0 && !ids.Add(0x065ee827cf99fbb4ul)) return false;
+            if (v.I32High != 0 && !ids.Add(0xc9b121c4c2a186eeul)) return false;
+            if (v.I32Inside != 0 && !ids.Add(0xd363dfa465acf27aul)) return false;
+            if (v.I64Span != 0 && !ids.Add(0x7549c70700c49d6ful)) return false;
+            if (v.I64Low != 0 && !ids.Add(0x1cce6617419771dbul)) return false;
+            if (v.I64High != 0 && !ids.Add(0x3b54fa60620b5597ul)) return false;
+            if (v.I64Inside != 0 && !ids.Add(0xd308fcb98ece5d23ul)) return false;
+            if (!TableWire.CollectField(v, fields[16], ref ids)) return false;
+            return true;
+        }
+
+        public static bool CollectTyped(RangedSigned v, ref TableWire.Ids ids) => RangedSignedCollectTyped(v, ref ids);
+
+        public static long RangedSignedBodySizeTyped(RangedSigned v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
+        {
+            long n = 1;
+            TableFieldInfo[] fields = RangedSignedTableType().Fields;
+            if (v.I8Span != 0) { n += TableWire.VarSize(ids.Reference(0x48121511bf702eb5ul)) + 2; }
+            if (v.I8Low != 0) { n += TableWire.VarSize(ids.Reference(0x942bfe3168090f7dul)) + 2; }
+            if (v.I8High != 0) { n += TableWire.VarSize(ids.Reference(0xd182acd105b55dd1ul)) + 2; }
+            if (v.I8Inside != 0) { n += TableWire.VarSize(ids.Reference(0xef9ded23c8912a81ul)) + 2; }
+            if (v.I16Span != 0) { n += TableWire.VarSize(ids.Reference(0xb655574ea23760b4ul)) + 3; }
+            if (v.I16Low != 0) { n += TableWire.VarSize(ids.Reference(0xd217b3af8d7a2bdeul)) + 3; }
+            if (v.I16High != 0) { n += TableWire.VarSize(ids.Reference(0x90652f70c9127900ul)) + 3; }
+            if (v.I16Inside != 0) { n += TableWire.VarSize(ids.Reference(0x6a659d7c354db158ul)) + 3; }
+            if (v.I32Span != 0) { n += TableWire.VarSize(ids.Reference(0xe693bd88532c91d6ul)) + 5; }
+            if (v.I32Low != 0) { n += TableWire.VarSize(ids.Reference(0x065ee827cf99fbb4ul)) + 5; }
+            if (v.I32High != 0) { n += TableWire.VarSize(ids.Reference(0xc9b121c4c2a186eeul)) + 5; }
+            if (v.I32Inside != 0) { n += TableWire.VarSize(ids.Reference(0xd363dfa465acf27aul)) + 5; }
+            if (v.I64Span != 0) { n += TableWire.VarSize(ids.Reference(0x7549c70700c49d6ful)) + 9; }
+            if (v.I64Low != 0) { n += TableWire.VarSize(ids.Reference(0x1cce6617419771dbul)) + 9; }
+            if (v.I64High != 0) { n += TableWire.VarSize(ids.Reference(0x3b54fa60620b5597ul)) + 9; }
+            if (v.I64Inside != 0) { n += TableWire.VarSize(ids.Reference(0xd308fcb98ece5d23ul)) + 9; }
+            n += TableWire.BodySizeField(v, fields[16], ref ids, default, out long payload_16);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[16] = payload_16; }
+            return n;
+        }
+
+        public static long BodySizeTyped(RangedSigned v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => RangedSignedBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
+
+        public static void RangedSignedWriteBodyTyped(ref TableWire.Writer w, RangedSigned v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
+        {
+            TableFieldInfo[] fields = RangedSignedTableType().Fields;
+            if (v.I8Span != 0)
+            {
+                w.Header(ids.Reference(0x48121511bf702eb5ul), 2);
+                w.Fixed((ulong)(long)v.I8Span, 1);
+            }
+            if (v.I8Low != 0)
+            {
+                w.Header(ids.Reference(0x942bfe3168090f7dul), 2);
+                w.Fixed((ulong)(long)v.I8Low, 1);
+            }
+            if (v.I8High != 0)
+            {
+                w.Header(ids.Reference(0xd182acd105b55dd1ul), 2);
+                w.Fixed((ulong)(long)v.I8High, 1);
+            }
+            if (v.I8Inside != 0)
+            {
+                w.Header(ids.Reference(0xef9ded23c8912a81ul), 2);
+                w.Fixed((ulong)(long)v.I8Inside, 1);
+            }
+            if (v.I16Span != 0)
+            {
+                w.Header(ids.Reference(0xb655574ea23760b4ul), 3);
+                w.Fixed((ulong)(long)v.I16Span, 2);
+            }
+            if (v.I16Low != 0)
+            {
+                w.Header(ids.Reference(0xd217b3af8d7a2bdeul), 3);
+                w.Fixed((ulong)(long)v.I16Low, 2);
+            }
+            if (v.I16High != 0)
+            {
+                w.Header(ids.Reference(0x90652f70c9127900ul), 3);
+                w.Fixed((ulong)(long)v.I16High, 2);
+            }
+            if (v.I16Inside != 0)
+            {
+                w.Header(ids.Reference(0x6a659d7c354db158ul), 3);
+                w.Fixed((ulong)(long)v.I16Inside, 2);
+            }
+            if (v.I32Span != 0)
+            {
+                w.Header(ids.Reference(0xe693bd88532c91d6ul), 4);
+                w.Fixed((ulong)(long)v.I32Span, 4);
+            }
+            if (v.I32Low != 0)
+            {
+                w.Header(ids.Reference(0x065ee827cf99fbb4ul), 4);
+                w.Fixed((ulong)(long)v.I32Low, 4);
+            }
+            if (v.I32High != 0)
+            {
+                w.Header(ids.Reference(0xc9b121c4c2a186eeul), 4);
+                w.Fixed((ulong)(long)v.I32High, 4);
+            }
+            if (v.I32Inside != 0)
+            {
+                w.Header(ids.Reference(0xd363dfa465acf27aul), 4);
+                w.Fixed((ulong)(long)v.I32Inside, 4);
+            }
+            if (v.I64Span != 0)
+            {
+                w.Header(ids.Reference(0x7549c70700c49d6ful), 5);
+                w.Fixed((ulong)(long)v.I64Span, 8);
+            }
+            if (v.I64Low != 0)
+            {
+                w.Header(ids.Reference(0x1cce6617419771dbul), 5);
+                w.Fixed((ulong)(long)v.I64Low, 8);
+            }
+            if (v.I64High != 0)
+            {
+                w.Header(ids.Reference(0x3b54fa60620b5597ul), 5);
+                w.Fixed((ulong)(long)v.I64High, 8);
+            }
+            if (v.I64Inside != 0)
+            {
+                w.Header(ids.Reference(0xd308fcb98ece5d23ul), 5);
+                w.Fixed((ulong)(long)v.I64Inside, 8);
+            }
+            long payload_16 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[16] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[16], ref ids, default, payload_16);
+            w.Var(0);
+        }
+
+        public static void WriteBodyTyped(ref TableWire.Writer w, RangedSigned v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => RangedSignedWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
+
+        public static long RangedSignedSaveTyped(RangedSigned value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
+        {
+            TableTypeInfo type = RangedSignedTableType();
+            int slots = 0;
+            if (vocabulary.Length <= 1024)
+            {
+                slots = 1;
+                while (slots < vocabulary.Length * 2) { slots <<= 1; }
+            }
+            Span<int> index = stackalloc int[slots];
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            if (!RangedSignedCollectTyped(value, ref ids)) { return -1; }
+            int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
+            Span<long> rootPayloadSizes = stackalloc long[cachedFields];
+            int cachedElemSlots = !measure ? type.RootElemSlots : 0;
+            Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
+            long n = 1 + RangedSignedBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
+            if (measure) { return n; }
+            if (n > buffer.Length) { return -1; }
+            scoped TableWire.Writer w = new TableWire.Writer(buffer);
+            w.Byte(1);
+            RangedSignedWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
+            for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
+            w.Fixed((ulong)ids.Count, 8);
+            return w.Offset;
+        }
+
+        public static long SaveTyped(RangedSigned value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => RangedSignedSaveTyped(value, buffer, vocabulary, measure);
+
         public static long RangedSignedMeasure(RangedSigned value)
         {
             Span<ulong> ids = stackalloc ulong[155];
-            return TableWire.Save(value, RangedSignedTableType(), Span<byte>.Empty, ids, true);
+            return RangedSignedSaveTyped(value, Span<byte>.Empty, ids, true);
         }
 
         public static long RangedSignedSave(RangedSigned value, Span<byte> buffer)
         {
             Span<ulong> ids = stackalloc ulong[155];
-            return TableWire.Save(value, RangedSignedTableType(), buffer, ids, false);
+            return RangedSignedSaveTyped(value, buffer, ids, false);
         }
 
         public static TableWire.Verdict RangedSignedLoadVerdict(RangedSigned value, ReadOnlySpan<byte> bytes, TableReport report)
@@ -153,16 +324,187 @@ namespace Tabledemo
             value.CountsCount = 0;
         }
 
+        public static bool RangedUnsignedCollectTyped(RangedUnsigned v, ref TableWire.Ids ids)
+        {
+            TableFieldInfo[] fields = RangedUnsignedTableType().Fields;
+            if (v.U8Span != 0 && !ids.Add(0x0f8897557f37c021ul)) return false;
+            if (v.U8Low != 0 && !ids.Add(0x2e17553f8200a2a1ul)) return false;
+            if (v.U8High != 1 && !ids.Add(0xa0e5c60df9301b7dul)) return false;
+            if (v.U8Inside != 1 && !ids.Add(0x1cb2c073a6f5844dul)) return false;
+            if (v.U16Span != 0 && !ids.Add(0x4ca0c150b1790960ul)) return false;
+            if (v.U16Low != 0 && !ids.Add(0xf252136836b04cb2ul)) return false;
+            if (v.U16High != 1 && !ids.Add(0x4f37e1f216e7610cul)) return false;
+            if (v.U16Inside != 1 && !ids.Add(0xd176b605978f3304ul)) return false;
+            if (v.U32Span != 0 && !ids.Add(0x200b924de7479cdaul)) return false;
+            if (v.U32Low != 0 && !ids.Add(0xa53d2f2a31b5acb0ul)) return false;
+            if (v.U32High != 1 && !ids.Add(0x9759be8ea1a4e3d2ul)) return false;
+            if (v.U32Inside != 1 && !ids.Add(0x8dc515fc082e3c0eul)) return false;
+            if (v.U64Span != 0 && !ids.Add(0xbeecef11dbdf8973ul)) return false;
+            if (v.U64Low != 0 && !ids.Add(0x0117ad66e0fff227ul)) return false;
+            if (v.U64High != 1ul && !ids.Add(0xf2b45af3b50689dbul)) return false;
+            if (v.U64Inside != 1ul && !ids.Add(0x713e12017eebcaf7ul)) return false;
+            if (!TableWire.CollectField(v, fields[16], ref ids)) return false;
+            return true;
+        }
+
+        public static bool CollectTyped(RangedUnsigned v, ref TableWire.Ids ids) => RangedUnsignedCollectTyped(v, ref ids);
+
+        public static long RangedUnsignedBodySizeTyped(RangedUnsigned v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
+        {
+            long n = 1;
+            TableFieldInfo[] fields = RangedUnsignedTableType().Fields;
+            if (v.U8Span != 0) { n += TableWire.VarSize(ids.Reference(0x0f8897557f37c021ul)) + 2; }
+            if (v.U8Low != 0) { n += TableWire.VarSize(ids.Reference(0x2e17553f8200a2a1ul)) + 2; }
+            if (v.U8High != 1) { n += TableWire.VarSize(ids.Reference(0xa0e5c60df9301b7dul)) + 2; }
+            if (v.U8Inside != 1) { n += TableWire.VarSize(ids.Reference(0x1cb2c073a6f5844dul)) + 2; }
+            if (v.U16Span != 0) { n += TableWire.VarSize(ids.Reference(0x4ca0c150b1790960ul)) + 3; }
+            if (v.U16Low != 0) { n += TableWire.VarSize(ids.Reference(0xf252136836b04cb2ul)) + 3; }
+            if (v.U16High != 1) { n += TableWire.VarSize(ids.Reference(0x4f37e1f216e7610cul)) + 3; }
+            if (v.U16Inside != 1) { n += TableWire.VarSize(ids.Reference(0xd176b605978f3304ul)) + 3; }
+            if (v.U32Span != 0) { n += TableWire.VarSize(ids.Reference(0x200b924de7479cdaul)) + 5; }
+            if (v.U32Low != 0) { n += TableWire.VarSize(ids.Reference(0xa53d2f2a31b5acb0ul)) + 5; }
+            if (v.U32High != 1) { n += TableWire.VarSize(ids.Reference(0x9759be8ea1a4e3d2ul)) + 5; }
+            if (v.U32Inside != 1) { n += TableWire.VarSize(ids.Reference(0x8dc515fc082e3c0eul)) + 5; }
+            if (v.U64Span != 0) { n += TableWire.VarSize(ids.Reference(0xbeecef11dbdf8973ul)) + 9; }
+            if (v.U64Low != 0) { n += TableWire.VarSize(ids.Reference(0x0117ad66e0fff227ul)) + 9; }
+            if (v.U64High != 1ul) { n += TableWire.VarSize(ids.Reference(0xf2b45af3b50689dbul)) + 9; }
+            if (v.U64Inside != 1ul) { n += TableWire.VarSize(ids.Reference(0x713e12017eebcaf7ul)) + 9; }
+            n += TableWire.BodySizeField(v, fields[16], ref ids, default, out long payload_16);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[16] = payload_16; }
+            return n;
+        }
+
+        public static long BodySizeTyped(RangedUnsigned v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => RangedUnsignedBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
+
+        public static void RangedUnsignedWriteBodyTyped(ref TableWire.Writer w, RangedUnsigned v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
+        {
+            TableFieldInfo[] fields = RangedUnsignedTableType().Fields;
+            if (v.U8Span != 0)
+            {
+                w.Header(ids.Reference(0x0f8897557f37c021ul), 6);
+                w.Fixed((ulong)v.U8Span, 1);
+            }
+            if (v.U8Low != 0)
+            {
+                w.Header(ids.Reference(0x2e17553f8200a2a1ul), 6);
+                w.Fixed((ulong)v.U8Low, 1);
+            }
+            if (v.U8High != 1)
+            {
+                w.Header(ids.Reference(0xa0e5c60df9301b7dul), 6);
+                w.Fixed((ulong)v.U8High, 1);
+            }
+            if (v.U8Inside != 1)
+            {
+                w.Header(ids.Reference(0x1cb2c073a6f5844dul), 6);
+                w.Fixed((ulong)v.U8Inside, 1);
+            }
+            if (v.U16Span != 0)
+            {
+                w.Header(ids.Reference(0x4ca0c150b1790960ul), 7);
+                w.Fixed((ulong)v.U16Span, 2);
+            }
+            if (v.U16Low != 0)
+            {
+                w.Header(ids.Reference(0xf252136836b04cb2ul), 7);
+                w.Fixed((ulong)v.U16Low, 2);
+            }
+            if (v.U16High != 1)
+            {
+                w.Header(ids.Reference(0x4f37e1f216e7610cul), 7);
+                w.Fixed((ulong)v.U16High, 2);
+            }
+            if (v.U16Inside != 1)
+            {
+                w.Header(ids.Reference(0xd176b605978f3304ul), 7);
+                w.Fixed((ulong)v.U16Inside, 2);
+            }
+            if (v.U32Span != 0)
+            {
+                w.Header(ids.Reference(0x200b924de7479cdaul), 8);
+                w.Fixed((ulong)v.U32Span, 4);
+            }
+            if (v.U32Low != 0)
+            {
+                w.Header(ids.Reference(0xa53d2f2a31b5acb0ul), 8);
+                w.Fixed((ulong)v.U32Low, 4);
+            }
+            if (v.U32High != 1)
+            {
+                w.Header(ids.Reference(0x9759be8ea1a4e3d2ul), 8);
+                w.Fixed((ulong)v.U32High, 4);
+            }
+            if (v.U32Inside != 1)
+            {
+                w.Header(ids.Reference(0x8dc515fc082e3c0eul), 8);
+                w.Fixed((ulong)v.U32Inside, 4);
+            }
+            if (v.U64Span != 0)
+            {
+                w.Header(ids.Reference(0xbeecef11dbdf8973ul), 9);
+                w.Fixed((ulong)v.U64Span, 8);
+            }
+            if (v.U64Low != 0)
+            {
+                w.Header(ids.Reference(0x0117ad66e0fff227ul), 9);
+                w.Fixed((ulong)v.U64Low, 8);
+            }
+            if (v.U64High != 1ul)
+            {
+                w.Header(ids.Reference(0xf2b45af3b50689dbul), 9);
+                w.Fixed((ulong)v.U64High, 8);
+            }
+            if (v.U64Inside != 1ul)
+            {
+                w.Header(ids.Reference(0x713e12017eebcaf7ul), 9);
+                w.Fixed((ulong)v.U64Inside, 8);
+            }
+            long payload_16 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[16] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[16], ref ids, default, payload_16);
+            w.Var(0);
+        }
+
+        public static void WriteBodyTyped(ref TableWire.Writer w, RangedUnsigned v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => RangedUnsignedWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
+
+        public static long RangedUnsignedSaveTyped(RangedUnsigned value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
+        {
+            TableTypeInfo type = RangedUnsignedTableType();
+            int slots = 0;
+            if (vocabulary.Length <= 1024)
+            {
+                slots = 1;
+                while (slots < vocabulary.Length * 2) { slots <<= 1; }
+            }
+            Span<int> index = stackalloc int[slots];
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            if (!RangedUnsignedCollectTyped(value, ref ids)) { return -1; }
+            int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
+            Span<long> rootPayloadSizes = stackalloc long[cachedFields];
+            int cachedElemSlots = !measure ? type.RootElemSlots : 0;
+            Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
+            long n = 1 + RangedUnsignedBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
+            if (measure) { return n; }
+            if (n > buffer.Length) { return -1; }
+            scoped TableWire.Writer w = new TableWire.Writer(buffer);
+            w.Byte(1);
+            RangedUnsignedWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
+            for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
+            w.Fixed((ulong)ids.Count, 8);
+            return w.Offset;
+        }
+
+        public static long SaveTyped(RangedUnsigned value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => RangedUnsignedSaveTyped(value, buffer, vocabulary, measure);
+
         public static long RangedUnsignedMeasure(RangedUnsigned value)
         {
             Span<ulong> ids = stackalloc ulong[155];
-            return TableWire.Save(value, RangedUnsignedTableType(), Span<byte>.Empty, ids, true);
+            return RangedUnsignedSaveTyped(value, Span<byte>.Empty, ids, true);
         }
 
         public static long RangedUnsignedSave(RangedUnsigned value, Span<byte> buffer)
         {
             Span<ulong> ids = stackalloc ulong[155];
-            return TableWire.Save(value, RangedUnsignedTableType(), buffer, ids, false);
+            return RangedUnsignedSaveTyped(value, buffer, ids, false);
         }
 
         public static TableWire.Verdict RangedUnsignedLoadVerdict(RangedUnsigned value, ReadOnlySpan<byte> bytes, TableReport report)
@@ -194,16 +536,109 @@ namespace Tabledemo
             value.B48 = 0;
         }
 
+        public static bool RangedWidthsCollectTyped(RangedWidths v, ref TableWire.Ids ids)
+        {
+            if (v.B8 != 0 && !ids.Add(0x08a60c07b54d8dc7ul)) return false;
+            if (v.B16 != 0 && !ids.Add(0xff95701912ad97beul)) return false;
+            if (v.B32 != 0 && !ids.Add(0xff9c5c1912b39470ul)) return false;
+            if (v.B64 != 0 && !ids.Add(0xff92701912ab61e7ul)) return false;
+            if (v.B12 != 0 && !ids.Add(0xff95741912ad9e8aul)) return false;
+            if (v.B48 != 0 && !ids.Add(0xff8b681912a535a1ul)) return false;
+            return true;
+        }
+
+        public static bool CollectTyped(RangedWidths v, ref TableWire.Ids ids) => RangedWidthsCollectTyped(v, ref ids);
+
+        public static long RangedWidthsBodySizeTyped(RangedWidths v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
+        {
+            long n = 1;
+            if (v.B8 != 0) { n += TableWire.VarSize(ids.Reference(0x08a60c07b54d8dc7ul)) + 2; }
+            if (v.B16 != 0) { n += TableWire.VarSize(ids.Reference(0xff95701912ad97beul)) + 3; }
+            if (v.B32 != 0) { n += TableWire.VarSize(ids.Reference(0xff9c5c1912b39470ul)) + 5; }
+            if (v.B64 != 0) { n += TableWire.VarSize(ids.Reference(0xff92701912ab61e7ul)) + 9; }
+            if (v.B12 != 0) { n += TableWire.VarSize(ids.Reference(0xff95741912ad9e8aul)) + 3; }
+            if (v.B48 != 0) { n += TableWire.VarSize(ids.Reference(0xff8b681912a535a1ul)) + 9; }
+            return n;
+        }
+
+        public static long BodySizeTyped(RangedWidths v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => RangedWidthsBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
+
+        public static void RangedWidthsWriteBodyTyped(ref TableWire.Writer w, RangedWidths v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
+        {
+            if (v.B8 != 0)
+            {
+                w.Header(ids.Reference(0x08a60c07b54d8dc7ul), 6);
+                w.Fixed((ulong)v.B8, 1);
+            }
+            if (v.B16 != 0)
+            {
+                w.Header(ids.Reference(0xff95701912ad97beul), 7);
+                w.Fixed((ulong)v.B16, 2);
+            }
+            if (v.B32 != 0)
+            {
+                w.Header(ids.Reference(0xff9c5c1912b39470ul), 8);
+                w.Fixed((ulong)v.B32, 4);
+            }
+            if (v.B64 != 0)
+            {
+                w.Header(ids.Reference(0xff92701912ab61e7ul), 9);
+                w.Fixed((ulong)v.B64, 8);
+            }
+            if (v.B12 != 0)
+            {
+                w.Header(ids.Reference(0xff95741912ad9e8aul), 7);
+                w.Fixed((ulong)v.B12, 2);
+            }
+            if (v.B48 != 0)
+            {
+                w.Header(ids.Reference(0xff8b681912a535a1ul), 9);
+                w.Fixed((ulong)v.B48, 8);
+            }
+            w.Var(0);
+        }
+
+        public static void WriteBodyTyped(ref TableWire.Writer w, RangedWidths v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => RangedWidthsWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
+
+        public static long RangedWidthsSaveTyped(RangedWidths value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
+        {
+            TableTypeInfo type = RangedWidthsTableType();
+            int slots = 0;
+            if (vocabulary.Length <= 1024)
+            {
+                slots = 1;
+                while (slots < vocabulary.Length * 2) { slots <<= 1; }
+            }
+            Span<int> index = stackalloc int[slots];
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            if (!RangedWidthsCollectTyped(value, ref ids)) { return -1; }
+            int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
+            Span<long> rootPayloadSizes = stackalloc long[cachedFields];
+            int cachedElemSlots = !measure ? type.RootElemSlots : 0;
+            Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
+            long n = 1 + RangedWidthsBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
+            if (measure) { return n; }
+            if (n > buffer.Length) { return -1; }
+            scoped TableWire.Writer w = new TableWire.Writer(buffer);
+            w.Byte(1);
+            RangedWidthsWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
+            for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
+            w.Fixed((ulong)ids.Count, 8);
+            return w.Offset;
+        }
+
+        public static long SaveTyped(RangedWidths value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => RangedWidthsSaveTyped(value, buffer, vocabulary, measure);
+
         public static long RangedWidthsMeasure(RangedWidths value)
         {
             Span<ulong> ids = stackalloc ulong[155];
-            return TableWire.Save(value, RangedWidthsTableType(), Span<byte>.Empty, ids, true);
+            return RangedWidthsSaveTyped(value, Span<byte>.Empty, ids, true);
         }
 
         public static long RangedWidthsSave(RangedWidths value, Span<byte> buffer)
         {
             Span<ulong> ids = stackalloc ulong[155];
-            return TableWire.Save(value, RangedWidthsTableType(), buffer, ids, false);
+            return RangedWidthsSaveTyped(value, buffer, ids, false);
         }
 
         public static TableWire.Verdict RangedWidthsLoadVerdict(RangedWidths value, ReadOnlySpan<byte> bytes, TableReport report)
