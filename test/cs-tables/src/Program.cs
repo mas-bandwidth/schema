@@ -1761,6 +1761,7 @@ static partial class Program
         goldenDir = FindGoldenDir();
 
         TestWireContracts();
+        TestVocabularyDistinctness();
         TestRootPayloadSizes();
         TestRootReset();
         TestUnionContracts();
