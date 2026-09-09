@@ -490,16 +490,25 @@ func (g *tableGen) emitWireUnion(un *ir.Union, expr, writer, ind string) {
 		if g.retain {
 			restore = g.retainWritePush(writer, fmt.Sprint(ordinal+1))
 		}
-		payload := g.nextWireWriter()
 		arm := g.unionArmExpr(un, v, expr)
-		g.pf("%sstart := %s.Ids.Count; %s := TableWriter{Measuring:true, Ids:%s.Ids}\n", i, writer, payload, writer)
-		g.emitWireValue(v.F, arm, payload, i, false)
-		g.pf("%sif %s.Overflow { return false }\n", i, payload)
-		g.emitHeader(i, writer, "ref", fmt.Sprintf("%d", kind))
-		g.emitPutLeb(i, writer, "uint64("+payload+".Offset)")
-		g.pf("%sif %s.Measuring { %s.Advance(%s.Offset) } else {\n%s %s.Ids.Truncate(start)\n", i, writer, writer, payload, i, writer)
-		g.emitWireValue(v.F, arm, writer, i+"\t", false)
-		g.pf("%s}\n", i)
+		// A table-body arm is the framed nested-struct case. Retain keeps the
+		// nested measuring writer: its Path push sits on that writer.
+		if !g.retain && v.Body() {
+			g.pf("%s{\n%s mark := %s.Ids.Count\n%s n := %sMeasureBody(&%s,%s.Ids); if n < 0 { return false }\n", i, i, writer, i, v.F.Type.Name, arm, writer)
+			g.emitHeader(i+" ", writer, "ref", fmt.Sprintf("%d", kind))
+			g.emitPutLeb(i+" ", writer, "uint64(n)")
+			g.pf("%s if %s.Measuring { %s.Advance(n) } else {\n%s  %s.Ids.Truncate(mark)\n%s  if !%sSaveBody(%s,&%s) { return false }\n%s }\n%s}\n", i, writer, writer, i, writer, i, v.F.Type.Name, writerPointer(writer), arm, i, i)
+		} else {
+			payload := g.nextWireWriter()
+			g.pf("%sstart := %s.Ids.Count; %s := TableWriter{Measuring:true, Ids:%s.Ids}\n", i, writer, payload, writer)
+			g.emitWireValue(v.F, arm, payload, i, false)
+			g.pf("%sif %s.Overflow { return false }\n", i, payload)
+			g.emitHeader(i, writer, "ref", fmt.Sprintf("%d", kind))
+			g.emitPutLeb(i, writer, "uint64("+payload+".Offset)")
+			g.pf("%sif %s.Measuring { %s.Advance(%s.Offset) } else {\n%s %s.Ids.Truncate(start)\n", i, writer, writer, payload, i, writer)
+			g.emitWireValue(v.F, arm, writer, i+"\t", false)
+			g.pf("%s}\n", i)
+		}
 		if restore != "" {
 			g.retainWritePop(writer, restore)
 		}

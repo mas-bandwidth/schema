@@ -4252,74 +4252,71 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 					}
 				case TableEventTypeHit:
 					ref := w.Ids.refAtHit(18, 0x33732819300680aa)
-					start := w.Ids.Count
-					payload23 := TableWriter{Measuring: true, Ids: w.Ids}
-					if !TableHitEventSaveBody(&payload23, &payload22.Hit) {
-						return false
-					}
-					if payload23.Overflow {
-						return false
-					}
-					if !w.headerPair(ref, 13) {
-						w.headerRest(ref, 13)
-					}
-					if !w.putLebPair(uint64(payload23.Offset)) {
-						w.putLebWide(uint64(payload23.Offset))
-					}
-					if w.Measuring {
-						w.Advance(payload23.Offset)
-					} else {
-						w.Ids.Truncate(start)
-						if !TableHitEventSaveBody(w, &payload22.Hit) {
+					{
+						mark := w.Ids.Count
+						n := TableHitEventMeasureBody(&payload22.Hit, w.Ids)
+						if n < 0 {
 							return false
+						}
+						if !w.headerPair(ref, 13) {
+							w.headerRest(ref, 13)
+						}
+						if !w.putLebPair(uint64(n)) {
+							w.putLebWide(uint64(n))
+						}
+						if w.Measuring {
+							w.Advance(n)
+						} else {
+							w.Ids.Truncate(mark)
+							if !TableHitEventSaveBody(w, &payload22.Hit) {
+								return false
+							}
 						}
 					}
 				case TableEventTypeChat:
 					ref := w.Ids.refAtHit(74, 0xf2a38d910b5b348b)
-					start := w.Ids.Count
-					payload24 := TableWriter{Measuring: true, Ids: w.Ids}
-					if !TableChatEventSaveBody(&payload24, &payload22.Chat) {
-						return false
-					}
-					if payload24.Overflow {
-						return false
-					}
-					if !w.headerPair(ref, 13) {
-						w.headerRest(ref, 13)
-					}
-					if !w.putLebPair(uint64(payload24.Offset)) {
-						w.putLebWide(uint64(payload24.Offset))
-					}
-					if w.Measuring {
-						w.Advance(payload24.Offset)
-					} else {
-						w.Ids.Truncate(start)
-						if !TableChatEventSaveBody(w, &payload22.Chat) {
+					{
+						mark := w.Ids.Count
+						n := TableChatEventMeasureBody(&payload22.Chat, w.Ids)
+						if n < 0 {
 							return false
+						}
+						if !w.headerPair(ref, 13) {
+							w.headerRest(ref, 13)
+						}
+						if !w.putLebPair(uint64(n)) {
+							w.putLebWide(uint64(n))
+						}
+						if w.Measuring {
+							w.Advance(n)
+						} else {
+							w.Ids.Truncate(mark)
+							if !TableChatEventSaveBody(w, &payload22.Chat) {
+								return false
+							}
 						}
 					}
 				case TableEventTypePickup:
 					ref := w.Ids.refAtHit(52, 0x9fa3a41c86ecb765)
-					start := w.Ids.Count
-					payload25 := TableWriter{Measuring: true, Ids: w.Ids}
-					if !TablePickupEventSaveBody(&payload25, &payload22.Pickup) {
-						return false
-					}
-					if payload25.Overflow {
-						return false
-					}
-					if !w.headerPair(ref, 13) {
-						w.headerRest(ref, 13)
-					}
-					if !w.putLebPair(uint64(payload25.Offset)) {
-						w.putLebWide(uint64(payload25.Offset))
-					}
-					if w.Measuring {
-						w.Advance(payload25.Offset)
-					} else {
-						w.Ids.Truncate(start)
-						if !TablePickupEventSaveBody(w, &payload22.Pickup) {
+					{
+						mark := w.Ids.Count
+						n := TablePickupEventMeasureBody(&payload22.Pickup, w.Ids)
+						if n < 0 {
 							return false
+						}
+						if !w.headerPair(ref, 13) {
+							w.headerRest(ref, 13)
+						}
+						if !w.putLebPair(uint64(n)) {
+							w.putLebWide(uint64(n))
+						}
+						if w.Measuring {
+							w.Advance(n)
+						} else {
+							w.Ids.Truncate(mark)
+							if !TablePickupEventSaveBody(w, &payload22.Pickup) {
+								return false
+							}
 						}
 					}
 				default:
@@ -4342,16 +4339,16 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload26 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload23 := TableWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
 				for i := 0; i < int(4); i++ {
-					payload26.Put8(uint8(value.Loadout[i]))
+					payload23.Put8(uint8(value.Loadout[i]))
 					pairs++
 				}
-				if payload26.Overflow {
+				if payload23.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload26.Offset
+				n := int64(1) + tableLebBytes(pairs) + payload23.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -4400,16 +4397,16 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload29 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload26 := TableWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
 				for i := 0; i < int(value.PayloadLength); i++ {
-					payload29.Put8(uint8(value.Payload[i]))
+					payload26.Put8(uint8(value.Payload[i]))
 					pairs++
 				}
-				if payload29.Overflow {
+				if payload26.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload29.Offset
+				n := int64(1) + tableLebBytes(pairs) + payload26.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -5042,14 +5039,14 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				break
 			}
 			{
-				payload33 := &value.GameEvent
+				payload30 := &value.GameEvent
 				armRef, ok := r.Leb()
 				if !ok {
 					r.Report.Malformed = true
 					return false
 				}
 				if armRef == 0 {
-					payload33.Type = TableEventTypeNone
+					payload30.Type = TableEventTypeNone
 				} else {
 					armID, ok := r.Resolve(armRef)
 					if !ok || !r.Has(1) {
@@ -5057,22 +5054,22 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 						return false
 					}
 					armKind := r.Get8()
-					payload32, ok := r.Body()
+					payload29, ok := r.Body()
 					if !ok {
 						r.Report.Malformed = true
 						return false
 					}
-					payload33.Type = TableEventTypeNone
+					payload30.Type = TableEventTypeNone
 					switch armID {
 					case 0x33732819300680aa:
 						if armKind != 13 {
 							r.Report.KindMismatch++
 							break
 						}
-						payload33.Type = TableEventTypeHit
-						TableHitEventLoadBody(&payload32, &payload33.Hit)
-						if payload32.Offset != int64(len(payload32.Buffer)) {
-							payload33.Type = TableEventTypeNone
+						payload30.Type = TableEventTypeHit
+						TableHitEventLoadBody(&payload29, &payload30.Hit)
+						if payload29.Offset != int64(len(payload29.Buffer)) {
+							payload30.Type = TableEventTypeNone
 							r.Report.Malformed = true
 							break
 						}
@@ -5081,10 +5078,10 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 							r.Report.KindMismatch++
 							break
 						}
-						payload33.Type = TableEventTypeChat
-						TableChatEventLoadBody(&payload32, &payload33.Chat)
-						if payload32.Offset != int64(len(payload32.Buffer)) {
-							payload33.Type = TableEventTypeNone
+						payload30.Type = TableEventTypeChat
+						TableChatEventLoadBody(&payload29, &payload30.Chat)
+						if payload29.Offset != int64(len(payload29.Buffer)) {
+							payload30.Type = TableEventTypeNone
 							r.Report.Malformed = true
 							break
 						}
@@ -5093,10 +5090,10 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 							r.Report.KindMismatch++
 							break
 						}
-						payload33.Type = TableEventTypePickup
-						TablePickupEventLoadBody(&payload32, &payload33.Pickup)
-						if payload32.Offset != int64(len(payload32.Buffer)) {
-							payload33.Type = TableEventTypeNone
+						payload30.Type = TableEventTypePickup
+						TablePickupEventLoadBody(&payload29, &payload30.Pickup)
+						if payload29.Offset != int64(len(payload29.Buffer)) {
+							payload30.Type = TableEventTypeNone
 							r.Report.Malformed = true
 							break
 						}
@@ -5999,13 +5996,13 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload34 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload34.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload31 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload31.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload34.Unsigned(entry.Shape.Kind)
+						v := payload31.Unsigned(entry.Shape.Kind)
 						value.ProtocolMagic = uint16(v)
 					}
 				}
@@ -6034,13 +6031,13 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload35 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload35.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload32 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload32.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload35.Unsigned(entry.Shape.Kind)
+						v := payload32.Unsigned(entry.Shape.Kind)
 						if v > 65535 {
 							v = 65535
 							r.Report.Clamped++
@@ -6073,13 +6070,13 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload36 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload36.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload33 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload33.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload36.Signed(entry.Shape.Kind)
+						v := payload33.Signed(entry.Shape.Kind)
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
@@ -6115,13 +6112,13 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload37 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload37.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload34 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload34.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload37.Unsigned(entry.Shape.Kind)
+						v := payload34.Unsigned(entry.Shape.Kind)
 						if v > 4294967295 {
 							v = 4294967295
 							r.Report.Clamped++
@@ -6154,13 +6151,13 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload38 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload38.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload35 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload35.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload38.Unsigned(entry.Shape.Kind)
+						v := payload35.Unsigned(entry.Shape.Kind)
 						value.SessionId = uint64(v)
 					}
 				}
@@ -6189,13 +6186,13 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload39 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload39.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload36 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload36.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload39.Unsigned(entry.Shape.Kind)
+						v := payload36.Unsigned(entry.Shape.Kind)
 						value.ClientId = uint32(v)
 					}
 				}
@@ -6224,13 +6221,13 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload40 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload40.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload37 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload37.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload40.Unsigned(entry.Shape.Kind)
+						v := payload37.Unsigned(entry.Shape.Kind)
 						if v < 1 {
 							v = 1
 							r.Report.Clamped++
@@ -6266,13 +6263,13 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload41 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload41.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload38 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload38.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload41.Signed(entry.Shape.Kind)
+						v := payload38.Signed(entry.Shape.Kind)
 						if v < -1000000000000 {
 							v = -1000000000000
 							r.Report.Clamped++
@@ -6308,13 +6305,13 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload42 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload42.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload39 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload39.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload42.Unsigned(entry.Shape.Kind)
+						v := payload39.Unsigned(entry.Shape.Kind)
 						if v > 281474976710655 {
 							v = 281474976710655
 							r.Report.Clamped++
@@ -6347,13 +6344,13 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload43 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload43.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload40 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload40.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := math.Float32frombits(payload43.Get32())
+						v := math.Float32frombits(payload40.Get32())
 						if v < 0.0 {
 							v = 0.0
 							r.Report.Clamped++
@@ -6496,7 +6493,7 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 					}
 				}
 				{
-					payload44 := &value.GameEvent
+					payload41 := &value.GameEvent
 					{
 						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 						if !ok {
@@ -6504,36 +6501,36 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 							return false
 						}
 						if ref == 0 {
-							(*payload44).Type = TableEventTypeNone
+							(*payload41).Type = TableEventTypeNone
 						} else {
-							payload45, ok := r.Vocabulary.Entry(ref)
-							if !ok || payload45.Id >= 0xfffffffffffffffd || payload45.Shape.Kind == 0 {
+							payload42, ok := r.Vocabulary.Entry(ref)
+							if !ok || payload42.Id >= 0xfffffffffffffffd || payload42.Shape.Kind == 0 {
 								r.Report.Malformed = true
 								return false
 							}
-							switch payload45.Id {
+							switch payload42.Id {
 							case 0x33732819300680aa:
 								{
 									widened := false
-									if payload45.Shape.Kind != 13 || payload45.Element.Kind != 0 {
+									if payload42.Shape.Kind != 13 || payload42.Element.Kind != 0 {
 										if false {
 											widened = true
 										} else {
-											(*payload44).Type = TableEventTypeNone
+											(*payload41).Type = TableEventTypeNone
 											r.Report.KindMismatch++
-											if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, payload45, 0) {
+											if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, payload42, 0) {
 												r.Report.Malformed = true
 												return false
 											}
 											break
 										}
 									}
-									(*payload44).Type = TableEventTypeHit
+									(*payload41).Type = TableEventTypeHit
 									{
-										value := &(*payload44)
+										value := &(*payload41)
 										TableHitEventReset(&value.Hit)
 									}
-									if !TableHitEventLoadMessageBody(r, &(*payload44).Hit) {
+									if !TableHitEventLoadMessageBody(r, &(*payload41).Hit) {
 										return false
 									}
 									if widened {
@@ -6543,25 +6540,25 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 							case 0xf2a38d910b5b348b:
 								{
 									widened := false
-									if payload45.Shape.Kind != 13 || payload45.Element.Kind != 0 {
+									if payload42.Shape.Kind != 13 || payload42.Element.Kind != 0 {
 										if false {
 											widened = true
 										} else {
-											(*payload44).Type = TableEventTypeNone
+											(*payload41).Type = TableEventTypeNone
 											r.Report.KindMismatch++
-											if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, payload45, 0) {
+											if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, payload42, 0) {
 												r.Report.Malformed = true
 												return false
 											}
 											break
 										}
 									}
-									(*payload44).Type = TableEventTypeChat
+									(*payload41).Type = TableEventTypeChat
 									{
-										value := &(*payload44)
+										value := &(*payload41)
 										TableChatEventReset(&value.Chat)
 									}
-									if !TableChatEventLoadMessageBody(r, &(*payload44).Chat) {
+									if !TableChatEventLoadMessageBody(r, &(*payload41).Chat) {
 										return false
 									}
 									if widened {
@@ -6571,25 +6568,25 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 							case 0x9fa3a41c86ecb765:
 								{
 									widened := false
-									if payload45.Shape.Kind != 13 || payload45.Element.Kind != 0 {
+									if payload42.Shape.Kind != 13 || payload42.Element.Kind != 0 {
 										if false {
 											widened = true
 										} else {
-											(*payload44).Type = TableEventTypeNone
+											(*payload41).Type = TableEventTypeNone
 											r.Report.KindMismatch++
-											if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, payload45, 0) {
+											if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, payload42, 0) {
 												r.Report.Malformed = true
 												return false
 											}
 											break
 										}
 									}
-									(*payload44).Type = TableEventTypePickup
+									(*payload41).Type = TableEventTypePickup
 									{
-										value := &(*payload44)
+										value := &(*payload41)
 										TablePickupEventReset(&value.Pickup)
 									}
-									if !TablePickupEventLoadMessageBody(r, &(*payload44).Pickup) {
+									if !TablePickupEventLoadMessageBody(r, &(*payload41).Pickup) {
 										return false
 									}
 									if widened {
@@ -6597,9 +6594,9 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 									}
 								}
 							default:
-								(*payload44).Type = TableEventTypeNone
+								(*payload41).Type = TableEventTypeNone
 								r.Report.Unknown++
-								if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, payload45, 0) {
+								if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, payload42, 0) {
 									r.Report.Malformed = true
 									return false
 								}
@@ -6659,13 +6656,13 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 								r.Report.Malformed = true
 								return false
 							}
-							payload46 := TableReader{Buffer: raw[:], Report: &r.Report}
-							if !payload46.Has(tableKindBytes(element.Shape.Kind)) {
+							payload43 := TableReader{Buffer: raw[:], Report: &r.Report}
+							if !payload43.Has(tableKindBytes(element.Shape.Kind)) {
 								r.Report.Malformed = true
 								return false
 							}
 							{
-								v := payload46.Unsigned(element.Shape.Kind)
+								v := payload43.Unsigned(element.Shape.Kind)
 								(*p) = uint8(v)
 							}
 						}
@@ -6781,13 +6778,13 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload47 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload47.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload44 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload44.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := math.Float32frombits(payload47.Get32())
+						v := math.Float32frombits(payload44.Get32())
 						if v < -1.0 {
 							v = -1.0
 							r.Report.Clamped++
@@ -6823,13 +6820,13 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload48 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload48.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload45 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload45.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := math.Float32frombits(payload48.Get32())
+						v := math.Float32frombits(payload45.Get32())
 						if v < -1.0 {
 							v = -1.0
 							r.Report.Clamped++
@@ -6865,13 +6862,13 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload49 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload49.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload46 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload46.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := math.Float32frombits(payload49.Get32())
+						v := math.Float32frombits(payload46.Get32())
 						if v < -1.0 {
 							v = -1.0
 							r.Report.Clamped++
@@ -6907,13 +6904,13 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload50 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload50.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload47 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload47.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := math.Float32frombits(payload50.Get32())
+						v := math.Float32frombits(payload47.Get32())
 						value.Recoil = v
 					}
 				}
@@ -6942,17 +6939,17 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload51 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload51.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload48 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload48.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
 						var v float64
 						if entry.Shape.Kind == 10 {
-							v = math.Float64frombits(tableWidenFloat(payload51.Get32()))
+							v = math.Float64frombits(tableWidenFloat(payload48.Get32()))
 						} else {
-							v = math.Float64frombits(payload51.Get64())
+							v = math.Float64frombits(payload48.Get64())
 						}
 						value.Drift = v
 					}
@@ -6982,13 +6979,13 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload52 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload52.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload49 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload49.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload52.Unsigned(entry.Shape.Kind)
+						v := payload49.Unsigned(entry.Shape.Kind)
 						value.WideKey = uint64(v)
 					}
 				}
@@ -7017,13 +7014,13 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload53 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload53.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload50 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload50.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload53.Signed(entry.Shape.Kind)
+						v := payload50.Signed(entry.Shape.Kind)
 						if v < -1000000000000000000 {
 							v = -1000000000000000000
 							r.Report.Clamped++
@@ -7059,13 +7056,13 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload54 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload54.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload51 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload51.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := math.Float32frombits(payload54.Get32())
+						v := math.Float32frombits(payload51.Get32())
 						if v < 0.0 {
 							v = 0.0
 							r.Report.Clamped++
@@ -7101,13 +7098,13 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload55 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload55.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload52 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload52.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload55.Unsigned(entry.Shape.Kind)
+						v := payload52.Unsigned(entry.Shape.Kind)
 						if v > 16777215 {
 							v = 16777215
 							r.Report.Clamped++
@@ -7140,12 +7137,12 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload56 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload56.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload53 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload53.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
-					value.HasExtra = payload56.Get8() != 0
+					value.HasExtra = payload53.Get8() != 0
 				}
 				if widened {
 					r.Report.Widened++
@@ -7172,13 +7169,13 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload57 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload57.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload54 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload54.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload57.Signed(entry.Shape.Kind)
+						v := payload54.Signed(entry.Shape.Kind)
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
@@ -7214,13 +7211,13 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload58 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload58.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload55 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload55.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload58.Signed(entry.Shape.Kind)
+						v := payload55.Signed(entry.Shape.Kind)
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
@@ -7705,13 +7702,13 @@ func TableHitEventLoadMessageBody(r *TableMessageReader, value *TableHitEvent) b
 						r.Report.Malformed = true
 						return false
 					}
-					payload59 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload59.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload56 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload56.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload59.Unsigned(entry.Shape.Kind)
+						v := payload56.Unsigned(entry.Shape.Kind)
 						if v > 4095 {
 							v = 4095
 							r.Report.Clamped++
@@ -7744,13 +7741,13 @@ func TableHitEventLoadMessageBody(r *TableMessageReader, value *TableHitEvent) b
 						r.Report.Malformed = true
 						return false
 					}
-					payload60 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload60.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload57 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload57.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload60.Signed(entry.Shape.Kind)
+						v := payload57.Signed(entry.Shape.Kind)
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
@@ -7786,13 +7783,13 @@ func TableHitEventLoadMessageBody(r *TableMessageReader, value *TableHitEvent) b
 						r.Report.Malformed = true
 						return false
 					}
-					payload61 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload61.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload58 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload58.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload61.Signed(entry.Shape.Kind)
+						v := payload58.Signed(entry.Shape.Kind)
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
@@ -7828,12 +7825,12 @@ func TableHitEventLoadMessageBody(r *TableMessageReader, value *TableHitEvent) b
 						r.Report.Malformed = true
 						return false
 					}
-					payload62 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload62.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload59 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload59.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
-					value.Crit = payload62.Get8() != 0
+					value.Crit = payload59.Get8() != 0
 				}
 				if widened {
 					r.Report.Widened++
@@ -8208,13 +8205,13 @@ func TableChatEventLoadMessageBody(r *TableMessageReader, value *TableChatEvent)
 						r.Report.Malformed = true
 						return false
 					}
-					payload63 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload63.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload60 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload60.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload63.Signed(entry.Shape.Kind)
+						v := payload60.Signed(entry.Shape.Kind)
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
@@ -8250,13 +8247,13 @@ func TableChatEventLoadMessageBody(r *TableMessageReader, value *TableChatEvent)
 						r.Report.Malformed = true
 						return false
 					}
-					payload64 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload64.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload61 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload61.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload64.Unsigned(entry.Shape.Kind)
+						v := payload61.Unsigned(entry.Shape.Kind)
 						if v > 4095 {
 							v = 4095
 							r.Report.Clamped++
@@ -8637,13 +8634,13 @@ func TablePickupEventLoadMessageBody(r *TableMessageReader, value *TablePickupEv
 						r.Report.Malformed = true
 						return false
 					}
-					payload65 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload65.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload62 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload62.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload65.Unsigned(entry.Shape.Kind)
+						v := payload62.Unsigned(entry.Shape.Kind)
 						if v > 1023 {
 							v = 1023
 							r.Report.Clamped++
@@ -8676,13 +8673,13 @@ func TablePickupEventLoadMessageBody(r *TableMessageReader, value *TablePickupEv
 						r.Report.Malformed = true
 						return false
 					}
-					payload66 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload66.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload63 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload63.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload66.Signed(entry.Shape.Kind)
+						v := payload63.Signed(entry.Shape.Kind)
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
