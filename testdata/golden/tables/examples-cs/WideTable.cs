@@ -40,16 +40,75 @@ namespace Tabledemo
             value.SamplesCount = 0;
         }
 
+        public static bool WideBlobCollectTyped(WideBlob v, ref TableWire.Ids ids)
+        {
+            TableFieldInfo[] fields = WideBlobTableType().Fields;
+            if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
+            if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
+            if (!TableWire.CollectField(v, fields[2], ref ids)) return false;
+            return true;
+        }
+
+        public static long WideBlobBodySizeTyped(WideBlob v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
+        {
+            long n = 1;
+            TableFieldInfo[] fields = WideBlobTableType().Fields;
+            n += TableWire.BodySizeField(v, fields[0], ref ids, default, out long payload_0);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[0] = payload_0; }
+            n += TableWire.BodySizeField(v, fields[1], ref ids);
+            n += TableWire.BodySizeField(v, fields[2], ref ids, default, out long payload_2);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[2] = payload_2; }
+            return n;
+        }
+
+        public static void WideBlobWriteBodyTyped(ref TableWire.Writer w, WideBlob v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
+        {
+            TableFieldInfo[] fields = WideBlobTableType().Fields;
+            long payload_0 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[0] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[0], ref ids, default, payload_0);
+            TableWire.WriteBodyField(ref w, v, fields[1], ref ids);
+            long payload_2 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[2] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[2], ref ids, default, payload_2);
+            w.Var(0);
+        }
+
+        public static long WideBlobSaveTyped(WideBlob value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
+        {
+            TableTypeInfo type = WideBlobTableType();
+            int slots = 0;
+            if (vocabulary.Length <= 1024)
+            {
+                slots = 1;
+                while (slots < vocabulary.Length * 2) { slots <<= 1; }
+            }
+            Span<int> index = stackalloc int[slots];
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            if (!WideBlobCollectTyped(value, ref ids)) { return -1; }
+            int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
+            Span<long> rootPayloadSizes = stackalloc long[cachedFields];
+            int cachedElemSlots = !measure ? type.RootElemSlots : 0;
+            Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
+            long n = 1 + WideBlobBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
+            if (measure) { return n; }
+            if (n > buffer.Length) { return -1; }
+            scoped TableWire.Writer w = new TableWire.Writer(buffer);
+            w.Byte(1);
+            WideBlobWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
+            for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
+            w.Fixed((ulong)ids.Count, 8);
+            return w.Offset;
+        }
+
         public static long WideBlobMeasure(WideBlob value)
         {
             Span<ulong> ids = stackalloc ulong[155];
-            return TableWire.Save(value, WideBlobTableType(), Span<byte>.Empty, ids, true);
+            return WideBlobSaveTyped(value, Span<byte>.Empty, ids, true);
         }
 
         public static long WideBlobSave(WideBlob value, Span<byte> buffer)
         {
             Span<ulong> ids = stackalloc ulong[155];
-            return TableWire.Save(value, WideBlobTableType(), buffer, ids, false);
+            return WideBlobSaveTyped(value, buffer, ids, false);
         }
 
         public static TableWire.Verdict WideBlobLoadVerdict(WideBlob value, ReadOnlySpan<byte> bytes, TableReport report)

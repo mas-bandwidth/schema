@@ -407,16 +407,260 @@ namespace Blockdemo
             value.ExplosionsCount = 0;
         }
 
+        public static bool RenderFrameCollectTyped(RenderFrame v, ref TableWire.Ids ids)
+        {
+            TableFieldInfo[] fields = RenderFrameTableType().Fields;
+            if (v.Version != 0 && !ids.Add(0xbb62c62c9808ea37ul)) return false;
+            if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
+            if (!TableWire.CollectField(v, fields[2], ref ids)) return false;
+            if (!TableWire.CollectField(v, fields[3], ref ids)) return false;
+            if (!TableWire.CollectField(v, fields[4], ref ids)) return false;
+            if (!TableWire.CollectField(v, fields[5], ref ids)) return false;
+            if (!TableWire.CollectField(v, fields[6], ref ids)) return false;
+            if (!TableWire.CollectField(v, fields[7], ref ids)) return false;
+            if (!TableWire.CollectField(v, fields[8], ref ids)) return false;
+            if (!TableWire.CollectField(v, fields[9], ref ids)) return false;
+            return true;
+        }
+
+        public static long RenderFrameBodySizeTyped(RenderFrame v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
+        {
+            long n = 1;
+            TableFieldInfo[] fields = RenderFrameTableType().Fields;
+            int elemOffset = 0;
+            if (v.Version != 0) { n += TableWire.VarSize(ids.Reference(0xbb62c62c9808ea37ul)) + 9; }
+            scoped Span<long> elemCache_1 = default;
+            if (!rootElemSizes.IsEmpty)
+            {
+                int c = TableWire.Count(v, fields[1]);
+                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                elemCache_1 = rootElemSizes.Slice(elemOffset, take);
+                elemOffset += take;
+            }
+            n += TableWire.BodySizeField(v, fields[1], ref ids, elemCache_1, out long payload_1);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[1] = payload_1; }
+            scoped Span<long> elemCache_2 = default;
+            if (!rootElemSizes.IsEmpty)
+            {
+                int c = TableWire.Count(v, fields[2]);
+                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                elemCache_2 = rootElemSizes.Slice(elemOffset, take);
+                elemOffset += take;
+            }
+            n += TableWire.BodySizeField(v, fields[2], ref ids, elemCache_2, out long payload_2);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[2] = payload_2; }
+            scoped Span<long> elemCache_3 = default;
+            if (!rootElemSizes.IsEmpty)
+            {
+                int c = TableWire.Count(v, fields[3]);
+                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                elemCache_3 = rootElemSizes.Slice(elemOffset, take);
+                elemOffset += take;
+            }
+            n += TableWire.BodySizeField(v, fields[3], ref ids, elemCache_3, out long payload_3);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[3] = payload_3; }
+            scoped Span<long> elemCache_4 = default;
+            if (!rootElemSizes.IsEmpty)
+            {
+                int c = TableWire.Count(v, fields[4]);
+                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                elemCache_4 = rootElemSizes.Slice(elemOffset, take);
+                elemOffset += take;
+            }
+            n += TableWire.BodySizeField(v, fields[4], ref ids, elemCache_4, out long payload_4);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[4] = payload_4; }
+            scoped Span<long> elemCache_5 = default;
+            if (!rootElemSizes.IsEmpty)
+            {
+                int c = TableWire.Count(v, fields[5]);
+                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                elemCache_5 = rootElemSizes.Slice(elemOffset, take);
+                elemOffset += take;
+            }
+            n += TableWire.BodySizeField(v, fields[5], ref ids, elemCache_5, out long payload_5);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[5] = payload_5; }
+            scoped Span<long> elemCache_6 = default;
+            if (!rootElemSizes.IsEmpty)
+            {
+                int c = TableWire.Count(v, fields[6]);
+                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                elemCache_6 = rootElemSizes.Slice(elemOffset, take);
+                elemOffset += take;
+            }
+            n += TableWire.BodySizeField(v, fields[6], ref ids, elemCache_6, out long payload_6);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[6] = payload_6; }
+            scoped Span<long> elemCache_7 = default;
+            if (!rootElemSizes.IsEmpty)
+            {
+                int c = TableWire.Count(v, fields[7]);
+                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                elemCache_7 = rootElemSizes.Slice(elemOffset, take);
+                elemOffset += take;
+            }
+            n += TableWire.BodySizeField(v, fields[7], ref ids, elemCache_7, out long payload_7);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[7] = payload_7; }
+            scoped Span<long> elemCache_8 = default;
+            if (!rootElemSizes.IsEmpty)
+            {
+                int c = TableWire.Count(v, fields[8]);
+                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                elemCache_8 = rootElemSizes.Slice(elemOffset, take);
+                elemOffset += take;
+            }
+            n += TableWire.BodySizeField(v, fields[8], ref ids, elemCache_8, out long payload_8);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[8] = payload_8; }
+            scoped Span<long> elemCache_9 = default;
+            if (!rootElemSizes.IsEmpty)
+            {
+                int c = TableWire.Count(v, fields[9]);
+                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                elemCache_9 = rootElemSizes.Slice(elemOffset, take);
+                elemOffset += take;
+            }
+            n += TableWire.BodySizeField(v, fields[9], ref ids, elemCache_9, out long payload_9);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[9] = payload_9; }
+            return n;
+        }
+
+        public static void RenderFrameWriteBodyTyped(ref TableWire.Writer w, RenderFrame v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
+        {
+            TableFieldInfo[] fields = RenderFrameTableType().Fields;
+            int elemOffset = 0;
+            if (v.Version != 0)
+            {
+                w.Header(ids.Reference(0xbb62c62c9808ea37ul), 9);
+                w.Fixed((ulong)v.Version, 8);
+            }
+            scoped ReadOnlySpan<long> elemCache_1 = default;
+            if (!rootElemSizes.IsEmpty)
+            {
+                int c = TableWire.Count(v, fields[1]);
+                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                elemCache_1 = rootElemSizes.Slice(elemOffset, take);
+                elemOffset += take;
+            }
+            long payload_1 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[1] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[1], ref ids, elemCache_1, payload_1);
+            scoped ReadOnlySpan<long> elemCache_2 = default;
+            if (!rootElemSizes.IsEmpty)
+            {
+                int c = TableWire.Count(v, fields[2]);
+                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                elemCache_2 = rootElemSizes.Slice(elemOffset, take);
+                elemOffset += take;
+            }
+            long payload_2 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[2] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[2], ref ids, elemCache_2, payload_2);
+            scoped ReadOnlySpan<long> elemCache_3 = default;
+            if (!rootElemSizes.IsEmpty)
+            {
+                int c = TableWire.Count(v, fields[3]);
+                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                elemCache_3 = rootElemSizes.Slice(elemOffset, take);
+                elemOffset += take;
+            }
+            long payload_3 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[3] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[3], ref ids, elemCache_3, payload_3);
+            scoped ReadOnlySpan<long> elemCache_4 = default;
+            if (!rootElemSizes.IsEmpty)
+            {
+                int c = TableWire.Count(v, fields[4]);
+                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                elemCache_4 = rootElemSizes.Slice(elemOffset, take);
+                elemOffset += take;
+            }
+            long payload_4 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[4] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[4], ref ids, elemCache_4, payload_4);
+            scoped ReadOnlySpan<long> elemCache_5 = default;
+            if (!rootElemSizes.IsEmpty)
+            {
+                int c = TableWire.Count(v, fields[5]);
+                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                elemCache_5 = rootElemSizes.Slice(elemOffset, take);
+                elemOffset += take;
+            }
+            long payload_5 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[5] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[5], ref ids, elemCache_5, payload_5);
+            scoped ReadOnlySpan<long> elemCache_6 = default;
+            if (!rootElemSizes.IsEmpty)
+            {
+                int c = TableWire.Count(v, fields[6]);
+                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                elemCache_6 = rootElemSizes.Slice(elemOffset, take);
+                elemOffset += take;
+            }
+            long payload_6 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[6] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[6], ref ids, elemCache_6, payload_6);
+            scoped ReadOnlySpan<long> elemCache_7 = default;
+            if (!rootElemSizes.IsEmpty)
+            {
+                int c = TableWire.Count(v, fields[7]);
+                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                elemCache_7 = rootElemSizes.Slice(elemOffset, take);
+                elemOffset += take;
+            }
+            long payload_7 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[7] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[7], ref ids, elemCache_7, payload_7);
+            scoped ReadOnlySpan<long> elemCache_8 = default;
+            if (!rootElemSizes.IsEmpty)
+            {
+                int c = TableWire.Count(v, fields[8]);
+                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                elemCache_8 = rootElemSizes.Slice(elemOffset, take);
+                elemOffset += take;
+            }
+            long payload_8 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[8] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[8], ref ids, elemCache_8, payload_8);
+            scoped ReadOnlySpan<long> elemCache_9 = default;
+            if (!rootElemSizes.IsEmpty)
+            {
+                int c = TableWire.Count(v, fields[9]);
+                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                elemCache_9 = rootElemSizes.Slice(elemOffset, take);
+                elemOffset += take;
+            }
+            long payload_9 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[9] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[9], ref ids, elemCache_9, payload_9);
+            w.Var(0);
+        }
+
+        public static long RenderFrameSaveTyped(RenderFrame value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
+        {
+            TableTypeInfo type = RenderFrameTableType();
+            int slots = 0;
+            if (vocabulary.Length <= 1024)
+            {
+                slots = 1;
+                while (slots < vocabulary.Length * 2) { slots <<= 1; }
+            }
+            Span<int> index = stackalloc int[slots];
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            if (!RenderFrameCollectTyped(value, ref ids)) { return -1; }
+            int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
+            Span<long> rootPayloadSizes = stackalloc long[cachedFields];
+            int cachedElemSlots = !measure ? type.RootElemSlots : 0;
+            Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
+            long n = 1 + RenderFrameBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
+            if (measure) { return n; }
+            if (n > buffer.Length) { return -1; }
+            scoped TableWire.Writer w = new TableWire.Writer(buffer);
+            w.Byte(1);
+            RenderFrameWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
+            for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
+            w.Fixed((ulong)ids.Count, 8);
+            return w.Offset;
+        }
+
         public static long RenderFrameMeasure(RenderFrame value)
         {
             Span<ulong> ids = stackalloc ulong[88];
-            return TableWire.Save(value, RenderFrameTableType(), Span<byte>.Empty, ids, true);
+            return RenderFrameSaveTyped(value, Span<byte>.Empty, ids, true);
         }
 
         public static long RenderFrameSave(RenderFrame value, Span<byte> buffer)
         {
             Span<ulong> ids = stackalloc ulong[88];
-            return TableWire.Save(value, RenderFrameTableType(), buffer, ids, false);
+            return RenderFrameSaveTyped(value, buffer, ids, false);
         }
 
         public static TableWire.Verdict RenderFrameLoadVerdict(RenderFrame value, ReadOnlySpan<byte> bytes, TableReport report)
@@ -448,16 +692,100 @@ namespace Blockdemo
             value.Fov = 0.0f;
         }
 
+        public static bool RenderCameraCollectTyped(RenderCamera v, ref TableWire.Ids ids)
+        {
+            TableFieldInfo[] fields = RenderCameraTableType().Fields;
+            if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
+            if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
+            if (v.CameraId != 0 && !ids.Add(0x9f61700f084ab92eul)) return false;
+            if (v.CameraType != 0 && !ids.Add(0x336d3dc7fffd0c9bul)) return false;
+            if (v.TargetObjectId != 0 && !ids.Add(0x6a0c6a156952b9c2ul)) return false;
+            if (v.Fov != 0.0f && !ids.Add(0xdcb27c18fed9e15cul)) return false;
+            return true;
+        }
+
+        public static long RenderCameraBodySizeTyped(RenderCamera v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
+        {
+            long n = 1;
+            TableFieldInfo[] fields = RenderCameraTableType().Fields;
+            n += TableWire.BodySizeField(v, fields[0], ref ids, default, out long payload_0);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[0] = payload_0; }
+            n += TableWire.BodySizeField(v, fields[1], ref ids, default, out long payload_1);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[1] = payload_1; }
+            if (v.CameraId != 0) { n += TableWire.VarSize(ids.Reference(0x9f61700f084ab92eul)) + 5; }
+            if (v.CameraType != 0) { n += TableWire.VarSize(ids.Reference(0x336d3dc7fffd0c9bul)) + 5; }
+            if (v.TargetObjectId != 0) { n += TableWire.VarSize(ids.Reference(0x6a0c6a156952b9c2ul)) + 5; }
+            if (v.Fov != 0.0f) { n += TableWire.VarSize(ids.Reference(0xdcb27c18fed9e15cul)) + 5; }
+            return n;
+        }
+
+        public static void RenderCameraWriteBodyTyped(ref TableWire.Writer w, RenderCamera v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
+        {
+            TableFieldInfo[] fields = RenderCameraTableType().Fields;
+            long payload_0 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[0] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[0], ref ids, default, payload_0);
+            long payload_1 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[1] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[1], ref ids, default, payload_1);
+            if (v.CameraId != 0)
+            {
+                w.Header(ids.Reference(0x9f61700f084ab92eul), 8);
+                w.Fixed((ulong)v.CameraId, 4);
+            }
+            if (v.CameraType != 0)
+            {
+                w.Header(ids.Reference(0x336d3dc7fffd0c9bul), 8);
+                w.Fixed((ulong)v.CameraType, 4);
+            }
+            if (v.TargetObjectId != 0)
+            {
+                w.Header(ids.Reference(0x6a0c6a156952b9c2ul), 8);
+                w.Fixed((ulong)v.TargetObjectId, 4);
+            }
+            if (v.Fov != 0.0f)
+            {
+                w.Header(ids.Reference(0xdcb27c18fed9e15cul), 10);
+                w.Fixed((ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v.Fov)), 4);
+            }
+            w.Var(0);
+        }
+
+        public static long RenderCameraSaveTyped(RenderCamera value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
+        {
+            TableTypeInfo type = RenderCameraTableType();
+            int slots = 0;
+            if (vocabulary.Length <= 1024)
+            {
+                slots = 1;
+                while (slots < vocabulary.Length * 2) { slots <<= 1; }
+            }
+            Span<int> index = stackalloc int[slots];
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            if (!RenderCameraCollectTyped(value, ref ids)) { return -1; }
+            int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
+            Span<long> rootPayloadSizes = stackalloc long[cachedFields];
+            int cachedElemSlots = !measure ? type.RootElemSlots : 0;
+            Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
+            long n = 1 + RenderCameraBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
+            if (measure) { return n; }
+            if (n > buffer.Length) { return -1; }
+            scoped TableWire.Writer w = new TableWire.Writer(buffer);
+            w.Byte(1);
+            RenderCameraWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
+            for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
+            w.Fixed((ulong)ids.Count, 8);
+            return w.Offset;
+        }
+
         public static long RenderCameraMeasure(RenderCamera value)
         {
             Span<ulong> ids = stackalloc ulong[88];
-            return TableWire.Save(value, RenderCameraTableType(), Span<byte>.Empty, ids, true);
+            return RenderCameraSaveTyped(value, Span<byte>.Empty, ids, true);
         }
 
         public static long RenderCameraSave(RenderCamera value, Span<byte> buffer)
         {
             Span<ulong> ids = stackalloc ulong[88];
-            return TableWire.Save(value, RenderCameraTableType(), buffer, ids, false);
+            return RenderCameraSaveTyped(value, buffer, ids, false);
         }
 
         public static TableWire.Verdict RenderCameraLoadVerdict(RenderCamera value, ReadOnlySpan<byte> bytes, TableReport report)
@@ -494,16 +822,123 @@ namespace Blockdemo
             value.PredictedExplode = false;
         }
 
+        public static bool RenderShipCollectTyped(RenderShip v, ref TableWire.Ids ids)
+        {
+            TableFieldInfo[] fields = RenderShipTableType().Fields;
+            if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
+            if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
+            if (!TableWire.CollectField(v, fields[2], ref ids)) return false;
+            if (v.ObjectId != 0 && !ids.Add(0x0bdab42c07f19812ul)) return false;
+            if (v.TargetObjectId != 0 && !ids.Add(0x6a0c6a156952b9c2ul)) return false;
+            if (v.Thrust != 0.0f && !ids.Add(0xcfd587cb3100cd73ul)) return false;
+            if (v.ObjectSequence != 0 && !ids.Add(0x5de0015285763c46ul)) return false;
+            if (!TableWire.CollectField(v, fields[7], ref ids)) return false;
+            if (!TableWire.CollectField(v, fields[8], ref ids)) return false;
+            if (v.HasTargetLock != false && !ids.Add(0x1554fa45a1220171ul)) return false;
+            if (v.PredictedExplode != false && !ids.Add(0x4d5be97ba1b9cb81ul)) return false;
+            return true;
+        }
+
+        public static long RenderShipBodySizeTyped(RenderShip v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
+        {
+            long n = 1;
+            TableFieldInfo[] fields = RenderShipTableType().Fields;
+            n += TableWire.BodySizeField(v, fields[0], ref ids, default, out long payload_0);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[0] = payload_0; }
+            n += TableWire.BodySizeField(v, fields[1], ref ids, default, out long payload_1);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[1] = payload_1; }
+            n += TableWire.BodySizeField(v, fields[2], ref ids);
+            if (v.ObjectId != 0) { n += TableWire.VarSize(ids.Reference(0x0bdab42c07f19812ul)) + 5; }
+            if (v.TargetObjectId != 0) { n += TableWire.VarSize(ids.Reference(0x6a0c6a156952b9c2ul)) + 5; }
+            if (v.Thrust != 0.0f) { n += TableWire.VarSize(ids.Reference(0xcfd587cb3100cd73ul)) + 5; }
+            if (v.ObjectSequence != 0) { n += TableWire.VarSize(ids.Reference(0x5de0015285763c46ul)) + 2; }
+            n += TableWire.BodySizeField(v, fields[7], ref ids);
+            n += TableWire.BodySizeField(v, fields[8], ref ids);
+            if (v.HasTargetLock != false) { n += TableWire.VarSize(ids.Reference(0x1554fa45a1220171ul)) + 2; }
+            if (v.PredictedExplode != false) { n += TableWire.VarSize(ids.Reference(0x4d5be97ba1b9cb81ul)) + 2; }
+            return n;
+        }
+
+        public static void RenderShipWriteBodyTyped(ref TableWire.Writer w, RenderShip v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
+        {
+            TableFieldInfo[] fields = RenderShipTableType().Fields;
+            long payload_0 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[0] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[0], ref ids, default, payload_0);
+            long payload_1 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[1] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[1], ref ids, default, payload_1);
+            TableWire.WriteBodyField(ref w, v, fields[2], ref ids);
+            if (v.ObjectId != 0)
+            {
+                w.Header(ids.Reference(0x0bdab42c07f19812ul), 8);
+                w.Fixed((ulong)v.ObjectId, 4);
+            }
+            if (v.TargetObjectId != 0)
+            {
+                w.Header(ids.Reference(0x6a0c6a156952b9c2ul), 8);
+                w.Fixed((ulong)v.TargetObjectId, 4);
+            }
+            if (v.Thrust != 0.0f)
+            {
+                w.Header(ids.Reference(0xcfd587cb3100cd73ul), 10);
+                w.Fixed((ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v.Thrust)), 4);
+            }
+            if (v.ObjectSequence != 0)
+            {
+                w.Header(ids.Reference(0x5de0015285763c46ul), 6);
+                w.Fixed((ulong)v.ObjectSequence, 1);
+            }
+            TableWire.WriteBodyField(ref w, v, fields[7], ref ids);
+            TableWire.WriteBodyField(ref w, v, fields[8], ref ids);
+            if (v.HasTargetLock != false)
+            {
+                w.Header(ids.Reference(0x1554fa45a1220171ul), 1);
+                w.Fixed(v.HasTargetLock ? 1ul : 0ul, 1);
+            }
+            if (v.PredictedExplode != false)
+            {
+                w.Header(ids.Reference(0x4d5be97ba1b9cb81ul), 1);
+                w.Fixed(v.PredictedExplode ? 1ul : 0ul, 1);
+            }
+            w.Var(0);
+        }
+
+        public static long RenderShipSaveTyped(RenderShip value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
+        {
+            TableTypeInfo type = RenderShipTableType();
+            int slots = 0;
+            if (vocabulary.Length <= 1024)
+            {
+                slots = 1;
+                while (slots < vocabulary.Length * 2) { slots <<= 1; }
+            }
+            Span<int> index = stackalloc int[slots];
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            if (!RenderShipCollectTyped(value, ref ids)) { return -1; }
+            int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
+            Span<long> rootPayloadSizes = stackalloc long[cachedFields];
+            int cachedElemSlots = !measure ? type.RootElemSlots : 0;
+            Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
+            long n = 1 + RenderShipBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
+            if (measure) { return n; }
+            if (n > buffer.Length) { return -1; }
+            scoped TableWire.Writer w = new TableWire.Writer(buffer);
+            w.Byte(1);
+            RenderShipWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
+            for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
+            w.Fixed((ulong)ids.Count, 8);
+            return w.Offset;
+        }
+
         public static long RenderShipMeasure(RenderShip value)
         {
             Span<ulong> ids = stackalloc ulong[88];
-            return TableWire.Save(value, RenderShipTableType(), Span<byte>.Empty, ids, true);
+            return RenderShipSaveTyped(value, Span<byte>.Empty, ids, true);
         }
 
         public static long RenderShipSave(RenderShip value, Span<byte> buffer)
         {
             Span<ulong> ids = stackalloc ulong[88];
-            return TableWire.Save(value, RenderShipTableType(), buffer, ids, false);
+            return RenderShipSaveTyped(value, buffer, ids, false);
         }
 
         public static TableWire.Verdict RenderShipLoadVerdict(RenderShip value, ReadOnlySpan<byte> bytes, TableReport report)
@@ -538,16 +973,119 @@ namespace Blockdemo
             value.HasTargetLock = false;
         }
 
+        public static bool RenderTurretCollectTyped(RenderTurret v, ref TableWire.Ids ids)
+        {
+            TableFieldInfo[] fields = RenderTurretTableType().Fields;
+            if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
+            if (v.Flags != 0 && !ids.Add(0x17a3a1a985f75aecul)) return false;
+            if (v.ObjectId != 0 && !ids.Add(0x0bdab42c07f19812ul)) return false;
+            if (v.ParentObjectId != 0 && !ids.Add(0x0bee7b3cb4046c93ul)) return false;
+            if (v.TurretIndex != 0 && !ids.Add(0x88a11a6aed541f54ul)) return false;
+            if (v.TargetObjectId != 0 && !ids.Add(0x6a0c6a156952b9c2ul)) return false;
+            if (v.ObjectSequence != 0 && !ids.Add(0x5de0015285763c46ul)) return false;
+            if (!TableWire.CollectField(v, fields[7], ref ids)) return false;
+            if (v.HasTargetLock != false && !ids.Add(0x1554fa45a1220171ul)) return false;
+            return true;
+        }
+
+        public static long RenderTurretBodySizeTyped(RenderTurret v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
+        {
+            long n = 1;
+            TableFieldInfo[] fields = RenderTurretTableType().Fields;
+            n += TableWire.BodySizeField(v, fields[0], ref ids, default, out long payload_0);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[0] = payload_0; }
+            if (v.Flags != 0) { n += TableWire.VarSize(ids.Reference(0x17a3a1a985f75aecul)) + 9; }
+            if (v.ObjectId != 0) { n += TableWire.VarSize(ids.Reference(0x0bdab42c07f19812ul)) + 5; }
+            if (v.ParentObjectId != 0) { n += TableWire.VarSize(ids.Reference(0x0bee7b3cb4046c93ul)) + 5; }
+            if (v.TurretIndex != 0) { n += TableWire.VarSize(ids.Reference(0x88a11a6aed541f54ul)) + 5; }
+            if (v.TargetObjectId != 0) { n += TableWire.VarSize(ids.Reference(0x6a0c6a156952b9c2ul)) + 5; }
+            if (v.ObjectSequence != 0) { n += TableWire.VarSize(ids.Reference(0x5de0015285763c46ul)) + 2; }
+            n += TableWire.BodySizeField(v, fields[7], ref ids);
+            if (v.HasTargetLock != false) { n += TableWire.VarSize(ids.Reference(0x1554fa45a1220171ul)) + 2; }
+            return n;
+        }
+
+        public static void RenderTurretWriteBodyTyped(ref TableWire.Writer w, RenderTurret v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
+        {
+            TableFieldInfo[] fields = RenderTurretTableType().Fields;
+            long payload_0 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[0] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[0], ref ids, default, payload_0);
+            if (v.Flags != 0)
+            {
+                w.Header(ids.Reference(0x17a3a1a985f75aecul), 9);
+                w.Fixed((ulong)v.Flags, 8);
+            }
+            if (v.ObjectId != 0)
+            {
+                w.Header(ids.Reference(0x0bdab42c07f19812ul), 8);
+                w.Fixed((ulong)v.ObjectId, 4);
+            }
+            if (v.ParentObjectId != 0)
+            {
+                w.Header(ids.Reference(0x0bee7b3cb4046c93ul), 8);
+                w.Fixed((ulong)v.ParentObjectId, 4);
+            }
+            if (v.TurretIndex != 0)
+            {
+                w.Header(ids.Reference(0x88a11a6aed541f54ul), 8);
+                w.Fixed((ulong)v.TurretIndex, 4);
+            }
+            if (v.TargetObjectId != 0)
+            {
+                w.Header(ids.Reference(0x6a0c6a156952b9c2ul), 8);
+                w.Fixed((ulong)v.TargetObjectId, 4);
+            }
+            if (v.ObjectSequence != 0)
+            {
+                w.Header(ids.Reference(0x5de0015285763c46ul), 6);
+                w.Fixed((ulong)v.ObjectSequence, 1);
+            }
+            TableWire.WriteBodyField(ref w, v, fields[7], ref ids);
+            if (v.HasTargetLock != false)
+            {
+                w.Header(ids.Reference(0x1554fa45a1220171ul), 1);
+                w.Fixed(v.HasTargetLock ? 1ul : 0ul, 1);
+            }
+            w.Var(0);
+        }
+
+        public static long RenderTurretSaveTyped(RenderTurret value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
+        {
+            TableTypeInfo type = RenderTurretTableType();
+            int slots = 0;
+            if (vocabulary.Length <= 1024)
+            {
+                slots = 1;
+                while (slots < vocabulary.Length * 2) { slots <<= 1; }
+            }
+            Span<int> index = stackalloc int[slots];
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            if (!RenderTurretCollectTyped(value, ref ids)) { return -1; }
+            int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
+            Span<long> rootPayloadSizes = stackalloc long[cachedFields];
+            int cachedElemSlots = !measure ? type.RootElemSlots : 0;
+            Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
+            long n = 1 + RenderTurretBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
+            if (measure) { return n; }
+            if (n > buffer.Length) { return -1; }
+            scoped TableWire.Writer w = new TableWire.Writer(buffer);
+            w.Byte(1);
+            RenderTurretWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
+            for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
+            w.Fixed((ulong)ids.Count, 8);
+            return w.Offset;
+        }
+
         public static long RenderTurretMeasure(RenderTurret value)
         {
             Span<ulong> ids = stackalloc ulong[88];
-            return TableWire.Save(value, RenderTurretTableType(), Span<byte>.Empty, ids, true);
+            return RenderTurretSaveTyped(value, Span<byte>.Empty, ids, true);
         }
 
         public static long RenderTurretSave(RenderTurret value, Span<byte> buffer)
         {
             Span<ulong> ids = stackalloc ulong[88];
-            return TableWire.Save(value, RenderTurretTableType(), buffer, ids, false);
+            return RenderTurretSaveTyped(value, buffer, ids, false);
         }
 
         public static TableWire.Verdict RenderTurretLoadVerdict(RenderTurret value, ReadOnlySpan<byte> bytes, TableReport report)
@@ -580,16 +1118,99 @@ namespace Blockdemo
             value.Team = global::Blockdemo.Team.None;
         }
 
+        public static bool RenderMissileCollectTyped(RenderMissile v, ref TableWire.Ids ids)
+        {
+            TableFieldInfo[] fields = RenderMissileTableType().Fields;
+            if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
+            if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
+            if (v.Flags != 0 && !ids.Add(0x17a3a1a985f75aecul)) return false;
+            if (v.ObjectId != 0 && !ids.Add(0x0bdab42c07f19812ul)) return false;
+            if (v.ObjectSequence != 0 && !ids.Add(0x5de0015285763c46ul)) return false;
+            if (!TableWire.CollectField(v, fields[5], ref ids)) return false;
+            if (!TableWire.CollectField(v, fields[6], ref ids)) return false;
+            return true;
+        }
+
+        public static long RenderMissileBodySizeTyped(RenderMissile v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
+        {
+            long n = 1;
+            TableFieldInfo[] fields = RenderMissileTableType().Fields;
+            n += TableWire.BodySizeField(v, fields[0], ref ids, default, out long payload_0);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[0] = payload_0; }
+            n += TableWire.BodySizeField(v, fields[1], ref ids, default, out long payload_1);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[1] = payload_1; }
+            if (v.Flags != 0) { n += TableWire.VarSize(ids.Reference(0x17a3a1a985f75aecul)) + 9; }
+            if (v.ObjectId != 0) { n += TableWire.VarSize(ids.Reference(0x0bdab42c07f19812ul)) + 5; }
+            if (v.ObjectSequence != 0) { n += TableWire.VarSize(ids.Reference(0x5de0015285763c46ul)) + 2; }
+            n += TableWire.BodySizeField(v, fields[5], ref ids);
+            n += TableWire.BodySizeField(v, fields[6], ref ids);
+            return n;
+        }
+
+        public static void RenderMissileWriteBodyTyped(ref TableWire.Writer w, RenderMissile v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
+        {
+            TableFieldInfo[] fields = RenderMissileTableType().Fields;
+            long payload_0 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[0] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[0], ref ids, default, payload_0);
+            long payload_1 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[1] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[1], ref ids, default, payload_1);
+            if (v.Flags != 0)
+            {
+                w.Header(ids.Reference(0x17a3a1a985f75aecul), 9);
+                w.Fixed((ulong)v.Flags, 8);
+            }
+            if (v.ObjectId != 0)
+            {
+                w.Header(ids.Reference(0x0bdab42c07f19812ul), 8);
+                w.Fixed((ulong)v.ObjectId, 4);
+            }
+            if (v.ObjectSequence != 0)
+            {
+                w.Header(ids.Reference(0x5de0015285763c46ul), 6);
+                w.Fixed((ulong)v.ObjectSequence, 1);
+            }
+            TableWire.WriteBodyField(ref w, v, fields[5], ref ids);
+            TableWire.WriteBodyField(ref w, v, fields[6], ref ids);
+            w.Var(0);
+        }
+
+        public static long RenderMissileSaveTyped(RenderMissile value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
+        {
+            TableTypeInfo type = RenderMissileTableType();
+            int slots = 0;
+            if (vocabulary.Length <= 1024)
+            {
+                slots = 1;
+                while (slots < vocabulary.Length * 2) { slots <<= 1; }
+            }
+            Span<int> index = stackalloc int[slots];
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            if (!RenderMissileCollectTyped(value, ref ids)) { return -1; }
+            int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
+            Span<long> rootPayloadSizes = stackalloc long[cachedFields];
+            int cachedElemSlots = !measure ? type.RootElemSlots : 0;
+            Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
+            long n = 1 + RenderMissileBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
+            if (measure) { return n; }
+            if (n > buffer.Length) { return -1; }
+            scoped TableWire.Writer w = new TableWire.Writer(buffer);
+            w.Byte(1);
+            RenderMissileWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
+            for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
+            w.Fixed((ulong)ids.Count, 8);
+            return w.Offset;
+        }
+
         public static long RenderMissileMeasure(RenderMissile value)
         {
             Span<ulong> ids = stackalloc ulong[88];
-            return TableWire.Save(value, RenderMissileTableType(), Span<byte>.Empty, ids, true);
+            return RenderMissileSaveTyped(value, Span<byte>.Empty, ids, true);
         }
 
         public static long RenderMissileSave(RenderMissile value, Span<byte> buffer)
         {
             Span<ulong> ids = stackalloc ulong[88];
-            return TableWire.Save(value, RenderMissileTableType(), buffer, ids, false);
+            return RenderMissileSaveTyped(value, buffer, ids, false);
         }
 
         public static TableWire.Verdict RenderMissileLoadVerdict(RenderMissile value, ReadOnlySpan<byte> bytes, TableReport report)
@@ -622,16 +1243,99 @@ namespace Blockdemo
             value.Team = global::Blockdemo.Team.None;
         }
 
+        public static bool RenderDynamicPropCollectTyped(RenderDynamicProp v, ref TableWire.Ids ids)
+        {
+            TableFieldInfo[] fields = RenderDynamicPropTableType().Fields;
+            if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
+            if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
+            if (v.Flags != 0 && !ids.Add(0x17a3a1a985f75aecul)) return false;
+            if (v.ObjectId != 0 && !ids.Add(0x0bdab42c07f19812ul)) return false;
+            if (v.ObjectSequence != 0 && !ids.Add(0x5de0015285763c46ul)) return false;
+            if (!TableWire.CollectField(v, fields[5], ref ids)) return false;
+            if (!TableWire.CollectField(v, fields[6], ref ids)) return false;
+            return true;
+        }
+
+        public static long RenderDynamicPropBodySizeTyped(RenderDynamicProp v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
+        {
+            long n = 1;
+            TableFieldInfo[] fields = RenderDynamicPropTableType().Fields;
+            n += TableWire.BodySizeField(v, fields[0], ref ids, default, out long payload_0);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[0] = payload_0; }
+            n += TableWire.BodySizeField(v, fields[1], ref ids, default, out long payload_1);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[1] = payload_1; }
+            if (v.Flags != 0) { n += TableWire.VarSize(ids.Reference(0x17a3a1a985f75aecul)) + 9; }
+            if (v.ObjectId != 0) { n += TableWire.VarSize(ids.Reference(0x0bdab42c07f19812ul)) + 5; }
+            if (v.ObjectSequence != 0) { n += TableWire.VarSize(ids.Reference(0x5de0015285763c46ul)) + 2; }
+            n += TableWire.BodySizeField(v, fields[5], ref ids);
+            n += TableWire.BodySizeField(v, fields[6], ref ids);
+            return n;
+        }
+
+        public static void RenderDynamicPropWriteBodyTyped(ref TableWire.Writer w, RenderDynamicProp v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
+        {
+            TableFieldInfo[] fields = RenderDynamicPropTableType().Fields;
+            long payload_0 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[0] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[0], ref ids, default, payload_0);
+            long payload_1 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[1] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[1], ref ids, default, payload_1);
+            if (v.Flags != 0)
+            {
+                w.Header(ids.Reference(0x17a3a1a985f75aecul), 9);
+                w.Fixed((ulong)v.Flags, 8);
+            }
+            if (v.ObjectId != 0)
+            {
+                w.Header(ids.Reference(0x0bdab42c07f19812ul), 8);
+                w.Fixed((ulong)v.ObjectId, 4);
+            }
+            if (v.ObjectSequence != 0)
+            {
+                w.Header(ids.Reference(0x5de0015285763c46ul), 6);
+                w.Fixed((ulong)v.ObjectSequence, 1);
+            }
+            TableWire.WriteBodyField(ref w, v, fields[5], ref ids);
+            TableWire.WriteBodyField(ref w, v, fields[6], ref ids);
+            w.Var(0);
+        }
+
+        public static long RenderDynamicPropSaveTyped(RenderDynamicProp value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
+        {
+            TableTypeInfo type = RenderDynamicPropTableType();
+            int slots = 0;
+            if (vocabulary.Length <= 1024)
+            {
+                slots = 1;
+                while (slots < vocabulary.Length * 2) { slots <<= 1; }
+            }
+            Span<int> index = stackalloc int[slots];
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            if (!RenderDynamicPropCollectTyped(value, ref ids)) { return -1; }
+            int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
+            Span<long> rootPayloadSizes = stackalloc long[cachedFields];
+            int cachedElemSlots = !measure ? type.RootElemSlots : 0;
+            Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
+            long n = 1 + RenderDynamicPropBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
+            if (measure) { return n; }
+            if (n > buffer.Length) { return -1; }
+            scoped TableWire.Writer w = new TableWire.Writer(buffer);
+            w.Byte(1);
+            RenderDynamicPropWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
+            for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
+            w.Fixed((ulong)ids.Count, 8);
+            return w.Offset;
+        }
+
         public static long RenderDynamicPropMeasure(RenderDynamicProp value)
         {
             Span<ulong> ids = stackalloc ulong[88];
-            return TableWire.Save(value, RenderDynamicPropTableType(), Span<byte>.Empty, ids, true);
+            return RenderDynamicPropSaveTyped(value, Span<byte>.Empty, ids, true);
         }
 
         public static long RenderDynamicPropSave(RenderDynamicProp value, Span<byte> buffer)
         {
             Span<ulong> ids = stackalloc ulong[88];
-            return TableWire.Save(value, RenderDynamicPropTableType(), buffer, ids, false);
+            return RenderDynamicPropSaveTyped(value, buffer, ids, false);
         }
 
         public static TableWire.Verdict RenderDynamicPropLoadVerdict(RenderDynamicProp value, ReadOnlySpan<byte> bytes, TableReport report)
@@ -664,16 +1368,99 @@ namespace Blockdemo
             value.Team = global::Blockdemo.Team.None;
         }
 
+        public static bool RenderStaticPropCollectTyped(RenderStaticProp v, ref TableWire.Ids ids)
+        {
+            TableFieldInfo[] fields = RenderStaticPropTableType().Fields;
+            if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
+            if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
+            if (v.Scale != 0.0 && !ids.Add(0x6aacb9fbb71a1d91ul)) return false;
+            if (v.Flags != 0 && !ids.Add(0x17a3a1a985f75aecul)) return false;
+            if (v.StaticPropId != 0 && !ids.Add(0xd23da7ab574b95c3ul)) return false;
+            if (!TableWire.CollectField(v, fields[5], ref ids)) return false;
+            if (!TableWire.CollectField(v, fields[6], ref ids)) return false;
+            return true;
+        }
+
+        public static long RenderStaticPropBodySizeTyped(RenderStaticProp v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
+        {
+            long n = 1;
+            TableFieldInfo[] fields = RenderStaticPropTableType().Fields;
+            n += TableWire.BodySizeField(v, fields[0], ref ids, default, out long payload_0);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[0] = payload_0; }
+            n += TableWire.BodySizeField(v, fields[1], ref ids, default, out long payload_1);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[1] = payload_1; }
+            if (v.Scale != 0.0) { n += TableWire.VarSize(ids.Reference(0x6aacb9fbb71a1d91ul)) + 9; }
+            if (v.Flags != 0) { n += TableWire.VarSize(ids.Reference(0x17a3a1a985f75aecul)) + 9; }
+            if (v.StaticPropId != 0) { n += TableWire.VarSize(ids.Reference(0xd23da7ab574b95c3ul)) + 5; }
+            n += TableWire.BodySizeField(v, fields[5], ref ids);
+            n += TableWire.BodySizeField(v, fields[6], ref ids);
+            return n;
+        }
+
+        public static void RenderStaticPropWriteBodyTyped(ref TableWire.Writer w, RenderStaticProp v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
+        {
+            TableFieldInfo[] fields = RenderStaticPropTableType().Fields;
+            long payload_0 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[0] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[0], ref ids, default, payload_0);
+            long payload_1 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[1] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[1], ref ids, default, payload_1);
+            if (v.Scale != 0.0)
+            {
+                w.Header(ids.Reference(0x6aacb9fbb71a1d91ul), 11);
+                w.Fixed(unchecked((ulong)BitConverter.DoubleToInt64Bits(v.Scale)), 8);
+            }
+            if (v.Flags != 0)
+            {
+                w.Header(ids.Reference(0x17a3a1a985f75aecul), 9);
+                w.Fixed((ulong)v.Flags, 8);
+            }
+            if (v.StaticPropId != 0)
+            {
+                w.Header(ids.Reference(0xd23da7ab574b95c3ul), 8);
+                w.Fixed((ulong)v.StaticPropId, 4);
+            }
+            TableWire.WriteBodyField(ref w, v, fields[5], ref ids);
+            TableWire.WriteBodyField(ref w, v, fields[6], ref ids);
+            w.Var(0);
+        }
+
+        public static long RenderStaticPropSaveTyped(RenderStaticProp value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
+        {
+            TableTypeInfo type = RenderStaticPropTableType();
+            int slots = 0;
+            if (vocabulary.Length <= 1024)
+            {
+                slots = 1;
+                while (slots < vocabulary.Length * 2) { slots <<= 1; }
+            }
+            Span<int> index = stackalloc int[slots];
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            if (!RenderStaticPropCollectTyped(value, ref ids)) { return -1; }
+            int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
+            Span<long> rootPayloadSizes = stackalloc long[cachedFields];
+            int cachedElemSlots = !measure ? type.RootElemSlots : 0;
+            Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
+            long n = 1 + RenderStaticPropBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
+            if (measure) { return n; }
+            if (n > buffer.Length) { return -1; }
+            scoped TableWire.Writer w = new TableWire.Writer(buffer);
+            w.Byte(1);
+            RenderStaticPropWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
+            for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
+            w.Fixed((ulong)ids.Count, 8);
+            return w.Offset;
+        }
+
         public static long RenderStaticPropMeasure(RenderStaticProp value)
         {
             Span<ulong> ids = stackalloc ulong[88];
-            return TableWire.Save(value, RenderStaticPropTableType(), Span<byte>.Empty, ids, true);
+            return RenderStaticPropSaveTyped(value, Span<byte>.Empty, ids, true);
         }
 
         public static long RenderStaticPropSave(RenderStaticProp value, Span<byte> buffer)
         {
             Span<ulong> ids = stackalloc ulong[88];
-            return TableWire.Save(value, RenderStaticPropTableType(), buffer, ids, false);
+            return RenderStaticPropSaveTyped(value, buffer, ids, false);
         }
 
         public static TableWire.Verdict RenderStaticPropLoadVerdict(RenderStaticProp value, ReadOnlySpan<byte> bytes, TableReport report)
@@ -707,16 +1494,106 @@ namespace Blockdemo
             value.Team = global::Blockdemo.Team.None;
         }
 
+        public static bool RenderCosmeticPropCollectTyped(RenderCosmeticProp v, ref TableWire.Ids ids)
+        {
+            TableFieldInfo[] fields = RenderCosmeticPropTableType().Fields;
+            if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
+            if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
+            if (v.Scale != 0.0 && !ids.Add(0x6aacb9fbb71a1d91ul)) return false;
+            if (v.Flags != 0 && !ids.Add(0x17a3a1a985f75aecul)) return false;
+            if (v.CosmeticPropId != 0 && !ids.Add(0xb66e4449e56b2e26ul)) return false;
+            if (v.PropSequence != 0 && !ids.Add(0x4d7bf73bcbddc228ul)) return false;
+            if (!TableWire.CollectField(v, fields[6], ref ids)) return false;
+            if (!TableWire.CollectField(v, fields[7], ref ids)) return false;
+            return true;
+        }
+
+        public static long RenderCosmeticPropBodySizeTyped(RenderCosmeticProp v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
+        {
+            long n = 1;
+            TableFieldInfo[] fields = RenderCosmeticPropTableType().Fields;
+            n += TableWire.BodySizeField(v, fields[0], ref ids, default, out long payload_0);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[0] = payload_0; }
+            n += TableWire.BodySizeField(v, fields[1], ref ids, default, out long payload_1);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[1] = payload_1; }
+            if (v.Scale != 0.0) { n += TableWire.VarSize(ids.Reference(0x6aacb9fbb71a1d91ul)) + 9; }
+            if (v.Flags != 0) { n += TableWire.VarSize(ids.Reference(0x17a3a1a985f75aecul)) + 9; }
+            if (v.CosmeticPropId != 0) { n += TableWire.VarSize(ids.Reference(0xb66e4449e56b2e26ul)) + 5; }
+            if (v.PropSequence != 0) { n += TableWire.VarSize(ids.Reference(0x4d7bf73bcbddc228ul)) + 2; }
+            n += TableWire.BodySizeField(v, fields[6], ref ids);
+            n += TableWire.BodySizeField(v, fields[7], ref ids);
+            return n;
+        }
+
+        public static void RenderCosmeticPropWriteBodyTyped(ref TableWire.Writer w, RenderCosmeticProp v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
+        {
+            TableFieldInfo[] fields = RenderCosmeticPropTableType().Fields;
+            long payload_0 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[0] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[0], ref ids, default, payload_0);
+            long payload_1 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[1] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[1], ref ids, default, payload_1);
+            if (v.Scale != 0.0)
+            {
+                w.Header(ids.Reference(0x6aacb9fbb71a1d91ul), 11);
+                w.Fixed(unchecked((ulong)BitConverter.DoubleToInt64Bits(v.Scale)), 8);
+            }
+            if (v.Flags != 0)
+            {
+                w.Header(ids.Reference(0x17a3a1a985f75aecul), 9);
+                w.Fixed((ulong)v.Flags, 8);
+            }
+            if (v.CosmeticPropId != 0)
+            {
+                w.Header(ids.Reference(0xb66e4449e56b2e26ul), 8);
+                w.Fixed((ulong)v.CosmeticPropId, 4);
+            }
+            if (v.PropSequence != 0)
+            {
+                w.Header(ids.Reference(0x4d7bf73bcbddc228ul), 6);
+                w.Fixed((ulong)v.PropSequence, 1);
+            }
+            TableWire.WriteBodyField(ref w, v, fields[6], ref ids);
+            TableWire.WriteBodyField(ref w, v, fields[7], ref ids);
+            w.Var(0);
+        }
+
+        public static long RenderCosmeticPropSaveTyped(RenderCosmeticProp value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
+        {
+            TableTypeInfo type = RenderCosmeticPropTableType();
+            int slots = 0;
+            if (vocabulary.Length <= 1024)
+            {
+                slots = 1;
+                while (slots < vocabulary.Length * 2) { slots <<= 1; }
+            }
+            Span<int> index = stackalloc int[slots];
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            if (!RenderCosmeticPropCollectTyped(value, ref ids)) { return -1; }
+            int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
+            Span<long> rootPayloadSizes = stackalloc long[cachedFields];
+            int cachedElemSlots = !measure ? type.RootElemSlots : 0;
+            Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
+            long n = 1 + RenderCosmeticPropBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
+            if (measure) { return n; }
+            if (n > buffer.Length) { return -1; }
+            scoped TableWire.Writer w = new TableWire.Writer(buffer);
+            w.Byte(1);
+            RenderCosmeticPropWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
+            for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
+            w.Fixed((ulong)ids.Count, 8);
+            return w.Offset;
+        }
+
         public static long RenderCosmeticPropMeasure(RenderCosmeticProp value)
         {
             Span<ulong> ids = stackalloc ulong[88];
-            return TableWire.Save(value, RenderCosmeticPropTableType(), Span<byte>.Empty, ids, true);
+            return RenderCosmeticPropSaveTyped(value, Span<byte>.Empty, ids, true);
         }
 
         public static long RenderCosmeticPropSave(RenderCosmeticProp value, Span<byte> buffer)
         {
             Span<ulong> ids = stackalloc ulong[88];
-            return TableWire.Save(value, RenderCosmeticPropTableType(), buffer, ids, false);
+            return RenderCosmeticPropSaveTyped(value, buffer, ids, false);
         }
 
         public static TableWire.Verdict RenderCosmeticPropLoadVerdict(RenderCosmeticProp value, ReadOnlySpan<byte> bytes, TableReport report)
@@ -748,16 +1625,92 @@ namespace Blockdemo
             value.Team = global::Blockdemo.Team.None;
         }
 
+        public static bool RenderLaserCollectTyped(RenderLaser v, ref TableWire.Ids ids)
+        {
+            TableFieldInfo[] fields = RenderLaserTableType().Fields;
+            if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
+            if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
+            if (v.T != 0.0 && !ids.Add(0xaf63e94c860202a3ul)) return false;
+            if (v.LaserId != 0 && !ids.Add(0xcd29c05f390294ecul)) return false;
+            if (!TableWire.CollectField(v, fields[4], ref ids)) return false;
+            if (!TableWire.CollectField(v, fields[5], ref ids)) return false;
+            return true;
+        }
+
+        public static long RenderLaserBodySizeTyped(RenderLaser v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
+        {
+            long n = 1;
+            TableFieldInfo[] fields = RenderLaserTableType().Fields;
+            n += TableWire.BodySizeField(v, fields[0], ref ids, default, out long payload_0);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[0] = payload_0; }
+            n += TableWire.BodySizeField(v, fields[1], ref ids, default, out long payload_1);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[1] = payload_1; }
+            if (v.T != 0.0) { n += TableWire.VarSize(ids.Reference(0xaf63e94c860202a3ul)) + 9; }
+            if (v.LaserId != 0) { n += TableWire.VarSize(ids.Reference(0xcd29c05f390294ecul)) + 5; }
+            n += TableWire.BodySizeField(v, fields[4], ref ids);
+            n += TableWire.BodySizeField(v, fields[5], ref ids);
+            return n;
+        }
+
+        public static void RenderLaserWriteBodyTyped(ref TableWire.Writer w, RenderLaser v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
+        {
+            TableFieldInfo[] fields = RenderLaserTableType().Fields;
+            long payload_0 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[0] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[0], ref ids, default, payload_0);
+            long payload_1 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[1] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[1], ref ids, default, payload_1);
+            if (v.T != 0.0)
+            {
+                w.Header(ids.Reference(0xaf63e94c860202a3ul), 11);
+                w.Fixed(unchecked((ulong)BitConverter.DoubleToInt64Bits(v.T)), 8);
+            }
+            if (v.LaserId != 0)
+            {
+                w.Header(ids.Reference(0xcd29c05f390294ecul), 8);
+                w.Fixed((ulong)v.LaserId, 4);
+            }
+            TableWire.WriteBodyField(ref w, v, fields[4], ref ids);
+            TableWire.WriteBodyField(ref w, v, fields[5], ref ids);
+            w.Var(0);
+        }
+
+        public static long RenderLaserSaveTyped(RenderLaser value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
+        {
+            TableTypeInfo type = RenderLaserTableType();
+            int slots = 0;
+            if (vocabulary.Length <= 1024)
+            {
+                slots = 1;
+                while (slots < vocabulary.Length * 2) { slots <<= 1; }
+            }
+            Span<int> index = stackalloc int[slots];
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            if (!RenderLaserCollectTyped(value, ref ids)) { return -1; }
+            int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
+            Span<long> rootPayloadSizes = stackalloc long[cachedFields];
+            int cachedElemSlots = !measure ? type.RootElemSlots : 0;
+            Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
+            long n = 1 + RenderLaserBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
+            if (measure) { return n; }
+            if (n > buffer.Length) { return -1; }
+            scoped TableWire.Writer w = new TableWire.Writer(buffer);
+            w.Byte(1);
+            RenderLaserWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
+            for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
+            w.Fixed((ulong)ids.Count, 8);
+            return w.Offset;
+        }
+
         public static long RenderLaserMeasure(RenderLaser value)
         {
             Span<ulong> ids = stackalloc ulong[88];
-            return TableWire.Save(value, RenderLaserTableType(), Span<byte>.Empty, ids, true);
+            return RenderLaserSaveTyped(value, Span<byte>.Empty, ids, true);
         }
 
         public static long RenderLaserSave(RenderLaser value, Span<byte> buffer)
         {
             Span<ulong> ids = stackalloc ulong[88];
-            return TableWire.Save(value, RenderLaserTableType(), buffer, ids, false);
+            return RenderLaserSaveTyped(value, buffer, ids, false);
         }
 
         public static TableWire.Verdict RenderLaserLoadVerdict(RenderLaser value, ReadOnlySpan<byte> bytes, TableReport report)
@@ -790,16 +1743,99 @@ namespace Blockdemo
             value.Team = global::Blockdemo.Team.None;
         }
 
+        public static bool RenderExplosionCollectTyped(RenderExplosion v, ref TableWire.Ids ids)
+        {
+            TableFieldInfo[] fields = RenderExplosionTableType().Fields;
+            if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
+            if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
+            if (v.T != 0.0 && !ids.Add(0xaf63e94c860202a3ul)) return false;
+            if (v.ExplosionId != 0 && !ids.Add(0xfd7f3fa0b16ed778ul)) return false;
+            if (v.ParentObjectId != 0 && !ids.Add(0x0bee7b3cb4046c93ul)) return false;
+            if (!TableWire.CollectField(v, fields[5], ref ids)) return false;
+            if (!TableWire.CollectField(v, fields[6], ref ids)) return false;
+            return true;
+        }
+
+        public static long RenderExplosionBodySizeTyped(RenderExplosion v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
+        {
+            long n = 1;
+            TableFieldInfo[] fields = RenderExplosionTableType().Fields;
+            n += TableWire.BodySizeField(v, fields[0], ref ids, default, out long payload_0);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[0] = payload_0; }
+            n += TableWire.BodySizeField(v, fields[1], ref ids, default, out long payload_1);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[1] = payload_1; }
+            if (v.T != 0.0) { n += TableWire.VarSize(ids.Reference(0xaf63e94c860202a3ul)) + 9; }
+            if (v.ExplosionId != 0) { n += TableWire.VarSize(ids.Reference(0xfd7f3fa0b16ed778ul)) + 5; }
+            if (v.ParentObjectId != 0) { n += TableWire.VarSize(ids.Reference(0x0bee7b3cb4046c93ul)) + 5; }
+            n += TableWire.BodySizeField(v, fields[5], ref ids);
+            n += TableWire.BodySizeField(v, fields[6], ref ids);
+            return n;
+        }
+
+        public static void RenderExplosionWriteBodyTyped(ref TableWire.Writer w, RenderExplosion v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
+        {
+            TableFieldInfo[] fields = RenderExplosionTableType().Fields;
+            long payload_0 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[0] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[0], ref ids, default, payload_0);
+            long payload_1 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[1] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[1], ref ids, default, payload_1);
+            if (v.T != 0.0)
+            {
+                w.Header(ids.Reference(0xaf63e94c860202a3ul), 11);
+                w.Fixed(unchecked((ulong)BitConverter.DoubleToInt64Bits(v.T)), 8);
+            }
+            if (v.ExplosionId != 0)
+            {
+                w.Header(ids.Reference(0xfd7f3fa0b16ed778ul), 8);
+                w.Fixed((ulong)v.ExplosionId, 4);
+            }
+            if (v.ParentObjectId != 0)
+            {
+                w.Header(ids.Reference(0x0bee7b3cb4046c93ul), 8);
+                w.Fixed((ulong)v.ParentObjectId, 4);
+            }
+            TableWire.WriteBodyField(ref w, v, fields[5], ref ids);
+            TableWire.WriteBodyField(ref w, v, fields[6], ref ids);
+            w.Var(0);
+        }
+
+        public static long RenderExplosionSaveTyped(RenderExplosion value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
+        {
+            TableTypeInfo type = RenderExplosionTableType();
+            int slots = 0;
+            if (vocabulary.Length <= 1024)
+            {
+                slots = 1;
+                while (slots < vocabulary.Length * 2) { slots <<= 1; }
+            }
+            Span<int> index = stackalloc int[slots];
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            if (!RenderExplosionCollectTyped(value, ref ids)) { return -1; }
+            int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
+            Span<long> rootPayloadSizes = stackalloc long[cachedFields];
+            int cachedElemSlots = !measure ? type.RootElemSlots : 0;
+            Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
+            long n = 1 + RenderExplosionBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
+            if (measure) { return n; }
+            if (n > buffer.Length) { return -1; }
+            scoped TableWire.Writer w = new TableWire.Writer(buffer);
+            w.Byte(1);
+            RenderExplosionWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
+            for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
+            w.Fixed((ulong)ids.Count, 8);
+            return w.Offset;
+        }
+
         public static long RenderExplosionMeasure(RenderExplosion value)
         {
             Span<ulong> ids = stackalloc ulong[88];
-            return TableWire.Save(value, RenderExplosionTableType(), Span<byte>.Empty, ids, true);
+            return RenderExplosionSaveTyped(value, Span<byte>.Empty, ids, true);
         }
 
         public static long RenderExplosionSave(RenderExplosion value, Span<byte> buffer)
         {
             Span<ulong> ids = stackalloc ulong[88];
-            return TableWire.Save(value, RenderExplosionTableType(), buffer, ids, false);
+            return RenderExplosionSaveTyped(value, buffer, ids, false);
         }
 
         public static TableWire.Verdict RenderExplosionLoadVerdict(RenderExplosion value, ReadOnlySpan<byte> bytes, TableReport report)
@@ -828,16 +1864,80 @@ namespace Blockdemo
             value.Z = 0.0;
         }
 
+        public static bool RenderVector3CollectTyped(RenderVector3 v, ref TableWire.Ids ids)
+        {
+            if (v.X != 0.0 && !ids.Add(0xaf63f54c86021707ul)) return false;
+            if (v.Y != 0.0 && !ids.Add(0xaf63f44c86021554ul)) return false;
+            if (v.Z != 0.0 && !ids.Add(0xaf63f74c86021a6dul)) return false;
+            return true;
+        }
+
+        public static long RenderVector3BodySizeTyped(RenderVector3 v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
+        {
+            long n = 1;
+            if (v.X != 0.0) { n += TableWire.VarSize(ids.Reference(0xaf63f54c86021707ul)) + 9; }
+            if (v.Y != 0.0) { n += TableWire.VarSize(ids.Reference(0xaf63f44c86021554ul)) + 9; }
+            if (v.Z != 0.0) { n += TableWire.VarSize(ids.Reference(0xaf63f74c86021a6dul)) + 9; }
+            return n;
+        }
+
+        public static void RenderVector3WriteBodyTyped(ref TableWire.Writer w, RenderVector3 v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
+        {
+            if (v.X != 0.0)
+            {
+                w.Header(ids.Reference(0xaf63f54c86021707ul), 11);
+                w.Fixed(unchecked((ulong)BitConverter.DoubleToInt64Bits(v.X)), 8);
+            }
+            if (v.Y != 0.0)
+            {
+                w.Header(ids.Reference(0xaf63f44c86021554ul), 11);
+                w.Fixed(unchecked((ulong)BitConverter.DoubleToInt64Bits(v.Y)), 8);
+            }
+            if (v.Z != 0.0)
+            {
+                w.Header(ids.Reference(0xaf63f74c86021a6dul), 11);
+                w.Fixed(unchecked((ulong)BitConverter.DoubleToInt64Bits(v.Z)), 8);
+            }
+            w.Var(0);
+        }
+
+        public static long RenderVector3SaveTyped(RenderVector3 value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
+        {
+            TableTypeInfo type = RenderVector3TableType();
+            int slots = 0;
+            if (vocabulary.Length <= 1024)
+            {
+                slots = 1;
+                while (slots < vocabulary.Length * 2) { slots <<= 1; }
+            }
+            Span<int> index = stackalloc int[slots];
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            if (!RenderVector3CollectTyped(value, ref ids)) { return -1; }
+            int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
+            Span<long> rootPayloadSizes = stackalloc long[cachedFields];
+            int cachedElemSlots = !measure ? type.RootElemSlots : 0;
+            Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
+            long n = 1 + RenderVector3BodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
+            if (measure) { return n; }
+            if (n > buffer.Length) { return -1; }
+            scoped TableWire.Writer w = new TableWire.Writer(buffer);
+            w.Byte(1);
+            RenderVector3WriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
+            for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
+            w.Fixed((ulong)ids.Count, 8);
+            return w.Offset;
+        }
+
         public static long RenderVector3Measure(RenderVector3 value)
         {
             Span<ulong> ids = stackalloc ulong[88];
-            return TableWire.Save(value, RenderVector3TableType(), Span<byte>.Empty, ids, true);
+            return RenderVector3SaveTyped(value, Span<byte>.Empty, ids, true);
         }
 
         public static long RenderVector3Save(RenderVector3 value, Span<byte> buffer)
         {
             Span<ulong> ids = stackalloc ulong[88];
-            return TableWire.Save(value, RenderVector3TableType(), buffer, ids, false);
+            return RenderVector3SaveTyped(value, buffer, ids, false);
         }
 
         public static TableWire.Verdict RenderVector3LoadVerdict(RenderVector3 value, ReadOnlySpan<byte> bytes, TableReport report)
@@ -867,16 +1967,87 @@ namespace Blockdemo
             value.W = 1.0;
         }
 
+        public static bool RenderQuaternionCollectTyped(RenderQuaternion v, ref TableWire.Ids ids)
+        {
+            if (v.X != 0.0 && !ids.Add(0xaf63f54c86021707ul)) return false;
+            if (v.Y != 0.0 && !ids.Add(0xaf63f44c86021554ul)) return false;
+            if (v.Z != 0.0 && !ids.Add(0xaf63f74c86021a6dul)) return false;
+            if (v.W != 1.0 && !ids.Add(0xaf63ea4c86020456ul)) return false;
+            return true;
+        }
+
+        public static long RenderQuaternionBodySizeTyped(RenderQuaternion v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
+        {
+            long n = 1;
+            if (v.X != 0.0) { n += TableWire.VarSize(ids.Reference(0xaf63f54c86021707ul)) + 9; }
+            if (v.Y != 0.0) { n += TableWire.VarSize(ids.Reference(0xaf63f44c86021554ul)) + 9; }
+            if (v.Z != 0.0) { n += TableWire.VarSize(ids.Reference(0xaf63f74c86021a6dul)) + 9; }
+            if (v.W != 1.0) { n += TableWire.VarSize(ids.Reference(0xaf63ea4c86020456ul)) + 9; }
+            return n;
+        }
+
+        public static void RenderQuaternionWriteBodyTyped(ref TableWire.Writer w, RenderQuaternion v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
+        {
+            if (v.X != 0.0)
+            {
+                w.Header(ids.Reference(0xaf63f54c86021707ul), 11);
+                w.Fixed(unchecked((ulong)BitConverter.DoubleToInt64Bits(v.X)), 8);
+            }
+            if (v.Y != 0.0)
+            {
+                w.Header(ids.Reference(0xaf63f44c86021554ul), 11);
+                w.Fixed(unchecked((ulong)BitConverter.DoubleToInt64Bits(v.Y)), 8);
+            }
+            if (v.Z != 0.0)
+            {
+                w.Header(ids.Reference(0xaf63f74c86021a6dul), 11);
+                w.Fixed(unchecked((ulong)BitConverter.DoubleToInt64Bits(v.Z)), 8);
+            }
+            if (v.W != 1.0)
+            {
+                w.Header(ids.Reference(0xaf63ea4c86020456ul), 11);
+                w.Fixed(unchecked((ulong)BitConverter.DoubleToInt64Bits(v.W)), 8);
+            }
+            w.Var(0);
+        }
+
+        public static long RenderQuaternionSaveTyped(RenderQuaternion value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
+        {
+            TableTypeInfo type = RenderQuaternionTableType();
+            int slots = 0;
+            if (vocabulary.Length <= 1024)
+            {
+                slots = 1;
+                while (slots < vocabulary.Length * 2) { slots <<= 1; }
+            }
+            Span<int> index = stackalloc int[slots];
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            if (!RenderQuaternionCollectTyped(value, ref ids)) { return -1; }
+            int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
+            Span<long> rootPayloadSizes = stackalloc long[cachedFields];
+            int cachedElemSlots = !measure ? type.RootElemSlots : 0;
+            Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
+            long n = 1 + RenderQuaternionBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
+            if (measure) { return n; }
+            if (n > buffer.Length) { return -1; }
+            scoped TableWire.Writer w = new TableWire.Writer(buffer);
+            w.Byte(1);
+            RenderQuaternionWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
+            for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
+            w.Fixed((ulong)ids.Count, 8);
+            return w.Offset;
+        }
+
         public static long RenderQuaternionMeasure(RenderQuaternion value)
         {
             Span<ulong> ids = stackalloc ulong[88];
-            return TableWire.Save(value, RenderQuaternionTableType(), Span<byte>.Empty, ids, true);
+            return RenderQuaternionSaveTyped(value, Span<byte>.Empty, ids, true);
         }
 
         public static long RenderQuaternionSave(RenderQuaternion value, Span<byte> buffer)
         {
             Span<ulong> ids = stackalloc ulong[88];
-            return TableWire.Save(value, RenderQuaternionTableType(), buffer, ids, false);
+            return RenderQuaternionSaveTyped(value, buffer, ids, false);
         }
 
         public static TableWire.Verdict RenderQuaternionLoadVerdict(RenderQuaternion value, ReadOnlySpan<byte> bytes, TableReport report)

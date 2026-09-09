@@ -54,16 +54,86 @@ namespace Tabledemo
             value.NoteLength = 0;
         }
 
+        public static bool PatrolCollectTyped(Patrol v, ref TableWire.Ids ids)
+        {
+            TableFieldInfo[] fields = PatrolTableType().Fields;
+            if (v.Active != false && !ids.Add(0x6580790b036f0c6ful)) return false;
+            if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
+            if (!TableWire.CollectField(v, fields[2], ref ids)) return false;
+            if (!TableWire.CollectField(v, fields[3], ref ids)) return false;
+            if (!TableWire.CollectField(v, fields[4], ref ids)) return false;
+            if (!TableWire.CollectField(v, fields[5], ref ids)) return false;
+            return true;
+        }
+
+        public static long PatrolBodySizeTyped(Patrol v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
+        {
+            long n = 1;
+            TableFieldInfo[] fields = PatrolTableType().Fields;
+            if (v.Active != false) { n += TableWire.VarSize(ids.Reference(0x6580790b036f0c6ful)) + 2; }
+            n += TableWire.BodySizeField(v, fields[1], ref ids);
+            n += TableWire.BodySizeField(v, fields[2], ref ids);
+            n += TableWire.BodySizeField(v, fields[3], ref ids);
+            n += TableWire.BodySizeField(v, fields[4], ref ids);
+            n += TableWire.BodySizeField(v, fields[5], ref ids, default, out long payload_5);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[5] = payload_5; }
+            return n;
+        }
+
+        public static void PatrolWriteBodyTyped(ref TableWire.Writer w, Patrol v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
+        {
+            TableFieldInfo[] fields = PatrolTableType().Fields;
+            if (v.Active != false)
+            {
+                w.Header(ids.Reference(0x6580790b036f0c6ful), 1);
+                w.Fixed(v.Active ? 1ul : 0ul, 1);
+            }
+            TableWire.WriteBodyField(ref w, v, fields[1], ref ids);
+            TableWire.WriteBodyField(ref w, v, fields[2], ref ids);
+            TableWire.WriteBodyField(ref w, v, fields[3], ref ids);
+            TableWire.WriteBodyField(ref w, v, fields[4], ref ids);
+            long payload_5 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[5] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[5], ref ids, default, payload_5);
+            w.Var(0);
+        }
+
+        public static long PatrolSaveTyped(Patrol value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
+        {
+            TableTypeInfo type = PatrolTableType();
+            int slots = 0;
+            if (vocabulary.Length <= 1024)
+            {
+                slots = 1;
+                while (slots < vocabulary.Length * 2) { slots <<= 1; }
+            }
+            Span<int> index = stackalloc int[slots];
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            if (!PatrolCollectTyped(value, ref ids)) { return -1; }
+            int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
+            Span<long> rootPayloadSizes = stackalloc long[cachedFields];
+            int cachedElemSlots = !measure ? type.RootElemSlots : 0;
+            Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
+            long n = 1 + PatrolBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
+            if (measure) { return n; }
+            if (n > buffer.Length) { return -1; }
+            scoped TableWire.Writer w = new TableWire.Writer(buffer);
+            w.Byte(1);
+            PatrolWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
+            for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
+            w.Fixed((ulong)ids.Count, 8);
+            return w.Offset;
+        }
+
         public static long PatrolMeasure(Patrol value)
         {
             Span<ulong> ids = stackalloc ulong[155];
-            return TableWire.Save(value, PatrolTableType(), Span<byte>.Empty, ids, true);
+            return PatrolSaveTyped(value, Span<byte>.Empty, ids, true);
         }
 
         public static long PatrolSave(Patrol value, Span<byte> buffer)
         {
             Span<ulong> ids = stackalloc ulong[155];
-            return TableWire.Save(value, PatrolTableType(), buffer, ids, false);
+            return PatrolSaveTyped(value, buffer, ids, false);
         }
 
         public static TableWire.Verdict PatrolLoadVerdict(Patrol value, ReadOnlySpan<byte> bytes, TableReport report)

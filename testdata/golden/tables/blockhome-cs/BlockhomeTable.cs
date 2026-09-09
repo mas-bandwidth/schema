@@ -2529,12 +2529,12 @@ namespace Blockhome
             // One schema-bounded vocabulary lives on the caller's stack for a save.
             // Collect follows the emitted fields in order. Measuring and writing then
             // look up stable references, so a nested length never needs patching.
-            ref struct Ids
+            public ref struct Ids
             {
                 public Span<ulong> Values;
                 public Span<int> Slots;
                 public int Count;
-                public Graph Graph;
+                internal Graph Graph;
                 public Ids(Span<ulong> values) { Values = values; Slots = default; Count = 0; Graph = null; }
                 public Ids(Span<ulong> values, Span<int> slots)
                 { Values = values; Slots = slots; Slots.Clear(); Count = 0; Graph = null; }
@@ -2568,7 +2568,7 @@ namespace Blockhome
                 }
             }
 
-            ref struct Writer
+            public ref struct Writer
             {
                 public Span<byte> Buffer;
                 public int Offset;
@@ -4034,7 +4034,7 @@ namespace Blockhome
                     default: return 0;
                 }
             }
-            static int VarSize(ulong v) { int n = 1; while (v >= 128) { n++; v >>= 7; } return n; }
+            public static int VarSize(ulong v) { int n = 1; while (v >= 128) { n++; v >>= 7; } return n; }
             static byte Kind(TableFieldInfo f) { return f.KeyId != null ? (byte)16 : f.IsArray ? (byte)14 : f.Kind; }
             static bool Named(string name) { return name != null && name != "???"; }
             static bool DefaultRaw(ulong raw, TableFieldInfo f)
@@ -4071,7 +4071,7 @@ namespace Blockhome
                 for (int i = 0; i < f.ArrayBound; i++) { if (!DefaultElement(value, f, i)) { return true; } }
                 return false;
             }
-            static int Count(object value, TableFieldInfo f) { return f.Counted ? f.GetCount(value) : f.ArrayBound; }
+            public static int Count(object value, TableFieldInfo f) { return f.Counted ? f.GetCount(value) : f.ArrayBound; }
             static bool CollectElement(object value, TableFieldInfo f, int i, ref Ids ids)
             {
                 if (f.Kind == 13) { return Collect(f.GetChild(value, i), f.Table, ref ids); }
@@ -4291,6 +4291,44 @@ namespace Blockhome
                 }
                 if (root) { WriteNodes(ref w, ref ids); }
                 w.Var(0);
+            }
+            public static bool CollectField(object value, TableFieldInfo f, ref Ids ids)
+            {
+                if (f.WireGuard != null && !f.WireGuard(value)) { return true; }
+                if (f.Optional && !f.GetPresent(value)) { return true; }
+                if (f.Counted && (Count(value, f) < 0 || Count(value, f) > f.ArrayBound)) { return false; }
+                return !Rides(value, f) || (ids.Add(f.Id) && CollectPayload(value, f, ref ids));
+            }
+            public static long BodySizeField(object value, TableFieldInfo f, ref Ids ids, scoped Span<long> elemCache, out long payload)
+            {
+                payload = 0;
+                if (!Rides(value, f)) { return 0; }
+                long n = VarSize(ids.Reference(f.Id)) + 1;
+                if (f.IsArray || f.Kind == 12 || f.Kind == 33 || f.Kind == 13)
+                {
+                    payload = PayloadSize(value, f, ref ids, elemCache);
+                    n += VarSize((ulong)payload) + payload;
+                }
+                else
+                {
+                    n += ElementSize(value, f, 0, ref ids, true);
+                }
+                return n;
+            }
+            public static long BodySizeField(object value, TableFieldInfo f, ref Ids ids, scoped Span<long> elemCache = default)
+            {
+                return BodySizeField(value, f, ref ids, elemCache, out _);
+            }
+            public static void WriteBodyField(ref Writer w, object value, TableFieldInfo f, ref Ids ids, scoped ReadOnlySpan<long> elemCache = default, long cachedPayload = -1)
+            {
+                if (!Rides(value, f)) { return; }
+                w.Header(ids.Reference(f.Id), Kind(f));
+                if (f.IsArray || f.Kind == 12 || f.Kind == 33 || f.Kind == 13)
+                {
+                    long payload = cachedPayload >= 0 ? cachedPayload : PayloadSize(value, f, ref ids);
+                    w.Var((ulong)payload);
+                }
+                WritePayload(ref w, value, f, ref ids, elemCache);
             }
             public static long Save(object value, TableTypeInfo type, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
             {
