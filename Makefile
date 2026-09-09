@@ -3077,6 +3077,7 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	# compiler/tablerefordinal_test.go, and the ONE rule a green pin cannot be
 	# read for is truncate taking the slot back — so its control is here.
 	$(MAKE) tables-ref-ordinal-negative-control
+	$(MAKE) tables-ref-ordinal-shared-negative-control
 	# THE WIRE FUZZER (docs/SPEC-TABLES.md §4.2): the tolerant read on hostile
 	# bytes against the engine, plain and sanitized, at a short random pass —
 	# the enumerated passes run whole whatever N is — and its two controls at
@@ -4541,6 +4542,35 @@ tables-ref-ordinal-negative-control:
 		  cat build/ref-ordinal-nc/log; exit 1; }
 	@grep -m1 -E "ROUND TRIP MOVED|THE SAVED BYTES MOVED" build/ref-ordinal-nc/log
 	@echo "negative control: a truncate that leaves the ordinal slot standing names a POPPED entry — the file stops round-tripping"
+
+# THE SECOND HALF OF THE SAME RULE. An id can be interned by the GENERAL path
+# first — an enum-keyed array interns its key before it measures the slot's
+# element, and a field's wire id is the same hash as a variant of the same name
+# — so the ref_at that follows only HITS. Record the ordinal on the miss alone
+# and truncate has nothing to clear when that slot elides: the next slot's
+# field header answers out of a stale cache and names the entry the popped one
+# was replaced by, which is the following KEY. The file stays self-consistent
+# and the value is silently gone, so compiler/tablerefordinal_test.go's
+# shared-id driver is what has to go RED.
+.PHONY: tables-ref-ordinal-shared-negative-control
+tables-ref-ordinal-shared-negative-control:
+	@rm -rf build/ref-ordinal-shared-nc && mkdir -p build/ref-ordinal-shared-nc
+	@sed -e 's|const uint64_t r = ref( id );|const int32_t nc_before = count; const uint64_t r = ref( id );|; s|ordinal_of\[ int32_t( r ) - 1 \] = ` + ordinalType + `( ordinal );|if ( count != nc_before ) { ordinal_of[ int32_t( r ) - 1 ] = ` + ordinalType + `( ordinal ); } // NEGATIVE CONTROL: only a fresh append records its ordinal|' \
+		internal/codegen/cpptable/cpptable.go > build/ref-ordinal-shared-nc/emitter.go.txt
+	@cmp -s internal/codegen/cpptable/cpptable.go build/ref-ordinal-shared-nc/emitter.go.txt && \
+		{ echo "NEGATIVE CONTROL: the hit-path sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/ref-ordinal-shared-nc/emitter.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/ref-ordinal-shared-nc/overlay.json
+	@if go test -overlay build/ref-ordinal-shared-nc/overlay.json -count=1 ./compiler \
+			-run TestCppTableRefOrdinalSharedId > build/ref-ordinal-shared-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: only the miss path records the ordinal and the shared-id driver stayed green"; \
+		cat build/ref-ordinal-shared-nc/log; exit 1; \
+	fi
+	@grep -q "not undone by truncate" build/ref-ordinal-shared-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the driver went red, but not on the shared id"; \
+		  cat build/ref-ordinal-shared-nc/log; exit 1; }
+	@grep -m1 "VALUES MOVED" build/ref-ordinal-shared-nc/log
+	@echo "negative control: an ordinal recorded on the MISS alone loses the field an eliding keyed slot shares its id with"
 
 # THE C++ RELEASE GATE: the wire fuzzer at a long random pass, both builds,
 # and the retention leg beside it at the same length (docs/SPEC-TABLES.md

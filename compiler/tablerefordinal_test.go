@@ -328,3 +328,140 @@ func TestCppTableRefOrdinalBytes(t *testing.T) {
 		t.Fatalf("the save path lost a line the pin has: %s", wantLines[len(gotLines)])
 	}
 }
+
+// AN ID BOTH PATHS CAN REACH (docs/SPEC-TABLES.md §3, §5). A field's wire id
+// and an enum variant's are the same hash over the same name, so a schema that
+// spells one name in both places gives ONE id two call sites: ref_at, from the
+// field header, and ref, from TableEnumRef's switch on a runtime value.
+//
+// That id can therefore be interned by ref FIRST — an enum-keyed array interns
+// its key before it measures the slot's element — and the ref_at that follows
+// only HITS. If the hit did not record the ordinal beside the entry, truncate
+// would have nothing to clear when the slot elides, and the NEXT slot's field
+// header would answer out of a stale cache: it would name the entry the popped
+// one was replaced by, which is the following KEY. The file stays
+// self-consistent and the value is silently gone.
+//
+// The schema below is the smallest shape that reaches it: an enum-keyed array
+// whose key `alpha` is also the name of the element's only field, one slot
+// all-default so it elides, and the next slot live.
+const refOrdinalCollisionSchema = `package collide
+
+enum Tag { alpha, beta }
+
+table Wide
+{
+    w0 int32
+    w1 int32
+}
+
+table Leaf
+{
+    alpha Wide
+}
+
+table Root
+{
+    t     Tag
+    banks [Tag]Leaf
+    n     int32
+}
+`
+
+const refOrdinalCollisionDriver = `#include <stdio.h>
+#include <string.h>
+#include "ProbeTable.h"
+
+using namespace collide;
+
+static uint8_t buffer[ 4096 ];
+static uint8_t twin[ 4096 ];
+
+int main()
+{
+    Root value;
+    RootReset( value );
+    value.t = Tag::None;                    // nothing interns "alpha" at the top
+    value.banks[ Tag::alpha ].alpha.w0 = 0; // all default: the slot ELIDES, and its key and its field id are popped together
+    value.banks[ Tag::beta  ].alpha.w0 = 7; // and this one rides, re-interning "alpha" AFTER the pop
+    value.n = 3;
+
+    const int64_t wrote = RootSave( value, buffer, (int64_t) sizeof( buffer ) );
+    const int64_t measured = RootMeasure( value );
+    if ( wrote < 0 || measured != wrote )
+    {
+        printf( "MEASURE/SAVE DISAGREE save %lld measure %lld\n", (long long) wrote, (long long) measured );
+        return 1;
+    }
+
+    Root back;
+    TableReport report;
+    if ( !RootLoad( back, buffer, wrote, &report ) )
+    {
+        printf( "LOAD FAILED\n" );
+        return 1;
+    }
+    // THE TELL: a stale slot names the following key's entry, so the field is
+    // written under an id no reader resolves to it and the value is lost
+    if ( back.banks[ Tag::beta ].alpha.w0 != 7 || back.n != 3 )
+    {
+        printf( "VALUES MOVED w0=%d n=%d\n", back.banks[ Tag::beta ].alpha.w0, back.n );
+        return 1;
+    }
+    const int64_t again = RootSave( back, twin, (int64_t) sizeof( twin ) );
+    if ( again != wrote || memcmp( twin, buffer, (size_t) wrote ) != 0 )
+    {
+        printf( "ROUND TRIP MOVED\n" );
+        return 1;
+    }
+    printf( "OK len=%lld\n", (long long) wrote );
+    return 0;
+}
+`
+
+// TestCppTableRefOrdinalSharedId holds ref_at to recording the ordinal on the
+// HIT path as well as the miss, which is what lets truncate undo a cache entry
+// for an id the general path interned first.
+func TestCppTableRefOrdinalSharedId(t *testing.T) {
+	cxx, err := exec.LookPath("c++")
+	if err != nil {
+		t.Skip("the generated save path is C++: no c++ on PATH")
+	}
+	files, err := New().Generate(unitFromSource(t, refOrdinalCollisionSchema), "cpp", Options{})
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	dir := t.TempDir()
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// the two call sites have to be there, on ONE id, or the shape this test
+	// exists for is not in the header at all
+	header := string(files["ProbeTable.h"])
+	const shared = "0x8ac625bb85ed202bull" // TableWireId( "alpha" )
+	if !strings.Contains(header, "ids.ref_at( 5, "+shared+" )") || !strings.Contains(header, "ids.ref( "+shared+" )") {
+		t.Fatalf("the schema no longer gives one id both a field header and an enum variant: this test would prove nothing")
+	}
+	// the driver must live BESIDE the header: an #include "..." searches the
+	// including file's own directory first, and a driver written elsewhere
+	// would quietly compile against some other tree's copy
+	main := filepath.Join(dir, "main.cpp")
+	if err := os.WriteFile(main, []byte(refOrdinalCollisionDriver), 0600); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "collide")
+	args := []string{
+		"-std=c++17", "-O2", "-DNDEBUG", "-Wall", "-Wextra", "-Werror", "-Wshadow",
+		"-ffp-contract=off", "-I", dir, main, "-o", bin,
+	}
+	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+		t.Fatalf("compile: %v\n%s", err, out)
+	}
+	out, err := exec.Command(bin).CombinedOutput()
+	if err != nil {
+		t.Fatalf("an id the general path interned first is not undone by truncate: %v\n%s", err, out)
+	}
+	t.Logf("%s", strings.TrimSpace(string(out)))
+}
