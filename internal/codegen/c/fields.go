@@ -396,12 +396,10 @@ func (g *gen) emitReadRangedInt(f *ir.Field, expr, ind string) {
 		g.call(ind+"    ", fmt.Sprintf("serialize_read_bits( stream, &hi, %d )", bits-32))
 		g.pf("%s    offset_value = (serialize_uint64_t) lo | ( ( (serialize_uint64_t) hi ) << 32 );\n", ind)
 	}
-	// Reject, never clamp -- a value smuggled into the range's bit headroom.
-	// Elided when the span fills the full 64-bit domain: there is no headroom
-	// to smuggle into, and the comparison would be vacuous (which -Wtype-limits
-	// rejects, and this family builds with -Werror).
-	maxU64 := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 64), big.NewInt(1))
-	if span.Cmp(maxU64) < 0 {
+	// A successful read bounds the offset to its encoded width. Reject encodings
+	// only when the declared span leaves headroom in that encoded width.
+	maxOffset := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits)), big.NewInt(1))
+	if span.Cmp(maxOffset) < 0 {
 		g.pf("%s    if ( offset_value > %sULL )\n%s    {\n%s        return 0;\n%s    }\n", ind, span.String(), ind, ind, ind)
 	}
 	if f.IntMin.Sign() == 0 {

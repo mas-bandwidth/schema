@@ -143,22 +143,10 @@ static SCHEMA_UNUSED const char * table_json_variant_name( const TableFieldInfo 
     return f->variants[value].name;
 }
 
-static SCHEMA_UNUSED uint64_t table_json_variant_id( const TableFieldInfo * f, uint64_t value )
-{
-    if ( f->variants == NULL || f->enum_max < 0 || value > (uint64_t) f->enum_max ) { return 0; }
-    return f->variants[value].id;
-}
-
 static SCHEMA_UNUSED const char * table_json_key_name( const TableFieldInfo * f, uint64_t key )
 {
     if ( f->keys == NULL || f->key_max < 0 || key > (uint64_t) f->key_max ) { return NULL; }
     return f->keys[key].name;
-}
-
-static SCHEMA_UNUSED uint64_t table_json_key_id( const TableFieldInfo * f, uint64_t key )
-{
-    if ( f->keys == NULL || f->key_max < 0 || key > (uint64_t) f->key_max ) { return 0; }
-    return f->keys[key].id;
 }
 
 static SCHEMA_UNUSED uint64_t table_json_get_raw( const void * storage, uint32_t width )

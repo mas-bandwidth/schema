@@ -236,11 +236,6 @@ static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key, uint32_t count )
 // per-package guard — one definition per TU whatever the include order, and a
 // lone Table.h works standalone.
 func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, wireRuntime string) string {
-	idType := "uint64_t"
-	if wireRuntime == "" {
-		idType = "uint16_t"
-		wireRuntime = legacyTableWireRuntime(tableInlineMacro(pkg))
-	}
 	keyed := ""
 	if anyKeyed {
 		keyed = tableKeyedAccessor
@@ -391,7 +386,7 @@ typedef struct TableUnionInfo
 typedef struct TableVariantInfo
 {
     const char * name;
-    ` + idType + ` id;
+    uint64_t id;
 } TableVariantInfo;
 
 /* THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1): a declaration with no ///
@@ -408,7 +403,7 @@ typedef struct TableFieldInfo
     const char * name;      /* schema field name, e.g. "health" */
     const char * json;      /* the TEXT form's key: the json = "key" attribute, else name (§16.3) */
     const char * type_name; /* schema type name, e.g. "float32", "Grade" */
-    ` + idType + ` id;            /* table-wire field id (name hash; the was alias's hash after a rename) */
+    uint64_t id;            /* table-wire field id (name hash; the was alias's hash after a rename) */
     uint8_t kind;           /* table-wire kind; for arrays/strings/bytes, the ELEMENT kind */
     int is_array;           /* fixed or counted array (bytes included) */` + pointerFieldMember + `
     int counted;            /* a _count/_length int32 companion exists (counted arrays, strings, bytes) */
@@ -481,144 +476,6 @@ static SCHEMA_UNUSED double table_bits_to_double( uint64_t bits ) { double d; me
 static SCHEMA_UNUSED uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
 
 #endif /* ` + guard + ` */
-`
-}
-
-// legacyTableWireRuntime remains with the variable carrier until its node-table
-// codec is ported. Fixed units select the form-1 runtime in wire.go.
-func legacyTableWireRuntime(forceInline string) string {
-	return `typedef struct TableWriter
-{
-    uint8_t * buffer;
-    int64_t capacity;
-    int64_t offset;
-    int overflow;
-} TableWriter;
-
-static SCHEMA_UNUSED TableWriter table_writer_make( uint8_t * buffer, int64_t capacity )
-{
-    TableWriter w;
-    w.buffer = buffer;
-    w.capacity = capacity;
-    w.offset = 0;
-    w.overflow = 0;
-    return w;
-}
-
-static SCHEMA_UNUSED ` + forceInline + ` void table_writer_raw( TableWriter * w, const void * data, int64_t bytes )
-{
-    if ( w->offset + bytes > w->capacity ) { w->overflow = 1; return; }
-    memcpy( w->buffer + w->offset, data, (size_t) bytes );
-    w->offset += bytes;
-}
-static SCHEMA_UNUSED ` + forceInline + ` void table_writer_put8( TableWriter * w, uint8_t v ) { table_writer_raw( w, &v, 1 ); }
-static SCHEMA_UNUSED ` + forceInline + ` void table_writer_put16( TableWriter * w, uint16_t v )
-{
-    uint8_t b[2];
-    b[0] = (uint8_t) v; b[1] = (uint8_t) ( v >> 8 );
-    table_writer_raw( w, b, 2 );
-}
-static SCHEMA_UNUSED ` + forceInline + ` void table_writer_put32( TableWriter * w, uint32_t v )
-{
-    uint8_t b[4];
-    b[0] = (uint8_t) v; b[1] = (uint8_t) ( v >> 8 ); b[2] = (uint8_t) ( v >> 16 ); b[3] = (uint8_t) ( v >> 24 );
-    table_writer_raw( w, b, 4 );
-}
-static SCHEMA_UNUSED ` + forceInline + ` void table_writer_put64( TableWriter * w, uint64_t v )
-{
-    table_writer_put32( w, (uint32_t) v );
-    table_writer_put32( w, (uint32_t) ( v >> 32 ) );
-}
-static SCHEMA_UNUSED ` + forceInline + ` void table_writer_patch32( TableWriter * w, int64_t at, uint32_t v )
-{
-    if ( at + 4 > w->capacity ) { w->overflow = 1; return; }
-    w->buffer[at] = (uint8_t) v; w->buffer[at+1] = (uint8_t) ( v >> 8 );
-    w->buffer[at+2] = (uint8_t) ( v >> 16 ); w->buffer[at+3] = (uint8_t) ( v >> 24 );
-}
-
-typedef struct TableReader
-{
-    const uint8_t * buffer;
-    int64_t size;
-    int64_t offset;
-    TableReport * report;
-} TableReader;
-
-static SCHEMA_UNUSED TableReader table_reader_make( const uint8_t * buffer, int64_t size, TableReport * report )
-{
-    TableReader r;
-    r.buffer = buffer;
-    r.size = size;
-    r.offset = 0;
-    r.report = report;
-    return r;
-}
-
-static SCHEMA_UNUSED ` + forceInline + ` int table_reader_has( const TableReader * r, int64_t bytes ) { return bytes >= 0 && r->offset >= 0 && r->offset <= r->size && bytes <= r->size - r->offset; }
-static SCHEMA_UNUSED ` + forceInline + ` uint8_t table_reader_get8( TableReader * r ) { return r->buffer[r->offset++]; }
-static SCHEMA_UNUSED ` + forceInline + ` uint16_t table_reader_get16( TableReader * r )
-{
-    uint16_t v = (uint16_t) ( (uint16_t) r->buffer[r->offset] | ( (uint16_t) r->buffer[r->offset+1] << 8 ) );
-    r->offset += 2;
-    return v;
-}
-static SCHEMA_UNUSED ` + forceInline + ` uint32_t table_reader_get32( TableReader * r )
-{
-    uint32_t v = (uint32_t) r->buffer[r->offset] | ( (uint32_t) r->buffer[r->offset+1] << 8 )
-               | ( (uint32_t) r->buffer[r->offset+2] << 16 ) | ( (uint32_t) r->buffer[r->offset+3] << 24 );
-    r->offset += 4;
-    return v;
-}
-static SCHEMA_UNUSED ` + forceInline + ` uint64_t table_reader_get64( TableReader * r )
-{
-    uint64_t lo = table_reader_get32( r );
-    uint64_t hi = table_reader_get32( r );
-    return lo | ( hi << 32 );
-}
-
-/* skip one payload by kind; 0 = framing damage */
-static SCHEMA_UNUSED int table_reader_skip( TableReader * r, uint8_t kind )
-{
-    switch ( kind )
-    {
-        case 1: case 2: case 6:
-            if ( !table_reader_has( r, 1 ) ) { return 0; }
-            r->offset += 1; return 1;
-        case 3: case 7:
-            if ( !table_reader_has( r, 2 ) ) { return 0; }
-            r->offset += 2; return 1;
-        /* 17 is a NODE INDEX (docs/SPEC-TABLES.md 3.1): four bytes, so it costs
-           one row here and a reader without the kind still skips a pointer field */
-        case 4: case 8: case 10: case 17:
-            if ( !table_reader_has( r, 4 ) ) { return 0; }
-            r->offset += 4; return 1;
-        case 5: case 9: case 11:
-            if ( !table_reader_has( r, 8 ) ) { return 0; }
-            r->offset += 8; return 1;
-        case 12: case 13: case 14: case 16:
-        {
-            uint32_t n;
-            if ( !table_reader_has( r, 4 ) ) { return 0; }
-            n = table_reader_get32( r );
-            if ( !table_reader_has( r, n ) ) { return 0; }
-            r->offset += n;
-            return 1;
-        }
-        case 15: /* union: u16 arm id, then the arm length-prefixed (id 0 = empty, no body) */
-        {
-            uint32_t n;
-            if ( !table_reader_has( r, 2 ) ) { return 0; }
-            if ( table_reader_get16( r ) == 0 ) { return 1; }
-            if ( !table_reader_has( r, 4 ) ) { return 0; }
-            n = table_reader_get32( r );
-            if ( !table_reader_has( r, n ) ) { return 0; }
-            r->offset += n;
-            return 1;
-        }
-        default: break;
-    }
-    return 0;
-}
 `
 }
 

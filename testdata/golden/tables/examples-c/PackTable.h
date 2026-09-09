@@ -360,6 +360,14 @@ static SCHEMA_UNUSED void table_writer_id_at( TableWriter * w, int32_t ordinal, 
     v->slot[ordinal]=(int32_t)r-1;
     v->ordinal_of[r-1]=(int16_t)ordinal;
 }
+/* A repeated one-byte reference and its kind share one checked little-endian
+   store, as in the C++ Header writer. Misses keep the existing ID append path. */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void table_writer_header_at( TableWriter * w, int32_t ordinal, uint64_t id, uint8_t kind )
+{
+    const int32_t at=w->vocabulary->slot[ordinal];
+    if(at>=0 && at<127) { table_writer_put16(w,(uint16_t)((uint16_t)(at+1)|((uint16_t)kind<<8))); return; }
+    table_writer_id_at(w,ordinal,id); table_writer_put8(w,kind);
+}
 static SCHEMA_UNUSED TableWriter table_writer_probe( const TableWriter * w )
 {
     TableWriter probe = *w;
@@ -1584,7 +1592,7 @@ static SCHEMA_UNUSED int gunner_settings_save_body( TableWriter * w, const Gunne
         if ( !( value->reaction == 0.2f ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 101, 0xb75aa3662201646aull ); table_writer_put8( w, 10 );
+            table_writer_header_at( w, 101, 0xb75aa3662201646aull, 10 );
             table_writer_put32( w, table_float_to_bits( value->reaction ) );
         }
     }
@@ -1592,7 +1600,7 @@ static SCHEMA_UNUSED int gunner_settings_save_body( TableWriter * w, const Gunne
         if ( !( value->tracking == 0 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 90, 0xa6bf719a4602b0bcull ); table_writer_put8( w, 1 );
+            table_writer_header_at( w, 90, 0xa6bf719a4602b0bcull, 1 );
             table_writer_put8( w, value->tracking ? 1 : 0 );
         }
     }
@@ -1601,7 +1609,7 @@ static SCHEMA_UNUSED int gunner_settings_save_body( TableWriter * w, const Gunne
         if ( value->callsign_length != 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 53, 0x5bc44627b9848818ull ); table_writer_put8( w, 12 );
+            table_writer_header_at( w, 53, 0x5bc44627b9848818ull, 12 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -1924,7 +1932,7 @@ static SCHEMA_UNUSED int ship_entry_save_body( TableWriter * w, const ShipEntry 
         if ( value->display_name_length != 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 27, 0x2d21d7cd66bd5a5dull ); table_writer_put8( w, 12 );
+            table_writer_header_at( w, 27, 0x2d21d7cd66bd5a5dull, 12 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -1944,7 +1952,7 @@ static SCHEMA_UNUSED int ship_entry_save_body( TableWriter * w, const ShipEntry 
         if ( !( value->health == 100.0f ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 67, 0x7f69d4b5288ba9cfull ); table_writer_put8( w, 10 );
+            table_writer_header_at( w, 67, 0x7f69d4b5288ba9cfull, 10 );
             table_writer_put32( w, table_float_to_bits( value->health ) );
         }
     }
@@ -1952,7 +1960,7 @@ static SCHEMA_UNUSED int ship_entry_save_body( TableWriter * w, const ShipEntry 
         if ( !( value->mass == 1.0f ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 20, 0x1f3757a2ce7b0ab1ull ); table_writer_put8( w, 10 );
+            table_writer_header_at( w, 20, 0x1f3757a2ce7b0ab1ull, 10 );
             table_writer_put32( w, table_float_to_bits( value->mass ) );
         }
     }
@@ -1961,7 +1969,7 @@ static SCHEMA_UNUSED int ship_entry_save_body( TableWriter * w, const ShipEntry 
         if ( value->hardpoints_count > 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 77, 0x95d0cce09ca82b73ull ); table_writer_put8( w, 14 );
+            table_writer_header_at( w, 77, 0x95d0cce09ca82b73ull, 14 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -1981,7 +1989,7 @@ static SCHEMA_UNUSED int ship_entry_save_body( TableWriter * w, const ShipEntry 
         if ( value->gunner_present )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 38, 0x40dbb648c0cd44aaull ); table_writer_put8( w, 13 );
+            table_writer_header_at( w, 38, 0x40dbb648c0cd44aaull, 13 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -2459,7 +2467,7 @@ static SCHEMA_UNUSED int global_settings_save_body( TableWriter * w, const Globa
         if ( !( value->tick_rate == 60 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 88, 0xa65f859b617deaf3ull ); table_writer_put8( w, 8 );
+            table_writer_header_at( w, 88, 0xa65f859b617deaf3ull, 8 );
             table_writer_put32( w, (uint32_t) ( value->tick_rate ) );
         }
     }
@@ -2467,7 +2475,7 @@ static SCHEMA_UNUSED int global_settings_save_body( TableWriter * w, const Globa
         if ( !( value->difficulty == DIFFICULTY_NORMAL ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 41, 0x467f35a74c6e4a70ull ); table_writer_put8( w, 30 );
+            table_writer_header_at( w, 41, 0x467f35a74c6e4a70ull, 30 );
             switch ( value->difficulty )
             {
                 case DIFFICULTY_NONE: table_writer_leb( w, 0 ); break;
@@ -2483,7 +2491,7 @@ static SCHEMA_UNUSED int global_settings_save_body( TableWriter * w, const Globa
         if ( value->build_note_length != 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 11, 0x14ec921cc2549d60ull ); table_writer_put8( w, 12 );
+            table_writer_header_at( w, 11, 0x14ec921cc2549d60ull, 12 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -2505,7 +2513,7 @@ static SCHEMA_UNUSED int global_settings_save_body( TableWriter * w, const Globa
         if ( rides )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 7, 0x09ae5613b0051271ull ); table_writer_put8( w, 14 );
+            table_writer_header_at( w, 7, 0x09ae5613b0051271ull, 14 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -3104,7 +3112,7 @@ static SCHEMA_UNUSED int pack_config_save_body( TableWriter * w, const PackConfi
         if ( !( value->version == 1 ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 107, 0xbb62c62c9808ea37ull ); table_writer_put8( w, 8 );
+            table_writer_header_at( w, 107, 0xbb62c62c9808ea37ull, 8 );
             table_writer_put32( w, (uint32_t) ( value->version ) );
         }
     }
@@ -3115,7 +3123,7 @@ static SCHEMA_UNUSED int pack_config_save_body( TableWriter * w, const PackConfi
         if ( default_probe.offset > 1 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 68, 0x7fb43557b54149ceull ); table_writer_put8( w, 13 );
+            table_writer_header_at( w, 68, 0x7fb43557b54149ceull, 13 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -3144,7 +3152,7 @@ static SCHEMA_UNUSED int pack_config_save_body( TableWriter * w, const PackConfi
         if ( rides )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 25, 0x294a5c4913e1ad44ull ); table_writer_put8( w, 16 );
+            table_writer_header_at( w, 25, 0x294a5c4913e1ad44ull, 16 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -3170,7 +3178,7 @@ static SCHEMA_UNUSED int pack_config_save_body( TableWriter * w, const PackConfi
         if ( rides )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 80, 0x9cda940a344e1571ull ); table_writer_put8( w, 16 );
+            table_writer_header_at( w, 80, 0x9cda940a344e1571ull, 16 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -3191,7 +3199,7 @@ static SCHEMA_UNUSED int pack_config_save_body( TableWriter * w, const PackConfi
         if ( value->reserves_count > 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
-            table_writer_id_at( w, 64, 0x77707fccd201c228ull ); table_writer_put8( w, 14 );
+            table_writer_header_at( w, 64, 0x77707fccd201c228ull, 14 );
             int64_t element_sizes[3]; /* bounded sizing-to-write cache */
             if ( w->buffer == NULL )
             {
@@ -3203,7 +3211,7 @@ static SCHEMA_UNUSED int pack_config_save_body( TableWriter * w, const PackConfi
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !schema_tabledemo_pack_config_wire_reserves_( &probe, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
-                table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+                table_writer_leb( w, (uint64_t) probe.offset );
                 if ( !schema_tabledemo_pack_config_wire_reserves_( w, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
             }
         }

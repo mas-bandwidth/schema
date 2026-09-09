@@ -55,6 +55,21 @@ func TestHeaderAndPut128Shape(t *testing.T) {
 	if strings.Contains(body, "w.Put64(value.Wide.Lo)") {
 		t.Fatal("Put128 still writes the two lanes through Put64")
 	}
+	save := body
+	if i := strings.Index(save, "func RootSaveBody"); i >= 0 {
+		save = save[i:]
+		if j := strings.Index(save[1:], "\nfunc "); j >= 0 {
+			save = save[:j+1]
+		}
+	}
+	if !strings.Contains(save, "ChildMeasureBody") || !strings.Contains(save, "w.Ids.refAtHit(") {
+		t.Fatal("single-child table field does not reuse MeasureBody through refAtHit")
+	}
+	for _, old := range []string{"w.Header(", "w.PutLeb(", "w.Ids.RefAt("} {
+		if strings.Contains(save, old) {
+			t.Fatalf("RootSaveBody still calls %s", old)
+		}
+	}
 	runGenerated(t, headerSchema, headerWireTest)
 }
 

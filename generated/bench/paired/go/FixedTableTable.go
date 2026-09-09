@@ -56,53 +56,23 @@ func FixedTableSaveBody(w *TableWriter, value *FixedTable) bool {
 		mark := w.Ids.Count
 		ref := w.Ids.refAtHit(35, 0x7ce4fd9430e80cea)
 		start := w.Ids.Count
-		payload := TableWriter{Measuring: true, Ids: w.Ids}
-		{
-			mark := payload.Ids.Count
-			n := BenchMixedMeasureBody(&value.Value, payload.Ids)
-			if n < 0 {
-				return false
-			}
-			if !payload.putLebPair(uint64(n)) {
-				payload.putLebWide(uint64(n))
-			}
-			if payload.Measuring {
-				payload.Advance(n)
-			} else {
-				payload.Ids.Truncate(mark)
-				if !BenchMixedSaveBody(&payload, &value.Value) {
-					return false
-				}
-			}
-		}
-		if payload.Overflow || w.Ids.Overflow {
+		n := BenchMixedMeasureBody(&value.Value, w.Ids)
+		if n < 0 || w.Ids.Overflow {
 			return false
 		}
-		if payload.Offset > 2 {
+		if n > 1 {
 			if w.Measuring {
-				w.Advance(tableLebBytes(ref) + 1 + payload.Offset)
+				w.Advance(tableLebBytes(ref) + 1 + tableLebBytes(uint64(n)) + n)
 			} else {
 				w.Ids.Truncate(start)
 				if !w.headerPair(ref, 13) {
 					w.headerRest(ref, 13)
 				}
-				{
-					mark := w.Ids.Count
-					n := BenchMixedMeasureBody(&value.Value, w.Ids)
-					if n < 0 {
-						return false
-					}
-					if !w.putLebPair(uint64(n)) {
-						w.putLebWide(uint64(n))
-					}
-					if w.Measuring {
-						w.Advance(n)
-					} else {
-						w.Ids.Truncate(mark)
-						if !BenchMixedSaveBody(w, &value.Value) {
-							return false
-						}
-					}
+				if !w.putLebPair(uint64(n)) {
+					w.putLebWide(uint64(n))
+				}
+				if !BenchMixedSaveBody(w, &value.Value) {
+					return false
 				}
 			}
 		} else {

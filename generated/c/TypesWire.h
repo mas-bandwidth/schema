@@ -915,10 +915,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_expression_probe( serialize_r
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 31ULL )
-        {
-            return 0;
-        }
         value->hardpoint_index = (int32_t) offset_value;
     }
     {

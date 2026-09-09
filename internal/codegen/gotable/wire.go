@@ -20,10 +20,14 @@ func tableWireRuntime(u *ir.Unit) string {
 		source = strings.Replace(source, "type TableReader struct {", "type TableReader struct {\nNodes TableNodeMap", 1)
 		source = strings.ReplaceAll(source, "Ids:r.Ids, Nested:true", "Ids:r.Ids, Nested:true, Nodes:r.Nodes")
 	}
-	return fmt.Sprintf(`
+	res := fmt.Sprintf(`
 const tableIdCapacity = %d
 const tableIdBuckets = %d
-`, n, buckets) + source + tableWStringSource
+`, n, buckets) + source
+	if len(ir.WideTextFields(u)) > 0 {
+		res += tableWStringSource
+	}
+	return res
 }
 
 const tableWireSource = `
