@@ -47,19 +47,23 @@ different tables now, the type, the fixed table, the variable table"* —
   differ. Where versioning would cost more than it is worth, the type is
   the answer: *"if somebody really cares about this, they use a type
   instead (no versioning)."*
-- **FIXED TABLE — the type's speed, in table form.** *"Fixed tables are
-  meant to be the fast equivalent of types, in table form."* It is the
-  TYPE'S OWN LAYOUT with an EIGHT-BYTE HASH in front of it and a
-  VOCABULARY BLOCK beside it, declared `fixed table`. Every field is
-  BOUNDED and every field is WRITTEN AT ITS BOUND, so the body is ONE
-  CONSTANT SIZE PER TYPE and no branch is guarded: ONE read path and ONE
-  write path, whose cost DOES NOT DEPEND ON VERSION SKEW. Skew is paid for
-  whether or not the peers differ, which is the trade — *"it's more
-  honest, and predictable."* It versions by APPEND-ONLY evolution with
-  DEPRECATION IN PLACE, and that versioning is load-bearing: **we must not
-  ever break versioning in fixed tables.** Writing at the bound is why it
-  is for SMALL THINGS — *"effectively, fixed tables should only be used
-  for small things."*
+- **FIXED TABLE — the type's speed, in table form** (the FIXED FORM, form
+  byte `3`, §3.4). *"Fixed tables are meant to be the fast equivalent of
+  types, in table form."* A record is an EIGHT-BYTE HASH of the writer's
+  VOCABULARY BLOCK and then the VALUES IN DECLARED ORDER, EVERY FIELD AT
+  ITS BOUND — the type's own layout, with the block sent once beside it.
+  The class is DECLARED, `fixed table` (§2.2), and the compiler REFUSES in
+  its by-value closure anything that would make a body variable size,
+  naming the field and the table (§11): a pointer, a byte buffer at its
+  used size, a map, an unbounded array, a guarded (`if`) branch, or a
+  nested plain `table`. So the body is ONE CONSTANT SIZE PER TYPE and no
+  branch is guarded: ONE read path and ONE write path, whose cost DOES NOT
+  DEPEND ON VERSION SKEW. Skew is paid for whether or not the peers
+  differ, which is the trade — *"it's more honest, and predictable."* It
+  versions by APPEND-ONLY evolution with DEPRECATION IN PLACE, and that
+  versioning is load-bearing: **we must not ever break versioning in fixed
+  tables.** Writing at the bound is why it is for SMALL THINGS —
+  *"effectively, fixed tables should only be used for small things."*
 - **VARIABLE TABLE — the tolerant wire** (the FILE FORM, form byte `1`,
   §3). Maps, lists, pointers, per-field guards, default elision, and a
   record that DESCRIBES ITSELF every time: ids, kinds and lengths ride
@@ -67,6 +71,15 @@ different tables now, the type, the fixed table, the variable table"* —
   reported, never fatal. It pays framing bytes and, in one narrow case, an
   allocation, and it is the wire for anything LARGE, SPARSE or FREE-FORM —
   everything the other two refuse to carry.
+
+**ONE FORM BYTE PER CLASS.** Form `3` is the FIXED table's wire and form `1`
+is the VARIABLE table's, and neither reads for the other. Form `1` does not
+move: it is what §3 describes, it is what every variable table writes, and it
+is what an old file on a disk is. The form-`1` machinery a FIXED table
+currently carries — the emitted reader and writer a fixed-size table has on
+the variable wire, from the days when both classes rode form `1` — is
+SCHEDULED FOR REMOVAL once form `3` lands, so that a fixed table has one wire
+and one pair of paths and not two of each.
 
 **The variable table is the ESCAPE HATCH THAT LETS THE OTHER TWO BE
 STRICT.** A fixed table refuses what would make it variable; a type
@@ -76,7 +89,11 @@ table) is there for you."*
 
 **The MESSAGE FORM (form byte `2`, §3.3) is the fixed table on the wire
 between peers**: a BATCH of fixed tables under ONE ANNOUNCED BLOCK, each
-body packed through the type's own codec.
+body packed through the type's own codec. It is a fixed table's and nobody
+else's — a message-form request naming a plain `table` is REFUSED naming the
+table (§2.2, §11), because a message is a bitpacked body under one announced
+vocabulary and the shape has to be one the declaration fixes. The FILE form
+is every table's, and is where a variable root goes.
 
 **How to choose.**
 
