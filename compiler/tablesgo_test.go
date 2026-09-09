@@ -139,6 +139,7 @@ func TestTableRuntimeNamesAreClaimedGo(t *testing.T) {
 		goRuntimeSrc + "\ntable Graph {head *Graph\ndata *bytes\ncaption *string\n}\n",
 		goRuntimeSrc + "\ntable Lists {rows []int32}\n",
 		goRuntimeSrc + "\ntable Wide {label wstring(16)\n}\n",
+		goRuntimeSrc + "\ntable Drift {ratio float64\n}\n",
 	} {
 		generated, err := New().Generate(unitFromSource(t, source), "go", Options{})
 		if err != nil {
@@ -220,5 +221,62 @@ func TestTableRuntimeNamesAreClaimedGo(t *testing.T) {
 				"Go declares it — drop the registration or fix the backend; a claim nothing needs takes "+
 				"a name away from every schema for free", name)
 		}
+	}
+}
+
+// tableWidenFloat is reached only from a declared kind 11. The nearest
+// neighbour respells that one field float32, so the helper has no call site
+// and must not be emitted. tableKindWidens stays: a kind comparison is every
+// unit's.
+const goWidenF64Src = `package probe
+
+table Note
+{
+    ratio float64
+}
+`
+
+const goWidenF32Src = `package probe
+
+table Note
+{
+    ratio float32
+}
+`
+
+func goTableFile(t *testing.T, src string) string {
+	t.Helper()
+	files, err := New().Generate(unitFromSource(t, src), "go", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b strings.Builder
+	for name, data := range files {
+		if strings.HasSuffix(name, "Table.go") {
+			b.Write(data)
+		}
+	}
+	out := b.String()
+	if out == "" {
+		t.Fatal("the unit emitted no Table.go")
+	}
+	return out
+}
+
+func TestGoTableWidenFloatFollowsDeclaredKind11(t *testing.T) {
+	with := goTableFile(t, goWidenF64Src)
+	if !strings.Contains(with, "func tableWidenFloat(b uint32) uint64") {
+		t.Error("a unit that declares kind 11 must define tableWidenFloat")
+	}
+	if !strings.Contains(with, "math.Float64frombits(tableWidenFloat(") {
+		t.Error("tableWidenFloat must be called by the unit that carries it")
+	}
+
+	without := goTableFile(t, goWidenF32Src)
+	if strings.Contains(without, "tableWidenFloat") {
+		t.Error("the nearest neighbour declares no kind 11 and must carry none of tableWidenFloat")
+	}
+	if !strings.Contains(without, "func tableKindWidens") {
+		t.Error("tableKindWidens is every unit's and left one")
 	}
 }
