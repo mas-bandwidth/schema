@@ -25,8 +25,11 @@
 // One entry per field, in DECLARED ORDER, carrying the four facts a fixed
 // record's layout is made of: the field's wire id, its kind, its WIDTH in the
 // record, and whether it is deprecated. Per table, the hash of that sequence.
-// The check is then one sentence: THE LOCKED SEQUENCE IS A PREFIX OF THE
-// LIVE ONE, entry for entry, with `deprecated` allowed only to turn on.
+// The check is then one sentence: THE LOCK IS THE LIVE SEQUENCE, entry for
+// entry. The APPEND-ONLY rule — the locked sequence is a PREFIX of the live
+// one, with `deprecated` allowed only to turn on — is what `schema lock` will
+// write, and what it refuses to write is what every compile refuses too. The
+// two readings are [Current] and [Appendable].
 package lockfile
 
 import (

@@ -62,12 +62,15 @@ type Compiler struct {
 
 	// SchemaLock turns on the SCHEMA LOCK check (docs/SPEC-TABLES.md §2.10):
 	// when a schema.lock sits in the unit's directory, Load compares every
-	// FIXED table's field sequence against the locked one and REFUSES
-	// anything but an append — a reorder, a removal, a changed kind or width,
-	// an un-deprecation, an insert before the end. A fixed table is a plain C
-	// record with no ids in it, so every one of those is read as garbage with
-	// no counter to fire. No file means no check. The CLI sets it for `check`
-	// and `generate`.
+	// FIXED table's field sequence against the locked one and REFUSES ANY
+	// DIFFERENCE. A break — a reorder, a removal, a changed kind or width, an
+	// un-deprecation, an insert before the end — is refused because a fixed
+	// table is a plain C record with no ids in it, so every one of those is
+	// read as garbage with no counter to fire. An APPEND, a new fixed table
+	// or a deprecation the file has not caught up to is refused too, and says
+	// to run `schema lock`: the committed file is the record of the layout,
+	// and a record only records what it is current with. No file means no
+	// check. The CLI sets it for `check` and `generate`.
 	SchemaLock bool
 
 	// OnWarn, when set, receives each non-fatal report a load produced — the

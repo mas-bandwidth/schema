@@ -56,6 +56,11 @@ func Locate(paths []string) (path string, ok bool, err error) {
 // when it has one. No file means no check: a unit that has never been locked
 // promises nothing, and `schema lock` is what makes the promise.
 //
+// A unit that HAS one is held to it exactly ([Current]): a lock the
+// declaration has moved past — an append, a new fixed table, a deprecation
+// not written down — is refused like any other drift, because the file in the
+// tree is the record and a record is current or it is nothing.
+//
 // Every finding is a refusal — a fixed record has no tolerant class, so there
 // is nothing here for a warning to be.
 func Check(u *ir.Unit, paths []string) []error {
@@ -84,7 +89,7 @@ func Check(u *ir.Unit, paths []string) []error {
 		return []error{fmt.Errorf("%s: lock is for package %s, this unit is package %s — the lock belongs to the unit it sits beside", path, locked.Package, u.Package)}
 	}
 	var errs []error
-	for _, e := range Diff(locked, Render(u)) {
+	for _, e := range Diff(locked, Render(u), Current) {
 		errs = append(errs, fmt.Errorf("%s: %w", path, e))
 	}
 	return errs
@@ -92,9 +97,11 @@ func Check(u *ir.Unit, paths []string) []error {
 
 // Update writes the unit's lock. It is the ONLY writer of this file, and it
 // only ever APPENDS entries, adds tables and flips `deprecated` on: it runs
-// [Check]'s own comparison first and refuses to write a lock the check would
-// refuse, so the one command that moves the file cannot be the one that
-// breaks the rule.
+// the same comparison [Check] runs, under [Appendable] rather than [Current],
+// and refuses everything the check refuses, so the one command that moves the
+// file cannot be the one that breaks the rule. The one thing it accepts and
+// the check does not is a declaration that has moved past the lock — which is
+// the whole reason this command exists.
 //
 // It is idempotent: when the lock is already current, the file is left
 // exactly as it sits and rewrote is false.
@@ -127,7 +134,7 @@ func Update(u *ir.Unit, paths []string) (path string, rewrote bool, err error) {
 		if locked.Package != u.Package {
 			return "", false, fmt.Errorf("%s: lock is for package %s, this unit is package %s — the lock belongs to the unit it sits beside", path, locked.Package, u.Package)
 		}
-		if errs := Diff(locked, live); len(errs) > 0 {
+		if errs := Diff(locked, live, Appendable); len(errs) > 0 {
 			return "", false, fmt.Errorf("%s: %w — `schema lock` appends, and this is not an append; the lock is not a way to make the refusal go away (docs/SPEC-TABLES.md §2.10)", path, errs[0])
 		}
 		if live.Text() == string(data) {

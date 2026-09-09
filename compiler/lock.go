@@ -21,7 +21,9 @@ func SchemaLockText(u *ir.Unit) string {
 // UpdateSchemaLock writes the unit's committed lock — the schema.lock beside
 // its schema files. It is the only writer of that file, and it only ever
 // appends entries, adds tables and flips `deprecated` on: it runs the check's
-// own comparison first and refuses to write a lock the check would refuse.
+// own comparison first and refuses every break the check refuses. The one
+// thing it accepts and the check does not is a declaration the lock has not
+// caught up to — writing that down is what this command is for.
 //
 // It is idempotent — when the lock is already current the file is untouched
 // and rewrote is false.

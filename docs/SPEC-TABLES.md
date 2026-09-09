@@ -3090,8 +3090,9 @@ been edited by a hand rather than written by the compiler, and that is the
 only way this file can be caught lying.
 
 **THE CHECK runs on every compile — `schema check` and `schema generate`.**
-For every fixed table the lock carries, THE LOCKED SEQUENCE MUST BE A PREFIX
-OF THE LIVE ONE, entry for entry, with `deprecated` allowed only to turn ON.
+THE LOCK IN THE TREE IS THE LIVE SEQUENCE, entry for entry, table for table.
+The APPEND-ONLY rule says what a fixed table may BECOME; the check says the
+committed file must BE what the unit declares today.
 Anything else is a refusal naming the table and the FIRST differing entry —
 the first one is the one a person can fix, and a list of every consequence of
 a single reorder teaches nothing the first line did not:
@@ -3133,10 +3134,30 @@ a single reorder teaches nothing the first line did not:
   layout=0x… over entries that hash to 0x… — the lock is written by the
   compiler and a hand-edit does not hold; regenerate it with `schema lock` and
   make the schema change you meant instead (docs/SPEC-TABLES.md §2.10)"*
+- a **STALE LOCK** — an appended field, a new fixed table, a `deprecated`
+  marker the file has not caught up to: *"fixed table ShipConfig: entry 4,
+  field shields (id=0x…), is in the declaration and not in the lock — the lock
+  is the committed record of a fixed table's layout, and this declaration has
+  moved past it: an append, a new table and a deprecation are the changes the
+  rule allows, and a change the rule allows is still a change the record must
+  carry (docs/SPEC-TABLES.md §2.10); write it with `schema lock`"*
+  The clause naming the difference is the only part that varies — a
+  deprecation reads *"… is deprecated in the declaration and live in the
+  lock"*, and a new table with no fields yet has no entry to name, so it reads
+  *"fixed table Marker is in the declaration and not in the lock — …"*.
 
 **NO FILE MEANS NO CHECK.** A unit that has never been locked promises
-nothing, and a table the lock does not carry is new and passes: locking is
-what `schema lock` is for.
+nothing, and `schema lock` is what makes the promise.
+
+**A UNIT THAT HAS ONE IS HELD TO IT EXACTLY.** The APPEND-ONLY rule says what
+a fixed table may become; it does not say the file may lag behind what the
+table already is. A lock the declaration has moved past — an appended field, a
+new fixed table, a `deprecated` marker not yet written down — is STALE, and a
+stale lock is refused with the sentence above, which names the table, the
+first entry the lock lacks, and the one command that fixes it. So the file in
+the tree is always the record of the layout the unit compiles today, and every
+append lands in the same commit as the schema change that made it: a change to
+a fixed table is never in the tree without the record of it.
 
 #### `schema lock`
 
@@ -3146,10 +3167,14 @@ schema lock [--print] [--verbose] [dir|files...]
 
 `schema lock` rewrites the file, and **it is the only thing that writes it**.
 It only ever APPENDS entries, adds tables and flips `deprecated` on: it runs
-the check's own comparison first and **refuses to write a lock the check would
-refuse**, so the one command that moves the file cannot be the one that breaks
-the rule. It is idempotent — a lock that is already current is left untouched
-— and `--print` writes nothing at all.
+the check's own comparison first and **refuses everything the check refuses**
+— a reorder, a removal, a widening, a kind change, an un-deprecation, a table
+withdrawn, a hand-edited file — so the one command that moves the file cannot
+be the one that breaks the rule. The ONE difference between the two readings
+is the one this command exists for: where the check refuses a declaration the
+lock has not caught up to, this command writes it down. It is idempotent — a
+lock that is already current is left untouched — and `--print` writes nothing
+at all.
 
 There is no `--reason` here and no history section, and the difference from the
 tables baseline (§18.4) is the point: moving a BASELINE declares an intentional
@@ -3160,12 +3185,15 @@ and an append breaks nothing.
 #### Held by test
 
 `internal/lockfile` holds the mechanism over a fixture package: an appended
-field passes the check and `schema lock` appends the entry; a reorder, a
+field is refused until `schema lock` appends the entry and passes once it has,
+and so are a new table, a new table with no fields, and a `deprecated` marker;
+a reorder, a
 removal, a widening, an insert in the middle and an un-deprecation are each
-refused with the entry named; a `deprecated` marker is allowed, the lock flips
-the flag, the generated code still writes the slot, and a guard on the field is
-refused; a new table adds an entry; a `was =` rename moves no line; and a lock
-whose entries have been hand-edited away from its layout hash is refused.
+refused with the entry named, by the check and by `schema lock` alike; the
+lock flips the `deprecated` flag in place, the generated code still writes the
+slot, and a guard on the field is refused; a `was =` rename moves no line and
+is therefore no change to catch up to; and a lock whose entries have been
+hand-edited away from its layout hash is refused.
 `internal/lockfile`'s corpus test regenerates every committed `schema.lock` in
 the tree and compares byte for byte, and compiles each of those units with the
 check on.

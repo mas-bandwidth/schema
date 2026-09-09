@@ -166,8 +166,9 @@ func main() {
 		// and it refuses to write anything else.
 		//
 		// It does NOT run the lock check on load: this is the tool for
-		// extending a lock, and the extension is exactly what the check would
-		// be looking at.
+		// extending a lock, and the extension is exactly what the check
+		// refuses — a lock the declaration has moved past is stale, and this
+		// is the command that makes it current.
 		fs := flag.NewFlagSet("lock", flag.ExitOnError)
 		print := fs.Bool("print", false, "print the lock this unit would write, and write nothing")
 		fs.BoolVar(&verbose, "verbose", false, "name the file written")

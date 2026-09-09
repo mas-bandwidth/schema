@@ -1,6 +1,7 @@
 // The SCHEMA LOCK, both ways (docs/SPEC-TABLES.md §2.10): every edit the rule
-// allows passes and moves the file, and every edit it forbids is refused with
-// the entry named.
+// allows moves the file and passes ONCE THE LOCK IS WRITTEN, and every edit it
+// forbids is refused with the entry named — by the check and by `schema lock`
+// alike.
 //
 // The fixture is one package with a lock, edited in a temp directory, so each
 // case is the whole path a user takes — schema on disk, lock beside it, the
@@ -162,17 +163,23 @@ func TestTextRoundTrips(t *testing.T) {
 	}
 }
 
-// ---- the edits the rule allows ----
+// ---- the edits the rule allows, and the lock that has to catch up ----
+//
+// Each of these is an append in the rule's sense, so `schema lock` writes it —
+// and each of them is a CHANGE, so the compile before that write is refused.
+// The lock in the tree is the record, and a record is current or it is
+// nothing.
 
-// TestAppendPasses is the whole point of the rule: a field at the BOTTOM
-// passes the check against the older lock, and `schema lock` extends the file
-// by exactly that entry.
-func TestAppendPasses(t *testing.T) {
+// TestAppendRefusedUntilLocked is the whole point of the rule and the STRICT
+// reading of it in one test: a field at the BOTTOM is the change the rule
+// allows, so `schema lock` extends the file by exactly that entry — and until
+// it does, the compile is refused, naming the entry the lock lacks and the
+// command that writes it.
+func TestAppendRefusedUntilLocked(t *testing.T) {
 	after := strings.Replace(base, "    armor   uint8\n", "    armor   uint8\n    shields uint8\n", 1)
 	dir, paths, errs := locked(t, after)
-	if len(errs) != 0 {
-		t.Fatalf("an append passes: %v", errs)
-	}
+	refuses(t, errs, "fixed table ShipConfig", "entry 4", "field shields",
+		"in the declaration and not in the lock", "write it with `schema lock`")
 	before := readLock(t, filepath.Join(dir, lockfile.FileName))
 	path, rewrote, err := lockfile.Update(load(t, paths), paths)
 	if err != nil {
@@ -196,20 +203,24 @@ func TestAppendPasses(t *testing.T) {
 	if now[len(old)].Name != "shields" {
 		t.Errorf("the appended field is the last entry: %+v", now[len(old)])
 	}
+	// and with the lock written, the same compile passes
+	if errs := lockfile.Check(load(t, paths), paths); len(errs) != 0 {
+		t.Errorf("the written lock checks clean: %v", errs)
+	}
 	// and the extended lock is idempotent
 	if _, rewrote, err := lockfile.Update(load(t, paths), paths); err != nil || rewrote {
 		t.Errorf("a current lock is left alone: rewrote=%v err=%v", rewrote, err)
 	}
 }
 
-// TestNewTablePasses: a table the lock does not carry has promised nothing,
-// so it passes and `schema lock` adds its entry.
-func TestNewTablePasses(t *testing.T) {
+// TestNewTableRefusedUntilLocked: a table the lock does not carry has promised
+// nothing, so `schema lock` adds it — and until it has, the lock is behind the
+// unit and the compile is refused at the table's first entry.
+func TestNewTableRefusedUntilLocked(t *testing.T) {
 	after := base + "\ntable Beacon\n{\n    hz uint8\n}\n"
 	dir, paths, errs := locked(t, after)
-	if len(errs) != 0 {
-		t.Fatalf("a new table passes: %v", errs)
-	}
+	refuses(t, errs, "fixed table Beacon", "entry 1", "field hz",
+		"in the declaration and not in the lock", "write it with `schema lock`")
 	if _, _, err := lockfile.Update(load(t, paths), paths); err != nil {
 		t.Fatal(err)
 	}
@@ -219,6 +230,28 @@ func TestNewTablePasses(t *testing.T) {
 	}
 	if !strings.Contains(string(got), "fixed table Beacon ") {
 		t.Errorf("the new table is in the lock:\n%s", got)
+	}
+	if errs := lockfile.Check(load(t, paths), paths); len(errs) != 0 {
+		t.Errorf("the written lock checks clean: %v", errs)
+	}
+}
+
+// TestNewFieldlessTableRefusedUntilLocked is the same finding with no entry to
+// name: a table with no fields is still a table the lock does not carry, and
+// the refusal names the table alone rather than inventing an entry for it.
+func TestNewFieldlessTableRefusedUntilLocked(t *testing.T) {
+	after := base + "\ntable Marker\n{\n}\n"
+	_, paths, errs := locked(t, after)
+	refuses(t, errs, "fixed table Marker is in the declaration and not in the lock",
+		"write it with `schema lock`")
+	if strings.Contains(errs[0].Error(), "entry ") {
+		t.Errorf("there is no entry to name: %v", errs[0])
+	}
+	if _, _, err := lockfile.Update(load(t, paths), paths); err != nil {
+		t.Fatal(err)
+	}
+	if errs := lockfile.Check(load(t, paths), paths); len(errs) != 0 {
+		t.Errorf("the written lock checks clean: %v", errs)
 	}
 }
 
@@ -246,15 +279,15 @@ func TestWasRenameIsNotAChange(t *testing.T) {
 	}
 }
 
-// TestDeprecateIsAllowed: the marker turns on, the check passes, and
-// `schema lock` flips the flag in place — the entry keeps its position, its id
-// and its width, because deprecation is about meaning and never about layout.
-func TestDeprecateIsAllowed(t *testing.T) {
+// TestDeprecateIsAllowedOnceLocked: the marker turns on and `schema lock`
+// flips the flag in place — the entry keeps its position, its id and its
+// width, because deprecation is about meaning and never about layout. It is a
+// change all the same, so the compile before the flip is written is refused.
+func TestDeprecateIsAllowedOnceLocked(t *testing.T) {
 	after := strings.Replace(base, "    armor   uint8\n", "    armor   uint8 | deprecated\n", 1)
 	dir, paths, errs := locked(t, after)
-	if len(errs) != 0 {
-		t.Fatalf("deprecating a field is allowed: %v", errs)
-	}
+	refuses(t, errs, "fixed table ShipConfig", "entry 3", "field armor",
+		"deprecated in the declaration and live in the lock", "write it with `schema lock`")
 	if _, rewrote, err := lockfile.Update(load(t, paths), paths); err != nil || !rewrote {
 		t.Fatalf("the lock flips the flag: rewrote=%v err=%v", rewrote, err)
 	}
@@ -303,8 +336,9 @@ func TestDeprecatedFieldStillHasItsSlot(t *testing.T) {
 
 // ---- the edits the rule refuses ----
 
-func TestReorderRefused(t *testing.T) {
-	after := `package lockdemo
+// reordered is the fixture with speed and armor swapped — the break both
+// verbs refuse.
+const reordered = `package lockdemo
 
 table ShipConfig
 {
@@ -324,7 +358,9 @@ table Chain
     next *Chain
 }
 `
-	_, _, errs := locked(t, after)
+
+func TestReorderRefused(t *testing.T) {
+	_, _, errs := locked(t, reordered)
 	refuses(t, errs, "fixed table ShipConfig", "entry 2", "field speed", "APPEND-ONLY", "never inserted, moved or removed")
 }
 
@@ -460,6 +496,46 @@ func TestLockRefusesToWriteABreak(t *testing.T) {
 	got, _ := os.ReadFile(path)
 	if string(got) != string(before) {
 		t.Errorf("the file was left alone:\n--- was ---\n%s\n--- now ---\n%s", before, got)
+	}
+}
+
+// TestLockRefusesWhatTheCheckRefuses: the two verbs part company on ONE
+// reading — a declaration the lock has not caught up to, which is the whole
+// reason this command exists — and on nothing else. A reorder, a removal and
+// a kind change are refused by both, and none of them moves the file.
+func TestLockRefusesWhatTheCheckRefuses(t *testing.T) {
+	for _, tc := range []struct{ name, after, want string }{
+		{"reorder", reordered, "never inserted, moved or removed"},
+		{"removal from the end", strings.Replace(base, "    armor   uint8\n", "", 1), "gone from the declaration"},
+		{"kind change", strings.Replace(base, "    speed   float32\n", "    speed   int32\n", 1), "keeps its type"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, paths := fixture(t, base)
+			if _, _, err := lockfile.Update(load(t, paths), paths); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(dir, lockfile.FileName)
+			before, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "Lock.schema"), []byte(tc.after), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			// the check refuses it
+			refuses(t, lockfile.Check(load(t, paths), paths), tc.want)
+			// and so does the one writer, with the file left alone
+			_, rewrote, err := lockfile.Update(load(t, paths), paths)
+			if err == nil || rewrote {
+				t.Fatalf("`schema lock` appends, and this is not an append: rewrote=%v err=%v", rewrote, err)
+			}
+			if !strings.Contains(err.Error(), tc.want) || !strings.Contains(err.Error(), "not an append") {
+				t.Errorf("the refusal says which break and why: %v", err)
+			}
+			if got, _ := os.ReadFile(path); string(got) != string(before) {
+				t.Errorf("a refused lock writes nothing:\n--- was ---\n%s\n--- now ---\n%s", before, got)
+			}
+		})
 	}
 }
 
