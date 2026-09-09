@@ -26,6 +26,8 @@ table Point {
 	}
 	for _, want := range []string{
 		"const TableFixedForm uint8 = 3",
+		"const TableFixedHeaderBytes = 16",
+		"const TableFixedHashAt = 8",
 		"func PointFixedSave(",
 		"func PointFixedLoad(",
 		"func PointFixedMeasure(",
@@ -76,6 +78,17 @@ func TestRoundTrip(t *testing.T) {
 	if buf[0] != 3 {
 		t.Fatalf("form byte %d", buf[0])
 	}
+	for i := 1; i < 8; i++ {
+		if buf[i] != 0 {
+			t.Fatalf("reserved byte %d = %d", i, buf[i])
+		}
+	}
+	if tableFixedGet64(buf[TableFixedHashAt:]) != PointFixedHash {
+		t.Fatalf("header hash 0x%016x want 0x%016x", tableFixedGet64(buf[TableFixedHashAt:]), PointFixedHash)
+	}
+	if tableFixedGet32(buf[TableFixedHeaderBytes:]) != uint32(len(PointFixedLayout)) {
+		t.Fatalf("layout length %d want %d", tableFixedGet32(buf[TableFixedHeaderBytes:]), len(PointFixedLayout))
+	}
 	got := make([]Point, 1)
 	var r TableReport
 	plan := make([]TableFixedEntry, 64)
@@ -88,17 +101,25 @@ func TestRoundTrip(t *testing.T) {
 	if n := PointFixedLoad(got, other, plan, &r); n >= 0 || r.Reason != "newer_form" {
 		t.Fatalf("newer_form: %d %+v", n, r)
 	}
-	older := append([]byte(nil), buf...)
-	older[0] = 1
-	r = TableReport{}
-	if n := PointFixedLoad(got, older, plan, &r); n >= 0 || r.Reason != "previous_form" || r.Verdict != TableOpenRefused {
-		t.Fatalf("FixedLoad previous_form: %d %+v", n, r)
+	for _, form := range []byte{0, 1, 2} {
+		older := append([]byte(nil), buf...)
+		older[0] = form
+		r = TableReport{}
+		if n := PointFixedLoad(got, older, plan, &r); n >= 0 || r.Reason != "previous_form" || r.Verdict != TableOpenRefused {
+			t.Fatalf("FixedLoad previous_form form %d: %d %+v", form, n, r)
+		}
 	}
 	broken := append([]byte(nil), buf...)
-	broken[5] ^= 0xFF
+	broken[TableFixedHeaderBytes+4] ^= 0xFF
 	r = TableReport{}
 	if n := PointFixedLoad(got, broken, plan, &r); n >= 0 || r.Reason != "layout_malformed" {
 		t.Fatalf("layout_malformed: %d %+v", n, r)
+	}
+	lying := append([]byte(nil), buf...)
+	lying[TableFixedHashAt] ^= 0xFF
+	r = TableReport{}
+	if n := PointFixedLoad(got, lying, plan, &r); n >= 0 || r.Reason != "layout_malformed" {
+		t.Fatalf("lying header hash: %d %+v", n, r)
 	}
 }
 `)
@@ -236,7 +257,7 @@ func TestPlanPath(t *testing.T) {
 
 	{
 		broken := append([]byte(nil), w2...)
-		broken[5] ^= 0xFF
+		broken[tblfx1.TableFixedHeaderBytes+4] ^= 0xFF
 		var r tblfx1.TableReport
 		plan := make([]tblfx1.TableFixedEntry, 1024)
 		v := make([]tblfx1.FxRoot, 1)

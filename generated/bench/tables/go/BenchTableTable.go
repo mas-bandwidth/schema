@@ -1621,6 +1621,8 @@ type TableMessageWriter struct {
 }
 
 const TableFixedForm uint8 = 3
+const TableFixedHeaderBytes = 16
+const TableFixedHashAt = 8
 
 const (
 	tableFixedCopy uint8 = iota
@@ -9405,8 +9407,10 @@ var TableEntityFixedDst = []TableFixedDst{
 
 var TableEntityFixedPlan = tableFixedBuildPlan(TableEntityFixedLeaves, 14)
 
+// A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
+// then the layout behind its u32 length, then the records to the end of it.
 func TableEntityFixedMeasure(count int64) int64 {
-	return 1 + 4 + int64(len(TableEntityFixedLayout)) + count*TableEntityFixedRecordBytes
+	return TableFixedHeaderBytes + 4 + int64(len(TableEntityFixedLayout)) + count*TableEntityFixedRecordBytes
 }
 
 func TableEntityFixedSave(values []TableEntity, buffer []byte) int64 {
@@ -9414,10 +9418,12 @@ func TableEntityFixedSave(values []TableEntity, buffer []byte) int64 {
 	if int64(len(buffer)) < need {
 		return -1
 	}
+	clear(buffer[:TableFixedHeaderBytes])
 	buffer[0] = TableFixedForm
-	tableFixedPut32(buffer[1:], uint32(len(TableEntityFixedLayout)))
-	copy(buffer[5:], TableEntityFixedLayout)
-	at := buffer[5+len(TableEntityFixedLayout):]
+	tableFixedPut64(buffer[TableFixedHashAt:], TableEntityFixedHash)
+	tableFixedPut32(buffer[TableFixedHeaderBytes:], uint32(len(TableEntityFixedLayout)))
+	copy(buffer[TableFixedHeaderBytes+4:], TableEntityFixedLayout)
+	at := buffer[TableFixedHeaderBytes+4+len(TableEntityFixedLayout):]
 	for k := range values {
 		tableFixedPut64(at, TableEntityFixedHash)
 		clear(at[8 : 8+TableEntityFixedBodyBytes])
@@ -9432,7 +9438,7 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 		var local TableReport
 		report = &local
 	}
-	if len(data) < 5 {
+	if len(data) < TableFixedHeaderBytes+4 {
 		report.Malformed = true
 		return -1
 	}
@@ -9442,14 +9448,14 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 		}
 		return tableFixedRefuse(report, "newer_form")
 	}
-	layoutBytes := tableFixedGet32(data[1:])
-	if int64(layoutBytes)+5 > int64(len(data)) {
+	layoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])
+	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {
 		return tableFixedRefuse(report, "layout_malformed")
 	}
-	layout := data[5 : 5+layoutBytes]
+	layout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
 	hash := tableFixedHashOf(layout)
-	at := data[5+layoutBytes:]
-	rest := int64(len(data)) - 5 - int64(layoutBytes)
+	at := data[TableFixedHeaderBytes+4+layoutBytes:]
+	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
 	entries := TableEntityFixedPlan.Entries
 	entryCount := TableEntityFixedPlan.Count
 	recordBytes := int64(TableEntityFixedRecordBytes)
@@ -9465,6 +9471,9 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 		entries = plan
 		entryCount = made
 		recordBytes = 8 + int64(tableFixedEntryAt(parsed, 0).Size)
+	}
+	if tableFixedGet64(data[TableFixedHashAt:]) != hash {
+		return tableFixedRefuse(report, "layout_malformed")
 	}
 	if recordBytes <= 8 || rest%recordBytes != 0 {
 		report.Malformed = true
@@ -9507,8 +9516,10 @@ var TableStatFixedDst = []TableFixedDst{
 
 var TableStatFixedPlan = tableFixedBuildPlan(TableStatFixedLeaves, 2)
 
+// A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
+// then the layout behind its u32 length, then the records to the end of it.
 func TableStatFixedMeasure(count int64) int64 {
-	return 1 + 4 + int64(len(TableStatFixedLayout)) + count*TableStatFixedRecordBytes
+	return TableFixedHeaderBytes + 4 + int64(len(TableStatFixedLayout)) + count*TableStatFixedRecordBytes
 }
 
 func TableStatFixedSave(values []TableStat, buffer []byte) int64 {
@@ -9516,10 +9527,12 @@ func TableStatFixedSave(values []TableStat, buffer []byte) int64 {
 	if int64(len(buffer)) < need {
 		return -1
 	}
+	clear(buffer[:TableFixedHeaderBytes])
 	buffer[0] = TableFixedForm
-	tableFixedPut32(buffer[1:], uint32(len(TableStatFixedLayout)))
-	copy(buffer[5:], TableStatFixedLayout)
-	at := buffer[5+len(TableStatFixedLayout):]
+	tableFixedPut64(buffer[TableFixedHashAt:], TableStatFixedHash)
+	tableFixedPut32(buffer[TableFixedHeaderBytes:], uint32(len(TableStatFixedLayout)))
+	copy(buffer[TableFixedHeaderBytes+4:], TableStatFixedLayout)
+	at := buffer[TableFixedHeaderBytes+4+len(TableStatFixedLayout):]
 	for k := range values {
 		tableFixedPut64(at, TableStatFixedHash)
 		clear(at[8 : 8+TableStatFixedBodyBytes])
@@ -9534,7 +9547,7 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 		var local TableReport
 		report = &local
 	}
-	if len(data) < 5 {
+	if len(data) < TableFixedHeaderBytes+4 {
 		report.Malformed = true
 		return -1
 	}
@@ -9544,14 +9557,14 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 		}
 		return tableFixedRefuse(report, "newer_form")
 	}
-	layoutBytes := tableFixedGet32(data[1:])
-	if int64(layoutBytes)+5 > int64(len(data)) {
+	layoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])
+	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {
 		return tableFixedRefuse(report, "layout_malformed")
 	}
-	layout := data[5 : 5+layoutBytes]
+	layout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
 	hash := tableFixedHashOf(layout)
-	at := data[5+layoutBytes:]
-	rest := int64(len(data)) - 5 - int64(layoutBytes)
+	at := data[TableFixedHeaderBytes+4+layoutBytes:]
+	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
 	entries := TableStatFixedPlan.Entries
 	entryCount := TableStatFixedPlan.Count
 	recordBytes := int64(TableStatFixedRecordBytes)
@@ -9567,6 +9580,9 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 		entries = plan
 		entryCount = made
 		recordBytes = 8 + int64(tableFixedEntryAt(parsed, 0).Size)
+	}
+	if tableFixedGet64(data[TableFixedHashAt:]) != hash {
+		return tableFixedRefuse(report, "layout_malformed")
 	}
 	if recordBytes <= 8 || rest%recordBytes != 0 {
 		report.Malformed = true

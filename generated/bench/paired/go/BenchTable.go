@@ -1551,6 +1551,8 @@ type TableMessageWriter struct {
 }
 
 const TableFixedForm uint8 = 3
+const TableFixedHeaderBytes = 16
+const TableFixedHashAt = 8
 
 const (
 	tableFixedCopy uint8 = iota

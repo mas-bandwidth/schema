@@ -9,8 +9,13 @@ package gotable
 // versions the file; there is no version byte inside the layout. A layout
 // whose bytes are not a layout is layout_malformed. An unknown kind is refused
 // (Glenn, same sitting).
+//
+// File header pinned to C++ 073c762a (docs/SPEC-TABLES.md §3 THE FIRST BYTE):
+// form byte 3 at 0, seven reserved zeros, layout hash at 8, body at 16.
 const tableFixedRuntime = `
 const TableFixedForm uint8 = 3
+const TableFixedHeaderBytes = 16
+const TableFixedHashAt = 8
 
 const (
 	tableFixedCopy uint8 = iota
