@@ -2,4 +2,5 @@
 # The format, the rules and the shared tooling's entries: bench/SHAPE-GATE.allow.
 # Paths are repository-relative.
 
-names bench/tables/go/table_main.go 2 shape-blind leg: `benchtable.TableMixed` as the benchTable type argument and in the one load closure's signature (callsite)
+names bench/tables/go/shape.go 2 original shape adapter: generated root type and load callback only, no fields
+names bench/tables/go/shape_matched.go 2 paired shape adapter: canonical packet root type and load callback only, no fields

@@ -110,6 +110,8 @@ var runnerDirs = []string{
 	// Same rule inside it as everywhere else — a runner names the generated
 	// type at one call site and no field, and the ledger below counts it.
 	"bench/tables/",
+	// Paired coordinator reuses the existing runners over one logical corpus.
+	"bench/paired/",
 }
 
 // corpusDir — the shape definition and its committed data. Shape names are

@@ -2570,7 +2570,18 @@ namespace Wide
                 public Writer(Span<byte> buffer) { Buffer = buffer; Offset = 0; }
                 public void Byte(byte v) { Buffer[Offset++] = v; }
                 public void Raw(ReadOnlySpan<byte> v) { v.CopyTo(Buffer.Slice(Offset)); Offset += v.Length; }
-                public void Fixed(ulong v, int n) { for (int i = 0; i < n; i++) { Byte((byte)v); v >>= 8; } }
+                public void Fixed(ulong v, int n)
+                {
+                    switch (n)
+                    {
+                        case 1: Byte((byte)v); return;
+                        case 2: System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(Buffer.Slice(Offset), (ushort)v); break;
+                        case 4: System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(Buffer.Slice(Offset), (uint)v); break;
+                        case 8: System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(Buffer.Slice(Offset), v); break;
+                        default: for (int i = 0; i < n; i++) { Byte((byte)v); v >>= 8; } return;
+                    }
+                    Offset += n;
+                }
                 public void Var(ulong v)
                 {
                     while (v >= 128) { Byte((byte)(v | 128)); v >>= 7; }
@@ -2589,8 +2600,19 @@ namespace Wide
                 public byte Byte() { return Buffer[Offset++]; }
                 public ulong Fixed(int n)
                 {
-                    ulong v = 0;
-                    for (int i = 0; i < n; i++) { v |= (ulong)Byte() << (8 * i); }
+                    ulong v;
+                    switch (n)
+                    {
+                        case 1: return Byte();
+                        case 2: v = System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(Buffer.Slice(Offset)); break;
+                        case 4: v = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(Buffer.Slice(Offset)); break;
+                        case 8: v = System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(Buffer.Slice(Offset)); break;
+                        default:
+                            v = 0;
+                            for (int i = 0; i < n; i++) { v |= (ulong)Byte() << (8 * i); }
+                            return v;
+                    }
+                    Offset += n;
                     return v;
                 }
                 public bool Var(out ulong v)
@@ -3963,9 +3985,7 @@ namespace Wide
 
             static ulong Read64(ReadOnlySpan<byte> bytes, int offset)
             {
-                ulong v = 0;
-                for (int i = 0; i < 8; i++) { v |= (ulong)bytes[offset + i] << (8 * i); }
-                return v;
+                return System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(bytes.Slice(offset));
             }
             static int Width(byte k)
             {
@@ -4110,15 +4130,20 @@ namespace Wide
                 }
                 return 1 + VarSize((ulong)count) + n;
             }
-            static long BodySize(object value, TableTypeInfo type, ref Ids ids)
+            static long BodySize(object value, TableTypeInfo type, ref Ids ids, scoped Span<long> rootPayloadSizes = default)
             {
                 long n = 1;
-                foreach (TableFieldInfo f in type.Fields)
+                for (int i = 0; i < type.Fields.Length; i++)
                 {
+                    TableFieldInfo f = type.Fields[i];
                     if (!Rides(value, f)) { continue; }
                     n += VarSize(ids.Reference(f.Id)) + 1;
-                    if (f.IsArray) { long a = ArraySize(value, f, ref ids); n += VarSize((ulong)a) + a; }
-                    else if (f.Kind == 12 || f.Kind == 33) { long s = PayloadSize(value, f, ref ids); n += VarSize((ulong)s) + s; }
+                    if (f.IsArray || f.Kind == 12 || f.Kind == 33 || f.Kind == 13)
+                    {
+                        long payload = PayloadSize(value, f, ref ids);
+                        n += VarSize((ulong)payload) + payload;
+                        if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[i] = payload; }
+                    }
                     else { n += ElementSize(value, f, 0, ref ids, true); }
                 }
                 return n;
@@ -4180,13 +4205,15 @@ namespace Wide
                 else if (f.Kind == 12) { w.Raw(f.GetBuffer(value).AsSpan(0, Count(value, f))); }
                 else { WriteElement(ref w, value, f, 0, ref ids, false); }
             }
-            static void WriteBody(ref Writer w, object value, TableTypeInfo type, ref Ids ids, bool root = false)
+            static void WriteBody(ref Writer w, object value, TableTypeInfo type, ref Ids ids, bool root = false, scoped ReadOnlySpan<long> rootPayloadSizes = default)
             {
-                foreach (TableFieldInfo f in type.Fields)
+                for (int i = 0; i < type.Fields.Length; i++)
                 {
+                    TableFieldInfo f = type.Fields[i];
                     if (!Rides(value, f)) { continue; }
                     w.Var(ids.Reference(f.Id)); w.Byte(Kind(f));
-                    if (f.IsArray || f.Kind == 12 || f.Kind == 33 || f.Kind == 13) { w.Var((ulong)PayloadSize(value, f, ref ids)); }
+                    if (f.IsArray || f.Kind == 12 || f.Kind == 33 || f.Kind == 13)
+                    { w.Var((ulong)(rootPayloadSizes.IsEmpty ? PayloadSize(value, f, ref ids) : rootPayloadSizes[i])); }
                     WritePayload(ref w, value, f, ref ids);
                 }
                 if (root) { WriteNodes(ref w, ref ids); }
@@ -4208,13 +4235,20 @@ namespace Wide
                 Ids ids = new Ids(vocabulary, index);
                 if (type.Variable) { ids.Graph = Number(value, type); if (ids.Graph == null) { return -1; } }
                 if (!Collect(value, type, ref ids) || !CollectNodes(ref ids)) { return -1; }
-                long n = 1 + BodySize(value, type, ref ids) + 8L * ids.Count + 8;
+                // Reuse the root's measured length prefixes while writing its fields.
+                // This ceiling bounds additional stack storage to 2 KiB; larger roots,
+                // variable graphs and Measure retain the uncached path. Nested writes
+                // keep their own sizing path, so no recursive cache or shared state lives
+                // across calls, and all validation still precedes the first output byte.
+                int cachedFields = !measure && !type.Variable && type.Fields.Length <= 256 ? type.Fields.Length : 0;
+                Span<long> rootPayloadSizes = stackalloc long[cachedFields];
+                long n = 1 + BodySize(value, type, ref ids, rootPayloadSizes) + 8L * ids.Count + 8;
                 long nodes = NodesSize(ref ids);
                 if (nodes != 0) { n += VarSize(ids.Reference(ulong.MaxValue)) + 1 + VarSize((ulong)nodes) + nodes; }
                 if (measure) { return n; }
                 if (n > buffer.Length) { return -1; }
                 scoped Writer w = new Writer(buffer);
-                w.Byte(1); WriteBody(ref w, value, type, ref ids, true);
+                w.Byte(1); WriteBody(ref w, value, type, ref ids, true, rootPayloadSizes);
                 for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
                 w.Fixed((ulong)ids.Count, 8);
                 return w.Offset;
@@ -4559,7 +4593,9 @@ namespace Wide
             }
             static bool ReadBody(ref Reader r, object value, TableTypeInfo type, TableReport report, bool nested)
             {
-                type.Reset(value);
+                // Load resets the root before even the framing checks. Every nested
+                // occurrence still replaces its target, including repeated fields.
+                if (nested) { type.Reset(value); }
                 for (;;)
                 {
                     if (!r.Ref(out ulong reference, out ulong id)) { return Damage(report); }

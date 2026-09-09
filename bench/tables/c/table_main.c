@@ -25,7 +25,15 @@
 #include <stdint.h>
 #include <time.h>
 
+#if defined(BENCH_MATCHED)
+#include "BenchTable.h"
+#define TableMixed BenchMixed
+#define table_mixed_reset bench_mixed_reset
+#define table_mixed_save bench_mixed_save
+#define table_mixed_load bench_mixed_load
+#else
 #include "BenchTableTable.h"
+#endif
 
 static volatile uint64_t g_sink = 0; /* defeats dead code elimination of computed values */
 
@@ -58,6 +66,8 @@ static int g_num_runs = MaxNumRuns; /* --round K drops this to 1 (§2.4) */
 
 static int g_csv = 0;
 static int g_gate = 0;
+static int g_indexed = 0;
+static int64_t g_lengths[NumVariants];
 static const char * g_wire_dir = "testdata/wire";
 static const char * g_variant_dir = "bench/corpus/variants";
 
@@ -251,7 +261,7 @@ static RunStats run_stats( double * rates, int n )
     return s;
 }
 
-static void report( const char * bench, const char * path, long iters, int64_t bytes_per_op, const RunStats * s )
+static void report( const char * bench, const char * path, long iters, double bytes_per_op, const RunStats * s )
 {
     const double mbps = s->median_rate * (double) bytes_per_op / ( 1024.0 * 1024.0 );
     fprintf( stderr, "%-18s %-11s %10.3f M msg/s %10.1f MB/s   (min %.3f, max %.3f, spread %.1f%%)\n",
@@ -259,65 +269,69 @@ static void report( const char * bench, const char * path, long iters, int64_t b
     if ( g_csv && g_num_csv_rows < MaxCsvRows )
     {
         snprintf( g_csv_rows[g_num_csv_rows], sizeof( g_csv_rows[0] ),
-                  "c,%s,%s,%ld,%lld,%d,%.0f,%.0f,%.0f,%.2f,%.2f",
-                  bench, path, iters, (long long) bytes_per_op, g_num_runs,
+                  "c,%s,%s,%ld,%.17g,%d,%.0f,%.0f,%.0f,%.2f,%.2f",
+                  bench, path, iters, bytes_per_op, g_num_runs,
                   s->median_rate, s->min_rate, s->max_rate, mbps, s->spread_pct );
         g_num_csv_rows++;
     }
 }
 
-/* Loads <variant-dir>/<name>.variants.bin into the NumVariants staggered slots
-   and returns the record size, or -1. Records are fixed-width by construction —
-   test/bench/table_main.cpp refuses to emit a corpus whose records differ — so
-   the record size IS file size / NumVariants. */
-static int64_t load_variants( const char * name )
+/* Load 64 concatenated records. --indexed requires 64 little-endian uint32
+   lengths; otherwise the historical corpus has one fixed stride. Return the
+   exact mean encoded bytes per record; buffer padding is never counted. */
+static double load_variants( const char * name )
 {
     char path[512];
-    const char * base;
-    uint8_t * packed;
-    size_t size = 0, record;
-    int k;
     snprintf( path, sizeof( path ), "%s/%s.variants.bin", g_variant_dir, name );
-    packed = read_file( path, &size );
-    if ( packed == NULL )
+    size_t size = 0, offset = 0;
+    uint8_t * packed = read_file( path, &size );
+    int k;
+    if ( packed == NULL ) return -1;
+    snprintf( path, sizeof( path ), "%s.variants.bin", name );
+    remember_golden( path, packed, size );
+    if ( g_indexed )
     {
-        fprintf( stderr, "missing variant data %s — run `make bench-table-corpus`, and run from the schema repo root (or pass --variant-dir)\n", path );
-        return -1;
+        size_t length_bytes = 0;
+        uint8_t * lengths;
+        snprintf( path, sizeof( path ), "%s/%s.lengths", g_variant_dir, name );
+        lengths = read_file( path, &length_bytes );
+        if ( lengths == NULL || length_bytes != NumVariants * 4 ) { free(lengths); free(packed); return -1; }
+        snprintf( path, sizeof( path ), "%s.lengths", name );
+        remember_golden( path, lengths, length_bytes );
+        for ( k = 0; k < NumVariants; ++k )
+        {
+            uint32_t n = 0;
+            unsigned j;
+            for ( j = 0; j < 4; ++j ) n |= (uint32_t) lengths[k * 4 + j] << (j * 8);
+            g_lengths[k] = n;
+        }
+        free( lengths );
     }
-    if ( size == 0 || size % NumVariants != 0 )
+    else
     {
-        fprintf( stderr, "variant data %s is %zu bytes, not a multiple of %d records — refusing to bench data whose stride is not the record size\n",
-                 path, size, NumVariants );
-        free( packed );
-        return -1;
+        if ( size == 0 || size % NumVariants ) { free(packed); return -1; }
+        for ( k = 0; k < NumVariants; ++k ) g_lengths[k] = size / NumVariants;
     }
-    record = size / NumVariants;
-    if ( record > (size_t) BufferSize )
+    g_variants = (uint8_t *) calloc( (size_t) NumVariants * VariantStride, 1 );
+    if ( !g_variants ) { free(packed); return -1; }
+    for ( k = 0; k < NumVariants; ++k )
     {
-        fprintf( stderr, "variant data %s has %zu-byte records, over the %d-byte buffer\n", path, record, BufferSize );
-        free( packed );
-        return -1;
+        const int64_t n = g_lengths[k];
+        if ( n <= 0 || n > BufferSize || (size_t) n > size - offset ) { free(packed); return -1; }
+        memcpy( variant(k), packed + offset, (size_t) n );
+        offset += (size_t) n;
     }
-    g_variants = (uint8_t *) calloc( (size_t) NumVariants * (size_t) VariantStride, 1 );
-    if ( g_variants == NULL ) { free( packed ); return -1; }
-    for ( k = 0; k < NumVariants; k++ ) { memcpy( variant( k ), packed + (size_t) k * record, record ); }
-
-    base = strrchr( path, '/' );
-    remember_golden( base != NULL ? base + 1 : path, packed, size );
     free( packed );
-    return (int64_t) record;
+    if ( offset != size ) return -1;
+    return (double) size / NumVariants;
 }
 
 /* ------------------------------------------------------------------------
    the one measured shape
    ------------------------------------------------------------------------
 
-   THE READ ARM RESETS BEFORE IT LOADS, and that is not overhead the runner
-   added: the tolerant wire ELIDES a field at its default (§3), so `Load` fills
-   only what actually rode and a reused instance would otherwise keep the
-   previous record's values in the elided fields. Resetting is part of a correct
-   read into reused storage, in every language, so it is inside the clock rather
-   than hidden outside it. */
+   Public Load restores declared defaults before overlaying the fields on the
+   wire (§3). That work stays inside the clock; the runner adds no separate reset. */
 
 static TableMixed g_instances[NumVariants];
 static TableMixed g_out;
@@ -332,7 +346,7 @@ static int bench_load( TableMixed * value, const uint8_t * bytes, int64_t size )
 static void bench_table( const char * name, const char * golden, long base_iters )
 {
     const long iters = base_iters / IterScale;
-    const int64_t bytes_per_op = load_variants( name );
+    const double bytes_per_op = load_variants( name );
     double write_rates[MaxNumRuns];
     double roundtrip_rates[MaxNumRuns];
     RunStats w, rt;
@@ -343,7 +357,7 @@ static void bench_table( const char * name, const char * golden, long base_iters
     if ( bytes_per_op < 0 ) { failed = 1; return; }
 
     /* gate 1 (§1.5): variant 0 IS the pinned instance. */
-    if ( !check_golden( golden, variant( 0 ), bytes_per_op ) ) { failed = 1; return; }
+    if ( !check_golden( golden, variant( 0 ), g_lengths[0] ) ) { failed = 1; return; }
 
     /* gate 2: every variant loads, re-saves, and comes back byte-identical at
        the same length — before any clock starts. */
@@ -351,15 +365,34 @@ static void bench_table( const char * name, const char * golden, long base_iters
     {
         int64_t wrote;
         table_mixed_reset( &g_instances[k] );
-        if ( !bench_load( &g_instances[k], variant( k ), bytes_per_op ) )
+        if ( !bench_load( &g_instances[k], variant( k ), g_lengths[k] ) )
         {
             fail( name, "load of a variant failed" );
             return;
         }
         wrote = table_mixed_save( &g_instances[k], g_twin, BufferSize );
-        if ( wrote != bytes_per_op || memcmp( g_twin, variant( k ), (size_t) bytes_per_op ) != 0 )
+        if ( wrote != g_lengths[k] || memcmp( g_twin, variant( k ), (size_t) g_lengths[k] ) != 0 )
         {
             fail( name, "variant round-trip bytes differ — refusing to bench a codec that does not reproduce the corpus" );
+            return;
+        }
+    }
+
+    /* gate 3: reused storage must also round-trip, including the last-to-first
+       transition. Public Load owns default restoration; do not reset between loads. */
+    for ( k = 0; k < 2 * NumVariants; k++ )
+    {
+        const int index = k & ( NumVariants - 1 );
+        int64_t wrote;
+        if ( !bench_load( &g_out, variant( index ), g_lengths[index] ) )
+        {
+            fail( name, "load into reused target failed" );
+            return;
+        }
+        wrote = table_mixed_save( &g_out, g_twin, BufferSize );
+        if ( wrote != g_lengths[index] || memcmp( g_twin, variant( index ), (size_t) g_lengths[index] ) != 0 )
+        {
+            fail( name, "reused target round-trip bytes differ" );
             return;
         }
     }
@@ -374,7 +407,7 @@ static void bench_table( const char * name, const char * golden, long base_iters
         for ( i = 0; i < iters; i++ )
         {
             const int64_t wrote = table_mixed_save( &g_instances[i & ( NumVariants - 1 )], g_buffer, BufferSize );
-            if ( wrote != bytes_per_op ) { fail( name, "save failed in loop" ); return; }
+            if ( wrote != g_lengths[i & ( NumVariants - 1 )] ) { fail( name, "save failed in loop" ); return; }
             bench_escape( g_buffer );
             g_sink = g_sink + (uint64_t) wrote;
         }
@@ -382,7 +415,7 @@ static void bench_table( const char * name, const char * golden, long base_iters
         if ( run >= 0 ) { write_rates[run] = (double) iters / elapsed; }
     }
 
-    /* ROUND-TRIP: reset, load a variant buffer, then re-save what came out. */
+    /* ROUND-TRIP: load a variant buffer, then re-save what came out. */
     for ( run = -1; run < g_num_runs; run++ )
     {
         double start = time_now();
@@ -390,14 +423,13 @@ static void bench_table( const char * name, const char * golden, long base_iters
         for ( i = 0; i < iters; i++ )
         {
             int64_t wrote;
-            table_mixed_reset( &g_out );
-            if ( !bench_load( &g_out, variant( i & ( NumVariants - 1 ) ), bytes_per_op ) )
+            if ( !bench_load( &g_out, variant( i & ( NumVariants - 1 ) ), g_lengths[i & ( NumVariants - 1 )] ) )
             {
                 fail( name, "load failed in loop" );
                 return;
             }
             wrote = table_mixed_save( &g_out, g_buffer, BufferSize );
-            if ( wrote != bytes_per_op ) { fail( name, "re-save failed in loop" ); return; }
+            if ( wrote != g_lengths[i & ( NumVariants - 1 )] ) { fail( name, "re-save failed in loop" ); return; }
             bench_escape( g_buffer );
             g_sink = g_sink + (uint64_t) wrote;
         }
@@ -427,7 +459,8 @@ int main( int argc, char ** argv )
     int i;
     for ( i = 1; i < argc; i++ )
     {
-        if ( strcmp( argv[i], "--gate" ) == 0 ) { g_gate = 1; }
+        if ( strcmp( argv[i], "--indexed" ) == 0 ) { g_indexed = 1; }
+        else if ( strcmp( argv[i], "--gate" ) == 0 ) { g_gate = 1; }
         else if ( strcmp( argv[i], "--csv" ) == 0 ) { g_csv = 1; }
         else if ( strcmp( argv[i], "--wire-dir" ) == 0 && i + 1 < argc ) { g_wire_dir = argv[++i]; }
         else if ( strcmp( argv[i], "--variant-dir" ) == 0 && i + 1 < argc ) { g_variant_dir = argv[++i]; }
@@ -444,7 +477,7 @@ int main( int argc, char ** argv )
         }
         else
         {
-            fprintf( stderr, "usage: %s [--gate] [--csv] [--round K] [--wire-dir <dir>] [--variant-dir <dir>]\n", argv[0] );
+            fprintf( stderr, "usage: %s [--indexed] [--gate] [--csv] [--round K] [--wire-dir <dir>] [--variant-dir <dir>]\n", argv[0] );
             return 1;
         }
     }
