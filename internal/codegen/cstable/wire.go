@@ -182,6 +182,7 @@ public static partial class TableWire
         }
         public void Var(ulong v)
         {
+            if (v < 128) { Byte((byte)v); return; }
             while (v >= 128) { Byte((byte)(v | 128)); v >>= 7; }
             Byte((byte)v);
         }
@@ -215,6 +216,16 @@ public static partial class TableWire
         }
         public bool Var(out ulong v)
         {
+            if ((uint)Offset < (uint)Buffer.Length)
+            {
+                byte b0 = Buffer[Offset];
+                if (b0 < 128)
+                {
+                    Offset++;
+                    v = b0;
+                    return true;
+                }
+            }
             v = 0;
             int start = Offset;
             for (int i = 0; i < 10; i++)

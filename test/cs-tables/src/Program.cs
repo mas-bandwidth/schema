@@ -1762,6 +1762,7 @@ static partial class Program
 
         TestWireContracts();
         TestVocabularyDistinctness();
+        TestLebWireContracts();
         TestRootPayloadSizes();
         TestRootReset();
         TestUnionContracts();
