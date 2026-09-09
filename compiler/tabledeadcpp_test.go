@@ -9,10 +9,13 @@
 //     both sit behind ir.TWString, so a unit whose wide-text census is empty
 //     had fifty-three lines it could not reach.
 //   - THE FOUR BLOB THUNKS, TableBlob{,Message}{Measure,Save}Thunk. Their only
-//     call site is the `blob:` arm of the pointer edge walk, which runs under
-//     the same reachableEdges walk ir.PointerReachableBlobs takes its census
-//     with, so a pointered unit that declares no *bytes and no *string had
-//     thirty-three lines it could not reach.
+//     call site is the `blob:` arm of the pointer edge walk, and it sits behind
+//     a `*bytes` or a `*string` declaration, so a pointered unit that declares
+//     neither had thirty-three lines it could not reach. The census is
+//     ir.BlobPointerFields, a DECLARATION scan: gating a definition on the
+//     numbering walk's ir.PointerReachableBlobs instead would rest on two
+//     separate walks agreeing, and the arms gate's negative controls break that
+//     agreement on purpose (see ir/blobcensus.go).
 //
 // A GREEN GATE ON THE UNITS THAT KEEP THEM IS NOT THE PROOF WANTED, because a
 // condition that is always false and a condition that is always true both

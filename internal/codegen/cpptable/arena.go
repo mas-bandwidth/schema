@@ -24,15 +24,24 @@ import (
 )
 
 // cppBlobThunks is what the numbering stores for a BYTE BUFFER record
-// (docs/SPEC-TABLES.md §2.5, §3.1), and it is emitted only into a unit whose
-// closure can reach one. The four are named at exactly one site in this
-// emitter — the `blob:` arm of the pointer edge walk in pointers.go — and that
-// arm runs under ir.reachableEdges, which is the same walk
-// ir.PointerReachableBlobs takes its census with. So a unit that declares no
-// *bytes and no *string has no call site for them and carried thirty-three
-// lines it could not reach. The two RESERVED TYPE IDS the block used to sit
-// under stay in EVERY pointered unit: the retain and message paths compare
-// against them whether or not this unit writes a blob of its own.
+// (docs/SPEC-TABLES.md §2.5, §3.1), and it is emitted only into a unit that
+// DECLARES one. The four are named at exactly one site in this emitter — the
+// `blob:` arm of the pointer edge walk in pointers.go — so a unit that
+// declares no *bytes and no *string has no call site for them and carried
+// thirty-three lines it could not reach. The two RESERVED TYPE IDS the block
+// used to sit under stay in EVERY pointered unit: the retain and message paths
+// compare against them whether or not this unit writes a blob of its own.
+//
+// THE CENSUS IS ir.BlobPointerFields AND NOT ir.PointerReachableBlobs, though
+// the two agree on every schema the corpus holds. The emitter's pointer edge
+// walk and the numbering walk ir.PointerReachableBlobs takes its census with
+// are two pieces of code, not one, and a gate that emits a DEFINITION must not
+// rest on the second agreeing with the first: the arms gate's negative
+// controls (schema#565) sabotage the numbering walk on purpose, and a census
+// taken with it then withholds a definition the emitter's own walk has already
+// written a call to — the control dies in the compiler instead of turning the
+// gate red on its CHECK. A declaration scan is a superset of both walks and
+// cannot lose that race.
 const cppBlobThunks = `
 template <typename Ctx>
 inline int64_t TableBlobMeasureThunk( const void *, const TableNumbering &, TableIds &, const void * node )
@@ -75,12 +84,12 @@ func tableArenaRuntime(u *ir.Unit, anyExtent bool) string {
 	align := ir.TableRegionAlign(u)
 	alignComment := fmt.Sprintf("every node starts %d-aligned", align)
 	guard := strings.ToUpper(pkg) + "_SCHEMA_TABLE_ARENA"
-	// THE BLOB THUNKS, only where a blob can be reached. The census is taken
-	// over the WHOLE unit rather than one root, because the arena runtime sits
+	// THE BLOB THUNKS, only where a blob is declared. The census is taken over
+	// the WHOLE unit rather than one root, because the arena runtime sits
 	// behind ONE package-scoped guard: whichever file a translation unit
 	// includes first defines it for every other file of the package.
 	blobThunks := "\n" // the blank line the block used to open with
-	if unitReachesBlob(u) {
+	if unitDeclaresBlob(u) {
 		blobThunks = cppBlobThunks
 	}
 	// A UNIT WITH NEITHER A MAP NOR A LIST CARRIES NOT ONE SYMBOL OF THE EXTENT
@@ -1160,20 +1169,11 @@ inline bool TableNodeScanWhole( TableNodeScan & s )
 `
 }
 
-// unitReachesBlob reports whether ANY table of the unit can reach a byte
-// buffer through its pointer edges — the census ir.PointerReachableBlobs takes
-// per root, ORed over the unit, because the arena runtime is emitted once per
-// package.
-func unitReachesBlob(u *ir.Unit) bool {
-	for _, st := range u.Tables {
-		if bytes, str := ir.PointerReachableBlobs(st); bytes || str {
-			return true
-		}
-	}
-	for _, st := range u.Structs {
-		if bytes, str := ir.PointerReachableBlobs(st); bytes || str {
-			return true
-		}
-	}
-	return false
+// unitDeclaresBlob reports whether the unit declares a byte buffer pointer
+// anywhere — a field, an element, a map's half or a union arm — which is the
+// question the arena runtime's one package-scoped definition is gated on. See
+// cppBlobThunks for why a DECLARATION scan and not the numbering walk's
+// reachability answer.
+func unitDeclaresBlob(u *ir.Unit) bool {
+	return len(ir.BlobPointerFields(u)) > 0
 }
