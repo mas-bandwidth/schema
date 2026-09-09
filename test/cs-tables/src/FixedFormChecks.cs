@@ -10,6 +10,7 @@ using V2 = Tblv2;
 using P1 = Tblp1;
 using P3 = Tblp3;
 using TD = Tabledemo;
+using S2 = Scalardemo2;
 
 static partial class Program
 {
@@ -19,6 +20,7 @@ static partial class Program
         TestFixedVCase();
         TestFixedPCase();
         TestFixedWideBlobCase();
+        TestFixedWide128Case();
         TestFixedFoldedArraysCase();
         TestFixedNegativeControl();
     }
@@ -314,6 +316,32 @@ static partial class Program
         Check(back.Payload[0] == 1 && back.Payload[4] == 5, "WideBlob payload contents");
         Check(back.SamplesCount == 3, "WideBlob samples count");
         Check(back.Samples[0] == 100 && back.Samples[1] == 200 && back.Samples[2] == 300, "WideBlob samples contents");
+    }
+
+    static void TestFixedWide128Case()
+    {
+        S2.SimState s = new S2.SimState();
+        S2.Schema.TableReset(s);
+        s.Energy = -1234567890123456789L;
+        s.Reach = -42;
+        s.Mass = 100;
+        s.SeedsCount = 1;
+        s.Seeds[0] = 9999999999999999999UL;
+
+        byte[] buf = new byte[S2.Schema.SimStateFixedMeasure(1)];
+        long saved = S2.Schema.SimStateFixedSave(s, buf);
+        Check(saved == buf.Length, "SimState save");
+
+        S2.SimState back = new S2.SimState();
+        S2.TableReport r = new S2.TableReport();
+        S2.TableFixedEntry[] plan = new S2.TableFixedEntry[128];
+        long loaded = S2.Schema.SimStateFixedLoad(back, buf, plan, r);
+        Check(loaded == 1, "SimState load one record");
+        Check(r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && !r.Malformed && !r.Refused, "SimState clean read");
+        Check(back.Energy == -1234567890123456789L, "SimState energy int128 matches");
+        Check(back.Reach == -42, "SimState reach fixed128 matches");
+        Check(back.Mass == 100, "SimState mass ufixed128 matches");
+        Check(back.SeedsCount == 1 && back.Seeds[0] == 9999999999999999999UL, "SimState seeds uint128 matches");
     }
 
     static void TestFixedFoldedArraysCase()

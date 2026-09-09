@@ -630,7 +630,7 @@ const tableFixedWireSource = `
                         }
                         if (p.DstSize == 16)
                         {
-                            UInt128 w = (p.Sign != 0 && (long)raw < 0) ? (UInt128)(Int128)(long)raw : (UInt128)raw;
+                            UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
                             slots[(int)p.Dst].SetWide?.Invoke(dst, w);
                         }
                         else

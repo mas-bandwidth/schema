@@ -373,8 +373,8 @@ func (b *fixedRootBuild) addScalarSlot(f *ir.Field, expr string) {
 		typ := csFieldType(f.Type)
 		if f.Type.Width == 128 {
 			b.slots = append(b.slots, fixedSlot{
-				setWide: fmt.Sprintf("(t, w) => %s = (%s)w", expr, typ),
-				setRaw:  fmt.Sprintf("(t, v) => %s = (%s)v", expr, typ),
+				setWide: fmt.Sprintf("(t, w) => %s = unchecked((%s)w)", expr, typ),
+				setRaw:  fmt.Sprintf("(t, v) => %s = unchecked((%s)v)", expr, typ),
 			})
 		} else {
 			b.slots = append(b.slots, fixedSlot{
@@ -385,8 +385,8 @@ func (b *fixedRootBuild) addScalarSlot(f *ir.Field, expr string) {
 		typ := csFieldType(f.Type)
 		if f.Type.Width == 128 {
 			b.slots = append(b.slots, fixedSlot{
-				setWide: fmt.Sprintf("(t, w) => %s = (%s)w", expr, typ),
-				setRaw:  fmt.Sprintf("(t, v) => %s = (%s)v", expr, typ),
+				setWide: fmt.Sprintf("(t, w) => %s = unchecked((%s)w)", expr, typ),
+				setRaw:  fmt.Sprintf("(t, v) => %s = unchecked((%s)v)", expr, typ),
 			})
 		} else {
 			b.slots = append(b.slots, fixedSlot{
@@ -1346,8 +1346,13 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 		case 8:
 			g.pf("%sBinaryPrimitives.WriteInt64LittleEndian(%s, (long)%s);\n", ind, slice, expr)
 		case 16:
-			g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, (ulong)(UInt128)%s);\n", ind, slice, expr)
-			g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), (ulong)((UInt128)%s >> 64));\n", ind, slice, expr)
+			if f.Type.Signed {
+				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, (ulong)(unchecked((UInt128)(Int128)%s)));\n", ind, slice, expr)
+				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), (ulong)(unchecked((UInt128)(Int128)%s) >> 64));\n", ind, slice, expr)
+			} else {
+				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, (ulong)(unchecked((UInt128)%s)));\n", ind, slice, expr)
+				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), (ulong)(unchecked((UInt128)%s) >> 64));\n", ind, slice, expr)
+			}
 		}
 	default:
 		switch w {
@@ -1360,8 +1365,13 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 		case 8:
 			g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, (ulong)%s);\n", ind, slice, expr)
 		case 16:
-			g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, (ulong)%s);\n", ind, slice, expr)
-			g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), (ulong)(%s >> 64));\n", ind, slice, expr)
+			if f.Type.Signed {
+				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, (ulong)(unchecked((UInt128)(Int128)%s)));\n", ind, slice, expr)
+				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), (ulong)(unchecked((UInt128)(Int128)%s) >> 64));\n", ind, slice, expr)
+			} else {
+				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, (ulong)(unchecked((UInt128)%s)));\n", ind, slice, expr)
+				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), (ulong)(unchecked((UInt128)%s) >> 64));\n", ind, slice, expr)
+			}
 		}
 	}
 }
