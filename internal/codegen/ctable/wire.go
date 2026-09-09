@@ -78,7 +78,9 @@ static SCHEMA_UNUSED @INLINE@ void table_writer_put32( TableWriter * w, uint32_t
 }
 static SCHEMA_UNUSED @INLINE@ void table_writer_put64( TableWriter * w, uint64_t v )
 {
-    table_writer_put32( w, (uint32_t) v ); table_writer_put32( w, (uint32_t) (v >> 32) );
+    uint8_t b[8]; int i;
+    for ( i = 0; i < 8; i++ ) { b[i] = (uint8_t) (v >> (8*i)); }
+    table_writer_raw( w, b, 8 );
 }
 static SCHEMA_UNUSED void table_writer_leb( TableWriter * w, uint64_t v )
 {
