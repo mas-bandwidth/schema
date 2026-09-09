@@ -120,12 +120,12 @@ type tableGen struct {
 	// blocks is the unit's BLOCK FORM surface (docs/SPEC-TABLES.md §19), nil when
 	// no table is marked `| block`. Nil is what makes the zero-cost gate
 	// answerable by asking one question (§2.2).
-	blocks   *ir.BlockUnit
-	owner    *ir.Struct      // the closure member whose codec is being emitted
-	variable map[string]bool // the derived VARIABLE-LENGTH members (ir.VariableTables)
-	targets  map[string]bool // tables some pointer targets (ir.PointerTargets)
-	probed   map[string]bool // structs that can be reached by a check_default probe
-	hasProbes bool           // unit carries at least one check_default probe
+	blocks    *ir.BlockUnit
+	owner     *ir.Struct      // the closure member whose codec is being emitted
+	variable  map[string]bool // the derived VARIABLE-LENGTH members (ir.VariableTables)
+	targets   map[string]bool // tables some pointer targets (ir.PointerTargets)
+	probed    map[string]bool // structs that can be reached by a check_default probe
+	hasProbes bool            // unit carries at least one check_default probe
 	// idOrdinal is the unit's id vocabulary as id -> ORDINAL (§3): the index
 	// an id takes in ir.TableWireIds, which is what a generated header hands
 	// table_writer_id_at beside the id itself. Built on first use.
